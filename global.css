@@ -1,3 +1,54 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+    :root {
+        /* Default is Volt */
+        --theme-bg: #0A0A0A;
+        --theme-surface: #1C1C1E;
+        --theme-primary: #CEFF00;
+        --theme-secondary: #A3CC00;
+        --theme-text: #FFFFFF;
+    }
+
+    .theme-volt {
+        --theme-bg: #0A0A0A;
+        --theme-surface: #1C1C1E;
+        --theme-primary: #CEFF00;
+        --theme-secondary: #A3CC00;
+        --theme-text: #FFFFFF;
+    }
+
+    .theme-stealth-cobalt {
+        --theme-bg: #0B0E14;
+        --theme-surface: #161B22;
+        --theme-primary: #D7FF00;
+        --theme-secondary: #00F0FF;
+        --theme-text: #FFFFFF;
+    }
+
+    .theme-modern-forest {
+        --theme-bg: #0D110F;
+        --theme-surface: #1B221E;
+        --theme-primary: #B6FF33;
+        --theme-secondary: #88CC28;
+        --theme-text: #F2F2F7;
+    }
+
+    .theme-acid-gold {
+        --theme-bg: #000000;
+        --theme-surface: #121212;
+        --theme-primary: #F5FF40;
+        --theme-secondary: #C8D100;
+        --theme-text: #D1D1D1;
+    }
+
+    .theme-cyber-mint {
+        --theme-bg: #0F1215;
+        --theme-surface: #1E2328;
+        --theme-primary: #4AF2A1;
+        --theme-secondary: #2ECC71;
+        --theme-text: #E0E0E0;
+    }
+}

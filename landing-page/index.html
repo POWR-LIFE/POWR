@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>POWR — Made to Move. Designed to Reward.</title>
+  <meta name="description"
+    content="POWR tracks your movement and rewards you for staying active. Join the waitlist and be first to earn." />
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&display=swap"
+    rel="stylesheet" />
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="/powrlogotext.png?v=1.1" />
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="/style.css" />
+
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+</head>
+
+<body>
+
+  <!-- ═══════════════ NAV ═══════════════ -->
+  <nav id="nav">
+    <div class="nav-inner">
+      <a href="#" class="nav-logo">
+        <span class="nav-logo-text">POWR</span>
+      </a>
+
+      <div class="nav-links" id="navLinks">
+        <!-- <a href="#features">Features</a>
+        <a href="#how-it-works">How It Works</a> -->
+        <a href="#waitlist" class="nav-cta-outline partner-link type-cta">Partner with us</a>
+        <a href="#waitlist" class="nav-cta type-cta">Join Waitlist</a>
+      </div>
+
+      <button class="nav-toggle" id="navToggle" aria-label="Toggle menu">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </nav>
+
+  <!-- ═══════════════ HERO ═══════════════ -->
+  <section id="hero" class="hero">
+    <!-- Background video -->
+    <video class="hero-video" autoplay muted loop playsinline>
+      <source src="/hero_gym_entry.mp4" type="video/mp4" />
+    </video>
+    <div class="hero-overlay"></div>
+    <div class="hero-glow"></div>
+    <div class="hero-logo-wrapper">
+      <div class="hero-logo-glow"></div>
+      <img src="/powrlogotext.png?v=1.1" alt="POWR Logo" class="hero-logo" />
+    </div>
+    <div class="hero-content reveal">
+      <h1 class="hero-headline type-display">
+        MADE TO <span class="accent" style="font-weight: 700;">MOVE</span>.<br />
+        DESIGNED TO <span class="accent" style="font-weight: 700;">REWARD</span>.
+      </h1>
+      <p class="hero-sub type-body-lg">
+        POWR tracks your movement automatically and rewards you for getting out, getting fit, and staying active. Be the
+        first to know when we launch.
+      </p>
+      <form class="waitlist-form" id="heroWaitlistForm">
+        <input type="email" class="waitlist-input" placeholder="Enter your email" required />
+        <input type="url" class="waitlist-input partner-website" placeholder="Enter your website URL"
+          style="display: none;" />
+        <button type="submit" class="btn btn-primary type-cta">Join the Waitlist</button>
+      </form>
+    </div>
+
+    <!-- Scrolling indicator -->
+    <div class="scroll-indicator">
+      <div class="scroll-dot"></div>
+    </div>
+  </section>
+
+  <!-- ═══════════════ HOW IT WORKS (Horizontal Scroll) ═══════════════ -->
+  <section id="how-it-works" class="how-it-works">
+    <div class="horizontal-scroll-wrapper" id="horizontalScrollWrapper">
+      <div class="horizontal-scroll-sticky">
+
+        <!-- Animated Background Text (Left side) -->
+        <div class="horizontal-scroll-info">
+
+          <div class="animated-word-container" id="stepIndicators">
+            <div class="section-accent-bar" style="margin-left: 0;"></div>
+            <h2 class="animated-word active" data-for="0">Move</h2>
+            <h2 class="animated-word" data-for="1">Earn</h2>
+            <h2 class="animated-word" data-for="2">Redeem</h2>
+
+            <div class="step-progress-indicator" id="stepNumbers">
+              <span class="step-num active">1</span> <span class="step-divider">-</span>
+              <span class="step-num">2</span> <span class="step-divider">-</span>
+              <span class="step-num">3</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Cards Viewport (Right side, clips cards as they slide left) -->
+        <div class="horizontal-scroll-viewport" id="horizontalScrollViewport">
+          <div class="horizontal-scroll-track" id="horizontalScrollTrack">
+
+            <div class="step-card-wrapper">
+              <div class="step-card mini-cards-container active" data-step="0">
+                <div class="mini-cards-grid">
+                  <div class="mini-card" data-points="150">
+                    <img class="mini-bg" src="/step-walk.png?v=1.6" alt="Walk" />
+                    <div class="mini-overlay"></div>
+                    <div class="mini-content">
+                      <div class="mini-points-badge type-label"
+                        style="background: var(--accent); color: var(--on-accent);">+150 pts</div>
+                      <h3 class="mini-title type-h3">Walk</h3>
+                      <p class="mini-desc type-body">Turn your daily commute into POWR points automatically.</p>
+                    </div>
+                  </div>
+                  <div class="mini-card" data-points="500">
+                    <img class="mini-bg" src="/step-run.png?v=1.6" alt="Run" />
+                    <div class="mini-overlay"></div>
+                    <div class="mini-content">
+                      <div class="mini-points-badge type-label"
+                        style="background: var(--accent); color: var(--on-accent);">+500 pts</div>
+                      <h3 class="mini-title type-h3">Run</h3>
+                      <p class="mini-desc type-body">Hit the pavement and earn bigger rewards for higher intensity.</p>
+                    </div>
+                  </div>
+                  <div class="mini-card" data-points="350">
+                    <img class="mini-bg" src="/step-workout.png?v=1.6" alt="Workout" />
+                    <div class="mini-overlay"></div>
+                    <div class="mini-content">
+                      <div class="mini-points-badge type-label"
+                        style="background: var(--accent); color: var(--on-accent);">+350 pts</div>
+                      <h3 class="mini-title type-h3">Workout</h3>
+                      <p class="mini-desc type-body">Connect your fitness tracker to get paid for hitting the gym.</p>
+                    </div>
+                  </div>
+                </div>
+                <div class="mini-cards-total">
+                  <span class="mini-total-label">Total earned</span>
+                  <span class="mini-total-val" id="miniTotalVal">0</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="step-card-wrapper">
+              <div class="step-card streak-card" data-step="1">
+                <div class="streak-bg"></div>
+                <div class="streak-container">
+                  <!-- SVG Progress Ring -->
+                  <div class="streak-ring-wrap">
+                    <svg class="streak-ring" viewBox="0 0 200 200">
+                      <circle class="streak-ring-bg" cx="100" cy="100" r="88" />
+                      <circle class="streak-ring-fill" cx="100" cy="100" r="88" id="streakRingFill" />
+                    </svg>
+                    <div class="streak-ring-inner">
+                      <span class="streak-day-label">DAY</span>
+                      <span class="streak-day-num" id="streakDayNum">0</span>
+                      <span class="streak-fire">🔥</span>
+                    </div>
+                  </div>
+                  <!-- Multiplier Badges -->
+                  <div class="streak-multipliers">
+                    <div class="streak-badge" id="badge7" data-day="7">
+                      <span class="streak-badge-label">7-Day</span>
+                      <span class="streak-badge-val">×1.5</span>
+                    </div>
+                    <div class="streak-badge" id="badge14" data-day="14">
+                      <span class="streak-badge-label">14-Day</span>
+                      <span class="streak-badge-val">×2</span>
+                    </div>
+                    <div class="streak-badge" id="badge30" data-day="30">
+                      <span class="streak-badge-label">30-Day</span>
+                      <span class="streak-badge-val">×3</span>
+                    </div>
+                  </div>
+                  <!-- Copy -->
+                  <div class="streak-copy">
+                    <span class="step-number type-label">02</span>
+                    <h3 class="step-title type-h3">Earn</h3>
+                    <p class="step-desc type-body">Stay consistent and watch your multiplier grow. The longer your
+                      streak, the more you earn per activity.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="step-card-wrapper">
+              <div class="step-card" data-step="2">
+                <!-- Map Container replaces video -->
+                <div class="map-container" id="mapBase">
+                  <!-- Partner Pins -->
+                  <div class="partner-pin notto-pin" style="top: 30%; left: 30%;" data-threshold="1000">
+                    <div class="powr-card notto-card pos-below">
+                      <div class="image-zone">
+                        <img src="/notto_dark.png" class="reward-img">
+                        <div class="category-badge fashion">FOOD</div>
+                        <div class="distance-tag"><span>●</span> 0.3 mi</div>
+                      </div>
+                      <div class="reward-divider"></div>
+                      <div class="content-zone">
+                        <div class="partner-type">SPORTSWEAR</div>
+                        <div class="partner-name">NOTTO</div>
+                        <div class="reward-headline">
+                          <span class="value">25% Off</span>
+                          <span class="detail">Storewide</span>
+                        </div>
+                        <div class="reward-footer">
+                          <div class="points">
+                            <div class="points-dot"></div>
+                            <span class="points-val">1,000</span>
+                            <span class="points-label">PTS</span>
+                          </div>
+                          <div class="claim-btn">CLAIM</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="partner-pin trainers-pin highlighted" style="top: 25%; left: 70%;" data-threshold="2500">
+                    <div class="powr-card pos-below">
+                      <div class="image-zone">
+                        <img src="/reward-trainers.png" class="reward-img">
+                        <div class="category-badge gear">GEAR</div>
+                        <div class="distance-tag"><span>●</span> 0.7 mi</div>
+                      </div>
+                      <div class="reward-divider"></div>
+                      <div class="content-zone">
+                        <div class="partner-type">FOOTWEAR</div>
+                        <div class="partner-name">STRIDE</div>
+                        <div class="reward-headline">
+                          <span class="value">1/3 Off</span>
+                          <span class="detail">Trainers</span>
+                        </div>
+                        <div class="reward-footer">
+                          <div class="points">
+                            <div class="points-dot"></div>
+                            <span class="points-val">2,500</span>
+                            <span class="points-label">PTS</span>
+                          </div>
+                          <div class="claim-btn">CLAIM</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="partner-pin protein-pin" style="top: 15%; left: 88%;" data-threshold="5000">
+                    <div class="powr-card pos-below">
+                      <div class="image-zone">
+                        <img src="/reward-protein.png" class="reward-img">
+                        <div class="category-badge nutrition">NUTRITION</div>
+                        <div class="distance-tag"><span>●</span> 1.2 mi</div>
+                      </div>
+                      <div class="reward-divider"></div>
+                      <div class="content-zone">
+                        <div class="partner-type">NUTRITION</div>
+                        <div class="partner-name">BULK</div>
+                        <div class="reward-headline">
+                          <span class="value">Free Bundle</span>
+                          <span class="detail">Protein Pack</span>
+                        </div>
+                        <div class="reward-footer">
+                          <div class="points">
+                            <div class="points-dot"></div>
+                            <span class="points-val">5,000</span>
+                            <span class="points-label">PTS</span>
+                          </div>
+                          <div class="claim-btn">CLAIM</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="partner-pin premium-pin highlighted" style="top: 75%; left: 88%;" data-threshold="7500">
+                    <div class="powr-card">
+                      <div class="image-zone">
+                        <img src="/reward-premium.png" class="reward-img">
+                        <div class="category-badge gym">GYM</div>
+                        <div class="distance-tag"><span>●</span> PREMIUM</div>
+                      </div>
+                      <div class="reward-divider"></div>
+                      <div class="content-zone">
+                        <div class="partner-type">MEMBERSHIP</div>
+                        <div class="partner-name">POWR</div>
+                        <div class="reward-headline">
+                          <span class="value">3 Months</span>
+                          <span class="detail">Premium</span>
+                        </div>
+                        <div class="reward-footer">
+                          <div class="points">
+                            <div class="points-dot"></div>
+                            <span class="points-val">7,500</span>
+                            <span class="points-label">PTS</span>
+                          </div>
+                          <div class="claim-btn">CLAIM</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="partner-pin smoothie-pin" style="top: 85%; left: 60%;" data-threshold="9000">
+                    <div class="powr-card">
+                      <div class="image-zone">
+                        <img src="/reward-smoothie.png" class="reward-img">
+                        <div class="category-badge nutrition">NUTRITION</div>
+                        <div class="distance-tag"><span>●</span> 0.5 mi</div>
+                      </div>
+                      <div class="reward-divider"></div>
+                      <div class="content-zone">
+                        <div class="partner-type">REFRESHMENTS</div>
+                        <div class="partner-name">FRESH</div>
+                        <div class="reward-headline">
+                          <span class="value">Free Smoothie</span>
+                          <span class="detail">Any Flavour</span>
+                        </div>
+                        <div class="reward-footer">
+                          <div class="points">
+                            <div class="points-dot"></div>
+                            <span class="points-val">9,000</span>
+                            <span class="points-label">PTS</span>
+                          </div>
+                          <div class="claim-btn">CLAIM</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="step-overlay"></div>
+                <div class="step-content">
+                  <span class="step-number type-label">03</span>
+                  <h3 class="step-title type-h3">Redeem</h3>
+                  <p class="step-desc type-body">Spend your points on gear, memberships, supplements, and exclusive
+                    partner deals.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- Expansion overlay: sits outside overflow:hidden so it can fill the screen -->
+        <div class="expand-overlay" id="expandOverlay">
+          <!-- Map Container replaces video -->
+          <div class="map-container" id="mapOverlay">
+            <!-- Points Counter (only in overlay) -->
+            <div class="points-counter">
+              <span class="points-val type-stat">0</span>
+              <span class="points-label type-label">POWR Points</span>
+            </div>
+
+            <!-- Activity Thread (only in overlay) -->
+            <div class="activity-thread" id="activityThread">
+              <div class="activity-item"><span>+150</span> Walked 5km</div>
+              <div class="activity-item"><span>+500</span> Gym Session</div>
+              <div class="activity-item"><span>+50</span> Hit Daily Step Goal</div>
+              <div class="activity-item"><span>+300</span> Completed Weekly Challenge</div>
+              <div class="activity-item"><span>+200</span> Morning Run</div>
+              <div class="activity-item"><span>+1000</span> Reached 30-Day Streak</div>
+              <div class="activity-item"><span>+400</span> Cycled 10km</div>
+              <div class="activity-item"><span>+150</span> Walked 5km</div>
+            </div>
+
+            <!-- Partner Pins -->
+            <div class="partner-pin notto-pin" style="top: 30%; left: 30%;" data-threshold="1000">
+              <div class="powr-card notto-card pos-below">
+                <div class="image-zone">
+                  <img src="/notto_dark.png" class="reward-img">
+                  <div class="category-badge fashion">FOOD</div>
+                  <div class="distance-tag"><span>●</span> 0.3 mi</div>
+                </div>
+                <div class="reward-divider"></div>
+                <div class="content-zone">
+                  <div class="partner-type">SPORTSWEAR</div>
+                  <div class="partner-name">NOTTO</div>
+                  <div class="reward-headline">
+                    <span class="value">25% Off</span>
+                    <span class="detail">Storewide</span>
+                  </div>
+                  <div class="reward-footer">
+                    <div class="points">
+                      <div class="points-dot"></div>
+                      <span class="points-val">1,000</span>
+                      <span class="points-label">PTS</span>
+                    </div>
+                    <div class="claim-btn">CLAIM</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="partner-pin trainers-pin" style="top: 25%; left: 70%;" data-threshold="2500">
+              <div class="powr-card pos-below">
+                <div class="image-zone">
+                  <img src="/reward-trainers.png" class="reward-img">
+                  <div class="category-badge gear">GEAR</div>
+                  <div class="distance-tag"><span>●</span> 0.7 mi</div>
+                </div>
+                <div class="reward-divider"></div>
+                <div class="content-zone">
+                  <div class="partner-type">FOOTWEAR</div>
+                  <div class="partner-name">STRIDE</div>
+                  <div class="reward-headline">
+                    <span class="value">1/3 Off</span>
+                    <span class="detail">Trainers</span>
+                  </div>
+                  <div class="reward-footer">
+                    <div class="points">
+                      <div class="points-dot"></div>
+                      <span class="points-val">2,500</span>
+                      <span class="points-label">PTS</span>
+                    </div>
+                    <div class="claim-btn">CLAIM</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="partner-pin protein-pin" style="top: 15%; left: 88%;" data-threshold="5000">
+              <div class="powr-card pos-below">
+                <div class="image-zone">
+                  <img src="/reward-protein.png" class="reward-img">
+                  <div class="category-badge nutrition">NUTRITION</div>
+                  <div class="distance-tag"><span>●</span> 1.2 mi</div>
+                </div>
+                <div class="reward-divider"></div>
+                <div class="content-zone">
+                  <div class="partner-type">NUTRITION</div>
+                  <div class="partner-name">BULK</div>
+                  <div class="reward-headline">
+                    <span class="value">Free Bundle</span>
+                    <span class="detail">Protein Pack</span>
+                  </div>
+                  <div class="reward-footer">
+                    <div class="points">
+                      <div class="points-dot"></div>
+                      <span class="points-val">5,000</span>
+                      <span class="points-label">PTS</span>
+                    </div>
+                    <div class="claim-btn">CLAIM</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="partner-pin premium-pin" style="top: 75%; left: 88%;" data-threshold="7500">
+              <div class="powr-card">
+                <div class="image-zone">
+                  <img src="/reward-premium.png" class="reward-img">
+                  <div class="category-badge gym">GYM</div>
+                  <div class="distance-tag"><span>●</span> PREMIUM</div>
+                </div>
+                <div class="reward-divider"></div>
+                <div class="content-zone">
+                  <div class="partner-type">MEMBERSHIP</div>
+                  <div class="partner-name">POWR</div>
+                  <div class="reward-headline">
+                    <span class="value">3 Months</span>
+                    <span class="detail">Premium</span>
+                  </div>
+                  <div class="reward-footer">
+                    <div class="points">
+                      <div class="points-dot"></div>
+                      <span class="points-val">7,500</span>
+                      <span class="points-label">PTS</span>
+                    </div>
+                    <div class="claim-btn">CLAIM</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="partner-pin smoothie-pin" style="top: 85%; left: 60%;" data-threshold="9000">
+              <div class="powr-card">
+                <div class="image-zone">
+                  <img src="/reward-smoothie.png" class="reward-img">
+                  <div class="category-badge nutrition">NUTRITION</div>
+                  <div class="distance-tag"><span>●</span> 0.5 mi</div>
+                </div>
+                <div class="reward-divider"></div>
+                <div class="content-zone">
+                  <div class="partner-type">REFRESHMENTS</div>
+                  <div class="partner-name">FRESH</div>
+                  <div class="reward-headline">
+                    <span class="value">Free Smoothie</span>
+                    <span class="detail">Any Flavour</span>
+                  </div>
+                  <div class="reward-footer">
+                    <div class="points">
+                      <div class="points-dot"></div>
+                      <span class="points-val">9,000</span>
+                      <span class="points-label">PTS</span>
+                    </div>
+                    <div class="claim-btn">CLAIM</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="step-overlay"></div>
+          <div class="step-content">
+            <span class="step-number type-label">03</span>
+            <h3 class="step-title type-h3">Redeem</h3>
+            <p class="step-desc type-body">Spend your points on gear, memberships, supplements, and exclusive partner
+              deals.</p>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════ CTA / WAITLIST ═══════════════ -->
+  <section id="waitlist" class="download">
+    <div class="container">
+      <div class="download-card reveal">
+        <div class="download-glow"></div>
+        <div class="section-accent-bar"></div>
+        <div class="referral-badge">
+          <span class="referral-icon">🎁</span>
+          <span class="referral-text">Earn <strong>+300 POWR</strong> for 5 successful invites</span>
+        </div>
+        <h2 class="download-title type-h2">Your <span class="accent">POWR</span> journey starts today</h2>
+        <p class="download-sub type-body-lg">Join the waitlist, invite your friends, and start earning before the app
+          even launches.</p>
+        <form class="waitlist-form waitlist-form--center" id="ctaWaitlistForm">
+          <input type="email" class="waitlist-input" placeholder="Enter your email" required />
+          <input type="url" class="waitlist-input partner-website" placeholder="Enter your website URL"
+            style="display: none;" />
+          <button type="submit" class="btn btn-primary type-cta">Join the Waitlist</button>
+        </form>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════ FOOTER ═══════════════ -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-inner">
+        <div class="footer-brand">
+          <img src="/powrlogotext.png?v=1.1" alt="POWR Logo" class="footer-logo" />
+          <p class="footer-tagline">Made to Move. Designed to Reward.</p>
+        </div>
+
+<!-- <div class="footer-links">
+          <div class="footer-col">
+            <h4 class="type-label" style="color: var(--text-primary); margin-bottom: var(--sp-md);">Product</h4>
+            <a href="#features">Features</a>
+            <a href="#how-it-works">How It Works</a>
+            <a href="#waitlist">Join Waitlist</a>
+          </div>
+          <div class="footer-col">
+            <h4 class="type-label" style="color: var(--text-primary); margin-bottom: var(--sp-md);">Company</h4>
+            <a href="#">About</a>
+            <a href="#">Privacy</a>
+            <a href="#">Terms</a>
+            <a href="#waitlist" class="partner-link">Partner with us</a>
+          </div>
+          <div class="footer-col">
+            <h4 class="type-label" style="color: var(--text-primary); margin-bottom: var(--sp-md);">Connect</h4>
+            <a href="#">Twitter / X</a>
+            <a href="#">Instagram</a>
+            <a href="#">Contact</a>
+          </div>
+        </div> -->
+      </div>
+      <div class="footer-bottom">
+        <p>&copy; 2026 POWR. All rights reserved. <small style="opacity:0.3">v1.1</small></p>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Scripts -->
+  <script src="https://unpkg.com/lenis@1.1.20/dist/lenis.min.js"></script>
+  <script type="module" src="/main.js"></script>
+</body>
+
+</html>

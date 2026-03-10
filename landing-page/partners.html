@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>POWR — Made to Move. Designed to Reward.</title>
+  <meta name="description"
+    content="POWR tracks your movement and rewards you for staying active. Join the waitlist and be first to earn." />
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&display=swap"
+    rel="stylesheet" />
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="/powrlogotext.png?v=1.1" />
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="/style.css" />
+</head>
+
+<body>
+
+  <!-- ═══════════════ NAV ═══════════════ -->
+  <nav id="nav">
+    <div class="nav-inner">
+      <a href="#" class="nav-logo">
+        <img src="/powr_transparent.png?v=1.2" alt="POWR Logo" class="nav-logo-img">
+        <span class="nav-logo-text">POWR</span>
+      </a>
+
+      <div class="nav-links" id="navLinks">
+        <!-- <a href="#features">Features</a>
+        <a href="#how-it-works">How It Works</a> -->
+        <a href="/partners.html" class="nav-cta-outline type-cta">Partner with us</a>
+        <a href="/" class="nav-cta type-cta">User Waitlist</a>
+      </div>
+
+      <button class="nav-toggle" id="navToggle" aria-label="Toggle menu">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </nav>
+
+  <!-- ═══════════════ HERO ═══════════════ -->
+  <section id="hero" class="hero">
+    <!-- Background video -->
+    <video class="hero-video" autoplay muted loop playsinline>
+      <source src="/hero_gym_entry.mp4" type="video/mp4" />
+    </video>
+    <div class="hero-overlay"></div>
+    <div class="hero-glow"></div>
+    <div class="hero-content reveal">
+      <h1 class="hero-headline type-display">
+        PARTNER WITH <span class="accent" style="font-weight: 700;">POWR</span>.
+      </h1>
+      <p class="hero-sub type-body-lg">
+        Bring your brand to the most active community. Join the partner waitlist to reach thousands of users ready to redeem rewards.
+      </p>
+      <form class="waitlist-form" id="heroWaitlistForm">
+        <input type="url" class="partner-website waitlist-input"
+          placeholder="Enter your website (e.g. https://example.com)" required />
+        <input type="email" class="waitlist-input" placeholder="Enter your email" required />
+        <button type="submit" class="btn btn-primary type-cta">Join the Waitlist</button>
+      </form>
+    </div>
+
+    <!-- Scrolling indicator -->
+    <div class="scroll-indicator">
+      <div class="scroll-dot"></div>
+    </div>
+  </section>
+
+  <!-- ═══════════════ FEATURES ═══════════════ -->
+  <section id="features" class="features">
+    <div class="container">
+      <div class="section-header reveal">
+        <div class="section-accent-bar"></div>
+        <p class="section-tag type-label">Why POWR?</p>
+        <h2 class="section-title type-h2">Fitness that <span class="accent">pays off</span></h2>
+        <p class="section-sub type-body-lg">Every movement counts. Every step earns. Here's how POWR changes the game.</p>
+      </div>
+
+      <div class="features-grid">
+        <!-- Feature 1 -->
+        <div class="feature-card reveal">
+          <div class="feature-icon">🏃</div>
+          <h3 class="feature-title type-h3">Automatic Tracking</h3>
+          <p class="feature-desc type-body">POWR connects to your health data and tracks your movement in the background. No manual logging, no forgetting — just move.</p>
+        </div>
+
+        <!-- Feature 2 -->
+        <div class="feature-card reveal">
+          <div class="feature-icon">💎</div>
+          <h3 class="feature-title type-h3">Earn POWR Points</h3>
+          <p class="feature-desc type-body">Every step, every session, every gym visit earns you POWR points. The more you move, the more you earn — it's that simple.</p>
+        </div>
+
+        <!-- Feature 3 -->
+        <div class="feature-card reveal">
+          <div class="feature-icon">🤝</div>
+          <h3 class="feature-title type-h3">Real Rewards</h3>
+          <p class="feature-desc type-body">Redeem your POWR points for real rewards — discounts, gear, memberships, and more from brands you love.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════ HOW IT WORKS ═══════════════ -->
+  <section id="how-it-works" class="how-it-works">
+    <div class="container">
+      <div class="section-header reveal">
+        <div class="section-accent-bar"></div>
+        <p class="section-tag type-label">Simple as 1-2-3</p>
+        <h2 class="section-title type-h2">How <span class="accent">POWR</span> works</h2>
+      </div>
+
+      <div class="steps">
+        <div class="step-card reveal">
+          <video class="step-video" autoplay muted loop playsinline>
+            <source src="/step-move.mp4" type="video/mp4" />
+          </video>
+          <div class="step-overlay"></div>
+          <div class="step-content">
+            <span class="step-number type-label">01</span>
+            <h3 class="step-title type-h3">Move</h3>
+            <p class="step-desc type-body">Walk, run, lift, or play. POWR detects your activity automatically through your phone's health data.</p>
+          </div>
+        </div>
+
+        <div class="step-card reveal">
+          <video class="step-video" autoplay muted loop playsinline>
+            <source src="/step-earn.mp4" type="video/mp4" />
+          </video>
+          <div class="step-overlay"></div>
+          <div class="step-content">
+            <span class="step-number type-label">02</span>
+            <h3 class="step-title type-h3">Earn</h3>
+            <p class="step-desc type-body">Every activity earns you POWR points. Hit streaks, complete challenges, and stack up your rewards.</p>
+          </div>
+        </div>
+
+        <div class="step-card reveal">
+          <video class="step-video" autoplay muted loop playsinline>
+            <source src="/step-redeem.mp4" type="video/mp4" />
+          </video>
+          <div class="step-overlay"></div>
+          <div class="step-content">
+            <span class="step-number type-label">03</span>
+            <h3 class="step-title type-h3">Redeem</h3>
+            <p class="step-desc type-body">Spend your points on gear, memberships, supplements, and exclusive partner deals.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════ STATS ═══════════════ -->
+  <section class="stats">
+    <div class="container">
+      <div class="stats-grid reveal">
+        <div class="stat">
+          <span class="stat-number">24/7</span>
+          <span class="stat-label">Automatic Tracking</span>
+        </div>
+        <div class="stat">
+          <span class="stat-number">0</span>
+          <span class="stat-label">Manual Logging Required</span>
+        </div>
+        <div class="stat">
+          <span class="stat-number">∞</span>
+          <span class="stat-label">Ways to Earn</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════ CTA / WAITLIST ═══════════════ -->
+  <section id="waitlist" class="download">
+    <div class="container">
+      <div class="download-card reveal">
+        <div class="download-glow"></div>
+        <div class="section-accent-bar"></div>
+        <h2 class="download-title type-h2">Become a <span class="accent">POWR</span> Partner</h2>
+        <p class="download-sub type-body-lg">Be the first to know when our partner portal launches. Join the waitlist today.</p>
+        <form class="waitlist-form waitlist-form--center" id="ctaWaitlistForm">
+          <input type="url" class="partner-website waitlist-input" placeholder="Enter your website URL" required />
+          <input type="email" class="waitlist-input" placeholder="Enter your email" required />
+          <button type="submit" class="btn btn-primary type-cta">Join the Waitlist</button>
+        </form>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════ FOOTER ═══════════════ -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-inner">
+        <div class="footer-brand">
+          <img src="/powrlogotext.png?v=1.1" alt="POWR Logo" class="footer-logo">
+          <p class="footer-tagline">Made to Move. Designed to Reward.</p>
+        </div>
+
+        <div class="footer-links">
+          <div class="footer-col">
+            <h4 class="type-label" style="color: var(--text-primary); margin-bottom: var(--sp-md);">Product</h4>
+            <a href="#features">Features</a>
+            <a href="#how-it-works">How It Works</a>
+            <a href="#waitlist">Join Waitlist</a>
+          </div>
+          <div class="footer-col">
+            <h4 class="type-label" style="color: var(--text-primary); margin-bottom: var(--sp-md);">Company</h4>
+            <a href="#">About</a>
+            <a href="#">Privacy</a>
+            <a href="#">Terms</a>
+            <a href="/partners.html">Partner with us</a>
+          </div>
+          <div class="footer-col">
+            <h4 class="type-label" style="color: var(--text-primary); margin-bottom: var(--sp-md);">Connect</h4>
+            <a href="#">Twitter / X</a>
+            <a href="#">Instagram</a>
+            <a href="#">Contact</a>
+          </div>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <p>&copy; 2026 POWR. All rights reserved.</p>
+      </div>
+    </div>
+  </footer>
+
+  <script type="module" src="/main.js"></script>
+</body>
+
+</html>
