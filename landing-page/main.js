@@ -685,6 +685,13 @@ if (horizontalWrapper && horizontalTrack) {
 const urlParams = new URLSearchParams(window.location.search);
 const referrerId = urlParams.get('ref');
 
+// Helper to validate UUID format
+function isValidUUID(uuid) {
+    const s = "" + uuid;
+    const match = s.match(/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/);
+    return match !== null;
+}
+
 // ─── Waitlist form handling ───
 async function handleWaitlistSubmit(e) {
     e.preventDefault();
@@ -713,17 +720,31 @@ async function handleWaitlistSubmit(e) {
 
         if (!email) throw new Error("Email is required");
 
+        // Use the referrerId only if it's a valid UUID
+        const validatedReferrerId = isValidUUID(referrerId) ? referrerId : null;
+
         // Insert including the referrerId if present
-        const { data, error } = await supabase
+        let { data, error } = await supabase
             .from('waitlist')
             .insert([{ 
                 email, 
                 typ, 
                 website, 
                 favicon_url,
-                referred_by_id: referrerId
+                referred_by_id: validatedReferrerId
             }])
             .select();
+
+        // If the referral ID is valid format but doesn't exist in the DB (foreign key violation)
+        // we retry without the referrer so the user isn't blocked.
+        if (error && error.code === '23503') {
+            const retry = await supabase
+                .from('waitlist')
+                .insert([{ email, typ, website, favicon_url }])
+                .select();
+            data = retry.data;
+            error = retry.error;
+        }
 
         if (error) {
             if (error.code === '23505') { // Unique violation
@@ -755,7 +776,7 @@ async function handleWaitlistSubmit(e) {
         
         successContainer.innerHTML = `
             <div class="waitlist-success-msg">
-                🎉 You're on the list! We'll be in touch at <strong>${email}</strong>
+                You're on the list! We'll be in touch at <strong>${email}</strong>
             </div>
             <div class="referral-dashboard">
                 <p class="referral-title">Invite friends to earn <strong>+10 POWR</strong></p>
