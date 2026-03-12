@@ -211,9 +211,7 @@
   <!-- ═══════════════ NAV ═══════════════ -->
   <nav id="nav">
     <div class="nav-inner">
-      <a href="#" class="nav-logo">
-        <span class="nav-logo-text">POWR</span>
-      </a>
+
 
       <div class="nav-links" id="navLinks">
         <!-- <a href="#features">Features</a>
@@ -232,17 +230,18 @@
   <section id="hero" class="hero">
     <!-- Background video -->
     <video class="hero-video" autoplay muted loop playsinline>
-      <source src="/treadmill_running.mp4" type="video/mp4" />
+      <source src="https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/landing-page-assets/hero_gym_entry.mp4" type="video/mp4" />
     </video>
     <div class="hero-overlay"></div>
     <div class="hero-glow"></div>
-    <div class="hero-logo-wrapper">
-      <div class="hero-logo-glow"></div>
-      <img
-        src="https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/landing-page-assets/powrlogotext.png?v=1.1"
-        alt="POWR Logo" class="hero-logo" />
-    </div>
+
     <div class="hero-content reveal">
+      <div class="hero-logo-wrapper">
+        <div class="hero-logo-glow"></div>
+        <img
+          src="https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/landing-page-assets/powrlogotext.png?v=1.1"
+          alt="POWR Logo" class="hero-logo" />
+      </div>
       <h1 class="hero-headline type-display">
         MADE TO <span class="accent" style="font-weight: 700;">MOVE</span>.<br />
         DESIGNED TO <span class="accent" style="font-weight: 700;">REWARD</span>.
@@ -251,7 +250,7 @@
         POWR tracks your movement automatically and rewards you for getting out, getting fit, and staying active. Be the
         first to know when we launch.
       </p>
-      <form class="waitlist-form" id="heroWaitlistForm">
+      <form class="waitlist-form is-collapsed" id="heroWaitlistForm">
         <input type="email" class="waitlist-input" placeholder="Enter your email" required />
         <input type="url" class="waitlist-input partner-website" placeholder="Enter your website URL"
           style="display: none;" />
@@ -845,10 +844,10 @@
     <div class="cta-content container reveal">
       <div class="cta-badge">EARLY ACCESS</div>
       <h2 class="cta-title">Your journey starts <span class="accent">today.</span></h2>
-      <p class="cta-description">Join the waitlist, invite your friends, and start earning before the app even launches.
       </p>
 
-      <form class="waitlist-form waitlist-form--center" id="ctaWaitlistForm">
+      <p class="cta-counter">Join <span class="counter-number">567</span> others on the waitlist.</p>
+      <form class="waitlist-form waitlist-form--center is-collapsed" id="ctaWaitlistForm">
         <input type="email" class="waitlist-input" placeholder="Enter your email" required />
         <input type="url" class="waitlist-input partner-website" placeholder="Enter your website URL"
           style="display: none;" />
@@ -864,7 +863,9 @@
     <div class="container">
       <div class="footer-inner">
         <div class="footer-brand">
-          <img src="https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/landing-page-assets/powrlogotext.png?v=1.1" alt="POWR Logo" class="footer-logo" />
+          <img
+            src="https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/landing-page-assets/powrlogotext.png?v=1.1"
+            alt="POWR Logo" class="footer-logo" />
           <p class="footer-tagline">Made to Move. Designed to Reward.</p>
         </div>
 

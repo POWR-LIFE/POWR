@@ -110,13 +110,22 @@ document.querySelectorAll('a[href^="#"]').forEach((anchor) => {
 
             // If clicking a waitlist link while in the hero section, just focus the hero waitlist form
             if (href === '#waitlist' && window.scrollY < window.innerHeight / 2) {
-                const heroInput = document.querySelector('#heroWaitlistForm input[type="email"]');
-                if (heroInput) {
+                const heroForm = document.getElementById('heroWaitlistForm');
+                const heroInput = heroForm?.querySelector('input[type="email"]');
+                if (heroForm && heroInput) {
                     window.scrollTo({ top: 0, behavior: 'smooth' });
-                    // Slight delay to allow any scrolling, then focus
-                    setTimeout(() => heroInput.focus(), 100);
+                    // Expand and focus
+                    setTimeout(() => {
+                        heroForm.classList.remove('is-collapsed');
+                        heroInput.focus();
+                    }, 100);
                     return;
                 }
+            }
+
+            // Expand all waitlist forms if any waitlist link is clicked
+            if (href === '#waitlist') {
+                document.querySelectorAll('.waitlist-form').forEach(f => f.classList.remove('is-collapsed'));
             }
 
             const offset = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--nav-height')) || 72;
@@ -138,6 +147,8 @@ document.querySelectorAll('.partner-link').forEach(link => {
         document.querySelectorAll('.waitlist-form button[type="submit"]').forEach(btn => {
             btn.textContent = 'Apply to Partner';
         });
+        // Expand forms
+        document.querySelectorAll('.waitlist-form').forEach(f => f.classList.remove('is-collapsed'));
     });
 });
 
@@ -153,6 +164,8 @@ document.querySelectorAll('a[href="#waitlist"]:not(.partner-link)').forEach(link
         document.querySelectorAll('.waitlist-form button[type="submit"]').forEach(btn => {
             btn.textContent = 'Join the Waitlist';
         });
+        // Expand forms
+        document.querySelectorAll('.waitlist-form').forEach(f => f.classList.remove('is-collapsed'));
     });
 });
 
@@ -822,4 +835,40 @@ async function handleWaitlistSubmit(e) {
 
 document.querySelectorAll('.waitlist-form').forEach((form) => {
     form.addEventListener('submit', handleWaitlistSubmit);
+
+    // Handle expansion via click to bypass "required" validation blocking the submit event
+    const submitBtn = form.querySelector('button[type="submit"]');
+    if (submitBtn) {
+        submitBtn.addEventListener('click', (e) => {
+            if (form.classList.contains('is-collapsed')) {
+                e.preventDefault();
+                form.classList.remove('is-collapsed');
+                const emailInput = form.querySelector('input[type="email"]');
+                if (emailInput) {
+                    emailInput.focus();
+                }
+            }
+        });
+    }
 });
+
+// ─── Dynamic Waitlist Counter ───
+function updateWaitlistCounter() {
+    const counterEl = document.querySelector('.counter-number');
+    if (!counterEl) return;
+
+    const baseCount = 567;
+    const weeklyIncrease = 36;
+    const startDate = new Date('2026-03-12');
+    const today = new Date();
+    
+    // Calculate weeks since start date
+    const diff = today - startDate;
+    const weeks = Math.floor(diff / (1000 * 60 * 60 * 24 * 7));
+    
+    // Ensure we don't end up with less than baseCount
+    const count = Math.max(baseCount, baseCount + (weeks * weeklyIncrease));
+    counterEl.textContent = count.toLocaleString();
+}
+
+updateWaitlistCounter();
