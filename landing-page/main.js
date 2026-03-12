@@ -160,10 +160,10 @@ document.querySelectorAll('a[href="#waitlist"]:not(.partner-link)').forEach(link
 // ─── Nav background on scroll ───
 const nav = document.getElementById('nav');
 window.addEventListener('scroll', () => {
-    if (window.scrollY > 50) {
-        nav.style.background = 'rgba(22, 22, 22, 0.95)';
+    if (window.scrollY > 20) {
+        nav.classList.add('scrolled');
     } else {
-        nav.style.background = 'rgba(22, 22, 22, 0.8)';
+        nav.classList.remove('scrolled');
     }
 });
 
@@ -180,17 +180,63 @@ if (horizontalWrapper && horizontalTrack) {
 
     let ticking = false;
 
+    // tick marks for premium ring
+    const ticksSvg = document.getElementById('ticks');
+    if (ticksSvg) {
+        for (let i = 0; i < 60; i++) {
+            const angle = (i / 60) * 360 - 90;
+            const rad = angle * Math.PI / 180;
+            const cx = 160, cy = 160, r = 140;
+            const major = i % 10 === 0;
+            const len = major ? 10 : 5;
+            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            line.setAttribute('x1', cx + r * Math.cos(rad));
+            line.setAttribute('y1', cy + r * Math.sin(rad));
+            line.setAttribute('x2', cx + (r - len) * Math.cos(rad));
+            line.setAttribute('y2', cy + (r - len) * Math.sin(rad));
+            line.setAttribute('stroke', major ? 'rgba(242,237,230,0.15)' : 'rgba(242,237,230,0.06)');
+            line.setAttribute('stroke-width', major ? '1.5' : '0.8');
+            ticksSvg.appendChild(line);
+        }
+    }
+
     function updateHorizontalScroll() {
         if (isMobile()) {
-            // On mobile, reset everything
+            // On mobile, reset horizontal track but setup static data
             horizontalTrack.style.transform = 'translateX(0)';
             stepCards.forEach(card => {
                 card.classList.add('in-view');
                 card.classList.remove('active');
             });
             animatedWords.forEach(word => word.classList.remove('active'));
-            // Just ensure the first word is visible if somehow un-hidden
             if (animatedWords[0]) animatedWords[0].classList.add('active');
+
+            // ── Static Mobile Setup (Day 30) ──
+            const miniCards = horizontalTrack.querySelectorAll('.mini-card');
+            const miniTotal = document.getElementById('miniTotalVal');
+            miniCards.forEach(mc => mc.classList.add('revealed'));
+            if (miniTotal) miniTotal.textContent = '25';
+
+            const ring = document.getElementById('ringProgress');
+            const dayNum = document.getElementById('dayNum');
+            const flameEl = document.getElementById('ringFlame');
+            const ms1 = document.getElementById('ms1'), bar1 = document.getElementById('bar1');
+            const ms2 = document.getElementById('ms2'), bar2 = document.getElementById('bar2');
+            const ms3 = document.getElementById('ms3'), bar3 = document.getElementById('bar3');
+            const statusEl = document.getElementById('ringStatus');
+
+            if (ring && dayNum) {
+                dayNum.textContent = '10';
+                dayNum.classList.add('gold');
+                ring.style.strokeDashoffset = 0;
+                ring.style.stroke = '#E8D200';
+                if (flameEl) flameEl.classList.add('active');
+                
+                if (ms1) { ms1.classList.add('active'); if (bar1) bar1.style.width = '100%'; }
+                if (ms2) { ms2.classList.add('active'); if (bar2) bar2.style.width = '100%'; }
+                if (ms3) { ms3.classList.add('active'); if (bar3) bar3.style.width = '100%'; }
+                if (statusEl) statusEl.innerHTML = '<em>×3.0</em> — maximum multiplier.';
+            }
             return;
         }
 
@@ -301,7 +347,6 @@ if (horizontalWrapper && horizontalTrack) {
             if (miniContainer) {
                 const miniCards = miniContainer.querySelectorAll('.mini-card');
                 const totalEl = document.getElementById('miniTotalVal');
-
                 if (activeIndex === 0 && miniCards.length > 0) {
                     // Faster sub-divide of the Move hold to reveal mini-cards earlier
                     const holdStart = 0.05;
@@ -328,38 +373,85 @@ if (horizontalWrapper && horizontalTrack) {
                 }
             }
 
-            // ── Streak counter animation during Earn phase ──
-            const streakRing = document.getElementById('streakRingFill');
-            const streakDayNum = document.getElementById('streakDayNum');
-            if (streakRing && streakDayNum) {
+            // ── Premium ring animation during Earn phase ──
+            const ring = document.getElementById('ringProgress');
+            const dayEl = document.getElementById('dayNum');
+            const statusEl = document.getElementById('ringStatus');
+            const ms1 = document.getElementById('ms1'), bar1 = document.getElementById('bar1');
+            const ms2 = document.getElementById('ms2'), bar2 = document.getElementById('bar2');
+            const ms3 = document.getElementById('ms3'), bar3 = document.getElementById('bar3');
+            const circ = 879; // ~2 * Math.PI * 140
+
+            if (ring && dayEl) {
                 if (activeIndex === 1) {
-                    // Sub-divide the Earn hold time (cardProgress ~0.50 to ~0.85)
                     const earnStart = 0.50;
-                    const earnEnd = 0.85; // Complete streak counter by 85%, Card slides out at 90%
+                    const earnEnd = 0.85; 
                     const earnProgress = Math.max(0, Math.min(1, (cardProgress - earnStart) / (earnEnd - earnStart)));
 
-                    // Day counter: 0 → 30
-                    const maxDays = 30;
-                    const currentDay = Math.round(earnProgress * maxDays);
-                    streakDayNum.textContent = currentDay;
+                    const day = Math.round(earnProgress * 10);
+                    dayEl.textContent = day;
+                    ring.style.strokeDashoffset = circ - earnProgress * circ;
 
-                    // Ring fill: circumference = 2 * PI * 88 ≈ 553
-                    const circumference = 553;
-                    const offset = circumference - (earnProgress * circumference);
-                    streakRing.style.strokeDashoffset = offset;
+                    const flameEl = document.getElementById('ringFlame');
+                    
+                    // ring colour & flame
+                    if (day >= 10) { 
+                        ring.style.stroke = '#E8D200'; 
+                        dayEl.classList.add('gold'); 
+                        if (flameEl) flameEl.classList.add('active'); 
+                    }
+                    else if (day >= 3) { 
+                        ring.style.stroke = '#E8D200'; 
+                        dayEl.classList.remove('gold'); 
+                        if (flameEl) flameEl.classList.add('active'); 
+                    }
+                    else { 
+                        ring.style.stroke = 'rgba(242,237,230,0.2)'; 
+                        dayEl.classList.remove('gold'); 
+                        if (flameEl) flameEl.classList.remove('active'); 
+                    }
 
-                    // Unlock multiplier badges at milestones
-                    const badge7 = document.getElementById('badge7');
-                    const badge14 = document.getElementById('badge14');
-                    const badge30 = document.getElementById('badge30');
-                    if (badge7) badge7.classList.toggle('unlocked', currentDay >= 7);
-                    if (badge14) badge14.classList.toggle('unlocked', currentDay >= 14);
-                    if (badge30) badge30.classList.toggle('unlocked', currentDay >= 30);
+                    // milestones
+                    if (ms1 && bar1) {
+                        if (day >= 3)  { ms1.classList.add('active'); bar1.style.width = '100%'; }
+                        else           { ms1.classList.remove('active'); bar1.style.width = (day / 3 * 100) + '%'; }
+                    }
+
+                    if (ms2 && bar2) {
+                        if (day >= 7) { ms2.classList.add('active'); bar2.style.width = '100%'; }
+                        else if (day >= 3) { ms2.classList.add('active'); bar2.style.width = ((day - 3) / 4 * 100) + '%'; }
+                        else           { ms2.classList.remove('active'); bar2.style.width = '0%'; }
+                    }
+
+                    if (ms3 && bar3) {
+                        if (day >= 10) { ms3.classList.add('active'); bar3.style.width = '100%'; }
+                        else if (day >= 7) { ms3.classList.add('active'); bar3.style.width = ((day - 7) / 3 * 100) + '%'; }
+                        else           { ms3.classList.remove('active'); bar3.style.width = '0%'; }
+                    }
+
+                    // status
+                    if (statusEl) {
+                        if (day >= 10)      statusEl.innerHTML = '<em>×3.0</em> — maximum multiplier.';
+                        else if (day >= 7)  statusEl.innerHTML = `<strong>${10 - day} days</strong> to <em>×3.0</em>`;
+                        else if (day >= 3)  statusEl.innerHTML = `<strong>${7 - day} days</strong> to <em>×2.0</em>`;
+                        else if (day > 0)   statusEl.innerHTML = `<strong>${3 - day} days</strong> to first multiplier`;
+                        else                statusEl.innerHTML = 'Start your streak.';
+                    }
                 } else {
-                    // Reset streak counter when not in Earn phase
-                    streakDayNum.textContent = '0';
-                    streakRing.style.strokeDashoffset = 553;
-                    document.querySelectorAll('.streak-badge').forEach(b => b.classList.remove('unlocked'));
+                    // Reset when not in Earn phase
+                    dayEl.textContent = '0';
+                    ring.style.strokeDashoffset = circ;
+                    ring.style.stroke = 'rgba(242,237,230,0.2)';
+                    dayEl.classList.remove('gold');
+                    const flameEl = document.getElementById('ringFlame');
+                    if (flameEl) flameEl.classList.remove('active');
+                    if (ms1) ms1.classList.remove('active');
+                    if (bar1) bar1.style.width = '0%';
+                    if (ms2) ms2.classList.remove('active');
+                    if (bar2) bar2.style.width = '0%';
+                    if (ms3) ms3.classList.remove('active');
+                    if (bar3) bar3.style.width = '0%';
+                    if (statusEl) statusEl.innerHTML = 'Start your streak.';
                 }
             }
 
@@ -414,7 +506,7 @@ if (horizontalWrapper && horizontalTrack) {
             const vpRect = vpEl.getBoundingClientRect();
 
             // Card's resting position relative to the sticky container
-            const cardW = Math.min(600, vpRect.width - 40);
+            const cardW = Math.min(680, vpRect.width - 40);
             const cardH = 480;
             const cardRestLeft = (vpRect.left - stickyRect.left) + (vpRect.width - cardW) / 2;
             const cardRestTop = (vpRect.top - stickyRect.top) + (vpRect.height - cardH) / 2;
@@ -491,7 +583,7 @@ if (horizontalWrapper && horizontalTrack) {
 
                 // Points Counter logic — completes before contraction starts
                 const pointsProgress = Math.min(1, mapProgress / 0.75);
-                const maxPoints = 10000;
+                const maxPoints = 1000;
                 let currentPoints = Math.floor(pointsProgress * maxPoints);
                 if (pointsProgress >= 0.99) currentPoints = maxPoints;
 
@@ -589,6 +681,10 @@ if (horizontalWrapper && horizontalTrack) {
 }
 
 
+// ─── Referral Tracking ───
+const urlParams = new URLSearchParams(window.location.search);
+const referrerId = urlParams.get('ref');
+
 // ─── Waitlist form handling ───
 async function handleWaitlistSubmit(e) {
     e.preventDefault();
@@ -617,9 +713,17 @@ async function handleWaitlistSubmit(e) {
 
         if (!email) throw new Error("Email is required");
 
-        const { error } = await supabase
+        // Insert including the referrerId if present
+        const { data, error } = await supabase
             .from('waitlist')
-            .insert([{ email, typ, website, favicon_url }]);
+            .insert([{ 
+                email, 
+                typ, 
+                website, 
+                favicon_url,
+                referred_by_id: referrerId
+            }])
+            .select();
 
         if (error) {
             if (error.code === '23505') { // Unique violation
@@ -628,15 +732,64 @@ async function handleWaitlistSubmit(e) {
             throw error;
         }
 
-        // Replace form with success message
-        const success = document.createElement('div');
-        success.className = 'waitlist-success';
-        success.textContent = `🎉 You're on the list! We'll be in touch at ${email}`;
-        form.parentNode.replaceChild(success, form);
+        const newUser = data[0];
+        
+        // Robust referral URL generation
+        let origin = window.location.origin;
+        // If testing on localhost, ensure we use http to avoid SSL protocol errors
+        if (origin.includes('localhost')) {
+            origin = origin.replace('https://', 'http://');
+        }
+        
+        let pathname = window.location.pathname;
+        // Clean up pathname for prettier links
+        if (pathname.endsWith('index.html')) {
+            pathname = pathname.replace('index.html', '');
+        }
+
+        const referralUrl = `${origin}${pathname}?ref=${newUser.id}`;
+
+        // Replace form with success message & referral dashboard
+        const successContainer = document.createElement('div');
+        successContainer.className = 'waitlist-success-container';
+        
+        successContainer.innerHTML = `
+            <div class="waitlist-success-msg">
+                🎉 You're on the list! We'll be in touch at <strong>${email}</strong>
+            </div>
+            <div class="referral-dashboard">
+                <p class="referral-title">Invite friends to earn <strong>+10 POWR</strong></p>
+                <div class="referral-link-box">
+                    <input type="text" class="referral-link-input" value="${referralUrl}" readonly />
+                    <button class="copy-btn">Copy</button>
+                </div>
+                <div class="referral-share-group">
+                    <a href="https://wa.me/?text=${encodeURIComponent('Join the POWR waitlist and start earning rewards for moving! ' + referralUrl)}" target="_blank" class="share-btn wa">WhatsApp</a>
+                    <a href="https://twitter.com/intent/tweet?text=${encodeURIComponent('Just joined the @POWR waitlist! Move to earn. Join here: ')}&url=${encodeURIComponent(referralUrl)}" target="_blank" class="share-btn tw">X / Twitter</a>
+                    <a href="https://t.me/share/url?url=${encodeURIComponent(referralUrl)}&text=${encodeURIComponent('Join the POWR waitlist and start earning rewards for moving!')}" target="_blank" class="share-btn tg">Telegram</a>
+                </div>
+            </div>
+        `;
+
+        form.parentNode.replaceChild(successContainer, form);
+
+        // Add copy logic
+        const copyBtn = successContainer.querySelector('.copy-btn');
+        const linkInput = successContainer.querySelector('.referral-link-input');
+        copyBtn.addEventListener('click', () => {
+            linkInput.select();
+            document.execCommand('copy');
+            copyBtn.textContent = 'Copied!';
+            copyBtn.classList.add('copied');
+            setTimeout(() => {
+                copyBtn.textContent = 'Copy';
+                copyBtn.classList.remove('copied');
+            }, 2000);
+        });
 
         // Remove the note below if it exists
-        const note = success.nextElementSibling;
-        if (note && note.classList.contains('waitlist-note')) {
+        const note = successContainer.nextElementSibling;
+        if (note && (note.classList.contains('waitlist-note') || note.classList.contains('cta-note'))) {
             note.remove();
         }
 

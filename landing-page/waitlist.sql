@@ -5,7 +5,8 @@ CREATE TABLE waitlist (
   email TEXT NOT NULL UNIQUE,
   typ TEXT NOT NULL CHECK (typ IN ('user', 'partner')),
   website TEXT,
-  favicon_url TEXT
+  favicon_url TEXT,
+  referred_by_id UUID REFERENCES waitlist(id)
 );
 
 -- Turn on Row Level Security (RLS)
