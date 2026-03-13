@@ -1,5 +1,6 @@
 {
     "name": "powr-landing-page",
+    "type": "module",
     "private": true,
     "version": "1.0.0",
     "scripts": {
@@ -8,10 +9,21 @@
         "preview": "vite preview"
     },
     "devDependencies": {
+        "@tailwindcss/vite": "^4.0.0",
+        "@vitejs/plugin-react": "^4.3.4",
+        "autoprefixer": "^10.4.27",
+        "postcss": "^8.5.8",
+        "tailwindcss": "^4.2.1",
         "vite": "^6.2.0"
     },
     "dependencies": {
         "@supabase/supabase-js": "^2.98.0",
-        "leaflet": "^1.9.4"
+        "clsx": "^2.1.1",
+        "framer-motion": "^12.36.0",
+        "leaflet": "^1.9.4",
+        "lucide-react": "^0.577.0",
+        "react": "^19.2.4",
+        "react-dom": "^19.2.4",
+        "tailwind-merge": "^3.5.0"
     }
 }

@@ -3,6 +3,10 @@
    ════════════════════════════════════════════ */
 
 /* ─── Tokens ─── */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 :root {
     /* Brand Colors */
     --bg: #080808;
