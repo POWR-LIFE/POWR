@@ -244,7 +244,7 @@ if (horizontalWrapper && horizontalTrack) {
                 ring.style.strokeDashoffset = 0;
                 ring.style.stroke = '#E8D200';
                 if (flameEl) flameEl.classList.add('active');
-                
+
                 if (ms1) { ms1.classList.add('active'); if (bar1) bar1.style.width = '100%'; }
                 if (ms2) { ms2.classList.add('active'); if (bar2) bar2.style.width = '100%'; }
                 if (ms3) { ms3.classList.add('active'); if (bar3) bar3.style.width = '100%'; }
@@ -398,7 +398,7 @@ if (horizontalWrapper && horizontalTrack) {
             if (ring && dayEl) {
                 if (activeIndex === 1) {
                     const earnStart = 0.50;
-                    const earnEnd = 0.85; 
+                    const earnEnd = 0.85;
                     const earnProgress = Math.max(0, Math.min(1, (cardProgress - earnStart) / (earnEnd - earnStart)));
 
                     const day = Math.round(earnProgress * 10);
@@ -406,49 +406,49 @@ if (horizontalWrapper && horizontalTrack) {
                     ring.style.strokeDashoffset = circ - earnProgress * circ;
 
                     const flameEl = document.getElementById('ringFlame');
-                    
+
                     // ring colour & flame
-                    if (day >= 10) { 
-                        ring.style.stroke = '#E8D200'; 
-                        dayEl.classList.add('gold'); 
-                        if (flameEl) flameEl.classList.add('active'); 
+                    if (day >= 10) {
+                        ring.style.stroke = '#E8D200';
+                        dayEl.classList.add('gold');
+                        if (flameEl) flameEl.classList.add('active');
                     }
-                    else if (day >= 3) { 
-                        ring.style.stroke = '#E8D200'; 
-                        dayEl.classList.remove('gold'); 
-                        if (flameEl) flameEl.classList.add('active'); 
+                    else if (day >= 3) {
+                        ring.style.stroke = '#E8D200';
+                        dayEl.classList.remove('gold');
+                        if (flameEl) flameEl.classList.add('active');
                     }
-                    else { 
-                        ring.style.stroke = 'rgba(242,237,230,0.2)'; 
-                        dayEl.classList.remove('gold'); 
-                        if (flameEl) flameEl.classList.remove('active'); 
+                    else {
+                        ring.style.stroke = 'rgba(242,237,230,0.2)';
+                        dayEl.classList.remove('gold');
+                        if (flameEl) flameEl.classList.remove('active');
                     }
 
                     // milestones
                     if (ms1 && bar1) {
-                        if (day >= 3)  { ms1.classList.add('active'); bar1.style.width = '100%'; }
-                        else           { ms1.classList.remove('active'); bar1.style.width = (day / 3 * 100) + '%'; }
+                        if (day >= 3) { ms1.classList.add('active'); bar1.style.width = '100%'; }
+                        else { ms1.classList.remove('active'); bar1.style.width = (day / 3 * 100) + '%'; }
                     }
 
                     if (ms2 && bar2) {
                         if (day >= 7) { ms2.classList.add('active'); bar2.style.width = '100%'; }
                         else if (day >= 3) { ms2.classList.add('active'); bar2.style.width = ((day - 3) / 4 * 100) + '%'; }
-                        else           { ms2.classList.remove('active'); bar2.style.width = '0%'; }
+                        else { ms2.classList.remove('active'); bar2.style.width = '0%'; }
                     }
 
                     if (ms3 && bar3) {
                         if (day >= 10) { ms3.classList.add('active'); bar3.style.width = '100%'; }
                         else if (day >= 7) { ms3.classList.add('active'); bar3.style.width = ((day - 7) / 3 * 100) + '%'; }
-                        else           { ms3.classList.remove('active'); bar3.style.width = '0%'; }
+                        else { ms3.classList.remove('active'); bar3.style.width = '0%'; }
                     }
 
                     // status
                     if (statusEl) {
-                        if (day >= 10)      statusEl.innerHTML = '<em>×3.0</em> — maximum multiplier.';
-                        else if (day >= 7)  statusEl.innerHTML = `<strong>${10 - day} days</strong> to <em>×3.0</em>`;
-                        else if (day >= 3)  statusEl.innerHTML = `<strong>${7 - day} days</strong> to <em>×2.0</em>`;
-                        else if (day > 0)   statusEl.innerHTML = `<strong>${3 - day} days</strong> to first multiplier`;
-                        else                statusEl.innerHTML = 'Start your streak.';
+                        if (day >= 10) statusEl.innerHTML = '<em>×3.0</em> — maximum multiplier.';
+                        else if (day >= 7) statusEl.innerHTML = `<strong>${10 - day} days</strong> to <em>×3.0</em>`;
+                        else if (day >= 3) statusEl.innerHTML = `<strong>${7 - day} days</strong> to <em>×2.0</em>`;
+                        else if (day > 0) statusEl.innerHTML = `<strong>${3 - day} days</strong> to first multiplier`;
+                        else statusEl.innerHTML = 'Start your streak.';
                     }
                 } else {
                     // Reset when not in Earn phase
@@ -739,10 +739,10 @@ async function handleWaitlistSubmit(e) {
         // Insert including the referrerId if present
         let { data, error } = await supabase
             .from('waitlist')
-            .insert([{ 
-                email, 
-                typ, 
-                website, 
+            .insert([{
+                email,
+                typ,
+                website,
                 favicon_url,
                 referred_by_id: validatedReferrerId
             }])
@@ -767,14 +767,14 @@ async function handleWaitlistSubmit(e) {
         }
 
         const newUser = data[0];
-        
+
         // Robust referral URL generation
         let origin = window.location.origin;
         // If testing on localhost, ensure we use http to avoid SSL protocol errors
         if (origin.includes('localhost')) {
             origin = origin.replace('https://', 'http://');
         }
-        
+
         let pathname = window.location.pathname;
         // Clean up pathname for prettier links
         if (pathname.endsWith('index.html')) {
@@ -786,7 +786,7 @@ async function handleWaitlistSubmit(e) {
         // Replace form with success message & referral dashboard
         const successContainer = document.createElement('div');
         successContainer.className = 'waitlist-success-container';
-        
+
         successContainer.innerHTML = `
             <div class="waitlist-success-msg">
                 You're on the list! We'll be in touch at <strong>${email}</strong>
@@ -857,15 +857,15 @@ function updateWaitlistCounter() {
     const counterEl = document.querySelector('.counter-number');
     if (!counterEl) return;
 
-    const baseCount = 567;
+    const baseCount = 3592;
     const weeklyIncrease = 36;
     const startDate = new Date('2026-03-12');
     const today = new Date();
-    
+
     // Calculate weeks since start date
     const diff = today - startDate;
     const weeks = Math.floor(diff / (1000 * 60 * 60 * 24 * 7));
-    
+
     // Ensure we don't end up with less than baseCount
     const count = Math.max(baseCount, baseCount + (weeks * weeklyIncrease));
     counterEl.textContent = count.toLocaleString();
