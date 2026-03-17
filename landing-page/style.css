@@ -698,12 +698,7 @@ img {
 }
 
 
-.section-accent-bar {
-    height: 2px;
-    width: 32px;
-    background: var(--accent);
-    margin: 0 auto var(--sp-md);
-}
+
 
 /* ════════════════════════════════════════════
    FEATURES
@@ -848,6 +843,7 @@ img {
     line-height: 1.0;
     margin: 0;
     transform: translateY(10px);
+    padding: 0;
 }
 
 /* ─── Animated BG Words ─── */
@@ -861,7 +857,7 @@ img {
 .step-progress-indicator {
     position: absolute;
     bottom: 40px;
-    left: 0;
+    left: 8px; /* Increasde nudge right to 8px as requested */
     display: flex;
     align-items: center;
     gap: 16px;
@@ -1077,10 +1073,11 @@ img {
 /* Points Badge */
 .mini-points-badge {
     display: inline-block;
-    padding: 6px 14px;
-    background: var(--accent);
-    color: var(--on-accent);
-    border-radius: var(--radius-full);
+    padding: 4px 10px;
+    background: transparent;
+    color: var(--accent);
+    border: 0.5px solid var(--accent);
+    border-radius: 4px;
     font-size: 13px;
     font-weight: 800;
     letter-spacing: 0.5px;
@@ -2772,31 +2769,41 @@ img {
 }
 
 .share-btn {
-    padding: 10px 20px;
-    border-radius: 10px;
-    font-size: 0.85rem;
-    font-weight: 600;
-    text-decoration: none;
-    color: white;
-    transition: all 0.3s ease;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    background: transparent;
+    border: none;
+    color: rgba(255, 255, 255, 0.4);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.share-btn svg {
+    width: 24px;
+    height: 24px;
+    transition: transform 0.3s ease;
 }
 
 .share-btn:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    transform: translateY(-3px) scale(1.1);
 }
 
-.share-btn.wa {
-    background: #25D366;
+/* Platform-specific hover colors and glow */
+.share-btn.wa:hover { 
+    color: #25D366; 
+    filter: drop-shadow(0 0 8px rgba(37, 211, 102, 0.4));
 }
 
-.share-btn.tw {
-    background: #000000;
+.share-btn.tw:hover { 
+    color: #fff; 
+    filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.4));
 }
 
-.share-btn.tg {
-    background: #0088cc;
+.share-btn.tg:hover { 
+    color: #0088cc; 
+    filter: drop-shadow(0 0 8px rgba(0, 136, 204, 0.4));
 }
 
 @keyframes revealUp {

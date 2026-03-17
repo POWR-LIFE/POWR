@@ -28,7 +28,7 @@ const tileUrl = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
 const mapBaseEl = document.getElementById('mapBase');
 let mapBase;
 if (mapBaseEl) {
-    mapBase = L.map('mapBase', mapOptions).setView(londonCoords, 13);
+    mapBase = L.map('mapBase', mapOptions).setView(londonCoords, 12);
     L.tileLayer(tileUrl, { maxZoom: 19 }).addTo(mapBase);
 }
 
@@ -36,7 +36,7 @@ if (mapBaseEl) {
 const mapOverlayEl = document.getElementById('mapOverlay');
 let mapOverlay;
 if (mapOverlayEl) {
-    mapOverlay = L.map('mapOverlay', mapOptions).setView(londonCoords, 13);
+    mapOverlay = L.map('mapOverlay', mapOptions).setView(londonCoords, 12);
     L.tileLayer(tileUrl, { maxZoom: 19 }).addTo(mapOverlay);
 }
 
@@ -136,19 +136,21 @@ document.querySelectorAll('a[href^="#"]').forEach((anchor) => {
 });
 
 // ─── Partner Link handling ───
+// This logic is kept for cases where we might internal-link to the partner form state
 document.querySelectorAll('.partner-link').forEach(link => {
-    link.addEventListener('click', () => {
-        // Reveal the website URL inputs
-        document.querySelectorAll('.partner-website').forEach(input => {
-            input.style.display = 'block';
-            input.required = true;
-        });
-        // Update the submit buttons' text
-        document.querySelectorAll('.waitlist-form button[type="submit"]').forEach(btn => {
-            btn.textContent = 'Apply to Partner';
-        });
-        // Expand forms
-        document.querySelectorAll('.waitlist-form').forEach(f => f.classList.remove('is-collapsed'));
+    link.addEventListener('click', (e) => {
+        const href = link.getAttribute('href');
+        if (href && href.startsWith('#')) {
+            // Only handle internal anchor toggling
+            document.querySelectorAll('.partner-website').forEach(input => {
+                input.style.display = 'block';
+                input.required = true;
+            });
+            document.querySelectorAll('.waitlist-form button[type="submit"]').forEach(btn => {
+                btn.textContent = 'Apply to Partner';
+            });
+            document.querySelectorAll('.waitlist-form').forEach(f => f.classList.remove('is-collapsed'));
+        }
     });
 });
 
@@ -798,9 +800,9 @@ async function handleWaitlistSubmit(e) {
                     <button class="copy-btn">Copy</button>
                 </div>
                 <div class="referral-share-group">
-                    <a href="https://wa.me/?text=${encodeURIComponent('Join the POWR waitlist and start earning rewards for moving! ' + referralUrl)}" target="_blank" class="share-btn wa">WhatsApp</a>
-                    <a href="https://twitter.com/intent/tweet?text=${encodeURIComponent('Just joined the @POWR waitlist! Move to earn. Join here: ')}&url=${encodeURIComponent(referralUrl)}" target="_blank" class="share-btn tw">X / Twitter</a>
-                    <a href="https://t.me/share/url?url=${encodeURIComponent(referralUrl)}&text=${encodeURIComponent('Join the POWR waitlist and start earning rewards for moving!')}" target="_blank" class="share-btn tg">Telegram</a>
+                    <a href="https://wa.me/?text=${encodeURIComponent('Join the POWR waitlist and start earning rewards for moving! ' + referralUrl)}" target="_blank" class="share-btn wa" title="Share on WhatsApp"><svg><use xlink:href="#whatsapp"></use></svg></a>
+                    <a href="https://twitter.com/intent/tweet?text=${encodeURIComponent('Just joined the @POWR waitlist! Move to earn. Join here: ')}&url=${encodeURIComponent(referralUrl)}" target="_blank" class="share-btn tw" title="Share on X"><svg><use xlink:href="#x-logo"></use></svg></a>
+                    <a href="https://t.me/share/url?url=${encodeURIComponent(referralUrl)}&text=${encodeURIComponent('Join the POWR waitlist and start earning rewards for moving!')}" target="_blank" class="share-btn tg" title="Share on Telegram"><svg><use xlink:href="#telegram"></use></svg></a>
                 </div>
             </div>
         `;
