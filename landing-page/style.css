@@ -517,18 +517,25 @@ img {
 }
 
 .hero-headline {
-    font-size: clamp(30px, 7vw, 82px);
-    line-height: 1.05;
-    margin-bottom: var(--sp-lg);
+    font-size: clamp(44px, 7vw, 82px);
+    font-weight: 200;
+    line-height: 1.04;
+    margin-bottom: 24px;
     letter-spacing: -1.5px;
 }
 
+.hero-headline em {
+    font-style: normal;
+    color: var(--accent);
+}
+
 .hero-sub {
-    color: #B0B0B0;
-    /* Lighter than #888888 */
-    font-size: 17px;
+    font-size: 18px;
+    font-weight: 300;
+    color: #888888;
     max-width: 560px;
     margin: 0 0 var(--sp-xl);
+    line-height: 1.75;
 }
 
 /* ─── Waitlist Form ─── */
