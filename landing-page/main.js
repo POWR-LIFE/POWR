@@ -86,18 +86,22 @@ requestAnimationFrame(raf);
 const navToggle = document.getElementById('navToggle');
 const navLinks = document.getElementById('navLinks');
 
-navToggle.addEventListener('click', () => {
-    navToggle.classList.toggle('open');
-    navLinks.classList.toggle('open');
-});
+if (navToggle && navLinks) {
+    navToggle.addEventListener('click', () => {
+        navToggle.classList.toggle('open');
+        navLinks.classList.toggle('open');
+    });
+}
 
 // Close mobile nav on link click
-navLinks.querySelectorAll('a').forEach((link) => {
-    link.addEventListener('click', () => {
-        navToggle.classList.remove('open');
-        navLinks.classList.remove('open');
+if (navLinks) {
+    navLinks.querySelectorAll('a').forEach((link) => {
+        link.addEventListener('click', () => {
+            if (navToggle) navToggle.classList.remove('open');
+            navLinks.classList.remove('open');
+        });
     });
-});
+}
 
 
 // ─── Smooth scroll for anchor links ───
@@ -174,13 +178,24 @@ document.querySelectorAll('a[href="#waitlist"]:not(.partner-link)').forEach(link
 
 // ─── Nav background on scroll ───
 const nav = document.getElementById('nav');
-window.addEventListener('scroll', () => {
-    if (window.scrollY > 20) {
-        nav.classList.add('scrolled');
-    } else {
-        nav.classList.remove('scrolled');
+const updateNavState = () => {
+    if (nav) {
+        // Trigger after scrolling past 10% of the viewport height (early in hero)
+        // This ensures the logo is visible by the time they reach the next section
+        const scrollPos = window.scrollY || window.pageYOffset || document.documentElement.scrollTop;
+        const threshold = window.innerHeight * 0.1; 
+        
+        if (scrollPos > threshold) {
+            nav.classList.add('scrolled');
+        } else {
+            nav.classList.remove('scrolled');
+        }
     }
-});
+};
+
+window.addEventListener('scroll', updateNavState, { passive: true });
+// Initial check
+updateNavState();
 
 
 // ─── Horizontal scroll for 'How It Works' ───
@@ -216,44 +231,6 @@ if (horizontalWrapper && horizontalTrack) {
     }
 
     function updateHorizontalScroll() {
-        if (isMobile()) {
-            // On mobile, reset horizontal track but setup static data
-            horizontalTrack.style.transform = 'translateX(0)';
-            stepCards.forEach(card => {
-                card.classList.add('in-view');
-                card.classList.remove('active');
-            });
-            animatedWords.forEach(word => word.classList.remove('active'));
-            if (animatedWords[0]) animatedWords[0].classList.add('active');
-
-            // ── Static Mobile Setup (Day 30) ──
-            const miniCards = horizontalTrack.querySelectorAll('.mini-card');
-            const miniTotal = document.getElementById('miniTotalVal');
-            miniCards.forEach(mc => mc.classList.add('revealed'));
-            if (miniTotal) miniTotal.textContent = '25';
-
-            const ring = document.getElementById('ringProgress');
-            const dayNum = document.getElementById('dayNum');
-            const flameEl = document.getElementById('ringFlame');
-            const ms1 = document.getElementById('ms1'), bar1 = document.getElementById('bar1');
-            const ms2 = document.getElementById('ms2'), bar2 = document.getElementById('bar2');
-            const ms3 = document.getElementById('ms3'), bar3 = document.getElementById('bar3');
-            const statusEl = document.getElementById('ringStatus');
-
-            if (ring && dayNum) {
-                dayNum.textContent = '10';
-                dayNum.classList.add('gold');
-                ring.style.strokeDashoffset = 0;
-                ring.style.stroke = '#E8D200';
-                if (flameEl) flameEl.classList.add('active');
-
-                if (ms1) { ms1.classList.add('active'); if (bar1) bar1.style.width = '100%'; }
-                if (ms2) { ms2.classList.add('active'); if (bar2) bar2.style.width = '100%'; }
-                if (ms3) { ms3.classList.add('active'); if (bar3) bar3.style.width = '100%'; }
-                if (statusEl) statusEl.innerHTML = '<em>×3.0</em> — maximum multiplier.';
-            }
-            return;
-        }
 
         const rect = horizontalWrapper.getBoundingClientRect();
         const wrapperHeight = horizontalWrapper.offsetHeight;
@@ -272,13 +249,14 @@ if (horizontalWrapper && horizontalTrack) {
         const viewportWidth = horizontalWrapper.querySelector('.horizontal-scroll-viewport').offsetWidth;
         const redeemCard = stepCards[2]; // The last card
         const infoPanel = horizontalWrapper.querySelector('.horizontal-scroll-info');
+        const viewportEl = horizontalWrapper.querySelector('.horizontal-scroll-viewport');
 
         // ─── Phase 1: Card Sliding (progress 0 → 0.60) ───
         const CARD_PHASE_END = 0.60;
         // ─── Phase 2: Redeem Hold (progress 0.60 → 0.65) ───
         const HOLD_END = 0.65;
         // ─── Phase 3: Redeem Expansion (progress 0.65 → 0.75) ───
-        const EXPAND_END = 0.75;
+        const EXPAND_END = 0.70; // Start Phase 4 earlier (70% instead of 75%)
         // ─── Phase 4: Map Points Counter (progress 0.75 → 1.0) ───
 
         if (progress <= CARD_PHASE_END) {
@@ -309,19 +287,39 @@ if (horizontalWrapper && horizontalTrack) {
             }
 
             horizontalTrack.style.transform = `translateX(${currentX}px)`;
+        
+        // Map invalidation moved below
 
             // Remove expansion state
             redeemCard.classList.remove('expanding');
             redeemCard.style.cssText = '';
-            if (infoPanel) infoPanel.style.opacity = '';
+            horizontalWrapper.classList.remove('expanding-active');
+            
+            if (horizontalTrack) {
+                horizontalTrack.style.opacity = '1';
+                horizontalTrack.style.visibility = 'visible';
+            }
+            if (infoPanel) {
+                infoPanel.style.opacity = '1';
+                infoPanel.style.visibility = 'visible';
+            }
+            
             const overlay1 = document.getElementById('expandOverlay');
             if (overlay1) {
                 overlay1.classList.remove('visible', 'expanded');
                 overlay1.style.opacity = '';
                 overlay1.style.transform = '';
             }
-            const vp1 = horizontalWrapper.querySelector('.horizontal-scroll-viewport');
-            if (vp1) vp1.style.opacity = '';
+            
+            if (viewportEl) {
+                viewportEl.style.opacity = '1';
+                viewportEl.style.visibility = 'visible';
+            }
+            
+            stepCards.forEach(card => {
+                card.style.opacity = '';
+                card.style.visibility = '';
+            });
             const sticky1 = horizontalWrapper.querySelector('.horizontal-scroll-sticky');
             if (sticky1) sticky1.style.opacity = '1';
 
@@ -335,12 +333,17 @@ if (horizontalWrapper && horizontalTrack) {
                     minDistance = distanceToCenter;
                     activeIndex = i;
                 }
-                if (distanceToCenter < viewportWidth * 0.8) {
+                if (distanceToCenter < viewportWidth * 0.3) { // Much stricter in-view
                     card.classList.add('in-view');
                 } else {
                     card.classList.remove('in-view');
                 }
             });
+            
+            // Ensure map is correctly sized when Step 3 is active
+            if (activeIndex === 2) {
+                invalidateMaps();
+            }
 
             // Apply active class to cards, words, numbers
             stepCards.forEach((card, i) => {
@@ -498,7 +501,7 @@ if (horizontalWrapper && horizontalTrack) {
             animatedWords.forEach((word, i) => word.classList.toggle('active', i === 2));
 
         } else if (progress <= EXPAND_END) {
-            // ── Phase 3: Overlay slides LEFT then expands to fill viewport ──
+            horizontalWrapper.classList.add('expanding-active');
             const expandProgress = (progress - HOLD_END) / (EXPAND_END - HOLD_END); // 0 → 1
             const expandOverlay = document.getElementById('expandOverlay');
             if (expandOverlay) {
@@ -509,8 +512,7 @@ if (horizontalWrapper && horizontalTrack) {
 
             // Hide the actual cards and the viewport during expansion
             stepCards.forEach(card => card.classList.remove('active', 'in-view'));
-            const vpForHide = horizontalWrapper.querySelector('.horizontal-scroll-viewport');
-            if (vpForHide) vpForHide.style.opacity = '0';
+            if (viewportEl) viewportEl.style.opacity = '0';
 
             // Get the sticky container rect (our coordinate system for absolute positioning)
             const stickyEl = horizontalWrapper.querySelector('.horizontal-scroll-sticky');
@@ -521,8 +523,8 @@ if (horizontalWrapper && horizontalTrack) {
             const vpRect = vpEl.getBoundingClientRect();
 
             // Card's resting position relative to the sticky container
-            const cardW = Math.min(680, vpRect.width - 40);
-            const cardH = 480;
+            const cardW = Math.min(680, vpRect.width - 60); // More side margin
+            const cardH = 400; // Shorter card
             const cardRestLeft = (vpRect.left - stickyRect.left) + (vpRect.width - cardW) / 2;
             const cardRestTop = (vpRect.top - stickyRect.top) + (vpRect.height - cardH) / 2;
 
@@ -565,6 +567,10 @@ if (horizontalWrapper && horizontalTrack) {
                     expandOverlay.style.height = `${currentHeight}px`;
                     expandOverlay.style.borderRadius = `${currentRadius}px`;
                 }
+
+                // Clear pin highlights when map is not fully expanded (Phase 4)
+                const pins = expandOverlay.querySelectorAll('.partner-pin');
+                pins.forEach(pin => pin.classList.remove('highlighted'));
             }
 
             // Hide words/numbers during expansion
@@ -577,13 +583,19 @@ if (horizontalWrapper && horizontalTrack) {
             const mapProgress = (progress - EXPAND_END) / (1.0 - EXPAND_END); // 0 → 1
             const expandOverlay = document.getElementById('expandOverlay');
 
-            // Hide the actual cards and the viewport
+            // Hide the actual cards, track and the viewport
             stepCards.forEach(card => card.classList.remove('active', 'in-view'));
-            const vpForHide = horizontalWrapper.querySelector('.horizontal-scroll-viewport');
-            if (vpForHide) vpForHide.style.opacity = '0';
-            if (infoPanel) infoPanel.style.opacity = '0';
+            if (horizontalTrack) {
+                horizontalTrack.style.opacity = '0';
+                horizontalTrack.style.visibility = 'hidden';
+            }
+            if (viewportEl) {
+                viewportEl.style.opacity = '0';
+                viewportEl.style.visibility = 'hidden';
+            }
 
             if (expandOverlay) {
+                horizontalWrapper.classList.add('expanding-active');
                 expandOverlay.classList.add('visible', 'expanded');
 
                 // Keep it fully expanded
@@ -615,8 +627,8 @@ if (horizontalWrapper && horizontalTrack) {
 
                     if (totalItems > 0) {
                         // We want to scroll through the items as mapProgress goes 0 -> 1
-                        // Each item has a rough height + gap of ~50px
-                        const itemHeight = 50;
+                        // Each item has a rough height + gap of ~60px
+                        const itemHeight = 60;
 
                         // Current "active" index based on scroll
                         // When mapProgress is 0, index is totalItems - 1 (bottom item)
@@ -624,15 +636,15 @@ if (horizontalWrapper && horizontalTrack) {
                         const activeIndexRaw = (totalItems - 1) - (mapProgress * (totalItems - 1));
                         const activeIndex = Math.round(activeIndexRaw);
 
-                        // Translate the thread up so the activeIndex is always near the top
-                        // We want the active item to be centered in the 300px tall container.
-                        // Container center is at 150px.
-                        const containerCenter = 150;
+                        // Translate the track inside the thread up so the activeIndex is always near the top
+                        // Container center: mobile has 110px height (so 55), desktop has 300px (so 150)
+                        const containerCenter = (typeof isMobile === 'function' && isMobile()) ? 55 : 150;
                         const activeItemCenter = (activeIndexRaw * itemHeight) + (itemHeight / 2);
 
-                        // We translate the container by the difference so the active item hits the center
+                        // We translate the tracker inside the container so it stays fixed in place
                         const yOffset = containerCenter - activeItemCenter;
-                        threadEl.style.transform = `translateY(${yOffset}px)`;
+                        const trackEl = threadEl.querySelector('.activity-thread-track') || threadEl;
+                        trackEl.style.transform = `translateY(${yOffset}px)`;
 
                         // Assign active class
                         items.forEach((item, idx) => {
@@ -834,6 +846,71 @@ async function handleWaitlistSubmit(e) {
         if (submitBtn) submitBtn.disabled = false;
     }
 }
+// ─── Partner join form handling ───
+async function handlePartnerSubmit(e) {
+    e.preventDefault();
+    const form = e.target;
+    const emailInput = form.querySelector('input[type="email"]');
+    const submitBtn = form.querySelector('button[type="submit"]');
+    const email = emailInput ? emailInput.value.trim() : null;
+
+    if (!email) return;
+
+    // Reset messages
+    const errorMsg = document.getElementById('partnerErrorMsg');
+    const successMsg = document.getElementById('partnerSuccessMsg');
+    if (errorMsg) errorMsg.style.display = 'none';
+    if (successMsg) successMsg.style.display = 'none';
+
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Processing...';
+    }
+
+    try {
+        const { error } = await supabase
+            .from('waitlist')
+            .insert([{
+                email,
+                typ: 'partner'
+            }]);
+
+        if (error) {
+            if (error.code === '23505') {
+                throw new Error("You're already on the list!");
+            }
+            throw error;
+        }
+
+        // Success: hide form, show message
+        form.style.display = 'none';
+        if (successMsg) {
+            successMsg.style.display = 'block';
+            // Also remove the note below if it exists
+            const note = successMsg.nextElementSibling;
+            if (note && note.classList.contains('cta-note')) {
+                note.remove();
+            }
+        }
+
+    } catch (err) {
+        if (errorMsg) {
+            errorMsg.textContent = err.message || 'Something went wrong. Please try again.';
+            errorMsg.style.display = 'block';
+        }
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Apply Now';
+        }
+    }
+}
+
+// Use event delegation for better reliability
+document.addEventListener('submit', (e) => {
+    if (e.target && (e.target.id === 'partnerJoinForm' || e.target.classList.contains('partner-join-form-element'))) {
+        handlePartnerSubmit(e);
+    }
+});
 
 document.querySelectorAll('.waitlist-form').forEach((form) => {
     form.addEventListener('submit', handleWaitlistSubmit);

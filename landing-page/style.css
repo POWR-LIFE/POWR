@@ -16,7 +16,7 @@
     --accent: #E8D200;
     --on-accent: #080808;
     --text-primary: #F2F2F2;
-    --text-secondary: #888888;
+    --text-secondary: #B0B0B0;
     --text-muted: #444444;
 
     /* Semantic Colors */
@@ -63,7 +63,7 @@
 
     /* Legacy/Existing variables */
     --font: 'Outfit', system-ui, -apple-system, sans-serif;
-    --max-width: 1200px;
+    --max-width: 1400px;
     --nav-height: 72px;
 }
 
@@ -284,10 +284,24 @@ img {
     display: flex;
     align-items: center;
     gap: var(--sp-sm);
+    transition: all 0.4s ease;
+}
+
+.visible-on-scroll {
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(-10px);
+    transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+#nav.scrolled .visible-on-scroll {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
 }
 
 .nav-logo-img {
-    height: 32px;
+    height: 58px;
     width: auto;
 }
 
@@ -335,6 +349,7 @@ img {
     letter-spacing: 1.5px;
     transition: transform 0.2s, box-shadow 0.2s;
     border: none;
+    white-space: nowrap;
 }
 
 .nav-cta:hover {
@@ -357,6 +372,7 @@ img {
     text-transform: uppercase;
     letter-spacing: 1.5px;
     transition: all 0.2s !important;
+    white-space: nowrap;
 }
 
 .nav-cta-outline:hover {
@@ -474,34 +490,8 @@ img {
     width: auto;
     position: relative;
     z-index: 2;
-    filter: drop-shadow(0 0 40px rgba(232, 210, 0, 0.4));
 }
 
-.hero-logo-glow {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 300px;
-    height: 300px;
-    background: radial-gradient(circle, rgba(232, 210, 0, 0.3) 0%, transparent 70%);
-    pointer-events: none;
-    z-index: 1;
-    filter: blur(40px);
-    animation: logoGlowPulse 4s ease-in-out infinite alternate;
-}
-
-@keyframes logoGlowPulse {
-    0% {
-        opacity: 0.4;
-        transform: translate(-50%, -50%) scale(0.8);
-    }
-
-    100% {
-        opacity: 0.8;
-        transform: translate(-50%, -50%) scale(1.2);
-    }
-}
 
 .hero-content {
     position: relative;
@@ -509,7 +499,7 @@ img {
     max-width: var(--max-width);
     width: 100%;
     z-index: 3;
-    margin: -60px auto 0;
+    margin: -140px auto 0;
 }
 
 .hero-badge {
@@ -527,11 +517,17 @@ img {
 }
 
 .hero-headline {
+    font-size: clamp(30px, 7vw, 82px);
+    line-height: 1.05;
     margin-bottom: var(--sp-lg);
+    letter-spacing: -1.5px;
 }
 
 .hero-sub {
-    max-width: 520px;
+    color: #B0B0B0;
+    /* Lighter than #888888 */
+    font-size: 17px;
+    max-width: 560px;
     margin: 0 0 var(--sp-xl);
 }
 
@@ -628,6 +624,7 @@ img {
     transition: all 0.25s ease;
     border: none;
     font-family: var(--font);
+    white-space: nowrap;
 }
 
 .btn-primary {
@@ -724,6 +721,7 @@ img {
 .section-sub {
     max-width: 520px;
     margin: 0 auto;
+    color: #B0B0B0;
 }
 
 .features-grid {
@@ -857,7 +855,8 @@ img {
 .step-progress-indicator {
     position: absolute;
     bottom: 40px;
-    left: 8px; /* Increasde nudge right to 8px as requested */
+    left: 8px;
+    /* Increasde nudge right to 8px as requested */
     display: flex;
     align-items: center;
     gap: 16px;
@@ -1133,7 +1132,7 @@ img {
 .mini-overlay {
     position: absolute;
     inset: 0;
-    background: linear-gradient(to bottom, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 0.4) 40%, rgba(0, 0, 0, 0.9) 100%);
+    background: linear-gradient(to bottom, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 0.45) 50%, rgba(0, 0, 0, 0.7) 100%);
     z-index: 1;
 }
 
@@ -1151,7 +1150,7 @@ img {
 
 .mini-desc {
     font-size: 14px;
-    color: var(--text-secondary);
+    color: #B0B0B0;
     line-height: 1.5;
 }
 
@@ -1604,13 +1603,12 @@ img {
 /* The points counter that shows up in the middle of the overlay */
 .points-counter {
     position: absolute;
-    top: 40%;
+    top: 35%; /* Mid-upper */
     left: 50%;
     transform: translate(-50%, -50%);
     text-align: center;
-    z-index: 10;
+    z-index: 20; /* High z-index to be above everything in overlay */
     opacity: 0;
-    /* hidden until Phase 4 */
     transition: opacity 0.5s ease;
 }
 
@@ -1621,7 +1619,7 @@ img {
 
 .points-val {
     display: block;
-    font-size: clamp(60px, 10vw, 120px);
+    font-size: clamp(32px, 10vw, 120px); /* Aggressively smaller on mobile */
     font-weight: 900;
     color: var(--accent);
     line-height: 1;
@@ -2358,11 +2356,14 @@ img {
     }
 
     .hero-logo {
-        height: 100px;
+        height: 140px; /* Larger as requested */
     }
 
     .hero-logo-wrapper {
-        top: 20%;
+        display: flex !important;
+        justify-content: center !important;
+        width: 100% !important;
+        margin-bottom: 2rem !important;
     }
 
     .hero-headline {
@@ -2378,12 +2379,12 @@ img {
     }
 
     /* Waitlist Form */
-    .waitlist-form {
-        flex-direction: column;
-        width: 100%;
-        max-width: 400px;
-        margin-left: auto;
-        margin-right: auto;
+    .waitlist-form, .waitlist-form.is-collapsed {
+        display: flex !important;
+        justify-content: center !important;
+        width: fit-content !important;
+        max-width: calc(100% - 3rem);
+        margin: 2rem auto 0 !important;
     }
 
     .waitlist-input {
@@ -2406,29 +2407,41 @@ img {
     }
 
     /* Horizontal scroll — disable on mobile, stack vertically */
-    .horizontal-scroll-wrapper {
+    /* .horizontal-scroll-wrapper {
         height: auto;
-    }
+    } */
 
     .horizontal-scroll-sticky {
-        position: relative;
-        height: auto;
-        overflow: visible;
         flex-direction: column;
-        align-items: flex-start;
+        justify-content: flex-start; /* Align from top, but with padding */
+        padding-top: 72px; /* Nav height */
     }
 
     .horizontal-scroll-info {
         flex: none;
-        padding: 0 24px;
-        margin-bottom: 24px;
+        padding: 20px 24px 0px;
         width: 100%;
-        height: auto;
+        height: 140px; /* Reduced to fit better */
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-start;
+        z-index: 10;
     }
 
     .animated-word-container {
-        display: none;
-        /* Hide animated words on mobile */
+        position: absolute;
+        top: 10px;
+        left: 24px;
+        width: calc(100% - 48px);
+        transform: none;
+        text-align: left;
+        pointer-events: none;
+    }
+
+    .animated-word {
+        font-size: 80px; /* Adjust size for mobile */
+        line-height: 1;
     }
 
     .horizontal-scroll-info .section-header {
@@ -2437,36 +2450,50 @@ img {
     }
 
     .step-indicators {
-        display: none;
-        /* Hide animated words on mobile, just rely on cards */
+        display: flex;
+        gap: 16px;
+        margin-top: 20px;
+        justify-content: flex-start;
+    }
+    
+    .indicator-item {
+        font-size: 14px;
+        opacity: 0.3;
+    }
+    
+    .indicator-item.active {
+        opacity: 1;
+        color: var(--gold);
     }
 
     .horizontal-scroll-viewport {
-        overflow: visible;
+        overflow: hidden;
         width: 100%;
-        height: auto;
+        height: 500px; /* Give it a fixed height on mobile or handle it better */
+        position: relative;
+        mask-image: linear-gradient(to right, transparent 0%, black 4%, black 96%, transparent 100%);
+        -webkit-mask-image: linear-gradient(to right, transparent 0%, black 4%, black 96%, transparent 100%);
     }
 
     .horizontal-scroll-track {
-        flex-direction: column;
-        padding: 0 24px;
-        gap: 24px;
-        width: 100%;
-        height: auto;
+        display: flex;
+        flex-direction: row;
+        height: 100%;
+        width: 300%; /* 3 cards */
     }
 
     .step-card-wrapper {
-        padding: 0;
-        height: auto;
-        flex: 0 0 auto;
+        flex: 0 0 33.333%; /* 1/3 of the 300% track = 100% of viewport */
+        height: 100%;
+        padding: 0 16px;
     }
 
     .step-card,
     .step-card.in-view,
     .step-card.active {
         min-height: 380px;
-        opacity: 1;
-        transform: none;
+        /* opacity: 1;
+        transform: none; */
         width: 100%;
         max-width: none;
     }
@@ -2476,22 +2503,24 @@ img {
         gap: 16px;
     }
 
-    .mini-card,
-    .mini-card:nth-child(1),
-    .mini-card:nth-child(2),
-    .mini-card:nth-child(3) {
-        height: 280px;
+    .mini-card {
+        display: flex;
+        height: 240px;
         margin-top: 0;
         width: 100%;
-        /* Always visible on mobile since scroll system is disabled */
-        opacity: 1;
-        transform: none;
-        border-color: rgba(255, 255, 255, 0.3);
+        opacity: 0;
+        pointer-events: none;
+        transform: translateY(40px) scale(0.95);
+        transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1), 
+                    transform 0.6s cubic-bezier(0.16, 1, 0.3, 1),
+                    border-color 0.4s ease 0.6s;
     }
 
-    .mini-points-badge {
+    .mini-card.revealed {
         opacity: 1;
-        transform: scale(1);
+        pointer-events: auto;
+        transform: translateY(0) scale(1);
+        border-color: rgba(232, 210, 0, 0.6);
     }
 
     .how-it-works {
@@ -2505,17 +2534,18 @@ img {
 
     .step-card {
         padding: 24px;
-        min-height: auto !important;
-        margin-bottom: 24px;
+        opacity: 0 !important; /* Force hide unless active */
+        transition: opacity 0.4s ease;
+    }
+
+    .step-card.active {
+        opacity: 1 !important;
     }
 
     .mini-cards-grid {
         gap: 12px;
     }
 
-    .mini-card {
-        height: 240px !important;
-    }
 
     .streak-container {
         padding: 40px 24px;
@@ -2591,8 +2621,8 @@ img {
     }
 
     .streak-badge {
-        opacity: 1;
-        transform: scale(1) translateY(0);
+        /* opacity: 1;
+        transform: scale(1) translateY(0); */
         padding: 12px 6px;
         flex: none;
         background: rgba(255, 255, 255, 0.05);
@@ -2616,8 +2646,11 @@ img {
     }
 
     .map-container {
-        position: relative;
-        height: 300px;
+        position: absolute;
+        top: 0;
+        left: 0;
+        height: 100%;
+        width: 100%;
         border-radius: var(--radius-card);
     }
 
@@ -2634,9 +2667,245 @@ img {
         padding: 24px;
     }
 
-    /* CTA Section Mobile */
-    .cta-section {
-        padding: 80px 0 60px;
+    .partner-pin .powr-card {
+        display: flex !important;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0;
+        width: 130px; /* Slightly narrower than desktop */
+        height: auto;
+        padding: 0;
+        background: rgba(10, 10, 10, 0.75);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 12px;
+        position: absolute;
+        top: 100%;
+        left: 50%;
+        transform: translate(-50%, 8px);
+        box-shadow: 0 12px 30px rgba(0, 0, 0, 0.6);
+        pointer-events: none;
+        overflow: hidden;
+    }
+
+    .partner-pin .powr-card .image-zone {
+        width: 100%;
+        height: 55px; /* Compact image header */
+        border-radius: 0;
+        overflow: hidden;
+        flex-shrink: 0;
+    }
+
+    .partner-pin .powr-card .image-zone img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+
+    .partner-pin .powr-card .content-zone {
+        display: block !important;
+        padding: 8px 10px;
+    }
+
+    .partner-pin .powr-card .partner-name {
+        font-size: 8px;
+        font-weight: 800;
+        color: rgba(255, 255, 255, 0.5);
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin-bottom: 2px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .partner-pin .powr-card .reward-headline {
+        display: flex !important;
+        align-items: baseline;
+        gap: 4px;
+        margin-bottom: 6px;
+    }
+
+    .partner-pin .powr-card .reward-headline .value {
+        color: white;
+        font-size: 14px;
+        font-weight: 900;
+        line-height: 1;
+    }
+
+    .partner-pin .powr-card .reward-headline .detail {
+        color: rgba(255, 255, 255, 0.4);
+        font-size: 8px;
+    }
+
+    .partner-pin .powr-card .reward-footer {
+        display: flex !important;
+        align-items: center;
+        justify-content: space-between;
+        padding-top: 6px;
+        border-top: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .partner-pin .powr-card .points {
+        display: flex;
+        align-items: center;
+        gap: 3px;
+    }
+
+    .partner-pin .powr-card .points-val {
+        font-size: 11px;
+        font-weight: 800;
+        color: var(--accent);
+    }
+
+    .partner-pin .powr-card .points-label {
+        font-size: 7px;
+        color: var(--accent);
+        opacity: 0.7;
+    }
+
+    .partner-pin .powr-card .claim-btn {
+        display: block !important;
+        font-size: 7px;
+        font-weight: 800;
+        padding: 2px 5px;
+        background: rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        color: rgba(255, 255, 255, 0.8);
+        border-radius: 3px;
+    }
+
+    /* Keep these hidden on mobile to keep the card 100% clean and focused */
+    .partner-pin .powr-card .reward-divider,
+    .partner-pin .powr-card .partner-type,
+    .partner-pin .powr-card .category-badge,
+    .partner-pin .powr-card .distance-tag {
+        display: none !important;
+    }
+
+    .partner-pin.notto-pin .powr-card .image-zone {
+        height: 45px !important;
+    }
+
+    .partner-pin.notto-pin {
+        top: 18% !important;
+        left: 15% !important;
+    }
+
+    .partner-pin.coffee-pin {
+        top: 80% !important;
+        left: 50% !important;
+    }
+
+    /* Position the bottom card ABOVE the pin to avoid clipping */
+    .partner-pin.coffee-pin .powr-card {
+        top: auto !important;
+        bottom: 100% !important;
+        transform: translate(-50%, -8px) !important;
+    }
+
+    .partner-pin.protein-pin {
+        top: 18% !important;
+        left: 85% !important;
+    }
+
+    .partner-pin.trainers-pin,
+    .partner-pin.premium-pin {
+        display: none !important;
+    }
+
+    .partner-pin {
+        width: 32px;
+        height: 32px;
+        background: rgba(255, 255, 255, 0.1);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    }
+
+    .pin-icon {
+        display: block;
+        width: 18px;
+        height: 18px;
+    }
+
+    .partner-pin.highlighted {
+        background: var(--accent);
+        border-color: var(--accent);
+        transform: translate(-50%, -50%) scale(1.1);
+    }
+
+    .partner-pin.highlighted .pin-icon {
+        filter: brightness(0) invert(1);
+    }
+    
+    .partner-pin.highlighted .powr-card {
+        border-color: var(--accent);
+    }
+    
+    .points-counter {
+        top: 28% !important; /* Move higher to make room for carousel and cards */
+    }
+
+    .activity-thread {
+        top: 40%; /* Anchored under points */
+        bottom: auto;
+        left: 0;
+        right: 0;
+        margin: 0 auto;
+        width: 100%;
+        height: 110px !important; /* Increased for breathing room */
+        max-height: 110px !important;
+        overflow: hidden !important; /* Hide other items for carousel effect */
+        padding: 0;
+        text-align: center;
+        mask-image: linear-gradient(to bottom, transparent, black 20%, black 80%, transparent) !important;
+        -webkit-mask-image: linear-gradient(to bottom, transparent, black 20%, black 80%, transparent) !important;
+        z-index: 30;
+    }
+
+    .activity-thread-track {
+        transition: transform 0.4s cubic-bezier(0.23, 1, 0.32, 1);
+        width: 100%;
+    }
+
+    .activity-thread::-webkit-scrollbar {
+        display: none;
+    }
+
+    .activity-item {
+        display: flex !important;
+        justify-content: space-between !important;
+        align-items: center !important;
+        padding: 0 18px !important; /* Removed vertical padding to use explicit height */
+        height: 60px !important; /* Slightly taller for visibility */
+        background: rgba(255, 255, 255, 0.06) !important;
+        margin: 0 auto 0 auto !important; /* Removed bottom margin */
+        width: 85% !important;
+        max-width: 300px !important;
+        border-radius: 12px !important;
+        font-size: 14px !important;
+        color: rgba(255, 255, 255, 0.9) !important;
+    }
+
+    .activity-item span {
+        color: var(--accent) !important;
+        font-weight: 800 !important;
+        font-variant-numeric: tabular-nums;
+    }
+
+    /* Global isolation during expansion */
+    .expanding-active .horizontal-scroll-viewport,
+    .expanding-active .horizontal-scroll-info {
+        opacity: 0 !important;
+        pointer-events: none !important;
+        visibility: hidden !important;
     }
 
     .cta-title {
@@ -2791,18 +3060,18 @@ img {
 }
 
 /* Platform-specific hover colors and glow */
-.share-btn.wa:hover { 
-    color: #25D366; 
+.share-btn.wa:hover {
+    color: #25D366;
     filter: drop-shadow(0 0 8px rgba(37, 211, 102, 0.4));
 }
 
-.share-btn.tw:hover { 
-    color: #fff; 
+.share-btn.tw:hover {
+    color: #fff;
     filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.4));
 }
 
-.share-btn.tg:hover { 
-    color: #0088cc; 
+.share-btn.tg:hover {
+    color: #0088cc;
     filter: drop-shadow(0 0 8px rgba(0, 136, 204, 0.4));
 }
 

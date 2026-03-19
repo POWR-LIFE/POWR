@@ -4,9 +4,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>POWR — Made to Move. Designed to Reward.</title>
+  <title>POWR — Your last workout earned you nothing.</title>
   <meta name="description"
-    content="POWR tracks your movement and rewards you for staying active. Join the waitlist and be first to earn." />
+    content="POWR makes sure your workout counts. Every gym session, run, walk and ride - rewarded. Join the waitlist and be first to earn." />
 
   <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -230,12 +230,15 @@
   <!-- ═══════════════ NAV ═══════════════ -->
   <nav id="nav">
     <div class="nav-inner">
-
-
+      <a href="/" class="nav-logo visible-on-scroll">
+        <img
+          src="https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/landing-page-assets/powrlogotext.png?v=1.1"
+          alt="POWR Logo" class="nav-logo-img" />
+      </a>
       <div class="nav-links" id="navLinks">
         <!-- <a href="#features">Features</a>
         <a href="#how-it-works">How It Works</a> -->
-        <a href="#waitlist" class="nav-cta-outline partner-link type-cta">Partner with us</a>
+        <a href="/partners.html" class="nav-cta-outline partner-link type-cta">Partner with us</a>
         <a href="#waitlist" class="nav-cta type-cta">Join Waitlist</a>
       </div>
 
@@ -256,18 +259,16 @@
 
     <div class="hero-content reveal">
       <div class="hero-logo-wrapper">
-        <div class="hero-logo-glow"></div>
         <img
           src="https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/landing-page-assets/powrlogotext.png?v=1.1"
           alt="POWR Logo" class="hero-logo" />
       </div>
       <h1 class="hero-headline type-display">
-        MADE TO <span class="accent" style="font-weight: 700;">MOVE</span>.<br />
-        DESIGNED TO <span class="accent" style="font-weight: 700;">REWARD</span>.
+        Your last workout<br />
+        <span class="accent" style="font-weight: 700;">earned you nothing.</span>
       </h1>
       <p class="hero-sub type-body-lg">
-        POWR tracks your movement automatically and rewards you for getting out, getting fit, and staying active. Be the
-        first to know when we launch.
+        POWR makes sure it counts. Every gym session, run, walk and ride - rewarded.
       </p>
       <form class="waitlist-form is-collapsed" id="heroWaitlistForm">
         <input type="email" class="waitlist-input" placeholder="Enter your email" required />
@@ -479,7 +480,7 @@
                     </div>
                   </div>
 
-                  <div class="partner-pin trainers-pin highlighted" style="top: 25%; left: 70%;" data-threshold="150">
+                  <div class="partner-pin trainers-pin" style="top: 25%; left: 70%;" data-threshold="150">
                     <svg class="pin-icon">
                       <use xlink:href="#nearby"></use>
                     </svg>
@@ -551,7 +552,7 @@
                     </div>
                   </div>
 
-                  <div class="partner-pin premium-pin highlighted" style="top: 75%; left: 88%;" data-threshold="500">
+                  <div class="partner-pin premium-pin" style="top: 75%; left: 88%;" data-threshold="500">
                     <svg class="pin-icon">
                       <use xlink:href="#nearby"></use>
                     </svg>
@@ -649,14 +650,16 @@
 
             <!-- Activity Thread (only in overlay) -->
             <div class="activity-thread" id="activityThread">
-              <div class="activity-item"><span>+5</span> Walked 5km</div>
-              <div class="activity-item"><span>+10</span> Gym Session</div>
-              <div class="activity-item"><span>+3</span> Hit Daily Step Goal</div>
-              <div class="activity-item"><span>+5</span> Completed Weekly Challenge</div>
-              <div class="activity-item"><span>+8</span> Morning Run</div>
-              <div class="activity-item"><span>+15</span> Reached 30-Day Milestone</div>
-              <div class="activity-item"><span>+6</span> Cycled 10km</div>
-              <div class="activity-item"><span>+5</span> Walked 5km</div>
+              <div class="activity-thread-track">
+                <div class="activity-item"><span>+5</span> Walked 5km</div>
+                <div class="activity-item"><span>+10</span> Gym Session</div>
+                <div class="activity-item"><span>+3</span> Hit Daily Step Goal</div>
+                <div class="activity-item"><span>+5</span> Completed Weekly Challenge</div>
+                <div class="activity-item"><span>+8</span> Morning Run</div>
+                <div class="activity-item"><span>+15</span> Reached 30-Day Milestone</div>
+                <div class="activity-item"><span>+6</span> Cycled 10km</div>
+                <div class="activity-item"><span>+5</span> Walked 5km</div>
+              </div>
             </div>
 
             <!-- Partner Pins -->

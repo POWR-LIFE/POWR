@@ -13,7 +13,6 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: resolve(__dirname, 'index.html'),
-        gym: resolve(__dirname, 'gym-partners.html'),
         partners: resolve(__dirname, 'partners.html'),
       },
     },
