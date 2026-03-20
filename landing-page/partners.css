@@ -2015,7 +2015,7 @@ footer .footer-copy {
 
     width: 390px;
     height: 814px;
-    /* Matches container esattamente: 814 * 0.59 = 480px */
+    /* Scale reduced so the featured mockup slot matches 195px width (390 * 0.5) and avoids clipped edges. */
     display: flex;
     flex-direction: column;
     font-family: 'Outfit', sans-serif;
@@ -2023,7 +2023,7 @@ footer .footer-copy {
     text-align: left;
     overflow: hidden;
     background: linear-gradient(160deg, #1a1a1a 0%, #151515 35%, #101010 65%, #080808 100%);
-    zoom: 0.59;
+    zoom: 0.5;
     position: relative;
     top: auto;
     left: auto;
@@ -3316,6 +3316,19 @@ footer .footer-copy {
     margin: 0 14px 8px !important;
 }
 
+/* Override all screen zooms in featured slot to prevent overcrowding */
+.mockup-slot.featured .home-screen {
+    zoom: 0.5 !important;
+}
+
+.mockup-slot.featured .discover-screen {
+    zoom: 0.5 !important;
+}
+
+.mockup-slot.featured .spend-screen {
+    zoom: 0.5 !important;
+}
+
 @media (max-width: 900px) {
     .mockups-grid {
         flex-wrap: wrap !important;
@@ -3324,5 +3337,14 @@ footer .footer-copy {
 
     .mockup-slot.featured {
         transform: none !important;
+    }
+
+    /* Ensure featured spend screen fits exactly inside the card bezel on narrow layouts */
+    .mockup-slot.featured .spend-screen {
+        zoom: 0.5 !important;
+    }
+
+    .mockup-slot.featured .spend-screen .scroll-area {
+        overflow-x: hidden !important;
     }
 }
