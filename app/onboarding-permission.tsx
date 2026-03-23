@@ -4,97 +4,117 @@ import { useRouter } from 'expo-router';
 import { useEffect, useRef } from 'react';
 import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import MagicRings from '@/components/MagicRings';
 
-import { THEMES, useAppTheme } from '@/context/ThemeContext';
+const GOLD = '#facc15';
+const BG = '#0d0d0d';
+
+function StepDots({ current }: { current: number }) {
+    return (
+        <View style={dotStyles.row}>
+            {[0, 1, 2].map(i => (
+                <View
+                    key={i}
+                    style={[
+                        dotStyles.dot,
+                        i === current ? dotStyles.dotActive : dotStyles.dotInactive,
+                    ]}
+                />
+            ))}
+        </View>
+    );
+}
+
+const dotStyles = StyleSheet.create({
+    row: {
+        flexDirection: 'row',
+        gap: 6,
+        justifyContent: 'center',
+        marginBottom: 28,
+    },
+    dot: {
+        height: 5,
+        borderRadius: 3,
+    },
+    dotActive: {
+        width: 20,
+        backgroundColor: GOLD,
+    },
+    dotInactive: {
+        width: 5,
+        backgroundColor: 'rgba(255,255,255,0.15)',
+    },
+});
 
 export default function OnboardingPermissionScreen() {
-    const { theme } = useAppTheme();
-    const activeColor = THEMES.find(t => t.name === theme)?.primary || '#CEFF00';
     const router = useRouter();
     const insets = useSafeAreaInsets();
 
-    // Fade-in animations
-    const iconFade = useRef(new Animated.Value(0)).current;
-    const textFade = useRef(new Animated.Value(0)).current;
-    const buttonFade = useRef(new Animated.Value(0)).current;
+    const contentFade = useRef(new Animated.Value(0)).current;
+    const buttonsFade = useRef(new Animated.Value(0)).current;
 
     useEffect(() => {
+        // Let MagicRings animate in first, then reveal content
         Animated.sequence([
-            Animated.timing(iconFade, {
-                toValue: 1,
-                duration: 600,
-                useNativeDriver: true,
-            }),
-            Animated.timing(textFade, {
-                toValue: 1,
-                duration: 600,
-                useNativeDriver: true,
-            }),
-            Animated.timing(buttonFade, {
-                toValue: 1,
-                duration: 500,
-                useNativeDriver: true,
-            }),
+            Animated.delay(800),
+            Animated.timing(contentFade, { toValue: 1, duration: 500, useNativeDriver: true }),
+            Animated.timing(buttonsFade, { toValue: 1, duration: 400, useNativeDriver: true }),
         ]).start();
-    }, [iconFade, textFade, buttonFade]);
+    }, [contentFade, buttonsFade]);
 
     return (
         <View style={styles.container}>
-            {/* Subtle gradient background */}
             <LinearGradient
-                colors={['#0A0A0A', '#111111', '#0A0A0A']}
+                colors={[BG, '#0f0f0f', BG]}
                 locations={[0, 0.5, 1]}
                 style={StyleSheet.absoluteFillObject}
             />
+            <MagicRings />
 
-            {/* Top-left POWR icon */}
-            <View style={[styles.logoContainer, { top: insets.top + 12 }]}>
+            {/* Logo */}
+            <View style={[styles.logo, { top: insets.top + 18 }]}>
                 <Image
                     source={require('@/assets/images/powrlogotext.png')}
-                    style={styles.logoIcon}
+                    style={styles.logoImage}
                     contentFit="contain"
                 />
             </View>
 
             {/* Center content */}
-            <View style={styles.centerContent}>
-                {/* Activity icon / graphic */}
-                <Animated.View style={[styles.iconCircle, { opacity: iconFade, borderColor: activeColor }]}>
-                    <Text style={styles.iconEmoji}>🏃</Text>
-                </Animated.View>
-
-                {/* Main pitch text */}
-                <Animated.View style={{ opacity: textFade }}>
+            <View style={[styles.center, { paddingTop: insets.top + 60 }]}>
+                <Animated.View style={[styles.textBlock, { opacity: contentFade }]}>
+                    <Text style={styles.eyebrow}>PASSIVE TRACKING</Text>
                     <Text style={styles.headline}>
-                        POWR tracks your movement automatically
+                        Earn while{'\n'}you{' '}
+                        <Text style={styles.headlineGold}>move.</Text>
                     </Text>
-                    <Text style={styles.subtext}>
-                        so you don't have to log workouts.
+                    <Text style={styles.body}>
+                        You're already moving. POWR runs quietly in the background — no tapping start, no manual logs. Just move and earn.
                     </Text>
                 </Animated.View>
             </View>
 
-            {/* Bottom CTA */}
-            <View style={[styles.bottomContent, { paddingBottom: insets.bottom + 24 }]}>
-                <Animated.View style={{ opacity: buttonFade, width: '100%' }}>
-                    <Pressable
-                        style={[styles.primaryButton, { backgroundColor: activeColor }]}
-                        onPress={() => router.push('/onboarding-health')}
-                    >
-                        <Text style={styles.primaryButtonText}>Connect Health Data</Text>
-                        <View style={[styles.bonusBadge, { backgroundColor: 'rgba(0,0,0,0.2)' }]}>
-                            <Text style={styles.bonusText}>+20 POWR</Text>
-                        </View>
-                    </Pressable>
+            {/* Bottom */}
+            <Animated.View style={[styles.bottom, { paddingBottom: insets.bottom + 32, opacity: buttonsFade }]}>
+                <StepDots current={1} />
 
-                    <Pressable
-                        style={styles.skipButton}
-                        onPress={() => router.push('/onboarding-account')}
-                    >
-                        <Text style={styles.skipText}>Skip for now</Text>
-                    </Pressable>
-                </Animated.View>
-            </View>
+                <Pressable
+                    style={styles.primaryButton}
+                    onPress={() => router.push('/onboarding-health')}
+                >
+                    <Text style={styles.primaryLabel}>ALLOW LOCATION ACCESS</Text>
+                    <View style={styles.bonusBadge}>
+                        <Text style={styles.bonusLabel}>+20 POWR</Text>
+                    </View>
+                </Pressable>
+
+                <Pressable
+                    style={styles.skipButton}
+                    onPress={() => router.push('/onboarding-health')}
+                >
+                    <Text style={styles.skipLabel}>Skip for now</Text>
+                </Pressable>
+            </Animated.View>
         </View>
     );
 }
@@ -102,87 +122,93 @@ export default function OnboardingPermissionScreen() {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#0A0A0A',
+        backgroundColor: BG,
     },
-    logoContainer: {
+    logo: {
         position: 'absolute',
         left: 20,
         zIndex: 10,
     },
-    logoIcon: {
+    logoImage: {
         width: 100,
         height: 36,
     },
-    centerContent: {
+    center: {
         flex: 1,
-        justifyContent: 'center',
         alignItems: 'center',
+        justifyContent: 'center',
         paddingHorizontal: 32,
     },
-    iconCircle: {
-        width: 100,
-        height: 100,
-        borderRadius: 50,
-        borderWidth: 2,
-        backgroundColor: 'rgba(255,255,255,0.05)',
-        justifyContent: 'center',
+    textBlock: {
         alignItems: 'center',
-        marginBottom: 40,
     },
-    iconEmoji: {
-        fontSize: 44,
+    eyebrow: {
+        color: 'rgba(255,255,255,0.22)',
+        fontSize: 10,
+        fontWeight: '500',
+        letterSpacing: 2.5,
+        textTransform: 'uppercase',
+        marginBottom: 14,
     },
     headline: {
-        color: '#FFFFFF',
-        fontSize: 30,
-        fontWeight: '800',
+        color: '#F2F2F2',
+        fontSize: 42,
+        fontWeight: '200',
+        letterSpacing: -1,
+        lineHeight: 48,
         textAlign: 'center',
-        letterSpacing: -0.5,
-        lineHeight: 38,
+        marginBottom: 16,
     },
-    subtext: {
-        color: 'rgba(255,255,255,0.55)',
-        fontSize: 18,
-        fontWeight: '400',
+    headlineGold: {
+        color: GOLD,
+        fontWeight: '700',
+    },
+    body: {
+        color: 'rgba(255,255,255,0.4)',
+        fontSize: 14,
+        fontWeight: '300',
+        lineHeight: 22,
         textAlign: 'center',
-        marginTop: 12,
-        lineHeight: 26,
     },
-    bottomContent: {
+    bottom: {
         paddingHorizontal: 24,
-        alignItems: 'center',
     },
     primaryButton: {
-        height: 56,
-        borderRadius: 28,
+        height: 52,
+        borderRadius: 26,
+        backgroundColor: GOLD,
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
         gap: 10,
+        marginBottom: 12,
     },
-    primaryButtonText: {
-        color: '#000',
-        fontSize: 16,
+    primaryLabel: {
+        color: '#0a0a0a',
+        fontSize: 12,
         fontWeight: '700',
+        letterSpacing: 1.5,
     },
     bonusBadge: {
-        paddingHorizontal: 10,
-        paddingVertical: 4,
-        borderRadius: 12,
+        backgroundColor: 'rgba(0,0,0,0.18)',
+        borderRadius: 10,
+        paddingHorizontal: 8,
+        paddingVertical: 3,
     },
-    bonusText: {
-        color: '#000',
-        fontSize: 12,
-        fontWeight: '800',
+    bonusLabel: {
+        color: '#0a0a0a',
+        fontSize: 9,
+        fontWeight: '700',
+        letterSpacing: 0.5,
     },
     skipButton: {
-        marginTop: 16,
         alignItems: 'center',
-        paddingVertical: 8,
+        paddingVertical: 12,
     },
-    skipText: {
-        color: 'rgba(255,255,255,0.4)',
-        fontSize: 14,
-        fontWeight: '500',
+    skipLabel: {
+        color: 'rgba(255,255,255,0.28)',
+        fontSize: 13,
+        fontWeight: '300',
+        letterSpacing: 0.3,
     },
 });

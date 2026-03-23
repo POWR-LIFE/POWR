@@ -1,6 +1,8 @@
 # POWR — UI Styling Reference
 **For use by AI assistants when building POWR app screens and components.**
 
+> **Source of truth:** The homepage components (`components/home/`) are the canonical design reference. Values here reflect what is actually implemented, not an aspirational spec.
+
 ---
 
 ## Brand
@@ -12,38 +14,41 @@
 ## Typography
 - **Font:** Outfit (Google Fonts) — geometric grotesque, all weights 100–800
 - **Rule:** Use weight contrast for hierarchy. Never use the same weight twice in a headline pair.
+- **Implementation:** Use inline `fontWeight` strings (e.g. `'100'`, `'300'`, `'700'`). The Outfit_XXX fontFamily tokens in `constants/tokens.ts` exist but are not used in practice — components use `fontWeight` directly.
 
 | Token | Size | Weight | Tracking | Leading | Colour | Use |
 |-------|------|--------|----------|---------|--------|-----|
-| hero | 56px | 200 | −1.5px | 1.0 | #F2F2F2 / #E8D200 | Campaign / splash |
-| display | 44px | 200 | −1px | 1.0 | #F2F2F2 / #E8D200 | Onboarding headlines |
-| h1 | 32px | 300 | −0.5px | 1.2 | #F2F2F2 | Screen titles |
-| h2 | 24px | 400 | 0 | 1.3 | #F2F2F2 | Section headings |
-| h3 | 20px | 500 | 0 | 1.3 | #F2F2F2 | Subsections |
-| body-lg | 16px | 400 | 0 | 1.5 | #888888 | Primary UI text |
-| body | 14px | 300 | 0 | 1.7 | #888888 | Descriptions |
-| label | 12px | 500 | +1.5px | 1.0 | #444444 | UPPERCASE tags, nav, badges |
-| caption | 11px | 300 | 0 | 1.6 | #444444 | Timestamps, legal |
-| stat | 48–96px | 200 | −2px | 1.0 | #E8D200 | Points, streaks, scores |
-| cta | 13px | 700 | +1.5px | 1.0 | #080808 on #E8D200 | Primary buttons — UPPERCASE |
+| hero | 56px | 100–200 | −1.5px | 1.0 | #F2F2F2 / #facc15 | Campaign / splash |
+| display | 44px | 100–200 | −1.5px | 1.0 | #F2F2F2 / #facc15 | Onboarding headlines |
+| h1 | 32px | 200–300 | −0.5px | 1.2 | #F2F2F2 | Screen titles |
+| h2 | 24px | 300 | 0 | 1.3 | #F2F2F2 | Section headings |
+| h3 / card title | 13–15px | 300 | 0 | 1.3 | #F2F2F2 | Card titles |
+| body | 11–12px | 300 | 0 | 1.5 | rgba(255,255,255,0.5) | Descriptions, subtitles |
+| label | 9–10px | 500 | +1.5–2px | 1.0 | rgba(255,255,255,0.25–0.35) | UPPERCASE metadata, section labels |
+| caption | 8–9px | 300–400 | 0–0.5px | 1.6 | rgba(255,255,255,0.25) | Timestamps, fine print |
+| stat large | 56–72px | 100 | −2px | 1.0 | #facc15 | Points, streaks, big scores |
+| stat small | 20–32px | 100–200 | −1.5px | 1.0 | #facc15 | Secondary numbers |
+| cta | 10–13px | 700 | +1–1.5px | 1.0 | #0a0a0a on #facc15 | Button labels — UPPERCASE |
 
 ---
 
 ## Colours
 
-| Token | Hex | Use |
-|-------|-----|-----|
-| background | #080808 | App background — near-black |
-| surface-1 | #0F0F0F | Cards, modals |
-| surface-2 | #141414 | Nested cards, inputs |
-| border | #1E1E1E | Dividers, card outlines |
-| accent | #E8D200 | Gold — highlights, CTAs, active states, points |
-| on-accent | #080808 | Text placed ON the gold accent |
+| Token | Hex / rgba | Use |
+|-------|-----------|-----|
+| background | #0d0d0d | App background — near-black |
+| card-bg | rgba(40,40,40,0.85) | Cards, list rows — semi-transparent dark |
+| card-bg-alt | rgba(50,50,50,0.75) | Activity grid tiles, nested cards |
+| surface-1 | #0F0F0F | Tab bar, inputs, static surfaces |
+| border | rgba(255,255,255,0.07–0.10) | Card outlines — **always semi-transparent white, never a solid dark value** |
+| border-strong | rgba(255,255,255,0.20–0.30) | Active states, focused inputs |
+| accent / gold | #facc15 | Gold — highlights, CTAs, active states, points, streaks |
+| on-accent | #0a0a0a | Text placed ON the gold accent |
 | text-primary | #F2F2F2 | Main headings and UI text |
-| text-secondary | #888888 | Body copy, descriptions |
-| text-muted | #444444 | Labels, captions, metadata |
+| text-secondary | rgba(255,255,255,0.5) | Body copy, descriptions, subtitles |
+| text-muted | rgba(255,255,255,0.25) | Labels, captions, metadata |
 | success | #00CC66 | Verified sessions, positive states |
-| warning | #FF9944 | Weak signal, pending states |
+| warning | #f97316 | Weak signal, pending states, streak fire dot |
 | error | #CC3333 | Flags, rejected transactions |
 
 ---
@@ -51,49 +56,55 @@
 ## Component Rules
 
 **Buttons**
-- Primary: background #E8D200, text #080808, weight 700, 13px, UPPERCASE, tracking +1.5px, border-radius 4px, height 48px
-- Ghost: border 1px solid #E8D200, text #E8D200, weight 500, same sizing
-- Destructive: border 1px solid #CC3333, text #CC3333
+- Primary: background `#facc15`, text `#0a0a0a`, `fontWeight: '700'`, 10–13px, UPPERCASE, tracking +1–1.5px, `borderRadius: 20` (pill), padding `7–12px` vertical / `18–22px` horizontal
+- Ghost: `borderWidth: 1`, `borderColor: rgba(250,204,21,0.25–1.0)`, text `#facc15`, same sizing
+- No square/sharp buttons — always pill shape (`borderRadius: 20`)
 
 **Cards**
-- Background: #0F0F0F
-- Border: 1px solid #1E1E1E
-- Border-radius: 6px
-- Padding: 16px
-- Active/selected: border-color #E8D200, background #141400
+- Background: `rgba(40,40,40,0.85)`
+- Border: `1px solid rgba(255,255,255,0.07–0.10)`
+- Border-radius: **16px standard**, 18–20px for large/hero cards
+- Padding: `12–14px`
+- Active/selected: border-color `#facc15` at 50% opacity, background `rgba(250,204,21,0.05)`
 
-**Navigation**
-- Active item: weight 600, colour #E8D200, underline 1.5px solid #E8D200
-- Inactive: weight 400, colour #444444
-- Font-size: 12px UPPERCASE tracking +1.5px
+**Accent bars**
+- Vertical left edge: `width: 2`, full height, `backgroundColor: #facc15` — used on challenge/action cards
+- Horizontal top: `height: 2`, full width, `backgroundColor: #facc15` — used on featured/hero cards
+
+**Badges / Tags**
+- Background: `rgba(255,255,255,0.06–0.15)` or `rgba(250,204,21,0.10)` for gold
+- Border: `1px solid rgba(255,255,255,0.12)` or `rgba(250,204,21,0.25)` for gold
+- Border-radius: 20px (pill)
+- Text: 8–9px, UPPERCASE, `fontWeight: '500'`, tracking +1–1.5px
+- Gold badge text: `#facc15`
+
+**Navigation (tab bar)**
+- Active item: colour `#facc15`
+- Inactive: colour `rgba(255,255,255,0.25–0.35)` (textMuted)
+- Font-size: 9px UPPERCASE tracking +1.5px
+- Background: `#0F0F0F`, border-top: `1px solid #1E1E1E`
 
 **Stat/Points Display**
-- Large number: Outfit 200, 48–96px, colour #E8D200, tracking −2px
-- Supporting label: 10px, weight 400, UPPERCASE, tracking +2px, colour #444444
+- Large number: `fontWeight: '100'`, 56–72px, colour `#facc15`, tracking −2px
+- Supporting label: 9–10px, `fontWeight: '500'`, UPPERCASE, tracking +2px, colour `rgba(255,255,255,0.25)`
 - Always stack: LABEL above → NUMBER large → unit below
 
 **Input Fields**
-- Background: #0F0F0F
-- Border: 1px solid #1E1E1E
-- Focus border: 1px solid #E8D200
-- Text: 14px weight 300 #F2F2F2
-- Placeholder: #444444
+- Background: `#0F0F0F`
+- Border: `1px solid #1E1E1E`
+- Focus border: `1px solid #facc15`
+- Text: 14px `fontWeight: '300'` `#F2F2F2`
+- Placeholder: `rgba(255,255,255,0.25)`
 - Border-radius: 4px, height: 48px, padding: 0 16px
 
 **Dividers / Rules**
-- Standard: 1px solid #1E1E1E
-- Accent: 1px solid #E8D200 (use sparingly — section emphasis only)
-- Gold bar accent: 2–3px tall, 24–32px wide, #E8D200 (before section titles)
+- Standard: `1px solid rgba(255,255,255,0.07)`
+- Accent: `1px solid #facc15` (use sparingly — section emphasis only)
 
-**Badges / Tags**
-- Border: 1px solid #1E1E1E
-- Text: 9px UPPERCASE weight 500 tracking +1.5px #444444
-- Active badge: border #E8D200, text #E8D200, background rgba(232,210,0,0.08)
-
-**Notifications / Alerts**
-- Title: 13px weight 600 — gold for success, #FF9944 for warning, #CC3333 for error
-- Body: 12px weight 300 #888888
-- Background tint: accent colour at 8% opacity
+**Logo boxes / Partner avatars**
+- Dark: `backgroundColor: 'rgba(255,255,255,0.06)'`, `borderRadius: 10–12`, white text
+- Light: `backgroundColor: '#F2F2F2'`, `borderRadius: 10–12`, dark text
+- Size: 48–56px square
 
 ---
 
@@ -102,73 +113,101 @@
 | Token | Value | Use |
 |-------|-------|-----|
 | xs | 4px | Icon gaps, tight inline spacing |
-| sm | 8px | Inner card padding, row gaps |
-| md | 16px | Card padding, section gaps |
+| sm | 8px | Inner card gaps, row spacing |
+| md | 12–16px | Card padding |
 | lg | 24px | Between sections |
 | xl | 32px | Page section separation |
-| 2xl | 48px | Major layout sections |
-| page | 20–24px | Horizontal screen margin |
+| page | 10–16px | Horizontal screen margin (screens use `paddingHorizontal: 10–16`) |
 
 ---
 
 ## Key Patterns
 
-- **Headlines always pair weight 200 (white) + weight 700 (gold).** Never same weight.
-- **Numbers are always gold (#E8D200) at light weight (200).** Supporting text is dim.
-- **CTAs are always full-width on mobile**, gold background, dark text, uppercase, weight 700.
-- **Dark mode only.** No light mode. Background never goes above #1A1A1A.
+- **Headlines pair `fontWeight: '100–200'` (white) + `fontWeight: '700'` (gold).** Never same weight.
+- **Numbers are always gold (`#facc15`) at ultra-light weight (`'100'`).** Supporting text is dim.
+- **CTAs are pill-shaped** (`borderRadius: 20`), gold background, dark text, uppercase, `fontWeight: '700'`.
+- **Dark mode only.** No light mode. Background never goes above `#1A1A1A`.
 - **No drop shadows.** Use border contrast instead.
-- **Corners: 4px for interactive elements (buttons, inputs), 6px for cards.**
+- **Corners: 20px for all interactive elements (buttons, badges, pill tags), 16–20px for cards, 4px for inputs.**
 - **Uppercase labels always need tracking** — minimum +1.5px, never 0.
+- **Card borders are always semi-transparent white**, not a solid dark colour.
+- **Screen background is `#0d0d0d`**, not pure black.
+- **Cards float** — `rgba(40,40,40,0.85)` background makes them feel layered above the screen.
 
 ---
 
 ## React Native Implementation
 
 ```typescript
-// Install: npx expo install @expo-google-fonts/outfit
+// Canonical colour/value reference matching actual homepage components
 
-import {
-  Outfit_200ExtraLight,
-  Outfit_300Light,
-  Outfit_400Regular,
-  Outfit_500Medium,
-  Outfit_600SemiBold,
-  Outfit_700Bold,
-} from '@expo-google-fonts/outfit';
+const GOLD   = '#facc15';
+const BG     = '#0d0d0d';
+const CARD_BG = 'rgba(40,40,40,0.85)';
+const BORDER  = 'rgba(255,255,255,0.08)';
 
-// typography.ts
-export const typography = {
-  hero:    { fontFamily: 'Outfit_200ExtraLight', fontSize: 56, letterSpacing: -1.5, lineHeight: 56 },
-  display: { fontFamily: 'Outfit_200ExtraLight', fontSize: 44, letterSpacing: -1,   lineHeight: 44 },
-  h1:      { fontFamily: 'Outfit_300Light',      fontSize: 32, letterSpacing: -0.5, lineHeight: 38 },
-  h2:      { fontFamily: 'Outfit_400Regular',    fontSize: 24, letterSpacing: 0,    lineHeight: 31 },
-  h3:      { fontFamily: 'Outfit_500Medium',     fontSize: 20, letterSpacing: 0,    lineHeight: 26 },
-  bodyLg:  { fontFamily: 'Outfit_400Regular',    fontSize: 16, letterSpacing: 0,    lineHeight: 24 },
-  body:    { fontFamily: 'Outfit_300Light',       fontSize: 14, letterSpacing: 0,    lineHeight: 24 },
-  label:   { fontFamily: 'Outfit_500Medium',     fontSize: 12, letterSpacing: 1.5,  lineHeight: 12, textTransform: 'uppercase' },
-  caption: { fontFamily: 'Outfit_300Light',       fontSize: 11, letterSpacing: 0,    lineHeight: 18 },
-  stat:    { fontFamily: 'Outfit_200ExtraLight', fontSize: 72, letterSpacing: -2,   lineHeight: 72 },
-  cta:     { fontFamily: 'Outfit_700Bold',       fontSize: 13, letterSpacing: 1.5,  lineHeight: 13, textTransform: 'uppercase' },
-};
+// Card
+{
+  borderRadius: 16,
+  borderWidth: 1,
+  borderColor: BORDER,
+  backgroundColor: CARD_BG,
+  padding: 12,
+}
 
-// colours.ts
-export const colours = {
-  bg:          '#080808',
-  surface1:    '#0F0F0F',
-  surface2:    '#141414',
-  border:      '#1E1E1E',
-  accent:      '#E8D200',
-  onAccent:    '#080808',
-  textPrimary: '#F2F2F2',
-  textSec:     '#888888',
-  textMuted:   '#444444',
-  success:     '#00CC66',
-  warning:     '#FF9944',
-  error:       '#CC3333',
-};
+// Primary button (pill)
+{
+  backgroundColor: GOLD,
+  borderRadius: 20,
+  paddingHorizontal: 18,
+  paddingVertical: 7,
+}
+// Button label
+{
+  fontSize: 10,
+  fontWeight: '700',
+  color: '#0a0a0a',
+  letterSpacing: 1,
+  textTransform: 'uppercase',
+}
+
+// Ghost button (pill)
+{
+  borderWidth: 1,
+  borderColor: 'rgba(250,204,21,0.35)',
+  borderRadius: 20,
+  paddingHorizontal: 14,
+  paddingVertical: 6,
+}
+
+// UPPERCASE label / metadata
+{
+  fontSize: 9,
+  fontWeight: '500',
+  letterSpacing: 2,
+  color: 'rgba(255,255,255,0.25)',
+  textTransform: 'uppercase',
+}
+
+// Large stat number
+{
+  fontSize: 64,
+  fontWeight: '100',
+  letterSpacing: -2,
+  color: GOLD,
+}
+
+// Badge (gold tint)
+{
+  paddingHorizontal: 10,
+  paddingVertical: 3,
+  borderRadius: 20,
+  backgroundColor: 'rgba(250,204,21,0.10)',
+  borderWidth: 1,
+  borderColor: 'rgba(250,204,21,0.25)',
+}
 ```
 
 ---
 
-*POWR · Internal Reference · v1.0 · 2025*
+*POWR · Internal Reference · v2.0 · 2026 — updated to match homepage implementation*

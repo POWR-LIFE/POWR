@@ -109,18 +109,18 @@ POWR awards points (POWR) for verified physical activity across 8 activity types
 
 | Tier | POWR |
 |------|------|
-| 20–45 min session | 7 |
-| 45+ min session | 10 |
+| 20–45 min session | 10 |
+| 45+ min session | 15 |
 
 **Streak Multipliers:**
 
 | Streak | Multiplier | Earn Range |
 |--------|-----------|------------|
-| No streak | 1.0× | 7–10 POWR |
-| 3-session streak | 1.2× | 8–12 POWR |
-| 5-session streak | 1.5× | 10–15 POWR |
-| 7-session streak | 2.0× | 14–20 POWR |
-| 10+ session streak | 3.0× | 21–30 POWR |
+| No streak | 1.0× | 10–15 POWR |
+| 3-session streak | 1.2× | 12–18 POWR |
+| 5-session streak | 1.5× | 15–22 POWR |
+| 7-session streak | 2.0× | 20–30 POWR |
+| 10+ session streak | 3.0× | 30–45 POWR |
 
 **Weekly consistency bonus:** +5 POWR flat for 5+ sessions in a week.
 
