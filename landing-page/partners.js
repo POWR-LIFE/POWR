@@ -1,6 +1,19 @@
-    // Initialize the Discover Mockup Map
-    function initDiscoverMap() {
+  // Initialize Intersection Observer first so it always runs
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+  }, { threshold: 0.08 });
+  document.querySelectorAll('.fade-up').forEach(el => observer.observe(el));
+
+  // Initialize the Discover Mockup Map
+  function initDiscoverMap() {
+    try {
       const mapEl = document.getElementById('discoverMockupMap');
+      if (!mapEl) return;
+      if (typeof L === 'undefined') {
+        console.warn('Leaflet (L) is not defined. Map will not initialize.');
+        return;
+      }
+
       const centerCoords = [51.5238, -0.1415];
       const tileUrl = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
       
@@ -46,10 +59,14 @@
 
       // Trigger redraw
       setTimeout(() => { mockupMap.invalidateSize(); }, 300);
+    } catch (e) {
+      console.error('Map initialization failed:', e);
     }
+  }
+  
+  // Wait for DOM and Scripts to load
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initDiscoverMap);
+  } else {
     initDiscoverMap();
-
-  const observer = new IntersectionObserver((entries) => {
-    entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
-  }, { threshold: 0.08 });
-  document.querySelectorAll('.fade-up').forEach(el => observer.observe(el));
+  }
