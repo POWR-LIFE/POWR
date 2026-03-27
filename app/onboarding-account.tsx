@@ -1,12 +1,14 @@
 import { useAuth } from '@/context/AuthContext';
+import { FontAwesome, Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import GeometricBackground from '@/components/GeometricBackground';
 
-const GOLD = '#facc15';
+const GOLD = '#E8D200';
 const BG = '#0d0d0d';
 const CARD_BG = 'rgba(40,40,40,0.85)';
 const BORDER = 'rgba(255,255,255,0.08)';
@@ -32,7 +34,7 @@ const dotStyles = StyleSheet.create({
         flexDirection: 'row',
         gap: 6,
         justifyContent: 'center',
-        marginBottom: 28,
+        marginBottom: 20,
     },
     dot: {
         height: 5,
@@ -48,10 +50,28 @@ const dotStyles = StyleSheet.create({
     },
 });
 
-const AUTH_OPTIONS = [
-    { id: 'apple',  label: 'Continue with Apple',  icon: '' },
-    { id: 'google', label: 'Continue with Google', icon: 'G' },
-    { id: 'email',  label: 'Continue with Email',  icon: '@' },
+type AuthOption = {
+    id: string;
+    label: string;
+    icon: React.ReactNode;
+};
+
+const AUTH_OPTIONS: AuthOption[] = [
+    {
+        id: 'apple',
+        label: 'Continue with Apple',
+        icon: <FontAwesome name="apple" size={19} color="#F2F2F2" />,
+    },
+    {
+        id: 'google',
+        label: 'Continue with Google',
+        icon: <FontAwesome name="google" size={17} color="#F2F2F2" />,
+    },
+    {
+        id: 'email',
+        label: 'Continue with Email',
+        icon: <Ionicons name="mail-outline" size={18} color="#F2F2F2" />,
+    },
 ];
 
 export default function OnboardingAccountScreen() {
@@ -62,18 +82,22 @@ export default function OnboardingAccountScreen() {
     const [error, setError] = useState<string | null>(null);
 
     const headerFade = useRef(new Animated.Value(0)).current;
-    const iconScale = useRef(new Animated.Value(0.8)).current;
+    const iconScale = useRef(new Animated.Value(0.85)).current;
     const buttonsFade = useRef(new Animated.Value(0)).current;
+    const buttonsSlide = useRef(new Animated.Value(16)).current;
 
     useEffect(() => {
         Animated.sequence([
             Animated.parallel([
                 Animated.timing(headerFade, { toValue: 1, duration: 500, useNativeDriver: true }),
-                Animated.spring(iconScale, { toValue: 1, friction: 6, tension: 80, useNativeDriver: true }),
+                Animated.spring(iconScale, { toValue: 1, friction: 7, tension: 90, useNativeDriver: true }),
             ]),
-            Animated.timing(buttonsFade, { toValue: 1, duration: 400, useNativeDriver: true }),
+            Animated.parallel([
+                Animated.timing(buttonsFade, { toValue: 1, duration: 400, useNativeDriver: true }),
+                Animated.timing(buttonsSlide, { toValue: 0, duration: 400, useNativeDriver: true }),
+            ]),
         ]).start();
-    }, [headerFade, iconScale, buttonsFade]);
+    }, [headerFade, iconScale, buttonsFade, buttonsSlide]);
 
     const handleAuth = async (method: string) => {
         setError(null);
@@ -82,8 +106,6 @@ export default function OnboardingAccountScreen() {
             const { error } = await signInWithGoogle();
             setLoadingMethod(null);
             if (error) { setError(error); return; }
-            // onAuthStateChange in AuthContext will update session,
-            // index.tsx will route to the correct screen
         } else if (method === 'email') {
             router.push('/auth-email');
         } else if (method === 'login') {
@@ -93,59 +115,102 @@ export default function OnboardingAccountScreen() {
 
     return (
         <View style={styles.container}>
-            <LinearGradient
-                colors={[BG, '#0f0f0f', BG]}
-                locations={[0, 0.5, 1]}
-                style={StyleSheet.absoluteFillObject}
-            />
+            <GeometricBackground />
 
-            {/* Logo */}
-            <View style={[styles.logo, { top: insets.top + 18 }]}>
-                <Image
-                    source={require('@/assets/images/powrlogotext.png')}
-                    style={styles.logoImage}
-                    contentFit="contain"
-                />
-            </View>
+            {/* Back button */}
+            <Pressable
+                style={[styles.backButton, { top: insets.top + 14 }]}
+                onPress={() => router.back()}
+                hitSlop={24}
+            >
+                <Ionicons name="chevron-back" size={26} color="rgba(255,255,255,0.55)" />
+            </Pressable>
 
-            {/* Center */}
+            {/* Center content */}
             <View style={styles.center}>
-                <Animated.View style={{ opacity: headerFade, alignItems: 'center' }}>
-                    {/* Icon */}
-                    <Animated.View style={[styles.iconBox, { transform: [{ scale: iconScale }] }]}>
-                        <Text style={styles.iconText}>POWR</Text>
+                <Animated.View style={[styles.headerBlock, { opacity: headerFade }]}>
+                    {/* App logo */}
+                    <Animated.View style={[styles.logoContainer, { transform: [{ scale: iconScale }] }]}>
+                        <Image
+                            source={require('@/assets/images/powrlogotext.png')}
+                            style={styles.logoImage}
+                            contentFit="contain"
+                        />
                     </Animated.View>
 
-                    <Text style={styles.eyebrow}>STEP 1 OF 3</Text>
-                    <Text style={styles.headline}>
-                        Your streak{'\n'}
-                        <Text style={styles.headlineGold}>is yours.</Text>
-                    </Text>
+
+                    {/* Headline */}
+                    <View style={styles.headlineRow}>
+                        <Text style={styles.headline}>
+                            Your streak{'\n'}
+                            <Text style={styles.headlineGold}>is yours.</Text>
+                        </Text>
+                    </View>
+
+                    {/* Body */}
                     <Text style={styles.body}>
                         Movement, streaks, points — everything{'\n'}you've earned, secured and with you.
                     </Text>
                 </Animated.View>
 
-                {/* Auth options */}
-                <Animated.View style={[styles.authList, { opacity: buttonsFade }]}>
-                    {AUTH_OPTIONS.map(opt => (
-                        <Pressable
-                            key={opt.id}
-                            style={({ pressed }) => [
-                                styles.authButton,
-                                pressed && styles.authButtonPressed,
-                                loadingMethod === opt.id && styles.authButtonPressed,
-                            ]}
-                            onPress={() => handleAuth(opt.id)}
-                            disabled={loadingMethod !== null}
-                        >
-                            {loadingMethod === opt.id
-                                ? <ActivityIndicator color="#F2F2F2" style={{ width: 22 }} />
-                                : <Text style={styles.authIcon}>{opt.icon}</Text>
+                {/* Auth buttons */}
+                <Animated.View
+                    style={[
+                        styles.authList,
+                        { opacity: buttonsFade, transform: [{ translateY: buttonsSlide }] },
+                    ]}
+                >
+                    {/* Social Row */}
+                    <View style={styles.socialRow}>
+                        {AUTH_OPTIONS.slice(0, 2).map((opt) => (
+                            <Pressable
+                                key={opt.id}
+                                style={({ pressed }) => [
+                                    styles.authButton,
+                                    styles.authButtonHalf,
+                                    (pressed || loadingMethod === opt.id) && styles.authButtonPressed,
+                                ]}
+                                onPress={() => handleAuth(opt.id)}
+                                disabled={loadingMethod !== null}
+                            >
+                                <View style={[styles.authIconWrap, styles.authIconAbsolute]}>
+                                    {loadingMethod === opt.id
+                                        ? <ActivityIndicator color="#F2F2F2" size="small" />
+                                        : opt.icon
+                                    }
+                                </View>
+                                <Text style={styles.authLabelSocial}>
+                                    {opt.label.split(' ').pop()}
+                                </Text>
+                            </Pressable>
+                        ))}
+                    </View>
+
+                    {/* Separator */}
+                    <View style={styles.separatorContainer}>
+                        <Text style={styles.separatorText}>or</Text>
+                    </View>
+
+                    {/* Email Button */}
+                    <Pressable
+                        style={({ pressed }) => [
+                            styles.authButton,
+                            (pressed || loadingMethod === 'email') && styles.authButtonPressed,
+                        ]}
+                        onPress={() => handleAuth('email')}
+                        disabled={loadingMethod !== null}
+                    >
+                        <View style={[styles.authIconWrap, styles.authIconAbsolute]}>
+                            {loadingMethod === 'email'
+                                ? <ActivityIndicator color="#F2F2F2" size="small" />
+                                : AUTH_OPTIONS[2].icon
                             }
-                            <Text style={styles.authLabel}>{opt.label}</Text>
-                        </Pressable>
-                    ))}
+                        </View>
+                        <Text style={styles.authLabel}>
+                            {AUTH_OPTIONS[2].label}
+                        </Text>
+                    </Pressable>
+
                     {error && (
                         <View style={styles.errorBox}>
                             <Text style={styles.errorText}>{error}</Text>
@@ -155,7 +220,9 @@ export default function OnboardingAccountScreen() {
             </View>
 
             {/* Bottom */}
-            <Animated.View style={[styles.bottom, { paddingBottom: insets.bottom + 32, opacity: buttonsFade }]}>
+            <Animated.View
+                style={[styles.bottom, { paddingBottom: insets.bottom + 28, opacity: buttonsFade }]}
+            >
                 <StepDots current={0} />
                 <Pressable onPress={() => handleAuth('login')}>
                     <Text style={styles.footerText}>
@@ -173,66 +240,64 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: BG,
     },
-    logo: {
+    backButton: {
         position: 'absolute',
-        left: 20,
-        zIndex: 10,
-    },
-    logoImage: {
-        width: 100,
-        height: 36,
+        left: 16,
+        zIndex: 20,
+        padding: 4,
     },
     center: {
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        paddingHorizontal: 32,
+        paddingHorizontal: 28,
+        zIndex: 1,
     },
-    iconBox: {
-        width: 72,
-        height: 72,
-        borderRadius: 20,
-        backgroundColor: 'rgba(250,204,21,0.08)',
-        borderWidth: 1,
-        borderColor: 'rgba(250,204,21,0.22)',
+    headerBlock: {
+        alignItems: 'center',
+        marginBottom: 36,
+    },
+    logoContainer: {
+        width: 440,
+        height: 146,
         alignItems: 'center',
         justifyContent: 'center',
         marginBottom: 32,
     },
-    iconText: {
-        color: GOLD,
-        fontSize: 12,
-        fontWeight: '700',
-        letterSpacing: 2,
+    logoImage: {
+        width: '100%',
+        height: '100%',
+    },
+    headlineRow: {
+        marginBottom: 14,
     },
     eyebrow: {
-        color: 'rgba(255,255,255,0.22)',
+        color: 'rgba(255,255,255,0.20)',
         fontSize: 10,
         fontWeight: '500',
-        letterSpacing: 2.5,
+        letterSpacing: 3,
         textTransform: 'uppercase',
-        marginBottom: 12,
+        marginBottom: 14,
     },
     headline: {
         color: '#F2F2F2',
-        fontSize: 40,
+        fontSize: 44,
         fontWeight: '200',
-        letterSpacing: -1,
-        lineHeight: 46,
+        letterSpacing: -1.5,
+        lineHeight: 50,
         textAlign: 'center',
-        marginBottom: 14,
     },
     headlineGold: {
         color: GOLD,
         fontWeight: '700',
+        letterSpacing: -1.5,
     },
     body: {
-        color: 'rgba(255,255,255,0.38)',
+        color: 'rgba(255,255,255,0.35)',
         fontSize: 14,
         fontWeight: '300',
         lineHeight: 22,
         textAlign: 'center',
-        marginBottom: 40,
     },
     authList: {
         width: '100%',
@@ -241,37 +306,85 @@ const styles = StyleSheet.create({
     authButton: {
         flexDirection: 'row',
         alignItems: 'center',
-        height: 52,
-        borderRadius: 26,
+        height: 54,
+        borderRadius: 27,
         backgroundColor: CARD_BG,
         borderWidth: 1,
         borderColor: BORDER,
-        paddingHorizontal: 22,
-        gap: 14,
+        paddingHorizontal: 6,
+    },
+    authButtonPrimary: {
+        borderColor: 'rgba(255,255,255,0.14)',
+        backgroundColor: 'rgba(50,50,50,0.9)',
     },
     authButtonPressed: {
-        opacity: 0.75,
+        opacity: 0.6,
     },
-    authIcon: {
-        color: '#F2F2F2',
-        fontSize: 15,
-        fontWeight: '600',
-        width: 22,
-        textAlign: 'center',
+    socialRow: {
+        flexDirection: 'row',
+        gap: 10,
+    },
+    authButtonHalf: {
+        flex: 1,
+        justifyContent: 'center',
+    },
+    separatorContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginVertical: 10,
+        gap: 12,
+        paddingHorizontal: 4,
+    },
+    separatorLine: {
+        flex: 1,
+        height: 1,
+        backgroundColor: 'rgba(255,255,255,0.08)',
+    },
+    separatorText: {
+        color: 'rgba(255,255,255,0.25)',
+        fontSize: 12,
+        fontWeight: '500',
+        textTransform: 'uppercase',
+        letterSpacing: 1,
+    },
+    authIconWrap: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: 'rgba(255,255,255,0.06)',
+        borderWidth: 1,
+        borderColor: 'rgba(232,210,0,0.30)',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    authIconAbsolute: {
+        position: 'absolute',
+        left: 6,
     },
     authLabel: {
-        color: '#F2F2F2',
+        color: 'rgba(255,255,255,0.75)',
         fontSize: 14,
         fontWeight: '400',
         flex: 1,
         textAlign: 'center',
-        marginRight: 22,
+        letterSpacing: 0.2,
+    },
+    authLabelPrimary: {
+        color: '#F2F2F2',
+        fontWeight: '500',
+    },
+    authLabelSocial: {
+        color: 'rgba(255,255,255,0.85)',
+        fontSize: 15,
+        fontWeight: '600',
+        letterSpacing: 0.2,
     },
     errorBox: {
         backgroundColor: 'rgba(255,60,60,0.08)',
         borderWidth: 1,
         borderColor: 'rgba(255,60,60,0.25)',
-        borderRadius: 10,
+        borderRadius: 12,
         paddingHorizontal: 14,
         paddingVertical: 10,
         marginTop: 4,
@@ -286,11 +399,13 @@ const styles = StyleSheet.create({
     bottom: {
         paddingHorizontal: 24,
         alignItems: 'center',
+        zIndex: 1,
     },
     footerText: {
-        color: 'rgba(255,255,255,0.28)',
+        color: 'rgba(255,255,255,0.25)',
         fontSize: 13,
         fontWeight: '300',
+        letterSpacing: 0.1,
     },
     footerLink: {
         color: GOLD,

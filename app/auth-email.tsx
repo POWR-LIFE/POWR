@@ -1,4 +1,6 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/context/AuthContext';
+import GeometricBackground from '@/components/GeometricBackground';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
@@ -19,7 +21,7 @@ const GOLD = '#E8D200';
 const BG = '#080808';
 const CARD_BG = 'rgba(255,255,255,0.04)';
 const BORDER = 'rgba(255,255,255,0.10)';
-const BORDER_FOCUS = 'rgba(232,210,0,0.5)';
+const BORDER_FOCUS = 'rgba(232, 210, 0, 0.5)';
 
 export default function AuthEmailScreen() {
     const router = useRouter();
@@ -96,17 +98,18 @@ export default function AuthEmailScreen() {
             style={styles.container}
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
+            <GeometricBackground />
             {/* Back button */}
             <Pressable
                 style={[styles.backButton, { top: insets.top + 14 }]}
                 onPress={() => router.back()}
-                hitSlop={12}
+                hitSlop={24}
             >
-                <Text style={styles.backIcon}>←</Text>
+                <Ionicons name="chevron-back" size={26} color="rgba(255,255,255,0.55)" />
             </Pressable>
 
             {/* Logo */}
-            <View style={[styles.logo, { top: insets.top + 18 }]}>
+            <View style={[styles.logo, { top: insets.top + 18 }]} pointerEvents="none">
                 <Image
                     source={require('@/assets/images/powrlogotext.png')}
                     style={styles.logoImage}
@@ -246,8 +249,8 @@ const styles = StyleSheet.create({
     },
     backButton: {
         position: 'absolute',
-        left: 20,
-        zIndex: 10,
+        left: 16,
+        zIndex: 20,
         padding: 4,
     },
     backIcon: {
@@ -296,9 +299,9 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
     },
     toggleBtnActive: {
-        backgroundColor: 'rgba(232,210,0,0.12)',
+        backgroundColor: 'rgba(232, 210, 0, 0.12)',
         borderWidth: 1,
-        borderColor: 'rgba(232,210,0,0.3)',
+        borderColor: 'rgba(232, 210, 0, 0.3)',
     },
     toggleLabel: {
         color: 'rgba(255,255,255,0.35)',
@@ -334,7 +337,7 @@ const styles = StyleSheet.create({
     },
     inputFocused: {
         borderColor: BORDER_FOCUS,
-        backgroundColor: 'rgba(232,210,0,0.03)',
+        backgroundColor: 'rgba(232, 210, 0, 0.03)',
     },
     errorBox: {
         backgroundColor: 'rgba(255,60,60,0.08)',

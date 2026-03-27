@@ -1,6 +1,7 @@
+import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
+import { GeometricBackground } from '@/components/home/GeometricBackground';
 import {
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -8,21 +9,23 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ProfileButton } from '@/components/ProfileButton';
+import { usePoints } from '@/hooks/usePoints';
+import { getLevelInfo } from '@/constants/levels';
 
-// ─── Design tokens (inline, matching homepage component conventions) ──────────
+// ─── Design tokens ────────────────────────────────────────────────────────────
 
-const GOLD    = '#facc15';
-const BG      = '#0d0d0d';
+const GOLD    = '#E8D200';
+const BG      = '#1E1E1E';
 const CARD_BG = 'rgba(40,40,40,0.85)';
 const BORDER  = 'rgba(255,255,255,0.08)';
 const TEXT    = '#F2F2F2';
 const MUTED   = 'rgba(255,255,255,0.25)';
 const DIM     = 'rgba(255,255,255,0.5)';
 
-// ─── Mock data ────────────────────────────────────────────────────────────────
+// ─── Data ─────────────────────────────────────────────────────────────────────
 
-const MOCK_POINTS = 1247;
-const MOCK_LEVEL  = { number: 2, name: 'Mover' };
+
 
 const FEATURED = {
   title:    'Free Class',
@@ -31,12 +34,12 @@ const FEATURED = {
   pts:      800,
 };
 
-type Category = 'MOVE' | 'EAT' | 'MIND' | 'SLEEP';
-const CATEGORIES: Category[] = ['MOVE', 'EAT', 'MIND', 'SLEEP'];
+type Category = 'ALL' | 'MOVE' | 'EAT' | 'MIND' | 'GEAR';
+const CATEGORIES: Category[] = ['ALL', 'MOVE', 'EAT', 'MIND', 'GEAR'];
 
 interface Reward {
   id: string;
-  category: Category;
+  category: Exclude<Category, 'ALL'>;
   logoText: string;
   logoLight: boolean;
   title: string;
@@ -45,26 +48,53 @@ interface Reward {
 }
 
 const REWARDS: Reward[] = [
-  { id: '1', category: 'MOVE', logoText: 'Hagen',  logoLight: true,  title: 'Free Coffee',            subtitle: 'Any drink · Hagen',          pts: 300 },
-  { id: '2', category: 'EAT',  logoText: 'NOTTO',  logoLight: true,  title: '25% off your bill',      subtitle: 'Notto Pasta Bars',            pts: 500 },
-  { id: '3', category: 'MOVE', logoText: 'bulk',   logoLight: false, title: '30% off Protein Powder', subtitle: 'bulk® · Any product',         pts: 400 },
-  { id: '4', category: 'MIND', logoText: 'calm',   logoLight: false, title: '3 months free',          subtitle: 'Calm · Premium subscription', pts: 600 },
-  { id: '5', category: 'SLEEP',logoText: 'eight',  logoLight: false, title: '£50 off mattress',       subtitle: 'Eight Sleep · Any model',     pts: 1200 },
-  { id: '6', category: 'EAT',  logoText: 'WH',     logoLight: true,  title: '20% off supplements',    subtitle: 'Whole Health · Any order',    pts: 350 },
+  { id: '1', category: 'MOVE', logoText: 'TS',     logoLight: false, title: 'Free gym class',          subtitle: 'Third Space · Any location',  pts: 800  },
+  { id: '2', category: 'EAT',  logoText: 'NOTTO',  logoLight: true,  title: '25% off your bill',       subtitle: 'Notto Pasta · Any branch',    pts: 500  },
+  { id: '3', category: 'GEAR', logoText: 'bulk',   logoLight: false, title: '30% off protein powder',  subtitle: 'bulk® · Any product',         pts: 400  },
+  { id: '4', category: 'MIND', logoText: 'calm',   logoLight: false, title: '3 months free',           subtitle: 'Calm · Premium subscription', pts: 600  },
+  { id: '5', category: 'GEAR', logoText: 'eight',  logoLight: false, title: '£50 off mattress',        subtitle: 'Eight Sleep · Any model',     pts: 1200 },
+  { id: '6', category: 'EAT',  logoText: 'WH',     logoLight: true,  title: '20% off supplements',     subtitle: 'Whole Health · Any order',    pts: 350  },
+  { id: '7', category: 'MOVE', logoText: 'barry',  logoLight: true,  title: 'Single class pass',       subtitle: "Barry's · Any studio",        pts: 650  },
+  { id: '8', category: 'MIND', logoText: 'head',   logoLight: false, title: '1 month free',            subtitle: 'Headspace · Plus plan',       pts: 300  },
 ];
+
+// ─── Affordability helpers ─────────────────────────────────────────────────────
+
+type Afford = 'can' | 'close' | 'locked';
+
+function affordability(balance: number, pts: number): Afford {
+  if (balance >= pts) return 'can';
+  if (balance >= pts * 0.6) return 'close';
+  return 'locked';
+}
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function SpendScreen() {
   const insets = useSafeAreaInsets();
-  const [activeCategory, setActiveCategory] = useState<Category>('MOVE');
+  const router = useRouter();
+  const [activeCategory, setActiveCategory] = useState<Category>('ALL');
+  const { balance, todayEarned, totalEarned, loading } = usePoints();
+  const levelInfo = getLevelInfo(totalEarned);
 
-  const filtered = REWARDS.filter((r) => r.category === activeCategory);
+  const filtered = activeCategory === 'ALL'
+    ? REWARDS
+    : REWARDS.filter((r) => r.category === activeCategory);
+
+  // Sort: affordable first, then close, then locked
+  const sorted = [...filtered].sort((a, b) => {
+    const order = { can: 0, close: 1, locked: 2 };
+    return order[affordability(balance, a.pts)] - order[affordability(balance, b.pts)];
+  });
+
+  const featuredAfford = affordability(balance, FEATURED.pts);
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
+      <GeometricBackground />
       <View style={styles.header}>
         <Text style={styles.title}>Rewards</Text>
+        <ProfileButton />
       </View>
 
       <ScrollView
@@ -72,54 +102,24 @@ export default function SpendScreen() {
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 80 }]}
         showsVerticalScrollIndicator={false}
       >
-        {/* ── Balance card ───────────────────────────────────── */}
-        <View style={styles.balanceCard}>
-          <View>
-            <Text style={styles.metaLabel}>AVAILABLE</Text>
-            <Text style={styles.balanceNumber}>{MOCK_POINTS.toLocaleString()}</Text>
-            <Text style={styles.balanceUnit}>POWR points</Text>
-          </View>
-          <View style={styles.levelBlock}>
-            <Text style={styles.metaLabel}>LEVEL</Text>
-            <Text style={styles.levelValue}>
-              {MOCK_LEVEL.number} · {MOCK_LEVEL.name}
-            </Text>
-          </View>
-        </View>
+        {/* ── Balance card ─────────────────────────────────────── */}
+        <BalanceCard
+          balance={balance}
+          todayEarned={todayEarned}
+          levelNumber={levelInfo.current.level}
+          levelName={levelInfo.current.name}
+          loading={loading}
+        />
 
-        {/* ── Featured weekly reward ──────────────────────────── */}
-        <View style={styles.featuredCard}>
-          <View style={styles.featuredAccentBar} />
-          <View style={styles.featuredInner}>
-            {/* Header */}
-            <View style={styles.featuredHeaderRow}>
-              <Text style={styles.metaLabel}>THIS WEEK'S REWARD</Text>
-              <View style={styles.rotatesBadge}>
-                <View style={styles.rotateDot} />
-                <Text style={styles.rotateBadgeText}>ROTATES WEEKLY</Text>
-              </View>
-            </View>
+        {/* ── Featured weekly reward ────────────────────────────── */}
+        <FeaturedCard
+          featured={FEATURED}
+          afford={featuredAfford}
+          balance={balance}
+          onRedeem={() => router.push({ pathname: '/redeem-modal', params: { id: 'featured' } })}
+        />
 
-            {/* Title block */}
-            <Text style={styles.featuredTitle}>{FEATURED.title}</Text>
-            <Text style={styles.featuredSubtitle}>{FEATURED.subtitle}</Text>
-
-            {/* Footer */}
-            <View style={styles.featuredFooter}>
-              <View>
-                <Text style={styles.featuredValueLarge}>{FEATURED.value}</Text>
-                <Text style={styles.featuredPts}>· {FEATURED.pts} pts</Text>
-              </View>
-              <Pressable
-                style={({ pressed }) => [styles.redeemPrimary, pressed && { opacity: 0.85 }]}
-              >
-                <Text style={styles.redeemPrimaryText}>REDEEM</Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-
-        {/* ── Category tabs ───────────────────────────────────── */}
+        {/* ── Category tabs ────────────────────────────────────── */}
         <View style={styles.tabsRow}>
           {CATEGORIES.map((cat) => {
             const active = cat === activeCategory;
@@ -137,12 +137,18 @@ export default function SpendScreen() {
           })}
         </View>
 
-        {/* ── Reward rows ─────────────────────────────────────── */}
-        {filtered.map((reward) => (
-          <RewardRow key={reward.id} reward={reward} />
+        {/* ── Reward rows ──────────────────────────────────────── */}
+        {sorted.map((reward) => (
+          <RewardRow
+            key={reward.id}
+            reward={reward}
+            afford={affordability(balance, reward.pts)}
+            balance={balance}
+            onRedeem={() => router.push({ pathname: '/redeem-modal', params: { id: reward.id } })}
+          />
         ))}
 
-        {/* ── Find nearby ─────────────────────────────────────── */}
+        {/* ── Find nearby ──────────────────────────────────────── */}
         <Pressable style={({ pressed }) => [styles.nearbyRow, pressed && { opacity: 0.75 }]}>
           <Text style={styles.nearbyText}>Find nearby fitness partners</Text>
           <Text style={styles.nearbyArrow}>→</Text>
@@ -152,15 +158,129 @@ export default function SpendScreen() {
   );
 }
 
-// ─── Reward row ───────────────────────────────────────────────────────────────
+// ─── Balance Card ─────────────────────────────────────────────────────────────
 
-function RewardRow({ reward }: { reward: Reward }) {
+interface BalanceCardProps {
+  balance: number;
+  todayEarned: number;
+  levelNumber: number;
+  levelName: string;
+  loading: boolean;
+}
+
+function BalanceCard({ balance, todayEarned, levelNumber, levelName, loading }: BalanceCardProps) {
   return (
-    <Pressable style={({ pressed }) => [styles.rewardRow, pressed && { opacity: 0.8 }]}>
+    <View style={styles.balanceCard}>
+      <View>
+        <Text style={styles.metaLabel}>Available</Text>
+        <Text style={[styles.balanceNumber, loading && { opacity: 0.4 }]}>
+          {balance.toLocaleString()}
+        </Text>
+        <Text style={styles.balanceUnit}>POWR points</Text>
+      </View>
+
+      <View style={styles.balanceRight}>
+        {todayEarned > 0 && (
+          <View style={styles.todayBadge}>
+            <Text style={styles.todayBadgeText}>+{todayEarned} today</Text>
+          </View>
+        )}
+        <View style={styles.levelBlock}>
+          <Text style={styles.metaLabel}>Level</Text>
+          <Text style={styles.levelValue}>{levelNumber} · {levelName}</Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+// ─── Featured Card ────────────────────────────────────────────────────────────
+
+interface FeaturedProps {
+  featured: typeof FEATURED;
+  afford: Afford;
+  balance: number;
+  onRedeem: () => void;
+}
+
+function FeaturedCard({ featured, afford, balance, onRedeem }: FeaturedProps) {
+  const ptsNeeded = featured.pts - balance;
+  const progress = Math.min(balance / featured.pts, 1);
+
+  return (
+    <View style={styles.featuredCard}>
+      <View style={styles.featuredAccentBar} />
+      <View style={styles.featuredInner}>
+        <View style={styles.featuredHeaderRow}>
+          <Text style={styles.metaLabel}>This week's reward</Text>
+          <View style={styles.rotatesBadge}>
+            <View style={styles.rotateDot} />
+            <Text style={styles.rotateBadgeText}>Rotates weekly</Text>
+          </View>
+        </View>
+
+        <Text style={styles.featuredTitle}>{featured.title}</Text>
+        <Text style={styles.featuredSubtitle}>{featured.subtitle}</Text>
+
+        {/* Progress bar — always visible */}
+        {afford !== 'can' && (
+          <View style={styles.featuredProgressWrap}>
+            <View style={[styles.featuredProgressBar, { width: `${progress * 100}%` as any }]} />
+          </View>
+        )}
+
+        <View style={styles.featuredFooter}>
+          <View>
+            <Text style={styles.featuredValueLarge}>{featured.value}</Text>
+            <Text style={styles.featuredPts}>· {featured.pts} pts</Text>
+          </View>
+
+          {afford === 'can' ? (
+            <Pressable style={({ pressed }) => [styles.redeemPrimary, pressed && { opacity: 0.85 }]} onPress={onRedeem}>
+              <Text style={styles.redeemPrimaryText}>Redeem</Text>
+            </Pressable>
+          ) : afford === 'close' ? (
+            <View style={styles.closeBlock}>
+              <Text style={styles.closeText}>{ptsNeeded} pts away</Text>
+              <Text style={styles.closeHint}>Keep moving</Text>
+            </View>
+          ) : (
+            <View style={styles.lockedBlock}>
+              <Text style={styles.lockedText}>{ptsNeeded.toLocaleString()} pts needed</Text>
+            </View>
+          )}
+        </View>
+      </View>
+    </View>
+  );
+}
+
+// ─── Reward Row ───────────────────────────────────────────────────────────────
+
+interface RewardRowProps {
+  reward: Reward;
+  afford: Afford;
+  balance: number;
+  onRedeem: () => void;
+}
+
+function RewardRow({ reward, afford, balance, onRedeem }: RewardRowProps) {
+  const ptsNeeded = reward.pts - balance;
+  const progress = Math.min(balance / reward.pts, 1);
+  const isLocked = afford === 'locked';
+
+  return (
+    <Pressable
+      style={({ pressed }) => [
+        styles.rewardRow,
+        isLocked && styles.rewardRowLocked,
+        pressed && !isLocked && { opacity: 0.8 },
+      ]}
+    >
       {/* Logo */}
-      <View style={[styles.logoBox, reward.logoLight && styles.logoBoxLight]}>
+      <View style={[styles.logoBox, reward.logoLight && styles.logoBoxLight, isLocked && styles.logoBoxLocked]}>
         <Text
-          style={[styles.logoText, reward.logoLight && styles.logoTextDark]}
+          style={[styles.logoText, reward.logoLight && styles.logoTextDark, isLocked && styles.logoTextLocked]}
           numberOfLines={1}
           adjustsFontSizeToFit
         >
@@ -170,16 +290,32 @@ function RewardRow({ reward }: { reward: Reward }) {
 
       {/* Info */}
       <View style={styles.rewardInfo}>
-        <Text style={styles.rewardTitle}>{reward.title}</Text>
+        <Text style={[styles.rewardTitle, isLocked && styles.rewardTitleLocked]}>{reward.title}</Text>
         <Text style={styles.rewardSubtitle}>{reward.subtitle}</Text>
+
+        {/* Progress bar for "close" state */}
+        {afford === 'close' && (
+          <View style={styles.progressWrap}>
+            <View style={[styles.progressBar, { width: `${progress * 100}%` as any }]} />
+          </View>
+        )}
       </View>
 
       {/* Right */}
       <View style={styles.rewardRight}>
-        <Text style={styles.rewardPts}>{reward.pts} pts</Text>
-        <Pressable style={({ pressed }) => [styles.redeemGhost, pressed && { opacity: 0.75 }]}>
-          <Text style={styles.redeemGhostText}>REDEEM</Text>
-        </Pressable>
+        <Text style={[styles.rewardPts, isLocked && styles.rewardPtsLocked]}>
+          {reward.pts} pts
+        </Text>
+
+        {afford === 'can' ? (
+          <Pressable style={({ pressed }) => [styles.redeemGhost, pressed && { opacity: 0.75 }]} onPress={onRedeem}>
+            <Text style={styles.redeemGhostText}>Redeem</Text>
+          </Pressable>
+        ) : afford === 'close' ? (
+          <Text style={styles.closeHintSm}>{ptsNeeded} away</Text>
+        ) : (
+          <Text style={styles.lockedHint}>Locked</Text>
+        )}
       </View>
     </Pressable>
   );
@@ -196,16 +332,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 12,
     paddingBottom: 6,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   title: {
-    fontSize: 32,
+    fontSize: 28,
     fontWeight: '200',
-    letterSpacing: -0.5,
+    letterSpacing: -0.4,
     color: TEXT,
   },
-  scroll: {
-    flex: 1,
-  },
+  scroll: { flex: 1 },
   content: {
     paddingHorizontal: 12,
     gap: 8,
@@ -244,20 +381,38 @@ const styles = StyleSheet.create({
     color: DIM,
     marginTop: 2,
   },
+  balanceRight: {
+    alignItems: 'flex-end',
+    gap: 8,
+  },
+  todayBadge: {
+    backgroundColor: 'rgba(232,210,0,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(232,210,0,0.25)',
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  todayBadgeText: {
+    fontSize: 10,
+    fontWeight: '400',
+    color: GOLD,
+    letterSpacing: 0.3,
+  },
   levelBlock: {
     alignItems: 'flex-end',
   },
   levelValue: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '300',
     color: TEXT,
   },
 
   // ── Featured card
   featuredCard: {
-    backgroundColor: 'rgba(30,28,8,0.95)',
+    backgroundColor: 'rgba(28,26,6,0.98)',
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: 'rgba(232,210,0,0.15)',
     borderRadius: 16,
     overflow: 'hidden',
   },
@@ -272,7 +427,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 16,
   },
   rotatesBadge: {
     flexDirection: 'row',
@@ -281,9 +436,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 9,
     paddingVertical: 4,
     borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(255,255,255,0.07)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.14)',
+    borderColor: 'rgba(255,255,255,0.12)',
   },
   rotateDot: {
     width: 5,
@@ -294,7 +449,7 @@ const styles = StyleSheet.create({
   rotateBadgeText: {
     fontSize: 8,
     fontWeight: '500',
-    letterSpacing: 1.5,
+    letterSpacing: 1.2,
     color: MUTED,
     textTransform: 'uppercase',
   },
@@ -309,7 +464,19 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '300',
     color: DIM,
-    marginBottom: 28,
+    marginBottom: 20,
+  },
+  featuredProgressWrap: {
+    height: 2,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 1,
+    overflow: 'hidden',
+    marginBottom: 16,
+  },
+  featuredProgressBar: {
+    height: '100%',
+    backgroundColor: GOLD,
+    borderRadius: 1,
   },
   featuredFooter: {
     flexDirection: 'row',
@@ -340,6 +507,28 @@ const styles = StyleSheet.create({
     color: '#0a0a0a',
     textTransform: 'uppercase',
   },
+  closeBlock: {
+    alignItems: 'flex-end',
+  },
+  closeText: {
+    fontSize: 13,
+    fontWeight: '300',
+    color: GOLD,
+  },
+  closeHint: {
+    fontSize: 10,
+    fontWeight: '300',
+    color: MUTED,
+    marginTop: 2,
+  },
+  lockedBlock: {
+    alignItems: 'flex-end',
+  },
+  lockedText: {
+    fontSize: 12,
+    fontWeight: '300',
+    color: MUTED,
+  },
 
   // ── Category tabs
   tabsRow: {
@@ -361,7 +550,7 @@ const styles = StyleSheet.create({
     backgroundColor: TEXT,
   },
   tabChipText: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '500',
     letterSpacing: 1.5,
     color: MUTED,
@@ -382,6 +571,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
   },
+  rewardRowLocked: {
+    opacity: 0.45,
+  },
   logoBox: {
     width: 52,
     height: 52,
@@ -398,6 +590,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#F2F2F2',
     borderColor: 'rgba(255,255,255,0.06)',
   },
+  logoBoxLocked: {
+    backgroundColor: 'rgba(255,255,255,0.03)',
+  },
   logoText: {
     fontSize: 11,
     fontWeight: '600',
@@ -406,6 +601,9 @@ const styles = StyleSheet.create({
   },
   logoTextDark: {
     color: '#1a1a1a',
+  },
+  logoTextLocked: {
+    color: MUTED,
   },
   rewardInfo: {
     flex: 1,
@@ -416,10 +614,25 @@ const styles = StyleSheet.create({
     fontWeight: '300',
     color: TEXT,
   },
+  rewardTitleLocked: {
+    color: DIM,
+  },
   rewardSubtitle: {
     fontSize: 11,
     fontWeight: '300',
     color: DIM,
+  },
+  progressWrap: {
+    height: 1.5,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 1,
+    overflow: 'hidden',
+    marginTop: 6,
+  },
+  progressBar: {
+    height: '100%',
+    backgroundColor: GOLD,
+    borderRadius: 1,
   },
   rewardRight: {
     alignItems: 'flex-end',
@@ -431,9 +644,12 @@ const styles = StyleSheet.create({
     fontWeight: '400',
     color: GOLD,
   },
+  rewardPtsLocked: {
+    color: MUTED,
+  },
   redeemGhost: {
     borderWidth: 1,
-    borderColor: 'rgba(250,204,21,0.35)',
+    borderColor: 'rgba(232,210,0,0.35)',
     borderRadius: 20,
     paddingHorizontal: 12,
     paddingVertical: 5,
@@ -444,6 +660,18 @@ const styles = StyleSheet.create({
     letterSpacing: 1.5,
     color: GOLD,
     textTransform: 'uppercase',
+  },
+  closeHintSm: {
+    fontSize: 10,
+    fontWeight: '300',
+    color: GOLD,
+    opacity: 0.8,
+  },
+  lockedHint: {
+    fontSize: 10,
+    fontWeight: '300',
+    color: MUTED,
+    letterSpacing: 0.5,
   },
 
   // ── Nearby row

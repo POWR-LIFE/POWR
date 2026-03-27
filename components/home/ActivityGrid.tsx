@@ -4,7 +4,7 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import { ACTIVITIES, type ActivityType } from '@/constants/activities';
 
-const GOLD = '#facc15';
+const GOLD = '#E8D200';
 
 export interface ActivityGridItem {
   type: ActivityType;
@@ -63,7 +63,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(250,204,21,0.12)',
+    backgroundColor: 'rgba(232,210,0,0.12)',
     borderWidth: 1,
     flexShrink: 0,
   },

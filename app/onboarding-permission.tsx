@@ -1,12 +1,15 @@
+import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import { useEffect, useRef } from 'react';
-import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
+import * as Location from 'expo-location';
+import { useEffect, useRef, useState } from 'react';
+import { Animated, Pressable, StyleSheet, Text, View, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import MagicRings from '@/components/MagicRings';
+import GeometricBackground from '@/components/GeometricBackground';
+import { awardBonus } from '@/lib/api/points';
 
-const GOLD = '#facc15';
+const GOLD = '#E8D200';
 const BG = '#0d0d0d';
 
 function StepDots({ current }: { current: number }) {
@@ -30,7 +33,7 @@ const dotStyles = StyleSheet.create({
         flexDirection: 'row',
         gap: 6,
         justifyContent: 'center',
-        marginBottom: 28,
+        marginBottom: 20,
     },
     dot: {
         height: 5,
@@ -49,6 +52,7 @@ const dotStyles = StyleSheet.create({
 export default function OnboardingPermissionScreen() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
+    const [requesting, setRequesting] = useState(false);
 
     const contentFade = useRef(new Animated.Value(0)).current;
     const buttonsFade = useRef(new Animated.Value(0)).current;
@@ -62,23 +66,62 @@ export default function OnboardingPermissionScreen() {
         ]).start();
     }, [contentFade, buttonsFade]);
 
+    const handleAllowLocation = async () => {
+        if (requesting) return;
+        setRequesting(true);
+
+        try {
+            // First, request foreground location permission
+            const { status: fgStatus } = await Location.requestForegroundPermissionsAsync();
+            
+            if (fgStatus !== 'granted') {
+                Alert.alert(
+                    'Location Required',
+                    'To earn while you move, POWR needs location access. You can also skip for now.',
+                    [
+                        { text: 'Cancel', style: 'cancel', onPress: () => setRequesting(false) },
+                        { text: 'Skip', onPress: () => router.push('/onboarding-health') }
+                    ]
+                );
+                return;
+            }
+
+            // Then, request background location permission (optional but needed for passive tracking)
+            // On some platforms, this requires a separate request
+            try {
+                await Location.requestBackgroundPermissionsAsync();
+            } catch (e) {
+                console.warn('Background permission request failed', e);
+            }
+
+            // Award the location permission bonus (fire-and-forget; idempotent on server)
+            awardBonus('location_permission').catch((e) =>
+                console.warn('Failed to award location bonus', e)
+            );
+
+            // Navigate to next screen
+            router.push('/onboarding-health');
+        } catch (error) {
+            console.error('Error requesting location permission:', error);
+            router.push('/onboarding-health');
+        } finally {
+            setRequesting(false);
+        }
+    };
+
     return (
         <View style={styles.container}>
-            <LinearGradient
-                colors={[BG, '#0f0f0f', BG]}
-                locations={[0, 0.5, 1]}
-                style={StyleSheet.absoluteFillObject}
-            />
+            <GeometricBackground />
             <MagicRings />
 
-            {/* Logo */}
-            <View style={[styles.logo, { top: insets.top + 18 }]}>
-                <Image
-                    source={require('@/assets/images/powrlogotext.png')}
-                    style={styles.logoImage}
-                    contentFit="contain"
-                />
-            </View>
+            {/* Back button */}
+            <Pressable
+                style={[styles.backButton, { top: insets.top + 14 }]}
+                onPress={() => router.back()}
+                hitSlop={24}
+            >
+                <Ionicons name="chevron-back" size={26} color="rgba(255,255,255,0.55)" />
+            </Pressable>
 
             {/* Center content */}
             <View style={[styles.center, { paddingTop: insets.top + 60 }]}>
@@ -99,13 +142,18 @@ export default function OnboardingPermissionScreen() {
                 <StepDots current={1} />
 
                 <Pressable
-                    style={styles.primaryButton}
-                    onPress={() => router.push('/onboarding-health')}
+                    style={[styles.primaryButton, requesting && { opacity: 0.7 }]}
+                    onPress={handleAllowLocation}
+                    disabled={requesting}
                 >
-                    <Text style={styles.primaryLabel}>ALLOW LOCATION ACCESS</Text>
-                    <View style={styles.bonusBadge}>
-                        <Text style={styles.bonusLabel}>+20 POWR</Text>
-                    </View>
+                    <Text style={styles.primaryLabel}>
+                        {requesting ? 'REQUESTING...' : 'ALLOW LOCATION ACCESS'}
+                    </Text>
+                    {!requesting && (
+                        <View style={styles.bonusBadge}>
+                            <Text style={styles.bonusLabel}>+20 POWR</Text>
+                        </View>
+                    )}
                 </Pressable>
 
                 <Pressable
@@ -124,14 +172,11 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: BG,
     },
-    logo: {
+    backButton: {
         position: 'absolute',
-        left: 20,
-        zIndex: 10,
-    },
-    logoImage: {
-        width: 100,
-        height: 36,
+        left: 16,
+        zIndex: 20,
+        padding: 4,
     },
     center: {
         flex: 1,

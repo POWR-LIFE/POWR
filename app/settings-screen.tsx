@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
+import GeometricBackground from '@/components/GeometricBackground';
 import {
   Pressable,
   ScrollView,
@@ -11,9 +12,11 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useAuth } from '@/context/AuthContext';
+
 // ─── Design tokens ────────────────────────────────────────────────────────────
 
-const GOLD    = '#facc15';
+const GOLD    = '#E8D200';
 const BG      = '#0d0d0d';
 const CARD_BG = 'rgba(40,40,40,0.85)';
 const BORDER  = 'rgba(255,255,255,0.08)';
@@ -27,6 +30,7 @@ const RED     = '#ef4444';
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { signOut } = useAuth();
 
   // Toggle states
   const [notifWorkouts,  setNotifWorkouts]  = useState(true);
@@ -38,6 +42,7 @@ export default function SettingsScreen() {
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
+      <GeometricBackground />
       {/* ── Header ──────────────────────────────────────────── */}
       <View style={styles.header}>
         <Pressable
@@ -190,7 +195,7 @@ export default function SettingsScreen() {
         <View style={styles.card}>
           <Pressable
             style={({ pressed }) => [styles.dangerRow, pressed && { opacity: 0.7 }]}
-            onPress={() => {}}
+            onPress={signOut}
           >
             <Ionicons name="log-out-outline" size={18} color={RED} />
             <Text style={styles.dangerLabel}>Sign out</Text>
@@ -272,7 +277,7 @@ function RowToggle({ icon, label, sublabel, value, onValueChange, isLast }: RowT
       <Switch
         value={value}
         onValueChange={onValueChange}
-        trackColor={{ false: 'rgba(255,255,255,0.10)', true: 'rgba(250,204,21,0.4)' }}
+        trackColor={{ false: 'rgba(255,255,255,0.10)', true: 'rgba(232,210,0,0.4)' }}
         thumbColor={value ? GOLD : 'rgba(255,255,255,0.5)'}
         ios_backgroundColor="rgba(255,255,255,0.10)"
       />

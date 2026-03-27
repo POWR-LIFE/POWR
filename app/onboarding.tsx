@@ -3,8 +3,9 @@ import { useRouter } from 'expo-router';
 import { useEffect, useRef } from 'react';
 import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Video, ResizeMode } from 'expo-av';
 
-const GOLD = '#facc15';
+const GOLD = '#E8D200';
 const BG = '#0d0d0d';
 
 export default function OnboardingScreen() {
@@ -30,31 +31,33 @@ export default function OnboardingScreen() {
 
     return (
         <View style={styles.container}>
-            {/* Logo — centered */}
-            <View style={styles.logo}>
-                <Image
-                    source={require('@/assets/images/powrlogotext.png')}
-                    style={styles.logoImage}
-                    contentFit="contain"
-                />
-            </View>
+            {/* Background Video */}
+            <Video
+                source={{ uri: 'https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/landing-page-assets/landing_hero.mp4' }}
+                style={StyleSheet.absoluteFill}
+                resizeMode={ResizeMode.COVER}
+                shouldPlay
+                isLooping
+                isMuted
+            />
+{/* Dark overlay for text readability */}
+            <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.2)' }]} />
 
             {/* Bottom content */}
             <View style={[styles.content, { paddingBottom: insets.bottom + 32 }]}>
                 {/* Headlines */}
                 <View style={styles.headlineBlock}>
                     <Animated.Text style={[styles.headline, { opacity: line1Fade }]}>
-                        EVERY
+                        Your last workout
                     </Animated.Text>
-                    <Animated.Text style={[styles.headline, { opacity: line2Fade }]}>
-                        MOVE{' '}
-                        <Text style={styles.headlineGold}>COUNTS.</Text>
+                    <Animated.Text style={[styles.headlineGoldLine, { opacity: line2Fade }]}>
+                        earned you nothing.
                     </Animated.Text>
                 </View>
 
                 {/* Sub copy */}
                 <Animated.Text style={[styles.subCopy, { opacity: subFade }]}>
-                    You already show up. Now every session,{'\n'}every run, every gym visit earns real rewards.
+                    POWR makes sure it counts. Every gym session, run, walk and ride - rewarded.
                 </Animated.Text>
 
                 {/* Buttons */}
@@ -88,20 +91,6 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: BG,
     },
-    logo: {
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        alignItems: 'center',
-        justifyContent: 'center',
-        pointerEvents: 'none',
-    },
-    logoImage: {
-        width: 320,
-        height: 116,
-    },
     content: {
         position: 'absolute',
         bottom: 0,
@@ -117,6 +106,13 @@ const styles = StyleSheet.create({
         color: '#F2F2F2',
         fontSize: 44,
         fontWeight: '200',
+        letterSpacing: -1.5,
+        lineHeight: 50,
+    },
+    headlineGoldLine: {
+        color: GOLD,
+        fontSize: 44,
+        fontWeight: '400',
         letterSpacing: -1.5,
         lineHeight: 50,
     },

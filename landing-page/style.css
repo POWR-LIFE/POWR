@@ -2,11 +2,9 @@
    POWR Landing Page — Design System
    ════════════════════════════════════════════ */
 
-/* ─── Tokens ─── */
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
+/* ─── Tokens ─── */
 :root {
     /* Brand Colors */
     --bg: #080808;
@@ -38,9 +36,9 @@
     --radius-card: 6px;
 
     /* POWR Design Tokens (from Style Guide) */
-    --powr-yellow: #FFD600;
-    --powr-yellow-dim: rgba(255, 214, 0, 0.13);
-    --powr-yellow-mid: rgba(255, 214, 0, 0.26);
+    --powr-yellow: #E8D200;
+    --powr-yellow-dim: rgba(232, 210, 0, 0.13);
+    --powr-yellow-mid: rgba(232, 210, 0, 0.26);
     --powr-surface-1: #111111;
     --powr-surface-2: #1A1A1A;
     --powr-surface-3: #222222;
@@ -67,19 +65,16 @@
     --nav-height: 72px;
 }
 
-/* ─── Reset ─── */
-*,
-*::before,
-*::after {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-}
 
 html {
     scroll-behavior: smooth;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+}
+
+/* Landing content is hidden by default; shown only by the React LandingPage component */
+#landing-content {
+    display: none;
 }
 
 body {

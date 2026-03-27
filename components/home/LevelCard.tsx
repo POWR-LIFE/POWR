@@ -1,8 +1,10 @@
+import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
+import type { LevelDef } from '@/constants/levels';
 
-const GOLD = '#facc15';
+const GOLD = '#E8D200';
 const ORANGE = '#f97316';
 const GREEN = '#4ade80';
 
@@ -41,10 +43,12 @@ interface LevelCardProps {
   xpMax: number;
   metrics: [RingMetric, RingMetric, RingMetric];
   nextLevelHint: string;
+  currentLevel: LevelDef;
 }
 
-export function LevelCard({ levelNumber, levelName, xp, xpMax, metrics, nextLevelHint }: LevelCardProps) {
+export function LevelCard({ levelNumber, levelName, xp, xpMax, metrics, nextLevelHint, currentLevel }: LevelCardProps) {
   const overallPct = Math.min(xp / xpMax, 1);
+  const pill = currentLevel.pill;
 
   return (
     <View style={styles.card}>
@@ -101,22 +105,29 @@ export function LevelCard({ levelNumber, levelName, xp, xpMax, metrics, nextLeve
           <View style={styles.topRow}>
             <Text style={styles.lvNum}>{levelNumber}</Text>
             <Text style={styles.lvName}>{levelName}</Text>
-            <Text style={styles.xp}>
-              <Text style={styles.xpStrong}>{xp.toLocaleString()}</Text>
-              {` / ${xpMax.toLocaleString()} XP`}
-            </Text>
+            <View style={styles.xpBox}>
+              <Text style={styles.xpVal}>{xp.toLocaleString()}</Text>
+              <Text style={styles.xpMax}>/ {xpMax.toLocaleString()} XP</Text>
+            </View>
           </View>
 
           {/* Legend rows */}
           <View style={styles.legend}>
             {metrics.map((m) => (
               <View key={m.gradId} style={styles.legendRow}>
-                <View style={[styles.legendDot, { backgroundColor: m.colour }]} />
+                <Ionicons
+                  name={m.icon as any}
+                  size={12}
+                  color={m.colour}
+                  style={styles.legendIcon}
+                />
                 <View style={styles.barWrap}>
                   <View style={[styles.bar, { width: `${m.pct * 100}%` as any, backgroundColor: m.colour }]} />
                 </View>
-                <Text style={[styles.legendVal, { color: m.colour }]}>{m.value}</Text>
-                <Text style={styles.legendMax}>/{m.max}</Text>
+                <View style={styles.statBox}>
+                  <Text style={[styles.legendVal, { color: m.colour }]}>{m.value}</Text>
+                  <Text style={styles.legendMax}>/{m.max}</Text>
+                </View>
               </View>
             ))}
           </View>
@@ -126,8 +137,8 @@ export function LevelCard({ levelNumber, levelName, xp, xpMax, metrics, nextLeve
       {/* Next level hint */}
       <View style={styles.nextLevel}>
         <Text style={styles.nextLevelText}>{nextLevelHint}</Text>
-        <View style={styles.nextLevelBadge}>
-          <Text style={styles.nextLevelBadgeText}>GRINDER</Text>
+        <View style={[styles.nextLevelBadge, { backgroundColor: pill.bg, borderColor: pill.border }]}>
+          <Text style={[styles.nextLevelBadgeText, { color: pill.text }]}>{currentLevel.name.toUpperCase()}</Text>
         </View>
       </View>
     </View>
@@ -194,15 +205,23 @@ const styles = StyleSheet.create({
     fontWeight: '300',
     color: 'rgba(255,255,255,0.5)',
   },
-  xp: {
+  xpBox: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    marginLeft: 'auto',
+  },
+  xpVal: {
+    fontSize: 9,
+    fontWeight: '500',
+    color: 'rgba(255,255,255,0.75)',
+    width: 26,
+    textAlign: 'right',
+  },
+  xpMax: {
     fontSize: 9,
     fontWeight: '300',
     color: 'rgba(255,255,255,0.25)',
-    marginLeft: 'auto',
-  },
-  xpStrong: {
-    color: 'rgba(255,255,255,0.75)',
-    fontWeight: '500',
+    width: 56,
   },
   legend: {
     gap: 7,
@@ -212,10 +231,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
   },
-  legendDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
+  legendIcon: {
+    width: 14,
     flexShrink: 0,
   },
   barWrap: {
@@ -229,16 +246,22 @@ const styles = StyleSheet.create({
     height: '100%',
     borderRadius: 1,
   },
+  statBox: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    flexShrink: 0,
+  },
   legendVal: {
     fontSize: 9,
     fontWeight: '400',
-    minWidth: 24,
+    width: 26,
     textAlign: 'right',
   },
   legendMax: {
     fontSize: 9,
     fontWeight: '300',
     color: 'rgba(255,255,255,0.25)',
+    width: 56,
   },
   nextLevel: {
     flexDirection: 'row',

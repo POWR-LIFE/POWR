@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 
-const GOLD = '#facc15';
+const GOLD = '#E8D200';
 const ORANGE = '#f97316';
 
 interface ChallengeCardProps {
@@ -94,9 +94,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 3,
     borderRadius: 20,
-    backgroundColor: 'rgba(250,204,21,0.10)',
+    backgroundColor: 'rgba(232,210,0,0.10)',
     borderWidth: 1,
-    borderColor: 'rgba(250,204,21,0.25)',
+    borderColor: 'rgba(232,210,0,0.25)',
   },
   bonusText: {
     fontSize: 9,

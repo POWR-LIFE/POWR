@@ -8,10 +8,10 @@
 
 export const colours = {
   // Backgrounds
-  bg:       '#0d0d0d',
-  surface1: '#0F0F0F',
-  surface2: '#141414',
-  border:   '#1E1E1E',         // for tab bar / input borders (solid)
+  bg:       '#1E1E1E',
+  surface1: '#222222',
+  surface2: '#272727',
+  border:   '#303030',         // for tab bar / input borders (solid)
   borderCard: 'rgba(255,255,255,0.08)', // for card/row borders (semi-transparent white)
 
   // Card surfaces (semi-transparent — floats above bg)
@@ -19,13 +19,13 @@ export const colours = {
   cardBgAlt: 'rgba(50,50,50,0.75)',
 
   // Brand accent — Tailwind yellow-400, matches homepage components
-  accent:   '#facc15',
+  accent:   '#E8D200',
   onAccent: '#0a0a0a',
 
   // Accent overlays
-  accentGlow: 'rgba(250, 204, 21, 0.08)',
-  accentMid:  'rgba(250, 204, 21, 0.25)',
-  accentDim:  'rgba(250, 204, 21, 0.12)',
+  accentGlow: 'rgba(232, 210, 0, 0.08)',
+  accentMid:  'rgba(232, 210, 0, 0.25)',
+  accentDim:  'rgba(232, 210, 0, 0.12)',
 
   // Text
   textPrimary:   '#F2F2F2',
@@ -206,8 +206,8 @@ export const components = {
     borderWidth:   1,
     background:    colours.cardBg,
     border:        colours.borderCard,
-    activeBorder:  'rgba(250,204,21,0.5)',
-    activeBackground: 'rgba(250,204,21,0.05)',
+    activeBorder:  'rgba(232,210,0,0.5)',
+    activeBackground: 'rgba(232,210,0,0.05)',
   },
   input: {
     height:        48,
@@ -230,8 +230,8 @@ export const components = {
     paddingV:      3,
     borderRadius:  radius.pill,
     borderWidth:   1,
-    background:    'rgba(250,204,21,0.10)',
-    border:        'rgba(250,204,21,0.25)',
+    background:    'rgba(232,210,0,0.10)',
+    border:        'rgba(232,210,0,0.25)',
   },
 } as const;
 

@@ -19,12 +19,9 @@ function TabIcon({ name, nameActive, label, focused }: TabIconProps) {
     <View style={styles.tabItem}>
       <Ionicons
         name={focused ? nameActive : name}
-        size={22}
+        size={26}
         color={focused ? colours.accent : colours.textMuted}
       />
-      <Text style={[styles.tabLabel, focused && styles.tabLabelActive]}>
-        {label}
-      </Text>
     </View>
   );
 }
@@ -48,11 +45,20 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="discover"
+        name="progress"
         options={{
-          title: 'Discover',
+          title: 'Progress',
           tabBarIcon: ({ focused }) => (
-            <TabIcon name="compass-outline" nameActive="compass" label="DISCOVER" focused={focused} />
+            <TabIcon name="bar-chart-outline" nameActive="bar-chart" label="PROGRESS" focused={focused} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="league"
+        options={{
+          title: 'League',
+          tabBarIcon: ({ focused }) => (
+            <TabIcon name="trophy-outline" nameActive="trophy" label="LEAGUE" focused={focused} />
           ),
         }}
       />
@@ -66,12 +72,18 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="discover"
+        options={{
+          title: 'Discover',
+          tabBarIcon: ({ focused }) => (
+            <TabIcon name="compass-outline" nameActive="compass" label="DISCOVER" focused={focused} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="profile"
         options={{
-          title: 'Profile',
-          tabBarIcon: ({ focused }) => (
-            <TabIcon name="person-outline" nameActive="person" label="PROFILE" focused={focused} />
-          ),
+          href: null,
         }}
       />
     </Tabs>

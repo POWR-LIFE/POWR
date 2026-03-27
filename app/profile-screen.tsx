@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import GeometricBackground from '@/components/GeometricBackground';
 import {
   Pressable,
   ScrollView,
@@ -10,9 +11,16 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useAuth } from '@/context/AuthContext';
+import { usePoints } from '@/hooks/usePoints';
+import { useStreak } from '@/hooks/useStreak';
+import { useActivity } from '@/hooks/useActivity';
+import { fetchProfile, type Profile } from '@/lib/api/user';
+import { getLevelInfo } from '@/constants/levels';
+
 // ─── Design tokens ────────────────────────────────────────────────────────────
 
-const GOLD    = '#facc15';
+const GOLD    = '#E8D200';
 const BG      = '#0d0d0d';
 const CARD_BG = 'rgba(40,40,40,0.85)';
 const BORDER  = 'rgba(255,255,255,0.08)';
@@ -20,32 +28,17 @@ const TEXT    = '#F2F2F2';
 const MUTED   = 'rgba(255,255,255,0.25)';
 const DIM     = 'rgba(255,255,255,0.5)';
 
-// ─── Mock data ────────────────────────────────────────────────────────────────
 
-const USER = {
-  initials:    'AJ',
-  name:        'Alex Johnson',
-  handle:      '@alexj',
-  bio:         'Running, lifting, and earning. London-based.',
-  level:       2,
-  levelName:   'Mover',
-  totalPoints: 8_340,
-  sessions:    47,
-  bestStreak:  14,
-  memberSince: 'Jan 2025',
-};
 
-interface Achievement {
-  id: string; icon: string; label: string; earned: boolean;
-}
+// ─── Teaser achievements (shown on profile — tap to see full screen) ──────────
 
-const ACHIEVEMENTS: Achievement[] = [
-  { id: '1', icon: '🔥', label: 'On Fire',   earned: true  },
-  { id: '2', icon: '🏃', label: 'First Run', earned: true  },
-  { id: '3', icon: '💪', label: 'Gym Rat',   earned: true  },
-  { id: '4', icon: '🌊', label: 'Swimmer',   earned: false },
-  { id: '5', icon: '⚡', label: 'Streak 30', earned: false },
-  { id: '6', icon: '🏆', label: 'Elite',     earned: false },
+const TEASER_ACHIEVEMENTS = [
+  { id: 'c1', code: '7D',   name: 'First Week',  earned: true,  colour: '#E8D200' },
+  { id: 'm2', code: '5K',   name: '5K Club',     earned: true,  colour: '#4ade80' },
+  { id: 'm5', code: 'GYM',  name: 'Gym Rat',     earned: true,  colour: '#4ade80' },
+  { id: 'c2', code: '30D',  name: 'Month Strong', earned: false, colour: '#E8D200' },
+  { id: 'l1', code: 'AM',   name: 'Early Bird',  earned: true,  colour: '#38bdf8' },
+  { id: 's1', code: 'TOP',  name: 'Top 10%',     earned: false, colour: '#fb923c' },
 ];
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
@@ -54,15 +47,37 @@ export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
 
+  const { user, signOut } = useAuth();
+  const { totalEarned, balance } = usePoints();
+  const { currentStreak, longestStreak } = useStreak();
+  const { weeklyMetrics } = useActivity();
+  const [profile, setProfile] = useState<Profile | null>(null);
+
+  useEffect(() => {
+    fetchProfile().then(setProfile);
+  }, []);
+
+  // Derive display values
+  const displayName = profile?.display_name
+    ?? user?.user_metadata?.full_name
+    ?? user?.email?.split('@')[0]
+    ?? 'You';
+  const handle = profile?.username ? `@${profile.username}` : user?.email ?? '';
+  const initials = displayName.split(' ').map((w: string) => w[0]).slice(0, 2).join('').toUpperCase();
+
+  const memberSince = user?.created_at
+    ? new Date(user.created_at).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })
+    : '—';
+
+  const { current: levelInfo } = getLevelInfo(totalEarned);
+  const earnedCount = TEASER_ACHIEVEMENTS.filter(a => a.earned).length;
+
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
-      {/* ── Header ──────────────────────────────────────────── */}
+      <GeometricBackground />
+      {/* Header */}
       <View style={styles.header}>
-        <Pressable
-          style={styles.backBtn}
-          onPress={() => router.back()}
-          hitSlop={8}
-        >
+        <Pressable style={styles.backBtn} onPress={() => router.back()} hitSlop={8}>
           <Ionicons name="chevron-back" size={22} color={DIM} />
         </Pressable>
         <Text style={styles.headerTitle}>Profile</Text>
@@ -80,11 +95,11 @@ export default function ProfileScreen() {
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 32 }]}
         showsVerticalScrollIndicator={false}
       >
-        {/* ── Avatar + identity ────────────────────────────── */}
+        {/* ── Identity ─────────────────────────────────────────── */}
         <View style={styles.identityCard}>
           <View style={styles.avatarWrap}>
             <View style={styles.avatar}>
-              <Text style={styles.avatarText}>{USER.initials}</Text>
+              <Text style={styles.avatarText}>{initials || '?'}</Text>
             </View>
             <Pressable style={styles.editAvatarBtn}>
               <Ionicons name="camera-outline" size={13} color={TEXT} />
@@ -93,62 +108,60 @@ export default function ProfileScreen() {
 
           <View style={styles.identityInfo}>
             <View style={styles.nameRow}>
-              <Text style={styles.name}>{USER.name}</Text>
+              <Text style={styles.name}>{displayName}</Text>
               <Pressable style={styles.editNameBtn}>
                 <Ionicons name="pencil-outline" size={13} color={MUTED} />
               </Pressable>
             </View>
-            <Text style={styles.handle}>{USER.handle}</Text>
-            {USER.bio ? (
-              <Text style={styles.bio}>{USER.bio}</Text>
-            ) : null}
+            <Text style={styles.handle}>{handle}</Text>
 
             <View style={styles.metaRow}>
               <View style={styles.levelBadge}>
                 <Text style={styles.levelBadgeText}>
-                  LVL {USER.level} · {USER.levelName}
+                  LVL {levelInfo.level} · {levelInfo.name}
                 </Text>
               </View>
-              <Text style={styles.memberSince}>Since {USER.memberSince}</Text>
+              <Text style={styles.memberSince}>Since {memberSince}</Text>
             </View>
           </View>
         </View>
 
-        {/* ── Stats ────────────────────────────────────────── */}
+        {/* ── Stats ────────────────────────────────────────────── */}
         <View style={styles.statsRow}>
-          <StatBlock value={USER.totalPoints.toLocaleString()} label="TOTAL POWR" gold />
+          <StatBlock value={totalEarned.toLocaleString()} label="Total POWR" gold />
           <View style={styles.statDivider} />
-          <StatBlock value={String(USER.sessions)} label="SESSIONS" />
+          <StatBlock value={String(weeklyMetrics.sessionCount * 4)} label="Sessions" />
           <View style={styles.statDivider} />
-          <StatBlock value={`${USER.bestStreak}d`} label="BEST STREAK" />
+          <StatBlock value={`${longestStreak}d`} label="Best Streak" />
         </View>
 
-        {/* ── Achievements ─────────────────────────────────── */}
+        {/* ── Achievements ─────────────────────────────────────── */}
         <View style={styles.card}>
           <View style={styles.cardHeaderRow}>
-            <Text style={styles.metaLabel}>ACHIEVEMENTS</Text>
-            <Pressable>
-              <Text style={styles.seeAll}>See all →</Text>
+            <Text style={styles.metaLabel}>Achievements</Text>
+            <Pressable onPress={() => router.push({ pathname: '/(tabs)/league', params: { tab: 'journey' } })}>
+              <Text style={styles.seeAll}>{earnedCount} unlocked · See all →</Text>
             </Pressable>
           </View>
           <View style={styles.achievementsGrid}>
-            {ACHIEVEMENTS.map((a) => (
-              <View
+            {TEASER_ACHIEVEMENTS.map((a) => (
+              <Pressable
                 key={a.id}
                 style={[styles.badge, !a.earned && styles.badgeLocked]}
+                onPress={() => router.push({ pathname: '/(tabs)/league', params: { tab: 'journey' } })}
               >
-                <Text style={[styles.badgeIcon, !a.earned && styles.badgeIconLocked]}>
-                  {a.earned ? a.icon : '?'}
+                <Text style={[styles.badgeCode, !a.earned && styles.badgeCodeLocked, { color: a.earned ? a.colour : MUTED }]}>
+                  {a.earned ? a.code : '—'}
                 </Text>
                 <Text style={[styles.badgeLabel, !a.earned && styles.badgeLabelLocked]}>
-                  {a.label}
+                  {a.name}
                 </Text>
-              </View>
+              </Pressable>
             ))}
           </View>
         </View>
 
-        {/* ── Referral ─────────────────────────────────────── */}
+        {/* ── Referral ─────────────────────────────────────────── */}
         <View style={styles.referralCard}>
           <View style={styles.referralAccentBar} />
           <View style={styles.referralInner}>
@@ -157,22 +170,26 @@ export default function ProfileScreen() {
               You both earn 200 bonus POWR when they complete their first workout.
             </Text>
             <Pressable style={styles.referralBtn}>
-              <Text style={styles.referralBtnText}>SHARE INVITE</Text>
+              <Text style={styles.referralBtnText}>Share invite</Text>
             </Pressable>
           </View>
         </View>
 
-        {/* ── Quick links ───────────────────────────────────── */}
+        {/* ── Quick links ───────────────────────────────────────── */}
         <View style={styles.card}>
-          {QUICK_LINKS.map((row, i) => (
+          {[
+            { label: 'Settings',             icon: 'settings-outline',      onPress: () => router.push('/settings-screen') },
+            { label: 'Connected Wearables',  icon: 'watch-outline',         onPress: () => {} },
+            { label: 'Help & Support',       icon: 'help-circle-outline',   onPress: () => {} },
+          ].map((row, i, arr) => (
             <Pressable
               key={row.label}
               style={({ pressed }) => [
                 styles.linkRow,
-                i < QUICK_LINKS.length - 1 && styles.linkRowBorder,
+                i < arr.length - 1 && styles.linkRowBorder,
                 pressed && { opacity: 0.7 },
               ]}
-              onPress={row.onPress ? row.onPress(router) : undefined}
+              onPress={row.onPress}
             >
               <View style={styles.linkIcon}>
                 <Ionicons name={row.icon as any} size={17} color={GOLD} />
@@ -182,46 +199,26 @@ export default function ProfileScreen() {
             </Pressable>
           ))}
         </View>
+
+        {/* ── Sign out ──────────────────────────────────────────── */}
+        <Pressable
+          style={({ pressed }) => [styles.signOutBtn, pressed && { opacity: 0.7 }]}
+          onPress={signOut}
+        >
+          <Text style={styles.signOutText}>Sign out</Text>
+        </Pressable>
       </ScrollView>
     </View>
   );
 }
 
-// ─── Quick links config ───────────────────────────────────────────────────────
-
-const QUICK_LINKS = [
-  {
-    label: 'Settings',
-    icon: 'settings-outline',
-    onPress: (router: any) => () => router.push('/settings-screen'),
-  },
-  {
-    label: 'Connected Wearables',
-    icon: 'watch-outline',
-    onPress: null,
-  },
-  {
-    label: 'Help & Support',
-    icon: 'help-circle-outline',
-    onPress: null,
-  },
-];
-
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function StatBlock({
-  value,
-  label,
-  gold,
-}: {
-  value: string;
-  label: string;
-  gold?: boolean;
-}) {
+function StatBlock({ value, label, gold }: { value: string; label: string; gold?: boolean }) {
   return (
     <View style={styles.statBlock}>
       <Text style={[styles.statValue, gold && styles.statValueGold]}>{value}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
+      <Text style={styles.statLabel}>{label.toUpperCase()}</Text>
     </View>
   );
 }
@@ -229,12 +226,8 @@ function StatBlock({
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: BG,
-  },
+  screen: { flex: 1, backgroundColor: BG },
 
-  // Header
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -244,300 +237,117 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
   },
   backBtn: {
-    width: 36,
-    height: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 18,
-    backgroundColor: CARD_BG,
-    borderWidth: 1,
-    borderColor: BORDER,
+    width: 36, height: 36, alignItems: 'center', justifyContent: 'center',
+    borderRadius: 18, backgroundColor: CARD_BG, borderWidth: 1, borderColor: BORDER,
   },
-  headerTitle: {
-    fontSize: 16,
-    fontWeight: '400',
-    letterSpacing: 0.5,
-    color: TEXT,
-  },
+  headerTitle: { fontSize: 16, fontWeight: '400', letterSpacing: 0.5, color: TEXT },
   settingsBtn: {
-    width: 36,
-    height: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 18,
-    backgroundColor: CARD_BG,
-    borderWidth: 1,
-    borderColor: BORDER,
+    width: 36, height: 36, alignItems: 'center', justifyContent: 'center',
+    borderRadius: 18, backgroundColor: CARD_BG, borderWidth: 1, borderColor: BORDER,
   },
 
   scroll: { flex: 1 },
-  content: {
-    paddingHorizontal: 12,
-    gap: 10,
-    paddingTop: 8,
-  },
+  content: { paddingHorizontal: 12, gap: 10, paddingTop: 8 },
 
-  // Identity card
+  // Identity
   identityCard: {
-    backgroundColor: CARD_BG,
-    borderWidth: 1,
-    borderColor: BORDER,
-    borderRadius: 20,
-    padding: 18,
-    gap: 16,
+    backgroundColor: CARD_BG, borderWidth: 1, borderColor: BORDER,
+    borderRadius: 20, padding: 18, gap: 16,
   },
-  avatarWrap: {
-    position: 'relative',
-    alignSelf: 'center',
-  },
+  avatarWrap: { position: 'relative', alignSelf: 'center' },
   avatar: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: GOLD,
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 80, height: 80, borderRadius: 40,
+    backgroundColor: GOLD, alignItems: 'center', justifyContent: 'center',
   },
-  avatarText: {
-    fontSize: 26,
-    fontWeight: '600',
-    color: '#0a0a0a',
-  },
+  avatarText: { fontSize: 26, fontWeight: '600', color: '#0a0a0a' },
   editAvatarBtn: {
-    position: 'absolute',
-    bottom: 0,
-    right: 0,
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: '#1a1a1a',
-    borderWidth: 1.5,
-    borderColor: BORDER,
-    alignItems: 'center',
-    justifyContent: 'center',
+    position: 'absolute', bottom: 0, right: 0,
+    width: 26, height: 26, borderRadius: 13,
+    backgroundColor: '#1a1a1a', borderWidth: 1.5, borderColor: BORDER,
+    alignItems: 'center', justifyContent: 'center',
   },
-  identityInfo: {
-    gap: 6,
-  },
-  nameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  name: {
-    fontSize: 22,
-    fontWeight: '300',
-    letterSpacing: -0.3,
-    color: TEXT,
-  },
-  editNameBtn: {
-    padding: 4,
-  },
-  handle: {
-    fontSize: 13,
-    fontWeight: '300',
-    color: MUTED,
-  },
-  bio: {
-    fontSize: 13,
-    fontWeight: '300',
-    color: DIM,
-    lineHeight: 19,
-    marginTop: 2,
-  },
-  metaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginTop: 4,
-  },
+  identityInfo: { gap: 6 },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  name: { fontSize: 22, fontWeight: '300', letterSpacing: -0.3, color: TEXT },
+  editNameBtn: { padding: 4 },
+  handle: { fontSize: 13, fontWeight: '300', color: MUTED },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 4 },
   levelBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 20,
-    backgroundColor: 'rgba(250,204,21,0.10)',
-    borderWidth: 1,
-    borderColor: 'rgba(250,204,21,0.25)',
+    paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20,
+    backgroundColor: 'rgba(232,210,0,0.10)', borderWidth: 1, borderColor: 'rgba(232,210,0,0.25)',
   },
   levelBadgeText: {
-    fontSize: 10,
-    fontWeight: '600',
-    letterSpacing: 0.5,
-    color: GOLD,
-    textTransform: 'uppercase',
+    fontSize: 10, fontWeight: '600', letterSpacing: 0.5, color: GOLD, textTransform: 'uppercase',
   },
-  memberSince: {
-    fontSize: 11,
-    fontWeight: '300',
-    color: MUTED,
-  },
+  memberSince: { fontSize: 11, fontWeight: '300', color: MUTED },
 
   // Stats
   statsRow: {
-    backgroundColor: CARD_BG,
-    borderWidth: 1,
-    borderColor: BORDER,
-    borderRadius: 16,
-    padding: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
+    backgroundColor: CARD_BG, borderWidth: 1, borderColor: BORDER,
+    borderRadius: 16, padding: 14, flexDirection: 'row', alignItems: 'center',
   },
-  statBlock: {
-    flex: 1,
-    alignItems: 'center',
-    gap: 4,
-  },
-  statValue: {
-    fontSize: 22,
-    fontWeight: '100',
-    letterSpacing: -1,
-    color: TEXT,
-  },
+  statBlock: { flex: 1, alignItems: 'center', gap: 4 },
+  statValue: { fontSize: 22, fontWeight: '100', letterSpacing: -1, color: TEXT },
   statValueGold: { color: GOLD },
-  statLabel: {
-    fontSize: 8,
-    fontWeight: '500',
-    letterSpacing: 1.5,
-    color: MUTED,
-    textTransform: 'uppercase',
-  },
-  statDivider: {
-    width: 1,
-    height: 32,
-    backgroundColor: BORDER,
-  },
+  statLabel: { fontSize: 8, fontWeight: '500', letterSpacing: 1.5, color: MUTED, textTransform: 'uppercase' },
+  statDivider: { width: 1, height: 32, backgroundColor: BORDER },
 
   // Card
   card: {
-    backgroundColor: CARD_BG,
-    borderWidth: 1,
-    borderColor: BORDER,
-    borderRadius: 16,
-    padding: 14,
-    gap: 12,
+    backgroundColor: CARD_BG, borderWidth: 1, borderColor: BORDER,
+    borderRadius: 16, padding: 14, gap: 12,
   },
-  cardHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  metaLabel: {
-    fontSize: 9,
-    fontWeight: '500',
-    letterSpacing: 2,
-    color: MUTED,
-    textTransform: 'uppercase',
-  },
-  seeAll: {
-    fontSize: 11,
-    fontWeight: '300',
-    color: GOLD,
-  },
+  cardHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  metaLabel: { fontSize: 9, fontWeight: '500', letterSpacing: 2, color: MUTED, textTransform: 'uppercase' },
+  seeAll: { fontSize: 11, fontWeight: '300', color: GOLD },
 
   // Achievements
-  achievementsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
+  achievementsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   badge: {
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 12,
-    backgroundColor: 'rgba(250,204,21,0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(250,204,21,0.20)',
-    minWidth: 64,
+    alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 10,
+    borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.10)', minWidth: 60,
   },
-  badgeLocked: {
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    borderColor: BORDER,
-  },
-  badgeIcon: { fontSize: 22 },
-  badgeIconLocked: { opacity: 0.2 },
+  badgeLocked: { opacity: 0.35 },
+  badgeCode: { fontSize: 16, fontWeight: '200', letterSpacing: -0.5 },
+  badgeCodeLocked: { color: MUTED },
   badgeLabel: {
-    fontSize: 9,
-    fontWeight: '500',
-    letterSpacing: 0.5,
-    color: GOLD,
-    textTransform: 'uppercase',
-    textAlign: 'center',
+    fontSize: 8, fontWeight: '500', letterSpacing: 0.5, color: DIM,
+    textTransform: 'uppercase', textAlign: 'center',
   },
   badgeLabelLocked: { color: MUTED },
 
   // Referral
   referralCard: {
-    backgroundColor: 'rgba(20,18,5,0.95)',
-    borderWidth: 1,
-    borderColor: BORDER,
-    borderRadius: 16,
-    overflow: 'hidden',
-    flexDirection: 'row',
+    backgroundColor: 'rgba(20,18,5,0.95)', borderWidth: 1, borderColor: BORDER,
+    borderRadius: 16, overflow: 'hidden', flexDirection: 'row',
   },
-  referralAccentBar: {
-    width: 2,
-    backgroundColor: GOLD,
-    opacity: 0.9,
-  },
-  referralInner: {
-    flex: 1,
-    padding: 14,
-    gap: 8,
-  },
-  referralTitle: {
-    fontSize: 16,
-    fontWeight: '300',
-    color: TEXT,
-  },
-  referralSub: {
-    fontSize: 12,
-    fontWeight: '300',
-    color: DIM,
-    lineHeight: 18,
-  },
+  referralAccentBar: { width: 2, backgroundColor: GOLD, opacity: 0.9 },
+  referralInner: { flex: 1, padding: 14, gap: 8 },
+  referralTitle: { fontSize: 16, fontWeight: '300', color: TEXT },
+  referralSub: { fontSize: 12, fontWeight: '300', color: DIM, lineHeight: 18 },
   referralBtn: {
-    alignSelf: 'flex-start',
-    backgroundColor: GOLD,
-    borderRadius: 20,
-    paddingHorizontal: 18,
-    paddingVertical: 8,
-    marginTop: 4,
+    alignSelf: 'flex-start', backgroundColor: GOLD, borderRadius: 20,
+    paddingHorizontal: 18, paddingVertical: 8, marginTop: 4,
   },
   referralBtnText: {
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 1.5,
-    color: '#0a0a0a',
-    textTransform: 'uppercase',
+    fontSize: 10, fontWeight: '700', letterSpacing: 1.5, color: '#0a0a0a', textTransform: 'uppercase',
   },
 
   // Quick links
-  linkRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 13,
-    gap: 12,
-  },
-  linkRowBorder: {
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.06)',
-  },
+  linkRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 13, gap: 12 },
+  linkRowBorder: { borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.06)' },
   linkIcon: {
-    width: 30,
-    height: 30,
-    borderRadius: 8,
-    backgroundColor: 'rgba(250,204,21,0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(250,204,21,0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 30, height: 30, borderRadius: 8,
+    backgroundColor: 'rgba(232,210,0,0.08)', borderWidth: 1, borderColor: 'rgba(232,210,0,0.15)',
+    alignItems: 'center', justifyContent: 'center',
   },
-  linkLabel: {
-    flex: 1,
-    fontSize: 14,
-    fontWeight: '300',
-    color: TEXT,
+  linkLabel: { flex: 1, fontSize: 14, fontWeight: '300', color: TEXT },
+
+  // Sign out
+  signOutBtn: {
+    paddingVertical: 14, alignItems: 'center',
+    borderRadius: 16, borderWidth: 1, borderColor: BORDER,
   },
+  signOutText: { fontSize: 13, fontWeight: '300', color: MUTED },
 });

@@ -1,31 +1,29 @@
-import { FontAwesome5, MaterialCommunityIcons } from '@expo/vector-icons';
+import { FontAwesome5, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Animated, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import GeometricBackground from '@/components/GeometricBackground';
 
-const GOLD = '#facc15';
+const GOLD = '#E8D200';
 const BG = '#0d0d0d';
 const CARD_BG = 'rgba(40,40,40,0.85)';
 const BORDER = 'rgba(255,255,255,0.08)';
-const SUCCESS = '#22c55e';
 
 interface HealthSource {
     id: string;
     name: string;
-    description: string;
     color: string;
 }
 
 const HEALTH_SOURCES: HealthSource[] = [
-    { id: 'apple-health',   name: 'Apple Health',   description: 'Steps, heart rate & workouts', color: '#FF3B30' },
-    { id: 'google-fit',     name: 'Google Fit',     description: 'Activity and fitness data',     color: '#4285F4' },
-    { id: 'samsung-health', name: 'Samsung Health', description: 'Samsung wearables & fitness',   color: '#1428A0' },
-    { id: 'whoop',          name: 'Whoop',          description: 'Recovery and strain tracking',  color: '#44D62C' },
-    { id: 'garmin',         name: 'Garmin',         description: 'GPS watches and fitness bands', color: '#007DC3' },
-    { id: 'fitbit',         name: 'Fitbit',         description: 'Activity, sleep & heart rate',  color: '#00B0B9' },
+    { id: 'apple-health',   name: 'Apple Health',   color: '#FF3B30' },
+    { id: 'google-fit',     name: 'Google Fit',     color: '#4285F4' },
+    { id: 'samsung-health', name: 'Samsung Health', color: '#1428A0' },
+    { id: 'whoop',          name: 'Whoop',          color: '#44D62C' },
+    { id: 'garmin',         name: 'Garmin',         color: '#007DC3' },
+    { id: 'fitbit',         name: 'Fitbit',         color: '#00B0B9' },
 ];
 
 function BrandIcon({ id }: { id: string }) {
@@ -61,7 +59,7 @@ function StepDots({ current }: { current: number }) {
 }
 
 const dotStyles = StyleSheet.create({
-    row: { flexDirection: 'row', gap: 6, justifyContent: 'center', marginBottom: 20 },
+    row: { flexDirection: 'row', gap: 6, justifyContent: 'center', marginBottom: 20, },
     dot: { height: 5, borderRadius: 3 },
     dotActive: { width: 20, backgroundColor: GOLD },
     dotInactive: { width: 5, backgroundColor: 'rgba(255,255,255,0.15)' },
@@ -70,7 +68,7 @@ const dotStyles = StyleSheet.create({
 export default function OnboardingHealthScreen() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
-    const [connected, setConnected] = useState<Set<string>>(new Set());
+    const [connectedId, setConnectedId] = useState<string | null>(null);
 
     const headerFade = useRef(new Animated.Value(0)).current;
     const rowAnims = useRef(HEALTH_SOURCES.map(() => new Animated.Value(0))).current;
@@ -90,33 +88,31 @@ export default function OnboardingHealthScreen() {
     }, []);
 
     function toggleConnect(id: string) {
-        setConnected(prev => {
-            const next = new Set(prev);
-            next.has(id) ? next.delete(id) : next.add(id);
-            return next;
-        });
+        setConnectedId(prev => (prev === id ? null : id));
     }
 
     return (
         <View style={styles.container}>
-            <LinearGradient
-                colors={[BG, '#0f0f0f', BG]}
-                locations={[0, 0.5, 1]}
-                style={StyleSheet.absoluteFillObject}
+            <GeometricBackground />
+            {/* Ghost watermark */}
+            <Image
+                source={require('@/assets/images/powr_transparent.png')}
+                style={styles.watermark}
+                contentFit="contain"
             />
 
-            {/* Logo */}
-            <View style={[styles.logo, { top: insets.top + 18 }]}>
-                <Image
-                    source={require('@/assets/images/powrlogotext.png')}
-                    style={styles.logoImage}
-                    contentFit="contain"
-                />
-            </View>
+            {/* Back button */}
+            <Pressable
+                style={[styles.backButton, { top: insets.top + 14 }]}
+                onPress={() => router.back()}
+                hitSlop={24}
+            >
+                <Ionicons name="chevron-back" size={26} color="rgba(255,255,255,0.55)" />
+            </Pressable>
 
             {/* Header */}
             <Animated.View style={[styles.header, { paddingTop: insets.top + 72, opacity: headerFade }]}>
-                <Text style={styles.eyebrow}>STEP 3 OF 3</Text>
+                <Text style={styles.eyebrow}>CONNECT YOUR DATA</Text>
                 <Text style={styles.headline}>
                     Connect your{'\n'}
                     <Text style={styles.headlineGold}>health data</Text>
@@ -133,7 +129,7 @@ export default function OnboardingHealthScreen() {
                 showsVerticalScrollIndicator={false}
             >
                 {HEALTH_SOURCES.map((source, i) => {
-                    const isConnected = connected.has(source.id);
+                    const isConnected = connectedId === source.id;
                     return (
                         <Animated.View
                             key={source.id}
@@ -152,7 +148,7 @@ export default function OnboardingHealthScreen() {
                                 onPress={() => toggleConnect(source.id)}
                             >
                                 {/* Brand icon */}
-                                <View style={[styles.sourceIcon, { backgroundColor: source.color }]}>
+                                <View style={styles.sourceIcon}>
                                     <BrandIcon id={source.id} />
                                 </View>
 
@@ -166,14 +162,13 @@ export default function OnboardingHealthScreen() {
                                             </View>
                                         )}
                                     </View>
-                                    <Text style={styles.sourceDesc}>{source.description}</Text>
                                 </View>
 
                                 {/* Connect / Connected pill */}
                                 {isConnected ? (
                                     <View style={styles.connectedPill}>
-                                        <MaterialCommunityIcons name="check" size={11} color={SUCCESS} style={{ marginRight: 3 }} />
-                                        <Text style={[styles.pillLabel, { color: SUCCESS }]}>CONNECTED</Text>
+                                        <MaterialCommunityIcons name="check" size={11} color={GOLD} style={{ marginRight: 3 }} />
+                                        <Text style={[styles.pillLabel, { color: GOLD }]}>CONNECTED</Text>
                                     </View>
                                 ) : (
                                     <View style={styles.connectPill}>
@@ -210,8 +205,12 @@ export default function OnboardingHealthScreen() {
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: BG },
-    logo: { position: 'absolute', left: 20, zIndex: 10 },
-    logoImage: { width: 100, height: 36 },
+    backButton: {
+        position: 'absolute',
+        left: 16,
+        zIndex: 20,
+        padding: 4,
+    },
     header: { paddingHorizontal: 24, marginBottom: 20 },
     eyebrow: {
         color: 'rgba(255,255,255,0.22)',
@@ -223,10 +222,10 @@ const styles = StyleSheet.create({
     },
     headline: {
         color: '#F2F2F2',
-        fontSize: 36,
+        fontSize: 40,
         fontWeight: '200',
-        letterSpacing: -0.5,
-        lineHeight: 42,
+        letterSpacing: -1,
+        lineHeight: 46,
         marginBottom: 10,
     },
     headlineGold: { color: GOLD, fontWeight: '700' },
@@ -250,17 +249,26 @@ const styles = StyleSheet.create({
         gap: 12,
     },
     sourceRowConnected: {
-        borderColor: 'rgba(34,197,94,0.3)',
-        backgroundColor: 'rgba(34,197,94,0.04)',
+        borderColor: 'rgba(232,210,0,0.3)',
+        backgroundColor: 'rgba(232,210,0,0.04)',
     },
     sourceIcon: {
         width: 44,
         height: 44,
-        borderRadius: 12,
+        borderRadius: 22,
         alignItems: 'center',
         justifyContent: 'center',
+        backgroundColor: 'rgba(255,255,255,0.06)',
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.15)',
+        borderColor: 'rgba(232,210,0,0.30)',
+    },
+    watermark: {
+        position: 'absolute',
+        width: 340,
+        height: 340,
+        top: -60,
+        right: -80,
+        opacity: 0.03,
     },
     sourceInfo: { flex: 1 },
     sourceNameRow: {
@@ -274,15 +282,10 @@ const styles = StyleSheet.create({
         fontSize: 14,
         fontWeight: '500',
     },
-    sourceDesc: {
-        color: 'rgba(255,255,255,0.3)',
-        fontSize: 11,
-        fontWeight: '300',
-    },
     pointsBadge: {
-        backgroundColor: 'rgba(250,204,21,0.12)',
+        backgroundColor: 'rgba(232,210,0,0.12)',
         borderWidth: 1,
-        borderColor: 'rgba(250,204,21,0.25)',
+        borderColor: 'rgba(232,210,0,0.25)',
         borderRadius: 4,
         paddingHorizontal: 5,
         paddingVertical: 2,
@@ -298,7 +301,7 @@ const styles = StyleSheet.create({
         paddingVertical: 6,
         borderRadius: 20,
         borderWidth: 1,
-        borderColor: 'rgba(250,204,21,0.3)',
+        borderColor: 'rgba(232,210,0,0.3)',
     },
     connectedPill: {
         flexDirection: 'row',
@@ -307,8 +310,8 @@ const styles = StyleSheet.create({
         paddingVertical: 6,
         borderRadius: 20,
         borderWidth: 1,
-        borderColor: 'rgba(34,197,94,0.3)',
-        backgroundColor: 'rgba(34,197,94,0.08)',
+        borderColor: 'rgba(232,210,0,0.3)',
+        backgroundColor: 'rgba(232,210,0,0.08)',
     },
     pillLabel: {
         fontSize: 9,

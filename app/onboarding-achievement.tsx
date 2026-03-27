@@ -1,15 +1,18 @@
 import { useAuth } from '@/context/AuthContext';
+import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useEffect, useRef } from 'react';
 import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Circle } from 'react-native-svg';
+import Svg, { Circle, Line, G } from 'react-native-svg';
+import GeometricBackground from '@/components/GeometricBackground';
 
-const GOLD = '#facc15';
+const GOLD = '#E8D200';
 const BG = '#0d0d0d';
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
+const AnimatedG = Animated.createAnimatedComponent(G);
 
 // Ring geometry
 const CONTAINER = 300;
@@ -77,9 +80,9 @@ export default function OnboardingAchievementScreen() {
                     useNativeDriver: true,
                 }),
             ]),
-            // 2. Ring draws
+            // 2. Ring draws to 1/7 (day 1 of a 7-day week)
             Animated.timing(ringProgress, {
-                toValue: 1,
+                toValue: 1 / 7,
                 duration: 1150,
                 easing: Easing.inOut(Easing.cubic),
                 useNativeDriver: false,
@@ -121,14 +124,15 @@ export default function OnboardingAchievementScreen() {
 
     return (
         <View style={styles.container}>
-            {/* Logo */}
-            <View style={[styles.logo, { top: insets.top + 18 }]}>
-                <Image
-                    source={require('@/assets/images/powrlogotext.png')}
-                    style={styles.logoImage}
-                    contentFit="contain"
-                />
-            </View>
+            <GeometricBackground />
+            {/* Back button */}
+            <Pressable
+                style={[styles.backButton, { top: insets.top + 14 }]}
+                onPress={() => router.back()}
+                hitSlop={24}
+            >
+                <Ionicons name="chevron-back" size={26} color="rgba(255,255,255,0.55)" />
+            </Pressable>
 
             {/* Main content */}
             <View style={styles.center}>
@@ -154,20 +158,30 @@ export default function OnboardingAchievementScreen() {
 
                         {/* SVG rings */}
                         <Svg width={CONTAINER} height={CONTAINER} style={StyleSheet.absoluteFillObject}>
-                            {/* Outer dashed decorative ring */}
-                            <Circle
-                                cx={CX} cy={CY}
-                                r={RING_R + 26}
-                                stroke="rgba(250,204,21,0.10)"
-                                strokeWidth={1}
-                                fill="none"
-                                strokeDasharray="3 10"
-                            />
+                            {/* 7 day tick marks */}
+                            {Array.from({ length: 7 }, (_, i) => {
+                                const angle = (i * (360 / 7) - 90) * (Math.PI / 180);
+                                const x1 = CX + Math.cos(angle) * (RING_R + 14);
+                                const y1 = CY + Math.sin(angle) * (RING_R + 14);
+                                const x2 = CX + Math.cos(angle) * (RING_R + 24);
+                                const y2 = CY + Math.sin(angle) * (RING_R + 24);
+                                const isCompleted = i === 0 || i === 1;
+                                return (
+                                    <Line
+                                        key={i}
+                                        x1={x1} y1={y1}
+                                        x2={x2} y2={y2}
+                                        stroke={isCompleted ? 'rgba(232,210,0,0.55)' : 'rgba(255,255,255,0.15)'}
+                                        strokeWidth={i === 0 ? 2 : 1.5}
+                                        strokeLinecap="round"
+                                    />
+                                );
+                            })}
                             {/* Inner subtle ring */}
                             <Circle
                                 cx={CX} cy={CY}
                                 r={RING_R - 22}
-                                stroke="rgba(250,204,21,0.05)"
+                                stroke="rgba(232,210,0,0.05)"
                                 strokeWidth={1}
                                 fill="none"
                             />
@@ -236,7 +250,7 @@ export default function OnboardingAchievementScreen() {
                             >
                                 1
                             </Animated.Text>
-                            <Text style={styles.dayLabel}>DAY STREAK</Text>
+                            <Text style={styles.dayLabel}>DAY 1 OF 7</Text>
                         </View>
                     </Animated.View>
                 </Animated.View>
@@ -269,17 +283,20 @@ export default function OnboardingAchievementScreen() {
 
                     <View style={styles.bonusContent}>
                         <View>
-                            <Text style={styles.bonusEyebrow}>WELCOME BONUS</Text>
+                            <Text style={styles.bonusEyebrow}>EARNED TODAY</Text>
                             <View style={styles.bonusAmountRow}>
                                 <Text style={styles.bonusPlus}>+</Text>
-                                <Text style={styles.bonusValue}>50</Text>
+                                <Text style={styles.bonusValue}>20</Text>
                                 <View style={styles.bonusUnitWrap}>
                                     <Text style={styles.bonusUnit}>POWR</Text>
                                 </View>
                             </View>
                         </View>
                         <View style={styles.bonusBadge}>
-                            <Text style={styles.bonusBadgeIcon}>⚡</Text>
+                            <Image
+                                source={require('@/assets/images/powr_transparent.png')}
+                                style={styles.bonusBadgeImage}
+                            />
                         </View>
                     </View>
                 </Animated.View>
@@ -294,7 +311,7 @@ export default function OnboardingAchievementScreen() {
                         router.replace('/(tabs)');
                     }}
                 >
-                    <Text style={styles.primaryLabel}>START EARNING</Text>
+                    <Text style={styles.primaryLabel}>SEE TOMORROW'S GOAL</Text>
                 </Pressable>
             </Animated.View>
         </View>
@@ -306,14 +323,11 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: BG,
     },
-    logo: {
+    backButton: {
         position: 'absolute',
-        left: 20,
-        zIndex: 10,
-    },
-    logoImage: {
-        width: 100,
-        height: 36,
+        left: 16,
+        zIndex: 20,
+        padding: 4,
     },
     center: {
         flex: 1,
@@ -338,7 +352,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     dayNumber: {
-        color: GOLD,
+        color: '#F2F2F2',
         fontSize: 88,
         fontWeight: '100',
         letterSpacing: -3,
@@ -441,14 +455,15 @@ const styles = StyleSheet.create({
         width: 52,
         height: 52,
         borderRadius: 26,
-        backgroundColor: 'rgba(250,204,21,0.09)',
+        backgroundColor: 'rgba(232,210,0,0.09)',
         borderWidth: 1,
-        borderColor: 'rgba(250,204,21,0.22)',
+        borderColor: 'rgba(232,210,0,0.22)',
         alignItems: 'center',
         justifyContent: 'center',
     },
-    bonusBadgeIcon: {
-        fontSize: 22,
+    bonusBadgeImage: {
+        width: 28,
+        height: 28,
     },
 
     // CTA
@@ -456,8 +471,8 @@ const styles = StyleSheet.create({
         paddingHorizontal: 24,
     },
     primaryButton: {
-        height: 56,
-        borderRadius: 28,
+        height: 52,
+        borderRadius: 26,
         backgroundColor: GOLD,
         alignItems: 'center',
         justifyContent: 'center',
@@ -466,6 +481,6 @@ const styles = StyleSheet.create({
         color: '#0a0a0a',
         fontSize: 12,
         fontWeight: '700',
-        letterSpacing: 2,
+        letterSpacing: 1.5,
     },
 });

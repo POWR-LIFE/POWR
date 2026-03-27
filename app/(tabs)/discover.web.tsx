@@ -14,8 +14,8 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-const GOLD    = '#facc15';
-const BG      = '#0d0d0d';
+const GOLD    = '#E8D200';
+const BG      = '#1E1E1E';
 const CARD_BG = 'rgba(40,40,40,0.85)';
 const BORDER  = 'rgba(255,255,255,0.08)';
 const TEXT    = '#F2F2F2';

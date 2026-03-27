@@ -1,19 +1,13 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
+import { BrowserRouter } from 'react-router-dom'
 import './style.css'
-import './main.js' // Import vanilla JS logic
+import App from './src/App'
 
-// This is where you can start adding React components
-// For example, if you want to render a React component into a specific div:
-/*
-const reactRootEl = document.getElementById('react-root')
-if (reactRootEl) {
-  ReactDOM.createRoot(reactRootEl).render(
-    <React.StrictMode>
-      <App />
-    </React.StrictMode>,
-  )
-}
-*/
+ReactDOM.createRoot(document.getElementById('root')).render(
+  <BrowserRouter>
+    <App />
+  </BrowserRouter>,
+)
 
-console.log('React initialized')
+console.log('React initialized with routing')
