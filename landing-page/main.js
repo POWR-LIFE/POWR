@@ -4,6 +4,8 @@
 
 import { supabase } from './src/lib/supabase';
 
+export function initLandingPage() {
+
 // ─── Map Integration (Leaflet) ───
 // Dark theme map using CartoDB Dark Matter tiles
 const londonCoords = [51.505, -0.09];
@@ -947,3 +949,4 @@ function updateWaitlistCounter() {
 }
 
 updateWaitlistCounter();
+} // end initLandingPage

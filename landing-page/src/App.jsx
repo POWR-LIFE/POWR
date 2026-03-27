@@ -1,4 +1,5 @@
 import React, { useEffect, useState, createContext, useContext } from 'react';
+import { initLandingPage } from '../main.js';
 import { Routes, Route, Navigate, Link, useLocation, useNavigate } from 'react-router-dom';
 import { supabase } from './lib/supabase';
 import { ToastProvider } from './lib/toast';
@@ -114,20 +115,7 @@ const LandingPage = () => {
     useEffect(() => {
         const landing = document.getElementById('landing-content');
         if (landing) landing.style.display = 'block';
-        const loadScripts = async () => {
-            try {
-                if (!document.getElementById('landing-main-js')) {
-                    const script = document.createElement('script');
-                    script.id = 'landing-main-js';
-                    script.src = '/main.js';
-                    script.type = 'module';
-                    document.body.appendChild(script);
-                }
-            } catch (e) {
-                console.error("Failed to load landing page script:", e);
-            }
-        };
-        loadScripts();
+        initLandingPage();
         return () => { if (landing) landing.style.display = 'none'; };
     }, []);
     return null;
