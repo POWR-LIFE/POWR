@@ -4,10 +4,11 @@ import { BrowserRouter } from 'react-router-dom'
 import './style.css'
 import App from './src/App'
 
-ReactDOM.createRoot(document.getElementById('root')).render(
-  <BrowserRouter>
-    <App />
-  </BrowserRouter>,
-)
-
-console.log('React initialized with routing')
+const rootEl = document.getElementById('root')
+if (rootEl) {
+  ReactDOM.createRoot(rootEl).render(
+    <BrowserRouter>
+      <App />
+    </BrowserRouter>,
+  )
+}
