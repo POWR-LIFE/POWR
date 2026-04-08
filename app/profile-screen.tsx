@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
-import GeometricBackground from '@/components/GeometricBackground';
+import { Image } from 'expo-image';
+import { useFocusEffect, useRouter } from 'expo-router';
+import React, { useCallback, useState } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -10,7 +10,9 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Svg, { Circle, Defs, Line, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
 
+import { GeometricBackground } from '@/components/home/GeometricBackground';
 import { useAuth } from '@/context/AuthContext';
 import { usePoints } from '@/hooks/usePoints';
 import { useStreak } from '@/hooks/useStreak';
@@ -20,25 +22,34 @@ import { getLevelInfo } from '@/constants/levels';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 
-const GOLD    = '#E8D200';
-const BG      = '#0d0d0d';
-const CARD_BG = 'rgba(40,40,40,0.85)';
-const BORDER  = 'rgba(255,255,255,0.08)';
-const TEXT    = '#F2F2F2';
-const MUTED   = 'rgba(255,255,255,0.25)';
-const DIM     = 'rgba(255,255,255,0.5)';
+const GOLD   = '#E8D200';
+const GREEN  = '#4ade80';
+const ORANGE = '#f97316';
+const BORDER = 'rgba(255,255,255,0.08)';
+const TEXT   = '#F2F2F2';
+const MUTED  = 'rgba(255,255,255,0.25)';
+const DIM    = 'rgba(255,255,255,0.5)';
 
+// ─── Level Ring ───────────────────────────────────────────────────────────────
 
+const RING_SIZE = 148;
+const CX = RING_SIZE / 2;
+const CY = RING_SIZE / 2;
+const R  = 58;
+const SW = 6;
 
-// ─── Teaser achievements (shown on profile — tap to see full screen) ──────────
+function circ(r: number) { return 2 * Math.PI * r; }
+function dashOff(r: number, pct: number) { return circ(r) - pct * circ(r); }
+
+// ─── Achievements ─────────────────────────────────────────────────────────────
 
 const TEASER_ACHIEVEMENTS = [
-  { id: 'c1', code: '7D',   name: 'First Week',  earned: true,  colour: '#E8D200' },
-  { id: 'm2', code: '5K',   name: '5K Club',     earned: true,  colour: '#4ade80' },
-  { id: 'm5', code: 'GYM',  name: 'Gym Rat',     earned: true,  colour: '#4ade80' },
-  { id: 'c2', code: '30D',  name: 'Month Strong', earned: false, colour: '#E8D200' },
-  { id: 'l1', code: 'AM',   name: 'Early Bird',  earned: true,  colour: '#38bdf8' },
-  { id: 's1', code: 'TOP',  name: 'Top 10%',     earned: false, colour: '#fb923c' },
+  { id: 'c1', code: '7D',  name: 'First Week',   earned: true,  colour: GOLD,      icon: 'flame' },
+  { id: 'm2', code: '5K',  name: '5K Club',      earned: true,  colour: GREEN,     icon: 'footsteps' },
+  { id: 'm5', code: 'GYM', name: 'Gym Rat',      earned: true,  colour: GREEN,     icon: 'barbell' },
+  { id: 'c2', code: '30D', name: 'Month Strong', earned: false, colour: GOLD,      icon: 'calendar' },
+  { id: 'l1', code: 'AM',  name: 'Early Bird',   earned: true,  colour: '#38bdf8', icon: 'sunny' },
+  { id: 's1', code: 'TOP', name: 'Top 10%',      earned: false, colour: ORANGE,    icon: 'trophy' },
 ];
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
@@ -47,17 +58,20 @@ export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
 
-  const { user, signOut } = useAuth();
+  const { user } = useAuth();
   const { totalEarned, balance } = usePoints();
   const { currentStreak, longestStreak } = useStreak();
   const { weeklyMetrics } = useActivity();
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [avatarError, setAvatarError] = useState(false);
 
-  useEffect(() => {
-    fetchProfile().then(setProfile);
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      setAvatarError(false);
+      fetchProfile().then(setProfile);
+    }, [])
+  );
 
-  // Derive display values
   const displayName = profile?.display_name
     ?? user?.user_metadata?.full_name
     ?? user?.email?.split('@')[0]
@@ -66,147 +80,208 @@ export default function ProfileScreen() {
   const initials = displayName.split(' ').map((w: string) => w[0]).slice(0, 2).join('').toUpperCase();
 
   const memberSince = user?.created_at
-    ? new Date(user.created_at).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })
-    : '—';
+    ? new Date(user.created_at).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
+    : '';
 
-  const { current: levelInfo } = getLevelInfo(totalEarned);
+  const { current: levelInfo, next: nextLevel, xpIntoLevel, xpForLevel } = getLevelInfo(totalEarned);
+  const xpPct = Math.min(xpIntoLevel / xpForLevel, 1);
+  const pill = levelInfo.pill;
   const earnedCount = TEASER_ACHIEVEMENTS.filter(a => a.earned).length;
+  const totalSessions = weeklyMetrics.sessionCount * 4; // rough lifetime approx
+
+  const TICK_R = R + SW / 2 + 3;
 
   return (
-    <View style={[styles.screen, { paddingTop: insets.top }]}>
+    <View style={[s.screen, { paddingTop: insets.top }]}>
       <GeometricBackground />
-      {/* Header */}
-      <View style={styles.header}>
-        <Pressable style={styles.backBtn} onPress={() => router.back()} hitSlop={8}>
-          <Ionicons name="chevron-back" size={22} color={DIM} />
+
+      {/* Header — minimal */}
+      <View style={s.header}>
+        <Pressable onPress={() => router.back()} hitSlop={12} style={s.headerBtn}>
+          <Ionicons name="chevron-back" size={20} color={DIM} />
         </Pressable>
-        <Text style={styles.headerTitle}>Profile</Text>
-        <Pressable
-          style={styles.settingsBtn}
-          onPress={() => router.push('/settings-screen')}
-          hitSlop={8}
-        >
-          <Ionicons name="settings-outline" size={20} color={DIM} />
+        <View style={{ flex: 1 }} />
+        <Pressable onPress={() => router.push('/settings-screen')} hitSlop={12} style={s.headerBtn}>
+          <Ionicons name="settings-outline" size={18} color={DIM} />
         </Pressable>
       </View>
 
       <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 32 }]}
+        style={s.scroll}
+        contentContainerStyle={[s.content, { paddingBottom: insets.bottom + 40 }]}
         showsVerticalScrollIndicator={false}
       >
-        {/* ── Identity ─────────────────────────────────────────── */}
-        <View style={styles.identityCard}>
-          <View style={styles.avatarWrap}>
-            <View style={styles.avatar}>
-              <Text style={styles.avatarText}>{initials || '?'}</Text>
+        {/* ── Identity Hero ──────────────────────────────────── */}
+        <View style={s.hero}>
+          {/* Avatar inside level ring */}
+          <View style={s.ringWrap}>
+            <Svg width={RING_SIZE} height={RING_SIZE} viewBox={`0 0 ${RING_SIZE} ${RING_SIZE}`}>
+              <Defs>
+                <SvgLinearGradient id="pg" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <Stop offset="0%"   stopColor={GOLD}   />
+                  <Stop offset="50%"  stopColor={ORANGE}  />
+                  <Stop offset="100%" stopColor={GREEN}   />
+                </SvgLinearGradient>
+              </Defs>
+
+              {Array.from({ length: 48 }, (_, i) => {
+                const a = (i * 7.5 - 90) * (Math.PI / 180);
+                const major = i % 4 === 0;
+                const len = major ? 7 : 3;
+                const r1 = TICK_R;
+                const r2 = r1 + len;
+                const within = i / 48 < xpPct;
+                return (
+                  <Line key={i}
+                    x1={CX + r1 * Math.cos(a)} y1={CY + r1 * Math.sin(a)}
+                    x2={CX + r2 * Math.cos(a)} y2={CY + r2 * Math.sin(a)}
+                    stroke={major ? '#fff' : within ? GOLD : 'rgba(255,255,255,0.08)'}
+                    strokeWidth={major ? 1.2 : 0.7} strokeLinecap="round"
+                  />
+                );
+              })}
+
+              <Circle cx={CX} cy={CY} r={R} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={SW} />
+              <Circle cx={CX} cy={CY} r={R} fill="none" stroke="url(#pg)" strokeWidth={SW}
+                strokeLinecap="round" strokeDasharray={circ(R)} strokeDashoffset={dashOff(R, xpPct)}
+                transform={`rotate(-90 ${CX} ${CY})`}
+              />
+            </Svg>
+
+            <View style={s.avatarPos}>
+              {profile?.avatar_url && !avatarError ? (
+                <Image key={profile.avatar_url} source={{ uri: profile.avatar_url }}
+                  style={s.avatarImg} contentFit="cover" onError={() => setAvatarError(true)} />
+              ) : (
+                <View style={s.avatarFallback}>
+                  <Text style={s.avatarLetter}>{initials || '?'}</Text>
+                </View>
+              )}
             </View>
-            <Pressable style={styles.editAvatarBtn}>
-              <Ionicons name="camera-outline" size={13} color={TEXT} />
+
+            <Pressable style={s.cameraBadge} onPress={() => router.push('/edit-profile')}>
+              <Ionicons name="camera-outline" size={12} color={TEXT} />
             </Pressable>
           </View>
 
-          <View style={styles.identityInfo}>
-            <View style={styles.nameRow}>
-              <Text style={styles.name}>{displayName}</Text>
-              <Pressable style={styles.editNameBtn}>
-                <Ionicons name="pencil-outline" size={13} color={MUTED} />
-              </Pressable>
-            </View>
-            <Text style={styles.handle}>{handle}</Text>
+          {/* Name */}
+          <View style={s.nameBlock}>
+            <Text style={s.displayName}>{displayName}</Text>
+            <Pressable onPress={() => router.push('/edit-profile')} hitSlop={8}>
+              <Ionicons name="create-outline" size={14} color={MUTED} />
+            </Pressable>
+          </View>
 
-            <View style={styles.metaRow}>
-              <View style={styles.levelBadge}>
-                <Text style={styles.levelBadgeText}>
-                  LVL {levelInfo.level} · {levelInfo.name}
-                </Text>
-              </View>
-              <Text style={styles.memberSince}>Since {memberSince}</Text>
+          <Text style={s.handle}>{handle}</Text>
+
+          {/* Level + member since */}
+          <View style={s.tagRow}>
+            <View style={[s.levelPill, { backgroundColor: pill.bg, borderColor: pill.border }]}>
+              <Text style={[s.levelPillText, { color: pill.text }]}>
+                LVL {levelInfo.level} · {levelInfo.name}
+              </Text>
             </View>
+            {memberSince ? (
+              <Text style={s.since}>Member since {memberSince}</Text>
+            ) : null}
+          </View>
+
+          {/* XP progress */}
+          <View style={s.xpRow}>
+            <View style={s.xpTrack}>
+              <View style={[s.xpFill, { width: `${Math.round(xpPct * 100)}%` as any }]} />
+            </View>
+            <Text style={s.xpText}>
+              {xpIntoLevel.toLocaleString()} / {xpForLevel.toLocaleString()} XP
+              {nextLevel ? ` to ${nextLevel.name}` : ''}
+            </Text>
           </View>
         </View>
 
-        {/* ── Stats ────────────────────────────────────────────── */}
-        <View style={styles.statsRow}>
-          <StatBlock value={totalEarned.toLocaleString()} label="Total POWR" gold />
-          <View style={styles.statDivider} />
-          <StatBlock value={String(weeklyMetrics.sessionCount * 4)} label="Sessions" />
-          <View style={styles.statDivider} />
-          <StatBlock value={`${longestStreak}d`} label="Best Streak" />
+        {/* ── Lifetime Numbers ───────────────────────────────── */}
+        <View style={s.numbersRow}>
+          <View style={s.numCol}>
+            <Text style={[s.numValue, { color: GOLD }]}>{totalEarned.toLocaleString()}</Text>
+            <Text style={s.numLabel}>POWR earned</Text>
+          </View>
+          <View style={s.numDivider} />
+          <View style={s.numCol}>
+            <Text style={s.numValue}>{totalSessions}</Text>
+            <Text style={s.numLabel}>Sessions</Text>
+          </View>
+          <View style={s.numDivider} />
+          <View style={s.numCol}>
+            <Text style={s.numValue}>{longestStreak}d</Text>
+            <Text style={s.numLabel}>Best streak</Text>
+          </View>
         </View>
 
-        {/* ── Achievements ─────────────────────────────────────── */}
-        <View style={styles.card}>
-          <View style={styles.cardHeaderRow}>
-            <Text style={styles.metaLabel}>Achievements</Text>
+        {/* ── Current streak callout ─────────────────────────── */}
+        {currentStreak > 0 && (
+          <View style={s.streakCallout}>
+            <Ionicons name="flame" size={18} color={currentStreak >= 7 ? ORANGE : DIM} />
+            <Text style={s.streakText}>
+              {currentStreak} day streak
+            </Text>
+            <Text style={s.streakHint}>
+              {currentStreak >= 7 ? 'On fire' : currentStreak >= 3 ? 'Building momentum' : 'Keep going'}
+            </Text>
+          </View>
+        )}
+
+        {/* ── Achievements ───────────────────────────────────── */}
+        <View style={s.section}>
+          <View style={s.sectionHeader}>
+            <Text style={s.sectionTitle}>Achievements</Text>
             <Pressable onPress={() => router.push({ pathname: '/(tabs)/league', params: { tab: 'journey' } })}>
-              <Text style={styles.seeAll}>{earnedCount} unlocked · See all →</Text>
+              <Text style={s.seeAll}>{earnedCount} earned · See all</Text>
             </Pressable>
           </View>
-          <View style={styles.achievementsGrid}>
+
+          <View style={s.badgeRow}>
             {TEASER_ACHIEVEMENTS.map((a) => (
-              <Pressable
-                key={a.id}
-                style={[styles.badge, !a.earned && styles.badgeLocked]}
+              <Pressable key={a.id} style={[s.badge, !a.earned && s.badgeLocked]}
                 onPress={() => router.push({ pathname: '/(tabs)/league', params: { tab: 'journey' } })}
               >
-                <Text style={[styles.badgeCode, !a.earned && styles.badgeCodeLocked, { color: a.earned ? a.colour : MUTED }]}>
-                  {a.earned ? a.code : '—'}
-                </Text>
-                <Text style={[styles.badgeLabel, !a.earned && styles.badgeLabelLocked]}>
-                  {a.name}
-                </Text>
+                <Ionicons
+                  name={(a.earned ? a.icon : 'lock-closed') as any}
+                  size={18}
+                  color={a.earned ? a.colour : MUTED}
+                />
+                <Text style={[s.badgeName, { color: a.earned ? a.colour : MUTED }]}>{a.code}</Text>
               </Pressable>
             ))}
           </View>
         </View>
 
-        {/* ── Referral ─────────────────────────────────────────── */}
-        <View style={styles.referralCard}>
-          <View style={styles.referralAccentBar} />
-          <View style={styles.referralInner}>
-            <Text style={styles.referralTitle}>Invite a friend</Text>
-            <Text style={styles.referralSub}>
-              You both earn 200 bonus POWR when they complete their first workout.
-            </Text>
-            <Pressable style={styles.referralBtn}>
-              <Text style={styles.referralBtnText}>Share invite</Text>
-            </Pressable>
+        {/* ── Balance ────────────────────────────────────────── */}
+        <View style={s.balanceRow}>
+          <View style={s.balanceLeft}>
+            <Ionicons name="wallet-outline" size={16} color={GOLD} />
+            <Text style={s.balanceLabel}>Available balance</Text>
           </View>
+          <Text style={s.balanceValue}>{balance.toLocaleString()} POWR</Text>
         </View>
 
-        {/* ── Quick links ───────────────────────────────────────── */}
-        <View style={styles.card}>
-          {[
-            { label: 'Settings',             icon: 'settings-outline',      onPress: () => router.push('/settings-screen') },
-            { label: 'Connected Wearables',  icon: 'watch-outline',         onPress: () => {} },
-            { label: 'Help & Support',       icon: 'help-circle-outline',   onPress: () => {} },
-          ].map((row, i, arr) => (
-            <Pressable
-              key={row.label}
-              style={({ pressed }) => [
-                styles.linkRow,
-                i < arr.length - 1 && styles.linkRowBorder,
-                pressed && { opacity: 0.7 },
-              ]}
-              onPress={row.onPress}
-            >
-              <View style={styles.linkIcon}>
-                <Ionicons name={row.icon as any} size={17} color={GOLD} />
-              </View>
-              <Text style={styles.linkLabel}>{row.label}</Text>
-              <Ionicons name="chevron-forward" size={14} color={MUTED} />
-            </Pressable>
-          ))}
-        </View>
-
-        {/* ── Sign out ──────────────────────────────────────────── */}
-        <Pressable
-          style={({ pressed }) => [styles.signOutBtn, pressed && { opacity: 0.7 }]}
-          onPress={signOut}
-        >
-          <Text style={styles.signOutText}>Sign out</Text>
+        {/* ── Invite ─────────────────────────────────────────── */}
+        <Pressable style={({ pressed }) => [s.inviteRow, pressed && { opacity: 0.7 }]}>
+          <Ionicons name="gift-outline" size={16} color={GOLD} />
+          <View style={s.inviteText}>
+            <Text style={s.inviteTitle}>Invite a friend</Text>
+            <Text style={s.inviteSub}>Both earn 200 POWR</Text>
+          </View>
+          <Pressable style={s.inviteBtn}>
+            <Text style={s.inviteBtnText}>SHARE</Text>
+          </Pressable>
         </Pressable>
+
+        {/* ── Links ──────────────────────────────────────────── */}
+        <View style={s.links}>
+          <LinkRow icon="create-outline" label="Log workout" onPress={() => router.push('/manual-log')} />
+          <LinkRow icon="options-outline" label="Activity preferences" onPress={() => router.push('/activity-preferences')} />
+          <LinkRow icon="stats-chart-outline" label="Progress" onPress={() => router.push('/(tabs)/progress')} />
+          <LinkRow icon="person-outline" label="Edit profile" onPress={() => router.push('/edit-profile')} />
+        </View>
       </ScrollView>
     </View>
   );
@@ -214,140 +289,125 @@ export default function ProfileScreen() {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function StatBlock({ value, label, gold }: { value: string; label: string; gold?: boolean }) {
+function LinkRow({ icon, label, onPress }: { icon: string; label: string; onPress: () => void }) {
   return (
-    <View style={styles.statBlock}>
-      <Text style={[styles.statValue, gold && styles.statValueGold]}>{value}</Text>
-      <Text style={styles.statLabel}>{label.toUpperCase()}</Text>
-    </View>
+    <Pressable style={({ pressed }) => [s.linkRow, pressed && { opacity: 0.6 }]} onPress={onPress}>
+      <Ionicons name={icon as any} size={16} color={DIM} />
+      <Text style={s.linkLabel}>{label}</Text>
+      <Ionicons name="chevron-forward" size={14} color={MUTED} />
+    </Pressable>
   );
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: BG },
-
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 8,
-  },
-  backBtn: {
-    width: 36, height: 36, alignItems: 'center', justifyContent: 'center',
-    borderRadius: 18, backgroundColor: CARD_BG, borderWidth: 1, borderColor: BORDER,
-  },
-  headerTitle: { fontSize: 16, fontWeight: '400', letterSpacing: 0.5, color: TEXT },
-  settingsBtn: {
-    width: 36, height: 36, alignItems: 'center', justifyContent: 'center',
-    borderRadius: 18, backgroundColor: CARD_BG, borderWidth: 1, borderColor: BORDER,
-  },
-
+const s = StyleSheet.create({
+  screen: { flex: 1 },
   scroll: { flex: 1 },
-  content: { paddingHorizontal: 12, gap: 10, paddingTop: 8 },
+  content: { paddingHorizontal: 16, gap: 24 },
 
-  // Identity
-  identityCard: {
-    backgroundColor: CARD_BG, borderWidth: 1, borderColor: BORDER,
-    borderRadius: 20, padding: 18, gap: 16,
+  // Header
+  header: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 16, paddingVertical: 8,
   },
-  avatarWrap: { position: 'relative', alignSelf: 'center' },
-  avatar: {
-    width: 80, height: 80, borderRadius: 40,
+  headerBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
+
+  // ── Hero ────────────────────────────────────────────────────────────────────
+  hero: { alignItems: 'center', gap: 8, paddingTop: 8 },
+
+  ringWrap: { width: RING_SIZE, height: RING_SIZE, position: 'relative' },
+  avatarPos: {
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  avatarImg: { width: 92, height: 92, borderRadius: 46 },
+  avatarFallback: {
+    width: 92, height: 92, borderRadius: 46,
     backgroundColor: GOLD, alignItems: 'center', justifyContent: 'center',
   },
-  avatarText: { fontSize: 26, fontWeight: '600', color: '#0a0a0a' },
-  editAvatarBtn: {
-    position: 'absolute', bottom: 0, right: 0,
-    width: 26, height: 26, borderRadius: 13,
-    backgroundColor: '#1a1a1a', borderWidth: 1.5, borderColor: BORDER,
+  avatarLetter: { fontSize: 30, fontWeight: '600', color: '#0a0a0a' },
+  cameraBadge: {
+    position: 'absolute', bottom: 6, right: 6,
+    width: 28, height: 28, borderRadius: 14,
+    backgroundColor: 'rgba(20,20,20,0.9)', borderWidth: 1.5, borderColor: BORDER,
     alignItems: 'center', justifyContent: 'center',
   },
-  identityInfo: { gap: 6 },
-  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  name: { fontSize: 22, fontWeight: '300', letterSpacing: -0.3, color: TEXT },
-  editNameBtn: { padding: 4 },
-  handle: { fontSize: 13, fontWeight: '300', color: MUTED },
-  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 4 },
-  levelBadge: {
-    paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20,
-    backgroundColor: 'rgba(232,210,0,0.10)', borderWidth: 1, borderColor: 'rgba(232,210,0,0.25)',
-  },
-  levelBadgeText: {
-    fontSize: 10, fontWeight: '600', letterSpacing: 0.5, color: GOLD, textTransform: 'uppercase',
-  },
-  memberSince: { fontSize: 11, fontWeight: '300', color: MUTED },
 
-  // Stats
-  statsRow: {
-    backgroundColor: CARD_BG, borderWidth: 1, borderColor: BORDER,
-    borderRadius: 16, padding: 14, flexDirection: 'row', alignItems: 'center',
-  },
-  statBlock: { flex: 1, alignItems: 'center', gap: 4 },
-  statValue: { fontSize: 22, fontWeight: '100', letterSpacing: -1, color: TEXT },
-  statValueGold: { color: GOLD },
-  statLabel: { fontSize: 8, fontWeight: '500', letterSpacing: 1.5, color: MUTED, textTransform: 'uppercase' },
-  statDivider: { width: 1, height: 32, backgroundColor: BORDER },
+  nameBlock: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
+  displayName: { fontSize: 26, fontWeight: '200', letterSpacing: -0.5, color: TEXT },
+  handle: { fontSize: 13, fontWeight: '300', color: MUTED, marginTop: -2 },
 
-  // Card
-  card: {
-    backgroundColor: CARD_BG, borderWidth: 1, borderColor: BORDER,
-    borderRadius: 16, padding: 14, gap: 12,
+  tagRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 4 },
+  levelPill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20, borderWidth: 1 },
+  levelPillText: { fontSize: 9, fontWeight: '600', letterSpacing: 0.8, textTransform: 'uppercase' },
+  since: { fontSize: 11, fontWeight: '300', color: MUTED },
+
+  xpRow: { alignSelf: 'stretch', gap: 5, marginTop: 4, paddingHorizontal: 20 },
+  xpTrack: {
+    height: 3, backgroundColor: 'rgba(255,255,255,0.06)',
+    borderRadius: 1.5, overflow: 'hidden',
   },
-  cardHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  metaLabel: { fontSize: 9, fontWeight: '500', letterSpacing: 2, color: MUTED, textTransform: 'uppercase' },
+  xpFill: { height: '100%', borderRadius: 1.5, backgroundColor: GOLD },
+  xpText: { fontSize: 10, fontWeight: '300', color: MUTED, textAlign: 'center' },
+
+  // ── Lifetime Numbers ────────────────────────────────────────────────────────
+  numbersRow: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingVertical: 4,
+  },
+  numCol: { flex: 1, alignItems: 'center', gap: 3 },
+  numValue: { fontSize: 28, fontWeight: '100', letterSpacing: -1, color: TEXT },
+  numLabel: { fontSize: 9, fontWeight: '400', letterSpacing: 0.5, color: MUTED, textTransform: 'uppercase' },
+  numDivider: { width: 1, height: 36, backgroundColor: 'rgba(255,255,255,0.06)' },
+
+  // ── Streak Callout ──────────────────────────────────────────────────────────
+  streakCallout: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    paddingHorizontal: 4,
+  },
+  streakText: { fontSize: 16, fontWeight: '200', color: TEXT, letterSpacing: -0.3 },
+  streakHint: { fontSize: 11, fontWeight: '300', color: MUTED, marginLeft: 'auto' },
+
+  // ── Achievements ────────────────────────────────────────────────────────────
+  section: { gap: 12 },
+  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  sectionTitle: { fontSize: 15, fontWeight: '300', color: TEXT, letterSpacing: -0.2 },
   seeAll: { fontSize: 11, fontWeight: '300', color: GOLD },
 
-  // Achievements
-  achievementsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  badge: {
-    alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 10,
-    borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.04)',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.10)', minWidth: 60,
-  },
-  badgeLocked: { opacity: 0.35 },
-  badgeCode: { fontSize: 16, fontWeight: '200', letterSpacing: -0.5 },
-  badgeCodeLocked: { color: MUTED },
-  badgeLabel: {
-    fontSize: 8, fontWeight: '500', letterSpacing: 0.5, color: DIM,
-    textTransform: 'uppercase', textAlign: 'center',
-  },
-  badgeLabelLocked: { color: MUTED },
+  badgeRow: { flexDirection: 'row', gap: 4 },
+  badge: { flex: 1, alignItems: 'center', gap: 6, paddingVertical: 12 },
+  badgeLocked: { opacity: 0.3 },
+  badgeName: { fontSize: 10, fontWeight: '400', letterSpacing: 0.5 },
 
-  // Referral
-  referralCard: {
-    backgroundColor: 'rgba(20,18,5,0.95)', borderWidth: 1, borderColor: BORDER,
-    borderRadius: 16, overflow: 'hidden', flexDirection: 'row',
+  // ── Balance ─────────────────────────────────────────────────────────────────
+  balanceRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 2,
   },
-  referralAccentBar: { width: 2, backgroundColor: GOLD, opacity: 0.9 },
-  referralInner: { flex: 1, padding: 14, gap: 8 },
-  referralTitle: { fontSize: 16, fontWeight: '300', color: TEXT },
-  referralSub: { fontSize: 12, fontWeight: '300', color: DIM, lineHeight: 18 },
-  referralBtn: {
-    alignSelf: 'flex-start', backgroundColor: GOLD, borderRadius: 20,
-    paddingHorizontal: 18, paddingVertical: 8, marginTop: 4,
-  },
-  referralBtnText: {
-    fontSize: 10, fontWeight: '700', letterSpacing: 1.5, color: '#0a0a0a', textTransform: 'uppercase',
-  },
+  balanceLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  balanceLabel: { fontSize: 13, fontWeight: '300', color: DIM },
+  balanceValue: { fontSize: 15, fontWeight: '200', color: GOLD, letterSpacing: -0.3 },
 
-  // Quick links
-  linkRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 13, gap: 12 },
-  linkRowBorder: { borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.06)' },
-  linkIcon: {
-    width: 30, height: 30, borderRadius: 8,
-    backgroundColor: 'rgba(232,210,0,0.08)', borderWidth: 1, borderColor: 'rgba(232,210,0,0.15)',
-    alignItems: 'center', justifyContent: 'center',
+  // ── Invite ──────────────────────────────────────────────────────────────────
+  inviteRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingHorizontal: 2,
+  },
+  inviteText: { flex: 1, gap: 1 },
+  inviteTitle: { fontSize: 14, fontWeight: '300', color: TEXT },
+  inviteSub: { fontSize: 11, fontWeight: '300', color: MUTED },
+  inviteBtn: {
+    backgroundColor: GOLD, borderRadius: 20,
+    paddingHorizontal: 16, paddingVertical: 7,
+  },
+  inviteBtnText: { fontSize: 9, fontWeight: '700', letterSpacing: 1.5, color: '#0a0a0a' },
+
+  // ── Links ───────────────────────────────────────────────────────────────────
+  links: { gap: 2 },
+  linkRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingVertical: 13, paddingHorizontal: 2,
   },
   linkLabel: { flex: 1, fontSize: 14, fontWeight: '300', color: TEXT },
-
-  // Sign out
-  signOutBtn: {
-    paddingVertical: 14, alignItems: 'center',
-    borderRadius: 16, borderWidth: 1, borderColor: BORDER,
-  },
-  signOutText: { fontSize: 13, fontWeight: '300', color: MUTED },
 });

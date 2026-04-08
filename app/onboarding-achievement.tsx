@@ -25,6 +25,26 @@ const CY = CONTAINER / 2;
 // Sparkle burst — 12 evenly spaced dots
 const SPARKS = Array.from({ length: 12 }, (_, i) => (i * 360) / 12);
 
+function StepDots({ current }: { current: number }) {
+    return (
+        <View style={dotStyles.row}>
+            {[0, 1, 2, 3, 4].map(i => (
+                <View
+                    key={i}
+                    style={[dotStyles.dot, i === current ? dotStyles.dotActive : dotStyles.dotInactive]}
+                />
+            ))}
+        </View>
+    );
+}
+
+const dotStyles = StyleSheet.create({
+    row: { flexDirection: 'row', gap: 6, justifyContent: 'center', marginBottom: 20 },
+    dot: { height: 5, borderRadius: 3 },
+    dotActive: { width: 20, backgroundColor: GOLD },
+    dotInactive: { width: 5, backgroundColor: 'rgba(255,255,255,0.15)' },
+});
+
 export default function OnboardingAchievementScreen() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
@@ -128,7 +148,13 @@ export default function OnboardingAchievementScreen() {
             {/* Back button */}
             <Pressable
                 style={[styles.backButton, { top: insets.top + 14 }]}
-                onPress={() => router.back()}
+                onPress={() => {
+                    if (router.canGoBack()) {
+                        router.back();
+                    } else {
+                        router.replace('/onboarding-health');
+                    }
+                }}
                 hitSlop={24}
             >
                 <Ionicons name="chevron-back" size={26} color="rgba(255,255,255,0.55)" />
@@ -304,6 +330,7 @@ export default function OnboardingAchievementScreen() {
 
             {/* ── CTA ── */}
             <Animated.View style={[styles.bottom, { paddingBottom: insets.bottom + 28, opacity: buttonOpacity }]}>
+                <StepDots current={4} />
                 <Pressable
                     style={({ pressed }) => [styles.primaryButton, pressed && { opacity: 0.86 }]}
                     onPress={async () => {

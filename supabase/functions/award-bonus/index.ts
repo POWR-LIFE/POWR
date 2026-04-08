@@ -71,6 +71,14 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ error: 'Failed to record transaction' }), { status: 500 });
   }
 
+  // If this is the location_permission bonus, flag the profile
+  if (body.bonus_type === 'location_permission') {
+    await supabase
+      .from('profiles')
+      .update({ location_granted: true })
+      .eq('id', user.id);
+  }
+
   return new Response(
     JSON.stringify({ ok: true, earned: bonus.amount, transaction_id: tx.id }),
     { status: 200, headers: { 'Content-Type': 'application/json' } },

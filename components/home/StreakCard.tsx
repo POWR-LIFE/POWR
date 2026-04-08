@@ -1,4 +1,3 @@
-import { ResizeMode, Video } from 'expo-av';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useEffect, useRef } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
@@ -22,7 +21,9 @@ interface StreakCardProps {
   sessionActive?: boolean;
   sessionPartnerName?: string;
   sessionElapsed?: string;
-  sessionProgress?: number; // 0–1
+  sessionProgress?: number;  // 0–1
+  sessionDwellMet?: boolean; // true once the 20-min threshold is hit
+  sessionProjectedPts?: number; // 10 or 15 depending on dwell time
 }
 
 const DAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
@@ -47,8 +48,9 @@ export function StreakCard({
   sessionPartnerName,
   sessionElapsed,
   sessionProgress = 0,
+  sessionDwellMet = false,
+  sessionProjectedPts = 10,
 }: StreakCardProps) {
-  const videoRef = useRef<Video>(null);
   const dotScale = useSharedValue(1);
   const sessionPulse = useSharedValue(0.3);
 
@@ -64,9 +66,9 @@ export function StreakCard({
     );
   }, [dotScale]);
 
-  // Session dot pulse — starts/stops with sessionActive
+  // Session dot pulse — pulses while waiting for dwell, solid once points are locked
   useEffect(() => {
-    if (sessionActive) {
+    if (sessionActive && !sessionDwellMet) {
       sessionPulse.value = withRepeat(
         withSequence(
           withTiming(1,   { duration: 600 }),
@@ -76,9 +78,9 @@ export function StreakCard({
         false
       );
     } else {
-      sessionPulse.value = 0.3;
+      sessionPulse.value = withTiming(sessionDwellMet ? 1 : 0.3, { duration: 300 });
     }
-  }, [sessionActive, sessionPulse]);
+  }, [sessionActive, sessionDwellMet, sessionPulse]);
 
   const dotStyle = useAnimatedStyle(() => ({
     transform: [{ scale: dotScale.value }],
@@ -93,23 +95,9 @@ export function StreakCard({
 
   return (
     <View style={styles.card}>
-      {/* Background video */}
-      <Video
-        ref={videoRef}
-        source={{ uri: 'https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/landing-page-assets/partners_hero.mp4' }}
-        style={StyleSheet.absoluteFillObject}
-        resizeMode={ResizeMode.COVER}
-        shouldPlay
-        isLooping
-        isMuted
-        onReadyForDisplay={() => videoRef.current?.playAsync()}
-      />
 
-      {/* Dark overlay gradient */}
-      <LinearGradient
-        colors={['rgba(0,0,0,0.55)', 'rgba(0,0,0,0.75)']}
-        style={StyleSheet.absoluteFillObject}
-      />
+
+
 
       {/* Content */}
       <View style={styles.content}>
@@ -128,40 +116,45 @@ export function StreakCard({
             </View>
         </View>
 
-        {/* Number */}
-        <Text style={styles.number}>{streak}</Text>
+        {/* Main row: Everything on one line */}
+        <View style={styles.mainRow}>
+          {/* Number */}
+          <Text style={styles.number}>{streak}</Text>
 
-        {/* Unit + multiplier */}
-        <Text style={styles.unit}>
-          {`day${streak !== 1 ? 's' : ''}`}
-          {multiplier && multiplier > 1
-            ? <Text style={styles.bonus}>{`  ·  ${multiplier}× points`}</Text>
-            : null}
-        </Text>
+          {/* Unit + multiplier */}
+          <View style={styles.unitCol}>
+            <Text style={styles.unit}>
+              {`day${streak !== 1 ? 's' : ''}`}
+            </Text>
+            {multiplier && multiplier > 1 && (
+              <Text style={styles.bonus}>{multiplier}×</Text>
+            )}
+          </View>
 
-        {/* Day dots */}
-        <View style={styles.dots}>
-          {DAYS.map((day, i) => {
-            const done = activeDays[i] ?? false;
-            const isToday = i === todayIndex;
-            const isFuture = i > todayIndex;
-            return (
-              <View
-                key={i}
-                style={[
-                  styles.dot,
-                  done && styles.dotDone,
-                  isToday && styles.dotToday,
-                  isFuture && styles.dotFuture,
-                ]}
-              >
-                {done && !isFuture && (
-                  <Text style={styles.dotCheck}>✓</Text>
-                )}
-                <Text style={[styles.dotDay, done && styles.dotDayDone]}>{day}</Text>
-              </View>
-            );
-          })}
+          {/* Day dots */}
+          <View style={styles.dots}>
+            {DAYS.map((day, i) => {
+              const done = activeDays[i] ?? false;
+              const isToday = i === todayIndex;
+              const isFuture = i > todayIndex;
+              return (
+                <View
+                  key={i}
+                  style={[
+                    styles.dot,
+                    done && styles.dotDone,
+                    isToday && styles.dotToday,
+                    isFuture && styles.dotFuture,
+                  ]}
+                >
+                  {done && !isFuture && (
+                    <Text style={styles.dotCheck}>✓</Text>
+                  )}
+                  <Text style={[styles.dotDay, done && styles.dotDayDone]}>{day}</Text>
+                </View>
+              );
+            })}
+          </View>
         </View>
 
         {/* Session active section */}
@@ -169,8 +162,18 @@ export function StreakCard({
           <View style={styles.sessionRow}>
             <View style={styles.sessionSep} />
             <View style={styles.sessionInfo}>
-              <Animated.View style={[styles.sessionDot, sessionDotStyle]} />
-              <Text style={styles.sessionLabel}>SESSION</Text>
+              <Animated.View
+                style={[
+                  styles.sessionDot,
+                  sessionDotStyle,
+                  sessionDwellMet && { backgroundColor: GOLD },
+                ]}
+              />
+              <Text style={[styles.sessionLabel, sessionDwellMet && styles.sessionLabelLocked]}>
+                {sessionDwellMet
+                  ? (sessionProjectedPts >= 15 ? 'MAX TIER' : 'POINTS LOCKED')
+                  : 'SESSION'}
+              </Text>
               {sessionPartnerName ? (
                 <Text style={styles.sessionPartner} numberOfLines={1}>
                   {sessionPartnerName}
@@ -185,9 +188,17 @@ export function StreakCard({
                 style={[
                   styles.sessionFill,
                   { width: `${Math.round(sessionProgress * 100)}%` as any },
+                  sessionDwellMet && styles.sessionFillLocked,
                 ]}
               />
             </View>
+            {sessionDwellMet && (
+              <Text style={styles.sessionHint}>
+                {sessionProjectedPts >= 15
+                  ? `+15 pts · max tier`
+                  : `+10 pts · stay 45m to unlock +15`}
+              </Text>
+            )}
           </View>
         )}
       </View>
@@ -197,11 +208,6 @@ export function StreakCard({
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: 20,
-    minHeight: 168,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.10)',
-    overflow: 'hidden',
     position: 'relative',
   },
   content: {
@@ -244,6 +250,17 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     textTransform: 'uppercase',
   },
+  mainRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 16,
+    marginTop: 8,
+  },
+  unitCol: {
+    alignItems: 'flex-start',
+    marginRight: 4,
+  },
   number: {
     fontSize: 64,
     fontWeight: '100',
@@ -256,15 +273,18 @@ const styles = StyleSheet.create({
     fontWeight: '300',
     color: '#ffffff',
     letterSpacing: 0.5,
-    marginBottom: 10,
+    textTransform: 'uppercase',
   },
   bonus: {
+    fontSize: 9,
     color: GOLD,
-    fontWeight: '400',
+    fontWeight: '600',
+    marginTop: -2,
   },
   dots: {
     flexDirection: 'row',
-    gap: 5,
+    gap: 10,
+    alignItems: 'center',
   },
   dot: {
     width: 24,
@@ -278,19 +298,19 @@ const styles = StyleSheet.create({
   },
   dotDone: {
     backgroundColor: 'transparent',
-    borderColor: 'rgba(232,210,0,0.5)',
+    borderColor: 'rgba(255,255,255,0.5)',
   },
   dotToday: {
-    backgroundColor: 'rgba(232,210,0,0.1)',
+    backgroundColor: 'rgba(255,255,255,0.1)',
     borderWidth: 1.5,
-    borderColor: GOLD,
+    borderColor: '#ffffff',
   },
   dotFuture: {
     opacity: 0.4,
   },
   dotCheck: {
     fontSize: 7,
-    color: GOLD,
+    color: '#ffffff',
     lineHeight: 8,
   },
   dotDay: {
@@ -299,7 +319,7 @@ const styles = StyleSheet.create({
     lineHeight: 7,
   },
   dotDayDone: {
-    color: GOLD,
+    color: '#ffffff',
   },
   // Session section (appears below day dots when active)
   sessionRow: {
@@ -342,6 +362,9 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.4)',
     flexShrink: 0,
   },
+  sessionLabelLocked: {
+    color: GOLD,
+  },
   sessionTrack: {
     height: 2,
     backgroundColor: 'rgba(232,210,0,0.12)',
@@ -352,5 +375,16 @@ const styles = StyleSheet.create({
     height: '100%',
     backgroundColor: GOLD,
     borderRadius: 1,
+  },
+  sessionFillLocked: {
+    backgroundColor: GOLD,
+    opacity: 1,
+  },
+  sessionHint: {
+    fontSize: 9,
+    fontWeight: '400',
+    color: GOLD,
+    opacity: 0.7,
+    marginTop: 2,
   },
 });

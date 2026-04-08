@@ -2,9 +2,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useEffect, useRef, useState } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
 
-const ACTIVE_GEOFENCE_KEY = '@powr/active_geofence';
-const POLL_INTERVAL_MS    = 5000;
-const MAX_SESSION_MS      = 12 * 60 * 60 * 1000; // auto-expire sessions older than 12 h
+const ACTIVE_GEOFENCE_KEY    = '@powr/active_geofence';
+const SESSION_COMPLETED_KEY  = '@powr/session_completed';
+const POLL_INTERVAL_MS       = 5000;
+const MAX_SESSION_MS         = 12 * 60 * 60 * 1000; // auto-expire sessions older than 12 h
 
 export interface ActiveGeofence {
   partnerId:      string;
@@ -12,24 +13,50 @@ export interface ActiveGeofence {
   entryTimestamp: number;
 }
 
-export function useActiveGeofence(): { activeGeofence: ActiveGeofence | null } {
-  const [activeGeofence, setActiveGeofence] = useState<ActiveGeofence | null>(null);
+export interface SessionCompletedEvent {
+  partnerName: string;
+  durationSec: number;
+  timestamp:   number;
+}
+
+export function useActiveGeofence(): {
+  activeGeofence:       ActiveGeofence | null;
+  sessionCompleted:     SessionCompletedEvent | null;
+  clearSessionCompleted: () => Promise<void>;
+} {
+  const [activeGeofence,   setActiveGeofence]   = useState<ActiveGeofence | null>(null);
+  const [sessionCompleted, setSessionCompleted] = useState<SessionCompletedEvent | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   async function readStorage() {
     try {
+      // Active geofence
       const raw = await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY);
-      if (!raw) { setActiveGeofence(null); return; }
-      const parsed = JSON.parse(raw);
-      if (Date.now() - parsed.entryTimestamp > MAX_SESSION_MS) {
-        await AsyncStorage.removeItem(ACTIVE_GEOFENCE_KEY);
+      if (!raw) {
         setActiveGeofence(null);
-        return;
+      } else {
+        const parsed = JSON.parse(raw);
+        if (Date.now() - parsed.entryTimestamp > MAX_SESSION_MS) {
+          await AsyncStorage.removeItem(ACTIVE_GEOFENCE_KEY);
+          setActiveGeofence(null);
+        } else {
+          setActiveGeofence(parsed);
+        }
       }
-      setActiveGeofence(parsed);
+
+      // Session completed event (written by background task)
+      const completedRaw = await AsyncStorage.getItem(SESSION_COMPLETED_KEY);
+      if (completedRaw) {
+        setSessionCompleted(JSON.parse(completedRaw));
+      }
     } catch {
       // Leave state as-is on read failure
     }
+  }
+
+  async function clearSessionCompleted() {
+    await AsyncStorage.removeItem(SESSION_COMPLETED_KEY);
+    setSessionCompleted(null);
   }
 
   function startPolling() {
@@ -63,5 +90,5 @@ export function useActiveGeofence(): { activeGeofence: ActiveGeofence | null } {
     };
   }, []);
 
-  return { activeGeofence };
+  return { activeGeofence, sessionCompleted, clearSessionCompleted };
 }

@@ -5,8 +5,60 @@ import { useToast } from '../../lib/toast';
 import { useAuth } from '../../App';
 import {
     ChevronLeft, MapPin, Globe, Mail, Phone, Upload, Save,
-    Activity, Award, Edit2, Trash2, Image, X, Calendar, Building2
+    Activity, Award, Edit2, Trash2, Image, X, Calendar, Building2, Clock
 } from 'lucide-react';
+
+const DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+const DAY_LABELS = { mon: 'Monday', tue: 'Tuesday', wed: 'Wednesday', thu: 'Thursday', fri: 'Friday', sat: 'Saturday', sun: 'Sunday' };
+
+const DEFAULT_HOURS = { mon: { open: '06:00', close: '22:00' }, tue: { open: '06:00', close: '22:00' }, wed: { open: '06:00', close: '22:00' }, thu: { open: '06:00', close: '22:00' }, fri: { open: '06:00', close: '22:00' }, sat: { open: '08:00', close: '20:00' }, sun: { open: '09:00', close: '18:00' } };
+
+function OpeningHoursEditor({ value, onChange }) {
+    const hours = value || {};
+    const setDay = (key, dayHours) => onChange({ ...hours, [key]: dayHours });
+
+    return (
+        <div className="divide-y divide-[#151515]">
+            {DAY_KEYS.map(key => {
+                const dayHours = hours[key];
+                const isOpen = dayHours != null;
+                return (
+                    <div key={key} className="flex items-center gap-6 px-10 py-5">
+                        <button
+                            type="button"
+                            onClick={() => setDay(key, isOpen ? null : { open: '06:00', close: '22:00' })}
+                            className={`w-10 h-6 rounded-full transition-all relative shrink-0 ${isOpen ? 'bg-[#E8D200]' : 'bg-[#151515]'}`}
+                        >
+                            <span className={`absolute top-1 w-4 h-4 rounded-full transition-all ${isOpen ? 'left-5 bg-[#080808]' : 'left-1 bg-[#333]'}`} />
+                        </button>
+                        <span className={`text-[11px] font-black uppercase tracking-[0.3em] w-24 shrink-0 ${isOpen ? 'text-[#DDD]' : 'text-[#222]'}`}>
+                            {DAY_LABELS[key]}
+                        </span>
+                        {isOpen ? (
+                            <div className="flex items-center gap-4">
+                                <input
+                                    type="time"
+                                    value={dayHours.open}
+                                    onChange={e => setDay(key, { ...dayHours, open: e.target.value })}
+                                    className="h-10 px-4 bg-[#0A0A0A] border border-[#151515] rounded-xl text-xs font-mono text-[#888] focus:border-[#E8D200]/40 outline-none"
+                                />
+                                <span className="text-[#222] text-xs font-black">—</span>
+                                <input
+                                    type="time"
+                                    value={dayHours.close}
+                                    onChange={e => setDay(key, { ...dayHours, close: e.target.value })}
+                                    className="h-10 px-4 bg-[#0A0A0A] border border-[#151515] rounded-xl text-xs font-mono text-[#888] focus:border-[#E8D200]/40 outline-none"
+                                />
+                            </div>
+                        ) : (
+                            <span className="text-[10px] uppercase tracking-[0.4em] text-[#1A1A1A] font-black">Closed</span>
+                        )}
+                    </div>
+                );
+            })}
+        </div>
+    );
+}
 
 const logAction = async (adminId, action, targetType, targetId, metadata = {}) => {
     await supabase.from('admin_audit_log').insert({ admin_id: adminId, action, target_type: targetType, target_id: targetId, metadata });
@@ -102,6 +154,7 @@ export default function PartnerProfile() {
             description: form.description || null,
             address: form.address || null,
             active: form.active,
+            opening_hours: form.opening_hours || null,
             locations: (form.locations || []).map(loc => ({
                 name: loc.name, lat: parseFloat(loc.lat) || 0,
                 lng: parseFloat(loc.lng) || 0, radius: parseFloat(loc.radius) || 100,
@@ -317,6 +370,66 @@ export default function PartnerProfile() {
                                 </div>
                             ))}
                         </div>
+                    </section>
+
+                    {/* Opening Hours */}
+                    <section className="bg-[#0A0A0A] border border-[#151515] rounded-[2rem] overflow-hidden">
+                        <div className="p-10 border-b border-[#151515] flex items-center justify-between">
+                            <div>
+                                <h3 className="text-xl font-light tracking-tighter text-[#EEE]">Opening Hours</h3>
+                                <p className="text-[9px] uppercase tracking-[0.4em] text-[#222] font-black mt-2">Weekly Schedule</p>
+                            </div>
+                            {editing && (
+                                <button
+                                    type="button"
+                                    onClick={() => setForm({ ...form, opening_hours: form.opening_hours ? null : { ...DEFAULT_HOURS } })}
+                                    className="text-[9px] uppercase tracking-[0.3em] font-black text-[#333] hover:text-[#E8D200] transition-colors"
+                                >
+                                    {form.opening_hours ? 'Clear Hours' : 'Set Hours'}
+                                </button>
+                            )}
+                        </div>
+                        {(editing ? form.opening_hours : partner.opening_hours) ? (
+                            editing ? (
+                                <OpeningHoursEditor
+                                    value={form.opening_hours}
+                                    onChange={oh => setForm({ ...form, opening_hours: oh })}
+                                />
+                            ) : (
+                                <div className="divide-y divide-[#151515]">
+                                    {DAY_KEYS.map(key => {
+                                        const dayHours = partner.opening_hours?.[key];
+                                        const isOpen = dayHours != null;
+                                        return (
+                                            <div key={key} className="flex items-center justify-between px-10 py-5">
+                                                <span className={`text-[11px] font-black uppercase tracking-[0.3em] ${isOpen ? 'text-[#DDD]' : 'text-[#222]'}`}>
+                                                    {DAY_LABELS[key]}
+                                                </span>
+                                                {isOpen ? (
+                                                    <span className="text-xs font-mono text-[#888]">{dayHours.open} – {dayHours.close}</span>
+                                                ) : (
+                                                    <span className="text-[10px] uppercase tracking-[0.4em] text-[#1A1A1A] font-black">Closed</span>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )
+                        ) : (
+                            <div className="p-20 text-center">
+                                <Clock size={48} className="mx-auto text-[#151515] mb-6" />
+                                <p className="text-[10px] uppercase tracking-[0.4em] text-[#1A1A1A] font-black">No hours configured</p>
+                                {editing && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setForm({ ...form, opening_hours: { ...DEFAULT_HOURS } })}
+                                        className="mt-6 text-[10px] uppercase tracking-[0.3em] font-black text-[#E8D200] hover:text-[#F2F2F2] transition-colors"
+                                    >
+                                        + Set Opening Hours
+                                    </button>
+                                )}
+                            </div>
+                        )}
                     </section>
                 </div>
 

@@ -26,6 +26,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ProfileButton } from '@/components/ProfileButton';
 import { JourneyFullView } from '@/components/JourneyFullView';
 import { formatCountdown, msUntilLeagueReset } from '@/lib/journey';
+import { usePoints } from '@/hooks/usePoints';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -34,7 +35,6 @@ const GREEN  = '#4ade80';
 const RED    = '#f87171';
 const SILVER = '#c0c0c0';
 const BRONZE = '#cd7f32';
-const BG     = '#1E1E1E';
 const CARD_BG = 'rgba(40,40,40,0.85)';
 const BORDER  = 'rgba(255,255,255,0.08)';
 const TEXT    = '#F2F2F2';
@@ -111,6 +111,21 @@ export default function LeagueScreen() {
 
   const [countdown, setCountdown] = useState(formatCountdown(msUntilLeagueReset()));
   const urgentReset = msUntilLeagueReset() < 86_400_000;
+  const { weeklyEarned } = usePoints();
+
+  // Inject real weekly XP for "You", re-sort, recompute rank
+  const liveCompetitors = [...MOCK_COMPETITORS]
+    .map(c => c.isYou ? { ...c, xp: weeklyEarned } : c)
+    .sort((a, b) => b.xp - a.xp);
+  const liveRank = liveCompetitors.findIndex(c => c.isYou) + 1;
+  const liveXpToPromote = liveCompetitors[PROMOTE_ZONE - 1]?.xp ?? MOCK_LEAGUE.xpToPromote;
+  const liveLeague = {
+    ...MOCK_LEAGUE,
+    competitors: liveCompetitors,
+    xpThisWeek: weeklyEarned,
+    rank: liveRank,
+    xpToPromote: Math.max(liveXpToPromote, weeklyEarned + 1),
+  };
 
   useEffect(() => {
     const id = setInterval(() => setCountdown(formatCountdown(msUntilLeagueReset())), 60_000);
@@ -184,7 +199,7 @@ export default function LeagueScreen() {
           showsVerticalScrollIndicator={false}
         >
           <LeagueCard
-            league={MOCK_LEAGUE}
+            league={liveLeague}
             countdown={countdown}
             urgent={urgentReset}
           />
@@ -218,30 +233,32 @@ function LeagueCard({ league, countdown, urgent }: LeagueCardProps) {
   const tc       = league.tierColour;
 
   return (
-    <View style={[styles.leagueCard, { borderColor: `${tc}25` }]}>
-      <LinearGradient
-        colors={[`${tc}1A`, `${tc}07`, 'transparent']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={StyleSheet.absoluteFillObject}
-      />
-
-      {/* Hero rank */}
-      <View style={styles.leagueHeroRow}>
-        <View style={styles.leagueHeroLeft}>
-          <Text style={[styles.leagueHeroRank, { color: tc }]}>#{league.rank}</Text>
-          <View style={styles.leagueHeroMeta}>
-            <Text style={styles.leagueHeroLabel}>{league.tier.toUpperCase()} LEAGUE</Text>
-            <Text style={styles.leagueHeroSub}>of {league.total} competitors</Text>
+    <View style={{ gap: 8 }}>
+      {/* Hero rank — open section, no card bg */}
+      <View style={styles.heroSection}>
+        <View style={styles.leagueHeroRow}>
+          <View style={styles.leagueHeroLeft}>
+            <Text style={[styles.leagueHeroRank, { color: tc }]}>#{league.rank}</Text>
+            <View style={styles.leagueHeroMeta}>
+              <Text style={styles.leagueHeroLabel}>{league.tier.toUpperCase()} LEAGUE</Text>
+              <Text style={styles.leagueHeroSub}>of {league.total} competitors</Text>
+            </View>
           </View>
+          <CountdownBadge label={countdown} urgent={urgent} />
         </View>
-        <CountdownBadge label={countdown} urgent={urgent} />
       </View>
 
-      {/* To-promotion bar */}
-      <View style={styles.promoBlock}>
+      {/* To-promotion bar — its own card */}
+      <Text style={styles.sectionLabel}>TO PROMOTION</Text>
+      <View style={[styles.promoCard, { borderColor: `${tc}25` }]}>
+        <LinearGradient
+          colors={[`${tc}10`, 'transparent']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={StyleSheet.absoluteFillObject}
+        />
         <View style={styles.promoLabelRow}>
-          <Text style={styles.promoLabel}>TO PROMOTION</Text>
+          <Text style={styles.promoLabel}>{xpBehind > 0 ? `${xpBehind} PTS TO GO` : 'PROMOTION ZONE'}</Text>
           <Text style={styles.promoXpFraction}>
             {league.xpThisWeek} <Text style={styles.promoXpDim}>/ {league.xpToPromote} pts</Text>
           </Text>
@@ -256,23 +273,18 @@ function LeagueCard({ league, countdown, urgent }: LeagueCardProps) {
         </View>
         <Text style={styles.promoHint}>
           {xpBehind > 0
-            ? `${xpBehind} pts to top ${PROMOTE_ZONE} · top ${PROMOTE_ZONE} advance`
+            ? `Top ${PROMOTE_ZONE} advance to the next league`
             : 'In promotion zone! Keep going.'}
         </Text>
       </View>
 
-      {/* Podium */}
+      {/* Podium — open section */}
+      <Text style={styles.sectionLabel}>TOP 3</Text>
       <Podium competitors={league.competitors} />
 
-      {/* Standings divider */}
-      <View style={styles.standingsSep}>
-        <View style={styles.standingsSepLine} />
-        <Text style={styles.standingsSepLabel}>STANDINGS</Text>
-        <View style={styles.standingsSepLine} />
-      </View>
-
-      {/* Leaderboard list (rank 4+) */}
-      <View style={styles.leaderboard}>
+      {/* Standings — its own card */}
+      <Text style={styles.sectionLabel}>STANDINGS</Text>
+      <View style={styles.standingsCard}>
         {restList.map((c, i) => {
           const rank          = i + 1 + PROMOTE_ZONE;
           const isDemote      = rank > league.total - DEMOTE_ZONE;
@@ -390,7 +402,7 @@ function ZoneSeparator({ label, colour }: { label: string; colour: string }) {
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  screen:  { flex: 1, backgroundColor: BG },
+  screen:  { flex: 1 },
   header: {
     paddingHorizontal: 16, paddingVertical: 10,
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
@@ -410,10 +422,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   topTabText: {
-    fontSize: 13,
-    fontWeight: '400',
+    fontSize: 9,
+    fontWeight: '500',
+    letterSpacing: 1.5,
     color: MUTED,
-    letterSpacing: 0.2,
+    textTransform: 'uppercase',
   },
   topTabTextActive: {
     color: TEXT,
@@ -424,7 +437,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     width: TAB_W,
-    height: 2,
+    height: 1.5,
     backgroundColor: GOLD,
     borderRadius: 1,
   },
@@ -432,13 +445,23 @@ const styles = StyleSheet.create({
   // ── Paged content
   pager: { flex: 1 },
   page:  { width: SCREEN_W },
-  pageContent: { paddingHorizontal: 10, paddingTop: 10, gap: 8 },
+  pageContent: { paddingHorizontal: 10, paddingTop: 2, gap: 8 },
 
-  // ── League card
-  leagueCard: {
-    borderRadius: 16, backgroundColor: CARD_BG,
-    borderWidth: 1, borderColor: BORDER,
-    padding: 14, gap: 16, overflow: 'hidden',
+  // ── Section label (matches home/progress)
+  sectionLabel: {
+    paddingHorizontal: 14,
+    paddingTop: 4,
+    fontSize: 9,
+    fontWeight: '500',
+    letterSpacing: 2,
+    color: TEXT,
+    textTransform: 'uppercase',
+  },
+
+  // ── Hero rank (open, no card bg — like home streak area)
+  heroSection: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
   },
   leagueHeroRow:   { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between' },
   leagueHeroLeft:  { flexDirection: 'row', alignItems: 'flex-end', gap: 10 },
@@ -451,24 +474,28 @@ const styles = StyleSheet.create({
   countdownBadge: {
     flexDirection: 'row', alignItems: 'center', gap: 5,
     paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20,
-    backgroundColor: CARD_BG, borderWidth: 1, borderColor: BORDER,
+    backgroundColor: 'rgba(40,40,40,0.5)', borderWidth: 1, borderColor: BORDER,
   },
   countdownBadgeUrgent: { borderColor: 'rgba(251,146,60,0.35)', backgroundColor: 'rgba(251,146,60,0.08)' },
   countdownDot:  { width: 5, height: 5, borderRadius: 3, backgroundColor: '#fb923c' },
   countdownText: { fontSize: 11, fontWeight: '400', color: DIM, letterSpacing: 0.2 },
 
-  // ── Promo bar
-  promoBlock:      { gap: 6 },
+  // ── Promo card
+  promoCard: {
+    borderRadius: 16, backgroundColor: CARD_BG,
+    borderWidth: 1, borderColor: BORDER,
+    padding: 14, gap: 6, overflow: 'hidden',
+  },
   promoLabelRow:   { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   promoLabel:      { fontSize: 8, fontWeight: '600', letterSpacing: 1.5, color: MUTED },
   promoXpFraction: { fontSize: 12, fontWeight: '300', color: GOLD },
   promoXpDim:      { fontSize: 10, fontWeight: '300', color: DIM },
-  promoBarTrack:   { height: 4, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 2, overflow: 'hidden' },
+  promoBarTrack:   { height: 3, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 2, overflow: 'hidden' },
   promoBarFill:    { height: '100%', borderRadius: 2 },
   promoHint:       { fontSize: 10, fontWeight: '300', color: MUTED },
 
   // ── Podium
-  podiumRow:      { flexDirection: 'row', alignItems: 'flex-end', gap: 6, paddingHorizontal: 4 },
+  podiumRow:      { flexDirection: 'row', alignItems: 'flex-end', gap: 6, paddingHorizontal: 14 },
   podiumSlot:     { flex: 1, alignItems: 'center', gap: 5 },
   avatarCircle:   { borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
   avatarInitials: { fontWeight: '500', letterSpacing: 0.5 },
@@ -477,8 +504,13 @@ const styles = StyleSheet.create({
   podiumPlatform: { width: '100%', borderRadius: 8, borderWidth: 1, borderTopWidth: 2, alignItems: 'center', justifyContent: 'center' },
   podiumRankNum:  { fontSize: 20, fontWeight: '100', letterSpacing: -1 },
 
-  // ── Standings
-  standingsSep:      { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  // ── Standings card
+  standingsCard: {
+    borderRadius: 16, backgroundColor: CARD_BG,
+    borderWidth: 1, borderColor: BORDER,
+    padding: 14, gap: 1, overflow: 'hidden',
+  },
+  standingsSep:      { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
   standingsSepLine:  { flex: 1, height: 1, backgroundColor: BORDER },
   standingsSepLabel: { fontSize: 7, fontWeight: '600', letterSpacing: 2.5, color: MUTED },
   leaderboard:       { gap: 1 },

@@ -11,16 +11,20 @@ export type ActivityType =
   | 'gym'
   | 'hiit'
   | 'sports'
-  | 'yoga';
+  | 'yoga'
+  | 'dance'
+  | 'sleep';
 
 export interface ActivityConfig {
   type: ActivityType;
   label: string;
   /** Short label for tight UI */
   labelShort: string;
-  /** Ionicon name (outline variant for inactive, filled for active) */
+  /** Icon name (outline variant for inactive, filled for active) */
   icon: string;
   iconActive: string;
+  /** Icon library – defaults to 'ionicons' */
+  iconLib?: 'ionicons' | 'material-community';
   /** Marketing tag from points logic doc */
   tag: string;
   dailyCap: number;
@@ -43,19 +47,20 @@ export const ACTIVITIES: Record<ActivityType, ActivityConfig> = {
     dailyCap: 5,
     colour: '#4AF2A1',
     minDuration: 0,
-    verification: 'wearable',
+    verification: 'gps',
   },
   running: {
     type: 'running',
     label: 'Running',
     labelShort: 'Run',
-    icon: 'body-outline',
-    iconActive: 'body',
+    icon: 'run',
+    iconActive: 'run-fast',
+    iconLib: 'material-community',
     tag: 'Effort-Based',
     dailyCap: 10,
     colour: '#FF9944',
     minDuration: 15,
-    verification: 'gps',
+    verification: 'wearable',
   },
   cycling: {
     type: 'cycling',
@@ -67,7 +72,7 @@ export const ACTIVITIES: Record<ActivityType, ActivityConfig> = {
     dailyCap: 10,
     colour: '#0EA5E9',
     minDuration: 20,
-    verification: 'gps',
+    verification: 'wearable',
   },
   swimming: {
     type: 'swimming',
@@ -115,7 +120,7 @@ export const ACTIVITIES: Record<ActivityType, ActivityConfig> = {
     dailyCap: 10,
     colour: '#7C3AED',
     minDuration: 30,
-    verification: 'gps',
+    verification: 'wearable',
   },
   yoga: {
     type: 'yoga',
@@ -128,6 +133,30 @@ export const ACTIVITIES: Record<ActivityType, ActivityConfig> = {
     colour: '#88CC28',
     minDuration: 20,
     verification: 'manual',
+  },
+  dance: {
+    type: 'dance',
+    label: 'Dance',
+    labelShort: 'Dance',
+    icon: 'musical-notes-outline',
+    iconActive: 'musical-notes',
+    tag: 'Cardio',
+    dailyCap: 8,
+    colour: '#EC4899',
+    minDuration: 20,
+    verification: 'wearable',
+  },
+  sleep: {
+    type: 'sleep',
+    label: 'Sleep',
+    labelShort: 'Sleep',
+    icon: 'moon-outline',
+    iconActive: 'moon',
+    tag: 'Recovery',
+    dailyCap: 5,
+    colour: '#6366F1',
+    minDuration: 0, // measured in hours, not duration-gated
+    verification: 'wearable',
   },
 };
 
@@ -143,4 +172,6 @@ export const ACTIVITY_ORDER: ActivityType[] = [
   'swimming',
   'sports',
   'yoga',
+  'dance',
+  'sleep',
 ];

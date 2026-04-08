@@ -13,12 +13,13 @@ import {
   View,
 } from 'react-native';
 import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
 import MapView, { Circle, Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import MapViewDirections from 'react-native-maps-directions';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ProfileButton } from '@/components/ProfileButton';
 import { useActiveGeofence } from '@/hooks/useActiveGeofence';
-import { useGeofenceContext, type Partner } from '@/context/GeofenceContext';
+import { useGeofenceContext, type Partner, type DayKey, type DayHours, type OpeningHours } from '@/context/GeofenceContext';
 import { GeometricBackground } from '@/components/home/GeometricBackground';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
@@ -42,7 +43,6 @@ const DEFAULT_REGION = {
   longitudeDelta: 0.03,
 };
 
-// Google Maps dark style — slightly lifted from pure black for legibility
 const DARK_MAP_STYLE = [
   { elementType: 'geometry',                                    stylers: [{ color: '#1c1c1e' }] },
   { elementType: 'labels.text.fill',                            stylers: [{ color: '#686868' }] },
@@ -60,22 +60,45 @@ const DARK_MAP_STYLE = [
   { featureType: 'administrative', elementType: 'labels.text.fill', stylers: [{ color: '#4e4e4e' }] },
 ];
 
-// ─── Types and Helper ─────────────────────────────────────────────────────────
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 type Category = 'All' | 'Gym' | 'Yoga' | 'Pilates' | 'Cycling' | 'Running';
 const CATEGORIES: Category[] = ['All', 'Gym', 'Yoga', 'Pilates', 'Cycling', 'Running'];
 
-// Haversine formula to calculate distance in miles
+type SortMode = 'nearest' | 'pts' | 'az';
+
+const DAY_LABELS: { key: DayKey; label: string }[] = [
+  { key: 'mon', label: 'Monday' },
+  { key: 'tue', label: 'Tuesday' },
+  { key: 'wed', label: 'Wednesday' },
+  { key: 'thu', label: 'Thursday' },
+  { key: 'fri', label: 'Friday' },
+  { key: 'sat', label: 'Saturday' },
+  { key: 'sun', label: 'Sunday' },
+];
+
+const DAY_KEYS: DayKey[] = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
 function getDistanceMiles(lat1: number, lon1: number, lat2: number, lon2: number) {
-  const R = 3958.8; // Radius of earth in miles
+  const R = 3958.8;
   const dLat = (lat2 - lat1) * (Math.PI / 180);
   const dLon = (lon2 - lon1) * (Math.PI / 180);
   const a =
     Math.sin(dLat / 2) * Math.sin(dLat / 2) +
     Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) *
     Math.sin(dLon / 2) * Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function formatHours(oh: OpeningHours | undefined): string {
+  if (!oh) return 'Hours not listed';
+  const now = new Date();
+  const todayKey = DAY_KEYS[now.getDay()];
+  const todayHours = oh[todayKey];
+  if (!todayHours) return 'Closed today';
+  return `Today ${todayHours.open} – ${todayHours.close}`;
 }
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
@@ -83,69 +106,104 @@ function getDistanceMiles(lat1: number, lon1: number, lat2: number, lon2: number
 export default function DiscoverScreen() {
   const insets = useSafeAreaInsets();
   const mapRef = useRef<MapView>(null);
+
   const [locationGranted, setLocationGranted] = useState(false);
-  const [activeCategory, setActiveCategory] = useState<Category>('All');
-  const [search, setSearch] = useState('');
   const [userLoc, setUserLoc] = useState<Location.LocationObject | null>(null);
+
+  // Filter state
+  const [activeCategory, setActiveCategory] = useState<Category>('All');
+  const [openNowFilter, setOpenNowFilter] = useState(false);
+  const [sortMode, setSortMode] = useState<SortMode>('nearest');
+  const [maxDistanceMi, setMaxDistanceMi] = useState<number | null>(null); // null = any
+
+  // UI state
+  const [search, setSearch] = useState('');
   const [selectedPartner, setSelectedPartner] = useState<Partner | null>(null);
   const [routePartner, setRoutePartner] = useState<Partner | null>(null);
+  const [filtersVisible, setFiltersVisible] = useState(false);
+  const [sortMenuVisible, setSortMenuVisible] = useState(false);
 
   const { partners: rawPartners } = useGeofenceContext();
   const { activeGeofence } = useActiveGeofence();
 
-  // Add distance and sort by proximity whenever user location or partner list changes
+  // Attach distances and sort
   const partners = useMemo(() => {
-    if (!userLoc) return rawPartners;
-    return [...rawPartners]
-      .map(p => {
-        const miles = getDistanceMiles(
-          userLoc.coords.latitude, userLoc.coords.longitude, p.lat, p.lng,
-        );
-        return { ...p, distance: miles < 0.1 ? '< 0.1 mi' : `${miles.toFixed(1)} mi` };
-      })
-      .sort((a, b) => {
-        const dA = getDistanceMiles(userLoc.coords.latitude, userLoc.coords.longitude, a.lat, a.lng);
-        const dB = getDistanceMiles(userLoc.coords.latitude, userLoc.coords.longitude, b.lat, b.lng);
-        return dA - dB;
-      });
-  }, [rawPartners, userLoc]);
+    const withDist = rawPartners.map(p => {
+      if (!userLoc) return { ...p, _distMi: Infinity };
+      const miles = getDistanceMiles(
+        userLoc.coords.latitude, userLoc.coords.longitude, p.lat, p.lng,
+      );
+      return {
+        ...p,
+        distance: miles < 0.1 ? '< 0.1 mi' : `${miles.toFixed(1)} mi`,
+        _distMi: miles,
+      };
+    });
+
+    return [...withDist].sort((a, b) => {
+      if (sortMode === 'nearest') return a._distMi - b._distMi;
+      if (sortMode === 'pts') return b.pts - a.pts;
+      return a.name.localeCompare(b.name);
+    });
+  }, [rawPartners, userLoc, sortMode]);
 
   useEffect(() => {
     (async () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') return;
       setLocationGranted(true);
-      
       let loc;
       try {
         loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-      } catch (err) {
+      } catch {
         loc = await Location.getLastKnownPositionAsync();
       }
-      
       if (loc) {
         setUserLoc(loc);
-        mapRef.current?.animateToRegion(
-          {
-            latitude: loc.coords.latitude,
-            longitude: loc.coords.longitude,
-            latitudeDelta: 0.02,
-            longitudeDelta: 0.02,
-          },
-          800,
-        );
+        mapRef.current?.animateToRegion({
+          latitude: loc.coords.latitude,
+          longitude: loc.coords.longitude,
+          latitudeDelta: 0.02,
+          longitudeDelta: 0.02,
+        }, 800);
       }
     })();
   }, []);
 
-  const filtered = activeCategory === 'All'
-    ? partners
-    : partners.filter((p) => p.category.toLowerCase() === activeCategory.toLowerCase());
+  // Apply all filters
+  const filtered = useMemo(() => {
+    let list = partners;
+    if (activeCategory !== 'All') {
+      list = list.filter(p => p.category.toLowerCase() === activeCategory.toLowerCase());
+    }
+    if (openNowFilter) {
+      list = list.filter(p => p.isOpenNow);
+    }
+    if (maxDistanceMi !== null && userLoc) {
+      list = list.filter(p => (p as any)._distMi <= maxDistanceMi);
+    }
+    if (search.trim()) {
+      const q = search.trim().toLowerCase();
+      list = list.filter(p =>
+        p.name.toLowerCase().includes(q) || p.area.toLowerCase().includes(q) || p.category.toLowerCase().includes(q),
+      );
+    }
+    return list;
+  }, [partners, activeCategory, openNowFilter, maxDistanceMi, search, userLoc]);
+
+  const sortLabel = sortMode === 'nearest' ? 'Nearest' : sortMode === 'pts' ? 'Most Points' : 'A–Z';
+
+  // Count active non-default filters for the badge
+  const activeFilterCount = [
+    maxDistanceMi !== null,
+    activeCategory !== 'All',
+  ].filter(Boolean).length;
 
   return (
     <View style={styles.screen}>
       <GeometricBackground />
-      {/* ── Map (edge-to-edge, extends behind status bar) ─────── */}
+
+      {/* ── Map ─────────────────────────────────────────────── */}
       <View style={[styles.mapContainer, { height: MAP_HEIGHT + insets.top }]}>
         <MapView
           ref={mapRef}
@@ -165,9 +223,8 @@ export default function DiscoverScreen() {
           pitchEnabled={false}
           onPress={() => setRoutePartner(null)}
         >
-          {partners.map((partner) => (
+          {filtered.map((partner) => (
             <React.Fragment key={partner.id}>
-              {/* Geofence radius ring - lights up in full gold when user is inside */}
               <Circle
                 center={{ latitude: partner.lat, longitude: partner.lng }}
                 radius={partner.geofenceRadius}
@@ -183,7 +240,6 @@ export default function DiscoverScreen() {
                 }
                 strokeWidth={partner.id === activeGeofence?.partnerId ? 2.5 : 1}
               />
-              {/* Partner marker */}
               <Marker
                 coordinate={{ latitude: partner.lat, longitude: partner.lng }}
                 title={partner.name}
@@ -197,7 +253,6 @@ export default function DiscoverScreen() {
             </React.Fragment>
           ))}
 
-          {/* Directions Route */}
           {routePartner && userLoc && process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY && (
             <MapViewDirections
               origin={{ latitude: userLoc.coords.latitude, longitude: userLoc.coords.longitude }}
@@ -206,15 +261,8 @@ export default function DiscoverScreen() {
               strokeWidth={4}
               strokeColor={GOLD}
               mode="WALKING"
-              resetOnChange={false} // Prevents flashing route
-              onError={(errorMessage) => {
-                console.error('Directions error:', errorMessage);
-                alert(`Directions Error: ${errorMessage}`);
-              }}
-              onReady={(result) => {
-                console.log(`Distance: ${result.distance} km`);
-                console.log(`Duration: ${result.duration} min`);
-              }}
+              resetOnChange={false}
+              onError={(msg) => console.error('Directions error:', msg)}
             />
           )}
         </MapView>
@@ -224,7 +272,7 @@ export default function DiscoverScreen() {
         </View>
       </View>
 
-      {/* ── Scrollable list ────────────────────────────────────── */}
+      {/* ── List + filters ───────────────────────────────────── */}
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 80 }]}
@@ -233,9 +281,25 @@ export default function DiscoverScreen() {
       >
         {/* Filter chips */}
         <View style={styles.filterRow}>
-          <FilterChip label="Open Now" active onPress={() => {}} trailing="▾" />
-          <FilterChip label="Nearest" onPress={() => {}} trailing="▾" />
-          <FilterChip label="Filters" onPress={() => {}} icon="options-outline" />
+          <FilterChip
+            label="Open Now"
+            active={openNowFilter}
+            onPress={() => setOpenNowFilter(v => !v)}
+          />
+          <Pressable
+            style={({ pressed }) => [styles.filterChip, pressed && { opacity: 0.75 }]}
+            onPress={() => setSortMenuVisible(true)}
+          >
+            <Text style={styles.filterChipText}>{sortLabel}</Text>
+            <Text style={styles.filterChipTrailing}>▾</Text>
+          </Pressable>
+          <FilterChip
+            label="Filters"
+            active={activeFilterCount > 0}
+            onPress={() => setFiltersVisible(true)}
+            icon="options-outline"
+            badge={activeFilterCount > 0 ? activeFilterCount : undefined}
+          />
         </View>
 
         {/* Search bar */}
@@ -272,7 +336,24 @@ export default function DiscoverScreen() {
           })}
         </ScrollView>
 
-        <Text style={styles.sectionLabel}>NEAREST PARTNERS</Text>
+        <Text style={styles.sectionLabel}>
+          {filtered.length} PARTNER{filtered.length !== 1 ? 'S' : ''} · {sortLabel.toUpperCase()}
+        </Text>
+
+        {filtered.length === 0 && (
+          <View style={styles.emptyState}>
+            <Ionicons name="search-outline" size={32} color={MUTED} />
+            <Text style={styles.emptyText}>No partners match your filters</Text>
+            <Pressable onPress={() => {
+              setOpenNowFilter(false);
+              setActiveCategory('All');
+              setMaxDistanceMi(null);
+              setSearch('');
+            }}>
+              <Text style={styles.emptyReset}>Clear filters</Text>
+            </Pressable>
+          </View>
+        )}
 
         {filtered.map((partner) => (
           <PartnerListRow
@@ -299,7 +380,7 @@ export default function DiscoverScreen() {
         </View>
       </ScrollView>
 
-      {/* ── Partner Modal ────────────────────────────────────────── */}
+      {/* ── Partner detail modal ─────────────────────────────── */}
       <Modal
         visible={!!selectedPartner}
         animationType="slide"
@@ -308,21 +389,56 @@ export default function DiscoverScreen() {
       >
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { paddingBottom: Math.max(insets.bottom, 24) }]}>
-            <View style={styles.modalHandle} />
-            
             {selectedPartner && (
               <>
-                <View style={styles.modalHeader}>
-                  <View style={[styles.modalLogoBox, selectedPartner.logoLight && styles.logoBoxLight]}>
+                {/* Handle */}
+                <View style={styles.modalHeroHandle} />
+
+                {/* Two gallery images across top */}
+                <View style={styles.modalGalleryRow}>
+                  <View style={styles.modalTile}>
+                    {selectedPartner.image1Url ? (
+                      <Image source={{ uri: selectedPartner.image1Url }} style={StyleSheet.absoluteFillObject} contentFit="cover" />
+                    ) : (
+                      <View style={styles.modalTilePlaceholder}>
+                        <Ionicons name="fitness-outline" size={22} color="rgba(255,255,255,0.1)" />
+                      </View>
+                    )}
+                    <LinearGradient
+                      colors={['transparent', 'rgba(18,18,18,0.5)']}
+                      style={styles.modalTileFade}
+                      pointerEvents="none"
+                    />
+                  </View>
+                  <View style={styles.modalTile}>
+                    {selectedPartner.image2Url ? (
+                      <Image source={{ uri: selectedPartner.image2Url }} style={StyleSheet.absoluteFillObject} contentFit="cover" />
+                    ) : (
+                      <View style={styles.modalTilePlaceholder}>
+                        <Ionicons name="barbell-outline" size={22} color="rgba(255,255,255,0.1)" />
+                      </View>
+                    )}
+                    <LinearGradient
+                      colors={['transparent', 'rgba(18,18,18,0.5)']}
+                      style={styles.modalTileFade}
+                      pointerEvents="none"
+                    />
+                  </View>
+
+                  {/* Close button */}
+                  <Pressable onPress={() => setSelectedPartner(null)} style={styles.modalHeroClose}>
+                    <Ionicons name="close" size={18} color="rgba(255,255,255,0.7)" />
+                  </Pressable>
+                </View>
+
+                {/* Logo + info row */}
+                <View style={styles.modalBrandRow}>
+                  <View style={styles.modalLogoCard}>
                     {selectedPartner.logoUrl ? (
-                      <Image 
-                        source={{ uri: selectedPartner.logoUrl }} 
-                        style={styles.logoImage} 
-                        contentFit="contain" 
-                      />
+                      <Image source={{ uri: selectedPartner.logoUrl }} style={styles.modalLogoImg} contentFit="contain" />
                     ) : (
                       <Text
-                        style={[styles.modalLogoText, selectedPartner.logoLight && styles.logoTextDark]}
+                        style={[styles.modalLogoFallback, selectedPartner.logoLight && { color: '#1a1a1a' }]}
                         numberOfLines={2}
                         adjustsFontSizeToFit
                       >
@@ -330,37 +446,45 @@ export default function DiscoverScreen() {
                       </Text>
                     )}
                   </View>
-                  <View style={styles.modalTitleContainer}>
-                     <Text style={styles.modalTitle}>{selectedPartner.name}</Text>
-                     <Text style={styles.modalMeta}>
-                       {selectedPartner.category} · {selectedPartner.area} · {selectedPartner.distance}
-                     </Text>
+
+                  <View style={styles.modalBrandInfo}>
+                    <Text style={styles.modalPartnerName} numberOfLines={1} adjustsFontSizeToFit>{selectedPartner.name}</Text>
+                    <View style={styles.modalInfoRow}>
+                      <View style={[styles.modalStatusDot, selectedPartner.isOpenNow ? styles.modalStatusOpen : styles.modalStatusClosed]} />
+                      <Text style={styles.modalInfoText}>
+                        {selectedPartner.isOpenNow ? 'Open' : 'Closed'}
+                      </Text>
+                      <View style={styles.modalInfoSep} />
+                      <Text style={styles.modalInfoText}>{selectedPartner.category}</Text>
+                    </View>
+                    <View style={styles.modalDetailItem}>
+                      <Ionicons name="time-outline" size={12} color={DIM} />
+                      <Text style={styles.modalDetailText}>{formatHours(selectedPartner.openingHours)}</Text>
+                    </View>
+                    <View style={styles.modalDetailItem}>
+                      <Ionicons name="location-sharp" size={12} color={DIM} />
+                      <Text style={styles.modalDetailText}>{selectedPartner.distance} · {selectedPartner.area}</Text>
+                    </View>
                   </View>
-                  <Pressable onPress={() => setSelectedPartner(null)} style={styles.closeButton}>
-                    <Ionicons name="close" size={24} color={DIM} />
-                  </Pressable>
+
+                  <View style={styles.modalPillsCol}>
+                    <View style={styles.rewardPill}>
+                      <Ionicons name="flash" size={10} color={GOLD} />
+                      <Text style={styles.rewardPillText}>+{selectedPartner.pts}</Text>
+                    </View>
+                    <View style={styles.rewardPill}>
+                      <Ionicons name="trending-up" size={10} color={GOLD} />
+                      <Text style={styles.rewardPillText}>x3</Text>
+                    </View>
+                  </View>
                 </View>
 
+                {/* Body */}
                 <View style={styles.modalBody}>
-                  <View style={styles.earnBox}>
-                    <View style={styles.earnHeader}>
-                       <Ionicons name="location-sharp" size={16} color={GOLD} />
-                       <Text style={styles.earnTitle}>Earn Here</Text>
-                    </View>
-                    <Text style={styles.earnDesc}>
-                      Walk inside the {selectedPartner.geofenceRadius}m radius. Dwell for 20 minutes to automatically earn points.
-                    </Text>
-                    <View style={styles.rewardPills}>
-                       <View style={styles.rewardPill}>
-                         <Text style={styles.rewardPillText}>Base +{selectedPartner.pts} POWR</Text>
-                       </View>
-                       <View style={styles.rewardPill}>
-                         <Text style={styles.rewardPillText}>x3 Top Streak</Text>
-                       </View>
-                    </View>
-                  </View>
+                  {selectedPartner.description ? (
+                    <Text style={styles.description}>{selectedPartner.description}</Text>
+                  ) : null}
 
-                  {/* Action Buttons */}
                   <Pressable
                     style={({ pressed }) => [styles.actionButton, pressed && styles.actionButtonPressed]}
                     onPress={() => {
@@ -377,27 +501,121 @@ export default function DiscoverScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* ── Sort menu ────────────────────────────────────────── */}
+      <Modal
+        visible={sortMenuVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setSortMenuVisible(false)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => setSortMenuVisible(false)}>
+          <View style={[styles.sortSheet, { paddingBottom: Math.max(insets.bottom, 24) }]}>
+            <View style={styles.modalHandle} />
+            <Text style={styles.sortTitle}>Sort by</Text>
+            {([
+              { key: 'nearest', label: 'Nearest', icon: 'location-outline' },
+              { key: 'pts',     label: 'Most Points', icon: 'star-outline' },
+              { key: 'az',      label: 'A–Z', icon: 'text-outline' },
+            ] as { key: SortMode; label: string; icon: string }[]).map(opt => (
+              <Pressable
+                key={opt.key}
+                style={({ pressed }) => [
+                  styles.sortOption,
+                  sortMode === opt.key && styles.sortOptionActive,
+                  pressed && { opacity: 0.75 },
+                ]}
+                onPress={() => { setSortMode(opt.key); setSortMenuVisible(false); }}
+              >
+                <Ionicons name={opt.icon as any} size={18} color={sortMode === opt.key ? GOLD : DIM} />
+                <Text style={[styles.sortOptionText, sortMode === opt.key && styles.sortOptionTextActive]}>
+                  {opt.label}
+                </Text>
+                {sortMode === opt.key && <Ionicons name="checkmark" size={16} color={GOLD} style={{ marginLeft: 'auto' }} />}
+              </Pressable>
+            ))}
+          </View>
+        </Pressable>
+      </Modal>
+
+      {/* ── Filters sheet ────────────────────────────────────── */}
+      <Modal
+        visible={filtersVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setFiltersVisible(false)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => setFiltersVisible(false)}>
+          <Pressable style={[styles.filtersSheet, { paddingBottom: Math.max(insets.bottom, 24) }]} onPress={e => e.stopPropagation()}>
+            <View style={styles.modalHandle} />
+            <View style={styles.filtersHeader}>
+              <Text style={styles.sortTitle}>Filters</Text>
+              <Pressable onPress={() => {
+                setActiveCategory('All');
+                setMaxDistanceMi(null);
+              }}>
+                <Text style={styles.resetText}>Reset</Text>
+              </Pressable>
+            </View>
+
+            {/* Category */}
+            <Text style={styles.filterSectionLabel}>CATEGORY</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryRow}>
+              {CATEGORIES.map(cat => {
+                const active = cat === activeCategory;
+                return (
+                  <Pressable
+                    key={cat}
+                    style={[styles.categoryChip, active && styles.categoryChipActive]}
+                    onPress={() => setActiveCategory(cat)}
+                  >
+                    <Text style={[styles.categoryChipText, active && styles.categoryChipTextActive]}>{cat}</Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+
+            {/* Max distance */}
+            <Text style={[styles.filterSectionLabel, { marginTop: 20 }]}>MAX DISTANCE</Text>
+            <View style={styles.distanceRow}>
+              {([null, 1, 5, 10, 25] as (number | null)[]).map(d => {
+                const active = maxDistanceMi === d;
+                return (
+                  <Pressable
+                    key={String(d)}
+                    style={[styles.distanceChip, active && styles.distanceChipActive]}
+                    onPress={() => setMaxDistanceMi(d)}
+                  >
+                    <Text style={[styles.distanceChipText, active && styles.distanceChipTextActive]}>
+                      {d === null ? 'Any' : `${d} mi`}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            <Pressable
+              style={[styles.actionButton, { marginTop: 24 }]}
+              onPress={() => setFiltersVisible(false)}
+            >
+              <Text style={styles.actionButtonText}>
+                Show {filtered.length} result{filtered.length !== 1 ? 's' : ''}
+              </Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
 
-// ─── Partner map pin ──────────────────────────────────────────────────────────
+// ─── Sub-components ───────────────────────────────────────────────────────────
 
-function PartnerPin({
-  partner,
-  isActive,
-}: {
-  partner: Partner;
-  isActive?: boolean;
-}) {
+function PartnerPin({ partner, isActive }: { partner: Partner; isActive?: boolean }) {
   return (
     <View style={[styles.pinCircle, partner.logoLight && styles.pinCircleLight, isActive && styles.pinCircleActive]}>
       {partner.logoUrl ? (
-        <RNImage
-          source={{ uri: partner.logoUrl }}
-          style={styles.pinLogoImage}
-          resizeMode="contain"
-        />
+        <RNImage source={{ uri: partner.logoUrl }} style={styles.pinLogoImage} resizeMode="contain" />
       ) : (
         <Text style={[styles.pinLogoFallback, partner.logoLight && { color: '#000' }]} numberOfLines={1}>
           {partner.logoText.split('\n')[0]}
@@ -407,16 +625,10 @@ function PartnerPin({
   );
 }
 
-// ─── Partner list row ─────────────────────────────────────────────────────────
-
 function PartnerListRow({
-  partner,
-  isActive,
-  onPress,
+  partner, isActive, onPress,
 }: {
-  partner: Partner;
-  isActive?: boolean;
-  onPress?: () => void;
+  partner: Partner; isActive?: boolean; onPress?: () => void;
 }) {
   return (
     <Pressable
@@ -429,17 +641,9 @@ function PartnerListRow({
     >
       <View style={[styles.logoBox, partner.logoLight && styles.logoBoxLight]}>
         {partner.logoUrl ? (
-          <Image
-            source={{ uri: partner.logoUrl }}
-            style={styles.logoImage}
-            contentFit="contain"
-          />
+          <Image source={{ uri: partner.logoUrl }} style={styles.logoImage} contentFit="contain" />
         ) : (
-          <Text
-            style={[styles.logoText, partner.logoLight && styles.logoTextDark]}
-            numberOfLines={2}
-            adjustsFontSizeToFit
-          >
+          <Text style={[styles.logoText, partner.logoLight && styles.logoTextDark]} numberOfLines={2} adjustsFontSizeToFit>
             {partner.logoText}
           </Text>
         )}
@@ -447,7 +651,7 @@ function PartnerListRow({
       <View style={styles.partnerInfo}>
         <Text style={[styles.partnerName, isActive && { color: GOLD }]}>{partner.name}</Text>
         <Text style={styles.partnerMeta}>
-          {isActive ? 'Session active' : partner.status} · {partner.area}
+          {isActive ? 'Session active' : partner.isOpenNow ? 'Open now' : 'Closed'} · {partner.area}
         </Text>
       </View>
       <View style={styles.partnerRight}>
@@ -458,12 +662,10 @@ function PartnerListRow({
   );
 }
 
-// ─── Filter chip ──────────────────────────────────────────────────────────────
-
 function FilterChip({
-  label, active, trailing, icon, onPress,
+  label, active, icon, onPress, badge,
 }: {
-  label: string; active?: boolean; trailing?: string; icon?: string; onPress: () => void;
+  label: string; active?: boolean; icon?: string; onPress: () => void; badge?: number;
 }) {
   return (
     <Pressable
@@ -476,10 +678,10 @@ function FilterChip({
     >
       {icon && <Ionicons name={icon as any} size={13} color={active ? '#0a0a0a' : DIM} />}
       <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>{label}</Text>
-      {trailing && (
-        <Text style={[styles.filterChipTrailing, active && styles.filterChipTextActive]}>
-          {trailing}
-        </Text>
+      {badge !== undefined && badge > 0 && (
+        <View style={styles.filterBadge}>
+          <Text style={styles.filterBadgeText}>{badge}</Text>
+        </View>
       )}
     </Pressable>
   );
@@ -488,178 +690,76 @@ function FilterChip({
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: BG,
-  },
+  screen: { flex: 1, backgroundColor: BG },
 
-  // Map
-  mapContainer: {
-    width: '100%',
-    overflow: 'hidden',
-  },
-  mapTitleOverlay: {
-    position: 'absolute',
-    left: 16,
-  },
-  mapTitle: {
-    fontSize: 30,
-    fontWeight: '200',
-    letterSpacing: -0.5,
-    color: TEXT,
-    textShadowColor: 'rgba(0,0,0,0.8)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 4,
-  },
-  mapSubtitle: {
-    fontSize: 12,
-    fontWeight: '300',
-    color: DIM,
-    marginTop: 2,
-    textShadowColor: 'rgba(0,0,0,0.8)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 4,
-  },
+  mapContainer: { width: '100%', overflow: 'hidden' },
 
-  // Partner map pin - column layout so badge flows below the circle (no absolute positioning)
   pinCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#0d0d0d',
-    borderWidth: 1.5,
-    borderColor: 'rgba(232,210,0,0.6)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 5,
-    overflow: 'hidden',
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: '#0d0d0d', borderWidth: 1.5, borderColor: 'rgba(232,210,0,0.6)',
+    alignItems: 'center', justifyContent: 'center', padding: 5, overflow: 'hidden',
   },
-  pinCircleLight: {
-    backgroundColor: '#F2F2F2',
-  },
-  pinCircleActive: {
-    borderColor: GOLD,
-    borderWidth: 2.5,
-  },
-  pinLogoImage: {
-    width: '100%',
-    height: '100%',
-  },
-  pinLogoFallback: {
-    fontSize: 8,
-    fontWeight: '700',
-    color: '#fff',
-    textAlign: 'center',
-  },
+  pinCircleLight: { backgroundColor: '#F2F2F2' },
+  pinCircleActive: { borderColor: GOLD, borderWidth: 2.5 },
+  pinLogoImage: { width: '100%', height: '100%' },
+  pinLogoFallback: { fontSize: 8, fontWeight: '700', color: '#fff', textAlign: 'center' },
 
-  // List
   scroll: { flex: 1 },
-  content: {
-    paddingHorizontal: 12,
-    gap: 10,
-    paddingTop: 14,
-  },
+  content: { paddingHorizontal: 12, gap: 10, paddingTop: 14 },
 
-  // Filter row
   filterRow: { flexDirection: 'row', gap: 8 },
   filterChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: BORDER,
-    backgroundColor: CARD_BG,
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: 14, paddingVertical: 9, borderRadius: 20,
+    borderWidth: 1, borderColor: BORDER, backgroundColor: CARD_BG,
   },
-  filterChipActive: { backgroundColor: GOLD, borderColor: GOLD },
+  filterChipActive: { backgroundColor: 'transparent', borderColor: 'rgba(255,255,255,0.8)' },
   filterChipText: { fontSize: 12, fontWeight: '400', color: DIM },
-  filterChipTextActive: { color: '#0a0a0a', fontWeight: '600' },
+  filterChipTextActive: { color: '#FFFFFF', fontWeight: '600' },
   filterChipTrailing: { fontSize: 10, color: DIM },
+  filterBadge: {
+    width: 16, height: 16, borderRadius: 8,
+    backgroundColor: '#0a0a0a', alignItems: 'center', justifyContent: 'center',
+  },
+  filterBadgeText: { fontSize: 9, fontWeight: '700', color: GOLD },
 
-  // Search
   searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: CARD_BG,
-    borderWidth: 1,
-    borderColor: BORDER,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    gap: 10,
+    flexDirection: 'row', alignItems: 'center', backgroundColor: 'transparent',
+    borderWidth: 1, borderColor: BORDER, borderRadius: 12,
+    paddingHorizontal: 14, paddingVertical: 12, gap: 10,
   },
-  searchInput: {
-    flex: 1,
-    fontSize: 14,
-    fontWeight: '300',
-    color: TEXT,
-    padding: 0,
-  },
+  searchInput: { flex: 1, fontSize: 14, fontWeight: '300', color: TEXT, padding: 0 },
 
-  // Category pills
   categoryRow: { gap: 8, paddingRight: 4 },
   categoryChip: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: BORDER,
-    backgroundColor: CARD_BG,
+    paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20,
+    borderWidth: 1, borderColor: BORDER, backgroundColor: CARD_BG,
   },
-  categoryChipActive: {
-    backgroundColor: 'rgba(255,255,255,0.10)',
-    borderColor: 'rgba(255,255,255,0.25)',
-  },
+  categoryChipActive: { backgroundColor: 'rgba(255,255,255,0.10)', borderColor: 'rgba(255,255,255,0.25)' },
   categoryChipText: { fontSize: 13, fontWeight: '400', color: DIM },
   categoryChipTextActive: { color: TEXT, fontWeight: '500' },
 
-  // Section label
   sectionLabel: {
-    fontSize: 9,
-    fontWeight: '500',
-    letterSpacing: 2,
-    color: MUTED,
-    textTransform: 'uppercase',
-    paddingLeft: 2,
+    fontSize: 9, fontWeight: '500', letterSpacing: 2, color: MUTED,
+    textTransform: 'uppercase', paddingLeft: 2,
   },
 
-  // Partner rows
+  emptyState: { alignItems: 'center', paddingVertical: 32, gap: 8 },
+  emptyText: { fontSize: 14, color: DIM, fontWeight: '300' },
+  emptyReset: { fontSize: 13, color: GOLD, fontWeight: '500', marginTop: 4 },
+
   partnerRow: {
-    backgroundColor: CARD_BG,
-    borderWidth: 1,
-    borderColor: BORDER,
-    borderRadius: 14,
-    padding: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
+    backgroundColor: CARD_BG, borderWidth: 1, borderColor: BORDER, borderRadius: 14,
+    padding: 12, flexDirection: 'row', alignItems: 'center', gap: 12,
   },
-  partnerRowActive: {
-    backgroundColor: 'rgba(232,210,0,0.07)',
-    borderColor: 'rgba(232,210,0,0.3)',
-  },
+  partnerRowActive: { backgroundColor: 'rgba(232,210,0,0.07)', borderColor: 'rgba(232,210,0,0.3)' },
   logoBox: {
-    width: 52,
-    height: 52,
-    borderRadius: 10,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderWidth: 1,
-    borderColor: BORDER,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-    overflow: 'hidden',
+    width: 52, height: 52, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1, borderColor: BORDER, alignItems: 'center', justifyContent: 'center',
+    flexShrink: 0, overflow: 'hidden',
   },
   logoBoxLight: { backgroundColor: '#F2F2F2' },
-  logoText: {
-    fontSize: 8,
-    fontWeight: '700',
-    color: DIM,
-    textAlign: 'center',
-    letterSpacing: 0.3,
-  },
+  logoText: { fontSize: 8, fontWeight: '700', color: DIM, textAlign: 'center', letterSpacing: 0.3 },
   logoTextDark: { color: '#1a1a1a' },
   partnerInfo: { flex: 1, gap: 3 },
   partnerName: { fontSize: 15, fontWeight: '300', color: TEXT },
@@ -669,159 +769,123 @@ const styles = StyleSheet.create({
   partnerDistance: { fontSize: 11, fontWeight: '300', color: DIM },
   logoImage: { width: '100%', height: '100%' },
 
-  // Coming soon
   comingSoonRow: {
-    backgroundColor: CARD_BG,
-    borderWidth: 1,
-    borderColor: BORDER,
-    borderRadius: 14,
-    padding: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
+    backgroundColor: CARD_BG, borderWidth: 1, borderColor: BORDER, borderRadius: 14,
+    padding: 12, flexDirection: 'row', alignItems: 'center', gap: 12,
   },
   comingSoonIcon: {
-    width: 52,
-    height: 52,
-    borderRadius: 10,
-    backgroundColor: 'rgba(232,210,0,0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(232,210,0,0.20)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
+    width: 52, height: 52, borderRadius: 10,
+    backgroundColor: 'rgba(232,210,0,0.08)', borderWidth: 1, borderColor: 'rgba(232,210,0,0.20)',
+    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
   },
   comingSoonPlus: { fontSize: 22, fontWeight: '200', color: GOLD },
   comingSoonInfo: { flex: 1, gap: 3 },
   comingSoonTitle: { fontSize: 14, fontWeight: '300', color: TEXT },
   comingSoonSub: { fontSize: 11, fontWeight: '300', color: DIM },
 
-  // Modal
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
+  // Modals
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  modalContent: { backgroundColor: '#121212', borderTopLeftRadius: 24, borderTopRightRadius: 24 },
+  modalHandle: { width: 40, height: 4, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
+
+  // Partner detail modal
+  modalHeroHandle: {
+    width: 36, height: 4, backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 2, alignSelf: 'center', marginTop: 10, marginBottom: 12,
   },
-  modalContent: {
-    backgroundColor: '#121212',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingHorizontal: 20,
-    paddingTop: 12,
+  modalGalleryRow: {
+    flexDirection: 'row', marginHorizontal: 16, height: 110, gap: 6,
   },
-  modalHandle: {
-    width: 40,
-    height: 4,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    borderRadius: 2,
-    alignSelf: 'center',
-    marginBottom: 20,
+  modalTile: {
+    flex: 1, borderRadius: 14, overflow: 'hidden',
   },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 24,
+  modalTilePlaceholder: {
+    flex: 1, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.03)',
   },
-  modalLogoBox: {
-    width: 64,
-    height: 64,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderWidth: 1,
-    borderColor: BORDER,
-    alignItems: 'center',
-    justifyContent: 'center',
+  modalTileFade: {
+    position: 'absolute', bottom: 0, left: 0, right: 0, height: 40,
+  },
+  modalHeroClose: {
+    position: 'absolute', top: 0, right: 0,
+    width: 28, height: 28, borderRadius: 14,
+    backgroundColor: 'rgba(0,0,0,0.4)', alignItems: 'center', justifyContent: 'center',
+  },
+  modalBrandRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 14,
+    marginHorizontal: 20, marginTop: 16, marginBottom: 4,
+  },
+  modalLogoCard: {
+    width: 96, height: 96, borderRadius: 16,
+    alignItems: 'center', justifyContent: 'center', padding: 10,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)',
     overflow: 'hidden',
-    marginRight: 16,
   },
-  modalLogoText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: DIM,
-    textAlign: 'center',
-    letterSpacing: 0.3,
+  modalLogoImg: { width: '100%', height: '100%' },
+  modalLogoFallback: {
+    fontSize: 14, fontWeight: '800', color: 'rgba(255,255,255,0.5)',
+    textAlign: 'center', letterSpacing: 0.5,
   },
-  modalTitleContainer: {
-    flex: 1,
-  },
-  modalTitle: {
-    fontSize: 22,
-    fontWeight: '300',
-    color: TEXT,
-    marginBottom: 4,
-    letterSpacing: -0.5,
-  },
-  modalMeta: {
-    fontSize: 13,
-    color: DIM,
-    fontWeight: '300',
-  },
-  closeButton: {
-    padding: 8,
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderRadius: 20,
-  },
-  modalBody: {
-    gap: 16,
-    paddingBottom: 16,
-  },
-  earnBox: {
-    backgroundColor: 'rgba(232,210,0,0.05)',
-    borderWidth: 1,
-    borderColor: 'rgba(232,210,0,0.2)',
-    borderRadius: 16,
-    padding: 16,
-  },
-  earnHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 8,
-  },
-  earnTitle: {
-    fontSize: 15,
-    fontWeight: '500',
-    color: GOLD,
-  },
-  earnDesc: {
-    fontSize: 14,
-    color: DIM,
-    lineHeight: 20,
-    marginBottom: 16,
-  },
-  rewardPills: {
-    flexDirection: 'row',
-    gap: 8,
-  },
+  modalBrandInfo: { flex: 1, gap: 4 },
+  modalPartnerName: { fontSize: 22, fontWeight: '400', color: TEXT },
+  modalInfoRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  modalStatusDot: { width: 5, height: 5, borderRadius: 2.5 },
+  modalStatusOpen: { backgroundColor: '#4ade80' },
+  modalStatusClosed: { backgroundColor: '#f87171' },
+  modalInfoText: { fontSize: 12, color: DIM, fontWeight: '300' },
+  modalInfoSep: { width: 3, height: 3, borderRadius: 1.5, backgroundColor: 'rgba(255,255,255,0.15)' },
+  modalDetailItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  modalDetailText: { fontSize: 12, color: DIM, fontWeight: '300' },
+  modalPillsCol: { gap: 6, alignItems: 'stretch', justifyContent: 'center' },
+  modalBody: { gap: 10, paddingBottom: 16, paddingHorizontal: 20, paddingTop: 8 },
+
+  description: { fontSize: 13, color: DIM, lineHeight: 19, fontWeight: '300' },
+
   rewardPill: {
-    backgroundColor: 'rgba(0,0,0,0.3)',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
+    backgroundColor: 'transparent', borderRadius: 20,
+    paddingHorizontal: 12, paddingVertical: 6,
+    borderWidth: 1, borderColor: GOLD,
+    minWidth: 58,
   },
-  rewardPillText: {
-    fontSize: 12,
-    color: TEXT,
-    fontWeight: '500',
-  },
+  rewardPillText: { fontSize: 13, color: GOLD, fontWeight: '600' },
+
   actionButton: {
-    backgroundColor: GOLD,
-    paddingVertical: 14,
-    borderRadius: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    marginTop: 8,
+    backgroundColor: GOLD, paddingVertical: 14, borderRadius: 14,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 8, marginTop: 8,
   },
-  actionButtonPressed: {
-    opacity: 0.8,
+  actionButtonPressed: { opacity: 0.8 },
+  actionButtonText: { fontSize: 16, fontWeight: '600', color: '#0d0d0d' },
+
+  // Sort sheet
+  sortSheet: { backgroundColor: '#121212', borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 20, paddingTop: 12 },
+  sortTitle: { fontSize: 17, fontWeight: '500', color: TEXT, marginBottom: 16 },
+  sortOption: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: BORDER,
   },
-  actionButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#0d0d0d',
+  sortOptionActive: { borderBottomColor: 'transparent' },
+  sortOptionText: { fontSize: 15, color: DIM, fontWeight: '300' },
+  sortOptionTextActive: { color: TEXT, fontWeight: '400' },
+
+  // Filters sheet
+  filtersSheet: {
+    backgroundColor: '#121212', borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    paddingHorizontal: 20, paddingTop: 12,
   },
+  filtersHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 },
+  resetText: { fontSize: 13, color: GOLD, fontWeight: '500' },
+  filterSectionLabel: {
+    fontSize: 9, fontWeight: '600', letterSpacing: 2, color: MUTED,
+    textTransform: 'uppercase', marginBottom: 10,
+  },
+  distanceRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
+  distanceChip: {
+    paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20,
+    borderWidth: 1, borderColor: BORDER, backgroundColor: CARD_BG,
+  },
+  distanceChipActive: { backgroundColor: GOLD, borderColor: GOLD },
+  distanceChipText: { fontSize: 13, fontWeight: '400', color: DIM },
+  distanceChipTextActive: { color: '#0a0a0a', fontWeight: '600' },
 });

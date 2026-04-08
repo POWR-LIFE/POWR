@@ -1,17 +1,66 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
-import { Plus, Edit2, Trash2, MapPin, Loader2, X, Search, Activity, ChevronRight, Globe, Satellite, Eye } from 'lucide-react';
+import { Plus, Edit2, Trash2, MapPin, Loader2, X, Search, Activity, ChevronRight, Globe, Satellite, Eye, Clock } from 'lucide-react';
 import { Link } from 'react-router-dom';
+
+const DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+const DAY_LABELS = { mon: 'Mon', tue: 'Tue', wed: 'Wed', thu: 'Thu', fri: 'Fri', sat: 'Sat', sun: 'Sun' };
+const DEFAULT_HOURS = { mon: { open: '06:00', close: '22:00' }, tue: { open: '06:00', close: '22:00' }, wed: { open: '06:00', close: '22:00' }, thu: { open: '06:00', close: '22:00' }, fri: { open: '06:00', close: '22:00' }, sat: { open: '08:00', close: '20:00' }, sun: { open: '09:00', close: '18:00' } };
+
+function OpeningHoursEditor({ value, onChange }) {
+    const hours = value || {};
+    const setDay = (key, dayHours) => onChange({ ...hours, [key]: dayHours });
+
+    return (
+        <div className="space-y-3">
+            {DAY_KEYS.map(key => {
+                const dayHours = hours[key];
+                const isOpen = dayHours != null;
+                return (
+                    <div key={key} className="flex items-center gap-4 bg-[#0A0A0A] border border-[#151515] rounded-2xl px-5 py-3">
+                        <button
+                            type="button"
+                            onClick={() => setDay(key, isOpen ? null : { open: '06:00', close: '22:00' })}
+                            className={`w-9 h-5 rounded-full transition-all relative shrink-0 ${isOpen ? 'bg-[#E8D200]' : 'bg-[#151515]'}`}
+                        >
+                            <span className={`absolute top-0.5 w-4 h-4 rounded-full transition-all ${isOpen ? 'left-4 bg-[#080808]' : 'left-0.5 bg-[#333]'}`} />
+                        </button>
+                        <span className={`text-[10px] font-black uppercase tracking-[0.3em] w-8 shrink-0 ${isOpen ? 'text-[#DDD]' : 'text-[#666]'}`}>
+                            {DAY_LABELS[key]}
+                        </span>
+                        {isOpen ? (
+                            <div className="flex items-center gap-3 flex-1">
+                                <input
+                                    type="time"
+                                    value={dayHours.open}
+                                    onChange={e => setDay(key, { ...dayHours, open: e.target.value })}
+                                    className="flex-1 h-9 px-3 bg-[#050505] border border-[#151515] rounded-xl text-xs font-mono text-[#888] focus:border-[#E8D200]/40 outline-none"
+                                />
+                                <span className="text-[#444] text-xs font-black shrink-0">—</span>
+                                <input
+                                    type="time"
+                                    value={dayHours.close}
+                                    onChange={e => setDay(key, { ...dayHours, close: e.target.value })}
+                                    className="flex-1 h-9 px-3 bg-[#050505] border border-[#151515] rounded-xl text-xs font-mono text-[#888] focus:border-[#E8D200]/40 outline-none"
+                                />
+                            </div>
+                        ) : (
+                            <span className="text-[9px] uppercase tracking-[0.4em] text-[#1A1A1A] font-black flex-1">Closed</span>
+                        )}
+                    </div>
+                );
+            })}
+        </div>
+    );
+}
 
 // --- Location row editor ---
 const LocationEditor = ({ locations, onChange }) => {
-    const add = () => onChange([...locations, { name: '', lat: '', lng: '', radius: 100 }]);
+    const add = () => onChange([...locations, { name: '', address: '', lat: '', lng: '', radius: 100 }]);
     const remove = (i) => onChange(locations.filter((_, idx) => idx !== i));
     const update = (i, field, val) => {
-        const next = [...locations];
-        next[i] = { ...next[i], [field]: val };
-        onChange(next);
+        onChange(locations.map((loc, idx) => (idx === i ? { ...loc, [field]: val } : loc)));
     };
 
     return (
@@ -19,11 +68,11 @@ const LocationEditor = ({ locations, onChange }) => {
             <div className="flex justify-between items-center bg-[#050505] p-6 rounded-[1.5rem] border border-[#151515]">
                 <div className="flex items-center gap-4">
                     <Satellite size={16} className="text-[#E8D200]" />
-                    <label className="text-[10px] uppercase tracking-[0.4em] text-[#222] font-black">
+                    <label className="text-[10px] uppercase tracking-[0.4em] text-[#666] font-black">
                         Active Nodes <span className="text-[#E8D200] ml-2">[{locations.length}]</span>
                     </label>
                 </div>
-                <button type="button" onClick={add} className="flex items-center gap-3 px-6 py-3 bg-[#0A0A0A] border border-[#151515] rounded-full text-[9px] uppercase tracking-[0.3em] text-[#333] hover:text-[#E8D200] hover:border-[#E8D200]/40 transition-all font-black">
+                <button type="button" onClick={add} className="flex items-center gap-3 px-6 py-3 bg-[#0A0A0A] border border-[#151515] rounded-full text-[9px] uppercase tracking-[0.3em] text-[#666] hover:text-[#E8D200] hover:border-[#E8D200]/40 transition-all font-black">
                     <Plus size={12} /> Add Point
                 </button>
             </div>
@@ -31,56 +80,91 @@ const LocationEditor = ({ locations, onChange }) => {
             {locations.length === 0 ? (
                 <div className="p-16 bg-[#050505] border border-dashed border-[#151515] rounded-[2rem] text-center">
                     <MapPin size={24} className="mx-auto text-[#151515] mb-4" />
-                    <p className="text-[10px] text-[#151515] uppercase tracking-[0.5em] font-black">No Geofence Data</p>
+                    <p className="text-[10px] text-[#555] uppercase tracking-[0.5em] font-black">No Geofence Data</p>
                 </div>
             ) : (
-                <div className="space-y-4">
+                <div className="space-y-6">
                     {locations.map((loc, i) => (
-                        <div key={i} className="grid grid-cols-1 md:grid-cols-[1.5fr_1fr_1fr_1fr_60px] gap-4 items-center bg-[#050505] p-4 rounded-2xl border border-[#151515] group/loc hover:border-[#E8D200]/20 transition-all">
-                            <input
-                                type="text"
-                                placeholder="NODE LABEL (e.g. SYDNEY CBD)..."
-                                className="h-12 px-6 bg-[#0A0A0A] border border-[#151515] rounded-xl text-[11px] font-black tracking-[0.1em] text-[#F2F2F2] placeholder-[#151515] focus:border-[#E8D200]/40 outline-none transition-all uppercase"
-                                value={loc.name}
-                                onChange={e => update(i, 'name', e.target.value)}
-                            />
-                            <div className="relative">
-                                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[9px] font-black text-[#151515] uppercase">LAT</span>
-                                <input
-                                    type="number"
-                                    step="any"
-                                    className="w-full h-12 pl-12 pr-4 bg-[#0A0A0A] border border-[#151515] rounded-xl text-[11px] font-mono text-[#888] focus:border-[#E8D200]/40 outline-none"
-                                    value={loc.lat}
-                                    onChange={e => update(i, 'lat', e.target.value)}
-                                />
+                        <div key={i} className="bg-[#070707] border border-[#151515] rounded-3xl p-8 space-y-6 animate-in fade-in slide-in-from-top-4 duration-500 relative group/loc">
+                            {/* Node Header */}
+                            <div className="flex items-center justify-between pb-4 border-b border-[#111]">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-8 h-8 rounded-xl bg-[#0A0A0A] border border-[#151515] flex items-center justify-center text-[10px] font-black text-[#E8D200]">
+                                        {i + 1}
+                                    </div>
+                                    <span className="text-[10px] uppercase tracking-[0.4em] text-[#444] font-black">Geofence Node Information</span>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => remove(i)}
+                                    className="w-10 h-10 flex items-center justify-center text-[#222] hover:text-red-500 hover:bg-red-500/5 rounded-xl transition-all"
+                                >
+                                    <Trash2 size={16} />
+                                </button>
                             </div>
-                            <div className="relative">
-                                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[9px] font-black text-[#151515] uppercase">LNG</span>
-                                <input
-                                    type="number"
-                                    step="any"
-                                    className="w-full h-12 pl-12 pr-4 bg-[#0A0A0A] border border-[#151515] rounded-xl text-[11px] font-mono text-[#888] focus:border-[#E8D200]/40 outline-none"
-                                    value={loc.lng}
-                                    onChange={e => update(i, 'lng', e.target.value)}
-                                />
+
+                            {/* Identifier & Address */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="space-y-3">
+                                    <label className="block text-[8px] uppercase tracking-[0.5em] text-[#555] font-black ml-2">Node Label / Identifier</label>
+                                    <input
+                                        type="text"
+                                        placeholder="e.g. SYDNEY CBD FLAGSHIP..."
+                                        className="w-full h-14 px-6 bg-[#0A0A0A] border border-[#151515] rounded-2xl text-[13px] font-bold text-[#F2F2F2] placeholder-[#222] focus:border-[#E8D200]/40 outline-none transition-all uppercase"
+                                        value={loc.name}
+                                        onChange={e => update(i, 'name', e.target.value)}
+                                    />
+                                </div>
+                                <div className="space-y-3">
+                                    <label className="block text-[8px] uppercase tracking-[0.5em] text-[#555] font-black ml-2">Physical Address</label>
+                                    <input
+                                        type="text"
+                                        placeholder="123 MARKET ST, SYDNEY..."
+                                        className="w-full h-14 px-6 bg-[#0A0A0A] border border-[#151515] rounded-2xl text-[13px] font-bold text-[#F2F2F2] placeholder-[#222] focus:border-[#E8D200]/40 outline-none transition-all"
+                                        value={loc.address || ''}
+                                        onChange={e => update(i, 'address', e.target.value)}
+                                    />
+                                </div>
                             </div>
-                            <div className="relative">
-                                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[9px] font-black text-[#151515] uppercase">RAD</span>
+
+                            {/* Coordinates Grid */}
+                            <div className="grid grid-cols-2 gap-6">
+                                <div className="space-y-3">
+                                    <label className="block text-[8px] uppercase tracking-[0.5em] text-[#555] font-black ml-2">Latitude Coordinates</label>
+                                    <input
+                                        type="text"
+                                        inputMode="decimal"
+                                        placeholder="-33.8688..."
+                                        className="w-full h-14 px-6 bg-[#0A0A0A] border border-[#151515] rounded-2xl text-[13px] font-bold text-[#F2F2F2] placeholder-[#222] focus:border-[#E8D200]/40 outline-none transition-all"
+                                        value={loc.lat ?? ''}
+                                        onChange={e => update(i, 'lat', e.target.value)}
+                                    />
+                                </div>
+                                <div className="space-y-3">
+                                    <label className="block text-[8px] uppercase tracking-[0.5em] text-[#555] font-black ml-2">Longitude Coordinates</label>
+                                    <input
+                                        type="text"
+                                        inputMode="decimal"
+                                        placeholder="151.2093..."
+                                        className="w-full h-14 px-6 bg-[#0A0A0A] border border-[#151515] rounded-2xl text-[13px] font-bold text-[#F2F2F2] placeholder-[#222] focus:border-[#E8D200]/40 outline-none transition-all"
+                                        value={loc.lng ?? ''}
+                                        onChange={e => update(i, 'lng', e.target.value)}
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Radius */}
+                            <div className="space-y-3">
+                                <label className="block text-[8px] uppercase tracking-[0.5em] text-[#555] font-black ml-2">Geofence Radius (Meters)</label>
                                 <input
-                                    type="number"
-                                    min="1"
-                                    className="w-full h-12 pl-12 pr-4 bg-[#0A0A0A] border border-[#151515] rounded-xl text-[11px] font-mono text-[#888] focus:border-[#E8D200]/40 outline-none"
-                                    value={loc.radius}
+                                    type="text"
+                                    inputMode="numeric"
+                                    placeholder="100"
+                                    className="w-full h-14 px-6 bg-[#0A0A0A] border border-[#151515] rounded-2xl text-[13px] font-bold text-[#F2F2F2] placeholder-[#222] focus:border-[#E8D200]/40 outline-none transition-all"
+                                    value={loc.radius ?? ''}
                                     onChange={e => update(i, 'radius', e.target.value)}
                                 />
                             </div>
-                            <button
-                                type="button"
-                                onClick={() => remove(i)}
-                                className="h-12 w-12 flex items-center justify-center text-[#151515] hover:text-red-500 hover:bg-red-500/5 rounded-xl transition-all"
-                            >
-                                <X size={16} />
-                            </button>
                         </div>
                     ))}
                 </div>
@@ -90,7 +174,7 @@ const LocationEditor = ({ locations, onChange }) => {
 };
 
 const CATEGORIES = ['gym', 'fashion', 'gear', 'nutrition', 'food', 'health'];
-const EMPTY_FORM = { name: '', logo_url: '', category: 'gym', active: true, locations: [] };
+const EMPTY_FORM = { name: '', address: '', logo_url: '', category: 'gym', active: true, locations: [], opening_hours: { ...DEFAULT_HOURS } };
 
 export default function PartnerManager() {
     const toast = useToast();
@@ -131,10 +215,12 @@ export default function PartnerManager() {
         setEditingPartner(partner);
         setFormData({
             name: partner.name,
+            address: partner.address || '',
             logo_url: partner.logo_url || '',
             category: partner.category,
             active: partner.active,
             locations: partner.locations || [],
+            opening_hours: partner.opening_hours || { ...DEFAULT_HOURS },
         });
         setIsModalOpen(true);
     };
@@ -144,8 +230,10 @@ export default function PartnerManager() {
         setSaving(true);
         const payload = {
             ...formData,
+            opening_hours: formData.opening_hours || null,
             locations: formData.locations.map(loc => ({
                 name: loc.name,
+                address: loc.address || '',
                 lat: parseFloat(loc.lat) || 0,
                 lng: parseFloat(loc.lng) || 0,
                 radius: parseFloat(loc.radius) || 100,
@@ -250,7 +338,7 @@ export default function PartnerManager() {
                 {loading ? (
                     <div className="flex flex-col items-center justify-center py-48 gap-6">
                         <div className="w-12 h-12 border-2 border-[#0EA5E9]/20 border-t-[#0EA5E9] rounded-full animate-spin" />
-                        <span className="text-[10px] uppercase tracking-[0.6em] text-[#222] font-black">Syncing Fleet...</span>
+                        <span className="text-[10px] uppercase tracking-[0.6em] text-[#444] font-black">Syncing Fleet...</span>
                     </div>
                 ) : (
                     <div className="overflow-x-auto">
@@ -270,7 +358,7 @@ export default function PartnerManager() {
                                                 <div className="w-20 h-20 rounded-3xl bg-[#050505] border border-[#151515] flex items-center justify-center">
                                                     <Globe size={32} className="text-[#151515]" />
                                                 </div>
-                                                <p className="text-[11px] uppercase tracking-[0.4em] text-[#1A1A1A] font-black">Fleet Empty</p>
+                                                <p className="text-[11px] uppercase tracking-[0.4em] text-[#333] font-black">Fleet Empty</p>
                                             </div>
                                         </td>
                                     </tr>
@@ -287,7 +375,10 @@ export default function PartnerManager() {
                                                 )}
                                                 <div>
                                                     <span className="text-base font-bold text-[#DDD] group-hover:text-[#F2F2F2] transition-colors block mb-1">{partner.name}</span>
-                                                    <span className="text-[10px] uppercase tracking-[0.4em] text-[#222] font-black font-mono">ID: {partner.id.slice(0,8)}</span>
+                                                    {partner.address && (
+                                                        <span className="text-[10px] text-[#555] font-bold block mb-1 uppercase tracking-wider line-clamp-1">{partner.address}</span>
+                                                    )}
+                                                    <span className="text-[10px] uppercase tracking-[0.4em] text-[#333] font-black font-mono">ID: {partner.id.slice(0,8)}</span>
                                                 </div>
                                             </div>
                                         </td>
@@ -309,7 +400,7 @@ export default function PartnerManager() {
                                                 className={`flex items-center gap-3 px-5 py-2.5 rounded-full text-[10px] font-black uppercase tracking-[0.3em] border transition-all ${
                                                     partner.active
                                                         ? 'bg-[#10B981]/5 text-[#10B981] border-[#10B981]/20 hover:bg-[#10B981]/10'
-                                                        : 'bg-[#050505] text-[#222] border-[#151515] hover:border-[#333]'
+                                                        : 'bg-[#050505] text-[#555] border-[#151515] hover:border-[#333]'
                                                 }`}
                                             >
                                                 <div className={`h-1.5 w-1.5 rounded-full ${partner.active ? 'bg-[#10B981] animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-[#151515]'}`} />
@@ -320,13 +411,13 @@ export default function PartnerManager() {
                                             {confirmDeleteId === partner.id ? (
                                                 <div className="flex items-center justify-end gap-3 scale-90 origin-right transition-all">
                                                     <button onClick={() => handleDelete(partner.id)} className="h-10 px-6 bg-red-500/10 text-red-500 text-[10px] font-black uppercase tracking-[0.3em] rounded-full hover:bg-red-500/20 transition-all border border-red-500/20 shadow-lg shadow-red-500/5">DELETE</button>
-                                                    <button onClick={() => setConfirmDeleteId(null)} className="h-10 px-6 bg-[#050505] text-[#333] text-[10px] font-black uppercase tracking-[0.3em] rounded-full hover:text-[#CCC] transition-all border border-[#151515]">CANCEL</button>
+                                                    <button onClick={() => setConfirmDeleteId(null)} className="h-10 px-6 bg-[#050505] text-[#666] text-[10px] font-black uppercase tracking-[0.3em] rounded-full hover:text-[#CCC] transition-all border border-[#151515]">CANCEL</button>
                                                 </div>
                                             ) : (
                                                 <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-all">
-                                                    <Link to={`/admin/partners/${partner.id}`} className="w-12 h-12 flex items-center justify-center text-[#1A1A1A] hover:text-[#0EA5E9] hover:bg-[#0EA5E9]/5 rounded-2xl transition-all"><Eye size={16} /></Link>
-                                                    <button onClick={() => openEdit(partner)} className="w-12 h-12 flex items-center justify-center text-[#1A1A1A] hover:text-[#E8D200] hover:bg-[#E8D200]/5 rounded-2xl transition-all"><Edit2 size={16} /></button>
-                                                    <button onClick={() => setConfirmDeleteId(partner.id)} className="w-12 h-12 flex items-center justify-center text-[#1A1A1A] hover:text-red-500 hover:bg-red-500/5 rounded-2xl transition-all"><Trash2 size={16} /></button>
+                                                    <Link to={`/admin/partners/${partner.id}`} className="w-12 h-12 flex items-center justify-center text-[#555] hover:text-[#0EA5E9] hover:bg-[#0EA5E9]/5 rounded-2xl transition-all"><Eye size={16} /></Link>
+                                                    <button onClick={() => openEdit(partner)} className="w-12 h-12 flex items-center justify-center text-[#555] hover:text-[#E8D200] hover:bg-[#E8D200]/5 rounded-2xl transition-all"><Edit2 size={16} /></button>
+                                                    <button onClick={() => setConfirmDeleteId(partner.id)} className="w-12 h-12 flex items-center justify-center text-[#555] hover:text-red-500 hover:bg-red-500/5 rounded-2xl transition-all"><Trash2 size={16} /></button>
                                                 </div>
                                             )}
                                         </td>
@@ -340,32 +431,36 @@ export default function PartnerManager() {
 
             {/* Modal */}
             {isModalOpen && (
-                <div className="fixed inset-0 z-[200] flex items-center justify-center p-8 bg-black/95 backdrop-blur-xl animate-in fade-in duration-300">
-                    <div className="bg-[#050505] border border-[#151515] rounded-3xl w-full max-w-4xl max-h-[90vh] overflow-auto shadow-[0_0_100px_rgba(14,165,233,0.05)] scrollbar-hide">
+                <div className="fixed inset-0 z-[200] overflow-y-auto bg-black/95 backdrop-blur-xl animate-in fade-in duration-300 py-20 px-4">
+                    <div className="bg-[#050505] border border-[#151515] rounded-3xl w-full max-w-4xl mx-auto shadow-[0_0_100px_rgba(14,165,233,0.05)]">
                         <form onSubmit={handleSave} className="p-12">
                             <div className="flex items-center justify-between mb-16">
                                 <div>
                                     <h2 className="text-4xl font-light tracking-tighter text-[#F2F2F2] mb-3">{editingPartner ? 'Edit Fleet Node' : 'Initialize Fleet Node'}</h2>
-                                    <p className="text-[10px] uppercase tracking-[0.4em] text-[#222] font-black">Configure Retail Logistics & Geofencing</p>
+                                    <p className="text-[10px] uppercase tracking-[0.4em] text-[#71717A] font-black">Configure Retail Logistics & Geofencing</p>
                                 </div>
-                                <button type="button" onClick={() => setIsModalOpen(false)} className="w-14 h-14 bg-[#0A0A0A] border border-[#151515] rounded-3xl flex items-center justify-center text-[#222] hover:text-[#F2F2F2] hover:border-[#0EA5E9]/40 transition-all"><X size={20} /></button>
+                                <button type="button" onClick={() => setIsModalOpen(false)} className="w-14 h-14 bg-[#0A0A0A] border border-[#151515] rounded-3xl flex items-center justify-center text-[#666] hover:text-[#F2F2F2] hover:border-[#0EA5E9]/40 transition-all"><X size={20} /></button>
                             </div>
 
                             <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 mb-12">
                                 <div className="space-y-8">
                                     <div>
-                                        <label className="block text-[10px] uppercase tracking-[0.4em] text-[#222] font-black mb-4">Node Brand Name</label>
-                                        <input type="text" required className="w-full h-16 px-8 bg-[#0A0A0A] border border-[#151515] rounded-3xl focus:border-[#E8D200]/40 outline-none transition-all text-base font-bold text-[#F2F2F2] placeholder-[#151515]" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} />
+                                        <label className="block text-[10px] uppercase tracking-[0.4em] text-[#71717A] font-black mb-4">Node Brand Name</label>
+                                        <input type="text" required className="w-full h-16 px-8 bg-[#0A0A0A] border border-[#151515] rounded-3xl focus:border-[#E8D200]/40 outline-none transition-all text-base font-bold text-[#F2F2F2] placeholder-[#333]" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} />
                                     </div>
                                     <div>
-                                        <label className="block text-[10px] uppercase tracking-[0.4em] text-[#222] font-black mb-4">Operating Sector</label>
+                                        <label className="block text-[10px] uppercase tracking-[0.4em] text-[#71717A] font-black mb-4">Corporate Address</label>
+                                        <input type="text" placeholder="MAIN HEADQUARTERS..." className="w-full h-16 px-8 bg-[#0A0A0A] border border-[#151515] rounded-3xl focus:border-[#E8D200]/40 outline-none transition-all text-[12px] font-bold text-[#DDD] placeholder-[#151515]" value={formData.address} onChange={e => setFormData({ ...formData, address: e.target.value })} />
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] uppercase tracking-[0.4em] text-[#71717A] font-black mb-4">Operating Sector</label>
                                         <select className="w-full h-16 px-8 bg-[#0A0A0A] border border-[#151515] rounded-3xl focus:border-[#E8D200]/40 outline-none transition-all appearance-none text-[12px] font-black text-[#888] tracking-[0.1em] uppercase" value={formData.category} onChange={e => setFormData({ ...formData, category: e.target.value })}>
                                             {CATEGORIES.map(c => <option key={c} value={c}>{c.toUpperCase()}</option>)}
                                         </select>
                                     </div>
                                     <div>
-                                        <label className="block text-[10px] uppercase tracking-[0.4em] text-[#222] font-black mb-4">Logo Asset URL</label>
-                                        <input type="url" placeholder="https://cdn.powr.com/assets/..." className="w-full h-16 px-8 bg-[#0A0A0A] border border-[#151515] rounded-3xl focus:border-[#E8D200]/40 outline-none transition-all text-[12px] font-mono text-[#444] placeholder-[#151515]" value={formData.logo_url} onChange={e => setFormData({ ...formData, logo_url: e.target.value })} />
+                                        <label className="block text-[10px] uppercase tracking-[0.4em] text-[#71717A] font-black mb-4">Logo Asset URL</label>
+                                        <input type="url" placeholder="https://cdn.powr.com/assets/..." className="w-full h-16 px-8 bg-[#0A0A0A] border border-[#151515] rounded-3xl focus:border-[#E8D200]/40 outline-none transition-all text-[12px] font-mono text-[#888] placeholder-[#333]" value={formData.logo_url} onChange={e => setFormData({ ...formData, logo_url: e.target.value })} />
                                     </div>
                                     <div className="p-8 bg-[#0A0A0A] border border-[#151515] rounded-[2rem] flex items-center gap-6">
                                         <button
@@ -373,9 +468,9 @@ export default function PartnerManager() {
                                             onClick={() => setFormData({ ...formData, active: !formData.active })}
                                             className={`w-12 h-7 rounded-full transition-all relative shrink-0 ${formData.active ? 'bg-[#10B981]' : 'bg-[#151515]'}`}
                                         >
-                                            <span className={`absolute top-1 w-5 h-5 rounded-full transition-all ${formData.active ? 'left-[24px] bg-[#000]' : 'left-1 bg-[#222]'}`} />
+                                            <span className={`absolute top-1 w-5 h-5 rounded-full transition-all ${formData.active ? 'left-[24px] bg-[#000]' : 'left-1 bg-[#666]'}`} />
                                         </button>
-                                        <span className="text-[10px] uppercase tracking-[0.4em] text-[#222] font-black">Enable Real-time Discovery</span>
+                                        <span className="text-[10px] uppercase tracking-[0.4em] text-[#71717A] font-black">Enable Real-time Discovery</span>
                                     </div>
                                 </div>
 
@@ -387,8 +482,38 @@ export default function PartnerManager() {
                                 </div>
                             </div>
 
+                            {/* Opening Hours — full width below the two-col grid */}
+                            <div className="space-y-6">
+                                <div className="flex items-center justify-between">
+                                    <label className="text-[10px] uppercase tracking-[0.4em] text-[#71717A] font-black flex items-center gap-3">
+                                        <Clock size={14} className="text-[#E8D200]" /> Opening Hours
+                                    </label>
+                                    <button
+                                        type="button"
+                                        onClick={() => setFormData({ ...formData, opening_hours: formData.opening_hours ? null : { ...DEFAULT_HOURS } })}
+                                        className="text-[9px] uppercase tracking-[0.3em] font-black text-[#333] hover:text-[#E8D200] transition-colors"
+                                    >
+                                        {formData.opening_hours ? 'Clear Hours' : 'Set Hours'}
+                                    </button>
+                                </div>
+                                {formData.opening_hours ? (
+                                    <OpeningHoursEditor
+                                        value={formData.opening_hours}
+                                        onChange={oh => setFormData({ ...formData, opening_hours: oh })}
+                                    />
+                                ) : (
+                                    <button
+                                        type="button"
+                                        onClick={() => setFormData({ ...formData, opening_hours: { ...DEFAULT_HOURS } })}
+                                        className="w-full py-8 border border-dashed border-[#151515] rounded-[2rem] text-[10px] uppercase tracking-[0.4em] text-[#444] font-black hover:border-[#E8D200]/30 hover:text-[#E8D200] transition-all"
+                                    >
+                                        + Configure Schedule
+                                    </button>
+                                )}
+                            </div>
+
                             <div className="flex justify-end gap-6 pt-12 border-t border-[#151515]">
-                                <button type="button" onClick={() => setIsModalOpen(false)} className="h-16 px-12 text-[11px] uppercase tracking-[0.4em] font-black text-[#222] hover:text-[#555] transition-colors">Abort Mission</button>
+                                <button type="button" onClick={() => setIsModalOpen(false)} className="h-16 px-12 text-[11px] uppercase tracking-[0.4em] font-black text-[#666] hover:text-[#888] transition-colors">Abort Mission</button>
                                 <button type="submit" disabled={saving} className="h-16 px-16 bg-[#E8D200] text-[#080808] text-[11px] font-black uppercase tracking-[0.4em] rounded-full transition-all hover:translate-y-[-4px] shadow-2xl shadow-[#E8D200]/20 disabled:opacity-50">
                                     {saving ? 'COMMITTING...' : 'INITIALIZE NODE'}
                                 </button>

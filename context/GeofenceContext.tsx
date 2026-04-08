@@ -6,9 +6,19 @@ import { supabase } from '@/lib/supabase';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+export type DayKey = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun';
+
+export interface DayHours {
+  open: string;   // "HH:MM"
+  close: string;  // "HH:MM"
+}
+
+export type OpeningHours = Partial<Record<DayKey, DayHours | null>>;
+
 export interface Partner {
   id: string;
   name: string;
+  description?: string;
   category: string;
   status: string;
   area: string;
@@ -17,16 +27,37 @@ export interface Partner {
   logoText: string;
   logoUrl?: string;
   logoLight: boolean;
+  image1Url?: string;
+  image2Url?: string;
   lat: number;
   lng: number;
   geofenceRadius: number;
+  openingHours?: OpeningHours;
+  isOpenNow: boolean;
+}
+
+const DAY_KEYS: DayKey[] = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+
+export function checkIsOpenNow(openingHours?: OpeningHours): boolean {
+  if (!openingHours) return true; // no hours set → assume open
+  const now = new Date();
+  const dayKey = DAY_KEYS[now.getDay()];
+  const hours = openingHours[dayKey];
+  if (!hours) return false; // explicitly closed today
+  const [oh, om] = hours.open.split(':').map(Number);
+  const [ch, cm] = hours.close.split(':').map(Number);
+  const nowMins = now.getHours() * 60 + now.getMinutes();
+  const openMins  = oh * 60 + om;
+  const closeMins = ch * 60 + cm;
+  return nowMins >= openMins && nowMins < closeMins;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const GEOFENCE_TASK_NAME  = 'GEOFENCE_CHECK_IN';
-const ACTIVE_GEOFENCE_KEY = '@powr/active_geofence';
-const PARTNER_MAP_KEY     = '@powr/partner_map';
+const GEOFENCE_TASK_NAME     = 'GEOFENCE_CHECK_IN';
+const ACTIVE_GEOFENCE_KEY    = '@powr/active_geofence';
+const PARTNER_MAP_KEY        = '@powr/partner_map';
+const SESSION_COMPLETED_KEY  = '@powr/session_completed';
 
 // ⚠️ DEV OVERRIDES — restore before release
 const MIN_DWELL_MS = 30 * 1000; // production: 20 * 60 * 1000
@@ -49,6 +80,34 @@ TaskManager.defineTask(GEOFENCE_TASK_NAME, async ({ data, error }) => {
   };
 
   if (eventType === Location.GeofencingEventType.Enter) {
+    // Don't overwrite an already-active session
+    const existingRaw = await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY);
+    if (existingRaw) {
+      console.log('[Geofence] Enter ignored — session already active.');
+      return;
+    }
+
+    // One gym session per day — skip if already completed
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const { count } = await supabase
+          .from('activity_sessions')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', user.id)
+          .eq('type', 'gym')
+          .gte('started_at', today.toISOString());
+        if ((count ?? 0) > 0) {
+          console.log('[Geofence] Gym session already logged today — entry ignored.');
+          return;
+        }
+      }
+    } catch {
+      // Non-fatal — proceed with entry recording
+    }
+
     const mapJson = await AsyncStorage.getItem(PARTNER_MAP_KEY);
     const partnerMap: Record<string, string> = mapJson ? JSON.parse(mapJson) : {};
     const partnerName = partnerMap[region.identifier] ?? region.identifier;
@@ -86,6 +145,21 @@ TaskManager.defineTask(GEOFENCE_TASK_NAME, async ({ data, error }) => {
       const endedAt     = new Date();
       const durationSec = Math.round(dwellMs / 1000);
 
+      // Dedup: one gym session per day
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const { count: todayCount } = await supabase
+        .from('activity_sessions')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', user.id)
+        .eq('type', 'gym')
+        .gte('started_at', today.toISOString());
+
+      if ((todayCount ?? 0) > 0) {
+        console.log('[Geofence] Gym session already recorded today — skipping duplicate.');
+        return;
+      }
+
       // Dedup: the OS can fire Exit twice in quick succession — skip if already recorded
       const { count: existing } = await supabase
         .from('activity_sessions')
@@ -108,6 +182,11 @@ TaskManager.defineTask(GEOFENCE_TASK_NAME, async ({ data, error }) => {
           duration_sec: durationSec,
           verification: 'geofence',
           trust_score:  0.94,
+          raw_gps:      { 
+            partnerId: activeGeofence.partnerId, 
+            partnerName: activeGeofence.partnerName,
+            entryTimestamp: activeGeofence.entryTimestamp
+          }
         })
         .select()
         .single();
@@ -116,6 +195,17 @@ TaskManager.defineTask(GEOFENCE_TASK_NAME, async ({ data, error }) => {
         console.error('[Geofence] Failed to create session:', sessionError);
         return;
       }
+
+      // Signal the foreground app that a session has completed so it can refresh.
+      // Written before claim-points so the UI reacts immediately on exit.
+      await AsyncStorage.setItem(
+        SESSION_COMPLETED_KEY,
+        JSON.stringify({
+          partnerName: activeGeofence.partnerName,
+          durationSec,
+          timestamp:   Date.now(),
+        }),
+      );
 
       // Force-refresh the token — background tasks don't auto-refresh, so the
       // cached access token can be expired by the time the exit event fires.
@@ -127,7 +217,6 @@ TaskManager.defineTask(GEOFENCE_TASK_NAME, async ({ data, error }) => {
 
       const { data: claimData, error: claimError } = await supabase.functions.invoke('claim-points', {
         body: { session_id: session.id },
-        headers: { Authorization: `Bearer ${authSession.access_token}` },
       });
 
       if (claimError) {
@@ -179,11 +268,20 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     async function fetchPartners() {
       try {
-        const { data, error } = await supabase
+        // Try full schema; fall back if opening_hours/description columns don't exist yet
+        let fetchResult = await supabase
           .from('partners')
-          .select('id, name, category, locations, logo_url')
+          .select('id, name, description, category, locations, logo_url, image1_url, image2_url, opening_hours')
           .eq('active', true);
 
+        if (fetchResult.error) {
+          fetchResult = await supabase
+            .from('partners')
+            .select('id, name, category, locations, logo_url')
+            .eq('active', true);
+        }
+
+        const { data, error } = fetchResult;
         if (error || !data) return;
 
         const formatted: Partner[] = [];
@@ -195,20 +293,27 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
             const logoText = words.length > 1
               ? `${words[0]}\n${words[1]}`.toUpperCase()
               : p.name.toUpperCase();
+            const oh: OpeningHours | undefined = p.opening_hours ?? undefined;
+            const openNow = checkIsOpenNow(oh);
             formatted.push({
               id:             `${p.id}-${idx}`,
               name:           p.name,
+              description:    p.description ?? undefined,
               category:       p.category.charAt(0).toUpperCase() + p.category.slice(1),
-              status:         'Open now',
+              status:         openNow ? 'Open now' : 'Closed',
               area:           loc.name || 'Local',
               pts:            p.category.toLowerCase() === 'gym' ? 15 : 10,
               distance:       '',
               logoText:       logoText.length > 10 ? logoText.substring(0, 10) : logoText,
               logoUrl:        p.logo_url,
               logoLight:      p.category.toLowerCase() !== 'gym',
+              image1Url:      p.image1_url ?? undefined,
+              image2Url:      p.image2_url ?? undefined,
               lat:            loc.lat,
               lng:            loc.lng,
               geofenceRadius: DEV_RADIUS_M[p.name] ?? loc.radius ?? 50,
+              openingHours:   oh,
+              isOpenNow:      openNow,
             });
           });
         });
@@ -254,6 +359,18 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
       }));
 
       try {
+        // To avoid internal sync issues in Expo Go, we check if the task is already registered.
+        // If it is, we stop it first to ensure we're starting with a fresh set of regions.
+        const isRegistered = await TaskManager.isTaskRegisteredAsync(GEOFENCE_TASK_NAME);
+        if (isRegistered) {
+          await Location.stopGeofencingAsync(GEOFENCE_TASK_NAME);
+        }
+      } catch (err) {
+        // If unregistration fails (e.g. because of TaskNotFoundException), we can safely ignore it
+        // and proceed to (re)start the geofencing.
+      }
+
+      try {
         await Location.startGeofencingAsync(GEOFENCE_TASK_NAME, regions);
         setIsMonitoring(true);
         console.log(`[Geofence] Monitoring ${regions.length} location(s).`);
@@ -268,23 +385,44 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
           (await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }));
 
         if (loc) {
+          // Check if a gym session was already logged today before setting active state
+          let gymLoggedToday = false;
+          try {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user) {
+              const today = new Date();
+              today.setHours(0, 0, 0, 0);
+              const { count } = await supabase
+                .from('activity_sessions')
+                .select('id', { count: 'exact', head: true })
+                .eq('user_id', user.id)
+                .eq('type', 'gym')
+                .gte('started_at', today.toISOString());
+              gymLoggedToday = (count ?? 0) > 0;
+            }
+          } catch { /* non-fatal */ }
+
           for (const partner of partners) {
             const dist = haversineMetres(
               loc.coords.latitude, loc.coords.longitude,
               partner.lat, partner.lng,
             );
             if (dist <= partner.geofenceRadius) {
-              const existing = await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY);
-              if (!existing) {
-                await AsyncStorage.setItem(
-                  ACTIVE_GEOFENCE_KEY,
-                  JSON.stringify({
-                    partnerId:      partner.id,
-                    partnerName:    partner.name,
-                    entryTimestamp: Date.now(),
-                  }),
-                );
-                console.log(`[Geofence] Already inside "${partner.name}" — active state set.`);
+              if (gymLoggedToday) {
+                console.log(`[Geofence] Already inside "${partner.name}" but gym session logged today — skipping.`);
+              } else {
+                const existing = await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY);
+                if (!existing) {
+                  await AsyncStorage.setItem(
+                    ACTIVE_GEOFENCE_KEY,
+                    JSON.stringify({
+                      partnerId:      partner.id,
+                      partnerName:    partner.name,
+                      entryTimestamp: Date.now(),
+                    }),
+                  );
+                  console.log(`[Geofence] Already inside "${partner.name}" — active state set.`);
+                }
               }
               break;
             }

@@ -1,8 +1,5 @@
-import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import { LinearGradient } from 'expo-linear-gradient';
-import React from 'react';
-import { GeometricBackground } from '@/components/home/GeometricBackground';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import React, { useState, useEffect } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -12,17 +9,25 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { RadialCarousel } from '@/components/home/RadialCarousel';
+import { ProgressRadial } from '@/components/home/ProgressRadial';
+import { GeometricBackground } from '@/components/home/GeometricBackground';
 import { ProfileButton } from '@/components/ProfileButton';
+import { useAuth } from '@/context/AuthContext';
 import { useActivity } from '@/hooks/useActivity';
 import { usePoints } from '@/hooks/usePoints';
+import { useWalkingProgress } from '@/hooks/useWalkingProgress';
 import { JOURNEY_SECTIONS, resolveSections, allLessons } from '@/lib/journey';
+import { getLevelInfo } from '@/constants/levels';
+import { ACTIVITIES, type ActivityType } from '@/constants/activities';
+import { fetchProfile } from '@/lib/api/user';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const GOLD    = '#E8D200';
-const GREEN   = '#4ade80';
-const RED     = '#f87171';
-const BG      = '#1E1E1E';
+const GOLD   = '#E8D200';
+const GREEN  = '#4ade80';
+const ORANGE = '#fb923c';
+const INDIGO = '#818cf8';
 const CARD_BG = 'rgba(40,40,40,0.85)';
 const BORDER  = 'rgba(255,255,255,0.08)';
 const TEXT    = '#F2F2F2';
@@ -32,11 +37,8 @@ const DIM     = 'rgba(255,255,255,0.5)';
 const DAY_LABELS  = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const TODAY_INDEX = new Date().getDay() === 0 ? 6 : new Date().getDay() - 1;
 
-const CATEGORIES = [
-  { key: 'movement', label: 'Movement', colour: GREEN,     icon: 'walk'           },
-  { key: 'workouts', label: 'Workouts', colour: GOLD,      icon: 'barbell-outline'},
-  { key: 'sleep',    label: 'Sleep',    colour: '#818cf8', icon: 'moon-outline'   },
-] as const;
+// Mock per-day sleep hours (Mon–Sun) until real data is available
+const MOCK_SLEEP_HRS = [7.2, 6.5, 8.1, 6.8, 7.5, 8.4, 6.0];
 
 const COMPLETED_IDS   = new Set([
   'l-001', 'l-002', 'l-003', 'l-004', 'l-005', 'l-006',
@@ -50,12 +52,98 @@ const COMPLETED_COUNT = ALL_LESSONS.filter(l => l.state === 'completed').length;
 
 export default function ProgressScreen() {
   const insets = useSafeAreaInsets();
-  const router = useRouter();
-  const { weekActiveDays, weeklyMetrics } = useActivity();
-  const { weeklyEarned } = usePoints();
+  const { user } = useAuth();
+  const { weekActiveDays, weeklyMetrics, refresh: refreshActivity } = useActivity();
+  const { totalEarned, weeklyEarned } = usePoints();
+  const walking = useWalkingProgress();
+
+  const [activePrefs, setActivePrefs] = useState<ActivityType[]>(['gym', 'running', 'walking']);
+
+  // Fetch and sync activity preferences
+  useEffect(() => {
+    if (!user) return;
+    let mounted = true;
+    const syncPrefs = async () => {
+      try {
+        const profile = await fetchProfile();
+        if (profile?.activity_preferences && profile.activity_preferences.length > 0) {
+          if (mounted) setActivePrefs(profile.activity_preferences as ActivityType[]);
+        }
+      } catch (err) {
+        console.error('Error syncing preferences:', err);
+      }
+    };
+    syncPrefs();
+    return () => { mounted = false; };
+  }, [user]);
 
   const activeDaysCount = weekActiveDays.filter(Boolean).length;
-  const trendPct = 12; // Placeholder for now
+  const stepsF = weeklyMetrics.totalSteps >= 1000
+    ? `${(weeklyMetrics.totalSteps / 1000).toFixed(1)}k`
+    : String(weeklyMetrics.totalSteps);
+
+  const [activeTab, setActiveTab] = useState<string>('walking');
+  
+  // Build dynamic radial data
+  const radialData = activePrefs.map((type, idx) => {
+    const config = ACTIVITIES[type];
+    if (type === 'walking') {
+      return {
+        id: 'walking',
+        pct: Math.min(weeklyMetrics.totalSteps / 10000, 1),
+        value: stepsF,
+        maxLabel: ' steps',
+        subLabel: 'TODAY',
+        gradientColors: [GREEN, '#10b981'],
+        iconName: config.iconActive,
+        iconLib: config.iconLib,
+        ticks: DAY_LABELS.map((label, i) => ({
+          label: label.slice(0, 2),
+          active: weekActiveDays[i],
+          isToday: i === TODAY_INDEX,
+        })),
+      };
+    }
+
+    const count = weeklyMetrics.perType[type] ?? 0;
+    return {
+      id: type,
+      pct: Math.min(count / 5, 1),
+      value: String(count),
+      maxLabel: '/ 5',
+      subLabel: `${config.labelShort.toUpperCase()} SESSIONS`,
+      gradientColors: [config.colour, ORANGE],
+      iconName: config.iconActive,
+      iconLib: config.iconLib,
+    };
+  });
+
+  // Append Sleep as a final passive radial
+  const avgSleep = (MOCK_SLEEP_HRS.reduce((s, v) => s + v, 0) / 7);
+  radialData.push({
+    id: 'sleep',
+    pct: Math.min(avgSleep / 8, 1),
+    value: avgSleep.toFixed(1),
+    maxLabel: 'h',
+    subLabel: 'AVG SLEEP',
+    gradientColors: [INDIGO, '#6366f1'],
+    iconName: 'moon',
+    iconLib: 'ionicons',
+  });
+
+  const tabs = radialData.map(d => d.id);
+  const activeIndex = tabs.indexOf(activeTab);
+
+  const handleIndexChange = (index: number) => {
+    setActiveTab(tabs[index]);
+  };
+
+  // Set initial tab once prefs load
+  useEffect(() => {
+    if (tabs.length > 0 && !tabs.includes(activeTab)) {
+      setActiveTab(tabs[0]);
+    }
+  }, [tabs]);
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
@@ -70,316 +158,505 @@ export default function ProgressScreen() {
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 100 }]}
         showsVerticalScrollIndicator={false}
       >
-        {/* ── Weekly Visualiser ────────────────────────── */}
-        <WeeklyVisualizer activeDays={weekActiveDays} />
 
-        {/* ── Stats Grid ─────────────────────────────── */}
-        <View style={styles.gridContainer}>
-          <StatCard
-            label="Gym Visits"
-            value={String(weeklyMetrics.gymVisits)}
-            icon="barbell"
-            colour={GOLD}
-          />
-          <StatCard
-            label="Sessions"
-            value={String(weeklyMetrics.sessionCount)}
-            icon="flash"
-            colour={GREEN}
-          />
-          <StatCard
-            label="Steps"
-            value={weeklyMetrics.totalSteps >= 1000 ? `${(weeklyMetrics.totalSteps / 1000).toFixed(1)}k` : String(weeklyMetrics.totalSteps)}
-            icon="footsteps"
-            colour="#fb923c"
-          />
-          <StatCard
-            label="POWR Earned"
-            value={String(weeklyEarned)}
-            icon="trophy"
-            colour={GOLD}
-            isGold
-          />
-        </View>
-
-        {/* ── Insight Card ────────────────────────────── */}
-        <InsightCard activeDaysCount={activeDaysCount} trendPct={trendPct} />
-
-        {/* ── Category Breakdown ─────────────────────── */}
-        <Text style={styles.sectionLabel}>DETAILED BREAKDOWN</Text>
-        <View style={styles.categoryCard}>
-          {CATEGORIES.map((cat, i) => (
-            <CategoryRow
-              key={cat.key}
-              label={cat.label}
-              value={
-                cat.key === 'movement' ? `${weeklyMetrics.sessionCount} sessions this week` :
-                cat.key === 'workouts' ? `${weeklyMetrics.gymVisits} visits logged` :
-                '6.8h avg sleep'
-              }
-              colour={cat.colour}
-              icon={cat.icon}
-              isLast={i === CATEGORIES.length - 1}
-              onPress={() => router.push({ pathname: '/progress-detail', params: { category: cat.key } })}
-            />
-          ))}
-        </View>
-
-        {/* ── Achievements teaser ────────────────────── */}
-        <AchievementsTeaser
-          completedCount={COMPLETED_COUNT}
-          onPress={() => router.push({ pathname: '/(tabs)/league', params: { tab: 'journey' } })}
+        {/* ── Swipable Radials ───────────────────────────── */}
+        <RadialCarousel 
+          data={radialData} 
+          activeIndex={activeIndex} 
+          onChange={handleIndexChange} 
         />
+
+        {/* ── Breakdown Tabs ─────────────────────────────── */}
+        <BreakdownSection
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          tabs={radialData.map(d => ({ key: d.id, label: ACTIVITIES[d.id as ActivityType]?.labelShort.toUpperCase() || d.id.toUpperCase() }))}
+          walking={walking}
+          weeklyMetrics={weeklyMetrics}
+          stepsF={stepsF}
+          weekActiveDays={weekActiveDays}
+          weeklyEarned={weeklyEarned}
+        />
+
+        {/* ── Weekly Summary ─────────────────────────────── */}
+        <View style={styles.weeklySummary}>
+          <Text style={styles.summaryLabel}>TOTAL EARNED THIS WEEK</Text>
+          <View style={styles.summaryValueRow}>
+            <Text style={styles.summaryValue}>{weeklyEarned}</Text>
+            <Text style={styles.summaryUnit}>POWR</Text>
+          </View>
+        </View>
       </ScrollView>
     </View>
   );
 }
 
-// ─── Weekly Visualizer ────────────────────────────────────────────────────────
 
-function WeeklyVisualizer({ activeDays }: { activeDays: boolean[] }) {
+// Removed WeeklyRing logic
+
+
+type BreakdownTabItem = { key: string; label: string };
+
+function BreakdownSection({
+  activeTab, setActiveTab, tabs, walking, weeklyMetrics, stepsF, weekActiveDays, weeklyEarned,
+}: {
+  activeTab: string;
+  setActiveTab: (tab: string) => void;
+  tabs: BreakdownTabItem[];
+  walking: ReturnType<typeof useWalkingProgress>;
+  weeklyMetrics: any;
+  stepsF: string;
+  weekActiveDays: boolean[];
+  weeklyEarned: number;
+}) {
   return (
-    <View style={styles.visualizerCard}>
-      <Text style={styles.visualizerLabel}>WEEKLY ACTIVITY</Text>
-      <View style={styles.daysRow}>
+    <View style={styles.breakdownCard}>
+      <View style={styles.tabBar}>
+        {tabs.map(({ key, label }) => {
+          const isActive = activeTab === key;
+          return (
+            <Pressable key={key} style={styles.tabItem} onPress={() => setActiveTab(key)}>
+              <Text style={[styles.tabLabel, isActive && styles.tabLabelActive]}>{label}</Text>
+              {isActive && <View style={styles.tabIndicator} />}
+            </Pressable>
+          );
+        })}
+      </View>
+
+      <View style={styles.tabContent}>
+        {activeTab === 'walking' && (
+          <MovementTab walking={walking} totalSteps={weeklyMetrics.totalSteps} stepsF={stepsF} weekActiveDays={weekActiveDays} />
+        )}
+        {activeTab !== 'walking' && activeTab !== 'sleep' && (
+          <WorkoutsTab 
+            type={activeTab as ActivityType}
+            count={weeklyMetrics.perType[activeTab] ?? 0}
+            weekActiveDays={weekActiveDays} 
+            weeklyEarned={weeklyEarned} 
+          />
+        )}
+        {activeTab === 'sleep' && <SleepTab />}
+      </View>
+    </View>
+  );
+}
+
+
+// ─── Movement Tab ─────────────────────────────────────────────────────────────
+
+function MovementTab({
+  walking, totalSteps, stepsF, weekActiveDays,
+}: {
+  walking: ReturnType<typeof useWalkingProgress>;
+  totalSteps: number;
+  stepsF: string;
+  weekActiveDays: boolean[];
+}) {
+  const todaySteps = walking.isAuthorized ? (walking.stepsToday ?? 0) : 0;
+  const todayPct   = Math.min(todaySteps / 10000, 1);
+  const weeklyPct  = Math.min(totalSteps / 70000, 1);
+  const remaining  = Math.max(0, 10000 - todaySteps);
+
+  return (
+    <View style={styles.tabPanel}>
+      {/* Primary metrics */}
+      <View style={styles.bigMetricRow}>
+        <View style={styles.bigMetric}>
+          <Text style={styles.bigMetricSup}>TODAY</Text>
+          <Text style={[styles.bigMetricVal, { color: GREEN }]}>
+            {walking.isAuthorized && todaySteps > 0 ? todaySteps.toLocaleString() : '—'}
+          </Text>
+          <Text style={styles.bigMetricMax}>/ 10,000 steps</Text>
+          <View style={styles.metricBar}>
+            <View style={[styles.metricBarFill, { width: `${Math.round(todayPct * 100)}%` as any, backgroundColor: GREEN }]} />
+          </View>
+        </View>
+        <View style={styles.bigMetricDivider} />
+        <View style={styles.bigMetric}>
+          <Text style={styles.bigMetricSup}>THIS WEEK</Text>
+          <Text style={[styles.bigMetricVal, { color: GREEN }]}>{stepsF}</Text>
+          <Text style={styles.bigMetricMax}>/ 70k goal</Text>
+          <View style={styles.metricBar}>
+            <View style={[styles.metricBarFill, { width: `${Math.round(weeklyPct * 100)}%` as any, backgroundColor: GREEN }]} />
+          </View>
+        </View>
+      </View>
+
+      <View style={styles.tabSep} />
+
+      {/* Daily activity strip */}
+      <Text style={styles.tabSubLabel}>DAILY ACTIVITY</Text>
+      <View style={styles.dayStrip}>
         {DAY_LABELS.map((day, i) => {
-          const isActive = activeDays[i];
+          const active  = weekActiveDays[i];
           const isToday = i === TODAY_INDEX;
           return (
-            <View key={i} style={styles.dayCol}>
+            <View key={i} style={styles.dayStripCol}>
               <View style={[
-                styles.dayIndicator,
-                isActive && styles.dayIndicatorActive,
-                isToday && !isActive && styles.dayIndicatorToday
+                styles.dayStripDot,
+                active  && { backgroundColor: `${GREEN}20`, borderColor: GREEN },
+                isToday && !active && { borderColor: 'rgba(255,255,255,0.5)' },
               ]}>
-                {isActive && (
-                  <LinearGradient
-                    colors={[GOLD, '#B8A600']}
-                    style={StyleSheet.absoluteFill}
-                  />
-                )}
-                {isActive && <Ionicons name="checkmark" size={14} color="#000" />}
+                {active
+                  ? <Ionicons name="checkmark" size={10} color={GREEN} />
+                  : isToday
+                  ? <View style={styles.dayStripTodayDot} />
+                  : null}
               </View>
-              <Text style={[styles.dayText, isToday && { color: TEXT, fontWeight: '600' }]}>
+              <Text style={[styles.dayStripLabel, isToday && { color: TEXT, fontWeight: '600' }]}>
                 {day.charAt(0)}
               </Text>
             </View>
           );
         })}
       </View>
-    </View>
-  );
-}
 
-// ─── Stat Card ────────────────────────────────────────────────────────────────
-
-function StatCard({ label, value, icon, colour, isGold }: { label: string; value: string; icon: string; colour: string; isGold?: boolean }) {
-  return (
-    <View style={styles.statCard}>
-      <View style={[styles.statHeader, { borderBottomColor: `${colour}20` }]}>
-        <Ionicons name={icon as any} size={14} color={colour} />
-        <Text style={styles.statLabel}>{label}</Text>
-      </View>
-      <View style={styles.statBody}>
-        <Text style={[styles.statValue, isGold && { color: GOLD }]}>{value}</Text>
+      {/* Insight */}
+      <View style={styles.insightRow}>
+        <Ionicons name={todaySteps > 5000 ? 'trending-up' : 'footsteps'} size={12} color={GREEN} />
+        <Text style={styles.insightText}>
+          {walking.isAuthorized
+            ? todaySteps > 0
+              ? `${remaining.toLocaleString()} steps to today's goal`
+              : "Start moving to track today's steps"
+            : 'Enable Health access to track steps'}
+        </Text>
       </View>
     </View>
   );
 }
 
-// ─── Insight Card ─────────────────────────────────────────────────────────────
+// ─── Workouts Tab ─────────────────────────────────────────────────────────────
 
-function InsightCard({ activeDaysCount, trendPct }: { activeDaysCount: number; trendPct: number }) {
-  return (
-    <LinearGradient
-      colors={['rgba(232,210,0,0.12)', 'rgba(40,40,40,0.85)']}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
-      style={styles.insightCard}
-    >
-      <View style={styles.insightHeader}>
-        <Ionicons name="sparkles" size={16} color={GOLD} />
-        <Text style={styles.insightTitle}>POWR INSIGHT</Text>
-      </View>
-      <Text style={styles.insightText}>
-        {activeDaysCount >= 3 
-          ? "You're building momentum. Your consistency is your edge—keep the streak alive."
-          : "Every move counts. You're just a session away from hitting your weekly rhythm."}
-      </Text>
-      <View style={styles.insightTrendRow}>
-        <Ionicons name="trending-up" size={12} color={GREEN} />
-        <Text style={styles.insightTrendText}>+{trendPct}% vs last week</Text>
-      </View>
-    </LinearGradient>
-  );
-}
-
-// ─── Category Row ─────────────────────────────────────────────────────────────
-
-function CategoryRow({
-  label, value, colour, icon, isLast, onPress,
+function WorkoutsTab({
+  type, count, weekActiveDays, weeklyEarned,
 }: {
-  label: string; value: string; colour: string; icon: string; isLast: boolean; onPress?: () => void;
+  type: ActivityType;
+  count: number;
+  weekActiveDays: boolean[];
+  weeklyEarned: number;
 }) {
+  const config = ACTIVITIES[type];
+  const sessionPct = Math.min(count / 5, 1);
+
   return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.catRow,
-        !isLast && styles.catRowBorder,
-        pressed && { opacity: 0.7 },
-      ]}
-    >
-      <View style={[styles.catIconWrap, { borderColor: `${colour}40`, backgroundColor: `${colour}14` }]}>
-        <Ionicons name={icon as any} size={18} color={colour} />
+    <View style={styles.tabPanel}>
+      {/* Primary metrics */}
+      <View style={styles.bigMetricRow}>
+        <View style={styles.bigMetric}>
+          <Text style={styles.bigMetricSup}>{config.labelShort.toUpperCase()} SESSIONS</Text>
+          <Text style={[styles.bigMetricVal, { color: config.colour }]}>{count}</Text>
+          <Text style={styles.bigMetricMax}>/ 5 goal</Text>
+          <View style={styles.metricBar}>
+            <View style={[styles.metricBarFill, { width: `${Math.round(sessionPct * 100)}%` as any, backgroundColor: config.colour }]} />
+          </View>
+        </View>
+        <View style={styles.bigMetricDivider} />
+        <View style={styles.bigMetric}>
+          <Text style={styles.bigMetricSup}>XP REWARD</Text>
+          <Text style={[styles.bigMetricVal, { color: GOLD }]}>{count * 15}</Text>
+          <Text style={styles.bigMetricMax}>from this week</Text>
+          <View style={styles.metricBar}>
+            <View style={[styles.metricBarFill, { width: `${Math.round(sessionPct * 100)}%` as any, backgroundColor: GOLD }]} />
+          </View>
+        </View>
       </View>
-      <View style={styles.catTextBlock}>
-        <Text style={styles.catLabel}>{label}</Text>
-        <Text style={styles.catMeta}>{value}</Text>
+
+      <View style={styles.tabSep} />
+
+      {/* Daily activity */}
+      <Text style={styles.tabSubLabel}>ACTIVE DAYS</Text>
+      <View style={styles.dayStrip}>
+        {DAY_LABELS.map((day, i) => {
+          const active  = weekActiveDays[i];
+          const isToday = i === TODAY_INDEX;
+          return (
+            <View key={i} style={styles.dayStripCol}>
+              <View style={[
+                styles.dayStripDot,
+                active  && { backgroundColor: `${config.colour}20`, borderColor: config.colour },
+                isToday && !active && { borderColor: 'rgba(255,255,255,0.5)' },
+              ]}>
+                {active
+                  ? <Ionicons name="checkmark" size={10} color={config.colour} />
+                  : isToday
+                  ? <View style={[styles.dayStripTodayDot, { backgroundColor: MUTED }]} />
+                  : null}
+              </View>
+              <Text style={[styles.dayStripLabel, isToday && { color: TEXT, fontWeight: '600' }]}>
+                {day.charAt(0)}
+              </Text>
+            </View>
+          );
+        })}
       </View>
-      <Ionicons name="chevron-forward" size={14} color={MUTED} />
-    </Pressable>
+
+      <View style={styles.tabSep} />
+
+      {/* POWR earned */}
+      <View style={styles.powrRow}>
+        <View style={styles.powrLeft}>
+          <Ionicons name="flash" size={14} color={GOLD} />
+          <Text style={styles.powrLabel}>POWR EARNED</Text>
+        </View>
+        <Text style={styles.powrValue}>{count * 10} pts</Text>
+      </View>
+
+      {/* Insight */}
+      <View style={styles.insightRow}>
+        <Ionicons 
+          name={config.iconLib === 'material-community' ? (config.iconActive as any) : (config.iconActive as any)} 
+          size={12} 
+          color={count >= 3 ? config.colour : MUTED} 
+        />
+        <Text style={[styles.insightText, count >= 3 && { color: DIM }]}>
+          {count >= 4
+            ? `Outstanding ${config.label.toLowerCase()} week.`
+            : count >= 3
+            ? 'Solid effort — keep going to hit your goal.'
+            : `${5 - count} more sessions to hit your target.`}
+        </Text>
+      </View>
+    </View>
   );
 }
 
-// ─── Achievements Teaser ──────────────────────────────────────────────────────
+// ─── Sleep Tab ────────────────────────────────────────────────────────────────
 
-function AchievementsTeaser({
-  completedCount, onPress,
-}: {
-  completedCount: number;
-  onPress: () => void;
-}) {
+const SLEEP_BAR_H = 56;
+
+function SleepTab() {
+  const avg    = (MOCK_SLEEP_HRS.reduce((s, v) => s + v, 0) / 7).toFixed(1);
+  const avgPct = Math.min(Number(avg) / 8, 1);
+
   return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [styles.achievementsTeaser, pressed && { opacity: 0.65 }]}
-    >
-      <Text style={styles.achievementsText}>
-        Achievements · {completedCount} unlocked
-      </Text>
-      <Ionicons name="chevron-forward" size={14} color={MUTED} />
-    </Pressable>
+    <View style={styles.tabPanel}>
+      {/* Primary metrics */}
+      <View style={styles.bigMetricRow}>
+        <View style={styles.bigMetric}>
+          <Text style={styles.bigMetricSup}>AVG / NIGHT</Text>
+          <Text style={[styles.bigMetricVal, { color: INDIGO }]}>{avg}h</Text>
+          <Text style={styles.bigMetricMax}>/ 8h goal</Text>
+          <View style={styles.metricBar}>
+            <View style={[styles.metricBarFill, { width: `${Math.round(avgPct * 100)}%` as any, backgroundColor: INDIGO }]} />
+          </View>
+        </View>
+        <View style={styles.bigMetricDivider} />
+        <View style={styles.bigMetric}>
+          <Text style={styles.bigMetricSup}>AVG BEDTIME</Text>
+          <Text style={[styles.bigMetricVal, { color: INDIGO }]}>11pm</Text>
+          <Text style={styles.bigMetricMax}>goal: 10:30pm</Text>
+          <View style={styles.metricBar}>
+            <View style={[styles.metricBarFill, { width: '55%', backgroundColor: INDIGO }]} />
+          </View>
+        </View>
+      </View>
+
+      <View style={styles.tabSep} />
+
+      {/* Per-day sleep bar chart */}
+      <Text style={styles.tabSubLabel}>NIGHTLY SLEEP</Text>
+      <View style={styles.sleepChart}>
+        {MOCK_SLEEP_HRS.map((hrs, i) => {
+          const isToday = i === TODAY_INDEX;
+          const fillH   = Math.round((hrs / 10) * SLEEP_BAR_H);
+          return (
+            <View key={i} style={styles.sleepBarCol}>
+              <Text style={[styles.sleepBarHrs, isToday && { color: INDIGO }]}>
+                {hrs % 1 === 0 ? `${hrs}h` : `${hrs.toFixed(1)}h`}
+              </Text>
+              <View style={styles.sleepBarTrack}>
+                <View style={[
+                  styles.sleepBarFill,
+                  { height: fillH, backgroundColor: isToday ? INDIGO : `${INDIGO}60` },
+                ]} />
+              </View>
+              <Text style={[styles.sleepBarDay, isToday && { color: TEXT, fontWeight: '600' }]}>
+                {DAY_LABELS[i].charAt(0)}
+              </Text>
+            </View>
+          );
+        })}
+      </View>
+
+      {/* Insight */}
+      <View style={styles.insightRow}>
+        <Ionicons name="moon-outline" size={12} color={INDIGO} />
+        <Text style={[styles.insightText, { color: DIM }]}>
+          {Number(avg) >= 7.5
+            ? 'Good recovery. Keep your sleep schedule consistent.'
+            : `You're ${(8 - Number(avg)).toFixed(1)}h below target — aim for an earlier bedtime.`}
+        </Text>
+      </View>
+    </View>
   );
 }
+
+// AchievementsTeaser Logic Removed
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  screen:  { flex: 1, backgroundColor: BG },
+  screen:  { flex: 1 },
   header: {
-    paddingHorizontal: 16, paddingVertical: 12,
+    paddingHorizontal: 16, paddingVertical: 10,
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
   },
-  title:   { fontSize: 32, fontWeight: '200', letterSpacing: -0.8, color: TEXT },
+  title:   { fontSize: 28, fontWeight: '200', letterSpacing: -0.4, color: TEXT },
   scroll:  { flex: 1 },
-  content: { paddingHorizontal: 12, gap: 12, paddingTop: 4 },
+  content: { paddingHorizontal: 10, gap: 10, paddingTop: 2 },
 
-  sectionLabel: {
-    fontSize: 9, fontWeight: '600', letterSpacing: 1.5,
-    color: MUTED, textTransform: 'uppercase', paddingHorizontal: 4, marginTop: 8,
+  // Level Header Styles Removed
+  breakdownCard: {
+    overflow: 'hidden',
   },
 
-  // Weekly Visualizer
-  visualizerCard: {
-    padding: 16, borderRadius: 20,
-    backgroundColor: CARD_BG,
-    borderWidth: 1, borderColor: BORDER,
-    gap: 16,
+  tabBar: {
+    flexDirection: 'row',
+    borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.07)',
   },
-  visualizerLabel: {
-    fontSize: 9, fontWeight: '600', letterSpacing: 1.5, color: MUTED,
+  tabItem: {
+    flex: 1, alignItems: 'center', paddingVertical: 13, position: 'relative',
   },
-  daysRow: {
+  tabLabel: {
+    fontSize: 9, fontWeight: '500', letterSpacing: 1.5, color: MUTED,
+  },
+  tabLabelActive: { color: GOLD },
+  tabIndicator: {
+    position: 'absolute', bottom: -1, left: '20%', right: '20%',
+    height: 1.5, backgroundColor: GOLD, borderRadius: 1,
+  },
+  tabContent: { padding: 20 },
+  tabPanel:   { gap: 16 },
+
+  // Big metric pair
+  bigMetricRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  bigMetric: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 3,
+  },
+  bigMetricDivider: {
+    width: 1, height: 72,
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    marginHorizontal: 14,
+    alignSelf: 'center',
+  },
+  bigMetricSup: {
+    fontSize: 8, fontWeight: '500', letterSpacing: 1.5,
+    color: MUTED, textTransform: 'uppercase', marginBottom: 2,
+  },
+  bigMetricVal: {
+    fontSize: 44, fontWeight: '100', letterSpacing: -1.5, lineHeight: 46,
+  },
+  bigMetricMax: {
+    fontSize: 10, fontWeight: '300', color: MUTED,
+  },
+  metricBar: {
+    alignSelf: 'stretch', height: 2,
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    borderRadius: 1, overflow: 'hidden', marginTop: 6,
+  },
+  metricBarFill: { height: '100%', borderRadius: 1 },
+
+  // Separator
+  tabSep: { height: 1, backgroundColor: 'rgba(255,255,255,0.06)' },
+
+  // Sub-label
+  tabSubLabel: {
+    fontSize: 8, fontWeight: '500', letterSpacing: 1.5,
+    color: MUTED, textTransform: 'uppercase',
+  },
+
+  // Day strip (activity dots)
+  dayStrip: {
     flexDirection: 'row', justifyContent: 'space-between',
   },
-  dayCol: {
-    alignItems: 'center', gap: 8,
-  },
-  dayIndicator: {
+  dayStripCol: { alignItems: 'center', gap: 6 },
+  dayStripDot: {
     width: 32, height: 32, borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.05)',
+    backgroundColor: 'rgba(255,255,255,0.04)',
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
-    alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+    alignItems: 'center', justifyContent: 'center',
   },
-  dayIndicatorActive: {
-    borderColor: GOLD,
+  dayStripTodayDot: {
+    width: 5, height: 5, borderRadius: 3, backgroundColor: TEXT,
   },
-  dayIndicatorToday: {
-    borderColor: 'rgba(255,255,255,0.4)',
-  },
-  dayText: {
-    fontSize: 10, fontWeight: '400', color: MUTED,
+  dayStripLabel: {
+    fontSize: 9, fontWeight: '400', color: MUTED,
   },
 
-  // Stats Grid
-  gridContainer: {
-    flexDirection: 'row', flexWrap: 'wrap', gap: 10,
+  // POWR earned row (workouts tab)
+  powrRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 2,
   },
-  statCard: {
-    width: '48.5%', padding: 14, borderRadius: 18,
-    backgroundColor: CARD_BG, borderWidth: 1, borderColor: BORDER,
-    gap: 8,
+  powrLeft:  { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  powrLabel: { fontSize: 10, fontWeight: '500', letterSpacing: 1.2, color: MUTED, textTransform: 'uppercase' },
+  powrValue: { fontSize: 16, fontWeight: '200', color: GOLD, letterSpacing: -0.5 },
+
+  // Sleep chart
+  sleepChart: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 4,
   },
-  statHeader: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingBottom: 6, borderBottomWidth: 1,
+  sleepBarCol: {
+    flex: 1, alignItems: 'center', gap: 4,
   },
-  statLabel: {
-    fontSize: 10, fontWeight: '500', color: MUTED, textTransform: 'uppercase', letterSpacing: 0.5,
+  sleepBarHrs: {
+    fontSize: 8, fontWeight: '400', color: MUTED,
   },
-  statBody: {
-    paddingTop: 2,
+  sleepBarTrack: {
+    width: '100%', height: SLEEP_BAR_H,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderRadius: 4,
+    justifyContent: 'flex-end',
+    overflow: 'hidden',
   },
-  statValue: {
-    fontSize: 24, fontWeight: '200', color: TEXT, letterSpacing: -0.5,
+  sleepBarFill: {
+    width: '100%', borderRadius: 4,
+  },
+  sleepBarDay: {
+    fontSize: 9, fontWeight: '400', color: MUTED,
   },
 
-  // Insight Card
-  insightCard: {
-    padding: 16, borderRadius: 20,
-    borderWidth: 1, borderColor: 'rgba(232,210,0,0.2)',
+  // Insight row
+  insightRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  insightText: { fontSize: 12, fontWeight: '300', color: MUTED, flex: 1 },
+
+  // ── Weekly Summary ──────────────────────────────────────────────────────────
+
+  weeklySummary: {
+    alignItems: 'center',
+    paddingVertical: 50,
+    gap: 12,
+  },
+  summaryLabel: {
+    fontSize: 9,
+    fontWeight: '600',
+    letterSpacing: 1.5,
+    color: MUTED,
+  },
+  summaryValueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 10,
   },
-  insightHeader: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
+  summaryValue: {
+    fontSize: 54,
+    fontWeight: '100',
+    color: TEXT,
+    letterSpacing: -1,
   },
-  insightTitle: {
-    fontSize: 10, fontWeight: '700', color: GOLD, letterSpacing: 1,
+  summaryUnit: {
+    fontSize: 14,
+    fontWeight: '400',
+    color: GOLD,
+    letterSpacing: 1,
+    marginTop: 18,
   },
-  insightText: {
-    fontSize: 14, fontWeight: '300', color: TEXT, lineHeight: 20,
-  },
-  insightTrendRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-  },
-  insightTrendText: {
-    fontSize: 11, fontWeight: '400', color: GREEN,
-  },
-
-  // Category card
-  categoryCard: {
-    borderRadius: 20, backgroundColor: CARD_BG,
-    borderWidth: 1, borderColor: BORDER, overflow: 'hidden',
-  },
-  catRow: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 16, paddingVertical: 14, gap: 14,
-  },
-  catRowBorder: { borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.06)' },
-  catIconWrap: {
-    width: 42, height: 42, borderRadius: 12,
-    alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1, flexShrink: 0,
-  },
-  catTextBlock: { flex: 1, gap: 3 },
-  catLabel:     { fontSize: 16, fontWeight: '300', color: TEXT },
-  catMeta:      { fontSize: 12, fontWeight: '300', color: DIM },
-
-  // Achievements teaser
-  achievementsTeaser: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 8, paddingVertical: 8, marginTop: 4,
-  },
-  achievementsText: { fontSize: 13, fontWeight: '300', color: DIM },
 });

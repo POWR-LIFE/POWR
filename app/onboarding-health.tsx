@@ -2,9 +2,10 @@ import { FontAwesome5, Ionicons, MaterialCommunityIcons } from '@expo/vector-ico
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Animated, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Animated, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import GeometricBackground from '@/components/GeometricBackground';
+import { useHealthData } from '@/hooks/useHealthData';
 
 const GOLD = '#E8D200';
 const BG = '#0d0d0d';
@@ -15,23 +16,32 @@ interface HealthSource {
     id: string;
     name: string;
     color: string;
+    /** This source uses the native health platform (HealthKit / Health Connect) */
+    native?: boolean;
+    /** Platforms this source appears on; omit = all */
+    platforms?: ('ios' | 'android')[];
 }
 
 const HEALTH_SOURCES: HealthSource[] = [
-    { id: 'apple-health',   name: 'Apple Health',   color: '#FF3B30' },
-    { id: 'google-fit',     name: 'Google Fit',     color: '#4285F4' },
-    { id: 'samsung-health', name: 'Samsung Health', color: '#1428A0' },
-    { id: 'whoop',          name: 'Whoop',          color: '#44D62C' },
-    { id: 'garmin',         name: 'Garmin',         color: '#007DC3' },
-    { id: 'fitbit',         name: 'Fitbit',         color: '#00B0B9' },
+    { id: 'apple-health',    name: 'Apple Health',    color: '#FF3B30', native: true,  platforms: ['ios'] },
+    { id: 'health-connect',  name: 'Health Connect',  color: '#4285F4', native: true,  platforms: ['android'] },
+    { id: 'samsung-health',  name: 'Samsung Health',  color: '#1428A0', platforms: ['android'] },
+    { id: 'whoop',           name: 'Whoop',           color: '#44D62C' },
+    { id: 'garmin',          name: 'Garmin',          color: '#007DC3' },
+    { id: 'fitbit',          name: 'Fitbit',          color: '#00B0B9' },
 ];
+
+function getVisibleSources(): HealthSource[] {
+    const os = Platform.OS as string;
+    return HEALTH_SOURCES.filter(s => !s.platforms || s.platforms.includes(os as 'ios' | 'android'));
+}
 
 function BrandIcon({ id }: { id: string }) {
     switch (id) {
         case 'apple-health':
             return <FontAwesome5 name="apple" size={21} color="#fff" />;
-        case 'google-fit':
-            return <FontAwesome5 name="google" size={20} color="#fff" />;
+        case 'health-connect':
+            return <MaterialCommunityIcons name="heart-pulse" size={22} color="#fff" />;
         case 'samsung-health':
             return <MaterialCommunityIcons name="cellphone" size={22} color="#fff" />;
         case 'whoop':
@@ -48,7 +58,7 @@ function BrandIcon({ id }: { id: string }) {
 function StepDots({ current }: { current: number }) {
     return (
         <View style={dotStyles.row}>
-            {[0, 1, 2].map(i => (
+            {[0, 1, 2, 3, 4].map(i => (
                 <View
                     key={i}
                     style={[dotStyles.dot, i === current ? dotStyles.dotActive : dotStyles.dotInactive]}
@@ -68,10 +78,12 @@ const dotStyles = StyleSheet.create({
 export default function OnboardingHealthScreen() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
-    const [connectedId, setConnectedId] = useState<string | null>(null);
+    const health = useHealthData();
+    const visibleSources = getVisibleSources();
+    const [stepsToday, setStepsToday] = useState<number | null>(null);
 
     const headerFade = useRef(new Animated.Value(0)).current;
-    const rowAnims = useRef(HEALTH_SOURCES.map(() => new Animated.Value(0))).current;
+    const rowAnims = useRef(visibleSources.map(() => new Animated.Value(0))).current;
     const buttonFade = useRef(new Animated.Value(0)).current;
 
     useEffect(() => {
@@ -87,8 +99,30 @@ export default function OnboardingHealthScreen() {
         ]).start();
     }, []);
 
-    function toggleConnect(id: string) {
-        setConnectedId(prev => (prev === id ? null : id));
+    // Once authorized, fetch today's steps as proof the connection works
+    useEffect(() => {
+        if (health.isAuthorized) {
+            health.getStepsToday().then(setStepsToday);
+        }
+    }, [health.isAuthorized]);
+
+    /** Returns true if a native source is connected via the health platform */
+    function isNativeConnected(source: HealthSource): boolean {
+        return !!source.native && health.isAuthorized;
+    }
+
+    async function handleConnect(source: HealthSource) {
+        console.log('[Onboarding] handleConnect:', source.id,
+            'native:', source.native,
+            'isAvailable:', health.isAvailable,
+            'isAuthorized:', health.isAuthorized,
+            'requesting:', health.requesting);
+        if (source.native) {
+            if (health.isAuthorized) return; // already connected
+            const result = await health.requestPermissions();
+            console.log('[Onboarding] requestPermissions result:', result);
+        }
+        // Non-native sources (Whoop, Garmin, etc.) are not yet implemented
     }
 
     return (
@@ -104,7 +138,13 @@ export default function OnboardingHealthScreen() {
             {/* Back button */}
             <Pressable
                 style={[styles.backButton, { top: insets.top + 14 }]}
-                onPress={() => router.back()}
+                onPress={() => {
+                    if (router.canGoBack()) {
+                        router.back();
+                    } else {
+                        router.replace('/onboarding-activities');
+                    }
+                }}
                 hitSlop={24}
             >
                 <Ionicons name="chevron-back" size={26} color="rgba(255,255,255,0.55)" />
@@ -128,8 +168,9 @@ export default function OnboardingHealthScreen() {
                 contentContainerStyle={styles.listContent}
                 showsVerticalScrollIndicator={false}
             >
-                {HEALTH_SOURCES.map((source, i) => {
-                    const isConnected = connectedId === source.id;
+                {visibleSources.map((source, i) => {
+                    const isConnected = isNativeConnected(source);
+                    const isComingSoon = !source.native;
                     return (
                         <Animated.View
                             key={source.id}
@@ -144,35 +185,63 @@ export default function OnboardingHealthScreen() {
                             }}
                         >
                             <Pressable
-                                style={[styles.sourceRow, isConnected && styles.sourceRowConnected]}
-                                onPress={() => toggleConnect(source.id)}
+                                style={[
+                                    styles.sourceRow,
+                                    isConnected && styles.sourceRowConnected,
+                                    isComingSoon && styles.sourceRowDisabled,
+                                ]}
+                                onPress={() => handleConnect(source)}
+                                disabled={isComingSoon || health.requesting}
                             >
                                 {/* Brand icon */}
-                                <View style={styles.sourceIcon}>
+                                <View style={[styles.sourceIcon, isComingSoon && { opacity: 0.4 }]}>
                                     <BrandIcon id={source.id} />
                                 </View>
 
                                 {/* Info */}
                                 <View style={styles.sourceInfo}>
                                     <View style={styles.sourceNameRow}>
-                                        <Text style={styles.sourceName}>{source.name}</Text>
+                                        <Text style={[styles.sourceName, isComingSoon && { opacity: 0.4 }]}>
+                                            {source.name}
+                                        </Text>
                                         {isConnected && (
                                             <View style={styles.pointsBadge}>
                                                 <Text style={styles.pointsBadgeText}>2× PTS</Text>
                                             </View>
                                         )}
                                     </View>
+                                    {isComingSoon && (
+                                        <Text style={styles.comingSoonLabel}>Coming soon</Text>
+                                    )}
+                                    {source.native && !isConnected && (
+                                        <Text style={styles.sourceHint}>
+                                            {Platform.OS === 'android'
+                                                ? 'Connects your Pixel Watch & phone data'
+                                                : 'Connects your Apple Watch & phone data'}
+                                        </Text>
+                                    )}
+                                    {source.native && isConnected && stepsToday !== null && (
+                                        <Text style={styles.stepsLabel}>
+                                            {stepsToday.toLocaleString()} steps today
+                                        </Text>
+                                    )}
                                 </View>
 
-                                {/* Connect / Connected pill */}
+                                {/* Connect / Connected / Coming Soon pill */}
                                 {isConnected ? (
                                     <View style={styles.connectedPill}>
-                                        <MaterialCommunityIcons name="check" size={11} color={GOLD} style={{ marginRight: 3 }} />
-                                        <Text style={[styles.pillLabel, { color: GOLD }]}>CONNECTED</Text>
+                                        <MaterialCommunityIcons name="check" size={11} color="#FFFFFF" style={{ marginRight: 3 }} />
+                                        <Text style={[styles.pillLabel, { color: '#FFFFFF' }]}>CONNECTED</Text>
+                                    </View>
+                                ) : isComingSoon ? (
+                                    <View style={styles.comingSoonPill}>
+                                        <Text style={[styles.pillLabel, { color: 'rgba(255,255,255,0.2)' }]}>SOON</Text>
                                     </View>
                                 ) : (
                                     <View style={styles.connectPill}>
-                                        <Text style={[styles.pillLabel, { color: GOLD }]}>CONNECT</Text>
+                                        <Text style={[styles.pillLabel, { color: '#FFFFFF' }]}>
+                                            {health.requesting ? '...' : 'CONNECT'}
+                                        </Text>
                                     </View>
                                 )}
                             </Pressable>
@@ -183,7 +252,7 @@ export default function OnboardingHealthScreen() {
 
             {/* Bottom */}
             <Animated.View style={[styles.bottom, { paddingBottom: insets.bottom + 32, opacity: buttonFade }]}>
-                <StepDots current={2} />
+                <StepDots current={3} />
 
                 <Pressable
                     style={styles.primaryButton}
@@ -252,6 +321,9 @@ const styles = StyleSheet.create({
         borderColor: 'rgba(232,210,0,0.3)',
         backgroundColor: 'rgba(232,210,0,0.04)',
     },
+    sourceRowDisabled: {
+        opacity: 0.55,
+    },
     sourceIcon: {
         width: 44,
         height: 44,
@@ -282,6 +354,25 @@ const styles = StyleSheet.create({
         fontSize: 14,
         fontWeight: '500',
     },
+    sourceHint: {
+        color: 'rgba(255,255,255,0.3)',
+        fontSize: 11,
+        fontWeight: '300',
+        marginTop: 1,
+    },
+    stepsLabel: {
+        color: GOLD,
+        fontSize: 11,
+        fontWeight: '500',
+        marginTop: 2,
+    },
+    comingSoonLabel: {
+        color: 'rgba(255,255,255,0.25)',
+        fontSize: 10,
+        fontWeight: '400',
+        letterSpacing: 0.3,
+        marginTop: 1,
+    },
     pointsBadge: {
         backgroundColor: 'rgba(232,210,0,0.12)',
         borderWidth: 1,
@@ -301,7 +392,14 @@ const styles = StyleSheet.create({
         paddingVertical: 6,
         borderRadius: 20,
         borderWidth: 1,
-        borderColor: 'rgba(232,210,0,0.3)',
+        borderColor: 'rgba(255, 255, 255, 0.8)',
+    },
+    comingSoonPill: {
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        borderRadius: 20,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
     },
     connectedPill: {
         flexDirection: 'row',
@@ -310,8 +408,8 @@ const styles = StyleSheet.create({
         paddingVertical: 6,
         borderRadius: 20,
         borderWidth: 1,
-        borderColor: 'rgba(232,210,0,0.3)',
-        backgroundColor: 'rgba(232,210,0,0.08)',
+        borderColor: 'rgba(255, 255, 255, 0.8)',
+        backgroundColor: 'transparent',
     },
     pillLabel: {
         fontSize: 9,

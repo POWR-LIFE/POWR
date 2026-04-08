@@ -1,7 +1,6 @@
 import { useAuth } from '@/context/AuthContext';
 import { FontAwesome, Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Animated, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -16,7 +15,7 @@ const BORDER = 'rgba(255,255,255,0.08)';
 function StepDots({ current }: { current: number }) {
     return (
         <View style={dotStyles.row}>
-            {[0, 1, 2].map(i => (
+            {[0, 1, 2, 3, 4].map(i => (
                 <View
                     key={i}
                     style={[
@@ -80,6 +79,7 @@ export default function OnboardingAccountScreen() {
     const { signInWithGoogle } = useAuth();
     const [loadingMethod, setLoadingMethod] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const canGoBack = router.canGoBack();
 
     const headerFade = useRef(new Animated.Value(0)).current;
     const iconScale = useRef(new Animated.Value(0.85)).current;
@@ -110,6 +110,8 @@ export default function OnboardingAccountScreen() {
             router.push('/auth-email');
         } else if (method === 'login') {
             router.push({ pathname: '/auth-email', params: { mode: 'signin' } });
+        } else if (method === 'continue') {
+            router.push('/onboarding-permission');
         }
     };
 
@@ -118,13 +120,15 @@ export default function OnboardingAccountScreen() {
             <GeometricBackground />
 
             {/* Back button */}
-            <Pressable
-                style={[styles.backButton, { top: insets.top + 14 }]}
-                onPress={() => router.back()}
-                hitSlop={24}
-            >
-                <Ionicons name="chevron-back" size={26} color="rgba(255,255,255,0.55)" />
-            </Pressable>
+            {canGoBack && (
+                <Pressable
+                    style={[styles.backButton, { top: insets.top + 14 }]}
+                    onPress={() => router.back()}
+                    hitSlop={24}
+                >
+                    <Ionicons name="chevron-back" size={26} color="rgba(255,255,255,0.55)" />
+                </Pressable>
+            )}
 
             {/* Center content */}
             <View style={styles.center}>
@@ -354,7 +358,7 @@ const styles = StyleSheet.create({
         borderRadius: 20,
         backgroundColor: 'rgba(255,255,255,0.06)',
         borderWidth: 1,
-        borderColor: 'rgba(232,210,0,0.30)',
+        borderColor: 'rgba(255,255,255,0.4)',
         alignItems: 'center',
         justifyContent: 'center',
     },
@@ -408,7 +412,7 @@ const styles = StyleSheet.create({
         letterSpacing: 0.1,
     },
     footerLink: {
-        color: GOLD,
+        color: '#FFFFFF',
         fontWeight: '600',
     },
 });

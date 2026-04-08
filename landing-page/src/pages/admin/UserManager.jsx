@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
-import { User, Search, Users, Activity, Award, ChevronRight, Filter } from 'lucide-react';
+import { User, Search, Users, Activity, Award, ChevronRight, Filter, MapPin } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 const timeAgo = (dateStr) => {
@@ -129,7 +129,7 @@ export default function UserManager() {
                         <table className="w-full text-left border-collapse">
                             <thead>
                                 <tr className="bg-[#050505] border-b border-[#151515]">
-                                    {['User Identity', 'Protocol Level', 'Registration', 'Status', ''].map(h => (
+                                    {['User Identity', 'Protocol Level', 'Location', 'Registration', 'Status', ''].map(h => (
                                         <th key={h} className={`px-12 py-8 text-[10px] font-black uppercase tracking-[0.5em] text-[#1A1A1A] ${h === '' ? 'text-right' : ''}`}>{h}</th>
                                     ))}
                                 </tr>
@@ -137,7 +137,7 @@ export default function UserManager() {
                             <tbody className="divide-y divide-[#111]">
                                 {filtered.length === 0 ? (
                                     <tr>
-                                        <td colSpan={5} className="px-12 py-32 text-center">
+                                        <td colSpan={6} className="px-12 py-32 text-center">
                                             <div className="flex flex-col items-center gap-6">
                                                 <div className="w-20 h-20 rounded-3xl bg-[#050505] border border-[#151515] flex items-center justify-center">
                                                     <Users size={32} className="text-[#151515]" />
@@ -175,6 +175,16 @@ export default function UserManager() {
                                                     LVL {user.level || 1}
                                                 </span>
                                             </div>
+                                        </td>
+                                        <td className="px-12 py-10">
+                                            {user.location_granted ? (
+                                                <div className="flex items-center gap-3">
+                                                    <MapPin size={14} className="text-[#10B981]" />
+                                                    <span className="text-[9px] uppercase tracking-[0.3em] text-[#10B981] font-black">Granted</span>
+                                                </div>
+                                            ) : (
+                                                <span className="text-[9px] uppercase tracking-[0.3em] text-[#333] font-black">Denied</span>
+                                            )}
                                         </td>
                                         <td className="px-12 py-10 whitespace-nowrap">
                                             <div className="flex flex-col">

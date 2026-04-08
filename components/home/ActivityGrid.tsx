@@ -1,7 +1,7 @@
-import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
+import { ActivityIcon } from '@/components/ActivityIcon';
 import { ACTIVITIES, type ActivityType } from '@/constants/activities';
 
 const GOLD = '#E8D200';
@@ -24,7 +24,7 @@ export function ActivityGrid({ items }: ActivityGridProps) {
         return (
           <View key={i} style={styles.card}>
             <View style={[styles.iconWrap, { borderColor: config.colour + '50' }]}>
-              <Ionicons name={config.iconActive as any} size={18} color={config.colour} />
+              <ActivityIcon activity={config} size={18} color={config.colour} />
             </View>
             <View style={styles.textBlock}>
               <Text style={styles.label}>{config.label}</Text>

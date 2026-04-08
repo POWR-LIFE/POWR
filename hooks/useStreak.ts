@@ -27,10 +27,22 @@ export function useStreak(): StreakState {
         setLoading(true);
         const { data } = await supabase
             .from('user_streaks')
-            .select('current_streak, longest_streak')
+            .select('current_streak, longest_streak, last_activity_date')
             .single();
         if (data) {
-            setCurrentStreak(data.current_streak);
+            // Check if the streak is still alive: last activity must be today or yesterday
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const yesterday = new Date(today);
+            yesterday.setDate(yesterday.getDate() - 1);
+
+            const todayStr = today.toISOString().split('T')[0];
+            const yesterdayStr = yesterday.toISOString().split('T')[0];
+            const lastDate = data.last_activity_date; // YYYY-MM-DD or null
+
+            const streakAlive = lastDate === todayStr || lastDate === yesterdayStr;
+
+            setCurrentStreak(streakAlive ? data.current_streak : 0);
             setLongestStreak(data.longest_streak);
         }
         setLoading(false);

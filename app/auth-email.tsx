@@ -1,4 +1,4 @@
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useAuth } from '@/context/AuthContext';
 import GeometricBackground from '@/components/GeometricBackground';
 import { Image } from 'expo-image';
@@ -21,7 +21,7 @@ const GOLD = '#E8D200';
 const BG = '#080808';
 const CARD_BG = 'rgba(255,255,255,0.04)';
 const BORDER = 'rgba(255,255,255,0.10)';
-const BORDER_FOCUS = 'rgba(232, 210, 0, 0.5)';
+const BORDER_FOCUS = 'rgba(255, 255, 255, 0.8)';
 
 export default function AuthEmailScreen() {
     const router = useRouter();
@@ -37,6 +37,8 @@ export default function AuthEmailScreen() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [confirmationSent, setConfirmationSent] = useState(false);
+    const [showPassword, setShowPassword] = useState(false);
+    const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
     const handleSubmit = async () => {
         setError(null);
@@ -61,7 +63,7 @@ export default function AuthEmailScreen() {
                     setConfirmationSent(true);
                 } else {
                     // Email confirmation disabled — session created immediately
-                    router.replace('/onboarding-permission');
+                    router.replace('/onboarding-activities');
                 }
             }
         } finally {
@@ -171,42 +173,68 @@ export default function AuthEmailScreen() {
                             autoComplete="email"
                         />
                     </View>
-
+                    
                     <View style={styles.fieldGroup}>
                         <Text style={styles.fieldLabel}>PASSWORD</Text>
-                        <TextInput
-                            style={[
-                                styles.input,
-                                focusedField === 'password' && styles.inputFocused,
-                            ]}
-                            placeholder={mode === 'signup' ? 'Min. 6 characters' : '••••••••'}
-                            placeholderTextColor="rgba(255,255,255,0.22)"
-                            value={password}
-                            onChangeText={setPassword}
-                            onFocus={() => setFocusedField('password')}
-                            onBlur={() => setFocusedField(null)}
-                            secureTextEntry
-                            autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
-                        />
+                        <View style={[
+                            styles.inputContainer,
+                            focusedField === 'password' && styles.inputFocused
+                        ]}>
+                            <TextInput
+                                style={styles.inputBorderless}
+                                placeholder={mode === 'signup' ? 'Min. 6 characters' : '••••••••'}
+                                placeholderTextColor="rgba(255,255,255,0.22)"
+                                value={password}
+                                onChangeText={setPassword}
+                                onFocus={() => setFocusedField('password')}
+                                onBlur={() => setFocusedField(null)}
+                                secureTextEntry={!showPassword}
+                                autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
+                            />
+                            <Pressable 
+                                style={styles.eyeIconAbsolute} 
+                                onPress={() => setShowPassword(!showPassword)}
+                                hitSlop={12}
+                            >
+                                <Ionicons 
+                                    name={showPassword ? "eye-off" : "eye"} 
+                                    size={24} 
+                                    color="#FFFFFF" 
+                                />
+                            </Pressable>
+                        </View>
                     </View>
 
                     {mode === 'signup' && (
                         <View style={styles.fieldGroup}>
                             <Text style={styles.fieldLabel}>CONFIRM PASSWORD</Text>
-                            <TextInput
-                                style={[
-                                    styles.input,
-                                    focusedField === 'confirm' && styles.inputFocused,
-                                ]}
-                                placeholder="Re-enter your password"
-                                placeholderTextColor="rgba(255,255,255,0.22)"
-                                value={confirmPassword}
-                                onChangeText={setConfirmPassword}
-                                onFocus={() => setFocusedField('confirm')}
-                                onBlur={() => setFocusedField(null)}
-                                secureTextEntry
-                                autoComplete="new-password"
-                            />
+                            <View style={[
+                                styles.inputContainer,
+                                focusedField === 'confirm' && styles.inputFocused
+                            ]}>
+                                <TextInput
+                                    style={styles.inputBorderless}
+                                    placeholder="Re-enter your password"
+                                    placeholderTextColor="rgba(255,255,255,0.22)"
+                                    value={confirmPassword}
+                                    onChangeText={setConfirmPassword}
+                                    onFocus={() => setFocusedField('confirm')}
+                                    onBlur={() => setFocusedField(null)}
+                                    secureTextEntry={!showConfirmPassword}
+                                    autoComplete="new-password"
+                                />
+                                <Pressable 
+                                    style={styles.eyeIconAbsolute} 
+                                    onPress={() => setShowConfirmPassword(!showConfirmPassword)}
+                                    hitSlop={12}
+                                >
+                                    <Ionicons 
+                                        name={showConfirmPassword ? "eye-off" : "eye"} 
+                                        size={24} 
+                                        color="#FFFFFF" 
+                                    />
+                                </Pressable>
+                            </View>
                         </View>
                     )}
 
@@ -299,9 +327,9 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
     },
     toggleBtnActive: {
-        backgroundColor: 'rgba(232, 210, 0, 0.12)',
+        backgroundColor: 'transparent',
         borderWidth: 1,
-        borderColor: 'rgba(232, 210, 0, 0.3)',
+        borderColor: 'rgba(255, 255, 255, 0.8)',
     },
     toggleLabel: {
         color: 'rgba(255,255,255,0.35)',
@@ -309,7 +337,7 @@ const styles = StyleSheet.create({
         fontWeight: '500',
     },
     toggleLabelActive: {
-        color: GOLD,
+        color: '#FFFFFF',
         fontWeight: '600',
     },
     form: {
@@ -327,7 +355,7 @@ const styles = StyleSheet.create({
     input: {
         height: 52,
         borderRadius: 12,
-        backgroundColor: CARD_BG,
+        backgroundColor: 'transparent',
         borderWidth: 1,
         borderColor: BORDER,
         paddingHorizontal: 16,
@@ -335,9 +363,36 @@ const styles = StyleSheet.create({
         fontSize: 15,
         fontWeight: '300',
     },
+    inputContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        height: 52,
+        borderRadius: 12,
+        backgroundColor: 'transparent',
+        borderWidth: 1,
+        borderColor: BORDER,
+        width: '100%',
+    },
+    inputBorderless: {
+        flex: 1,
+        height: '100%',
+        paddingLeft: 16,
+        paddingRight: 52,
+        color: '#F2F2F2',
+        fontSize: 15,
+        fontWeight: '300',
+    },
+    eyeIconAbsolute: {
+        position: 'absolute',
+        right: 0,
+        width: 52,
+        height: 52,
+        justifyContent: 'center',
+        alignItems: 'center',
+        zIndex: 10,
+    },
     inputFocused: {
         borderColor: BORDER_FOCUS,
-        backgroundColor: 'rgba(232, 210, 0, 0.03)',
     },
     errorBox: {
         backgroundColor: 'rgba(255,60,60,0.08)',

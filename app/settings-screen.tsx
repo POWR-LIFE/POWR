@@ -1,8 +1,13 @@
+import { ActivityIcon } from '@/components/ActivityIcon';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import * as Location from 'expo-location';
+import React, { useEffect, useState } from 'react';
 import GeometricBackground from '@/components/GeometricBackground';
 import {
+  Alert,
+  Linking,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -13,6 +18,10 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/context/AuthContext';
+import { useHealthData } from '@/hooks/useHealthData';
+import { ACTIVITIES, ACTIVITY_LIST, type ActivityType } from '@/constants/activities';
+import { updateActivityPreferences } from '@/lib/api/user';
+import { supabase } from '@/lib/supabase';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 
@@ -27,18 +36,133 @@ const RED     = '#ef4444';
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
+const MAX_ACTIVITIES = 3;
+
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { signOut } = useAuth();
+  const { signOut, user, updateUserMetadata } = useAuth();
 
-  // Toggle states
-  const [notifWorkouts,  setNotifWorkouts]  = useState(true);
-  const [notifChallenges, setNotifChallenges] = useState(true);
-  const [notifRewards,   setNotifRewards]   = useState(false);
-  const [notifFriends,   setNotifFriends]   = useState(true);
-  const [shareActivity,  setShareActivity]  = useState(true);
-  const [showOnLeaderboard, setShowOnLeaderboard] = useState(true);
+  const [isAdmin, setIsAdmin] = React.useState(false);
+  const health = useHealthData();
+  const [locationStatus, setLocationStatus] = useState<'granted' | 'denied' | 'undetermined'>('undetermined');
+
+  React.useEffect(() => {
+    (async () => {
+      const { supabase } = await import('@/lib/supabase');
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data } = await supabase
+        .from('profiles')
+        .select('is_admin')
+        .eq('id', user.id)
+        .single();
+      if (data?.is_admin) setIsAdmin(true);
+    })();
+  }, []);
+
+  // Check location permission status
+  useEffect(() => {
+    Location.getForegroundPermissionsAsync().then(({ status }) => {
+      setLocationStatus(status === 'granted' ? 'granted' : status === 'denied' ? 'denied' : 'undetermined');
+    });
+  }, []);
+
+  // Activity preferences
+  const savedPrefs: ActivityType[] = user?.user_metadata?.activity_preferences ?? ['gym', 'running', 'walking'];
+  const [activityPrefs, setActivityPrefs] = useState<Set<ActivityType>>(new Set(savedPrefs));
+
+  const toggleActivityPref = async (type: ActivityType) => {
+    if (type === 'gym') return;
+    const next = new Set(activityPrefs);
+    if (next.has(type)) {
+      next.delete(type);
+    } else if (next.size < MAX_ACTIVITIES) {
+      next.add(type);
+    } else {
+      return; // at max
+    }
+    setActivityPrefs(next);
+    await updateActivityPreferences(Array.from(next));
+  };
+
+  // Notification & privacy prefs — initialise from saved user_metadata
+  const meta = user?.user_metadata ?? {};
+  const [notifWorkouts,  setNotifWorkouts]  = useState(meta.notif_workouts ?? true);
+  const [notifChallenges, setNotifChallenges] = useState(meta.notif_challenges ?? true);
+  const [notifRewards,   setNotifRewards]   = useState(meta.notif_rewards ?? false);
+  const [notifFriends,   setNotifFriends]   = useState(meta.notif_friends ?? true);
+  const [shareActivity,  setShareActivity]  = useState(meta.share_activity ?? true);
+  const [showOnLeaderboard, setShowOnLeaderboard] = useState(meta.show_on_leaderboard ?? true);
+
+  // Persist a single metadata key when a toggle changes
+  const persistMeta = async (key: string, value: boolean) => {
+    await updateUserMetadata({ [key]: value });
+  };
+
+  // Change password — sends a password reset email (works cross-platform)
+  const handleChangePassword = async () => {
+    const email = user?.email;
+    if (!email) {
+      Alert.alert('Error', 'No email associated with this account.');
+      return;
+    }
+    Alert.alert(
+      'Change Password',
+      `We'll send a password reset link to ${email}.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Send Reset Email',
+          onPress: async () => {
+            const { error } = await supabase.auth.resetPasswordForEmail(email);
+            if (error) {
+              Alert.alert('Error', error.message);
+            } else {
+              Alert.alert('Email Sent', 'Check your inbox for a password reset link.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  // Delete account — confirmation then deletes via edge function or signs out
+  const handleDeleteAccount = () => {
+    Alert.alert(
+      'Delete Account',
+      'This will permanently delete your account and all associated data. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              // Call a Supabase edge function or RPC to delete user data
+              const { error } = await supabase.rpc('delete_user_account');
+              if (error) {
+                // If no RPC exists yet, just sign out and inform the user
+                Alert.alert(
+                  'Contact Support',
+                  'Please email support to complete account deletion. You will now be signed out.',
+                );
+                await signOut();
+                return;
+              }
+              await signOut();
+            } catch {
+              Alert.alert(
+                'Contact Support',
+                'Please email support to complete account deletion. You will now be signed out.',
+              );
+              await signOut();
+            }
+          },
+        },
+      ]
+    );
+  };
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
@@ -67,19 +191,17 @@ export default function SettingsScreen() {
           <RowLink
             icon="person-outline"
             label="Edit Profile"
-            value="Alex Johnson"
-            onPress={() => {}}
+            onPress={() => router.push('/edit-profile')}
           />
           <RowLink
             icon="mail-outline"
             label="Email"
-            value="alex@example.com"
-            onPress={() => {}}
+            onPress={() => router.push('/edit-profile')}
           />
           <RowLink
             icon="lock-closed-outline"
             label="Change Password"
-            onPress={() => {}}
+            onPress={handleChangePassword}
           />
           <RowLink
             icon="card-outline"
@@ -90,31 +212,123 @@ export default function SettingsScreen() {
           />
         </View>
 
-        {/* ── Wearables & Health ────────────────────────────── */}
-        <SectionLabel label="Wearables & Health" />
+        {/* ── Activity Focus ─────────────────────────────────── */}
+        <SectionLabel label="Activity Focus" />
+        <Text style={styles.sectionHint}>
+          Gym is always tracked. Pick 2 more activities.
+        </Text>
         <View style={styles.card}>
-          <RowLink
-            icon="watch-outline"
-            label="Apple Watch"
-            value="Connected"
-            valueColor={GOLD}
-            onPress={() => {}}
-          />
+          {[ACTIVITIES.gym, ...ACTIVITY_LIST.filter(a => a.type !== 'gym')].map((activity, idx, arr) => {
+            const isGym = activity.type === 'gym';
+            const isActive = activityPrefs.has(activity.type);
+            const isLast = idx === arr.length - 1;
+            const needsWearable = activity.verification === 'wearable';
+            return (
+              <View key={activity.type} style={[styles.row, !isLast && styles.rowBorder]}>
+                <ActivityIcon
+                  activity={activity}
+                  size={18}
+                  color={isActive ? activity.colour : DIM}
+                  active={isActive}
+                  style={styles.rowIcon}
+                />
+                <View style={styles.rowTextBlock}>
+                  <Text style={styles.rowLabel}>{activity.label}</Text>
+                  <View style={styles.activityBadgeRow}>
+                    <Text style={styles.rowSublabel}>{activity.dailyCap} pts/day</Text>
+                    {needsWearable && (
+                      <View style={styles.wearableTag}>
+                        <Ionicons name="watch-outline" size={9} color={MUTED} />
+                        <Text style={styles.wearableTagText}>Wearable</Text>
+                      </View>
+                    )}
+                  </View>
+                </View>
+                {isGym ? (
+                  <View style={styles.lockedPill}>
+                    <Text style={styles.lockedPillText}>CORE</Text>
+                  </View>
+                ) : (
+                  <Switch
+                    value={isActive}
+                    onValueChange={() => toggleActivityPref(activity.type)}
+                    trackColor={{ false: 'rgba(255,255,255,0.10)', true: 'rgba(232,210,0,0.4)' }}
+                    thumbColor={isActive ? GOLD : 'rgba(255,255,255,0.5)'}
+                    ios_backgroundColor="rgba(255,255,255,0.10)"
+                    disabled={!isActive && activityPrefs.size >= MAX_ACTIVITIES}
+                  />
+                )}
+              </View>
+            );
+          })}
+        </View>
+
+        {/* ── Connections ───────────────────────────────────── */}
+        <SectionLabel label="Connections" />
+        <View style={styles.card}>
+          {/* Health data source — platform-specific */}
           <RowLink
             icon="fitness-outline"
-            label="Apple Health"
-            value="Connected"
-            valueColor={GOLD}
-            onPress={() => {}}
+            label={Platform.OS === 'ios' ? 'Apple Health' : 'Health Connect'}
+            value={
+              !health.isAvailable
+                ? 'Not available'
+                : health.isAuthorized
+                  ? 'Connected'
+                  : 'Not connected'
+            }
+            valueColor={health.isAuthorized ? '#4ade80' : undefined}
+            onPress={async () => {
+              if (!health.isAvailable) {
+                Linking.openSettings();
+                return;
+              }
+              if (!health.isAuthorized) {
+                await health.requestPermissions();
+              }
+            }}
           />
+          {/* Location services for gym check-in */}
           <RowLink
-            icon="logo-google"
-            label="Google Fit"
-            value="Not connected"
+            icon="location-outline"
+            label="Location Services"
+            value={
+              locationStatus === 'granted'
+                ? 'Enabled'
+                : locationStatus === 'denied'
+                  ? 'Denied'
+                  : 'Not set up'
+            }
+            valueColor={locationStatus === 'granted' ? '#4ade80' : locationStatus === 'denied' ? RED : undefined}
+            onPress={async () => {
+              if (locationStatus === 'denied') {
+                Linking.openSettings();
+              } else if (locationStatus === 'undetermined') {
+                const { status } = await Location.requestForegroundPermissionsAsync();
+                setLocationStatus(status === 'granted' ? 'granted' : 'denied');
+              }
+            }}
+          />
+          {/* Supabase backend */}
+          <RowLink
+            icon="cloud-outline"
+            label="POWR Cloud"
+            value={user ? 'Synced' : 'Offline'}
+            valueColor={user ? '#4ade80' : undefined}
             onPress={() => {}}
             isLast
           />
         </View>
+        {!health.isAuthorized && health.isAvailable && (
+          <Text style={styles.sectionHint}>
+            Connect {Platform.OS === 'ios' ? 'Apple Health' : 'Health Connect'} to verify workouts and earn points from walking &amp; sleep.
+          </Text>
+        )}
+        {locationStatus !== 'granted' && (
+          <Text style={styles.sectionHint}>
+            Location is needed for automatic gym check-ins at partner venues.
+          </Text>
+        )}
 
         {/* ── Notifications ─────────────────────────────────── */}
         <SectionLabel label="Notifications" />
@@ -123,25 +337,25 @@ export default function SettingsScreen() {
             icon="barbell-outline"
             label="Workout reminders"
             value={notifWorkouts}
-            onValueChange={setNotifWorkouts}
+            onValueChange={(v) => { setNotifWorkouts(v); persistMeta('notif_workouts', v); }}
           />
           <RowToggle
             icon="trophy-outline"
             label="New challenges"
             value={notifChallenges}
-            onValueChange={setNotifChallenges}
+            onValueChange={(v) => { setNotifChallenges(v); persistMeta('notif_challenges', v); }}
           />
           <RowToggle
             icon="gift-outline"
             label="Reward alerts"
             value={notifRewards}
-            onValueChange={setNotifRewards}
+            onValueChange={(v) => { setNotifRewards(v); persistMeta('notif_rewards', v); }}
           />
           <RowToggle
             icon="people-outline"
             label="Friend activity"
             value={notifFriends}
-            onValueChange={setNotifFriends}
+            onValueChange={(v) => { setNotifFriends(v); persistMeta('notif_friends', v); }}
             isLast
           />
         </View>
@@ -154,16 +368,31 @@ export default function SettingsScreen() {
             label="Share activity"
             sublabel="Friends can see your workouts"
             value={shareActivity}
-            onValueChange={setShareActivity}
+            onValueChange={(v) => { setShareActivity(v); persistMeta('share_activity', v); }}
           />
           <RowToggle
             icon="podium-outline"
             label="Show on leaderboard"
             value={showOnLeaderboard}
-            onValueChange={setShowOnLeaderboard}
+            onValueChange={(v) => { setShowOnLeaderboard(v); persistMeta('show_on_leaderboard', v); }}
             isLast
           />
         </View>
+
+        {/* ── Admin ─────────────────────────────────────────── */}
+        {isAdmin && (
+          <>
+            <SectionLabel label="Admin" />
+            <View style={styles.card}>
+              <RowLink
+                icon="storefront-outline"
+                label="Manage Partners"
+                onPress={() => router.push('/admin-partners')}
+                isLast
+              />
+            </View>
+          </>
+        )}
 
         {/* ── Support ───────────────────────────────────────── */}
         <SectionLabel label="Support" />
@@ -203,7 +432,7 @@ export default function SettingsScreen() {
           <View style={styles.rowDivider} />
           <Pressable
             style={({ pressed }) => [styles.dangerRow, pressed && { opacity: 0.7 }]}
-            onPress={() => {}}
+            onPress={handleDeleteAccount}
           >
             <Ionicons name="trash-outline" size={18} color={RED} />
             <Text style={[styles.dangerLabel, styles.dangerLabelDim]}>
@@ -338,6 +567,49 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
     paddingTop: 10,
     paddingBottom: 4,
+  },
+
+  sectionHint: {
+    fontSize: 11,
+    fontWeight: '300',
+    color: MUTED,
+    paddingHorizontal: 4,
+    marginBottom: 4,
+    marginTop: -2,
+  },
+  activityBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  wearableTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderRadius: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+  },
+  wearableTagText: {
+    fontSize: 8,
+    fontWeight: '600',
+    letterSpacing: 0.3,
+    color: MUTED,
+  },
+  lockedPill: {
+    backgroundColor: 'rgba(232,210,0,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(232,210,0,0.2)',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  lockedPillText: {
+    fontSize: 8,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    color: GOLD,
   },
 
   // Card

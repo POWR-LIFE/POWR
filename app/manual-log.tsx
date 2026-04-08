@@ -1,3 +1,4 @@
+import { ActivityIcon } from '@/components/ActivityIcon';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
@@ -107,6 +108,7 @@ function getMinimumNote(type: ActivityType): string {
         case 'hiit':     return 'Minimum 20 min to qualify';
         case 'sports':   return 'Minimum 30 min to qualify';
         case 'yoga':     return 'Minimum 20 min to qualify';
+        default:         return 'Complete the activity to qualify';
     }
 }
 
@@ -304,7 +306,7 @@ function ActivityPicker({ onSelect }: { onSelect: (type: ActivityType) => void }
                         >
                             {/* colour accent bar */}
                             <View style={[styles.activityCardBar, { backgroundColor: a.colour }]} />
-                            <Ionicons name={a.iconActive as any} size={28} color={a.colour} />
+                            <ActivityIcon activity={a} size={28} color={a.colour} />
                             <Text style={styles.activityCardLabel}>{a.label}</Text>
                             <Text style={styles.activityCardTag}>{a.tag}</Text>
                             <View style={styles.activityCardCap}>
@@ -384,7 +386,7 @@ function DetailsForm({
         >
             {/* Activity badge */}
             <View style={[styles.activityBadge, { borderColor: activity.colour + '40' }]}>
-                <Ionicons name={activity.iconActive as any} size={20} color={activity.colour} />
+                <ActivityIcon activity={activity} size={20} color={activity.colour} />
                 <Text style={[styles.activityBadgeText, { color: activity.colour }]}>{activity.tag}</Text>
             </View>
 
@@ -798,7 +800,7 @@ const styles = StyleSheet.create({
     inputRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: CARD,
+        backgroundColor: 'transparent',
         borderWidth: 1,
         borderColor: BORDER,
         borderRadius: 12,
@@ -943,9 +945,9 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         gap: 8,
-        backgroundColor: 'rgba(232,210,0,0.07)',
+        backgroundColor: 'transparent',
         borderWidth: 1,
-        borderColor: 'rgba(232,210,0,0.25)',
+        borderColor: 'rgba(255, 255, 255, 0.4)',
         borderRadius: 12,
         paddingHorizontal: 14,
         paddingVertical: 12,
@@ -953,7 +955,7 @@ const styles = StyleSheet.create({
     verifyBtnText: {
         fontSize: 13,
         fontWeight: '400',
-        color: GOLD,
+        color: '#FFFFFF',
         flex: 1,
     },
     verifySuccess: {

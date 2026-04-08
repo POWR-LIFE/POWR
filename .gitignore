@@ -43,3 +43,6 @@ app-example
 /ios
 /android
 .vercel
+
+# IDE
+.idea/

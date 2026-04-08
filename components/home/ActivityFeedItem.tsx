@@ -1,7 +1,7 @@
-import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
+import { ActivityIcon } from '@/components/ActivityIcon';
 import { ACTIVITIES, type ActivityType } from '@/constants/activities';
 import { colours, spacing, typography } from '@/constants/tokens';
 
@@ -9,46 +9,49 @@ interface ActivityFeedItemProps {
   type: ActivityType;
   pointsEarned: number;
   durationMinutes: number;
+  /** Override for duration display (e.g. "5.2k steps") */
+  detail?: string;
   /** ISO timestamp string */
   timestamp: string;
   verified?: boolean;
+  cardHeight?: number;
 }
 
 export function ActivityFeedItem({
   type,
   pointsEarned,
   durationMinutes,
+  detail,
   timestamp,
   verified = true,
+  cardHeight,
 }: ActivityFeedItemProps) {
   const config = ACTIVITIES[type];
   const timeAgo = formatTimeAgo(timestamp);
-  const duration = formatDuration(durationMinutes);
+  const duration = detail ?? formatDuration(durationMinutes);
 
   return (
-    <View style={styles.row}>
-      {/* Activity icon */}
-      <View style={[styles.iconWrap, { backgroundColor: config.colour + '18' }]}>
-        <Ionicons name={config.iconActive as any} size={20} color={config.colour} />
+    <View style={[styles.card, cardHeight != null && { height: cardHeight }]}>
+      {/* Icon + points row */}
+      <View style={styles.topRow}>
+        <View style={[styles.iconWrap, { backgroundColor: config.colour + '18' }]}>
+          <ActivityIcon activity={config} size={18} color={config.colour} />
+        </View>
+        <View style={styles.pointsBadge}>
+          <Text style={styles.pointsValue}>+{pointsEarned}</Text>
+          <Text style={styles.pointsLabel}>POWR</Text>
+        </View>
       </View>
 
-      {/* Info */}
-      <View style={styles.info}>
-        <Text style={styles.activityName}>{config.label}</Text>
+      {/* Name + meta */}
+      <View style={styles.bottom}>
+        <Text style={styles.activityName} numberOfLines={1}>{config.label}</Text>
         <Text style={styles.meta}>
           {duration}
           <Text style={styles.separator}> · </Text>
           {timeAgo}
-          {!verified && (
-            <Text style={styles.manual}> · Manual</Text>
-          )}
         </Text>
-      </View>
-
-      {/* Points earned */}
-      <View style={styles.points}>
-        <Text style={styles.pointsValue}>+{pointsEarned}</Text>
-        <Text style={styles.pointsLabel}>POWR</Text>
+        {!verified && <Text style={styles.manual}>Manual</Text>}
       </View>
     </View>
   );
@@ -72,58 +75,64 @@ function formatTimeAgo(isoString: string): string {
 }
 
 const styles = StyleSheet.create({
-  row: {
+  card: {
+    width: '47.5%',
+    backgroundColor: 'rgba(40,40,40,0.85)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 14,
+    padding: 12,
+    gap: 12,
+    justifyContent: 'space-between',
+  },
+  topRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    paddingVertical: spacing.sm + 2,
-    borderBottomWidth: 1,
-    borderBottomColor: colours.border,
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
   },
   iconWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 6,
+    width: 36,
+    height: 36,
+    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
-    flexShrink: 0,
   },
-  info: {
-    flex: 1,
-    gap: 3,
+  pointsBadge: {
+    alignItems: 'flex-end',
+  },
+  pointsValue: {
+    fontFamily: typography.stat.fontFamily,
+    fontSize: 18,
+    letterSpacing: -0.5,
+    lineHeight: 20,
+    color: colours.accent,
+  },
+  pointsLabel: {
+    fontFamily: typography.label.fontFamily,
+    fontSize: 7,
+    letterSpacing: 1.5,
+    color: colours.textMuted,
+    textTransform: 'uppercase',
+  },
+  bottom: {
+    gap: 2,
   },
   activityName: {
     fontFamily: typography.h3.fontFamily,
-    fontSize: 14,
+    fontSize: 13,
     color: colours.textPrimary,
   },
   meta: {
     fontFamily: typography.caption.fontFamily,
-    fontSize: 11,
+    fontSize: 10,
     color: colours.textMuted,
   },
   separator: {
     color: colours.border,
   },
   manual: {
+    fontFamily: typography.caption.fontFamily,
+    fontSize: 10,
     color: colours.warning,
-  },
-  points: {
-    alignItems: 'flex-end',
-    gap: 1,
-  },
-  pointsValue: {
-    fontFamily: typography.stat.fontFamily,
-    fontSize: 22,
-    letterSpacing: -1,
-    lineHeight: 22,
-    color: colours.accent,
-  },
-  pointsLabel: {
-    fontFamily: typography.label.fontFamily,
-    fontSize: 8,
-    letterSpacing: 1.5,
-    color: colours.textMuted,
-    textTransform: 'uppercase',
   },
 });

@@ -11,6 +11,7 @@ module.exports = {
           'POWR reads your steps and workouts to verify your activity and award full points.',
         NSHealthUpdateUsageDescription:
           'POWR needs health access to verify your workouts.',
+        UIBackgroundModes: ['fetch'],
       },
       entitlements: {
         ...expo.ios?.entitlements,
@@ -29,6 +30,13 @@ module.exports = {
     plugins: [
       ...expo.plugins,
       ['react-native-health-connect'],
+      [
+        'expo-image-picker',
+        {
+          photosPermission: 'POWR needs access to your photo library so you can set a profile picture.',
+          cameraPermission: 'POWR needs access to your camera so you can take a profile photo.',
+        },
+      ],
     ],
   },
 };

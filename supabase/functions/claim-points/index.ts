@@ -5,7 +5,7 @@ import { createClient } from '@supabase/supabase-js';
 // Types
 // ─────────────────────────────────────────────
 
-type ActivityType = 'walking' | 'running' | 'cycling' | 'swimming' | 'gym' | 'hiit' | 'sports' | 'yoga';
+type ActivityType = 'walking' | 'running' | 'cycling' | 'swimming' | 'gym' | 'hiit' | 'sports' | 'yoga' | 'sleep';
 
 interface ClaimRequest {
   session_id: string;
@@ -47,6 +47,7 @@ const DAILY_CAPS: Record<ActivityType, number> = {
   hiit:     10,
   sports:   10,
   yoga:     6,
+  sleep:    5,
 };
 
 function calcBasePoints(session: ActivitySession): number {
@@ -108,6 +109,17 @@ function calcBasePoints(session: ActivitySession): number {
       if (mins >= 20) return 3;
       return 0;
 
+    case 'sleep': {
+      // Sleep is measured by duration_sec (total sleep time)
+      const hours = mins / 60;
+      if (hours >= 8) return 5;
+      if (hours >= 7) return 4;
+      if (hours >= 6) return 3;
+      if (hours >= 5) return 2;
+      if (hours >= 4) return 1;
+      return 0;
+    }
+
     default:
       return 0;
   }
@@ -122,6 +134,9 @@ function calcStreakBonus(type: ActivityType, streak: number, base: number): numb
     if (streak >= 3)  return Math.floor(base * 1.2) - base;
     return 0;
   }
+
+  // No streak bonus for walking or sleep
+  if (type === 'walking' || type === 'sleep') return 0;
 
   // Flat bonuses for running, cycling, swimming, hiit, yoga
   const flatTypes: ActivityType[] = ['running', 'cycling', 'swimming', 'hiit', 'yoga'];
@@ -188,12 +203,15 @@ Deno.serve(async (req) => {
   // Verify the user's JWT
   const userClient = createClient(
     Deno.env.get('SUPABASE_URL')!,
-    Deno.env.get('SUPABASE_ANON_KEY')!,
-    { global: { headers: { Authorization: authHeader } } },
+    Deno.env.get('SUPABASE_ANON_KEY')!
   );
-  const { data: { user }, error: authError } = await userClient.auth.getUser();
+  
+  const jwt = authHeader.replace(/^Bearer\s+/i, '');
+  const { data: { user }, error: authError } = await userClient.auth.getUser(jwt);
+  
   if (authError || !user) {
-    return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
+    console.error('Auth error:', authError);
+    return new Response(JSON.stringify({ error: 'Unauthorized', details: authError?.message }), { status: 401 });
   }
 
   // 2. Parse request body
@@ -259,8 +277,8 @@ Deno.serve(async (req) => {
     .gte('created_at', `${sessionDay}T00:00:00Z`)
     .lte('created_at', `${sessionDay}T23:59:59Z`);
 
-  // Allow walking multiple times (steps accumulate) but flag same typed session
-  if (session.type !== 'walking' && (dupeCount ?? 0) > 0) {
+  // Allow walking & sleep multiple times but flag same typed session for others
+  if (session.type !== 'walking' && session.type !== 'sleep' && (dupeCount ?? 0) > 0) {
     const { count: typedDupe } = await supabase
       .from('activity_sessions')
       .select('id', { count: 'exact', head: true })

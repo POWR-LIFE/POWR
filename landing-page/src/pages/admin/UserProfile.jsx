@@ -23,6 +23,13 @@ const timeAgo = (dateStr) => {
     return `${Math.floor(h / 24)}d ago`;
 };
 
+const formatSessionTime = (start, sec) => {
+    const dStart = new Date(start);
+    const dEnd = new Date(dStart.getTime() + sec * 1000);
+    const timeOptions = { hour: 'numeric', minute: '2-digit', hour12: true };
+    return `${dStart.toLocaleTimeString([], timeOptions)} - ${dEnd.toLocaleTimeString([], timeOptions)}`;
+};
+
 export default function UserProfile() {
     const { userId } = useParams();
     const toast = useToast();
@@ -37,6 +44,33 @@ export default function UserProfile() {
     const [adjAmount, setAdjAmount] = useState('');
     const [adjDesc, setAdjDesc] = useState('');
     const [adjLoading, setAdjLoading] = useState(false);
+    const [activeTab, setActiveTab] = useState('activity');
+    const [visibleSessions, setVisibleSessions] = useState(10);
+    const [visibleTransactions, setVisibleTransactions] = useState(10);
+
+    const [activityDateFilter, setActivityDateFilter] = useState('');
+    const [activityTypeFilter, setActivityTypeFilter] = useState('');
+    const [activityVerificationFilter, setActivityVerificationFilter] = useState('');
+    
+    const [pointsDateFilter, setPointsDateFilter] = useState('');
+    const [pointsTypeFilter, setPointsTypeFilter] = useState('');
+    const [pointsSearchFilter, setPointsSearchFilter] = useState('');
+
+    const filteredSessions = sessions.filter(s => {
+        let match = true;
+        if (activityDateFilter) match = match && s.started_at.startsWith(activityDateFilter);
+        if (activityTypeFilter) match = match && s.type.toLowerCase() === activityTypeFilter.toLowerCase();
+        if (activityVerificationFilter) match = match && s.verification.toLowerCase() === activityVerificationFilter.toLowerCase();
+        return match;
+    });
+
+    const filteredTransactions = transactions.filter(t => {
+        let match = true;
+        if (pointsDateFilter) match = match && t.created_at.startsWith(pointsDateFilter);
+        if (pointsTypeFilter) match = match && t.type.toLowerCase() === pointsTypeFilter.toLowerCase();
+        if (pointsSearchFilter) match = match && (t.description || '').toLowerCase().includes(pointsSearchFilter.toLowerCase());
+        return match;
+    });
 
     const handlePointAdjust = async () => {
         const amt = parseInt(adjAmount);
@@ -120,6 +154,13 @@ export default function UserProfile() {
                     <div>
                         <div className="flex items-center gap-4 mb-3">
                             <span className="px-4 py-1.5 rounded-full bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.2em]">LVL {profile.level || 1}</span>
+                            {profile.location_granted ? (
+                                <span className="px-4 py-1.5 rounded-full bg-[#10B981]/10 border border-[#10B981]/20 text-[#10B981] text-[10px] font-black uppercase tracking-[0.2em] flex items-center gap-2">
+                                    <MapPin size={12} /> Location
+                                </span>
+                            ) : (
+                                <span className="px-4 py-1.5 rounded-full bg-[#151515] text-[#333] text-[10px] font-black uppercase tracking-[0.2em]">No Location</span>
+                            )}
                             <span className="text-[11px] uppercase tracking-[0.6em] text-[#444] font-black">Established {new Date(profile.created_at).getFullYear()}</span>
                         </div>
                         <h1 className="text-6xl font-light tracking-tighter text-[#F2F2F2] mb-2">{profile.display_name || profile.username || 'Anonymous Node'}</h1>
@@ -176,83 +217,234 @@ export default function UserProfile() {
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-16">
                 {/* Left Column: Sessions & Transactions */}
-                <div className="lg:col-span-2 space-y-16">
+                <div className="lg:col-span-2">
+                    {/* Tabs Header */}
+                    <div className="flex items-center gap-8 mb-8 border-b border-[#151515]">
+                        <button
+                            onClick={() => setActiveTab('activity')}
+                            className={`pb-4 text-[11px] font-black uppercase tracking-[0.2em] transition-colors border-b-2 flex items-center gap-2 ${activeTab === 'activity' ? 'text-[#E8D200] border-[#E8D200]' : 'text-[#555] border-transparent hover:text-[#CCC]'}`}
+                        >
+                            <Activity size={14} /> Activity Logs
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('points')}
+                            className={`pb-4 text-[11px] font-black uppercase tracking-[0.2em] transition-colors border-b-2 flex items-center gap-2 ${activeTab === 'points' ? 'text-[#E8D200] border-[#E8D200]' : 'text-[#555] border-transparent hover:text-[#CCC]'}`}
+                        >
+                            <Zap size={14} /> Points Ledger
+                        </button>
+                    </div>
+
                     {/* Activity Timeline */}
-                    <section className="bg-[#0A0A0A] border border-[#151515] rounded-[2rem] overflow-hidden">
-                        <div className="p-10 border-b border-[#151515] flex items-center justify-between">
-                            <div>
-                                <h3 className="text-xl font-light tracking-tighter text-[#EEE]">Activity Logs</h3>
-                                <p className="text-[9px] uppercase tracking-[0.4em] text-[#222] font-black mt-2">Historical Telemetry Data</p>
-                            </div>
-                            <span className="text-[10px] font-black text-[#444] uppercase tracking-[0.3em]">{sessions.length} RECORDED</span>
-                        </div>
-                        <div className="divide-y divide-[#151515]">
-                            {sessions.length === 0 ? (
-                                <div className="p-20 text-center text-[#1A1A1A] text-[10px] uppercase tracking-[0.4em] font-black">No activity markers detected</div>
-                            ) : sessions.map(session => (
-                                <div key={session.id} className="p-10 flex items-center gap-10 group hover:bg-[#050505] transition-all">
-                                    <div className="w-14 h-14 rounded-3xl bg-[#050505] border border-[#151515] flex items-center justify-center shrink-0">
-                                        <Activity size={20} className="text-[#333] group-hover:text-[#E8D200] transition-colors" />
-                                    </div>
-                                    <div className="flex-1">
-                                        <div className="flex justify-between items-center mb-2">
-                                            <span className="text-lg font-bold text-[#DDD] capitalize">{session.type} session</span>
-                                            <span className="text-[10px] text-[#222] font-black uppercase tracking-[0.4em]">{timeAgo(session.started_at)}</span>
-                                        </div>
-                                        <div className="flex items-center gap-6 text-[10px] font-black text-[#333] uppercase tracking-[0.2em]">
-                                            <span className="flex items-center gap-2"><Clock size={12} /> {Math.floor(session.duration_sec / 60)}M</span>
-                                            {session.distance_m > 0 && <span className="flex items-center gap-2"><MapPin size={12} /> {(session.distance_m / 1000).toFixed(2)}KM</span>}
-                                            <span className={`px-3 py-1 rounded-full border ${session.verification === 'geofence' ? 'border-[#10B981]/20 text-[#10B981]' : 'border-[#151515] text-[#222]'}`}>
-                                                {session.verification} verify
-                                            </span>
-                                        </div>
-                                    </div>
-                                    <div className="text-right">
-                                        <div className="text-2xl font-light tracking-tighter text-[#F2F2F2] mb-1">{(session.trust_score * 100).toFixed(0)}%</div>
-                                        <div className="text-[8px] uppercase tracking-[0.3em] text-[#222] font-black">TRUST</div>
-                                    </div>
+                    {activeTab === 'activity' && (
+                        <section className="bg-[#0A0A0A] border border-[#151515] rounded-[2rem] overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
+                            <div className="p-10 border-b border-[#151515] flex items-center justify-between">
+                                <div>
+                                    <h3 className="text-xl font-light tracking-tighter text-[#EEE]">Activity Logs</h3>
+                                    <p className="text-[9px] uppercase tracking-[0.4em] text-[#222] font-black mt-2">Historical Telemetry Data</p>
                                 </div>
-                            ))}
-                        </div>
-                    </section>
+                                <span className="text-[10px] font-black text-[#444] uppercase tracking-[0.3em]">{filteredSessions.length} RECORDED</span>
+                            </div>
+                            
+                            {/* Activity Filters */}
+                            <div className="p-6 bg-[#050505] border-b border-[#151515] flex flex-wrap gap-4">
+                                <div className="flex-1 min-w-[140px]">
+                                    <label className="block text-[9px] uppercase tracking-widest text-[#555] font-black mb-2">Date</label>
+                                    <input 
+                                        type="date" 
+                                        value={activityDateFilter} 
+                                        onChange={e => setActivityDateFilter(e.target.value)}
+                                        className="w-full h-10 px-4 bg-[#0A0A0A] border border-[#1E1E1E] rounded-lg text-[#CCC] text-sm outline-none focus:border-[#E8D200]/40 transition-[border-color]"
+                                    />
+                                </div>
+                                <div className="flex-1 min-w-[140px]">
+                                    <label className="block text-[9px] uppercase tracking-widest text-[#555] font-black mb-2">Type</label>
+                                    <select 
+                                        value={activityTypeFilter} 
+                                        onChange={e => setActivityTypeFilter(e.target.value)}
+                                        className="w-full h-10 px-4 bg-[#0A0A0A] border border-[#1E1E1E] rounded-lg text-[#CCC] text-sm outline-none focus:border-[#E8D200]/40 transition-[border-color] appearance-none"
+                                    >
+                                        <option value="">All Types</option>
+                                        <option value="gym">Gym</option>
+                                        <option value="running">Running</option>
+                                        <option value="walking">Walking</option>
+                                        <option value="cycling">Cycling</option>
+                                        <option value="swimming">Swimming</option>
+                                    </select>
+                                </div>
+                                <div className="flex-1 min-w-[140px]">
+                                    <label className="block text-[9px] uppercase tracking-widest text-[#555] font-black mb-2">Verification</label>
+                                    <select 
+                                        value={activityVerificationFilter} 
+                                        onChange={e => setActivityVerificationFilter(e.target.value)}
+                                        className="w-full h-10 px-4 bg-[#0A0A0A] border border-[#1E1E1E] rounded-lg text-[#CCC] text-sm outline-none focus:border-[#E8D200]/40 transition-[border-color] appearance-none"
+                                    >
+                                        <option value="">All Methods</option>
+                                        <option value="wearable">Wearable</option>
+                                        <option value="geofence">Geofence</option>
+                                        <option value="manual">Manual</option>
+                                    </select>
+                                </div>
+                                {(activityDateFilter || activityTypeFilter || activityVerificationFilter) && (
+                                    <div className="flex items-end">
+                                        <button 
+                                            onClick={() => { setActivityDateFilter(''); setActivityTypeFilter(''); setActivityVerificationFilter(''); }}
+                                            className="h-10 px-4 text-[10px] uppercase tracking-[0.2em] font-black text-[#888] hover:text-[#F2F2F2] transition-colors"
+                                        >
+                                            Clear
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="divide-y divide-[#151515]">
+                                {filteredSessions.length === 0 ? (
+                                    <div className="p-20 text-center text-[#1A1A1A] text-[10px] uppercase tracking-[0.4em] font-black">No activity markers detected</div>
+                                ) : filteredSessions.slice(0, visibleSessions).map(session => (
+                                    <div key={session.id} className="p-10 flex items-center gap-10 group hover:bg-[#050505] transition-all">
+                                        <div className="w-14 h-14 rounded-3xl bg-[#050505] border border-[#151515] flex items-center justify-center shrink-0">
+                                            <Activity size={20} className="text-[#333] group-hover:text-[#E8D200] transition-colors" />
+                                        </div>
+                                        <div className="flex-1">
+                                            <div className="flex justify-between items-center mb-1">
+                                                <span className="text-lg font-bold text-[#DDD] capitalize">{session.type} session</span>
+                                                <span className="text-[10px] text-[#222] font-black uppercase tracking-[0.4em]">{timeAgo(session.started_at)}</span>
+                                            </div>
+                                            {session.verification === 'geofence' && session.raw_gps?.partnerName && (
+                                                <div className="text-[12px] text-[#A0A0A0] mb-3 font-medium flex items-center gap-2">
+                                                    <MapPin size={12} className="text-[#E8D200]" />
+                                                    <span>{session.raw_gps.partnerName}</span>
+                                                    <span className="text-[#444]">•</span>
+                                                    <span>{formatSessionTime(session.started_at, session.duration_sec)}</span>
+                                                </div>
+                                            )}
+                                            {(!session.raw_gps || session.verification !== 'geofence') && <div className="mb-2" />}
+                                            <div className="flex items-center gap-6 text-[10px] font-black text-[#333] uppercase tracking-[0.2em]">
+                                                <span className="flex items-center gap-2"><Clock size={12} /> {Math.floor(session.duration_sec / 60)}M</span>
+                                                {session.distance_m > 0 && <span className="flex items-center gap-2"><MapPin size={12} /> {(session.distance_m / 1000).toFixed(2)}KM</span>}
+                                                <span className={`px-3 py-1 rounded-full border ${session.verification === 'geofence' ? 'border-[#10B981]/20 text-[#10B981]' : 'border-[#151515] text-[#222]'}`}>
+                                                    {session.verification} verify
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div className="text-right">
+                                            <div className="text-2xl font-light tracking-tighter text-[#F2F2F2] mb-1">{(session.trust_score * 100).toFixed(0)}%</div>
+                                            <div className="text-[8px] uppercase tracking-[0.3em] text-[#222] font-black">TRUST</div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                            {filteredSessions.length > visibleSessions && (
+                                <div className="p-6 border-t border-[#151515] text-center bg-[#050505] hover:bg-[#111] transition-colors">
+                                    <button 
+                                        onClick={() => setVisibleSessions(prev => prev + 10)}
+                                        className="text-[10px] text-[#E8D200] font-black uppercase tracking-[0.3em] transition-colors py-2 px-6"
+                                    >
+                                        Load More Activity
+                                    </button>
+                                </div>
+                            )}
+                        </section>
+                    )}
 
                     {/* Point Ledger */}
-                    <section className="bg-[#0A0A0A] border border-[#151515] rounded-[2rem] overflow-hidden">
-                        <div className="p-10 border-b border-[#151515]">
-                            <h3 className="text-xl font-light tracking-tighter text-[#EEE]">Points Ledger</h3>
-                            <p className="text-[9px] uppercase tracking-[0.4em] text-[#222] font-black mt-2">Transaction History</p>
-                        </div>
-                        <div className="p-6">
-                            <table className="w-full text-left border-collapse">
-                                <thead>
-                                    <tr className="text-[9px] uppercase tracking-[0.4em] text-[#1A1A1A] font-black border-b border-[#151515]">
-                                        <th className="px-6 py-4">Descriptor</th>
-                                        <th className="px-6 py-4">Type</th>
-                                        <th className="px-6 py-4 text-right">Impact</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-[#121212]">
-                                    {transactions.length === 0 ? (
-                                        <tr><td colSpan={3} className="px-6 py-12 text-center text-[#1A1A1A] text-[10px] uppercase tracking-[0.4em] font-black">No transactions recorded</td></tr>
-                                    ) : transactions.map(t => (
-                                        <tr key={t.id} className="group hover:bg-[#050505] transition-all">
-                                            <td className="px-6 py-6">
-                                                <div className="text-base font-bold text-[#BBB] group-hover:text-[#F2F2F2] transition-colors mb-1">{t.description || 'System Adjustment'}</div>
-                                                <div className="text-[9px] text-[#222] font-black uppercase tracking-[0.4em]">{new Date(t.created_at).toLocaleDateString()}</div>
-                                            </td>
-                                            <td className="px-6 py-6 font-mono text-[11px] uppercase tracking-widest text-[#444]">{t.type}</td>
-                                            <td className="px-6 py-6 text-right">
-                                                <div className={`flex items-center justify-end gap-2 font-black text-xl tracking-tighter ${t.amount >= 0 ? 'text-[#10B981]' : 'text-[#F43F5E]'}`}>
-                                                    {t.amount >= 0 ? <ArrowUpRight size={16} /> : <ArrowDownRight size={16} />}
-                                                    {Math.abs(t.amount)}
-                                                </div>
-                                            </td>
+                    {activeTab === 'points' && (
+                        <section className="bg-[#0A0A0A] border border-[#151515] rounded-[2rem] overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
+                            <div className="p-10 border-b border-[#151515] flex items-center justify-between">
+                                <div>
+                                    <h3 className="text-xl font-light tracking-tighter text-[#EEE]">Points Ledger</h3>
+                                    <p className="text-[9px] uppercase tracking-[0.4em] text-[#222] font-black mt-2">Transaction History</p>
+                                </div>
+                                <span className="text-[10px] font-black text-[#444] uppercase tracking-[0.3em]">{filteredTransactions.length} RECORDED</span>
+                            </div>
+
+                            {/* Points Filters */}
+                            <div className="p-6 bg-[#050505] border-b border-[#151515] flex flex-wrap gap-4">
+                                <div className="flex-1 min-w-[140px]">
+                                    <label className="block text-[9px] uppercase tracking-widest text-[#555] font-black mb-2">Search</label>
+                                    <input 
+                                        type="text" 
+                                        placeholder="Search description..."
+                                        value={pointsSearchFilter} 
+                                        onChange={e => setPointsSearchFilter(e.target.value)}
+                                        className="w-full h-10 px-4 bg-[#0A0A0A] border border-[#1E1E1E] rounded-lg text-[#CCC] text-sm outline-none focus:border-[#E8D200]/40 transition-[border-color]"
+                                    />
+                                </div>
+                                <div className="flex-1 min-w-[140px]">
+                                    <label className="block text-[9px] uppercase tracking-widest text-[#555] font-black mb-2">Date</label>
+                                    <input 
+                                        type="date" 
+                                        value={pointsDateFilter} 
+                                        onChange={e => setPointsDateFilter(e.target.value)}
+                                        className="w-full h-10 px-4 bg-[#0A0A0A] border border-[#1E1E1E] rounded-lg text-[#CCC] text-sm outline-none focus:border-[#E8D200]/40 transition-[border-color]"
+                                    />
+                                </div>
+                                <div className="flex-1 min-w-[140px]">
+                                    <label className="block text-[9px] uppercase tracking-widest text-[#555] font-black mb-2">Type</label>
+                                    <select 
+                                        value={pointsTypeFilter} 
+                                        onChange={e => setPointsTypeFilter(e.target.value)}
+                                        className="w-full h-10 px-4 bg-[#0A0A0A] border border-[#1E1E1E] rounded-lg text-[#CCC] text-sm outline-none focus:border-[#E8D200]/40 transition-[border-color] appearance-none"
+                                    >
+                                        <option value="">All Types</option>
+                                        <option value="earn">Earn</option>
+                                        <option value="spend">Spend</option>
+                                        <option value="adjustment">Adjustment</option>
+                                    </select>
+                                </div>
+                                {(pointsSearchFilter || pointsDateFilter || pointsTypeFilter) && (
+                                    <div className="flex items-end">
+                                        <button 
+                                            onClick={() => { setPointsSearchFilter(''); setPointsDateFilter(''); setPointsTypeFilter(''); }}
+                                            className="h-10 px-4 text-[10px] uppercase tracking-[0.2em] font-black text-[#888] hover:text-[#F2F2F2] transition-colors"
+                                        >
+                                            Clear
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="p-6">
+                                <table className="w-full text-left border-collapse">
+                                    <thead>
+                                        <tr className="text-[9px] uppercase tracking-[0.4em] text-[#1A1A1A] font-black border-b border-[#151515]">
+                                            <th className="px-6 py-4">Descriptor</th>
+                                            <th className="px-6 py-4">Type</th>
+                                            <th className="px-6 py-4 text-right">Impact</th>
                                         </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    </section>
+                                    </thead>
+                                    <tbody className="divide-y divide-[#121212]">
+                                        {filteredTransactions.length === 0 ? (
+                                            <tr><td colSpan={3} className="px-6 py-12 text-center text-[#1A1A1A] text-[10px] uppercase tracking-[0.4em] font-black">No transactions recorded</td></tr>
+                                        ) : filteredTransactions.slice(0, visibleTransactions).map(t => (
+                                            <tr key={t.id} className="group hover:bg-[#050505] transition-all">
+                                                <td className="px-6 py-6">
+                                                    <div className="text-base font-bold text-[#BBB] group-hover:text-[#F2F2F2] transition-colors mb-1">{t.description || 'System Adjustment'}</div>
+                                                    <div className="text-[9px] text-[#222] font-black uppercase tracking-[0.4em]">{new Date(t.created_at).toLocaleDateString()}</div>
+                                                </td>
+                                                <td className="px-6 py-6 font-mono text-[11px] uppercase tracking-widest text-[#444]">{t.type}</td>
+                                                <td className="px-6 py-6 text-right">
+                                                    <div className={`flex items-center justify-end gap-2 font-black text-xl tracking-tighter ${t.amount >= 0 ? 'text-[#10B981]' : 'text-[#F43F5E]'}`}>
+                                                        {t.amount >= 0 ? <ArrowUpRight size={16} /> : <ArrowDownRight size={16} />}
+                                                        {Math.abs(t.amount)}
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                            {filteredTransactions.length > visibleTransactions && (
+                                <div className="p-6 border-t border-[#151515] text-center bg-[#050505] hover:bg-[#111] transition-colors">
+                                    <button 
+                                        onClick={() => setVisibleTransactions(prev => prev + 10)}
+                                        className="text-[10px] text-[#E8D200] font-black uppercase tracking-[0.3em] transition-colors py-2 px-6"
+                                    >
+                                        Load More Points
+                                    </button>
+                                </div>
+                            )}
+                        </section>
+                    )}
                 </div>
 
                 {/* Right Column: Inventory & Stats */}
@@ -294,16 +486,17 @@ export default function UserProfile() {
                         <h3 className="text-base font-black uppercase tracking-[0.3em] text-[#444] mb-10">Diagnostic Data</h3>
                         <div className="space-y-6">
                             {[
+                                { label: 'Location Access', value: profile.location_granted ? 'Granted' : 'Denied', icon: MapPin, highlight: profile.location_granted },
                                 { label: 'Node Uptime', value: '182 Days', icon: Clock },
                                 { label: 'Sync Status', value: 'Verified', icon: Shield },
                                 { label: 'Risk Factor', value: 'Low (0.02)', icon: AlertCircle },
                             ].map(x => (
                                 <div key={x.label} className="flex items-center justify-between p-6 bg-[#050505] border border-[#151515] rounded-2xl">
                                     <div className="flex items-center gap-4">
-                                        <x.icon size={14} className="text-[#222]" />
+                                        <x.icon size={14} className={x.highlight ? 'text-[#10B981]' : 'text-[#222]'} />
                                         <span className="text-[10px] uppercase tracking-[0.3em] text-[#333] font-black">{x.label}</span>
                                     </div>
-                                    <span className="text-[11px] font-medium text-[#BBB]">{x.value}</span>
+                                    <span className={`text-[11px] font-medium ${x.highlight ? 'text-[#10B981]' : 'text-[#BBB]'}`}>{x.value}</span>
                                 </div>
                             ))}
                         </div>

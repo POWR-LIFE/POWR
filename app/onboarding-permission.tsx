@@ -15,7 +15,7 @@ const BG = '#0d0d0d';
 function StepDots({ current }: { current: number }) {
     return (
         <View style={dotStyles.row}>
-            {[0, 1, 2].map(i => (
+            {[0, 1, 2, 3, 4].map(i => (
                 <View
                     key={i}
                     style={[
@@ -49,6 +49,8 @@ const dotStyles = StyleSheet.create({
     },
 });
 
+const NEXT_SCREEN = '/onboarding-activities';
+
 export default function OnboardingPermissionScreen() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
@@ -58,36 +60,45 @@ export default function OnboardingPermissionScreen() {
     const buttonsFade = useRef(new Animated.Value(0)).current;
 
     useEffect(() => {
-        // Let MagicRings animate in first, then reveal content
-        Animated.sequence([
-            Animated.delay(800),
-            Animated.timing(contentFade, { toValue: 1, duration: 500, useNativeDriver: true }),
-            Animated.timing(buttonsFade, { toValue: 1, duration: 400, useNativeDriver: true }),
-        ]).start();
-    }, [contentFade, buttonsFade]);
+        // Check if permission is already granted (e.g. reinstall or granted elsewhere)
+        (async () => {
+            const { status } = await Location.getForegroundPermissionsAsync();
+            if (status === 'granted') {
+                // Award bonus idempotently (server deduplicates) and advance
+                awardBonus('location_permission').catch(() => {});
+                router.replace(NEXT_SCREEN);
+                return;
+            }
+            // Permission not yet granted — show the screen
+            Animated.sequence([
+                Animated.delay(800),
+                Animated.timing(contentFade, { toValue: 1, duration: 500, useNativeDriver: true }),
+                Animated.timing(buttonsFade, { toValue: 1, duration: 400, useNativeDriver: true }),
+            ]).start();
+        })();
+    }, []);
 
     const handleAllowLocation = async () => {
         if (requesting) return;
         setRequesting(true);
 
         try {
-            // First, request foreground location permission
+            // This triggers the native OS permission dialog
             const { status: fgStatus } = await Location.requestForegroundPermissionsAsync();
-            
+
             if (fgStatus !== 'granted') {
                 Alert.alert(
                     'Location Required',
                     'To earn while you move, POWR needs location access. You can also skip for now.',
                     [
                         { text: 'Cancel', style: 'cancel', onPress: () => setRequesting(false) },
-                        { text: 'Skip', onPress: () => router.push('/onboarding-health') }
+                        { text: 'Skip', onPress: () => router.push(NEXT_SCREEN) }
                     ]
                 );
                 return;
             }
 
-            // Then, request background location permission (optional but needed for passive tracking)
-            // On some platforms, this requires a separate request
+            // Request background location (optional, needed for passive tracking)
             try {
                 await Location.requestBackgroundPermissionsAsync();
             } catch (e) {
@@ -100,10 +111,10 @@ export default function OnboardingPermissionScreen() {
             );
 
             // Navigate to next screen
-            router.push('/onboarding-health');
+            router.push(NEXT_SCREEN);
         } catch (error) {
             console.error('Error requesting location permission:', error);
-            router.push('/onboarding-health');
+            router.push(NEXT_SCREEN);
         } finally {
             setRequesting(false);
         }
@@ -117,7 +128,13 @@ export default function OnboardingPermissionScreen() {
             {/* Back button */}
             <Pressable
                 style={[styles.backButton, { top: insets.top + 14 }]}
-                onPress={() => router.back()}
+                onPress={() => {
+                    if (router.canGoBack()) {
+                        router.back();
+                    } else {
+                        router.replace('/onboarding-account');
+                    }
+                }}
                 hitSlop={24}
             >
                 <Ionicons name="chevron-back" size={26} color="rgba(255,255,255,0.55)" />
@@ -158,7 +175,7 @@ export default function OnboardingPermissionScreen() {
 
                 <Pressable
                     style={styles.skipButton}
-                    onPress={() => router.push('/onboarding-health')}
+                    onPress={() => router.push(NEXT_SCREEN)}
                 >
                     <Text style={styles.skipLabel}>Skip for now</Text>
                 </Pressable>

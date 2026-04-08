@@ -6,7 +6,7 @@ import {
     type ActivitySession,
     type WeeklyMetrics,
 } from '@/lib/api/activity';
-import { type ActivityGridItem } from '@/components/home/ActivityGrid';
+import { type ActivityFeedItem } from '@/components/home/ActivityFeed';
 import { ACTIVITIES } from '@/constants/activities';
 
 function formatDetail(session: ActivitySession): string {
@@ -18,18 +18,28 @@ function formatDetail(session: ActivitySession): string {
     return mins >= 60 ? `${Math.floor(mins / 60)}h ${mins % 60}m`.replace(' 0m', '') : `${mins}m`;
 }
 
-function sessionToGridItem(session: ActivitySession): ActivityGridItem | null {
+function formatSteps(steps: number): string {
+    return steps >= 1000 ? `${(steps / 1000).toFixed(1)}k steps` : `${steps} steps`;
+}
+
+function sessionToFeedItem(session: ActivitySession): ActivityFeedItem | null {
     if (!(session.type in ACTIVITIES)) return null;
     const pointsEarned = (session.point_transactions ?? []).reduce((sum, t) => sum + t.amount, 0);
+    const detail = session.type === 'walking' && session.steps && session.steps > 0
+        ? formatSteps(session.steps)
+        : undefined;
     return {
         type: session.type as any,
         pointsEarned,
-        detail: formatDetail(session),
+        durationMinutes: Math.round(session.duration_sec / 60),
+        detail,
+        timestamp: session.started_at,
+        verified: session.verification !== 'manual',
     };
 }
 
 type ActivityState = {
-    recentItems: ActivityGridItem[];
+    recentItems: ActivityFeedItem[];
     weekActiveDays: boolean[];
     weeklyMetrics: WeeklyMetrics;
     loading: boolean;
@@ -37,10 +47,10 @@ type ActivityState = {
     refresh: () => void;
 };
 
-const DEFAULT_METRICS: WeeklyMetrics = { gymVisits: 0, runs: 0, totalSteps: 0, sessionCount: 0 };
+const DEFAULT_METRICS: WeeklyMetrics = { gymVisits: 0, runs: 0, totalSteps: 0, sessionCount: 0, perType: {} };
 
 export function useActivity(): ActivityState {
-    const [recentItems, setRecentItems] = useState<ActivityGridItem[]>([]);
+    const [recentItems, setRecentItems] = useState<ActivityFeedItem[]>([]);
     const [weekActiveDays, setWeekActiveDays] = useState<boolean[]>([false, false, false, false, false, false, false]);
     const [weeklyMetrics, setWeeklyMetrics] = useState<WeeklyMetrics>(DEFAULT_METRICS);
     const [loading, setLoading] = useState(true);
@@ -55,7 +65,7 @@ export function useActivity(): ActivityState {
                 fetchWeekActiveDays(),
                 fetchWeeklyMetrics(),
             ]);
-            setRecentItems(sessions.map(sessionToGridItem).filter(Boolean) as ActivityGridItem[]);
+            setRecentItems(sessions.map(sessionToFeedItem).filter(Boolean) as ActivityFeedItem[]);
             setWeekActiveDays(activeDays);
             setWeeklyMetrics(metrics);
         } catch (e) {

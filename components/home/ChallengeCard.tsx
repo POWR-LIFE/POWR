@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
-import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 
 const GOLD = '#E8D200';
 const ORANGE = '#f97316';
@@ -9,10 +10,11 @@ interface ChallengeCardProps {
   description: string;
   bonus: string;
   expiresIn: string;
+  imageUri?: string;
   onClaim?: () => void;
 }
 
-export function ChallengeCard({ title, description, bonus, expiresIn, onClaim }: ChallengeCardProps) {
+export function ChallengeCard({ title, description, bonus, expiresIn, imageUri, onClaim }: ChallengeCardProps) {
   const dotAnim = useRef(new Animated.Value(0.4)).current;
 
   useEffect(() => {
@@ -26,33 +28,63 @@ export function ChallengeCard({ title, description, bonus, expiresIn, onClaim }:
 
   return (
     <View style={styles.card}>
-      {/* Gold accent bar on left edge */}
+      {/* Full-card background image */}
+      {imageUri ? (
+        <Image
+          source={{ uri: imageUri }}
+          style={StyleSheet.absoluteFillObject}
+          resizeMode="cover"
+        />
+      ) : null}
+
+      {/* Gradient: transparent at top → warm dark at bottom (semi-transparent) */}
+      <LinearGradient
+        colors={['transparent', 'rgba(18,14,0,0.4)', 'rgba(14,11,0,0.85)']}
+        locations={[0, 0.42, 0.85]}
+        style={StyleSheet.absoluteFillObject}
+      />
+
+      {/* Left gold accent bar — the challenge's signature */}
       <View style={styles.accentBar} />
 
+      {/* Content layer */}
       <View style={styles.inner}>
-        {/* Header */}
-        <View style={styles.header}>
-          <Text style={styles.title}>{title}</Text>
-          <View style={styles.bonusBadge}>
-            <Text style={styles.bonusText}>{bonus}</Text>
+        {/* Top: eyebrow badge + timer */}
+        <View style={styles.topRow}>
+          <View style={styles.challengeBadge}>
+            <Text style={styles.challengeBadgeText}>THIS WEEK'S CHALLENGE</Text>
+          </View>
+          <View style={styles.timerBadge}>
+            <Animated.View style={[styles.timerDot, { opacity: dotAnim }]} />
+            <Text style={styles.timerText}>{expiresIn}</Text>
           </View>
         </View>
 
-        {/* Description */}
-        <Text style={styles.description}>{description}</Text>
+        {/* Bottom: title → description → pills + CTA */}
+        <View style={styles.bottom}>
+          <Text style={styles.title}>{title}</Text>
+          <Text style={styles.description}>{description}</Text>
 
-        {/* Footer */}
-        <View style={styles.footer}>
-          <View style={styles.timer}>
-            <Animated.View style={[styles.timerDot, { opacity: dotAnim }]} />
-            <Text style={styles.timerText}>{`Expires ${expiresIn}`}</Text>
+          <View style={styles.pillsAndCta}>
+            <View style={styles.pills}>
+              <View style={[styles.pill, styles.pillGold]}>
+                <Text style={[styles.pillText, styles.pillTextGold]}>{bonus}</Text>
+              </View>
+              <View style={styles.pill}>
+                <Text style={styles.pillText}>+150 XP</Text>
+              </View>
+              <View style={styles.pill}>
+                <Text style={styles.pillText}>3× POWR</Text>
+              </View>
+            </View>
+
+            <Pressable
+              style={({ pressed }) => [styles.claimBtn, pressed && { opacity: 0.8 }]}
+              onPress={onClaim}
+            >
+              <Text style={styles.claimText}>CLAIM</Text>
+            </Pressable>
           </View>
-          <Pressable
-            style={({ pressed }) => [styles.claimBtn, pressed && { opacity: 0.8 }]}
-            onPress={onClaim}
-          >
-            <Text style={styles.claimText}>CLAIM</Text>
-          </Pressable>
         </View>
       </View>
     </View>
@@ -61,89 +93,120 @@ export function ChallengeCard({ title, description, bonus, expiresIn, onClaim }:
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.07)',
-    backgroundColor: 'rgba(40,40,40,0.85)',
     flexDirection: 'row',
     overflow: 'hidden',
+    height: 200,
+    borderRadius: 16, // Keeping border radius to match the image corners
   },
   accentBar: {
     width: 2,
     backgroundColor: GOLD,
-    // Fade to transparent at the bottom via a manual gradient-ish trick
-    // (LinearGradient would be ideal here; using a solid for simplicity)
     opacity: 0.9,
   },
   inner: {
     flex: 1,
     padding: 12,
-    gap: 6,
+    justifyContent: 'space-between',
   },
-  header: {
+  topRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  title: {
-    fontSize: 13,
-    fontWeight: '300',
-    color: '#F2F2F2',
-  },
-  bonusBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-    borderRadius: 20,
-    backgroundColor: 'rgba(232,210,0,0.10)',
+  challengeBadge: {
+    backgroundColor: 'rgba(232,210,0,0.12)',
     borderWidth: 1,
-    borderColor: 'rgba(232,210,0,0.25)',
+    borderColor: 'rgba(232,210,0,0.28)',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
   },
-  bonusText: {
-    fontSize: 9,
-    fontWeight: '600',
-    letterSpacing: 1,
+  challengeBadgeText: {
+    fontSize: 8,
+    fontWeight: '700',
+    letterSpacing: 1.5,
     color: GOLD,
-    textTransform: 'uppercase',
+    opacity: 0.85,
+  },
+  timerBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  timerDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: ORANGE,
+  },
+  timerText: {
+    fontSize: 9,
+    fontWeight: '400',
+    color: 'rgba(255,255,255,0.7)',
+  },
+  bottom: {
+    gap: 8,
+  },
+  title: {
+    fontSize: 30,
+    fontWeight: '200',
+    color: '#F2F2F2',
+    letterSpacing: -0.5,
+    lineHeight: 32,
   },
   description: {
     fontSize: 11,
     fontWeight: '300',
-    color: 'rgba(255,255,255,0.5)',
+    color: 'rgba(255,255,255,0.45)',
     lineHeight: 16,
   },
-  footer: {
+  pillsAndCta: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 4,
   },
-  timer: {
+  pills: {
     flexDirection: 'row',
-    alignItems: 'center',
     gap: 5,
+    flex: 1,
   },
-  timerDot: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: ORANGE,
+  pill: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
   },
-  timerText: {
-    fontSize: 10,
-    fontWeight: '300',
-    color: 'rgba(255,255,255,0.3)',
+  pillGold: {
+    backgroundColor: 'rgba(232,210,0,0.10)',
+    borderColor: 'rgba(232,210,0,0.25)',
+  },
+  pillText: {
+    fontSize: 9,
+    fontWeight: '500',
+    color: 'rgba(255,255,255,0.4)',
+    letterSpacing: 0.3,
+  },
+  pillTextGold: {
+    color: GOLD,
   },
   claimBtn: {
     backgroundColor: GOLD,
-    paddingHorizontal: 18,
-    paddingVertical: 7,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
     borderRadius: 20,
+    flexShrink: 0,
   },
   claimText: {
     fontSize: 10,
     fontWeight: '700',
     color: '#0a0a0a',
-    letterSpacing: 1,
+    letterSpacing: 1.5,
     textTransform: 'uppercase',
   },
 });

@@ -15,6 +15,7 @@ type AuthContextType = {
     signUpWithEmail: (email: string, password: string) => Promise<{ error: string | null; needsConfirmation?: boolean }>;
     signOut: () => Promise<void>;
     markOnboardingComplete: () => Promise<void>;
+    updateUserMetadata: (data: Record<string, any>) => Promise<{ error: string | null }>;
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -84,6 +85,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await supabase.auth.updateUser({ data: { onboarding_complete: true } });
     };
 
+    const updateUserMetadata = async (data: Record<string, any>): Promise<{ error: string | null }> => {
+        const { error } = await supabase.auth.updateUser({ data });
+        return { error: error?.message ?? null };
+    };
+
     return (
         <AuthContext.Provider value={{
             session,
@@ -94,6 +100,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             signUpWithEmail,
             signOut,
             markOnboardingComplete,
+            updateUserMetadata,
         }}>
             {children}
         </AuthContext.Provider>
