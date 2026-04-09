@@ -30,6 +30,7 @@ module.exports = {
     plugins: [
       ...expo.plugins,
       ['react-native-health-connect'],
+      'expo-secure-store',
       [
         'expo-image-picker',
         {

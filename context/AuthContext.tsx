@@ -37,6 +37,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return () => subscription.unsubscribe();
     }, []);
 
+    /**
+     * After any successful sign-in, invalidate all other sessions for this user.
+     * This enforces single-device access: the new login wins, old sessions are
+     * revoked server-side (their refresh tokens stop working).
+     */
+    const enforceOneSession = async () => {
+        await supabase.auth.signOut({ scope: 'others' });
+    };
+
     const signInWithGoogle = async (): Promise<{ error: string | null }> => {
         try {
             const redirectTo = Linking.createURL('/');
@@ -51,6 +60,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             if (result.type === 'success') {
                 const { error: sessionError } = await supabase.auth.exchangeCodeForSession(result.url);
                 if (sessionError) return { error: sessionError.message };
+                await enforceOneSession();
             }
             // result.type === 'cancel' means user closed browser — not an error
             return { error: null };
@@ -61,6 +71,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const signInWithEmail = async (email: string, password: string): Promise<{ error: string | null }> => {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
+        if (!error) await enforceOneSession();
         return { error: error?.message ?? null };
     };
 
