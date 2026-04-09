@@ -59,6 +59,12 @@
       padding: 0 48px;
     }
 
+    .nav-logo-img {
+      height: 18px;
+      width: auto;
+      display: block;
+    }
+
     .nav-links {
       display: flex;
       align-items: center;
