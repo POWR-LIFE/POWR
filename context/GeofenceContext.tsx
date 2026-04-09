@@ -172,6 +172,9 @@ TaskManager.defineTask(GEOFENCE_TASK_NAME, async ({ data, error }) => {
         return;
       }
 
+      const { getDeviceId } = await import('@/lib/device');
+      const deviceId = await getDeviceId();
+
       const { data: session, error: sessionError } = await supabase
         .from('activity_sessions')
         .insert({
@@ -182,8 +185,9 @@ TaskManager.defineTask(GEOFENCE_TASK_NAME, async ({ data, error }) => {
           duration_sec: durationSec,
           verification: 'geofence',
           trust_score:  0.94,
-          raw_gps:      { 
-            partnerId: activeGeofence.partnerId, 
+          device_id:    deviceId,
+          raw_gps:      {
+            partnerId: activeGeofence.partnerId,
             partnerName: activeGeofence.partnerName,
             entryTimestamp: activeGeofence.entryTimestamp
           }

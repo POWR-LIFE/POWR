@@ -23,6 +23,7 @@ interface ActivitySession {
   verification: string;
   trust_score: number;
   flagged: boolean;
+  device_id: string | null;
   started_at: string;
 }
 
@@ -87,7 +88,6 @@ function calcBasePoints(session: ActivitySession): number {
     case 'gym':
       if (mins >= 45) return 15;
       if (mins >= 20) return 10;
-      if (mins >= 1) return 10; // ⚠️ DEV: 1-min minimum — restore to 20 before release
       return 0;
 
     case 'hiit':
@@ -290,6 +290,26 @@ Deno.serve(async (req) => {
 
     if ((typedDupe ?? 0) > 0) {
       // Flag but don't block — let the claim go through as a flagged transaction
+      await supabase
+        .from('activity_sessions')
+        .update({ flagged: true })
+        .eq('id', session.id);
+    }
+  }
+
+  // 7b. Device-anomaly check — flag if 3+ distinct devices in the past 7 days
+  if (session.device_id) {
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const { data: recentDevices } = await supabase
+      .from('activity_sessions')
+      .select('device_id')
+      .eq('user_id', user.id)
+      .not('device_id', 'is', null)
+      .gte('started_at', sevenDaysAgo);
+
+    const uniqueDevices = new Set((recentDevices ?? []).map((r: { device_id: string }) => r.device_id));
+    if (uniqueDevices.size >= 3) {
+      // Flag the session but allow the claim — this is a soft signal for review
       await supabase
         .from('activity_sessions')
         .update({ flagged: true })

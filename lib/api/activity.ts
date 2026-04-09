@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { getDeviceId } from '@/lib/device';
 import { type ActivityType } from '@/constants/activities';
 
 // ── Walking step-tier helpers (shared by manual-log + health sync) ─────────────
@@ -92,6 +93,7 @@ export async function logManualSession(params: ManualSessionParams): Promise<voi
     const ended_at = new Date().toISOString();
     const verification = params.healthVerified ? 'wearable' : 'manual';
     const trust_score = params.healthVerified ? 85 : 55;
+    const device_id = await getDeviceId();
 
     const { data: session, error: sessionError } = await supabase
         .from('activity_sessions')
@@ -105,6 +107,7 @@ export async function logManualSession(params: ManualSessionParams): Promise<voi
             hr_avg: params.hr_avg ?? null,
             verification,
             trust_score,
+            device_id,
         })
         .select('id')
         .single();
@@ -189,6 +192,7 @@ export async function getTodayHealthWalkingSession(): Promise<HealthWalkingSessi
 /** Creates a new health-auto-synced walking session and awards initial points. */
 export async function logHealthWalkingSession(steps: number, points: number): Promise<string> {
     const now = new Date().toISOString();
+    const device_id = await getDeviceId();
     const { data: session, error: sErr } = await supabase
         .from('activity_sessions')
         .insert({
@@ -199,6 +203,7 @@ export async function logHealthWalkingSession(steps: number, points: number): Pr
             steps,
             verification: 'wearable',
             trust_score: 90,
+            device_id,
         })
         .select('id')
         .single();
