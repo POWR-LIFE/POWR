@@ -911,7 +911,8 @@
     <p>We're onboarding a select group of London gyms ahead of May. Founding partners get priority placement and early
       member exposure.</p>
     <form id="partnerJoinForm" class="cta-form">
-      <input class="cta-input" type="email" placeholder="Gym email address" required>
+      <input class="cta-input" type="text" id="partnerName" placeholder="Your name" required>
+      <input class="cta-input" type="email" id="partnerEmail" placeholder="Gym email address" required>
       <button type="submit" class="btn-primary" style="white-space:nowrap;">Apply Now</button>
     </form>
     <div id="partnerErrorMsg" class="cta-error" style="display:none; margin-top:10px; color: #ff4444; font-size: 13px;"></div>
@@ -935,7 +936,6 @@
 </footer>
 
 <script src="https://unpkg.com/lenis@1.1.20/dist/lenis.min.js"></script>
-<script type="module" src="/main.jsx"></script>
 
 </body>
 
