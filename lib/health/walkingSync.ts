@@ -17,6 +17,7 @@ import {
     stepTierPoints,
     updateStreakForToday,
     fetchTodayWalkingPoints,
+    saveHealthSnapshot,
     WALKING_DAILY_CAP,
 } from '@/lib/api/activity';
 
@@ -82,10 +83,12 @@ export async function syncWalkingNow(): Promise<void> {
 
     const existing = await getTodayHealthWalkingSession();
 
+    let sessionId: string;
+
     if (!existing) {
         // First sync of the day — cap the initial award
         const points = Math.min(tierPoints, capRemaining);
-        await logHealthWalkingSession(steps, points);
+        sessionId = await logHealthWalkingSession(steps, points);
     } else {
         // Incremental: only award the tier improvement, capped to remaining
         const additional = Math.min(
@@ -93,7 +96,17 @@ export async function syncWalkingNow(): Promise<void> {
             capRemaining,
         );
         await updateHealthWalkingSession(existing.id, steps, additional);
+        sessionId = existing.id;
     }
+
+    // Save health snapshot with current step count
+    const source = Platform.OS === 'ios' ? 'healthkit' : 'health_connect' as const;
+    await saveHealthSnapshot({
+        sessionId,
+        steps,
+        activityType: 'walking',
+        source,
+    });
 
     // Mark today as an active streak day (idempotent)
     await updateStreakForToday();

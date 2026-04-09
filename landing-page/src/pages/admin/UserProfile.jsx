@@ -3,10 +3,11 @@ import { useParams, Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
 import { useAuth } from '../../App';
-import { 
-    User, Activity, Award, Calendar, Clock, MapPin, 
+import {
+    User, Activity, Award, Calendar, Clock, MapPin,
     ChevronLeft, TrendingUp, Zap, Shield, AlertCircle,
-    ArrowUpRight, ArrowDownRight, Gift, Plus, X
+    ArrowUpRight, ArrowDownRight, Gift, Plus, X,
+    Heart, Moon, Flame, Footprints
 } from 'lucide-react';
 
 const logAction = async (adminId, action, targetType, targetId, metadata = {}) => {
@@ -40,6 +41,7 @@ export default function UserProfile() {
     const [transactions, setTransactions] = useState([]);
     const [streak, setStreak] = useState(null);
     const [redemptions, setRedemptions] = useState([]);
+    const [healthSnapshots, setHealthSnapshots] = useState([]);
     const [showAdjust, setShowAdjust] = useState(false);
     const [adjAmount, setAdjAmount] = useState('');
     const [adjDesc, setAdjDesc] = useState('');
@@ -94,12 +96,13 @@ export default function UserProfile() {
     const fetchData = async () => {
         setLoading(true);
         try {
-            const [p, s, t, str, r] = await Promise.all([
+            const [p, s, t, str, r, hs] = await Promise.all([
                 supabase.from('profiles').select('*').eq('id', userId).single(),
                 supabase.from('activity_sessions').select('*').eq('user_id', userId).order('started_at', { ascending: false }),
                 supabase.from('point_transactions').select('*').eq('user_id', userId).order('created_at', { ascending: false }),
                 supabase.from('user_streaks').select('*').eq('user_id', userId).single(),
-                supabase.from('redemptions').select('*, rewards(*)').eq('user_id', userId).order('redeemed_at', { ascending: false })
+                supabase.from('redemptions').select('*, rewards(*)').eq('user_id', userId).order('redeemed_at', { ascending: false }),
+                supabase.from('health_snapshots').select('*').eq('user_id', userId).order('recorded_at', { ascending: false }).limit(100)
             ]);
 
             if (p.error) throw p.error;
@@ -108,6 +111,7 @@ export default function UserProfile() {
             setTransactions(t.data || []);
             setStreak(str.data || null);
             setRedemptions(r.data || []);
+            setHealthSnapshots(hs.data || []);
 
         } catch (e) {
             toast.error('Telemetry Sync Failed');
@@ -231,6 +235,12 @@ export default function UserProfile() {
                             className={`pb-4 text-[11px] font-black uppercase tracking-[0.2em] transition-colors border-b-2 flex items-center gap-2 ${activeTab === 'points' ? 'text-[#E8D200] border-[#E8D200]' : 'text-[#555] border-transparent hover:text-[#CCC]'}`}
                         >
                             <Zap size={14} /> Points Ledger
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('health')}
+                            className={`pb-4 text-[11px] font-black uppercase tracking-[0.2em] transition-colors border-b-2 flex items-center gap-2 ${activeTab === 'health' ? 'text-[#E8D200] border-[#E8D200]' : 'text-[#555] border-transparent hover:text-[#CCC]'}`}
+                        >
+                            <Heart size={14} /> Health Data
                         </button>
                     </div>
 
@@ -445,6 +455,193 @@ export default function UserProfile() {
                             )}
                         </section>
                     )}
+
+                    {/* Health Data Tab */}
+                    {activeTab === 'health' && (() => {
+                        // Aggregate latest health metrics
+                        const latestWithSteps = healthSnapshots.find(s => s.steps > 0);
+                        const latestWithHR = healthSnapshots.find(s => s.hr_avg > 0);
+                        const latestWithCalories = healthSnapshots.find(s => s.calories_active > 0);
+                        const latestWithSleep = healthSnapshots.find(s => s.sleep_duration_h > 0);
+
+                        // Last 7 days of snapshots for trends
+                        const weekAgo = new Date();
+                        weekAgo.setDate(weekAgo.getDate() - 7);
+                        const weekSnapshots = healthSnapshots.filter(s => new Date(s.recorded_at) >= weekAgo);
+
+                        const avgSteps = weekSnapshots.filter(s => s.steps > 0).length > 0
+                            ? Math.round(weekSnapshots.filter(s => s.steps > 0).reduce((sum, s) => sum + s.steps, 0) / weekSnapshots.filter(s => s.steps > 0).length)
+                            : 0;
+                        const avgSleep = weekSnapshots.filter(s => s.sleep_duration_h > 0).length > 0
+                            ? (weekSnapshots.filter(s => s.sleep_duration_h > 0).reduce((sum, s) => sum + s.sleep_duration_h, 0) / weekSnapshots.filter(s => s.sleep_duration_h > 0).length).toFixed(1)
+                            : '—';
+                        const avgHR = weekSnapshots.filter(s => s.hr_avg > 0).length > 0
+                            ? Math.round(weekSnapshots.filter(s => s.hr_avg > 0).reduce((sum, s) => sum + s.hr_avg, 0) / weekSnapshots.filter(s => s.hr_avg > 0).length)
+                            : 0;
+                        const totalCalories = weekSnapshots.filter(s => s.calories_active > 0).reduce((sum, s) => sum + s.calories_active, 0);
+
+                        return (
+                            <section className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-8">
+                                {/* Summary Cards */}
+                                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                                    {[
+                                        { label: 'Avg Daily Steps', value: avgSteps > 0 ? avgSteps.toLocaleString() : '—', sub: '7-day avg', icon: Footprints, color: '#10B981' },
+                                        { label: 'Avg Sleep', value: avgSleep !== '—' ? `${avgSleep}h` : '—', sub: '7-day avg', icon: Moon, color: '#8B5CF6' },
+                                        { label: 'Avg Heart Rate', value: avgHR > 0 ? `${avgHR} bpm` : '—', sub: '7-day avg', icon: Heart, color: '#F43F5E' },
+                                        { label: 'Active Calories', value: totalCalories > 0 ? totalCalories.toLocaleString() : '—', sub: '7-day total', icon: Flame, color: '#F97316' },
+                                    ].map(card => (
+                                        <div key={card.label} className="bg-[#0A0A0A] border border-[#151515] p-6 rounded-2xl">
+                                            <div className="flex items-center gap-3 mb-3">
+                                                <card.icon size={14} style={{ color: card.color }} />
+                                                <span className="text-[9px] uppercase tracking-[0.3em] text-[#333] font-black">{card.label}</span>
+                                            </div>
+                                            <div className="text-2xl font-light tracking-tighter text-[#DDD] mb-1">{card.value}</div>
+                                            <div className="text-[9px] uppercase tracking-[0.3em] text-[#222] font-black">{card.sub}</div>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                {/* Latest Readings */}
+                                <div className="bg-[#0A0A0A] border border-[#151515] rounded-[2rem] overflow-hidden">
+                                    <div className="p-10 border-b border-[#151515]">
+                                        <h3 className="text-xl font-light tracking-tighter text-[#EEE]">Latest Readings</h3>
+                                        <p className="text-[9px] uppercase tracking-[0.4em] text-[#222] font-black mt-2">Most recent health data from device</p>
+                                    </div>
+                                    <div className="p-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                        {/* Steps */}
+                                        <div className="bg-[#050505] border border-[#151515] p-6 rounded-2xl">
+                                            <div className="flex items-center gap-3 mb-4">
+                                                <Footprints size={16} className="text-[#10B981]" />
+                                                <span className="text-[10px] uppercase tracking-[0.3em] text-[#555] font-black">Steps</span>
+                                            </div>
+                                            {latestWithSteps ? (
+                                                <>
+                                                    <div className="text-3xl font-light tracking-tighter text-[#F2F2F2] mb-2">{latestWithSteps.steps.toLocaleString()}</div>
+                                                    <div className="text-[9px] text-[#333] font-black uppercase tracking-[0.3em]">{timeAgo(latestWithSteps.recorded_at)}</div>
+                                                </>
+                                            ) : (
+                                                <div className="text-[#222] text-sm">No step data recorded</div>
+                                            )}
+                                        </div>
+
+                                        {/* Heart Rate */}
+                                        <div className="bg-[#050505] border border-[#151515] p-6 rounded-2xl">
+                                            <div className="flex items-center gap-3 mb-4">
+                                                <Heart size={16} className="text-[#F43F5E]" />
+                                                <span className="text-[10px] uppercase tracking-[0.3em] text-[#555] font-black">Heart Rate</span>
+                                            </div>
+                                            {latestWithHR ? (
+                                                <>
+                                                    <div className="text-3xl font-light tracking-tighter text-[#F2F2F2] mb-2">{latestWithHR.hr_avg} <span className="text-lg text-[#555]">bpm avg</span></div>
+                                                    <div className="flex gap-6 text-[10px] text-[#444] font-black uppercase tracking-[0.2em]">
+                                                        {latestWithHR.hr_max > 0 && <span>Max: {latestWithHR.hr_max}</span>}
+                                                        {latestWithHR.hr_resting > 0 && <span>Resting: {latestWithHR.hr_resting}</span>}
+                                                    </div>
+                                                    <div className="text-[9px] text-[#333] font-black uppercase tracking-[0.3em] mt-2">{timeAgo(latestWithHR.recorded_at)}</div>
+                                                </>
+                                            ) : (
+                                                <div className="text-[#222] text-sm">No heart rate data recorded</div>
+                                            )}
+                                        </div>
+
+                                        {/* Sleep */}
+                                        <div className="bg-[#050505] border border-[#151515] p-6 rounded-2xl">
+                                            <div className="flex items-center gap-3 mb-4">
+                                                <Moon size={16} className="text-[#8B5CF6]" />
+                                                <span className="text-[10px] uppercase tracking-[0.3em] text-[#555] font-black">Sleep</span>
+                                            </div>
+                                            {latestWithSleep ? (
+                                                <>
+                                                    <div className="text-3xl font-light tracking-tighter text-[#F2F2F2] mb-2">{latestWithSleep.sleep_duration_h}<span className="text-lg text-[#555]">h total</span></div>
+                                                    <div className="flex gap-4 mt-2">
+                                                        {latestWithSleep.sleep_deep_h > 0 && (
+                                                            <div className="flex-1 bg-[#0A0A0A] border border-[#151515] p-3 rounded-xl text-center">
+                                                                <div className="text-[#8B5CF6] text-lg font-light">{latestWithSleep.sleep_deep_h}h</div>
+                                                                <div className="text-[8px] uppercase tracking-[0.3em] text-[#333] font-black">Deep</div>
+                                                            </div>
+                                                        )}
+                                                        {latestWithSleep.sleep_rem_h > 0 && (
+                                                            <div className="flex-1 bg-[#0A0A0A] border border-[#151515] p-3 rounded-xl text-center">
+                                                                <div className="text-[#6366F1] text-lg font-light">{latestWithSleep.sleep_rem_h}h</div>
+                                                                <div className="text-[8px] uppercase tracking-[0.3em] text-[#333] font-black">REM</div>
+                                                            </div>
+                                                        )}
+                                                        {latestWithSleep.sleep_light_h > 0 && (
+                                                            <div className="flex-1 bg-[#0A0A0A] border border-[#151515] p-3 rounded-xl text-center">
+                                                                <div className="text-[#A78BFA] text-lg font-light">{latestWithSleep.sleep_light_h}h</div>
+                                                                <div className="text-[8px] uppercase tracking-[0.3em] text-[#333] font-black">Light</div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    <div className="text-[9px] text-[#333] font-black uppercase tracking-[0.3em] mt-3">{timeAgo(latestWithSleep.recorded_at)}</div>
+                                                </>
+                                            ) : (
+                                                <div className="text-[#222] text-sm">No sleep data recorded</div>
+                                            )}
+                                        </div>
+
+                                        {/* Calories */}
+                                        <div className="bg-[#050505] border border-[#151515] p-6 rounded-2xl">
+                                            <div className="flex items-center gap-3 mb-4">
+                                                <Flame size={16} className="text-[#F97316]" />
+                                                <span className="text-[10px] uppercase tracking-[0.3em] text-[#555] font-black">Calories</span>
+                                            </div>
+                                            {latestWithCalories ? (
+                                                <>
+                                                    <div className="text-3xl font-light tracking-tighter text-[#F2F2F2] mb-2">{Math.round(latestWithCalories.calories_active)} <span className="text-lg text-[#555]">kcal active</span></div>
+                                                    {latestWithCalories.calories_total > 0 && (
+                                                        <div className="text-[10px] text-[#444] font-black uppercase tracking-[0.2em]">Total: {Math.round(latestWithCalories.calories_total)} kcal</div>
+                                                    )}
+                                                    <div className="text-[9px] text-[#333] font-black uppercase tracking-[0.3em] mt-2">{timeAgo(latestWithCalories.recorded_at)}</div>
+                                                </>
+                                            ) : (
+                                                <div className="text-[#222] text-sm">No calorie data recorded</div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Snapshot History */}
+                                <div className="bg-[#0A0A0A] border border-[#151515] rounded-[2rem] overflow-hidden">
+                                    <div className="p-10 border-b border-[#151515] flex items-center justify-between">
+                                        <div>
+                                            <h3 className="text-xl font-light tracking-tighter text-[#EEE]">Snapshot History</h3>
+                                            <p className="text-[9px] uppercase tracking-[0.4em] text-[#222] font-black mt-2">Raw health telemetry log</p>
+                                        </div>
+                                        <span className="text-[10px] font-black text-[#444] uppercase tracking-[0.3em]">{healthSnapshots.length} RECORDED</span>
+                                    </div>
+                                    <div className="divide-y divide-[#151515]">
+                                        {healthSnapshots.length === 0 ? (
+                                            <div className="p-20 text-center text-[#1A1A1A] text-[10px] uppercase tracking-[0.4em] font-black">No health snapshots recorded</div>
+                                        ) : healthSnapshots.slice(0, 20).map(snap => (
+                                            <div key={snap.id} className="p-6 flex items-center gap-8 group hover:bg-[#050505] transition-all">
+                                                <div className="w-10 h-10 rounded-2xl bg-[#050505] border border-[#151515] flex items-center justify-center shrink-0">
+                                                    {snap.sleep_duration_h > 0 ? <Moon size={16} className="text-[#8B5CF6]" /> :
+                                                     snap.hr_avg > 0 ? <Heart size={16} className="text-[#F43F5E]" /> :
+                                                     <Activity size={16} className="text-[#333]" />}
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center gap-3 mb-1">
+                                                        <span className="text-sm font-bold text-[#DDD] capitalize">{snap.activity_type || 'General'}</span>
+                                                        <span className="px-2 py-0.5 rounded-full border border-[#151515] text-[8px] font-black uppercase tracking-[0.2em] text-[#333]">{snap.source}</span>
+                                                    </div>
+                                                    <div className="flex flex-wrap gap-4 text-[10px] font-black text-[#444] uppercase tracking-[0.2em]">
+                                                        {snap.steps > 0 && <span>{snap.steps.toLocaleString()} steps</span>}
+                                                        {snap.hr_avg > 0 && <span>{snap.hr_avg} bpm</span>}
+                                                        {snap.calories_active > 0 && <span>{Math.round(snap.calories_active)} kcal</span>}
+                                                        {snap.sleep_duration_h > 0 && <span>{snap.sleep_duration_h}h sleep</span>}
+                                                        {snap.distance_m > 0 && <span>{(snap.distance_m / 1000).toFixed(1)}km</span>}
+                                                        {snap.duration_sec > 0 && <span>{Math.floor(snap.duration_sec / 60)}m</span>}
+                                                    </div>
+                                                </div>
+                                                <div className="text-[10px] text-[#222] font-black uppercase tracking-[0.3em] shrink-0">{timeAgo(snap.recorded_at)}</div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </section>
+                        );
+                    })()}
                 </div>
 
                 {/* Right Column: Inventory & Stats */}

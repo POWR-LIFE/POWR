@@ -17,10 +17,12 @@ import { useAuth } from '@/context/AuthContext';
 import { useActivity } from '@/hooks/useActivity';
 import { usePoints } from '@/hooks/usePoints';
 import { useWalkingProgress } from '@/hooks/useWalkingProgress';
+import { useHealthData } from '@/hooks/useHealthData';
 import { JOURNEY_SECTIONS, resolveSections, allLessons } from '@/lib/journey';
 import { getLevelInfo } from '@/constants/levels';
 import { ACTIVITIES, type ActivityType } from '@/constants/activities';
 import { fetchProfile } from '@/lib/api/user';
+import { fetchWeeklySleepHours } from '@/lib/api/activity';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -37,8 +39,8 @@ const DIM     = 'rgba(255,255,255,0.5)';
 const DAY_LABELS  = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const TODAY_INDEX = new Date().getDay() === 0 ? 6 : new Date().getDay() - 1;
 
-// Mock per-day sleep hours (Mon–Sun) until real data is available
-const MOCK_SLEEP_HRS = [7.2, 6.5, 8.1, 6.8, 7.5, 8.4, 6.0];
+// Fallback when no real sleep data is available yet
+const EMPTY_SLEEP_HRS = [0, 0, 0, 0, 0, 0, 0];
 
 const COMPLETED_IDS   = new Set([
   'l-001', 'l-002', 'l-003', 'l-004', 'l-005', 'l-006',
@@ -58,6 +60,44 @@ export default function ProgressScreen() {
   const walking = useWalkingProgress();
 
   const [activePrefs, setActivePrefs] = useState<ActivityType[]>(['gym', 'running', 'walking']);
+  const [sleepHrs, setSleepHrs] = useState<number[]>(EMPTY_SLEEP_HRS);
+  const [sleepBedtimes, setSleepBedtimes] = useState<(string | null)[]>([null, null, null, null, null, null, null]);
+  const health = useHealthData();
+
+  // Fetch real sleep data from synced activity sessions
+  useEffect(() => {
+    if (!user) return;
+    let mounted = true;
+    const loadSleep = async () => {
+      try {
+        const { hours, bedtimes } = await fetchWeeklySleepHours();
+        if (mounted) {
+          setSleepHrs(hours);
+          setSleepBedtimes(bedtimes);
+        }
+
+        // If last night has no data yet but health is authorized, try fetching directly
+        const lastNightIdx = TODAY_INDEX === 0 ? 6 : TODAY_INDEX - 1;
+        if (hours[TODAY_INDEX] === 0 && health.isAuthorized) {
+          const lastNight = await health.getLastNightSleep();
+          if (lastNight && mounted) {
+            const updated = [...hours];
+            updated[TODAY_INDEX] = lastNight.durationHours;
+            setSleepHrs(updated);
+            if (lastNight.startedAt) {
+              const updatedBedtimes = [...bedtimes];
+              updatedBedtimes[TODAY_INDEX] = lastNight.startedAt;
+              setSleepBedtimes(updatedBedtimes);
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Error fetching sleep data:', err);
+      }
+    };
+    loadSleep();
+    return () => { mounted = false; };
+  }, [user, health.isAuthorized]);
 
   // Fetch and sync activity preferences
   useEffect(() => {
@@ -119,7 +159,10 @@ export default function ProgressScreen() {
   });
 
   // Append Sleep as a final passive radial
-  const avgSleep = (MOCK_SLEEP_HRS.reduce((s, v) => s + v, 0) / 7);
+  const daysWithSleep = sleepHrs.filter(h => h > 0).length;
+  const avgSleep = daysWithSleep > 0
+    ? sleepHrs.reduce((s, v) => s + v, 0) / daysWithSleep
+    : 0;
   radialData.push({
     id: 'sleep',
     pct: Math.min(avgSleep / 8, 1),
@@ -176,6 +219,8 @@ export default function ProgressScreen() {
           stepsF={stepsF}
           weekActiveDays={weekActiveDays}
           weeklyEarned={weeklyEarned}
+          sleepHrs={sleepHrs}
+          sleepBedtimes={sleepBedtimes}
         />
 
         {/* ── Weekly Summary ─────────────────────────────── */}
@@ -198,7 +243,7 @@ export default function ProgressScreen() {
 type BreakdownTabItem = { key: string; label: string };
 
 function BreakdownSection({
-  activeTab, setActiveTab, tabs, walking, weeklyMetrics, stepsF, weekActiveDays, weeklyEarned,
+  activeTab, setActiveTab, tabs, walking, weeklyMetrics, stepsF, weekActiveDays, weeklyEarned, sleepHrs, sleepBedtimes,
 }: {
   activeTab: string;
   setActiveTab: (tab: string) => void;
@@ -208,6 +253,8 @@ function BreakdownSection({
   stepsF: string;
   weekActiveDays: boolean[];
   weeklyEarned: number;
+  sleepHrs: number[];
+  sleepBedtimes: (string | null)[];
 }) {
   return (
     <View style={styles.breakdownCard}>
@@ -235,7 +282,7 @@ function BreakdownSection({
             weeklyEarned={weeklyEarned} 
           />
         )}
-        {activeTab === 'sleep' && <SleepTab />}
+        {activeTab === 'sleep' && <SleepTab sleepHrs={sleepHrs} sleepBedtimes={sleepBedtimes} />}
       </View>
     </View>
   );
@@ -425,9 +472,33 @@ function WorkoutsTab({
 
 const SLEEP_BAR_H = 56;
 
-function SleepTab() {
-  const avg    = (MOCK_SLEEP_HRS.reduce((s, v) => s + v, 0) / 7).toFixed(1);
-  const avgPct = Math.min(Number(avg) / 8, 1);
+function SleepTab({ sleepHrs, sleepBedtimes }: { sleepHrs: number[]; sleepBedtimes: (string | null)[] }) {
+  const daysWithSleep = sleepHrs.filter(h => h > 0).length;
+  const avg = daysWithSleep > 0
+    ? (sleepHrs.reduce((s, v) => s + v, 0) / daysWithSleep).toFixed(1)
+    : '—';
+  const avgNum = Number(avg) || 0;
+  const avgPct = Math.min(avgNum / 8, 1);
+  const hasData = daysWithSleep > 0;
+
+  // Compute average bedtime from actual bedtime timestamps
+  const avgBedtime = (() => {
+    const validBedtimes = sleepBedtimes.filter((b): b is string => b !== null);
+    if (validBedtimes.length === 0) return '—';
+    const totalMinutes = validBedtimes.reduce((sum, bt) => {
+      const d = new Date(bt);
+      let mins = d.getHours() * 60 + d.getMinutes();
+      // Treat times after midnight as next-day (add 24h for averaging)
+      if (mins < 720) mins += 1440; // before noon = after midnight
+      return sum + mins;
+    }, 0);
+    let avgMins = Math.round(totalMinutes / validBedtimes.length) % 1440;
+    const h = Math.floor(avgMins / 60);
+    const m = avgMins % 60;
+    const ampm = h >= 12 ? 'pm' : 'am';
+    const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+    return m === 0 ? `${h12}${ampm}` : `${h12}:${String(m).padStart(2, '0')}${ampm}`;
+  })();
 
   return (
     <View style={styles.tabPanel}>
@@ -435,7 +506,7 @@ function SleepTab() {
       <View style={styles.bigMetricRow}>
         <View style={styles.bigMetric}>
           <Text style={styles.bigMetricSup}>AVG / NIGHT</Text>
-          <Text style={[styles.bigMetricVal, { color: INDIGO }]}>{avg}h</Text>
+          <Text style={[styles.bigMetricVal, { color: INDIGO }]}>{hasData ? `${avg}h` : '—'}</Text>
           <Text style={styles.bigMetricMax}>/ 8h goal</Text>
           <View style={styles.metricBar}>
             <View style={[styles.metricBarFill, { width: `${Math.round(avgPct * 100)}%` as any, backgroundColor: INDIGO }]} />
@@ -444,10 +515,12 @@ function SleepTab() {
         <View style={styles.bigMetricDivider} />
         <View style={styles.bigMetric}>
           <Text style={styles.bigMetricSup}>AVG BEDTIME</Text>
-          <Text style={[styles.bigMetricVal, { color: INDIGO }]}>11pm</Text>
+          <Text style={[styles.bigMetricVal, { color: INDIGO }]}>{avgBedtime}</Text>
           <Text style={styles.bigMetricMax}>goal: 10:30pm</Text>
           <View style={styles.metricBar}>
-            <View style={[styles.metricBarFill, { width: '55%', backgroundColor: INDIGO }]} />
+            {hasData ? (
+              <View style={[styles.metricBarFill, { width: `${Math.round(Math.max(0, 1 - Math.abs(avgNum - 7.5) / 4) * 100)}%` as any, backgroundColor: INDIGO }]} />
+            ) : null}
           </View>
         </View>
       </View>
@@ -457,19 +530,21 @@ function SleepTab() {
       {/* Per-day sleep bar chart */}
       <Text style={styles.tabSubLabel}>NIGHTLY SLEEP</Text>
       <View style={styles.sleepChart}>
-        {MOCK_SLEEP_HRS.map((hrs, i) => {
+        {sleepHrs.map((hrs, i) => {
           const isToday = i === TODAY_INDEX;
-          const fillH   = Math.round((hrs / 10) * SLEEP_BAR_H);
+          const fillH   = hrs > 0 ? Math.round((hrs / 10) * SLEEP_BAR_H) : 0;
           return (
             <View key={i} style={styles.sleepBarCol}>
               <Text style={[styles.sleepBarHrs, isToday && { color: INDIGO }]}>
-                {hrs % 1 === 0 ? `${hrs}h` : `${hrs.toFixed(1)}h`}
+                {hrs > 0 ? (hrs % 1 === 0 ? `${hrs}h` : `${hrs.toFixed(1)}h`) : '—'}
               </Text>
               <View style={styles.sleepBarTrack}>
-                <View style={[
-                  styles.sleepBarFill,
-                  { height: fillH, backgroundColor: isToday ? INDIGO : `${INDIGO}60` },
-                ]} />
+                {hrs > 0 && (
+                  <View style={[
+                    styles.sleepBarFill,
+                    { height: fillH, backgroundColor: isToday ? INDIGO : `${INDIGO}60` },
+                  ]} />
+                )}
               </View>
               <Text style={[styles.sleepBarDay, isToday && { color: TEXT, fontWeight: '600' }]}>
                 {DAY_LABELS[i].charAt(0)}
@@ -483,9 +558,11 @@ function SleepTab() {
       <View style={styles.insightRow}>
         <Ionicons name="moon-outline" size={12} color={INDIGO} />
         <Text style={[styles.insightText, { color: DIM }]}>
-          {Number(avg) >= 7.5
+          {!hasData
+            ? 'Connect a wearable to track your sleep automatically.'
+            : avgNum >= 7.5
             ? 'Good recovery. Keep your sleep schedule consistent.'
-            : `You're ${(8 - Number(avg)).toFixed(1)}h below target — aim for an earlier bedtime.`}
+            : `You're ${(8 - avgNum).toFixed(1)}h below target — aim for an earlier bedtime.`}
         </Text>
       </View>
     </View>

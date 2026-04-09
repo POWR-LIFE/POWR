@@ -1,11 +1,13 @@
 import { useEffect, useCallback } from 'react';
+import { Platform } from 'react-native';
 import { useHealthData } from './useHealthData';
 import { supabase } from '@/lib/supabase';
 import { ACTIVITIES, type ActivityType } from '@/constants/activities';
-import { logManualSession } from '@/lib/api/activity';
+import { logManualSession, saveHealthSnapshot } from '@/lib/api/activity';
 
 export function useHealthSync() {
-  const { isAuthorized, getActivitiesToday, getLastNightSleep } = useHealthData();
+  const { isAuthorized, getActivitiesToday, getLastNightSleep, getHeartRateToday, getCaloriesToday } = useHealthData();
+  const source = Platform.OS === 'ios' ? 'healthkit' : 'health_connect' as const;
 
   const syncActivities = useCallback(async () => {
     if (!isAuthorized) return;
@@ -27,6 +29,12 @@ export function useHealthSync() {
         (existingSessions ?? []).map(s => `${s.type}_${new Date(s.started_at).toISOString()}`)
       );
 
+      // Fetch heart rate + calories once for snapshot enrichment
+      const [heartRate, calories] = await Promise.all([
+        getHeartRateToday().catch(() => null),
+        getCaloriesToday().catch(() => null),
+      ]);
+
       for (const health of healthActivities) {
         const mappedType = mapHealthType(health.type);
         if (!mappedType) continue;
@@ -37,9 +45,25 @@ export function useHealthSync() {
         await logManualSession({
           type: mappedType,
           duration_sec: health.durationMin * 60,
+          distance_m: health.distanceM,
+          hr_avg: heartRate?.avg,
           started_at: health.startedAt,
           points: calculateBasePoints(mappedType, health.durationMin),
           healthVerified: true,
+        });
+
+        // Save full health snapshot for this session
+        await saveHealthSnapshot({
+          steps: health.steps,
+          distanceM: health.distanceM,
+          hrAvg: heartRate?.avg,
+          hrMax: heartRate?.max,
+          hrResting: heartRate?.resting,
+          caloriesActive: calories?.active,
+          caloriesTotal: calories?.total,
+          activityType: health.type,
+          durationSec: health.durationMin * 60,
+          source,
         });
 
         console.log(`[HealthSync] Synced ${mappedType} from ${health.startedAt}`);
@@ -50,7 +74,7 @@ export function useHealthSync() {
     } catch (e) {
       console.error('[HealthSync] Error syncing activities:', e);
     }
-  }, [isAuthorized, getActivitiesToday, getLastNightSleep]);
+  }, [isAuthorized, getActivitiesToday, getLastNightSleep, getHeartRateToday, getCaloriesToday, source]);
 
   const syncSleep = useCallback(async (syncedKeys: Set<string>) => {
     try {
@@ -70,11 +94,22 @@ export function useHealthSync() {
         healthVerified: true,
       });
 
+      // Save sleep snapshot with stage breakdowns
+      await saveHealthSnapshot({
+        sleepDurationH: sleep.durationHours,
+        sleepDeepH: sleep.deepHours,
+        sleepRemH: sleep.remHours,
+        sleepLightH: sleep.lightHours,
+        activityType: 'sleep',
+        durationSec: Math.round(sleep.durationHours * 3600),
+        source,
+      });
+
       console.log(`[HealthSync] Synced sleep: ${sleep.durationHours}h → ${points} pts`);
     } catch (e) {
       console.error('[HealthSync] Error syncing sleep:', e);
     }
-  }, [getLastNightSleep]);
+  }, [getLastNightSleep, source]);
 
   useEffect(() => {
     if (isAuthorized) {

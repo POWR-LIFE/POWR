@@ -82,6 +82,7 @@ export type ManualSessionParams = {
     duration_sec: number;
     distance_m?: number;
     steps?: number;
+    hr_avg?: number;
     points: number;
     started_at: string;
     healthVerified?: boolean;
@@ -101,6 +102,7 @@ export async function logManualSession(params: ManualSessionParams): Promise<voi
             duration_sec: params.duration_sec,
             distance_m: params.distance_m ?? null,
             steps: params.steps ?? null,
+            hr_avg: params.hr_avg ?? null,
             verification,
             trust_score,
         })
@@ -266,6 +268,77 @@ export async function updateStreakForToday(): Promise<void> {
         .eq('user_id', user.id);
 }
 
+/**
+ * Builds a streak from an array of date strings (YYYY-MM-DD).
+ * Computes the longest consecutive run ending at the most recent date,
+ * then upserts the user_streaks row.
+ * Used during onboarding to give users a real starting streak from historical health data.
+ */
+export async function buildStreakFromDates(activeDates: string[]): Promise<number> {
+    if (activeDates.length === 0) return 0;
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return 0;
+
+    // Deduplicate and sort ascending
+    const unique = [...new Set(activeDates)].sort();
+
+    // Find the longest consecutive streak ending at the latest date
+    let streak = 1;
+    for (let i = unique.length - 1; i > 0; i--) {
+        const curr = new Date(unique[i]);
+        const prev = new Date(unique[i - 1]);
+        const diffDays = Math.round((curr.getTime() - prev.getTime()) / 86400000);
+        if (diffDays === 1) {
+            streak++;
+        } else {
+            break; // gap found, stop counting
+        }
+    }
+
+    const lastDate = unique[unique.length - 1];
+
+    // Check if the streak is still current (last active date is today or yesterday)
+    const today = new Date().toISOString().split('T')[0];
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yStr = yesterday.toISOString().split('T')[0];
+
+    // If the last active date isn't today or yesterday, the streak has broken
+    if (lastDate !== today && lastDate !== yStr) {
+        streak = 0;
+    }
+
+    // Upsert user_streaks
+    const { data: existing } = await supabase
+        .from('user_streaks')
+        .select('current_streak, longest_streak')
+        .eq('user_id', user.id)
+        .single();
+
+    if (existing) {
+        await supabase
+            .from('user_streaks')
+            .update({
+                current_streak: streak,
+                longest_streak: Math.max(streak, existing.longest_streak),
+                last_activity_date: lastDate,
+            })
+            .eq('user_id', user.id);
+    } else {
+        await supabase
+            .from('user_streaks')
+            .insert({
+                user_id: user.id,
+                current_streak: streak,
+                longest_streak: streak,
+                last_activity_date: lastDate,
+            });
+    }
+
+    return streak;
+}
+
 // ── Daily cap helper (walking) ──────────────────────────────────────────────
 
 const WALKING_DAILY_CAP = 5;
@@ -295,6 +368,91 @@ export async function fetchTodayWalkingPoints(): Promise<number> {
     return data
         .filter(t => t.session_id && walkingIds.has(t.session_id))
         .reduce((sum, t) => sum + t.amount, 0);
+}
+
+/** Returns Mon–Sun sleep hours for the current week from synced activity sessions. */
+export async function fetchWeeklySleepHours(): Promise<{ hours: number[]; bedtimes: (string | null)[] }> {
+    const now = new Date();
+    const dayOfWeek = now.getDay(); // 0=Sun
+    const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+    const monday = new Date(now);
+    monday.setDate(now.getDate() + mondayOffset);
+    monday.setHours(0, 0, 0, 0);
+
+    const { data, error } = await supabase
+        .from('activity_sessions')
+        .select('started_at, duration_sec')
+        .eq('type', 'sleep')
+        .gte('started_at', monday.toISOString())
+        .order('started_at', { ascending: true });
+    if (error) throw error;
+
+    // Map each session to its weekday (Mon=0 … Sun=6)
+    const hours: number[] = [0, 0, 0, 0, 0, 0, 0];
+    const bedtimes: (string | null)[] = [null, null, null, null, null, null, null];
+
+    for (const s of data ?? []) {
+        const d = new Date(s.started_at);
+        // Sleep that starts in the evening belongs to the next day's metric
+        // e.g. sleeping at 11pm Monday → Tuesday's sleep
+        const startHour = d.getHours();
+        const assignDate = startHour >= 18
+            ? new Date(d.getTime() + 86400000) // next day
+            : d;
+        const day = assignDate.getDay();
+        const idx = day === 0 ? 6 : day - 1;
+        const durationH = Math.round((s.duration_sec / 3600) * 10) / 10;
+        hours[idx] += durationH;
+
+        // Track bedtime (earliest start for that night)
+        if (!bedtimes[idx] || s.started_at < bedtimes[idx]!) {
+            bedtimes[idx] = s.started_at;
+        }
+    }
+
+    return { hours, bedtimes };
+}
+
+// ── Health snapshot persistence ───────────────────────────────────────────────
+
+export type HealthSnapshotParams = {
+    sessionId?: string;
+    steps?: number;
+    distanceM?: number;
+    hrAvg?: number;
+    hrMax?: number;
+    hrResting?: number;
+    caloriesActive?: number;
+    caloriesTotal?: number;
+    sleepDurationH?: number;
+    sleepDeepH?: number;
+    sleepRemH?: number;
+    sleepLightH?: number;
+    activityType?: string;
+    durationSec?: number;
+    source: 'healthkit' | 'health_connect';
+};
+
+/** Persists a health data snapshot to the health_snapshots table. */
+export async function saveHealthSnapshot(params: HealthSnapshotParams): Promise<void> {
+    const { error } = await supabase.from('health_snapshots').insert({
+        session_id: params.sessionId ?? null,
+        steps: params.steps ?? null,
+        distance_m: params.distanceM ?? null,
+        hr_avg: params.hrAvg ?? null,
+        hr_max: params.hrMax ?? null,
+        hr_resting: params.hrResting ?? null,
+        calories_active: params.caloriesActive ?? null,
+        calories_total: params.caloriesTotal ?? null,
+        sleep_duration_h: params.sleepDurationH ?? null,
+        sleep_deep_h: params.sleepDeepH ?? null,
+        sleep_rem_h: params.sleepRemH ?? null,
+        sleep_light_h: params.sleepLightH ?? null,
+        activity_type: params.activityType ?? null,
+        duration_sec: params.durationSec ?? null,
+        source: params.source,
+    });
+    if (error) console.warn('[healthSnapshot] insert failed:', error.message);
 }
 
 export { WALKING_DAILY_CAP };
