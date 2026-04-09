@@ -63,6 +63,41 @@ function init() {
     entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
   }, { threshold: 0.08 });
   document.querySelectorAll('.fade-up').forEach(el => observer.observe(el));
+  
+  // ─── Nav background on scroll ───
+  const nav = document.getElementById('nav');
+  const updateNavState = () => {
+    if (nav) {
+      const scrollPos = window.scrollY || window.pageYOffset || document.documentElement.scrollTop;
+      const threshold = window.innerHeight * 0.1; 
+      
+      if (scrollPos > threshold) {
+        nav.classList.add('scrolled');
+      } else {
+        nav.classList.remove('scrolled');
+      }
+    }
+  };
+  window.addEventListener('scroll', updateNavState);
+  updateNavState(); // Initial check
+
+  // ─── Mobile nav toggle ───
+  const navToggle = document.getElementById('navToggle');
+  const navLinks = document.getElementById('navLinks');
+  if (navToggle && navLinks) {
+    navToggle.addEventListener('click', () => {
+      navToggle.classList.toggle('open');
+      navLinks.classList.toggle('open');
+    });
+    
+    // Close on link click
+    navLinks.querySelectorAll('a').forEach(link => {
+      link.addEventListener('click', () => {
+        navToggle.classList.remove('open');
+        navLinks.classList.remove('open');
+      });
+    });
+  }
 
   // ── Discover Mockup Map ──
   try {
