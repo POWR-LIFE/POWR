@@ -1,7 +1,7 @@
 import { useAuth } from '@/context/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef } from 'react';
 import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -49,6 +49,17 @@ export default function OnboardingAchievementScreen() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
     const { markOnboardingComplete } = useAuth();
+    const params = useLocalSearchParams<{ streakDays?: string; totalSessions?: string; activeDays?: string }>();
+
+    // Parse sync results from route params (0 = skipped / no data)
+    const streakDays = parseInt(params.streakDays ?? '0', 10) || 0;
+    const totalSessions = parseInt(params.totalSessions ?? '0', 10) || 0;
+    const activeDays = parseInt(params.activeDays ?? '0', 10) || 0;
+    const hasSyncData = streakDays > 0 || totalSessions > 0;
+
+    // Display values
+    const displayStreak = hasSyncData ? streakDays : 1;
+    const ringTarget = displayStreak / 7;
 
     // --- Animated values ---
     const glowIn        = useRef(new Animated.Value(0)).current;
@@ -100,9 +111,9 @@ export default function OnboardingAchievementScreen() {
                     useNativeDriver: true,
                 }),
             ]),
-            // 2. Ring draws to 1/7 (day 1 of a 7-day week)
+            // 2. Ring draws to streakDays / 7
             Animated.timing(ringProgress, {
-                toValue: 1 / 7,
+                toValue: ringTarget,
                 duration: 1150,
                 easing: Easing.inOut(Easing.cubic),
                 useNativeDriver: false,
@@ -191,7 +202,7 @@ export default function OnboardingAchievementScreen() {
                                 const y1 = CY + Math.sin(angle) * (RING_R + 14);
                                 const x2 = CX + Math.cos(angle) * (RING_R + 24);
                                 const y2 = CY + Math.sin(angle) * (RING_R + 24);
-                                const isCompleted = i === 0 || i === 1;
+                                const isCompleted = i < displayStreak;
                                 return (
                                     <Line
                                         key={i}
@@ -274,9 +285,9 @@ export default function OnboardingAchievementScreen() {
                                     },
                                 ]}
                             >
-                                1
+                                {displayStreak}
                             </Animated.Text>
-                            <Text style={styles.dayLabel}>DAY 1 OF 7</Text>
+                            <Text style={styles.dayLabel}>DAY {displayStreak} OF 7</Text>
                         </View>
                     </Animated.View>
                 </Animated.View>
@@ -289,11 +300,17 @@ export default function OnboardingAchievementScreen() {
                     ]}
                 >
                     <Text style={styles.headline}>
-                        The streak{'\n'}
-                        <Text style={styles.headlineAccent}>starts here.</Text>
+                        {hasSyncData ? (
+                            <>You're already{`\n`}on a <Text style={styles.headlineAccent}>roll.</Text></>
+                        ) : (
+                            <>The streak{`\n`}<Text style={styles.headlineAccent}>starts here.</Text></>
+                        )}
                     </Text>
                     <Text style={styles.body}>
-                        Day 1 is locked in. Every session{'\n'}from here builds something real.
+                        {hasSyncData
+                            ? `${activeDays} days of activity — already locked in.\nKeep earning from here.`
+                            : `Day 1 is locked in. Every session\nfrom here builds something real.`
+                        }
                     </Text>
                 </Animated.View>
 

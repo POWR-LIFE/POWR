@@ -2,10 +2,11 @@ import { FontAwesome5, Ionicons, MaterialCommunityIcons } from '@expo/vector-ico
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Animated, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Animated, Platform, Pressable, ScrollView, StyleSheet, Text, View, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import GeometricBackground from '@/components/GeometricBackground';
 import { useHealthData } from '@/hooks/useHealthData';
+import { syncHistoricalHealthData, type DaySyncResult } from '@/lib/api/onboardingSync';
 
 const GOLD = '#E8D200';
 const BG = '#0d0d0d';
@@ -75,12 +76,145 @@ const dotStyles = StyleSheet.create({
     dotInactive: { width: 5, backgroundColor: 'rgba(255,255,255,0.15)' },
 });
 
+// ── Day names for progress display ───────────────────────────────────────────
+
+function getDayName(dateStr: string): string {
+    const d = new Date(dateStr + 'T12:00:00');
+    return d.toLocaleDateString('en-US', { weekday: 'long' });
+}
+
+function formatDaySummary(day: DaySyncResult): string {
+    const parts: string[] = [];
+    if (day.steps >= 1000) {
+        parts.push(`${day.steps.toLocaleString()} steps`);
+    }
+    if (day.activities.length > 0) {
+        parts.push(day.activities.join(', '));
+    }
+    if (day.sleepHours > 0) {
+        parts.push(`${day.sleepHours}h sleep`);
+    }
+    if (parts.length === 0 && day.steps > 0) {
+        parts.push(`${day.steps.toLocaleString()} steps`);
+    }
+    return parts.length > 0 ? parts.join(' · ') : 'No activity';
+}
+
+// ── Sync progress row ────────────────────────────────────────────────────────
+
+function SyncDayRow({ day, index }: { day: DaySyncResult; index: number }) {
+    const fadeAnim = useRef(new Animated.Value(0)).current;
+    const slideAnim = useRef(new Animated.Value(10)).current;
+
+    useEffect(() => {
+        Animated.parallel([
+            Animated.timing(fadeAnim, { toValue: 1, duration: 350, delay: index * 80, useNativeDriver: true }),
+            Animated.timing(slideAnim, { toValue: 0, duration: 350, delay: index * 80, useNativeDriver: true }),
+        ]).start();
+    }, []);
+
+    const hasData = day.sessionCount > 0 || day.steps >= 1000;
+    const summary = formatDaySummary(day);
+
+    return (
+        <Animated.View style={[
+            syncStyles.dayRow,
+            { opacity: fadeAnim, transform: [{ translateY: slideAnim }] },
+        ]}>
+            <View style={[syncStyles.dayDot, hasData && syncStyles.dayDotActive]} />
+            <View style={syncStyles.dayInfo}>
+                <Text style={syncStyles.dayName}>{getDayName(day.date)}</Text>
+                <Text style={[syncStyles.daySummary, hasData && syncStyles.daySummaryActive]}>
+                    {summary}
+                </Text>
+            </View>
+            {hasData && (
+                <Ionicons name="checkmark-circle" size={16} color={GOLD} />
+            )}
+        </Animated.View>
+    );
+}
+
+const syncStyles = StyleSheet.create({
+    container: {
+        paddingHorizontal: 24,
+        paddingTop: 8,
+        gap: 4,
+    },
+    syncingLabel: {
+        color: 'rgba(255,255,255,0.35)',
+        fontSize: 10,
+        fontWeight: '500',
+        letterSpacing: 2,
+        textTransform: 'uppercase',
+        marginBottom: 8,
+        textAlign: 'center',
+    },
+    dayRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+        paddingVertical: 6,
+    },
+    dayDot: {
+        width: 6,
+        height: 6,
+        borderRadius: 3,
+        backgroundColor: 'rgba(255,255,255,0.12)',
+    },
+    dayDotActive: {
+        backgroundColor: GOLD,
+    },
+    dayInfo: {
+        flex: 1,
+    },
+    dayName: {
+        color: 'rgba(255,255,255,0.5)',
+        fontSize: 11,
+        fontWeight: '500',
+        letterSpacing: 0.5,
+    },
+    daySummary: {
+        color: 'rgba(255,255,255,0.2)',
+        fontSize: 10,
+        fontWeight: '300',
+        marginTop: 1,
+    },
+    daySummaryActive: {
+        color: 'rgba(255,255,255,0.4)',
+    },
+    doneCard: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
+        paddingVertical: 12,
+        marginTop: 8,
+    },
+    doneText: {
+        color: GOLD,
+        fontSize: 12,
+        fontWeight: '500',
+        letterSpacing: 0.5,
+    },
+});
+
 export default function OnboardingHealthScreen() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
     const health = useHealthData();
     const visibleSources = getVisibleSources();
     const [stepsToday, setStepsToday] = useState<number | null>(null);
+
+    // Sync state
+    const [syncing, setSyncing] = useState(false);
+    const [syncComplete, setSyncComplete] = useState(false);
+    const [syncedDays, setSyncedDays] = useState<DaySyncResult[]>([]);
+    const [syncResult, setSyncResult] = useState<{
+        totalSessions: number;
+        streakDays: number;
+        activeDates: string[];
+    } | null>(null);
 
     const headerFade = useRef(new Animated.Value(0)).current;
     const rowAnims = useRef(visibleSources.map(() => new Animated.Value(0))).current;
@@ -125,6 +259,61 @@ export default function OnboardingHealthScreen() {
         // Non-native sources (Whoop, Garmin, etc.) are not yet implemented
     }
 
+    async function handleContinue() {
+        // If health is connected and we haven't synced yet, trigger the sync
+        if (health.isAuthorized && !syncComplete && !syncing) {
+            setSyncing(true);
+            try {
+                console.log('[Onboarding] Starting historical health data sync...');
+                const weekData = await health.getWeekHistory();
+                console.log('[Onboarding] Got week history:', weekData.length, 'days');
+
+                const result = await syncHistoricalHealthData(weekData, (day, idx) => {
+                    setSyncedDays(prev => [...prev, day]);
+                });
+
+                setSyncResult(result);
+                setSyncComplete(true);
+
+                // Brief pause to let the user see the completed state
+                await new Promise(resolve => setTimeout(resolve, 1200));
+
+                // Navigate with sync results
+                router.push({
+                    pathname: '/onboarding-achievement',
+                    params: {
+                        streakDays: String(result.streakDays),
+                        totalSessions: String(result.totalSessions),
+                        activeDays: String(result.activeDates.length),
+                    },
+                });
+            } catch (err) {
+                console.error('[Onboarding] Sync failed:', err);
+                // On failure, still navigate — just without sync data
+                router.push('/onboarding-achievement');
+            } finally {
+                setSyncing(false);
+            }
+            return;
+        }
+
+        // If already synced or no health connected, navigate directly
+        if (syncResult) {
+            router.push({
+                pathname: '/onboarding-achievement',
+                params: {
+                    streakDays: String(syncResult.streakDays),
+                    totalSessions: String(syncResult.totalSessions),
+                    activeDays: String(syncResult.activeDates.length),
+                },
+            });
+        } else {
+            router.push('/onboarding-achievement');
+        }
+    }
+
+    const showSyncProgress = syncing || syncComplete;
+
     return (
         <View style={styles.container}>
             <GeometricBackground />
@@ -139,6 +328,7 @@ export default function OnboardingHealthScreen() {
             <Pressable
                 style={[styles.backButton, { top: insets.top + 14 }]}
                 onPress={() => {
+                    if (syncing) return; // don't navigate away during sync
                     if (router.canGoBack()) {
                         router.back();
                     } else {
@@ -146,8 +336,9 @@ export default function OnboardingHealthScreen() {
                     }
                 }}
                 hitSlop={24}
+                disabled={syncing}
             >
-                <Ionicons name="chevron-back" size={26} color="rgba(255,255,255,0.55)" />
+                <Ionicons name="chevron-back" size={26} color={syncing ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.55)'} />
             </Pressable>
 
             {/* Header */}
@@ -158,115 +349,155 @@ export default function OnboardingHealthScreen() {
                     <Text style={styles.headlineGold}>health data</Text>
                 </Text>
                 <Text style={styles.headerBody}>
-                    Connect the apps you already use. Verified workouts earn 2× points.
+                    {showSyncProgress
+                        ? 'Pulling your last 7 days of activity…'
+                        : 'Connect the apps you already use. Verified workouts earn 2× points.'
+                    }
                 </Text>
             </Animated.View>
 
-            {/* Source list */}
-            <ScrollView
-                style={styles.list}
-                contentContainerStyle={styles.listContent}
-                showsVerticalScrollIndicator={false}
-            >
-                {visibleSources.map((source, i) => {
-                    const isConnected = isNativeConnected(source);
-                    const isComingSoon = !source.native;
-                    return (
-                        <Animated.View
-                            key={source.id}
-                            style={{
-                                opacity: rowAnims[i],
-                                transform: [{
-                                    translateY: rowAnims[i].interpolate({
-                                        inputRange: [0, 1],
-                                        outputRange: [14, 0],
-                                    }),
-                                }],
-                            }}
-                        >
-                            <Pressable
-                                style={[
-                                    styles.sourceRow,
-                                    isConnected && styles.sourceRowConnected,
-                                    isComingSoon && styles.sourceRowDisabled,
-                                ]}
-                                onPress={() => handleConnect(source)}
-                                disabled={isComingSoon || health.requesting}
+            {/* Source list OR sync progress */}
+            {showSyncProgress ? (
+                <ScrollView
+                    style={styles.list}
+                    contentContainerStyle={syncStyles.container}
+                    showsVerticalScrollIndicator={false}
+                >
+                    {syncing && syncedDays.length === 0 && (
+                        <View style={syncStyles.doneCard}>
+                            <ActivityIndicator size="small" color={GOLD} />
+                            <Text style={syncStyles.syncingLabel}>READING HEALTH DATA...</Text>
+                        </View>
+                    )}
+                    {syncedDays.map((day, i) => (
+                        <SyncDayRow key={day.date} day={day} index={i} />
+                    ))}
+                    {syncComplete && syncResult && (
+                        <View style={syncStyles.doneCard}>
+                            <Ionicons name="checkmark-circle" size={18} color={GOLD} />
+                            <Text style={syncStyles.doneText}>
+                                {syncResult.totalSessions} sessions synced
+                                {syncResult.streakDays > 0 ? ` · ${syncResult.streakDays}-day streak` : ''}
+                            </Text>
+                        </View>
+                    )}
+                </ScrollView>
+            ) : (
+                <ScrollView
+                    style={styles.list}
+                    contentContainerStyle={styles.listContent}
+                    showsVerticalScrollIndicator={false}
+                >
+                    {visibleSources.map((source, i) => {
+                        const isConnected = isNativeConnected(source);
+                        const isComingSoon = !source.native;
+                        return (
+                            <Animated.View
+                                key={source.id}
+                                style={{
+                                    opacity: rowAnims[i],
+                                    transform: [{
+                                        translateY: rowAnims[i].interpolate({
+                                            inputRange: [0, 1],
+                                            outputRange: [14, 0],
+                                        }),
+                                    }],
+                                }}
                             >
-                                {/* Brand icon */}
-                                <View style={[styles.sourceIcon, isComingSoon && { opacity: 0.4 }]}>
-                                    <BrandIcon id={source.id} />
-                                </View>
+                                <Pressable
+                                    style={[
+                                        styles.sourceRow,
+                                        isConnected && styles.sourceRowConnected,
+                                        isComingSoon && styles.sourceRowDisabled,
+                                    ]}
+                                    onPress={() => handleConnect(source)}
+                                    disabled={isComingSoon || health.requesting}
+                                >
+                                    {/* Brand icon */}
+                                    <View style={[styles.sourceIcon, isComingSoon && { opacity: 0.4 }]}>
+                                        <BrandIcon id={source.id} />
+                                    </View>
 
-                                {/* Info */}
-                                <View style={styles.sourceInfo}>
-                                    <View style={styles.sourceNameRow}>
-                                        <Text style={[styles.sourceName, isComingSoon && { opacity: 0.4 }]}>
-                                            {source.name}
-                                        </Text>
-                                        {isConnected && (
-                                            <View style={styles.pointsBadge}>
-                                                <Text style={styles.pointsBadgeText}>2× PTS</Text>
-                                            </View>
+                                    {/* Info */}
+                                    <View style={styles.sourceInfo}>
+                                        <View style={styles.sourceNameRow}>
+                                            <Text style={[styles.sourceName, isComingSoon && { opacity: 0.4 }]}>
+                                                {source.name}
+                                            </Text>
+                                            {isConnected && (
+                                                <View style={styles.pointsBadge}>
+                                                    <Text style={styles.pointsBadgeText}>2× PTS</Text>
+                                                </View>
+                                            )}
+                                        </View>
+                                        {isComingSoon && (
+                                            <Text style={styles.comingSoonLabel}>Coming soon</Text>
+                                        )}
+                                        {source.native && !isConnected && (
+                                            <Text style={styles.sourceHint}>
+                                                {Platform.OS === 'android'
+                                                    ? 'Connects your Pixel Watch & phone data'
+                                                    : 'Connects your Apple Watch & phone data'}
+                                            </Text>
+                                        )}
+                                        {source.native && isConnected && stepsToday !== null && (
+                                            <Text style={styles.stepsLabel}>
+                                                {stepsToday.toLocaleString()} steps today
+                                            </Text>
                                         )}
                                     </View>
-                                    {isComingSoon && (
-                                        <Text style={styles.comingSoonLabel}>Coming soon</Text>
-                                    )}
-                                    {source.native && !isConnected && (
-                                        <Text style={styles.sourceHint}>
-                                            {Platform.OS === 'android'
-                                                ? 'Connects your Pixel Watch & phone data'
-                                                : 'Connects your Apple Watch & phone data'}
-                                        </Text>
-                                    )}
-                                    {source.native && isConnected && stepsToday !== null && (
-                                        <Text style={styles.stepsLabel}>
-                                            {stepsToday.toLocaleString()} steps today
-                                        </Text>
-                                    )}
-                                </View>
 
-                                {/* Connect / Connected / Coming Soon pill */}
-                                {isConnected ? (
-                                    <View style={styles.connectedPill}>
-                                        <MaterialCommunityIcons name="check" size={11} color="#FFFFFF" style={{ marginRight: 3 }} />
-                                        <Text style={[styles.pillLabel, { color: '#FFFFFF' }]}>CONNECTED</Text>
-                                    </View>
-                                ) : isComingSoon ? (
-                                    <View style={styles.comingSoonPill}>
-                                        <Text style={[styles.pillLabel, { color: 'rgba(255,255,255,0.2)' }]}>SOON</Text>
-                                    </View>
-                                ) : (
-                                    <View style={styles.connectPill}>
-                                        <Text style={[styles.pillLabel, { color: '#FFFFFF' }]}>
-                                            {health.requesting ? '...' : 'CONNECT'}
-                                        </Text>
-                                    </View>
-                                )}
-                            </Pressable>
-                        </Animated.View>
-                    );
-                })}
-            </ScrollView>
+                                    {/* Connect / Connected / Coming Soon pill */}
+                                    {isConnected ? (
+                                        <View style={styles.connectedPill}>
+                                            <MaterialCommunityIcons name="check" size={11} color="#FFFFFF" style={{ marginRight: 3 }} />
+                                            <Text style={[styles.pillLabel, { color: '#FFFFFF' }]}>CONNECTED</Text>
+                                        </View>
+                                    ) : isComingSoon ? (
+                                        <View style={styles.comingSoonPill}>
+                                            <Text style={[styles.pillLabel, { color: 'rgba(255,255,255,0.2)' }]}>SOON</Text>
+                                        </View>
+                                    ) : (
+                                        <View style={styles.connectPill}>
+                                            <Text style={[styles.pillLabel, { color: '#FFFFFF' }]}>
+                                                {health.requesting ? '...' : 'CONNECT'}
+                                            </Text>
+                                        </View>
+                                    )}
+                                </Pressable>
+                            </Animated.View>
+                        );
+                    })}
+                </ScrollView>
+            )}
 
             {/* Bottom */}
             <Animated.View style={[styles.bottom, { paddingBottom: insets.bottom + 32, opacity: buttonFade }]}>
                 <StepDots current={3} />
 
                 <Pressable
-                    style={styles.primaryButton}
-                    onPress={() => router.push('/onboarding-achievement')}
+                    style={[styles.primaryButton, syncing && { opacity: 0.7 }]}
+                    onPress={handleContinue}
+                    disabled={syncing}
                 >
-                    <Text style={styles.primaryLabel}>CONTINUE</Text>
+                    {syncing ? (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                            <ActivityIndicator size="small" color="#0a0a0a" />
+                            <Text style={styles.primaryLabel}>SYNCING YOUR DATA…</Text>
+                        </View>
+                    ) : (
+                        <Text style={styles.primaryLabel}>CONTINUE</Text>
+                    )}
                 </Pressable>
 
-                <Pressable
-                    style={styles.skipButton}
-                    onPress={() => router.push('/onboarding-achievement')}
-                >
-                    <Text style={styles.skipLabel}>Skip — connect later in settings</Text>
-                </Pressable>
+                {!syncing && !syncComplete && (
+                    <Pressable
+                        style={styles.skipButton}
+                        onPress={() => router.push('/onboarding-achievement')}
+                    >
+                        <Text style={styles.skipLabel}>Skip — connect later in settings</Text>
+                    </Pressable>
+                )}
             </Animated.View>
         </View>
     );
