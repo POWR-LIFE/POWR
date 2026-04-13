@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
-import { Plus, Edit2, Trash2, MapPin, Loader2, X, Search, Activity, ChevronRight, Globe, Satellite, Eye, Clock } from 'lucide-react';
+import { Plus, Edit2, Trash2, MapPin, Loader2, X, Search, Activity, ChevronRight, Globe, Satellite, Eye, Clock, User, Users } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 const DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
@@ -168,6 +168,286 @@ const LocationEditor = ({ locations, onChange }) => {
                         </div>
                     ))}
                 </div>
+            )}
+        </div>
+    );
+};
+
+// --- Trainers editor ---
+const BLANK_TRAINER = { name: '', photo_url: '', bio: '', specialties: '', experience: '', active: true, sort_order: 0 };
+
+const TrainersEditor = ({ partnerId, toast }) => {
+    const [trainers, setTrainers] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [editingTrainer, setEditingTrainer] = useState(null);
+    const [trainerForm, setTrainerForm] = useState(BLANK_TRAINER);
+    const [savingTrainer, setSavingTrainer] = useState(false);
+    const [formOpen, setFormOpen] = useState(false);
+    const [uploadingPhoto, setUploadingPhoto] = useState(false);
+
+    const fetchTrainers = async () => {
+        const { data } = await supabase
+            .from('trainers')
+            .select('*')
+            .eq('partner_id', partnerId)
+            .order('sort_order', { ascending: true });
+        setTrainers(data || []);
+        setLoading(false);
+    };
+
+    useEffect(() => { if (partnerId) fetchTrainers(); }, [partnerId]);
+
+    const openNewTrainer = () => {
+        setEditingTrainer(null);
+        setTrainerForm({ ...BLANK_TRAINER, sort_order: trainers.length });
+        setFormOpen(true);
+    };
+
+    const openEditTrainer = (t) => {
+        setEditingTrainer(t);
+        setTrainerForm({
+            name: t.name,
+            photo_url: t.photo_url || '',
+            bio: t.bio || '',
+            specialties: (t.specialties || []).join(', '),
+            experience: t.experience || '',
+            active: t.active,
+            sort_order: t.sort_order ?? 0,
+        });
+        setFormOpen(true);
+    };
+
+    const cancelTrainerEdit = () => {
+        setEditingTrainer(null);
+        setTrainerForm(BLANK_TRAINER);
+        setFormOpen(false);
+    };
+
+    const handlePhotoUpload = async (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        if (!file.type.startsWith('image/')) { toast.error('Please select an image file'); return; }
+        setUploadingPhoto(true);
+        try {
+            const ext = file.name.split('.').pop();
+            const filePath = `${partnerId}/${Date.now()}.${ext}`;
+            const { error: uploadError } = await supabase.storage
+                .from('trainer-photos')
+                .upload(filePath, file, { upsert: true });
+            if (uploadError) throw uploadError;
+            const { data: urlData } = supabase.storage.from('trainer-photos').getPublicUrl(filePath);
+            setTrainerForm(prev => ({ ...prev, photo_url: urlData.publicUrl }));
+            toast.success('Photo uploaded');
+        } catch (err) {
+            toast.error('Upload failed: ' + err.message);
+        }
+        setUploadingPhoto(false);
+    };
+
+    const handleSaveTrainer = async () => {
+        if (!trainerForm.name.trim()) { toast.error('Trainer name is required'); return; }
+        setSavingTrainer(true);
+        const payload = {
+            partner_id: partnerId,
+            name: trainerForm.name.trim(),
+            photo_url: trainerForm.photo_url || null,
+            bio: trainerForm.bio || null,
+            specialties: trainerForm.specialties ? trainerForm.specialties.split(',').map(s => s.trim()).filter(Boolean) : null,
+            experience: trainerForm.experience || null,
+            active: trainerForm.active,
+            sort_order: parseInt(trainerForm.sort_order) || 0,
+        };
+        const { error } = editingTrainer
+            ? await supabase.from('trainers').update(payload).eq('id', editingTrainer.id)
+            : await supabase.from('trainers').insert([payload]);
+        if (error) toast.error(error.message);
+        else {
+            toast.success(editingTrainer ? 'Trainer updated' : 'Trainer added');
+            setEditingTrainer(null);
+            setTrainerForm(BLANK_TRAINER);
+            setFormOpen(false);
+            fetchTrainers();
+        }
+        setSavingTrainer(false);
+    };
+
+    const handleDeleteTrainer = async (id) => {
+        const { error } = await supabase.from('trainers').delete().eq('id', id);
+        if (error) toast.error(error.message);
+        else { toast.success('Trainer removed'); fetchTrainers(); }
+    };
+
+    return (
+        <div className="space-y-6">
+            {/* Header */}
+            <div className="flex justify-between items-center">
+                <label className="text-[10px] uppercase tracking-[0.4em] text-[#71717A] font-black flex items-center gap-3">
+                    <Users size={14} className="text-[#E8D200]" /> Personal Trainers
+                </label>
+                <button
+                    type="button"
+                    onClick={openNewTrainer}
+                    className="text-[9px] uppercase tracking-[0.3em] font-black text-[#333] hover:text-[#E8D200] transition-colors flex items-center gap-2"
+                >
+                    <Plus size={12} /> Add Trainer
+                </button>
+            </div>
+
+            {loading ? (
+                <div className="p-8 text-center">
+                    <div className="w-8 h-8 border-2 border-[#E8D200]/20 border-t-[#E8D200] rounded-full animate-spin mx-auto" />
+                </div>
+            ) : (
+                <>
+                    {/* Existing trainers list */}
+                    {trainers.length === 0 && !formOpen && (
+                        <button
+                            type="button"
+                            onClick={openNewTrainer}
+                            className="w-full py-8 border border-dashed border-[#151515] rounded-[2rem] text-[10px] uppercase tracking-[0.4em] text-[#444] font-black hover:border-[#E8D200]/30 hover:text-[#E8D200] transition-all"
+                        >
+                            + Add Personal Trainer
+                        </button>
+                    )}
+
+                    {trainers.map(t => (
+                        <div key={t.id} className="flex items-center gap-6 bg-[#0A0A0A] border border-[#151515] rounded-2xl px-6 py-4 group/trainer">
+                            {/* Photo */}
+                            <div className="w-12 h-12 rounded-full bg-[#050505] border border-[#151515] flex items-center justify-center shrink-0 overflow-hidden">
+                                {t.photo_url ? (
+                                    <img src={t.photo_url} className="w-full h-full object-cover rounded-full" alt="" />
+                                ) : (
+                                    <User size={18} className="text-[#151515]" />
+                                )}
+                            </div>
+                            {/* Info */}
+                            <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-3">
+                                    <span className="text-sm font-bold text-[#DDD]">{t.name}</span>
+                                    <div className={`h-1.5 w-1.5 rounded-full ${t.active ? 'bg-[#10B981]' : 'bg-[#333]'}`} />
+                                </div>
+                                <p className="text-[10px] text-[#555] font-bold uppercase tracking-wider truncate mt-0.5">
+                                    {[t.experience, ...(t.specialties || [])].filter(Boolean).join(' · ') || 'No details'}
+                                </p>
+                            </div>
+                            {/* Actions */}
+                            <div className="flex gap-2 opacity-0 group-hover/trainer:opacity-100 transition-all">
+                                <button type="button" onClick={() => openEditTrainer(t)} className="w-9 h-9 flex items-center justify-center text-[#555] hover:text-[#E8D200] hover:bg-[#E8D200]/5 rounded-xl transition-all">
+                                    <Edit2 size={14} />
+                                </button>
+                                <button type="button" onClick={() => handleDeleteTrainer(t.id)} className="w-9 h-9 flex items-center justify-center text-[#555] hover:text-red-500 hover:bg-red-500/5 rounded-xl transition-all">
+                                    <Trash2 size={14} />
+                                </button>
+                            </div>
+                        </div>
+                    ))}
+
+                    {/* Inline form */}
+                    {formOpen && (
+                        <div className="bg-[#070707] border border-[#151515] rounded-3xl p-8 space-y-6 animate-in fade-in slide-in-from-top-4 duration-500">
+                            <div className="flex items-center justify-between pb-4 border-b border-[#111]">
+                                <span className="text-[10px] uppercase tracking-[0.4em] text-[#444] font-black">
+                                    {editingTrainer ? 'Edit Trainer' : 'New Trainer'}
+                                </span>
+                                <button type="button" onClick={cancelTrainerEdit} className="w-8 h-8 flex items-center justify-center text-[#333] hover:text-[#888] rounded-lg transition-all">
+                                    <X size={14} />
+                                </button>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="space-y-3">
+                                    <label className="block text-[8px] uppercase tracking-[0.5em] text-[#555] font-black ml-2">Name</label>
+                                    <input
+                                        type="text"
+                                        placeholder="e.g. Sarah Johnson"
+                                        className="w-full h-14 px-6 bg-[#0A0A0A] border border-[#151515] rounded-2xl text-[13px] font-bold text-[#F2F2F2] placeholder-[#222] focus:border-[#E8D200]/40 outline-none transition-all"
+                                        value={trainerForm.name}
+                                        onChange={e => setTrainerForm({ ...trainerForm, name: e.target.value })}
+                                    />
+                                </div>
+                                <div className="space-y-3">
+                                    <label className="block text-[8px] uppercase tracking-[0.5em] text-[#555] font-black ml-2">Photo</label>
+                                    <div className="flex items-center gap-4">
+                                        {/* Preview */}
+                                        <div className="w-14 h-14 rounded-full bg-[#050505] border border-[#151515] flex items-center justify-center shrink-0 overflow-hidden">
+                                            {trainerForm.photo_url ? (
+                                                <img src={trainerForm.photo_url} className="w-full h-full object-cover rounded-full" alt="" />
+                                            ) : (
+                                                <User size={20} className="text-[#151515]" />
+                                            )}
+                                        </div>
+                                        {/* Upload button */}
+                                        <label className={`flex-1 h-14 flex items-center justify-center gap-3 bg-[#0A0A0A] border border-[#151515] rounded-2xl text-[10px] font-black uppercase tracking-[0.3em] cursor-pointer transition-all hover:border-[#E8D200]/40 hover:text-[#E8D200] ${uploadingPhoto ? 'opacity-50 pointer-events-none' : 'text-[#555]'}`}>
+                                            {uploadingPhoto ? (
+                                                <><div className="w-4 h-4 border-2 border-[#E8D200]/20 border-t-[#E8D200] rounded-full animate-spin" /> Uploading...</>
+                                            ) : (
+                                                <>{trainerForm.photo_url ? 'Change Photo' : 'Upload Photo'}</>
+                                            )}
+                                            <input type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} disabled={uploadingPhoto} />
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="space-y-3">
+                                <label className="block text-[8px] uppercase tracking-[0.5em] text-[#555] font-black ml-2">Bio</label>
+                                <textarea
+                                    placeholder="Short bio (2-3 sentences)..."
+                                    rows={2}
+                                    className="w-full px-6 py-4 bg-[#0A0A0A] border border-[#151515] rounded-2xl text-[13px] text-[#888] placeholder-[#222] focus:border-[#E8D200]/40 outline-none transition-all resize-none"
+                                    value={trainerForm.bio}
+                                    onChange={e => setTrainerForm({ ...trainerForm, bio: e.target.value })}
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="space-y-3">
+                                    <label className="block text-[8px] uppercase tracking-[0.5em] text-[#555] font-black ml-2">Specialties</label>
+                                    <input
+                                        type="text"
+                                        placeholder="e.g. Strength, HIIT, Yoga"
+                                        className="w-full h-14 px-6 bg-[#0A0A0A] border border-[#151515] rounded-2xl text-[13px] font-bold text-[#F2F2F2] placeholder-[#222] focus:border-[#E8D200]/40 outline-none transition-all"
+                                        value={trainerForm.specialties}
+                                        onChange={e => setTrainerForm({ ...trainerForm, specialties: e.target.value })}
+                                    />
+                                </div>
+                                <div className="space-y-3">
+                                    <label className="block text-[8px] uppercase tracking-[0.5em] text-[#555] font-black ml-2">Experience</label>
+                                    <input
+                                        type="text"
+                                        placeholder="e.g. 8 years / Level 3 Certified"
+                                        className="w-full h-14 px-6 bg-[#0A0A0A] border border-[#151515] rounded-2xl text-[13px] font-bold text-[#F2F2F2] placeholder-[#222] focus:border-[#E8D200]/40 outline-none transition-all"
+                                        value={trainerForm.experience}
+                                        onChange={e => setTrainerForm({ ...trainerForm, experience: e.target.value })}
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="flex items-center gap-6 bg-[#0A0A0A] border border-[#151515] rounded-2xl px-6 py-4">
+                                <button
+                                    type="button"
+                                    onClick={() => setTrainerForm({ ...trainerForm, active: !trainerForm.active })}
+                                    className={`w-9 h-5 rounded-full transition-all relative shrink-0 ${trainerForm.active ? 'bg-[#10B981]' : 'bg-[#151515]'}`}
+                                >
+                                    <span className={`absolute top-0.5 w-4 h-4 rounded-full transition-all ${trainerForm.active ? 'left-4 bg-[#080808]' : 'left-0.5 bg-[#333]'}`} />
+                                </button>
+                                <span className="text-[10px] uppercase tracking-[0.4em] text-[#71717A] font-black">Visible on Discover</span>
+                            </div>
+
+                            <div className="flex justify-end gap-4 pt-4">
+                                <button type="button" onClick={cancelTrainerEdit} className="h-12 px-8 text-[10px] uppercase tracking-[0.3em] font-black text-[#666] hover:text-[#888] transition-colors">Cancel</button>
+                                <button
+                                    type="button"
+                                    onClick={handleSaveTrainer}
+                                    disabled={savingTrainer}
+                                    className="h-12 px-10 bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.3em] rounded-full transition-all hover:translate-y-[-2px] shadow-lg shadow-[#E8D200]/20 disabled:opacity-50"
+                                >
+                                    {savingTrainer ? 'SAVING...' : editingTrainer ? 'UPDATE' : 'ADD TRAINER'}
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                </>
             )}
         </div>
     );
@@ -511,6 +791,13 @@ export default function PartnerManager() {
                                     </button>
                                 )}
                             </div>
+
+                            {/* Trainers — only for existing partners */}
+                            {editingPartner && (
+                                <div className="space-y-6 mt-12">
+                                    <TrainersEditor partnerId={editingPartner.id} toast={toast} />
+                                </div>
+                            )}
 
                             <div className="flex justify-end gap-6 pt-12 border-t border-[#151515]">
                                 <button type="button" onClick={() => setIsModalOpen(false)} className="h-16 px-12 text-[11px] uppercase tracking-[0.4em] font-black text-[#666] hover:text-[#888] transition-colors">Abort Mission</button>

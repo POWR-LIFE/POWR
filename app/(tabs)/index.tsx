@@ -7,11 +7,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ActivityFeed } from '@/components/home/ActivityFeed';
 import { ChallengeCard } from '@/components/home/ChallengeCard';
+import { GettingStartedCard } from '@/components/home/GettingStartedCard';
+import { HealthConnectCard } from '@/components/home/HealthConnectCard';
 import { StreakCard } from '@/components/home/StreakCard';
 import { WalkingProgressCard } from '@/components/home/WalkingProgressCard';
 import { useAuth } from '@/context/AuthContext';
 import { useActivity } from '@/hooks/useActivity';
 import { useActiveGeofence } from '@/hooks/useActiveGeofence';
+import { useHealthData } from '@/hooks/useHealthData';
 import { usePoints } from '@/hooks/usePoints';
 import { useStreak } from '@/hooks/useStreak';
 import { useWalkingProgress } from '@/hooks/useWalkingProgress';
@@ -325,15 +328,24 @@ export default function HomeScreen() {
     const router = useRouter();
     const { user } = useAuth();
     const { currentStreak, multiplier, refresh: refreshStreak } = useStreak();
-    const { recentItems, weekActiveDays, weeklyMetrics, refresh: refreshActivity } = useActivity();
+    const { recentItems, weekActiveDays, weeklyMetrics, dailyMetrics, refresh: refreshActivity } = useActivity();
     const { totalEarned, weeklyEarned, refresh: refreshPoints } = usePoints();
     const { activeGeofence, sessionCompleted, clearSessionCompleted } = useActiveGeofence();
     const walking = useWalkingProgress();
+    const health = useHealthData();
 
     const [sessionModalVisible, setSessionModalVisible] = useState(false);
     const [bottomTab, setBottomTab] = useState<BottomTab>('challenge');
     const [elapsedStr, setElapsedStr] = useState('0m 00s');
     const [activePrefs, setActivePrefs] = useState<ActivityType[]>(['gym', 'running', 'walking']);
+    const [healthCardDismissed, setHealthCardDismissed] = useState(false);
+
+    // New user detection: no points earned and no recent activity
+    const isNewUser = totalEarned === 0 && recentItems.length === 0;
+    // Show health nudge if health is available but not connected (and not dismissed)
+    const showHealthNudge = health.isAvailable && !health.isAuthorized && !healthCardDismissed;
+    // Total activities this week for the getting started card
+    const weekActivityCount = weekActiveDays.filter(Boolean).length;
 
     // Derived session state — re-computed every second via elapsedStr re-renders
     const DWELL_MS = 20 * 60 * 1000;
@@ -430,10 +442,10 @@ export default function HomeScreen() {
     const prefs = activePrefs;
 
     function buildMetric(type: ActivityType, idx: number) {
-        const config = ACTIVITIES[type];
-        // Walking uses step count instead of session count
+        const config = ACTIVITIES[type] ?? ACTIVITIES.walking;
+        const daily = { perType: dailyMetrics?.perType ?? {}, stepsToday: dailyMetrics?.stepsToday ?? 0 };
         if (type === 'walking') {
-            const steps = weeklyMetrics.totalSteps;
+            const steps = daily.stepsToday;
             return {
                 label: 'Steps',
                 icon: config.iconActive,
@@ -447,15 +459,14 @@ export default function HomeScreen() {
                 gradEnd: config.colour,
             };
         }
-        const count = weeklyMetrics.perType[type] ?? 0;
-        const weeklyGoal = 5;
+        const count = daily.perType[type] ?? 0;
         return {
             label: config.labelShort,
             icon: config.iconActive,
             iconLib: config.iconLib,
             value: String(count),
-            max: String(weeklyGoal),
-            pct: Math.min(count / weeklyGoal, 1),
+            max: '1',
+            pct: Math.min(count, 1),
             colour: config.colour,
             gradId: `h-g${idx}`,
             gradStart: config.colour,
@@ -512,7 +523,18 @@ export default function HomeScreen() {
                     currentLevel={levelInfo}
                 />
 
-{walking.isAvailable && (
+                {showHealthNudge && (
+                    <>
+                        <Text style={styles.sectionLabel}>CONNECT HEALTH</Text>
+                        <HealthConnectCard
+                            onConnect={() => health.requestPermissions()}
+                            onDismiss={() => setHealthCardDismissed(true)}
+                            requesting={health.requesting}
+                        />
+                    </>
+                )}
+
+                {walking.isAvailable && !showHealthNudge && (
                     <>
                         <Text style={styles.sectionLabel}>TODAY'S STEPS</Text>
                         <WalkingProgressCard progress={walking} />
@@ -524,23 +546,31 @@ export default function HomeScreen() {
                     <TabBar active={bottomTab} onChange={setBottomTab} />
 
                     {bottomTab === 'challenge' && (
-                        <ChallengeCard
-                            title="Early Bird"
-                            description="Gym or run before 12pm — triple points + 150 XP"
-                            bonus="3× BONUS"
-                            expiresIn="4h 22m"
-                            imageUri="https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/landing-page-assets/run_landing_page.png"
-                        />
+                        isNewUser ? (
+                            <GettingStartedCard
+                                completedCount={weekActivityCount}
+                                onFindGym={() => router.push('/(tabs)/discover')}
+                                onLogWorkout={() => router.push('/manual-log')}
+                            />
+                        ) : (
+                            <ChallengeCard
+                                title="Early Bird"
+                                description="Gym or run before 12pm — triple points + 150 XP"
+                                bonus="3× BONUS"
+                                expiresIn="4h 22m"
+                                imageUri="https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/landing-page-assets/run_landing_page.png"
+                            />
+                        )
                     )}
 
                     {bottomTab === 'rewards' && <WeeklyRewardTeaser />}
 
                     {bottomTab === 'activity' && (
                         <View style={{ gap: 8 }}>
-                            <DailyActivityCard 
-                                completed={weekActiveDays[TODAY_INDEX]} 
+                            <DailyActivityCard
+                                completed={weekActiveDays[TODAY_INDEX]}
                             />
-                            <ActivityFeed items={recentItems} />
+                            <ActivityFeed items={recentItems} isNewUser={isNewUser} />
                         </View>
                     )}
                 </View>

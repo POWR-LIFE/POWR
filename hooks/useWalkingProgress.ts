@@ -31,22 +31,29 @@ export function useWalkingProgress(): WalkingProgressState {
     const appState = useRef(AppState.currentState);
 
     const load = useCallback(async () => {
-        if (!health.isAvailable || !health.isAuthorized) {
+        if (!health.isAvailable) {
             setLoading(false);
             return;
         }
         setLoading(true);
         try {
-            // Sync to Supabase then read both sources
-            await syncWalkingNow();
-            const [steps, session] = await Promise.all([
-                getStepsToday(),
-                getTodayHealthWalkingSession(),
-            ]);
-            setStepsToday(steps);
-            setPointsEarned(session?.points ?? 0);
-        } catch {
-            // Silently fail — health data is best-effort
+            // Try reading steps first — Health Connect may work even if
+            // our permission check returned false (race on init).
+            const steps = await getStepsToday();
+            if (steps > 0) {
+                // Steps readable → sync to Supabase
+                await syncWalkingNow();
+                const session = await getTodayHealthWalkingSession();
+                setStepsToday(steps);
+                setPointsEarned(session?.points ?? 0);
+            } else if (health.isAuthorized) {
+                // Authorized but 0 steps — read the DB session anyway
+                const session = await getTodayHealthWalkingSession();
+                setStepsToday(0);
+                setPointsEarned(session?.points ?? 0);
+            }
+        } catch (e) {
+            console.warn('[WalkingProgress] sync failed:', e);
         } finally {
             setLoading(false);
         }

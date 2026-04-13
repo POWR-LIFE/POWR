@@ -25,12 +25,38 @@ interface ActivityFeedProps {
   items: ActivityFeedItem[];
 }
 
-export function ActivityFeed({ items }: ActivityFeedProps) {
+export function ActivityFeed({ items, isNewUser }: ActivityFeedProps & { isNewUser?: boolean }) {
   if (items.length === 0) {
     return (
       <View style={[styles.emptyCard, { height: 200 }]}>
-        <Text style={styles.emptyText}>No activity yet this week</Text>
-        <Text style={styles.emptyHint}>Tap + to log your first session</Text>
+        <View style={styles.emptyIconWrap}>
+          <Ionicons name={isNewUser ? 'rocket-outline' : 'barbell-outline'} size={28} color={GOLD} />
+        </View>
+        <Text style={styles.emptyText}>
+          {isNewUser ? 'Ready to start earning?' : 'No activity yet this week'}
+        </Text>
+        <Text style={styles.emptyHint}>
+          {isNewUser
+            ? 'Visit a partner gym, go for a walk, or log a workout to earn your first points'
+            : 'Tap + to log your first session'
+          }
+        </Text>
+        {isNewUser && (
+          <View style={styles.emptyBenefits}>
+            <View style={styles.emptyBenefitRow}>
+              <Ionicons name="location" size={11} color={GOLD} />
+              <Text style={styles.emptyBenefitText}>Gym check-in = auto points</Text>
+            </View>
+            <View style={styles.emptyBenefitRow}>
+              <Ionicons name="footsteps" size={11} color={GOLD} />
+              <Text style={styles.emptyBenefitText}>Steps tracked = passive points</Text>
+            </View>
+            <View style={styles.emptyBenefitRow}>
+              <Ionicons name="create-outline" size={11} color={GOLD} />
+              <Text style={styles.emptyBenefitText}>Manual log = 80% base points</Text>
+            </View>
+          </View>
+        )}
       </View>
     );
   }
@@ -81,5 +107,34 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '300',
     color: MUTED,
+    textAlign: 'center',
+    paddingHorizontal: 16,
+    lineHeight: 16,
+  },
+  emptyIconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(232,210,0,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(232,210,0,0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  emptyBenefits: {
+    gap: 4,
+    marginTop: 8,
+    alignItems: 'flex-start',
+  },
+  emptyBenefitRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  emptyBenefitText: {
+    fontSize: 10,
+    fontWeight: '300',
+    color: DIM,
   },
 });
