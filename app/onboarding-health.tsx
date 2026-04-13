@@ -2,7 +2,7 @@ import { FontAwesome5, Ionicons, MaterialCommunityIcons } from '@expo/vector-ico
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Animated, Platform, Pressable, ScrollView, StyleSheet, Text, View, ActivityIndicator } from 'react-native';
+import { Animated, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import GeometricBackground from '@/components/GeometricBackground';
 import { useHealthData } from '@/hooks/useHealthData';
@@ -312,6 +312,8 @@ export default function OnboardingHealthScreen() {
         }
     }
 
+    const [showSkipModal, setShowSkipModal] = useState(false);
+
     const showSyncProgress = syncing || syncComplete;
 
     return (
@@ -493,12 +495,79 @@ export default function OnboardingHealthScreen() {
                 {!syncing && !syncComplete && (
                     <Pressable
                         style={styles.skipButton}
-                        onPress={() => router.push('/onboarding-achievement')}
+                        onPress={() => setShowSkipModal(true)}
                     >
                         <Text style={styles.skipLabel}>Skip — connect later in settings</Text>
                     </Pressable>
                 )}
             </Animated.View>
+
+            {/* Skip confirmation modal */}
+            <Modal
+                visible={showSkipModal}
+                animationType="slide"
+                transparent
+                onRequestClose={() => setShowSkipModal(false)}
+            >
+                <View style={skipModalStyles.overlay}>
+                    <View style={[skipModalStyles.sheet, { paddingBottom: insets.bottom + 24 }]}>
+                        <View style={skipModalStyles.handle} />
+
+                        <View style={skipModalStyles.iconRow}>
+                            <View style={skipModalStyles.iconWrap}>
+                                <Ionicons name="information-circle" size={24} color={GOLD} />
+                            </View>
+                        </View>
+
+                        <Text style={skipModalStyles.title}>You'll miss out on</Text>
+
+                        <View style={skipModalStyles.benefits}>
+                            <View style={skipModalStyles.benefitRow}>
+                                <Ionicons name="footsteps" size={16} color={GOLD} />
+                                <View style={skipModalStyles.benefitInfo}>
+                                    <Text style={skipModalStyles.benefitTitle}>Auto step tracking</Text>
+                                    <Text style={skipModalStyles.benefitDesc}>Earn points passively just by walking</Text>
+                                </View>
+                            </View>
+                            <View style={skipModalStyles.benefitRow}>
+                                <Ionicons name="shield-checkmark" size={16} color={GOLD} />
+                                <View style={skipModalStyles.benefitInfo}>
+                                    <Text style={skipModalStyles.benefitTitle}>2× verified workout points</Text>
+                                    <Text style={skipModalStyles.benefitDesc}>Health-verified sessions earn double</Text>
+                                </View>
+                            </View>
+                            <View style={skipModalStyles.benefitRow}>
+                                <Ionicons name="analytics" size={16} color={GOLD} />
+                                <View style={skipModalStyles.benefitInfo}>
+                                    <Text style={skipModalStyles.benefitTitle}>Sleep & recovery insights</Text>
+                                    <Text style={skipModalStyles.benefitDesc}>Track your full wellness picture</Text>
+                                </View>
+                            </View>
+                        </View>
+
+                        <Text style={skipModalStyles.reassurance}>
+                            You can still earn points through gym check-ins and manual logging. Connect health data anytime from Settings.
+                        </Text>
+
+                        <Pressable
+                            style={({ pressed }) => [skipModalStyles.connectBtn, pressed && { opacity: 0.8 }]}
+                            onPress={() => setShowSkipModal(false)}
+                        >
+                            <Text style={skipModalStyles.connectBtnText}>CONNECT NOW</Text>
+                        </Pressable>
+
+                        <Pressable
+                            style={skipModalStyles.skipBtn}
+                            onPress={() => {
+                                setShowSkipModal(false);
+                                router.push('/onboarding-achievement');
+                            }}
+                        >
+                            <Text style={skipModalStyles.skipBtnText}>Continue without connecting</Text>
+                        </Pressable>
+                    </View>
+                </View>
+            </Modal>
         </View>
     );
 }
@@ -668,5 +737,101 @@ const styles = StyleSheet.create({
         fontSize: 12,
         fontWeight: '300',
         letterSpacing: 0.2,
+    },
+});
+
+const skipModalStyles = StyleSheet.create({
+    overlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.6)',
+        justifyContent: 'flex-end',
+    },
+    sheet: {
+        backgroundColor: '#121212',
+        borderTopLeftRadius: 24,
+        borderTopRightRadius: 24,
+        paddingHorizontal: 24,
+        paddingTop: 12,
+        gap: 16,
+    },
+    handle: {
+        width: 40,
+        height: 4,
+        backgroundColor: 'rgba(255,255,255,0.2)',
+        borderRadius: 2,
+        alignSelf: 'center',
+        marginBottom: 8,
+    },
+    iconRow: {
+        alignItems: 'center',
+    },
+    iconWrap: {
+        width: 48,
+        height: 48,
+        borderRadius: 24,
+        backgroundColor: 'rgba(232,210,0,0.08)',
+        borderWidth: 1,
+        borderColor: 'rgba(232,210,0,0.2)',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    title: {
+        fontSize: 22,
+        fontWeight: '200',
+        color: '#F2F2F2',
+        letterSpacing: -0.5,
+        textAlign: 'center',
+    },
+    benefits: {
+        gap: 14,
+    },
+    benefitRow: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        gap: 12,
+        paddingVertical: 2,
+    },
+    benefitInfo: {
+        flex: 1,
+        gap: 2,
+    },
+    benefitTitle: {
+        fontSize: 14,
+        fontWeight: '400',
+        color: '#F2F2F2',
+    },
+    benefitDesc: {
+        fontSize: 11,
+        fontWeight: '300',
+        color: 'rgba(255,255,255,0.4)',
+    },
+    reassurance: {
+        fontSize: 12,
+        fontWeight: '300',
+        color: 'rgba(255,255,255,0.3)',
+        textAlign: 'center',
+        lineHeight: 18,
+    },
+    connectBtn: {
+        height: 48,
+        borderRadius: 24,
+        backgroundColor: GOLD,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    connectBtnText: {
+        fontSize: 12,
+        fontWeight: '700',
+        letterSpacing: 1.5,
+        color: '#0a0a0a',
+    },
+    skipBtn: {
+        alignItems: 'center',
+        paddingVertical: 8,
+    },
+    skipBtnText: {
+        fontSize: 13,
+        fontWeight: '300',
+        color: 'rgba(255,255,255,0.3)',
     },
 });

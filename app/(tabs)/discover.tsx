@@ -19,7 +19,8 @@ import MapViewDirections from 'react-native-maps-directions';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ProfileButton } from '@/components/ProfileButton';
 import { useActiveGeofence } from '@/hooks/useActiveGeofence';
-import { useGeofenceContext, type Partner, type DayKey, type DayHours, type OpeningHours } from '@/context/GeofenceContext';
+import { useGeofenceContext, type Partner, type Trainer, type DayKey, type DayHours, type OpeningHours } from '@/context/GeofenceContext';
+import { supabase } from '@/lib/supabase';
 import { GeometricBackground } from '@/components/home/GeometricBackground';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
@@ -123,8 +124,29 @@ export default function DiscoverScreen() {
   const [filtersVisible, setFiltersVisible] = useState(false);
   const [sortMenuVisible, setSortMenuVisible] = useState(false);
 
+  const [trainers, setTrainers] = useState<Trainer[]>([]);
+
   const { partners: rawPartners } = useGeofenceContext();
   const { activeGeofence } = useActiveGeofence();
+
+  // Fetch trainers when a gym partner is selected
+  useEffect(() => {
+    if (!selectedPartner || selectedPartner.category.toLowerCase() !== 'gym') {
+      setTrainers([]);
+      return;
+    }
+    // partner id may have location suffix (e.g. "uuid-0"), extract base uuid
+    const baseId = selectedPartner.id.replace(/-\d+$/, '');
+    (async () => {
+      const { data } = await supabase
+        .from('trainers')
+        .select('*')
+        .eq('partner_id', baseId)
+        .eq('active', true)
+        .order('sort_order', { ascending: true });
+      setTrainers(data ?? []);
+    })();
+  }, [selectedPartner]);
 
   // Attach distances and sort
   const partners = useMemo(() => {
@@ -484,6 +506,45 @@ export default function DiscoverScreen() {
                   {selectedPartner.description ? (
                     <Text style={styles.description}>{selectedPartner.description}</Text>
                   ) : null}
+
+                  {/* Trainers */}
+                  {trainers.length > 0 && (
+                    <View style={styles.trainersSection}>
+                      <View style={styles.trainersDivider} />
+                      <Text style={styles.trainersSectionTitle}>Personal Trainers</Text>
+                      {trainers.map(t => (
+                        <View key={t.id} style={styles.trainerCard}>
+                          <View style={styles.trainerPhotoRing}>
+                            <View style={styles.trainerPhoto}>
+                              {t.photo_url ? (
+                                <Image source={{ uri: t.photo_url }} style={styles.trainerPhotoImg} contentFit="cover" />
+                              ) : (
+                                <Ionicons name="person-outline" size={26} color="rgba(255,255,255,0.12)" />
+                              )}
+                            </View>
+                          </View>
+                          <View style={styles.trainerInfo}>
+                            <Text style={styles.trainerName}>{t.name}</Text>
+                            {t.experience ? (
+                              <Text style={styles.trainerExperience}>{t.experience}</Text>
+                            ) : null}
+                            {t.specialties && t.specialties.length > 0 && (
+                              <View style={styles.trainerChips}>
+                                {t.specialties.map(s => (
+                                  <View key={s} style={styles.trainerChip}>
+                                    <Text style={styles.trainerChipText}>{s}</Text>
+                                  </View>
+                                ))}
+                              </View>
+                            )}
+                            {t.bio ? (
+                              <Text style={styles.trainerBio} numberOfLines={2}>{t.bio}</Text>
+                            ) : null}
+                          </View>
+                        </View>
+                      ))}
+                    </View>
+                  )}
 
                   <Pressable
                     style={({ pressed }) => [styles.actionButton, pressed && styles.actionButtonPressed]}
@@ -849,6 +910,44 @@ const styles = StyleSheet.create({
     minWidth: 58,
   },
   rewardPillText: { fontSize: 13, color: GOLD, fontWeight: '600' },
+
+  // Trainer cards
+  trainersSection: { gap: 12, marginTop: 12 },
+  trainersDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    marginBottom: 4,
+  },
+  trainersSectionTitle: {
+    fontSize: 13, fontWeight: '300', letterSpacing: 1.5, color: MUTED,
+    textTransform: 'uppercase', marginBottom: 4,
+  },
+  trainerCard: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 14,
+    backgroundColor: 'rgba(255,255,255,0.03)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)',
+    borderRadius: 16, padding: 16,
+  },
+  trainerPhotoRing: {
+    width: 68, height: 68, borderRadius: 34,
+    borderWidth: 1.5, borderColor: 'rgba(232,210,0,0.3)',
+    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+  },
+  trainerPhoto: {
+    width: 62, height: 62, borderRadius: 31,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+  },
+  trainerPhotoImg: { width: 62, height: 62, borderRadius: 31 },
+  trainerInfo: { flex: 1, gap: 5, paddingTop: 2 },
+  trainerName: { fontSize: 16, fontWeight: '500', color: TEXT, letterSpacing: 0.2 },
+  trainerExperience: { fontSize: 12, fontWeight: '300', color: DIM },
+  trainerChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 2 },
+  trainerChip: {
+    paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12,
+    backgroundColor: 'rgba(232,210,0,0.08)',
+  },
+  trainerChipText: { fontSize: 11, fontWeight: '500', color: GOLD },
+  trainerBio: { fontSize: 13, fontWeight: '300', color: DIM, lineHeight: 19, marginTop: 3 },
 
   actionButton: {
     backgroundColor: GOLD, paddingVertical: 14, borderRadius: 14,

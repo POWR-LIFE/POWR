@@ -31,6 +31,7 @@ const DAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 type PillConfig = { label: string; dotColor: string };
 
 function getStreakPill(streak: number): PillConfig {
+  if (streak === 0)  return { label: 'START TODAY',  dotColor: GOLD };
   if (streak < 3)    return { label: 'WARMING UP',  dotColor: 'rgba(255,255,255,0.55)' };
   if (streak < 7)    return { label: 'BUILDING',     dotColor: '#4ade80' };
   if (streak < 14)   return { label: 'ON A ROLL',    dotColor: '#22c55e' };

@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Platform } from 'react-native';
 
+function toLocalISO(d: Date): string {
+    return d.toISOString();
+}
+
 export type VerifyResult = {
     verified: boolean;
     actualValue: number;
@@ -278,8 +282,14 @@ async function androidCheckAlreadyGranted(): Promise<boolean> {
         const { initialize, getGrantedPermissions } = require('react-native-health-connect');
         await initialize();
         const granted: Array<{ recordType: string; accessType: string }> = await getGrantedPermissions();
-        return granted.some(p => p.recordType === 'Steps' && p.accessType === 'read');
-    } catch {
+        console.log('[HealthData] Granted permissions:', JSON.stringify(granted));
+        // Accept any Steps-related permission (format may vary by Health Connect version)
+        return granted.some(p =>
+            (p.recordType === 'Steps' || p.recordType === 'android.permission.health.READ_STEPS') &&
+            (p.accessType === 'read' || !p.accessType)
+        );
+    } catch (e) {
+        console.warn('[HealthData] androidCheckAlreadyGranted failed:', e);
         return false;
     }
 }
@@ -314,15 +324,23 @@ async function androidGetStepsToday(): Promise<number> {
         const { readRecords } = require('react-native-health-connect');
         const midnight = new Date();
         midnight.setHours(0, 0, 0, 0);
-        const { records } = await readRecords('Steps', {
+        const now = new Date();
+        const startTime = toLocalISO(midnight);
+        const endTime = toLocalISO(now);
+        console.log(`[HealthData] Reading steps from ${startTime} to ${endTime}`);
+        const result = await readRecords('Steps', {
             timeRangeFilter: {
                 operator: 'between',
-                startTime: midnight.toISOString(),
-                endTime: new Date().toISOString(),
+                startTime,
+                endTime,
             },
         });
-        return (records as Array<{ count: number }>).reduce((sum, r) => sum + r.count, 0);
-    } catch {
+        const records = result?.records ?? [];
+        const total = (records as Array<{ count: number }>).reduce((sum, r) => sum + r.count, 0);
+        console.log(`[HealthData] Android steps: ${total} (${records.length} records)`);
+        return total;
+    } catch (e) {
+        console.warn('[HealthData] androidGetStepsToday failed:', e);
         return 0;
     }
 }
@@ -378,8 +396,8 @@ async function androidGetActivitiesToday(): Promise<HealthActivity[]> {
         const { records } = await readRecords('ExerciseSession', {
             timeRangeFilter: {
                 operator: 'between',
-                startTime: midnight.toISOString(),
-                endTime: new Date().toISOString(),
+                startTime: toLocalISO(midnight),
+                endTime: toLocalISO(new Date()),
             },
         });
         return (records as Array<{ startTime: string; endTime: string; exerciseType: number }>).map(r => ({
@@ -405,8 +423,8 @@ async function androidGetLastNightSleep(): Promise<SleepSession | null> {
         const { records } = await readRecords('SleepSession', {
             timeRangeFilter: {
                 operator: 'between',
-                startTime: start.toISOString(),
-                endTime: new Date().toISOString(),
+                startTime: toLocalISO(start),
+                endTime: toLocalISO(new Date()),
             },
         });
         const sessions = records as Array<{ startTime: string; endTime: string; stages?: Array<{ stage: number; startTime: string; endTime: string }> }>;
@@ -465,8 +483,8 @@ async function androidGetHeartRateToday(): Promise<HeartRateSummary | null> {
         const { records } = await readRecords('HeartRate', {
             timeRangeFilter: {
                 operator: 'between',
-                startTime: midnight.toISOString(),
-                endTime: new Date().toISOString(),
+                startTime: toLocalISO(midnight),
+                endTime: toLocalISO(new Date()),
             },
         });
         const samples = records as Array<{ samples: Array<{ beatsPerMinute: number }> }>;
@@ -484,8 +502,8 @@ async function androidGetHeartRateToday(): Promise<HeartRateSummary | null> {
             const { records: restRecords } = await readRecords('RestingHeartRate', {
                 timeRangeFilter: {
                     operator: 'between',
-                    startTime: midnight.toISOString(),
-                    endTime: new Date().toISOString(),
+                    startTime: toLocalISO(midnight),
+                    endTime: toLocalISO(new Date()),
                 },
             });
             const restSamples = restRecords as Array<{ beatsPerMinute: number }>;
@@ -509,8 +527,8 @@ async function androidGetCaloriesToday(): Promise<CalorieSummary | null> {
         const timeFilter = {
             timeRangeFilter: {
                 operator: 'between',
-                startTime: midnight.toISOString(),
-                endTime: new Date().toISOString(),
+                startTime: toLocalISO(midnight),
+                endTime: toLocalISO(new Date()),
             },
         };
 
@@ -678,8 +696,8 @@ async function androidGetWeekHistory(): Promise<DayHealthSummary[]> {
         const timeFilter = {
             timeRangeFilter: {
                 operator: 'between',
-                startTime: start.toISOString(),
-                endTime: end.toISOString(),
+                startTime: toLocalISO(start),
+                endTime: toLocalISO(end),
             },
         };
 
@@ -714,7 +732,7 @@ async function androidGetWeekHistory(): Promise<DayHealthSummary[]> {
             sleepStart.setDate(sleepStart.getDate() - 1);
             sleepStart.setHours(18, 0, 0, 0);
             const { records } = await readRecords('SleepSession', {
-                timeRangeFilter: { operator: 'between', startTime: sleepStart.toISOString(), endTime: end.toISOString() },
+                timeRangeFilter: { operator: 'between', startTime: toLocalISO(sleepStart), endTime: toLocalISO(end) },
             });
             const sessions = records as Array<{ startTime: string; endTime: string; stages?: Array<{ stage: number; startTime: string; endTime: string }> }>;
             if (sessions && sessions.length > 0) {
@@ -817,7 +835,18 @@ export function useHealthData(): HealthDataHook {
                 if (available) {
                     // Restore auth silently — no UI shown if already granted
                     androidCheckAlreadyGranted().then(granted => {
-                        if (granted) setIsAuthorized(true);
+                        if (granted) {
+                            setIsAuthorized(true);
+                        } else {
+                            // Fallback: try reading steps directly — some Health Connect
+                            // versions don't report permissions via getGrantedPermissions
+                            androidGetStepsToday().then(steps => {
+                                if (steps > 0) {
+                                    console.log('[HealthData] Permission check failed but steps readable — marking authorized');
+                                    setIsAuthorized(true);
+                                }
+                            }).catch(() => {});
+                        }
                     });
                 }
             });

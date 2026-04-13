@@ -78,6 +78,31 @@ export type WeeklyMetrics = {
     perType: Record<string, number>;
 };
 
+export type DailyMetrics = {
+    /** Session counts today keyed by activity type */
+    perType: Record<string, number>;
+    stepsToday: number;
+};
+
+export async function fetchDailyMetrics(): Promise<DailyMetrics> {
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+
+    const { data, error } = await supabase
+        .from('activity_sessions')
+        .select('type, steps')
+        .gte('started_at', start.toISOString());
+    if (error) throw error;
+
+    const perType: Record<string, number> = {};
+    let stepsToday = 0;
+    for (const s of (data ?? []) as Array<{ type: string; steps: number | null }>) {
+        perType[s.type] = (perType[s.type] ?? 0) + 1;
+        if (s.type === 'walking') stepsToday += s.steps ?? 0;
+    }
+    return { perType, stepsToday };
+}
+
 export type ManualSessionParams = {
     type: ActivityType;
     duration_sec: number;
@@ -190,7 +215,7 @@ export async function getTodayHealthWalkingSession(): Promise<HealthWalkingSessi
 }
 
 /** Creates a new health-auto-synced walking session and awards initial points. */
-export async function logHealthWalkingSession(steps: number, points: number): Promise<string> {
+export async function logHealthWalkingSession(steps: number, points: number): Promise<string | null> {
     const now = new Date().toISOString();
     const device_id = await getDeviceId();
     const { data: session, error: sErr } = await supabase
@@ -207,7 +232,14 @@ export async function logHealthWalkingSession(steps: number, points: number): Pr
         })
         .select('id')
         .single();
-    if (sErr) throw sErr;
+    if (sErr) {
+        // Unique constraint: session already exists for today — fall back to update path
+        if (sErr.code === '23505') {
+            console.log('[walkingSync] Walking session already exists today — skipping insert.');
+            return null;
+        }
+        throw sErr;
+    }
 
     if (points > 0) {
         const { error: pErr } = await supabase

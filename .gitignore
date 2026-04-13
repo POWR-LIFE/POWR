@@ -46,3 +46,7 @@ app-example
 
 # IDE
 .idea/
+.vscode/
+
+# Local agent state
+.claude/

@@ -36,6 +36,18 @@ export interface Partner {
   isOpenNow: boolean;
 }
 
+export interface Trainer {
+  id: string;
+  partner_id: string;
+  name: string;
+  photo_url: string | null;
+  bio: string | null;
+  specialties: string[] | null;
+  experience: string | null;
+  active: boolean;
+  sort_order: number;
+}
+
 const DAY_KEYS: DayKey[] = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 
 export function checkIsOpenNow(openingHours?: OpeningHours): boolean {
@@ -108,14 +120,15 @@ TaskManager.defineTask(GEOFENCE_TASK_NAME, async ({ data, error }) => {
       // Non-fatal — proceed with entry recording
     }
 
+    const regionId = region.identifier ?? '';
     const mapJson = await AsyncStorage.getItem(PARTNER_MAP_KEY);
     const partnerMap: Record<string, string> = mapJson ? JSON.parse(mapJson) : {};
-    const partnerName = partnerMap[region.identifier] ?? region.identifier;
+    const partnerName = partnerMap[regionId] ?? regionId;
 
     await AsyncStorage.setItem(
       ACTIVE_GEOFENCE_KEY,
       JSON.stringify({
-        partnerId:      region.identifier,
+        partnerId:      regionId,
         partnerName,
         entryTimestamp: Date.now(),
       })
@@ -145,36 +158,11 @@ TaskManager.defineTask(GEOFENCE_TASK_NAME, async ({ data, error }) => {
       const endedAt     = new Date();
       const durationSec = Math.round(dwellMs / 1000);
 
-      // Dedup: one gym session per day
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const { count: todayCount } = await supabase
-        .from('activity_sessions')
-        .select('id', { count: 'exact', head: true })
-        .eq('user_id', user.id)
-        .eq('type', 'gym')
-        .gte('started_at', today.toISOString());
-
-      if ((todayCount ?? 0) > 0) {
-        console.log('[Geofence] Gym session already recorded today — skipping duplicate.');
-        return;
-      }
-
-      // Dedup: the OS can fire Exit twice in quick succession — skip if already recorded
-      const { count: existing } = await supabase
-        .from('activity_sessions')
-        .select('id', { count: 'exact', head: true })
-        .eq('user_id', user.id)
-        .eq('started_at', startedAt.toISOString());
-
-      if ((existing ?? 0) > 0) {
-        console.log('[Geofence] Duplicate exit event — session already recorded, skipping.');
-        return;
-      }
-
       const { getDeviceId } = await import('@/lib/device');
       const deviceId = await getDeviceId();
 
+      // Insert with conflict handling — the DB unique index
+      // (user_id, type, day) prevents duplicates even under race conditions.
       const { data: session, error: sessionError } = await supabase
         .from('activity_sessions')
         .insert({
@@ -195,10 +183,16 @@ TaskManager.defineTask(GEOFENCE_TASK_NAME, async ({ data, error }) => {
         .select()
         .single();
 
-      if (sessionError || !session) {
+      if (sessionError) {
+        // Unique constraint violation → session already exists today
+        if (sessionError.code === '23505') {
+          console.log('[Geofence] Gym session already recorded today — skipping.');
+          return;
+        }
         console.error('[Geofence] Failed to create session:', sessionError);
         return;
       }
+      if (!session) return;
 
       // Signal the foreground app that a session has completed so it can refresh.
       // Written before claim-points so the UI reacts immediately on exit.
@@ -273,7 +267,7 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
     async function fetchPartners() {
       try {
         // Try full schema; fall back if opening_hours/description columns don't exist yet
-        let fetchResult = await supabase
+        let fetchResult: { data: any[] | null; error: any } = await supabase
           .from('partners')
           .select('id, name, description, category, locations, logo_url, image1_url, image2_url, opening_hours')
           .eq('active', true);

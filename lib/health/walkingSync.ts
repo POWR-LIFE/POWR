@@ -42,6 +42,12 @@ async function getStepsTodayIOS(): Promise<number> {
     }
 }
 
+/** Format a Date as a local-time ISO-like string (no trailing Z) for Health Connect. */
+function toLocalISOString(d: Date): string {
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${d.getMilliseconds().toString().padStart(3, '0')}`;
+}
+
 async function getStepsTodayAndroid(): Promise<number> {
     try {
         // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -49,15 +55,23 @@ async function getStepsTodayAndroid(): Promise<number> {
         await initialize();
         const midnight = new Date();
         midnight.setHours(0, 0, 0, 0);
-        const { records } = await readRecords('Steps', {
+        const now = new Date();
+        const startTime = midnight.toISOString();
+        const endTime = now.toISOString();
+        console.log(`[walkingSync] Reading steps from ${startTime} to ${endTime}`);
+        const result = await readRecords('Steps', {
             timeRangeFilter: {
                 operator: 'between',
-                startTime: midnight.toISOString(),
-                endTime: new Date().toISOString(),
+                startTime,
+                endTime,
             },
         });
-        return (records as Array<{ count: number }>).reduce((sum, r) => sum + r.count, 0);
-    } catch {
+        const records = result?.records ?? [];
+        const total = (records as Array<{ count: number }>).reduce((sum, r) => sum + r.count, 0);
+        console.log(`[walkingSync] Android steps today: ${total} (${records.length} records)`);
+        return total;
+    } catch (e) {
+        console.warn('[walkingSync] Android getStepsToday failed:', e);
         return 0;
     }
 }
@@ -73,6 +87,7 @@ export async function getStepsToday(): Promise<number> {
 /** Syncs today's step count to Supabase. Safe to call multiple times. */
 export async function syncWalkingNow(): Promise<void> {
     const steps = await getStepsToday();
+    console.log(`[walkingSync] syncWalkingNow: ${steps} steps from ${Platform.OS}`);
     if (steps === 0) return;
 
     const tierPoints = stepTierPoints(steps);
@@ -88,7 +103,16 @@ export async function syncWalkingNow(): Promise<void> {
     if (!existing) {
         // First sync of the day — cap the initial award
         const points = Math.min(tierPoints, capRemaining);
-        sessionId = await logHealthWalkingSession(steps, points);
+        const newId = await logHealthWalkingSession(steps, points);
+        if (!newId) {
+            // Constraint conflict — re-fetch the existing session and update it
+            const refetched = await getTodayHealthWalkingSession();
+            if (!refetched) return;
+            await updateHealthWalkingSession(refetched.id, steps, 0);
+            sessionId = refetched.id;
+        } else {
+            sessionId = newId;
+        }
     } else {
         // Incremental: only award the tier improvement, capped to remaining
         const additional = Math.min(

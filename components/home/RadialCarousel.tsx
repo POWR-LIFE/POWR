@@ -40,12 +40,19 @@ interface RadialCarouselProps {
 export function RadialCarousel({ data, activeIndex, onChange }: RadialCarouselProps) {
   const scrollX = useSharedValue(0);
   const flatListRef = useAnimatedRef<Animated.FlatList<RadialData>>();
+  // Keep activeIndex in a shared value so the worklet always sees the latest value
+  const activeIndexSV = useSharedValue(activeIndex);
+
+  useEffect(() => {
+    activeIndexSV.value = activeIndex;
+  }, [activeIndex]);
 
   const onScroll = useAnimatedScrollHandler((event) => {
     scrollX.value = event.contentOffset.x;
     const index = Math.round(event.contentOffset.x / ITEM_WIDTH);
     if (index >= 0 && index < data.length) {
-      if (index !== activeIndex) {
+      if (index !== activeIndexSV.value) {
+        activeIndexSV.value = index;
         runOnJS(Haptics.impactAsync)(Haptics.ImpactFeedbackStyle.Light);
         runOnJS(onChange)(index);
       }

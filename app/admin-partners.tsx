@@ -1,5 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as ImagePicker from 'expo-image-picker';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -13,9 +15,10 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
-import type { DayKey, DayHours, OpeningHours } from '@/context/GeofenceContext';
+import type { DayKey, DayHours, OpeningHours, Trainer } from '@/context/GeofenceContext';
 
 // ─── Design tokens ─────────────────────────────────────────────────────────────
 
@@ -96,6 +99,7 @@ export default function AdminPartnersScreen() {
   // Edit modal state
   const [editPartner, setEditPartner] = useState<Partial<PartnerRow> & { id?: string } | null>(null);
   const [isNew, setIsNew] = useState(false);
+  const [trainers, setTrainers] = useState<Trainer[]>([]);
 
   // Check admin flag
   useEffect(() => {
@@ -127,11 +131,65 @@ export default function AdminPartnersScreen() {
   const openNew = () => {
     setEditPartner({ ...BLANK_PARTNER });
     setIsNew(true);
+    setTrainers([]);
   };
 
-  const openEdit = (p: PartnerRow) => {
+  const openEdit = async (p: PartnerRow) => {
     setEditPartner({ ...p });
     setIsNew(false);
+    const { data } = await supabase
+      .from('trainers')
+      .select('*')
+      .eq('partner_id', p.id)
+      .order('sort_order', { ascending: true });
+    setTrainers((data as Trainer[]) ?? []);
+  };
+
+  const fetchTrainers = async (partnerId: string) => {
+    const { data } = await supabase
+      .from('trainers')
+      .select('*')
+      .eq('partner_id', partnerId)
+      .order('sort_order', { ascending: true });
+    setTrainers((data as Trainer[]) ?? []);
+  };
+
+  const saveTrainer = async (trainer: Partial<Trainer> & { partner_id: string }) => {
+    const payload = {
+      partner_id:  trainer.partner_id,
+      name:        trainer.name?.trim() ?? '',
+      photo_url:   trainer.photo_url || null,
+      bio:         trainer.bio || null,
+      specialties: trainer.specialties ?? null,
+      experience:  trainer.experience || null,
+      active:      trainer.active ?? true,
+      sort_order:  trainer.sort_order ?? 0,
+    };
+    if (!payload.name) {
+      Alert.alert('Validation', 'Trainer name is required.');
+      return;
+    }
+    if (trainer.id) {
+      const { error } = await supabase.from('trainers').update(payload).eq('id', trainer.id);
+      if (error) { Alert.alert('Error', error.message); return; }
+    } else {
+      const { error } = await supabase.from('trainers').insert(payload);
+      if (error) { Alert.alert('Error', error.message); return; }
+    }
+    await fetchTrainers(trainer.partner_id);
+  };
+
+  const deleteTrainer = async (id: string, partnerId: string) => {
+    Alert.alert('Delete Trainer', 'Are you sure?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete', style: 'destructive',
+        onPress: async () => {
+          await supabase.from('trainers').delete().eq('id', id);
+          await fetchTrainers(partnerId);
+        },
+      },
+    ]);
   };
 
   const savePartner = async () => {
@@ -344,6 +402,19 @@ export default function AdminPartnersScreen() {
                   onChange={locs => setEditPartner(p => ({ ...p!, locations: locs }))}
                 />
 
+                {/* Trainers — only for existing partners */}
+                {!isNew && editPartner.id && (
+                  <>
+                    <FieldLabel label="TRAINERS" />
+                    <TrainersEditor
+                      trainers={trainers}
+                      partnerId={editPartner.id}
+                      onSave={saveTrainer}
+                      onDelete={deleteTrainer}
+                    />
+                  </>
+                )}
+
                 {/* Save */}
                 <Pressable
                   style={({ pressed }) => [styles.saveBtn, pressed && { opacity: 0.8 }, saving && { opacity: 0.6 }]}
@@ -513,6 +584,209 @@ function LocationsEditor({
   );
 }
 
+// ─── Trainers Editor ─────────────────────────────────────────────────────────
+
+function TrainersEditor({
+  trainers,
+  partnerId,
+  onSave,
+  onDelete,
+}: {
+  trainers: Trainer[];
+  partnerId: string;
+  onSave: (t: Partial<Trainer> & { partner_id: string }) => Promise<void>;
+  onDelete: (id: string, partnerId: string) => void;
+}) {
+  const [editingTrainer, setEditingTrainer] = useState<Partial<Trainer> | null>(null);
+  const [savingTrainer, setSavingTrainer] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+
+  const pickAndUploadPhoto = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+    if (result.canceled || !result.assets[0]) return;
+    setUploadingPhoto(true);
+    try {
+      const uri = result.assets[0].uri;
+      const ext = uri.split('.').pop()?.toLowerCase() ?? 'jpg';
+      const path = `${partnerId}/${Date.now()}.${ext}`;
+      const contentType = ext === 'png' ? 'image/png' : 'image/jpeg';
+      const base64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
+      const binary = atob(base64);
+      const buffer = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) buffer[i] = binary.charCodeAt(i);
+      const { error } = await supabase.storage.from('trainer-photos').upload(path, buffer, { contentType, upsert: true });
+      if (error) throw error;
+      const { data } = supabase.storage.from('trainer-photos').getPublicUrl(path);
+      setEditingTrainer(p => ({ ...p!, photo_url: data.publicUrl }));
+    } catch (e: any) {
+      Alert.alert('Upload failed', e.message);
+    }
+    setUploadingPhoto(false);
+  };
+
+  const openNew = () => {
+    setEditingTrainer({ partner_id: partnerId, name: '', active: true, sort_order: trainers.length });
+  };
+
+  const openEdit = (t: Trainer) => {
+    setEditingTrainer({ ...t });
+  };
+
+  const handleSave = async () => {
+    if (!editingTrainer) return;
+    setSavingTrainer(true);
+    await onSave({ ...editingTrainer, partner_id: partnerId } as Partial<Trainer> & { partner_id: string });
+    setSavingTrainer(false);
+    setEditingTrainer(null);
+  };
+
+  // List view
+  if (!editingTrainer) {
+    return (
+      <View style={{ gap: 8 }}>
+        {trainers.map(t => (
+          <View key={t.id} style={styles.trainerRow}>
+            <View style={styles.trainerRowInfo}>
+              <View style={[styles.activeDot, t.active ? styles.activeDotOn : styles.activeDotOff]} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.trainerRowName}>{t.name}</Text>
+                <Text style={styles.trainerRowMeta}>
+                  {[t.experience, ...(t.specialties ?? [])].filter(Boolean).join(' · ') || 'No details'}
+                </Text>
+              </View>
+            </View>
+            <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+              <Pressable onPress={() => openEdit(t)} hitSlop={8}>
+                <Ionicons name="create-outline" size={18} color={DIM} />
+              </Pressable>
+              <Pressable onPress={() => onDelete(t.id, partnerId)} hitSlop={8}>
+                <Ionicons name="trash-outline" size={16} color={RED} />
+              </Pressable>
+            </View>
+          </View>
+        ))}
+        <Pressable style={styles.addTrainerBtn} onPress={openNew}>
+          <Ionicons name="add-circle-outline" size={16} color={GOLD} />
+          <Text style={styles.addTrainerText}>Add Trainer</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
+  // Edit / create form
+  return (
+    <View style={styles.trainerForm}>
+      <View style={styles.trainerFormHeader}>
+        <Text style={styles.trainerFormTitle}>{editingTrainer.id ? 'Edit Trainer' : 'New Trainer'}</Text>
+        <Pressable onPress={() => setEditingTrainer(null)} hitSlop={8}>
+          <Ionicons name="close" size={18} color={DIM} />
+        </Pressable>
+      </View>
+
+      <Text style={styles.trainerFieldLabel}>NAME</Text>
+      <TextInput
+        style={styles.textInput}
+        value={editingTrainer.name ?? ''}
+        onChangeText={v => setEditingTrainer(p => ({ ...p!, name: v }))}
+        placeholder="e.g. Sarah Johnson"
+        placeholderTextColor={MUTED}
+      />
+
+      <Text style={styles.trainerFieldLabel}>PHOTO</Text>
+      <View style={styles.photoUploadRow}>
+        <View style={styles.photoPreview}>
+          {editingTrainer.photo_url ? (
+            <Image source={{ uri: editingTrainer.photo_url }} style={styles.photoPreviewImg} contentFit="cover" />
+          ) : (
+            <Ionicons name="person-outline" size={20} color={MUTED} />
+          )}
+        </View>
+        <Pressable
+          style={({ pressed }) => [styles.photoUploadBtn, pressed && { opacity: 0.7 }, uploadingPhoto && { opacity: 0.5 }]}
+          onPress={pickAndUploadPhoto}
+          disabled={uploadingPhoto}
+        >
+          {uploadingPhoto
+            ? <ActivityIndicator color={GOLD} size="small" />
+            : <Text style={styles.photoUploadText}>{editingTrainer.photo_url ? 'Change Photo' : 'Upload Photo'}</Text>
+          }
+        </Pressable>
+      </View>
+
+      <Text style={styles.trainerFieldLabel}>BIO</Text>
+      <TextInput
+        style={[styles.textInput, styles.textArea]}
+        value={editingTrainer.bio ?? ''}
+        onChangeText={v => setEditingTrainer(p => ({ ...p!, bio: v || null }))}
+        placeholder="Short bio (2-3 sentences)"
+        placeholderTextColor={MUTED}
+        multiline
+        numberOfLines={3}
+      />
+
+      <Text style={styles.trainerFieldLabel}>SPECIALTIES</Text>
+      <TextInput
+        style={styles.textInput}
+        value={(editingTrainer.specialties ?? []).join(', ')}
+        onChangeText={v => setEditingTrainer(p => ({
+          ...p!,
+          specialties: v.split(',').map(s => s.trim()).filter(Boolean),
+        }))}
+        placeholder="e.g. Strength, HIIT, Yoga"
+        placeholderTextColor={MUTED}
+      />
+
+      <Text style={styles.trainerFieldLabel}>EXPERIENCE</Text>
+      <TextInput
+        style={styles.textInput}
+        value={editingTrainer.experience ?? ''}
+        onChangeText={v => setEditingTrainer(p => ({ ...p!, experience: v || null }))}
+        placeholder="e.g. 8 years / Level 3 Certified"
+        placeholderTextColor={MUTED}
+      />
+
+      <View style={[styles.toggleRow, { marginTop: 8 }]}>
+        <View>
+          <Text style={styles.toggleLabel}>Active</Text>
+          <Text style={styles.toggleSub}>Visible on the discover page</Text>
+        </View>
+        <Switch
+          value={editingTrainer.active ?? true}
+          onValueChange={v => setEditingTrainer(p => ({ ...p!, active: v }))}
+          trackColor={{ false: BORDER, true: 'rgba(232,210,0,0.4)' }}
+          thumbColor={editingTrainer.active ? GOLD : MUTED}
+        />
+      </View>
+
+      <Text style={styles.trainerFieldLabel}>SORT ORDER</Text>
+      <TextInput
+        style={styles.textInput}
+        value={String(editingTrainer.sort_order ?? 0)}
+        onChangeText={v => setEditingTrainer(p => ({ ...p!, sort_order: parseInt(v) || 0 }))}
+        keyboardType="numeric"
+        placeholder="0"
+        placeholderTextColor={MUTED}
+      />
+
+      <Pressable
+        style={({ pressed }) => [styles.trainerSaveBtn, pressed && { opacity: 0.8 }, savingTrainer && { opacity: 0.6 }]}
+        onPress={handleSave}
+        disabled={savingTrainer}
+      >
+        {savingTrainer
+          ? <ActivityIndicator color="#0d0d0d" size="small" />
+          : <Text style={styles.trainerSaveBtnText}>{editingTrainer.id ? 'Update Trainer' : 'Add Trainer'}</Text>
+        }
+      </Pressable>
+    </View>
+  );
+}
+
 // ─── Small helpers ────────────────────────────────────────────────────────────
 
 function FieldLabel({ label }: { label: string }) {
@@ -630,6 +904,52 @@ const styles = StyleSheet.create({
     borderStyle: 'dashed',
   },
   addLocationText: { fontSize: 13, color: GOLD, fontWeight: '400' },
+
+  // Trainers
+  trainerRow: {
+    backgroundColor: 'rgba(255,255,255,0.03)', borderWidth: 1, borderColor: BORDER,
+    borderRadius: 12, padding: 12,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+  },
+  trainerRowInfo: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
+  trainerRowName: { fontSize: 14, fontWeight: '300', color: TEXT },
+  trainerRowMeta: { fontSize: 11, fontWeight: '300', color: DIM, marginTop: 2 },
+  addTrainerBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    paddingVertical: 12, borderWidth: 1, borderColor: 'rgba(232,210,0,0.3)',
+    borderRadius: 12, backgroundColor: 'rgba(232,210,0,0.05)',
+    borderStyle: 'dashed',
+  },
+  addTrainerText: { fontSize: 13, color: GOLD, fontWeight: '400' },
+  trainerForm: {
+    backgroundColor: 'rgba(255,255,255,0.03)', borderWidth: 1, borderColor: BORDER,
+    borderRadius: 12, padding: 12, gap: 4,
+  },
+  trainerFormHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  trainerFormTitle: { fontSize: 14, fontWeight: '500', color: TEXT },
+  trainerFieldLabel: {
+    fontSize: 9, fontWeight: '600', letterSpacing: 2, color: MUTED,
+    textTransform: 'uppercase', marginBottom: 4, marginTop: 10,
+  },
+  photoUploadRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  photoPreview: {
+    width: 48, height: 48, borderRadius: 24,
+    backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: BORDER,
+    alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+  },
+  photoPreviewImg: { width: 48, height: 48, borderRadius: 24 },
+  photoUploadBtn: {
+    flex: 1, height: 44, borderRadius: 12,
+    borderWidth: 1, borderColor: BORDER, backgroundColor: 'rgba(255,255,255,0.04)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  photoUploadText: { fontSize: 12, fontWeight: '500', color: DIM },
+
+  trainerSaveBtn: {
+    backgroundColor: GOLD, paddingVertical: 10, borderRadius: 10,
+    alignItems: 'center', justifyContent: 'center', marginTop: 12,
+  },
+  trainerSaveBtnText: { fontSize: 14, fontWeight: '600', color: '#0d0d0d' },
 
   saveBtn: {
     backgroundColor: GOLD, paddingVertical: 14, borderRadius: 14,
