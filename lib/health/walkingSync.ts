@@ -20,6 +20,13 @@ import {
     saveHealthSnapshot,
     WALKING_DAILY_CAP,
 } from '@/lib/api/activity';
+import {
+    getNativeProviderId,
+    getProvider,
+    HealthProviderNotImplementedError,
+    type HealthProviderId,
+} from '@/lib/health/providers';
+import { supabase } from '@/lib/supabase';
 
 export const WALKING_SYNC_TASK = 'powr-walking-sync';
 
@@ -82,12 +89,55 @@ export async function getStepsToday(): Promise<number> {
     return 0;
 }
 
+/** Reads `profiles.active_health_provider`, falls back to the native provider for this OS. */
+async function resolveActiveProviderId(): Promise<HealthProviderId | null> {
+    try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return getNativeProviderId();
+        const { data } = await supabase
+            .from('profiles')
+            .select('active_health_provider')
+            .eq('id', user.id)
+            .single<{ active_health_provider: HealthProviderId | null }>();
+        return data?.active_health_provider ?? getNativeProviderId();
+    } catch {
+        return getNativeProviderId();
+    }
+}
+
+/** Snapshot source label written alongside each sync. */
+function snapshotSourceFor(id: HealthProviderId | null): 'healthkit' | 'health_connect' | 'fitbit' | 'whoop' | 'garmin' {
+    switch (id) {
+        case 'apple-health':   return 'healthkit';
+        case 'health-connect': return 'health_connect';
+        case 'fitbit':         return 'fitbit';
+        case 'whoop':          return 'whoop';
+        case 'garmin':         return 'garmin';
+        default:               return Platform.OS === 'ios' ? 'healthkit' : 'health_connect';
+    }
+}
+
 // ── Core sync logic ───────────────────────────────────────────────────────────
 
 /** Syncs today's step count to Supabase. Safe to call multiple times. */
 export async function syncWalkingNow(): Promise<void> {
-    const steps = await getStepsToday();
-    console.log(`[walkingSync] syncWalkingNow: ${steps} steps from ${Platform.OS}`);
+    const activeId = await resolveActiveProviderId();
+    let steps = 0;
+    if (activeId) {
+        try {
+            steps = await getProvider(activeId).getStepsToday();
+        } catch (e) {
+            if (e instanceof HealthProviderNotImplementedError) {
+                console.log(`[walkingSync] active provider ${activeId} not implemented yet, falling back to native`);
+                steps = await getStepsToday();
+            } else {
+                throw e;
+            }
+        }
+    } else {
+        steps = await getStepsToday();
+    }
+    console.log(`[walkingSync] syncWalkingNow: ${steps} steps from ${activeId ?? Platform.OS}`);
     if (steps === 0) return;
 
     const tierPoints = stepTierPoints(steps);
@@ -123,13 +173,12 @@ export async function syncWalkingNow(): Promise<void> {
         sessionId = existing.id;
     }
 
-    // Save health snapshot with current step count
-    const source = Platform.OS === 'ios' ? 'healthkit' : 'health_connect' as const;
+    // Save health snapshot with current step count, tagged with the active provider.
     await saveHealthSnapshot({
         sessionId,
         steps,
         activityType: 'walking',
-        source,
+        source: snapshotSourceFor(activeId),
     });
 
     // Mark today as an active streak day (idempotent)

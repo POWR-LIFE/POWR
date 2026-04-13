@@ -6,6 +6,8 @@ import { Animated, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, Vie
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import GeometricBackground from '@/components/GeometricBackground';
 import { useHealthData } from '@/hooks/useHealthData';
+import { useHealthProviders } from '@/hooks/useHealthProviders';
+import { getNativeProviderId } from '@/lib/health/providers';
 import { syncHistoricalHealthData, type DaySyncResult } from '@/lib/api/onboardingSync';
 
 const GOLD = '#E8D200';
@@ -203,6 +205,7 @@ export default function OnboardingHealthScreen() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
     const health = useHealthData();
+    const providers = useHealthProviders();
     const visibleSources = getVisibleSources();
     const [stepsToday, setStepsToday] = useState<number | null>(null);
 
@@ -255,6 +258,14 @@ export default function OnboardingHealthScreen() {
             if (health.isAuthorized) return; // already connected
             const result = await health.requestPermissions();
             console.log('[Onboarding] requestPermissions result:', result);
+            // Persist the connection on the user profile so settings + sync see it.
+            if (result) {
+                const nativeId = getNativeProviderId();
+                if (nativeId) {
+                    try { await providers.connect(nativeId); }
+                    catch (e) { console.warn('[Onboarding] persist provider failed:', e); }
+                }
+            }
         }
         // Non-native sources (Whoop, Garmin, etc.) are not yet implemented
     }

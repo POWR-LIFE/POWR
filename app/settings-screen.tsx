@@ -19,6 +19,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/context/AuthContext';
 import { useHealthData } from '@/hooks/useHealthData';
+import { useHealthProviders } from '@/hooks/useHealthProviders';
+import { HealthProviderNotImplementedError } from '@/lib/health/providers';
 import { ACTIVITIES, ACTIVITY_LIST, type ActivityType } from '@/constants/activities';
 import { updateActivityPreferences } from '@/lib/api/user';
 import { supabase } from '@/lib/supabase';
@@ -45,6 +47,7 @@ export default function SettingsScreen() {
 
   const [isAdmin, setIsAdmin] = React.useState(false);
   const health = useHealthData();
+  const providers = useHealthProviders();
   const [locationStatus, setLocationStatus] = useState<'granted' | 'denied' | 'undetermined'>('undetermined');
 
   React.useEffect(() => {
@@ -263,31 +266,91 @@ export default function SettingsScreen() {
           })}
         </View>
 
-        {/* ── Connections ───────────────────────────────────── */}
+        {/* ── Health data sources ───────────────────────────── */}
+        <SectionLabel label="Health data sources" />
+        <View style={styles.card}>
+          {providers.rows.map((row, idx) => {
+            const isLast = idx === providers.rows.length - 1;
+            const connected = !!row.connection;
+            const busy = providers.busyId === row.meta.id;
+            const value = busy
+              ? '…'
+              : row.isActive
+                ? 'Active'
+                : connected
+                  ? 'Connected'
+                  : 'Not connected';
+            const valueColor = row.isActive ? GOLD : connected ? '#4ade80' : undefined;
+            return (
+              <RowLink
+                key={row.meta.id}
+                icon="fitness-outline"
+                label={row.meta.name}
+                value={value}
+                valueColor={valueColor}
+                isLast={isLast}
+                onPress={() => {
+                  if (busy) return;
+                  if (!connected) {
+                    // Try to connect.
+                    (async () => {
+                      try {
+                        const ok = await providers.connect(row.meta.id);
+                        if (!ok && row.meta.native) {
+                          Alert.alert(
+                            `${row.meta.name} not connected`,
+                            'Permission was not granted. You can enable it in your phone settings.',
+                            [
+                              { text: 'Cancel', style: 'cancel' },
+                              { text: 'Open Settings', onPress: () => Linking.openSettings() },
+                            ],
+                          );
+                        }
+                      } catch (e) {
+                        if (e instanceof HealthProviderNotImplementedError) {
+                          Alert.alert(`${row.meta.name} coming soon`, 'This integration is not available yet.');
+                        } else {
+                          Alert.alert('Connection failed', String((e as Error).message ?? e));
+                        }
+                      }
+                    })();
+                    return;
+                  }
+                  // Already connected — show actions.
+                  const actions: { text: string; style?: 'default' | 'cancel' | 'destructive'; onPress?: () => void }[] = [];
+                  if (!row.isActive) {
+                    actions.push({
+                      text: 'Set as active source',
+                      onPress: () => { providers.setActive(row.meta.id); },
+                    });
+                  }
+                  actions.push({
+                    text: 'Disconnect',
+                    style: 'destructive',
+                    onPress: () => {
+                      Alert.alert(
+                        `Disconnect ${row.meta.name}?`,
+                        row.meta.native
+                          ? 'POWR will stop reading from this source. To fully revoke access, also turn off permission in your phone settings.'
+                          : 'POWR will stop reading from this source and clear stored credentials.',
+                        [
+                          { text: 'Cancel', style: 'cancel' },
+                          { text: 'Disconnect', style: 'destructive', onPress: () => { providers.disconnect(row.meta.id); } },
+                        ],
+                      );
+                    },
+                  });
+                  actions.push({ text: 'Cancel', style: 'cancel' });
+                  Alert.alert(row.meta.name, row.isActive ? 'This is your active source.' : undefined, actions);
+                }}
+              />
+            );
+          })}
+        </View>
+
+        {/* ── Other connections ─────────────────────────────── */}
         <SectionLabel label="Connections" />
         <View style={styles.card}>
-          {/* Health data source — platform-specific */}
-          <RowLink
-            icon="fitness-outline"
-            label={Platform.OS === 'ios' ? 'Apple Health' : 'Health Connect'}
-            value={
-              !health.isAvailable
-                ? 'Not available'
-                : health.isAuthorized
-                  ? 'Connected'
-                  : 'Not connected'
-            }
-            valueColor={health.isAuthorized ? '#4ade80' : undefined}
-            onPress={async () => {
-              if (!health.isAvailable) {
-                Linking.openSettings();
-                return;
-              }
-              if (!health.isAuthorized) {
-                await health.requestPermissions();
-              }
-            }}
-          />
           {/* Location services for gym check-in */}
           <RowLink
             icon="location-outline"
@@ -319,9 +382,9 @@ export default function SettingsScreen() {
             isLast
           />
         </View>
-        {!health.isAuthorized && health.isAvailable && (
+        {!providers.activeId && (
           <Text style={styles.sectionHint}>
-            Connect {Platform.OS === 'ios' ? 'Apple Health' : 'Health Connect'} to verify workouts and earn points from walking &amp; sleep.
+            Connect a health source to verify workouts and earn points from walking &amp; sleep.
           </Text>
         )}
         {locationStatus !== 'granted' && (
