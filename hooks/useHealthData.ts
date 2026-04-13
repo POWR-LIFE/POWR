@@ -68,7 +68,7 @@ export type HealthDataHook = {
 
 // ── iOS (HealthKit via react-native-health) ───────────────────────────────────
 
-async function iosRequestPermissions(): Promise<boolean> {
+export async function iosRequestPermissions(): Promise<boolean> {
     try {
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         const { default: AppleHealthKit } = require('react-native-health');
@@ -260,7 +260,7 @@ async function iosGetCaloriesToday(): Promise<CalorieSummary | null> {
 
 // ── Android (Health Connect via react-native-health-connect) ─────────────────
 
-async function androidCheckAvailable(): Promise<boolean> {
+export async function androidCheckAvailable(): Promise<boolean> {
     try {
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         const { initialize, getSdkStatus, SdkAvailabilityStatus } = require('react-native-health-connect');
@@ -276,7 +276,7 @@ async function androidCheckAvailable(): Promise<boolean> {
 }
 
 /** Checks existing Health Connect grants without showing any UI. */
-async function androidCheckAlreadyGranted(): Promise<boolean> {
+export async function androidCheckAlreadyGranted(): Promise<boolean> {
     try {
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         const { initialize, getGrantedPermissions } = require('react-native-health-connect');
@@ -294,7 +294,7 @@ async function androidCheckAlreadyGranted(): Promise<boolean> {
     }
 }
 
-async function androidRequestPermissions(): Promise<boolean> {
+export async function androidRequestPermissions(): Promise<boolean> {
     try {
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         const { initialize, requestPermission } = require('react-native-health-connect');

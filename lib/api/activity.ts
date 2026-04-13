@@ -467,7 +467,7 @@ export type HealthSnapshotParams = {
     sleepLightH?: number;
     activityType?: string;
     durationSec?: number;
-    source: 'healthkit' | 'health_connect';
+    source: 'healthkit' | 'health_connect' | 'fitbit' | 'whoop' | 'garmin';
 };
 
 /** Persists a health data snapshot to the health_snapshots table. */
