@@ -3,8 +3,11 @@
    ════════════════════════════════════════════ */
 
 import { supabase } from './src/lib/supabase';
+import { initFooter } from './src/components/SiteFooter';
+import './src/components/site-footer.css';
 
 export function initLandingPage() {
+initFooter();
 
 // ─── Map Integration (Leaflet) ───
 // Dark theme map using CartoDB Dark Matter tiles

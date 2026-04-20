@@ -1,10 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
-import { Plus, Edit2, Trash2, Ticket, Loader2, X, Search, Award, Activity, ChevronRight, AlertTriangle } from 'lucide-react';
+import { Plus, Edit2, Trash2, Ticket, Loader2, X, Search, Award, Activity, ChevronRight, AlertTriangle, Upload, Image as ImageIcon, Tag, FileText } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { uploadPublicImage } from '../../lib/storage';
+import { parseCodes, uploadCodes, fetchCodeStats } from '../../lib/promoCodes';
 
 const CATEGORIES = ['gym', 'fashion', 'gear', 'nutrition', 'food', 'health'];
+const KINDS = ['digital', 'physical'];
 
 const EMPTY_FORM = {
     partner_id: '',
@@ -14,6 +17,10 @@ const EMPTY_FORM = {
     category: 'gym',
     stock: null,
     active: true,
+    reward_kind: 'digital',
+    value_label: '',
+    terms: '',
+    image_url: '',
 };
 
 export default function RewardManager() {
@@ -30,19 +37,30 @@ export default function RewardManager() {
     const [saving, setSaving] = useState(false);
     const [confirmDeleteId, setConfirmDeleteId] = useState(null);
     const [togglingId, setTogglingId] = useState(null);
+    const [imageUploading, setImageUploading] = useState(false);
+    const [codeStats, setCodeStats] = useState(null);
+    const [bulkCodesText, setBulkCodesText] = useState('');
+    const [uploadingCodes, setUploadingCodes] = useState(false);
+    const [singleCode, setSingleCode] = useState('');
 
     useEffect(() => { fetchData(); }, []);
 
     const fetchData = async () => {
         setLoading(true);
         const [rew, part] = await Promise.all([
-            supabase.from('rewards').select('*, partners(name)').order('created_at', { ascending: false }),
-            supabase.from('partners').select('id, name').eq('active', true).order('name'),
+            supabase.from('rewards').select('*, partners(name, partner_code, logo_url)').order('created_at', { ascending: false }),
+            supabase.from('partners').select('id, name, partner_code, roles').contains('roles', ['reward_provider']).order('name'),
         ]);
         if (rew.error) toast.error('Failed to load inventory');
         else setRewards(rew.data || []);
         if (part.data) setPartners(part.data);
         setLoading(false);
+    };
+
+    const refreshCodeStats = async (rewardId) => {
+        if (!rewardId) { setCodeStats(null); return; }
+        try { setCodeStats(await fetchCodeStats(rewardId)); }
+        catch { setCodeStats(null); }
     };
 
     const filtered = rewards
@@ -53,6 +71,9 @@ export default function RewardManager() {
     const openCreate = () => {
         setEditingReward(null);
         setFormData({ ...EMPTY_FORM, partner_id: partners[0]?.id || '' });
+        setCodeStats(null);
+        setBulkCodesText('');
+        setSingleCode('');
         setIsModalOpen(true);
     };
 
@@ -66,8 +87,86 @@ export default function RewardManager() {
             category: reward.category,
             stock: reward.stock,
             active: reward.active,
+            reward_kind: reward.reward_kind || 'digital',
+            value_label: reward.value_label || '',
+            terms: reward.terms || '',
+            image_url: reward.image_url || '',
         });
+        setBulkCodesText('');
+        setSingleCode('');
+        refreshCodeStats(reward.id);
         setIsModalOpen(true);
+    };
+
+    const handleImagePick = async (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        setImageUploading(true);
+        try {
+            const url = await uploadPublicImage('reward-images', file, 'rewards');
+            setFormData(prev => ({ ...prev, image_url: url }));
+            toast.success('Image uploaded');
+        } catch (err) {
+            toast.error(err.message || 'Upload failed');
+        } finally {
+            setImageUploading(false);
+            e.target.value = '';
+        }
+    };
+
+    const handleBulkUpload = async () => {
+        if (!editingReward) { toast.error('Save the reward first, then upload codes'); return; }
+        const codes = parseCodes(bulkCodesText);
+        if (codes.length === 0) { toast.error('No codes detected'); return; }
+        setUploadingCodes(true);
+        try {
+            const result = await uploadCodes({ rewardId: editingReward.id, codes });
+            toast.success(`${result.accepted} accepted · ${result.rejected.length} rejected`);
+            if (result.rejected.length) {
+                console.warn('Rejected codes:', result.rejected);
+            }
+            setBulkCodesText('');
+            await refreshCodeStats(editingReward.id);
+        } catch (err) {
+            toast.error(err.message || 'Upload failed');
+        } finally {
+            setUploadingCodes(false);
+        }
+    };
+
+    const handleBulkFile = async (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        try {
+            const text = await file.text();
+            setBulkCodesText(prev => (prev ? prev + '\n' + text : text));
+            toast.success(`Loaded ${file.name}`);
+        } catch {
+            toast.error('Could not read file');
+        } finally {
+            e.target.value = '';
+        }
+    };
+
+    const handleAddSingleCode = async () => {
+        if (!editingReward) { toast.error('Save the reward first'); return; }
+        if (!singleCode.trim()) return;
+        setUploadingCodes(true);
+        try {
+            const result = await uploadCodes({ rewardId: editingReward.id, codes: [singleCode] });
+            if (result.accepted === 1) {
+                toast.success('Code added');
+                setSingleCode('');
+                await refreshCodeStats(editingReward.id);
+            } else {
+                const reason = result.rejected[0]?.reason || 'rejected';
+                toast.error(`Rejected: ${reason}`);
+            }
+        } catch (err) {
+            toast.error(err.message || 'Failed');
+        } finally {
+            setUploadingCodes(false);
+        }
     };
 
     const handleSave = async (e) => {
@@ -315,6 +414,54 @@ export default function RewardManager() {
                                 <textarea rows={2} className="w-full p-8 bg-[#0A0A0A] border border-[#151515] rounded-[2rem] focus:border-[#E8D200]/40 outline-none transition-all text-sm text-[#888] leading-relaxed resize-none" value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} />
                             </div>
 
+                            {/* Kind + value label */}
+                            <div className="grid grid-cols-2 gap-8 mb-8">
+                                <div>
+                                    <label className="block text-[10px] uppercase tracking-[0.4em] text-[#222] font-black mb-4">Reward Type</label>
+                                    <div className="flex bg-[#0A0A0A] border border-[#151515] rounded-3xl p-2 gap-2">
+                                        {KINDS.map(k => {
+                                            const active = formData.reward_kind === k;
+                                            return (
+                                                <button key={k} type="button" onClick={() => setFormData({ ...formData, reward_kind: k })} className={`flex-1 h-12 rounded-[1.25rem] text-[10px] font-black uppercase tracking-[0.3em] transition-all ${active ? 'bg-[#E8D200] text-[#080808]' : 'text-[#555] hover:text-[#E8D200]'}`}>{k}</button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] uppercase tracking-[0.4em] text-[#222] font-black mb-4">Value Label <span className="text-[#151515] normal-case font-black ml-2">— e.g. £20 VALUE / 30% OFF</span></label>
+                                    <input type="text" placeholder="£20 VALUE" className="w-full h-16 px-8 bg-[#0A0A0A] border border-[#151515] rounded-3xl focus:border-[#E8D200]/40 outline-none transition-all text-[12px] font-black text-[#F2F2F2] placeholder-[#151515] uppercase tracking-[0.2em]" value={formData.value_label} onChange={e => setFormData({ ...formData, value_label: e.target.value })} />
+                                </div>
+                            </div>
+
+                            {/* Image upload */}
+                            <div className="mb-8">
+                                <label className="block text-[10px] uppercase tracking-[0.4em] text-[#222] font-black mb-4">Reward Image</label>
+                                <div className="flex gap-6 items-center bg-[#0A0A0A] border border-[#151515] rounded-[2rem] p-6">
+                                    <div className="w-24 h-24 rounded-2xl bg-[#050505] border border-[#151515] flex items-center justify-center overflow-hidden shrink-0">
+                                        {formData.image_url ? (
+                                            <img src={formData.image_url} alt="" className="w-full h-full object-cover" />
+                                        ) : (
+                                            <ImageIcon size={28} className="text-[#222]" />
+                                        )}
+                                    </div>
+                                    <div className="flex-1 flex items-center gap-4">
+                                        <label className="flex items-center gap-3 h-12 px-8 bg-[#050505] border border-[#151515] rounded-full text-[10px] uppercase tracking-[0.3em] text-[#666] hover:text-[#E8D200] hover:border-[#E8D200]/40 transition-all font-black cursor-pointer">
+                                            <Upload size={14} /> {imageUploading ? 'Uploading...' : (formData.image_url ? 'Replace' : 'Upload')}
+                                            <input type="file" accept="image/*" className="hidden" onChange={handleImagePick} disabled={imageUploading} />
+                                        </label>
+                                        {formData.image_url && (
+                                            <button type="button" onClick={() => setFormData({ ...formData, image_url: '' })} className="text-[10px] uppercase tracking-[0.3em] text-[#444] hover:text-red-500 transition-colors font-black">Remove</button>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Terms */}
+                            <div className="mb-8">
+                                <label className="block text-[10px] uppercase tracking-[0.4em] text-[#222] font-black mb-4">Terms &amp; Conditions</label>
+                                <textarea rows={3} placeholder="E.G. SINGLE USE. VALID 90 DAYS. NOT COMBINABLE WITH OTHER OFFERS." className="w-full p-6 bg-[#0A0A0A] border border-[#151515] rounded-[2rem] focus:border-[#E8D200]/40 outline-none transition-all text-xs text-[#888] leading-relaxed resize-none" value={formData.terms} onChange={e => setFormData({ ...formData, terms: e.target.value })} />
+                            </div>
+
                             <div className="grid grid-cols-2 gap-8 mb-12">
                                 <div>
                                     <label className="block text-[10px] uppercase tracking-[0.4em] text-[#222] font-black mb-4">POWR Value Cost</label>
@@ -327,6 +474,59 @@ export default function RewardManager() {
                                     <input type="number" min="0" placeholder="INF" className="w-full h-16 px-8 bg-[#0A0A0A] border border-[#151515] rounded-3xl focus:border-[#E8D200]/40 outline-none transition-all text-[14px] font-black text-[#F2F2F2] placeholder-[#151515] uppercase" value={formData.stock ?? ''} onChange={e => setFormData({ ...formData, stock: e.target.value === '' ? null : parseInt(e.target.value) })} />
                                 </div>
                             </div>
+
+                            {/* Bulk code upload — digital rewards only, edit mode only */}
+                            {editingReward && formData.reward_kind === 'digital' && (
+                                <div className="mb-8 bg-[#0A0A0A] border border-[#151515] rounded-[2rem] p-8">
+                                    <div className="flex items-center justify-between mb-6">
+                                        <div className="flex items-center gap-4">
+                                            <Ticket size={16} className="text-[#E8D200]" />
+                                            <span className="text-[10px] uppercase tracking-[0.4em] text-[#666] font-black">Promo Code Pool</span>
+                                        </div>
+                                        {codeStats && (
+                                            <div className="flex items-center gap-6 text-[10px] uppercase tracking-[0.3em] font-black">
+                                                <span className="text-[#10B981]">{codeStats.available} AVAIL</span>
+                                                <span className="text-[#E8D200]">{codeStats.reserved} RESERVED</span>
+                                                <span className="text-[#666]">{codeStats.used} USED</span>
+                                                <span className="text-[#444]">{codeStats.expired} EXP</span>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-4 mb-4">
+                                        <div className="flex gap-3">
+                                            <input
+                                                type="text"
+                                                placeholder="POWR-XXXX-YYYYYY"
+                                                className="flex-1 h-12 px-5 bg-[#050505] border border-[#151515] rounded-full text-[11px] font-mono text-[#F2F2F2] placeholder-[#222] focus:border-[#E8D200]/40 outline-none uppercase tracking-[0.1em]"
+                                                value={singleCode}
+                                                onChange={e => setSingleCode(e.target.value.toUpperCase())}
+                                            />
+                                            <button type="button" onClick={handleAddSingleCode} disabled={uploadingCodes || !singleCode.trim()} className="h-12 px-6 bg-[#050505] border border-[#151515] rounded-full text-[10px] uppercase tracking-[0.3em] text-[#888] hover:text-[#E8D200] hover:border-[#E8D200]/40 transition-all font-black disabled:opacity-40">Add</button>
+                                        </div>
+                                        <label className="flex items-center justify-center gap-3 h-12 px-6 bg-[#050505] border border-[#151515] rounded-full text-[10px] uppercase tracking-[0.3em] text-[#666] hover:text-[#E8D200] hover:border-[#E8D200]/40 transition-all font-black cursor-pointer">
+                                            <Upload size={12} /> Upload CSV / TXT
+                                            <input type="file" accept=".csv,.txt,text/csv,text/plain" className="hidden" onChange={handleBulkFile} />
+                                        </label>
+                                    </div>
+
+                                    <textarea
+                                        rows={4}
+                                        placeholder={'PASTE CODES HERE — ONE PER LINE, OR CSV.\nPOWR-BULK-A7F2K9\nPOWR-BULK-M3X8P2'}
+                                        className="w-full p-5 bg-[#050505] border border-[#151515] rounded-[1.5rem] focus:border-[#E8D200]/40 outline-none transition-all text-xs font-mono text-[#DDD] placeholder-[#222] resize-none"
+                                        value={bulkCodesText}
+                                        onChange={e => setBulkCodesText(e.target.value)}
+                                    />
+                                    <div className="flex justify-between items-center mt-4">
+                                        <span className="text-[10px] uppercase tracking-[0.3em] text-[#444] font-black">
+                                            {parseCodes(bulkCodesText).length} codes detected · partner prefix enforced
+                                        </span>
+                                        <button type="button" onClick={handleBulkUpload} disabled={uploadingCodes || !bulkCodesText.trim()} className="h-12 px-8 bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.3em] rounded-full transition-all hover:translate-y-[-2px] disabled:opacity-40">
+                                            {uploadingCodes ? 'UPLOADING...' : 'Upload Batch'}
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
 
                             <div className="flex justify-between items-center bg-[#0A0A0A] border border-[#151515] rounded-[2rem] p-8">
                                 <div className="flex items-center gap-4">

@@ -2226,82 +2226,7 @@ img {
 /* ════════════════════════════════════════════
    FOOTER
    ════════════════════════════════════════════ */
-.footer {
-    padding: 40px 0 40px;
-    background: var(--bg-alt);
-    border-top: 1px solid var(--border);
-}
-
-.footer-inner {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-end;
-    gap: 48px;
-    margin-bottom: 0;
-}
-
-.footer-brand {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    text-align: left;
-}
-
-.footer-logo {
-    height: 100px;
-    width: auto;
-    margin-bottom: 12px;
-}
-
-.footer-name {
-    display: block;
-    font-size: 18px;
-    font-weight: 800;
-    letter-spacing: 2px;
-    margin-bottom: 8px;
-}
-
-.footer-tagline {
-    font-size: 14px;
-    color: var(--text-tertiary);
-    line-height: 1.6;
-}
-
-.footer-links {
-    display: flex;
-    gap: 64px;
-}
-
-.footer-col {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-}
-
-.footer-col h4 {
-    font-size: 13px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 2px;
-    color: var(--text-secondary);
-    margin-bottom: 4px;
-}
-
-.footer-col a {
-    font-size: 14px;
-    color: var(--text-tertiary);
-    transition: color 0.2s;
-}
-
-.footer-col a:hover {
-    color: var(--accent);
-}
-
-.footer-copyright p {
-    font-size: 13px;
-    color: var(--text-tertiary);
-    margin: 0;
-}
+/* Footer styles moved to src/components/site-footer.css */
 
 
 /* ════════════════════════════════════════════
@@ -2967,30 +2892,7 @@ img {
         font-size: 16px;
     }
 
-    /* Footer */
-    .footer {
-        padding: 30px 0 30px;
-    }
-
-    .footer-inner {
-        flex-direction: column;
-        align-items: center;
-        text-align: center;
-        gap: 24px;
-    }
-
-    .footer-brand {
-        align-items: center;
-        text-align: center;
-    }
-
-    .footer-logo {
-        height: 60px;
-    }
-
-    .footer-copyright {
-        margin-top: 8px;
-    }
+    /* Footer responsive styles moved to src/components/site-footer.css */
 }
 
 /* ─── Referral Dashboard ─── */

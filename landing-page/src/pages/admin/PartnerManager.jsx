@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
-import { Plus, Edit2, Trash2, MapPin, Loader2, X, Search, Activity, ChevronRight, Globe, Satellite, Eye, Clock, User, Users } from 'lucide-react';
+import { Plus, Edit2, Trash2, MapPin, Loader2, X, Search, Activity, ChevronRight, Globe, Satellite, Eye, Clock, User, Users, Upload, Image as ImageIcon, Gift, Target } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { uploadPublicImage } from '../../lib/storage';
 
 const DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 const DAY_LABELS = { mon: 'Mon', tue: 'Tue', wed: 'Wed', thu: 'Thu', fri: 'Fri', sat: 'Sat', sun: 'Sun' };
@@ -174,7 +175,7 @@ const LocationEditor = ({ locations, onChange }) => {
 };
 
 // --- Trainers editor ---
-const BLANK_TRAINER = { name: '', photo_url: '', bio: '', specialties: '', experience: '', active: true, sort_order: 0 };
+const BLANK_TRAINER = { name: '', photo_url: '', bio: '', specialties: '', experience: '', profile_url: '', booking_url: '', active: true, sort_order: 0 };
 
 const TrainersEditor = ({ partnerId, toast }) => {
     const [trainers, setTrainers] = useState([]);
@@ -211,6 +212,8 @@ const TrainersEditor = ({ partnerId, toast }) => {
             bio: t.bio || '',
             specialties: (t.specialties || []).join(', '),
             experience: t.experience || '',
+            profile_url: t.profile_url || '',
+            booking_url: t.booking_url || '',
             active: t.active,
             sort_order: t.sort_order ?? 0,
         });
@@ -254,6 +257,8 @@ const TrainersEditor = ({ partnerId, toast }) => {
             bio: trainerForm.bio || null,
             specialties: trainerForm.specialties ? trainerForm.specialties.split(',').map(s => s.trim()).filter(Boolean) : null,
             experience: trainerForm.experience || null,
+            profile_url: trainerForm.profile_url?.trim() || null,
+            booking_url: trainerForm.booking_url?.trim() || null,
             active: trainerForm.active,
             sort_order: parseInt(trainerForm.sort_order) || 0,
         };
@@ -423,6 +428,29 @@ const TrainersEditor = ({ partnerId, toast }) => {
                                 </div>
                             </div>
 
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="space-y-3">
+                                    <label className="block text-[8px] uppercase tracking-[0.5em] text-[#555] font-black ml-2">Profile URL</label>
+                                    <input
+                                        type="url"
+                                        placeholder="https://gym.com/trainers/sarah"
+                                        className="w-full h-14 px-6 bg-[#0A0A0A] border border-[#151515] rounded-2xl text-[13px] font-bold text-[#F2F2F2] placeholder-[#222] focus:border-[#E8D200]/40 outline-none transition-all"
+                                        value={trainerForm.profile_url}
+                                        onChange={e => setTrainerForm({ ...trainerForm, profile_url: e.target.value })}
+                                    />
+                                </div>
+                                <div className="space-y-3">
+                                    <label className="block text-[8px] uppercase tracking-[0.5em] text-[#555] font-black ml-2">Booking URL</label>
+                                    <input
+                                        type="url"
+                                        placeholder="https://calendly.com/sarah-pt"
+                                        className="w-full h-14 px-6 bg-[#0A0A0A] border border-[#151515] rounded-2xl text-[13px] font-bold text-[#F2F2F2] placeholder-[#222] focus:border-[#E8D200]/40 outline-none transition-all"
+                                        value={trainerForm.booking_url}
+                                        onChange={e => setTrainerForm({ ...trainerForm, booking_url: e.target.value })}
+                                    />
+                                </div>
+                            </div>
+
                             <div className="flex items-center gap-6 bg-[#0A0A0A] border border-[#151515] rounded-2xl px-6 py-4">
                                 <button
                                     type="button"
@@ -454,7 +482,7 @@ const TrainersEditor = ({ partnerId, toast }) => {
 };
 
 const CATEGORIES = ['gym', 'fashion', 'gear', 'nutrition', 'food', 'health'];
-const EMPTY_FORM = { name: '', address: '', logo_url: '', category: 'gym', active: true, locations: [], opening_hours: { ...DEFAULT_HOURS } };
+const EMPTY_FORM = { name: '', address: '', logo_url: '', category: 'gym', active: true, roles: ['earning_location'], locations: [], opening_hours: { ...DEFAULT_HOURS } };
 
 export default function PartnerManager() {
     const toast = useToast();
@@ -469,6 +497,31 @@ export default function PartnerManager() {
     const [saving, setSaving] = useState(false);
     const [confirmDeleteId, setConfirmDeleteId] = useState(null);
     const [togglingId, setTogglingId] = useState(null);
+    const [logoUploading, setLogoUploading] = useState(false);
+
+    const toggleRole = (role) => {
+        setFormData(prev => {
+            const has = prev.roles.includes(role);
+            const next = has ? prev.roles.filter(r => r !== role) : [...prev.roles, role];
+            return { ...prev, roles: next.length ? next : [role] };
+        });
+    };
+
+    const handleLogoPick = async (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        setLogoUploading(true);
+        try {
+            const url = await uploadPublicImage('partner-logos', file, 'partners');
+            setFormData(prev => ({ ...prev, logo_url: url }));
+            toast.success('Logo uploaded');
+        } catch (err) {
+            toast.error(err.message || 'Upload failed');
+        } finally {
+            setLogoUploading(false);
+            e.target.value = '';
+        }
+    };
 
     useEffect(() => { fetchPartners(); }, []);
 
@@ -499,6 +552,7 @@ export default function PartnerManager() {
             logo_url: partner.logo_url || '',
             category: partner.category,
             active: partner.active,
+            roles: partner.roles && partner.roles.length ? partner.roles : ['earning_location'],
             locations: partner.locations || [],
             opening_hours: partner.opening_hours || { ...DEFAULT_HOURS },
         });

@@ -20,6 +20,8 @@ import RedemptionTracker from './pages/admin/RedemptionTracker';
 import AuditLog from './pages/admin/AuditLog';
 import SystemConfig from './pages/admin/SystemConfig';
 import PartnerProfile from './pages/admin/PartnerProfile';
+import PrivacyPolicy from './pages/PrivacyPolicy';
+import CookiePolicy from './pages/CookiePolicy';
 
 // --- Auth Context ---
 const AuthContext = createContext({ user: null, isAdmin: false, loading: true });
@@ -505,6 +507,8 @@ export default function App() {
             <AuthProvider>
                 <Routes>
                     <Route path="/" element={<LandingPage />} />
+                    <Route path="/privacy" element={<PrivacyPolicy />} />
+                    <Route path="/cookies" element={<CookiePolicy />} />
                     <Route path="/admin/login" element={<AdminLogin />} />
                     <Route path="/admin" element={<ProtectedRoute><AdminLayout><AdminHome /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/partners" element={<ProtectedRoute><AdminLayout><PartnerManager /></AdminLayout></ProtectedRoute>} />

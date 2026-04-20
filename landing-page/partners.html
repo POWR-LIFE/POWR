@@ -5,31 +5,29 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>POWR — Partner With Us</title>
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@200;300;400;500;600;700&display=swap"
-    rel="stylesheet">
-  <!-- Font Awesome -->
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-y02N1GyM5R0X2vM7P3G+Ys3+a9hXnI+RFl/m6LL8hCaMXoMc4d9+IFrPaAs/P10Tz27ejTxqgkJ3KxSBu4B1ig==" crossorigin="anonymous" referrerpolicy="no-referrer" />
-  <!-- Leaflet -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@200;300;400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/partners.css">
   <script type="module" src="/partners.js"></script>
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
   <!-- Social Media Meta Tags -->
   <meta property="og:title" content="POWR — Partner With Us" />
   <meta property="og:description"
-    content="Join the POWR partner network and reward your customers for staying active." />
+    content="Put your brand in front of the people who show up. POWR rewards across Eat, Move, Mind and Sleep." />
   <meta property="og:image" content="https://powr.life/powr-logo-black.png" />
   <meta property="og:url" content="https://powr.life/partners.html" />
   <meta property="og:type" content="website" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="POWR — Partner With Us" />
   <meta name="twitter:description"
-    content="Join the POWR partner network and reward your customers for staying active." />
+    content="Put your brand in front of the people who show up. POWR rewards across Eat, Move, Mind and Sleep." />
   <meta name="twitter:image" content="https://powr.life/powr-logo-black.png" />
 </head>
 
-  <!-- ═══════════════ NAV ═══════════════ -->
+<body>
+
+  <!-- NAV -->
   <nav id="nav">
     <div class="nav-inner">
       <a href="/" class="nav-logo">
@@ -37,905 +35,184 @@
           src="https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/landing-page-assets/powrlogotext.png?v=1.1"
           alt="POWR Logo" class="nav-logo-img" />
       </a>
-
       <div class="nav-links" id="navLinks">
-        <a href="#contact" class="nav-cta-outline type-cta">Apply to Partner</a>
+        <a href="#apply" class="nav-cta-outline type-cta">Apply to Partner</a>
         <a href="https://powr.life#waitlist" class="nav-cta type-cta">Join Waitlist</a>
       </div>
-
       <button class="nav-toggle" id="navToggle" aria-label="Toggle menu">
         <span></span><span></span><span></span>
       </button>
     </div>
   </nav>
 
-<!-- HERO -->
-<div class="hero">
-  <div class="hero-bg">
+  <!-- HERO -->
+  <section class="hero">
     <video autoplay muted loop playsinline class="hero-video">
       <source
         src="https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/landing-page-assets/partners_hero.mp4"
         type="video/mp4">
     </video>
-  </div>
-  <div class="hero-content">
-    <div class="launch-badge">
-      <span class="launch-dot"></span>
-      Launching London · May 2026
+    <div class="hero-overlay"></div>
+    <div class="hero-inner">
+      <p class="eyebrow">Brand Partners · London Launch · May 2026</p>
+      <h1>Your brand belongs<br />where the <em>habit lives.</em></h1>
+      <p class="hero-sub">POWR puts your brand in front of the people who already show up — every day, across Eat, Move, Mind, and Sleep.</p>
+      <div class="hero-ctas">
+        <a href="#apply" class="btn-primary type-cta">Apply to Partner</a>
+        <a href="#brands" class="btn-ghost type-cta">See Brand Categories</a>
+      </div>
+      <div class="stats-row">
+        <div class="stat"><span class="stat-val">76%</span><span class="stat-lbl">buy health products within 2hrs of training</span></div>
+        <div class="stat"><span class="stat-val">3.2×</span><span class="stat-lbl">higher purchase intent post-workout</span></div>
+        <div class="stat"><span class="stat-val">£1,800</span><span class="stat-lbl">avg. annual fitness spend per member</span></div>
+        <div class="stat"><span class="stat-val">4</span><span class="stat-lbl">pillars · one audience · full lifestyle reach</span></div>
+      </div>
     </div>
-    <h1 class="hero-title">Your best members show up every day. What do they get for it?</h1>
-    <p class="hero-sub">POWR rewards the habit — turning consistency into something your members can feel beyond the workout.</p>
-    <div class="hero-actions">
-      <a href="#contact" class="btn-primary">Apply to Partner</a>
-      <a href="#how-it-works" class="btn-ghost">See How It Works</a>
-    </div>
-  </div>
-</div>
+  </section>
 
-<!-- STATS STRIP -->
-<div class="stats-strip">
-  <div class="stat">
-    <span class="stat-num">50%</span>
-    <span class="stat-label">of members quit within 6 months</span>
-  </div>
-  <div class="stat-divider"></div>
-  <div class="stat">
-    <span class="stat-num">5×</span>
-    <span class="stat-label">more costly to acquire than retain</span>
-  </div>
-  <div class="stat-divider"></div>
-  <div class="stat">
-    <span class="stat-num">28%</span>
-    <span class="stat-label">average annual churn rate</span>
-  </div>
-  <div class="stat-divider"></div>
-  <div class="stat">
-    <span class="stat-num">London</span>
-    <span class="stat-label">Launch city · May 2026</span>
-  </div>
-</div>
+  <!-- BRANDS -->
+  <section class="section" id="brands">
+    <div class="section-inner">
+      <p class="eyebrow">Brand Partners</p>
+      <h2 class="section-h">Rewards across every pillar<br />of a <em>healthy life.</em></h2>
+      <p class="section-p">We're building a network of brands across the four things people who train actually care about — Eat, Move, Mind, and Sleep.</p>
 
-<!-- HOW IT WORKS -->
-<div class="how-section" id="how-it-works">
-  <div class="how-inner">
-    <div class="how-header fade-up">
-      <span class="section-eyebrow">How It Works</span>
-      <h2>Simple for you.<br>Powerful for your members.</h2>
-    </div>
-    <div class="steps-row fade-up">
-      <div class="step">
-        <div class="step-number">01</div>
-        <span class="step-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--gold)"
-            stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="3" width="18" height="18" rx="3" />
-            <path d="M9 12h6M12 9v6" />
-          </svg></span>
-        <h3>Your gym gets listed</h3>
-        <p>We add your venue to the app with your logo and partner profile. Approved and live within 24 hours.</p>
+      <div class="cat-block cat-block-eat">
+        <div class="cat-label lbl-eat"><span class="pip"></span>Eat</div>
+        <div class="logo-grid">
+          <div class="logo-tile">
+            <span class="tile-badge badge-live">Partner</span>
+            <img class="tile-logo" src="https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/landing-page-assets/Huel%20Logo%20.png" alt="Huel" />
+          </div>
+          <div class="logo-tile">
+            <span class="tile-badge badge-live">Partner</span>
+            <img class="tile-logo tile-logo-lg" src="https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/landing-page-assets/tribe.png" alt="Tribe" />
+          </div>
+          <div class="logo-tile">
+            <span class="tile-badge badge-live">Partner</span>
+            <span class="tile-name">FRANK Protein</span>
+          </div>
+          <a href="#apply" class="logo-tile open-slot">
+            <span class="open-label">Founding slot open</span>
+            <span class="open-cta">Apply now</span>
+          </a>
+          <a href="#apply" class="logo-tile open-slot">
+            <span class="open-label">Founding slot open</span>
+            <span class="open-cta">Apply now</span>
+          </a>
+          <a href="#apply" class="logo-tile open-slot">
+            <span class="open-label">Founding slot open</span>
+            <span class="open-cta">Apply now</span>
+          </a>
+        </div>
       </div>
-      <div class="step">
-        <div class="step-number">02</div>
-        <span class="step-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--gold)"
-            stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" />
-            <circle cx="12" cy="9" r="2.5" />
-          </svg></span>
-        <h3>Visits verified automatically</h3>
-        <p>POWR detects when members arrive via GPS. Seamless and passive. Nothing changes on your end.</p>
-      </div>
-      <div class="step">
-        <div class="step-number">03</div>
-        <span class="step-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--gold)"
-            stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
-            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-          </svg></span>
-        <h3>Members earn on every session</h3>
-        <p>Every visit builds their points balance. Streaks multiply rewards. Consistency becomes something worth
-          protecting.</p>
-      </div>
-      <div class="step">
-        <div class="step-number">04</div>
-        <span class="step-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--gold)"
-            stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M20 12v10H4V12" />
-            <path d="M22 7H2v5h20V7z" />
-            <path d="M12 22V7" />
-            <path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z" />
-            <path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z" />
-          </svg></span>
-        <h3>They redeem across the network</h3>
-        <p>Points unlock curated rewards across supplements, sportswear and wellness. The loop that keeps them coming
-          back.</p>
-      </div>
-    </div>
-  </div>
-</div>
 
-<!-- ZERO FRICTION -->
-<div class="zero-section">
-  <div class="zero-inner">
-    <div class="zero-card fade-up">
-      <div class="zero-glow"></div>
-      <div>
-        <span class="section-eyebrow">Zero Friction</span>
-        <h2>No integration.<br>No setup.<br>No overhead.</h2>
-        <p>All we need is your logo and sign-off. You're live in under 24 hours.</p>
-        <div class="zero-checks">
-          <div class="zero-check"><span class="zero-check-dot">✓</span> No system integrations</div>
-          <div class="zero-check"><span class="zero-check-dot">✓</span> No hardware to install</div>
-          <div class="zero-check"><span class="zero-check-dot">✓</span> No staff training required</div>
-          <div class="zero-check"><span class="zero-check-dot">✓</span> No ongoing commitment</div>
+      <p class="cat-footnote">Move · Mind · Sleep &nbsp;—&nbsp; <a href="#apply">apply to partner across all categories</a></p>
+    </div>
+  </section>
+
+  <!-- HOW IT WORKS -->
+  <section class="section hiw" id="how-it-works">
+    <div class="section-inner">
+      <p class="eyebrow">How It Works</p>
+      <h2 class="section-h">Zero overhead.<br /><em>Maximum reach.</em></h2>
+      <p class="section-p no-mb">Listed in the POWR rewards marketplace in under 24 hours. No integrations, no hardware, no ongoing commitment.</p>
+      <div class="steps">
+        <div class="step">
+          <div class="step-n">01</div>
+          <h4>You supply the offer</h4>
+          <p>A discount, a free product, an exclusive deal. You decide what POWR members get.</p>
+        </div>
+        <div class="step">
+          <div class="step-n">02</div>
+          <h4>We handle the listing</h4>
+          <p>Your brand goes live on the Spend tab — visible to every active user in your category.</p>
+        </div>
+        <div class="step">
+          <div class="step-n">03</div>
+          <h4>Members earn, then redeem</h4>
+          <p>Every session earns points. Your reward is where that effort goes.</p>
+        </div>
+        <div class="step">
+          <div class="step-n">04</div>
+          <h4>You reach proven habit</h4>
+          <p>Not impressions. People who have already proven they show up.</p>
         </div>
       </div>
-      <div class="zero-visual">
-        <div class="zero-visual-label">What we need from you</div>
-        <div class="zero-row">
-          <span class="zero-row-label">Your gym logo</span>
-          <span class="zero-row-value tag-green">✓ That's it</span>
+      <div class="friction-grid">
+        <div class="friction-block">
+          <h4>What we need from you</h4>
+          <ul class="check-list">
+            <li class="ok"><span class="ico">✓</span>Your brand logo</li>
+            <li class="ok"><span class="ico">✓</span>Your offer or discount code</li>
+            <li class="ok"><span class="ico">✓</span>Sign-off to list</li>
+          </ul>
         </div>
-        <div class="zero-row">
-          <span class="zero-row-label">Approval to be listed</span>
-          <span class="zero-row-value tag-green">✓ Sign off</span>
-        </div>
-        <div class="zero-visual-label">What we don't need</div>
-        <div class="zero-row">
-          <span class="zero-row-label">System integration</span>
-          <span class="zero-row-value tag-muted">Not required</span>
-        </div>
-        <div class="zero-row">
-          <span class="zero-row-label">Hardware or equipment</span>
-          <span class="zero-row-value tag-muted">Not required</span>
-        </div>
-        <div class="zero-row">
-          <span class="zero-row-label">Staff time</span>
-          <span class="zero-row-value tag-muted">Not required</span>
+        <div class="friction-block">
+          <h4>What we don't need</h4>
+          <ul class="check-list">
+            <li class="no"><span class="ico">✕</span>System integration</li>
+            <li class="no"><span class="ico">✕</span>Cash commitment</li>
+            <li class="no"><span class="ico">✕</span>Staff time or training</li>
+          </ul>
         </div>
       </div>
     </div>
-  </div>
-</div>
+  </section>
 
-<!-- THREE PILLARS -->
-<div class="pillars-section">
-  <div class="pillars-inner">
-    <div class="pillars-grid fade-up">
-      <div class="pillar">
-        <div class="pillar-icon">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="1.5"
-            stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="17 1 21 5 17 9" />
-            <path d="M3 11V9a4 4 0 0 1 4-4h14" />
-            <polyline points="7 23 3 19 7 15" />
-            <path d="M21 13v2a4 4 0 0 1-4 4H3" />
-          </svg>
+  <!-- APPLY -->
+  <section class="section apply" id="apply">
+    <div class="section-inner">
+      <div class="apply-inner">
+        <p class="eyebrow">Apply to Partner</p>
+        <h2 class="section-h">Be part of <em>the launch.</em></h2>
+        <p class="section-p apply-intro">Founding partners across Eat, Move, Mind, and Sleep get priority placement and early member exposure ahead of May 2026.</p>
+
+        <form id="partnerApplyForm" novalidate>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="partnerBrand">Brand Name</label>
+              <input type="text" id="partnerBrand" name="brand" placeholder="e.g. Grenade" required />
+            </div>
+            <div class="form-group">
+              <label for="partnerCategory">Category</label>
+              <select id="partnerCategory" name="category" required>
+                <option value="" disabled selected>Select category</option>
+                <option value="eat">Eat — Nutrition &amp; Food</option>
+                <option value="move">Move — Activewear &amp; Gear</option>
+                <option value="mind">Mind — Wellness &amp; Mental Health</option>
+                <option value="sleep">Sleep — Recovery &amp; Rest</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="partnerName">Your Name</label>
+              <input type="text" id="partnerName" name="name" placeholder="First &amp; last name" required />
+            </div>
+            <div class="form-group">
+              <label for="partnerEmail">Email</label>
+              <input type="email" id="partnerEmail" name="email" placeholder="you@brand.com" required />
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="partnerOffer">Your offer</label>
+            <textarea id="partnerOffer" name="offer" placeholder="What would you like to offer POWR members? e.g. 20% off all orders, free trial, etc."></textarea>
+          </div>
+          <button type="submit" class="btn-primary type-cta form-submit">Apply Now</button>
+        </form>
+
+        <div id="partnerErrorMsg" class="form-error" style="display:none"></div>
+        <div id="partnerSuccessMsg" class="success-msg">
+          <strong>Application received.</strong><br />We'll be in touch shortly.
         </div>
-        <h3>Retention, by design</h3>
-        <p>Reward loops create habit. Members who earn on every visit have a concrete reason to keep coming back,
-          turning irregular gym-goers into regulars.</p>
-      </div>
-      <div class="pillar">
-        <div class="pillar-icon">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="1.5"
-            stroke-linecap="round" stroke-linejoin="round">
-            <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
-          </svg>
-        </div>
-        <h3>Streaks drive attendance</h3>
-        <p>Loss aversion is one of the strongest behavioural forces there is. Members don't want to break their streak.
-          That pull increases visit frequency, not just intention.</p>
-      </div>
-      <div class="pillar">
-        <div class="pillar-icon">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="1.5"
-            stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="18" cy="5" r="3" />
-            <circle cx="6" cy="12" r="3" />
-            <circle cx="18" cy="19" r="3" />
-            <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
-            <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
-          </svg>
-        </div>
-        <h3>The network effect</h3>
-        <p>As POWR grows, so does your reach. Every new user is a potential member who already knows your name before
-          they walk through the door.</p>
+        <p class="apply-note">Selective onboarding · London launch · May 2026</p>
       </div>
     </div>
-  </div>
-</div>
+  </section>
 
-<!-- MOCKUPS -->
-<div class="mockups-section">
-  <div class="mockups-inner">
-    <div class="mockups-header fade-up">
-      <span class="section-eyebrow">The App</span>
-      <h2>Simple. Rewarding.<br>Habit-forming.</h2>
-      <p>Designed to keep members engaged between visits — and coming back for the next one.</p>
-    </div>
-    <div class="mockups-grid fade-up">
-      <div class="mockup-slot">
-        <div class="spend-screen">
-          <div class="status-bar">
-            <span class="time">9:07</span>
-            <div style="display:flex;gap:6px;align-items:center">
-              <svg width="16" height="11" viewBox="0 0 16 11" fill="none">
-                <rect x="0" y="3" width="3" height="8" rx="1" fill="rgba(255,255,255,0.8)" />
-                <rect x="4.5" y="2" width="3" height="9" rx="1" fill="rgba(255,255,255,0.8)" />
-                <rect x="9" y="0.5" width="3" height="10.5" rx="1" fill="rgba(255,255,255,0.8)" />
-                <rect x="13.5" y="0" width="2.5" height="11" rx="1" fill="rgba(255,255,255,0.25)" />
-              </svg>
-              <svg width="16" height="12" viewBox="0 0 16 12" fill="none">
-                <path
-                  d="M8 2.5C10.2 2.5 12.2 3.4 13.6 4.9L15 3.4C13.2 1.6 10.7 0.5 8 0.5C5.3 0.5 2.8 1.6 1 3.4L2.4 4.9C3.8 3.4 5.8 2.5 8 2.5Z"
-                  fill="rgba(255,255,255,0.8)" />
-                <path
-                  d="M8 5.5C9.5 5.5 10.8 6.1 11.8 7L13.2 5.5C11.8 4.2 10 3.5 8 3.5C6 3.5 4.2 4.2 2.8 5.5L4.2 7C5.2 6.1 6.5 5.5 8 5.5Z"
-                  fill="rgba(255,255,255,0.8)" />
-                <circle cx="8" cy="10" r="1.5" fill="rgba(255,255,255,0.8)" />
-              </svg>
-              <svg width="26" height="12" viewBox="0 0 26 12" fill="none">
-                <rect x="0.5" y="0.5" width="22" height="11" rx="3.5" stroke="rgba(255,255,255,0.35)" />
-                <rect x="2" y="2" width="16" height="8" rx="2" fill="rgba(255,255,255,0.8)" />
-                <path d="M24 4.5V7.5C24.8 7.2 25.5 6.5 25.5 6C25.5 5.5 24.8 4.8 24 4.5Z"
-                  fill="rgba(255,255,255,0.35)" />
-              </svg>
-            </div>
-          </div>
-
-          <div class="scroll-area">
-            <div class="header">
-              <div class="header-title">Spend</div>
-            </div>
-
-            <div class="points-bar-v7">
-              <div>
-                <div class="pts-label">Available</div>
-                <div class="pts-num">1,247</div>
-                <div class="pts-unit">POWR points</div>
-              </div>
-              <div class="pts-right">
-                <div class="pts-level">Level</div>
-                <div class="pts-lname">2 · Mover</div>
-              </div>
-            </div>
-
-            <div class="featured-card">
-              <div class="featured-accent"></div>
-              <img class="featured-img"
-                src="https://res.cloudinary.com/dphnlhvni/image/upload/v1773744698/18_08_14_Third_Space_City_JMS-048_ythrsa.jpg"
-                alt="" />
-              <div class="featured-inner">
-                <div class="feat-top">
-                  <div class="feat-label">This week's reward</div>
-                  <div class="rotates-weekly"><span class="dot"></span> Rotates Weekly</div>
-                </div>
-                <div class="feat-name">Free Class</div>
-                <div class="feat-partner">Third Space · Any London location</div>
-                <div class="feat-footer">
-                  <div class="feat-value">£20 value <span class="divider">·</span> 800 pts</div>
-                  <button class="feat-redeem">REDEEM</button>
-                </div>
-              </div>
-            </div>
-
-            <div class="cat-tabs-v7">
-              <button class="cat-tab active">Move</button>
-              <button class="cat-tab">Eat</button>
-              <button class="cat-tab">Mind</button>
-              <button class="cat-tab">Sleep</button>
-            </div>
-
-            <div class="rewards-list">
-              <div class="reward-row">
-                <div class="rr-logo">
-                  <img
-                    src="https://res.cloudinary.com/dphnlhvni/image/upload/v1773746062/Hagen-Logo-Black-RGB_g3mr9t.webp"
-                    alt="Hagen" />
-                </div>
-                <div class="rr-mid">
-                  <div class="rr-name">Free Coffee</div>
-                  <div class="rr-detail">Any drink · Hagen</div>
-                </div>
-                <div class="rr-right">
-                  <div class="rr-pts">300 pts</div>
-                  <button class="rr-btn">REDEEM</button>
-                </div>
-              </div>
-              <div class="reward-row">
-                <div class="rr-logo">
-                  <img
-                    src="https://res.cloudinary.com/dphnlhvni/image/upload/v1773746082/nottopastabars-logo-for-website_ak09jg.webp"
-                    alt="Notto" />
-                </div>
-                <div class="rr-mid">
-                  <div class="rr-name">25% off your bill</div>
-                  <div class="rr-detail">Notto Pasta Bars</div>
-                </div>
-                <div class="rr-right">
-                  <div class="rr-pts">500 pts</div>
-                  <button class="rr-btn">REDEEM</button>
-                </div>
-              </div>
-              <div class="reward-row">
-                <div class="rr-logo dark">
-                  <img src="https://res.cloudinary.com/dphnlhvni/image/upload/v1773746100/Bulk_logo_kx1kwo.png"
-                    alt="Bulk" />
-                </div>
-                <div class="rr-mid">
-                  <div class="rr-name">30% off Protein Powder</div>
-                  <div class="rr-detail">bulk® · Any product</div>
-                </div>
-                <div class="rr-right">
-                  <div class="rr-pts">400 pts</div>
-                  <button class="rr-btn">REDEEM</button>
-                </div>
-              </div>
-              <div class="reward-row">
-                <div class="rr-logo full">
-                  <img src="/reward-coffee.png" alt="Coffee cup" />
-                </div>
-                <div class="rr-mid">
-                  <div class="rr-name">Free Coffee</div>
-                  <div class="rr-detail">The Roastary · Any size</div>
-                </div>
-                <div class="rr-right">
-                  <div class="rr-pts">250 pts</div>
-                  <button class="rr-btn">REDEEM</button>
-                </div>
-              </div>
-              <div class="reward-row">
-                <div class="rr-logo dark">
-                  <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3Cpattern id='p' width='8' height='8' patternUnits='userSpaceOnUse' patternTransform='rotate(45)'%3E%3Crect width='4' height='8' fill='%23facc15'/%3E%3C/pattern%3E%3C/defs%3E%3Crect width='64' height='64' fill='rgba(250,204,21,0.16)'/%3E%3Crect width='64' height='64' fill='url(%23p)' opacity='0.45'/%3E%3C/svg%3E" alt="Massage" />
-                </div>
-                <div class="rr-mid">
-                  <div class="rr-name">15% off Massage</div>
-                  <div class="rr-detail">Recovery Studio · 60 min</div>
-                </div>
-                <div class="rr-right">
-                  <div class="rr-pts">600 pts</div>
-                  <button class="rr-btn">REDEEM</button>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="bottom-nav">
-            <div class="nav-item">
-              <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                <path d="M2 8L10 2L18 8V18H13V13H7V18H2V8Z" stroke="rgba(255,255,255,0.35)" stroke-width="1.3"
-                  stroke-linejoin="round" fill="none" />
-              </svg>
-              <div class="nav-lbl">Home</div>
-            </div>
-            <div class="nav-item">
-              <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                <path d="M10 3 A7 7 0 0 1 17 10" stroke="rgba(255,255,255,0.35)" stroke-width="1.3"
-                  stroke-linecap="round" />
-                <path d="M4.5 5.5 A7 7 0 0 0 3 10 A7 7 0 0 0 10 17" stroke="rgba(255,255,255,0.35)" stroke-width="1.3"
-                  stroke-linecap="round" />
-                <circle cx="10" cy="10" r="2.5" stroke="rgba(255,255,255,0.35)" stroke-width="1.3" fill="none" />
-              </svg>
-              <div class="nav-lbl">Progress</div>
-            </div>
-            <div class="nav-item">
-              <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                <rect x="3" y="8" width="14" height="10" rx="2" stroke="#facc15" stroke-width="1.3" fill="none" />
-                <path d="M7 8V6C7 4 8.3 3 10 3C11.7 3 13 4 13 6V8" stroke="#facc15" stroke-width="1.3"
-                  stroke-linecap="round" fill="none" />
-              </svg>
-              <div class="nav-lbl" style="color:#facc15">Spend</div>
-            </div>
-            <div class="nav-item">
-              <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                <circle cx="10" cy="7" r="3.5" stroke="rgba(255,255,255,0.35)" stroke-width="1.3" fill="none" />
-                <path d="M3 18C3 15 6 12.5 10 12.5C14 12.5 17 15 17 18" stroke="rgba(255,255,255,0.35)"
-                  stroke-width="1.3" stroke-linecap="round" fill="none" />
-              </svg>
-              <div class="nav-lbl">Profile</div>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div class="mockup-slot featured">
-        <div class="home-screen">
-          <div class="status-bar">
-            <span class="time">9:07</span>
-            <div style="display:flex;gap:6px;align-items:center">
-              <svg width="16" height="11" viewBox="0 0 16 11" fill="none">
-                <rect x="0" y="3" width="3" height="8" rx="1" fill="rgba(255,255,255,0.8)" />
-                <rect x="4.5" y="2" width="3" height="9" rx="1" fill="rgba(255,255,255,0.8)" />
-                <rect x="9" y="0.5" width="3" height="10.5" rx="1" fill="rgba(255,255,255,0.8)" />
-                <rect x="13.5" y="0" width="2.5" height="11" rx="1" fill="rgba(255,255,255,0.25)" />
-              </svg>
-              <svg width="16" height="12" viewBox="0 0 16 12" fill="none">
-                <path
-                  d="M8 2.5C10.2 2.5 12.2 3.4 13.6 4.9L15 3.4C13.2 1.6 10.7 0.5 8 0.5C5.3 0.5 2.8 1.6 1 3.4L2.4 4.9C3.8 3.4 5.8 2.5 8 2.5Z"
-                  fill="rgba(255,255,255,0.8)" />
-                <path
-                  d="M8 5.5C9.5 5.5 10.8 6.1 11.8 7L13.2 5.5C11.8 4.2 10 3.5 8 3.5C6 3.5 4.2 4.2 2.8 5.5L4.2 7C5.2 6.1 6.5 5.5 8 5.5Z"
-                  fill="rgba(255,255,255,0.8)" />
-                <circle cx="8" cy="10" r="1.5" fill="rgba(255,255,255,0.8)" />
-              </svg>
-              <svg width="26" height="12" viewBox="0 0 26 12" fill="none">
-                <rect x="0.5" y="0.5" width="22" height="11" rx="3.5" stroke="rgba(255,255,255,0.35)" />
-                <rect x="2" y="2" width="16" height="8" rx="2" fill="rgba(255,255,255,0.8)" />
-                <path d="M24 4.5V7.5C24.8 7.2 25.5 6.5 25.5 6C25.5 5.5 24.8 4.8 24 4.5Z"
-                  fill="rgba(255,255,255,0.35)" />
-              </svg>
-            </div>
-          </div>
-
-          <div class="scroll-area">
-            <div class="header">
-              <div class="header-left">
-                <div class="name">Alex</div>
-              </div>
-              <div class="avatar">A</div>
-            </div>
-
-            <div class="sc-card">
-              <img class="sc-bg"
-                src="https://res.cloudinary.com/dphnlhvni/image/upload/v1773737630/Screenshot_2026-03-16_at_21.48.59_xjftrq.png"
-                alt="" />
-              <div class="sc-content">
-                <div class="sc-header">
-                  <span class="sc-label">Current Streak</span>
-                  <div class="sc-fire">
-                    <span class="sc-fire-dot"></span>On Fire
-                  </div>
-                </div>
-                <div class="sc-number">12</div>
-                <div class="sc-unit">days · <span class="sc-bonus">2.5× points</span></div>
-                <div class="sc-dots">
-                  <div class="sc-dot dot-done"><span>✓</span><span class="sc-dot-day">M</span></div>
-                  <div class="sc-dot dot-done"><span>✓</span><span class="sc-dot-day">T</span></div>
-                  <div class="sc-dot dot-done"><span>✓</span><span class="sc-dot-day">W</span></div>
-                  <div class="sc-dot dot-done"><span>✓</span><span class="sc-dot-day">T</span></div>
-                  <div class="sc-dot dot-today"><span>✓</span><span class="sc-dot-day">F</span></div>
-                  <div class="sc-dot dot-empty"><span class="sc-dot-day">S</span></div>
-                  <div class="sc-dot dot-empty"><span class="sc-dot-day">S</span></div>
-                </div>
-              </div>
-            </div>
-
-            <div class="manual-log">
-              <span class="manual-log-text">Workout not logged?</span>
-              <span class="manual-log-link">Add manually</span>
-            </div>
-
-            <div class="level-card">
-              <div class="level-main">
-                <div class="rings-wrap">
-                  <svg viewBox="0 0 88 88" fill="none">
-                    <defs>
-                      <linearGradient id="h-gG" x1="0%" y1="0%" x2="100%" y2="0%">
-                        <stop offset="0%" stop-color="#facc15" />
-                        <stop offset="100%" stop-color="#eab308" />
-                      </linearGradient>
-                      <linearGradient id="h-gR" x1="0%" y1="0%" x2="100%" y2="0%">
-                        <stop offset="0%" stop-color="#f97316" />
-                        <stop offset="100%" stop-color="#ea580c" />
-                      </linearGradient>
-                      <linearGradient id="h-gS" x1="0%" y1="0%" x2="100%" y2="0%">
-                        <stop offset="0%" stop-color="#4ade80" />
-                        <stop offset="100%" stop-color="#22c55e" />
-                      </linearGradient>
-                    </defs>
-                    <circle cx="44" cy="44" r="40" stroke="rgba(255,255,255,0.07)" stroke-width="3.5" />
-                    <circle cx="44" cy="44" r="40" stroke="url(#h-gG)" stroke-width="3.5" stroke-linecap="round"
-                      stroke-dasharray="201 50" stroke-dashoffset="63" transform="rotate(-90 44 44)" />
-                    <circle cx="44" cy="44" r="31" stroke="rgba(255,255,255,0.07)" stroke-width="3.5" />
-                    <circle cx="44" cy="44" r="31" stroke="url(#h-gR)" stroke-width="3.5" stroke-linecap="round"
-                      stroke-dasharray="117 78" stroke-dashoffset="49" transform="rotate(-90 44 44)" />
-                    <circle cx="44" cy="44" r="22" stroke="rgba(255,255,255,0.07)" stroke-width="3.5" />
-                    <circle cx="44" cy="44" r="22" stroke="url(#h-gS)" stroke-width="3.5" stroke-linecap="round"
-                      stroke-dasharray="86 52" stroke-dashoffset="35" transform="rotate(-90 44 44)" />
-                  </svg>
-                  <div class="rings-center">
-                    <div class="rc-pct">71%</div>
-                    <div class="rc-sub">lvl 3</div>
-                  </div>
-                </div>
-                <div class="level-info">
-                  <div class="level-top-row">
-                    <div class="lc-num">2</div>
-                    <div class="lc-name">Mover</div>
-                    <div class="lc-xp"><strong>710</strong> / 1000 XP</div>
-                  </div>
-                  <div class="legend">
-                    <div class="lr">
-                      <div class="l-icon"><svg width="13" height="13" viewBox="0 0 14 14" fill="none">
-                          <rect x="1" y="5.5" width="2" height="3" rx="0.5" fill="#facc15" />
-                          <rect x="11" y="5.5" width="2" height="3" rx="0.5" fill="#facc15" />
-                          <rect x="3" y="4.5" width="1.5" height="5" rx="0.5" fill="#facc15" />
-                          <rect x="9.5" y="4.5" width="1.5" height="5" rx="0.5" fill="#facc15" />
-                          <rect x="4.5" y="6.2" width="5" height="1.6" rx="0.5" fill="#facc15" />
-                        </svg></div>
-                      <div class="lbw">
-                        <div class="lb" style="width:80%;background:rgba(250,204,21,0.65)"></div>
-                      </div>
-                      <div class="lv" style="color:rgba(250,204,21,0.75)">4<span style="color:var(--h-text3)">
-                           /5</span></div>
-                    </div>
-                    <div class="lr">
-                      <div class="l-icon"><svg width="13" height="13" viewBox="0 0 14 14" fill="none">
-                          <circle cx="8.5" cy="2.5" r="1.3" fill="#f97316" />
-                          <path d="M7 4.5L5.5 8L3 9.5M7 4.5L9 6L11 5M7 4.5L6.5 7.5L8 10" stroke="#f97316"
-                            stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
-                        </svg></div>
-                      <div class="lbw">
-                        <div class="lb" style="width:60%;background:rgba(249,115,22,0.65)"></div>
-                      </div>
-                      <div class="lv" style="color:rgba(249,115,22,0.75)">3<span style="color:var(--h-text3)">
-                           /5</span></div>
-                    </div>
-                    <div class="lr">
-                      <div class="l-icon"><svg width="13" height="13" viewBox="0 0 14 14" fill="none">
-                          <ellipse cx="5" cy="4" rx="2" ry="2.8" transform="rotate(-10 5 4)" fill="#4ade80" />
-                          <ellipse cx="9" cy="9.5" rx="2" ry="2.8" transform="rotate(10 9 9.5)" fill="#4ade80"
-                            opacity="0.4" />
-                        </svg></div>
-                      <div class="lbw">
-                        <div class="lb" style="width:62%;background:rgba(74,222,128,0.65)"></div>
-                      </div>
-                      <div class="lv" style="color:rgba(74,222,128,0.75)">6.2k<span style="color:var(--h-text3)">
-                           /10k</span></div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div class="nl">
-                <div class="nl-desc"><strong>1 more gym visit</strong> → Level 3</div>
-                <div class="nl-badge">Grinder</div>
-              </div>
-            </div>
-
-            <div class="section-label">This week's challenge</div>
-
-            <div class="chal">
-              <div class="chal-acc"></div>
-              <div class="chal-in">
-                <div class="chal-hd">
-                  <div class="chal-title">Early Bird</div>
-                  <div class="chal-badge">3× Bonus</div>
-                </div>
-                <div class="chal-desc">Gym or run <strong>before 12pm</strong> — triple points + 150 XP</div>
-                <div class="chal-ft">
-                  <div class="chal-timer">
-                    <div class="tdot"></div><span>Expires in 4h 22m</span>
-                  </div>
-                  <button class="chal-cta">CLAIM</button>
-                </div>
-              </div>
-            </div>
-
-            <div class="rewards-section">
-              <div class="rewards-label">Reward this week</div>
-              <div class="rw-row">
-                <div class="rw-logo">bulk</div>
-                <div class="rw-info">
-                  <div class="rw-name">Bulk Whey Protein — 20% off</div>
-                  <div class="rw-bar-wrap">
-                    <div class="rw-bar" style="width:85%"></div>
-                  </div>
-                </div>
-                <div class="rw-pts">44 pts</div>
-              </div>
-            </div>
-
-            <div class="activity-section">
-              <div class="activity-header">
-                <div class="activity-title">Recent activity</div>
-                <div class="activity-sub">Points earned</div>
-              </div>
-              <div class="activity-grid">
-                <div class="activity-card">
-                  <div class="activity-icon">
-                    <svg width="18" height="18" viewBox="0 0 640 512" fill="#facc15" stroke="none">
-                      <path d="M96 64c0-17.7 14.3-32 32-32l32 0c17.7 0 32 14.3 32 32l0 160 0 64 0 160c0 17.7-14.3 32-32 32l-32 0c-17.7 0-32-14.3-32-32l0-64-32 0c-17.7 0-32-14.3-32-32l0-64c-17.7 0-32-14.3-32-32s14.3-32 32-32l0-64c0-17.7 14.3-32 32-32l32 0 0-64zm448 0l0 64 32 0c17.7 0 32 14.3 32 32l0 64c17.7 0 32 14.3 32 32s-14.3 32-32 32l0 64c0 17.7-14.3 32-32 32l-32 0 0 64c0 17.7-14.3 32-32 32l-32 0c-17.7 0-32-14.3-32-32l0-160 0-64 0-160c0-17.7 14.3-32 32-32l32 0c17.7 0 32 14.3 32 32zM416 224l0 64-192 0 0-64 192 0z"/>
-                    </svg>
-                  </div>
-                  <div>
-                    <div class="activity-label">Gym session</div>
-                    <div class="activity-meta">+40 pts · 1h</div>
-                  </div>
-                </div>
-                <div class="activity-card">
-                  <div class="activity-icon">
-                    <svg width="18" height="18" viewBox="0 0 448 512" fill="#facc15" stroke="none">
-                      <path d="M320 48a48 48 0 1 0 -96 0 48 48 0 1 0 96 0zM125.7 175.5c9.9-9.9 23.4-15.5 37.5-15.5c1.9 0 3.8 .1 5.6 .3L137.6 254c-9.3 28 1.7 58.8 26.8 74.5l86.2 53.9-25.4 88.8c-4.9 17 5 34.7 22 39.6s34.7-5 39.6-22l28.7-100.4c5.9-20.6-2.6-42.6-20.7-53.9L238 299l30.9-82.4 5.1 12.3C289 264.7 323.9 288 362.7 288H384c17.7 0 32-14.3 32-32s-14.3-32-32-32H362.7c-12.9 0-24.6-7.8-29.5-19.7l-6.3-15c-14.6-35.1-44.1-61.9-80.5-73.1l-48.7-15c-11.1-3.4-22.7-5.2-34.4-5.2c-31 0-60.8 12.3-82.7 34.3L57.4 153.4c-12.5 12.5-12.5 32.8 0 45.3s32.8 12.5 45.3 0l23.1-23.1zM91.2 352H32c-17.7 0-32 14.3-32 32s14.3 32 32 32h69.6c19 0 36.2-11.2 43.9-28.5L157 361.6l-9.5-6c-17.5-10.9-30.5-26.8-37.9-44.9L91.2 352z"/>
-                    </svg>
-                  </div>
-                  <div>
-                    <div class="activity-label">Morning run</div>
-                    <div class="activity-meta">+35 pts · 4.2 mi</div>
-                  </div>
-                </div>
-                <div class="activity-card">
-                  <div class="activity-icon">
-                    <svg width="18" height="18" viewBox="0 0 640 512" fill="#facc15" stroke="none">
-                      <path d="M416 0C352.3 0 256 32 256 32l0 128c48 0 76 16 104 32s56 32 104 32c56.4 0 176-16 176-96S512 0 416 0zM128 96c0 35.3 28.7 64 64 64l32 0 0-128-32 0c-35.3 0-64 28.7-64 64zM288 512c96 0 224-48 224-128s-119.6-96-176-96c-48 0-76 16-104 32s-56 32-104 32l0 128s96.3 32 160 32zM0 416c0 35.3 28.7 64 64 64l32 0 0-128-32 0c-35.3 0-64 28.7-64 64z"/>
-                    </svg>
-                  </div>
-                  <div>
-                    <div class="activity-label">Evening walk</div>
-                    <div class="activity-meta">+18 pts · 2.1 mi</div>
-                  </div>
-                </div>
-                <div class="activity-card">
-                  <div class="activity-icon">
-                    <svg width="18" height="18" viewBox="0 0 576 512" fill="#facc15" stroke="none">
-                      <path d="M309.5 178.4L447.9 297.1c-1.6 .9-3.2 2-4.8 3c-18 12.4-40.1 20.3-59.2 20.3c-19.6 0-40.8-7.7-59.2-20.3c-22.1-15.5-51.6-15.5-73.7 0c-17.1 11.8-38 20.3-59.2 20.3c-10.1 0-21.1-2.2-31.9-6.2C163.1 193.2 262.2 96 384 96h64c17.7 0 32 14.3 32 32s-14.3 32-32 32H384c-26.9 0-52.3 6.6-74.5 18.4zM160 160A64 64 0 1 1 32 160a64 64 0 1 1 128 0zM306.5 325.9C329 341.4 356.5 352 384 352c26.9 0 55.4-10.8 77.4-26.1l0 0c11.9-8.5 28.1-7.8 39.2 1.7c14.4 11.9 32.5 21 50.6 25.2c17.2 4 27.9 21.2 23.9 38.4s-21.2 27.9-38.4 23.9c-24.5-5.7-44.9-16.5-58.2-25C449.5 405.7 417 416 384 416c-31.9 0-60.6-9.9-80.4-18.9c-5.8-2.7-11.1-5.3-15.6-7.7c-4.5 2.4-9.7 5.1-15.6 7.7c-19.8 9-48.5 18.9-80.4 18.9c-33 0-65.5-10.3-94.5-25.8c-13.4 8.4-33.7 19.3-58.2 25c-17.2 4-34.4-6.7-38.4-23.9s6.7-34.4 23.9-38.4c18.1-4.2 36.2-13.3 50.6-25.2c11.1-9.4 27.3-10.1 39.2-1.7l0 0C136.7 341.2 165.1 352 192 352c27.5 0 55-10.6 77.5-26.1c11.1-7.9 25.9-7.9 37 0z"/>
-                    </svg>
-                  </div>
-                  <div>
-                    <div class="activity-label">Swim laps</div>
-                    <div class="activity-meta">+50 pts · 30 min</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="bottom-nav">
-            <div class="nav-item">
-              <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                <path d="M2 8L10 2L18 8V18H13V13H7V18H2V8Z" stroke="#facc15" stroke-width="1.3" stroke-linejoin="round"
-                  fill="none" />
-              </svg>
-              <div class="nav-lbl" style="color:#facc15">Home</div>
-            </div>
-            <div class="nav-item">
-              <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                <path d="M10 3 A7 7 0 0 1 17 10" stroke="rgba(255,255,255,0.35)" stroke-width="1.3"
-                  stroke-linecap="round" />
-                <path d="M4.5 5.5 A7 7 0 0 0 3 10 A7 7 0 0 0 10 17" stroke="rgba(255,255,255,0.35)" stroke-width="1.3"
-                  stroke-linecap="round" />
-                <circle cx="10" cy="10" r="2.5" stroke="rgba(255,255,255,0.35)" stroke-width="1.3" fill="none" />
-              </svg>
-              <div class="nav-lbl">Progress</div>
-            </div>
-            <div class="nav-item">
-              <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                <rect x="3" y="8" width="14" height="10" rx="2" stroke="rgba(255,255,255,0.35)" stroke-width="1.3"
-                  fill="none" />
-                <path d="M7 8V6C7 4 8.3 3 10 3C11.7 3 13 4 13 6V8" stroke="rgba(255,255,255,0.35)" stroke-width="1.3"
-                  stroke-linecap="round" fill="none" />
-              </svg>
-              <div class="nav-lbl">Spend</div>
-            </div>
-            <div class="nav-item">
-              <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                <circle cx="10" cy="7" r="3.5" stroke="rgba(255,255,255,0.35)" stroke-width="1.3" fill="none" />
-                <path d="M3 18C3 15 6 12.5 10 12.5C14 12.5 17 15 17 18" stroke="rgba(255,255,255,0.35)"
-                  stroke-width="1.3" stroke-linecap="round" fill="none" />
-              </svg>
-              <div class="nav-lbl">Discover</div>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div class="mockup-slot">
-        <div class="discover-screen">
-          <div class="status-bar">
-            <span class="time">9:07</span>
-            <div style="display:flex;gap:6px;align-items:center">
-              <svg width="16" height="11" viewBox="0 0 16 11" fill="none">
-                <rect x="0" y="3" width="3" height="8" rx="1" fill="rgba(255,255,255,0.8)" />
-                <rect x="4.5" y="2" width="3" height="9" rx="1" fill="rgba(255,255,255,0.8)" />
-                <rect x="9" y="0.5" width="3" height="10.5" rx="1" fill="rgba(255,255,255,0.8)" />
-                <rect x="13.5" y="0" width="2.5" height="11" rx="1" fill="rgba(255,255,255,0.25)" />
-              </svg>
-              <svg width="16" height="12" viewBox="0 0 16 12" fill="none">
-                <path
-                  d="M8 2.5C10.2 2.5 12.2 3.4 13.6 4.9L15 3.4C13.2 1.6 10.7 0.5 8 0.5C5.3 0.5 2.8 1.6 1 3.4L2.4 4.9C3.8 3.4 5.8 2.5 8 2.5Z"
-                  fill="rgba(255,255,255,0.8)" />
-                <path
-                  d="M8 5.5C9.5 5.5 10.8 6.1 11.8 7L13.2 5.5C11.8 4.2 10 3.5 8 3.5C6 3.5 4.2 4.2 2.8 5.5L4.2 7C5.2 6.1 6.5 5.5 8 5.5Z"
-                  fill="rgba(255,255,255,0.8)" />
-                <circle cx="8" cy="10" r="1.5" fill="rgba(255,255,255,0.8)" />
-              </svg>
-              <svg width="26" height="12" viewBox="0 0 26 12" fill="none">
-                <rect x="0.5" y="0.5" width="22" height="11" rx="3.5" stroke="rgba(255,255,255,0.35)" />
-                <rect x="2" y="2" width="16" height="8" rx="2" fill="rgba(255,255,255,0.8)" />
-                <path d="M24 4.5V7.5C24.8 7.2 25.5 6.5 25.5 6C25.5 5.5 24.8 4.8 24 4.5Z"
-                  fill="rgba(255,255,255,0.35)" />
-              </svg>
-            </div>
-          </div>
-
-          <div class="map-area">
-            <div id="discoverMockupMap" class="map-mockup-layer"></div>
-
-            <div class="map-header">
-              <div class="map-title">Discover</div>
-              <div class="map-sub">Fitness partners near you</div>
-            </div>
-
-            <div class="user-dot" style="left:238px;top:228px"></div>
-
-            <!-- Third Space (Target) -->
-            <div class="pin" style="left:60px;top:120px">
-              <div class="pin-logo nearest dark"><img
-                  src="https://res.cloudinary.com/dphnlhvni/image/upload/v1773751208/the_third_space_logo_aiyibr.jpg"
-                  alt="Third Space Logo"></div>
-              <div class="pin-pts">
-                <div class="pts-coin"></div>50
-              </div>
-            </div>
-
-            <!-- Tiyoga (Repositioned) -->
-            <div class="pin" style="left:310px;top:200px">
-              <div class="pin-logo"><img
-                  src="https://res.cloudinary.com/dphnlhvni/image/upload/v1773752016/Tiyoga_logo_cqidyz.webp"
-                  alt="Tiyoga Logo"></div>
-              <div class="pin-pts">
-                <div class="pts-coin"></div>30
-              </div>
-            </div>
-
-            <!-- Barry's Bootcamp (Repositioned) -->
-            <div class="pin" style="left:320px;top:40px">
-              <div class="pin-logo dark"><img
-                  src="https://res.cloudinary.com/dphnlhvni/image/upload/v1773751996/Barry_s_ocb795.png"
-                  alt="Barry's Logo"></div>
-              <div class="pin-pts">
-                <div class="pts-coin"></div>40
-              </div>
-            </div>
-          </div>
-
-          <div class="sheet">
-            <div class="filters-row">
-              <div class="filter-pill active">Open Now <span class="filter-caret">▾</span></div>
-              <div class="filter-pill">Nearest <span class="filter-caret">▾</span></div>
-              <div class="filter-pill">⚙ Filters</div>
-            </div>
-            <div class="search-wrap">
-              <div class="search-box">
-                <div class="search-text">Search gyms, classes...</div>
-                <div class="search-icon">⌕</div>
-              </div>
-            </div>
-            <div class="cat-chips">
-              <div class="chip active">All</div>
-              <div class="chip">Gym</div>
-              <div class="chip">Yoga</div>
-              <div class="chip">Pilates</div>
-              <div class="chip">Cycling</div>
-              <div class="chip">Running</div>
-            </div>
-            <div class="section-lbl">Nearest partners</div>
-            <div class="partner-list">
-              <div class="partner-row">
-                <div class="p-logo light"><img
-                    src="https://res.cloudinary.com/dphnlhvni/image/upload/v1773751208/the_third_space_logo_aiyibr.jpg"
-                    alt="" /></div>
-                <div class="p-mid">
-                  <div class="p-name">Third Space Chelsea</div>
-                  <div class="p-detail">Gym · Open now · EC1</div>
-                </div>
-                <div class="p-right">
-                  <div class="p-pts">+50 pts</div>
-                  <div class="p-dist">0.2 mi</div>
-                </div>
-              </div>
-              <div class="partner-row">
-                <div class="p-logo dark"><img
-                    src="https://res.cloudinary.com/dphnlhvni/image/upload/v1773751996/Barry_s_ocb795.png" alt="" />
-                </div>
-                <div class="p-mid">
-                  <div class="p-name">Barry's Bootcamp</div>
-                  <div class="p-detail">HIIT · Open now · Euston</div>
-                </div>
-                <div class="p-right">
-                  <div class="p-pts">+40 pts</div>
-                  <div class="p-dist">0.4 mi</div>
-                </div>
-              </div>
-              <div class="partner-row">
-                <div class="p-logo light"><img
-                    src="https://res.cloudinary.com/dphnlhvni/image/upload/v1773752016/Tiyoga_logo_cqidyz.webp"
-                    alt="" /></div>
-                <div class="p-mid">
-                  <div class="p-name">Triyoga Camden</div>
-                  <div class="p-detail">Yoga · Opens 8am · Camden</div>
-                </div>
-                <div class="p-right">
-                  <div class="p-pts">+30 pts</div>
-                  <div class="p-dist">0.7 mi</div>
-                </div>
-              </div>
-              <div class="partner-row coming-soon">
-                <div class="p-logo"><img
-                    src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='28' fill='rgba(250,204,21,0.16)' stroke='rgba(250,204,21,0.35)' stroke-width='4'/%3E%3Cpath d='M32 18v28M18 32h28' stroke='%23facc15' stroke-width='4' stroke-linecap='round'/%3E%3C/svg%3E"
-                    alt="Coming Soon" /></div>
-                <div class="p-mid">
-                  <div class="p-name">More partners coming soon</div>
-                  <div class="p-detail">We're onboarding new locations — check back soon</div>
-                </div>
-                <div class="p-right">
-                  <div class="p-pts">—</div>
-                  <div class="p-dist">—</div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="bottom-nav">
-            <div class="nav-item">
-              <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                <path d="M2 8L10 2L18 8V18H13V13H7V18H2V8Z" stroke="rgba(255,255,255,0.35)" stroke-width="1.3"
-                  stroke-linejoin="round" fill="none" />
-              </svg>
-              <div class="nav-lbl">Home</div>
-            </div>
-            <div class="nav-item">
-              <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                <path d="M10 3 A7 7 0 0 1 17 10" stroke="rgba(255,255,255,0.35)" stroke-width="1.3"
-                  stroke-linecap="round" />
-                <path d="M4.5 5.5 A7 7 0 0 0 3 10 A7 7 0 0 0 10 17" stroke="rgba(255,255,255,0.35)" stroke-width="1.3"
-                  stroke-linecap="round" />
-                <circle cx="10" cy="10" r="2.5" stroke="rgba(255,255,255,0.35)" stroke-width="1.3" fill="none" />
-              </svg>
-              <div class="nav-lbl">Progress</div>
-            </div>
-            <div class="nav-item">
-              <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                <rect x="3" y="8" width="14" height="10" rx="2" stroke="rgba(255,255,255,0.35)" stroke-width="1.3"
-                  fill="none" />
-                <path d="M7 8V6C7 4 8.3 3 10 3C11.7 3 13 4 13 6V8" stroke="rgba(255,255,255,0.35)" stroke-width="1.3"
-                  stroke-linecap="round" fill="none" />
-              </svg>
-              <div class="nav-lbl">Spend</div>
-            </div>
-            <div class="nav-item">
-              <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                <circle cx="10" cy="7" r="3.5" stroke="#facc15" stroke-width="1.3" fill="none" />
-                <path d="M3 18C3 15 6 12.5 10 12.5C14 12.5 17 15 17 18" stroke="#facc15" stroke-width="1.3"
-                  stroke-linecap="round" fill="none" />
-              </svg>
-              <div class="nav-lbl" style="color:#facc15">Discover</div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- CTA -->
-<div class="cta-section" id="contact">
-  <div class="cta-inner fade-up">
-    <span class="section-eyebrow" style="text-align:center;">Founding Partners</span>
-    <h2>Be part of<br><em>the launch.</em></h2>
-    <p>We're onboarding a select group of London gyms ahead of May. Founding partners get priority placement and early
-      member exposure.</p>
-    <form id="partnerJoinForm" class="cta-form">
-      <input class="cta-input" type="text" id="partnerName" placeholder="Your name" required>
-      <input class="cta-input" type="email" id="partnerEmail" placeholder="Gym email address" required>
-      <button type="submit" class="btn-primary" style="white-space:nowrap;">Apply Now</button>
-    </form>
-    <div id="partnerErrorMsg" class="cta-error" style="display:none; margin-top:10px; color: #ff4444; font-size: 13px;"></div>
-    <div id="partnerSuccessMsg" class="cta-success" style="display:none; margin-top:20px;">
-      <div class="waitlist-success-msg" style="background: rgba(232, 210, 0, 0.1); border: 1px solid rgba(232, 210, 0, 0.2); border-radius: 12px; padding: 20px; color: var(--text);">
-        <h3 style="color: var(--gold); margin-bottom: 8px;">Thank you for your interest!</h3>
-        <p>We've received your application and will be in touch with you shortly.</p>
-      </div>
-    </div>
-    <p class="cta-note">Selective onboarding · London launch · May 2026</p>
-  </div>
-</div>
-
-<!-- FOOTER -->
-<footer>
-  <img
-    src="https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/landing-page-assets/powrlogotext.png?v=1.1"
-    alt="POWR" style="height:18px;width:auto;opacity:0.5;">
-  <span class="footer-copy">© 2026 POWR. All rights reserved.</span>
-  <a href="https://powr.life" style="font-size:12px;color:var(--muted);text-decoration:none;">powr.life</a>
-</footer>
-
-<script src="https://unpkg.com/lenis@1.1.20/dist/lenis.min.js"></script>
+  <!-- FOOTER -->
+  <footer id="site-footer"></footer>
 
 </body>
 
