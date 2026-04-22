@@ -428,17 +428,17 @@ export default function SettingsScreen() {
           <RowLink
             icon="help-circle-outline"
             label="Help Centre"
-            onPress={() => {}}
+            onPress={() => router.push('/help-centre')}
           />
           <RowLink
             icon="document-text-outline"
             label="Terms of Service"
-            onPress={() => {}}
+            onPress={() => router.push('/terms-of-service')}
           />
           <RowLink
             icon="shield-outline"
             label="Privacy Policy"
-            onPress={() => {}}
+            onPress={() => router.push('/privacy-policy')}
             isLast
           />
         </View>

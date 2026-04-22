@@ -5,7 +5,7 @@ import { supabase } from './lib/supabase';
 import { ToastProvider } from './lib/toast';
 import {
     LayoutDashboard, Users, ClipboardList, LogOut, ChevronRight,
-    Activity, Award, AlertTriangle, BarChart3, Shield, Settings, ScrollText, Gift, Target
+    Activity, Award, AlertTriangle, BarChart3, Shield, Settings, ScrollText, Gift, Target, MessageSquare
 } from 'lucide-react';
 
 import PartnerManager from './pages/admin/PartnerManager';
@@ -20,9 +20,11 @@ import PartnerPerformance from './pages/admin/PartnerPerformance';
 import RedemptionTracker from './pages/admin/RedemptionTracker';
 import AuditLog from './pages/admin/AuditLog';
 import SystemConfig from './pages/admin/SystemConfig';
+import SupportTickets from './pages/admin/SupportTickets';
 import PartnerProfile from './pages/admin/PartnerProfile';
 import PrivacyPolicy from './pages/PrivacyPolicy';
 import CookiePolicy from './pages/CookiePolicy';
+import TermsOfService from './pages/TermsOfService';
 
 // --- Auth Context ---
 const AuthContext = createContext({ user: null, isAdmin: false, loading: true });
@@ -111,6 +113,7 @@ const PATH_LABELS = {
     performance: 'Performance',
     redemptions: 'Redemptions',
     audit: 'Audit Log',
+    support: 'Support Tickets',
     config: 'Config',
 };
 
@@ -353,8 +356,9 @@ const AdminLayout = ({ children }) => {
         { label: 'Sessions',     path: '/admin/sessions',     icon: Shield      },
         { label: 'Performance',  path: '/admin/performance',  icon: Activity    },
         { label: 'Redemptions',  path: '/admin/redemptions',  icon: Gift        },
-        { label: 'Audit Log',    path: '/admin/audit',        icon: ScrollText  },
-        { label: 'Config',       path: '/admin/config',       icon: Settings    },
+        { label: 'Audit Log',    path: '/admin/audit',        icon: ScrollText     },
+        { label: 'Support',      path: '/admin/support',      icon: MessageSquare  },
+        { label: 'Config',       path: '/admin/config',       icon: Settings       },
     ];
 
     const segment = location.pathname.split('/')[2] || 'admin';
@@ -511,6 +515,7 @@ export default function App() {
                 <Routes>
                     <Route path="/" element={<LandingPage />} />
                     <Route path="/privacy" element={<PrivacyPolicy />} />
+                    <Route path="/terms" element={<TermsOfService />} />
                     <Route path="/cookies" element={<CookiePolicy />} />
                     <Route path="/admin/login" element={<AdminLogin />} />
                     <Route path="/admin" element={<ProtectedRoute><AdminLayout><AdminHome /></AdminLayout></ProtectedRoute>} />
@@ -527,6 +532,7 @@ export default function App() {
                     <Route path="/admin/redemptions" element={<ProtectedRoute><AdminLayout><RedemptionTracker /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/audit" element={<ProtectedRoute><AdminLayout><AuditLog /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/config" element={<ProtectedRoute><AdminLayout><SystemConfig /></AdminLayout></ProtectedRoute>} />
+                    <Route path="/admin/support" element={<ProtectedRoute><AdminLayout><SupportTickets /></AdminLayout></ProtectedRoute>} />
                     <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
             </AuthProvider>
