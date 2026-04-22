@@ -33,6 +33,7 @@ export interface Reward {
   discount_type: 'percentage' | 'fixed_amount' | null;
   discount_value: number | null;
   brand_name: string | null;
+  max_redemptions_per_user: number | null;
 }
 
 export interface RedemptionResult {
@@ -52,6 +53,7 @@ export type RedemptionErrorCode =
   | 'PARTNER_MISCONFIGURED'
   | 'CODE_GENERATION_FAILED'
   | 'TX_FAILED'
+  | 'REDEMPTION_LIMIT_REACHED'
   | 'UNKNOWN';
 
 export class RedemptionError extends Error {

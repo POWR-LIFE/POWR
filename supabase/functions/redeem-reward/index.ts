@@ -48,7 +48,7 @@ Deno.serve(async (req) => {
   // 1. Load reward + partner
   const { data: reward, error: rErr } = await admin
     .from('rewards')
-    .select('id, partner_id, title, powr_cost, active, integration_type, code_expiry_days, partners(partner_code, checkout_url_template, name)')
+    .select('id, partner_id, title, powr_cost, active, integration_type, code_expiry_days, max_redemptions_per_user, partners(partner_code, checkout_url_template, name)')
     .eq('id', body.reward_id)
     .single();
 
@@ -58,7 +58,20 @@ Deno.serve(async (req) => {
   const partner = Array.isArray(reward.partners) ? reward.partners[0] : reward.partners;
   if (!partner?.partner_code) return json({ error: 'PARTNER_MISCONFIGURED' }, 500);
 
-  // 2. Check balance via point_transactions sum
+  // 2a. Check per-user redemption limit
+  if (reward.max_redemptions_per_user !== null && reward.max_redemptions_per_user !== undefined) {
+    const { count, error: limitErr } = await admin
+      .from('redemptions')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .eq('reward_id', reward.id)
+      .neq('status', 'refunded');
+    if (!limitErr && count !== null && count >= reward.max_redemptions_per_user) {
+      return json({ error: 'REDEMPTION_LIMIT_REACHED' }, 422);
+    }
+  }
+
+  // 2b. Check balance via point_transactions sum
   const { data: txs } = await admin
     .from('point_transactions')
     .select('amount')
@@ -77,26 +90,33 @@ Deno.serve(async (req) => {
     const { data: claimed, error: claimErr } = await admin.rpc('claim_pool_code', {
       p_reward_id: reward.id,
       p_user_id: user.id,
+      p_expires_at: expiresAt,
     });
     if (claimErr) {
-      // Fallback if RPC not deployed: try a plain update-with-subquery
-      const { data: picked } = await admin
-        .from('redemption_codes')
-        .select('id, code')
-        .eq('reward_id', reward.id)
-        .eq('status', 'available')
-        .limit(1)
-        .maybeSingle();
-      if (!picked) return json({ error: 'OUT_OF_STOCK' }, 422);
-      const { data: upd, error: uErr } = await admin
-        .from('redemption_codes')
-        .update({ status: 'reserved', assigned_user_id: user.id, assigned_at: new Date().toISOString() })
-        .eq('id', picked.id)
-        .eq('status', 'available')
-        .select('id, code')
-        .maybeSingle();
-      if (uErr || !upd) return json({ error: 'OUT_OF_STOCK' }, 422);
-      codeRow = upd;
+      // Fallback if RPC not deployed: optimistic update — retry up to 5 times
+      // in case two requests race for the same row (the loser's update returns
+      // 0 rows because status is no longer 'available').
+      let attempts = 0;
+      while (attempts < 5 && !codeRow) {
+        const { data: picked } = await admin
+          .from('redemption_codes')
+          .select('id, code')
+          .eq('reward_id', reward.id)
+          .eq('status', 'available')
+          .limit(1)
+          .maybeSingle();
+        if (!picked) break; // genuinely out of stock
+        const { data: upd } = await admin
+          .from('redemption_codes')
+          .update({ status: 'reserved', assigned_user_id: user.id, assigned_at: new Date().toISOString(), expires_at: expiresAt })
+          .eq('id', picked.id)
+          .eq('status', 'available') // only succeeds if we won the race
+          .select('id, code')
+          .maybeSingle();
+        if (upd) codeRow = upd;
+        attempts++;
+      }
+      if (!codeRow) return json({ error: 'OUT_OF_STOCK' }, 422);
     } else if (!claimed || !claimed.length) {
       return json({ error: 'OUT_OF_STOCK' }, 422);
     } else {
@@ -144,7 +164,13 @@ Deno.serve(async (req) => {
     return json({ error: 'TX_FAILED' }, 500);
   }
 
-  // 5. Insert redemption ledger row
+  // 5. Mark code as used now that points are deducted
+  await admin
+    .from('redemption_codes')
+    .update({ status: 'used', used_at: new Date().toISOString() })
+    .eq('id', codeRow.id);
+
+  // 6. Insert redemption ledger row
   const { data: redemption, error: redErr } = await admin
     .from('redemptions')
     .insert({

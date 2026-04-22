@@ -4,7 +4,7 @@ import { useToast } from '../../lib/toast';
 import { Plus, Edit2, Trash2, Ticket, Loader2, X, Search, Award, Activity, ChevronRight, AlertTriangle, Upload, Image as ImageIcon, Tag, FileText } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { uploadPublicImage } from '../../lib/storage';
-import { parseCodes, uploadCodes, fetchCodeStats } from '../../lib/promoCodes';
+import { parseCodes, uploadCodes, fetchCodeStats, fetchCodePool, getCSVTemplate } from '../../lib/promoCodes';
 
 const CATEGORIES = ['gym', 'fashion', 'gear', 'nutrition', 'food', 'health'];
 const KINDS = ['digital', 'physical'];
@@ -48,6 +48,7 @@ const EMPTY_FORM = {
     brand_color: '',
     url: '',
     partner_blurb: '',
+    max_redemptions_per_user: null,
 };
 
 export default function RewardManager() {
@@ -69,6 +70,11 @@ export default function RewardManager() {
     const [bulkCodesText, setBulkCodesText] = useState('');
     const [uploadingCodes, setUploadingCodes] = useState(false);
     const [singleCode, setSingleCode] = useState('');
+    const [codePool, setCodePool] = useState({ rows: [], total: 0 });
+    const [codePoolPage, setCodePoolPage] = useState(0);
+    const [codePoolStatus, setCodePoolStatus] = useState('all');
+    const [codePoolLoading, setCodePoolLoading] = useState(false);
+    const CODE_POOL_PAGE_SIZE = 20;
 
     useEffect(() => { fetchData(); }, []);
 
@@ -90,6 +96,18 @@ export default function RewardManager() {
         catch { setCodeStats(null); }
     };
 
+    const refreshCodePool = async (rewardId, page = 0, status = 'all') => {
+        if (!rewardId) { setCodePool({ rows: [], total: 0 }); return; }
+        setCodePoolLoading(true);
+        try {
+            const result = await fetchCodePool({ rewardId, status, page, pageSize: CODE_POOL_PAGE_SIZE });
+            setCodePool(result);
+            setCodePoolPage(page);
+            setCodePoolStatus(status);
+        } catch { setCodePool({ rows: [], total: 0 }); }
+        finally { setCodePoolLoading(false); }
+    };
+
     const filtered = rewards
         .filter(r => !search || r.title.toLowerCase().includes(search.toLowerCase()))
         .filter(r => filterCat === 'all' || r.category === filterCat)
@@ -103,12 +121,15 @@ export default function RewardManager() {
         setEditingReward(null);
         setFormData({ ...EMPTY_FORM });
         setCodeStats(null);
+        setCodePool({ rows: [], total: 0 });
+        setCodePoolPage(0);
+        setCodePoolStatus('all');
         setBulkCodesText('');
         setSingleCode('');
         setIsModalOpen(true);
     };
 
-    const openEdit = (reward) => {
+    const openEdit = async (reward) => {
         setEditingReward(reward);
         setFormData({
             partner_id: reward.partner_id,
@@ -130,10 +151,13 @@ export default function RewardManager() {
             brand_color: reward.brand_color || '',
             url: reward.url || '',
             partner_blurb: reward.partner_blurb || '',
+            max_redemptions_per_user: reward.max_redemptions_per_user ?? null,
         });
         setBulkCodesText('');
         setSingleCode('');
-        refreshCodeStats(reward.id);
+        setCodePoolPage(0);
+        setCodePoolStatus('all');
+        await Promise.all([refreshCodeStats(reward.id), refreshCodePool(reward.id)]);
         setIsModalOpen(true);
     };
 
@@ -166,6 +190,7 @@ export default function RewardManager() {
             }
             setBulkCodesText('');
             await refreshCodeStats(editingReward.id);
+            await refreshCodePool(editingReward.id, 0, codePoolStatus);
         } catch (err) {
             toast.error(err.message || 'Upload failed');
         } finally {
@@ -187,6 +212,19 @@ export default function RewardManager() {
         }
     };
 
+    const handleDownloadTemplate = () => {
+        const partner = partners.find(p => p.id === formData.partner_id);
+        const partnerCode = partner?.partner_code ?? 'XXXX';
+        const csv = getCSVTemplate(partnerCode);
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `POWR-${partnerCode}-codes-template.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+    };
+
     const handleAddSingleCode = async () => {
         if (!editingReward) { toast.error('Save the reward first'); return; }
         if (!singleCode.trim()) return;
@@ -197,6 +235,7 @@ export default function RewardManager() {
                 toast.success('Code added');
                 setSingleCode('');
                 await refreshCodeStats(editingReward.id);
+                await refreshCodePool(editingReward.id, 0, codePoolStatus);
             } else {
                 const reason = result.rejected[0]?.reason || 'rejected';
                 toast.error(`Rejected: ${reason}`);
@@ -217,6 +256,9 @@ export default function RewardManager() {
             brand_name: formData.brand_name || null,
             discount_type: formData.discount_type || null,
             discount_value: formData.discount_type && formData.discount_value !== '' ? Number(formData.discount_value) : null,
+            max_redemptions_per_user: formData.max_redemptions_per_user !== '' && formData.max_redemptions_per_user !== null
+                ? parseInt(formData.max_redemptions_per_user, 10)
+                : null,
         };
         const { error } = editingReward
             ? await supabase.from('rewards').update(payload).eq('id', editingReward.id)
@@ -636,55 +678,177 @@ export default function RewardManager() {
                                 </div>
                             </div>
 
-                            {/* Bulk code upload — digital rewards only, edit mode only */}
+                            <div className="mb-8">
+                                <label className="block text-[10px] uppercase tracking-[0.4em] text-[#999] font-black mb-4">
+                                    Max Claims Per User <span className="text-[#CCC] normal-case font-black ml-2">— LEAVE EMPTY FOR UNLIMITED</span>
+                                </label>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    placeholder="e.g. 1 = one-time only, empty = unlimited"
+                                    className="w-full h-16 px-8 bg-[#0A0A0A] border border-[#151515] rounded-3xl focus:border-[#E8D200]/40 outline-none transition-all text-[14px] font-black text-[#F2F2F2] placeholder-[#333]"
+                                    value={formData.max_redemptions_per_user ?? ''}
+                                    onChange={e => setFormData({ ...formData, max_redemptions_per_user: e.target.value === '' ? null : e.target.value })}
+                                />
+                                <p className="mt-3 text-[10px] uppercase tracking-[0.3em] text-[#555] font-black">
+                                    User must re-earn enough POWR to claim again (subject to this cap)
+                                </p>
+                            </div>
+
+                            {/* Code pool — upload + ledger */}
                             {editingReward && formData.reward_kind === 'digital' && (
-                                <div className="mb-8 bg-[#0A0A0A] border border-[#151515] rounded-[2rem] p-8">
-                                    <div className="flex items-center justify-between mb-6">
+                                <div className="mb-8 bg-[#0A0A0A] border border-[#151515] rounded-[2rem] overflow-hidden">
+
+                                    {/* Header row with stats */}
+                                    <div className="flex items-center justify-between px-8 pt-8 pb-4">
                                         <div className="flex items-center gap-4">
                                             <Ticket size={16} className="text-[#E8D200]" />
-                                            <span className="text-[10px] uppercase tracking-[0.4em] text-[#CCC] font-black">Promo Code Pool</span>
+                                            <span className="text-[10px] uppercase tracking-[0.4em] text-[#CCC] font-black">Code Pool</span>
+                                            {codeStats && (
+                                                <div className="flex items-center gap-5 ml-4 text-[10px] uppercase tracking-[0.3em] font-black">
+                                                    <span className="text-[#10B981]">{codeStats.available} avail</span>
+                                                    <span className="text-[#E8D200]">{codeStats.reserved} reserved</span>
+                                                    <span className="text-[#AAA]">{codeStats.used} used</span>
+                                                    <span className="text-[#666]">{codeStats.expired} exp</span>
+                                                </div>
+                                            )}
                                         </div>
-                                        {codeStats && (
-                                            <div className="flex items-center gap-6 text-[10px] uppercase tracking-[0.3em] font-black">
-                                                <span className="text-[#10B981]">{codeStats.available} AVAIL</span>
-                                                <span className="text-[#E8D200]">{codeStats.reserved} RESERVED</span>
-                                                <span className="text-[#CCC]">{codeStats.used} USED</span>
-                                                <span className="text-[#AAA]">{codeStats.expired} EXP</span>
-                                            </div>
-                                        )}
+                                        <button
+                                            type="button"
+                                            onClick={handleDownloadTemplate}
+                                            className="flex items-center gap-2 h-9 px-5 bg-[#050505] border border-[#E8D200]/20 rounded-full text-[9px] uppercase tracking-[0.3em] text-[#E8D200] hover:bg-[#E8D200]/5 transition-all font-black"
+                                        >
+                                            <FileText size={11} /> Template
+                                        </button>
                                     </div>
 
-                                    <div className="grid grid-cols-2 gap-4 mb-4">
-                                        <div className="flex gap-3">
+                                    {/* Upload row */}
+                                    <div className="px-8 pb-6 border-b border-[#151515]">
+                                        <div className="flex items-center justify-between mb-3 px-4 py-2 bg-[#050505] border border-[#151515] rounded-2xl">
+                                            <span className="text-[9px] uppercase tracking-[0.3em] text-[#555] font-black">Send template to partner → they fill it in → upload here</span>
+                                        </div>
+                                        <div className="flex gap-3 mb-3">
                                             <input
                                                 type="text"
-                                                placeholder="POWR-XXXX-YYYYYY"
-                                                className="flex-1 h-12 px-5 bg-[#050505] border border-[#151515] rounded-full text-[11px] font-mono text-[#F2F2F2] placeholder-[#222] focus:border-[#E8D200]/40 outline-none uppercase tracking-[0.1em]"
+                                                placeholder="POWR-TRIBE-XXXXXX  (single code)"
+                                                className="flex-1 h-11 px-5 bg-[#050505] border border-[#151515] rounded-full text-[11px] font-mono text-[#F2F2F2] placeholder-[#333] focus:border-[#E8D200]/40 outline-none uppercase tracking-[0.05em]"
                                                 value={singleCode}
                                                 onChange={e => setSingleCode(e.target.value.toUpperCase())}
                                             />
-                                            <button type="button" onClick={handleAddSingleCode} disabled={uploadingCodes || !singleCode.trim()} className="h-12 px-6 bg-[#050505] border border-[#151515] rounded-full text-[10px] uppercase tracking-[0.3em] text-[#DDD] hover:text-[#E8D200] hover:border-[#E8D200]/40 transition-all font-black disabled:opacity-40">Add</button>
+                                            <button type="button" onClick={handleAddSingleCode} disabled={uploadingCodes || !singleCode.trim()} className="h-11 px-6 bg-[#050505] border border-[#151515] rounded-full text-[10px] uppercase tracking-[0.3em] text-[#DDD] hover:text-[#E8D200] hover:border-[#E8D200]/40 transition-all font-black disabled:opacity-40">Add</button>
+                                            <label className="flex items-center gap-2 h-11 px-6 bg-[#050505] border border-[#151515] rounded-full text-[10px] uppercase tracking-[0.3em] text-[#CCC] hover:text-[#E8D200] hover:border-[#E8D200]/40 transition-all font-black cursor-pointer whitespace-nowrap">
+                                                <Upload size={12} /> Upload CSV
+                                                <input type="file" accept=".csv,text/csv" className="hidden" onChange={handleBulkFile} />
+                                            </label>
                                         </div>
-                                        <label className="flex items-center justify-center gap-3 h-12 px-6 bg-[#050505] border border-[#151515] rounded-full text-[10px] uppercase tracking-[0.3em] text-[#CCC] hover:text-[#E8D200] hover:border-[#E8D200]/40 transition-all font-black cursor-pointer">
-                                            <Upload size={12} /> Upload CSV / TXT
-                                            <input type="file" accept=".csv,.txt,text/csv,text/plain" className="hidden" onChange={handleBulkFile} />
-                                        </label>
+                                        <textarea
+                                            rows={3}
+                                            placeholder={'Paste codes or drop partner CSV — Status + Deleted at columns respected automatically'}
+                                            className="w-full p-4 bg-[#050505] border border-[#151515] rounded-2xl focus:border-[#E8D200]/40 outline-none transition-all text-xs font-mono text-[#DDD] placeholder-[#333] resize-none"
+                                            value={bulkCodesText}
+                                            onChange={e => setBulkCodesText(e.target.value)}
+                                        />
+                                        <div className="flex justify-between items-center mt-3">
+                                            <span className="text-[10px] uppercase tracking-[0.3em] text-[#555] font-black">
+                                                {parseCodes(bulkCodesText).length} codes detected
+                                            </span>
+                                            <button type="button" onClick={handleBulkUpload} disabled={uploadingCodes || !bulkCodesText.trim()} className="h-11 px-8 bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.3em] rounded-full transition-all hover:translate-y-[-2px] disabled:opacity-40">
+                                                {uploadingCodes ? 'Uploading...' : 'Upload Batch'}
+                                            </button>
+                                        </div>
                                     </div>
 
-                                    <textarea
-                                        rows={4}
-                                        placeholder={'PASTE CODES HERE — ONE PER LINE, OR CSV.\nPOWR-BULK-A7F2K9\nPOWR-BULK-M3X8P2'}
-                                        className="w-full p-5 bg-[#050505] border border-[#151515] rounded-[1.5rem] focus:border-[#E8D200]/40 outline-none transition-all text-xs font-mono text-[#DDD] placeholder-[#222] resize-none"
-                                        value={bulkCodesText}
-                                        onChange={e => setBulkCodesText(e.target.value)}
-                                    />
-                                    <div className="flex justify-between items-center mt-4">
-                                        <span className="text-[10px] uppercase tracking-[0.3em] text-[#AAA] font-black">
-                                            {parseCodes(bulkCodesText).length} codes detected · partner prefix enforced
-                                        </span>
-                                        <button type="button" onClick={handleBulkUpload} disabled={uploadingCodes || !bulkCodesText.trim()} className="h-12 px-8 bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.3em] rounded-full transition-all hover:translate-y-[-2px] disabled:opacity-40">
-                                            {uploadingCodes ? 'UPLOADING...' : 'Upload Batch'}
-                                        </button>
+                                    {/* Ledger */}
+                                    <div className="px-8 py-5">
+                                        <div className="flex items-center justify-between mb-4">
+                                            <span className="text-[10px] uppercase tracking-[0.4em] text-[#777] font-black">
+                                                Ledger {codePool.total > 0 && `· ${codePool.total} total`}
+                                            </span>
+                                            <div className="flex bg-[#050505] border border-[#151515] rounded-2xl p-1 gap-1">
+                                                {['all', 'available', 'reserved', 'used', 'expired'].map(s => (
+                                                    <button
+                                                        key={s}
+                                                        type="button"
+                                                        onClick={() => refreshCodePool(editingReward.id, 0, s)}
+                                                        className={`h-7 px-3 rounded-xl text-[9px] font-black uppercase tracking-[0.2em] transition-all ${codePoolStatus === s ? 'bg-[#E8D200] text-[#080808]' : 'text-[#777] hover:text-[#CCC]'}`}
+                                                    >
+                                                        {s}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        {codePoolLoading ? (
+                                            <div className="flex items-center justify-center py-10 gap-3">
+                                                <div className="w-5 h-5 border border-[#E8D200]/20 border-t-[#E8D200] rounded-full animate-spin" />
+                                                <span className="text-[10px] uppercase tracking-[0.4em] text-[#555] font-black">Loading</span>
+                                            </div>
+                                        ) : codePool.rows.length === 0 ? (
+                                            <div className="text-center py-10">
+                                                <p className="text-[10px] uppercase tracking-[0.4em] text-[#444] font-black">No codes{codePoolStatus !== 'all' ? ` with status "${codePoolStatus}"` : ' uploaded yet'}</p>
+                                            </div>
+                                        ) : (
+                                            <>
+                                                <div className="rounded-2xl border border-[#151515] overflow-hidden mb-4">
+                                                    <table className="w-full text-left border-collapse">
+                                                        <thead>
+                                                            <tr className="bg-[#050505] border-b border-[#151515]">
+                                                                {['Code', 'Status', 'Claimed by', 'Claimed at', 'Used at', 'Expires'].map(h => (
+                                                                    <th key={h} className="px-4 py-3 text-[9px] font-black uppercase tracking-[0.4em] text-[#555]">{h}</th>
+                                                                ))}
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody className="divide-y divide-[#0d0d0d]">
+                                                            {codePool.rows.map(row => {
+                                                                const statusColor = {
+                                                                    available: 'text-[#10B981]',
+                                                                    reserved:  'text-[#E8D200]',
+                                                                    used:      'text-[#0EA5E9]',
+                                                                    expired:   'text-[#666]',
+                                                                }[row.status] ?? 'text-[#999]';
+                                                                const claimedBy = row.profiles?.display_name || row.profiles?.username || (row.assigned_user_id ? row.assigned_user_id.slice(0, 8) + '…' : '—');
+                                                                const fmt = d => d ? new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: '2-digit' }) : '—';
+                                                                return (
+                                                                    <tr key={row.id} className="hover:bg-[#080808] transition-all">
+                                                                        <td className="px-4 py-3 font-mono text-[11px] text-[#E8D200] tracking-[0.15em]">{row.code}</td>
+                                                                        <td className="px-4 py-3">
+                                                                            <span className={`text-[9px] font-black uppercase tracking-[0.3em] ${statusColor}`}>{row.status}</span>
+                                                                        </td>
+                                                                        <td className="px-4 py-3 text-[11px] text-[#BBB]">{claimedBy}</td>
+                                                                        <td className="px-4 py-3 text-[11px] text-[#777]">{fmt(row.assigned_at)}</td>
+                                                                        <td className="px-4 py-3 text-[11px] text-[#777]">{fmt(row.used_at)}</td>
+                                                                        <td className="px-4 py-3 text-[11px] text-[#777]">{fmt(row.expires_at)}</td>
+                                                                    </tr>
+                                                                );
+                                                            })}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+
+                                                {/* Pagination */}
+                                                {codePool.total > CODE_POOL_PAGE_SIZE && (
+                                                    <div className="flex items-center justify-between">
+                                                        <span className="text-[10px] uppercase tracking-[0.3em] text-[#555] font-black">
+                                                            {codePoolPage * CODE_POOL_PAGE_SIZE + 1}–{Math.min((codePoolPage + 1) * CODE_POOL_PAGE_SIZE, codePool.total)} of {codePool.total}
+                                                        </span>
+                                                        <div className="flex gap-2">
+                                                            <button
+                                                                type="button"
+                                                                disabled={codePoolPage === 0}
+                                                                onClick={() => refreshCodePool(editingReward.id, codePoolPage - 1, codePoolStatus)}
+                                                                className="h-9 px-5 bg-[#050505] border border-[#151515] rounded-full text-[10px] uppercase tracking-[0.3em] text-[#777] hover:text-[#CCC] disabled:opacity-30 font-black transition-all"
+                                                            >← Prev</button>
+                                                            <button
+                                                                type="button"
+                                                                disabled={(codePoolPage + 1) * CODE_POOL_PAGE_SIZE >= codePool.total}
+                                                                onClick={() => refreshCodePool(editingReward.id, codePoolPage + 1, codePoolStatus)}
+                                                                className="h-9 px-5 bg-[#050505] border border-[#151515] rounded-full text-[10px] uppercase tracking-[0.3em] text-[#777] hover:text-[#CCC] disabled:opacity-30 font-black transition-all"
+                                                            >Next →</button>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </>
+                                        )}
                                     </div>
                                 </div>
                             )}

@@ -3,7 +3,6 @@ import { ProfileButton } from '@/components/ProfileButton';
 import { usePoints } from '@/hooks/usePoints';
 import { fetchRewards, type Reward as ApiReward } from '@/lib/api/rewards';
 import { Ionicons } from '@expo/vector-icons';
-import * as Clipboard from 'expo-clipboard';
 import { Image as ExpoImage } from 'expo-image';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -392,23 +391,8 @@ function RewardCard({ reward, afford, balance, expanded, onToggle, onRedeem }: R
   const ptsNeeded = reward.pts - balance;
   const progress = Math.min(balance / reward.pts, 1);
   const isLocked = afford === 'locked';
-  const [revealed, setRevealed] = useState(false);
-  const [copied, setCopied] = useState(false);
 
   const brand = reward.brandColor ?? GOLD;
-
-  const handleReveal = () => {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    setRevealed(true);
-  };
-
-  const handleCopy = async () => {
-    if (!reward.promoCode) return;
-    await Clipboard.setStringAsync(reward.promoCode);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1800);
-  };
 
   return (
     <Pressable
@@ -519,37 +503,21 @@ function RewardCard({ reward, afford, balance, expanded, onToggle, onRedeem }: R
             </View>
           )}
 
-          {afford === 'can' && reward.promoCode && (
-            <View style={styles.promoBlock}>
-              <Text style={styles.expandedLabel}>Promo code</Text>
-              {!revealed ? (
-                <Pressable
-                  onPress={handleReveal}
-                  style={({ pressed }) => [
-                    styles.revealButton,
-                    { backgroundColor: brand },
-                    pressed && { opacity: 0.9 },
-                  ]}
-                >
-                  <Ionicons name="lock-open-outline" size={14} color="#fff" />
-                  <Text style={styles.revealButtonText}>Redeem for {reward.pts} pts</Text>
-                </Pressable>
-              ) : (
-                <Pressable onPress={handleCopy} style={[styles.codeBox, { borderColor: brand + '66' }]}>
-                  <Text style={[styles.codeText, { color: brand }]}>{reward.promoCode}</Text>
-                  <View style={styles.copyRow}>
-                    <Ionicons
-                      name={copied ? 'checkmark-circle' : 'copy-outline'}
-                      size={16}
-                      color={copied ? '#4ade80' : brand}
-                    />
-                    <Text style={[styles.copyText, { color: copied ? '#4ade80' : brand }]}>
-                      {copied ? 'Copied' : 'Tap to copy'}
-                    </Text>
-                  </View>
-                </Pressable>
-              )}
-            </View>
+          {afford === 'can' && (
+            <Pressable
+              onPress={() => {
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                onRedeem();
+              }}
+              style={({ pressed }) => [
+                styles.redeemInlineBtn,
+                { backgroundColor: brand },
+                pressed && { opacity: 0.85 },
+              ]}
+            >
+              <Ionicons name="gift-outline" size={14} color="#000" />
+              <Text style={styles.redeemInlineBtnText}>Redeem for {reward.pts} pts</Text>
+            </Pressable>
           )}
 
           <View style={styles.expandedFooter}>
@@ -1149,50 +1117,20 @@ const styles = StyleSheet.create({
     color: DIM,
     lineHeight: 18,
   },
-  promoBlock: {
-    gap: 8,
-  },
-  revealButton: {
+  redeemInlineBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
+    gap: 7,
     paddingVertical: 14,
-    borderRadius: 14,
+    borderRadius: 100,
+    marginBottom: 4,
   },
-  revealButtonText: {
-    fontSize: 12,
+  redeemInlineBtnText: {
+    fontSize: 13,
     fontWeight: '700',
-    letterSpacing: 1,
-    color: '#fff',
-    textTransform: 'uppercase',
-  },
-  codeBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    borderRadius: 14,
-    borderWidth: 1.5,
-    borderStyle: 'dashed',
-    backgroundColor: 'rgba(255,255,255,0.04)',
-  },
-  codeText: {
-    fontSize: 16,
-    fontWeight: '700',
-    letterSpacing: 1.5,
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-  },
-  copyRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-  },
-  copyText: {
-    fontSize: 11,
-    fontWeight: '600',
     letterSpacing: 0.3,
+    color: '#000',
   },
   expandedFooter: {
     flexDirection: 'row',

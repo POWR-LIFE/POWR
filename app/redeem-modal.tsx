@@ -1,10 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
+import * as Clipboard from 'expo-clipboard';
 import GeometricBackground from '@/components/GeometricBackground';
 import {
   ActivityIndicator,
-  Clipboard,
   Linking,
   Pressable,
   StyleSheet,
@@ -114,6 +114,7 @@ export default function RedeemModal() {
           e.code === 'INSUFFICIENT_POINTS' ? "You don't have enough POWR."
           : e.code === 'OUT_OF_STOCK' ? 'This reward is temporarily unavailable. Check back soon.'
           : e.code === 'REWARD_INACTIVE' ? 'This reward is no longer available.'
+          : e.code === 'REDEMPTION_LIMIT_REACHED' ? "You've already claimed the maximum number of this reward."
           : 'Something went wrong. Please try again.'
         );
       } else {
@@ -125,7 +126,7 @@ export default function RedeemModal() {
   }
 
   function handleCopy() {
-    Clipboard.setString(code);
+    Clipboard.setStringAsync(code);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }
