@@ -260,6 +260,25 @@ async function iosGetCaloriesToday(): Promise<CalorieSummary | null> {
 
 // ── Android (Health Connect via react-native-health-connect) ─────────────────
 
+export type HealthConnectStatus = 'available' | 'needs_install' | 'unsupported';
+
+export async function androidHealthConnectStatus(): Promise<HealthConnectStatus> {
+    try {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const { initialize, getSdkStatus, SdkAvailabilityStatus } = require('react-native-health-connect');
+        let initOk = false;
+        try { initOk = await initialize(); } catch (e) { console.warn('[HC] initialize threw:', e); }
+        const status = await getSdkStatus();
+        console.log(`[HC] initialize=${initOk} status=${status} (available=${SdkAvailabilityStatus.SDK_AVAILABLE}, needsUpdate=${SdkAvailabilityStatus.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED}, unavailable=${SdkAvailabilityStatus.SDK_UNAVAILABLE})`);
+        if (status === SdkAvailabilityStatus.SDK_AVAILABLE) return 'available';
+        if (status === SdkAvailabilityStatus.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED) return 'needs_install';
+        return 'unsupported';
+    } catch (e) {
+        console.warn('[HC] androidHealthConnectStatus failed:', e);
+        return 'unsupported';
+    }
+}
+
 export async function androidCheckAvailable(): Promise<boolean> {
     try {
         // eslint-disable-next-line @typescript-eslint/no-require-imports

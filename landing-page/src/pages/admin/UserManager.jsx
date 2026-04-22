@@ -70,7 +70,7 @@ export default function UserManager() {
                         <span className="text-[10px] uppercase tracking-[0.5em] text-[#E8D200] font-black">Subsystem / Intelligence</span>
                     </div>
                     <h1 className="text-6xl font-light tracking-tighter text-[#F2F2F2] mb-6">User Network</h1>
-                    <p className="text-[#333] text-[11px] max-w-xl font-black uppercase tracking-[0.4em] leading-relaxed">
+                    <p className="text-[#999] text-[11px] max-w-xl font-black uppercase tracking-[0.4em] leading-relaxed">
                         Global registry of active nodes and historical performance telemetry.
                     </p>
                 </div>
@@ -85,7 +85,7 @@ export default function UserManager() {
                 ].map(s => (
                     <div key={s.label} className="bg-[#0A0A0A] border border-[#151515] p-10 rounded-3xl flex items-center gap-8 group hover:border-[#202020] transition-all relative overflow-hidden">
                         <div className="absolute top-0 right-0 p-8 opacity-5">
-                            <span className="text-[9px] font-black text-[#222] uppercase tracking-[0.4em]">{s.desc}</span>
+                            <span className="text-[9px] font-black text-[#999] uppercase tracking-[0.4em]">{s.desc}</span>
                         </div>
                         <div className="w-14 h-14 rounded-2xl bg-[#050505] border border-[#151515] flex items-center justify-center shrink-0 group-hover:border-[#E8D200]/20 transition-all">
                             <s.icon size={22} style={{ color: s.color }} />
@@ -94,7 +94,7 @@ export default function UserManager() {
                             <div className="text-4xl font-light tracking-tighter text-[#DDD] leading-none mb-2">
                                 {loading ? '...' : s.value}
                             </div>
-                            <div className="text-[10px] uppercase tracking-[0.4em] text-[#222] font-black">{s.label}</div>
+                            <div className="text-[10px] uppercase tracking-[0.4em] text-[#999] font-black">{s.label}</div>
                         </div>
                     </div>
                 ))}
@@ -103,7 +103,7 @@ export default function UserManager() {
             {/* Controls */}
             <div className="flex flex-col md:flex-row gap-6 mb-10">
                 <div className="relative flex-1 group">
-                    <Search size={18} className="absolute left-6 top-1/2 -translate-y-1/2 text-[#1A1A1A] group-focus-within:text-[#E8D200] transition-colors" />
+                    <Search size={18} className="absolute left-6 top-1/2 -translate-y-1/2 text-[#777] group-focus-within:text-[#E8D200] transition-colors" />
                     <input
                         type="text"
                         placeholder="SEARCH NODE IDENTIFIER..."
@@ -112,7 +112,7 @@ export default function UserManager() {
                         onChange={e => setSearch(e.target.value)}
                     />
                 </div>
-                <button className="h-16 px-10 bg-[#0A0A0A] border border-[#151515] rounded-full flex items-center gap-4 text-[10px] font-black uppercase tracking-[0.3em] text-[#333] hover:text-[#E8D200] transition-all">
+                <button className="h-16 px-10 bg-[#0A0A0A] border border-[#151515] rounded-full flex items-center gap-4 text-[10px] font-black uppercase tracking-[0.3em] text-[#999] hover:text-[#E8D200] transition-all">
                     <Filter size={16} /> Filter Results
                 </button>
             </div>
@@ -122,7 +122,7 @@ export default function UserManager() {
                 {loading ? (
                     <div className="flex flex-col items-center justify-center py-48 gap-6">
                         <div className="w-12 h-12 border-2 border-[#E8D200]/20 border-t-[#E8D200] rounded-full animate-spin" />
-                        <span className="text-[10px] uppercase tracking-[0.6em] text-[#222] font-black">Syncing Node Hive...</span>
+                        <span className="text-[10px] uppercase tracking-[0.6em] text-[#999] font-black">Syncing Node Hive...</span>
                     </div>
                 ) : (
                     <div className="overflow-x-auto">
@@ -130,7 +130,7 @@ export default function UserManager() {
                             <thead>
                                 <tr className="bg-[#050505] border-b border-[#151515]">
                                     {['User Identity', 'Protocol Level', 'Location', 'Registration', 'Status', ''].map(h => (
-                                        <th key={h} className={`px-12 py-8 text-[10px] font-black uppercase tracking-[0.5em] text-[#1A1A1A] ${h === '' ? 'text-right' : ''}`}>{h}</th>
+                                        <th key={h} className={`px-12 py-8 text-[10px] font-black uppercase tracking-[0.5em] text-[#777] ${h === '' ? 'text-right' : ''}`}>{h}</th>
                                     ))}
                                 </tr>
                             </thead>
@@ -140,9 +140,9 @@ export default function UserManager() {
                                         <td colSpan={6} className="px-12 py-32 text-center">
                                             <div className="flex flex-col items-center gap-6">
                                                 <div className="w-20 h-20 rounded-3xl bg-[#050505] border border-[#151515] flex items-center justify-center">
-                                                    <Users size={32} className="text-[#151515]" />
+                                                    <Users size={32} className="text-[#CCC]" />
                                                 </div>
-                                                <p className="text-[11px] uppercase tracking-[0.4em] text-[#1A1A1A] font-black">
+                                                <p className="text-[11px] uppercase tracking-[0.4em] text-[#777] font-black">
                                                     No Nodes Detected
                                                 </p>
                                             </div>
@@ -156,14 +156,14 @@ export default function UserManager() {
                                                     {user.avatar_url ? (
                                                         <img src={user.avatar_url} alt="" className="w-full h-full object-cover" />
                                                     ) : (
-                                                        <User size={18} className="text-[#1A1A1A]" />
+                                                        <User size={18} className="text-[#777]" />
                                                     )}
                                                 </div>
                                                 <div>
                                                     <span className="text-base font-bold text-[#DDD] group-hover:text-[#F2F2F2] transition-colors block mb-1">
                                                         {user.display_name || user.username || 'Anonymous Node'}
                                                     </span>
-                                                    <span className="text-[10px] uppercase tracking-[0.4em] text-[#222] font-black">
+                                                    <span className="text-[10px] uppercase tracking-[0.4em] text-[#999] font-black">
                                                         @{user.username || 'unidentified'}
                                                     </span>
                                                 </div>
@@ -183,7 +183,7 @@ export default function UserManager() {
                                                     <span className="text-[9px] uppercase tracking-[0.3em] text-[#10B981] font-black">Granted</span>
                                                 </div>
                                             ) : (
-                                                <span className="text-[9px] uppercase tracking-[0.3em] text-[#333] font-black">Denied</span>
+                                                <span className="text-[9px] uppercase tracking-[0.3em] text-[#999] font-black">Denied</span>
                                             )}
                                         </td>
                                         <td className="px-12 py-10 whitespace-nowrap">
@@ -191,7 +191,7 @@ export default function UserManager() {
                                                 <span className="text-[12px] text-[#DDD] font-medium mb-1">
                                                     {new Date(user.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
                                                 </span>
-                                                <span className="text-[9px] uppercase tracking-[0.4em] text-[#222] font-black">
+                                                <span className="text-[9px] uppercase tracking-[0.4em] text-[#999] font-black">
                                                     {timeAgo(user.created_at)}
                                                 </span>
                                             </div>
@@ -199,16 +199,16 @@ export default function UserManager() {
                                         <td className="px-12 py-10">
                                             <div className="flex items-center gap-4">
                                                 <div className="h-1.5 w-1.5 rounded-full bg-[#10B981] shadow-[0_0_10px_rgba(16,185,129,0.4)]"></div>
-                                                <span className="text-[9px] uppercase tracking-[0.3em] text-[#444] font-black">ACTIVE</span>
+                                                <span className="text-[9px] uppercase tracking-[0.3em] text-[#AAA] font-black">ACTIVE</span>
                                             </div>
                                         </td>
                                         <td className="px-12 py-10 text-right">
                                             <Link 
                                                 to={`/admin/users/${user.id}`}
-                                                className="inline-flex items-center gap-3 px-6 py-3 bg-[#050505] border border-[#151515] rounded-full text-[9px] font-black uppercase tracking-[0.3em] text-[#333] hover:text-[#E8D200] hover:border-[#E8D200]/40 transition-all group/btn"
+                                                className="inline-flex items-center gap-3 px-6 py-3 bg-[#050505] border border-[#151515] rounded-full text-[9px] font-black uppercase tracking-[0.3em] text-[#999] hover:text-[#E8D200] hover:border-[#E8D200]/40 transition-all group/btn"
                                             >
                                                 Query Profile
-                                                <ChevronRight size={14} className="text-[#151515] group-hover/btn:text-[#E8D200] transition-colors" />
+                                                <ChevronRight size={14} className="text-[#CCC] group-hover/btn:text-[#E8D200] transition-colors" />
                                             </Link>
                                         </td>
                                     </tr>
@@ -222,9 +222,9 @@ export default function UserManager() {
             <div className="mt-12 flex items-center justify-between px-12">
                 <div className="flex items-center gap-4">
                     <div className="h-1.5 w-1.5 rounded-full bg-[#10B981] animate-pulse"></div>
-                    <span className="text-[10px] uppercase tracking-[0.6em] text-[#222] font-black">Intra-Network Sync Active</span>
+                    <span className="text-[10px] uppercase tracking-[0.6em] text-[#999] font-black">Intra-Network Sync Active</span>
                 </div>
-                <span className="text-[10px] uppercase tracking-[0.6em] text-[#151515] font-black">POWR / USR / V3.0</span>
+                <span className="text-[10px] uppercase tracking-[0.6em] text-[#CCC] font-black">POWR / USR / V3.0</span>
             </div>
         </div>
     );

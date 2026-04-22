@@ -1,17 +1,32 @@
-import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
 import { GeometricBackground } from '@/components/home/GeometricBackground';
+import { ProfileButton } from '@/components/ProfileButton';
+import { usePoints } from '@/hooks/usePoints';
+import { fetchRewards, type Reward as ApiReward } from '@/lib/api/rewards';
+import { Ionicons } from '@expo/vector-icons';
+import * as Clipboard from 'expo-clipboard';
+import { Image as ExpoImage } from 'expo-image';
+import * as Haptics from 'expo-haptics';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useRouter } from 'expo-router';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
+  Image,
+  LayoutAnimation,
+  Linking,
+  Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
+  UIManager,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ProfileButton } from '@/components/ProfileButton';
-import { usePoints } from '@/hooks/usePoints';
-import { getLevelInfo } from '@/constants/levels';
+
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 
@@ -20,18 +35,18 @@ const BG      = '#1E1E1E';
 const CARD_BG = 'rgba(40,40,40,0.85)';
 const BORDER  = 'rgba(255,255,255,0.08)';
 const TEXT    = '#F2F2F2';
-const MUTED   = 'rgba(255,255,255,0.25)';
-const DIM     = 'rgba(255,255,255,0.5)';
+const MUTED   = 'rgba(255,255,255,0.35)';
+const DIM     = 'rgba(255,255,255,0.55)';
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
-
-
 const FEATURED = {
   title:    'Free Class',
-  subtitle: 'Third Space · Any London location',
+  subtitle: 'Stars Gym · London',
   value:    '£20 value',
   pts:      800,
+  partnerLogo: { uri: 'https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/partner-logos/6e386546-b618-4ea8-ad12-28fb185f44be.avif' },
+  partnerImage: require('@/assets/images/stars-gym-two.avif'),
 };
 
 type Category = 'ALL' | 'MOVE' | 'EAT' | 'MIND' | 'GEAR';
@@ -42,20 +57,28 @@ interface Reward {
   category: Exclude<Category, 'ALL'>;
   logoText: string;
   logoLight: boolean;
+  logoImage?: any;
+  heroImage?: any;
+  brandColor?: string;
   title: string;
   subtitle: string;
   pts: number;
+  value?: string;
+  offer?: string;
+  partnerBlurb?: string;
+  url?: string;
+  promoCode?: string;
 }
 
 const REWARDS: Reward[] = [
-  { id: '1', category: 'MOVE', logoText: 'TS',     logoLight: false, title: 'Free gym class',          subtitle: 'Third Space · Any location',  pts: 800  },
-  { id: '2', category: 'EAT',  logoText: 'NOTTO',  logoLight: true,  title: '25% off your bill',       subtitle: 'Notto Pasta · Any branch',    pts: 500  },
-  { id: '3', category: 'GEAR', logoText: 'bulk',   logoLight: false, title: '30% off protein powder',  subtitle: 'bulk® · Any product',         pts: 400  },
-  { id: '4', category: 'MIND', logoText: 'calm',   logoLight: false, title: '3 months free',           subtitle: 'Calm · Premium subscription', pts: 600  },
-  { id: '5', category: 'GEAR', logoText: 'eight',  logoLight: false, title: '£50 off mattress',        subtitle: 'Eight Sleep · Any model',     pts: 1200 },
-  { id: '6', category: 'EAT',  logoText: 'WH',     logoLight: true,  title: '20% off supplements',     subtitle: 'Whole Health · Any order',    pts: 350  },
-  { id: '7', category: 'MOVE', logoText: 'barry',  logoLight: true,  title: 'Single class pass',       subtitle: "Barry's · Any studio",        pts: 650  },
-  { id: '8', category: 'MIND', logoText: 'head',   logoLight: false, title: '1 month free',            subtitle: 'Headspace · Plus plan',       pts: 300  },
+  { id: '1', category: 'MOVE', logoText: 'TS',     logoLight: false, title: 'Free gym class',          subtitle: 'Third Space · Any location',  pts: 800,  value: '£20 value' },
+  { id: '2', category: 'EAT',  logoText: 'NOTTO',  logoLight: true,  title: '25% off your bill',       subtitle: 'Notto Pasta · Any branch',    pts: 500,  value: 'Up to £15 off' },
+  { id: '3', category: 'GEAR', logoText: 'bulk',   logoLight: false, title: '30% off protein powder',  subtitle: 'bulk® · Any product',         pts: 400,  value: 'Up to £20 off' },
+  { id: '4', category: 'MIND', logoText: 'calm',   logoLight: false, title: '3 months free',           subtitle: 'Calm · Premium subscription', pts: 600,  value: '£45 value' },
+  { id: '5', category: 'GEAR', logoText: 'eight',  logoLight: false, title: '£50 off mattress',        subtitle: 'Eight Sleep · Any model',     pts: 1200, value: '£50 off' },
+  { id: '6', category: 'EAT',  logoText: 'WH',     logoLight: true,  title: '20% off supplements',     subtitle: 'Whole Health · Any order',    pts: 350,  value: '20% off' },
+  { id: '7', category: 'MOVE', logoText: 'barry',  logoLight: true,  title: 'Single class pass',       subtitle: "Barry's · Any studio",        pts: 650,  value: '£22 value' },
+  { id: '8', category: 'MIND', logoText: 'head',   logoLight: false, title: '1 month free',            subtitle: 'Headspace · Plus plan',       pts: 300,  value: '£12 value' },
 ];
 
 // ─── Affordability helpers ─────────────────────────────────────────────────────
@@ -68,20 +91,96 @@ function affordability(balance: number, pts: number): Afford {
   return 'locked';
 }
 
+function formatDiscountValue(value: number): string {
+  return Number.isInteger(value) ? `${value}` : value.toFixed(2).replace(/\.0+$/, '').replace(/(\.\d*[1-9])0+$/, '$1');
+}
+
+function getRewardDisplayValue(reward: Pick<ApiReward, 'discount_type' | 'discount_value' | 'value_label'>): string | undefined {
+  if (reward.discount_type && reward.discount_value != null) {
+    const amount = formatDiscountValue(Number(reward.discount_value));
+    return reward.discount_type === 'percentage' ? `${amount}% off` : `£${amount} off`;
+  }
+  return reward.value_label ?? undefined;
+}
+
 // ─── Screen ───────────────────────────────────────────────────────────────────
+
+const DB_TO_UI_CATEGORY: Record<string, Exclude<Category, 'ALL'>> = {
+  gym: 'MOVE',
+  health: 'MIND',
+  nutrition: 'EAT',
+  food: 'EAT',
+  fashion: 'GEAR',
+  gear: 'GEAR',
+};
+
+function apiRewardToUI(r: ApiReward): Reward {
+  const displayName = r.partner?.name ?? r.brand_name ?? null;
+  const logoText = (displayName ?? '??').slice(0, 5).toLowerCase();
+  return {
+    id: r.id,
+    category: DB_TO_UI_CATEGORY[r.category] ?? 'GEAR',
+    logoText,
+    logoLight: false,
+    logoImage: r.image_url ? { uri: r.image_url } : r.partner?.logo_url ? { uri: r.partner.logo_url } : undefined,
+    heroImage: r.hero_image_url ? { uri: r.hero_image_url } : undefined,
+    brandColor: r.brand_color ?? undefined,
+    title: r.title,
+    subtitle: `${displayName ?? ''}${r.description ? ' · ' + r.description : ''}`,
+    pts: r.powr_cost,
+    value: getRewardDisplayValue(r),
+    offer: r.offer ?? undefined,
+    partnerBlurb: r.partner_blurb ?? undefined,
+    url: r.url ?? undefined,
+    promoCode: r.promo_code ?? undefined,
+  };
+}
 
 export default function SpendScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const [activeCategory, setActiveCategory] = useState<Category>('ALL');
-  const { balance, todayEarned, totalEarned, loading } = usePoints();
-  const levelInfo = getLevelInfo(totalEarned);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const { balance, todayEarned, loading, refresh: refreshPoints } = usePoints();
+
+  const toggleExpand = (id: string) => {
+    LayoutAnimation.configureNext({
+      duration: 260,
+      create:  { type: 'easeInEaseOut', property: 'opacity' },
+      update:  { type: 'easeInEaseOut' },
+      delete:  { type: 'easeInEaseOut', property: 'opacity' },
+    });
+    Haptics.selectionAsync();
+    setExpandedId((prev) => (prev === id ? null : id));
+  };
+
+  const [rewards, setRewards] = useState<Reward[]>(REWARDS);
+  const loadRewards = useCallback(async () => {
+    try {
+      const data = await fetchRewards();
+      if (data.length > 0) {
+        setRewards(data.map(apiRewardToUI));
+      }
+    } catch {
+      // keep mock fallback
+    }
+  }, []);
+  useEffect(() => { loadRewards(); }, [loadRewards]);
+
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([refreshPoints(), loadRewards()]);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refreshPoints, loadRewards]);
 
   const filtered = activeCategory === 'ALL'
-    ? REWARDS
-    : REWARDS.filter((r) => r.category === activeCategory);
+    ? rewards
+    : rewards.filter((r) => r.category === activeCategory);
 
-  // Sort: affordable first, then close, then locked
   const sorted = [...filtered].sort((a, b) => {
     const order = { can: 0, close: 1, locked: 2 };
     return order[affordability(balance, a.pts)] - order[affordability(balance, b.pts)];
@@ -101,17 +200,21 @@ export default function SpendScreen() {
         style={styles.scroll}
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 80 }]}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#E8D200"
+            colors={['#E8D200']}
+          />
+        }
       >
-        {/* ── Balance card ─────────────────────────────────────── */}
         <BalanceCard
           balance={balance}
           todayEarned={todayEarned}
-          levelNumber={levelInfo.current.level}
-          levelName={levelInfo.current.name}
           loading={loading}
         />
 
-        {/* ── Featured weekly reward ────────────────────────────── */}
         <FeaturedCard
           featured={FEATURED}
           afford={featuredAfford}
@@ -119,39 +222,45 @@ export default function SpendScreen() {
           onRedeem={() => router.push({ pathname: '/redeem-modal', params: { id: 'featured' } })}
         />
 
-        {/* ── Category tabs ────────────────────────────────────── */}
-        <View style={styles.tabsRow}>
+        <View style={styles.catTabBar}>
           {CATEGORIES.map((cat) => {
             const active = cat === activeCategory;
             return (
               <Pressable
                 key={cat}
-                style={[styles.tabChip, active && styles.tabChipActive]}
-                onPress={() => setActiveCategory(cat)}
+                style={styles.catTab}
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  setActiveCategory(cat);
+                }}
               >
-                <Text style={[styles.tabChipText, active && styles.tabChipTextActive]}>
+                <Text style={[styles.catTabLabel, active && styles.catTabLabelActive]}>
                   {cat}
                 </Text>
+                {active && <View style={styles.catTabIndicator} />}
               </Pressable>
             );
           })}
         </View>
 
-        {/* ── Reward rows ──────────────────────────────────────── */}
-        {sorted.map((reward) => (
-          <RewardRow
-            key={reward.id}
-            reward={reward}
-            afford={affordability(balance, reward.pts)}
-            balance={balance}
-            onRedeem={() => router.push({ pathname: '/redeem-modal', params: { id: reward.id } })}
-          />
-        ))}
+        <View style={styles.rewardsList}>
+          {sorted.map((reward) => (
+            <RewardCard
+              key={reward.id}
+              reward={reward}
+              afford={affordability(balance, reward.pts)}
+              balance={balance}
+              expanded={expandedId === reward.id}
+              onToggle={() => toggleExpand(reward.id)}
+              onRedeem={() => router.push({ pathname: '/redeem-modal', params: { id: reward.id } })}
+            />
+          ))}
+        </View>
 
-        {/* ── Find nearby ──────────────────────────────────────── */}
         <Pressable style={({ pressed }) => [styles.nearbyRow, pressed && { opacity: 0.75 }]}>
+          <Ionicons name="location-outline" size={16} color={DIM} />
           <Text style={styles.nearbyText}>Find nearby fitness partners</Text>
-          <Text style={styles.nearbyArrow}>→</Text>
+          <Ionicons name="arrow-forward" size={16} color={MUTED} />
         </Pressable>
       </ScrollView>
     </View>
@@ -163,32 +272,24 @@ export default function SpendScreen() {
 interface BalanceCardProps {
   balance: number;
   todayEarned: number;
-  levelNumber: number;
-  levelName: string;
   loading: boolean;
 }
 
-function BalanceCard({ balance, todayEarned, levelNumber, levelName, loading }: BalanceCardProps) {
+function BalanceCard({ balance, todayEarned, loading }: BalanceCardProps) {
   return (
     <View style={styles.balanceCard}>
-      <View>
-        <Text style={styles.metaLabel}>Available</Text>
+      <Text style={styles.metaLabel}>Available balance</Text>
+      <View style={styles.balanceNumberRow}>
         <Text style={[styles.balanceNumber, loading && { opacity: 0.4 }]}>
           {balance.toLocaleString()}
         </Text>
-        <Text style={styles.balanceUnit}>POWR points</Text>
-      </View>
-
-      <View style={styles.balanceRight}>
+        <Text style={styles.balanceUnit}>POWR</Text>
         {todayEarned > 0 && (
           <View style={styles.todayBadge}>
+            <View style={styles.todayDot} />
             <Text style={styles.todayBadgeText}>+{todayEarned} today</Text>
           </View>
         )}
-        <View style={styles.levelBlock}>
-          <Text style={styles.metaLabel}>Level</Text>
-          <Text style={styles.levelValue}>{levelNumber} · {levelName}</Text>
-        </View>
       </View>
     </View>
   );
@@ -209,114 +310,276 @@ function FeaturedCard({ featured, afford, balance, onRedeem }: FeaturedProps) {
 
   return (
     <View style={styles.featuredCard}>
-      <View style={styles.featuredAccentBar} />
-      <View style={styles.featuredInner}>
-        <View style={styles.featuredHeaderRow}>
-          <Text style={styles.metaLabel}>This week's reward</Text>
-          <View style={styles.rotatesBadge}>
-            <View style={styles.rotateDot} />
-            <Text style={styles.rotateBadgeText}>Rotates weekly</Text>
-          </View>
+      <View style={styles.featuredHero}>
+        {featured.partnerImage && (
+          <Image source={featured.partnerImage} style={styles.featuredHeroImg} resizeMode="cover" />
+        )}
+        <LinearGradient
+          colors={['rgba(10,10,10,0.85)', 'rgba(10,10,10,0.35)', 'rgba(10,10,10,0)']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          locations={[0, 0.45, 1]}
+          style={StyleSheet.absoluteFillObject}
+        />
+        <LinearGradient
+          colors={['rgba(10,10,10,0)', 'rgba(10,10,10,0.6)', 'rgba(10,10,10,0.95)']}
+          locations={[0, 0.55, 1]}
+          style={StyleSheet.absoluteFillObject}
+        />
+
+        <View style={styles.featuredHeroBadges}>
+          <Text style={styles.rotateBadgeText}>Rotates weekly</Text>
         </View>
 
-        <Text style={styles.featuredTitle}>{featured.title}</Text>
-        <Text style={styles.featuredSubtitle}>{featured.subtitle}</Text>
-
-        {/* Progress bar — always visible */}
-        {afford !== 'can' && (
-          <View style={styles.featuredProgressWrap}>
-            <View style={[styles.featuredProgressBar, { width: `${progress * 100}%` as any }]} />
+        {featured.partnerLogo && (
+          <View style={styles.featuredLogoFloat}>
+            <ExpoImage source={featured.partnerLogo} style={styles.featuredLogoImg} contentFit="contain" />
           </View>
         )}
 
-        <View style={styles.featuredFooter}>
-          <View>
-            <Text style={styles.featuredValueLarge}>{featured.value}</Text>
-            <Text style={styles.featuredPts}>· {featured.pts} pts</Text>
+        <View style={styles.featuredOverlayBody}>
+          <View style={styles.featuredTitleRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.featuredTitle}>{featured.title}</Text>
+              <Text style={styles.featuredSubtitle}>{featured.subtitle}</Text>
+            </View>
+            <View style={styles.featuredPtsBlock}>
+              <Text style={styles.featuredPtsNum}>{featured.pts}</Text>
+              <Text style={styles.featuredPtsUnit}>pts</Text>
+            </View>
           </View>
 
-          {afford === 'can' ? (
-            <Pressable style={({ pressed }) => [styles.redeemPrimary, pressed && { opacity: 0.85 }]} onPress={onRedeem}>
-              <Text style={styles.redeemPrimaryText}>Redeem</Text>
-            </Pressable>
-          ) : afford === 'close' ? (
-            <View style={styles.closeBlock}>
-              <Text style={styles.closeText}>{ptsNeeded} pts away</Text>
-              <Text style={styles.closeHint}>Keep moving</Text>
-            </View>
-          ) : (
-            <View style={styles.lockedBlock}>
-              <Text style={styles.lockedText}>{ptsNeeded.toLocaleString()} pts needed</Text>
+          {afford !== 'can' && (
+            <View style={styles.featuredProgressWrap}>
+              <View style={[styles.featuredProgressBar, { width: `${progress * 100}%` as any }]} />
             </View>
           )}
+
+          <View style={styles.featuredFooter}>
+            <Text style={styles.featuredValueInline}>{featured.value}</Text>
+            {afford === 'can' ? (
+              <Pressable style={({ pressed }) => [styles.redeemPrimary, pressed && { opacity: 0.85 }]} onPress={onRedeem}>
+                <Text style={styles.redeemPrimaryText}>Redeem</Text>
+                <Ionicons name="arrow-forward" size={13} color="#0a0a0a" />
+              </Pressable>
+            ) : afford === 'close' ? (
+              <Text style={styles.closeText}>{ptsNeeded} pts away</Text>
+            ) : (
+              <View style={styles.lockedBlock}>
+                <Ionicons name="lock-closed" size={11} color={MUTED} />
+                <Text style={styles.lockedText}>{ptsNeeded.toLocaleString()} pts</Text>
+              </View>
+            )}
+          </View>
         </View>
       </View>
     </View>
   );
 }
 
-// ─── Reward Row ───────────────────────────────────────────────────────────────
+// ─── Reward Card ──────────────────────────────────────────────────────────────
 
-interface RewardRowProps {
+interface RewardCardProps {
   reward: Reward;
   afford: Afford;
   balance: number;
+  expanded: boolean;
+  onToggle: () => void;
   onRedeem: () => void;
 }
 
-function RewardRow({ reward, afford, balance, onRedeem }: RewardRowProps) {
+function RewardCard({ reward, afford, balance, expanded, onToggle, onRedeem }: RewardCardProps) {
   const ptsNeeded = reward.pts - balance;
   const progress = Math.min(balance / reward.pts, 1);
   const isLocked = afford === 'locked';
+  const [revealed, setRevealed] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const brand = reward.brandColor ?? GOLD;
+
+  const handleReveal = () => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    setRevealed(true);
+  };
+
+  const handleCopy = async () => {
+    if (!reward.promoCode) return;
+    await Clipboard.setStringAsync(reward.promoCode);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1800);
+  };
 
   return (
     <Pressable
+      onPress={onToggle}
       style={({ pressed }) => [
-        styles.rewardRow,
-        isLocked && styles.rewardRowLocked,
-        pressed && !isLocked && { opacity: 0.8 },
+        styles.rewardCard,
+        isLocked && styles.rewardCardLocked,
+        expanded && { borderColor: brand + '55' },
+        pressed && !isLocked && { opacity: 0.92 },
       ]}
     >
-      {/* Logo */}
-      <View style={[styles.logoBox, reward.logoLight && styles.logoBoxLight, isLocked && styles.logoBoxLocked]}>
-        <Text
-          style={[styles.logoText, reward.logoLight && styles.logoTextDark, isLocked && styles.logoTextLocked]}
-          numberOfLines={1}
-          adjustsFontSizeToFit
+      {expanded && reward.heroImage && (
+        <View style={styles.heroBanner}>
+          <Image
+            source={reward.heroImage}
+            style={styles.heroImage}
+            resizeMode="cover"
+          />
+          <LinearGradient
+            colors={['transparent', 'rgba(30,30,30,0.95)']}
+            start={{ x: 0, y: 0.6 }}
+            end={{ x: 0, y: 1 }}
+            style={styles.heroFade}
+            pointerEvents="none"
+          />
+        </View>
+      )}
+      {expanded && (
+        <LinearGradient
+          colors={[brand + '22', 'transparent']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 0, y: 1 }}
+          style={StyleSheet.absoluteFill}
+          pointerEvents="none"
+        />
+      )}
+
+      <View style={styles.rewardRowTop}>
+        <View
+          style={[
+            styles.logoBox,
+            reward.logoLight && styles.logoBoxLight,
+            isLocked && styles.logoBoxLocked,
+            reward.logoImage && styles.logoBoxBare,
+            expanded && { width: 64, height: 64 },
+          ]}
         >
-          {reward.logoText}
-        </Text>
-      </View>
+          {reward.logoImage ? (
+            <Image source={reward.logoImage} style={styles.logoImage} resizeMode="contain" />
+          ) : (
+            <Text
+              style={[styles.logoText, reward.logoLight && styles.logoTextDark, isLocked && styles.logoTextLocked]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+            >
+              {reward.logoText}
+            </Text>
+          )}
+        </View>
 
-      {/* Info */}
-      <View style={styles.rewardInfo}>
-        <Text style={[styles.rewardTitle, isLocked && styles.rewardTitleLocked]}>{reward.title}</Text>
-        <Text style={styles.rewardSubtitle}>{reward.subtitle}</Text>
+        <View style={styles.rewardInfo}>
+          <Text style={[styles.rewardTitle, isLocked && styles.rewardTitleLocked]} numberOfLines={expanded ? 2 : 1}>
+            {reward.title}
+          </Text>
+          <Text style={styles.rewardSubtitle} numberOfLines={1}>{reward.subtitle}</Text>
 
-        {/* Progress bar for "close" state */}
-        {afford === 'close' && (
-          <View style={styles.progressWrap}>
-            <View style={[styles.progressBar, { width: `${progress * 100}%` as any }]} />
+          {!expanded && afford === 'close' && (
+            <View style={styles.progressWrap}>
+              <View style={[styles.progressBar, { width: `${progress * 100}%` as any }]} />
+            </View>
+          )}
+        </View>
+
+        {!expanded && reward.value && (
+          <View style={[styles.rewardValueBadge, { borderColor: brand + '55', backgroundColor: brand + '12' }]}>
+            <Text style={[styles.rewardValueBadgeText, { color: brand }]}>{reward.value}</Text>
           </View>
         )}
+
+        <View style={styles.rewardRight}>
+          <Text style={[styles.rewardPts, isLocked && styles.rewardPtsLocked]}>
+            {reward.pts}
+          </Text>
+          <Text style={[styles.rewardPtsUnit, isLocked && styles.rewardPtsLocked]}>pts</Text>
+          <Ionicons
+            name={expanded ? 'chevron-up' : 'chevron-down'}
+            size={14}
+            color={isLocked ? MUTED : DIM}
+            style={{ marginTop: 2 }}
+          />
+        </View>
       </View>
 
-      {/* Right */}
-      <View style={styles.rewardRight}>
-        <Text style={[styles.rewardPts, isLocked && styles.rewardPtsLocked]}>
-          {reward.pts} pts
-        </Text>
+      {expanded && (
+        <View style={styles.expandedPanel}>
+          {reward.value && (
+            <View style={[styles.expandedValueBadge, { borderColor: brand + '66', backgroundColor: brand + '14' }]}>
+              <Text style={[styles.expandedValueBadgeText, { color: brand }]}>{reward.value}</Text>
+            </View>
+          )}
 
-        {afford === 'can' ? (
-          <Pressable style={({ pressed }) => [styles.redeemGhost, pressed && { opacity: 0.75 }]} onPress={onRedeem}>
-            <Text style={styles.redeemGhostText}>Redeem</Text>
-          </Pressable>
-        ) : afford === 'close' ? (
-          <Text style={styles.closeHintSm}>{ptsNeeded} away</Text>
-        ) : (
-          <Text style={styles.lockedHint}>Locked</Text>
-        )}
-      </View>
+          {reward.offer && <Text style={styles.expandedOffer}>{reward.offer}</Text>}
+
+          {reward.partnerBlurb && (
+            <View style={styles.aboutBlock}>
+              <Text style={styles.expandedLabel}>About {reward.logoText.toUpperCase()}</Text>
+              <Text style={styles.expandedBlurb}>{reward.partnerBlurb}</Text>
+            </View>
+          )}
+
+          {afford === 'can' && reward.promoCode && (
+            <View style={styles.promoBlock}>
+              <Text style={styles.expandedLabel}>Promo code</Text>
+              {!revealed ? (
+                <Pressable
+                  onPress={handleReveal}
+                  style={({ pressed }) => [
+                    styles.revealButton,
+                    { backgroundColor: brand },
+                    pressed && { opacity: 0.9 },
+                  ]}
+                >
+                  <Ionicons name="lock-open-outline" size={14} color="#fff" />
+                  <Text style={styles.revealButtonText}>Redeem for {reward.pts} pts</Text>
+                </Pressable>
+              ) : (
+                <Pressable onPress={handleCopy} style={[styles.codeBox, { borderColor: brand + '66' }]}>
+                  <Text style={[styles.codeText, { color: brand }]}>{reward.promoCode}</Text>
+                  <View style={styles.copyRow}>
+                    <Ionicons
+                      name={copied ? 'checkmark-circle' : 'copy-outline'}
+                      size={16}
+                      color={copied ? '#4ade80' : brand}
+                    />
+                    <Text style={[styles.copyText, { color: copied ? '#4ade80' : brand }]}>
+                      {copied ? 'Copied' : 'Tap to copy'}
+                    </Text>
+                  </View>
+                </Pressable>
+              )}
+            </View>
+          )}
+
+          <View style={styles.expandedFooter}>
+            {reward.url && (
+              <Pressable
+                onPress={() => reward.url && Linking.openURL(reward.url)}
+                style={({ pressed }) => [styles.partnerLink, pressed && { opacity: 0.7 }]}
+              >
+                <Text style={[styles.partnerLinkText, { color: brand }]}>Visit partner</Text>
+                <Ionicons name="open-outline" size={13} color={brand} />
+              </Pressable>
+            )}
+
+            {afford === 'close' && (
+              <View style={styles.closeBlock}>
+                <Text style={styles.closeText}>{ptsNeeded} pts away</Text>
+                <View style={[styles.progressWrap, { width: 80, marginTop: 4 }]}>
+                  <View style={[styles.progressBar, { width: `${progress * 100}%` as any }]} />
+                </View>
+              </View>
+            )}
+            {afford === 'locked' && (
+              <View style={styles.lockedBlock}>
+                <Ionicons name="lock-closed" size={12} color={MUTED} />
+                <Text style={styles.lockedText}>{ptsNeeded.toLocaleString()} pts needed</Text>
+              </View>
+            )}
+          </View>
+        </View>
+      )}
     </Pressable>
   );
 }
@@ -330,8 +593,7 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 6,
+    paddingVertical: 10,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -345,20 +607,25 @@ const styles = StyleSheet.create({
   scroll: { flex: 1 },
   content: {
     paddingHorizontal: 12,
-    gap: 8,
+    gap: 10,
     paddingTop: 4,
   },
 
-  // ── Balance card
+  // ── Balance card (floating, no background)
   balanceCard: {
-    backgroundColor: CARD_BG,
-    borderWidth: 1,
-    borderColor: BORDER,
-    borderRadius: 16,
-    padding: 14,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    paddingHorizontal: 6,
+    paddingTop: 6,
+    paddingBottom: 10,
+    gap: 4,
+  },
+  balanceLeft: {
+    flex: 1,
+    gap: 4,
+  },
+  balanceRight: {
     alignItems: 'flex-end',
+    gap: 8,
   },
   metaLabel: {
     fontSize: 9,
@@ -366,68 +633,141 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
     color: MUTED,
     textTransform: 'uppercase',
-    marginBottom: 4,
+  },
+  balanceNumberRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 8,
   },
   balanceNumber: {
-    fontSize: 52,
+    fontSize: 64,
     fontWeight: '100',
-    letterSpacing: -2,
-    lineHeight: 54,
+    letterSpacing: -3,
+    lineHeight: 66,
     color: GOLD,
   },
   balanceUnit: {
     fontSize: 11,
-    fontWeight: '300',
+    fontWeight: '500',
     color: DIM,
+    letterSpacing: 2,
+    marginBottom: 14,
+  },
+  levelPill: {
+    alignItems: 'flex-end',
+  },
+  levelPillNum: {
+    fontSize: 28,
+    fontWeight: '200',
+    color: TEXT,
+    lineHeight: 30,
+    letterSpacing: -0.5,
+  },
+  levelPillName: {
+    fontSize: 10,
+    fontWeight: '500',
+    letterSpacing: 1.5,
+    color: DIM,
+    textTransform: 'uppercase',
     marginTop: 2,
   },
-  balanceRight: {
-    alignItems: 'flex-end',
-    gap: 8,
+  historyPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  historyText: {
+    fontSize: 11,
+    color: DIM,
+    fontWeight: '400',
   },
   todayBadge: {
-    backgroundColor: 'rgba(232,210,0,0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(232,210,0,0.25)',
-    borderRadius: 20,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingTop: 2,
+  },
+  todayDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: GOLD,
   },
   todayBadgeText: {
     fontSize: 10,
-    fontWeight: '400',
+    fontWeight: '500',
     color: GOLD,
     letterSpacing: 0.3,
   },
-  levelBlock: {
-    alignItems: 'flex-end',
-  },
-  levelValue: {
-    fontSize: 14,
-    fontWeight: '300',
-    color: TEXT,
-  },
 
-  // ── Featured card
+  // ── Featured card (floating, subtle accent line)
   featuredCard: {
-    backgroundColor: 'rgba(28,26,6,0.98)',
+    backgroundColor: 'rgba(255,255,255,0.025)',
     borderWidth: 1,
-    borderColor: 'rgba(232,210,0,0.15)',
-    borderRadius: 16,
+    borderColor: BORDER,
+    borderRadius: 20,
     overflow: 'hidden',
   },
-  featuredAccentBar: {
+  featuredAccent: {
     height: 2,
     backgroundColor: GOLD,
+    opacity: 0.6,
   },
   featuredInner: {
-    padding: 14,
+    padding: 16,
   },
   featuredHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 12,
+  },
+  featuredTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    marginBottom: 12,
+  },
+  featuredPtsBlock: {
+    alignItems: 'flex-end',
+  },
+  featuredPtsNum: {
+    fontSize: 30,
+    fontWeight: '200',
+    color: GOLD,
+    letterSpacing: -1,
+    lineHeight: 32,
+  },
+  featuredPtsUnit: {
+    fontSize: 9,
+    fontWeight: '600',
+    color: GOLD,
+    opacity: 0.7,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+  },
+  featuredValueInline: {
+    fontSize: 13,
+    fontWeight: '400',
+    color: DIM,
+    letterSpacing: 0.2,
+  },
+  featuredBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 20,
+    backgroundColor: 'rgba(232,210,0,0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(232,210,0,0.3)',
+  },
+  featuredBadgeText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: GOLD,
+    letterSpacing: 0.3,
   },
   rotatesBadge: {
     flexDirection: 'row',
@@ -436,9 +776,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 9,
     paddingVertical: 4,
     borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.07)',
+    backgroundColor: 'rgba(255,255,255,0.05)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
+    borderColor: BORDER,
   },
   rotateDot: {
     width: 5,
@@ -450,33 +790,75 @@ const styles = StyleSheet.create({
     fontSize: 8,
     fontWeight: '500',
     letterSpacing: 1.2,
-    color: MUTED,
+    color: DIM,
     textTransform: 'uppercase',
   },
   featuredTitle: {
-    fontSize: 34,
-    fontWeight: '200',
-    letterSpacing: -0.5,
+    fontSize: 24,
+    fontWeight: '300',
+    letterSpacing: -0.4,
     color: TEXT,
-    marginBottom: 4,
+    marginBottom: 3,
   },
   featuredSubtitle: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '300',
     color: DIM,
-    marginBottom: 20,
+  },
+  featuredHero: {
+    height: 260,
+    position: 'relative',
+    backgroundColor: 'transparent',
+  },
+  featuredOverlayBody: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    bottom: 14,
+  },
+  featuredHeroImg: {
+    width: '100%',
+    height: '100%',
+  },
+  featuredHeroFade: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: '55%',
+  },
+  featuredHeroBadges: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  featuredLogoFloat: {
+    position: 'absolute',
+    top: 10,
+    left: 10,
+    width: 72,
+    height: 72,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  featuredLogoImg: {
+    width: '100%',
+    height: '100%',
   },
   featuredProgressWrap: {
-    height: 2,
+    height: 3,
     backgroundColor: 'rgba(255,255,255,0.08)',
-    borderRadius: 1,
+    borderRadius: 2,
     overflow: 'hidden',
     marginBottom: 16,
   },
   featuredProgressBar: {
     height: '100%',
     backgroundColor: GOLD,
-    borderRadius: 1,
+    borderRadius: 2,
   },
   featuredFooter: {
     flexDirection: 'row',
@@ -490,15 +872,19 @@ const styles = StyleSheet.create({
   },
   featuredPts: {
     fontSize: 12,
-    fontWeight: '300',
-    color: DIM,
+    fontWeight: '400',
+    color: GOLD,
     marginTop: 2,
+    letterSpacing: 0.5,
   },
   redeemPrimary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
     backgroundColor: GOLD,
-    paddingHorizontal: 22,
-    paddingVertical: 11,
-    borderRadius: 20,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 22,
   },
   redeemPrimaryText: {
     fontSize: 11,
@@ -512,7 +898,7 @@ const styles = StyleSheet.create({
   },
   closeText: {
     fontSize: 13,
-    fontWeight: '300',
+    fontWeight: '400',
     color: GOLD,
   },
   closeHint: {
@@ -522,7 +908,9 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   lockedBlock: {
-    alignItems: 'flex-end',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
   },
   lockedText: {
     fontSize: 12,
@@ -531,53 +919,65 @@ const styles = StyleSheet.create({
   },
 
   // ── Category tabs
-  tabsRow: {
+  catTabBar: {
     flexDirection: 'row',
-    backgroundColor: CARD_BG,
-    borderWidth: 1,
-    borderColor: BORDER,
-    borderRadius: 16,
-    padding: 4,
-    gap: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.07)',
+    marginTop: 4,
+    marginBottom: 8,
   },
-  tabChip: {
+  catTab: {
     flex: 1,
-    paddingVertical: 9,
-    borderRadius: 12,
     alignItems: 'center',
+    paddingVertical: 10,
+    position: 'relative',
   },
-  tabChipActive: {
-    backgroundColor: TEXT,
-  },
-  tabChipText: {
+  catTabLabel: {
     fontSize: 9,
     fontWeight: '500',
     letterSpacing: 1.5,
-    color: MUTED,
-    textTransform: 'uppercase',
+    color: 'rgba(255,255,255,0.5)',
   },
-  tabChipTextActive: {
-    color: BG,
+  catTabLabelActive: {
+    color: '#FFFFFF',
+  },
+  catTabIndicator: {
+    position: 'absolute',
+    bottom: -1,
+    left: '20%',
+    right: '20%',
+    height: 1.5,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 1,
   },
 
-  // ── Reward rows
-  rewardRow: {
-    backgroundColor: CARD_BG,
-    borderWidth: 1,
-    borderColor: BORDER,
-    borderRadius: 16,
-    padding: 12,
+  // ── Reward list
+  rewardsList: {
+    gap: 8,
+    marginTop: 2,
+  },
+
+  // ── Reward cards
+  rewardCard: {
+    backgroundColor: 'transparent',
+    paddingVertical: 14,
+    paddingHorizontal: 4,
+    overflow: 'hidden',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.06)',
+  },
+  rewardCardLocked: {
+    opacity: 0.5,
+  },
+  rewardRowTop: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-  },
-  rewardRowLocked: {
-    opacity: 0.45,
+    gap: 14,
   },
   logoBox: {
-    width: 52,
-    height: 52,
-    borderRadius: 12,
+    width: 56,
+    height: 56,
+    borderRadius: 14,
     backgroundColor: 'rgba(255,255,255,0.06)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.10)',
@@ -587,15 +987,23 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   logoBoxLight: {
-    backgroundColor: '#F2F2F2',
-    borderColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: '#FFFFFF',
+    borderColor: 'rgba(0,0,0,0.06)',
   },
   logoBoxLocked: {
     backgroundColor: 'rgba(255,255,255,0.03)',
   },
+  logoBoxBare: {
+    backgroundColor: 'transparent',
+    borderWidth: 0,
+  },
+  logoImage: {
+    width: '78%',
+    height: '78%',
+  },
   logoText: {
-    fontSize: 11,
-    fontWeight: '600',
+    fontSize: 12,
+    fontWeight: '700',
     color: DIM,
     textAlign: 'center',
   },
@@ -610,9 +1018,10 @@ const styles = StyleSheet.create({
     gap: 3,
   },
   rewardTitle: {
-    fontSize: 14,
-    fontWeight: '300',
+    fontSize: 15,
+    fontWeight: '400',
     color: TEXT,
+    letterSpacing: -0.1,
   },
   rewardTitleLocked: {
     color: DIM,
@@ -622,8 +1031,26 @@ const styles = StyleSheet.create({
     fontWeight: '300',
     color: DIM,
   },
+  rewardValueBadge: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 86,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginRight: 4,
+    flexShrink: 0,
+  },
+  rewardValueBadgeText: {
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    textAlign: 'center',
+  },
   progressWrap: {
-    height: 1.5,
+    height: 2,
     backgroundColor: 'rgba(255,255,255,0.08)',
     borderRadius: 1,
     overflow: 'hidden',
@@ -635,64 +1062,171 @@ const styles = StyleSheet.create({
     borderRadius: 1,
   },
   rewardRight: {
-    alignItems: 'flex-end',
-    gap: 6,
+    alignItems: 'center',
     flexShrink: 0,
+    minWidth: 44,
   },
   rewardPts: {
-    fontSize: 12,
-    fontWeight: '400',
+    fontSize: 20,
+    fontWeight: '200',
     color: GOLD,
+    letterSpacing: -0.5,
+    lineHeight: 22,
+  },
+  rewardPtsUnit: {
+    fontSize: 9,
+    fontWeight: '500',
+    color: GOLD,
+    opacity: 0.7,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
   },
   rewardPtsLocked: {
     color: MUTED,
   },
-  redeemGhost: {
-    borderWidth: 1,
-    borderColor: 'rgba(232,210,0,0.35)',
-    borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 5,
+
+  // ── Hero banner (expanded)
+  heroBanner: {
+    height: 170,
+    marginHorizontal: -14,
+    marginTop: -14,
+    marginBottom: 4,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    overflow: 'hidden',
   },
-  redeemGhostText: {
-    fontSize: 9,
-    fontWeight: '700',
-    letterSpacing: 1.5,
-    color: GOLD,
+  heroImage: {
+    width: '100%',
+    height: '100%',
+  },
+  heroFade: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 40,
+  },
+
+  // ── Expanded panel
+  expandedPanel: {
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: BORDER,
+    gap: 14,
+  },
+  expandedValueBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  expandedValueBadgeText: {
+    fontSize: 16,
+    fontWeight: '800',
+    letterSpacing: 0.8,
     textTransform: 'uppercase',
   },
-  closeHintSm: {
-    fontSize: 10,
+  expandedOffer: {
+    fontSize: 14,
     fontWeight: '300',
-    color: GOLD,
-    opacity: 0.8,
+    color: TEXT,
+    lineHeight: 21,
   },
-  lockedHint: {
-    fontSize: 10,
-    fontWeight: '300',
+  aboutBlock: {
+    gap: 6,
+  },
+  expandedLabel: {
+    fontSize: 9,
+    fontWeight: '600',
+    letterSpacing: 2,
     color: MUTED,
-    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  expandedBlurb: {
+    fontSize: 12,
+    fontWeight: '300',
+    color: DIM,
+    lineHeight: 18,
+  },
+  promoBlock: {
+    gap: 8,
+  },
+  revealButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 14,
+    borderRadius: 14,
+  },
+  revealButtonText: {
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 1,
+    color: '#fff',
+    textTransform: 'uppercase',
+  },
+  codeBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    backgroundColor: 'rgba(255,255,255,0.04)',
+  },
+  codeText: {
+    fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: 1.5,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  copyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  copyText: {
+    fontSize: 11,
+    fontWeight: '600',
+    letterSpacing: 0.3,
+  },
+  expandedFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  partnerLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  partnerLinkText: {
+    fontSize: 12,
+    fontWeight: '500',
+    letterSpacing: 0.3,
   },
 
   // ── Nearby row
   nearbyRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    gap: 10,
     backgroundColor: CARD_BG,
     borderWidth: 1,
     borderColor: BORDER,
     borderRadius: 16,
     padding: 14,
+    marginTop: 4,
   },
   nearbyText: {
+    flex: 1,
     fontSize: 13,
     fontWeight: '300',
     color: DIM,
-  },
-  nearbyArrow: {
-    fontSize: 15,
-    fontWeight: '300',
-    color: MUTED,
   },
 });

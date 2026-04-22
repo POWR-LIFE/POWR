@@ -4,6 +4,15 @@
     "source.organizeImports": "explicit",
     "source.sortMembers": "explicit"
   },
-  "deno.enablePaths": ["supabase/functions"],
-  "deno.config": "./supabase/functions/claim-points/deno.json"
+  "search.exclude": {
+    "**/node_modules": true
+  },
+  "typescript.tsserver.watchOptions": {
+    "excludeDirectories": ["node_modules"]
+  },
+  "deno.enablePaths": [
+    "supabase/functions"
+  ],
+  "deno.config": "./supabase/functions/claim-points/deno.json",
+  "java.compile.nullAnalysis.mode": "automatic"
 }

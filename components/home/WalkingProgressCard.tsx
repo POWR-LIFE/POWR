@@ -133,15 +133,10 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         gap: 12,
-        backgroundColor: CARD,
-        borderWidth: 1,
-        borderColor: BORDER,
-        borderRadius: 16,
-        padding: 14,
+        paddingHorizontal: 14,
+        paddingVertical: 10,
     },
-    cardDone: {
-        borderColor: GREEN + '30',
-    },
+    cardDone: {},
     iconWrap: {
         width: 44,
         height: 44,

@@ -13,6 +13,20 @@ const DAY_LABELS = { mon: 'Monday', tue: 'Tuesday', wed: 'Wednesday', thu: 'Thur
 
 const DEFAULT_HOURS = { mon: { open: '06:00', close: '22:00' }, tue: { open: '06:00', close: '22:00' }, wed: { open: '06:00', close: '22:00' }, thu: { open: '06:00', close: '22:00' }, fri: { open: '06:00', close: '22:00' }, sat: { open: '08:00', close: '20:00' }, sun: { open: '09:00', close: '18:00' } };
 
+const formatDiscountValue = (value) => {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return '';
+    return Number.isInteger(numeric) ? `${numeric}` : numeric.toFixed(2).replace(/\.0+$/, '').replace(/(\.\d*[1-9])0+$/, '$1');
+};
+
+const getRewardDisplayValue = (reward) => {
+    if (reward.discount_type && reward.discount_value !== null && reward.discount_value !== undefined) {
+        const amount = formatDiscountValue(reward.discount_value);
+        return reward.discount_type === 'percentage' ? `${amount}% OFF` : `£${amount} OFF`;
+    }
+    return reward.value_label || '';
+};
+
 function OpeningHoursEditor({ value, onChange }) {
     const hours = value || {};
     const setDay = (key, dayHours) => onChange({ ...hours, [key]: dayHours });
@@ -31,7 +45,7 @@ function OpeningHoursEditor({ value, onChange }) {
                         >
                             <span className={`absolute top-1 w-4 h-4 rounded-full transition-all ${isOpen ? 'left-5 bg-[#080808]' : 'left-1 bg-[#333]'}`} />
                         </button>
-                        <span className={`text-[11px] font-black uppercase tracking-[0.3em] w-24 shrink-0 ${isOpen ? 'text-[#DDD]' : 'text-[#222]'}`}>
+                        <span className={`text-[11px] font-black uppercase tracking-[0.3em] w-24 shrink-0 ${isOpen ? 'text-[#DDD]' : 'text-[#999]'}`}>
                             {DAY_LABELS[key]}
                         </span>
                         {isOpen ? (
@@ -40,18 +54,18 @@ function OpeningHoursEditor({ value, onChange }) {
                                     type="time"
                                     value={dayHours.open}
                                     onChange={e => setDay(key, { ...dayHours, open: e.target.value })}
-                                    className="h-10 px-4 bg-[#0A0A0A] border border-[#151515] rounded-xl text-xs font-mono text-[#888] focus:border-[#E8D200]/40 outline-none"
+                                    className="h-10 px-4 bg-[#0A0A0A] border border-[#151515] rounded-xl text-xs font-mono text-[#DDD] focus:border-[#E8D200]/40 outline-none"
                                 />
-                                <span className="text-[#222] text-xs font-black">—</span>
+                                <span className="text-[#999] text-xs font-black">—</span>
                                 <input
                                     type="time"
                                     value={dayHours.close}
                                     onChange={e => setDay(key, { ...dayHours, close: e.target.value })}
-                                    className="h-10 px-4 bg-[#0A0A0A] border border-[#151515] rounded-xl text-xs font-mono text-[#888] focus:border-[#E8D200]/40 outline-none"
+                                    className="h-10 px-4 bg-[#0A0A0A] border border-[#151515] rounded-xl text-xs font-mono text-[#DDD] focus:border-[#E8D200]/40 outline-none"
                                 />
                             </div>
                         ) : (
-                            <span className="text-[10px] uppercase tracking-[0.4em] text-[#1A1A1A] font-black">Closed</span>
+                            <span className="text-[10px] uppercase tracking-[0.4em] text-[#777] font-black">Closed</span>
                         )}
                     </div>
                 );
@@ -172,7 +186,7 @@ export default function PartnerProfile() {
     if (loading) return (
         <div className="flex flex-col items-center justify-center py-48 gap-6">
             <div className="w-12 h-12 border-2 border-[#0EA5E9]/20 border-t-[#0EA5E9] rounded-full animate-spin" />
-            <span className="text-[10px] uppercase tracking-[0.6em] text-[#222] font-black">Loading Partner Node...</span>
+            <span className="text-[10px] uppercase tracking-[0.6em] text-[#999] font-black">Loading Partner Node...</span>
         </div>
     );
 
@@ -188,7 +202,7 @@ export default function PartnerProfile() {
     return (
         <div className="px-4 lg:px-0 py-20 animate-in fade-in slide-in-from-bottom-8 duration-1000">
             {/* Nav */}
-            <Link to="/admin/partners" className="group flex items-center gap-3 mb-12 text-[#222] hover:text-[#F2F2F2] transition-colors">
+            <Link to="/admin/partners" className="group flex items-center gap-3 mb-12 text-[#999] hover:text-[#F2F2F2] transition-colors">
                 <ChevronLeft size={16} />
                 <span className="text-[10px] uppercase tracking-[0.4em] font-black">Back to Fleet</span>
             </Link>
@@ -202,7 +216,7 @@ export default function PartnerProfile() {
                             {partner.logo_url ? (
                                 <img src={partner.logo_url} alt="" className="w-full h-full object-contain p-4" />
                             ) : (
-                                <Building2 size={48} className="text-[#1A1A1A]" />
+                                <Building2 size={48} className="text-[#777]" />
                             )}
                         </div>
                         <button
@@ -224,15 +238,15 @@ export default function PartnerProfile() {
 
                     <div>
                         <div className="flex items-center gap-4 mb-3">
-                            <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-[0.2em] ${partner.active ? 'bg-[#10B981] text-[#080808]' : 'bg-[#151515] text-[#555]'}`}>
+                            <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-[0.2em] ${partner.active ? 'bg-[#10B981] text-[#080808]' : 'bg-[#151515] text-[#BBB]'}`}>
                                 {partner.active ? 'LIVE' : 'INACTIVE'}
                             </span>
-                            <span className="px-4 py-1.5 rounded-full bg-[#050505] border border-[#151515] text-[10px] font-black uppercase tracking-[0.2em] text-[#444]">
+                            <span className="px-4 py-1.5 rounded-full bg-[#050505] border border-[#151515] text-[10px] font-black uppercase tracking-[0.2em] text-[#AAA]">
                                 {partner.category}
                             </span>
                         </div>
                         <h1 className="text-6xl font-light tracking-tighter text-[#F2F2F2] mb-2">{partner.name}</h1>
-                        <p className="text-[#222] text-[12px] font-black uppercase tracking-[0.5em]">NID: {partner.id.substring(0, 18)}...</p>
+                        <p className="text-[#999] text-[12px] font-black uppercase tracking-[0.5em]">NID: {partner.id.substring(0, 18)}...</p>
                     </div>
                 </div>
 
@@ -242,7 +256,7 @@ export default function PartnerProfile() {
                     className={`h-14 px-8 rounded-full text-[10px] font-black uppercase tracking-[0.3em] transition-all shadow-lg flex items-center gap-3 shrink-0 ${
                         editing 
                             ? 'bg-[#10B981] text-[#080808] shadow-[#10B981]/10 hover:translate-y-[-2px]' 
-                            : 'bg-[#0A0A0A] border border-[#151515] text-[#444] hover:text-[#E8D200] hover:border-[#E8D200]/40'
+                            : 'bg-[#0A0A0A] border border-[#151515] text-[#AAA] hover:text-[#E8D200] hover:border-[#E8D200]/40'
                     }`}
                 >
                     {editing ? <><Save size={16} /> {saving ? 'Saving...' : 'Save Changes'}</> : <><Edit2 size={16} /> Edit Partner</>}
@@ -256,7 +270,7 @@ export default function PartnerProfile() {
                     <section className="bg-[#0A0A0A] border border-[#151515] rounded-[2rem] overflow-hidden">
                         <div className="p-10 border-b border-[#151515]">
                             <h3 className="text-xl font-light tracking-tighter text-[#EEE]">Contact & Details</h3>
-                            <p className="text-[9px] uppercase tracking-[0.4em] text-[#222] font-black mt-2">Partner Intelligence</p>
+                            <p className="text-[9px] uppercase tracking-[0.4em] text-[#999] font-black mt-2">Partner Intelligence</p>
                         </div>
                         <div className="p-10 space-y-6">
                             {[
@@ -267,10 +281,10 @@ export default function PartnerProfile() {
                             ].map(field => (
                                 <div key={field.key} className="flex items-center gap-6 p-6 bg-[#050505] border border-[#151515] rounded-2xl group hover:border-[#202020] transition-all">
                                     <div className="w-12 h-12 rounded-xl bg-[#0A0A0A] border border-[#151515] flex items-center justify-center shrink-0">
-                                        <field.icon size={16} className="text-[#333]" />
+                                        <field.icon size={16} className="text-[#999]" />
                                     </div>
                                     <div className="flex-1">
-                                        <label className="block text-[9px] uppercase tracking-[0.4em] text-[#222] font-black mb-2">{field.label}</label>
+                                        <label className="block text-[9px] uppercase tracking-[0.4em] text-[#999] font-black mb-2">{field.label}</label>
                                         {editing ? (
                                             <input
                                                 type={field.type}
@@ -288,7 +302,7 @@ export default function PartnerProfile() {
 
                             {/* Description */}
                             <div className="p-6 bg-[#050505] border border-[#151515] rounded-2xl">
-                                <label className="block text-[9px] uppercase tracking-[0.4em] text-[#222] font-black mb-4">Description</label>
+                                <label className="block text-[9px] uppercase tracking-[0.4em] text-[#999] font-black mb-4">Description</label>
                                 {editing ? (
                                     <textarea
                                         value={form.description || ''}
@@ -305,7 +319,7 @@ export default function PartnerProfile() {
                             {/* Category (editable) */}
                             {editing && (
                                 <div className="p-6 bg-[#050505] border border-[#151515] rounded-2xl">
-                                    <label className="block text-[9px] uppercase tracking-[0.4em] text-[#222] font-black mb-4">Category</label>
+                                    <label className="block text-[9px] uppercase tracking-[0.4em] text-[#999] font-black mb-4">Category</label>
                                     <select
                                         value={form.category}
                                         onChange={e => setForm({ ...form, category: e.target.value })}
@@ -323,15 +337,15 @@ export default function PartnerProfile() {
                         <div className="p-10 border-b border-[#151515] flex items-center justify-between">
                             <div>
                                 <h3 className="text-xl font-light tracking-tighter text-[#EEE]">Geofence Points</h3>
-                                <p className="text-[9px] uppercase tracking-[0.4em] text-[#222] font-black mt-2">Active Location Nodes</p>
+                                <p className="text-[9px] uppercase tracking-[0.4em] text-[#999] font-black mt-2">Active Location Nodes</p>
                             </div>
-                            <span className="text-[10px] font-black text-[#444] uppercase tracking-[0.3em]">{partner.locations?.length || 0} NODES</span>
+                            <span className="text-[10px] font-black text-[#AAA] uppercase tracking-[0.3em]">{partner.locations?.length || 0} NODES</span>
                         </div>
                         <div className="divide-y divide-[#151515]">
                             {!(editing ? form.locations : partner.locations)?.length ? (
                                 <div className="p-20 text-center">
-                                    <MapPin size={48} className="mx-auto text-[#151515] mb-6" />
-                                    <p className="text-[10px] uppercase tracking-[0.4em] text-[#1A1A1A] font-black">No locations configured</p>
+                                    <MapPin size={48} className="mx-auto text-[#CCC] mb-6" />
+                                    <p className="text-[10px] uppercase tracking-[0.4em] text-[#777] font-black">No locations configured</p>
                                 </div>
                             ) : (editing ? form.locations : partner.locations).map((loc, i) => (
                                 <div key={i} className="p-10 flex items-center gap-8 group hover:bg-[#050505] transition-all">
@@ -341,16 +355,16 @@ export default function PartnerProfile() {
                                     {editing ? (
                                         <div className="flex-1 grid grid-cols-2 md:grid-cols-4 gap-4">
                                             <div>
-                                                <label className="block text-[8px] uppercase tracking-[0.3em] text-[#222] font-black mb-1">Name</label>
+                                                <label className="block text-[8px] uppercase tracking-[0.3em] text-[#999] font-black mb-1">Name</label>
                                                 <input type="text" value={loc.name || ''} onChange={e => updateLocation(i, 'name', e.target.value)} className="w-full h-10 px-4 bg-[#0A0A0A] border border-[#151515] rounded-lg text-xs text-[#F2F2F2] outline-none focus:border-[#E8D200]/40 transition-all" />
                                             </div>
                                             <div>
-                                                <label className="block text-[8px] uppercase tracking-[0.3em] text-[#222] font-black mb-1">Latitude</label>
-                                                <input type="number" step="any" value={loc.lat} onChange={e => updateLocation(i, 'lat', e.target.value)} className="w-full h-10 px-4 bg-[#0A0A0A] border border-[#151515] rounded-lg text-xs font-mono text-[#888] outline-none focus:border-[#E8D200]/40 transition-all" />
+                                                <label className="block text-[8px] uppercase tracking-[0.3em] text-[#999] font-black mb-1">Latitude</label>
+                                                <input type="number" step="any" value={loc.lat} onChange={e => updateLocation(i, 'lat', e.target.value)} className="w-full h-10 px-4 bg-[#0A0A0A] border border-[#151515] rounded-lg text-xs font-mono text-[#DDD] outline-none focus:border-[#E8D200]/40 transition-all" />
                                             </div>
                                             <div>
-                                                <label className="block text-[8px] uppercase tracking-[0.3em] text-[#222] font-black mb-1">Longitude</label>
-                                                <input type="number" step="any" value={loc.lng} onChange={e => updateLocation(i, 'lng', e.target.value)} className="w-full h-10 px-4 bg-[#0A0A0A] border border-[#151515] rounded-lg text-xs font-mono text-[#888] outline-none focus:border-[#E8D200]/40 transition-all" />
+                                                <label className="block text-[8px] uppercase tracking-[0.3em] text-[#999] font-black mb-1">Longitude</label>
+                                                <input type="number" step="any" value={loc.lng} onChange={e => updateLocation(i, 'lng', e.target.value)} className="w-full h-10 px-4 bg-[#0A0A0A] border border-[#151515] rounded-lg text-xs font-mono text-[#DDD] outline-none focus:border-[#E8D200]/40 transition-all" />
                                             </div>
                                             <div>
                                                 <label className="block text-[8px] uppercase tracking-[0.3em] text-[#E8D200] font-black mb-1">Radius (m)</label>
@@ -360,10 +374,10 @@ export default function PartnerProfile() {
                                     ) : (
                                         <div className="flex-1">
                                             <div className="text-base font-bold text-[#DDD] mb-1">{loc.name || `Location ${i + 1}`}</div>
-                                            <div className="flex items-center gap-6 text-[10px] font-black text-[#333] uppercase tracking-[0.2em]">
+                                            <div className="flex items-center gap-6 text-[10px] font-black text-[#999] uppercase tracking-[0.2em]">
                                                 <span>LAT {loc.lat?.toFixed(4)}</span>
                                                 <span>LNG {loc.lng?.toFixed(4)}</span>
-                                                <span className="px-3 py-1 rounded-full border border-[#151515] text-[#444]">{loc.radius}m radius</span>
+                                                <span className="px-3 py-1 rounded-full border border-[#151515] text-[#AAA]">{loc.radius}m radius</span>
                                             </div>
                                         </div>
                                     )}
@@ -377,13 +391,13 @@ export default function PartnerProfile() {
                         <div className="p-10 border-b border-[#151515] flex items-center justify-between">
                             <div>
                                 <h3 className="text-xl font-light tracking-tighter text-[#EEE]">Opening Hours</h3>
-                                <p className="text-[9px] uppercase tracking-[0.4em] text-[#222] font-black mt-2">Weekly Schedule</p>
+                                <p className="text-[9px] uppercase tracking-[0.4em] text-[#999] font-black mt-2">Weekly Schedule</p>
                             </div>
                             {editing && (
                                 <button
                                     type="button"
                                     onClick={() => setForm({ ...form, opening_hours: form.opening_hours ? null : { ...DEFAULT_HOURS } })}
-                                    className="text-[9px] uppercase tracking-[0.3em] font-black text-[#333] hover:text-[#E8D200] transition-colors"
+                                    className="text-[9px] uppercase tracking-[0.3em] font-black text-[#999] hover:text-[#E8D200] transition-colors"
                                 >
                                     {form.opening_hours ? 'Clear Hours' : 'Set Hours'}
                                 </button>
@@ -402,13 +416,13 @@ export default function PartnerProfile() {
                                         const isOpen = dayHours != null;
                                         return (
                                             <div key={key} className="flex items-center justify-between px-10 py-5">
-                                                <span className={`text-[11px] font-black uppercase tracking-[0.3em] ${isOpen ? 'text-[#DDD]' : 'text-[#222]'}`}>
+                                                <span className={`text-[11px] font-black uppercase tracking-[0.3em] ${isOpen ? 'text-[#DDD]' : 'text-[#999]'}`}>
                                                     {DAY_LABELS[key]}
                                                 </span>
                                                 {isOpen ? (
-                                                    <span className="text-xs font-mono text-[#888]">{dayHours.open} – {dayHours.close}</span>
+                                                    <span className="text-xs font-mono text-[#DDD]">{dayHours.open} – {dayHours.close}</span>
                                                 ) : (
-                                                    <span className="text-[10px] uppercase tracking-[0.4em] text-[#1A1A1A] font-black">Closed</span>
+                                                    <span className="text-[10px] uppercase tracking-[0.4em] text-[#777] font-black">Closed</span>
                                                 )}
                                             </div>
                                         );
@@ -417,8 +431,8 @@ export default function PartnerProfile() {
                             )
                         ) : (
                             <div className="p-20 text-center">
-                                <Clock size={48} className="mx-auto text-[#151515] mb-6" />
-                                <p className="text-[10px] uppercase tracking-[0.4em] text-[#1A1A1A] font-black">No hours configured</p>
+                                <Clock size={48} className="mx-auto text-[#CCC] mb-6" />
+                                <p className="text-[10px] uppercase tracking-[0.4em] text-[#777] font-black">No hours configured</p>
                                 {editing && (
                                     <button
                                         type="button"
@@ -439,23 +453,28 @@ export default function PartnerProfile() {
                     <section className="bg-[#0A0A0A] border border-[#151515] rounded-[2rem] overflow-hidden">
                         <div className="p-10 border-b border-[#151515]">
                             <h3 className="text-xl font-light tracking-tighter text-[#EEE]">Linked Rewards</h3>
-                            <p className="text-[9px] uppercase tracking-[0.4em] text-[#222] font-black mt-2">{rewards.length} Active Offers</p>
+                            <p className="text-[9px] uppercase tracking-[0.4em] text-[#999] font-black mt-2">{rewards.length} Active Offers</p>
                         </div>
                         <div className="p-10 space-y-6">
                             {rewards.length === 0 ? (
                                 <div className="text-center py-10">
-                                    <Award size={32} className="mx-auto text-[#151515] mb-4" />
-                                    <p className="text-[10px] uppercase tracking-[0.4em] text-[#1A1A1A] font-black">No rewards linked</p>
+                                    <Award size={32} className="mx-auto text-[#CCC] mb-4" />
+                                    <p className="text-[10px] uppercase tracking-[0.4em] text-[#777] font-black">No rewards linked</p>
                                 </div>
                             ) : rewards.map(r => (
                                 <div key={r.id} className="bg-[#050505] border border-[#151515] p-6 rounded-2xl group hover:border-[#E8D200]/20 transition-all">
                                     <div className="flex justify-between items-center mb-3">
                                         <span className="text-sm font-bold text-[#DDD]">{r.title}</span>
-                                        <span className={`px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-[0.2em] ${r.active ? 'bg-[#10B981]/10 text-[#10B981] border border-[#10B981]/20' : 'bg-[#151515] text-[#333]'}`}>
+                                        <span className={`px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-[0.2em] ${r.active ? 'bg-[#10B981]/10 text-[#10B981] border border-[#10B981]/20' : 'bg-[#151515] text-[#999]'}`}>
                                             {r.active ? 'LIVE' : 'OFF'}
                                         </span>
                                     </div>
-                                    <div className="flex justify-between items-center text-[9px] font-black uppercase tracking-[0.3em] text-[#333]">
+                                    {getRewardDisplayValue(r) && (
+                                        <div className="mb-3 text-[9px] font-black uppercase tracking-[0.3em]" style={{ color: r.brand_color || '#E8D200' }}>
+                                            {getRewardDisplayValue(r)}
+                                        </div>
+                                    )}
+                                    <div className="flex justify-between items-center text-[9px] font-black uppercase tracking-[0.3em] text-[#999]">
                                         <span>{r.powr_cost} PTS</span>
                                         <span>{r.stock !== null ? `${r.stock} left` : '∞ stock'}</span>
                                     </div>
@@ -466,7 +485,7 @@ export default function PartnerProfile() {
 
                     {/* System Metadata */}
                     <section className="bg-[#0A0A0A] border border-[#151515] p-10 rounded-[2rem]">
-                        <h3 className="text-base font-black uppercase tracking-[0.3em] text-[#444] mb-10">System Data</h3>
+                        <h3 className="text-base font-black uppercase tracking-[0.3em] text-[#AAA] mb-10">System Data</h3>
                         <div className="space-y-6">
                             {[
                                 { label: 'Node ID', value: partner.id.substring(0, 18) + '...' },
@@ -475,7 +494,7 @@ export default function PartnerProfile() {
                                 { label: 'Linked Rewards', value: `${rewards.length}` },
                             ].map(x => (
                                 <div key={x.label} className="flex items-center justify-between p-6 bg-[#050505] border border-[#151515] rounded-2xl">
-                                    <span className="text-[10px] uppercase tracking-[0.3em] text-[#333] font-black">{x.label}</span>
+                                    <span className="text-[10px] uppercase tracking-[0.3em] text-[#999] font-black">{x.label}</span>
                                     <span className="text-[11px] font-medium text-[#BBB] font-mono">{x.value}</span>
                                 </div>
                             ))}

@@ -379,3 +379,20 @@ export function formatCountdown(ms: number): string {
   if (h > 0) return `${h}h ${m}m`;
   return `${m}m`;
 }
+
+/** Milliseconds until local midnight (start of next calendar day). */
+export function msUntilMidnight(): number {
+  const now = new Date();
+  const tomorrow = new Date(now);
+  tomorrow.setHours(24, 0, 0, 0);
+  return tomorrow.getTime() - now.getTime();
+}
+
+/** Format milliseconds as "HH:MM:SS". */
+export function formatHMS(ms: number): string {
+  const totalSec = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+}

@@ -1,31 +1,45 @@
-import { useRouter } from 'expo-router';
-import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { Animated, Easing, Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import MaskedView from '@react-native-masked-view/masked-view';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useRouter } from 'expo-router';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Animated, Easing, Image, LayoutChangeEvent, Modal, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import ReAnimated, {
+    Extrapolate,
+    interpolate,
+    useAnimatedScrollHandler,
+    useAnimatedStyle,
+    useSharedValue,
+    withTiming,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ActivityFeed } from '@/components/home/ActivityFeed';
 import { ChallengeCard } from '@/components/home/ChallengeCard';
-import { GettingStartedCard } from '@/components/home/GettingStartedCard';
+import { CombinedProgressRing, type TickOverlayData } from '@/components/home/CombinedProgressRing';
+import { DailyActivityCard } from '@/components/home/DailyActivityCard';
+import { GeometricBackground } from '@/components/home/GeometricBackground';
 import { HealthConnectCard } from '@/components/home/HealthConnectCard';
+import { StickyActivityIndicators } from '@/components/home/StickyActivityIndicators';
 import { StreakCard } from '@/components/home/StreakCard';
 import { WalkingProgressCard } from '@/components/home/WalkingProgressCard';
+import { WeeklyActivityBars, type WeeklyRingData } from '@/components/home/WeeklyActivityRings';
+import { WeeklyActivityCircles } from '@/components/home/WeeklyActivityRings';
+import { WelcomeNextCard } from '@/components/home/WelcomeNextCard';
+import { ProfileButton } from '@/components/ProfileButton';
+import { ACTIVITIES, type ActivityType } from '@/constants/activities';
 import { useAuth } from '@/context/AuthContext';
-import { useActivity } from '@/hooks/useActivity';
 import { useActiveGeofence } from '@/hooks/useActiveGeofence';
+import { useActivity } from '@/hooks/useActivity';
 import { useHealthData } from '@/hooks/useHealthData';
 import { usePoints } from '@/hooks/usePoints';
 import { useStreak } from '@/hooks/useStreak';
 import { useWalkingProgress } from '@/hooks/useWalkingProgress';
-import { ProfileButton } from '@/components/ProfileButton';
-import { getLevelInfo } from '@/constants/levels';
-import { ACTIVITIES, type ActivityType } from '@/constants/activities';
-import { WeekStatsBar } from '@/components/home/WeekStatsBar';
-import { GeometricBackground } from '@/components/home/GeometricBackground';
-import { CombinedProgressRing } from '@/components/home/CombinedProgressRing';
-import { DailyActivityCard } from '@/components/home/DailyActivityCard';
+import { fetchMonthlyMetrics, type MonthlyMetrics } from '@/lib/api/activity';
+import { fetchMonthlyEarned } from '@/lib/api/points';
 import { fetchProfile } from '@/lib/api/user';
+import { supabase } from '@/lib/supabase';
+import { ACTIVE_WEEKLY_CHALLENGE, getActiveWeeklyChallenge, parseWeeklyChallengesConfig } from '@/shared/weeklyChallenges';
 
 const GOLD = '#E8D200';
 const TEXT_PRIMARY = '#F2F2F2';
@@ -58,44 +72,41 @@ function WeeklyRewardTeaser() {
 
     return (
         <View style={rewardStyles.card}>
-            {/* Full-card background image */}
-            <Image
-                source={{ uri: 'https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/landing-page-assets/reward-protein.png' }}
-                style={StyleSheet.absoluteFillObject}
-                resizeMode="cover"
-            />
+            {/* Masked image — fades from transparent (left) to visible (right) */}
+            <MaskedView
+                style={rewardStyles.maskedImage}
+                maskElement={
+                    <LinearGradient
+                        colors={['transparent', 'black']}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 0 }}
+                        locations={[0.35, 0.92]}
+                        style={StyleSheet.absoluteFillObject}
+                    />
+                }
+            >
+                <Image
+                    source={{ uri: 'https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/landing-page-assets/reward-protein.png' }}
+                    style={StyleSheet.absoluteFillObject}
+                    resizeMode="cover"
+                />
+            </MaskedView>
 
-            {/* Gradient: transparent at top → semi-opaque at bottom (only enough to pop the text) */}
-            <LinearGradient
-                colors={['transparent', 'rgba(0,0,0,0.6)', 'rgba(0,0,0,0.85)']}
-                locations={[0, 0.45, 0.85]}
-                style={StyleSheet.absoluteFillObject}
-            />
-
-            {/* Category + distance pinned to top */}
-            <View style={rewardStyles.topRow}>
-                <View style={rewardStyles.categoryBadge}>
-                    <Text style={rewardStyles.categoryBadgeText}>NUTRITION</Text>
-                </View>
-                <View style={rewardStyles.distanceBadge}>
-                    <Ionicons name="location-sharp" size={9} color={GOLD} />
-                    <Text style={rewardStyles.distanceText}>0.8 mi</Text>
-                </View>
-            </View>
-
-            {/* Content pinned to bottom */}
+            {/* Text content */}
             <View style={rewardStyles.content}>
-                <View style={rewardStyles.contentTop}>
-                    <View style={rewardStyles.contentLeft}>
-                        <Text style={rewardStyles.partnerLabel}>BULK NUTRIENTS</Text>
-                        <Text style={rewardStyles.name}>Bulk Whey Protein</Text>
-                        <Text style={rewardStyles.discount}>20% off your next order</Text>
+                <View style={rewardStyles.topRow}>
+                    <View style={rewardStyles.categoryBadge}>
+                        <Text style={rewardStyles.categoryBadgeText}>NUTRITION</Text>
                     </View>
                     <View style={rewardStyles.discountBadge}>
                         <Text style={rewardStyles.discountBadgeText}>20%</Text>
                         <Text style={rewardStyles.discountBadgeOff}>OFF</Text>
                     </View>
                 </View>
+
+                <Text style={rewardStyles.partnerLabel}>BULK NUTRIENTS</Text>
+                <Text style={rewardStyles.name}>Bulk Whey Protein</Text>
+                <Text style={rewardStyles.discount}>20% off your next order</Text>
 
                 <View style={rewardStyles.progressRow}>
                     <View style={rewardStyles.track}>
@@ -104,12 +115,7 @@ function WeeklyRewardTeaser() {
                     <Text style={rewardStyles.progressPts}>{EARNED_REWARD_PTS}/{TOTAL_REWARD_PTS}</Text>
                 </View>
 
-                <View style={rewardStyles.footer}>
-                    <Text style={rewardStyles.progressHint}>{remaining} pts to unlock</Text>
-                    <Pressable style={({ pressed }) => [rewardStyles.redeemBtn, pressed && { opacity: 0.8 }]}>
-                        <Text style={rewardStyles.redeemText}>CLAIM</Text>
-                    </Pressable>
-                </View>
+                <Text style={rewardStyles.progressHint}>{remaining} pts to unlock</Text>
             </View>
         </View>
     );
@@ -117,15 +123,24 @@ function WeeklyRewardTeaser() {
 
 const rewardStyles = StyleSheet.create({
     card: {
-        borderRadius: 16,
-        overflow: 'hidden',
-        height: 200,
+        position: 'relative',
+    },
+    maskedImage: {
+        position: 'absolute',
+        top: 0,
+        bottom: 0,
+        right: 0,
+        width: '100%',
+    },
+    content: {
+        padding: 14,
+        gap: 6,
     },
     topRow: {
         flexDirection: 'row',
-        justifyContent: 'space-between',
         alignItems: 'center',
-        padding: 10,
+        justifyContent: 'space-between',
+        marginBottom: 4,
     },
     categoryBadge: {
         backgroundColor: 'rgba(22,101,52,0.75)',
@@ -141,54 +156,6 @@ const rewardStyles = StyleSheet.create({
         letterSpacing: 1.5,
         color: '#86efac',
     },
-    distanceBadge: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 3,
-        backgroundColor: 'rgba(0,0,0,0.4)',
-        borderRadius: 6,
-        paddingHorizontal: 7,
-        paddingVertical: 3,
-    },
-    distanceText: {
-        fontSize: 9,
-        fontWeight: '400',
-        color: 'rgba(255,255,255,0.7)',
-    },
-    content: {
-        padding: 12,
-        paddingTop: 0,
-        gap: 8,
-        justifyContent: 'flex-end',
-        flex: 1,
-    },
-    contentTop: {
-        flexDirection: 'row',
-        alignItems: 'flex-start',
-        justifyContent: 'space-between',
-        gap: 8,
-    },
-    contentLeft: {
-        flex: 1,
-        gap: 1,
-    },
-    partnerLabel: {
-        fontSize: 8,
-        fontWeight: '600',
-        letterSpacing: 1.5,
-        color: 'rgba(255,255,255,0.25)',
-    },
-    name: {
-        fontSize: 14,
-        fontWeight: '300',
-        color: TEXT_PRIMARY,
-        letterSpacing: -0.2,
-    },
-    discount: {
-        fontSize: 10,
-        fontWeight: '300',
-        color: 'rgba(255,255,255,0.4)',
-    },
     discountBadge: {
         alignItems: 'center',
         justifyContent: 'center',
@@ -198,7 +165,6 @@ const rewardStyles = StyleSheet.create({
         borderRadius: 10,
         paddingHorizontal: 8,
         paddingVertical: 4,
-        flexShrink: 0,
     },
     discountBadgeText: {
         fontSize: 14,
@@ -212,6 +178,24 @@ const rewardStyles = StyleSheet.create({
         letterSpacing: 1,
         color: GOLD,
         opacity: 0.7,
+    },
+    partnerLabel: {
+        fontSize: 8,
+        fontWeight: '600',
+        letterSpacing: 1.5,
+        color: 'rgba(255,255,255,0.25)',
+    },
+    name: {
+        fontSize: 15,
+        fontWeight: '300',
+        color: TEXT_PRIMARY,
+        letterSpacing: -0.2,
+    },
+    discount: {
+        fontSize: 10,
+        fontWeight: '300',
+        color: 'rgba(255,255,255,0.4)',
+        marginBottom: 4,
     },
     progressRow: {
         flexDirection: 'row',
@@ -236,88 +220,10 @@ const rewardStyles = StyleSheet.create({
         color: GOLD,
         flexShrink: 0,
     },
-    footer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-    },
     progressHint: {
         fontSize: 10,
         fontWeight: '300',
         color: 'rgba(255,255,255,0.25)',
-    },
-    redeemBtn: {
-        backgroundColor: GOLD,
-        borderRadius: 20,
-        paddingHorizontal: 20,
-        paddingVertical: 10,
-    },
-    redeemText: {
-        fontSize: 10,
-        fontWeight: '700',
-        letterSpacing: 1.5,
-        color: '#0a0a0a',
-    },
-});
-
-// ─── Bottom Tab Switcher ─────────────────────────────────────────────────────
-
-type BottomTab = 'challenge' | 'rewards' | 'activity';
-
-const BOTTOM_TABS: { key: BottomTab; label: string }[] = [
-    { key: 'challenge', label: 'CHALLENGE' },
-    { key: 'rewards',   label: 'REWARDS'   },
-    { key: 'activity',  label: 'ACTIVITY'  },
-];
-
-function TabBar({ active, onChange }: { active: BottomTab; onChange: (t: BottomTab) => void }) {
-    return (
-        <View style={tabStyles.bar}>
-            {BOTTOM_TABS.map(({ key, label }) => {
-                const isActive = active === key;
-                return (
-                    <Pressable key={key} style={tabStyles.tab} onPress={() => onChange(key)}>
-                        <Text style={[tabStyles.label, isActive && tabStyles.labelActive]}>
-                            {label}
-                        </Text>
-                        {isActive && <View style={tabStyles.indicator} />}
-                    </Pressable>
-                );
-            })}
-        </View>
-    );
-}
-
-const tabStyles = StyleSheet.create({
-    bar: {
-        flexDirection: 'row',
-        borderBottomWidth: 1,
-        borderBottomColor: 'rgba(255,255,255,0.07)',
-        marginBottom: 8,
-    },
-    tab: {
-        flex: 1,
-        alignItems: 'center',
-        paddingVertical: 10,
-        position: 'relative',
-    },
-    label: {
-        fontSize: 9,
-        fontWeight: '500',
-        letterSpacing: 1.5,
-        color: 'rgba(255,255,255,0.5)',
-    },
-    labelActive: {
-        color: '#FFFFFF',
-    },
-    indicator: {
-        position: 'absolute',
-        bottom: -1,
-        left: '20%',
-        right: '20%',
-        height: 1.5,
-        backgroundColor: '#FFFFFF',
-        borderRadius: 1,
     },
 });
 
@@ -333,19 +239,59 @@ export default function HomeScreen() {
     const { activeGeofence, sessionCompleted, clearSessionCompleted } = useActiveGeofence();
     const walking = useWalkingProgress();
     const health = useHealthData();
+    const refreshWalking = walking.refresh;
 
     const [sessionModalVisible, setSessionModalVisible] = useState(false);
-    const [bottomTab, setBottomTab] = useState<BottomTab>('challenge');
     const [elapsedStr, setElapsedStr] = useState('0m 00s');
     const [activePrefs, setActivePrefs] = useState<ActivityType[]>(['gym', 'running', 'walking']);
     const [healthCardDismissed, setHealthCardDismissed] = useState(false);
+    const [profileName, setProfileName] = useState<string | null>(null);
+    const [refreshing, setRefreshing] = useState(false);
+    const [weeklyChallenge, setWeeklyChallenge] = useState(ACTIVE_WEEKLY_CHALLENGE);
+    const [monthlyMetrics, setMonthlyMetrics] = useState<MonthlyMetrics>({ activeDays: 0, sessionCount: 0, totalSteps: 0, perType: {}, weekActiveDays: [0,0,0,0], activeDayTypes: {}, dayDetails: {} });
+    const [monthlyXP, setMonthlyXP] = useState(0);
+
+    // ─── Tick overlay (interactive ring ticks) ───────────────────────────────────
+    const [tickOverlay, setTickOverlay] = useState<TickOverlayData | null>(null);
+
+    const handleTickActive = useCallback((data: TickOverlayData | null) => {
+        setTickOverlay(data);
+    }, []);
+
+    const loadMonthlyData = useCallback(async () => {
+        try {
+            const [metrics, xp] = await Promise.all([
+                fetchMonthlyMetrics(),
+                fetchMonthlyEarned(),
+            ]);
+            setMonthlyMetrics(metrics);
+            setMonthlyXP(xp);
+        } catch (e) {
+            console.warn('[HomeScreen] monthly data fetch failed:', e);
+        }
+    }, []);
+
+    useEffect(() => { loadMonthlyData(); }, [loadMonthlyData]);
+
+    const onRefresh = useCallback(async () => {
+        setRefreshing(true);
+        try {
+            await Promise.all([
+                refreshPoints(),
+                refreshActivity(),
+                refreshStreak(),
+                refreshWalking(),
+                loadMonthlyData(),
+            ]);
+        } finally {
+            setRefreshing(false);
+        }
+    }, [refreshActivity, refreshPoints, refreshStreak, refreshWalking, loadMonthlyData]);
 
     // New user detection: no points earned and no recent activity
     const isNewUser = totalEarned === 0 && recentItems.length === 0;
     // Show health nudge if health is available but not connected (and not dismissed)
     const showHealthNudge = health.isAvailable && !health.isAuthorized && !healthCardDismissed;
-    // Total activities this week for the getting started card
-    const weekActivityCount = weekActiveDays.filter(Boolean).length;
 
     // Derived session state — re-computed every second via elapsedStr re-renders
     const DWELL_MS = 20 * 60 * 1000;
@@ -415,6 +361,9 @@ export default function HomeScreen() {
 
                 // 2. Fetch from profiles table (source of truth)
                 const profile = await fetchProfile();
+                if (profile?.display_name && mounted) {
+                    setProfileName(profile.display_name);
+                }
                 if (profile?.activity_preferences && profile.activity_preferences.length > 0) {
                     if (mounted) setActivePrefs(profile.activity_preferences as ActivityType[]);
                 }
@@ -427,62 +376,207 @@ export default function HomeScreen() {
         return () => { mounted = false; };
     }, [user]);
 
+    useEffect(() => {
+        let mounted = true;
+
+        const loadWeeklyChallenge = async () => {
+            try {
+                const { data, error } = await supabase
+                    .from('system_config')
+                    .select('value')
+                    .eq('key', 'weekly_challenges')
+                    .maybeSingle();
+
+                if (error) throw error;
+
+                if (mounted && data?.value) {
+                    const challenges = parseWeeklyChallengesConfig(data.value);
+                    setWeeklyChallenge(getActiveWeeklyChallenge(challenges));
+                }
+            } catch (error) {
+                console.warn('[HomeScreen] Falling back to bundled weekly challenge config:', error);
+            }
+        };
+
+        loadWeeklyChallenge();
+        return () => {
+            mounted = false;
+        };
+    }, []);
+
     const rotateDeg = rotateAnim.interpolate({
         inputRange:  [0, 1],
         outputRange: ['0deg', '360deg'],
     });
 
-    const displayName = user?.user_metadata?.full_name ?? user?.email?.split('@')[0] ?? 'Hey';
+    const displayName = profileName ?? user?.user_metadata?.full_name ?? user?.email?.split('@')[0] ?? 'Hey';
     const firstName = displayName.split(' ')[0];
 
-    const levelResult = getLevelInfo(totalEarned);
-    const { current: levelInfo, next: nextLevel, xpIntoLevel, xpForLevel } = levelResult;
+    // Build weekly activity rings from user's preferences
+    const WEEKLY_SESSION_TARGET = 3;
+    const WEEKLY_STEPS_TARGET = 50000;
 
-    // Build level metrics from user's activity preferences
-    const prefs = activePrefs;
-
-    function buildMetric(type: ActivityType, idx: number) {
+    function buildWeeklyRing(type: ActivityType): WeeklyRingData {
         const config = ACTIVITIES[type] ?? ACTIVITIES.walking;
-        const daily = { perType: dailyMetrics?.perType ?? {}, stepsToday: dailyMetrics?.stepsToday ?? 0 };
         if (type === 'walking') {
-            const steps = daily.stepsToday;
+            const steps = weeklyMetrics.totalSteps;
+            const pct = Math.min(steps / WEEKLY_STEPS_TARGET, 2);
             return {
-                label: 'Steps',
+                type,
+                label: config.labelShort,
                 icon: config.iconActive,
-                iconLib: config.iconLib,
-                value: steps >= 1000 ? `${(steps / 1000).toFixed(1)}k` : String(steps),
-                max: '10k',
-                pct: Math.min(steps / 10000, 1),
+                iconLib: (config.iconLib ?? 'ionicons') as 'ionicons' | 'material-community',
                 colour: config.colour,
-                gradId: `h-g${idx}`,
-                gradStart: config.colour,
-                gradEnd: config.colour,
+                current: steps,
+                target: WEEKLY_STEPS_TARGET,
+                pct,
+                overachieving: steps > WEEKLY_STEPS_TARGET,
             };
         }
-        const count = daily.perType[type] ?? 0;
+        const sessions = weeklyMetrics.perType[type] ?? 0;
+        const pct = Math.min(sessions / WEEKLY_SESSION_TARGET, 2);
         return {
+            type,
             label: config.labelShort,
             icon: config.iconActive,
-            iconLib: config.iconLib,
-            value: String(count),
-            max: '1',
-            pct: Math.min(count, 1),
+            iconLib: (config.iconLib ?? 'ionicons') as 'ionicons' | 'material-community',
             colour: config.colour,
-            gradId: `h-g${idx}`,
-            gradStart: config.colour,
-            gradEnd: config.colour,
+            current: sessions,
+            target: WEEKLY_SESSION_TARGET,
+            pct,
+            overachieving: sessions > WEEKLY_SESSION_TARGET,
         };
     }
 
-    const levelMetrics: [any, any, any] = [
-        buildMetric(prefs[0] ?? 'gym', 0),
-        buildMetric(prefs[1] ?? 'running', 1),
-        buildMetric(prefs[2] ?? 'walking', 2),
-    ];
+    function sortForHero(rings: WeeklyRingData[]): [WeeklyRingData, WeeklyRingData, WeeklyRingData] {
+        const sorted = [...rings].sort((a, b) => {
+            // Incomplete activities take priority for hero spot
+            if (a.overachieving !== b.overachieving) return a.overachieving ? 1 : -1;
+            // Highest progress = closest to goal = hero
+            return b.pct - a.pct;
+        });
+        return sorted as [WeeklyRingData, WeeklyRingData, WeeklyRingData];
+    }
 
-    const nextLevelHint = nextLevel
-        ? `${nextLevel.xpMin - totalEarned} pts to ${nextLevel.name}`
-        : 'Max level reached';
+    const weeklyRings = sortForHero(activePrefs.map(buildWeeklyRing));
+
+    // When a tick is active, override the weekly circles to show that day's activities
+    const displayRings: [WeeklyRingData, WeeklyRingData, WeeklyRingData] = (() => {
+        if (!tickOverlay) return weeklyRings;
+        const detail = monthlyMetrics.dayDetails[tickOverlay.dayNum];
+        const types = tickOverlay.types;
+        // Use the day's types if available, else fall back to the user's pref types (all zeroed)
+        const baseTypes: ActivityType[] = types.length > 0
+            ? (types.slice(0, 3) as ActivityType[])
+            : (activePrefs.slice(0, 3) as ActivityType[]);
+        // Pad to exactly 3 using prefs not already present, then any fallback
+        const allFallbacks = [...activePrefs, 'walking', 'running', 'gym'] as ActivityType[];
+        for (const fb of allFallbacks) {
+            if (baseTypes.length >= 3) break;
+            if (!baseTypes.includes(fb)) baseTypes.push(fb);
+        }
+        return baseTypes.slice(0, 3).map((type) => {
+            const config = ACTIVITIES[type as keyof typeof ACTIVITIES] ?? ACTIVITIES.walking;
+            const done = types.includes(type);
+            if (type === 'walking' && detail?.totalSteps) {
+                const steps = detail.totalSteps;
+                const pct = Math.min(steps / 10000, 2);
+                return {
+                    type: type as ActivityType,
+                    label: config.labelShort,
+                    icon: config.iconActive,
+                    iconLib: (config.iconLib ?? 'ionicons') as 'ionicons' | 'material-community',
+                    colour: config.colour,
+                    current: steps,
+                    target: 10000,
+                    pct,
+                    overachieving: steps > 10000,
+                };
+            }
+            return {
+                type: type as ActivityType,
+                label: config.labelShort,
+                icon: config.iconActive,
+                iconLib: (config.iconLib ?? 'ionicons') as 'ionicons' | 'material-community',
+                colour: config.colour,
+                current: done ? 1 : 0,
+                target: 1,
+                pct: done ? 1 : 0,
+                overachieving: false,
+            };
+        }) as [WeeklyRingData, WeeklyRingData, WeeklyRingData];
+    })();
+
+    const tickDateLabel: string | null = tickOverlay ? (() => {
+        const d = new Date(new Date().getFullYear(), new Date().getMonth(), tickOverlay.dayNum);
+        const dayName = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()];
+        const monthShort = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()];
+        return `${monthShort} ${tickOverlay.dayNum} · ${dayName}`;
+    })() : null;
+
+    // ── Scroll-based sticky indicators ──
+    const scrollY = useSharedValue(0);
+    const barsOffsetY = useSharedValue(0);
+    const HEADER_HEIGHT = 56;
+
+    const onReanimatedScroll = useAnimatedScrollHandler((event) => {
+      scrollY.value = event.contentOffset.y;
+    });
+
+    const onBarsLayout = (e: LayoutChangeEvent) => {
+      barsOffsetY.value = e.nativeEvent.layout.y;
+      // Capture natural height the first time so we can lock it during tick scrubbing
+      if (weeklyNaturalHeight === 0) setWeeklyNaturalHeight(e.nativeEvent.layout.height);
+    };
+
+    const [weeklyNaturalHeight, setWeeklyNaturalHeight] = useState(0);
+
+    const STICKY_BAR_HEIGHT = 82; // circle (48) + gap (4) + icon (14) + padding (16)
+
+    const stickyAnimatedStyle = useAnimatedStyle(() => {
+      const threshold = barsOffsetY.value - HEADER_HEIGHT;
+      const isSticky = barsOffsetY.value > 0 && scrollY.value > threshold;
+      return {
+        opacity: withTiming(isSticky ? 1 : 0, { duration: 200 }),
+        transform: [{ translateY: withTiming(isSticky ? 0 : -STICKY_BAR_HEIGHT, { duration: 200 }) }],
+      };
+    });
+
+    const scrollClipStyle = useAnimatedStyle(() => {
+      const threshold = barsOffsetY.value - HEADER_HEIGHT;
+      const isSticky = barsOffsetY.value > 0 && scrollY.value > threshold;
+      return {
+        paddingTop: withTiming(isSticky ? STICKY_BAR_HEIGHT : 0, { duration: 200 }),
+      };
+    });
+
+    const barsAnimatedStyle = useAnimatedStyle(() => {
+      const threshold = barsOffsetY.value - HEADER_HEIGHT;
+      const distance = scrollY.value - threshold;
+      const opacity = interpolate(distance, [0, 40], [1, 0], Extrapolate.CLAMP);
+      return { opacity };
+    });
+
+    const daysElapsed = new Date().getDate(); // day of month (1-based)
+    const now = new Date();
+    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    const MONTH_NAMES = ['JANUARY','FEBRUARY','MARCH','APRIL','MAY','JUNE','JULY','AUGUST','SEPTEMBER','OCTOBER','NOVEMBER','DECEMBER'];
+    const currentMonthLabel = MONTH_NAMES[now.getMonth()];
+
+    // Week quarter caps: days 1-7, 8-14, 15-21, 22-end
+    const weekCaps = [7, 7, 7, daysInMonth - 21] as const;
+    const wad = monthlyMetrics.weekActiveDays ?? [0, 0, 0, 0];
+
+    // Days elapsed within each week quarter
+    const weekElapsed = [
+      Math.min(7, daysElapsed),
+      Math.max(0, Math.min(7, daysElapsed - 7)),
+      Math.max(0, Math.min(7, daysElapsed - 14)),
+      Math.max(0, Math.min(weekCaps[3], daysElapsed - 21)),
+    ] as const;
+
+    // A week is "completed" when every elapsed day in it had activity
+    const weekCompleted = weekElapsed.map((elapsed, i) => elapsed > 0 && wad[i] === elapsed);
 
     return (
         <View style={[styles.screen, { paddingTop: insets.top }]}>
@@ -493,11 +587,53 @@ export default function HomeScreen() {
             </View>
 
 
-            <ScrollView
-                style={styles.scroll}
-                contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 24 }]}
-                showsVerticalScrollIndicator={false}
+            {/* Sticky activity indicators — transparent, floats over background */}
+            <ReAnimated.View
+                style={[{
+                    position: 'absolute',
+                    top: insets.top + HEADER_HEIGHT,
+                    left: 0,
+                    right: 0,
+                    zIndex: 10,
+                    paddingTop: 8,
+                    paddingBottom: 8,
+                    paddingHorizontal: 16,
+                }, stickyAnimatedStyle]}
+                pointerEvents="box-none"
             >
+                <StickyActivityIndicators
+                    rings={weeklyRings}
+                    onPressRing={(type) => router.push({ pathname: '/(tabs)/progress', params: { tab: type } })}
+                />
+            </ReAnimated.View>
+
+            {/* Clipping wrapper — adds padding when sticky is active so content can't overlap */}
+            <ReAnimated.View style={[{ flex: 1, overflow: 'hidden' }, scrollClipStyle]}>
+                <ReAnimated.ScrollView
+                    style={styles.scroll}
+                    contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 24 }]}
+                    showsVerticalScrollIndicator={false}
+                    onScroll={onReanimatedScroll}
+                    scrollEventThrottle={16}
+                    refreshControl={
+                        <RefreshControl
+                            refreshing={refreshing}
+                            onRefresh={onRefresh}
+                            tintColor="#E8D200"
+                            colors={['#E8D200']}
+                        />
+                    }
+                >
+                {isNewUser && (
+                    <WelcomeNextCard
+                        healthConnected={health.isAuthorized}
+                        hasActivity={recentItems.length > 0}
+                        onConnectHealth={() => health.requestPermissions()}
+                        onFindGym={() => router.push('/(tabs)/discover')}
+                        onLogWorkout={() => router.push('/manual-log')}
+                    />
+                )}
+
                 <StreakCard
                     streak={currentStreak}
                     multiplier={multiplier}
@@ -511,16 +647,49 @@ export default function HomeScreen() {
                     sessionProjectedPts={projectedPoints}
                 />
 
-                <Text style={styles.sectionLabel}>LEVEL PROGRESS</Text>
+                <Text style={styles.sectionLabel}>CHALLENGE</Text>
+                <ChallengeCard
+                    title={weeklyChallenge.title}
+                    description={weeklyChallenge.description}
+                    bonus={weeklyChallenge.bonusLabel}
+                    expiresIn={weeklyChallenge.expiresIn}
+                    imageUri={weeklyChallenge.imageUri}
+                    imageOffsetY={weeklyChallenge.imageOffsetY}
+                    hint={weeklyChallenge.hint}
+                    xpReward={weeklyChallenge.xpReward}
+                    powrRewardText={weeklyChallenge.powrRewardText}
+                />
+
+                <Text style={styles.sectionLabel}>{tickDateLabel ?? 'WEEKLY'}</Text>
+
+                <ReAnimated.View
+                    onLayout={onBarsLayout}
+                    style={[
+                        barsAnimatedStyle,
+                        tickOverlay && weeklyNaturalHeight > 0 ? { height: weeklyNaturalHeight, overflow: 'hidden' } : undefined,
+                    ]}
+                >
+                    <WeeklyActivityCircles
+                        rings={displayRings}
+                        onPressRing={tickOverlay ? undefined : (type) => router.push({ pathname: '/(tabs)/progress', params: { tab: type } })}
+                    />
+                </ReAnimated.View>
+
+                <Text style={styles.sectionLabel}>MONTHLY PROGRESS</Text>
 
                 <CombinedProgressRing
-                    levelNumber={levelInfo.level}
-                    levelName={levelInfo.name}
-                    xp={xpIntoLevel}
-                    xpMax={xpForLevel}
-                    metrics={levelMetrics}
-                    nextLevelHint={nextLevelHint}
-                    currentLevel={levelInfo}
+                    activeDays={monthlyMetrics.activeDays}
+                    daysElapsed={daysElapsed}
+                    daysInMonth={daysInMonth}
+                    activeDayTypes={monthlyMetrics.activeDayTypes ?? {}}
+                    monthlyLabel={currentMonthLabel}
+                    onTickActive={handleTickActive}
+                    armMetrics={[
+                      { label: 'WEEK 1', value: `${wad[0]}/${weekElapsed[0]}`, completed: weekCompleted[0] },
+                      { label: 'WEEK 2', value: `${wad[1]}/${weekElapsed[1]}`, completed: weekCompleted[1] },
+                      { label: 'WEEK 3', value: `${wad[2]}/${weekElapsed[2]}`, completed: weekCompleted[2] },
+                      { label: 'WEEK 4', value: `${wad[3]}/${weekElapsed[3]}`, completed: weekCompleted[3] },
+                    ]}
                 />
 
                 {showHealthNudge && (
@@ -536,45 +705,21 @@ export default function HomeScreen() {
 
                 {walking.isAvailable && !showHealthNudge && (
                     <>
-                        <Text style={styles.sectionLabel}>TODAY'S STEPS</Text>
+                        <Text style={styles.sectionLabel}>TODAY&apos;S STEPS</Text>
                         <WalkingProgressCard progress={walking} />
                     </>
                 )}
 
-                <Text style={styles.sectionLabel}>THIS WEEK</Text>
-                <View style={styles.bottomSection}>
-                    <TabBar active={bottomTab} onChange={setBottomTab} />
+                <Text style={styles.sectionLabel}>WEEKLY REWARD</Text>
+                <WeeklyRewardTeaser />
 
-                    {bottomTab === 'challenge' && (
-                        isNewUser ? (
-                            <GettingStartedCard
-                                completedCount={weekActivityCount}
-                                onFindGym={() => router.push('/(tabs)/discover')}
-                                onLogWorkout={() => router.push('/manual-log')}
-                            />
-                        ) : (
-                            <ChallengeCard
-                                title="Early Bird"
-                                description="Gym or run before 12pm — triple points + 150 XP"
-                                bonus="3× BONUS"
-                                expiresIn="4h 22m"
-                                imageUri="https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/landing-page-assets/run_landing_page.png"
-                            />
-                        )
-                    )}
-
-                    {bottomTab === 'rewards' && <WeeklyRewardTeaser />}
-
-                    {bottomTab === 'activity' && (
-                        <View style={{ gap: 8 }}>
-                            <DailyActivityCard
-                                completed={weekActiveDays[TODAY_INDEX]}
-                            />
-                            <ActivityFeed items={recentItems} isNewUser={isNewUser} />
-                        </View>
-                    )}
-                </View>
-            </ScrollView>
+                <Text style={styles.sectionLabel}>ACTIVITY</Text>
+                <DailyActivityCard
+                    completed={weekActiveDays[TODAY_INDEX]}
+                />
+                <ActivityFeed items={recentItems} isNewUser={isNewUser} />
+            </ReAnimated.ScrollView>
+            </ReAnimated.View>
 
             {/* FAB — orbital ring only when a session is active */}
             {/*
@@ -714,7 +859,7 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: 10,
-    gap: 8,
+    gap: 10,
     paddingTop: 2,
   },
   // FAB container: sized to the full orbit (76×76) so the orbiting dot is never clipped
@@ -761,11 +906,6 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 8,
   },
-  bottomSection: {
-    paddingHorizontal: 14,
-    paddingBottom: 10,
-    minHeight: 200,
-  },
   sectionRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -787,7 +927,10 @@ const styles = StyleSheet.create({
   },
   sectionLabel: {
     paddingHorizontal: 14,
-    paddingTop: 4,
+    paddingTop: 16,
+    marginTop: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(255,255,255,0.07)',
     fontSize: 9,
     fontWeight: '500',
     letterSpacing: 2,

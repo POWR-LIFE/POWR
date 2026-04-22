@@ -77,15 +77,15 @@ export default function WaitlistManager() {
                         <span className="text-[10px] uppercase tracking-[0.5em] text-[#F43F5E] font-black">Subsystem / Access</span>
                     </div>
                     <h1 className="text-6xl font-light tracking-tighter text-[#F2F2F2] mb-6">Inbound Queue</h1>
-                    <p className="text-[#333] text-[11px] max-w-xl font-black uppercase tracking-[0.4em] leading-relaxed">
+                    <p className="text-[#999] text-[11px] max-w-xl font-black uppercase tracking-[0.4em] leading-relaxed">
                         Authorized early-access requests and strategic partnership inquiries. 
                     </p>
                 </div>
                 <button
                     onClick={exportToCSV}
-                    className="flex items-center gap-4 h-16 px-10 bg-[#0A0A0A] border border-[#151515] rounded-full text-[11px] font-black uppercase tracking-[0.3em] text-[#444] hover:text-[#E8D200] hover:border-[#E8D200]/40 transition-all group shrink-0"
+                    className="flex items-center gap-4 h-16 px-10 bg-[#0A0A0A] border border-[#151515] rounded-full text-[11px] font-black uppercase tracking-[0.3em] text-[#AAA] hover:text-[#E8D200] hover:border-[#E8D200]/40 transition-all group shrink-0"
                 >
-                    <Download size={16} className="text-[#222] group-hover:text-[#E8D200] transition-colors" /> Export Telemetry
+                    <Download size={16} className="text-[#999] group-hover:text-[#E8D200] transition-colors" /> Export Telemetry
                 </button>
                 {selected.size > 0 && (
                     <button
@@ -115,7 +115,7 @@ export default function WaitlistManager() {
                 ].map(s => (
                     <div key={s.label} className="bg-[#0A0A0A] border border-[#151515] p-10 rounded-3xl flex items-center gap-8 group hover:border-[#202020] transition-all relative overflow-hidden">
                         <div className="absolute top-0 right-0 p-8 opacity-5">
-                            <span className="text-[9px] font-black text-[#222] uppercase tracking-[0.4em]">{s.desc}</span>
+                            <span className="text-[9px] font-black text-[#999] uppercase tracking-[0.4em]">{s.desc}</span>
                         </div>
                         <div className="w-14 h-14 rounded-2xl bg-[#050505] border border-[#151515] flex items-center justify-center shrink-0 group-hover:border-[#E8D200]/20 transition-all">
                             <s.icon size={22} style={{ color: s.color }} />
@@ -124,7 +124,7 @@ export default function WaitlistManager() {
                             <div className="text-4xl font-light tracking-tighter text-[#DDD] leading-none mb-2">
                                 {loading ? '...' : s.value}
                             </div>
-                            <div className="text-[10px] uppercase tracking-[0.4em] text-[#222] font-black">{s.label}</div>
+                            <div className="text-[10px] uppercase tracking-[0.4em] text-[#999] font-black">{s.label}</div>
                         </div>
                     </div>
                 ))}
@@ -133,7 +133,7 @@ export default function WaitlistManager() {
             {/* Controls */}
             <div className="flex flex-col md:flex-row gap-6 mb-10">
                 <div className="relative flex-1 group">
-                    <Search size={18} className="absolute left-6 top-1/2 -translate-y-1/2 text-[#1A1A1A] group-focus-within:text-[#E8D200] transition-colors" />
+                    <Search size={18} className="absolute left-6 top-1/2 -translate-y-1/2 text-[#777] group-focus-within:text-[#E8D200] transition-colors" />
                     <input
                         type="text"
                         placeholder="SEARCH ACCESS IDENTIFIER..."
@@ -150,7 +150,7 @@ export default function WaitlistManager() {
                             className={`h-12 px-8 rounded-[1.5rem] text-[10px] font-black uppercase tracking-[0.3em] transition-all ${
                                 filterType === t
                                     ? 'bg-[#E8D200] text-[#080808] shadow-lg shadow-[#E8D200]/10'
-                                    : 'text-[#222] hover:text-[#555]'
+                                    : 'text-[#999] hover:text-[#BBB]'
                             }`}
                         >
                             {t === 'all' ? 'All Channels' : t === 'user' ? `Users (${userCount})` : `Partners (${partnerCount})`}
@@ -164,7 +164,7 @@ export default function WaitlistManager() {
                 {loading ? (
                     <div className="flex flex-col items-center justify-center py-48 gap-6">
                         <div className="w-12 h-12 border-2 border-[#E8D200]/20 border-t-[#E8D200] rounded-full animate-spin" />
-                        <span className="text-[10px] uppercase tracking-[0.6em] text-[#222] font-black">Synchronizing Data...</span>
+                        <span className="text-[10px] uppercase tracking-[0.6em] text-[#999] font-black">Synchronizing Data...</span>
                     </div>
                 ) : (
                     <div className="overflow-x-auto">
@@ -178,7 +178,7 @@ export default function WaitlistManager() {
                                         }} className="w-4 h-4 accent-[#E8D200]" />
                                     </th>
                                     {['Identifier', 'Protocol', 'Source', 'Timestamp', ''].map(h => (
-                                        <th key={h} className={`px-12 py-8 text-[10px] font-black uppercase tracking-[0.5em] text-[#1A1A1A] ${h === '' ? 'text-right' : ''}`}>{h}</th>
+                                        <th key={h} className={`px-12 py-8 text-[10px] font-black uppercase tracking-[0.5em] text-[#777] ${h === '' ? 'text-right' : ''}`}>{h}</th>
                                     ))}
                                 </tr>
                             </thead>
@@ -188,9 +188,9 @@ export default function WaitlistManager() {
                                          <td colSpan={6} className="px-12 py-32 text-center">
                                             <div className="flex flex-col items-center gap-6">
                                                 <div className="w-20 h-20 rounded-3xl bg-[#050505] border border-[#151515] flex items-center justify-center">
-                                                    <Users size={32} className="text-[#151515]" />
+                                                    <Users size={32} className="text-[#CCC]" />
                                                 </div>
-                                                <p className="text-[11px] uppercase tracking-[0.4em] text-[#1A1A1A] font-black">
+                                                <p className="text-[11px] uppercase tracking-[0.4em] text-[#777] font-black">
                                                     {entries.length === 0 ? 'Queue Empty' : 'No Records Match Query'}
                                                 </p>
                                             </div>
@@ -207,28 +207,28 @@ export default function WaitlistManager() {
                                         </td>
                                         <td className="px-12 py-10">
                                             <div className="flex items-center gap-6">
-                                                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-xs font-black shrink-0 pointer-events-none ${entry.typ === 'partner' ? 'bg-[#E8D200]/5 border border-[#E8D200]/20 text-[#E8D200]' : 'bg-[#050505] border border-[#151515] text-[#222]'}`}>
+                                                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-xs font-black shrink-0 pointer-events-none ${entry.typ === 'partner' ? 'bg-[#E8D200]/5 border border-[#E8D200]/20 text-[#E8D200]' : 'bg-[#050505] border border-[#151515] text-[#999]'}`}>
                                                     {entry.typ === 'partner' ? <Globe size={18} /> : <User size={18} />}
                                                 </div>
                                                 <div>
                                                     <span className="text-base font-bold text-[#DDD] group-hover:text-[#F2F2F2] transition-colors block mb-1">{entry.email}</span>
-                                                    <span className="text-[10px] uppercase tracking-[0.4em] text-[#222] font-black">Direct Access Request</span>
+                                                    <span className="text-[10px] uppercase tracking-[0.4em] text-[#999] font-black">Direct Access Request</span>
                                                 </div>
                                             </div>
                                         </td>
                                         <td className="px-12 py-10">
-                                            <span className={`px-4 py-1.5 rounded-full text-[9px] uppercase font-black tracking-[0.3em] inline-block ${entry.typ === 'partner' ? 'bg-[#E8D200] text-[#080808]' : 'bg-[#050505] border border-[#151515] text-[#444]'}`}>
+                                            <span className={`px-4 py-1.5 rounded-full text-[9px] uppercase font-black tracking-[0.3em] inline-block ${entry.typ === 'partner' ? 'bg-[#E8D200] text-[#080808]' : 'bg-[#050505] border border-[#151515] text-[#AAA]'}`}>
                                                 {entry.typ}
                                             </span>
                                         </td>
                                         <td className="px-12 py-10">
                                             {entry.website ? (
-                                                <a href={entry.website} target="_blank" rel="noreferrer" className="flex items-center gap-3 text-[#555] group-hover:text-[#E8D200] transition-colors font-black">
+                                                <a href={entry.website} target="_blank" rel="noreferrer" className="flex items-center gap-3 text-[#BBB] group-hover:text-[#E8D200] transition-colors font-black">
                                                     <span className="text-[11px] uppercase tracking-[0.2em] truncate max-w-48">{entry.website.replace(/^https?:\/\//, '')}</span>
                                                     <ExternalLink size={12} className="shrink-0" />
                                                 </a>
                                             ) : (
-                                                <span className="text-[11px] uppercase tracking-[0.4em] text-[#151515] font-black">—</span>
+                                                <span className="text-[11px] uppercase tracking-[0.4em] text-[#CCC] font-black">—</span>
                                             )}
                                         </td>
                                         <td className="px-12 py-10 whitespace-nowrap">
@@ -236,19 +236,19 @@ export default function WaitlistManager() {
                                                 <span className="text-[12px] text-[#DDD] font-medium mb-1">
                                                     {new Date(entry.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
                                                 </span>
-                                                <span className="text-[9px] uppercase tracking-[0.4em] text-[#222] font-black">Capture Date</span>
+                                                <span className="text-[9px] uppercase tracking-[0.4em] text-[#999] font-black">Capture Date</span>
                                             </div>
                                         </td>
                                         <td className="px-12 py-10 text-right">
                                             {confirmDeleteId === entry.id ? (
                                                 <div className="flex items-center justify-end gap-3 scale-90 origin-right transition-all">
                                                     <button onClick={() => handleDelete(entry.id)} className="h-10 px-6 bg-red-500/10 text-red-500 text-[10px] font-black uppercase tracking-[0.3em] rounded-full hover:bg-red-500/20 transition-all border border-red-500/20 shadow-lg shadow-red-500/5">CONFIRM</button>
-                                                    <button onClick={() => setConfirmDeleteId(null)} className="h-10 px-6 bg-[#050505] text-[#333] text-[10px] font-black uppercase tracking-[0.3em] rounded-full hover:text-[#CCC] transition-all border border-[#151515]">CANCEL</button>
+                                                    <button onClick={() => setConfirmDeleteId(null)} className="h-10 px-6 bg-[#050505] text-[#999] text-[10px] font-black uppercase tracking-[0.3em] rounded-full hover:text-[#CCC] transition-all border border-[#151515]">CANCEL</button>
                                                 </div>
                                             ) : (
                                                 <button
                                                     onClick={() => setConfirmDeleteId(entry.id)}
-                                                    className="w-12 h-12 flex items-center justify-center text-[#151515] hover:text-red-500 hover:bg-red-500/5 rounded-2xl transition-all opacity-0 group-hover:opacity-100"
+                                                    className="w-12 h-12 flex items-center justify-center text-[#CCC] hover:text-red-500 hover:bg-red-500/5 rounded-2xl transition-all opacity-0 group-hover:opacity-100"
                                                 >
                                                     <Trash2 size={18} />
                                                 </button>
@@ -265,9 +265,9 @@ export default function WaitlistManager() {
             <div className="mt-12 flex items-center justify-between px-12">
                 <div className="flex items-center gap-4">
                     <div className="h-1.5 w-1.5 rounded-full bg-[#10B981] animate-pulse"></div>
-                    <span className="text-[10px] uppercase tracking-[0.6em] text-[#222] font-black">Real-time Data Stream Active</span>
+                    <span className="text-[10px] uppercase tracking-[0.6em] text-[#999] font-black">Real-time Data Stream Active</span>
                 </div>
-                <span className="text-[10px] uppercase tracking-[0.6em] text-[#151515] font-black">POWR / ACC / V3.0</span>
+                <span className="text-[10px] uppercase tracking-[0.6em] text-[#CCC] font-black">POWR / ACC / V3.0</span>
             </div>
         </div>
     );

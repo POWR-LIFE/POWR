@@ -1,7 +1,6 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import Svg, { Circle, Line, Defs, LinearGradient, Stop, Text as SvgText } from 'react-native-svg';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import Svg, { Circle, Defs, Line, LinearGradient, Stop, Text as SvgText } from 'react-native-svg';
 
 const GOLD = '#E8D200';
 
@@ -46,14 +45,18 @@ export function ProgressRadial({
   const tickInnerR = r + strokeWidth / 2 + 4;
 
   const getValueFontSize = (val: string) => {
-    if (val.length <= 2) return 56;
-    if (val.length <= 4) return 46;
-    return 36;
+    const scale = size / 210;
+    if (val.length <= 2) return Math.round(56 * scale);
+    if (val.length <= 4) return Math.round(46 * scale);
+    return Math.round(36 * scale);
   };
+  const maxLabelSize = Math.round((value.length > 4 ? 12 : 14) * (size / 210));
+  const subLabelSize = Math.max(6, Math.round(7 * (size / 210)));
 
+  const PAD = 16;
   return (
-    <View style={[styles.container, { width: size, height: size }]}>
-      <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+    <View style={[styles.container, { width: size + PAD * 2, height: size + PAD * 2 }]}>
+      <Svg width={size + PAD * 2} height={size + PAD * 2} viewBox={`${-PAD} ${-PAD} ${size + PAD * 2} ${size + PAD * 2}`}>
         <Defs>
           <LinearGradient id="radial-grad" x1="0%" y1="0%" x2="100%" y2="100%">
             {gradientColors.map((color, i) => (
@@ -124,26 +127,13 @@ export function ProgressRadial({
         })}
       </Svg>
 
-      {/* Icon on the edge (3 o'clock, outside) */}
-      {iconName && !ticks && (
-        <View style={[
-          styles.badge,
-          { top: cy - 16, left: cx + r + strokeWidth / 2 + 14 }
-        ]}>
-          {iconLib === 'material-community' ? (
-            <MaterialCommunityIcons name={iconName} size={18} color={gradientColors[0]} />
-          ) : (
-            <Ionicons name={iconName} size={18} color={gradientColors[0]} />
-          )}
-        </View>
-      )}
 
       <View style={styles.center}>
         <View style={styles.countRow}>
-          <Text style={[styles.bigNum, { fontSize: getValueFontSize(value) }]}>{value}</Text>
-          <Text style={[styles.maxLabel, { fontSize: value.length > 4 ? 12 : 14 }]}>{maxLabel}</Text>
+          <Text style={[styles.bigNum, { fontSize: getValueFontSize(value), lineHeight: getValueFontSize(value) + 2 }]}>{value}</Text>
+          <Text style={[styles.maxLabel, { fontSize: maxLabelSize }]}>{maxLabel}</Text>
         </View>
-        <Text style={styles.subLabel}>{subLabel}</Text>
+        <Text style={[styles.subLabel, { fontSize: subLabelSize }]}>{subLabel}</Text>
       </View>
     </View>
   );

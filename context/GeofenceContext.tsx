@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
-import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -44,6 +44,8 @@ export interface Trainer {
   bio: string | null;
   specialties: string[] | null;
   experience: string | null;
+  profile_url: string | null;
+  booking_url: string | null;
   active: boolean;
   sort_order: number;
 }
@@ -248,12 +250,14 @@ interface GeofenceContextValue {
   partners: Partner[];
   isMonitoring: boolean;
   loading: boolean;
+  refresh: () => Promise<void>;
 }
 
 const GeofenceContext = createContext<GeofenceContextValue>({
   partners: [],
   isMonitoring: false,
   loading: true,
+  refresh: async () => {},
 });
 
 export function GeofenceProvider({ children }: { children: React.ReactNode }) {
@@ -262,68 +266,69 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const fingerprintRef = useRef('');
 
-  // Fetch partners once on mount
-  useEffect(() => {
-    async function fetchPartners() {
-      try {
-        // Try full schema; fall back if opening_hours/description columns don't exist yet
-        let fetchResult: { data: any[] | null; error: any } = await supabase
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    try {
+      // Try full schema; fall back if opening_hours/description columns don't exist yet
+      let fetchResult: { data: any[] | null; error: any } = await supabase
+        .from('partners')
+        .select('id, name, description, category, locations, logo_url, image1_url, image2_url, opening_hours')
+        .eq('active', true);
+
+      if (fetchResult.error) {
+        fetchResult = await supabase
           .from('partners')
-          .select('id, name, description, category, locations, logo_url, image1_url, image2_url, opening_hours')
+          .select('id, name, category, locations, logo_url')
           .eq('active', true);
+      }
 
-        if (fetchResult.error) {
-          fetchResult = await supabase
-            .from('partners')
-            .select('id, name, category, locations, logo_url')
-            .eq('active', true);
-        }
+      const { data, error } = fetchResult;
+      if (error || !data) return;
 
-        const { data, error } = fetchResult;
-        if (error || !data) return;
-
-        const formatted: Partner[] = [];
-        data.forEach((p: any) => {
-          if (!p.locations) return;
-          const locs = Array.isArray(p.locations) ? p.locations : [p.locations];
-          locs.forEach((loc: any, idx: number) => {
-            const words = p.name.split(' ');
-            const logoText = words.length > 1
-              ? `${words[0]}\n${words[1]}`.toUpperCase()
-              : p.name.toUpperCase();
-            const oh: OpeningHours | undefined = p.opening_hours ?? undefined;
-            const openNow = checkIsOpenNow(oh);
-            formatted.push({
-              id:             `${p.id}-${idx}`,
-              name:           p.name,
-              description:    p.description ?? undefined,
-              category:       p.category.charAt(0).toUpperCase() + p.category.slice(1),
-              status:         openNow ? 'Open now' : 'Closed',
-              area:           loc.name || 'Local',
-              pts:            p.category.toLowerCase() === 'gym' ? 15 : 10,
-              distance:       '',
-              logoText:       logoText.length > 10 ? logoText.substring(0, 10) : logoText,
-              logoUrl:        p.logo_url,
-              logoLight:      p.category.toLowerCase() !== 'gym',
-              image1Url:      p.image1_url ?? undefined,
-              image2Url:      p.image2_url ?? undefined,
-              lat:            loc.lat,
-              lng:            loc.lng,
-              geofenceRadius: DEV_RADIUS_M[p.name] ?? loc.radius ?? 50,
-              openingHours:   oh,
-              isOpenNow:      openNow,
-            });
+      const formatted: Partner[] = [];
+      data.forEach((p: any) => {
+        if (!p.locations) return;
+        const locs = Array.isArray(p.locations) ? p.locations : [p.locations];
+        locs.forEach((loc: any, idx: number) => {
+          const words = p.name.split(' ');
+          const logoText = words.length > 1
+            ? `${words[0]}\n${words[1]}`.toUpperCase()
+            : p.name.toUpperCase();
+          const oh: OpeningHours | undefined = p.opening_hours ?? undefined;
+          const openNow = checkIsOpenNow(oh);
+          formatted.push({
+            id:             `${p.id}-${idx}`,
+            name:           p.name,
+            description:    p.description ?? undefined,
+            category:       p.category.charAt(0).toUpperCase() + p.category.slice(1),
+            status:         openNow ? 'Open now' : 'Closed',
+            area:           loc.name || 'Local',
+            pts:            p.category.toLowerCase() === 'gym' ? 15 : 10,
+            distance:       '',
+            logoText:       logoText.length > 10 ? logoText.substring(0, 10) : logoText,
+            logoUrl:        p.logo_url,
+            logoLight:      p.category.toLowerCase() !== 'gym',
+            image1Url:      p.image1_url ?? undefined,
+            image2Url:      p.image2_url ?? undefined,
+            lat:            loc.lat,
+            lng:            loc.lng,
+            geofenceRadius: DEV_RADIUS_M[p.name] ?? loc.radius ?? 50,
+            openingHours:   oh,
+            isOpenNow:      openNow,
           });
         });
+      });
 
-        setPartners(formatted);
-      } finally {
-        setLoading(false);
-      }
+      setPartners(formatted);
+    } finally {
+      setLoading(false);
     }
-
-    fetchPartners();
   }, []);
+
+  // Fetch partners once on mount
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
 
   // Start geofencing when partners load — never torn down by navigation
   useEffect(() => {
@@ -363,7 +368,7 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
         if (isRegistered) {
           await Location.stopGeofencingAsync(GEOFENCE_TASK_NAME);
         }
-      } catch (err) {
+      } catch {
         // If unregistration fails (e.g. because of TaskNotFoundException), we can safely ignore it
         // and proceed to (re)start the geofencing.
       }
@@ -434,7 +439,7 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
   }, [partners]);
 
   return (
-    <GeofenceContext.Provider value={{ partners, isMonitoring, loading }}>
+    <GeofenceContext.Provider value={{ partners, isMonitoring, loading, refresh }}>
       {children}
     </GeofenceContext.Provider>
   );

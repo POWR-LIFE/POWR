@@ -10,9 +10,15 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
+      "bundleIdentifier": "com.powr.app",
       "infoPlist": {
         "NSHealthShareUsageDescription": "POWR needs access to your sleep and workout data to reward you for healthy habits.",
-        "NSHealthUpdateUsageDescription": "POWR needs access to log your habits."
+        "NSHealthUpdateUsageDescription": "POWR needs access to log your habits.",
+        "CFBundleURLTypes": [
+          {
+            "CFBundleURLSchemes": ["powr"]
+          }
+        ]
       }
     },
     "android": {
@@ -23,7 +29,7 @@
       },
       "adaptiveIcon": {
         "backgroundColor": "#000000",
-        "foregroundImage": "./assets/images/powr_transparent.png"
+        "foregroundImage": "./assets/images/powr_icon_foreground.png"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
@@ -38,7 +44,18 @@
         "android.permission.health.READ_EXERCISE",
         "android.permission.health.READ_SLEEP"
       ],
-      "package": "com.life.POWR"
+      "package": "com.life.POWR",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": false,
+          "data": [
+            { "scheme": "powr", "host": "fitbit-callback" },
+            { "scheme": "powr", "host": "whoop-callback" }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ]
     },
     "web": {
       "output": "single",
@@ -72,13 +89,14 @@
       "react-native-health",
       "react-native-health-connect",
       "./withHealthConnectMainActivity.js",
+      "./withHealthConnectManifestQueries.js",
       [
         "expo-build-properties",
         {
           "android": {
             "minSdkVersion": 26,
-            "compileSdkVersion": 34,
-            "targetSdkVersion": 34
+            "compileSdkVersion": 35,
+            "targetSdkVersion": 35
           }
         }
       ]

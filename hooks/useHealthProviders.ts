@@ -8,6 +8,7 @@ import {
     type HealthProviderId,
     type HealthProviderMeta,
 } from '@/lib/health/providers';
+import type { ConnectResult } from '@/lib/health/providers/types';
 import { supabase } from '@/lib/supabase';
 
 export type ProviderConnection = {
@@ -63,12 +64,17 @@ export function useHealthProviders() {
         await supabase.from('profiles').update(patch).eq('id', user.id);
     }, []);
 
-    const connect = useCallback(async (id: HealthProviderId): Promise<boolean> => {
+    const connect = useCallback(async (id: HealthProviderId): Promise<ConnectResult> => {
         setBusyId(id);
         try {
             const provider = getProvider(id);
-            const ok = await provider.connect();
-            if (!ok) return false;
+            const result = await provider.connect();
+            if (result !== 'connected') {
+                // 'pending' → an OAuth callback route will write the profile and
+                // a subsequent refresh() will pick it up. 'failed' → nothing to
+                // write. Either way we don't touch the DB here.
+                return result;
+            }
             const next: Record<string, ProviderConnection> = {
                 ...connections,
                 [id]: { ...(connections[id] ?? {}), connected_at: new Date().toISOString() },
@@ -81,7 +87,7 @@ export function useHealthProviders() {
             });
             setConnections(next);
             setActiveId(nextActive);
-            return true;
+            return 'connected';
         } finally {
             setBusyId(null);
         }

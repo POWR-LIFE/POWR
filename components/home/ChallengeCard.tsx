@@ -1,9 +1,21 @@
-import React, { useEffect, useRef } from 'react';
-import { Animated, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import React, { useEffect, useMemo, useRef } from 'react';
+import { Animated, Image, StyleSheet, Text, View } from 'react-native';
 
-const GOLD = '#E8D200';
-const ORANGE = '#f97316';
+const GOLD_RGB = [232, 210, 0] as const;
+const ORANGE_RGB = [249, 115, 22] as const;
+const TEXT_PRIMARY = '#F2F2F2';
+
+/** Lerp between gold and orange, return hex + rgba helpers. */
+function accentFromUrgency(u: number) {
+  const t = Math.max(0, Math.min(1, u));
+  const r = Math.round(GOLD_RGB[0] + (ORANGE_RGB[0] - GOLD_RGB[0]) * t);
+  const g = Math.round(GOLD_RGB[1] + (ORANGE_RGB[1] - GOLD_RGB[1]) * t);
+  const b = Math.round(GOLD_RGB[2] + (ORANGE_RGB[2] - GOLD_RGB[2]) * t);
+  const hex = `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+  const rgba = (a: number) => `rgba(${r},${g},${b},${a})`;
+  return { hex, rgba };
+}
 
 interface ChallengeCardProps {
   title: string;
@@ -11,11 +23,18 @@ interface ChallengeCardProps {
   bonus: string;
   expiresIn: string;
   imageUri?: string;
-  onClaim?: () => void;
+  imageOffsetY?: number;
+  hint?: string;
+  xpReward?: number;
+  powrRewardText?: string;
+  /** 0 = relaxed (gold), 1 = urgent (orange). Defaults to 0. */
+  urgency?: number;
 }
 
-export function ChallengeCard({ title, description, bonus, expiresIn, imageUri, onClaim }: ChallengeCardProps) {
+export function ChallengeCard({ title, description, bonus, expiresIn, imageUri, imageOffsetY = 0, hint, xpReward = 150, powrRewardText = '3× POWR', urgency = 0 }: ChallengeCardProps) {
   const dotAnim = useRef(new Animated.Value(0.4)).current;
+  const accent = useMemo(() => accentFromUrgency(urgency), [urgency]);
+  const imageInset = Math.abs(imageOffsetY);
 
   useEffect(() => {
     Animated.loop(
@@ -28,63 +47,63 @@ export function ChallengeCard({ title, description, bonus, expiresIn, imageUri, 
 
   return (
     <View style={styles.card}>
-      {/* Full-card background image */}
+      {/* Background image with the same overlay fade treatment as rewards hero */}
       {imageUri ? (
-        <Image
-          source={{ uri: imageUri }}
-          style={StyleSheet.absoluteFillObject}
-          resizeMode="cover"
-        />
+        <View style={styles.maskedImage}>
+          <Image
+            source={{ uri: imageUri }}
+            style={[
+              styles.maskedImageContent,
+              imageInset ? { top: -imageInset, bottom: -imageInset } : null,
+              { transform: [{ translateY: imageOffsetY }] },
+            ]}
+            resizeMode="cover"
+          />
+          <LinearGradient
+            colors={['rgba(10,10,10,0.85)', 'rgba(10,10,10,0.35)', 'rgba(10,10,10,0)']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            locations={[0, 0.45, 1]}
+            style={StyleSheet.absoluteFillObject}
+          />
+          <LinearGradient
+            colors={['rgba(10,10,10,0)', 'rgba(10,10,10,0.6)', 'rgba(10,10,10,0.95)']}
+            locations={[0, 0.55, 1]}
+            style={StyleSheet.absoluteFillObject}
+          />
+        </View>
       ) : null}
-
-      {/* Gradient: transparent at top → warm dark at bottom (semi-transparent) */}
-      <LinearGradient
-        colors={['transparent', 'rgba(18,14,0,0.4)', 'rgba(14,11,0,0.85)']}
-        locations={[0, 0.42, 0.85]}
-        style={StyleSheet.absoluteFillObject}
-      />
-
-      {/* Left gold accent bar — the challenge's signature */}
-      <View style={styles.accentBar} />
 
       {/* Content layer */}
       <View style={styles.inner}>
         {/* Top: eyebrow badge + timer */}
         <View style={styles.topRow}>
-          <View style={styles.challengeBadge}>
-            <Text style={styles.challengeBadgeText}>THIS WEEK'S CHALLENGE</Text>
+          <View style={[styles.challengeBadge, { backgroundColor: accent.rgba(0.10), borderColor: accent.rgba(0.25) }]}>
+            <Text style={[styles.challengeBadgeText, { color: accent.hex }]}>WEEKLY CHALLENGE</Text>
           </View>
           <View style={styles.timerBadge}>
-            <Animated.View style={[styles.timerDot, { opacity: dotAnim }]} />
+            <Animated.View style={[styles.timerDot, { opacity: dotAnim, backgroundColor: accent.hex }]} />
             <Text style={styles.timerText}>{expiresIn}</Text>
           </View>
         </View>
 
-        {/* Bottom: title → description → pills + CTA */}
+        {/* Title + description */}
         <View style={styles.bottom}>
           <Text style={styles.title}>{title}</Text>
           <Text style={styles.description}>{description}</Text>
 
-          <View style={styles.pillsAndCta}>
-            <View style={styles.pills}>
-              <View style={[styles.pill, styles.pillGold]}>
-                <Text style={[styles.pillText, styles.pillTextGold]}>{bonus}</Text>
-              </View>
-              <View style={styles.pill}>
-                <Text style={styles.pillText}>+150 XP</Text>
-              </View>
-              <View style={styles.pill}>
-                <Text style={styles.pillText}>3× POWR</Text>
-              </View>
+          {/* Reward line — inline with dot separators */}
+          <View style={styles.rewardRow}>
+            <View style={[styles.bonusBadge, { backgroundColor: accent.rgba(0.10), borderColor: accent.rgba(0.22) }]}>
+              <Text style={[styles.bonusText, { color: accent.hex }]}>{bonus}</Text>
             </View>
-
-            <Pressable
-              style={({ pressed }) => [styles.claimBtn, pressed && { opacity: 0.8 }]}
-              onPress={onClaim}
-            >
-              <Text style={styles.claimText}>CLAIM</Text>
-            </Pressable>
+            <Text style={styles.rewardSep}>·</Text>
+            <Text style={styles.rewardDetail}>+{xpReward} XP</Text>
+            <Text style={styles.rewardSep}>·</Text>
+            <Text style={styles.rewardDetail}>{powrRewardText}</Text>
           </View>
+
+          {hint && <Text style={styles.hint}>{hint}</Text>}
         </View>
       </View>
     </View>
@@ -93,30 +112,36 @@ export function ChallengeCard({ title, description, bonus, expiresIn, imageUri, 
 
 const styles = StyleSheet.create({
   card: {
-    flexDirection: 'row',
-    overflow: 'hidden',
     height: 200,
-    borderRadius: 16, // Keeping border radius to match the image corners
+    borderRadius: 20,
+    overflow: 'hidden',
+    position: 'relative',
   },
-  accentBar: {
-    width: 2,
-    backgroundColor: GOLD,
-    opacity: 0.9,
+  maskedImage: {
+    ...StyleSheet.absoluteFillObject,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    overflow: 'hidden',
+  },
+  maskedImageContent: {
+    ...StyleSheet.absoluteFillObject,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
   },
   inner: {
     flex: 1,
-    padding: 12,
+    padding: 16,
     justifyContent: 'space-between',
   },
   topRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginTop: 6,
+    marginBottom: 10,
   },
   challengeBadge: {
-    backgroundColor: 'rgba(232,210,0,0.12)',
     borderWidth: 1,
-    borderColor: 'rgba(232,210,0,0.28)',
     borderRadius: 6,
     paddingHorizontal: 8,
     paddingVertical: 3,
@@ -125,88 +150,74 @@ const styles = StyleSheet.create({
     fontSize: 8,
     fontWeight: '700',
     letterSpacing: 1.5,
-    color: GOLD,
-    opacity: 0.85,
   },
   timerBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    backgroundColor: 'rgba(0,0,0,0.45)',
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
     borderRadius: 6,
     paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingVertical: 3,
   },
   timerDot: {
     width: 5,
     height: 5,
     borderRadius: 2.5,
-    backgroundColor: ORANGE,
   },
   timerText: {
     fontSize: 9,
     fontWeight: '400',
-    color: 'rgba(255,255,255,0.7)',
+    color: TEXT_PRIMARY,
   },
   bottom: {
-    gap: 8,
+    gap: 6,
   },
   title: {
-    fontSize: 30,
-    fontWeight: '200',
-    color: '#F2F2F2',
-    letterSpacing: -0.5,
-    lineHeight: 32,
+    fontSize: 20,
+    fontWeight: '300',
+    color: TEXT_PRIMARY,
+    letterSpacing: -0.3,
   },
   description: {
     fontSize: 11,
     fontWeight: '300',
-    color: 'rgba(255,255,255,0.45)',
+    color: TEXT_PRIMARY,
     lineHeight: 16,
   },
-  pillsAndCta: {
+  rewardRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: 6,
+    marginTop: 2,
   },
-  pills: {
-    flexDirection: 'row',
-    gap: 5,
-    flex: 1,
-  },
-  pill: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.05)',
+  bonusBadge: {
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
   },
-  pillGold: {
-    backgroundColor: 'rgba(232,210,0,0.10)',
-    borderColor: 'rgba(232,210,0,0.25)',
-  },
-  pillText: {
+  bonusText: {
     fontSize: 9,
-    fontWeight: '500',
-    color: 'rgba(255,255,255,0.4)',
+    fontWeight: '600',
     letterSpacing: 0.3,
   },
-  pillTextGold: {
-    color: GOLD,
-  },
-  claimBtn: {
-    backgroundColor: GOLD,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 20,
-    flexShrink: 0,
-  },
-  claimText: {
+  rewardSep: {
     fontSize: 10,
-    fontWeight: '700',
-    color: '#0a0a0a',
-    letterSpacing: 1.5,
-    textTransform: 'uppercase',
+    color: TEXT_PRIMARY,
+  },
+  rewardDetail: {
+    fontSize: 9,
+    fontWeight: '400',
+    color: TEXT_PRIMARY,
+    letterSpacing: 0.2,
+  },
+  hint: {
+    fontSize: 10,
+    fontWeight: '300',
+    letterSpacing: 0.3,
+    color: TEXT_PRIMARY,
   },
 });

@@ -14,6 +14,8 @@ export type HealthProviderId =
     | 'whoop'
     | 'garmin';
 
+export type ConnectResult = 'connected' | 'pending' | 'failed';
+
 export type HealthProviderCapability =
     | 'steps'
     | 'activities'
@@ -45,8 +47,16 @@ export interface HealthProvider {
     /** True when the user has granted permission / completed OAuth. */
     isConnected(): Promise<boolean>;
 
-    /** Trigger the connect flow (permission prompt or OAuth). Resolves to `true` on success. */
-    connect(): Promise<boolean>;
+    /**
+     * Trigger the connect flow.
+     *   - `'connected'`: provider is fully connected (native permission granted,
+     *     or OAuth tokens stored). Safe for the caller to mark connected in the DB.
+     *   - `'pending'`: flow is handed off to an external surface (browser / OS prompt)
+     *     and will complete asynchronously via a callback route. Caller MUST NOT
+     *     write connected state yet — the callback is the source of truth.
+     *   - `'failed'`: flow errored or the user denied it.
+     */
+    connect(): Promise<ConnectResult>;
     /** Revoke tokens / clear local connection state. */
     disconnect(): Promise<void>;
 
@@ -65,5 +75,19 @@ export class HealthProviderNotImplementedError extends Error {
     constructor(providerId: HealthProviderId, op: string) {
         super(`Health provider "${providerId}" does not implement ${op} yet.`);
         this.name = 'HealthProviderNotImplementedError';
+    }
+}
+
+/**
+ * Thrown when an OAuth provider's refresh token has expired or been revoked.
+ * The provider should clear its local tokens before throwing this.
+ * Callers should auto-disconnect and prompt the user to reconnect.
+ */
+export class ProviderAuthExpiredError extends Error {
+    readonly providerId: HealthProviderId;
+    constructor(providerId: HealthProviderId, detail?: string) {
+        super(`${providerId} connection expired${detail ? `: ${detail}` : ''}`);
+        this.name = 'ProviderAuthExpiredError';
+        this.providerId = providerId;
     }
 }

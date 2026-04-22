@@ -27,7 +27,7 @@ export function DailyActivityCard({ completed }: DailyActivityCardProps) {
       style={({ pressed }) => [styles.card, pressed && { opacity: 0.9, transform: [{ scale: 0.99 }] }]}
       onPress={() => router.push('/manual-log')}
     >
-      <View style={[styles.iconWrap, { backgroundColor: 'rgba(255,255,255,0.08)' }]}>
+      <View style={styles.iconWrap}>
         <Ionicons name="calendar-outline" size={20} color={DIM} />
       </View>
       <View style={styles.body}>
@@ -46,21 +46,21 @@ const styles = StyleSheet.create({
   card: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    backgroundColor: CARD,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    borderRadius: 14,
-    padding: 12,
-    overflow: 'hidden',
+    gap: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(255,255,255,0.08)',
+    paddingVertical: 14,
+    paddingHorizontal: 4,
   },
   iconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 8,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.12)',
   },
   body: {
     flex: 1,

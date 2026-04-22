@@ -1,9 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import GeometricBackground from '@/components/GeometricBackground';
 import {
+  ActivityIndicator,
   Clipboard,
+  Linking,
   Pressable,
   StyleSheet,
   Text,
@@ -12,6 +14,8 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { usePoints } from '@/hooks/usePoints';
+import { redeemReward, RedemptionError, type Reward } from '@/lib/api/rewards';
+import { supabase } from '@/lib/supabase';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 
@@ -23,27 +27,29 @@ const TEXT    = '#F2F2F2';
 const MUTED   = 'rgba(255,255,255,0.25)';
 const DIM     = 'rgba(255,255,255,0.5)';
 
-// ─── Mock reward lookup — replace with real API fetch ─────────────────────────
+// ─── Screen ───────────────────────────────────────────────────────────────────
 
-const REWARD_DATA: Record<string, { title: string; partner: string; pts: number; value: string; logoText: string; logoLight: boolean }> = {
-  '1': { title: 'Free gym class',         partner: 'Third Space',     pts: 800,  value: '£20 value', logoText: 'TS',    logoLight: false },
-  '2': { title: '25% off your bill',      partner: 'Notto Pasta',     pts: 500,  value: '25% off',   logoText: 'NOTTO', logoLight: true  },
-  '3': { title: '30% off protein powder', partner: 'bulk®',           pts: 400,  value: '30% off',   logoText: 'bulk',  logoLight: false },
-  '4': { title: '3 months free',          partner: 'Calm',            pts: 600,  value: '£30 value', logoText: 'calm',  logoLight: false },
-  '5': { title: '£50 off mattress',       partner: 'Eight Sleep',     pts: 1200, value: '£50 off',   logoText: 'eight', logoLight: false },
-  '6': { title: '20% off supplements',    partner: 'Whole Health',    pts: 350,  value: '20% off',   logoText: 'WH',    logoLight: true  },
-  '7': { title: 'Single class pass',      partner: "Barry's",         pts: 650,  value: '£24 value', logoText: 'barry', logoLight: true  },
-  '8': { title: '1 month free',           partner: 'Headspace',       pts: 300,  value: '£13 value', logoText: 'head',  logoLight: false },
-  'featured': { title: 'Free Class',      partner: 'Third Space',     pts: 800,  value: '£20 value', logoText: 'TS',    logoLight: false },
-};
-
-function generateCode(): string {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  const seg = (n: number) => Array.from({ length: n }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
-  return `POWR-${seg(4)}-${seg(4)}`;
+interface UIReward {
+  id: string;
+  title: string;
+  partner: string;
+  pts: number;
+  value: string;
+  logoText: string;
+  logoLight: boolean;
 }
 
-// ─── Screen ───────────────────────────────────────────────────────────────────
+function toUIReward(r: Reward): UIReward {
+  return {
+    id: r.id,
+    title: r.title,
+    partner: r.partner?.name ?? '',
+    pts: r.powr_cost,
+    value: r.description ?? '',
+    logoText: (r.partner?.partner_code ?? r.partner?.name ?? '??').slice(0, 5).toLowerCase(),
+    logoLight: false,
+  };
+}
 
 export default function RedeemModal() {
   const insets = useSafeAreaInsets();
@@ -51,15 +57,40 @@ export default function RedeemModal() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { balance, refresh } = usePoints();
 
-  const reward = REWARD_DATA[id ?? ''] ?? null;
+  const [reward, setReward] = useState<UIReward | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [stage, setStage] = useState<'confirm' | 'success'>('confirm');
   const [code, setCode] = useState('');
+  const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [redeemError, setRedeemError] = useState<string | null>(null);
 
-  if (!reward) {
+  useEffect(() => {
+    if (!id) return;
+    (async () => {
+      const { data, error } = await supabase
+        .from('rewards')
+        .select('id, partner_id, title, description, powr_cost, category, integration_type, code_expiry_days, active, partners(id, name, partner_code, logo_url, category, checkout_url_template)')
+        .eq('id', id)
+        .single();
+      if (error || !data) { setLoadError('Reward not found.'); return; }
+      const full: Reward = { ...(data as any), partner: Array.isArray((data as any).partners) ? (data as any).partners[0] : (data as any).partners };
+      setReward(toUIReward(full));
+    })();
+  }, [id]);
+
+  if (loadError) {
     return (
       <View style={[styles.screen, { paddingTop: insets.top }]}>
-        <Text style={styles.errorText}>Reward not found.</Text>
+        <Text style={styles.errorText}>{loadError}</Text>
+      </View>
+    );
+  }
+  if (!reward) {
+    return (
+      <View style={[styles.screen, { paddingTop: insets.top, alignItems: 'center', justifyContent: 'center' }]}>
+        <ActivityIndicator color='#E8D200' />
       </View>
     );
   }
@@ -67,17 +98,40 @@ export default function RedeemModal() {
   const canAfford = balance >= reward.pts;
   const remaining = balance - reward.pts;
 
-  function handleConfirm() {
-    // TODO: call Supabase redemption edge function
-    setCode(generateCode());
-    setStage('success');
-    refresh(); // re-fetch balance
+  async function handleConfirm() {
+    if (!reward || submitting) return;
+    setSubmitting(true);
+    setRedeemError(null);
+    try {
+      const result = await redeemReward(reward.id);
+      setCode(result.code);
+      setCheckoutUrl(result.checkout_url);
+      setStage('success');
+      refresh();
+    } catch (e) {
+      if (e instanceof RedemptionError) {
+        setRedeemError(
+          e.code === 'INSUFFICIENT_POINTS' ? "You don't have enough POWR."
+          : e.code === 'OUT_OF_STOCK' ? 'This reward is temporarily unavailable. Check back soon.'
+          : e.code === 'REWARD_INACTIVE' ? 'This reward is no longer available.'
+          : 'Something went wrong. Please try again.'
+        );
+      } else {
+        setRedeemError('Something went wrong. Please try again.');
+      }
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   function handleCopy() {
     Clipboard.setString(code);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  }
+
+  function handleOpenCheckout() {
+    if (checkoutUrl) Linking.openURL(checkoutUrl);
   }
 
   return (
@@ -92,6 +146,8 @@ export default function RedeemModal() {
           balance={balance}
           canAfford={canAfford}
           remaining={remaining}
+          submitting={submitting}
+          error={redeemError}
           onConfirm={handleConfirm}
           onCancel={() => router.back()}
         />
@@ -100,7 +156,9 @@ export default function RedeemModal() {
           reward={reward}
           code={code}
           copied={copied}
+          checkoutUrl={checkoutUrl}
           onCopy={handleCopy}
+          onOpenCheckout={handleOpenCheckout}
           onDone={() => router.back()}
         />
       )}
@@ -111,15 +169,17 @@ export default function RedeemModal() {
 // ─── Confirm view ─────────────────────────────────────────────────────────────
 
 interface ConfirmProps {
-  reward: (typeof REWARD_DATA)[string];
+  reward: UIReward;
   balance: number;
   canAfford: boolean;
   remaining: number;
+  submitting: boolean;
+  error: string | null;
   onConfirm: () => void;
   onCancel: () => void;
 }
 
-function ConfirmView({ reward, balance, canAfford, remaining, onConfirm, onCancel }: ConfirmProps) {
+function ConfirmView({ reward, balance, canAfford, remaining, submitting, error, onConfirm, onCancel }: ConfirmProps) {
   return (
     <View style={styles.sheet}>
       {/* Reward identity */}
@@ -160,19 +220,30 @@ function ConfirmView({ reward, balance, canAfford, remaining, onConfirm, onCance
         </View>
       )}
 
+      {error && (
+        <View style={styles.insufficientBanner}>
+          <Ionicons name="alert-circle-outline" size={14} color='#f87171' />
+          <Text style={styles.insufficientText}>{error}</Text>
+        </View>
+      )}
+
       {/* Actions */}
       <View style={styles.actions}>
         <Pressable
           style={({ pressed }) => [
             styles.confirmBtn,
-            !canAfford && styles.confirmBtnDisabled,
-            pressed && canAfford && { opacity: 0.85 },
+            (!canAfford || submitting) && styles.confirmBtnDisabled,
+            pressed && canAfford && !submitting && { opacity: 0.85 },
           ]}
-          onPress={canAfford ? onConfirm : undefined}
+          onPress={canAfford && !submitting ? onConfirm : undefined}
         >
-          <Text style={[styles.confirmBtnText, !canAfford && styles.confirmBtnTextDisabled]}>
-            Confirm Redemption
-          </Text>
+          {submitting ? (
+            <ActivityIndicator color='#0a0a0a' />
+          ) : (
+            <Text style={[styles.confirmBtnText, !canAfford && styles.confirmBtnTextDisabled]}>
+              Confirm Redemption
+            </Text>
+          )}
         </Pressable>
         <Pressable style={({ pressed }) => [styles.cancelBtn, pressed && { opacity: 0.7 }]} onPress={onCancel}>
           <Text style={styles.cancelBtnText}>Cancel</Text>
@@ -207,14 +278,16 @@ function BalanceLine({ label, value, highlight, bold, dimmed }: {
 // ─── Success view ─────────────────────────────────────────────────────────────
 
 interface SuccessProps {
-  reward: (typeof REWARD_DATA)[string];
+  reward: UIReward;
   code: string;
   copied: boolean;
+  checkoutUrl: string | null;
   onCopy: () => void;
+  onOpenCheckout: () => void;
   onDone: () => void;
 }
 
-function SuccessView({ reward, code, copied, onCopy, onDone }: SuccessProps) {
+function SuccessView({ reward, code, copied, checkoutUrl, onCopy, onOpenCheckout, onDone }: SuccessProps) {
   return (
     <View style={styles.sheet}>
       {/* Success indicator */}
@@ -246,13 +319,21 @@ function SuccessView({ reward, code, copied, onCopy, onDone }: SuccessProps) {
         </View>
       </Pressable>
 
-      <Text style={styles.codeExpiry}>Valid for 30 days · Show to staff or enter at checkout</Text>
+      <Text style={styles.codeExpiry}>Valid for 90 days · Show to staff or enter at checkout</Text>
 
+      {checkoutUrl && (
+        <Pressable
+          style={({ pressed }) => [styles.doneBtn, pressed && { opacity: 0.85 }]}
+          onPress={onOpenCheckout}
+        >
+          <Text style={styles.doneBtnText}>Open {reward.partner}</Text>
+        </Pressable>
+      )}
       <Pressable
-        style={({ pressed }) => [styles.doneBtn, pressed && { opacity: 0.85 }]}
+        style={({ pressed }) => [checkoutUrl ? styles.cancelBtn : styles.doneBtn, pressed && { opacity: 0.85 }]}
         onPress={onDone}
       >
-        <Text style={styles.doneBtnText}>Done</Text>
+        <Text style={checkoutUrl ? styles.cancelBtnText : styles.doneBtnText}>Done</Text>
       </Pressable>
     </View>
   );

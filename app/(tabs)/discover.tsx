@@ -1,25 +1,29 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Image as RNImage,
+  LayoutAnimation,
+  Linking,
   Modal,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
+  UIManager,
   View,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import MapView, { Circle, Marker, PROVIDER_GOOGLE } from 'react-native-maps';
+import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import MapViewDirections from 'react-native-maps-directions';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ProfileButton } from '@/components/ProfileButton';
 import { useActiveGeofence } from '@/hooks/useActiveGeofence';
-import { useGeofenceContext, type Partner, type Trainer, type DayKey, type DayHours, type OpeningHours } from '@/context/GeofenceContext';
+import { useGeofenceContext, type Partner, type Trainer, type DayKey, type OpeningHours } from '@/context/GeofenceContext';
 import { supabase } from '@/lib/supabase';
 import { GeometricBackground } from '@/components/home/GeometricBackground';
 
@@ -68,17 +72,11 @@ const CATEGORIES: Category[] = ['All', 'Gym', 'Yoga', 'Pilates', 'Cycling', 'Run
 
 type SortMode = 'nearest' | 'pts' | 'az';
 
-const DAY_LABELS: { key: DayKey; label: string }[] = [
-  { key: 'mon', label: 'Monday' },
-  { key: 'tue', label: 'Tuesday' },
-  { key: 'wed', label: 'Wednesday' },
-  { key: 'thu', label: 'Thursday' },
-  { key: 'fri', label: 'Friday' },
-  { key: 'sat', label: 'Saturday' },
-  { key: 'sun', label: 'Sunday' },
-];
-
 const DAY_KEYS: DayKey[] = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -125,12 +123,24 @@ export default function DiscoverScreen() {
   const [sortMenuVisible, setSortMenuVisible] = useState(false);
 
   const [trainers, setTrainers] = useState<Trainer[]>([]);
+  const [expandedTrainerId, setExpandedTrainerId] = useState<string | null>(null);
 
-  const { partners: rawPartners } = useGeofenceContext();
+  const { partners: rawPartners, refresh: refreshPartners } = useGeofenceContext();
   const { activeGeofence } = useActiveGeofence();
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await refreshPartners();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refreshPartners]);
 
   // Fetch trainers when a gym partner is selected
   useEffect(() => {
+    setExpandedTrainerId(null);
     if (!selectedPartner || selectedPartner.category.toLowerCase() !== 'gym') {
       setTrainers([]);
       return;
@@ -247,21 +257,6 @@ export default function DiscoverScreen() {
         >
           {filtered.map((partner) => (
             <React.Fragment key={partner.id}>
-              <Circle
-                center={{ latitude: partner.lat, longitude: partner.lng }}
-                radius={partner.geofenceRadius}
-                strokeColor={
-                  partner.id === activeGeofence?.partnerId
-                    ? 'rgba(232,210,0,0.9)'
-                    : 'rgba(255,255,255,0.18)'
-                }
-                fillColor={
-                  partner.id === activeGeofence?.partnerId
-                    ? 'rgba(232,210,0,0.15)'
-                    : 'rgba(255,255,255,0.04)'
-                }
-                strokeWidth={partner.id === activeGeofence?.partnerId ? 2.5 : 1}
-              />
               <Marker
                 coordinate={{ latitude: partner.lat, longitude: partner.lng }}
                 title={partner.name}
@@ -300,6 +295,14 @@ export default function DiscoverScreen() {
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 80 }]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#E8D200"
+            colors={['#E8D200']}
+          />
+        }
       >
         {/* Filter chips */}
         <View style={styles.filterRow}>
@@ -336,27 +339,23 @@ export default function DiscoverScreen() {
           <Ionicons name="search-outline" size={16} color={MUTED} />
         </View>
 
-        {/* Category pills */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.categoryRow}
-        >
+        <View style={styles.catTabBar}>
           {CATEGORIES.map((cat) => {
             const active = cat === activeCategory;
             return (
               <Pressable
                 key={cat}
-                style={[styles.categoryChip, active && styles.categoryChipActive]}
+                style={styles.catTab}
                 onPress={() => setActiveCategory(cat)}
               >
-                <Text style={[styles.categoryChipText, active && styles.categoryChipTextActive]}>
-                  {cat}
+                <Text style={[styles.catTabLabel, active && styles.catTabLabelActive]}>
+                  {cat.toUpperCase()}
                 </Text>
+                {active && <View style={styles.catTabIndicator} />}
               </Pressable>
             );
           })}
-        </ScrollView>
+        </View>
 
         <Text style={styles.sectionLabel}>
           {filtered.length} PARTNER{filtered.length !== 1 ? 'S' : ''} · {sortLabel.toUpperCase()}
@@ -384,6 +383,13 @@ export default function DiscoverScreen() {
             isActive={partner.id === activeGeofence?.partnerId}
             onPress={() => {
               setRoutePartner(null);
+              mapRef.current?.animateCamera(
+                {
+                  center: { latitude: partner.lat, longitude: partner.lng },
+                  zoom: 16,
+                },
+                { duration: 450 }
+              );
               setSelectedPartner(partner);
             }}
           />
@@ -409,94 +415,100 @@ export default function DiscoverScreen() {
         transparent
         onRequestClose={() => setSelectedPartner(null)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { paddingBottom: Math.max(insets.bottom, 24) }]}>
+        <View style={styles.partnerModalOverlay}>
+          {/* Tap-through spacer keeps the map visible and dismisses on tap */}
+          <Pressable
+            style={{ height: MAP_HEIGHT + insets.top - 80 }}
+            onPress={() => setSelectedPartner(null)}
+          />
+          <View
+            style={[
+              styles.modalContent,
+              styles.partnerModalContent,
+              { paddingBottom: Math.max(insets.bottom, 24), overflow: 'hidden' },
+            ]}
+          >
+            <GeometricBackground />
             {selectedPartner && (
-              <>
-                {/* Handle */}
-                <View style={styles.modalHeroHandle} />
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                bounces
+                contentContainerStyle={{ paddingBottom: 8 }}
+              >
+                {/* Full-bleed hero */}
+                <View style={styles.modalHero}>
+                  {selectedPartner.image1Url ? (
+                    <Image source={{ uri: selectedPartner.image1Url }} style={StyleSheet.absoluteFillObject} contentFit="cover" />
+                  ) : selectedPartner.image2Url ? (
+                    <Image source={{ uri: selectedPartner.image2Url }} style={StyleSheet.absoluteFillObject} contentFit="cover" />
+                  ) : (
+                    <View style={styles.modalHeroPlaceholder}>
+                      <Ionicons name="fitness-outline" size={40} color="rgba(255,255,255,0.08)" />
+                    </View>
+                  )}
 
-                {/* Two gallery images across top */}
-                <View style={styles.modalGalleryRow}>
-                  <View style={styles.modalTile}>
-                    {selectedPartner.image1Url ? (
-                      <Image source={{ uri: selectedPartner.image1Url }} style={StyleSheet.absoluteFillObject} contentFit="cover" />
-                    ) : (
-                      <View style={styles.modalTilePlaceholder}>
-                        <Ionicons name="fitness-outline" size={22} color="rgba(255,255,255,0.1)" />
-                      </View>
-                    )}
-                    <LinearGradient
-                      colors={['transparent', 'rgba(18,18,18,0.5)']}
-                      style={styles.modalTileFade}
-                      pointerEvents="none"
-                    />
-                  </View>
-                  <View style={styles.modalTile}>
-                    {selectedPartner.image2Url ? (
-                      <Image source={{ uri: selectedPartner.image2Url }} style={StyleSheet.absoluteFillObject} contentFit="cover" />
-                    ) : (
-                      <View style={styles.modalTilePlaceholder}>
-                        <Ionicons name="barbell-outline" size={22} color="rgba(255,255,255,0.1)" />
-                      </View>
-                    )}
-                    <LinearGradient
-                      colors={['transparent', 'rgba(18,18,18,0.5)']}
-                      style={styles.modalTileFade}
-                      pointerEvents="none"
-                    />
-                  </View>
+                  {/* Top-to-bottom fade for legibility */}
+                  <LinearGradient
+                    colors={['rgba(18,18,18,0.55)', 'transparent', 'rgba(18,18,18,0.95)']}
+                    locations={[0, 0.35, 1]}
+                    style={StyleSheet.absoluteFillObject}
+                    pointerEvents="none"
+                  />
+
+                  {/* Handle */}
+                  <View style={styles.modalHeroHandle} />
 
                   {/* Close button */}
                   <Pressable onPress={() => setSelectedPartner(null)} style={styles.modalHeroClose}>
-                    <Ionicons name="close" size={18} color="rgba(255,255,255,0.7)" />
+                    <Ionicons name="close" size={18} color="rgba(255,255,255,0.9)" />
                   </Pressable>
-                </View>
 
-                {/* Logo + info row */}
-                <View style={styles.modalBrandRow}>
-                  <View style={styles.modalLogoCard}>
-                    {selectedPartner.logoUrl ? (
-                      <Image source={{ uri: selectedPartner.logoUrl }} style={styles.modalLogoImg} contentFit="contain" />
-                    ) : (
-                      <Text
-                        style={[styles.modalLogoFallback, selectedPartner.logoLight && { color: '#1a1a1a' }]}
-                        numberOfLines={2}
-                        adjustsFontSizeToFit
-                      >
-                        {selectedPartner.logoText}
-                      </Text>
-                    )}
+                  {/* Category badge top-left */}
+                  <View style={styles.modalHeroBadge}>
+                    <View style={[styles.modalStatusDot, selectedPartner.isOpenNow ? styles.modalStatusOpen : styles.modalStatusClosed]} />
+                    <Text style={styles.modalHeroBadgeText}>
+                      {selectedPartner.isOpenNow ? 'Open' : 'Closed'} · {selectedPartner.category}
+                    </Text>
                   </View>
 
-                  <View style={styles.modalBrandInfo}>
-                    <Text style={styles.modalPartnerName} numberOfLines={1} adjustsFontSizeToFit>{selectedPartner.name}</Text>
-                    <View style={styles.modalInfoRow}>
-                      <View style={[styles.modalStatusDot, selectedPartner.isOpenNow ? styles.modalStatusOpen : styles.modalStatusClosed]} />
-                      <Text style={styles.modalInfoText}>
-                        {selectedPartner.isOpenNow ? 'Open' : 'Closed'}
-                      </Text>
-                      <View style={styles.modalInfoSep} />
-                      <Text style={styles.modalInfoText}>{selectedPartner.category}</Text>
+                  {/* Overlay: logo + name pinned to bottom of hero */}
+                  <View style={styles.modalHeroFooter}>
+                    <View style={styles.modalLogoCard}>
+                      {selectedPartner.logoUrl ? (
+                        <Image source={{ uri: selectedPartner.logoUrl }} style={styles.modalLogoImg} contentFit="contain" />
+                      ) : (
+                        <Text
+                          style={[styles.modalLogoFallback, selectedPartner.logoLight && { color: '#1a1a1a' }]}
+                          numberOfLines={2}
+                          adjustsFontSizeToFit
+                        >
+                          {selectedPartner.logoText}
+                        </Text>
+                      )}
                     </View>
+                    <View style={styles.modalHeroTitleWrap}>
+                      <Text style={styles.modalPartnerName} numberOfLines={1} adjustsFontSizeToFit>{selectedPartner.name}</Text>
+                      <Text style={styles.modalHeroArea} numberOfLines={1}>{selectedPartner.area}</Text>
+                    </View>
+                  </View>
+                </View>
+
+                {/* Info row: stacked details + reward pills */}
+                <View style={styles.infoRow}>
+                  <View style={styles.infoDetails}>
                     <View style={styles.modalDetailItem}>
-                      <Ionicons name="time-outline" size={12} color={DIM} />
+                      <Ionicons name="time-outline" size={13} color={DIM} />
                       <Text style={styles.modalDetailText}>{formatHours(selectedPartner.openingHours)}</Text>
                     </View>
                     <View style={styles.modalDetailItem}>
-                      <Ionicons name="location-sharp" size={12} color={DIM} />
+                      <Ionicons name="location-sharp" size={13} color={DIM} />
                       <Text style={styles.modalDetailText}>{selectedPartner.distance} · {selectedPartner.area}</Text>
                     </View>
                   </View>
-
-                  <View style={styles.modalPillsCol}>
+                  <View style={styles.infoPills}>
                     <View style={styles.rewardPill}>
                       <Ionicons name="flash" size={10} color={GOLD} />
                       <Text style={styles.rewardPillText}>+{selectedPartner.pts}</Text>
-                    </View>
-                    <View style={styles.rewardPill}>
-                      <Ionicons name="trending-up" size={10} color={GOLD} />
-                      <Text style={styles.rewardPillText}>x3</Text>
                     </View>
                   </View>
                 </View>
@@ -513,35 +525,17 @@ export default function DiscoverScreen() {
                       <View style={styles.trainersDivider} />
                       <Text style={styles.trainersSectionTitle}>Personal Trainers</Text>
                       {trainers.map(t => (
-                        <View key={t.id} style={styles.trainerCard}>
-                          <View style={styles.trainerPhotoRing}>
-                            <View style={styles.trainerPhoto}>
-                              {t.photo_url ? (
-                                <Image source={{ uri: t.photo_url }} style={styles.trainerPhotoImg} contentFit="cover" />
-                              ) : (
-                                <Ionicons name="person-outline" size={26} color="rgba(255,255,255,0.12)" />
-                              )}
-                            </View>
-                          </View>
-                          <View style={styles.trainerInfo}>
-                            <Text style={styles.trainerName}>{t.name}</Text>
-                            {t.experience ? (
-                              <Text style={styles.trainerExperience}>{t.experience}</Text>
-                            ) : null}
-                            {t.specialties && t.specialties.length > 0 && (
-                              <View style={styles.trainerChips}>
-                                {t.specialties.map(s => (
-                                  <View key={s} style={styles.trainerChip}>
-                                    <Text style={styles.trainerChipText}>{s}</Text>
-                                  </View>
-                                ))}
-                              </View>
-                            )}
-                            {t.bio ? (
-                              <Text style={styles.trainerBio} numberOfLines={2}>{t.bio}</Text>
-                            ) : null}
-                          </View>
-                        </View>
+                        <TrainerCard
+                          key={t.id}
+                          trainer={t}
+                          expanded={expandedTrainerId === t.id}
+                          onToggle={() => {
+                            LayoutAnimation.configureNext(
+                              LayoutAnimation.create(260, 'easeInEaseOut', 'opacity'),
+                            );
+                            setExpandedTrainerId(prev => (prev === t.id ? null : t.id));
+                          }}
+                        />
                       ))}
                     </View>
                   )}
@@ -557,7 +551,7 @@ export default function DiscoverScreen() {
                     <Text style={styles.actionButtonText}>Get Directions</Text>
                   </Pressable>
                 </View>
-              </>
+              </ScrollView>
             )}
           </View>
         </View>
@@ -696,7 +690,7 @@ function PartnerListRow({
       style={({ pressed }) => [
         styles.partnerRow,
         isActive && styles.partnerRowActive,
-        pressed && { opacity: 0.8 },
+        pressed && { opacity: 0.92 },
       ]}
       onPress={onPress}
     >
@@ -710,15 +704,144 @@ function PartnerListRow({
         )}
       </View>
       <View style={styles.partnerInfo}>
-        <Text style={[styles.partnerName, isActive && { color: GOLD }]}>{partner.name}</Text>
-        <Text style={styles.partnerMeta}>
+        <Text
+          style={[styles.partnerName, isActive && { color: GOLD }]}
+          numberOfLines={1}
+        >
+          {partner.name}
+        </Text>
+        <Text style={styles.partnerMeta} numberOfLines={1}>
           {isActive ? 'Session active' : partner.isOpenNow ? 'Open now' : 'Closed'} · {partner.area}
         </Text>
+        <Text style={styles.partnerValueInline}>+{partner.pts} pts per visit</Text>
       </View>
       <View style={styles.partnerRight}>
-        <Text style={styles.partnerPts}>+{partner.pts} pts</Text>
-        <Text style={styles.partnerDistance}>{partner.distance}</Text>
+        <Text style={styles.partnerDistanceNum}>{partner.distance}</Text>
+        <Ionicons name="chevron-forward" size={14} color={DIM} style={{ marginTop: 2 }} />
       </View>
+    </Pressable>
+  );
+}
+
+function TrainerCard({
+  trainer, expanded, onToggle,
+}: {
+  trainer: Trainer; expanded: boolean; onToggle: () => void;
+}) {
+  const hasProfile = !!trainer.profile_url;
+  const hasBooking = !!trainer.booking_url;
+
+  const openUrl = async (url: string) => {
+    try {
+      const supported = await Linking.canOpenURL(url);
+      if (supported) await Linking.openURL(url);
+    } catch {
+      // swallow — nothing actionable to show the user
+    }
+  };
+
+  return (
+    <Pressable
+      onPress={onToggle}
+      style={({ pressed }) => [
+        styles.trainerCardWrap,
+        expanded && styles.trainerCardWrapExpanded,
+        pressed && { opacity: 0.96 },
+      ]}
+    >
+      {/* Collapsed header row — hidden when expanded */}
+      {!expanded && (
+        <View style={styles.trainerCard}>
+          <View style={styles.trainerPhotoRing}>
+            <View style={styles.trainerPhoto}>
+              {trainer.photo_url ? (
+                <Image source={{ uri: trainer.photo_url }} style={styles.trainerPhotoImg} contentFit="cover" />
+              ) : (
+                <Ionicons name="person-outline" size={26} color="rgba(255,255,255,0.12)" />
+              )}
+            </View>
+          </View>
+          <View style={styles.trainerInfo}>
+            <Text style={styles.trainerName} numberOfLines={1}>{trainer.name}</Text>
+            {trainer.experience ? (
+              <Text style={styles.trainerExperience}>{trainer.experience}</Text>
+            ) : null}
+            {trainer.bio ? (
+              <Text style={styles.trainerBio} numberOfLines={2}>{trainer.bio}</Text>
+            ) : null}
+          </View>
+          <Ionicons name="chevron-down" size={16} color={DIM} style={styles.trainerChevron} />
+        </View>
+      )}
+
+      {/* Expanded details */}
+      {expanded && (
+        <View style={styles.trainerExpanded}>
+          <View style={styles.trainerPhotoRingExpanded}>
+            <View style={styles.trainerPhotoExpanded}>
+              {trainer.photo_url ? (
+                <Image source={{ uri: trainer.photo_url }} style={styles.trainerPhotoImgExpanded} contentFit="cover" />
+              ) : (
+                <Ionicons name="person-outline" size={40} color="rgba(255,255,255,0.12)" />
+              )}
+            </View>
+          </View>
+          <Pressable onPress={onToggle} hitSlop={8} style={styles.trainerCollapseBtn}>
+            <Ionicons name="chevron-up" size={16} color={GOLD} />
+          </Pressable>
+          <Text style={styles.trainerNameLarge} numberOfLines={1} adjustsFontSizeToFit>{trainer.name}</Text>
+          {trainer.experience ? (
+            <View style={styles.trainerExperienceRow}>
+              <Ionicons name="ribbon-outline" size={12} color={GOLD} />
+              <Text style={styles.trainerExperienceLarge}>{trainer.experience}</Text>
+            </View>
+          ) : null}
+
+          {trainer.specialties && trainer.specialties.length > 0 && (
+            <View style={styles.trainerChipsWrap}>
+              {trainer.specialties.map(s => (
+                <View key={s} style={styles.trainerChip}>
+                  <Text style={styles.trainerChipText}>{s}</Text>
+                </View>
+              ))}
+            </View>
+          )}
+
+          {trainer.bio ? (
+            <Text style={styles.trainerBioFull}>{trainer.bio}</Text>
+          ) : null}
+
+          {(hasProfile || hasBooking) && (
+            <View style={styles.trainerActionsRow}>
+              {hasBooking && (
+                <Pressable
+                  onPress={() => openUrl(trainer.booking_url!)}
+                  style={({ pressed }) => [
+                    styles.trainerBookBtn,
+                    pressed && styles.actionButtonPressed,
+                  ]}
+                >
+                  <Ionicons name="calendar" size={15} color="#0d0d0d" />
+                  <Text style={styles.trainerBookBtnText}>Book Session</Text>
+                </Pressable>
+              )}
+              {hasProfile && (
+                <Pressable
+                  onPress={() => openUrl(trainer.profile_url!)}
+                  style={({ pressed }) => [
+                    styles.trainerProfileBtn,
+                    !hasBooking && { flex: 1 },
+                    pressed && { opacity: 0.7 },
+                  ]}
+                >
+                  <Ionicons name="open-outline" size={14} color={TEXT} />
+                  <Text style={styles.trainerProfileBtnText}>View Profile</Text>
+                </Pressable>
+              )}
+            </View>
+          )}
+        </View>
+      )}
     </Pressable>
   );
 }
@@ -791,14 +914,37 @@ const styles = StyleSheet.create({
   },
   searchInput: { flex: 1, fontSize: 14, fontWeight: '300', color: TEXT, padding: 0 },
 
-  categoryRow: { gap: 8, paddingRight: 4 },
-  categoryChip: {
-    paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20,
-    borderWidth: 1, borderColor: BORDER, backgroundColor: CARD_BG,
+  catTabBar: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.07)',
+    marginTop: 4,
+    marginBottom: 8,
   },
-  categoryChipActive: { backgroundColor: 'rgba(255,255,255,0.10)', borderColor: 'rgba(255,255,255,0.25)' },
-  categoryChipText: { fontSize: 13, fontWeight: '400', color: DIM },
-  categoryChipTextActive: { color: TEXT, fontWeight: '500' },
+  catTab: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 10,
+    position: 'relative',
+  },
+  catTabLabel: {
+    fontSize: 9,
+    fontWeight: '500',
+    letterSpacing: 1.5,
+    color: 'rgba(255,255,255,0.5)',
+  },
+  catTabLabelActive: {
+    color: '#FFFFFF',
+  },
+  catTabIndicator: {
+    position: 'absolute',
+    bottom: -1,
+    left: '20%',
+    right: '20%',
+    height: 1.5,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 1,
+  },
 
   sectionLabel: {
     fontSize: 9, fontWeight: '500', letterSpacing: 2, color: MUTED,
@@ -810,32 +956,45 @@ const styles = StyleSheet.create({
   emptyReset: { fontSize: 13, color: GOLD, fontWeight: '500', marginTop: 4 },
 
   partnerRow: {
-    backgroundColor: CARD_BG, borderWidth: 1, borderColor: BORDER, borderRadius: 14,
-    padding: 12, flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: 'transparent',
+    paddingVertical: 14, paddingHorizontal: 4,
+    flexDirection: 'row', alignItems: 'center', gap: 14,
+    borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.06)',
+    overflow: 'hidden',
   },
-  partnerRowActive: { backgroundColor: 'rgba(232,210,0,0.07)', borderColor: 'rgba(232,210,0,0.3)' },
+  partnerRowActive: {
+    backgroundColor: 'rgba(232,210,0,0.04)',
+  },
   logoBox: {
-    width: 52, height: 52, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.06)',
-    borderWidth: 1, borderColor: BORDER, alignItems: 'center', justifyContent: 'center',
+    width: 56, height: 56,
+    backgroundColor: 'transparent',
+    alignItems: 'center', justifyContent: 'center',
     flexShrink: 0, overflow: 'hidden',
   },
-  logoBoxLight: { backgroundColor: '#F2F2F2' },
-  logoText: { fontSize: 8, fontWeight: '700', color: DIM, textAlign: 'center', letterSpacing: 0.3 },
+  logoBoxLight: {},
+  logoText: { fontSize: 12, fontWeight: '700', color: DIM, textAlign: 'center' },
   logoTextDark: { color: '#1a1a1a' },
   partnerInfo: { flex: 1, gap: 3 },
-  partnerName: { fontSize: 15, fontWeight: '300', color: TEXT },
+  partnerName: { fontSize: 15, fontWeight: '400', color: TEXT, letterSpacing: -0.1 },
   partnerMeta: { fontSize: 11, fontWeight: '300', color: DIM },
-  partnerRight: { alignItems: 'flex-end', gap: 3, flexShrink: 0 },
-  partnerPts: { fontSize: 13, fontWeight: '500', color: GOLD },
-  partnerDistance: { fontSize: 11, fontWeight: '300', color: DIM },
-  logoImage: { width: '100%', height: '100%' },
+  partnerValueInline: {
+    fontSize: 10, fontWeight: '500', color: GOLD, opacity: 0.8,
+    marginTop: 3, letterSpacing: 0.3,
+  },
+  partnerRight: { alignItems: 'center', flexShrink: 0, minWidth: 52 },
+  partnerDistanceNum: {
+    fontSize: 13, fontWeight: '400', color: TEXT, letterSpacing: -0.2,
+  },
+  logoImage: { width: '78%', height: '78%' },
 
   comingSoonRow: {
-    backgroundColor: CARD_BG, borderWidth: 1, borderColor: BORDER, borderRadius: 14,
-    padding: 12, flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: 'transparent',
+    paddingVertical: 14, paddingHorizontal: 4,
+    flexDirection: 'row', alignItems: 'center', gap: 14,
+    marginTop: 4,
   },
   comingSoonIcon: {
-    width: 52, height: 52, borderRadius: 10,
+    width: 56, height: 56, borderRadius: 14,
     backgroundColor: 'rgba(232,210,0,0.08)', borderWidth: 1, borderColor: 'rgba(232,210,0,0.20)',
     alignItems: 'center', justifyContent: 'center', flexShrink: 0,
   },
@@ -850,66 +1009,85 @@ const styles = StyleSheet.create({
   modalHandle: { width: 40, height: 4, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
 
   // Partner detail modal
-  modalHeroHandle: {
-    width: 36, height: 4, backgroundColor: 'rgba(255,255,255,0.2)',
-    borderRadius: 2, alignSelf: 'center', marginTop: 10, marginBottom: 12,
+  partnerModalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'transparent' },
+  partnerModalContent: {
+    shadowColor: '#000', shadowOpacity: 0.4, shadowRadius: 20, shadowOffset: { width: 0, height: -4 },
+    elevation: 12,
   },
-  modalGalleryRow: {
-    flexDirection: 'row', marginHorizontal: 16, height: 110, gap: 6,
-  },
-  modalTile: {
-    flex: 1, borderRadius: 14, overflow: 'hidden',
-  },
-  modalTilePlaceholder: {
-    flex: 1, alignItems: 'center', justifyContent: 'center',
+  modalHero: {
+    height: 260,
     backgroundColor: 'rgba(255,255,255,0.03)',
+    borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    overflow: 'hidden',
+    position: 'relative',
   },
-  modalTileFade: {
-    position: 'absolute', bottom: 0, left: 0, right: 0, height: 40,
+  modalHeroPlaceholder: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.02)',
+  },
+  modalHeroHandle: {
+    position: 'absolute', top: 10, alignSelf: 'center',
+    width: 36, height: 4, borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.45)',
   },
   modalHeroClose: {
-    position: 'absolute', top: 0, right: 0,
-    width: 28, height: 28, borderRadius: 14,
-    backgroundColor: 'rgba(0,0,0,0.4)', alignItems: 'center', justifyContent: 'center',
+    position: 'absolute', top: 14, right: 14,
+    width: 32, height: 32, borderRadius: 16,
+    backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center',
   },
-  modalBrandRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 14,
-    marginHorizontal: 20, marginTop: 16, marginBottom: 4,
+  modalHeroBadge: {
+    position: 'absolute', top: 18, left: 16,
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12,
+    backgroundColor: 'rgba(0,0,0,0.5)',
   },
+  modalHeroBadgeText: { fontSize: 11, color: TEXT, fontWeight: '400', letterSpacing: 0.3 },
+  modalHeroFooter: {
+    position: 'absolute', left: 16, right: 16, bottom: 14,
+    flexDirection: 'row', alignItems: 'flex-end', gap: 12,
+  },
+  modalHeroTitleWrap: { flex: 1, gap: 2, paddingBottom: 4 },
+  modalHeroArea: { fontSize: 12, color: 'rgba(255,255,255,0.7)', fontWeight: '300' },
   modalLogoCard: {
-    width: 96, height: 96, borderRadius: 16,
-    alignItems: 'center', justifyContent: 'center', padding: 10,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)',
+    width: 72, height: 72, borderRadius: 14,
+    alignItems: 'center', justifyContent: 'center', padding: 8,
+    backgroundColor: 'rgba(20,20,20,0.85)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
     overflow: 'hidden',
   },
   modalLogoImg: { width: '100%', height: '100%' },
   modalLogoFallback: {
-    fontSize: 14, fontWeight: '800', color: 'rgba(255,255,255,0.5)',
+    fontSize: 12, fontWeight: '800', color: 'rgba(255,255,255,0.6)',
     textAlign: 'center', letterSpacing: 0.5,
   },
-  modalBrandInfo: { flex: 1, gap: 4 },
-  modalPartnerName: { fontSize: 22, fontWeight: '400', color: TEXT },
-  modalInfoRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  modalStatusDot: { width: 5, height: 5, borderRadius: 2.5 },
+  modalPartnerName: { fontSize: 22, fontWeight: '500', color: TEXT, letterSpacing: -0.2 },
+  modalStatusDot: { width: 6, height: 6, borderRadius: 3 },
   modalStatusOpen: { backgroundColor: '#4ade80' },
   modalStatusClosed: { backgroundColor: '#f87171' },
-  modalInfoText: { fontSize: 12, color: DIM, fontWeight: '300' },
-  modalInfoSep: { width: 3, height: 3, borderRadius: 1.5, backgroundColor: 'rgba(255,255,255,0.15)' },
-  modalDetailItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  modalDetailText: { fontSize: 12, color: DIM, fontWeight: '300' },
-  modalPillsCol: { gap: 6, alignItems: 'stretch', justifyContent: 'center' },
-  modalBody: { gap: 10, paddingBottom: 16, paddingHorizontal: 20, paddingTop: 8 },
 
-  description: { fontSize: 13, color: DIM, lineHeight: 19, fontWeight: '300' },
+  // Info row under hero
+  infoRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 20, paddingTop: 16, gap: 16,
+  },
+  infoDetails: { flex: 1, gap: 8, justifyContent: 'center' },
+  infoPills: { gap: 6, alignItems: 'stretch' },
+  modalDetailItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  modalDetailText: { fontSize: 13, color: DIM, fontWeight: '300' },
 
   rewardPill: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
     backgroundColor: 'transparent', borderRadius: 20,
     paddingHorizontal: 12, paddingVertical: 6,
-    borderWidth: 1, borderColor: GOLD,
+    borderWidth: StyleSheet.hairlineWidth, borderColor: GOLD,
     minWidth: 58,
   },
   rewardPillText: { fontSize: 13, color: GOLD, fontWeight: '600' },
+
+  modalBody: { gap: 16, paddingBottom: 16, paddingHorizontal: 20, paddingTop: 18 },
+
+  description: { fontSize: 13, color: DIM, lineHeight: 19, fontWeight: '300' },
 
   // Trainer cards
   trainersSection: { gap: 12, marginTop: 12 },
@@ -922,32 +1100,110 @@ const styles = StyleSheet.create({
     fontSize: 13, fontWeight: '300', letterSpacing: 1.5, color: MUTED,
     textTransform: 'uppercase', marginBottom: 4,
   },
+  trainerCardWrap: {
+    borderRadius: 18,
+    paddingVertical: 4,
+    paddingHorizontal: 4,
+  },
+  trainerCardWrapExpanded: {
+    paddingHorizontal: 4,
+    paddingTop: 8,
+    paddingBottom: 12,
+    marginVertical: 4,
+  },
   trainerCard: {
-    flexDirection: 'row', alignItems: 'flex-start', gap: 14,
-    backgroundColor: 'rgba(255,255,255,0.03)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)',
-    borderRadius: 16, padding: 16,
+    flexDirection: 'row', alignItems: 'center', gap: 14,
+    paddingVertical: 8,
   },
   trainerPhotoRing: {
     width: 68, height: 68, borderRadius: 34,
     borderWidth: 1.5, borderColor: 'rgba(232,210,0,0.3)',
     alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+    overflow: 'hidden',
+  },
+  trainerPhotoRingExpanded: {
+    width: 110, height: 110, borderRadius: 55,
+    borderColor: GOLD, borderWidth: 2,
   },
   trainerPhoto: {
-    width: 62, height: 62, borderRadius: 31,
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 34,
     backgroundColor: 'rgba(255,255,255,0.04)',
     alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
   },
-  trainerPhotoImg: { width: 62, height: 62, borderRadius: 31 },
+  trainerPhotoExpanded: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 55,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+  },
+  trainerPhotoImg: { ...StyleSheet.absoluteFillObject, borderRadius: 34 },
+  trainerPhotoImgExpanded: { ...StyleSheet.absoluteFillObject, borderRadius: 55 },
+  trainerChevron: { marginLeft: 8, flexShrink: 0 },
   trainerInfo: { flex: 1, gap: 5, paddingTop: 2 },
-  trainerName: { fontSize: 16, fontWeight: '500', color: TEXT, letterSpacing: 0.2 },
+  trainerName: { flexShrink: 1, fontSize: 16, fontWeight: '500', color: TEXT, letterSpacing: 0.2 },
   trainerExperience: { fontSize: 12, fontWeight: '300', color: DIM },
-  trainerChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 2 },
+  trainerNameRow: { flexDirection: 'row', alignItems: 'center', gap: 8, justifyContent: 'space-between' },
+  trainerChipsInline: { flexDirection: 'row', gap: 6, flexShrink: 0 },
   trainerChip: {
     paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12,
     backgroundColor: 'rgba(232,210,0,0.08)',
   },
   trainerChipText: { fontSize: 11, fontWeight: '500', color: GOLD },
   trainerBio: { fontSize: 13, fontWeight: '300', color: DIM, lineHeight: 19, marginTop: 3 },
+
+  // Expanded trainer card
+  trainerExpanded: {
+    marginTop: 4,
+    gap: 10,
+    alignItems: 'center',
+    position: 'relative',
+  },
+  trainerCollapseBtn: {
+    position: 'absolute', top: 0, right: 0,
+    width: 32, height: 32, borderRadius: 16,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  trainerNameLarge: {
+    fontSize: 20, fontWeight: '600', color: TEXT, letterSpacing: -0.2,
+    textAlign: 'center',
+  },
+  trainerExperienceRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 6,
+  },
+  trainerExperienceLarge: {
+    fontSize: 12, fontWeight: '500', color: GOLD, letterSpacing: 0.3,
+    textTransform: 'uppercase',
+  },
+  trainerChipsWrap: {
+    flexDirection: 'row', flexWrap: 'wrap', gap: 6,
+    justifyContent: 'center',
+    marginTop: 2,
+  },
+  trainerBioFull: {
+    fontSize: 13, fontWeight: '300', color: 'rgba(255,255,255,0.75)',
+    lineHeight: 20, marginTop: 6, alignSelf: 'stretch',
+    textAlign: 'center',
+  },
+  trainerActionsRow: {
+    flexDirection: 'row', gap: 10, marginTop: 10,
+    alignSelf: 'stretch',
+  },
+  trainerBookBtn: {
+    flex: 1,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: GOLD, borderRadius: 12,
+    paddingVertical: 12,
+  },
+  trainerBookBtnText: { fontSize: 14, fontWeight: '600', color: '#0d0d0d' },
+  trainerProfileBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    borderRadius: 12,
+    paddingVertical: 12, paddingHorizontal: 16,
+    borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.2)',
+  },
+  trainerProfileBtnText: { fontSize: 13, fontWeight: '500', color: TEXT },
 
   actionButton: {
     backgroundColor: GOLD, paddingVertical: 14, borderRadius: 14,

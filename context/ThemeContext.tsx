@@ -48,8 +48,6 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
         }
     };
 
-    if (!isReady) return null;
-
     return (
         <ThemeContext.Provider value={{ theme, setTheme }}>
             {children}

@@ -1,9 +1,13 @@
 import { DarkTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack } from 'expo-router';
+import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import * as WebBrowser from 'expo-web-browser';
+import { useEffect } from 'react';
 import 'react-native-reanimated';
 import '../global.css';
+
+SplashScreen.preventAutoHideAsync().catch(() => {});
 
 // Required for OAuth redirects to complete on Android
 WebBrowser.maybeCompleteAuthSession();
@@ -26,6 +30,10 @@ const APP_DARK_THEME = {
 function RootLayoutNav() {
   const { theme } = useAppTheme();
 
+  useEffect(() => {
+    SplashScreen.hideAsync().catch(() => {});
+  }, []);
+
   return (
     <View className={`theme-${theme} bg-theme-bg`} style={{ flex: 1, backgroundColor: '#0d0d0d' }}>
       <ThemeProvider value={APP_DARK_THEME}>
@@ -41,6 +49,8 @@ function RootLayoutNav() {
           <Stack.Screen name="(tabs)" options={{ headerShown: false, contentStyle: { backgroundColor: 'transparent' } }} />
           <Stack.Screen name="profile-screen" options={{ headerShown: false, contentStyle: { backgroundColor: 'transparent' } }} />
           <Stack.Screen name="settings-screen" options={{ headerShown: false, contentStyle: { backgroundColor: 'transparent' } }} />
+          <Stack.Screen name="edit-profile" options={{ headerShown: false, contentStyle: { backgroundColor: 'transparent' } }} />
+          <Stack.Screen name="activity-preferences" options={{ headerShown: false, contentStyle: { backgroundColor: 'transparent' } }} />
           <Stack.Screen name="progress-detail" options={{ headerShown: false, contentStyle: { backgroundColor: '#0d0d0d' } }} />
           <Stack.Screen name="redeem-modal" options={{ presentation: 'modal', headerShown: false, contentStyle: { backgroundColor: 'transparent' } }} />
           <Stack.Screen name="manual-log" options={{ headerShown: false, contentStyle: { backgroundColor: 'transparent' } }} />

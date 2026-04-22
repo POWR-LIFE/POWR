@@ -59,7 +59,7 @@ export default function AuditLog() {
                     <span className="text-[10px] uppercase tracking-[0.5em] text-[#F59E0B] font-black">Subsystem / Compliance</span>
                 </div>
                 <h1 className="text-6xl font-light tracking-tighter text-[#F2F2F2] mb-6">Audit Log</h1>
-                <p className="text-[#333] text-[11px] max-w-xl font-black uppercase tracking-[0.4em] leading-relaxed">
+                <p className="text-[#999] text-[11px] max-w-xl font-black uppercase tracking-[0.4em] leading-relaxed">
                     Immutable record of all administrative actions performed on the platform.
                 </p>
             </div>
@@ -67,7 +67,7 @@ export default function AuditLog() {
             {/* Controls */}
             <div className="flex flex-col md:flex-row gap-6 mb-10">
                 <div className="relative flex-1 group">
-                    <Search size={18} className="absolute left-6 top-1/2 -translate-y-1/2 text-[#1A1A1A] group-focus-within:text-[#E8D200] transition-colors" />
+                    <Search size={18} className="absolute left-6 top-1/2 -translate-y-1/2 text-[#777] group-focus-within:text-[#E8D200] transition-colors" />
                     <input type="text" placeholder="FILTER BY ACTION OR TARGET..." className="w-full h-16 pl-16 pr-8 bg-[#0A0A0A] border border-[#151515] rounded-[2rem] text-[11px] font-black tracking-[0.2em] text-[#F2F2F2] placeholder-[#151515] focus:border-[#E8D200]/40 outline-none transition-all uppercase" value={search} onChange={e => setSearch(e.target.value)} />
                 </div>
             </div>
@@ -77,12 +77,12 @@ export default function AuditLog() {
                 {loading ? (
                     <div className="flex flex-col items-center justify-center py-32 gap-6">
                         <div className="w-12 h-12 border-2 border-[#F59E0B]/20 border-t-[#F59E0B] rounded-full animate-spin" />
-                        <span className="text-[10px] uppercase tracking-[0.6em] text-[#222] font-black">Scanning Audit Trail...</span>
+                        <span className="text-[10px] uppercase tracking-[0.6em] text-[#999] font-black">Scanning Audit Trail...</span>
                     </div>
                 ) : filtered.length === 0 ? (
                     <div className="p-20 text-center">
-                        <ScrollText size={48} className="mx-auto text-[#151515] mb-6" />
-                        <p className="text-[10px] uppercase tracking-[0.4em] text-[#1A1A1A] font-black">No audit records found</p>
+                        <ScrollText size={48} className="mx-auto text-[#CCC] mb-6" />
+                        <p className="text-[10px] uppercase tracking-[0.4em] text-[#777] font-black">No audit records found</p>
                     </div>
                 ) : (
                     <div className="divide-y divide-[#111]">
@@ -93,17 +93,17 @@ export default function AuditLog() {
                                     <div className="flex items-center gap-4 mb-2">
                                         <span className="text-sm font-bold text-[#DDD] capitalize">{log.action.replace(/_/g, ' ')}</span>
                                         {log.target_type && (
-                                            <span className="px-3 py-0.5 bg-[#050505] border border-[#151515] rounded-full text-[8px] font-black uppercase tracking-[0.3em] text-[#333]">{log.target_type}</span>
+                                            <span className="px-3 py-0.5 bg-[#050505] border border-[#151515] rounded-full text-[8px] font-black uppercase tracking-[0.3em] text-[#999]">{log.target_type}</span>
                                         )}
                                     </div>
-                                    <div className="flex items-center gap-6 text-[9px] font-black uppercase tracking-[0.3em] text-[#222]">
+                                    <div className="flex items-center gap-6 text-[9px] font-black uppercase tracking-[0.3em] text-[#999]">
                                         <span>Admin: {log.admin_id.substring(0, 12)}...</span>
                                         {log.target_id && <span>Target: {log.target_id.substring(0, 12)}...</span>}
                                     </div>
                                 </div>
                                 <div className="text-right shrink-0">
-                                    <div className="text-[11px] text-[#555] mb-1">{new Date(log.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</div>
-                                    <div className="text-[9px] text-[#222] font-black uppercase tracking-[0.3em]">{timeAgo(log.created_at)}</div>
+                                    <div className="text-[11px] text-[#BBB] mb-1">{new Date(log.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</div>
+                                    <div className="text-[9px] text-[#999] font-black uppercase tracking-[0.3em]">{timeAgo(log.created_at)}</div>
                                 </div>
                             </div>
                         ))}
