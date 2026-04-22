@@ -25,6 +25,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ProfileButton } from '@/components/ProfileButton';
 import { JourneyFullView } from '@/components/JourneyFullView';
+import { ComingSoon } from '@/components/ComingSoon';
 import { formatCountdown, msUntilLeagueReset } from '@/lib/journey';
 import { usePoints } from '@/hooks/usePoints';
 
@@ -134,9 +135,7 @@ export default function LeagueScreen() {
 
   // Handle deep-linking to specific tab
   useEffect(() => {
-    if (tab === 'journey') {
-      goToTab(1);
-    } else if (tab === 'leaderboard') {
+    if (tab === 'leaderboard') {
       goToTab(0);
     }
   }, [tab]);
@@ -166,54 +165,10 @@ export default function LeagueScreen() {
         <ProfileButton />
       </View>
 
-      {/* ── Top tab bar ───────────────────────────── */}
-      <View style={styles.topTabBar}>
-        <Pressable style={styles.topTab} onPress={() => goToTab(0)}>
-          <Text style={[styles.topTabText, activeTab === 0 && styles.topTabTextActive]}>
-            Leaderboard
-          </Text>
-        </Pressable>
-        <Pressable style={styles.topTab} onPress={() => goToTab(1)}>
-          <Text style={[styles.topTabText, activeTab === 1 && styles.topTabTextActive]}>
-            Journey
-          </Text>
-        </Pressable>
-        {/* Animated gold underline */}
-        <Animated.View style={[styles.tabIndicator, indicatorStyle]} />
-      </View>
-
-      {/* ── Paged content ─────────────────────────── */}
-      <ScrollView
-        ref={scrollRef}
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        onMomentumScrollEnd={onMomentumScrollEnd}
-        scrollEventThrottle={16}
-        style={styles.pager}
-      >
-        {/* Page 0 — Leaderboard */}
-        <ScrollView
-          style={styles.page}
-          contentContainerStyle={[styles.pageContent, { paddingBottom: insets.bottom + 88 }]}
-          showsVerticalScrollIndicator={false}
-        >
-          <LeagueCard
-            league={liveLeague}
-            countdown={countdown}
-            urgent={urgentReset}
-          />
-        </ScrollView>
-
-        {/* Page 1 — Journey */}
-        <ScrollView
-          style={styles.page}
-          contentContainerStyle={[styles.pageContent, { paddingBottom: insets.bottom + 88 }]}
-          showsVerticalScrollIndicator={false}
-        >
-          <JourneyFullView />
-        </ScrollView>
-      </ScrollView>
+      <ComingSoon
+        title="League coming soon"
+        subtitle="Weekly leagues, podiums, and promotions are on the way."
+      />
     </View>
   );
 }

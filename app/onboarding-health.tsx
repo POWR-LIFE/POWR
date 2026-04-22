@@ -1,8 +1,9 @@
 import { FontAwesome5, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
-import { useRouter } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
-import { Animated, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View, ActivityIndicator } from 'react-native';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Animated, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View, ActivityIndicator } from 'react-native';
+import { androidHealthConnectStatus } from '@/hooks/useHealthData';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import GeometricBackground from '@/components/GeometricBackground';
 import { useHealthData } from '@/hooks/useHealthData';
@@ -39,20 +40,29 @@ function getVisibleSources(): HealthSource[] {
     return HEALTH_SOURCES.filter(s => !s.platforms || s.platforms.includes(os as 'ios' | 'android'));
 }
 
+const BRAND_LOGOS: Record<string, string> = {
+    'apple-health': 'https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/partner-logos/apple.png',
+    'fitbit': 'https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/partner-logos/fitbit.png',
+    'garmin': 'https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/partner-logos/garmin.png',
+    'whoop': 'https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/partner-logos/whoop.png',
+};
+
 function BrandIcon({ id }: { id: string }) {
+    const logoUrl = BRAND_LOGOS[id];
+    if (logoUrl) {
+        return (
+            <Image
+                source={{ uri: logoUrl }}
+                style={{ width: 24, height: 24 }}
+                contentFit="contain"
+            />
+        );
+    }
     switch (id) {
-        case 'apple-health':
-            return <FontAwesome5 name="apple" size={21} color="#fff" />;
         case 'health-connect':
             return <MaterialCommunityIcons name="heart-pulse" size={22} color="#fff" />;
         case 'samsung-health':
             return <MaterialCommunityIcons name="cellphone" size={22} color="#fff" />;
-        case 'whoop':
-            return <MaterialCommunityIcons name="lightning-bolt" size={22} color="#fff" />;
-        case 'garmin':
-            return <MaterialCommunityIcons name="compass" size={22} color="#fff" />;
-        case 'fitbit':
-            return <MaterialCommunityIcons name="watch-variant" size={22} color="#fff" />;
         default:
             return null;
     }
@@ -206,6 +216,12 @@ export default function OnboardingHealthScreen() {
     const insets = useSafeAreaInsets();
     const health = useHealthData();
     const providers = useHealthProviders();
+    // Re-read provider state when this screen regains focus — the
+    // /fitbit-callback and /whoop-callback routes navigate back here after
+    // writing `health_provider_connections`, and we need to reflect that.
+    useFocusEffect(
+        useCallback(() => { providers.refresh(); }, [providers.refresh]),
+    );
     const visibleSources = getVisibleSources();
     const [stepsToday, setStepsToday] = useState<number | null>(null);
 
@@ -256,6 +272,18 @@ export default function OnboardingHealthScreen() {
             'requesting:', health.requesting);
         if (source.native) {
             if (health.isAuthorized) return; // already connected
+            // On Android, check Health Connect is actually installed first.
+            if (Platform.OS === 'android' && source.id === 'health-connect') {
+                const status = await androidHealthConnectStatus();
+                if (status === 'needs_install') {
+                    setShowHealthConnectInstall(true);
+                    return;
+                }
+                if (status === 'unsupported') {
+                    setShowHealthConnectInstall(true);
+                    return;
+                }
+            }
             const result = await health.requestPermissions();
             console.log('[Onboarding] requestPermissions result:', result);
             // Persist the connection on the user profile so settings + sync see it.
@@ -266,8 +294,19 @@ export default function OnboardingHealthScreen() {
                     catch (e) { console.warn('[Onboarding] persist provider failed:', e); }
                 }
             }
+            return;
         }
-        // Non-native sources (Whoop, Garmin, etc.) are not yet implemented
+        if (source.id === 'fitbit') {
+            try { await providers.connect('fitbit'); }
+            catch (e) { console.warn('[Onboarding] fitbit connect failed:', e); }
+            return;
+        }
+        if (source.id === 'whoop') {
+            try { await providers.connect('whoop'); }
+            catch (e) { console.warn('[Onboarding] whoop connect failed:', e); }
+            return;
+        }
+        // Garmin not yet implemented
     }
 
     async function handleContinue() {
@@ -289,9 +328,9 @@ export default function OnboardingHealthScreen() {
                 // Brief pause to let the user see the completed state
                 await new Promise(resolve => setTimeout(resolve, 1200));
 
-                // Navigate with sync results
+                // Navigate to activities with sync results — they get forwarded to achievement
                 router.push({
-                    pathname: '/onboarding-achievement',
+                    pathname: '/onboarding-activities',
                     params: {
                         streakDays: String(result.streakDays),
                         totalSessions: String(result.totalSessions),
@@ -301,7 +340,7 @@ export default function OnboardingHealthScreen() {
             } catch (err) {
                 console.error('[Onboarding] Sync failed:', err);
                 // On failure, still navigate — just without sync data
-                router.push('/onboarding-achievement');
+                router.push('/onboarding-activities');
             } finally {
                 setSyncing(false);
             }
@@ -311,7 +350,7 @@ export default function OnboardingHealthScreen() {
         // If already synced or no health connected, navigate directly
         if (syncResult) {
             router.push({
-                pathname: '/onboarding-achievement',
+                pathname: '/onboarding-activities',
                 params: {
                     streakDays: String(syncResult.streakDays),
                     totalSessions: String(syncResult.totalSessions),
@@ -319,11 +358,23 @@ export default function OnboardingHealthScreen() {
                 },
             });
         } else {
-            router.push('/onboarding-achievement');
+            router.push('/onboarding-activities');
         }
     }
 
     const [showSkipModal, setShowSkipModal] = useState(false);
+    const [showHealthConnectInstall, setShowHealthConnectInstall] = useState(false);
+    const [showPrimaryPicker, setShowPrimaryPicker] = useState(false);
+
+    // Smart default for primary: Fitbit > Health Connect > Apple Health > Whoop > Garmin
+    const PROVIDER_PRIORITY = ['fitbit', 'apple-health', 'health-connect', 'whoop', 'garmin'] as const;
+    const connectedRows = providers.rows.filter(r => !!r.connection);
+    const needsPrimaryChoice = connectedRows.length >= 2;
+
+    // When a 2nd provider connects and no active set yet, open picker.
+    useEffect(() => {
+        if (needsPrimaryChoice && !providers.activeId) setShowPrimaryPicker(true);
+    }, [needsPrimaryChoice, providers.activeId]);
 
     const showSyncProgress = syncing || syncComplete;
 
@@ -345,7 +396,7 @@ export default function OnboardingHealthScreen() {
                     if (router.canGoBack()) {
                         router.back();
                     } else {
-                        router.replace('/onboarding-activities');
+                        router.replace('/onboarding-permission');
                     }
                 }}
                 hitSlop={24}
@@ -401,92 +452,116 @@ export default function OnboardingHealthScreen() {
                     contentContainerStyle={styles.listContent}
                     showsVerticalScrollIndicator={false}
                 >
-                    {visibleSources.map((source, i) => {
-                        const isConnected = isNativeConnected(source);
-                        const isComingSoon = !source.native;
-                        return (
-                            <Animated.View
-                                key={source.id}
-                                style={{
-                                    opacity: rowAnims[i],
-                                    transform: [{
-                                        translateY: rowAnims[i].interpolate({
-                                            inputRange: [0, 1],
-                                            outputRange: [14, 0],
-                                        }),
-                                    }],
-                                }}
-                            >
-                                <Pressable
-                                    style={[
-                                        styles.sourceRow,
-                                        isConnected && styles.sourceRowConnected,
-                                        isComingSoon && styles.sourceRowDisabled,
-                                    ]}
-                                    onPress={() => handleConnect(source)}
-                                    disabled={isComingSoon || health.requesting}
-                                >
-                                    {/* Brand icon */}
-                                    <View style={[styles.sourceIcon, isComingSoon && { opacity: 0.4 }]}>
-                                        <BrandIcon id={source.id} />
-                                    </View>
+                    {(() => {
+                        const phoneSources = visibleSources.filter(s => s.native);
+                        const wearableSources = visibleSources.filter(s => !s.native);
 
-                                    {/* Info */}
-                                    <View style={styles.sourceInfo}>
-                                        <View style={styles.sourceNameRow}>
-                                            <Text style={[styles.sourceName, isComingSoon && { opacity: 0.4 }]}>
-                                                {source.name}
-                                            </Text>
-                                            {isConnected && (
-                                                <View style={styles.pointsBadge}>
-                                                    <Text style={styles.pointsBadgeText}>2× PTS</Text>
-                                                </View>
+                        const renderRow = (source: HealthSource, i: number) => {
+                            const providerRow = providers.rows.find(r => r.meta.id === source.id);
+                            const oauthConnected = (source.id === 'fitbit' || source.id === 'whoop') && !!providerRow?.connection;
+                            const isConnected = isNativeConnected(source) || oauthConnected;
+                            const isPrimary = providerRow?.isActive ?? false;
+                            const isComingSoon = !source.native && source.id !== 'fitbit' && source.id !== 'whoop';
+                            return (
+                                <Animated.View
+                                    key={source.id}
+                                    style={{
+                                        opacity: rowAnims[i] ?? 1,
+                                        transform: [{
+                                            translateY: (rowAnims[i] ?? new Animated.Value(1)).interpolate({
+                                                inputRange: [0, 1],
+                                                outputRange: [14, 0],
+                                            }),
+                                        }],
+                                    }}
+                                >
+                                    <Pressable
+                                        style={[
+                                            styles.sourceRow,
+                                            isConnected && styles.sourceRowConnected,
+                                            isComingSoon && styles.sourceRowDisabled,
+                                        ]}
+                                        onPress={() => handleConnect(source)}
+                                        disabled={isComingSoon || health.requesting}
+                                    >
+                                        <View style={[
+                                            styles.sourceIcon,
+                                            BRAND_LOGOS[source.id] && styles.sourceIconWhite,
+                                            isComingSoon && { opacity: 0.4 },
+                                        ]}>
+                                            <BrandIcon id={source.id} />
+                                        </View>
+                                        <View style={styles.sourceInfo}>
+                                            <View style={styles.sourceNameRow}>
+                                                <Text style={[styles.sourceName, isComingSoon && { opacity: 0.4 }]}>
+                                                    {source.name}
+                                                </Text>
+                                                {isConnected && isPrimary && (
+                                                    <View style={styles.pointsBadge}>
+                                                        <Text style={styles.pointsBadgeText}>PRIMARY · 2× PTS</Text>
+                                                    </View>
+                                                )}
+                                            </View>
+                                            {isComingSoon && (
+                                                <Text style={styles.comingSoonLabel}>Coming soon</Text>
+                                            )}
+                                            {source.native && isConnected && stepsToday !== null && (
+                                                <Text style={styles.stepsLabel}>
+                                                    {stepsToday.toLocaleString()} steps today
+                                                </Text>
                                             )}
                                         </View>
-                                        {isComingSoon && (
-                                            <Text style={styles.comingSoonLabel}>Coming soon</Text>
+                                        {isConnected ? (
+                                            <View style={styles.connectedPill}>
+                                                <MaterialCommunityIcons name="check" size={11} color="#FFFFFF" style={{ marginRight: 3 }} />
+                                                <Text style={[styles.pillLabel, { color: '#FFFFFF' }]}>CONNECTED</Text>
+                                            </View>
+                                        ) : isComingSoon ? (
+                                            <View style={styles.comingSoonPill}>
+                                                <Text style={[styles.pillLabel, { color: 'rgba(255,255,255,0.2)' }]}>SOON</Text>
+                                            </View>
+                                        ) : (
+                                            <View style={styles.connectPill}>
+                                                <Text style={[styles.pillLabel, { color: '#FFFFFF' }]}>
+                                                    {health.requesting ? '...' : 'CONNECT'}
+                                                </Text>
+                                            </View>
                                         )}
-                                        {source.native && !isConnected && (
-                                            <Text style={styles.sourceHint}>
-                                                {Platform.OS === 'android'
-                                                    ? 'Connects your Pixel Watch & phone data'
-                                                    : 'Connects your Apple Watch & phone data'}
-                                            </Text>
-                                        )}
-                                        {source.native && isConnected && stepsToday !== null && (
-                                            <Text style={styles.stepsLabel}>
-                                                {stepsToday.toLocaleString()} steps today
-                                            </Text>
-                                        )}
-                                    </View>
+                                    </Pressable>
+                                </Animated.View>
+                            );
+                        };
 
-                                    {/* Connect / Connected / Coming Soon pill */}
-                                    {isConnected ? (
-                                        <View style={styles.connectedPill}>
-                                            <MaterialCommunityIcons name="check" size={11} color="#FFFFFF" style={{ marginRight: 3 }} />
-                                            <Text style={[styles.pillLabel, { color: '#FFFFFF' }]}>CONNECTED</Text>
-                                        </View>
-                                    ) : isComingSoon ? (
-                                        <View style={styles.comingSoonPill}>
-                                            <Text style={[styles.pillLabel, { color: 'rgba(255,255,255,0.2)' }]}>SOON</Text>
-                                        </View>
-                                    ) : (
-                                        <View style={styles.connectPill}>
-                                            <Text style={[styles.pillLabel, { color: '#FFFFFF' }]}>
-                                                {health.requesting ? '...' : 'CONNECT'}
-                                            </Text>
-                                        </View>
-                                    )}
-                                </Pressable>
-                            </Animated.View>
+                        let idx = 0;
+                        return (
+                            <>
+                                {phoneSources.length > 0 && (
+                                    <>
+                                        <Text style={styles.sectionHeading}>ON YOUR PHONE</Text>
+                                        <Text style={styles.sectionCaption}>
+                                            Steps and workouts your phone tracks
+                                        </Text>
+                                        {phoneSources.map(s => renderRow(s, idx++))}
+                                    </>
+                                )}
+                                {wearableSources.length > 0 && (
+                                    <>
+                                        <Text style={[styles.sectionHeading, { marginTop: 18 }]}>WEARABLES</Text>
+                                        <Text style={styles.sectionCaption}>
+                                            Richer data — sleep, heart rate, verified workouts
+                                        </Text>
+                                        {wearableSources.map(s => renderRow(s, idx++))}
+                                    </>
+                                )}
+                            </>
                         );
-                    })}
+                    })()}
                 </ScrollView>
             )}
 
             {/* Bottom */}
             <Animated.View style={[styles.bottom, { paddingBottom: insets.bottom + 32, opacity: buttonFade }]}>
-                <StepDots current={3} />
+                <StepDots current={2} />
 
                 <Pressable
                     style={[styles.primaryButton, syncing && { opacity: 0.7 }]}
@@ -571,10 +646,108 @@ export default function OnboardingHealthScreen() {
                             style={skipModalStyles.skipBtn}
                             onPress={() => {
                                 setShowSkipModal(false);
-                                router.push('/onboarding-achievement');
+                                router.push('/onboarding-activities');
                             }}
                         >
                             <Text style={skipModalStyles.skipBtnText}>Continue without connecting</Text>
+                        </Pressable>
+                    </View>
+                </View>
+            </Modal>
+
+            {/* Health Connect install prompt (Android only) */}
+            <Modal
+                visible={showHealthConnectInstall}
+                animationType="fade"
+                transparent
+                onRequestClose={() => setShowHealthConnectInstall(false)}
+            >
+                <View style={skipModalStyles.overlay}>
+                    <View style={[skipModalStyles.sheet, { paddingBottom: insets.bottom + 24 }]}>
+                        <View style={skipModalStyles.handle} />
+                        <View style={skipModalStyles.iconRow}>
+                            <View style={skipModalStyles.iconWrap}>
+                                <MaterialCommunityIcons name="download" size={24} color={GOLD} />
+                            </View>
+                        </View>
+                        <Text style={skipModalStyles.title}>Install Health Connect</Text>
+                        <Text style={skipModalStyles.reassurance}>
+                            Health Connect lets POWR read your phone&apos;s step &amp; activity data. It&apos;s a free Google app — install it and come back here to connect.
+                        </Text>
+                        <Pressable
+                            style={({ pressed }) => [skipModalStyles.connectBtn, pressed && { opacity: 0.8 }]}
+                            onPress={() => {
+                                Linking.openURL('market://details?id=com.google.android.apps.healthdata')
+                                    .catch(() => Linking.openURL('https://play.google.com/store/apps/details?id=com.google.android.apps.healthdata'));
+                                setShowHealthConnectInstall(false);
+                            }}
+                        >
+                            <Text style={skipModalStyles.connectBtnText}>OPEN PLAY STORE</Text>
+                        </Pressable>
+                        <Pressable style={skipModalStyles.skipBtn} onPress={() => setShowHealthConnectInstall(false)}>
+                            <Text style={skipModalStyles.skipBtnText}>Not now</Text>
+                        </Pressable>
+                    </View>
+                </View>
+            </Modal>
+
+            {/* Primary source picker — shows when 2+ are connected */}
+            <Modal
+                visible={showPrimaryPicker}
+                animationType="slide"
+                transparent
+                onRequestClose={() => setShowPrimaryPicker(false)}
+            >
+                <View style={skipModalStyles.overlay}>
+                    <View style={[skipModalStyles.sheet, { paddingBottom: insets.bottom + 24 }]}>
+                        <View style={skipModalStyles.handle} />
+                        <Text style={skipModalStyles.title}>Pick your primary source</Text>
+                        <Text style={skipModalStyles.reassurance}>
+                            You&apos;ve connected more than one. Choose which POWR should use as the source of truth for points.
+                        </Text>
+                        <View style={{ gap: 8, marginVertical: 8 }}>
+                            {connectedRows
+                                .sort((a, b) => PROVIDER_PRIORITY.indexOf(a.meta.id as any) - PROVIDER_PRIORITY.indexOf(b.meta.id as any))
+                                .map(row => (
+                                    <Pressable
+                                        key={row.meta.id}
+                                        style={({ pressed }) => [
+                                            {
+                                                padding: 14,
+                                                borderRadius: 12,
+                                                borderWidth: 1,
+                                                borderColor: row.isActive ? GOLD : BORDER,
+                                                backgroundColor: row.isActive ? 'rgba(232,210,0,0.08)' : 'rgba(255,255,255,0.04)',
+                                            },
+                                            pressed && { opacity: 0.7 },
+                                        ]}
+                                        onPress={async () => {
+                                            await providers.setActive(row.meta.id);
+                                        }}
+                                    >
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                                            <View style={[
+                                                styles.sourceIcon,
+                                                BRAND_LOGOS[row.meta.id] && styles.sourceIconWhite,
+                                                { width: 32, height: 32, borderRadius: 16 },
+                                            ]}>
+                                                <BrandIcon id={row.meta.id} />
+                                            </View>
+                                            <Text style={{ color: '#F2F2F2', fontSize: 14, fontWeight: '500', flex: 1 }}>
+                                                {row.meta.name}
+                                            </Text>
+                                            {row.isActive && (
+                                                <Ionicons name="checkmark-circle" size={20} color={GOLD} />
+                                            )}
+                                        </View>
+                                    </Pressable>
+                                ))}
+                        </View>
+                        <Pressable
+                            style={({ pressed }) => [skipModalStyles.connectBtn, pressed && { opacity: 0.8 }]}
+                            onPress={() => setShowPrimaryPicker(false)}
+                        >
+                            <Text style={skipModalStyles.connectBtnText}>DONE</Text>
                         </Pressable>
                     </View>
                 </View>
@@ -591,7 +764,7 @@ const styles = StyleSheet.create({
         zIndex: 20,
         padding: 4,
     },
-    header: { paddingHorizontal: 24, marginBottom: 20 },
+    header: { paddingHorizontal: 24, marginBottom: 12 },
     eyebrow: {
         color: 'rgba(255,255,255,0.22)',
         fontSize: 10,
@@ -602,11 +775,11 @@ const styles = StyleSheet.create({
     },
     headline: {
         color: '#F2F2F2',
-        fontSize: 40,
+        fontSize: 32,
         fontWeight: '200',
         letterSpacing: -1,
-        lineHeight: 46,
-        marginBottom: 10,
+        lineHeight: 36,
+        marginBottom: 8,
     },
     headlineGold: { color: GOLD, fontWeight: '700' },
     headerBody: {
@@ -616,7 +789,22 @@ const styles = StyleSheet.create({
         lineHeight: 20,
     },
     list: { flex: 1 },
-    listContent: { paddingHorizontal: 24, gap: 8, paddingBottom: 16 },
+    listContent: { paddingHorizontal: 24, gap: 6, paddingBottom: 8 },
+    sectionHeading: {
+        color: 'rgba(255,255,255,0.35)',
+        fontSize: 10,
+        fontWeight: '600',
+        letterSpacing: 2,
+        textTransform: 'uppercase',
+        marginTop: 4,
+        marginBottom: 2,
+    },
+    sectionCaption: {
+        color: 'rgba(255,255,255,0.3)',
+        fontSize: 11,
+        fontWeight: '300',
+        marginBottom: 6,
+    },
     sourceRow: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -624,9 +812,9 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         borderColor: BORDER,
         borderRadius: 14,
-        paddingVertical: 12,
-        paddingHorizontal: 14,
-        gap: 12,
+        paddingVertical: 9,
+        paddingHorizontal: 12,
+        gap: 10,
     },
     sourceRowConnected: {
         borderColor: 'rgba(232,210,0,0.3)',
@@ -636,14 +824,18 @@ const styles = StyleSheet.create({
         opacity: 0.55,
     },
     sourceIcon: {
-        width: 44,
-        height: 44,
-        borderRadius: 22,
+        width: 36,
+        height: 36,
+        borderRadius: 18,
         alignItems: 'center',
         justifyContent: 'center',
         backgroundColor: 'rgba(255,255,255,0.06)',
         borderWidth: 1,
         borderColor: 'rgba(232,210,0,0.30)',
+    },
+    sourceIconWhite: {
+        backgroundColor: '#FFFFFF',
+        borderColor: 'rgba(255,255,255,0.2)',
     },
     watermark: {
         position: 'absolute',

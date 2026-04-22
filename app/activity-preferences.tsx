@@ -1,11 +1,13 @@
 import { ACTIVITY_LIST, ACTIVITIES, type ActivityType } from '@/constants/activities';
 import { updateActivityPreferences } from '@/lib/api/user';
 import { useAuth } from '@/context/AuthContext';
+import { useHealthProviders } from '@/hooks/useHealthProviders';
+import { supportedActivitiesFor, type HealthProviderId } from '@/lib/health/providers';
 import { ActivityIcon } from '@/components/ActivityIcon';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useMemo, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import GeometricBackground from '@/components/GeometricBackground';
 
@@ -26,6 +28,13 @@ export default function ActivityPreferencesScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
+  const providers = useHealthProviders();
+
+  const connectedIds = useMemo<HealthProviderId[]>(
+    () => providers.rows.filter(r => !!r.connection).map(r => r.meta.id),
+    [providers.rows],
+  );
+  const supported = useMemo(() => supportedActivitiesFor(connectedIds), [connectedIds]);
 
   const savedPrefs: ActivityType[] =
     user?.user_metadata?.activity_preferences ?? ['gym', 'running', 'walking'];
@@ -76,16 +85,22 @@ export default function ActivityPreferencesScreen() {
           <Text style={styles.headlineGold}>focus?</Text>
         </Text>
         <Text style={styles.body}>
-          Gym is your foundation. Pick two more to track.
+          {connectedIds.length > 0
+            ? 'Gym is your foundation. Pick two more — we\'ll auto-track what your wearable supports.'
+            : 'Gym is your foundation. Pick two more — most will need manual logging without a wearable.'}
         </Text>
       </View>
 
       {/* Grid */}
-      <View style={styles.grid}>
+      <View style={styles.gridWrap}>
+        <ScrollView
+          contentContainerStyle={styles.grid}
+          showsVerticalScrollIndicator={false}
+        >
         {ORDERED_ACTIVITIES.map(activity => {
           const isActive = selected.has(activity.type);
           const isGym = activity.type === 'gym';
-          const needsWearable = activity.verification === 'wearable';
+          const isAutoTracked = supported.has(activity.type);
           const isDisabled = !isActive && selected.size >= MAX_SELECTED;
 
           return (
@@ -95,6 +110,7 @@ export default function ActivityPreferencesScreen() {
                 styles.card,
                 isActive && styles.cardActive,
                 isDisabled && styles.cardDisabled,
+                !isAutoTracked && !isActive && styles.cardManual,
               ]}
               onPress={() => toggleActivity(activity.type)}
               disabled={isGym}
@@ -129,15 +145,15 @@ export default function ActivityPreferencesScreen() {
                     {activity.dailyCap} PTS
                   </Text>
                 </View>
-                {needsWearable && (
+                {!isGym && (
                   <View style={[styles.wearableBadge, isActive && styles.wearableBadgeActive]}>
                     <Ionicons
-                      name="watch-outline"
+                      name={isAutoTracked ? 'flash-outline' : 'create-outline'}
                       size={9}
                       color={isActive ? GOLD : 'rgba(255,255,255,0.35)'}
                     />
                     <Text style={[styles.wearableText, isActive && styles.wearableTextActive]}>
-                      WEARABLE
+                      {isAutoTracked ? 'AUTO' : 'MANUAL'}
                     </Text>
                   </View>
                 )}
@@ -145,6 +161,7 @@ export default function ActivityPreferencesScreen() {
             </Pressable>
           );
         })}
+        </ScrollView>
       </View>
 
       {/* Bottom */}
@@ -191,12 +208,15 @@ const styles = StyleSheet.create({
   headlineGold: { color: GOLD, fontWeight: '700' },
   body: { color: 'rgba(255,255,255,0.4)', fontSize: 14, fontWeight: '300', lineHeight: 20 },
 
+  gridWrap: {
+    flex: 1,
+  },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     paddingHorizontal: 16,
+    paddingBottom: 12,
     gap: 10,
-    flex: 1,
     alignContent: 'flex-start',
   },
 
@@ -214,6 +234,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.6)',
   },
   cardDisabled: { opacity: 0.35 },
+  cardManual: { opacity: 0.6 },
 
   cardTop: {
     flexDirection: 'row',

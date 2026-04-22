@@ -1,22 +1,28 @@
-import React, { useEffect } from 'react';
-import { Dimensions, StyleSheet, View } from 'react-native';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import Animated, { 
-  useAnimatedScrollHandler, 
-  useSharedValue, 
-  useAnimatedStyle, 
-  interpolate, 
-  Extrapolate,
-  runOnJS,
-  useAnimatedRef,
-  scrollTo,
-  SharedValue
+import React, { useCallback, useEffect, useRef } from 'react';
+import { Dimensions, FlatList, StyleSheet, Text, View } from 'react-native';
+import Animated, {
+    Extrapolate,
+    interpolate,
+    runOnJS,
+    SharedValue,
+    useAnimatedScrollHandler,
+    useAnimatedStyle,
+    useSharedValue
 } from 'react-native-reanimated';
 import { ProgressRadial } from './ProgressRadial';
 
 const { width: WINDOW_WIDTH } = Dimensions.get('window');
-const ITEM_WIDTH = WINDOW_WIDTH * 0.8;
+const ITEM_WIDTH = WINDOW_WIDTH * 0.85;
 const SPACER_WIDTH = (WINDOW_WIDTH - ITEM_WIDTH) / 2;
+const RADIAL_SIZE = 155;
+const POINTS_PANEL_WIDTH = 72;
+const ICON_PANEL_WIDTH = 56;
+
+const GOLD  = '#E8D200';
+const MUTED = 'rgba(255,255,255,0.25)';
+const TEXT  = '#F2F2F2';
 
 interface RadialData {
   id: string;
@@ -39,9 +45,11 @@ interface RadialCarouselProps {
 
 export function RadialCarousel({ data, activeIndex, onChange }: RadialCarouselProps) {
   const scrollX = useSharedValue(0);
-  const flatListRef = useAnimatedRef<Animated.FlatList<RadialData>>();
+  const flatListRef = useRef<FlatList<RadialData>>(null);
   // Keep activeIndex in a shared value so the worklet always sees the latest value
   const activeIndexSV = useSharedValue(activeIndex);
+  // Flag to suppress onChange during programmatic (tab-click) scrolls
+  const isProgrammaticScroll = useSharedValue(false);
 
   useEffect(() => {
     activeIndexSV.value = activeIndex;
@@ -49,6 +57,7 @@ export function RadialCarousel({ data, activeIndex, onChange }: RadialCarouselPr
 
   const onScroll = useAnimatedScrollHandler((event) => {
     scrollX.value = event.contentOffset.x;
+    if (isProgrammaticScroll.value) return;
     const index = Math.round(event.contentOffset.x / ITEM_WIDTH);
     if (index >= 0 && index < data.length) {
       if (index !== activeIndexSV.value) {
@@ -61,8 +70,17 @@ export function RadialCarousel({ data, activeIndex, onChange }: RadialCarouselPr
 
   // Sync scroll position when activeIndex changes from parent (tab click)
   useEffect(() => {
-    scrollTo(flatListRef, activeIndex * ITEM_WIDTH, 0, true);
+    isProgrammaticScroll.value = true;
+    flatListRef.current?.scrollToOffset({ offset: activeIndex * ITEM_WIDTH, animated: true });
+    const timer = setTimeout(() => {
+      isProgrammaticScroll.value = false;
+    }, 500);
+    return () => clearTimeout(timer);
   }, [activeIndex]);
+
+  const setRef = useCallback((node: any) => {
+    flatListRef.current = node;
+  }, []);
 
   const renderItem = ({ item, index }: { item: RadialData; index: number }) => {
     return (
@@ -79,7 +97,7 @@ export function RadialCarousel({ data, activeIndex, onChange }: RadialCarouselPr
   return (
     <View style={styles.container}>
       <Animated.FlatList
-        ref={flatListRef}
+        ref={setRef}
         data={data}
         renderItem={renderItem}
         horizontal
@@ -93,13 +111,22 @@ export function RadialCarousel({ data, activeIndex, onChange }: RadialCarouselPr
         }}
         keyExtractor={(item) => item.id}
       />
-      
-      {/* Pagination dots */}
-      <View style={styles.pagination}>
-        {data.map((_, i) => (
-          <PaginationDot key={i} index={i} scrollX={scrollX} />
-        ))}
+
+      {/* Static POWR earned panel — always visible, left of centre */}
+      <View style={styles.pointsPanel} pointerEvents="none">
+        <Text style={styles.pointsNum}>{data[activeIndex]?.pointsValue ?? 0}</Text>
+        <Text style={styles.pointsLbl}>{`POWR\nEARNED`}</Text>
       </View>
+
+      {/* Static icon panel — always visible, right of centre */}
+      <View style={styles.iconPanel} pointerEvents="none">
+        {data[activeIndex]?.iconName && (
+          data[activeIndex].iconLib === 'material-community'
+            ? <MaterialCommunityIcons name={data[activeIndex].iconName} size={28} color={data[activeIndex].gradientColors[0]} />
+            : <Ionicons name={data[activeIndex].iconName} size={28} color={data[activeIndex].gradientColors[0]} />
+        )}
+      </View>
+
     </View>
   );
 }
@@ -134,6 +161,7 @@ function AnimatedRadialItem({ item, index, scrollX }: { item: RadialData; index:
 
   return (
     <Animated.View style={[styles.radialWrapper, animatedStyle]}>
+
       <ProgressRadial
         pct={item.pct}
         value={item.value}
@@ -143,7 +171,7 @@ function AnimatedRadialItem({ item, index, scrollX }: { item: RadialData; index:
         ticks={item.ticks}
         iconName={item.iconName}
         iconLib={item.iconLib}
-        pointsValue={item.pointsValue}
+        size={RADIAL_SIZE}
       />
     </Animated.View>
   );
@@ -184,10 +212,10 @@ function PaginationDot({ index, scrollX }: { index: number; scrollX: SharedValue
 
 const styles = StyleSheet.create({
   container: {
-    height: 250,
+    height: 192,
     alignItems: 'center',
     justifyContent: 'center',
-    marginVertical: 10,
+    marginVertical: 2,
   },
   itemContainer: {
     width: ITEM_WIDTH,
@@ -195,12 +223,47 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   radialWrapper: {
+    width: ITEM_WIDTH,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // Static points panel — absolute overlay, left of the centred radial
+  pointsPanel: {
+    position: 'absolute',
+    left: (WINDOW_WIDTH - RADIAL_SIZE) / 2 - POINTS_PANEL_WIDTH - 12,
+    top: '50%',
+    marginTop: -28,
+    width: POINTS_PANEL_WIDTH,
+    alignItems: 'center',
+    gap: 5,
+  },
+  pointsNum: {
+    fontSize: 34,
+    fontWeight: '100',
+    color: GOLD,
+    letterSpacing: -1,
+  },
+  pointsLbl: {
+    fontSize: 7,
+    fontWeight: '500',
+    letterSpacing: 1.5,
+    color: MUTED,
+    textAlign: 'center',
+    textTransform: 'uppercase',
+    lineHeight: 11,
+  },
+  iconPanel: {
+    position: 'absolute',
+    right: (WINDOW_WIDTH - RADIAL_SIZE) / 2 - ICON_PANEL_WIDTH - 12,
+    top: '50%',
+    marginTop: -14,
+    width: ICON_PANEL_WIDTH,
     alignItems: 'center',
     justifyContent: 'center',
   },
   pagination: {
     flexDirection: 'row',
-    height: 30,
+    height: 20,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
@@ -208,6 +271,6 @@ const styles = StyleSheet.create({
   dot: {
     height: 3,
     borderRadius: 1.5,
-    backgroundColor: '#E8D200',
+    backgroundColor: GOLD,
   },
 });

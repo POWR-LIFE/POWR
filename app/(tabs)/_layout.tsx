@@ -4,6 +4,7 @@ import React from 'react';
 import { Platform, StyleSheet, Text, View } from 'react-native';
 
 import { colours, components, typography } from '@/constants/tokens';
+import { useHealthSync } from '@/hooks/useHealthSync';
 
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
 
@@ -27,6 +28,8 @@ function TabIcon({ name, nameActive, label, focused }: TabIconProps) {
 }
 
 export default function TabLayout() {
+  useHealthSync();
+
   return (
     <Tabs
       screenOptions={{

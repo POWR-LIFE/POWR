@@ -1,8 +1,7 @@
-import { ActivityIcon } from '@/components/ActivityIcon';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import * as Location from 'expo-location';
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import GeometricBackground from '@/components/GeometricBackground';
 import {
   Alert,
@@ -17,12 +16,12 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import * as SecureStore from 'expo-secure-store';
 import { useAuth } from '@/context/AuthContext';
 import { useHealthData } from '@/hooks/useHealthData';
 import { useHealthProviders } from '@/hooks/useHealthProviders';
 import { HealthProviderNotImplementedError } from '@/lib/health/providers';
-import { ACTIVITIES, ACTIVITY_LIST, type ActivityType } from '@/constants/activities';
-import { updateActivityPreferences } from '@/lib/api/user';
+import { ACTIVITIES, type ActivityType } from '@/constants/activities';
 import { supabase } from '@/lib/supabase';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
@@ -38,8 +37,6 @@ const RED     = '#ef4444';
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
-const MAX_ACTIVITIES = 3;
-
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -48,6 +45,14 @@ export default function SettingsScreen() {
   const [isAdmin, setIsAdmin] = React.useState(false);
   const health = useHealthData();
   const providers = useHealthProviders();
+
+  // Provider state can change out-of-band — e.g. the /fitbit-callback and
+  // /whoop-callback routes write `health_provider_connections` after this
+  // screen has already mounted. Re-read on focus so the UI always reflects
+  // the profile truth and we never show "Connected" when OAuth actually failed.
+  useFocusEffect(
+    useCallback(() => { providers.refresh(); }, [providers.refresh]),
+  );
   const [locationStatus, setLocationStatus] = useState<'granted' | 'denied' | 'undetermined'>('undetermined');
 
   React.useEffect(() => {
@@ -71,23 +76,8 @@ export default function SettingsScreen() {
     });
   }, []);
 
-  // Activity preferences
+  // Activity preferences (saved in user_metadata, edited on dedicated screen)
   const savedPrefs: ActivityType[] = user?.user_metadata?.activity_preferences ?? ['gym', 'running', 'walking'];
-  const [activityPrefs, setActivityPrefs] = useState<Set<ActivityType>>(new Set(savedPrefs));
-
-  const toggleActivityPref = async (type: ActivityType) => {
-    if (type === 'gym') return;
-    const next = new Set(activityPrefs);
-    if (next.has(type)) {
-      next.delete(type);
-    } else if (next.size < MAX_ACTIVITIES) {
-      next.add(type);
-    } else {
-      return; // at max
-    }
-    setActivityPrefs(next);
-    await updateActivityPreferences(Array.from(next));
-  };
 
   // Notification & privacy prefs — initialise from saved user_metadata
   const meta = user?.user_metadata ?? {};
@@ -217,57 +207,31 @@ export default function SettingsScreen() {
 
         {/* ── Activity Focus ─────────────────────────────────── */}
         <SectionLabel label="Activity Focus" />
-        <Text style={styles.sectionHint}>
-          Gym is always tracked. Pick 2 more activities.
-        </Text>
         <View style={styles.card}>
-          {[ACTIVITIES.gym, ...ACTIVITY_LIST.filter(a => a.type !== 'gym')].map((activity, idx, arr) => {
-            const isGym = activity.type === 'gym';
-            const isActive = activityPrefs.has(activity.type);
-            const isLast = idx === arr.length - 1;
-            const needsWearable = activity.verification === 'wearable';
-            return (
-              <View key={activity.type} style={[styles.row, !isLast && styles.rowBorder]}>
-                <ActivityIcon
-                  activity={activity}
-                  size={18}
-                  color={isActive ? activity.colour : DIM}
-                  active={isActive}
-                  style={styles.rowIcon}
-                />
-                <View style={styles.rowTextBlock}>
-                  <Text style={styles.rowLabel}>{activity.label}</Text>
-                  <View style={styles.activityBadgeRow}>
-                    <Text style={styles.rowSublabel}>{activity.dailyCap} pts/day</Text>
-                    {needsWearable && (
-                      <View style={styles.wearableTag}>
-                        <Ionicons name="watch-outline" size={9} color={MUTED} />
-                        <Text style={styles.wearableTagText}>Wearable</Text>
-                      </View>
-                    )}
-                  </View>
-                </View>
-                {isGym ? (
-                  <View style={styles.lockedPill}>
-                    <Text style={styles.lockedPillText}>CORE</Text>
-                  </View>
-                ) : (
-                  <Switch
-                    value={isActive}
-                    onValueChange={() => toggleActivityPref(activity.type)}
-                    trackColor={{ false: 'rgba(255,255,255,0.10)', true: 'rgba(232,210,0,0.4)' }}
-                    thumbColor={isActive ? GOLD : 'rgba(255,255,255,0.5)'}
-                    ios_backgroundColor="rgba(255,255,255,0.10)"
-                    disabled={!isActive && activityPrefs.size >= MAX_ACTIVITIES}
-                  />
-                )}
-              </View>
-            );
-          })}
+          <RowLink
+            icon="fitness-outline"
+            label="Activity Focus"
+            value={savedPrefs.map(t => ACTIVITIES[t]?.labelShort ?? t).join(', ')}
+            onPress={() => router.push('/activity-preferences')}
+            isLast
+          />
         </View>
 
         {/* ── Health data sources ───────────────────────────── */}
-        <SectionLabel label="Health data sources" />
+        <SectionLabel label="On your phone" />
+        <Text style={styles.sectionHint}>Steps and workouts your phone tracks.</Text>
+        <HealthSourceCard
+          rows={providers.rows.filter(r => r.meta.native)}
+          providers={providers}
+        />
+
+        <SectionLabel label="Wearables" />
+        <Text style={styles.sectionHint}>Richer data — sleep, heart rate, verified workouts.</Text>
+        <HealthSourceCard
+          rows={providers.rows.filter(r => !r.meta.native)}
+          providers={providers}
+        />
+        {false && (
         <View style={styles.card}>
           {providers.rows.map((row, idx) => {
             const isLast = idx === providers.rows.length - 1;
@@ -295,8 +259,8 @@ export default function SettingsScreen() {
                     // Try to connect.
                     (async () => {
                       try {
-                        const ok = await providers.connect(row.meta.id);
-                        if (!ok && row.meta.native) {
+                        const result = await providers.connect(row.meta.id);
+                        if (result === 'failed' && row.meta.native) {
                           Alert.alert(
                             `${row.meta.name} not connected`,
                             'Permission was not granted. You can enable it in your phone settings.',
@@ -347,6 +311,7 @@ export default function SettingsScreen() {
             );
           })}
         </View>
+        )}
 
         {/* ── Other connections ─────────────────────────────── */}
         <SectionLabel label="Connections" />
@@ -554,6 +519,104 @@ interface RowToggleProps {
   value: boolean;
   onValueChange: (v: boolean) => void;
   isLast?: boolean;
+}
+
+function HealthSourceCard({
+  rows,
+  providers,
+}: {
+  rows: ReturnType<typeof useHealthProviders>['rows'];
+  providers: ReturnType<typeof useHealthProviders>;
+}) {
+  if (rows.length === 0) return null;
+  return (
+    <View style={styles.card}>
+      {rows.map((row, idx) => {
+        const isLast = idx === rows.length - 1;
+        const connected = !!row.connection;
+        const busy = providers.busyId === row.meta.id;
+        const value = busy
+          ? '…'
+          : row.isActive
+            ? 'Primary'
+            : connected
+              ? 'Connected'
+              : 'Not connected';
+        const valueColor = row.isActive ? GOLD : connected ? '#4ade80' : undefined;
+        return (
+          <RowLink
+            key={row.meta.id}
+            icon={row.meta.native ? 'phone-portrait-outline' : 'watch-outline'}
+            label={row.meta.name}
+            value={value}
+            valueColor={valueColor}
+            isLast={isLast}
+            onPress={() => {
+              if (busy) return;
+              if (!connected) {
+                (async () => {
+                  try {
+                    // Tell OAuth callbacks to return here instead of onboarding
+                    await SecureStore.setItemAsync('oauth.returnTo', 'settings');
+                    const result = await providers.connect(row.meta.id);
+                    if (result === 'failed' && row.meta.native) {
+                      Alert.alert(
+                        `${row.meta.name} not connected`,
+                        'Permission was not granted. You can enable it in your phone settings.',
+                        [
+                          { text: 'Cancel', style: 'cancel' },
+                          { text: 'Open Settings', onPress: () => Linking.openSettings() },
+                        ],
+                      );
+                    } else if (result === 'failed') {
+                      Alert.alert(
+                        `${row.meta.name} not connected`,
+                        'We could not start the connection. Please try again.',
+                      );
+                    }
+                    // 'pending' → OAuth handoff; the /<provider>-callback route
+                    // writes the profile. Focus-refresh picks it up on return.
+                  } catch (e) {
+                    if (e instanceof HealthProviderNotImplementedError) {
+                      Alert.alert(`${row.meta.name} coming soon`, 'This integration is not available yet.');
+                    } else {
+                      Alert.alert('Connection failed', String((e as Error).message ?? e));
+                    }
+                  }
+                })();
+                return;
+              }
+              const actions: { text: string; style?: 'default' | 'cancel' | 'destructive'; onPress?: () => void }[] = [];
+              if (!row.isActive) {
+                actions.push({
+                  text: 'Set as primary source',
+                  onPress: () => { providers.setActive(row.meta.id); },
+                });
+              }
+              actions.push({
+                text: 'Disconnect',
+                style: 'destructive',
+                onPress: () => {
+                  Alert.alert(
+                    `Disconnect ${row.meta.name}?`,
+                    row.meta.native
+                      ? 'POWR will stop reading from this source. To fully revoke access, also turn off permission in your phone settings.'
+                      : 'POWR will stop reading from this source and clear stored credentials.',
+                    [
+                      { text: 'Cancel', style: 'cancel' },
+                      { text: 'Disconnect', style: 'destructive', onPress: () => { providers.disconnect(row.meta.id); } },
+                    ],
+                  );
+                },
+              });
+              actions.push({ text: 'Cancel', style: 'cancel' });
+              Alert.alert(row.meta.name, row.isActive ? 'This is your primary source.' : undefined, actions);
+            }}
+          />
+        );
+      })}
+    </View>
+  );
 }
 
 function RowToggle({ icon, label, sublabel, value, onValueChange, isLast }: RowToggleProps) {

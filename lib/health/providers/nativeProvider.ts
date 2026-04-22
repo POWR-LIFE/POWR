@@ -75,9 +75,9 @@ export function createNativeHealthProvider(): HealthProvider {
         },
 
         async connect() {
-            if (Platform.OS === 'ios') return iosRequestPermissions();
-            if (Platform.OS === 'android') return androidRequestPermissions();
-            return false;
+            if (Platform.OS === 'ios') return (await iosRequestPermissions()) ? 'connected' : 'failed';
+            if (Platform.OS === 'android') return (await androidRequestPermissions()) ? 'connected' : 'failed';
+            return 'failed';
         },
 
         async disconnect() {

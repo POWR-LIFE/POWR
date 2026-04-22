@@ -44,7 +44,7 @@ export default function RedemptionTracker() {
                     <span className="text-[10px] uppercase tracking-[0.5em] text-[#10B981] font-black">Subsystem / Rewards</span>
                 </div>
                 <h1 className="text-6xl font-light tracking-tighter text-[#F2F2F2] mb-6">Redemption Tracker</h1>
-                <p className="text-[#333] text-[11px] max-w-xl font-black uppercase tracking-[0.4em] leading-relaxed">
+                <p className="text-[#999] text-[11px] max-w-xl font-black uppercase tracking-[0.4em] leading-relaxed">
                     Real-time inventory and redemption velocity across the reward ecosystem.
                 </p>
             </div>
@@ -60,7 +60,7 @@ export default function RedemptionTracker() {
                     <div key={c.label} className="bg-[#0A0A0A] border border-[#151515] p-10 rounded-3xl group hover:border-[#202020] transition-all">
                         <div className="flex items-center gap-3 mb-6">
                             <c.icon size={16} style={{ color: c.color }} />
-                            <span className="text-[9px] uppercase tracking-[0.4em] text-[#222] font-black">{c.label}</span>
+                            <span className="text-[9px] uppercase tracking-[0.4em] text-[#999] font-black">{c.label}</span>
                         </div>
                         <div className="text-5xl font-light tracking-tighter text-[#DDD] leading-none">
                             {loading ? '...' : c.value}
@@ -74,12 +74,12 @@ export default function RedemptionTracker() {
                 {loading ? (
                     <div className="flex flex-col items-center justify-center py-32 gap-6">
                         <div className="w-12 h-12 border-2 border-[#10B981]/20 border-t-[#10B981] rounded-full animate-spin" />
-                        <span className="text-[10px] uppercase tracking-[0.6em] text-[#222] font-black">Loading Redemptions...</span>
+                        <span className="text-[10px] uppercase tracking-[0.6em] text-[#999] font-black">Loading Redemptions...</span>
                     </div>
                 ) : redemptions.length === 0 ? (
                     <div className="p-20 text-center">
-                        <Gift size={48} className="mx-auto text-[#151515] mb-6" />
-                        <p className="text-[10px] uppercase tracking-[0.4em] text-[#1A1A1A] font-black">No redemptions recorded</p>
+                        <Gift size={48} className="mx-auto text-[#CCC] mb-6" />
+                        <p className="text-[10px] uppercase tracking-[0.4em] text-[#777] font-black">No redemptions recorded</p>
                     </div>
                 ) : (
                     <div className="overflow-x-auto">
@@ -87,7 +87,7 @@ export default function RedemptionTracker() {
                             <thead>
                                 <tr className="bg-[#050505] border-b border-[#151515]">
                                     {['User', 'Reward', 'Code', 'Cost', 'Status', 'Date'].map(h => (
-                                        <th key={h} className="px-10 py-8 text-[10px] font-black uppercase tracking-[0.5em] text-[#1A1A1A]">{h}</th>
+                                        <th key={h} className="px-10 py-8 text-[10px] font-black uppercase tracking-[0.5em] text-[#777]">{h}</th>
                                     ))}
                                 </tr>
                             </thead>
@@ -104,7 +104,7 @@ export default function RedemptionTracker() {
                                             <span className="font-mono text-xs text-[#E8D200] bg-[#0A0A0A] px-3 py-1 rounded-lg border border-[#151515] uppercase tracking-[0.2em]">{r.code}</span>
                                         </td>
                                         <td className="px-10 py-8">
-                                            <span className="text-sm font-bold text-[#555]">{r.rewards?.powr_cost || 0} pts</span>
+                                            <span className="text-sm font-bold text-[#BBB]">{r.rewards?.powr_cost || 0} pts</span>
                                         </td>
                                         <td className="px-10 py-8">
                                             <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-[0.2em] ${
@@ -113,7 +113,7 @@ export default function RedemptionTracker() {
                                                 'bg-[#F43F5E]/10 text-[#F43F5E] border border-[#F43F5E]/20'
                                             }`}>{r.status}</span>
                                         </td>
-                                        <td className="px-10 py-8 text-[11px] text-[#555]">
+                                        <td className="px-10 py-8 text-[11px] text-[#BBB]">
                                             {new Date(r.redeemed_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
                                         </td>
                                     </tr>

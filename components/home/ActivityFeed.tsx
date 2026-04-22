@@ -90,10 +90,6 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   emptyCard: {
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    backgroundColor: 'rgba(40,40,40,0.85)',
     padding: 24,
     alignItems: 'center',
     gap: 6,

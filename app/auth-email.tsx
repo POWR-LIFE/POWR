@@ -63,7 +63,7 @@ export default function AuthEmailScreen() {
                     setConfirmationSent(true);
                 } else {
                     // Email confirmation disabled — session created immediately
-                    router.replace('/onboarding-activities');
+                    router.replace('/onboarding-permission');
                 }
             }
         } finally {

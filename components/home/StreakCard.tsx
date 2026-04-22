@@ -1,12 +1,12 @@
-import { LinearGradient } from 'expo-linear-gradient';
-import React, { useEffect, useRef } from 'react';
+import { formatHMS, msUntilMidnight } from '@/lib/journey';
+import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Animated, {
-  useAnimatedStyle,
-  useSharedValue,
-  withRepeat,
-  withSequence,
-  withTiming,
+    useAnimatedStyle,
+    useSharedValue,
+    withRepeat,
+    withSequence,
+    withTiming,
 } from 'react-native-reanimated';
 
 const GOLD = '#E8D200';
@@ -52,6 +52,7 @@ export function StreakCard({
   sessionDwellMet = false,
   sessionProjectedPts = 10,
 }: StreakCardProps) {
+  const [countdown, setCountdown] = useState(formatHMS(msUntilMidnight()));
   const dotScale = useSharedValue(1);
   const sessionPulse = useSharedValue(0.3);
 
@@ -66,6 +67,14 @@ export function StreakCard({
       false
     );
   }, [dotScale]);
+
+  // Countdown to midnight — ticks every second
+  useEffect(() => {
+    const tick = setInterval(() => {
+      setCountdown(formatHMS(msUntilMidnight()));
+    }, 1000);
+    return () => clearInterval(tick);
+  }, []);
 
   // Session dot pulse — pulses while waiting for dwell, solid once points are locked
   useEffect(() => {
@@ -117,19 +126,18 @@ export function StreakCard({
             </View>
         </View>
 
-        {/* Main row: Everything on one line */}
+        {/* Main row: streak left, day dots right */}
         <View style={styles.mainRow}>
-          {/* Number */}
-          <Text style={styles.number}>{streak}</Text>
-
-          {/* Unit + multiplier */}
-          <View style={styles.unitCol}>
-            <Text style={styles.unit}>
-              {`day${streak !== 1 ? 's' : ''}`}
-            </Text>
-            {multiplier && multiplier > 1 && (
-              <Text style={styles.bonus}>{multiplier}×</Text>
-            )}
+          <View style={styles.streakGroup}>
+            <Text style={styles.number}>{streak}</Text>
+            <View style={styles.unitCol}>
+              <Text style={styles.unit}>
+                {`day${streak !== 1 ? 's' : ''}`}
+              </Text>
+              {multiplier && multiplier > 1 && (
+                <Text style={styles.bonus}>{multiplier}×</Text>
+              )}
+            </View>
           </View>
 
           {/* Day dots */}
@@ -156,6 +164,12 @@ export function StreakCard({
               );
             })}
           </View>
+        </View>
+
+        {/* Countdown to midnight */}
+        <View style={styles.countdownRow}>
+          <Text style={styles.countdownTime}>{countdown}</Text>
+          <Text style={styles.countdownLabel}>Resets midnight</Text>
         </View>
 
         {/* Session active section */}
@@ -254,13 +268,16 @@ const styles = StyleSheet.create({
   mainRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 16,
+    justifyContent: 'space-between',
     marginTop: 8,
+  },
+  streakGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   unitCol: {
     alignItems: 'flex-start',
-    marginRight: 4,
   },
   number: {
     fontSize: 64,
@@ -321,6 +338,27 @@ const styles = StyleSheet.create({
   },
   dotDayDone: {
     color: '#ffffff',
+  },
+  // Countdown to midnight
+  countdownRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 6,
+    marginTop: 4,
+  },
+  countdownTime: {
+    fontSize: 13,
+    fontWeight: '200',
+    color: '#F2F2F2',
+    letterSpacing: 0.5,
+    fontVariant: ['tabular-nums'],
+  },
+  countdownLabel: {
+    fontSize: 7,
+    fontWeight: '400',
+    letterSpacing: 1,
+    color: 'rgba(255,255,255,0.3)',
+    textTransform: 'uppercase',
   },
   // Session section (appears below day dots when active)
   sessionRow: {

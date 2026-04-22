@@ -77,12 +77,11 @@ function formatTimeAgo(isoString: string): string {
 const styles = StyleSheet.create({
   card: {
     width: '47.5%',
-    backgroundColor: 'rgba(40,40,40,0.85)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    borderRadius: 14,
-    padding: 12,
-    gap: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(255,255,255,0.08)',
+    paddingVertical: 14,
+    paddingHorizontal: 4,
+    gap: 14,
     justifyContent: 'space-between',
   },
   topRow: {
@@ -91,9 +90,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   iconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 8,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
   },

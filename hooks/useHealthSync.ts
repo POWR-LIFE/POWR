@@ -1,13 +1,109 @@
-import { useEffect, useCallback } from 'react';
-import { Platform } from 'react-native';
+import { useEffect, useCallback, useRef } from 'react';
+import { Alert, Platform } from 'react-native';
 import { useHealthData } from './useHealthData';
+import { useHealthProviders } from './useHealthProviders';
+import { getProvider, ALL_PROVIDER_META, type HealthProviderId } from '@/lib/health/providers';
+import { ProviderAuthExpiredError } from '@/lib/health/providers/types';
 import { supabase } from '@/lib/supabase';
 import { ACTIVITIES, type ActivityType } from '@/constants/activities';
 import { logManualSession, saveHealthSnapshot } from '@/lib/api/activity';
 
+/** Map provider id → snapshot source label */
+function sourceForProvider(id: HealthProviderId | null): 'healthkit' | 'health_connect' | 'fitbit' | 'whoop' | 'garmin' {
+  if (id === 'whoop') return 'whoop';
+  if (id === 'fitbit') return 'fitbit';
+  if (id === 'garmin') return 'garmin';
+  return Platform.OS === 'ios' ? 'healthkit' : 'health_connect';
+}
+
 export function useHealthSync() {
-  const { isAuthorized, getActivitiesToday, getLastNightSleep, getHeartRateToday, getCaloriesToday } = useHealthData();
-  const source = Platform.OS === 'ios' ? 'healthkit' : 'health_connect' as const;
+  const nativeHealth = useHealthData();
+  const { activeId, disconnect } = useHealthProviders();
+  const isNativeProvider = !activeId || activeId === 'apple-health' || activeId === 'health-connect';
+  const authExpiredHandled = useRef(false);
+
+  // Reset the guard when the active provider changes (e.g. user reconnects).
+  useEffect(() => { authExpiredHandled.current = false; }, [activeId]);
+
+  // For native providers, use the useHealthData hook directly.
+  // For third-party providers (Whoop, Fitbit, etc.), use the provider instance.
+  const getActivitiesToday = useCallback(async () => {
+    if (isNativeProvider) return nativeHealth.getActivitiesToday();
+    try {
+      const provider = getProvider(activeId!);
+      return provider.getActivitiesToday();
+    } catch { return []; }
+  }, [isNativeProvider, activeId, nativeHealth.getActivitiesToday]);
+
+  const getHeartRateToday = useCallback(async () => {
+    if (isNativeProvider) return nativeHealth.getHeartRateToday();
+    try {
+      const provider = getProvider(activeId!);
+      return provider.getHeartRateToday();
+    } catch { return null; }
+  }, [isNativeProvider, activeId, nativeHealth.getHeartRateToday]);
+
+  const getCaloriesToday = useCallback(async () => {
+    if (isNativeProvider) return nativeHealth.getCaloriesToday();
+    try {
+      const provider = getProvider(activeId!);
+      return provider.getCaloriesToday();
+    } catch { return null; }
+  }, [isNativeProvider, activeId, nativeHealth.getCaloriesToday]);
+
+  // Consider syncing authorized if either native health is authorized
+  // or a third-party provider is the active provider.
+  const isAuthorized = isNativeProvider ? nativeHealth.isAuthorized : !!activeId;
+  const source = sourceForProvider(activeId);
+
+  const getWeekHistory = useCallback(async () => {
+    if (isNativeProvider) return nativeHealth.getWeekHistory();
+    try {
+      const provider = getProvider(activeId!);
+      return provider.getWeekHistory();
+    } catch { return []; }
+  }, [isNativeProvider, activeId, nativeHealth.getWeekHistory]);
+
+  const syncSleep = useCallback(async (syncedKeys: Set<string>) => {
+    try {
+      // Fetch the full week of health data so we can backfill all nights,
+      // not just the most recent one. This covers the case where a user
+      // connects a provider mid-week — previous nights still get synced.
+      const weekHistory = await getWeekHistory();
+
+      for (const day of weekHistory) {
+        const sleep = day.sleep;
+        if (!sleep || sleep.durationHours < 1) continue; // ignore very short naps
+
+        const key = `sleep_${new Date(sleep.startedAt).toISOString()}`;
+        if (syncedKeys.has(key)) continue;
+
+        const points = calculateSleepPoints(sleep.durationHours);
+
+        await logManualSession({
+          type: 'sleep',
+          duration_sec: Math.round(sleep.durationHours * 3600),
+          started_at: sleep.startedAt,
+          points,
+          healthVerified: true,
+        });
+
+        await saveHealthSnapshot({
+          sleepDurationH: sleep.durationHours,
+          sleepDeepH: sleep.deepHours,
+          sleepRemH: sleep.remHours,
+          sleepLightH: sleep.lightHours,
+          activityType: 'sleep',
+          durationSec: Math.round(sleep.durationHours * 3600),
+          source,
+        });
+
+        console.log(`[HealthSync] Synced sleep ${day.date}: ${sleep.durationHours}h → ${points} pts`);
+      }
+    } catch (e) {
+      console.error('[HealthSync] Error syncing sleep:', e);
+    }
+  }, [getWeekHistory, source]);
 
   const syncActivities = useCallback(async () => {
     if (!isAuthorized) return;
@@ -71,45 +167,31 @@ export function useHealthSync() {
 
       // ── Sleep sync ──────────────────────────────────────────────────
       await syncSleep(syncedKeys);
-    } catch (e) {
-      console.error('[HealthSync] Error syncing activities:', e);
+    } catch (e: any) {
+      // OAuth token expired — auto-disconnect and alert the user once.
+      if (e instanceof ProviderAuthExpiredError) {
+        if (!authExpiredHandled.current) {
+          authExpiredHandled.current = true;
+          const name = ALL_PROVIDER_META.find(m => m.id === e.providerId)?.name ?? e.providerId;
+          // Clean up DB state so UI everywhere reflects the disconnection.
+          disconnect(e.providerId as HealthProviderId).catch(err =>
+            console.error('[HealthSync] Failed to auto-disconnect:', err),
+          );
+          Alert.alert(
+            `${name} disconnected`,
+            `Your ${name} connection has expired. Go to Settings to reconnect.`,
+          );
+        }
+        return;
+      }
+      const msg = e?.message ?? '';
+      if (msg.includes('whoop-oauth') || msg.includes('fitbit-oauth') || msg.includes('broker failed')) {
+        console.warn('[HealthSync] OAuth token expired or revoked:', msg);
+      } else {
+        console.error('[HealthSync] Error syncing activities:', e);
+      }
     }
-  }, [isAuthorized, getActivitiesToday, getLastNightSleep, getHeartRateToday, getCaloriesToday, source]);
-
-  const syncSleep = useCallback(async (syncedKeys: Set<string>) => {
-    try {
-      const sleep = await getLastNightSleep();
-      if (!sleep || sleep.durationHours < 1) return; // ignore very short naps
-
-      const key = `sleep_${new Date(sleep.startedAt).toISOString()}`;
-      if (syncedKeys.has(key)) return;
-
-      const points = calculateSleepPoints(sleep.durationHours);
-
-      await logManualSession({
-        type: 'sleep',
-        duration_sec: Math.round(sleep.durationHours * 3600),
-        started_at: sleep.startedAt,
-        points,
-        healthVerified: true,
-      });
-
-      // Save sleep snapshot with stage breakdowns
-      await saveHealthSnapshot({
-        sleepDurationH: sleep.durationHours,
-        sleepDeepH: sleep.deepHours,
-        sleepRemH: sleep.remHours,
-        sleepLightH: sleep.lightHours,
-        activityType: 'sleep',
-        durationSec: Math.round(sleep.durationHours * 3600),
-        source,
-      });
-
-      console.log(`[HealthSync] Synced sleep: ${sleep.durationHours}h → ${points} pts`);
-    } catch (e) {
-      console.error('[HealthSync] Error syncing sleep:', e);
-    }
-  }, [getLastNightSleep, source]);
+  }, [isAuthorized, getActivitiesToday, getHeartRateToday, getCaloriesToday, source, syncSleep]);
 
   useEffect(() => {
     if (isAuthorized) {
@@ -124,24 +206,33 @@ export function useHealthSync() {
 
 function mapHealthType(name: string): ActivityType | null {
   const n = name.toLowerCase();
-  // Running (includes treadmill)
-  if (n.includes('run')) return 'running';
-  // Cycling (includes stationary biking)
-  if (n.includes('cycl') || n.includes('biking')) return 'cycling';
+  // Running (includes treadmill, jogging)
+  if (n.includes('run') || n.includes('jog')) return 'running';
+  // Cycling (includes stationary biking, spin)
+  if (n.includes('cycl') || n.includes('biking') || n.includes('spin')) return 'cycling';
   // Swimming
   if (n.includes('swim')) return 'swimming';
+  // Dance (check before sports to avoid false matches)
+  if (n.includes('dance') || n.includes('barre')) return 'dance';
   // Gym / weight training
-  if (n.includes('gym') || n.includes('weight') || n.includes('crossfit') || n.includes('calisthenics') || n.includes('strength')) return 'gym';
-  // HIIT / boot camp
-  if (n.includes('hiit') || n.includes('boot_camp')) return 'hiit';
+  if (n.includes('gym') || n.includes('weight') || n.includes('crossfit') || n.includes('calisthenics')
+      || n.includes('strength') || n.includes('powerlift') || n.includes('functional fitness')
+      || n.includes('bodybuilding')) return 'gym';
+  // HIIT / boot camp / circuit
+  if (n.includes('hiit') || n.includes('boot_camp') || n.includes('bootcamp')
+      || n.includes('circuit') || n.includes('tabata') || n.includes('f45')) return 'hiit';
   // Yoga / pilates
   if (n.includes('yoga') || n.includes('pilates')) return 'yoga';
-  // Sports (various ball sports, martial arts, etc.)
+  // Sports (ball sports, combat, racquet, etc.)
   if (n.includes('sport') || n.includes('tennis') || n.includes('soccer') || n.includes('basketball')
       || n.includes('handball') || n.includes('volleyball') || n.includes('squash') || n.includes('racquetball')
-      || n.includes('fencing') || n.includes('martial')) return 'sports';
-  // Walking / hiking
-  if (n.includes('walk') || n.includes('hik')) return null; // walking handled by walkingSync
+      || n.includes('fencing') || n.includes('martial') || n.includes('boxing') || n.includes('jiu jitsu')
+      || n.includes('kickbox') || n.includes('rugby') || n.includes('football') || n.includes('baseball')
+      || n.includes('softball') || n.includes('hockey') || n.includes('cricket') || n.includes('lacrosse')
+      || n.includes('golf') || n.includes('pickleball') || n.includes('badminton') || n.includes('table tennis')
+      || n.includes('wrestl') || n.includes('surf') || n.includes('climbing')) return 'sports';
+  // Walking / hiking — handled by walkingSync, not activity sync
+  if (n.includes('walk') || n.includes('hik')) return null;
   return null;
 }
 

@@ -1,26 +1,38 @@
 import { useAuth } from '@/context/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
-import { Image } from 'expo-image';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef } from 'react';
 import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Circle, Line, G } from 'react-native-svg';
+import Svg, { Path } from 'react-native-svg';
 import GeometricBackground from '@/components/GeometricBackground';
 
 const GOLD = '#E8D200';
 const BG = '#0d0d0d';
 
-const AnimatedCircle = Animated.createAnimatedComponent(Circle);
-const AnimatedG = Animated.createAnimatedComponent(G);
+const AnimatedPath = Animated.createAnimatedComponent(Path);
 
-// Ring geometry
-const CONTAINER = 300;
-const RING_R = 104;
-const SW = 3.5;
-const CIRC = 2 * Math.PI * RING_R;
+// Ring geometry — 7 segments
+const CONTAINER = 340;
+const RING_R = 138;
+const SW = 3;
 const CX = CONTAINER / 2;
 const CY = CONTAINER / 2;
+const SEGMENTS = 7;
+const GAP_DEG = 6; // visual gap between segments
+const SEG_DEG = 360 / SEGMENTS - GAP_DEG;
+
+function polar(r: number, deg: number) {
+    const rad = ((deg - 90) * Math.PI) / 180;
+    return { x: CX + r * Math.cos(rad), y: CY + r * Math.sin(rad) };
+}
+
+function arcPath(r: number, startDeg: number, endDeg: number) {
+    const s = polar(r, startDeg);
+    const e = polar(r, endDeg);
+    const large = endDeg - startDeg > 180 ? 1 : 0;
+    return `M ${s.x} ${s.y} A ${r} ${r} 0 ${large} 1 ${e.x} ${e.y}`;
+}
 
 // Sparkle burst — 12 evenly spaced dots
 const SPARKS = Array.from({ length: 12 }, (_, i) => (i * 360) / 12);
@@ -59,12 +71,10 @@ export default function OnboardingAchievementScreen() {
 
     // Display values
     const displayStreak = hasSyncData ? streakDays : 1;
-    const ringTarget = displayStreak / 7;
-
     // --- Animated values ---
     const glowIn        = useRef(new Animated.Value(0)).current;
     const ringScaleIn   = useRef(new Animated.Value(0.78)).current;
-    const ringProgress  = useRef(new Animated.Value(0)).current;
+    const segmentOps    = useRef(Array.from({ length: SEGMENTS }, () => new Animated.Value(0))).current;
     const numberScale   = useRef(new Animated.Value(0)).current;
     const numberOpacity = useRef(new Animated.Value(0)).current;
     const contentOpacity = useRef(new Animated.Value(0)).current;
@@ -81,11 +91,6 @@ export default function OnboardingAchievementScreen() {
             r:  new Animated.Value(0),
         }))
     ).current;
-
-    const strokeDashoffset = ringProgress.interpolate({
-        inputRange: [0, 1],
-        outputRange: [CIRC, 0],
-    });
 
     const burstSparks = () => {
         Animated.parallel(
@@ -111,13 +116,18 @@ export default function OnboardingAchievementScreen() {
                     useNativeDriver: true,
                 }),
             ]),
-            // 2. Ring draws to streakDays / 7
-            Animated.timing(ringProgress, {
-                toValue: ringTarget,
-                duration: 1150,
-                easing: Easing.inOut(Easing.cubic),
-                useNativeDriver: false,
-            }),
+            // 2. Segments light up one by one, up to displayStreak
+            Animated.stagger(
+                140,
+                segmentOps.slice(0, Math.min(displayStreak, SEGMENTS)).map((v) =>
+                    Animated.timing(v, {
+                        toValue: 1,
+                        duration: 360,
+                        easing: Easing.out(Easing.cubic),
+                        useNativeDriver: true,
+                    }),
+                ),
+            ),
         ]).start(() => {
             // Ring complete → sparks + number pop
             burstSparks();
@@ -163,7 +173,7 @@ export default function OnboardingAchievementScreen() {
                     if (router.canGoBack()) {
                         router.back();
                     } else {
-                        router.replace('/onboarding-health');
+                        router.replace('/onboarding-activities');
                     }
                 }}
                 hitSlop={24}
@@ -175,7 +185,7 @@ export default function OnboardingAchievementScreen() {
             <View style={styles.center}>
 
                 {/* ── Ring area ── */}
-                <Animated.View style={{ transform: [{ scale: pulse }], marginBottom: 44 }}>
+                <Animated.View style={{ transform: [{ scale: pulse }] }}>
                     <Animated.View
                         style={[styles.ringContainer, { transform: [{ scale: ringScaleIn }] }]}
                     >
@@ -193,56 +203,39 @@ export default function OnboardingAchievementScreen() {
                             { opacity: glowIn.interpolate({ inputRange: [0, 1], outputRange: [0, 0.07] }) },
                         ]} />
 
-                        {/* SVG rings */}
+                        {/* SVG segmented ring */}
                         <Svg width={CONTAINER} height={CONTAINER} style={StyleSheet.absoluteFillObject}>
-                            {/* 7 day tick marks */}
-                            {Array.from({ length: 7 }, (_, i) => {
-                                const angle = (i * (360 / 7) - 90) * (Math.PI / 180);
-                                const x1 = CX + Math.cos(angle) * (RING_R + 14);
-                                const y1 = CY + Math.sin(angle) * (RING_R + 14);
-                                const x2 = CX + Math.cos(angle) * (RING_R + 24);
-                                const y2 = CY + Math.sin(angle) * (RING_R + 24);
-                                const isCompleted = i < displayStreak;
+                            {Array.from({ length: SEGMENTS }, (_, i) => {
+                                const start = i * (360 / SEGMENTS) + GAP_DEG / 2;
+                                const end = start + SEG_DEG;
+                                const d = arcPath(RING_R, start, end);
                                 return (
-                                    <Line
-                                        key={i}
-                                        x1={x1} y1={y1}
-                                        x2={x2} y2={y2}
-                                        stroke={isCompleted ? 'rgba(232,210,0,0.55)' : 'rgba(255,255,255,0.15)'}
-                                        strokeWidth={i === 0 ? 2 : 1.5}
+                                    <Path
+                                        key={`track-${i}`}
+                                        d={d}
+                                        stroke="rgba(255,255,255,0.07)"
+                                        strokeWidth={SW}
                                         strokeLinecap="round"
+                                        fill="none"
                                     />
                                 );
                             })}
-                            {/* Inner subtle ring */}
-                            <Circle
-                                cx={CX} cy={CY}
-                                r={RING_R - 22}
-                                stroke="rgba(232,210,0,0.05)"
-                                strokeWidth={1}
-                                fill="none"
-                            />
-                            {/* Track */}
-                            <Circle
-                                cx={CX} cy={CY}
-                                r={RING_R}
-                                stroke="rgba(255,255,255,0.07)"
-                                strokeWidth={SW}
-                                fill="none"
-                            />
-                            {/* Progress arc */}
-                            <AnimatedCircle
-                                cx={CX} cy={CY}
-                                r={RING_R}
-                                stroke={GOLD}
-                                strokeWidth={SW}
-                                fill="none"
-                                strokeLinecap="round"
-                                strokeDasharray={`${CIRC}`}
-                                strokeDashoffset={strokeDashoffset}
-                                rotation="-90"
-                                origin={`${CX}, ${CY}`}
-                            />
+                            {Array.from({ length: SEGMENTS }, (_, i) => {
+                                const start = i * (360 / SEGMENTS) + GAP_DEG / 2;
+                                const end = start + SEG_DEG;
+                                const d = arcPath(RING_R, start, end);
+                                return (
+                                    <AnimatedPath
+                                        key={`seg-${i}`}
+                                        d={d}
+                                        stroke={GOLD}
+                                        strokeWidth={SW}
+                                        strokeLinecap="round"
+                                        fill="none"
+                                        opacity={segmentOps[i]}
+                                    />
+                                );
+                            })}
                         </Svg>
 
                         {/* Sparkle burst dots */}
@@ -276,18 +269,19 @@ export default function OnboardingAchievementScreen() {
 
                         {/* Inner number + label */}
                         <View style={styles.ringInner}>
+                            <Text style={styles.dayEyebrow}>DAY</Text>
                             <Animated.Text
                                 style={[
                                     styles.dayNumber,
                                     {
                                         opacity: numberOpacity,
-                                        transform: [{ scale: numberScale.interpolate({ inputRange: [0, 1], outputRange: [0.3, 1] }) }],
+                                        transform: [{ scale: numberScale.interpolate({ inputRange: [0, 1], outputRange: [0.4, 1] }) }],
                                     },
                                 ]}
                             >
                                 {displayStreak}
                             </Animated.Text>
-                            <Text style={styles.dayLabel}>DAY {displayStreak} OF 7</Text>
+                            <Text style={styles.daySub}>of 7</Text>
                         </View>
                     </Animated.View>
                 </Animated.View>
@@ -300,48 +294,26 @@ export default function OnboardingAchievementScreen() {
                     ]}
                 >
                     <Text style={styles.headline}>
-                        {hasSyncData ? (
-                            <>You're already{`\n`}on a <Text style={styles.headlineAccent}>roll.</Text></>
-                        ) : (
-                            <>The streak{`\n`}<Text style={styles.headlineAccent}>starts here.</Text></>
-                        )}
+                        {hasSyncData ? `You're already on a roll` : `The streak starts here`}
                     </Text>
                     <Text style={styles.body}>
                         {hasSyncData
-                            ? `${activeDays} days of activity — already locked in.\nKeep earning from here.`
-                            : `Day 1 is locked in. Every session\nfrom here builds something real.`
+                            ? `${activeDays} days already locked in.`
+                            : `Every session from here builds something real.`
                         }
                     </Text>
                 </Animated.View>
 
-                {/* ── Welcome bonus card ── */}
+                {/* ── Earned today — inline ── */}
                 <Animated.View
                     style={[
-                        styles.bonusCard,
+                        styles.bonusRow,
                         { opacity: bonusOpacity, transform: [{ translateY: bonusY }] },
                     ]}
                 >
-                    {/* Gold accent bar across top */}
-                    <View style={styles.bonusTopBar} />
-
-                    <View style={styles.bonusContent}>
-                        <View>
-                            <Text style={styles.bonusEyebrow}>EARNED TODAY</Text>
-                            <View style={styles.bonusAmountRow}>
-                                <Text style={styles.bonusPlus}>+</Text>
-                                <Text style={styles.bonusValue}>20</Text>
-                                <View style={styles.bonusUnitWrap}>
-                                    <Text style={styles.bonusUnit}>POWR</Text>
-                                </View>
-                            </View>
-                        </View>
-                        <View style={styles.bonusBadge}>
-                            <Image
-                                source={require('@/assets/images/powr_transparent.png')}
-                                style={styles.bonusBadgeImage}
-                            />
-                        </View>
-                    </View>
+                    <View style={styles.bonusDot} />
+                    <Text style={styles.bonusLabel}>Earned today</Text>
+                    <Text style={styles.bonusAmount}>+20 POWR</Text>
                 </Animated.View>
             </View>
 
@@ -394,120 +366,87 @@ const styles = StyleSheet.create({
     },
     ringInner: {
         alignItems: 'center',
+        justifyContent: 'center',
+    },
+    dayEyebrow: {
+        color: 'rgba(255,255,255,0.28)',
+        fontSize: 10,
+        fontWeight: '500',
+        letterSpacing: 4,
+        textTransform: 'uppercase',
+        marginBottom: 6,
     },
     dayNumber: {
-        color: '#F2F2F2',
-        fontSize: 88,
+        color: '#FFFFFF',
+        fontSize: 128,
         fontWeight: '100',
-        letterSpacing: -3,
-        lineHeight: 92,
+        letterSpacing: -5,
+        lineHeight: 132,
+        textAlign: 'center',
     },
-    dayLabel: {
-        color: 'rgba(255,255,255,0.22)',
-        fontSize: 9,
-        fontWeight: '500',
-        letterSpacing: 3.5,
-        textTransform: 'uppercase',
-        marginTop: 2,
+    daySub: {
+        color: 'rgba(255,255,255,0.32)',
+        fontSize: 13,
+        fontWeight: '300',
+        letterSpacing: 0.3,
+        marginTop: 4,
     },
 
     // Text block
     textBlock: {
         alignItems: 'center',
-        marginBottom: 20,
+        marginTop: 48,
+        marginBottom: 28,
     },
     headline: {
         color: '#F2F2F2',
-        fontSize: 44,
-        fontWeight: '200',
-        letterSpacing: -1.4,
+        fontSize: 26,
+        fontWeight: '300',
+        letterSpacing: -0.4,
         textAlign: 'center',
-        lineHeight: 50,
-        marginBottom: 14,
-    },
-    headlineAccent: {
-        color: GOLD,
-        fontWeight: '700',
+        lineHeight: 32,
+        marginBottom: 10,
     },
     body: {
-        color: 'rgba(255,255,255,0.35)',
+        color: 'rgba(255,255,255,0.42)',
         fontSize: 14,
         fontWeight: '300',
-        lineHeight: 22,
+        lineHeight: 20,
+        letterSpacing: 0.1,
         textAlign: 'center',
     },
 
-    // Bonus card
-    bonusCard: {
-        width: '100%',
-        borderRadius: 16,
-        backgroundColor: 'rgba(40,40,40,0.85)',
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.08)',
-        overflow: 'hidden',
-    },
-    bonusTopBar: {
-        height: 2,
-        backgroundColor: GOLD,
-        width: '100%',
-    },
-    bonusContent: {
+    // Inline earned row
+    bonusRow: {
         flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingHorizontal: 20,
-        paddingVertical: 18,
-    },
-    bonusEyebrow: {
-        color: 'rgba(255,255,255,0.28)',
-        fontSize: 9,
-        fontWeight: '500',
-        letterSpacing: 2.5,
-        textTransform: 'uppercase',
-        marginBottom: 6,
-    },
-    bonusAmountRow: {
-        flexDirection: 'row',
-        alignItems: 'baseline',
-    },
-    bonusPlus: {
-        color: GOLD,
-        fontSize: 26,
-        fontWeight: '300',
-        marginRight: 1,
-    },
-    bonusValue: {
-        color: GOLD,
-        fontSize: 56,
-        fontWeight: '100',
-        letterSpacing: -2,
-        lineHeight: 58,
-    },
-    bonusUnitWrap: {
-        marginLeft: 6,
-        marginBottom: 4,
-        justifyContent: 'flex-end',
-    },
-    bonusUnit: {
-        color: 'rgba(255,255,255,0.28)',
-        fontSize: 11,
-        fontWeight: '500',
-        letterSpacing: 2,
-        textTransform: 'uppercase',
-    },
-    bonusBadge: {
-        width: 52,
-        height: 52,
-        borderRadius: 26,
-        backgroundColor: 'rgba(232,210,0,0.09)',
-        borderWidth: 1,
-        borderColor: 'rgba(232,210,0,0.22)',
         alignItems: 'center',
         justifyContent: 'center',
+        paddingVertical: 10,
+        paddingHorizontal: 18,
+        borderRadius: 999,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: 'rgba(232,210,0,0.28)',
+        backgroundColor: 'rgba(232,210,0,0.04)',
     },
-    bonusBadgeImage: {
-        width: 28,
-        height: 28,
+    bonusDot: {
+        width: 5,
+        height: 5,
+        borderRadius: 3,
+        backgroundColor: GOLD,
+        marginRight: 10,
+    },
+    bonusLabel: {
+        color: 'rgba(255,255,255,0.5)',
+        fontSize: 12,
+        fontWeight: '400',
+        letterSpacing: 0.2,
+        marginRight: 10,
+    },
+    bonusAmount: {
+        color: GOLD,
+        fontSize: 13,
+        fontWeight: '600',
+        letterSpacing: 0.4,
     },
 
     // CTA

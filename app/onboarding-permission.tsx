@@ -49,7 +49,7 @@ const dotStyles = StyleSheet.create({
     },
 });
 
-const NEXT_SCREEN = '/onboarding-activities';
+const NEXT_SCREEN = '/onboarding-health';
 
 export default function OnboardingPermissionScreen() {
     const router = useRouter();

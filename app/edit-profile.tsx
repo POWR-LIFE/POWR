@@ -1,20 +1,20 @@
+import GeometricBackground from '@/components/GeometricBackground';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useRef, useState } from 'react';
-import GeometricBackground from '@/components/GeometricBackground';
+import React, { useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
+    ActivityIndicator,
+    Alert,
+    KeyboardAvoidingView,
+    Platform,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -70,39 +70,49 @@ export default function EditProfileScreen() {
   // ── Image picker ────────────────────────────────────────────────────────────
 
   async function pickImage(source: 'library' | 'camera') {
-    const perm =
-      source === 'camera'
-        ? await ImagePicker.requestCameraPermissionsAsync()
-        : await ImagePicker.requestMediaLibraryPermissionsAsync();
-
-    if (perm.status !== 'granted') {
-      Alert.alert(
-        'Permission required',
+    try {
+      const perm =
         source === 'camera'
-          ? 'Please allow camera access in Settings to take a photo.'
-          : 'Please allow photo library access in Settings to choose a photo.'
-      );
-      return;
-    }
+          ? await ImagePicker.requestCameraPermissionsAsync()
+          : await ImagePicker.requestMediaLibraryPermissionsAsync();
 
-    const result =
-      source === 'camera'
-        ? await ImagePicker.launchCameraAsync({
-            mediaTypes: ['images'],
-            allowsEditing: true,
-            aspect: [1, 1],
-            quality: 0.8,
-          })
-        : await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ['images'],
-            allowsEditing: true,
-            aspect: [1, 1],
-            quality: 0.8,
-          });
+      if (perm.status !== 'granted') {
+        Alert.alert(
+          'Permission required',
+          source === 'camera'
+            ? 'Please allow camera access in Settings to take a photo.'
+            : 'Please allow photo library access in Settings to choose a photo.'
+        );
+        return;
+      }
 
-    if (!result.canceled && result.assets[0]) {
-      setAvatarUri(result.assets[0].uri);
-      setAvatarChanged(true);
+      // On Android, allowsEditing opens a separate crop Activity which can cause
+      // the OS to destroy the RN Activity (losing navigation state and the
+      // selected photo).  Keep editing enabled only on iOS.
+      const allowsEditing = Platform.OS !== 'android';
+
+      const result =
+        source === 'camera'
+          ? await ImagePicker.launchCameraAsync({
+              mediaTypes: ['images'],
+              allowsEditing,
+              aspect: [1, 1],
+              quality: 0.8,
+            })
+          : await ImagePicker.launchImageLibraryAsync({
+              mediaTypes: ['images'],
+              allowsEditing,
+              aspect: [1, 1],
+              quality: 0.8,
+            });
+
+      if (!result.canceled && result.assets[0]) {
+        setAvatarUri(result.assets[0].uri);
+        setAvatarChanged(true);
+      }
+    } catch (e) {
+      console.warn('[EditProfile] Image picker error:', e);
+      Alert.alert('Could not select photo', 'Please try again.');
     }
   }
 
@@ -206,6 +216,7 @@ export default function EditProfileScreen() {
                   source={{ uri: avatarUri }}
                   style={styles.avatarImage}
                   contentFit="cover"
+                  onError={() => { setAvatarUri(null); setAvatarChanged(false); }}
                 />
               ) : (
                 <View style={styles.avatarPlaceholder}>

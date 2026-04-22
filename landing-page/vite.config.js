@@ -9,6 +9,11 @@ export default defineConfig({
     react(),
     tailwindcss(),
   ],
+  server: {
+    fs: {
+      allow: [resolve(__dirname, '..')],
+    },
+  },
   envPrefix: ['VITE_', 'EXPO_PUBLIC_'],
   build: {
     rollupOptions: {
