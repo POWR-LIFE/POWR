@@ -1,4 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { sendEmail } from "../_shared/mailgun.ts";
+import { waitlistUserEmail, waitlistPartnerEmail } from "../_shared/email-templates.ts";
 
 const SLACK_WEBHOOK_URL = Deno.env.get("SLACK_WAITLIST_WEBHOOK_URL");
 
@@ -15,7 +17,7 @@ Deno.serve(async (req: Request) => {
       return new Response("No record in payload", { status: 400 });
     }
 
-    const { name, email, typ, website, created_at } = record;
+    const { id, name, email, typ, website, created_at } = record;
 
     const isPartner = typ === "partner";
     const emoji = isPartner ? "🤝" : "🏋️";
@@ -44,6 +46,25 @@ Deno.serve(async (req: Request) => {
       const err = await slackRes.text();
       console.error("Slack error:", err);
       return new Response("Failed to notify Slack", { status: 500 });
+    }
+
+    // Send confirmation email to the person who joined
+    if (email) {
+      try {
+        const emailTemplate = isPartner
+          ? waitlistPartnerEmail({ name, website })
+          : waitlistUserEmail({ name, referralSlug: id });
+
+        await sendEmail({
+          to: email,
+          subject: emailTemplate.subject,
+          html: emailTemplate.html,
+          text: emailTemplate.text,
+        });
+      } catch (emailErr) {
+        // Log but don't fail the request — Slack notification already succeeded
+        console.error("Failed to send confirmation email:", emailErr);
+      }
     }
 
     return new Response("OK", { status: 200 });

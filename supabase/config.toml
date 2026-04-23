@@ -217,14 +217,17 @@ otp_length = 6
 otp_expiry = 3600
 
 # Use a production-ready SMTP server
-# [auth.email.smtp]
-# enabled = true
-# host = "smtp.sendgrid.net"
-# port = 587
-# user = "apikey"
-# pass = "env(SENDGRID_API_KEY)"
-# admin_email = "admin@email.com"
-# sender_name = "Admin"
+# Note: For production, configure SMTP in the Supabase dashboard under
+# Settings > Authentication > SMTP Settings, using your Mailgun SMTP credentials.
+# Mailgun SMTP: host=smtp.mailgun.org, port=587, user=postmaster@powr.life
+[auth.email.smtp]
+enabled = true
+host = "smtp.mailgun.org"
+port = 587
+user = "postmaster@powr.life"
+pass = "env(MAILGUN_SMTP_PASSWORD)"
+admin_email = "hello@powr.life"
+sender_name = "POWR"
 
 # Uncomment to customize email template
 # [auth.email.template.invite]
