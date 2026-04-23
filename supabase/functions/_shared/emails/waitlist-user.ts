@@ -213,11 +213,13 @@ body,table,td,th,p,span,a,h1,h2,h3,em,strong{font-family:'Outfit',Arial,Helvetic
             <p style="margin:0 0 20px;font-size:11px;font-weight:500;letter-spacing:2.5px;text-transform:uppercase;color:#333333;font-family:Arial,Helvetica,sans-serif;">Rewards from</p>
             <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 auto;">
               <tr>
-                <td style="padding:0 12px;font-family:Georgia,'Times New Roman',serif;font-size:20px;font-weight:400;color:#ffffff;opacity:0.5;">Huel</td>
+                <td style="padding:0 12px;"><a href="https://uk.huel.com/" style="font-family:Georgia,'Times New Roman',serif;font-size:20px;font-weight:400;color:#ffffff;opacity:0.5;text-decoration:none;">Huel</a></td>
                 <td style="width:3px;height:3px;background-color:#2a2a2a;border-radius:50%;vertical-align:middle;font-size:0;line-height:0;">&nbsp;</td>
-                <td style="padding:0 12px;font-family:'Arial Black',Helvetica,sans-serif;font-size:15px;font-weight:900;letter-spacing:2px;text-transform:uppercase;color:#ffffff;opacity:0.5;">TRIBE</td>
+                <td style="padding:0 12px;"><a href="https://wearetribe.co/" style="font-family:'Arial Black',Helvetica,sans-serif;font-size:15px;font-weight:900;letter-spacing:2px;text-transform:uppercase;color:#ffffff;opacity:0.5;text-decoration:none;">TRIBE</a></td>
                 <td style="width:3px;height:3px;background-color:#2a2a2a;border-radius:50%;vertical-align:middle;font-size:0;line-height:0;">&nbsp;</td>
-                <td style="padding:0 12px;font-family:'Arial Black',Helvetica,sans-serif;font-size:15px;font-weight:900;letter-spacing:2px;text-transform:uppercase;color:#ffffff;opacity:0.5;">FRANK</td>
+                <td style="padding:0 12px;"><a href="https://eatfrank.com/" style="font-family:'Arial Black',Helvetica,sans-serif;font-size:15px;font-weight:900;letter-spacing:2px;text-transform:uppercase;color:#ffffff;opacity:0.5;text-decoration:none;">FRANK</a></td>
+                <td style="width:3px;height:3px;background-color:#2a2a2a;border-radius:50%;vertical-align:middle;font-size:0;line-height:0;">&nbsp;</td>
+                <td style="padding:0 12px;"><a href="https://drinkrep.com/" style="font-family:'Arial Black',Helvetica,sans-serif;font-size:15px;font-weight:900;letter-spacing:2px;text-transform:uppercase;color:#ffffff;opacity:0.5;text-decoration:none;">REP</a></td>
               </tr>
             </table>
           </td>
