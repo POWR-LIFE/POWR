@@ -93,33 +93,6 @@ export default function SettingsScreen() {
     await updateUserMetadata({ [key]: value });
   };
 
-  // Change password — sends a password reset email (works cross-platform)
-  const handleChangePassword = async () => {
-    const email = user?.email;
-    if (!email) {
-      Alert.alert('Error', 'No email associated with this account.');
-      return;
-    }
-    Alert.alert(
-      'Change Password',
-      `We'll send a password reset link to ${email}.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Send Reset Email',
-          onPress: async () => {
-            const { error } = await supabase.auth.resetPasswordForEmail(email);
-            if (error) {
-              Alert.alert('Error', error.message);
-            } else {
-              Alert.alert('Email Sent', 'Check your inbox for a password reset link.');
-            }
-          },
-        },
-      ]
-    );
-  };
-
   // Delete account — confirmation then deletes via edge function or signs out
   const handleDeleteAccount = () => {
     Alert.alert(
@@ -194,7 +167,7 @@ export default function SettingsScreen() {
           <RowLink
             icon="lock-closed-outline"
             label="Change Password"
-            onPress={handleChangePassword}
+            onPress={() => router.push('/change-password')}
           />
           <RowLink
             icon="card-outline"

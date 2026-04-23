@@ -58,6 +58,8 @@ function RootLayoutNav() {
           <Stack.Screen name="privacy-policy" options={{ headerShown: false, contentStyle: { backgroundColor: '#0d0d0d' } }} />
           <Stack.Screen name="terms-of-service" options={{ headerShown: false, contentStyle: { backgroundColor: '#0d0d0d' } }} />
           <Stack.Screen name="help-centre" options={{ headerShown: false, contentStyle: { backgroundColor: '#0d0d0d' } }} />
+          <Stack.Screen name="change-password" options={{ headerShown: false, contentStyle: { backgroundColor: 'transparent' } }} />
+          <Stack.Screen name="reset-password" options={{ headerShown: false, contentStyle: { backgroundColor: 'transparent' } }} />
           <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal', contentStyle: { backgroundColor: 'transparent' } }} />
         </Stack>
         <StatusBar style="auto" />

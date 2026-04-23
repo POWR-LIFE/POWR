@@ -110,7 +110,7 @@ const FAQ_SECTIONS: FaqSection[] = [
     items: [
       {
         q: 'How do I change my email or password?',
-        a: 'Go to Settings → Account. Tap Email to update your address, or Change Password to receive a reset link by email.',
+        a: 'Go to Settings → Account. Tap Email to update your address, or Change Password to update it directly in the app. If you\'ve forgotten your current password, tap "Send reset email" on the Change Password screen.',
       },
       {
         q: 'Is my health data shared with partners?',
