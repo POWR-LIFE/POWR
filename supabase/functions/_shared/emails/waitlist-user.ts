@@ -54,7 +54,9 @@ body,table,td,th,p,span,a,h1,h2,h3,em,strong{font-family:'Outfit',Arial,Helvetic
                 <td style="border:1px solid #2a2a2a;border-radius:100px;padding:6px 14px 6px 10px;">
                   <table role="presentation" cellspacing="0" cellpadding="0" border="0">
                     <tr>
-                      <td width="6" height="6" style="width:6px;height:6px;min-width:6px;max-width:6px;background-color:#E8D200;border-radius:50%;vertical-align:middle;font-size:0;line-height:0;overflow:hidden;">&nbsp;</td>
+                      <td width="6" height="6" style="width:6px;height:6px;min-width:6px;max-width:6px;vertical-align:middle;padding:0;">
+                        <table role="presentation" width="6" height="6" cellspacing="0" cellpadding="0" border="0" style="width:6px;height:6px;min-width:6px;border-radius:50%;background-color:#E8D200;font-size:0;line-height:0;"><tr><td style="font-size:0;line-height:0;"> </td></tr></table>
+                      </td>
                       <td style="padding-left:7px;font-size:11px;font-weight:500;letter-spacing:2px;text-transform:uppercase;color:#888888;vertical-align:middle;font-family:Arial,Helvetica,sans-serif;white-space:nowrap;">Founding Member</td>
                     </tr>
                   </table>
@@ -86,6 +88,21 @@ body,table,td,th,p,span,a,h1,h2,h3,em,strong{font-family:'Outfit',Arial,Helvetic
                       </td>
                     </tr>
                   </table>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- REFER -->
+        <tr>
+          <td style="background-color:#0a0a0a;padding:32px 40px;border-bottom:1px solid #161616;">
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#111111;border:1px solid #222222;border-radius:14px;">
+              <tr>
+                <td style="padding:24px;">
+                  <p style="margin:0 0 8px;font-size:16px;font-weight:500;color:#F2F2F2;font-family:Arial,Helvetica,sans-serif;">Earn more before launch.</p>
+                  <p style="margin:0 0 20px;font-size:13px;font-weight:300;color:#aaaaaa;line-height:1.65;font-family:Arial,Helvetica,sans-serif;">Refer a friend and you both get <strong style="color:#E8D200;font-weight:500;">+50 points</strong> the moment they join. Stack them before May 12th.</p>
+                  ${referralSlug ? `<a href="https://powr.life/?ref=${referralSlug}" style="display:inline-block;background-color:#E8D200;color:#080808;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;text-decoration:none;border-radius:6px;padding:10px 20px;font-family:Arial,Helvetica,sans-serif;">Invite a Friend</a>` : `<a href="https://powr.life" style="display:inline-block;background-color:#E8D200;color:#080808;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;text-decoration:none;border-radius:6px;padding:10px 20px;font-family:Arial,Helvetica,sans-serif;">Join the Waitlist</a>`}
                 </td>
               </tr>
             </table>
@@ -179,28 +196,6 @@ body,table,td,th,p,span,a,h1,h2,h3,em,strong{font-family:'Outfit',Arial,Helvetic
                 </td>
                 <td style="padding-top:13px;vertical-align:middle;text-align:right;white-space:nowrap;">
                   <span style="font-size:15px;font-weight:500;color:#E8D200;font-family:Arial,Helvetica,sans-serif;">+5 pts</span>
-                </td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-
-        <!-- REFER -->
-        <tr>
-          <td style="background-color:#0a0a0a;padding:32px 40px;border-bottom:1px solid #161616;">
-            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#111111;border:1px solid #222222;border-radius:14px;">
-              <tr>
-                <td style="padding:24px;">
-                  <p style="margin:0 0 8px;font-size:16px;font-weight:500;color:#F2F2F2;font-family:Arial,Helvetica,sans-serif;">Earn more before launch.</p>
-                  <p style="margin:0 0 20px;font-size:13px;font-weight:300;color:#aaaaaa;line-height:1.65;font-family:Arial,Helvetica,sans-serif;">Refer a friend and you both get <strong style="color:#E8D200;font-weight:500;">+50 points</strong> the moment they join. Stack them before May 12th.</p>
-                  ${referralSlug ? `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#0a0a0a;border:1px solid #1e1e1e;border-radius:8px;">
-                    <tr>
-                      <td style="padding:12px 16px;font-size:12px;font-weight:300;color:#555555;font-family:'Courier New',monospace;word-break:break-all;">powr.life/?ref=${referralSlug}</td>
-                      <td style="padding:8px 10px;text-align:right;white-space:nowrap;">
-                        <a href="https://powr.life/?ref=${referralSlug}" style="display:inline-block;background-color:#E8D200;color:#080808;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;text-decoration:none;border-radius:6px;padding:8px 14px;font-family:Arial,Helvetica,sans-serif;">Invite a Friend</a>
-                      </td>
-                    </tr>
-                  </table>` : `<a href="https://powr.life" style="display:inline-block;background-color:#E8D200;color:#080808;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;text-decoration:none;border-radius:6px;padding:8px 14px;font-family:Arial,Helvetica,sans-serif;">Join the Waitlist</a>`}
                 </td>
               </tr>
             </table>
