@@ -14,10 +14,8 @@ import ReAnimated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { ActivityFeed } from '@/components/home/ActivityFeed';
 import { ChallengeCard } from '@/components/home/ChallengeCard';
 import { CombinedProgressRing, type TickOverlayData } from '@/components/home/CombinedProgressRing';
-import { DailyActivityCard } from '@/components/home/DailyActivityCard';
 import { GeometricBackground } from '@/components/home/GeometricBackground';
 import { HealthConnectCard } from '@/components/home/HealthConnectCard';
 import { StickyActivityIndicators } from '@/components/home/StickyActivityIndicators';
@@ -713,11 +711,6 @@ export default function HomeScreen() {
                 <Text style={styles.sectionLabel}>WEEKLY REWARD</Text>
                 <WeeklyRewardTeaser />
 
-                <Text style={styles.sectionLabel}>ACTIVITY</Text>
-                <DailyActivityCard
-                    completed={weekActiveDays[TODAY_INDEX]}
-                />
-                <ActivityFeed items={recentItems} isNewUser={isNewUser} />
             </ReAnimated.ScrollView>
             </ReAnimated.View>
 
