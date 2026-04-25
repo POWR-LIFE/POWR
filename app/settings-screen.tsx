@@ -23,6 +23,7 @@ import { useHealthProviders } from '@/hooks/useHealthProviders';
 import { HealthProviderNotImplementedError } from '@/lib/health/providers';
 import { ACTIVITIES, type ActivityType } from '@/constants/activities';
 import { supabase } from '@/lib/supabase';
+import { fetchProfile, updateLeaderboardVisibility } from '@/lib/api/user';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 
@@ -86,7 +87,14 @@ export default function SettingsScreen() {
   const [notifRewards,   setNotifRewards]   = useState(meta.notif_rewards ?? false);
   const [notifFriends,   setNotifFriends]   = useState(meta.notif_friends ?? true);
   const [shareActivity,  setShareActivity]  = useState(meta.share_activity ?? true);
-  const [showOnLeaderboard, setShowOnLeaderboard] = useState(meta.show_on_leaderboard ?? true);
+  const [showOnLeaderboard, setShowOnLeaderboard] = useState(true);
+
+  // Load show_on_leaderboard from profiles table (source of truth)
+  useEffect(() => {
+    fetchProfile().then(p => {
+      if (p !== null) setShowOnLeaderboard(p.show_on_leaderboard);
+    });
+  }, []);
 
   // Persist a single metadata key when a toggle changes
   const persistMeta = async (key: string, value: boolean) => {
@@ -375,7 +383,7 @@ export default function SettingsScreen() {
             icon="podium-outline"
             label="Show on leaderboard"
             value={showOnLeaderboard}
-            onValueChange={(v) => { setShowOnLeaderboard(v); persistMeta('show_on_leaderboard', v); }}
+            onValueChange={(v) => { setShowOnLeaderboard(v); updateLeaderboardVisibility(v); }}
             isLast
           />
         </View>

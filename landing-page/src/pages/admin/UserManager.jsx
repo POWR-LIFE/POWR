@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
-import { User, Search, Users, Activity, Award, ChevronRight, Filter, MapPin } from 'lucide-react';
+import { useAuth } from '../../App';
+import { User, Search, Users, Activity, Award, ChevronRight, Filter, MapPin, Star, UserPlus, Trash2, X, Eye, EyeOff } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 const timeAgo = (dateStr) => {
@@ -16,14 +17,25 @@ const timeAgo = (dateStr) => {
 
 export default function UserManager() {
     const toast = useToast();
+    const { user: adminUser } = useAuth();
     const [users, setUsers] = useState([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
     const [stats, setStats] = useState({ total: 0, avgLevel: 0, activeToday: 0 });
 
-    useEffect(() => {
-        fetchUsers();
-    }, []);
+    // Create user modal
+    const [showCreate, setShowCreate] = useState(false);
+    const [createEmail, setCreateEmail] = useState('');
+    const [createName, setCreateName] = useState('');
+    const [createUsername, setCreateUsername] = useState('');
+    const [createPassword, setCreatePassword] = useState('');
+    const [createIsPro, setCreateIsPro] = useState(false);
+    const [createLoading, setCreateLoading] = useState(false);
+    const [showPassword, setShowPassword] = useState(false);
+
+    // Delete confirmation
+    const [deletingId, setDeletingId] = useState(null);
+    const [deleteLoading, setDeleteLoading] = useState(false);
 
     const fetchUsers = async () => {
         setLoading(true);
@@ -59,6 +71,55 @@ export default function UserManager() {
         (u.display_name?.toLowerCase().includes(search.toLowerCase())) ||
         (u.username?.toLowerCase().includes(search.toLowerCase()))
     );
+
+    useEffect(() => { fetchUsers(); }, []);
+
+    const callEdgeFunction = async (body) => {
+        const { data: { session } } = await supabase.auth.getSession();
+        const res = await fetch(
+            `${import.meta.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/admin-manage-user`,
+            {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${session.access_token}`,
+                    'apikey': import.meta.env.EXPO_PUBLIC_SUPABASE_ANON_KEY,
+                },
+                body: JSON.stringify(body),
+            }
+        );
+        return res.json();
+    };
+
+    const handleCreateUser = async () => {
+        if (!createEmail || !createPassword) { toast.error('Email and password are required'); return; }
+        setCreateLoading(true);
+        const result = await callEdgeFunction({
+            action: 'create',
+            email: createEmail,
+            password: createPassword,
+            display_name: createName || undefined,
+            username: createUsername || undefined,
+            is_pro: createIsPro,
+        });
+        setCreateLoading(false);
+        if (result.error) { toast.error(result.error); return; }
+        toast.success('User created successfully');
+        setShowCreate(false);
+        setCreateEmail(''); setCreateName(''); setCreateUsername('');
+        setCreatePassword(''); setCreateIsPro(false);
+        fetchUsers();
+    };
+
+    const handleDeleteUser = async (userId) => {
+        setDeleteLoading(true);
+        const result = await callEdgeFunction({ action: 'delete', user_id: userId });
+        setDeleteLoading(false);
+        setDeletingId(null);
+        if (result.error) { toast.error(result.error); return; }
+        toast.success('User deleted');
+        fetchUsers();
+    };
 
     return (
         <div className="px-4 lg:px-0 py-20 animate-in fade-in slide-in-from-bottom-8 duration-1000">
@@ -112,8 +173,11 @@ export default function UserManager() {
                         onChange={e => setSearch(e.target.value)}
                     />
                 </div>
-                <button className="h-16 px-10 bg-[#0A0A0A] border border-[#151515] rounded-full flex items-center gap-4 text-[10px] font-black uppercase tracking-[0.3em] text-[#999] hover:text-[#E8D200] transition-all">
-                    <Filter size={16} /> Filter Results
+                <button
+                    onClick={() => setShowCreate(true)}
+                    className="h-16 px-10 bg-[#E8D200] text-[#080808] rounded-full flex items-center gap-4 text-[10px] font-black uppercase tracking-[0.3em] hover:translate-y-[-2px] transition-all shadow-lg shadow-[#E8D200]/10 shrink-0"
+                >
+                    <UserPlus size={16} /> New User
                 </button>
             </div>
 
@@ -197,19 +261,35 @@ export default function UserManager() {
                                             </div>
                                         </td>
                                         <td className="px-12 py-10">
-                                            <div className="flex items-center gap-4">
-                                                <div className="h-1.5 w-1.5 rounded-full bg-[#10B981] shadow-[0_0_10px_rgba(16,185,129,0.4)]"></div>
-                                                <span className="text-[9px] uppercase tracking-[0.3em] text-[#AAA] font-black">ACTIVE</span>
+                                            <div className="flex flex-col gap-2">
+                                                <div className="flex items-center gap-4">
+                                                    <div className="h-1.5 w-1.5 rounded-full bg-[#10B981] shadow-[0_0_10px_rgba(16,185,129,0.4)]"></div>
+                                                    <span className="text-[9px] uppercase tracking-[0.3em] text-[#AAA] font-black">ACTIVE</span>
+                                                </div>
+                                                {user.is_pro && (
+                                                    <span className="flex items-center gap-1.5 px-3 py-1 self-start rounded-full bg-[#E8D200]/10 border border-[#E8D200]/30 text-[#E8D200] text-[9px] font-black uppercase tracking-[0.2em]">
+                                                        <Star size={9} fill="#E8D200" /> Pro
+                                                    </span>
+                                                )}
                                             </div>
                                         </td>
                                         <td className="px-12 py-10 text-right">
-                                            <Link 
-                                                to={`/admin/users/${user.id}`}
-                                                className="inline-flex items-center gap-3 px-6 py-3 bg-[#050505] border border-[#151515] rounded-full text-[9px] font-black uppercase tracking-[0.3em] text-[#999] hover:text-[#E8D200] hover:border-[#E8D200]/40 transition-all group/btn"
-                                            >
-                                                Query Profile
-                                                <ChevronRight size={14} className="text-[#CCC] group-hover/btn:text-[#E8D200] transition-colors" />
-                                            </Link>
+                                            <div className="flex items-center justify-end gap-3">
+                                                <Link 
+                                                    to={`/admin/users/${user.id}`}
+                                                    className="inline-flex items-center gap-3 px-6 py-3 bg-[#050505] border border-[#151515] rounded-full text-[9px] font-black uppercase tracking-[0.3em] text-[#999] hover:text-[#E8D200] hover:border-[#E8D200]/40 transition-all group/btn"
+                                                >
+                                                    Query Profile
+                                                    <ChevronRight size={14} className="text-[#CCC] group-hover/btn:text-[#E8D200] transition-colors" />
+                                                </Link>
+                                                <button
+                                                    onClick={() => setDeletingId(user.id)}
+                                                    className="w-10 h-10 rounded-full bg-[#050505] border border-[#151515] flex items-center justify-center text-[#555] hover:text-red-400 hover:border-red-400/30 transition-all"
+                                                    title="Delete user"
+                                                >
+                                                    <Trash2 size={14} />
+                                                </button>
+                                            </div>
                                         </td>
                                     </tr>
                                 ))}
@@ -226,6 +306,78 @@ export default function UserManager() {
                 </div>
                 <span className="text-[10px] uppercase tracking-[0.6em] text-[#CCC] font-black">POWR / USR / V3.0</span>
             </div>
+
+            {/* ── Create User Modal ────────────────────────────────── */}
+            {showCreate && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] flex items-center justify-center" onClick={() => setShowCreate(false)}>
+                    <div className="bg-[#0A0A0A] border border-[#1E1E1E] rounded-3xl p-12 w-full max-w-md shadow-2xl" onClick={e => e.stopPropagation()}>
+                        <div className="flex justify-between items-center mb-10">
+                            <h3 className="text-2xl font-light tracking-tighter text-[#F2F2F2]">New User</h3>
+                            <button onClick={() => setShowCreate(false)} className="w-10 h-10 rounded-full bg-[#151515] flex items-center justify-center text-[#BBB] hover:text-[#F2F2F2] transition-colors"><X size={18} /></button>
+                        </div>
+                        <div className="space-y-5">
+                            <div>
+                                <label className="block text-[10px] uppercase tracking-widest text-[#BBB] font-black mb-3">Email *</label>
+                                <input type="email" value={createEmail} onChange={e => setCreateEmail(e.target.value)} placeholder="user@example.com" className="w-full h-14 px-6 bg-[#050505] border border-[#1E1E1E] rounded-xl text-[#F2F2F2] text-sm font-light outline-none focus:border-[#E8D200]/40 transition-all" />
+                            </div>
+                            <div>
+                                <label className="block text-[10px] uppercase tracking-widest text-[#BBB] font-black mb-3">Password *</label>
+                                <div className="relative">
+                                    <input type={showPassword ? 'text' : 'password'} value={createPassword} onChange={e => setCreatePassword(e.target.value)} placeholder="Min 6 characters" className="w-full h-14 px-6 pr-14 bg-[#050505] border border-[#1E1E1E] rounded-xl text-[#F2F2F2] text-sm font-light outline-none focus:border-[#E8D200]/40 transition-all" />
+                                    <button type="button" onClick={() => setShowPassword(p => !p)} className="absolute right-4 top-1/2 -translate-y-1/2 text-[#555] hover:text-[#999] transition-colors">
+                                        {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                    </button>
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-[10px] uppercase tracking-widest text-[#BBB] font-black mb-3">Display Name</label>
+                                    <input type="text" value={createName} onChange={e => setCreateName(e.target.value)} placeholder="Jane Smith" className="w-full h-14 px-6 bg-[#050505] border border-[#1E1E1E] rounded-xl text-[#F2F2F2] text-sm font-light outline-none focus:border-[#E8D200]/40 transition-all" />
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] uppercase tracking-widest text-[#BBB] font-black mb-3">Username</label>
+                                    <input type="text" value={createUsername} onChange={e => setCreateUsername(e.target.value)} placeholder="jane_smith" className="w-full h-14 px-6 bg-[#050505] border border-[#1E1E1E] rounded-xl text-[#F2F2F2] text-sm font-light outline-none focus:border-[#E8D200]/40 transition-all" />
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => setCreateIsPro(p => !p)}
+                                className={`w-full h-12 rounded-xl border text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-3 transition-all ${
+                                    createIsPro
+                                        ? 'bg-[#E8D200]/10 border-[#E8D200]/40 text-[#E8D200]'
+                                        : 'bg-[#050505] border-[#1E1E1E] text-[#666] hover:border-[#333]'
+                                }`}
+                            >
+                                <Star size={13} fill={createIsPro ? '#E8D200' : 'none'} />
+                                {createIsPro ? 'Pro Athlete' : 'Standard User'}
+                            </button>
+                            <button onClick={handleCreateUser} disabled={createLoading} className="w-full h-14 bg-[#E8D200] text-[#080808] font-black uppercase tracking-widest text-xs rounded-xl hover:translate-y-[-2px] transition-all shadow-lg shadow-[#E8D200]/10 disabled:opacity-50">
+                                {createLoading ? 'Creating...' : 'Create User'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ── Delete Confirmation Modal ────────────────────────── */}
+            {deletingId && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] flex items-center justify-center" onClick={() => setDeletingId(null)}>
+                    <div className="bg-[#0A0A0A] border border-red-900/40 rounded-3xl p-12 w-full max-w-sm shadow-2xl" onClick={e => e.stopPropagation()}>
+                        <div className="w-14 h-14 rounded-2xl bg-red-950/50 border border-red-900/40 flex items-center justify-center mb-8">
+                            <Trash2 size={22} className="text-red-400" />
+                        </div>
+                        <h3 className="text-2xl font-light tracking-tighter text-[#F2F2F2] mb-3">Delete User?</h3>
+                        <p className="text-[#666] text-sm font-light mb-10 leading-relaxed">This permanently removes the account, all activity data, and point history. This cannot be undone.</p>
+                        <div className="flex gap-4">
+                            <button onClick={() => setDeletingId(null)} className="flex-1 h-12 bg-[#151515] border border-[#1E1E1E] rounded-xl text-[10px] font-black uppercase tracking-widest text-[#999] hover:text-[#F2F2F2] transition-colors">
+                                Cancel
+                            </button>
+                            <button onClick={() => handleDeleteUser(deletingId)} disabled={deleteLoading} className="flex-1 h-12 bg-red-950/60 border border-red-900/60 rounded-xl text-[10px] font-black uppercase tracking-widest text-red-400 hover:bg-red-900/40 transition-all disabled:opacity-50">
+                                {deleteLoading ? 'Deleting...' : 'Delete'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

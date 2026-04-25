@@ -1,0 +1,630 @@
+import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
+import React, { useEffect, useRef, useState } from 'react';
+import {
+    Animated,
+    Dimensions,
+    Modal,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Text,
+    View,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Path, Polyline, Stop } from 'react-native-svg';
+
+import { ProBadge } from '@/components/ui/ProBadge';
+import { fetchAchievements, type Achievement } from '@/lib/api/pro-achievements';
+import { fetchGallery, type GalleryPhoto } from '@/lib/api/pro-gallery';
+import { fetchPublicProfile, type PublicProfile } from '@/lib/api/user';
+import { fetchProfileStats, type ProfileStats } from '@/lib/api/user-stats';
+import { LEAGUE_TIERS } from '@/lib/journey';
+
+const { height: SCREEN_H, width: SCREEN_W } = Dimensions.get('window');
+
+const GOLD   = '#E8D200';
+const GREEN  = '#4ade80';
+const RED    = '#ef4444';
+const TEXT   = '#F2F2F2';
+const MUTED  = 'rgba(255,255,255,0.25)';
+const DIM    = 'rgba(255,255,255,0.5)';
+const BORDER = 'rgba(255,255,255,0.08)';
+const THUMB  = Math.floor((SCREEN_W - 32 - 8) / 3);
+
+interface UserProfileSheetProps {
+    userId: string | null;
+    myPoints?: number;
+    userPoints?: number;
+    onClose: () => void;
+}
+
+export function UserProfileSheet({ userId, myPoints, userPoints, onClose }: UserProfileSheetProps) {
+    const insets = useSafeAreaInsets();
+    const slideAnim = useRef(new Animated.Value(SCREEN_H)).current;
+    const [profile, setProfile] = useState<PublicProfile | null>(null);
+    const [gallery, setGallery] = useState<GalleryPhoto[]>([]);
+    const [achievements, setAchievements] = useState<Achievement[]>([]);
+    const [stats, setStats] = useState<ProfileStats | null>(null);
+    const [loading, setLoading] = useState(false);
+
+    useEffect(() => {
+        if (userId) {
+            setLoading(true);
+            setProfile(null);
+            setGallery([]);
+            setAchievements([]);
+            setStats(null);
+            fetchPublicProfile(userId).then(p => {
+                setProfile(p);
+                if (p?.is_pro) {
+                    fetchGallery(userId).then(setGallery);
+                    fetchAchievements(userId).then(setAchievements);
+                }
+                setLoading(false);
+            });
+            fetchProfileStats(userId).then(setStats);
+            Animated.spring(slideAnim, {
+                toValue: 0,
+                useNativeDriver: true,
+                tension: 60,
+                friction: 12,
+            }).start();
+        } else {
+            Animated.timing(slideAnim, {
+                toValue: SCREEN_H,
+                duration: 220,
+                useNativeDriver: true,
+            }).start(() => {
+                setProfile(null);
+                setGallery([]);
+                setAchievements([]);
+                setStats(null);
+            });
+        }
+    }, [userId]);
+
+    const visible = !!userId;
+
+    const initials = ((profile?.display_name ?? profile?.username) || '?')
+        .split(' ').map((w: string) => w[0]).slice(0, 2).join('').toUpperCase();
+
+    const diff = (userPoints ?? 0) - (myPoints ?? 0);
+    const diffSign = diff > 0 ? '+' : '';
+    const showComparison = userPoints !== undefined && myPoints !== undefined;
+
+    return (
+        <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
+            {/* Backdrop */}
+            <Pressable style={s.backdrop} onPress={onClose} />
+
+            <Animated.View style={[
+                s.sheet,
+                { paddingBottom: insets.bottom + 16, transform: [{ translateY: slideAnim }] },
+            ]}>
+                {/* Drag handle */}
+                <View style={s.dragHandle} />
+
+                {/* Cover photo */}
+                {profile?.cover_url ? (
+                    <Image source={{ uri: profile.cover_url }} style={s.cover} contentFit="cover" />
+                ) : null}
+
+                <ScrollView
+                    style={s.scroll}
+                    contentContainerStyle={s.scrollContent}
+                    showsVerticalScrollIndicator={false}
+                >
+                    {loading && (
+                        <View style={s.loadingRow}>
+                            <Text style={s.loadingText}>Loading…</Text>
+                        </View>
+                    )}
+
+                    {!loading && profile && (
+                        <>
+                            {/* Avatar + identity row */}
+                            <View style={[s.headerRow, !profile.cover_url && { marginTop: 8 }]}>
+                                <AvatarWithRing
+                                    avatarUrl={profile.avatar_url}
+                                    initials={initials}
+                                    totalPoints={stats?.totalPoints ?? 0}
+                                    overCover={!!profile.cover_url}
+                                />
+                                <View style={s.identity}>
+                                    <Text style={s.displayName} numberOfLines={1}>
+                                        {profile.display_name ?? profile.username ?? 'Unknown'}
+                                    </Text>
+                                    {profile.username ? (
+                                        <Text style={s.userHandle} numberOfLines={1}>@{profile.username}</Text>
+                                    ) : null}
+                                    <View style={s.identityPills}>
+                                        {profile.is_pro && <ProBadge size="sm" />}
+                                        <TierPill totalPoints={stats?.totalPoints ?? 0} />
+                                        <View style={s.levelPill}>
+                                            <Text style={s.levelText}>LVL {profile.level}</Text>
+                                        </View>
+                                    </View>
+                                </View>
+                            </View>
+
+                            {/* Stat strip: streak | 7-day sparkline | sessions */}
+                            {stats && (
+                                <StatStrip stats={stats} />
+                            )}
+
+                            {/* Achievements grid (pro only) */}
+                            {achievements.length > 0 && (
+                                <View style={s.achievementsSection}>
+                                    <Text style={s.sectionLabel}>ACHIEVEMENTS</Text>
+                                    <AchievementsGrid achievements={achievements} />
+                                </View>
+                            )}
+
+                            {/* Bio */}
+                            {profile.bio ? (
+                                <Text style={s.bio}>{profile.bio}</Text>
+                            ) : null}
+
+                            {/* Points comparison */}
+                            {showComparison && (
+                                <View style={s.compareCard}>
+                                    <View style={s.compareStat}>
+                                        <Text style={s.compareNum}>{(userPoints ?? 0).toLocaleString()}</Text>
+                                        <Text style={s.compareLabel}>THEIR PTS</Text>
+                                    </View>
+                                    <View style={s.compareDivider} />
+                                    <View style={s.compareStat}>
+                                        <Text style={[s.compareNum, { color: diff > 0 ? RED : GREEN }]}>
+                                            {diffSign}{Math.abs(diff).toLocaleString()}
+                                        </Text>
+                                        <Text style={s.compareLabel}>VS YOU</Text>
+                                    </View>
+                                    <View style={s.compareDivider} />
+                                    <View style={s.compareStat}>
+                                        <Text style={s.compareNum}>{(myPoints ?? 0).toLocaleString()}</Text>
+                                        <Text style={s.compareLabel}>YOUR PTS</Text>
+                                    </View>
+                                </View>
+                            )}
+
+                            {/* Activity breakdown (last 30 days) */}
+                            {stats && stats.activityBreakdown.length > 0 && (
+                                <View style={s.breakdownSection}>
+                                    <Text style={s.sectionLabel}>ACTIVITY · LAST 30 DAYS</Text>
+                                    <ActivityBreakdown breakdown={stats.activityBreakdown} total={stats.sessionCount30d} />
+                                </View>
+                            )}
+
+                            {/* Gallery */}
+                            {gallery.length > 0 && (
+                                <View style={s.gallerySection}>
+                                    <Text style={s.sectionLabel}>GALLERY</Text>
+                                    <View style={s.galleryGrid}>
+                                        {gallery.map(photo => (
+                                            <Image
+                                                key={photo.id}
+                                                source={{ uri: photo.url }}
+                                                style={{ width: THUMB, height: THUMB, borderRadius: 8 }}
+                                                contentFit="cover"
+                                            />
+                                        ))}
+                                    </View>
+                                </View>
+                            )}
+                        </>
+                    )}
+                </ScrollView>
+
+                {/* Close button */}
+                <Pressable style={s.closeBtn} onPress={onClose} hitSlop={12}>
+                    <Ionicons name="close" size={18} color={TEXT} />
+                </Pressable>
+            </Animated.View>
+        </Modal>
+    );
+}
+
+// ─── AvatarWithRing — tier progress ring around avatar ───────────────────────
+
+function AvatarWithRing({
+    avatarUrl,
+    initials,
+    totalPoints,
+    overCover,
+}: {
+    avatarUrl: string | null;
+    initials: string;
+    totalPoints: number;
+    overCover: boolean;
+}) {
+    const SIZE = 80;
+    const RING_PAD = 5;
+    const OUTER = SIZE + RING_PAD * 2;
+    const R = (OUTER - 3) / 2;
+    const C = 2 * Math.PI * R;
+
+    // Tier progression
+    const { tier, progress, nextTier } = getTierProgress(totalPoints);
+    const tierColour = tier.colour;
+
+    return (
+        <View style={[
+            { width: OUTER, height: OUTER, alignItems: 'center', justifyContent: 'center' },
+            overCover && { marginTop: -OUTER / 2 - 4 },
+        ]}>
+            {/* Ring */}
+            <Svg width={OUTER} height={OUTER} style={{ position: 'absolute' }}>
+                <Defs>
+                    <SvgLinearGradient id="tierGrad" x1="0" y1="0" x2="1" y2="1">
+                        <Stop offset="0" stopColor={tierColour} stopOpacity="1" />
+                        <Stop offset="1" stopColor={tierColour} stopOpacity="0.4" />
+                    </SvgLinearGradient>
+                </Defs>
+                <Circle cx={OUTER / 2} cy={OUTER / 2} r={R} stroke="rgba(255,255,255,0.06)" strokeWidth={2.5} fill="none" />
+                <Circle
+                    cx={OUTER / 2} cy={OUTER / 2} r={R}
+                    stroke="url(#tierGrad)"
+                    strokeWidth={2.5}
+                    strokeLinecap="round"
+                    fill="none"
+                    strokeDasharray={`${C * progress} ${C}`}
+                    transform={`rotate(-90 ${OUTER / 2} ${OUTER / 2})`}
+                />
+            </Svg>
+
+            {/* Avatar */}
+            <View style={{
+                width: SIZE, height: SIZE, borderRadius: SIZE / 2,
+                overflow: 'hidden',
+                borderWidth: 2, borderColor: '#111',
+            }}>
+                {avatarUrl ? (
+                    <Image source={{ uri: avatarUrl }} style={{ flex: 1 }} contentFit="cover" />
+                ) : (
+                    <View style={{ flex: 1, backgroundColor: GOLD, alignItems: 'center', justifyContent: 'center' }}>
+                        <Text style={{ fontSize: 28, fontWeight: '600', color: '#0a0a0a' }}>{initials}</Text>
+                    </View>
+                )}
+            </View>
+        </View>
+    );
+}
+
+function getTierProgress(points: number): {
+    tier: typeof LEAGUE_TIERS[number];
+    nextTier: typeof LEAGUE_TIERS[number] | null;
+    progress: number;
+} {
+    let tier = LEAGUE_TIERS[0];
+    let nextTier: typeof LEAGUE_TIERS[number] | null = LEAGUE_TIERS[1] ?? null;
+    for (let i = 0; i < LEAGUE_TIERS.length; i++) {
+        if (points >= LEAGUE_TIERS[i].threshold) {
+            tier = LEAGUE_TIERS[i];
+            nextTier = LEAGUE_TIERS[i + 1] ?? null;
+        }
+    }
+    if (!nextTier) return { tier, nextTier: null, progress: 1 };
+    const span = nextTier.threshold - tier.threshold;
+    const into = points - tier.threshold;
+    const progress = Math.min(1, Math.max(0, into / span));
+    return { tier, nextTier, progress };
+}
+
+// ─── TierPill ────────────────────────────────────────────────────────────────
+
+function TierPill({ totalPoints }: { totalPoints: number }) {
+    const { tier } = getTierProgress(totalPoints);
+    return (
+        <View style={[s.tierPill, { borderColor: `${tier.colour}55`, backgroundColor: `${tier.colour}14` }]}>
+            <View style={[s.tierDot, { backgroundColor: tier.colour }]} />
+            <Text style={[s.tierText, { color: tier.colour }]}>{tier.tier.toUpperCase()}</Text>
+        </View>
+    );
+}
+
+// ─── AchievementsGrid — up to 4 highlight pill cards ─────────────────────────
+
+function AchievementsGrid({ achievements }: { achievements: Achievement[] }) {
+    const items = achievements.slice(0, 4);
+    return (
+        <View style={s.achievementsGrid}>
+            {items.map(a => (
+                <View key={a.id} style={s.achievementCard}>
+                    <View style={s.achievementHeader}>
+                        <Ionicons name="trophy" size={10} color={GOLD} />
+                        <Text style={s.achievementTitle} numberOfLines={1}>{a.title.toUpperCase()}</Text>
+                    </View>
+                    <Text style={s.achievementValue} numberOfLines={1}>{a.value}</Text>
+                    {a.context ? (
+                        <Text style={s.achievementContext} numberOfLines={1}>{a.context}</Text>
+                    ) : null}
+                </View>
+            ))}
+        </View>
+    );
+}
+
+// ─── StatStrip — streak | sparkline | sessions ───────────────────────────────
+
+function StatStrip({ stats }: { stats: ProfileStats }) {
+    const max = Math.max(1, ...stats.dailyPoints);
+    const W = 110;
+    const H = 30;
+    const stepX = W / Math.max(1, stats.dailyPoints.length - 1);
+    const points = stats.dailyPoints
+        .map((v, i) => `${i * stepX},${H - (v / max) * (H - 3) - 1}`)
+        .join(' ');
+    const weekTotal = stats.dailyPoints.reduce((s, v) => s + v, 0);
+
+    return (
+        <View style={s.statStrip}>
+            <View style={s.statCell}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    <Ionicons name="flame" size={13} color="#fb923c" />
+                    <Text style={s.statNum}>{stats.currentStreak}</Text>
+                </View>
+                <Text style={s.statLabel}>DAY STREAK</Text>
+            </View>
+            <View style={s.statDivider} />
+            <View style={[s.statCell, { flex: 1.4 }]}>
+                <Svg width={W} height={H}>
+                    <Defs>
+                        <SvgLinearGradient id="sparkFill" x1="0" y1="0" x2="0" y2="1">
+                            <Stop offset="0" stopColor={GOLD} stopOpacity="0.35" />
+                            <Stop offset="1" stopColor={GOLD} stopOpacity="0" />
+                        </SvgLinearGradient>
+                    </Defs>
+                    {/* Fill polygon */}
+                    <Path
+                        d={`M 0,${H} ${stats.dailyPoints.map((v, i) => `L ${i * stepX},${H - (v / max) * (H - 3) - 1}`).join(' ')} L ${W},${H} Z`}
+                        fill="url(#sparkFill)"
+                    />
+                    <Polyline
+                        points={points}
+                        fill="none"
+                        stroke={GOLD}
+                        strokeWidth={1.5}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                    />
+                </Svg>
+                <Text style={s.statLabel}>{weekTotal.toLocaleString()} PTS / 7D</Text>
+            </View>
+            <View style={s.statDivider} />
+            <View style={s.statCell}>
+                <Text style={s.statNum}>{stats.sessionCount30d}</Text>
+                <Text style={s.statLabel}>SESSIONS · 30D</Text>
+            </View>
+        </View>
+    );
+}
+
+// ─── ActivityBreakdown — horizontal stacked bar + legend ─────────────────────
+
+const ACTIVITY_COLOURS: Record<string, string> = {
+    running: '#4ade80',
+    walking: '#22d3ee',
+    cycling: '#a78bfa',
+    swimming: '#60a5fa',
+    gym: '#fb923c',
+    strength: '#fb923c',
+    yoga: '#f472b6',
+    pilates: '#f472b6',
+};
+
+function colourFor(type: string): string {
+    return ACTIVITY_COLOURS[type.toLowerCase()] ?? '#64748b';
+}
+
+function ActivityBreakdown({
+    breakdown,
+    total,
+}: {
+    breakdown: { type: string; count: number }[];
+    total: number;
+}) {
+    const top = breakdown.slice(0, 5);
+    const shown = top.reduce((s, x) => s + x.count, 0);
+    const rest = Math.max(0, total - shown);
+    const all = rest > 0 ? [...top, { type: 'other', count: rest }] : top;
+
+    return (
+        <View style={{ gap: 10 }}>
+            {/* Stacked bar */}
+            <View style={s.stackBar}>
+                {all.map((row, i) => (
+                    <View
+                        key={row.type + i}
+                        style={{
+                            flex: row.count,
+                            backgroundColor: colourFor(row.type),
+                        }}
+                    />
+                ))}
+            </View>
+
+            {/* Legend */}
+            <View style={s.legend}>
+                {all.map(row => (
+                    <View key={row.type} style={s.legendItem}>
+                        <View style={[s.legendDot, { backgroundColor: colourFor(row.type) }]} />
+                        <Text style={s.legendType}>{row.type.toUpperCase()}</Text>
+                        <Text style={s.legendCount}>{row.count}</Text>
+                    </View>
+                ))}
+            </View>
+        </View>
+    );
+}
+
+const s = StyleSheet.create({
+    backdrop: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.55)',
+    },
+    sheet: {
+        position: 'absolute',
+        bottom: 0, left: 0, right: 0,
+        backgroundColor: '#111',
+        borderTopLeftRadius: 24,
+        borderTopRightRadius: 24,
+        maxHeight: SCREEN_H * 0.88,
+        overflow: 'hidden',
+    },
+    dragHandle: {
+        width: 36, height: 4, borderRadius: 2,
+        backgroundColor: BORDER,
+        alignSelf: 'center',
+        marginTop: 12, marginBottom: 8,
+    },
+    cover: {
+        width: '100%', height: 120,
+    },
+    scroll: { flex: 1 },
+    scrollContent: {
+        paddingHorizontal: 16, paddingBottom: 16, gap: 14,
+    },
+    loadingRow: {
+        paddingVertical: 48, alignItems: 'center',
+    },
+    loadingText: {
+        fontSize: 13, fontWeight: '300', color: MUTED,
+    },
+    headerRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+    avatarWrap: {
+        borderRadius: 44, overflow: 'hidden',
+        borderWidth: 3, borderColor: '#111',
+    },
+    avatarOverCover: { marginTop: -40 },
+    avatar: { width: 80, height: 80 },
+    avatarFallback: {
+        width: 80, height: 80,
+        backgroundColor: GOLD,
+        alignItems: 'center', justifyContent: 'center',
+    },
+    avatarLetter: {
+        fontSize: 28, fontWeight: '600', color: '#0a0a0a',
+    },
+    identity: { flex: 1, gap: 2 },
+    displayName: {
+        fontSize: 20, fontWeight: '400',
+        color: TEXT, letterSpacing: -0.3,
+    },
+    userHandle: {
+        fontSize: 12, fontWeight: '300', color: MUTED,
+    },
+    identityPills: {
+        flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6,
+    },
+    levelPill: {
+        paddingHorizontal: 10, paddingVertical: 3,
+        borderRadius: 20,
+        backgroundColor: 'rgba(255,255,255,0.06)',
+        borderWidth: 1, borderColor: BORDER,
+    },
+    levelText: {
+        fontSize: 10, fontWeight: '500',
+        letterSpacing: 1.5, color: DIM, textTransform: 'uppercase',
+    },
+    bio: {
+        fontSize: 13, fontWeight: '300', color: DIM,
+        textAlign: 'center', lineHeight: 19,
+    },
+    compareCard: {
+        flexDirection: 'row', alignItems: 'center',
+        paddingHorizontal: 4, paddingVertical: 6,
+    },
+    compareStat: { flex: 1, alignItems: 'center', gap: 4 },
+    compareNum: {
+        fontSize: 18, fontWeight: '300',
+        color: TEXT, letterSpacing: -0.5,
+    },
+    compareLabel: {
+        fontSize: 8, fontWeight: '600',
+        letterSpacing: 2, color: MUTED, textTransform: 'uppercase',
+    },
+    compareDivider: {
+        width: 1, height: 36, backgroundColor: BORDER,
+    },
+    sectionLabel: {
+        fontSize: 9, fontWeight: '500',
+        letterSpacing: 2, color: MUTED, textTransform: 'uppercase',
+    },
+    gallerySection: { gap: 8 },
+    galleryGrid: {
+        flexDirection: 'row', flexWrap: 'wrap', gap: 4,
+    },
+    closeBtn: {
+        position: 'absolute', top: 12, right: 16,
+        width: 32, height: 32, borderRadius: 16,
+        backgroundColor: 'rgba(40,40,40,0.8)',
+        alignItems: 'center', justifyContent: 'center',
+    },
+
+    // ── Tier pill
+    tierPill: {
+        flexDirection: 'row', alignItems: 'center', gap: 5,
+        paddingHorizontal: 8, paddingVertical: 3,
+        borderRadius: 20,
+        borderWidth: 1,
+    },
+    tierDot: { width: 5, height: 5, borderRadius: 3 },
+    tierText: { fontSize: 9, fontWeight: '700', letterSpacing: 1.5 },
+
+    // ── Stat strip (floating, no background)
+    statStrip: {
+        flexDirection: 'row', alignItems: 'center',
+        paddingVertical: 4, paddingHorizontal: 4,
+    },
+    statCell: { flex: 1, alignItems: 'center', gap: 4 },
+    statNum: { fontSize: 20, fontWeight: '200', color: TEXT, letterSpacing: -0.3 },
+    statLabel: { fontSize: 8, fontWeight: '600', letterSpacing: 1.5, color: MUTED, textTransform: 'uppercase' },
+    statDivider: { width: 1, height: 34, backgroundColor: 'rgba(255,255,255,0.06)' },
+
+    // ── Achievements
+    achievementsSection: { gap: 10 },
+    achievementsGrid: {
+        flexDirection: 'row', flexWrap: 'wrap', gap: 8,
+    },
+    achievementCard: {
+        width: '48.5%',
+        paddingVertical: 10, paddingHorizontal: 12,
+        borderRadius: 12,
+        borderLeftWidth: 2, borderLeftColor: GOLD,
+        backgroundColor: 'rgba(232,210,0,0.04)',
+        gap: 2,
+    },
+    achievementHeader: {
+        flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 2,
+    },
+    achievementTitle: {
+        fontSize: 8, fontWeight: '700', letterSpacing: 1.2,
+        color: GOLD, opacity: 0.75, flex: 1,
+    },
+    achievementValue: {
+        fontSize: 16, fontWeight: '300', color: TEXT, letterSpacing: -0.3,
+    },
+    achievementContext: {
+        fontSize: 10, fontWeight: '300', color: DIM,
+    },
+
+    // ── Activity breakdown
+    breakdownSection: { gap: 10 },
+    stackBar: {
+        flexDirection: 'row',
+        height: 6,
+        borderRadius: 3,
+        overflow: 'hidden',
+        backgroundColor: 'rgba(255,255,255,0.05)',
+    },
+    legend: {
+        flexDirection: 'row', flexWrap: 'wrap', gap: 10,
+    },
+    legendItem: {
+        flexDirection: 'row', alignItems: 'center', gap: 5,
+    },
+    legendDot: { width: 6, height: 6, borderRadius: 3 },
+    legendType: { fontSize: 9, fontWeight: '600', color: DIM, letterSpacing: 1 },
+    legendCount: { fontSize: 10, fontWeight: '400', color: TEXT },
+});

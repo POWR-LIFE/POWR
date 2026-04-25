@@ -1,0 +1,43 @@
+import { supabase } from '@/lib/supabase';
+
+export type LeaderboardEntry = {
+    user_id: string;
+    display_name: string | null;
+    username: string | null;
+    avatar_url: string | null;
+    level: number;
+    is_pro: boolean;
+    points: number;
+    rank: number;
+};
+
+export type LeaderboardMetric = 'weekly' | 'alltime';
+
+export async function fetchLeaderboard(
+    isPro: boolean,
+    metric: LeaderboardMetric,
+    limit = 50
+): Promise<LeaderboardEntry[]> {
+    const view = metric === 'weekly' ? 'leaderboard_weekly' : 'leaderboard_alltime';
+    const pointsCol = metric === 'weekly' ? 'weekly_points' : 'total_points';
+
+    const { data, error } = await supabase
+        .from(view)
+        .select('*')
+        .eq('is_pro', isPro)
+        .order(pointsCol, { ascending: false })
+        .limit(limit);
+
+    if (error || !data) return [];
+
+    return data.map((row, i) => ({
+        user_id: row.user_id,
+        display_name: row.display_name,
+        username: row.username,
+        avatar_url: row.avatar_url,
+        level: row.level,
+        is_pro: row.is_pro,
+        points: row[pointsCol] ?? 0,
+        rank: i + 1,
+    }));
+}
