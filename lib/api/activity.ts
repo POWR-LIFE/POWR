@@ -119,7 +119,7 @@ export type ManualSessionParams = {
 export async function logManualSession(params: ManualSessionParams): Promise<void> {
     const ended_at = new Date().toISOString();
     const verification = params.healthVerified ? 'wearable' : 'manual';
-    const trust_score = params.healthVerified ? 85 : 55;
+    const trust_score = params.healthVerified ? 0.85 : 0.55;
     const device_id = await getDeviceId();
 
     const { data: session, error: sessionError } = await supabase
@@ -198,8 +198,8 @@ export async function fetchWeeklyMetrics(): Promise<WeeklyMetrics> {
 }
 
 // ── Health-sync walking session API ──────────────────────────────────────────
-// Auto-synced sessions use trust_score=90 to distinguish from manually
-// health-verified sessions (trust_score=85) and plain manual logs (55).
+// Auto-synced sessions use trust_score=0.90 to distinguish from manually
+// health-verified sessions (0.85) and plain manual logs (0.55).
 
 export type HealthWalkingSession = { id: string; steps: number; points: number };
 
@@ -215,7 +215,7 @@ export async function getTodayHealthWalkingSession(): Promise<HealthWalkingSessi
         .from('activity_sessions')
         .select('id, steps, point_transactions(amount)')
         .eq('type', 'walking')
-        .eq('trust_score', 90)
+        .eq('trust_score', 0.90)
         .gte('started_at', todayMidnight())
         .order('started_at', { ascending: false })
         .limit(1)
@@ -240,7 +240,7 @@ export async function logHealthWalkingSession(steps: number, points: number): Pr
             duration_sec: 0,
             steps,
             verification: 'wearable',
-            trust_score: 90,
+            trust_score: 0.90,
             device_id,
         })
         .select('id')
