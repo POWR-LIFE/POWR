@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
 import { useAuth } from '../../App';
@@ -7,7 +7,8 @@ import {
     User, Activity, Award, Calendar, Clock, MapPin,
     ChevronLeft, TrendingUp, Zap, Shield, AlertCircle,
     ArrowUpRight, ArrowDownRight, Gift, Plus, X,
-    Heart, Moon, Flame, Footprints
+    Heart, Moon, Flame, Footprints, Star, Trash2,
+    Camera, ImagePlus, Trophy, Check
 } from 'lucide-react';
 
 const logAction = async (adminId, action, targetType, targetId, metadata = {}) => {
@@ -34,6 +35,7 @@ const formatSessionTime = (start, sec) => {
 export default function UserProfile() {
     const { userId } = useParams();
     const toast = useToast();
+    const navigate = useNavigate();
     const { user: adminUser } = useAuth();
     const [loading, setLoading] = useState(true);
     const [profile, setProfile] = useState(null);
@@ -46,9 +48,31 @@ export default function UserProfile() {
     const [adjAmount, setAdjAmount] = useState('');
     const [adjDesc, setAdjDesc] = useState('');
     const [adjLoading, setAdjLoading] = useState(false);
+    const [proLoading, setProLoading] = useState(false);
+    const [deleteConfirm, setDeleteConfirm] = useState(false);
+    const [deleteLoading, setDeleteLoading] = useState(false);
     const [activeTab, setActiveTab] = useState('activity');
     const [visibleSessions, setVisibleSessions] = useState(10);
     const [visibleTransactions, setVisibleTransactions] = useState(10);
+
+    // Pro profile
+    const [bioEdit, setBioEdit] = useState('');
+    const [bioSaving, setBioSaving] = useState(false);
+    const [adminGallery, setAdminGallery] = useState([]);
+    const [adminGalleryLoading, setAdminGalleryLoading] = useState(false);
+    const [galleryDeleting, setGalleryDeleting] = useState(null);
+    const [galleryUploading, setGalleryUploading] = useState(false);
+    const [avatarUploading, setAvatarUploading] = useState(false);
+    const [coverUploading, setCoverUploading] = useState(false);
+    const [coverDeleting, setCoverDeleting] = useState(false);
+
+    // Achievements
+    const [achievements, setAchievements] = useState([]);
+    const [achievementsLoading, setAchievementsLoading] = useState(false);
+    const [editingAchId, setEditingAchId] = useState(null); // 'new' for new row, id for existing
+    const [achForm, setAchForm] = useState({ title: '', value: '', context: '' });
+    const [achSaving, setAchSaving] = useState(false);
+    const [achDeleting, setAchDeleting] = useState(null);
 
     const [activityDateFilter, setActivityDateFilter] = useState('');
     const [activityTypeFilter, setActivityTypeFilter] = useState('');
@@ -74,6 +98,47 @@ export default function UserProfile() {
         return match;
     });
 
+    const handleTogglePro = async () => {
+        if (proLoading) return;
+        setProLoading(true);
+        const newValue = !profile.is_pro;
+        const { error } = await supabase
+            .from('profiles')
+            .update({ is_pro: newValue })
+            .eq('id', userId);
+        if (error) {
+            toast.error(error.message);
+            setProLoading(false);
+            return;
+        }
+        await logAction(adminUser.id, newValue ? 'grant_pro' : 'revoke_pro', 'user', userId, {});
+        setProfile(prev => ({ ...prev, is_pro: newValue }));
+        toast.success(newValue ? 'Pro status granted' : 'Pro status revoked');
+        setProLoading(false);
+    };
+
+    const handleDeleteUser = async () => {
+        setDeleteLoading(true);
+        const { data: { session } } = await supabase.auth.getSession();
+        const res = await fetch(
+            `${import.meta.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/admin-manage-user`,
+            {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${session.access_token}`,
+                    'apikey': import.meta.env.EXPO_PUBLIC_SUPABASE_ANON_KEY,
+                },
+                body: JSON.stringify({ action: 'delete', user_id: userId }),
+            }
+        );
+        const result = await res.json();
+        setDeleteLoading(false);
+        if (result.error) { toast.error(result.error); return; }
+        toast.success('User deleted');
+        navigate('/admin/users');
+    };
+
     const handlePointAdjust = async () => {
         const amt = parseInt(adjAmount);
         if (isNaN(amt) || amt === 0) { toast.error('Enter a valid non-zero amount'); return; }
@@ -93,6 +158,198 @@ export default function UserProfile() {
         if (userId) fetchData();
     }, [userId]);
 
+    useEffect(() => {
+        if (activeTab === 'pro' && userId) {
+            fetchAdminGallery();
+            fetchAchievements();
+        }
+    }, [activeTab, userId]);
+
+    const fetchAchievements = async () => {
+        setAchievementsLoading(true);
+        const { data } = await supabase
+            .from('pro_achievements')
+            .select('*')
+            .eq('user_id', userId)
+            .order('display_order', { ascending: true });
+        setAchievements(data || []);
+        setAchievementsLoading(false);
+    };
+
+    const startEditAchievement = (a) => {
+        setEditingAchId(a.id);
+        setAchForm({ title: a.title, value: a.value, context: a.context ?? '' });
+    };
+
+    const startNewAchievement = () => {
+        setEditingAchId('new');
+        setAchForm({ title: '', value: '', context: '' });
+    };
+
+    const cancelEditAchievement = () => {
+        setEditingAchId(null);
+        setAchForm({ title: '', value: '', context: '' });
+    };
+
+    const saveAchievement = async () => {
+        if (!achForm.title.trim() || !achForm.value.trim()) {
+            toast.error('Title and value are required');
+            return;
+        }
+        setAchSaving(true);
+        if (editingAchId === 'new') {
+            const nextOrder = (achievements[achievements.length - 1]?.display_order ?? -1) + 1;
+            const { data, error } = await supabase
+                .from('pro_achievements')
+                .insert({
+                    user_id: userId,
+                    title: achForm.title.trim(),
+                    value: achForm.value.trim(),
+                    context: achForm.context.trim() || null,
+                    display_order: nextOrder,
+                })
+                .select().single();
+            if (error) { toast.error(error.message); setAchSaving(false); return; }
+            await logAction(adminUser.id, 'create_achievement', 'user', userId, { title: data.title });
+            setAchievements(prev => [...prev, data]);
+            toast.success('Achievement added');
+        } else {
+            const { error } = await supabase
+                .from('pro_achievements')
+                .update({
+                    title: achForm.title.trim(),
+                    value: achForm.value.trim(),
+                    context: achForm.context.trim() || null,
+                })
+                .eq('id', editingAchId);
+            if (error) { toast.error(error.message); setAchSaving(false); return; }
+            await logAction(adminUser.id, 'update_achievement', 'user', userId, { id: editingAchId });
+            setAchievements(prev => prev.map(a =>
+                a.id === editingAchId
+                    ? { ...a, title: achForm.title.trim(), value: achForm.value.trim(), context: achForm.context.trim() || null }
+                    : a
+            ));
+            toast.success('Achievement updated');
+        }
+        setAchSaving(false);
+        cancelEditAchievement();
+    };
+
+    const deleteAchievement = async (id) => {
+        setAchDeleting(id);
+        const { error } = await supabase.from('pro_achievements').delete().eq('id', id);
+        if (error) { toast.error(error.message); setAchDeleting(null); return; }
+        await logAction(adminUser.id, 'delete_achievement', 'user', userId, { id });
+        setAchievements(prev => prev.filter(a => a.id !== id));
+        setAchDeleting(null);
+    };
+
+    const fetchAdminGallery = async () => {
+        setAdminGalleryLoading(true);
+        const { data } = await supabase
+            .from('pro_gallery_photos')
+            .select('*')
+            .eq('user_id', userId)
+            .order('display_order', { ascending: true });
+        setAdminGallery(data || []);
+        setAdminGalleryLoading(false);
+    };
+
+    const handleSaveBio = async () => {
+        setBioSaving(true);
+        const { error } = await supabase
+            .from('profiles')
+            .update({ bio: bioEdit.trim() || null })
+            .eq('id', userId);
+        if (error) { toast.error(error.message); }
+        else {
+            setProfile(prev => ({ ...prev, bio: bioEdit.trim() || null }));
+            toast.success('Bio saved');
+        }
+        setBioSaving(false);
+    };
+
+    const handleAdminGalleryDelete = async (photo) => {
+        setGalleryDeleting(photo.id);
+        const storagePath = photo.url.split('/gallery/').pop();
+        if (storagePath) await supabase.storage.from('gallery').remove([storagePath]);
+        await supabase.from('pro_gallery_photos').delete().eq('id', photo.id);
+        setAdminGallery(prev => prev.filter(p => p.id !== photo.id));
+        setGalleryDeleting(null);
+        toast.success('Photo removed');
+    };
+
+    const handleAvatarUpload = async (file) => {
+        if (!file) return;
+        setAvatarUploading(true);
+        const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
+        const path = `${userId}/${Date.now()}.${ext}`;
+        const { error: uploadError } = await supabase.storage
+            .from('avatars').upload(path, file, { contentType: file.type, upsert: true });
+        if (uploadError) { toast.error(uploadError.message); setAvatarUploading(false); return; }
+        const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path);
+        const publicUrl = urlData.publicUrl;
+        const { error: updateError } = await supabase
+            .from('profiles').update({ avatar_url: publicUrl }).eq('id', userId);
+        if (updateError) { toast.error(updateError.message); setAvatarUploading(false); return; }
+        await logAction(adminUser.id, 'update_avatar', 'user', userId, { url: publicUrl });
+        setProfile(prev => ({ ...prev, avatar_url: publicUrl }));
+        toast.success('Avatar updated');
+        setAvatarUploading(false);
+    };
+
+    const handleCoverUpload = async (file) => {
+        if (!file) return;
+        setCoverUploading(true);
+        const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
+        const path = `${userId}/${Date.now()}.${ext}`;
+        const { error: uploadError } = await supabase.storage
+            .from('covers').upload(path, file, { contentType: file.type, upsert: true });
+        if (uploadError) { toast.error(uploadError.message); setCoverUploading(false); return; }
+        const { data: urlData } = supabase.storage.from('covers').getPublicUrl(path);
+        const publicUrl = urlData.publicUrl;
+        const { error: updateError } = await supabase
+            .from('profiles').update({ cover_url: publicUrl }).eq('id', userId);
+        if (updateError) { toast.error(updateError.message); setCoverUploading(false); return; }
+        await logAction(adminUser.id, 'update_cover', 'user', userId, { url: publicUrl });
+        setProfile(prev => ({ ...prev, cover_url: publicUrl }));
+        toast.success('Cover photo updated');
+        setCoverUploading(false);
+    };
+
+    const handleCoverRemove = async () => {
+        if (!profile?.cover_url) return;
+        setCoverDeleting(true);
+        const storagePath = profile.cover_url.split('/covers/').pop();
+        if (storagePath) await supabase.storage.from('covers').remove([storagePath]);
+        const { error } = await supabase
+            .from('profiles').update({ cover_url: null }).eq('id', userId);
+        if (error) { toast.error(error.message); setCoverDeleting(false); return; }
+        await logAction(adminUser.id, 'remove_cover', 'user', userId, {});
+        setProfile(prev => ({ ...prev, cover_url: null }));
+        toast.success('Cover photo removed');
+        setCoverDeleting(false);
+    };
+
+    const handleAdminGalleryUpload = async (file) => {
+        if (adminGallery.length >= 6) { toast.error('Gallery full (max 6 photos)'); return; }
+        setGalleryUploading(true);
+        const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
+        const path = `${userId}/${Date.now()}.${ext}`;
+        const { error: uploadError } = await supabase.storage
+            .from('gallery').upload(path, file, { contentType: file.type });
+        if (uploadError) { toast.error(uploadError.message); setGalleryUploading(false); return; }
+        const { data: urlData } = supabase.storage.from('gallery').getPublicUrl(path);
+        const nextOrder = (adminGallery[adminGallery.length - 1]?.display_order ?? -1) + 1;
+        const { data: row, error: insertError } = await supabase
+            .from('pro_gallery_photos')
+            .insert({ user_id: userId, url: urlData.publicUrl, display_order: nextOrder })
+            .select().single();
+        if (insertError) { toast.error(insertError.message); }
+        else { setAdminGallery(prev => [...prev, row]); toast.success('Photo uploaded'); }
+        setGalleryUploading(false);
+    };
+
     const fetchData = async () => {
         setLoading(true);
         try {
@@ -107,6 +364,7 @@ export default function UserProfile() {
 
             if (p.error) throw p.error;
             setProfile(p.data);
+            setBioEdit(p.data.bio ?? '');
             setSessions(s.data || []);
             setTransactions(t.data || []);
             setStreak(str.data || null);
@@ -140,66 +398,145 @@ export default function UserProfile() {
     return (
         <div className="px-4 lg:px-0 py-20 animate-in fade-in slide-in-from-bottom-8 duration-1000">
             {/* Nav */}
-            <Link to="/admin/users" className="group flex items-center gap-3 mb-12 text-[#999] hover:text-[#F2F2F2] transition-colors">
-                <ChevronLeft size={16} />
-                <span className="text-[10px] uppercase tracking-[0.4em] font-black">Back to Registry</span>
-            </Link>
+            <div className="flex items-center justify-between mb-12">
+                <Link to="/admin/users" className="group flex items-center gap-3 text-[#999] hover:text-[#F2F2F2] transition-colors">
+                    <ChevronLeft size={16} />
+                    <span className="text-[10px] uppercase tracking-[0.4em] font-black">Back to Registry</span>
+                </Link>
+                <button
+                    onClick={() => setDeleteConfirm(true)}
+                    className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-[#0A0A0A] border border-[#1E1E1E] text-[#555] hover:text-red-400 hover:border-red-400/30 transition-all text-[10px] font-black uppercase tracking-widest"
+                >
+                    <Trash2 size={13} /> Delete User
+                </button>
+            </div>
 
             {/* Header / Identity */}
-            <header className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-12 mb-24">
-                <div className="flex items-center gap-10">
-                    <div className="w-32 h-32 rounded-[2.5rem] bg-[#0A0A0A] border border-[#151515] flex items-center justify-center overflow-hidden shrink-0 shadow-2xl">
+            <header className="mb-16">
+                {/* Row 1: avatar + identity */}
+                <div className="flex items-center gap-10 mb-10">
+                    <label className={`group relative w-24 h-24 rounded-[2rem] bg-[#0A0A0A] border border-[#151515] hover:border-[#E8D200]/40 flex items-center justify-center overflow-hidden shrink-0 shadow-2xl cursor-pointer transition-all ${avatarUploading ? 'opacity-60 pointer-events-none' : ''}`}>
                         {profile.avatar_url ? (
                             <img src={profile.avatar_url} alt="" className="w-full h-full object-cover" />
                         ) : (
-                            <User size={48} className="text-[#777]" />
+                            <User size={40} className="text-[#777]" />
                         )}
-                    </div>
-                    <div>
-                        <div className="flex items-center gap-4 mb-3">
-                            <span className="px-4 py-1.5 rounded-full bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.2em]">LVL {profile.level || 1}</span>
+                        {/* Hover overlay */}
+                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/60 transition-all flex items-center justify-center">
+                            {avatarUploading ? (
+                                <div className="w-6 h-6 border-2 border-[#E8D200]/30 border-t-[#E8D200] rounded-full animate-spin" />
+                            ) : (
+                                <Camera size={22} className="text-[#E8D200] opacity-0 group-hover:opacity-100 transition-opacity" />
+                            )}
+                        </div>
+                        <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            disabled={avatarUploading}
+                            onChange={e => { if (e.target.files?.[0]) handleAvatarUpload(e.target.files[0]); e.target.value = ''; }}
+                        />
+                    </label>
+                    <div className="flex-1 min-w-0">
+                        <h1 className="text-5xl font-light tracking-tighter text-[#F2F2F2] mb-2 truncate">
+                            {profile.display_name || profile.username || 'Anonymous Node'}
+                        </h1>
+                        <div className="flex items-center flex-wrap gap-3">
+                            <span className="px-3 py-1 rounded-full bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.2em]">LVL {profile.level || 1}</span>
                             {profile.location_granted ? (
-                                <span className="px-4 py-1.5 rounded-full bg-[#10B981]/10 border border-[#10B981]/20 text-[#10B981] text-[10px] font-black uppercase tracking-[0.2em] flex items-center gap-2">
-                                    <MapPin size={12} /> Location
+                                <span className="px-3 py-1 rounded-full bg-[#10B981]/10 border border-[#10B981]/20 text-[#10B981] text-[10px] font-black uppercase tracking-[0.2em] flex items-center gap-1.5">
+                                    <MapPin size={11} /> Location
                                 </span>
                             ) : (
-                                <span className="px-4 py-1.5 rounded-full bg-[#151515] text-[#999] text-[10px] font-black uppercase tracking-[0.2em]">No Location</span>
+                                <span className="px-3 py-1 rounded-full bg-[#151515] text-[#666] text-[10px] font-black uppercase tracking-[0.2em]">No Location</span>
                             )}
-                            <span className="text-[11px] uppercase tracking-[0.6em] text-[#AAA] font-black">Established {new Date(profile.created_at).getFullYear()}</span>
+                            <button
+                                onClick={handleTogglePro}
+                                disabled={proLoading}
+                                className={`flex items-center gap-2 px-3 py-1 rounded-full border text-[10px] font-black uppercase tracking-[0.2em] transition-all ${
+                                    profile.is_pro
+                                        ? 'bg-[#E8D200]/10 border-[#E8D200]/40 text-[#E8D200] hover:bg-[#E8D200]/20'
+                                        : 'bg-[#151515] border-[#1E1E1E] text-[#666] hover:text-[#CCC] hover:border-[#333]'
+                                } disabled:opacity-50`}
+                            >
+                                <Star size={11} fill={profile.is_pro ? '#E8D200' : 'none'} />
+                                {proLoading ? 'Updating...' : profile.is_pro ? 'Pro Athlete' : 'Grant Pro'}
+                            </button>
+                            <span className="text-[10px] uppercase tracking-[0.4em] text-[#555] font-black">Est. {new Date(profile.created_at).getFullYear()}</span>
+                            <span className="text-[10px] uppercase tracking-[0.3em] text-[#444] font-black">{profile.id.substring(0, 14)}…</span>
                         </div>
-                        <h1 className="text-6xl font-light tracking-tighter text-[#F2F2F2] mb-2">{profile.display_name || profile.username || 'Anonymous Node'}</h1>
-                        <p className="text-[#999] text-[12px] font-black uppercase tracking-[0.5em]">UID: {profile.id.substring(0, 18)}...</p>
                     </div>
                 </div>
 
-                <div className="flex flex-wrap gap-8">
-                    {[
-                        { label: 'Available Points', value: totalPoints.toLocaleString(), icon: Zap, color: '#E8D200' },
-                        { label: 'Current Streak', value: `${streak?.current_streak || 0}D`, icon: TrendingUp, color: '#10B981' },
-                        { label: 'Trust Score', value: '0.98', icon: Shield, color: '#0EA5E9' },
-                    ].map(s => (
-                        <div key={s.label} className="bg-[#0A0A0A] border border-[#151515] p-8 px-10 rounded-3xl min-w-[180px]">
-                            <div className="flex items-center gap-4 mb-4">
-                                <s.icon size={16} style={{ color: s.color }} />
-                                <span className="text-[9px] uppercase tracking-[0.4em] text-[#999] font-black">{s.label}</span>
+                {/* Row 2: stat cards */}
+                <div className="flex flex-wrap gap-4">
+                    {/* Points card — clickable to adjust */}
+                    <button
+                        onClick={() => setShowAdjust(true)}
+                        className="group bg-[#0A0A0A] border border-[#1E1E1E] hover:border-[#E8D200]/30 p-6 px-8 rounded-2xl text-left transition-all hover:bg-[#E8D200]/[0.03] min-w-[200px]"
+                    >
+                        <div className="flex items-center justify-between gap-4 mb-3">
+                            <div className="flex items-center gap-3">
+                                <Zap size={15} className="text-[#E8D200]" />
+                                <span className="text-[9px] uppercase tracking-[0.4em] text-[#999] font-black">Points Balance</span>
                             </div>
-                            <div className="text-4xl font-light tracking-tighter text-[#DDD] leading-none">{s.value}</div>
+                            <span className="text-[9px] uppercase tracking-[0.3em] text-[#E8D200]/50 font-black opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
+                                <Plus size={10} /> Adjust
+                            </span>
                         </div>
-                    ))}
-                </div>
+                        <div className="text-4xl font-light tracking-tighter text-[#E8D200] leading-none">{totalPoints.toLocaleString()}</div>
+                        <div className="text-[9px] uppercase tracking-[0.3em] text-[#555] font-black mt-2">Click to adjust</div>
+                    </button>
 
-                <button onClick={() => setShowAdjust(true)} className="h-14 px-8 bg-[#E8D200] text-[#080808] rounded-full text-[10px] font-black uppercase tracking-[0.3em] hover:translate-y-[-2px] transition-all shadow-lg shadow-[#E8D200]/10 flex items-center gap-3 shrink-0">
-                    <Plus size={16} /> Adjust Points
-                </button>
+                    <div className="bg-[#0A0A0A] border border-[#151515] p-6 px-8 rounded-2xl min-w-[160px]">
+                        <div className="flex items-center gap-3 mb-3">
+                            <TrendingUp size={15} className="text-[#10B981]" />
+                            <span className="text-[9px] uppercase tracking-[0.4em] text-[#999] font-black">Current Streak</span>
+                        </div>
+                        <div className="text-4xl font-light tracking-tighter text-[#DDD] leading-none">{streak?.current_streak || 0}<span className="text-xl text-[#666] ml-1">d</span></div>
+                    </div>
+
+                    <div className="bg-[#0A0A0A] border border-[#151515] p-6 px-8 rounded-2xl min-w-[160px]">
+                        <div className="flex items-center gap-3 mb-3">
+                            <Shield size={15} className="text-[#0EA5E9]" />
+                            <span className="text-[9px] uppercase tracking-[0.4em] text-[#999] font-black">Trust Score</span>
+                        </div>
+                        <div className="text-4xl font-light tracking-tighter text-[#DDD] leading-none">0.98</div>
+                    </div>
+
+                    <div className="bg-[#0A0A0A] border border-[#151515] p-6 px-8 rounded-2xl min-w-[160px]">
+                        <div className="flex items-center gap-3 mb-3">
+                            <Activity size={15} className="text-[#A78BFA]" />
+                            <span className="text-[9px] uppercase tracking-[0.4em] text-[#999] font-black">Sessions</span>
+                        </div>
+                        <div className="text-4xl font-light tracking-tighter text-[#DDD] leading-none">{sessions.length}</div>
+                    </div>
+
+                    <div className="bg-[#0A0A0A] border border-[#151515] p-6 px-8 rounded-2xl min-w-[160px]">
+                        <div className="flex items-center gap-3 mb-3">
+                            <Gift size={15} className="text-[#F97316]" />
+                            <span className="text-[9px] uppercase tracking-[0.4em] text-[#999] font-black">Redemptions</span>
+                        </div>
+                        <div className="text-4xl font-light tracking-tighter text-[#DDD] leading-none">{redemptions.length}</div>
+                    </div>
+                </div>
             </header>
 
             {/* Point Adjustment Modal */}
             {showAdjust && (
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] flex items-center justify-center" onClick={() => setShowAdjust(false)}>
                     <div className="bg-[#0A0A0A] border border-[#1E1E1E] rounded-3xl p-12 w-full max-w-md shadow-2xl" onClick={e => e.stopPropagation()}>
-                        <div className="flex justify-between items-center mb-10">
+                        <div className="flex justify-between items-center mb-6">
                             <h3 className="text-2xl font-light tracking-tighter text-[#F2F2F2]">Adjust Points</h3>
                             <button onClick={() => setShowAdjust(false)} className="w-10 h-10 rounded-full bg-[#151515] flex items-center justify-center text-[#BBB] hover:text-[#F2F2F2] transition-colors"><X size={18} /></button>
+                        </div>
+                        {/* Current balance */}
+                        <div className="flex items-center justify-between bg-[#050505] border border-[#1E1E1E] rounded-2xl px-6 py-4 mb-8">
+                            <div>
+                                <div className="text-[9px] uppercase tracking-[0.4em] text-[#666] font-black mb-1">Current balance</div>
+                                <div className="text-3xl font-light tracking-tighter text-[#E8D200]">{totalPoints.toLocaleString()} <span className="text-base text-[#555]">pts</span></div>
+                            </div>
+                            <Zap size={20} className="text-[#E8D200]/30" />
                         </div>
                         <p className="text-[10px] uppercase tracking-[0.4em] text-[#999] font-black mb-8">Use negative values to debit points</p>
                         <div className="space-y-6">
@@ -242,6 +579,14 @@ export default function UserProfile() {
                         >
                             <Heart size={14} /> Health Data
                         </button>
+                        {profile.is_pro && (
+                            <button
+                                onClick={() => setActiveTab('pro')}
+                                className={`pb-4 text-[11px] font-black uppercase tracking-[0.2em] transition-colors border-b-2 flex items-center gap-2 ${activeTab === 'pro' ? 'text-[#E8D200] border-[#E8D200]' : 'text-[#BBB] border-transparent hover:text-[#CCC]'}`}
+                            >
+                                <Star size={14} /> Pro Profile
+                            </button>
+                        )}
                     </div>
 
                     {/* Activity Timeline */}
@@ -642,6 +987,221 @@ export default function UserProfile() {
                             </section>
                         );
                     })()}
+
+                    {/* ── Pro Profile Tab */}
+                    {activeTab === 'pro' && (
+                        <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                            {/* Cover photo */}
+                            <section className="bg-[#0A0A0A] border border-[#151515] rounded-[2rem] overflow-hidden">
+                                <div className="p-10 border-b border-[#151515] flex items-center justify-between">
+                                    <div>
+                                        <h3 className="text-xl font-light tracking-tighter text-[#EEE]">Cover Photo</h3>
+                                        <p className="text-[9px] uppercase tracking-[0.4em] text-[#999] font-black mt-2">Banner shown at top of the profile sheet</p>
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                        {profile.cover_url && (
+                                            <button
+                                                onClick={handleCoverRemove}
+                                                disabled={coverDeleting || coverUploading}
+                                                className="h-10 px-5 bg-[#151515] border border-[#1E1E1E] rounded-full text-[10px] font-black uppercase tracking-widest text-[#999] hover:text-red-400 hover:border-red-900/40 transition-all disabled:opacity-50"
+                                            >
+                                                {coverDeleting ? 'Removing…' : 'Remove'}
+                                            </button>
+                                        )}
+                                        <label className={`h-10 px-6 bg-[#151515] border border-[#1E1E1E] rounded-full flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-[#BBB] hover:text-[#E8D200] hover:border-[#E8D200]/30 transition-all cursor-pointer ${coverUploading ? 'opacity-50 pointer-events-none' : ''}`}>
+                                            <ImagePlus size={13} />
+                                            {coverUploading ? 'Uploading…' : profile.cover_url ? 'Replace' : 'Upload Cover'}
+                                            <input
+                                                type="file"
+                                                accept="image/*"
+                                                className="hidden"
+                                                onChange={e => { if (e.target.files?.[0]) handleCoverUpload(e.target.files[0]); e.target.value = ''; }}
+                                            />
+                                        </label>
+                                    </div>
+                                </div>
+                                <div className="p-10">
+                                    {profile.cover_url ? (
+                                        <div className="aspect-[3/1] w-full rounded-2xl overflow-hidden bg-[#050505] border border-[#1E1E1E]">
+                                            <img src={profile.cover_url} alt="" className="w-full h-full object-cover" />
+                                        </div>
+                                    ) : (
+                                        <div className="aspect-[3/1] w-full rounded-2xl border border-dashed border-[#1E1E1E] bg-[#050505] flex flex-col items-center justify-center gap-3">
+                                            <ImagePlus size={24} className="text-[#444]" />
+                                            <p className="text-[10px] uppercase tracking-[0.4em] text-[#555] font-black">No cover photo</p>
+                                        </div>
+                                    )}
+                                </div>
+                            </section>
+
+                            {/* Bio */}
+                            <section className="bg-[#0A0A0A] border border-[#151515] rounded-[2rem] overflow-hidden">
+                                <div className="p-10 border-b border-[#151515]">
+                                    <h3 className="text-xl font-light tracking-tighter text-[#EEE]">Bio</h3>
+                                    <p className="text-[9px] uppercase tracking-[0.4em] text-[#999] font-black mt-2">Shown on public profile and leaderboard card</p>
+                                </div>
+                                <div className="p-10 space-y-6">
+                                    <textarea
+                                        value={bioEdit}
+                                        onChange={e => setBioEdit(e.target.value)}
+                                        maxLength={2000}
+                                        rows={10}
+                                        placeholder="Write the athlete's bio here…"
+                                        className="w-full bg-[#050505] border border-[#1E1E1E] rounded-2xl px-6 py-5 text-[#F2F2F2] text-sm font-light leading-relaxed outline-none focus:border-[#E8D200]/40 transition-all resize-none"
+                                    />
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-[10px] uppercase tracking-widest text-[#555] font-black">{bioEdit.length}/2000</span>
+                                        <button
+                                            onClick={handleSaveBio}
+                                            disabled={bioSaving}
+                                            className="h-11 px-8 bg-[#E8D200] text-[#080808] font-black uppercase tracking-widest text-[10px] rounded-full hover:translate-y-[-1px] transition-all shadow-md shadow-[#E8D200]/10 disabled:opacity-50"
+                                        >
+                                            {bioSaving ? 'Saving…' : 'Save Bio'}
+                                        </button>
+                                    </div>
+                                </div>
+                            </section>
+
+                            {/* Achievements */}
+                            <section className="bg-[#0A0A0A] border border-[#151515] rounded-[2rem] overflow-hidden">
+                                <div className="p-10 border-b border-[#151515] flex items-center justify-between">
+                                    <div>
+                                        <h3 className="text-xl font-light tracking-tighter text-[#EEE]">Achievements</h3>
+                                        <p className="text-[9px] uppercase tracking-[0.4em] text-[#999] font-black mt-2">{achievements.length}/4 highlights · shown as pills on profile</p>
+                                    </div>
+                                    {achievements.length < 4 && editingAchId !== 'new' && (
+                                        <button
+                                            onClick={startNewAchievement}
+                                            className="h-10 px-6 bg-[#151515] border border-[#1E1E1E] rounded-full flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-[#BBB] hover:text-[#E8D200] hover:border-[#E8D200]/30 transition-all"
+                                        >
+                                            <Plus size={13} />
+                                            Add Achievement
+                                        </button>
+                                    )}
+                                </div>
+                                <div className="p-10 space-y-4">
+                                    {achievementsLoading ? (
+                                        <div className="flex justify-center py-6">
+                                            <div className="w-8 h-8 border-2 border-[#E8D200]/20 border-t-[#E8D200] rounded-full animate-spin" />
+                                        </div>
+                                    ) : (
+                                        <>
+                                            {achievements.length === 0 && editingAchId !== 'new' && (
+                                                <div className="text-center py-8">
+                                                    <Trophy size={24} className="mx-auto text-[#444] mb-3" />
+                                                    <p className="text-[10px] uppercase tracking-[0.4em] text-[#555] font-black">No achievements yet</p>
+                                                    <p className="text-xs text-[#444] font-light mt-2">Add up to 4 career highlights</p>
+                                                </div>
+                                            )}
+
+                                            {achievements.map(a => (
+                                                <div key={a.id}>
+                                                    {editingAchId === a.id ? (
+                                                        <AchievementForm
+                                                            form={achForm}
+                                                            setForm={setAchForm}
+                                                            saving={achSaving}
+                                                            onSave={saveAchievement}
+                                                            onCancel={cancelEditAchievement}
+                                                        />
+                                                    ) : (
+                                                        <div className="group flex items-center gap-4 bg-[#050505] border-l-2 border-[#E8D200]/60 border-y border-r border-[#151515] rounded-xl px-5 py-4 hover:border-[#E8D200]/30 transition-all">
+                                                            <Trophy size={16} className="text-[#E8D200]/70 shrink-0" />
+                                                            <div className="flex-1 min-w-0">
+                                                                <div className="text-[9px] uppercase tracking-[0.3em] text-[#E8D200]/60 font-black mb-1">{a.title}</div>
+                                                                <div className="text-lg font-light text-[#F2F2F2] leading-tight">{a.value}</div>
+                                                                {a.context && <div className="text-xs font-light text-[#777] mt-1">{a.context}</div>}
+                                                            </div>
+                                                            <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                <button
+                                                                    onClick={() => startEditAchievement(a)}
+                                                                    className="w-8 h-8 rounded-full bg-[#151515] border border-[#1E1E1E] flex items-center justify-center text-[#999] hover:text-[#E8D200] hover:border-[#E8D200]/30 transition-all"
+                                                                >
+                                                                    <Camera size={12} />
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => deleteAchievement(a.id)}
+                                                                    disabled={achDeleting === a.id}
+                                                                    className="w-8 h-8 rounded-full bg-red-950/60 border border-red-900/40 flex items-center justify-center text-red-400 hover:bg-red-900/40 transition-all disabled:opacity-50"
+                                                                >
+                                                                    {achDeleting === a.id
+                                                                        ? <div className="w-3 h-3 border border-red-400/40 border-t-red-400 rounded-full animate-spin" />
+                                                                        : <Trash2 size={12} />}
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ))}
+
+                                            {editingAchId === 'new' && (
+                                                <AchievementForm
+                                                    form={achForm}
+                                                    setForm={setAchForm}
+                                                    saving={achSaving}
+                                                    onSave={saveAchievement}
+                                                    onCancel={cancelEditAchievement}
+                                                />
+                                            )}
+                                        </>
+                                    )}
+                                </div>
+                            </section>
+
+                            {/* Gallery */}
+                            <section className="bg-[#0A0A0A] border border-[#151515] rounded-[2rem] overflow-hidden">
+                                <div className="p-10 border-b border-[#151515] flex items-center justify-between">
+                                    <div>
+                                        <h3 className="text-xl font-light tracking-tighter text-[#EEE]">Gallery</h3>
+                                        <p className="text-[9px] uppercase tracking-[0.4em] text-[#999] font-black mt-2">{adminGallery.length}/6 photos</p>
+                                    </div>
+                                    {adminGallery.length < 6 && (
+                                        <label className={`h-10 px-6 bg-[#151515] border border-[#1E1E1E] rounded-full flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-[#BBB] hover:text-[#E8D200] hover:border-[#E8D200]/30 transition-all cursor-pointer ${galleryUploading ? 'opacity-50 pointer-events-none' : ''}`}>
+                                            <Plus size={13} />
+                                            {galleryUploading ? 'Uploading…' : 'Add Photo'}
+                                            <input
+                                                type="file"
+                                                accept="image/*"
+                                                className="hidden"
+                                                onChange={e => { if (e.target.files?.[0]) handleAdminGalleryUpload(e.target.files[0]); e.target.value = ''; }}
+                                            />
+                                        </label>
+                                    )}
+                                </div>
+                                <div className="p-10">
+                                    {adminGalleryLoading ? (
+                                        <div className="flex justify-center py-10">
+                                            <div className="w-8 h-8 border-2 border-[#E8D200]/20 border-t-[#E8D200] rounded-full animate-spin" />
+                                        </div>
+                                    ) : adminGallery.length === 0 ? (
+                                        <div className="text-center py-12">
+                                            <p className="text-[10px] uppercase tracking-[0.4em] text-[#555] font-black">No gallery photos yet</p>
+                                            <p className="text-xs text-[#444] font-light mt-2">Upload above or the athlete can add photos from their app</p>
+                                        </div>
+                                    ) : (
+                                        <div className="grid grid-cols-3 gap-4">
+                                            {adminGallery.map(photo => (
+                                                <div key={photo.id} className="relative group aspect-square rounded-2xl overflow-hidden bg-[#050505] border border-[#1E1E1E]">
+                                                    <img src={photo.url} alt="" className="w-full h-full object-cover" />
+                                                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/50 transition-all flex items-center justify-center">
+                                                        <button
+                                                            onClick={() => handleAdminGalleryDelete(photo)}
+                                                            disabled={galleryDeleting === photo.id}
+                                                            className="opacity-0 group-hover:opacity-100 transition-opacity w-10 h-10 rounded-full bg-red-950/80 border border-red-900/60 flex items-center justify-center text-red-400 hover:bg-red-900/60"
+                                                        >
+                                                            {galleryDeleting === photo.id
+                                                                ? <div className="w-4 h-4 border border-red-400/40 border-t-red-400 rounded-full animate-spin" />
+                                                                : <Trash2 size={14} />}
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            </section>
+                        </div>
+                    )}
                 </div>
 
                 {/* Right Column: Inventory & Stats */}
@@ -702,6 +1262,88 @@ export default function UserProfile() {
                         </div>
                     </section>
                 </div>
+            </div>
+
+            {/* Delete Confirmation Modal */}
+            {deleteConfirm && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] flex items-center justify-center" onClick={() => setDeleteConfirm(false)}>
+                    <div className="bg-[#0A0A0A] border border-red-900/40 rounded-3xl p-12 w-full max-w-sm shadow-2xl" onClick={e => e.stopPropagation()}>
+                        <div className="w-14 h-14 rounded-2xl bg-red-950/50 border border-red-900/40 flex items-center justify-center mb-8">
+                            <Trash2 size={22} className="text-red-400" />
+                        </div>
+                        <h3 className="text-2xl font-light tracking-tighter text-[#F2F2F2] mb-3">Delete User?</h3>
+                        <p className="text-[#666] text-sm font-light mb-2 leading-relaxed">
+                            <span className="text-[#CCC] font-medium">{profile.display_name || profile.username}</span>
+                        </p>
+                        <p className="text-[#666] text-sm font-light mb-10 leading-relaxed">This permanently removes the account, all activity data, and point history. This cannot be undone.</p>
+                        <div className="flex gap-4">
+                            <button onClick={() => setDeleteConfirm(false)} className="flex-1 h-12 bg-[#151515] border border-[#1E1E1E] rounded-xl text-[10px] font-black uppercase tracking-widest text-[#999] hover:text-[#F2F2F2] transition-colors">
+                                Cancel
+                            </button>
+                            <button onClick={handleDeleteUser} disabled={deleteLoading} className="flex-1 h-12 bg-red-950/60 border border-red-900/60 rounded-xl text-[10px] font-black uppercase tracking-widest text-red-400 hover:bg-red-900/40 transition-all disabled:opacity-50">
+                                {deleteLoading ? 'Deleting...' : 'Delete'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
+function AchievementForm({ form, setForm, saving, onSave, onCancel }) {
+    return (
+        <div className="bg-[#050505] border border-[#E8D200]/25 rounded-xl p-5 space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label className="block text-[9px] uppercase tracking-widest text-[#BBB] font-black mb-2">Title (category)</label>
+                    <input
+                        type="text"
+                        value={form.title}
+                        onChange={e => setForm({ ...form, title: e.target.value })}
+                        placeholder="Women's Pro Solo"
+                        maxLength={60}
+                        className="w-full h-11 px-4 bg-[#0A0A0A] border border-[#1E1E1E] rounded-lg text-[#F2F2F2] text-sm outline-none focus:border-[#E8D200]/40 transition-all"
+                    />
+                </div>
+                <div>
+                    <label className="block text-[9px] uppercase tracking-widest text-[#BBB] font-black mb-2">Value</label>
+                    <input
+                        type="text"
+                        value={form.value}
+                        onChange={e => setForm({ ...form, value: e.target.value })}
+                        placeholder="01:09:30"
+                        maxLength={40}
+                        className="w-full h-11 px-4 bg-[#0A0A0A] border border-[#1E1E1E] rounded-lg text-[#F2F2F2] text-sm outline-none focus:border-[#E8D200]/40 transition-all"
+                    />
+                </div>
+            </div>
+            <div>
+                <label className="block text-[9px] uppercase tracking-widest text-[#BBB] font-black mb-2">Context (optional)</label>
+                <input
+                    type="text"
+                    value={form.context}
+                    onChange={e => setForm({ ...form, context: e.target.value })}
+                    placeholder="Toulouse · 2024"
+                    maxLength={60}
+                    className="w-full h-11 px-4 bg-[#0A0A0A] border border-[#1E1E1E] rounded-lg text-[#F2F2F2] text-sm outline-none focus:border-[#E8D200]/40 transition-all"
+                />
+            </div>
+            <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                    onClick={onCancel}
+                    className="h-10 px-5 bg-[#151515] border border-[#1E1E1E] rounded-full text-[10px] font-black uppercase tracking-widest text-[#999] hover:text-[#F2F2F2] transition-colors"
+                >
+                    Cancel
+                </button>
+                <button
+                    onClick={onSave}
+                    disabled={saving}
+                    className="h-10 px-6 bg-[#E8D200] text-[#080808] font-black uppercase tracking-widest text-[10px] rounded-full hover:translate-y-[-1px] transition-all shadow-md shadow-[#E8D200]/10 disabled:opacity-50 flex items-center gap-2"
+                >
+                    <Check size={13} />
+                    {saving ? 'Saving…' : 'Save'}
+                </button>
             </div>
         </div>
     );

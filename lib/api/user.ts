@@ -7,9 +7,17 @@ export type Profile = {
     username: string | null;
     display_name: string | null;
     avatar_url: string | null;
+    cover_url: string | null;
+    bio: string | null;
     level: number;
+    is_pro: boolean;
+    show_on_leaderboard: boolean;
     activity_preferences: string[];
 };
+
+export type PublicProfile = Pick<Profile,
+    'id' | 'username' | 'display_name' | 'avatar_url' | 'cover_url' | 'bio' | 'level' | 'is_pro'
+>;
 
 export async function fetchProfile(): Promise<Profile | null> {
     const { data: { user } } = await supabase.auth.getUser();
@@ -17,11 +25,21 @@ export async function fetchProfile(): Promise<Profile | null> {
 
     const { data, error } = await supabase
         .from('profiles')
-        .select('id, username, display_name, avatar_url, level, activity_preferences')
+        .select('id, username, display_name, avatar_url, cover_url, bio, level, is_pro, show_on_leaderboard, activity_preferences')
         .eq('id', user.id)
         .single();
     if (error) return null;
     return data as Profile;
+}
+
+export async function fetchPublicProfile(userId: string): Promise<PublicProfile | null> {
+    const { data, error } = await supabase
+        .from('profiles')
+        .select('id, username, display_name, avatar_url, cover_url, bio, level, is_pro')
+        .eq('id', userId)
+        .single();
+    if (error) return null;
+    return data as PublicProfile;
 }
 
 export async function updateProfile(
@@ -32,6 +50,52 @@ export async function updateProfile(
         .update(fields)
         .eq('id', (await supabase.auth.getUser()).data.user?.id ?? '');
     return { error: error?.message ?? null };
+}
+
+export async function updateProProfile(
+    fields: Partial<Pick<Profile, 'bio' | 'cover_url'>>
+): Promise<{ error: string | null }> {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { error: 'Not authenticated' };
+    const { error } = await supabase.from('profiles').update(fields).eq('id', user.id);
+    return { error: error?.message ?? null };
+}
+
+export async function updateLeaderboardVisibility(show: boolean): Promise<{ error: string | null }> {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { error: 'Not authenticated' };
+    const { error } = await supabase
+        .from('profiles')
+        .update({ show_on_leaderboard: show })
+        .eq('id', user.id);
+    return { error: error?.message ?? null };
+}
+
+export async function uploadCover(localUri: string): Promise<{ url: string | null; error: string | null }> {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { url: null, error: 'Not authenticated' };
+
+    const ext = localUri.split('.').pop()?.toLowerCase() ?? 'jpg';
+    const path = `${user.id}/${Date.now()}.${ext}`;
+    const contentType = ext === 'png' ? 'image/png' : 'image/jpeg';
+
+    const base64 = await FileSystem.readAsStringAsync(localUri, {
+        encoding: FileSystem.EncodingType.Base64,
+    });
+    const binary = atob(base64);
+    const buffer = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+        buffer[i] = binary.charCodeAt(i);
+    }
+
+    const { error: uploadError } = await supabase.storage
+        .from('covers')
+        .upload(path, buffer, { contentType, upsert: true });
+
+    if (uploadError) return { url: null, error: uploadError.message };
+
+    const { data } = supabase.storage.from('covers').getPublicUrl(path);
+    return { url: data.publicUrl, error: null };
 }
 
 /** Persists activity preferences to both the profiles table and auth user_metadata. */

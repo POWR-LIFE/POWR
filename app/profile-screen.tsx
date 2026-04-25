@@ -14,12 +14,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Defs, Line, Stop, LinearGradient as SvgLinearGradient } from 'react-native-svg';
 
 import { ProfileGeometricBackground } from '@/components/ProfileGeometricBackground';
+import { ProBadge } from '@/components/ui/ProBadge';
 import { getLevelInfo } from '@/constants/levels';
 import { useAuth } from '@/context/AuthContext';
 import { useActivity } from '@/hooks/useActivity';
 import { usePoints } from '@/hooks/usePoints';
 import { useStreak } from '@/hooks/useStreak';
 import { fetchProfile, type Profile } from '@/lib/api/user';
+import { fetchGallery, type GalleryPhoto } from '@/lib/api/pro-gallery';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 
@@ -85,11 +87,15 @@ export default function ProfileScreen() {
   const { weekActiveDays, weeklyMetrics } = useActivity();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [avatarError, setAvatarError] = useState(false);
+  const [gallery, setGallery] = useState<GalleryPhoto[]>([]);
 
   useFocusEffect(
     useCallback(() => {
       setAvatarError(false);
-      fetchProfile().then(setProfile);
+      fetchProfile().then(p => {
+        setProfile(p);
+        if (p?.is_pro) fetchGallery(p.id).then(setGallery);
+      });
     }, [])
   );
 
@@ -136,6 +142,15 @@ export default function ProfileScreen() {
       >
         {/* ── Hero Card ─────────────────────────────────────── */}
         <View style={s.heroCard}>
+
+          {/* Cover photo banner (pro users only) */}
+          {profile?.cover_url ? (
+            <Image
+              source={{ uri: profile.cover_url }}
+              style={s.coverPhoto}
+              contentFit="cover"
+            />
+          ) : null}
 
           {/* Avatar + Ring — centered */}
           <View style={s.heroAvatarWrap}>
@@ -201,6 +216,12 @@ export default function ProfileScreen() {
 
             <Text style={s.handle} numberOfLines={1}>{handle}</Text>
 
+            {profile?.is_pro && (
+              <View style={{ marginTop: 6, marginBottom: 2 }}>
+                <ProBadge />
+              </View>
+            )}
+
             <View style={s.levelPill}>
               <View style={[s.levelPillInner, { backgroundColor: pill.bg, borderColor: pill.border }]}>
                 <Text style={[s.levelPillText, { color: pill.text }]}>
@@ -211,6 +232,10 @@ export default function ProfileScreen() {
 
             {memberSince ? (
               <Text style={s.since}>Member since {memberSince}</Text>
+            ) : null}
+
+            {profile?.bio ? (
+              <Text style={s.bio}>{profile.bio}</Text>
             ) : null}
           </View>
 
@@ -333,6 +358,23 @@ export default function ProfileScreen() {
             <Text style={s.inviteBtnText}>SHARE</Text>
           </View>
         </Pressable>
+
+        {/* ── Gallery (Pro only) ─────────────────────────────── */}
+        {profile?.is_pro && gallery.length > 0 && (
+          <View style={s.section}>
+            <Text style={s.sectionTitle}>Gallery</Text>
+            <View style={s.galleryGrid}>
+              {gallery.map((photo) => (
+                <Image
+                  key={photo.id}
+                  source={{ uri: photo.url }}
+                  style={s.galleryThumb}
+                  contentFit="cover"
+                />
+              ))}
+            </View>
+          </View>
+        )}
       </ScrollView>
     </View>
   );
@@ -546,4 +588,27 @@ const s = StyleSheet.create({
     paddingHorizontal: 16, paddingVertical: 7,
   },
   inviteBtnText: { fontSize: 9, fontWeight: '700', letterSpacing: 1.5, color: '#0a0a0a' },
+
+  // ── Cover photo ────────────────────────────────────────────────────────────
+  coverPhoto: {
+    width: '100%', height: 140, borderRadius: 0,
+    marginBottom: -20,
+    borderTopLeftRadius: 20, borderTopRightRadius: 20,
+  },
+
+  // ── Bio ────────────────────────────────────────────────────────────────────
+  bio: {
+    fontSize: 13, fontWeight: '300', color: DIM,
+    textAlign: 'center', lineHeight: 19,
+    marginTop: 8, paddingHorizontal: 16,
+  },
+
+  // ── Gallery ────────────────────────────────────────────────────────────────
+  galleryGrid: {
+    flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 8,
+  },
+  galleryThumb: {
+    width: (SCREEN_W - 32 - 8) / 3, height: (SCREEN_W - 32 - 8) / 3,
+    borderRadius: 8,
+  },
 });

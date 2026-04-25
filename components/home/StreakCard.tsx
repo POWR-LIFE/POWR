@@ -305,9 +305,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   dot: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(255,255,255,0.10)',
@@ -327,14 +327,14 @@ const styles = StyleSheet.create({
     opacity: 0.4,
   },
   dotCheck: {
-    fontSize: 7,
+    fontSize: 8,
     color: '#ffffff',
-    lineHeight: 8,
+    lineHeight: 9,
   },
   dotDay: {
-    fontSize: 6,
+    fontSize: 7,
     color: 'rgba(255,255,255,0.5)',
-    lineHeight: 7,
+    lineHeight: 8,
   },
   dotDayDone: {
     color: '#ffffff',

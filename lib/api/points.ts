@@ -24,7 +24,7 @@ export async function fetchTotalEarned(): Promise<number> {
     const { data, error } = await supabase
         .from('point_transactions')
         .select('amount')
-        .eq('type', 'earn');
+        .in('type', ['earn', 'adjustment']);
     if (error) throw error;
     return (data ?? []).reduce((sum, t) => sum + t.amount, 0);
 }
@@ -35,7 +35,7 @@ export async function fetchTodayEarned(): Promise<number> {
     const { data, error } = await supabase
         .from('point_transactions')
         .select('amount')
-        .eq('type', 'earn')
+        .in('type', ['earn', 'adjustment'])
         .gte('created_at', today.toISOString());
     if (error) throw error;
     return (data ?? []).reduce((sum, t) => sum + t.amount, 0);
@@ -51,7 +51,7 @@ export async function fetchWeeklyEarned(): Promise<number> {
     const { data, error } = await supabase
         .from('point_transactions')
         .select('amount')
-        .eq('type', 'earn')
+        .in('type', ['earn', 'adjustment'])
         .gte('created_at', monday.toISOString());
     if (error) throw error;
     return (data ?? []).reduce((sum, t) => sum + t.amount, 0);
@@ -64,7 +64,7 @@ export async function fetchMonthlyEarned(): Promise<number> {
     const { data, error } = await supabase
         .from('point_transactions')
         .select('amount')
-        .eq('type', 'earn')
+        .in('type', ['earn', 'adjustment'])
         .gte('created_at', monthStart.toISOString());
     if (error) throw error;
     return (data ?? []).reduce((sum, t) => sum + t.amount, 0);
