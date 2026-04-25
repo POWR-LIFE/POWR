@@ -170,7 +170,8 @@ export default function SettingsScreen() {
           <RowLink
             icon="mail-outline"
             label="Email"
-            onPress={() => router.push('/edit-profile')}
+            value={user?.email}
+            onPress={() => router.push('/change-email')}
           />
           <RowLink
             icon="lock-closed-outline"

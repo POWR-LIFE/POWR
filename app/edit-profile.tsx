@@ -456,13 +456,16 @@ export default function EditProfileScreen() {
           </View>
           <Text style={styles.fieldHint}>Letters, numbers, underscores only · {username.length}/30</Text>
 
-          {/* ── Read-only info ──────────────────────────────────── */}
+          {/* ── Email — links to dedicated change flow ───────────── */}
           <SectionLabel label="Email" />
-          <View style={styles.readonlyRow}>
+          <Pressable
+            style={({ pressed }) => [styles.linkRow, pressed && { opacity: 0.6 }]}
+            onPress={() => router.push('/change-email')}
+          >
             <Ionicons name="mail-outline" size={16} color={DIM} style={styles.inputIcon} />
-            <Text style={styles.readonlyText}>{user?.email ?? '—'}</Text>
-            <Text style={styles.readonlyBadge}>Can't change</Text>
-          </View>
+            <Text style={styles.linkRowText}>{user?.email ?? '—'}</Text>
+            <Ionicons name="chevron-forward" size={14} color={MUTED} />
+          </Pressable>
 
           {/* ── Bio ────────────────────────────────────────── */}
           <SectionLabel label="Bio" />
@@ -736,19 +739,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4, paddingBottom: 4,
   },
 
-  // Read-only row
-  readonlyRow: {
+  // Tappable link row (e.g. Email → change-email screen)
+  linkRow: {
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: INPUT_BG, borderRadius: 14,
     borderWidth: 1, borderColor: INPUT_BORDER,
     paddingHorizontal: 14, paddingVertical: 13, gap: 10,
-    opacity: 0.6,
   },
-  readonlyText: { flex: 1, fontSize: 15, fontWeight: '300', color: DIM },
-  readonlyBadge: {
-    fontSize: 10, fontWeight: '500', letterSpacing: 0.5, color: MUTED,
-    textTransform: 'uppercase',
-  },
+  linkRowText: { flex: 1, fontSize: 15, fontWeight: '300', color: TEXT },
 
   // Bio
   bioWrap: { alignItems: 'flex-start', paddingVertical: 10 },
