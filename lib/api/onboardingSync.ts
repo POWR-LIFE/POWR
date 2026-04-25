@@ -121,7 +121,7 @@ export async function syncHistoricalHealthData(
                     steps: activity.steps ?? null,
                     hr_avg: day.heartRate?.avg ?? null,
                     verification: 'wearable',
-                    trust_score: 85,
+                    trust_score: 0.85,
                 });
             if (sessErr) {
                 console.warn(`[OnboardingSync] Failed to insert ${mappedType}:`, sessErr.message);
@@ -155,7 +155,7 @@ export async function syncHistoricalHealthData(
                 .from('activity_sessions')
                 .select('id')
                 .eq('type', 'walking')
-                .eq('trust_score', 85)
+                .eq('trust_score', 0.85)
                 .gte('started_at', midnight)
                 .lt('started_at', `${day.date}T23:59:59.999Z`)
                 .limit(1)
@@ -171,7 +171,7 @@ export async function syncHistoricalHealthData(
                         duration_sec: 0,
                         steps: day.steps,
                         verification: 'wearable',
-                        trust_score: 85,
+                        trust_score: 0.85,
                     });
 
                 if (!walkErr) {
@@ -206,7 +206,7 @@ export async function syncHistoricalHealthData(
                         ended_at: day.sleep.endedAt,
                         duration_sec: Math.round(day.sleep.durationHours * 3600),
                         verification: 'wearable',
-                        trust_score: 85,
+                        trust_score: 0.85,
                     });
 
                 if (!sleepErr) {
