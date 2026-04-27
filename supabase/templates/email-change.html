@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Confirm your POWR email change</title>
+</head>
+<body style="margin:0;padding:0;background-color:#ffffff;font-family:Arial,Helvetica,sans-serif;-webkit-font-smoothing:antialiased;">
+<div style="display:none;max-height:0;overflow:hidden;mso-hide:all;font-size:1px;line-height:1px;color:#111111;">A POWR email change is pending — confirm to continue.&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;</div>
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#ffffff;">
+  <tr>
+    <td align="center" style="padding:40px 16px;">
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:560px;border:1px solid #1e1e1e;border-radius:20px;overflow:hidden;">
+
+        <!-- HEADER -->
+        <tr>
+          <td style="background-color:#080808;padding:36px 40px 32px;text-align:center;border-bottom:1px solid #161616;">
+            <img src="https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/landing-page-assets/powrlogotext.png?v=1.1" alt="POWR" height="48" style="height:48px;width:auto;display:block;margin:0 auto;">
+          </td>
+        </tr>
+
+        <!-- HERO -->
+        <tr>
+          <td style="background-color:#080808;padding:44px 40px 40px;text-align:center;border-bottom:1px solid #111111;">
+            <h1 style="margin:0 0 6px;font-size:42px;font-weight:200;letter-spacing:0.5px;line-height:1.15;color:#F2F2F2;font-family:Arial,Helvetica,sans-serif;">Confirm your<br><em style="font-style:italic;color:#E8D200;">email change.</em></h1>
+            <p style="margin:18px 0 0;font-size:15px;font-weight:300;color:#555555;line-height:1.7;font-family:Arial,Helvetica,sans-serif;">Someone — likely you — asked to move a POWR account from one email to another. We need both addresses to confirm before we make the change.</p>
+          </td>
+        </tr>
+
+        <!-- ADDRESSES -->
+        <tr>
+          <td style="background-color:#0a0a0a;padding:0 40px 32px;border-bottom:1px solid #161616;">
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin-top:0;">
+              <tr>
+                <td style="padding:14px 16px;border:1px solid #1a1a1a;border-radius:10px;">
+                  <p style="margin:0 0 4px;font-size:9px;font-weight:600;letter-spacing:1.5px;color:#444444;font-family:Arial,Helvetica,sans-serif;">FROM</p>
+                  <p style="margin:0;font-size:14px;font-weight:300;color:#F2F2F2;font-family:Arial,Helvetica,sans-serif;word-break:break-all;">{{ .Email }}</p>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:8px 0;text-align:center;">
+                  <span style="color:#E8D200;font-size:18px;line-height:1;">↓</span>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:14px 16px;border:1px solid #1a1a1a;border-radius:10px;">
+                  <p style="margin:0 0 4px;font-size:9px;font-weight:600;letter-spacing:1.5px;color:#444444;font-family:Arial,Helvetica,sans-serif;">TO</p>
+                  <p style="margin:0;font-size:14px;font-weight:300;color:#F2F2F2;font-family:Arial,Helvetica,sans-serif;word-break:break-all;">{{ .NewEmail }}</p>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- CTA -->
+        <tr>
+          <td style="background-color:#0a0a0a;padding:32px 40px 36px;text-align:center;border-bottom:1px solid #161616;">
+            <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 auto;">
+              <tr>
+                <td style="border-radius:24px;background-color:#E8D200;">
+                  <a href="{{ .ConfirmationURL }}" style="display:inline-block;padding:14px 32px;font-size:13px;font-weight:700;color:#080808;font-family:Arial,Helvetica,sans-serif;text-decoration:none;letter-spacing:1.5px;text-transform:uppercase;">Confirm Change</a>
+                </td>
+              </tr>
+            </table>
+            <p style="margin:20px 0 0;font-size:12px;color:#444444;line-height:1.6;font-family:Arial,Helvetica,sans-serif;">This confirms the address that received this email.<br>Both the old and new addresses must confirm to complete the change.<br>Link expires in 24 hours.</p>
+          </td>
+        </tr>
+
+        <!-- WASN'T YOU -->
+        <tr>
+          <td style="background-color:#080808;padding:24px 40px;border-bottom:1px solid #161616;">
+            <p style="margin:0 0 6px;font-size:11px;font-weight:600;letter-spacing:1.5px;color:#666666;font-family:Arial,Helvetica,sans-serif;">WASN'T YOU?</p>
+            <p style="margin:0;font-size:13px;font-weight:300;color:#888888;line-height:1.6;font-family:Arial,Helvetica,sans-serif;">Don't click the button. Nothing changes until both addresses confirm. If you think someone else is trying to move your account, reply to this email or contact <a href="mailto:hello@powr.life" style="color:#E8D200;text-decoration:none;">hello@powr.life</a> right away.</p>
+          </td>
+        </tr>
+
+        <!-- FALLBACK LINK -->
+        <tr>
+          <td style="background-color:#080808;padding:24px 40px;text-align:center;border-bottom:1px solid #161616;">
+            <p style="margin:0 0 8px;font-size:11px;color:#2a2a2a;font-family:Arial,Helvetica,sans-serif;">If the button doesn't work, copy and paste this link into your browser:</p>
+            <p style="margin:0;font-size:11px;font-family:Arial,Helvetica,sans-serif;word-break:break-all;"><a href="{{ .ConfirmationURL }}" style="color:#444444;text-decoration:underline;">{{ .ConfirmationURL }}</a></p>
+          </td>
+        </tr>
+
+        <!-- FOOTER -->
+        <tr>
+          <td style="background-color:#050505;padding:32px 40px;text-align:center;">
+            <img src="https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/landing-page-assets/powrlogotext.png?v=1.1" alt="POWR" height="16" style="height:16px;width:auto;display:block;margin:0 auto 16px;opacity:0.15;">
+            <p style="margin:0;font-size:11px;font-weight:300;color:#282828;line-height:2;font-family:Arial,Helvetica,sans-serif;">
+              powr.life<br>
+              <a href="https://powr.life/privacy" style="color:#333333;text-decoration:none;">Privacy Policy</a>
+            </p>
+          </td>
+        </tr>
+
+      </table>
+    </td>
+  </tr>
+</table>
+</body>
+</html>
