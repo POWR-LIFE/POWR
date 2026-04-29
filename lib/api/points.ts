@@ -69,3 +69,27 @@ export async function fetchMonthlyEarned(): Promise<number> {
     if (error) throw error;
     return (data ?? []).reduce((sum, t) => sum + t.amount, 0);
 }
+
+export interface PointTransaction {
+    id: string;
+    amount: number;
+    type: 'earn' | 'redeem' | 'bonus' | 'streak' | 'penalty' | 'adjustment';
+    description: string | null;
+    created_at: string;
+    session_id: string | null;
+    activity_type: string | null;
+}
+
+export async function fetchTransactionHistory(): Promise<PointTransaction[]> {
+    const { data, error } = await supabase
+        .from('point_transactions')
+        .select('id, amount, type, description, created_at, session_id, activity_sessions(type)')
+        .order('created_at', { ascending: false })
+        .limit(500);
+    if (error) throw error;
+    return ((data ?? []) as any[]).map((row) => ({
+        ...row,
+        activity_type: row.activity_sessions?.type ?? null,
+        activity_sessions: undefined,
+    }));
+}
