@@ -1,6 +1,6 @@
-import { formatHMS, msUntilMidnight } from '@/lib/journey';
+import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
     useAnimatedStyle,
     useSharedValue,
@@ -8,6 +8,8 @@ import Animated, {
     withSequence,
     withTiming,
 } from 'react-native-reanimated';
+
+import { formatHMS, msUntilMidnight } from '@/lib/journey';
 
 const GOLD = '#E8D200';
 const ORANGE = '#f97316';
@@ -24,6 +26,8 @@ interface StreakCardProps {
   sessionProgress?: number;  // 0–1
   sessionDwellMet?: boolean; // true once the 20-min threshold is hit
   sessionProjectedPts?: number; // 10 or 15 depending on dwell time
+  /** When provided, shows a share icon in the header */
+  onShare?: () => void;
 }
 
 const DAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
@@ -51,6 +55,7 @@ export function StreakCard({
   sessionProgress = 0,
   sessionDwellMet = false,
   sessionProjectedPts = 10,
+  onShare,
 }: StreakCardProps) {
   const [countdown, setCountdown] = useState(formatHMS(msUntilMidnight()));
   const dotScale = useSharedValue(1);
@@ -114,7 +119,8 @@ export function StreakCard({
         {/* Header row */}
         <View style={styles.header}>
           <Text style={styles.label}>CURRENT STREAK</Text>
-          <View style={styles.pill}>
+          <View style={styles.headerRight}>
+            <View style={styles.pill}>
               <Animated.View
                 style={[
                   styles.pillDot,
@@ -124,6 +130,16 @@ export function StreakCard({
               />
               <Text style={styles.pillText}>{streakPill.label}</Text>
             </View>
+            {onShare && (
+              <Pressable
+                onPress={onShare}
+                hitSlop={10}
+                style={({ pressed }) => [styles.shareBtn, pressed && { opacity: 0.6 }]}
+              >
+                <Ionicons name="share-outline" size={14} color="rgba(255,255,255,0.55)" />
+              </Pressable>
+            )}
+          </View>
         </View>
 
         {/* Main row: streak left, day dots right */}
@@ -242,6 +258,11 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     textTransform: 'uppercase',
   },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   pill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -252,6 +273,12 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.15)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.3)',
+  },
+  shareBtn: {
+    width: 22,
+    height: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   pillDot: {
     width: 5,
@@ -301,13 +328,13 @@ const styles = StyleSheet.create({
   },
   dots: {
     flexDirection: 'row',
-    gap: 10,
+    gap: 8,
     alignItems: 'center',
   },
   dot: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(255,255,255,0.10)',
