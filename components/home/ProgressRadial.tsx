@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import Svg, { Circle, Defs, Line, LinearGradient, Stop, Text as SvgText } from 'react-native-svg';
+import Svg, { Circle, Defs, LinearGradient, Stop, Text as SvgText } from 'react-native-svg';
 
 const GOLD = '#E8D200';
 
@@ -93,38 +93,70 @@ export function ProgressRadial({
           transform={`rotate(-90 ${cx} ${cy})`}
         />
 
-        {/* Ticks */}
-        {ticks && ticks.map((tick, i) => {
-          const angleDeg = i * (360 / ticks.length) - 90;
-          const angleRad = angleDeg * (Math.PI / 180);
-          const tickR1 = tickInnerR;
-          const tickR2 = tickR1 + (tick.active ? 10 : 6);
-          const labelR = tickR2 + 8;
-          
-          return (
-            <React.Fragment key={i}>
-              <Line
-                x1={cx + tickR1 * Math.cos(angleRad)}
-                y1={cy + tickR1 * Math.sin(angleRad)}
-                x2={cx + tickR2 * Math.cos(angleRad)}
-                y2={cy + tickR2 * Math.sin(angleRad)}
-                stroke={tick.active ? GOLD : tick.isToday ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.18)'}
-                strokeWidth={tick.active ? 2.5 : 1.5}
-                strokeLinecap="round"
-              />
-              <SvgText
-                x={cx + labelR * Math.cos(angleRad)}
-                y={cy + labelR * Math.sin(angleRad) + 3}
-                textAnchor="middle"
-                fontSize={8}
-                fontWeight={tick.isToday ? '700' : tick.active ? '500' : '400'}
-                fill={tick.active ? GOLD : tick.isToday ? 'rgba(255,255,255,0.65)' : 'rgba(255,255,255,0.22)'}
-              >
-                {tick.label.toUpperCase()}
-              </SvgText>
-            </React.Fragment>
-          );
-        })}
+        {/* Day-of-week arc segments */}
+        {ticks && (() => {
+          const n = ticks.length;
+          const GAP_DEG = 4;
+          const SEG_DEG = 360 / n - GAP_DEG;
+          const segStroke = Math.max(6, Math.round(size * 0.052));
+          const segR = tickInnerR + 3 + segStroke / 2;
+          const C = 2 * Math.PI * segR;
+          const dashLen = (SEG_DEG / 360) * C;
+          const gapLen = C - dashLen;
+          const labelR = segR + segStroke / 2 + 7;
+          const todayI = ticks.findIndex(t => t.isToday);
+          const activeColor = gradientColors[0];
+
+          return ticks.map((tick, i) => {
+            const startDeg = -90 + i * (360 / n) + GAP_DEG / 2;
+            const midDeg = startDeg + SEG_DEG / 2;
+            const midRad = midDeg * (Math.PI / 180);
+            const isFuture = todayI >= 0 && i > todayI;
+
+            const segColor = tick.active
+              ? activeColor
+              : tick.isToday
+                ? 'rgba(255,255,255,0.2)'
+                : isFuture
+                  ? 'rgba(255,255,255,0.05)'
+                  : 'rgba(255,255,255,0.08)';
+
+            const labelFill = tick.active
+              ? activeColor
+              : tick.isToday
+                ? 'rgba(255,255,255,0.6)'
+                : isFuture
+                  ? 'rgba(255,255,255,0.15)'
+                  : 'rgba(255,255,255,0.22)';
+
+            return (
+              <React.Fragment key={i}>
+                <Circle
+                  cx={cx}
+                  cy={cy}
+                  r={segR}
+                  fill="none"
+                  stroke={segColor}
+                  strokeWidth={segStroke}
+                  strokeDasharray={`${dashLen} ${gapLen}`}
+                  strokeDashoffset={0}
+                  transform={`rotate(${startDeg} ${cx} ${cy})`}
+                  strokeLinecap="butt"
+                />
+                <SvgText
+                  x={cx + labelR * Math.cos(midRad)}
+                  y={cy + labelR * Math.sin(midRad) + 3}
+                  textAnchor="middle"
+                  fontSize={tick.isToday ? 8 : 7}
+                  fontWeight={tick.active ? '600' : tick.isToday ? '700' : '400'}
+                  fill={labelFill}
+                >
+                  {tick.label.slice(0, 2).toUpperCase()}
+                </SvgText>
+              </React.Fragment>
+            );
+          });
+        })()}
       </Svg>
 
 
