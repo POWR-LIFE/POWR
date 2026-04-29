@@ -157,6 +157,7 @@ export default function ProgressScreen() {
     }
 
     const count = weeklyMetrics.perType[type] ?? 0;
+    const typeDays = weeklyMetrics.activeDaysPerType?.[type] ?? new Array(7).fill(false);
     return {
       id: type,
       pct: Math.min(count / 5, 1),
@@ -167,6 +168,11 @@ export default function ProgressScreen() {
       iconName: config.iconActive,
       iconLib: config.iconLib,
       pointsValue: weeklyEarned,
+      ticks: DAY_LABELS.map((label, i) => ({
+        label: label.slice(0, 2),
+        active: typeDays[i] ?? false,
+        isToday: i === TODAY_INDEX,
+      })),
     };
   });
 
@@ -185,6 +191,11 @@ export default function ProgressScreen() {
     iconName: 'moon',
     iconLib: 'ionicons',
     pointsValue: weeklyEarned,
+    ticks: DAY_LABELS.map((label, i) => ({
+      label: label.slice(0, 2),
+      active: sleepHrs[i] > 0,
+      isToday: i === TODAY_INDEX,
+    })),
   });
 
   const tabs = radialData.map(d => d.id);
