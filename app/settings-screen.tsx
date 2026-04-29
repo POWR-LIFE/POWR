@@ -187,6 +187,17 @@ export default function SettingsScreen() {
           />
         </View>
 
+        {/* ── Points ───────────────────────────────────────── */}
+        <SectionLabel label="Points" />
+        <View style={styles.card}>
+          <RowLink
+            icon="receipt-outline"
+            label="Points History"
+            onPress={() => router.push('/points-ledger')}
+            isLast
+          />
+        </View>
+
         {/* ── Activity Focus ─────────────────────────────────── */}
         <SectionLabel label="Activity Focus" />
         <View style={styles.card}>

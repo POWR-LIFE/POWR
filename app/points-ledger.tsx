@@ -1,0 +1,405 @@
+import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  Pressable,
+  SectionList,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { ActivityIcon } from '@/components/ActivityIcon';
+import GeometricBackground from '@/components/GeometricBackground';
+import { ACTIVITIES, type ActivityType } from '@/constants/activities';
+import { typography } from '@/constants/tokens';
+import {
+  fetchBalance,
+  fetchTotalEarned,
+  fetchTransactionHistory,
+  type PointTransaction,
+} from '@/lib/api/points';
+
+// ─── Design tokens (match settings-screen) ───────────────────────────────────
+
+const BG     = '#0d0d0d';
+const TEXT   = '#F2F2F2';
+const MUTED  = 'rgba(255,255,255,0.25)';
+const DIM    = 'rgba(255,255,255,0.5)';
+const GOLD   = '#E8D200';
+const GREEN  = '#00CC66';
+const RED    = '#ef4444';
+const ORANGE = '#FF9944';
+
+// ─── Type metadata ────────────────────────────────────────────────────────────
+
+const TYPE_META: Record<PointTransaction['type'], { icon: string; color: string; fallbackLabel: string }> = {
+  earn:       { icon: 'flash',           color: GREEN,  fallbackLabel: 'Activity' },
+  bonus:      { icon: 'star',            color: GOLD,   fallbackLabel: 'Bonus' },
+  streak:     { icon: 'flame',           color: ORANGE, fallbackLabel: 'Streak Bonus' },
+  adjustment: { icon: 'swap-horizontal', color: DIM,    fallbackLabel: 'Adjustment' },
+  redeem:     { icon: 'bag-handle',      color: RED,    fallbackLabel: 'Reward Redeemed' },
+  penalty:    { icon: 'warning',         color: RED,    fallbackLabel: 'Penalty' },
+};
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function toDateKey(iso: string): string {
+  return iso.slice(0, 10); // "YYYY-MM-DD"
+}
+
+function formatSectionTitle(dateKey: string): string {
+  const d = new Date(dateKey + 'T00:00:00');
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+  const target = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+
+  if (target.getTime() === today.getTime()) return 'Today';
+  if (target.getTime() === yesterday.getTime()) return 'Yesterday';
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function formatTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+}
+
+function formatAmount(amount: number): string {
+  return `${amount > 0 ? '+' : ''}${Math.abs(amount).toLocaleString()}`;
+}
+
+type Section = { title: string; data: PointTransaction[] };
+
+function groupByDate(transactions: PointTransaction[]): Section[] {
+  const map = new Map<string, PointTransaction[]>();
+  for (const tx of transactions) {
+    const key = toDateKey(tx.created_at);
+    const group = map.get(key);
+    if (group) {
+      group.push(tx);
+    } else {
+      map.set(key, [tx]);
+    }
+  }
+  return Array.from(map.entries()).map(([key, data]) => ({
+    title: formatSectionTitle(key),
+    data,
+  }));
+}
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+function SummaryCard({ balance, totalEarned }: { balance: number; totalEarned: number }) {
+  return (
+    <View style={styles.summaryCard}>
+      <View style={styles.summaryItem}>
+        <Text style={styles.summaryValue}>{balance.toLocaleString()}</Text>
+        <Text style={styles.summaryLabel}>Balance</Text>
+      </View>
+      <View style={styles.summaryDivider} />
+      <View style={styles.summaryItem}>
+        <Text style={styles.summaryValue}>{totalEarned.toLocaleString()}</Text>
+        <Text style={styles.summaryLabel}>Total Earned</Text>
+      </View>
+    </View>
+  );
+}
+
+function SectionHeader({ title }: { title: string }) {
+  return (
+    <View style={styles.sectionHeader}>
+      <Text style={styles.sectionHeaderText}>{title}</Text>
+    </View>
+  );
+}
+
+function TxIcon({ tx }: { tx: PointTransaction }) {
+  const activityConfig = tx.activity_type ? ACTIVITIES[tx.activity_type as ActivityType] : null;
+  if (activityConfig) {
+    return (
+      <View style={[styles.txIcon, { backgroundColor: activityConfig.colour + '18' }]}>
+        <ActivityIcon activity={activityConfig} size={16} color={activityConfig.colour} active={false} />
+      </View>
+    );
+  }
+  const meta = TYPE_META[tx.type] ?? TYPE_META.adjustment;
+  return (
+    <View style={[styles.txIcon, { backgroundColor: meta.color + '18' }]}>
+      <Ionicons name={meta.icon as any} size={16} color={meta.color} />
+    </View>
+  );
+}
+
+function txLabel(tx: PointTransaction): string {
+  if (tx.activity_type) {
+    const config = ACTIVITIES[tx.activity_type as ActivityType];
+    return config?.label ?? tx.description ?? (TYPE_META[tx.type]?.fallbackLabel ?? 'Activity');
+  }
+  return tx.description ?? (TYPE_META[tx.type]?.fallbackLabel ?? 'Activity');
+}
+
+function TransactionRow({
+  tx,
+  isFirst,
+  isLast,
+}: {
+  tx: PointTransaction;
+  isFirst: boolean;
+  isLast: boolean;
+}) {
+  const isPositive = tx.amount > 0;
+
+  return (
+    <View
+      style={[
+        styles.txRow,
+        isFirst && styles.txRowFirst,
+        isLast && styles.txRowLast,
+        !isLast && styles.txRowBorder,
+      ]}
+    >
+      <TxIcon tx={tx} />
+      <View style={styles.txBody}>
+        <Text style={styles.txLabel} numberOfLines={1}>
+          {txLabel(tx)}
+        </Text>
+        <Text style={styles.txTime}>{formatTime(tx.created_at)}</Text>
+      </View>
+      <View style={styles.txRight}>
+        <Text style={[styles.txAmount, { color: isPositive ? GREEN : RED }]}>
+          {formatAmount(tx.amount)}
+        </Text>
+        <Text style={styles.txUnit}>POWR</Text>
+      </View>
+    </View>
+  );
+}
+
+// ─── Screen ──────────────────────────────────────────────────────────────────
+
+export default function PointsLedgerScreen() {
+  const insets = useSafeAreaInsets();
+  const router = useRouter();
+
+  const [transactions, setTransactions] = useState<PointTransaction[]>([]);
+  const [balance, setBalance] = useState(0);
+  const [totalEarned, setTotalEarned] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const [txs, bal, earned] = await Promise.all([
+          fetchTransactionHistory(),
+          fetchBalance(),
+          fetchTotalEarned(),
+        ]);
+        setTransactions(txs);
+        setBalance(bal);
+        setTotalEarned(earned);
+      } catch {
+        setError('Could not load history.');
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  const sections = useMemo(() => groupByDate(transactions), [transactions]);
+
+  return (
+    <View style={[styles.screen, { paddingTop: insets.top }]}>
+      <GeometricBackground />
+
+      {/* Header */}
+      <View style={styles.header}>
+        <Pressable style={styles.backBtn} onPress={() => router.back()} hitSlop={8}>
+          <Ionicons name="chevron-back" size={22} color={DIM} />
+        </Pressable>
+        <Text style={styles.headerTitle}>Points History</Text>
+        <View style={styles.headerSpacer} />
+      </View>
+
+      {loading ? (
+        <View style={styles.centered}>
+          <ActivityIndicator color={GOLD} />
+        </View>
+      ) : error ? (
+        <View style={styles.centered}>
+          <Text style={styles.statusText}>{error}</Text>
+        </View>
+      ) : (
+        <SectionList
+          sections={sections}
+          keyExtractor={(tx) => tx.id}
+          renderSectionHeader={({ section }) => <SectionHeader title={section.title} />}
+          renderItem={({ item, index, section }) => (
+            <TransactionRow
+              tx={item}
+              isFirst={index === 0}
+              isLast={index === section.data.length - 1}
+            />
+          )}
+          ListHeaderComponent={
+            <SummaryCard balance={balance} totalEarned={totalEarned} />
+          }
+          ListEmptyComponent={
+            <View style={styles.centered}>
+              <Text style={styles.statusText}>No transactions yet.</Text>
+            </View>
+          }
+          contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 40 }]}
+          showsVerticalScrollIndicator={false}
+          stickySectionHeadersEnabled={false}
+        />
+      )}
+    </View>
+  );
+}
+
+// ─── Styles ──────────────────────────────────────────────────────────────────
+
+const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: BG,
+  },
+
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  backBtn: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerTitle: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: 16,
+    fontWeight: '400',
+    letterSpacing: 0.5,
+    color: TEXT,
+  },
+  headerSpacer: { width: 36 },
+
+  listContent: {
+    paddingHorizontal: 12,
+    paddingTop: 16,
+  },
+
+  // Summary
+  summaryCard: {
+    flexDirection: 'row',
+    paddingVertical: 20,
+    marginBottom: 8,
+  },
+  summaryItem: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 4,
+  },
+  summaryValue: {
+    fontFamily: typography.stat.fontFamily,
+    fontSize: 30,
+    letterSpacing: -1,
+    color: GOLD,
+  },
+  summaryLabel: {
+    fontSize: 9,
+    fontWeight: '500',
+    letterSpacing: 1.5,
+    color: MUTED,
+    textTransform: 'uppercase',
+  },
+  summaryDivider: {
+    width: 1,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    marginVertical: 4,
+  },
+
+  // Section header
+  sectionHeader: {
+    paddingHorizontal: 4,
+    paddingTop: 16,
+    paddingBottom: 6,
+  },
+  sectionHeaderText: {
+    fontSize: 9,
+    fontWeight: '600',
+    letterSpacing: 2,
+    color: MUTED,
+    textTransform: 'uppercase',
+  },
+
+  // Transaction rows
+  txRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 4,
+    paddingVertical: 13,
+  },
+  txRowFirst: {},
+  txRowLast: {},
+  txRowBorder: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(255,255,255,0.06)',
+  },
+  txIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  txBody: {
+    flex: 1,
+    gap: 2,
+  },
+  txLabel: {
+    fontSize: 14,
+    fontWeight: '300',
+    color: TEXT,
+  },
+  txTime: {
+    fontSize: 11,
+    fontWeight: '300',
+    color: MUTED,
+  },
+  txRight: {
+    alignItems: 'flex-end',
+    gap: 1,
+  },
+  txAmount: {
+    fontFamily: typography.stat.fontFamily,
+    fontSize: 16,
+    letterSpacing: -0.5,
+  },
+  txUnit: {
+    fontFamily: typography.label.fontFamily,
+    fontSize: 7,
+    letterSpacing: 1.5,
+    color: MUTED,
+  },
+
+  centered: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 80,
+  },
+  statusText: {
+    fontSize: 14,
+    color: MUTED,
+  },
+});
