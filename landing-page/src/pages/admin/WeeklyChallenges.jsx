@@ -5,11 +5,21 @@ import { useToast } from '../../lib/toast';
 import { useAuth } from '../../App';
 import {
 	ACTIVE_WEEKLY_CHALLENGE,
+	computeExpiresIn,
 	getActiveWeeklyChallenge,
 	normalizeWeeklyChallenges,
 	parseWeeklyChallengesConfig,
 	serializeWeeklyChallenges,
 } from '../../../../shared/weeklyChallenges.js';
+
+/** Convert a UTC ISO string to the value format datetime-local inputs expect. */
+function toDatetimeLocal(isoString) {
+	if (!isoString) return '';
+	const d = new Date(isoString);
+	const offset = d.getTimezoneOffset();
+	const local = new Date(d.getTime() - offset * 60_000);
+	return local.toISOString().slice(0, 16);
+}
 
 const CONFIG_KEY = 'weekly_challenges';
 
@@ -20,7 +30,7 @@ const EMPTY_FORM = {
 	title: '',
 	description: '',
 	bonusLabel: '',
-	expiresIn: '',
+	expiresAt: '',
 	imageUri: '',
 	imageOffsetY: 0,
 	hint: '',
@@ -68,7 +78,7 @@ function ChallengePreview({ challenge }) {
 				</div>
 				<div className="flex items-center gap-3 rounded-lg border border-white/10 bg-black/25 px-4 py-2 text-[#F2F2F2]">
 					<div className="h-2 w-2 rounded-full bg-[#E8D200] shadow-[0_0_15px_rgba(232,210,0,0.45)]" />
-					<span className="text-sm font-medium">{challenge.expiresIn || 'No timer'}</span>
+					<span className="text-sm font-medium">{computeExpiresIn(challenge.expiresAt) || challenge.expiresIn || 'No timer'}</span>
 				</div>
 			</div>
 
@@ -439,8 +449,23 @@ export default function WeeklyChallenges() {
 										<input value={form.bonusLabel} onChange={(e) => setForm((prev) => ({ ...prev, bonusLabel: e.target.value }))} className="w-full h-14 px-5 bg-[#050505] border border-[#151515] rounded-2xl text-[#F2F2F2] outline-none" />
 									</label>
 									<label className="block">
-										<div className="text-[10px] uppercase tracking-[0.35em] text-[#555] font-black mb-3">Expires In</div>
-										<input value={form.expiresIn} onChange={(e) => setForm((prev) => ({ ...prev, expiresIn: e.target.value }))} className="w-full h-14 px-5 bg-[#050505] border border-[#151515] rounded-2xl text-[#F2F2F2] outline-none" />
+										<div className="text-[10px] uppercase tracking-[0.35em] text-[#555] font-black mb-3">
+											Expires At
+											{form.expiresAt && (
+												<span className="ml-3 text-[#E8D200] normal-case tracking-normal">
+													({computeExpiresIn(form.expiresAt) || 'Expired'})
+												</span>
+											)}
+										</div>
+										<input
+											type="datetime-local"
+											value={toDatetimeLocal(form.expiresAt)}
+											onChange={(e) => setForm((prev) => ({
+												...prev,
+												expiresAt: e.target.value ? new Date(e.target.value).toISOString() : '',
+											}))}
+											className="w-full h-14 px-5 bg-[#050505] border border-[#151515] rounded-2xl text-[#F2F2F2] outline-none [color-scheme:dark]"
+										/>
 									</label>
 								</div>
 

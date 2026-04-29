@@ -25,6 +25,7 @@ const challengeDefaults = {
   title: '',
   description: '',
   bonusLabel: '',
+  expiresAt: '',
   expiresIn: '',
   imageUri: '',
   imageOffsetY: 0,
@@ -78,3 +79,32 @@ export function getActiveWeeklyChallenge(challenges) {
 }
 
 export const ACTIVE_WEEKLY_CHALLENGE = getActiveWeeklyChallenge(WEEKLY_CHALLENGES);
+
+/**
+ * Returns a human-readable countdown string from an ISO expiry timestamp.
+ * Falls back to '' if expiresAt is not set.
+ */
+export function computeExpiresIn(expiresAt) {
+  if (!expiresAt) return '';
+  const diff = new Date(expiresAt).getTime() - Date.now();
+  if (diff <= 0) return 'Expired';
+  const totalMinutes = Math.floor(diff / 60_000);
+  const days = Math.floor(totalMinutes / 1440);
+  const hours = Math.floor((totalMinutes % 1440) / 60);
+  const minutes = totalMinutes % 60;
+  if (days > 0) return hours > 0 ? `${days}d ${hours}h` : `${days}d`;
+  if (hours > 0) return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+  return `${minutes}m`;
+}
+
+/**
+ * Returns an urgency value 0–1 based on how close we are to expiresAt.
+ * 0 = more than 24h remaining (gold), 1 = expired (orange).
+ */
+export function computeUrgency(expiresAt) {
+  if (!expiresAt) return 0;
+  const diff = new Date(expiresAt).getTime() - Date.now();
+  if (diff <= 0) return 1;
+  const urgencyWindowMs = 24 * 60 * 60 * 1000;
+  return Math.max(0, Math.min(1, 1 - diff / urgencyWindowMs));
+}
