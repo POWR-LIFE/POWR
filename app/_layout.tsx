@@ -53,6 +53,7 @@ function RootLayoutNav() {
           <Stack.Screen name="activity-preferences" options={{ headerShown: false, contentStyle: { backgroundColor: 'transparent' } }} />
           <Stack.Screen name="progress-detail" options={{ headerShown: false, contentStyle: { backgroundColor: '#0d0d0d' } }} />
           <Stack.Screen name="redeem-modal" options={{ presentation: 'modal', headerShown: false, contentStyle: { backgroundColor: 'transparent' } }} />
+          <Stack.Screen name="share-stats" options={{ presentation: 'modal', headerShown: false, contentStyle: { backgroundColor: '#0d0d0d' } }} />
           <Stack.Screen name="manual-log" options={{ headerShown: false, contentStyle: { backgroundColor: 'transparent' } }} />
           <Stack.Screen name="admin-partners" options={{ headerShown: false, contentStyle: { backgroundColor: '#0d0d0d' } }} />
           <Stack.Screen name="privacy-policy" options={{ headerShown: false, contentStyle: { backgroundColor: '#0d0d0d' } }} />

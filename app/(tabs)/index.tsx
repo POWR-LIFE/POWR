@@ -643,6 +643,7 @@ export default function HomeScreen() {
                     sessionProgress={dwellProgress}
                     sessionDwellMet={dwellProgress >= 1}
                     sessionProjectedPts={projectedPoints}
+                    onShare={() => router.push({ pathname: '/share-stats', params: { mode: 'streak' } })}
                 />
 
                 <Text style={styles.sectionLabel}>CHALLENGE</Text>

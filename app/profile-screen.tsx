@@ -130,6 +130,9 @@ export default function ProfileScreen() {
           <Ionicons name="chevron-back" size={20} color={DIM} />
         </Pressable>
         <View style={{ flex: 1 }} />
+        <Pressable onPress={() => router.push({ pathname: '/share-stats', params: { mode: 'streak' } })} hitSlop={12} style={s.headerBtn}>
+          <Ionicons name="share-outline" size={18} color={DIM} />
+        </Pressable>
         <Pressable onPress={() => router.push('/settings-screen')} hitSlop={12} style={s.headerBtn}>
           <Ionicons name="settings-outline" size={18} color={DIM} />
         </Pressable>
