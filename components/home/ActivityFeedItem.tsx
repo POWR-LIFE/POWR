@@ -3,7 +3,7 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import { ActivityIcon } from '@/components/ActivityIcon';
 import { ACTIVITIES, type ActivityType } from '@/constants/activities';
-import { colours, spacing, typography } from '@/constants/tokens';
+import { colours, typography } from '@/constants/tokens';
 
 interface ActivityFeedItemProps {
   type: ActivityType;
