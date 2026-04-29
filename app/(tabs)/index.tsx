@@ -37,7 +37,7 @@ import { fetchMonthlyMetrics, type MonthlyMetrics } from '@/lib/api/activity';
 import { fetchMonthlyEarned } from '@/lib/api/points';
 import { fetchProfile } from '@/lib/api/user';
 import { supabase } from '@/lib/supabase';
-import { ACTIVE_WEEKLY_CHALLENGE, getActiveWeeklyChallenge, parseWeeklyChallengesConfig } from '@/shared/weeklyChallenges';
+import { ACTIVE_WEEKLY_CHALLENGE, computeExpiresIn, computeUrgency, getActiveWeeklyChallenge, parseWeeklyChallengesConfig } from '@/shared/weeklyChallenges';
 
 const GOLD = '#E8D200';
 const TEXT_PRIMARY = '#F2F2F2';
@@ -246,6 +246,7 @@ export default function HomeScreen() {
     const [profileName, setProfileName] = useState<string | null>(null);
     const [refreshing, setRefreshing] = useState(false);
     const [weeklyChallenge, setWeeklyChallenge] = useState(ACTIVE_WEEKLY_CHALLENGE);
+    const [, setChallengeTick] = useState(0);
     const [monthlyMetrics, setMonthlyMetrics] = useState<MonthlyMetrics>({ activeDays: 0, sessionCount: 0, totalSteps: 0, perType: {}, weekActiveDays: [0,0,0,0], activeDayTypes: {}, dayDetails: {} });
     const [monthlyXP, setMonthlyXP] = useState(0);
 
@@ -400,6 +401,11 @@ export default function HomeScreen() {
         return () => {
             mounted = false;
         };
+    }, []);
+
+    useEffect(() => {
+        const id = setInterval(() => setChallengeTick(t => t + 1), 60_000);
+        return () => clearInterval(id);
     }, []);
 
     const rotateDeg = rotateAnim.interpolate({
@@ -651,7 +657,8 @@ export default function HomeScreen() {
                     title={weeklyChallenge.title}
                     description={weeklyChallenge.description}
                     bonus={weeklyChallenge.bonusLabel}
-                    expiresIn={weeklyChallenge.expiresIn}
+                    expiresIn={computeExpiresIn(weeklyChallenge.expiresAt) || weeklyChallenge.expiresIn}
+                    urgency={computeUrgency(weeklyChallenge.expiresAt)}
                     imageUri={weeklyChallenge.imageUri}
                     imageOffsetY={weeklyChallenge.imageOffsetY}
                     hint={weeklyChallenge.hint}
