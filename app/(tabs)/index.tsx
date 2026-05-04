@@ -35,6 +35,7 @@ import { useStreak } from '@/hooks/useStreak';
 import { useWalkingProgress } from '@/hooks/useWalkingProgress';
 import { fetchMonthlyMetrics, type MonthlyMetrics } from '@/lib/api/activity';
 import { fetchMonthlyEarned } from '@/lib/api/points';
+import { fetchFeaturedReward, type Reward } from '@/lib/api/rewards';
 import { fetchProfile } from '@/lib/api/user';
 import { supabase } from '@/lib/supabase';
 import { ACTIVE_WEEKLY_CHALLENGE, computeExpiresIn, computeUrgency, getActiveWeeklyChallenge, parseWeeklyChallengesConfig } from '@/shared/weeklyChallenges';
@@ -61,59 +62,78 @@ function formatElapsed(entryTimestamp: number): string {
 
 // ─── Weekly Reward Teaser ─────────────────────────────────────────────────────
 
-const TOTAL_REWARD_PTS = 100;
-const EARNED_REWARD_PTS = 44;
+function getDiscountLabel(reward: Reward): string {
+    if (reward.discount_type === 'percentage' && reward.discount_value != null)
+        return `${reward.discount_value}% OFF`;
+    if (reward.discount_type === 'fixed_amount' && reward.discount_value != null)
+        return `£${reward.discount_value} OFF`;
+    return reward.value_label ?? '';
+}
 
-function WeeklyRewardTeaser() {
-    const pct = EARNED_REWARD_PTS / TOTAL_REWARD_PTS;
-    const remaining = TOTAL_REWARD_PTS - EARNED_REWARD_PTS;
+function getDiscountParts(label: string): { amount: string; suffix: string } {
+    const match = label.match(/^(.+?)\s*(OFF|off)$/);
+    if (match) return { amount: match[1].trim(), suffix: 'OFF' };
+    return { amount: label, suffix: '' };
+}
+
+function WeeklyRewardTeaser({ reward, balance }: { reward: Reward; balance: number }) {
+    const pct = Math.min(balance / reward.powr_cost, 1);
+    const remaining = Math.max(reward.powr_cost - balance, 0);
+    const partnerName = (reward.partner?.name ?? reward.brand_name ?? '').toUpperCase();
+    const discountLabel = getDiscountLabel(reward);
+    const { amount: discountAmount, suffix: discountSuffix } = getDiscountParts(discountLabel);
+    const imageUri = reward.hero_image_url ?? reward.image_url;
 
     return (
         <View style={rewardStyles.card}>
-            {/* Masked image — fades from transparent (left) to visible (right) */}
-            <MaskedView
-                style={rewardStyles.maskedImage}
-                maskElement={
-                    <LinearGradient
-                        colors={['transparent', 'black']}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 0 }}
-                        locations={[0.35, 0.92]}
+            {imageUri && (
+                <MaskedView
+                    style={rewardStyles.maskedImage}
+                    maskElement={
+                        <LinearGradient
+                            colors={['rgba(0,0,0,0)', 'black']}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 0 }}
+                            locations={[0.35, 0.92]}
+                            style={StyleSheet.absoluteFillObject}
+                        />
+                    }
+                >
+                    <Image
+                        source={{ uri: imageUri }}
                         style={StyleSheet.absoluteFillObject}
+                        resizeMode="cover"
                     />
-                }
-            >
-                <Image
-                    source={{ uri: 'https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/landing-page-assets/reward-protein.png' }}
-                    style={StyleSheet.absoluteFillObject}
-                    resizeMode="cover"
-                />
-            </MaskedView>
+                </MaskedView>
+            )}
 
-            {/* Text content */}
             <View style={rewardStyles.content}>
                 <View style={rewardStyles.topRow}>
                     <View style={rewardStyles.categoryBadge}>
-                        <Text style={rewardStyles.categoryBadgeText}>NUTRITION</Text>
+                        <Text style={rewardStyles.categoryBadgeText}>{reward.category.toUpperCase()}</Text>
                     </View>
-                    <View style={rewardStyles.discountBadge}>
-                        <Text style={rewardStyles.discountBadgeText}>20%</Text>
-                        <Text style={rewardStyles.discountBadgeOff}>OFF</Text>
-                    </View>
+                    {discountLabel ? (
+                        <View style={rewardStyles.discountBadge}>
+                            <Text style={rewardStyles.discountBadgeText}>{discountAmount}</Text>
+                            {discountSuffix ? <Text style={rewardStyles.discountBadgeOff}>{discountSuffix}</Text> : null}
+                        </View>
+                    ) : null}
                 </View>
 
-                <Text style={rewardStyles.partnerLabel}>BULK NUTRIENTS</Text>
-                <Text style={rewardStyles.name}>Bulk Whey Protein</Text>
-                <Text style={rewardStyles.discount}>20% off your next order</Text>
+                {partnerName ? <Text style={rewardStyles.partnerLabel}>{partnerName}</Text> : null}
+                <Text style={rewardStyles.name}>{reward.title}</Text>
+                {reward.description ? <Text style={rewardStyles.discount}>{reward.description}</Text> : null}
 
                 <View style={rewardStyles.progressRow}>
                     <View style={rewardStyles.track}>
                         <View style={[rewardStyles.fill, { width: `${Math.round(pct * 100)}%` as any }]} />
                     </View>
-                    <Text style={rewardStyles.progressPts}>{EARNED_REWARD_PTS}/{TOTAL_REWARD_PTS}</Text>
+                    <Text style={rewardStyles.progressPts}>{balance}/{reward.powr_cost}</Text>
                 </View>
 
-                <Text style={rewardStyles.progressHint}>{remaining} pts to unlock</Text>
+                <Text style={rewardStyles.progressHint}>
+                    {pct >= 1 ? 'Ready to claim!' : `${remaining} pts to unlock`}
+                </Text>
             </View>
         </View>
     );
@@ -233,7 +253,7 @@ export default function HomeScreen() {
     const { user } = useAuth();
     const { currentStreak, multiplier, refresh: refreshStreak } = useStreak();
     const { recentItems, weekActiveDays, weeklyMetrics, dailyMetrics, refresh: refreshActivity } = useActivity();
-    const { totalEarned, weeklyEarned, refresh: refreshPoints } = usePoints();
+    const { balance, totalEarned, weeklyEarned, refresh: refreshPoints } = usePoints();
     const { activeGeofence, sessionCompleted, clearSessionCompleted } = useActiveGeofence();
     const walking = useWalkingProgress();
     const health = useHealthData();
@@ -249,6 +269,7 @@ export default function HomeScreen() {
     const [, setChallengeTick] = useState(0);
     const [monthlyMetrics, setMonthlyMetrics] = useState<MonthlyMetrics>({ activeDays: 0, sessionCount: 0, totalSteps: 0, perType: {}, weekActiveDays: [0,0,0,0], activeDayTypes: {}, dayDetails: {} });
     const [monthlyXP, setMonthlyXP] = useState(0);
+    const [featuredReward, setFeaturedReward] = useState<Reward | null>(null);
 
     // ─── Tick overlay (interactive ring ticks) ───────────────────────────────────
     const [tickOverlay, setTickOverlay] = useState<TickOverlayData | null>(null);
@@ -270,7 +291,15 @@ export default function HomeScreen() {
         }
     }, []);
 
-    useEffect(() => { loadMonthlyData(); }, [loadMonthlyData]);
+    const loadFeaturedReward = useCallback(async () => {
+        try {
+            setFeaturedReward(await fetchFeaturedReward());
+        } catch (e) {
+            console.warn('[HomeScreen] featured reward fetch failed:', e);
+        }
+    }, []);
+
+    useEffect(() => { loadMonthlyData(); loadFeaturedReward(); }, [loadMonthlyData, loadFeaturedReward]);
 
     const onRefresh = useCallback(async () => {
         setRefreshing(true);
@@ -281,11 +310,12 @@ export default function HomeScreen() {
                 refreshStreak(),
                 refreshWalking(),
                 loadMonthlyData(),
+                loadFeaturedReward(),
             ]);
         } finally {
             setRefreshing(false);
         }
-    }, [refreshActivity, refreshPoints, refreshStreak, refreshWalking, loadMonthlyData]);
+    }, [refreshActivity, refreshPoints, refreshStreak, refreshWalking, loadMonthlyData, loadFeaturedReward]);
 
     // New user detection: no points earned and no recent activity
     const isNewUser = totalEarned === 0 && recentItems.length === 0;
@@ -716,8 +746,12 @@ export default function HomeScreen() {
                     </>
                 )}
 
-                <Text style={styles.sectionLabel}>WEEKLY REWARD</Text>
-                <WeeklyRewardTeaser />
+                {featuredReward && (
+                    <>
+                        <Text style={styles.sectionLabel}>WEEKLY REWARD</Text>
+                        <WeeklyRewardTeaser reward={featuredReward} balance={balance} />
+                    </>
+                )}
 
             </ReAnimated.ScrollView>
             </ReAnimated.View>

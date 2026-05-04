@@ -5,7 +5,7 @@ import { supabase } from './lib/supabase';
 import { ToastProvider } from './lib/toast';
 import {
     LayoutDashboard, Users, ClipboardList, LogOut, ChevronRight,
-    Activity, Award, AlertTriangle, BarChart3, Shield, Settings, ScrollText, Gift, Target, MessageSquare
+    Activity, Award, AlertTriangle, BarChart3, Shield, Settings, ScrollText, Gift, Target, MessageSquare, Star
 } from 'lucide-react';
 
 import PartnerManager from './pages/admin/PartnerManager';
@@ -22,6 +22,7 @@ import AuditLog from './pages/admin/AuditLog';
 import SystemConfig from './pages/admin/SystemConfig';
 import SupportTickets from './pages/admin/SupportTickets';
 import PartnerProfile from './pages/admin/PartnerProfile';
+import FeaturedSchedule from './pages/admin/FeaturedSchedule';
 import PrivacyPolicy from './pages/PrivacyPolicy';
 import CookiePolicy from './pages/CookiePolicy';
 import TermsOfService from './pages/TermsOfService';
@@ -346,6 +347,7 @@ const AdminLayout = ({ children }) => {
         { label: 'Overview', path: '/admin',          icon: LayoutDashboard },
         { label: 'Partners', path: '/admin/partners', icon: Activity        },
         { label: 'Rewards',  path: '/admin/rewards',  icon: Award           },
+        { label: 'Featured', path: '/admin/featured', icon: Star            },
         { label: 'Challenges', path: '/admin/challenges', icon: Target      },
         { label: 'Waitlist', path: '/admin/waitlist', icon: ClipboardList   },
         { label: 'Users',    path: '/admin/users',    icon: Users           },
@@ -521,6 +523,7 @@ export default function App() {
                     <Route path="/admin" element={<ProtectedRoute><AdminLayout><AdminHome /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/partners" element={<ProtectedRoute><AdminLayout><PartnerManager /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/rewards" element={<ProtectedRoute><AdminLayout><RewardManager /></AdminLayout></ProtectedRoute>} />
+                    <Route path="/admin/featured" element={<ProtectedRoute><AdminLayout><FeaturedSchedule /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/challenges" element={<ProtectedRoute><AdminLayout><WeeklyChallenges /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/waitlist" element={<ProtectedRoute><AdminLayout><WaitlistManager /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/users" element={<ProtectedRoute><AdminLayout><UserManager /></AdminLayout></ProtectedRoute>} />

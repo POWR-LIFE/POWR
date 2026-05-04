@@ -1,7 +1,7 @@
 import { GeometricBackground } from '@/components/home/GeometricBackground';
 import { ProfileButton } from '@/components/ProfileButton';
 import { usePoints } from '@/hooks/usePoints';
-import { fetchRewards, type Reward as ApiReward } from '@/lib/api/rewards';
+import { fetchRewards, fetchFeaturedScheduledReward, type Reward as ApiReward } from '@/lib/api/rewards';
 import { Ionicons } from '@expo/vector-icons';
 import { Image as ExpoImage } from 'expo-image';
 import * as Haptics from 'expo-haptics';
@@ -38,15 +38,6 @@ const MUTED   = 'rgba(255,255,255,0.35)';
 const DIM     = 'rgba(255,255,255,0.55)';
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
-
-const FEATURED = {
-  title:    'Free Class',
-  subtitle: 'Stars Gym · London',
-  value:    '£20 value',
-  pts:      800,
-  partnerLogo: { uri: 'https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/partner-logos/6e386546-b618-4ea8-ad12-28fb185f44be.avif' },
-  partnerImage: require('@/assets/images/stars-gym-two.avif'),
-};
 
 type Category = 'ALL' | 'MOVE' | 'EAT' | 'MIND' | 'GEAR';
 const CATEGORIES: Category[] = ['ALL', 'MOVE', 'EAT', 'MIND', 'GEAR'];
@@ -123,7 +114,7 @@ function apiRewardToUI(r: ApiReward): Reward {
     logoLight: false,
     logoImage: r.image_url ? { uri: r.image_url } : r.partner?.logo_url ? { uri: r.partner.logo_url } : undefined,
     heroImage: r.hero_image_url ? { uri: r.hero_image_url } : undefined,
-    brandColor: r.brand_color ?? undefined,
+    brandColor: r.brand_color || undefined,
     title: r.title,
     subtitle: `${displayName ?? ''}${r.description ? ' · ' + r.description : ''}`,
     pts: r.powr_cost,
@@ -153,13 +144,14 @@ export default function SpendScreen() {
     setExpandedId((prev) => (prev === id ? null : id));
   };
 
+  const [featuredReward, setFeaturedReward] = useState<ApiReward | null>(null);
   const [rewards, setRewards] = useState<Reward[]>(REWARDS);
+
   const loadRewards = useCallback(async () => {
     try {
-      const data = await fetchRewards();
-      if (data.length > 0) {
-        setRewards(data.map(apiRewardToUI));
-      }
+      const [data, featured] = await Promise.all([fetchRewards(), fetchFeaturedScheduledReward()]);
+      if (data.length > 0) setRewards(data.map(apiRewardToUI));
+      setFeaturedReward(featured);
     } catch {
       // keep mock fallback
     }
@@ -185,7 +177,7 @@ export default function SpendScreen() {
     return order[affordability(balance, a.pts)] - order[affordability(balance, b.pts)];
   });
 
-  const featuredAfford = affordability(balance, FEATURED.pts);
+  const featuredAfford = featuredReward ? affordability(balance, featuredReward.powr_cost) : 'locked';
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
@@ -214,12 +206,14 @@ export default function SpendScreen() {
           loading={loading}
         />
 
-        <FeaturedCard
-          featured={FEATURED}
-          afford={featuredAfford}
-          balance={balance}
-          onRedeem={() => router.push({ pathname: '/redeem-modal', params: { id: 'featured' } })}
-        />
+        {featuredReward && (
+          <FeaturedCard
+            featured={featuredReward}
+            afford={featuredAfford}
+            balance={balance}
+            onRedeem={() => router.push({ pathname: '/redeem-modal', params: { id: featuredReward.id } })}
+          />
+        )}
 
         <View style={styles.catTabBar}>
           {CATEGORIES.map((cat) => {
@@ -297,21 +291,31 @@ function BalanceCard({ balance, todayEarned, loading }: BalanceCardProps) {
 // ─── Featured Card ────────────────────────────────────────────────────────────
 
 interface FeaturedProps {
-  featured: typeof FEATURED;
+  featured: ApiReward;
   afford: Afford;
   balance: number;
   onRedeem: () => void;
 }
 
 function FeaturedCard({ featured, afford, balance, onRedeem }: FeaturedProps) {
-  const ptsNeeded = featured.pts - balance;
-  const progress = Math.min(balance / featured.pts, 1);
+  const pts = featured.powr_cost;
+  const ptsNeeded = pts - balance;
+  const progress = Math.min(balance / pts, 1);
+  const partnerName = featured.partner?.name ?? featured.brand_name ?? '';
+  const subtitle = `${partnerName}${featured.description ? ' · ' + featured.description : ''}`;
+  const value = getRewardDisplayValue(featured);
+  const logoSrc = featured.image_url
+    ? { uri: featured.image_url }
+    : featured.partner?.logo_url
+    ? { uri: featured.partner.logo_url }
+    : null;
+  const heroSrc = featured.hero_image_url ? { uri: featured.hero_image_url } : null;
 
   return (
     <View style={styles.featuredCard}>
       <View style={styles.featuredHero}>
-        {featured.partnerImage && (
-          <Image source={featured.partnerImage} style={styles.featuredHeroImg} resizeMode="cover" />
+        {heroSrc && (
+          <Image source={heroSrc} style={styles.featuredHeroImg} resizeMode="cover" />
         )}
         <LinearGradient
           colors={['rgba(10,10,10,0.85)', 'rgba(10,10,10,0.35)', 'rgba(10,10,10,0)']}
@@ -330,9 +334,9 @@ function FeaturedCard({ featured, afford, balance, onRedeem }: FeaturedProps) {
           <Text style={styles.rotateBadgeText}>Rotates weekly</Text>
         </View>
 
-        {featured.partnerLogo && (
+        {logoSrc && (
           <View style={styles.featuredLogoFloat}>
-            <ExpoImage source={featured.partnerLogo} style={styles.featuredLogoImg} contentFit="contain" />
+            <ExpoImage source={logoSrc} style={styles.featuredLogoImg} contentFit="contain" />
           </View>
         )}
 
@@ -340,10 +344,10 @@ function FeaturedCard({ featured, afford, balance, onRedeem }: FeaturedProps) {
           <View style={styles.featuredTitleRow}>
             <View style={{ flex: 1 }}>
               <Text style={styles.featuredTitle}>{featured.title}</Text>
-              <Text style={styles.featuredSubtitle}>{featured.subtitle}</Text>
+              <Text style={styles.featuredSubtitle}>{subtitle}</Text>
             </View>
             <View style={styles.featuredPtsBlock}>
-              <Text style={styles.featuredPtsNum}>{featured.pts}</Text>
+              <Text style={styles.featuredPtsNum}>{pts}</Text>
               <Text style={styles.featuredPtsUnit}>pts</Text>
             </View>
           </View>
@@ -355,7 +359,7 @@ function FeaturedCard({ featured, afford, balance, onRedeem }: FeaturedProps) {
           )}
 
           <View style={styles.featuredFooter}>
-            <Text style={styles.featuredValueInline}>{featured.value}</Text>
+            <Text style={styles.featuredValueInline}>{value}</Text>
             {afford === 'can' ? (
               <Pressable style={({ pressed }) => [styles.redeemPrimary, pressed && { opacity: 0.85 }]} onPress={onRedeem}>
                 <Text style={styles.redeemPrimaryText}>Redeem</Text>
@@ -405,14 +409,14 @@ function RewardCard({ reward, afford, balance, expanded, onToggle, onRedeem }: R
       ]}
     >
       {expanded && reward.heroImage && (
-        <View style={styles.heroBanner}>
+        <View style={styles.heroBanner} collapsable={false}>
           <Image
             source={reward.heroImage}
             style={styles.heroImage}
             resizeMode="cover"
           />
           <LinearGradient
-            colors={['transparent', 'rgba(30,30,30,0.95)']}
+            colors={['rgba(0,0,0,0)', 'rgba(30,30,30,0.95)']}
             start={{ x: 0, y: 0.6 }}
             end={{ x: 0, y: 1 }}
             style={styles.heroFade}
@@ -422,7 +426,7 @@ function RewardCard({ reward, afford, balance, expanded, onToggle, onRedeem }: R
       )}
       {expanded && (
         <LinearGradient
-          colors={[brand + '22', 'transparent']}
+          colors={[brand + '22', 'rgba(0,0,0,0)']}
           start={{ x: 0, y: 0 }}
           end={{ x: 0, y: 1 }}
           style={StyleSheet.absoluteFill}
@@ -459,15 +463,15 @@ function RewardCard({ reward, afford, balance, expanded, onToggle, onRedeem }: R
           </Text>
           <Text style={styles.rewardSubtitle} numberOfLines={1}>{reward.subtitle}</Text>
 
-          {!expanded && afford === 'close' && (
-            <View style={styles.progressWrap}>
-              <View style={[styles.progressBar, { width: `${progress * 100}%` as any }]} />
-            </View>
-          )}
         </View>
 
         {!expanded && reward.value && (
-          <View style={[styles.rewardValueBadge, { borderColor: brand + '55', backgroundColor: brand + '12' }]}>
+          <View style={[
+            styles.rewardValueBadge,
+            { borderColor: brand + '55', backgroundColor: brand + '12' },
+            afford === 'close' && { opacity: progress },
+            afford === 'locked' && { opacity: 1 },
+          ]}>
             <Text style={[styles.rewardValueBadgeText, { color: brand }]}>{reward.value}</Text>
           </View>
         )}
@@ -489,7 +493,11 @@ function RewardCard({ reward, afford, balance, expanded, onToggle, onRedeem }: R
       {expanded && (
         <View style={styles.expandedPanel}>
           {reward.value && (
-            <View style={[styles.expandedValueBadge, { borderColor: brand + '66', backgroundColor: brand + '14' }]}>
+            <View style={[
+              styles.expandedValueBadge,
+              { borderColor: brand + '66', backgroundColor: brand + '14' },
+              afford === 'close' && { opacity: progress },
+            ]}>
               <Text style={[styles.expandedValueBadgeText, { color: brand }]}>{reward.value}</Text>
             </View>
           )}
@@ -520,6 +528,15 @@ function RewardCard({ reward, afford, balance, expanded, onToggle, onRedeem }: R
             </Pressable>
           )}
 
+          {afford !== 'can' && (
+            <View style={styles.lockedBlock}>
+              <Ionicons name="lock-closed" size={10} color={MUTED} />
+              <Text style={styles.lockedText}>
+                {ptsNeeded.toLocaleString()} pts {afford === 'close' ? 'away' : 'needed'}
+              </Text>
+            </View>
+          )}
+
           <View style={styles.expandedFooter}>
             {reward.url && (
               <Pressable
@@ -529,21 +546,6 @@ function RewardCard({ reward, afford, balance, expanded, onToggle, onRedeem }: R
                 <Text style={[styles.partnerLinkText, { color: brand }]}>Visit partner</Text>
                 <Ionicons name="open-outline" size={13} color={brand} />
               </Pressable>
-            )}
-
-            {afford === 'close' && (
-              <View style={styles.closeBlock}>
-                <Text style={styles.closeText}>{ptsNeeded} pts away</Text>
-                <View style={[styles.progressWrap, { width: 80, marginTop: 4 }]}>
-                  <View style={[styles.progressBar, { width: `${progress * 100}%` as any }]} />
-                </View>
-              </View>
-            )}
-            {afford === 'locked' && (
-              <View style={styles.lockedBlock}>
-                <Ionicons name="lock-closed" size={12} color={MUTED} />
-                <Text style={styles.lockedText}>{ptsNeeded.toLocaleString()} pts needed</Text>
-              </View>
             )}
           </View>
         </View>
@@ -1017,17 +1019,33 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     textAlign: 'center',
   },
-  progressWrap: {
-    height: 2,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    borderRadius: 1,
-    overflow: 'hidden',
+  progressRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
     marginTop: 6,
+  },
+  progressWrap: {
+    flex: 1,
+    height: 3,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 2,
+    overflow: 'hidden',
   },
   progressBar: {
     height: '100%',
     backgroundColor: GOLD,
-    borderRadius: 1,
+    borderRadius: 2,
+  },
+  progressBarLocked: {
+    backgroundColor: 'rgba(255,255,255,0.22)',
+  },
+  progressAway: {
+    fontSize: 10,
+    fontWeight: '500',
+    color: GOLD,
+    letterSpacing: 0.2,
+    flexShrink: 0,
   },
   rewardRight: {
     alignItems: 'center',
@@ -1063,8 +1081,11 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   heroImage: {
-    width: '100%',
-    height: '100%',
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
   heroFade: {
     position: 'absolute',
@@ -1147,6 +1168,42 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '500',
     letterSpacing: 0.3,
+  },
+
+  // ── Expanded progress block
+  expandedProgressBlock: {
+    gap: 8,
+  },
+  expandedProgressLabelRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  expandedProgressAway: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: GOLD,
+    letterSpacing: 0.2,
+  },
+  expandedProgressPct: {
+    fontSize: 11,
+    fontWeight: '400',
+    color: MUTED,
+    letterSpacing: 0.5,
+  },
+  expandedProgressWrap: {
+    height: 3,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  expandedProgressFill: {
+    height: '100%',
+    backgroundColor: GOLD,
+    borderRadius: 2,
+  },
+  expandedProgressFillLocked: {
+    backgroundColor: 'rgba(255,255,255,0.22)',
   },
 
   // ── Nearby row

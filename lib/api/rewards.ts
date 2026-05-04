@@ -21,6 +21,7 @@ export interface Reward {
   integration_type: IntegrationType;
   code_expiry_days: number;
   active: boolean;
+  featured_on_home: boolean;
   partner: PartnerSummary | null;
   offer: string | null;
   hero_image_url: string | null;
@@ -119,4 +120,45 @@ export async function fetchRedemptionHistory(): Promise<RedemptionHistoryRow[]> 
     .order('redeemed_at', { ascending: false });
   if (error) throw error;
   return (data ?? []) as any;
+}
+
+export async function fetchFeaturedReward(): Promise<Reward | null> {
+  const { data, error } = await supabase
+    .from('rewards')
+    .select('id, partner_id, title, description, powr_cost, category, integration_type, code_expiry_days, active, featured_on_home, offer, hero_image_url, brand_color, url, partner_blurb, value_label, image_url, promo_code, discount_type, discount_value, brand_name, partners(id, name, partner_code, logo_url, category, checkout_url_template)')
+    .eq('featured_on_home', true)
+    .eq('active', true)
+    .single();
+  if (error) return null;
+  return { ...data, partner: Array.isArray(data.partners) ? data.partners[0] : data.partners } as Reward;
+}
+
+const REWARD_FIELDS = 'id, partner_id, title, description, powr_cost, category, integration_type, code_expiry_days, active, featured_on_home, offer, hero_image_url, brand_color, url, partner_blurb, value_label, image_url, promo_code, discount_type, discount_value, brand_name, partners(id, name, partner_code, logo_url, category, checkout_url_template)';
+
+export async function fetchFeaturedScheduledReward(): Promise<Reward | null> {
+  const now = new Date().toISOString();
+
+  // Check the schedule table for an active slot
+  const { data: slot } = await supabase
+    .from('featured_reward_schedule')
+    .select('reward_id')
+    .lte('starts_at', now)
+    .gt('ends_at', now)
+    .order('starts_at', { ascending: false })
+    .limit(1)
+    .single();
+
+  if (slot?.reward_id) {
+    const { data, error } = await supabase
+      .from('rewards')
+      .select(REWARD_FIELDS)
+      .eq('id', slot.reward_id)
+      .eq('active', true)
+      .single();
+    if (!error && data) {
+      return { ...data, partner: Array.isArray(data.partners) ? data.partners[0] : data.partners } as Reward;
+    }
+  }
+
+  return null;
 }

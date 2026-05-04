@@ -37,6 +37,7 @@ const EMPTY_FORM = {
     category: 'gym',
     stock: null,
     active: true,
+    featured_on_home: false,
     reward_kind: 'digital',
     value_label: '',
     discount_type: '',
@@ -140,6 +141,7 @@ export default function RewardManager() {
             category: reward.category,
             stock: reward.stock,
             active: reward.active,
+            featured_on_home: reward.featured_on_home || false,
             reward_kind: reward.reward_kind || 'digital',
             value_label: reward.value_label || '',
             discount_type: reward.discount_type || '',
@@ -260,6 +262,14 @@ export default function RewardManager() {
                 ? parseInt(formData.max_redemptions_per_user, 10)
                 : null,
         };
+        // Partial unique index only allows one featured_on_home=true row.
+        // Clear any existing featured reward first so the upsert doesn't conflict.
+        if (formData.featured_on_home) {
+            const excludeId = editingReward?.id;
+            const query = supabase.from('rewards').update({ featured_on_home: false }).eq('featured_on_home', true);
+            if (excludeId) query.neq('id', excludeId);
+            await query;
+        }
         const { error } = editingReward
             ? await supabase.from('rewards').update(payload).eq('id', editingReward.id)
             : await supabase.from('rewards').insert([payload]);
@@ -390,7 +400,12 @@ export default function RewardManager() {
                                                     <Award size={22} className="text-[#999] group-hover:text-[#E8D200]/60 transition-colors" />
                                                 </div>
                                                 <div>
-                                                    <span className="text-base font-bold text-[#DDD] group-hover:text-[#F2F2F2] transition-colors block mb-1">{reward.title}</span>
+                                                    <div className="flex items-center gap-2 mb-1">
+                                                        <span className="text-base font-bold text-[#DDD] group-hover:text-[#F2F2F2] transition-colors">{reward.title}</span>
+                                                        {reward.featured_on_home && (
+                                                            <span className="px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.3em] bg-[#E8D200]/10 text-[#E8D200] border border-[#E8D200]/20 rounded-full">Home</span>
+                                                        )}
+                                                    </div>
                                                     <span className="text-[10px] uppercase tracking-[0.4em] text-[#999] font-black">{reward.category} SECTOR</span>
                                                 </div>
                                             </div>
@@ -852,6 +867,20 @@ export default function RewardManager() {
                                     </div>
                                 </div>
                             )}
+
+                            <div className="flex items-center gap-4 bg-[#0A0A0A] border border-[#151515] rounded-[2rem] p-8">
+                                <button
+                                    type="button"
+                                    onClick={() => setFormData({ ...formData, featured_on_home: !formData.featured_on_home })}
+                                    className={`w-12 h-7 rounded-full transition-all relative shrink-0 ${formData.featured_on_home ? 'bg-[#E8D200]' : 'bg-[#151515]'}`}
+                                >
+                                    <span className={`absolute top-1 w-5 h-5 rounded-full transition-all ${formData.featured_on_home ? 'left-[24px] bg-[#000]' : 'left-1 bg-[#222]'}`} />
+                                </button>
+                                <div>
+                                    <span className="text-[10px] uppercase tracking-[0.4em] text-[#999] font-black">Feature on Home Screen</span>
+                                    <p className="text-[10px] text-[#555] mt-0.5">Replaces the reward card on the app home screen. Only one reward can be featured at a time.</p>
+                                </div>
+                            </div>
 
                             <div className="flex justify-between items-center bg-[#0A0A0A] border border-[#151515] rounded-[2rem] p-8">
                                 <div className="flex items-center gap-4">

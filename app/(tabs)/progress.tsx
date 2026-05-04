@@ -127,7 +127,7 @@ export default function ProgressScreen() {
     : String(weeklyMetrics.totalSteps);
 
   const [activeTab, setActiveTab] = useState<string>(tab || 'walking');
-  const [period, setPeriod] = useState<Period>('W');
+  const [period, setPeriod] = useState<Period>('M');
 
   // Sync activeTab when navigating back with a different tab param
   useEffect(() => {

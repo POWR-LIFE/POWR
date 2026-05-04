@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import { Activity, AlertTriangle, CheckCircle, Clock, Search, Shield, XCircle } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { useAuth } from '../../App';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
-import { useAuth } from '../../App';
-import { Shield, AlertTriangle, CheckCircle, XCircle, Clock, MapPin, Activity, Search, Filter } from 'lucide-react';
 
 const timeAgo = (dateStr) => {
     const diff = Date.now() - new Date(dateStr).getTime();
@@ -22,8 +22,9 @@ export default function SessionReview() {
     const toast = useToast();
     const { user } = useAuth();
     const [sessions, setSessions] = useState([]);
+    const [filter, setFilter] = useState('flagged'); // flagged, low_trust, all", 'pending'
     const [loading, setLoading] = useState(true);
-    const [filter, setFilter] = useState('flagged'); // 'flagged', 'low_trust', 'all'
+
     const [search, setSearch] = useState('');
 
     useEffect(() => { fetchSessions(); }, [filter]);
@@ -75,7 +76,8 @@ export default function SessionReview() {
     const filtered = sessions.filter(s => {
         if (!search) return true;
         const name = s.profiles?.display_name || s.profiles?.username || '';
-        return name.toLowerCase().includes(search.toLowerCase()) || s.type.toLowerCase().includes(search.toLowerCase());
+        const q = search.toLowerCase();
+        return name.toLowerCase().includes(q) || s.type.toLowerCase().includes(q); 
     });
 
     const flaggedCount = sessions.filter(s => s.flagged).length;

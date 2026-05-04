@@ -1,17 +1,25 @@
-export interface WelcomeData {
+export interface RewardUnlockedData {
   name: string | null;
+  rewardName: string;
+  partnerName: string;
+  powrCost: number;
+  expiresInDays?: number;
 }
 
-export function welcomeEmail(data: WelcomeData): { subject: string; html: string; text: string } {
+export function rewardUnlockedEmail(data: RewardUnlockedData): { subject: string; html: string; text: string } {
   const firstName = data.name?.split(" ")[0] ?? "there";
-  const preheader = `Your POWR account is ready. Start earning from your next workout.`;
+  const preheader = `You've unlocked "${data.rewardName}" from ${data.partnerName}. Redeem it before it's gone.`;
+
+  const expiryRow = data.expiresInDays !== undefined
+    ? `<p style="margin:16px 0 0;font-size:12px;color:#444444;font-family:Arial,Helvetica,sans-serif;">Expires in <strong style="color:#E8D200;">${data.expiresInDays} days</strong> — don't let it lapse.</p>`
+    : "";
 
   const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Welcome to POWR</title>
+<title>New reward unlocked — POWR</title>
 </head>
 <body style="margin:0;padding:0;background-color:#111111;font-family:Arial,Helvetica,sans-serif;-webkit-font-smoothing:antialiased;">
 <div style="display:none;max-height:0;overflow:hidden;mso-hide:all;font-size:1px;line-height:1px;color:#111111;">${preheader}&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;</div>
@@ -30,8 +38,10 @@ export function welcomeEmail(data: WelcomeData): { subject: string; html: string
         <!-- HERO -->
         <tr>
           <td style="background-color:#080808;padding:44px 40px 40px;text-align:center;border-bottom:1px solid #111111;">
-            <h1 style="margin:0 0 6px;font-size:42px;font-weight:200;letter-spacing:0.5px;line-height:1.15;color:#F2F2F2;font-family:Arial,Helvetica,sans-serif;">Welcome,&nbsp;${firstName}.<br><em style="font-style:italic;color:#E8D200;">Every move counts.</em></h1>
-            <p style="margin:16px 0 0;font-size:15px;font-weight:300;color:#555555;line-height:1.7;font-family:Arial,Helvetica,sans-serif;">Your account is ready. Start logging workouts,<br>build your streak, and earn real rewards.</p>
+            <span style="display:block;font-size:11px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:#E8D200;font-family:Arial,Helvetica,sans-serif;opacity:0.6;">New reward unlocked</span>
+            <h1 style="margin:14px 0 4px;font-size:30px;font-weight:200;letter-spacing:-0.5px;line-height:1.25;color:#F2F2F2;font-family:Arial,Helvetica,sans-serif;">${data.rewardName}</h1>
+            <p style="margin:4px 0 0;font-size:13px;font-weight:400;color:#555555;font-family:Arial,Helvetica,sans-serif;letter-spacing:1px;text-transform:uppercase;">${data.partnerName}</p>
+            <p style="margin:16px 0 0;font-size:15px;font-weight:300;color:#555555;line-height:1.7;font-family:Arial,Helvetica,sans-serif;">Your training unlocked this, ${firstName}.<br>It cost ${data.powrCost.toLocaleString()} POWR points.</p>
           </td>
         </tr>
 
@@ -41,11 +51,11 @@ export function welcomeEmail(data: WelcomeData): { subject: string; html: string
             <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 auto;">
               <tr>
                 <td style="border-radius:24px;background-color:#E8D200;">
-                  <a href="https://powr.life/app" style="display:inline-block;padding:14px 32px;font-size:13px;font-weight:700;color:#080808;font-family:Arial,Helvetica,sans-serif;text-decoration:none;letter-spacing:1.5px;text-transform:uppercase;">Start Earning</a>
+                  <a href="https://powr.life/app" style="display:inline-block;padding:14px 32px;font-size:13px;font-weight:700;color:#080808;font-family:Arial,Helvetica,sans-serif;text-decoration:none;letter-spacing:1.5px;text-transform:uppercase;">Redeem Now</a>
                 </td>
               </tr>
             </table>
-            <p style="margin:20px 0 0;font-size:12px;color:#333333;font-family:Arial,Helvetica,sans-serif;">The gym is the last uncharted territory in fitness rewards.<br>You just claimed it.</p>
+            ${expiryRow}
           </td>
         </tr>
 
@@ -67,20 +77,20 @@ export function welcomeEmail(data: WelcomeData): { subject: string; html: string
 </body>
 </html>`;
 
-  const text = `Welcome to POWR, ${firstName}.
+  const text = `Hey ${firstName},
 
-Your account is ready. Start logging workouts, build your streak, and earn real rewards from brands that respect the grind.
+You've unlocked a new reward: ${data.rewardName} from ${data.partnerName}.
 
-Open the app: https://powr.life/app
+Your training paid off — ${data.powrCost.toLocaleString()} POWR points redeemed.${data.expiresInDays !== undefined ? `\n\nExpires in ${data.expiresInDays} days — don't let it lapse.` : ""}
 
-The gym is the last uncharted territory in fitness rewards. You just claimed it.
+Redeem it now: https://powr.life/app
 
 Every move counts.
 — POWR
 https://powr.life`;
 
   return {
-    subject: `Welcome to POWR, ${firstName}.`,
+    subject: `Your reward is ready: ${data.rewardName}.`,
     html,
     text,
   };

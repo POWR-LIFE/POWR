@@ -14,6 +14,7 @@ WebBrowser.maybeCompleteAuthSession();
 
 import { AuthProvider } from '@/context/AuthContext';
 import { GeofenceProvider } from '@/context/GeofenceContext';
+import { NotificationsProvider } from '@/context/NotificationsContext';
 import { registerWalkingSync } from '@/lib/health/walkingSync';
 import { ThemeProvider as AppThemeProvider, useAppTheme } from '@/context/ThemeContext';
 import { View } from 'react-native';
@@ -80,7 +81,9 @@ export default function RootLayout() {
     <AuthProvider>
       <GeofenceProvider>
         <AppThemeProvider>
-          <RootLayoutNav />
+          <NotificationsProvider>
+            <RootLayoutNav />
+          </NotificationsProvider>
         </AppThemeProvider>
       </GeofenceProvider>
     </AuthProvider>

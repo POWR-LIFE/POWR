@@ -69,29 +69,8 @@ export function ProgressRadial({
           </LinearGradient>
         </Defs>
 
-        {/* Background Circle */}
-        <Circle
-          cx={cx}
-          cy={cy}
-          r={r}
-          fill="none"
-          stroke="rgba(255,255,255,0.07)"
-          strokeWidth={strokeWidth}
-        />
-
-        {/* Progress Circle */}
-        <Circle
-          cx={cx}
-          cy={cy}
-          r={r}
-          fill="none"
-          stroke="url(#radial-grad)"
-          strokeWidth={strokeWidth}
-          strokeLinecap="round"
-          strokeDasharray={circumference}
-          strokeDashoffset={offset}
-          transform={`rotate(-90 ${cx} ${cy})`}
-        />
+        {/* Background Circle — hidden */}
+        {/* Progress Circle — hidden */}
 
         {/* Day-of-week arc segments */}
         {ticks && (() => {

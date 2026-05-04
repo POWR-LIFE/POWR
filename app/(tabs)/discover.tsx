@@ -449,7 +449,7 @@ export default function DiscoverScreen() {
 
                   {/* Top-to-bottom fade for legibility */}
                   <LinearGradient
-                    colors={['rgba(18,18,18,0.55)', 'transparent', 'rgba(18,18,18,0.95)']}
+                    colors={['rgba(18,18,18,0.55)', 'rgba(18,18,18,0)', 'rgba(18,18,18,0.95)']}
                     locations={[0, 0.35, 1]}
                     style={StyleSheet.absoluteFillObject}
                     pointerEvents="none"

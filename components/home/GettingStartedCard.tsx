@@ -41,7 +41,7 @@ export function GettingStartedCard({
         <View style={styles.card}>
             {/* Gradient background */}
             <LinearGradient
-                colors={['rgba(232,210,0,0.06)', 'rgba(232,210,0,0.02)', 'transparent']}
+                colors={['rgba(232,210,0,0.06)', 'rgba(232,210,0,0.02)', 'rgba(0,0,0,0)']}
                 locations={[0, 0.5, 1]}
                 style={StyleSheet.absoluteFillObject}
             />

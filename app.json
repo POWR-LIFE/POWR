@@ -19,6 +19,9 @@
             "CFBundleURLSchemes": ["powr"]
           }
         ]
+      },
+      "entitlements": {
+        "aps-environment": "production"
       }
     },
     "android": {
@@ -42,7 +45,10 @@
         "android.permission.health.READ_STEPS",
         "android.permission.health.READ_DISTANCE",
         "android.permission.health.READ_EXERCISE",
-        "android.permission.health.READ_SLEEP"
+        "android.permission.health.READ_SLEEP",
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.VIBRATE"
       ],
       "package": "com.life.POWR",
       "intentFilters": [
@@ -63,6 +69,15 @@
     },
     "plugins": [
       "expo-router",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/notification-icon.png",
+          "color": "#facc15",
+          "defaultChannel": "default",
+          "sounds": []
+        }
+      ],
       [
         "expo-splash-screen",
         {

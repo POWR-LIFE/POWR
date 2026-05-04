@@ -383,7 +383,7 @@ function UnitHeader({ unit, colour }: { unit: JourneyUnit; colour: string }) {
       {/* Gradient fade lines */}
       <View style={styles.unitLineWrap}>
         <LinearGradient
-          colors={['transparent', `${colour}30`]}
+          colors={['rgba(0,0,0,0)', `${colour}30`]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 0 }}
           style={styles.unitGradientLine}
@@ -407,7 +407,7 @@ function UnitHeader({ unit, colour }: { unit: JourneyUnit; colour: string }) {
 
       <View style={styles.unitLineWrap}>
         <LinearGradient
-          colors={[`${colour}30`, 'transparent']}
+          colors={[`${colour}30`, 'rgba(0,0,0,0)']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 0 }}
           style={styles.unitGradientLine}

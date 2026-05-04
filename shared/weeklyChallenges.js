@@ -1,3 +1,13 @@
+/** Returns the ISO timestamp for the upcoming Sunday at 23:59:59 local time. */
+function nextSundayMidnight() {
+  const now = new Date();
+  const daysUntilSunday = (7 - now.getDay()) % 7 || 7;
+  const sunday = new Date(now);
+  sunday.setDate(now.getDate() + daysUntilSunday);
+  sunday.setHours(23, 59, 59, 0);
+  return sunday.toISOString();
+}
+
 export const WEEKLY_CHALLENGES = [
   {
     id: 'early-bird',
@@ -6,7 +16,7 @@ export const WEEKLY_CHALLENGES = [
     title: 'Early Bird',
     description: 'Gym or run before 12pm — triple points + 150 XP',
     bonusLabel: '3× BONUS',
-    expiresIn: '4h 22m',
+    expiresAt: nextSundayMidnight(),
     imageUri:
       'https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/sign/powr-challenge-cards/cycle-challenge-card.jpg?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV9hYzcyYjdjNy02MmJkLTQyYzUtYWU4Zi1iNTYzOTU1YzE5YTIiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJwb3dyLWNoYWxsZW5nZS1jYXJkcy9jeWNsZS1jaGFsbGVuZ2UtY2FyZC5qcGciLCJpYXQiOjE3NzY4NTA0ODQsImV4cCI6MTgwODM4NjQ4NH0.zs0FXaC2BjJybfEDV0fuxPGnUtboaXoeTRLjJuGKJEQ',
     imageOffsetY: 18,
