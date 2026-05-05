@@ -8,7 +8,7 @@ import {
     ChevronLeft, TrendingUp, Zap, Shield, AlertCircle,
     ArrowUpRight, ArrowDownRight, Gift, Plus, X,
     Heart, Moon, Flame, Footprints, Star, Trash2,
-    Camera, ImagePlus, Trophy, Check
+    Camera, ImagePlus, Trophy, Check, Link2, RefreshCw
 } from 'lucide-react';
 
 const logAction = async (adminId, action, targetType, targetId, metadata = {}) => {
@@ -65,6 +65,11 @@ export default function UserProfile() {
     const [avatarUploading, setAvatarUploading] = useState(false);
     const [coverUploading, setCoverUploading] = useState(false);
     const [coverDeleting, setCoverDeleting] = useState(false);
+
+    // Athlete invite
+    const [athleteInvite, setAthleteInvite] = useState(null);
+    const [inviteLinkCopied, setInviteLinkCopied] = useState(false);
+    const [inviteRegenerating, setInviteRegenerating] = useState(false);
 
     // Achievements
     const [achievements, setAchievements] = useState([]);
@@ -162,8 +167,64 @@ export default function UserProfile() {
         if (activeTab === 'pro' && userId) {
             fetchAdminGallery();
             fetchAchievements();
+            fetchAthleteInvite();
         }
     }, [activeTab, userId]);
+
+    const fetchAthleteInvite = async () => {
+        const { data } = await supabase
+            .from('athlete_applications')
+            .select('id, invite_token, status, submitted_at')
+            .eq('profile_id', userId)
+            .maybeSingle();
+        setAthleteInvite(data || null);
+    };
+
+    const handleRegenerateInvite = async () => {
+        if (!athleteInvite) return;
+        setInviteRegenerating(true);
+        const newToken = crypto.randomUUID();
+        const { error } = await supabase
+            .from('athlete_applications')
+            .update({ invite_token: newToken, status: 'invited' })
+            .eq('id', athleteInvite.id);
+        if (error) { toast.error(error.message); setInviteRegenerating(false); return; }
+        setAthleteInvite(prev => ({ ...prev, invite_token: newToken, status: 'invited' }));
+        toast.success('New invite link generated');
+        setInviteRegenerating(false);
+    };
+
+    const handleCopyInviteLink = () => {
+        if (!athleteInvite) return;
+        const link = `${window.location.origin}/athlete/${athleteInvite.invite_token}`;
+        navigator.clipboard.writeText(link).then(() => {
+            setInviteLinkCopied(true);
+            setTimeout(() => setInviteLinkCopied(false), 2000);
+        });
+    };
+
+    const handleGenerateInvite = async () => {
+        setInviteRegenerating(true);
+        const token = crypto.randomUUID();
+        const { data, error } = await supabase
+            .from('athlete_applications')
+            .insert({
+                email: '',
+                display_name: profile.display_name || profile.username || '',
+                invite_token: token,
+                status: 'invited',
+                activity_preferences: [],
+                achievements: [],
+                gallery_urls: [],
+                profile_id: userId,
+            })
+            .select('id, invite_token, status, submitted_at')
+            .single();
+        if (error) { toast.error(error.message); setInviteRegenerating(false); return; }
+        setAthleteInvite(data);
+        toast.success('Invite link generated');
+        setInviteRegenerating(false);
+    };
 
     const fetchAchievements = async () => {
         setAchievementsLoading(true);
@@ -991,6 +1052,75 @@ export default function UserProfile() {
                     {/* ── Pro Profile Tab */}
                     {activeTab === 'pro' && (
                         <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                            {/* Athlete Invite Link */}
+                            <section className="bg-[#0A0A0A] border border-[#151515] rounded-[2rem] overflow-hidden">
+                                <div className="p-10 border-b border-[#151515] flex items-center justify-between">
+                                    <div>
+                                        <h3 className="text-xl font-light tracking-tighter text-[#EEE]">Athlete Invite</h3>
+                                        <p className="text-[9px] uppercase tracking-[0.4em] text-[#999] font-black mt-2">Onboarding link · share to send or resend</p>
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                        {athleteInvite ? (
+                                            <>
+                                                <span className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-[0.2em] ${
+                                                    athleteInvite.status === 'approved' ? 'bg-[#10B981]/10 border border-[#10B981]/20 text-[#10B981]' :
+                                                    athleteInvite.status === 'pending' ? 'bg-orange-500/10 border border-orange-500/20 text-orange-400' :
+                                                    athleteInvite.status === 'rejected' ? 'bg-red-500/10 border border-red-500/20 text-red-400' :
+                                                    'bg-[#151515] border border-[#1E1E1E] text-[#999]'
+                                                }`}>
+                                                    {athleteInvite.status}
+                                                </span>
+                                                {(athleteInvite.status === 'invited' || athleteInvite.status === 'rejected') && (
+                                                    <button
+                                                        onClick={handleRegenerateInvite}
+                                                        disabled={inviteRegenerating}
+                                                        className="h-10 px-5 bg-[#151515] border border-[#1E1E1E] rounded-full flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-[#999] hover:text-[#E8D200] hover:border-[#E8D200]/30 transition-all disabled:opacity-50"
+                                                    >
+                                                        <RefreshCw size={12} className={inviteRegenerating ? 'animate-spin' : ''} />
+                                                        Regenerate
+                                                    </button>
+                                                )}
+                                            </>
+                                        ) : (
+                                            <button
+                                                onClick={handleGenerateInvite}
+                                                disabled={inviteRegenerating}
+                                                className="h-10 px-6 bg-[#E8D200] text-[#080808] rounded-full flex items-center gap-2 text-[10px] font-black uppercase tracking-widest hover:translate-y-[-1px] transition-all disabled:opacity-50"
+                                            >
+                                                <Link2 size={12} />
+                                                {inviteRegenerating ? 'Generating…' : 'Generate Invite'}
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                                <div className="p-10">
+                                    {athleteInvite ? (
+                                        <div className="flex items-center gap-4 bg-[#050505] border border-[#1A1A1A] rounded-2xl px-6 py-4">
+                                            <Link2 size={16} className="text-[#E8D200] shrink-0" />
+                                            <span className="flex-1 text-sm font-light text-[#999] truncate font-mono">
+                                                {window.location.origin}/athlete/{athleteInvite.invite_token}
+                                            </span>
+                                            <button
+                                                onClick={handleCopyInviteLink}
+                                                className={`h-9 px-5 rounded-full flex items-center gap-2 text-[10px] font-black uppercase tracking-widest transition-all shrink-0 ${
+                                                    inviteLinkCopied
+                                                        ? 'bg-[#10B981]/10 border border-[#10B981]/20 text-[#10B981]'
+                                                        : 'bg-[#151515] border border-[#1E1E1E] text-[#BBB] hover:text-[#E8D200] hover:border-[#E8D200]/30'
+                                                }`}
+                                            >
+                                                {inviteLinkCopied ? <><Check size={11} /> Copied</> : 'Copy Link'}
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <div className="flex flex-col items-center justify-center py-6 gap-3">
+                                            <Link2 size={20} className="text-[#333]" />
+                                            <p className="text-[10px] uppercase tracking-[0.4em] text-[#555] font-black">No invite link yet</p>
+                                            <p className="text-xs text-[#444] font-light">Generate a link to send the onboarding form to this athlete</p>
+                                        </div>
+                                    )}
+                                </div>
+                            </section>
+
                             {/* Cover photo */}
                             <section className="bg-[#0A0A0A] border border-[#151515] rounded-[2rem] overflow-hidden">
                                 <div className="p-10 border-b border-[#151515] flex items-center justify-between">

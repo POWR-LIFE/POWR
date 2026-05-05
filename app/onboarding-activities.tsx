@@ -15,10 +15,11 @@ const BG = '#0d0d0d';
 const CARD_BG = 'rgba(40,40,40,0.85)';
 const MAX_SELECTED = 3; // gym + 2 others
 
-// Activities in display order: gym first, then the rest
+// Activities in display order: gym (locked) first, then walk → cycle → run, then the rest
+const PINNED: ActivityType[] = ['gym', 'walking', 'cycling', 'running'];
 const ORDERED_ACTIVITIES = [
-  ACTIVITIES.gym,
-  ...ACTIVITY_LIST.filter(a => a.type !== 'gym'),
+  ...PINNED.map(t => ACTIVITIES[t]),
+  ...ACTIVITY_LIST.filter(a => !PINNED.includes(a.type)),
 ];
 
 export default function OnboardingActivitiesScreen() {

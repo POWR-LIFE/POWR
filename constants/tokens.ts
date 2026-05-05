@@ -196,9 +196,11 @@ export const radius = {
 
 export const components = {
   button: {
+    height:        44,
     paddingH:      18,
     paddingV:      7,
     borderRadius:  radius.pill,  // always pill
+    borderWidth:   1,
   },
   card: {
     padding:       12,
@@ -226,12 +228,14 @@ export const components = {
     inactiveColor: colours.textMuted,
   },
   badge: {
-    paddingH:      10,
-    paddingV:      3,
-    borderRadius:  radius.pill,
-    borderWidth:   1,
-    background:    'rgba(232,210,0,0.10)',
-    border:        'rgba(232,210,0,0.25)',
+    paddingH:          10,
+    paddingV:          3,
+    borderRadius:      radius.pill,
+    borderWidth:       1,
+    background:        'rgba(232,210,0,0.10)',
+    border:            'rgba(232,210,0,0.25)',
+    activeBorder:      'rgba(232,210,0,0.5)',
+    activeBackground:  'rgba(232,210,0,0.10)',
   },
 } as const;
 

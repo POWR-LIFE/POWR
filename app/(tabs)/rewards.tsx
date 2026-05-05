@@ -114,7 +114,7 @@ function apiRewardToUI(r: ApiReward): Reward {
     logoLight: false,
     logoImage: r.image_url ? { uri: r.image_url } : r.partner?.logo_url ? { uri: r.partner.logo_url } : undefined,
     heroImage: r.hero_image_url ? { uri: r.hero_image_url } : undefined,
-    brandColor: r.brand_color || undefined,
+    brandColor: undefined,
     title: r.title,
     subtitle: `${displayName ?? ''}${r.description ? ' · ' + r.description : ''}`,
     pts: r.powr_cost,
@@ -396,7 +396,7 @@ function RewardCard({ reward, afford, balance, expanded, onToggle, onRedeem }: R
   const progress = Math.min(balance / reward.pts, 1);
   const isLocked = afford === 'locked';
 
-  const brand = reward.brandColor ?? GOLD;
+  const brand = reward.brandColor ?? '#FFFFFF';
 
   return (
     <Pressable

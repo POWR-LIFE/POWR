@@ -1,6 +1,11 @@
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import { Platform } from 'react-native';
+import messaging from '@react-native-firebase/messaging';
+
+const CHANNEL_DEFAULT = 'powr_default_v2';
+const CHANNEL_STREAK = 'powr_streak_v2';
+const CHANNEL_REWARDS = 'powr_rewards_v2';
 
 // ---------------------------------------------------------------------------
 // Notification type catalogue
@@ -13,13 +18,27 @@ export type NotificationType =
   | 'reward_unlocked'
   | 'check_in_reminder'
   | 'points_milestone'
-  | 'inactivity_nudge';
+  | 'inactivity_nudge'
+  | 'session_completed';
 
 export interface NotificationPayload {
   type: NotificationType;
   /** Deep-link route, e.g. '/(tabs)/rewards' */
   route?: string;
   [key: string]: unknown;
+}
+
+// ---------------------------------------------------------------------------
+// Firebase background message handler
+// Must be registered outside of any React component (module-level)
+// ---------------------------------------------------------------------------
+
+if (Platform.OS === 'android' || Platform.OS === 'ios') {
+  messaging().setBackgroundMessageHandler(async (_remoteMessage) => {
+    // Background FCM messages are handled silently by the system.
+    // expo-notifications will display them if they contain a notification payload.
+    // Add any background data processing here if needed.
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -43,21 +62,21 @@ Notifications.setNotificationHandler({
 async function ensureAndroidChannels() {
   if (Platform.OS !== 'android') return;
 
-  await Notifications.setNotificationChannelAsync('default', {
+  await Notifications.setNotificationChannelAsync(CHANNEL_DEFAULT, {
     name: 'General',
-    importance: Notifications.AndroidImportance.DEFAULT,
+    importance: Notifications.AndroidImportance.HIGH,
     vibrationPattern: [0, 250, 250, 250],
     lightColor: '#facc15',
   });
 
-  await Notifications.setNotificationChannelAsync('streak', {
+  await Notifications.setNotificationChannelAsync(CHANNEL_STREAK, {
     name: 'Streak Alerts',
     importance: Notifications.AndroidImportance.HIGH,
     vibrationPattern: [0, 400, 200, 400],
     lightColor: '#facc15',
   });
 
-  await Notifications.setNotificationChannelAsync('rewards', {
+  await Notifications.setNotificationChannelAsync(CHANNEL_REWARDS, {
     name: 'Rewards',
     importance: Notifications.AndroidImportance.HIGH,
     lightColor: '#facc15',
@@ -103,10 +122,25 @@ export async function requestPermissionsAndGetToken(): Promise<PushRegistration 
     // projectId is read from app.json automatically via Constants.expoConfig
   });
 
-  const deviceToken = await Notifications.getDevicePushTokenAsync().then(
-    (t) => t.data as string,
-    () => null,
-  );
+  // Get the raw FCM token via Firebase Messaging (Android) or fallback
+  let deviceToken: string | null = null;
+  if (Platform.OS === 'android') {
+    try {
+      await messaging().registerDeviceForRemoteMessages();
+      deviceToken = await messaging().getToken();
+    } catch {
+      // Fallback: try expo's device push token
+      deviceToken = await Notifications.getDevicePushTokenAsync().then(
+        (t) => t.data as string,
+        () => null,
+      );
+    }
+  } else {
+    deviceToken = await Notifications.getDevicePushTokenAsync().then(
+      (t) => t.data as string,
+      () => null,
+    );
+  }
 
   return {
     expoPushToken: tokenData.data,
@@ -140,11 +174,11 @@ export async function scheduleDailyReminder(hour = 8, minute = 0) {
       body: "Every step earns POWR. Log your activity and keep the streak alive.",
       data: { type: 'daily_reminder', route: '/(tabs)/index' } satisfies NotificationPayload,
       sound: 'default',
+      ...(Platform.OS === 'android' && { channelId: CHANNEL_DEFAULT }),
       categoryIdentifier: 'daily_reminder',
     },
     trigger: {
-      type: Notifications.SchedulableTriggerInputTypes.CALENDAR,
-      repeats: true,
+      type: Notifications.SchedulableTriggerInputTypes.DAILY,
       hour,
       minute,
     },
@@ -176,7 +210,7 @@ export async function scheduleStreakAtRiskWarning(currentStreak: number) {
       body: "Log any activity before midnight to keep it alive.",
       data: { type: 'streak_at_risk', route: '/(tabs)/index' } satisfies NotificationPayload,
       sound: 'default',
-      ...(Platform.OS === 'android' && { channelId: 'streak' }),
+      ...(Platform.OS === 'android' && { channelId: CHANNEL_STREAK }),
     },
     trigger: {
       type: Notifications.SchedulableTriggerInputTypes.DATE,
@@ -212,6 +246,7 @@ export async function scheduleWeeklyChallengeExpiryWarning(
         route: '/(tabs)/progress',
       } satisfies NotificationPayload,
       sound: 'default',
+      ...(Platform.OS === 'android' && { channelId: CHANNEL_DEFAULT }),
     },
     trigger: {
       type: Notifications.SchedulableTriggerInputTypes.DATE,
@@ -236,7 +271,7 @@ export async function notifyRewardUnlocked(rewardName: string, rewardId: string)
         rewardId,
       } satisfies NotificationPayload,
       sound: 'default',
-      ...(Platform.OS === 'android' && { channelId: 'rewards' }),
+      ...(Platform.OS === 'android' && { channelId: CHANNEL_REWARDS }),
     },
     trigger: null, // immediate
   });
@@ -250,14 +285,33 @@ export async function notifyCheckInAvailable(partnerName: string, locationId: st
   await Notifications.scheduleNotificationAsync({
     identifier: `powr-check_in_reminder-${locationId}`,
     content: {
-      title: `You're at ${partnerName} 📍`,
-      body: "Tap to check in and earn POWR points for your visit.",
+      title: `You've entered ${partnerName} 📍`,
+      body: "Stay for 20 minutes to earn POWR points — your countdown has started.",
       data: {
         type: 'check_in_reminder',
         route: '/(tabs)/index',
         locationId,
       } satisfies NotificationPayload,
       sound: 'default',
+      ...(Platform.OS === 'android' && { channelId: CHANNEL_DEFAULT }),
+    },
+    trigger: null, // immediate
+  });
+}
+
+export async function notifySessionCompleted(partnerName: string, sessionId: string) {
+  await Notifications.scheduleNotificationAsync({
+    identifier: `powr-session_completed-${sessionId}`,
+    content: {
+      title: "POWR points earned! 🏆",
+      body: `Great work at ${partnerName}! Tap to share your session.`,
+      data: {
+        type: 'session_completed',
+        route: `/share-stats?mode=check-in&sessionId=${sessionId}`,
+        sessionId,
+      } satisfies NotificationPayload,
+      sound: 'default',
+      ...(Platform.OS === 'android' && { channelId: CHANNEL_REWARDS }),
     },
     trigger: null, // immediate
   });
@@ -343,5 +397,22 @@ export function getRouteFromNotification(
   response: Notifications.NotificationResponse,
 ): string | null {
   const data = response.notification.request.content.data as NotificationPayload | undefined;
-  return data?.route ?? null;
+  const rawRoute = typeof data?.route === 'string' ? data.route.trim() : '';
+  if (!rawRoute) return null;
+
+  // Support both in-app route strings (`/(tabs)/index`) and full deep links.
+  if (rawRoute.startsWith('/')) return rawRoute;
+
+  if (rawRoute.startsWith('powr://')) {
+    try {
+      const url = new URL(rawRoute);
+      const path = url.pathname?.trim();
+      if (!path || path === '/') return '/';
+      return path.startsWith('/') ? path : `/${path}`;
+    } catch {
+      return '/';
+    }
+  }
+
+  return null;
 }

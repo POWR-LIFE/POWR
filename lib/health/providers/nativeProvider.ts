@@ -76,7 +76,11 @@ export function createNativeHealthProvider(): HealthProvider {
 
         async connect() {
             if (Platform.OS === 'ios') return (await iosRequestPermissions()) ? 'connected' : 'failed';
-            if (Platform.OS === 'android') return (await androidRequestPermissions()) ? 'connected' : 'failed';
+            if (Platform.OS === 'android') {
+                // Skip the dialog if permissions were already granted (e.g. via system settings).
+                if (await androidCheckAlreadyGranted()) return 'connected';
+                return (await androidRequestPermissions()) ? 'connected' : 'failed';
+            }
             return 'failed';
         },
 

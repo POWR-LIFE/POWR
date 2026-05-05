@@ -18,7 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import * as SecureStore from 'expo-secure-store';
 import { useAuth } from '@/context/AuthContext';
-import { useHealthData } from '@/hooks/useHealthData';
+import { androidOpenHealthConnectSettings, useHealthData } from '@/hooks/useHealthData';
 import { useHealthProviders } from '@/hooks/useHealthProviders';
 import { HealthProviderNotImplementedError } from '@/lib/health/providers';
 import { ACTIVITIES, type ActivityType } from '@/constants/activities';
@@ -256,10 +256,15 @@ export default function SettingsScreen() {
                         if (result === 'failed' && row.meta.native) {
                           Alert.alert(
                             `${row.meta.name} not connected`,
-                            'Permission was not granted. You can enable it in your phone settings.',
+                            'Permission was not granted. You can enable it in Health Connect settings.',
                             [
                               { text: 'Cancel', style: 'cancel' },
-                              { text: 'Open Settings', onPress: () => Linking.openSettings() },
+                              {
+                                text: 'Open Health Connect',
+                                onPress: () => Platform.OS === 'android'
+                                  ? androidOpenHealthConnectSettings()
+                                  : Linking.openSettings(),
+                              },
                             ],
                           );
                         }
@@ -409,6 +414,11 @@ export default function SettingsScreen() {
                 icon="storefront-outline"
                 label="Manage Partners"
                 onPress={() => router.push('/admin-partners')}
+              />
+              <RowLink
+                icon="person-add-outline"
+                label="Athlete Applications"
+                onPress={() => router.push('/admin-athletes')}
                 isLast
               />
             </View>
@@ -555,10 +565,15 @@ function HealthSourceCard({
                     if (result === 'failed' && row.meta.native) {
                       Alert.alert(
                         `${row.meta.name} not connected`,
-                        'Permission was not granted. You can enable it in your phone settings.',
+                        'Permission was not granted. You can enable it in Health Connect settings.',
                         [
                           { text: 'Cancel', style: 'cancel' },
-                          { text: 'Open Settings', onPress: () => Linking.openSettings() },
+                          {
+                            text: 'Open Health Connect',
+                            onPress: () => Platform.OS === 'android'
+                              ? androidOpenHealthConnectSettings()
+                              : Linking.openSettings(),
+                          },
                         ],
                       );
                     } else if (result === 'failed') {

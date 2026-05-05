@@ -27,8 +27,15 @@ module.exports = {
         },
       },
     },
+    extra: {
+      ...expo.extra,
+      eas: {
+        projectId: '7f4fe661-8919-4790-bd66-209373f958de',
+      },
+    },
     plugins: [
       ...expo.plugins,
+      '@react-native-firebase/app',
       ['react-native-health-connect'],
       'expo-secure-store',
       [
