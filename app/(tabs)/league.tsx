@@ -53,7 +53,7 @@ const TAB_W    = SCREEN_W / 2;
 
 // ─── Leaderboard flag ────────────────────────────────────────────────────────
 /** Flip to false to show the ComingSoon screen instead of the real leaderboard */
-const LEAGUE_LIVE = true;
+const LEAGUE_LIVE = false;
 
 // ─── Podium rank metadata ─────────────────────────────────────────────────────
 
@@ -136,13 +136,12 @@ export default function LeagueScreen() {
         <ProfileButton />
       </View>
 
-      {/* ComingSoon (re-enable by wrapping the block below in !LEAGUE_LIVE ? <ComingSoon .../> : <>...</>):
+      {!LEAGUE_LIVE ? (
         <ComingSoon
           title="League coming soon"
           subtitle="Weekly leagues, podiums, and promotions are on the way."
         />
-      */}
-      {(
+      ) : (
         <>
           {/* Standard / Pro tab bar */}
           <View style={styles.topTabBar}>
@@ -256,6 +255,7 @@ export default function LeagueScreen() {
 }
 
 // ─── PodiumAvatarRing ─────────────────────────────────────────────────────────
+
 
 function PodiumAvatarRing({
   avatarSize,

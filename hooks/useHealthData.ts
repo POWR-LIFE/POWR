@@ -337,6 +337,12 @@ export async function androidRequestPermissions(): Promise<boolean> {
     }
 }
 
+export function androidOpenHealthConnectSettings(): void {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { openHealthConnectSettings } = require('react-native-health-connect');
+    openHealthConnectSettings();
+}
+
 async function androidGetStepsToday(): Promise<number> {
     try {
         // eslint-disable-next-line @typescript-eslint/no-require-imports

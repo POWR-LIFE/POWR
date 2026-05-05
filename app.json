@@ -50,7 +50,7 @@
         "android.permission.RECEIVE_BOOT_COMPLETED",
         "android.permission.VIBRATE"
       ],
-      "package": "com.life.POWR",
+      "package": "com.powr.life",
       "intentFilters": [
         {
           "action": "VIEW",
@@ -72,9 +72,9 @@
       [
         "expo-notifications",
         {
-          "icon": "./assets/images/notification-icon.png",
+            "icon": "./assets/images/ic_stat_powr_logo_black.png",
           "color": "#facc15",
-          "defaultChannel": "default",
+          "defaultChannel": "powr_default_v2",
           "sounds": []
         }
       ],

@@ -26,6 +26,8 @@ import FeaturedSchedule from './pages/admin/FeaturedSchedule';
 import PrivacyPolicy from './pages/PrivacyPolicy';
 import CookiePolicy from './pages/CookiePolicy';
 import TermsOfService from './pages/TermsOfService';
+import AthleteSignup from './pages/AthleteSignup';
+import AthleteApplications from './pages/admin/AthleteApplications';
 
 // --- Auth Context ---
 const AuthContext = createContext({ user: null, isAdmin: false, loading: true });
@@ -108,6 +110,7 @@ const PATH_LABELS = {
     challenges: 'Challenges',
     waitlist: 'Waitlist',
     users: 'Users',
+    athletes: 'Athletes',
     profile: 'Profile',
     analytics: 'Analytics',
     sessions: 'Sessions',
@@ -342,15 +345,25 @@ const AdminLayout = ({ children }) => {
     const location = useLocation();
     const navigate = useNavigate();
     const { user } = useAuth();
+    const [pendingAthletes, setPendingAthletes] = useState(0);
+
+    useEffect(() => {
+        supabase
+            .from('athlete_applications')
+            .select('id', { count: 'exact', head: true })
+            .eq('status', 'pending')
+            .then(({ count }) => setPendingAthletes(count ?? 0));
+    }, [location.pathname]);
 
     const navItems = [
-        { label: 'Overview', path: '/admin',          icon: LayoutDashboard },
-        { label: 'Partners', path: '/admin/partners', icon: Activity        },
-        { label: 'Rewards',  path: '/admin/rewards',  icon: Award           },
-        { label: 'Featured', path: '/admin/featured', icon: Star            },
-        { label: 'Challenges', path: '/admin/challenges', icon: Target      },
-        { label: 'Waitlist', path: '/admin/waitlist', icon: ClipboardList   },
-        { label: 'Users',    path: '/admin/users',    icon: Users           },
+        { label: 'Overview',   path: '/admin',           icon: LayoutDashboard },
+        { label: 'Partners',   path: '/admin/partners',  icon: Activity        },
+        { label: 'Rewards',    path: '/admin/rewards',   icon: Award           },
+        { label: 'Featured',   path: '/admin/featured',  icon: Star            },
+        { label: 'Challenges', path: '/admin/challenges', icon: Target         },
+        { label: 'Waitlist',   path: '/admin/waitlist',  icon: ClipboardList   },
+        { label: 'Users',      path: '/admin/users',     icon: Users           },
+        { label: 'Athletes',   path: '/admin/athletes',  icon: Star, badge: pendingAthletes },
     ];
 
     const opsItems = [
@@ -391,17 +404,22 @@ const AdminLayout = ({ children }) => {
                     {navItems.map(item => {
                         const active = location.pathname === item.path;
                         return (
-                            <Link 
-                                key={item.path} 
-                                to={item.path} 
+                            <Link
+                                key={item.path}
+                                to={item.path}
                                 className={`flex items-center gap-6 px-8 py-5 rounded-2xl transition-all group ${
-                                    active 
-                                    ? 'bg-[#E8D200] text-[#080808] shadow-[0_25px_60px_rgba(232,210,0,0.25)]' 
+                                    active
+                                    ? 'bg-[#E8D200] text-[#080808] shadow-[0_25px_60px_rgba(232,210,0,0.25)]'
                                     : 'text-[#333] hover:bg-[#111] hover:text-[#CCC]'
                                 }`}
                             >
                                 <item.icon size={22} className={active ? '' : 'group-hover:text-[#E8D200] transition-colors shadow-2xl'} strokeWidth={active ? 3 : 2} />
-                                <span className="text-[13px] uppercase tracking-[0.25em] font-black">{item.label}</span>
+                                <span className="text-[13px] uppercase tracking-[0.25em] font-black flex-1">{item.label}</span>
+                                {item.badge > 0 && (
+                                    <span className={`min-w-[20px] h-5 px-1.5 rounded-full text-[9px] font-black flex items-center justify-center ${active ? 'bg-[#080808] text-[#E8D200]' : 'bg-[#f97316] text-white'}`}>
+                                        {item.badge}
+                                    </span>
+                                )}
                             </Link>
                         );
                     })}
@@ -519,6 +537,7 @@ export default function App() {
                     <Route path="/privacy" element={<PrivacyPolicy />} />
                     <Route path="/terms" element={<TermsOfService />} />
                     <Route path="/cookies" element={<CookiePolicy />} />
+                    <Route path="/athlete/:token" element={<AthleteSignup />} />
                     <Route path="/admin/login" element={<AdminLogin />} />
                     <Route path="/admin" element={<ProtectedRoute><AdminLayout><AdminHome /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/partners" element={<ProtectedRoute><AdminLayout><PartnerManager /></AdminLayout></ProtectedRoute>} />
@@ -536,6 +555,7 @@ export default function App() {
                     <Route path="/admin/audit" element={<ProtectedRoute><AdminLayout><AuditLog /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/config" element={<ProtectedRoute><AdminLayout><SystemConfig /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/support" element={<ProtectedRoute><AdminLayout><SupportTickets /></AdminLayout></ProtectedRoute>} />
+                    <Route path="/admin/athletes" element={<ProtectedRoute><AdminLayout><AthleteApplications /></AdminLayout></ProtectedRoute>} />
                     <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
             </AuthProvider>

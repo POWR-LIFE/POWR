@@ -33,6 +33,10 @@ export default function UserManager() {
     const [createLoading, setCreateLoading] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
 
+    // Invite link modal (shown after creating a pro user)
+    const [inviteLink, setInviteLink] = useState(null);
+    const [inviteCopied, setInviteCopied] = useState(false);
+
     // Delete confirmation
     const [deletingId, setDeletingId] = useState(null);
     const [deleteLoading, setDeleteLoading] = useState(false);
@@ -104,11 +108,41 @@ export default function UserManager() {
         });
         setCreateLoading(false);
         if (result.error) { toast.error(result.error); return; }
+
+        // If Pro, generate an athlete profile invite token
+        if (createIsPro) {
+            const token = crypto.randomUUID();
+            const profileId = result.user_id ?? result.user?.id ?? result.profile?.id ?? null;
+            await supabase.from('athlete_applications').insert({
+                email: createEmail,
+                display_name: createName || createEmail.split('@')[0],
+                invite_token: token,
+                status: 'invited',
+                activity_preferences: [],
+                achievements: [],
+                gallery_urls: [],
+                profile_id: profileId,
+            });
+            const link = `${window.location.origin}/athlete/${token}`;
+            setShowCreate(false);
+            setCreateEmail(''); setCreateName(''); setCreateUsername('');
+            setCreatePassword(''); setCreateIsPro(false);
+            setInviteLink(link);
+            fetchUsers();
+            return;
+        }
+
         toast.success('User created successfully');
         setShowCreate(false);
         setCreateEmail(''); setCreateName(''); setCreateUsername('');
         setCreatePassword(''); setCreateIsPro(false);
         fetchUsers();
+    };
+
+    const copyInviteLink = () => {
+        navigator.clipboard.writeText(inviteLink);
+        setInviteCopied(true);
+        setTimeout(() => setInviteCopied(false), 2000);
     };
 
     const handleDeleteUser = async (userId) => {
@@ -354,6 +388,51 @@ export default function UserManager() {
                                 {createLoading ? 'Creating...' : 'Create User'}
                             </button>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ── Pro Athlete Invite Link Modal ───────────────────── */}
+            {inviteLink && (
+                <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[200] flex items-center justify-center" onClick={() => setInviteLink(null)}>
+                    <div className="bg-[#0A0A0A] border border-[#E8D200]/20 rounded-3xl p-12 w-full max-w-lg shadow-2xl" onClick={e => e.stopPropagation()}>
+                        <div className="flex justify-between items-start mb-8">
+                            <div>
+                                <div className="flex items-center gap-3 mb-2">
+                                    <Star size={16} className="text-[#E8D200]" fill="#E8D200" />
+                                    <span className="text-[10px] uppercase tracking-widest font-black text-[#E8D200]">Pro Athlete Invite</span>
+                                </div>
+                                <h3 className="text-2xl font-light tracking-tighter text-[#F2F2F2]">User created</h3>
+                            </div>
+                            <button onClick={() => setInviteLink(null)} className="w-10 h-10 rounded-full bg-[#151515] flex items-center justify-center text-[#BBB] hover:text-[#F2F2F2] transition-colors">
+                                <X size={18} />
+                            </button>
+                        </div>
+
+                        <p className="text-[#666] text-sm font-light mb-8 leading-relaxed">
+                            Send this link to the athlete. They'll use it to fill in their profile — it expires once submitted.
+                        </p>
+
+                        {/* Link display */}
+                        <div className="flex gap-3 mb-6">
+                            <div className="flex-1 h-12 px-4 bg-[#050505] border border-[#1E1E1E] rounded-xl flex items-center overflow-hidden">
+                                <span className="text-[11px] text-[#666] font-mono truncate">{inviteLink}</span>
+                            </div>
+                            <button
+                                onClick={copyInviteLink}
+                                className={`h-12 px-6 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shrink-0 ${
+                                    inviteCopied
+                                        ? 'bg-[#4ade80]/10 border border-[#4ade80]/30 text-[#4ade80]'
+                                        : 'bg-[#E8D200] text-[#080808] hover:opacity-90'
+                                }`}
+                            >
+                                {inviteCopied ? 'Copied!' : 'Copy'}
+                            </button>
+                        </div>
+
+                        <p className="text-[10px] text-[#333] font-mono text-center">
+                            This link is single-use. A new one can be generated from the athlete's profile.
+                        </p>
                     </div>
                 </div>
             )}

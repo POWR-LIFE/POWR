@@ -26,7 +26,7 @@ const BORDER       = 'rgba(255,255,255,0.10)';
 const BORDER_FOCUS = 'rgba(255,255,255,0.80)';
 const DIM          = 'rgba(255,255,255,0.50)';
 
-type View = 'form' | 'success' | 'reset-sent';
+type ScreenView = 'form' | 'success' | 'reset-sent';
 
 export default function ChangePasswordScreen() {
     const router = useRouter();
@@ -43,7 +43,7 @@ export default function ChangePasswordScreen() {
     const [loading, setLoading]                     = useState(false);
     const [resetLoading, setResetLoading]           = useState(false);
     const [error, setError]                         = useState<string | null>(null);
-    const [screen, setScreen]                       = useState<View>('form');
+    const [screen, setScreen]                       = useState<ScreenView>('form');
 
     const isGoogleUser = user?.app_metadata?.provider === 'google';
     const email = user?.email ?? '';

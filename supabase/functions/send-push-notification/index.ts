@@ -46,6 +46,8 @@ function buildMessage(
           body: "Every step earns POWR. Log your activity and keep the streak alive.",
           data: { type, route: '/(tabs)/index' },
           sound: 'default',
+          channelId: 'powr_default_v2',
+          priority: 'high',
         };
 
       case 'streak_at_risk': {
@@ -55,7 +57,7 @@ function buildMessage(
           body: "Log any activity before midnight to keep it alive.",
           data: { type, route: '/(tabs)/index' },
           sound: 'default',
-          channelId: 'streak',
+          channelId: 'powr_streak_v2',
           priority: 'high',
         };
       }
@@ -77,7 +79,7 @@ function buildMessage(
           body: `You've unlocked "${rewardName}". Redeem it before it expires.`,
           data: { type, route: '/(tabs)/rewards', reward_id: payload.reward_id },
           sound: 'default',
-          channelId: 'rewards',
+          channelId: 'powr_rewards_v2',
           priority: 'high',
         };
       }
@@ -141,7 +143,8 @@ Deno.serve(async (req: Request) => {
 
   try {
     const body: RequestBody = await req.json();
-    const { target_user_id, type, payload = {} } = body;
+    const { target_user_id, type, payload: rawPayload = {} } = body;
+    let payload = rawPayload;
 
     if (!target_user_id || !type) {
       return new Response(JSON.stringify({ error: 'target_user_id and type are required' }), {
@@ -167,6 +170,54 @@ Deno.serve(async (req: Request) => {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       });
+    }
+
+    // For streak_at_risk: compute the streak directly from sessions so the
+    // notification always reflects the same value the app shows, regardless of
+    // whether user_streaks is stale.
+    if (type === 'streak_at_risk') {
+      const since = new Date();
+      since.setDate(since.getDate() - 90);
+
+      const { data: sessions } = await supabase
+        .from('activity_sessions')
+        .select('started_at')
+        .eq('user_id', target_user_id)
+        .neq('verification', 'manual')
+        .gte('started_at', since.toISOString())
+        .order('started_at', { ascending: false });
+
+      const uniqueDays = [...new Set(
+        (sessions ?? []).map((s: { started_at: string }) => s.started_at.slice(0, 10)),
+      )].sort().reverse();
+
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const yd = new Date();
+      yd.setDate(yd.getDate() - 1);
+      const yesterdayStr = yd.toISOString().slice(0, 10);
+
+      let computedStreak = 0;
+      if (uniqueDays.length > 0 && (uniqueDays[0] === todayStr || uniqueDays[0] === yesterdayStr)) {
+        computedStreak = 1;
+        for (let i = 1; i < uniqueDays.length; i++) {
+          const a = new Date(uniqueDays[i - 1]).getTime();
+          const b = new Date(uniqueDays[i]).getTime();
+          if (a - b === 86400000) {
+            computedStreak++;
+          } else {
+            break;
+          }
+        }
+      }
+
+      if (computedStreak === 0) {
+        return new Response(JSON.stringify({ skipped: true, reason: 'no_active_streak' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      payload = { ...payload, current_streak: computedStreak };
     }
 
     // Fetch push tokens for the target user

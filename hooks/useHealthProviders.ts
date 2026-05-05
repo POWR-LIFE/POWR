@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { AppState } from 'react-native';
 
 import {
     ALL_PROVIDER_META,
@@ -57,6 +58,44 @@ export function useHealthProviders() {
     }, []);
 
     useEffect(() => { refresh(); }, [refresh]);
+
+    // Re-fetch when the app returns to the foreground. The OAuth callback writes
+    // to the DB after the browser closes, so we do an immediate refresh plus a
+    // delayed one to catch the race window between 'active' and the DB write.
+    // Also auto-connect the native provider if permissions were granted externally
+    // (e.g. the user granted Health Connect access in system settings).
+    useEffect(() => {
+        const nativeId = getNativeProviderId();
+        const sub = AppState.addEventListener('change', state => {
+            if (state !== 'active') return;
+            refresh();
+            setTimeout(refresh, 2000);
+
+            if (!nativeId) return;
+            (async () => {
+                const provider = getProvider(nativeId);
+                const isNowGranted = await provider.isConnected();
+                if (!isNowGranted) return;
+                // Re-read DB to avoid stale closure — only write if not already there.
+                const { data: { user } } = await supabase.auth.getUser();
+                if (!user) return;
+                const { data } = await supabase
+                    .from('profiles')
+                    .select('active_health_provider, health_provider_connections')
+                    .eq('id', user.id)
+                    .single<ProfileRow>();
+                const conns = data?.health_provider_connections ?? {};
+                if (conns[nativeId]) return;
+                const next = { ...conns, [nativeId]: { connected_at: new Date().toISOString() } };
+                const nextActive = data?.active_health_provider ?? nativeId;
+                await supabase.from('profiles')
+                    .update({ health_provider_connections: next, active_health_provider: nextActive })
+                    .eq('id', user.id);
+                await refresh();
+            })();
+        });
+        return () => sub.remove();
+    }, [refresh]);
 
     const writeProfile = useCallback(async (patch: Partial<ProfileRow>) => {
         const { data: { user } } = await supabase.auth.getUser();

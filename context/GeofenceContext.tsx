@@ -137,6 +137,13 @@ TaskManager.defineTask(GEOFENCE_TASK_NAME, async ({ data, error }) => {
     );
     console.log(`[Geofence] Entered "${partnerName}"`);
 
+    try {
+      const { notifyCheckInAvailable } = await import('@/lib/notifications');
+      await notifyCheckInAvailable(partnerName, regionId);
+    } catch (err) {
+      console.warn('[Geofence] Entry notification failed:', err);
+    }
+
   } else if (eventType === Location.GeofencingEventType.Exit) {
     const raw = await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY);
     const activeGeofence = raw ? JSON.parse(raw) : null;
@@ -206,6 +213,13 @@ TaskManager.defineTask(GEOFENCE_TASK_NAME, async ({ data, error }) => {
           timestamp:   Date.now(),
         }),
       );
+
+      try {
+        const { notifySessionCompleted } = await import('@/lib/notifications');
+        await notifySessionCompleted(activeGeofence.partnerName, session.id);
+      } catch (err) {
+        console.warn('[Geofence] Session completed notification failed:', err);
+      }
 
       // Force-refresh the token — background tasks don't auto-refresh, so the
       // cached access token can be expired by the time the exit event fires.

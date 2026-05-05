@@ -47,7 +47,7 @@ export function Button({
     <Pressable
       onPress={handlePress}
       disabled={isDisabled}
-      style={({ pressed }) => [
+      style={({ pressed }): StyleProp<ViewStyle> => [
         styles.base,
         styles[variant],
         size === 'sm' && styles.sm,
@@ -55,7 +55,7 @@ export function Button({
         pressed && styles[`${variant}Pressed` as keyof typeof styles],
         isDisabled && styles.disabled,
         style,
-      ]}
+      ] as StyleProp<ViewStyle>}
       {...rest}
     >
       {loading ? (

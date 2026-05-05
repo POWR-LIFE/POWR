@@ -1243,4 +1243,12 @@ const styles = StyleSheet.create({
   distanceChipActive: { backgroundColor: GOLD, borderColor: GOLD },
   distanceChipText: { fontSize: 13, fontWeight: '400', color: DIM },
   distanceChipTextActive: { color: '#0a0a0a', fontWeight: '600' },
+  categoryRow: { paddingHorizontal: 16, gap: 8 },
+  categoryChip: {
+    paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20,
+    borderWidth: 1, borderColor: BORDER, backgroundColor: CARD_BG,
+  },
+  categoryChipActive: { backgroundColor: GOLD, borderColor: GOLD },
+  categoryChipText: { fontSize: 13, fontWeight: '400', color: DIM },
+  categoryChipTextActive: { color: '#0a0a0a', fontWeight: '600' },
 });

@@ -125,7 +125,7 @@ export async function fetchRedemptionHistory(): Promise<RedemptionHistoryRow[]> 
 export async function fetchFeaturedReward(): Promise<Reward | null> {
   const { data, error } = await supabase
     .from('rewards')
-    .select('id, partner_id, title, description, powr_cost, category, integration_type, code_expiry_days, active, featured_on_home, offer, hero_image_url, brand_color, url, partner_blurb, value_label, image_url, promo_code, discount_type, discount_value, brand_name, partners(id, name, partner_code, logo_url, category, checkout_url_template)')
+    .select('id, partner_id, title, description, powr_cost, category, integration_type, code_expiry_days, active, featured_on_home, offer, hero_image_url, brand_color, url, partner_blurb, value_label, image_url, promo_code, discount_type, discount_value, brand_name, max_redemptions_per_user, partners(id, name, partner_code, logo_url, category, checkout_url_template)')
     .eq('featured_on_home', true)
     .eq('active', true)
     .single();
@@ -133,7 +133,7 @@ export async function fetchFeaturedReward(): Promise<Reward | null> {
   return { ...data, partner: Array.isArray(data.partners) ? data.partners[0] : data.partners } as Reward;
 }
 
-const REWARD_FIELDS = 'id, partner_id, title, description, powr_cost, category, integration_type, code_expiry_days, active, featured_on_home, offer, hero_image_url, brand_color, url, partner_blurb, value_label, image_url, promo_code, discount_type, discount_value, brand_name, partners(id, name, partner_code, logo_url, category, checkout_url_template)';
+const REWARD_FIELDS = 'id, partner_id, title, description, powr_cost, category, integration_type, code_expiry_days, active, featured_on_home, offer, hero_image_url, brand_color, url, partner_blurb, value_label, image_url, promo_code, discount_type, discount_value, brand_name, max_redemptions_per_user, partners(id, name, partner_code, logo_url, category, checkout_url_template)';
 
 export async function fetchFeaturedScheduledReward(): Promise<Reward | null> {
   const now = new Date().toISOString();
