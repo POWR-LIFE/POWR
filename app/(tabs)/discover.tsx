@@ -18,7 +18,7 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
+import MapView, { Circle, Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import MapViewDirections from 'react-native-maps-directions';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ProfileButton } from '@/components/ProfileButton';
@@ -166,7 +166,7 @@ export default function DiscoverScreen() {
   const [isNavFollowing, setIsNavFollowing] = useState(true);
   const [filtersVisible, setFiltersVisible] = useState(false);
   const [sortMenuVisible, setSortMenuVisible] = useState(false);
-  const [mapLongitudeDelta, setMapLongitudeDelta] = useState(DEFAULT_REGION.longitudeDelta);
+  const [mapRegion, setMapRegion] = useState<{ latitude: number; longitude: number; latitudeDelta: number; longitudeDelta: number }>(DEFAULT_REGION);
 
   const [trainers, setTrainers] = useState<Trainer[]>([]);
   const [expandedTrainerId, setExpandedTrainerId] = useState<string | null>(null);
@@ -238,12 +238,14 @@ export default function DiscoverScreen() {
       }
       if (loc) {
         setUserLoc(loc);
-        mapRef.current?.animateToRegion({
+        const region = {
           latitude: loc.coords.latitude,
           longitude: loc.coords.longitude,
           latitudeDelta: 0.02,
           longitudeDelta: 0.02,
-        }, 800);
+        };
+        setMapRegion(region);
+        mapRef.current?.animateToRegion(region, 800);
       }
     })();
   }, []);
@@ -470,7 +472,7 @@ export default function DiscoverScreen() {
           showsTraffic={false}
           rotateEnabled={false}
           pitchEnabled={false}
-          onRegionChangeComplete={(r) => setMapLongitudeDelta(r.longitudeDelta)}
+          onRegionChangeComplete={(r) => setMapRegion(r)}
           onPress={() => {
             setRoutePartner(null);
             setRouteSummary(null);
@@ -480,19 +482,23 @@ export default function DiscoverScreen() {
             setWalkingNavVisible(false);
           }}
         >
-          {mapLongitudeDelta < 0.3 && filtered.map((partner) => (
-            <React.Fragment key={partner.id}>
-              <Marker
-                coordinate={{ latitude: partner.lat, longitude: partner.lng }}
-                title={partner.name}
-                tracksViewChanges
-              >
-                <PartnerPin
-                  partner={partner}
-                  isActive={partner.id === activeGeofence?.partnerId}
-                />
-              </Marker>
-            </React.Fragment>
+          {filtered.slice(0, 200).map((partner) => (
+            <Circle
+              key={`circle-${partner.id}`}
+              center={{ latitude: partner.lat, longitude: partner.lng }}
+              radius={partner.geofenceRadius}
+              strokeColor="rgba(232,210,0,0.5)"
+              fillColor="rgba(232,210,0,0.07)"
+              strokeWidth={1.5}
+            />
+          ))}
+
+          {filtered.slice(0, 200).map((partner) => (
+            <MapMarker
+              key={partner.id}
+              partner={partner}
+              isActive={partner.id === activeGeofence?.partnerId}
+            />
           ))}
 
           {routePartner && userLoc && process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY && (
@@ -1126,6 +1132,25 @@ export default function DiscoverScreen() {
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
+
+function MapMarker({ partner, isActive }: { partner: Partner; isActive: boolean }) {
+  const [snapshotReady, setSnapshotReady] = useState(false);
+
+  useEffect(() => {
+    const id = setTimeout(() => setSnapshotReady(true), 200);
+    return () => clearTimeout(id);
+  }, []);
+
+  return (
+    <Marker
+      coordinate={{ latitude: partner.lat, longitude: partner.lng }}
+      title={partner.name}
+      tracksViewChanges={!snapshotReady || isActive}
+    >
+      <PartnerPin partner={partner} isActive={isActive} />
+    </Marker>
+  );
+}
 
 function PartnerPin({ partner, isActive }: { partner: Partner; isActive?: boolean }) {
   return (
