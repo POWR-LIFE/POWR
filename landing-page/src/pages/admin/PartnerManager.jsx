@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
 import { Plus, Edit2, Trash2, MapPin, Loader2, X, Search, Activity, ChevronRight, Globe, Satellite, Eye, Clock, User, Users, Upload, Image as ImageIcon, Gift, Target } from 'lucide-react';
@@ -481,8 +481,102 @@ const TrainersEditor = ({ partnerId, toast }) => {
     );
 };
 
+function LogoUploadField({ value, uploading, onFile }) {
+    const fileRef = useRef(null);
+    const [dragOver, setDragOver] = useState(false);
+
+    const handleDrop = (e) => {
+        e.preventDefault();
+        setDragOver(false);
+        const file = e.dataTransfer.files?.[0];
+        if (file) onFile(file);
+    };
+
+    return (
+        <div>
+            <label className="block text-[10px] uppercase tracking-[0.4em] text-[#CCC] font-black mb-4">Logo Asset</label>
+            <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) onFile(f); e.target.value = ''; }} />
+            <div
+                onClick={() => !uploading && fileRef.current?.click()}
+                onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={handleDrop}
+                className={`relative w-full h-32 rounded-3xl border-2 border-dashed transition-all flex items-center justify-center gap-5 ${dragOver ? 'border-[#E8D200] bg-[#E8D200]/5' : 'border-[#222] bg-[#0A0A0A] hover:border-[#E8D200]/30'} ${uploading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+            >
+                {uploading ? (
+                    <div className="flex items-center gap-3">
+                        <Loader2 className="w-5 h-5 text-[#E8D200] animate-spin" />
+                        <span className="text-[10px] font-black uppercase tracking-[0.3em] text-[#CCC]">Uploading...</span>
+                    </div>
+                ) : value ? (
+                    <>
+                        <img src={value} alt="logo preview" className="h-14 w-14 object-contain rounded-xl shrink-0" />
+                        <div>
+                            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[#E8D200]">Logo Active</p>
+                            <p className="text-[10px] text-[#555] mt-1">Drop or click to replace</p>
+                        </div>
+                    </>
+                ) : (
+                    <div className="text-center">
+                        <Upload className="w-5 h-5 text-[#555] mx-auto mb-2" />
+                        <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[#555]">Drop image or click to browse</p>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
+
+function ImageUploadField({ label, value, uploading, onFile }) {
+    const fileRef = useRef(null);
+    const [dragOver, setDragOver] = useState(false);
+
+    const handleDrop = (e) => {
+        e.preventDefault();
+        setDragOver(false);
+        const file = e.dataTransfer.files?.[0];
+        if (file) onFile(file);
+    };
+
+    return (
+        <div>
+            <label className="block text-[10px] uppercase tracking-[0.4em] text-[#CCC] font-black mb-4">{label}</label>
+            <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) onFile(f); e.target.value = ''; }} />
+            <div
+                onClick={() => !uploading && fileRef.current?.click()}
+                onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={handleDrop}
+                className={`relative w-full rounded-3xl border-2 border-dashed transition-all overflow-hidden ${dragOver ? 'border-[#E8D200] bg-[#E8D200]/5' : 'border-[#222] bg-[#0A0A0A] hover:border-[#E8D200]/30'} ${uploading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                style={{ minHeight: '10rem' }}
+            >
+                {value ? (
+                    <>
+                        <img src={value} alt="preview" className="w-full h-40 object-cover" />
+                        <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
+                            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white">Drop or click to replace</p>
+                        </div>
+                    </>
+                ) : uploading ? (
+                    <div className="flex items-center justify-center gap-3 h-40">
+                        <Loader2 className="w-5 h-5 text-[#E8D200] animate-spin" />
+                        <span className="text-[10px] font-black uppercase tracking-[0.3em] text-[#CCC]">Uploading...</span>
+                    </div>
+                ) : (
+                    <div className="flex flex-col items-center justify-center gap-2 h-40">
+                        <ImageIcon className="w-6 h-6 text-[#333]" />
+                        <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[#555]">Drop image or click to browse</p>
+                        <p className="text-[10px] text-[#333]">Landscape recommended · JPG / PNG / WEBP</p>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
+
 const CATEGORIES = ['gym', 'fashion', 'gear', 'nutrition', 'food', 'health'];
-const EMPTY_FORM = { name: '', address: '', logo_url: '', category: 'gym', active: true, roles: ['earning_location'], locations: [], opening_hours: { ...DEFAULT_HOURS } };
+const EMPTY_FORM = { name: '', partner_code: '', address: '', logo_url: '', image1_url: '', image2_url: '', category: 'gym', active: true, roles: ['earning_location'], locations: [], opening_hours: { ...DEFAULT_HOURS } };
+const toPartnerCode = (name) => name.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
 
 export default function PartnerManager() {
     const toast = useToast();
@@ -498,6 +592,8 @@ export default function PartnerManager() {
     const [confirmDeleteId, setConfirmDeleteId] = useState(null);
     const [togglingId, setTogglingId] = useState(null);
     const [logoUploading, setLogoUploading] = useState(false);
+    const [image1Uploading, setImage1Uploading] = useState(false);
+    const [image2Uploading, setImage2Uploading] = useState(false);
     const [viewMode, setViewMode] = useState('locations'); // 'locations' | 'brands'
 
     const toggleRole = (role) => {
@@ -508,8 +604,7 @@ export default function PartnerManager() {
         });
     };
 
-    const handleLogoPick = async (e) => {
-        const file = e.target.files?.[0];
+    const handleLogoUpload = async (file) => {
         if (!file) return;
         setLogoUploading(true);
         try {
@@ -520,9 +615,25 @@ export default function PartnerManager() {
             toast.error(err.message || 'Upload failed');
         } finally {
             setLogoUploading(false);
-            e.target.value = '';
         }
     };
+
+    const makeImageUploader = (field, setUploading) => async (file) => {
+        if (!file) return;
+        setUploading(true);
+        try {
+            const url = await uploadPublicImage('partner-logos', file, 'partners/images');
+            setFormData(prev => ({ ...prev, [field]: url }));
+            toast.success('Image uploaded');
+        } catch (err) {
+            toast.error(err.message || 'Upload failed');
+        } finally {
+            setUploading(false);
+        }
+    };
+
+    const handleImage1Upload = makeImageUploader('image1_url', setImage1Uploading);
+    const handleImage2Upload = makeImageUploader('image2_url', setImage2Uploading);
 
     useEffect(() => { fetchPartners(); }, []);
 
@@ -557,8 +668,11 @@ export default function PartnerManager() {
         setEditingPartner(partner);
         setFormData({
             name: partner.name,
+            partner_code: partner.partner_code || '',
             address: partner.address || '',
             logo_url: partner.logo_url || '',
+            image1_url: partner.image1_url || '',
+            image2_url: partner.image2_url || '',
             category: partner.category,
             active: partner.active,
             roles: partner.roles && partner.roles.length ? partner.roles : ['earning_location'],
@@ -825,7 +939,11 @@ export default function PartnerManager() {
                                     <div className="space-y-8">
                                         <div>
                                             <label className="block text-[10px] uppercase tracking-[0.4em] text-[#CCC] font-black mb-4">Node Brand Name</label>
-                                            <input type="text" required className="w-full h-16 px-8 bg-[#0A0A0A] border border-[#151515] rounded-3xl focus:border-[#E8D200]/40 outline-none transition-all text-base font-bold text-[#F2F2F2] placeholder-[#333]" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} />
+                                            <input type="text" required className="w-full h-16 px-8 bg-[#0A0A0A] border border-[#151515] rounded-3xl focus:border-[#E8D200]/40 outline-none transition-all text-base font-bold text-[#F2F2F2] placeholder-[#333]" value={formData.name} onChange={e => setFormData(prev => ({ ...prev, name: e.target.value, partner_code: editingPartner ? prev.partner_code : toPartnerCode(e.target.value) }))} />
+                                        </div>
+                                        <div>
+                                            <label className="block text-[10px] uppercase tracking-[0.4em] text-[#CCC] font-black mb-4">Partner Code <span className="text-[#555]">/ auto-generated, editable</span></label>
+                                            <input type="text" required maxLength={6} placeholder="e.g. XTREME" className="w-full h-16 px-8 bg-[#0A0A0A] border border-[#151515] rounded-3xl focus:border-[#E8D200]/40 outline-none transition-all text-[14px] font-black tracking-[0.3em] text-[#E8D200] placeholder-[#333] uppercase" value={formData.partner_code} onChange={e => setFormData(prev => ({ ...prev, partner_code: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6) }))} />
                                         </div>
                                         <div>
                                             <label className="block text-[10px] uppercase tracking-[0.4em] text-[#CCC] font-black mb-4">Corporate Address</label>
@@ -837,10 +955,7 @@ export default function PartnerManager() {
                                                 {CATEGORIES.map(c => <option key={c} value={c}>{c.toUpperCase()}</option>)}
                                             </select>
                                         </div>
-                                        <div>
-                                            <label className="block text-[10px] uppercase tracking-[0.4em] text-[#CCC] font-black mb-4">Logo Asset URL</label>
-                                            <input type="url" placeholder="https://cdn.powr.com/assets/..." className="w-full h-16 px-8 bg-[#0A0A0A] border border-[#151515] rounded-3xl focus:border-[#E8D200]/40 outline-none transition-all text-[12px] font-mono text-[#DDD] placeholder-[#333]" value={formData.logo_url} onChange={e => setFormData({ ...formData, logo_url: e.target.value })} />
-                                        </div>
+                                        <LogoUploadField value={formData.logo_url} uploading={logoUploading} onFile={handleLogoUpload} />
                                         <div className="p-8 bg-[#0A0A0A] border border-[#151515] rounded-[2rem] flex items-center gap-6">
                                             <button
                                                 type="button"
@@ -858,6 +973,8 @@ export default function PartnerManager() {
                                             locations={formData.locations}
                                             onChange={locs => setFormData({ ...formData, locations: locs })}
                                         />
+                                        <ImageUploadField label="Cover Image" value={formData.image1_url} uploading={image1Uploading} onFile={handleImage1Upload} />
+                                        <ImageUploadField label="Gallery Image" value={formData.image2_url} uploading={image2Uploading} onFile={handleImage2Upload} />
                                     </div>
                                 </div>
                             ) : (
@@ -866,7 +983,11 @@ export default function PartnerManager() {
                                     <div className="space-y-8">
                                         <div>
                                             <label className="block text-[10px] uppercase tracking-[0.4em] text-[#CCC] font-black mb-4">Brand Name</label>
-                                            <input type="text" required className="w-full h-16 px-8 bg-[#0A0A0A] border border-[#151515] rounded-3xl focus:border-[#E8D200]/40 outline-none transition-all text-base font-bold text-[#F2F2F2] placeholder-[#333]" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} />
+                                            <input type="text" required className="w-full h-16 px-8 bg-[#0A0A0A] border border-[#151515] rounded-3xl focus:border-[#E8D200]/40 outline-none transition-all text-base font-bold text-[#F2F2F2] placeholder-[#333]" value={formData.name} onChange={e => setFormData(prev => ({ ...prev, name: e.target.value, partner_code: editingPartner ? prev.partner_code : toPartnerCode(e.target.value) }))} />
+                                        </div>
+                                        <div>
+                                            <label className="block text-[10px] uppercase tracking-[0.4em] text-[#CCC] font-black mb-4">Partner Code <span className="text-[#555]">/ auto-generated, editable</span></label>
+                                            <input type="text" required maxLength={6} placeholder="e.g. TRIBE" className="w-full h-16 px-8 bg-[#0A0A0A] border border-[#151515] rounded-3xl focus:border-[#E8D200]/40 outline-none transition-all text-[14px] font-black tracking-[0.3em] text-[#E8D200] placeholder-[#333] uppercase" value={formData.partner_code} onChange={e => setFormData(prev => ({ ...prev, partner_code: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6) }))} />
                                         </div>
                                         <div>
                                             <label className="block text-[10px] uppercase tracking-[0.4em] text-[#CCC] font-black mb-4">Sector</label>
@@ -886,10 +1007,7 @@ export default function PartnerManager() {
                                         </div>
                                     </div>
                                     <div className="space-y-8">
-                                        <div>
-                                            <label className="block text-[10px] uppercase tracking-[0.4em] text-[#CCC] font-black mb-4">Logo URL</label>
-                                            <input type="url" placeholder="https://..." className="w-full h-16 px-8 bg-[#0A0A0A] border border-[#151515] rounded-3xl focus:border-[#E8D200]/40 outline-none transition-all text-[12px] font-mono text-[#DDD] placeholder-[#333]" value={formData.logo_url} onChange={e => setFormData({ ...formData, logo_url: e.target.value })} />
-                                        </div>
+                                        <LogoUploadField value={formData.logo_url} uploading={logoUploading} onFile={handleLogoUpload} />
                                         <div className="p-8 bg-[#0A0A0A] border border-[#151515] rounded-[2rem]">
                                             <p className="text-[10px] uppercase tracking-[0.4em] text-[#555] font-black mb-2">No geofence required</p>
                                             <p className="text-[11px] text-[#444] font-black">Reward brands are linked to rewards directly — no location data needed.</p>

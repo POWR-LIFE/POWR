@@ -14,18 +14,18 @@ export const WEEKLY_CHALLENGES = [
     active: true,
     status: 'live',
     title: 'Early Bird',
-    description: 'Gym or run before 12pm — triple points + 150 XP',
+    description: 'Morning session before 12pm — triple your points',
     bonusLabel: '3× BONUS',
     expiresAt: nextSundayMidnight(),
     imageUri:
       'https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/sign/powr-challenge-cards/cycle-challenge-card.jpg?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV9hYzcyYjdjNy02MmJkLTQyYzUtYWU4Zi1iNTYzOTU1YzE5YTIiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJwb3dyLWNoYWxsZW5nZS1jYXJkcy9jeWNsZS1jaGFsbGVuZ2UtY2FyZC5qcGciLCJpYXQiOjE3NzY4NTA0ODQsImV4cCI6MTgwODM4NjQ4NH0.zs0FXaC2BjJybfEDV0fuxPGnUtboaXoeTRLjJuGKJEQ',
     imageOffsetY: 18,
     hint: 'Complete a morning session to earn',
-    xpReward: 150,
     powrRewardText: '3× POWR',
     cadenceLabel: 'Rotates weekly',
     scheduleLabel: 'Before 12pm',
     audienceLabel: 'All members',
+    qualifyingTypes: ['gym', 'running', 'cycling', 'swimming', 'hiit', 'sports', 'yoga', 'dance', 'walking'],
   },
 ];
 
@@ -40,12 +40,37 @@ const challengeDefaults = {
   imageUri: '',
   imageOffsetY: 0,
   hint: '',
-  xpReward: 0,
   powrRewardText: '',
   cadenceLabel: 'Rotates weekly',
   scheduleLabel: '',
   audienceLabel: 'All members',
+  qualifyingTypes: [],
 };
+
+/**
+ * Activity types ordered by base points (highest first).
+ * Used to pick the best qualifying activity from a user's preferences.
+ * gym=15max, then 10-pt activities, yoga=6, walking=5.
+ */
+const ACTIVITY_POINT_PRIORITY = ['gym', 'hiit', 'running', 'cycling', 'swimming', 'sports', 'yoga', 'dance', 'walking'];
+
+/**
+ * Returns the highest-scoring activity type from the user's preferences
+ * that also qualifies for the given challenge. Falls back to the highest
+ * qualifying type regardless of prefs if no overlap exists.
+ */
+export function getTargetActivityType(challenge, userPreferences = []) {
+  const qualifying = new Set(challenge?.qualifyingTypes ?? []);
+  if (qualifying.size === 0) return null;
+
+  for (const type of ACTIVITY_POINT_PRIORITY) {
+    if (qualifying.has(type) && userPreferences.includes(type)) return type;
+  }
+  for (const type of ACTIVITY_POINT_PRIORITY) {
+    if (qualifying.has(type)) return type;
+  }
+  return null;
+}
 
 export function normalizeWeeklyChallenge(challenge, index = 0) {
   return {
