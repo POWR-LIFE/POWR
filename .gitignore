@@ -50,3 +50,4 @@ app-example
 
 # Local agent state
 .claude/
+GoogleService-Info.plist

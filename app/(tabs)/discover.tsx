@@ -166,6 +166,7 @@ export default function DiscoverScreen() {
   const [isNavFollowing, setIsNavFollowing] = useState(true);
   const [filtersVisible, setFiltersVisible] = useState(false);
   const [sortMenuVisible, setSortMenuVisible] = useState(false);
+  const [mapLongitudeDelta, setMapLongitudeDelta] = useState(DEFAULT_REGION.longitudeDelta);
 
   const [trainers, setTrainers] = useState<Trainer[]>([]);
   const [expandedTrainerId, setExpandedTrainerId] = useState<string | null>(null);
@@ -469,6 +470,7 @@ export default function DiscoverScreen() {
           showsTraffic={false}
           rotateEnabled={false}
           pitchEnabled={false}
+          onRegionChangeComplete={(r) => setMapLongitudeDelta(r.longitudeDelta)}
           onPress={() => {
             setRoutePartner(null);
             setRouteSummary(null);
@@ -478,7 +480,7 @@ export default function DiscoverScreen() {
             setWalkingNavVisible(false);
           }}
         >
-          {filtered.map((partner) => (
+          {mapLongitudeDelta < 0.3 && filtered.map((partner) => (
             <React.Fragment key={partner.id}>
               <Marker
                 coordinate={{ latitude: partner.lat, longitude: partner.lng }}
