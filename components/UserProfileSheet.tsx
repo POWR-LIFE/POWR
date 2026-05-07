@@ -16,6 +16,7 @@ import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Path, Polyline,
 
 import { ProBadge } from '@/components/ui/ProBadge';
 import { fetchAchievements, type Achievement } from '@/lib/api/pro-achievements';
+import { fetchEarnedAchievementCount } from '@/lib/api/achievement-stats';
 import { fetchGallery, type GalleryPhoto } from '@/lib/api/pro-gallery';
 import { fetchPublicProfile, type PublicProfile } from '@/lib/api/user';
 import { fetchProfileStats, type ProfileStats } from '@/lib/api/user-stats';
@@ -47,6 +48,7 @@ export function UserProfileSheet({ userId, myPoints, userPoints, onClose }: User
     const [achievements, setAchievements] = useState<Achievement[]>([]);
     const [stats, setStats] = useState<ProfileStats | null>(null);
     const [loading, setLoading] = useState(false);
+    const [earnedBadgeCount, setEarnedBadgeCount] = useState<number | null>(null);
 
     useEffect(() => {
         if (userId) {
@@ -55,6 +57,7 @@ export function UserProfileSheet({ userId, myPoints, userPoints, onClose }: User
             setGallery([]);
             setAchievements([]);
             setStats(null);
+            setEarnedBadgeCount(null);
             fetchPublicProfile(userId).then(p => {
                 setProfile(p);
                 if (p?.is_pro) {
@@ -64,6 +67,7 @@ export function UserProfileSheet({ userId, myPoints, userPoints, onClose }: User
                 setLoading(false);
             });
             fetchProfileStats(userId).then(setStats);
+            fetchEarnedAchievementCount(userId).then(setEarnedBadgeCount);
             Animated.spring(slideAnim, {
                 toValue: 0,
                 useNativeDriver: true,
@@ -151,6 +155,16 @@ export function UserProfileSheet({ userId, myPoints, userPoints, onClose }: User
                             {/* Stat strip: streak | 7-day sparkline | sessions */}
                             {stats && (
                                 <StatStrip stats={stats} />
+                            )}
+
+                            {/* Badge count pill */}
+                            {earnedBadgeCount !== null && earnedBadgeCount > 0 && (
+                                <View style={s.badgePillRow}>
+                                    <Ionicons name="trophy" size={13} color="#E8D200" />
+                                    <Text style={s.badgePillText}>
+                                        {earnedBadgeCount} / 66 achievements
+                                    </Text>
+                                </View>
                             )}
 
                             {/* Achievements grid (pro only) */}
@@ -584,6 +598,23 @@ const s = StyleSheet.create({
 
     // ── Achievements
     achievementsSection: { gap: 10 },
+    badgePillRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 5,
+        paddingVertical: 6,
+        paddingHorizontal: 10,
+        backgroundColor: 'rgba(232,210,0,0.08)',
+        borderRadius: 20,
+        alignSelf: 'flex-start',
+        marginTop: 2,
+    },
+    badgePillText: {
+        fontSize: 12,
+        color: '#E8D200',
+        fontWeight: '600',
+        letterSpacing: 0.3,
+    },
     achievementsGrid: {
         flexDirection: 'row', flexWrap: 'wrap', gap: 8,
     },

@@ -720,6 +720,40 @@ function isValidUUID(uuid) {
     return match !== null;
 }
 
+function getWaitlistEmailError(email) {
+    const normalized = (email || '').trim().toLowerCase();
+
+    // Keep this permissive enough for normal addresses while catching obvious junk.
+    const basicEmailPattern = /^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9-]+(\.[a-z0-9-]+)+$/i;
+    if (!basicEmailPattern.test(normalized)) {
+        return 'Please enter a valid email address.';
+    }
+
+    const [local = '', domain = ''] = normalized.split('@');
+    if (!local || !domain || local.startsWith('.') || local.endsWith('.') || local.includes('..')) {
+        return 'Please enter a valid email address.';
+    }
+
+    // Filter the recurring bot pattern we have seen on gmail/googlemail:
+    // many dot-separated short segments with random digits.
+    if (domain === 'gmail.com' || domain === 'googlemail.com') {
+        const dotCount = (local.match(/\./g) || []).length;
+        if (dotCount >= 3) {
+            const hasSingleCharSegment = /(^|\.)[a-z0-9](\.|$)/i.test(local);
+            const hasDigits = /\d/.test(local);
+            const compactLength = local.replace(/\./g, '').length;
+            const segmentCount = dotCount + 1;
+            const isVeryFragmented = compactLength < segmentCount * 3;
+
+            if (hasSingleCharSegment || hasDigits || isVeryFragmented) {
+                return 'Please use a real personal email address (this one looks automated).';
+            }
+        }
+    }
+
+    return null;
+}
+
 // ─── Waitlist form handling ───
 async function handleWaitlistSubmit(e) {
     e.preventDefault();
@@ -747,6 +781,8 @@ async function handleWaitlistSubmit(e) {
         const typ = website ? 'partner' : 'user';
 
         if (!email) throw new Error("Email is required");
+        const emailError = getWaitlistEmailError(email);
+        if (emailError) throw new Error(emailError);
 
         // Use the referrerId only if it's a valid UUID
         const validatedReferrerId = isValidUUID(referrerId) ? referrerId : null;
@@ -777,6 +813,9 @@ async function handleWaitlistSubmit(e) {
         if (error) {
             if (error.code === '23505') { // Unique violation
                 throw new Error("You're already on the list!");
+            }
+            if (error.code === '23514' || error.constraint === 'waitlist_email_quality_check') {
+                throw new Error('Please use a real personal email address.');
             }
             throw error;
         }
@@ -856,6 +895,15 @@ async function handlePartnerSubmit(e) {
     const email = emailInput ? emailInput.value.trim() : null;
 
     if (!email) return;
+    const emailError = getWaitlistEmailError(email);
+    if (emailError) {
+        const errorMsg = document.getElementById('partnerErrorMsg');
+        if (errorMsg) {
+            errorMsg.textContent = emailError;
+            errorMsg.style.display = 'block';
+        }
+        return;
+    }
 
     // Reset messages
     const errorMsg = document.getElementById('partnerErrorMsg');
@@ -879,6 +927,9 @@ async function handlePartnerSubmit(e) {
         if (error) {
             if (error.code === '23505') {
                 throw new Error("You're already on the list!");
+            }
+            if (error.code === '23514' || error.constraint === 'waitlist_email_quality_check') {
+                throw new Error('Please use a real personal email address.');
             }
             throw error;
         }
