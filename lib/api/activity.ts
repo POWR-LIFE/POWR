@@ -116,7 +116,7 @@ export type ManualSessionParams = {
     healthVerified?: boolean;
 };
 
-export async function logManualSession(params: ManualSessionParams): Promise<void> {
+export async function logManualSession(params: ManualSessionParams): Promise<boolean> {
     const ended_at = new Date().toISOString();
     const verification = params.healthVerified ? 'wearable' : 'manual';
     const trust_score = params.healthVerified ? 0.85 : 0.55;
@@ -140,7 +140,7 @@ export async function logManualSession(params: ManualSessionParams): Promise<voi
         .single();
     if (sessionError) {
         // Session for this type/day already exists — skip silently
-        if (sessionError.code === '23505') return;
+        if (sessionError.code === '23505') return false;
         throw sessionError;
     }
 
@@ -160,6 +160,8 @@ export async function logManualSession(params: ManualSessionParams): Promise<voi
     if (params.healthVerified) {
         await updateStreakForToday();
     }
+
+    return true;
 }
 
 export async function fetchWeeklyMetrics(): Promise<WeeklyMetrics> {

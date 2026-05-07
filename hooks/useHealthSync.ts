@@ -7,6 +7,7 @@ import { ProviderAuthExpiredError } from '@/lib/health/providers/types';
 import { supabase } from '@/lib/supabase';
 import { ACTIVITIES, type ActivityType } from '@/constants/activities';
 import { logManualSession, saveHealthSnapshot } from '@/lib/api/activity';
+import { notifySleepTargetMet } from '@/lib/notifications';
 
 /** Map provider id → snapshot source label */
 function sourceForProvider(id: HealthProviderId | null): 'healthkit' | 'health_connect' | 'fitbit' | 'whoop' | 'garmin' {
@@ -78,15 +79,17 @@ export function useHealthSync() {
         const key = `sleep_${new Date(sleep.startedAt).toISOString()}`;
         if (syncedKeys.has(key)) continue;
 
-        const points = calculateSleepPoints(sleep.durationHours);
+        const points = calculateSleepPoints(sleep.durationHours, sleep.deepHours, sleep.remHours);
 
-        await logManualSession({
+        const isNew = await logManualSession({
           type: 'sleep',
           duration_sec: Math.round(sleep.durationHours * 3600),
           started_at: sleep.startedAt,
           points,
           healthVerified: true,
         });
+
+        if (!isNew) continue;
 
         await saveHealthSnapshot({
           sleepDurationH: sleep.durationHours,
@@ -99,6 +102,12 @@ export function useHealthSync() {
         });
 
         console.log(`[HealthSync] Synced sleep ${day.date}: ${sleep.durationHours}h → ${points} pts`);
+
+        // Notify once for recent sessions that hit the 7-hour target
+        const ageMs = Date.now() - new Date(sleep.startedAt).getTime();
+        if (sleep.durationHours >= 7 && ageMs < 36 * 60 * 60 * 1000) {
+          notifySleepTargetMet(sleep.durationHours, points).catch(() => {});
+        }
       }
     } catch (e) {
       console.error('[HealthSync] Error syncing sleep:', e);
@@ -249,12 +258,26 @@ function calculateBasePoints(type: ActivityType, durationMin: number): number {
   return 5;
 }
 
-function calculateSleepPoints(hours: number): number {
-  // Reward good sleep: 7-9 hours is ideal
-  if (hours >= 8) return 5;
-  if (hours >= 7) return 4;
-  if (hours >= 6) return 3;
-  if (hours >= 5) return 2;
-  if (hours >= 4) return 1;
-  return 0;
+function calculateSleepPoints(hours: number, deepHours?: number, remHours?: number): number {
+  let base = 0;
+  if (hours >= 8) base = 5;
+  else if (hours >= 7) base = 4;
+  else if (hours >= 6) base = 3;
+  else if (hours >= 5) base = 2;
+  else if (hours >= 3) base = 1; // reward anything 3h+ rather than cutting off at 4h
+
+  if (base === 0) return 0;
+
+  // Scale by restorative sleep ratio when stage data is available
+  if (deepHours !== undefined && remHours !== undefined) {
+    const restorativeRatio = (deepHours + remHours) / hours;
+    const multiplier =
+      restorativeRatio >= 0.35 ? 1.0 :
+      restorativeRatio >= 0.25 ? 0.85 :
+      restorativeRatio >= 0.15 ? 0.70 :
+      0.60;
+    return Math.max(1, Math.round(base * multiplier));
+  }
+
+  return base;
 }
