@@ -492,16 +492,14 @@ export default function OnboardingHealthScreen() {
                                             <BrandIcon id={source.id} />
                                         </View>
                                         <View style={styles.sourceInfo}>
-                                            <View style={styles.sourceNameRow}>
-                                                <Text style={[styles.sourceName, isComingSoon && { opacity: 0.4 }]}>
-                                                    {source.name}
-                                                </Text>
-                                                {isConnected && isPrimary && (
-                                                    <View style={styles.pointsBadge}>
-                                                        <Text style={styles.pointsBadgeText}>PRIMARY · 2× PTS</Text>
-                                                    </View>
-                                                )}
-                                            </View>
+                                            <Text style={[styles.sourceName, isComingSoon && { opacity: 0.4 }]}>
+                                                {source.name}
+                                            </Text>
+                                            {isConnected && isPrimary && (
+                                                <View style={[styles.pointsBadge, { alignSelf: 'flex-start', marginTop: 3 }]}>
+                                                    <Text style={styles.pointsBadgeText}>PRIMARY · 2× PTS</Text>
+                                                </View>
+                                            )}
                                             {isComingSoon && (
                                                 <Text style={styles.comingSoonLabel}>Coming soon</Text>
                                             )}

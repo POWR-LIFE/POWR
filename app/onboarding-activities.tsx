@@ -13,13 +13,13 @@ import { supportedActivitiesFor, type HealthProviderId } from '@/lib/health/prov
 const GOLD = '#E8D200';
 const BG = '#0d0d0d';
 const CARD_BG = 'rgba(40,40,40,0.85)';
-const MAX_SELECTED = 3; // gym + 2 others
+const MAX_SELECTED = 3;
 
-// Activities in display order: gym (locked) first, then walk → cycle → run, then the rest
+// Activities in display order: gym first (highest scoring), then walk → cycle → run, then the rest
 const PINNED: ActivityType[] = ['gym', 'walking', 'cycling', 'running'];
 const ORDERED_ACTIVITIES = [
   ...PINNED.map(t => ACTIVITIES[t]),
-  ...ACTIVITY_LIST.filter(a => !PINNED.includes(a.type)),
+  ...ACTIVITY_LIST.filter(a => !PINNED.includes(a.type) && !a.hideFromPicker),
 ];
 
 export default function OnboardingActivitiesScreen() {
@@ -27,7 +27,7 @@ export default function OnboardingActivitiesScreen() {
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ streakDays?: string; totalSessions?: string; activeDays?: string }>();
   const providers = useHealthProviders();
-  const [selected, setSelected] = useState<Set<ActivityType>>(new Set(['gym']));
+  const [selected, setSelected] = useState<Set<ActivityType>>(new Set());
 
   const connectedIds = useMemo<HealthProviderId[]>(
     () => providers.rows.filter(r => !!r.connection).map(r => r.meta.id),
@@ -48,7 +48,6 @@ export default function OnboardingActivitiesScreen() {
   }, []);
 
   const toggleActivity = (type: ActivityType) => {
-    if (type === 'gym') return;
     setSelected(prev => {
       const next = new Set(prev);
       if (next.has(type)) {
@@ -101,8 +100,8 @@ export default function OnboardingActivitiesScreen() {
         </Text>
         <Text style={styles.body}>
           {connectedIds.length > 0
-            ? 'Gym is your foundation. Pick two more — we\'ll auto-track what your wearable supports.'
-            : 'Gym is your foundation. Pick two more — most will need manual logging without a wearable.'}
+            ? 'Pick three activities to track — we\'ll auto-track what your wearable supports.'
+            : 'Pick three activities to track — most will need manual logging without a wearable.'}
         </Text>
       </Animated.View>
 
@@ -113,7 +112,6 @@ export default function OnboardingActivitiesScreen() {
         >
         {ORDERED_ACTIVITIES.map(activity => {
           const isActive = selected.has(activity.type);
-          const isGym = activity.type === 'gym';
           const isAutoTracked = supported.has(activity.type);
           const isDisabled = !isActive && selected.size >= MAX_SELECTED;
 
@@ -127,9 +125,8 @@ export default function OnboardingActivitiesScreen() {
                 !isAutoTracked && !isActive && styles.cardManual,
               ]}
               onPress={() => toggleActivity(activity.type)}
-              disabled={isGym}
             >
-              {/* Top row: icon + check/lock */}
+              {/* Top row: icon + check */}
               <View style={styles.cardTop}>
                 <View style={[styles.iconWrap, isActive && styles.iconWrapActive]}>
                   <ActivityIcon
@@ -139,15 +136,9 @@ export default function OnboardingActivitiesScreen() {
                     active={isActive}
                   />
                 </View>
-                {isGym ? (
-                  <View style={styles.lockedBadge}>
-                    <Ionicons name="lock-closed" size={9} color={GOLD} />
-                  </View>
-                ) : (
-                  <View style={[styles.checkCircle, isActive && styles.checkCircleActive]}>
-                    {isActive && <Ionicons name="checkmark" size={13} color="#FFFFFF" />}
-                  </View>
-                )}
+                <View style={[styles.checkCircle, isActive && styles.checkCircleActive]}>
+                  {isActive && <Ionicons name="checkmark" size={13} color="#FFFFFF" />}
+                </View>
               </View>
 
               {/* Label */}
@@ -162,18 +153,16 @@ export default function OnboardingActivitiesScreen() {
                     {activity.dailyCap} PTS
                   </Text>
                 </View>
-                {!isGym && (
-                  <View style={[styles.wearableBadge, isActive && styles.wearableBadgeActive]}>
-                    <Ionicons
-                      name={isAutoTracked ? 'flash-outline' : 'create-outline'}
-                      size={9}
-                      color={isActive ? GOLD : 'rgba(255,255,255,0.35)'}
-                    />
-                    <Text style={[styles.wearableText, isActive && styles.wearableTextActive]}>
-                      {isAutoTracked ? 'AUTO' : 'MANUAL'}
-                    </Text>
-                  </View>
-                )}
+                <View style={[styles.wearableBadge, isActive && styles.wearableBadgeActive]}>
+                  <Ionicons
+                    name={isAutoTracked ? 'flash-outline' : 'create-outline'}
+                    size={9}
+                    color={isActive ? GOLD : 'rgba(255,255,255,0.35)'}
+                  />
+                  <Text style={[styles.wearableText, isActive && styles.wearableTextActive]}>
+                    {isAutoTracked ? 'AUTO' : 'MANUAL'}
+                  </Text>
+                </View>
               </View>
             </Pressable>
           );
@@ -318,24 +307,6 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.35)',
   },
   wearableTextActive: {
-    color: GOLD,
-  },
-
-  lockedBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(232,210,0,0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(232,210,0,0.25)',
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  lockedText: {
-    fontSize: 8,
-    fontWeight: '800',
-    letterSpacing: 0.5,
     color: GOLD,
   },
 

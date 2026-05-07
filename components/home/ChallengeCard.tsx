@@ -4,6 +4,7 @@ import { Animated, Image, StyleSheet, Text, View } from 'react-native';
 
 const GOLD_RGB = [232, 210, 0] as const;
 const ORANGE_RGB = [249, 115, 22] as const;
+const GREEN_RGB = [74, 222, 128] as const;
 const TEXT_PRIMARY = '#F2F2F2';
 
 /** Lerp between gold and orange, return hex + rgba helpers. */
@@ -17,6 +18,8 @@ function accentFromUrgency(u: number) {
   return { hex, rgba };
 }
 
+type CompletionInfo = { pointsAwarded: number; activityType: string };
+
 interface ChallengeCardProps {
   title: string;
   description: string;
@@ -25,13 +28,17 @@ interface ChallengeCardProps {
   imageUri?: string;
   imageOffsetY?: number;
   hint?: string;
-  xpReward?: number;
   powrRewardText?: string;
   /** 0 = relaxed (gold), 1 = urgent (orange). Defaults to 0. */
   urgency?: number;
+  /** Pass when the user has completed this challenge week. */
+  completed?: CompletionInfo;
 }
 
-export function ChallengeCard({ title, description, bonus, expiresIn, imageUri, imageOffsetY = 0, hint, xpReward = 150, powrRewardText = '3× POWR', urgency = 0 }: ChallengeCardProps) {
+const GREEN_HEX = `#${GREEN_RGB[0].toString(16)}${GREEN_RGB[1].toString(16)}${GREEN_RGB[2].toString(16)}`;
+const greenRgba = (a: number) => `rgba(${GREEN_RGB[0]},${GREEN_RGB[1]},${GREEN_RGB[2]},${a})`;
+
+export function ChallengeCard({ title, description, bonus, expiresIn, imageUri, imageOffsetY = 0, hint, powrRewardText = '3× POWR', urgency = 0, completed }: ChallengeCardProps) {
   const dotAnim = useRef(new Animated.Value(0.4)).current;
   const accent = useMemo(() => accentFromUrgency(urgency), [urgency]);
   const imageInset = Math.abs(imageOffsetY);
@@ -78,11 +85,19 @@ export function ChallengeCard({ title, description, bonus, expiresIn, imageUri, 
       <View style={styles.inner}>
         {/* Top: eyebrow badge + timer */}
         <View style={styles.topRow}>
-          <View style={[styles.challengeBadge, { backgroundColor: accent.rgba(0.10), borderColor: accent.rgba(0.25) }]}>
-            <Text style={[styles.challengeBadgeText, { color: accent.hex }]}>WEEKLY CHALLENGE</Text>
-          </View>
+          {completed ? (
+            <View style={[styles.challengeBadge, { backgroundColor: greenRgba(0.12), borderColor: greenRgba(0.30) }]}>
+              <Text style={[styles.challengeBadgeText, { color: GREEN_HEX }]}>COMPLETED</Text>
+            </View>
+          ) : (
+            <View style={[styles.challengeBadge, { backgroundColor: accent.rgba(0.10), borderColor: accent.rgba(0.25) }]}>
+              <Text style={[styles.challengeBadgeText, { color: accent.hex }]}>WEEKLY CHALLENGE</Text>
+            </View>
+          )}
           <View style={styles.timerBadge}>
-            <Animated.View style={[styles.timerDot, { opacity: dotAnim, backgroundColor: accent.hex }]} />
+            {!completed && (
+              <Animated.View style={[styles.timerDot, { opacity: dotAnim, backgroundColor: accent.hex }]} />
+            )}
             <Text style={styles.timerText}>{expiresIn}</Text>
           </View>
         </View>
@@ -92,18 +107,28 @@ export function ChallengeCard({ title, description, bonus, expiresIn, imageUri, 
           <Text style={styles.title}>{title}</Text>
           <Text style={styles.description}>{description}</Text>
 
-          {/* Reward line — inline with dot separators */}
-          <View style={styles.rewardRow}>
-            <View style={[styles.bonusBadge, { backgroundColor: accent.rgba(0.10), borderColor: accent.rgba(0.22) }]}>
-              <Text style={[styles.bonusText, { color: accent.hex }]}>{bonus}</Text>
+          {completed ? (
+            <View style={styles.rewardRow}>
+              <View style={[styles.bonusBadge, { backgroundColor: greenRgba(0.12), borderColor: greenRgba(0.30) }]}>
+                <Text style={[styles.bonusText, { color: GREEN_HEX }]}>EARNED</Text>
+              </View>
+              <Text style={styles.rewardSep}>·</Text>
+              <Text style={styles.rewardDetail}>+{completed.pointsAwarded} POWR</Text>
             </View>
-            <Text style={styles.rewardSep}>·</Text>
-            <Text style={styles.rewardDetail}>+{xpReward} XP</Text>
-            <Text style={styles.rewardSep}>·</Text>
-            <Text style={styles.rewardDetail}>{powrRewardText}</Text>
-          </View>
+          ) : (
+            <View style={styles.rewardRow}>
+              <View style={[styles.bonusBadge, { backgroundColor: accent.rgba(0.10), borderColor: accent.rgba(0.22) }]}>
+                <Text style={[styles.bonusText, { color: accent.hex }]}>{bonus}</Text>
+              </View>
+              <Text style={styles.rewardSep}>·</Text>
+              <Text style={styles.rewardDetail}>{powrRewardText}</Text>
+            </View>
+          )}
 
-          {hint && <Text style={styles.hint}>{hint}</Text>}
+          {completed
+            ? <Text style={[styles.hint, { color: greenRgba(0.7) }]}>Challenge complete this week</Text>
+            : hint && <Text style={styles.hint}>{hint}</Text>
+          }
         </View>
       </View>
     </View>

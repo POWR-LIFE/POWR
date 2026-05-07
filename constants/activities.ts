@@ -34,6 +34,8 @@ export interface ActivityConfig {
   minDuration: number;
   /** Primary verification method */
   verification: 'gps' | 'geofence' | 'wearable' | 'manual';
+  /** If true, not shown in the activity focus picker — tracked automatically via wearable only */
+  hideFromPicker?: boolean;
 }
 
 export const ACTIVITIES: Record<ActivityType, ActivityConfig> = {
@@ -155,8 +157,9 @@ export const ACTIVITIES: Record<ActivityType, ActivityConfig> = {
     tag: 'Recovery',
     dailyCap: 5,
     colour: '#6366F1',
-    minDuration: 0, // measured in hours, not duration-gated
+    minDuration: 0,
     verification: 'wearable',
+    hideFromPicker: true,
   },
 };
 

@@ -60,9 +60,10 @@ export function checkIsOpenNow(openingHours?: OpeningHours): boolean {
   if (!hours) return false; // explicitly closed today
   const [oh, om] = hours.open.split(':').map(Number);
   const [ch, cm] = hours.close.split(':').map(Number);
-  const nowMins = now.getHours() * 60 + now.getMinutes();
+  const nowMins   = now.getHours() * 60 + now.getMinutes();
   const openMins  = oh * 60 + om;
-  const closeMins = ch * 60 + cm;
+  // Treat 00:00 close as end-of-day (1440) so "open until midnight" works correctly
+  const closeMins = (ch === 0 && cm === 0) ? 1440 : ch * 60 + cm;
   return nowMins >= openMins && nowMins < closeMins;
 }
 

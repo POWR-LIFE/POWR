@@ -19,6 +19,7 @@ import { CombinedProgressRing, type TickOverlayData } from '@/components/home/Co
 import { GeometricBackground } from '@/components/home/GeometricBackground';
 import { HealthConnectCard } from '@/components/home/HealthConnectCard';
 import { StickyActivityIndicators } from '@/components/home/StickyActivityIndicators';
+import { SleepProgressCard } from '@/components/home/SleepProgressCard';
 import { StreakCard } from '@/components/home/StreakCard';
 import { WalkingProgressCard } from '@/components/home/WalkingProgressCard';
 import { WeeklyActivityBars, type WeeklyRingData } from '@/components/home/WeeklyActivityRings';
@@ -28,6 +29,7 @@ import { ProfileButton } from '@/components/ProfileButton';
 import { ACTIVITIES, type ActivityType } from '@/constants/activities';
 import { useAuth } from '@/context/AuthContext';
 import { useActiveGeofence } from '@/hooks/useActiveGeofence';
+import { type SleepSession } from '@/hooks/useHealthData';
 import { useActivity } from '@/hooks/useActivity';
 import { useHealthData } from '@/hooks/useHealthData';
 import { usePoints } from '@/hooks/usePoints';
@@ -37,8 +39,8 @@ import { fetchMonthlyMetrics, type MonthlyMetrics } from '@/lib/api/activity';
 import { fetchMonthlyEarned } from '@/lib/api/points';
 import { fetchFeaturedReward, type Reward } from '@/lib/api/rewards';
 import { fetchProfile } from '@/lib/api/user';
-import { supabase } from '@/lib/supabase';
-import { ACTIVE_WEEKLY_CHALLENGE, computeExpiresIn, computeUrgency, getActiveWeeklyChallenge, parseWeeklyChallengesConfig } from '@/shared/weeklyChallenges';
+import { computeExpiresIn, computeUrgency } from '@/shared/weeklyChallenges';
+import { useWeeklyChallenge } from '@/hooks/useWeeklyChallenge';
 
 const GOLD = '#E8D200';
 const TEXT_PRIMARY = '#F2F2F2';
@@ -265,11 +267,12 @@ export default function HomeScreen() {
     const [healthCardDismissed, setHealthCardDismissed] = useState(false);
     const [profileName, setProfileName] = useState<string | null>(null);
     const [refreshing, setRefreshing] = useState(false);
-    const [weeklyChallenge, setWeeklyChallenge] = useState(ACTIVE_WEEKLY_CHALLENGE);
-    const [, setChallengeTick] = useState(0);
+    const { challenge: weeklyChallenge, completion: challengeCompletion } = useWeeklyChallenge(activePrefs);
     const [monthlyMetrics, setMonthlyMetrics] = useState<MonthlyMetrics>({ activeDays: 0, sessionCount: 0, totalSteps: 0, perType: {}, weekActiveDays: [0,0,0,0], activeDayTypes: {}, dayDetails: {} });
     const [monthlyXP, setMonthlyXP] = useState(0);
     const [featuredReward, setFeaturedReward] = useState<Reward | null>(null);
+    const [sleepData, setSleepData] = useState<SleepSession | null>(null);
+    const [sleepLoading, setSleepLoading] = useState(false);
 
     // ─── Tick overlay (interactive ring ticks) ───────────────────────────────────
     const [tickOverlay, setTickOverlay] = useState<TickOverlayData | null>(null);
@@ -301,21 +304,34 @@ export default function HomeScreen() {
 
     useEffect(() => { loadMonthlyData(); loadFeaturedReward(); }, [loadMonthlyData, loadFeaturedReward]);
 
+    useEffect(() => {
+        if (!health.isAuthorized) return;
+        setSleepLoading(true);
+        health.getLastNightSleep()
+            .then(setSleepData)
+            .catch(() => setSleepData(null))
+            .finally(() => setSleepLoading(false));
+    }, [health.isAuthorized]);
+
     const onRefresh = useCallback(async () => {
         setRefreshing(true);
         try {
-            await Promise.all([
+            const tasks: (Promise<unknown> | void)[] = [
                 refreshPoints(),
                 refreshActivity(),
                 refreshStreak(),
                 refreshWalking(),
                 loadMonthlyData(),
                 loadFeaturedReward(),
-            ]);
+            ];
+            if (health.isAuthorized) {
+                tasks.push(health.getLastNightSleep().then(setSleepData).catch(() => {}));
+            }
+            await Promise.all(tasks);
         } finally {
             setRefreshing(false);
         }
-    }, [refreshActivity, refreshPoints, refreshStreak, refreshWalking, loadMonthlyData, loadFeaturedReward]);
+    }, [refreshActivity, refreshPoints, refreshStreak, refreshWalking, loadMonthlyData, loadFeaturedReward, health]);
 
     // New user detection: no points earned and no recent activity
     const isNewUser = totalEarned === 0 && recentItems.length === 0;
@@ -404,39 +420,6 @@ export default function HomeScreen() {
         syncPrefs();
         return () => { mounted = false; };
     }, [user]);
-
-    useEffect(() => {
-        let mounted = true;
-
-        const loadWeeklyChallenge = async () => {
-            try {
-                const { data, error } = await supabase
-                    .from('system_config')
-                    .select('value')
-                    .eq('key', 'weekly_challenges')
-                    .maybeSingle();
-
-                if (error) throw error;
-
-                if (mounted && data?.value) {
-                    const challenges = parseWeeklyChallengesConfig(data.value);
-                    setWeeklyChallenge(getActiveWeeklyChallenge(challenges));
-                }
-            } catch (error) {
-                console.warn('[HomeScreen] Falling back to bundled weekly challenge config:', error);
-            }
-        };
-
-        loadWeeklyChallenge();
-        return () => {
-            mounted = false;
-        };
-    }, []);
-
-    useEffect(() => {
-        const id = setInterval(() => setChallengeTick(t => t + 1), 60_000);
-        return () => clearInterval(id);
-    }, []);
 
     const rotateDeg = rotateAnim.interpolate({
         inputRange:  [0, 1],
@@ -692,8 +675,8 @@ export default function HomeScreen() {
                     imageUri={weeklyChallenge.imageUri}
                     imageOffsetY={weeklyChallenge.imageOffsetY}
                     hint={weeklyChallenge.hint}
-                    xpReward={weeklyChallenge.xpReward}
                     powrRewardText={weeklyChallenge.powrRewardText}
+                    completed={challengeCompletion ?? undefined}
                 />
 
                 <Text style={styles.sectionLabel}>{tickDateLabel ?? 'WEEKLY'}</Text>
@@ -743,6 +726,13 @@ export default function HomeScreen() {
                     <>
                         <Text style={styles.sectionLabel}>TODAY&apos;S STEPS</Text>
                         <WalkingProgressCard progress={walking} />
+                    </>
+                )}
+
+                {health.isAuthorized && (
+                    <>
+                        <Text style={styles.sectionLabel}>LAST NIGHT&apos;S SLEEP</Text>
+                        <SleepProgressCard sleep={sleepData} loading={sleepLoading} />
                     </>
                 )}
 
