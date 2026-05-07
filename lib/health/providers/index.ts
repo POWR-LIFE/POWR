@@ -3,8 +3,10 @@ import { Platform } from 'react-native';
 import type { ActivityType } from '@/constants/activities';
 import { createFitbitProvider } from './fitbitProvider';
 import { createNativeHealthProvider } from './nativeProvider';
+import { createSamsungHealthProvider } from './samsungHealthProvider';
 import { createWhoopProvider } from './whoopProvider';
 import type { HealthProvider, HealthProviderId, HealthProviderMeta } from './types';
+import { HealthProviderNotImplementedError } from './types';
 
 export type { HealthProvider, HealthProviderId, HealthProviderMeta } from './types';
 export { HealthProviderNotImplementedError, ProviderAuthExpiredError } from './types';
@@ -33,6 +35,14 @@ export const ALL_PROVIDER_META: HealthProviderMeta[] = [
     },
     { id: 'whoop',  name: 'Whoop',  native: false, capabilities: ['activities', 'sleep', 'heart-rate', 'calories'] },
     { id: 'garmin', name: 'Garmin', native: false, capabilities: ['steps', 'activities', 'heart-rate'] },
+    {
+        id: 'samsung-health',
+        name: 'Samsung Health',
+        platforms: ['android'],
+        native: false,
+        capabilities: ['steps', 'activities', 'sleep', 'heart-rate', 'calories'],
+        hidden: true,
+    },
 ];
 
 /**
@@ -47,6 +57,7 @@ export const PROVIDER_ACTIVITY_SUPPORT: Record<HealthProviderId, ActivityType[]>
     'fitbit':         ['walking', 'running', 'cycling', 'swimming', 'gym', 'hiit', 'sports', 'yoga', 'dance', 'sleep'],
     'whoop':          ['walking', 'running', 'cycling', 'swimming', 'gym', 'hiit', 'sports', 'yoga', 'dance', 'sleep'],
     'garmin':         ['walking', 'running', 'cycling', 'swimming', 'gym', 'hiit', 'sports', 'yoga'],
+    'samsung-health': ['walking', 'running', 'cycling', 'swimming', 'gym', 'hiit', 'sports', 'yoga', 'dance', 'sleep'],
 };
 
 /** Activities that work with no wearable connected (GPS or geofence on the phone). */
@@ -68,10 +79,10 @@ export function supportedActivitiesFor(connectedIds: HealthProviderId[]): Set<Ac
     return out;
 }
 
-/** Providers visible on the current platform. */
+/** Providers visible on the current platform (excludes hidden ones). */
 export function visibleProviders(): HealthProviderMeta[] {
     const os = Platform.OS as 'ios' | 'android' | 'web';
-    return ALL_PROVIDER_META.filter(p => !p.platforms || p.platforms.includes(os));
+    return ALL_PROVIDER_META.filter(p => !p.hidden && (!p.platforms || p.platforms.includes(os)));
 }
 
 /** Factory: returns a fresh provider instance for the given id. */
@@ -84,11 +95,12 @@ export function getProvider(id: HealthProviderId): HealthProvider {
             return createFitbitProvider();
         case 'whoop':
             return createWhoopProvider();
+        case 'samsung-health':
+            return createSamsungHealthProvider();
         case 'garmin':
-            // Not yet stubbed — fall through to throw below.
-            break;
+            throw new HealthProviderNotImplementedError('garmin', 'connect');
     }
-    throw new Error(`Unknown or unimplemented health provider: ${id}`);
+    throw new HealthProviderNotImplementedError(id, 'connect');
 }
 
 /** The native provider for this OS, or null on web. */

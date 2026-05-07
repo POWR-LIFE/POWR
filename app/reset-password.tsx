@@ -44,7 +44,11 @@ type Screen = 'exchanging' | 'form' | 'success' | 'error';
 export default function ResetPasswordScreen() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
-    const { code } = useLocalSearchParams<{ code?: string }>();
+    const { code, auth_error, auth_error_description } = useLocalSearchParams<{
+        code?: string;
+        auth_error?: string;
+        auth_error_description?: string;
+    }>();
 
     const [screen, setScreen]               = useState<Screen>('exchanging');
     const [exchangeError, setExchangeError] = useState<string | null>(null);
@@ -61,6 +65,16 @@ export default function ResetPasswordScreen() {
 
     useEffect(() => {
         (async () => {
+            if (auth_error) {
+                const description = auth_error_description ?? 'The link is invalid or has expired.';
+                setExchangeError(
+                    auth_error === 'otp_expired'
+                        ? 'This password reset link has expired. Please request a new one.'
+                        : description.replace(/\+/g, ' ')
+                );
+                setScreen('error');
+                return;
+            }
             if (!code) {
                 setExchangeError('No recovery code found in the link. Please request a new reset email.');
                 setScreen('error');
@@ -81,7 +95,7 @@ export default function ResetPasswordScreen() {
                 setScreen('error');
             }
         })();
-    }, [code]);
+    }, [code, auth_error, auth_error_description]);
 
     // ── Step 2: set the new password ──────────────────────────────────────────
 

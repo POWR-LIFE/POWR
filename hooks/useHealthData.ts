@@ -66,32 +66,29 @@ export type HealthDataHook = {
     verifyWorkout: (activityType: string, durationMinutes: number) => Promise<VerifyResult>;
 };
 
-// ── iOS (HealthKit via react-native-health) ───────────────────────────────────
+// ── iOS (HealthKit via @kingstinct/react-native-healthkit) ───────────────────
+
+// Lazy import helper — avoids requiring the module on Android/web at module load time
+function getHK() {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    return require('@kingstinct/react-native-healthkit') as typeof import('@kingstinct/react-native-healthkit');
+}
+
+const HK_READ_PERMISSIONS = [
+    'HKQuantityTypeIdentifierStepCount',
+    'HKQuantityTypeIdentifierDistanceWalkingRunning',
+    'HKWorkoutTypeIdentifier',
+    'HKCategoryTypeIdentifierSleepAnalysis',
+    'HKQuantityTypeIdentifierHeartRate',
+    'HKQuantityTypeIdentifierActiveEnergyBurned',
+    'HKQuantityTypeIdentifierBasalEnergyBurned',
+    'HKQuantityTypeIdentifierRestingHeartRate',
+] as const;
 
 export async function iosRequestPermissions(): Promise<boolean> {
     try {
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        const { default: AppleHealthKit } = require('react-native-health');
-        return new Promise((resolve) => {
-            AppleHealthKit.initHealthKit(
-                {
-                    permissions: {
-                        read: [
-                            AppleHealthKit.Constants.Permissions.Steps,
-                            AppleHealthKit.Constants.Permissions.DistanceWalkingRunning,
-                            AppleHealthKit.Constants.Permissions.Workout,
-                            AppleHealthKit.Constants.Permissions.SleepAnalysis,
-                            AppleHealthKit.Constants.Permissions.HeartRate,
-                            AppleHealthKit.Constants.Permissions.ActiveEnergyBurned,
-                            AppleHealthKit.Constants.Permissions.BasalEnergyBurned,
-                            AppleHealthKit.Constants.Permissions.RestingHeartRate,
-                        ],
-                        write: [],
-                    },
-                },
-                (error: string) => resolve(!error),
-            );
-        });
+        const HK = getHK();
+        return await HK.requestAuthorization({ toRead: HK_READ_PERMISSIONS });
     } catch (e) {
         console.warn('Failed to initialize Apple HealthKit:', e);
         return false;
@@ -100,50 +97,52 @@ export async function iosRequestPermissions(): Promise<boolean> {
 
 async function iosGetStepsToday(): Promise<number> {
     try {
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        const { default: AppleHealthKit } = require('react-native-health');
+        const HK = getHK();
         const midnight = new Date();
         midnight.setHours(0, 0, 0, 0);
-        return new Promise((resolve) => {
-            AppleHealthKit.getStepCount(
-                { startDate: midnight.toISOString() },
-                (err: string, result: { value: number }) => resolve(err ? 0 : result.value),
-            );
+        const samples = await HK.queryQuantitySamples('HKQuantityTypeIdentifierStepCount', {
+            filter: { date: { startDate: midnight, endDate: new Date() } },
+            unit: 'count',
+            limit: -1,
         });
+        return samples.reduce((sum, s) => sum + s.quantity, 0);
     } catch (e) {
         console.warn('Failed to read Apple HealthKit steps:', e);
         return 0;
     }
 }
 
+// Maps HKWorkoutActivityType numeric values to POWR activity type strings
+const HK_WORKOUT_TYPE_MAP: Record<number, string> = {
+    13: 'cycling',
+    16: 'cycling',         // elliptical → cycling (closest cardio)
+    20: 'gym',             // functionalStrengthTraining
+    37: 'running',
+    41: 'sports',          // soccer
+    46: 'swimming',
+    48: 'sports',          // tennis
+    50: 'gym',             // traditionalStrengthTraining
+    52: 'walking',
+    57: 'yoga',
+    63: 'hiit',            // highIntensityIntervalTraining
+    66: 'yoga',            // pilates
+};
+
 async function iosGetActivitiesToday(): Promise<HealthActivity[]> {
     try {
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        const { default: AppleHealthKit } = require('react-native-health');
+        const HK = getHK();
         const midnight = new Date();
         midnight.setHours(0, 0, 0, 0);
-        return new Promise((resolve) => {
-            AppleHealthKit.getSamples(
-                {
-                    startDate: midnight.toISOString(),
-                    endDate: new Date().toISOString(),
-                    type: 'Workout',
-                },
-                (err: string, results: Array<{ start: string; end: string; activityName: string; distance?: number }>) => {
-                    if (err || !results) return resolve([]);
-                    resolve(
-                        results.map(r => ({
-                            type: (r.activityName || 'other').toLowerCase(),
-                            startedAt: r.start,
-                            durationMin: Math.round(
-                                (new Date(r.end).getTime() - new Date(r.start).getTime()) / 60000,
-                            ),
-                            distanceM: r.distance,
-                        })),
-                    );
-                },
-            );
+        const workouts = await HK.queryWorkoutSamples({
+            filter: { date: { startDate: midnight, endDate: new Date() } },
+            limit: -1,
         });
+        return workouts.map(w => ({
+            type: HK_WORKOUT_TYPE_MAP[w.workoutActivityType as number] ?? 'other',
+            startedAt: w.startDate.toISOString(),
+            durationMin: Math.round(w.duration.quantity / 60),
+            distanceM: w.totalDistance ? Math.round(w.totalDistance.quantity) : undefined,
+        }));
     } catch (e) {
         console.warn('Failed to read Apple HealthKit workouts:', e);
         return [];
@@ -152,48 +151,37 @@ async function iosGetActivitiesToday(): Promise<HealthActivity[]> {
 
 async function iosGetLastNightSleep(): Promise<SleepSession | null> {
     try {
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        const { default: AppleHealthKit } = require('react-native-health');
-        // Look for sleep between yesterday 6pm and now
+        const HK = getHK();
         const start = new Date();
         start.setDate(start.getDate() - 1);
         start.setHours(18, 0, 0, 0);
-        return new Promise((resolve) => {
-            AppleHealthKit.getSleepSamples(
-                { startDate: start.toISOString(), endDate: new Date().toISOString() },
-                (err: string, results: Array<{ startDate: string; endDate: string; value: string }>) => {
-                    if (err || !results || results.length === 0) return resolve(null);
-                    // Filter to ASLEEP samples (not INBED) and sum total sleep
-                    const asleep = results.filter(r => r.value === 'ASLEEP' || r.value === 'ASLEEP_CORE' || r.value === 'ASLEEP_DEEP' || r.value === 'ASLEEP_REM');
-                    if (asleep.length === 0) return resolve(null);
-
-                    let totalMs = 0;
-                    let deepMs = 0;
-                    let remMs = 0;
-                    let lightMs = 0;
-
-                    for (const r of asleep) {
-                        const ms = new Date(r.endDate).getTime() - new Date(r.startDate).getTime();
-                        totalMs += ms;
-                        if (r.value === 'ASLEEP_DEEP') deepMs += ms;
-                        else if (r.value === 'ASLEEP_REM') remMs += ms;
-                        else lightMs += ms; // ASLEEP + ASLEEP_CORE = light/unspecified
-                    }
-
-                    // Use the earliest start and latest end
-                    const earliest = asleep.reduce((min, r) => r.startDate < min ? r.startDate : min, asleep[0].startDate);
-                    const latest = asleep.reduce((max, r) => r.endDate > max ? r.endDate : max, asleep[0].endDate);
-                    resolve({
-                        startedAt: earliest,
-                        endedAt: latest,
-                        durationHours: Math.round((totalMs / 3600000) * 10) / 10,
-                        deepHours: Math.round((deepMs / 3600000) * 10) / 10,
-                        remHours: Math.round((remMs / 3600000) * 10) / 10,
-                        lightHours: Math.round((lightMs / 3600000) * 10) / 10,
-                    });
-                },
-            );
+        const samples = await HK.queryCategorySamples('HKCategoryTypeIdentifierSleepAnalysis', {
+            filter: { date: { startDate: start, endDate: new Date() } },
+            limit: -1,
         });
+        // Filter to actual sleep values (not inBed=0 or awake=2)
+        const asleep = samples.filter(s => s.value !== 0 && s.value !== 2);
+        if (asleep.length === 0) return null;
+
+        let totalMs = 0, deepMs = 0, remMs = 0, lightMs = 0;
+        for (const s of asleep) {
+            const ms = s.endDate.getTime() - s.startDate.getTime();
+            totalMs += ms;
+            if (s.value === 4) deepMs += ms;       // asleepDeep
+            else if (s.value === 5) remMs += ms;   // asleepREM
+            else lightMs += ms;                     // asleepCore / asleepUnspecified
+        }
+
+        const earliest = asleep.reduce((min, s) => s.startDate < min ? s.startDate : min, asleep[0].startDate);
+        const latest = asleep.reduce((max, s) => s.endDate > max ? s.endDate : max, asleep[0].endDate);
+        return {
+            startedAt: earliest.toISOString(),
+            endedAt: latest.toISOString(),
+            durationHours: Math.round((totalMs / 3600000) * 10) / 10,
+            deepHours: Math.round((deepMs / 3600000) * 10) / 10,
+            remHours: Math.round((remMs / 3600000) * 10) / 10,
+            lightHours: Math.round((lightMs / 3600000) * 10) / 10,
+        };
     } catch (e) {
         console.warn('Failed to read Apple HealthKit sleep:', e);
         return null;
@@ -202,22 +190,21 @@ async function iosGetLastNightSleep(): Promise<SleepSession | null> {
 
 async function iosGetHeartRateToday(): Promise<HeartRateSummary | null> {
     try {
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        const { default: AppleHealthKit } = require('react-native-health');
+        const HK = getHK();
         const midnight = new Date();
         midnight.setHours(0, 0, 0, 0);
-        return new Promise((resolve) => {
-            AppleHealthKit.getHeartRateSamples(
-                { startDate: midnight.toISOString(), endDate: new Date().toISOString() },
-                (err: string, results: Array<{ value: number }>) => {
-                    if (err || !results || results.length === 0) return resolve(null);
-                    const values = results.map(r => r.value);
-                    const avg = Math.round(values.reduce((s, v) => s + v, 0) / values.length);
-                    const max = Math.max(...values);
-                    resolve({ avg, max, resting: 0 });
-                },
-            );
+        const samples = await HK.queryQuantitySamples('HKQuantityTypeIdentifierHeartRate', {
+            filter: { date: { startDate: midnight, endDate: new Date() } },
+            unit: 'count/min',
+            limit: -1,
         });
+        if (samples.length === 0) return null;
+        const values = samples.map(s => s.quantity);
+        return {
+            avg: Math.round(values.reduce((a, v) => a + v, 0) / values.length),
+            max: Math.max(...values),
+            resting: 0,
+        };
     } catch {
         return null;
     }
@@ -225,31 +212,24 @@ async function iosGetHeartRateToday(): Promise<HeartRateSummary | null> {
 
 async function iosGetCaloriesToday(): Promise<CalorieSummary | null> {
     try {
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        const { default: AppleHealthKit } = require('react-native-health');
+        const HK = getHK();
         const midnight = new Date();
         midnight.setHours(0, 0, 0, 0);
-        const opts = { startDate: midnight.toISOString(), endDate: new Date().toISOString() };
+        const dateFilter = { date: { startDate: midnight, endDate: new Date() } };
 
-        const active = await new Promise<number>((resolve) => {
-            AppleHealthKit.getActiveEnergyBurned(
-                opts,
-                (err: string, results: Array<{ value: number }>) => {
-                    if (err || !results) return resolve(0);
-                    resolve(results.reduce((s, r) => s + r.value, 0));
-                },
-            );
+        const activeSamples = await HK.queryQuantitySamples('HKQuantityTypeIdentifierActiveEnergyBurned', {
+            filter: dateFilter,
+            unit: 'kcal',
+            limit: -1,
         });
+        const active = activeSamples.reduce((s, r) => s + r.quantity, 0);
 
-        const basal = await new Promise<number>((resolve) => {
-            AppleHealthKit.getBasalEnergyBurned(
-                opts,
-                (err: string, results: Array<{ value: number }>) => {
-                    if (err || !results) return resolve(0);
-                    resolve(results.reduce((s, r) => s + r.value, 0));
-                },
-            );
+        const basalSamples = await HK.queryQuantitySamples('HKQuantityTypeIdentifierBasalEnergyBurned', {
+            filter: dateFilter,
+            unit: 'kcal',
+            limit: -1,
         });
+        const basal = basalSamples.reduce((s, r) => s + r.quantity, 0);
 
         if (active === 0 && basal === 0) return null;
         return { active: Math.round(active), total: Math.round(active + basal) };
@@ -593,114 +573,101 @@ async function iosGetWeekHistory(): Promise<DayHealthSummary[]> {
     for (let i = 6; i >= 0; i--) {
         const { start, end } = dayRange(i);
         const dateKey = formatDateKey(start);
+        const dateFilter = { date: { startDate: start, endDate: end } };
 
         // Steps
         let steps = 0;
         try {
-            // eslint-disable-next-line @typescript-eslint/no-require-imports
-            const { default: AHK } = require('react-native-health');
-            steps = await new Promise<number>((resolve) => {
-                AHK.getStepCount(
-                    { startDate: start.toISOString(), endDate: end.toISOString() },
-                    (err: string, r: { value: number }) => resolve(err ? 0 : r?.value ?? 0),
-                );
+            const HK = getHK();
+            const samples = await HK.queryQuantitySamples('HKQuantityTypeIdentifierStepCount', {
+                filter: dateFilter,
+                unit: 'count',
+                limit: -1,
             });
+            steps = samples.reduce((sum, s) => sum + s.quantity, 0);
         } catch { /* ignore */ }
 
         // Workouts
         let activities: HealthActivity[] = [];
         try {
-            // eslint-disable-next-line @typescript-eslint/no-require-imports
-            const { default: AHK } = require('react-native-health');
-            activities = await new Promise<HealthActivity[]>((resolve) => {
-                AHK.getSamples(
-                    { startDate: start.toISOString(), endDate: end.toISOString(), type: 'Workout' },
-                    (err: string, recs: Array<{ start: string; end: string; activityName: string; distance?: number }>) => {
-                        if (err || !recs) return resolve([]);
-                        resolve(recs.map(r => ({
-                            type: (r.activityName || 'other').toLowerCase(),
-                            startedAt: r.start,
-                            durationMin: Math.round((new Date(r.end).getTime() - new Date(r.start).getTime()) / 60000),
-                            distanceM: r.distance,
-                        })));
-                    },
-                );
+            const HK = getHK();
+            const workouts = await HK.queryWorkoutSamples({
+                filter: { date: { startDate: start, endDate: end } },
+                limit: -1,
             });
+            activities = workouts.map(w => ({
+                type: HK_WORKOUT_TYPE_MAP[w.workoutActivityType as number] ?? 'other',
+                startedAt: w.startDate.toISOString(),
+                durationMin: Math.round(w.duration.quantity / 60),
+                distanceM: w.totalDistance ? Math.round(w.totalDistance.quantity) : undefined,
+            }));
         } catch { /* ignore */ }
 
         // Sleep (look from previous day 6pm to this day's end)
         let sleep: SleepSession | null = null;
         try {
-            // eslint-disable-next-line @typescript-eslint/no-require-imports
-            const { default: AHK } = require('react-native-health');
+            const HK = getHK();
             const sleepStart = new Date(start);
             sleepStart.setDate(sleepStart.getDate() - 1);
             sleepStart.setHours(18, 0, 0, 0);
-            sleep = await new Promise<SleepSession | null>((resolve) => {
-                AHK.getSleepSamples(
-                    { startDate: sleepStart.toISOString(), endDate: end.toISOString() },
-                    (err: string, recs: Array<{ startDate: string; endDate: string; value: string }>) => {
-                        if (err || !recs || recs.length === 0) return resolve(null);
-                        const asleep = recs.filter(r => r.value === 'ASLEEP' || r.value === 'ASLEEP_CORE' || r.value === 'ASLEEP_DEEP' || r.value === 'ASLEEP_REM');
-                        if (asleep.length === 0) return resolve(null);
-                        let totalMs = 0, deepMs = 0, remMs = 0, lightMs = 0;
-                        for (const r of asleep) {
-                            const ms = new Date(r.endDate).getTime() - new Date(r.startDate).getTime();
-                            totalMs += ms;
-                            if (r.value === 'ASLEEP_DEEP') deepMs += ms;
-                            else if (r.value === 'ASLEEP_REM') remMs += ms;
-                            else lightMs += ms;
-                        }
-                        const earliest = asleep.reduce((min, r) => r.startDate < min ? r.startDate : min, asleep[0].startDate);
-                        const latest = asleep.reduce((max, r) => r.endDate > max ? r.endDate : max, asleep[0].endDate);
-                        resolve({
-                            startedAt: earliest,
-                            endedAt: latest,
-                            durationHours: Math.round((totalMs / 3600000) * 10) / 10,
-                            deepHours: Math.round((deepMs / 3600000) * 10) / 10,
-                            remHours: Math.round((remMs / 3600000) * 10) / 10,
-                            lightHours: Math.round((lightMs / 3600000) * 10) / 10,
-                        });
-                    },
-                );
+            const samples = await HK.queryCategorySamples('HKCategoryTypeIdentifierSleepAnalysis', {
+                filter: { date: { startDate: sleepStart, endDate: end } },
+                limit: -1,
             });
+            const asleep = samples.filter(s => s.value !== 0 && s.value !== 2);
+            if (asleep.length > 0) {
+                let totalMs = 0, deepMs = 0, remMs = 0, lightMs = 0;
+                for (const s of asleep) {
+                    const ms = s.endDate.getTime() - s.startDate.getTime();
+                    totalMs += ms;
+                    if (s.value === 4) deepMs += ms;
+                    else if (s.value === 5) remMs += ms;
+                    else lightMs += ms;
+                }
+                const earliest = asleep.reduce((min, s) => s.startDate < min ? s.startDate : min, asleep[0].startDate);
+                const latest = asleep.reduce((max, s) => s.endDate > max ? s.endDate : max, asleep[0].endDate);
+                sleep = {
+                    startedAt: earliest.toISOString(),
+                    endedAt: latest.toISOString(),
+                    durationHours: Math.round((totalMs / 3600000) * 10) / 10,
+                    deepHours: Math.round((deepMs / 3600000) * 10) / 10,
+                    remHours: Math.round((remMs / 3600000) * 10) / 10,
+                    lightHours: Math.round((lightMs / 3600000) * 10) / 10,
+                };
+            }
         } catch { /* ignore */ }
 
         // Heart rate
         let heartRate: HeartRateSummary | null = null;
         try {
-            // eslint-disable-next-line @typescript-eslint/no-require-imports
-            const { default: AHK } = require('react-native-health');
-            heartRate = await new Promise<HeartRateSummary | null>((resolve) => {
-                AHK.getHeartRateSamples(
-                    { startDate: start.toISOString(), endDate: end.toISOString() },
-                    (err: string, recs: Array<{ value: number }>) => {
-                        if (err || !recs || recs.length === 0) return resolve(null);
-                        const vals = recs.map(r => r.value);
-                        resolve({
-                            avg: Math.round(vals.reduce((s, v) => s + v, 0) / vals.length),
-                            max: Math.max(...vals),
-                            resting: 0,
-                        });
-                    },
-                );
+            const HK = getHK();
+            const samples = await HK.queryQuantitySamples('HKQuantityTypeIdentifierHeartRate', {
+                filter: dateFilter,
+                unit: 'count/min',
+                limit: -1,
             });
+            if (samples.length > 0) {
+                const vals = samples.map(s => s.quantity);
+                heartRate = {
+                    avg: Math.round(vals.reduce((a, v) => a + v, 0) / vals.length),
+                    max: Math.max(...vals),
+                    resting: 0,
+                };
+            }
         } catch { /* ignore */ }
 
         // Calories
         let calories: CalorieSummary | null = null;
         try {
-            // eslint-disable-next-line @typescript-eslint/no-require-imports
-            const { default: AHK } = require('react-native-health');
-            const opts = { startDate: start.toISOString(), endDate: end.toISOString() };
-            const active = await new Promise<number>((resolve) => {
-                AHK.getActiveEnergyBurned(opts, (err: string, r: Array<{ value: number }>) =>
-                    resolve(err || !r ? 0 : r.reduce((s, x) => s + x.value, 0)));
+            const HK = getHK();
+            const activeSamples = await HK.queryQuantitySamples('HKQuantityTypeIdentifierActiveEnergyBurned', {
+                filter: dateFilter, unit: 'kcal', limit: -1,
             });
-            const basal = await new Promise<number>((resolve) => {
-                AHK.getBasalEnergyBurned(opts, (err: string, r: Array<{ value: number }>) =>
-                    resolve(err || !r ? 0 : r.reduce((s, x) => s + x.value, 0)));
+            const active = activeSamples.reduce((s, r) => s + r.quantity, 0);
+            const basalSamples = await HK.queryQuantitySamples('HKQuantityTypeIdentifierBasalEnergyBurned', {
+                filter: dateFilter, unit: 'kcal', limit: -1,
             });
+            const basal = basalSamples.reduce((s, r) => s + r.quantity, 0);
             if (active > 0 || basal > 0) {
                 calories = { active: Math.round(active), total: Math.round(active + basal) };
             }

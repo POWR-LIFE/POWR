@@ -16,6 +16,7 @@ module.exports = {
       entitlements: {
         ...expo.ios?.entitlements,
         'com.apple.developer.healthkit': true,
+        'com.apple.developer.applesignin': ['Default'],
       },
     },
     android: {
@@ -35,7 +36,9 @@ module.exports = {
     },
     plugins: [
       ...expo.plugins,
+      './withGoogleUtilitiesModularHeaders.js',
       '@react-native-firebase/app',
+      'expo-apple-authentication',
       ['react-native-health-connect'],
       'expo-secure-store',
       [

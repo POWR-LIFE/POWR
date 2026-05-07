@@ -29,7 +29,6 @@ interface HealthSource {
 const HEALTH_SOURCES: HealthSource[] = [
     { id: 'apple-health',    name: 'Apple Health',    color: '#FF3B30', native: true,  platforms: ['ios'] },
     { id: 'health-connect',  name: 'Health Connect',  color: '#4285F4', native: true,  platforms: ['android'] },
-    { id: 'samsung-health',  name: 'Samsung Health',  color: '#1428A0', platforms: ['android'] },
     { id: 'whoop',           name: 'Whoop',           color: '#44D62C' },
     { id: 'garmin',          name: 'Garmin',          color: '#007DC3' },
     { id: 'fitbit',          name: 'Fitbit',          color: '#00B0B9' },
@@ -483,6 +482,7 @@ export default function OnboardingHealthScreen() {
                                         ]}
                                         onPress={() => handleConnect(source)}
                                         disabled={isComingSoon || health.requesting}
+
                                     >
                                         <View style={[
                                             styles.sourceIcon,
@@ -505,9 +505,19 @@ export default function OnboardingHealthScreen() {
                                             {isComingSoon && (
                                                 <Text style={styles.comingSoonLabel}>Coming soon</Text>
                                             )}
+                                            {source.id === 'health-connect' && !isConnected && (
+                                                <Text style={styles.sourceHint}>
+                                                    Pixel Watch, Galaxy Watch &amp; more
+                                                </Text>
+                                            )}
                                             {source.native && isConnected && stepsToday !== null && (
                                                 <Text style={styles.stepsLabel}>
                                                     {stepsToday.toLocaleString()} steps today
+                                                </Text>
+                                            )}
+                                            {source.id === 'health-connect' && isConnected && stepsToday === null && (
+                                                <Text style={styles.sourceHint}>
+                                                    Pixel Watch, Galaxy Watch &amp; more
                                                 </Text>
                                             )}
                                         </View>

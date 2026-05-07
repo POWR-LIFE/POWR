@@ -46,7 +46,12 @@ export function HealthConnectCard({ onConnect, onDismiss, requesting }: Props) {
                                 <MaterialCommunityIcons name="heart-pulse" size={18} color="#4285F4" />
                             )}
                         </Animated.View>
-                        <Text style={styles.title}>Connect {platformName}</Text>
+                        <View>
+                            <Text style={styles.title}>Connect {platformName}</Text>
+                            {Platform.OS === 'android' && (
+                                <Text style={styles.subtitle}>Pixel Watch, Galaxy Watch &amp; more</Text>
+                            )}
+                        </View>
                     </View>
                     {onDismiss && (
                         <Pressable onPress={onDismiss} hitSlop={12} style={styles.dismissBtn}>
@@ -128,6 +133,12 @@ const styles = StyleSheet.create({
         fontWeight: '500',
         color: TEXT,
         letterSpacing: -0.2,
+    },
+    subtitle: {
+        fontSize: 10,
+        fontWeight: '300',
+        color: MUTED,
+        marginTop: 1,
     },
     dismissBtn: {
         padding: 4,

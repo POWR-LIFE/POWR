@@ -4,13 +4,14 @@
     "slug": "POWR",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/powr_transparent.png",
+    "icon": "./assets/images/ios_icon_black.png",
     "scheme": "powr",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.powr.app",
+      "bundleIdentifier": "com.powr.life",
+      "googleServicesFile": "./GoogleService-Info.plist",
       "infoPlist": {
         "NSHealthShareUsageDescription": "POWR needs access to your sleep and workout data to reward you for healthy habits.",
         "NSHealthUpdateUsageDescription": "POWR needs access to log your habits.",
@@ -57,7 +58,8 @@
           "autoVerify": false,
           "data": [
             { "scheme": "powr", "host": "fitbit-callback" },
-            { "scheme": "powr", "host": "whoop-callback" }
+            { "scheme": "powr", "host": "whoop-callback" },
+            { "scheme": "powr", "host": "samsung-health-callback" }
           ],
           "category": ["BROWSABLE", "DEFAULT"]
         }
@@ -101,7 +103,6 @@
       ],
       "expo-video",
       "expo-asset",
-      "react-native-health",
       "react-native-health-connect",
       "./withHealthConnectMainActivity.js",
       "./withHealthConnectManifestQueries.js",
@@ -118,7 +119,7 @@
     ],
     "experiments": {
       "typedRoutes": true,
-      "reactCompiler": true
+      "reactCompiler": false
     }
   }
 }

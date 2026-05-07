@@ -145,7 +145,7 @@ export function StreakCard({
         {/* Main row: streak left, day dots right */}
         <View style={styles.mainRow}>
           <View style={styles.streakGroup}>
-            <Text style={styles.number}>{streak}</Text>
+            <Text style={styles.number} adjustsFontSizeToFit numberOfLines={1} minimumFontScale={0.5}>{streak}</Text>
             <View style={styles.unitCol}>
               <Text style={styles.unit}>
                 {`day${streak !== 1 ? 's' : ''}`}
@@ -302,6 +302,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    flexShrink: 1,
   },
   unitCol: {
     alignItems: 'flex-start',
@@ -328,13 +329,14 @@ const styles = StyleSheet.create({
   },
   dots: {
     flexDirection: 'row',
-    gap: 8,
+    gap: 6,
     alignItems: 'center',
+    flexShrink: 1,
   },
   dot: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 31,
+    height: 31,
+    borderRadius: 15.5,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(255,255,255,0.10)',

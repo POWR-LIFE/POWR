@@ -19,18 +19,21 @@ export interface LevelDef {
   };
 }
 
+// XP thresholds are designed so each tier takes roughly 2× as long as the previous.
+// A dedicated gym user (max 30 pts/day) takes ~6 months to reach Champion,
+// ~1 year for Elite, ~2 years for Sovereign, and Legend is a true lifetime achievement.
 export const LEVELS: LevelDef[] = [
   {
     level: 1,
     name: 'Starter',
     xpMin: 0,
-    xpMax: 499,
+    xpMax: 299,
     pill: { bg: 'rgba(255,255,255,0.06)', border: 'rgba(255,255,255,0.12)', text: 'rgba(255,255,255,0.5)' },
   },
   {
     level: 2,
     name: 'Mover',
-    xpMin: 500,
+    xpMin: 300,
     xpMax: 999,
     pill: { bg: 'rgba(74,222,128,0.12)', border: 'rgba(74,222,128,0.30)', text: '#4ade80' },
   },
@@ -57,10 +60,24 @@ export const LEVELS: LevelDef[] = [
   },
   {
     level: 6,
-    name: 'Legend',
+    name: 'Elite',
     xpMin: 10000,
+    xpMax: 19999,
+    pill: { bg: 'rgba(249,115,22,0.12)', border: 'rgba(249,115,22,0.30)', text: '#f97316' },
+  },
+  {
+    level: 7,
+    name: 'Sovereign',
+    xpMin: 20000,
+    xpMax: 39999,
+    pill: { bg: 'rgba(239,68,68,0.12)', border: 'rgba(239,68,68,0.30)', text: '#ef4444' },
+  },
+  {
+    level: 8,
+    name: 'Legend',
+    xpMin: 40000,
     xpMax: Infinity,
-    pill: { bg: 'rgba(232,210,0,0.18)', border: 'rgba(232,210,0,0.50)', text: '#E8D200' },
+    pill: { bg: 'rgba(232,210,0,0.22)', border: 'rgba(232,210,0,0.60)', text: '#E8D200' },
   },
 ];
 

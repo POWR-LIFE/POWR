@@ -380,7 +380,6 @@ const styles = StyleSheet.create({
         color: '#FFFFFF',
         fontSize: 128,
         fontWeight: '100',
-        letterSpacing: -5,
         lineHeight: 132,
         textAlign: 'center',
     },

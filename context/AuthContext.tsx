@@ -1,4 +1,5 @@
 import type { Session, User } from '@supabase/supabase-js';
+import * as AppleAuthentication from 'expo-apple-authentication';
 import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
 import { router } from 'expo-router';
@@ -11,6 +12,7 @@ type AuthContextType = {
     user: User | null;
     loading: boolean;
     signInWithGoogle: () => Promise<{ error: string | null }>;
+    signInWithApple: () => Promise<{ error: string | null }>;
     signInWithEmail: (email: string, password: string) => Promise<{ error: string | null }>;
     signUpWithEmail: (email: string, password: string) => Promise<{ error: string | null; needsConfirmation?: boolean }>;
     signOut: () => Promise<void>;
@@ -44,6 +46,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
      */
     const enforceOneSession = async () => {
         await supabase.auth.signOut({ scope: 'others' });
+    };
+
+    const signInWithApple = async (): Promise<{ error: string | null }> => {
+        try {
+            const credential = await AppleAuthentication.signInAsync({
+                requestedScopes: [
+                    AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+                    AppleAuthentication.AppleAuthenticationScope.EMAIL,
+                ],
+            });
+            if (!credential.identityToken) return { error: 'No identity token returned from Apple' };
+            const { error } = await supabase.auth.signInWithIdToken({
+                provider: 'apple',
+                token: credential.identityToken,
+            });
+            if (error) return { error: error.message };
+            await enforceOneSession();
+            return { error: null };
+        } catch (e: unknown) {
+            // ERR_REQUEST_CANCELED = user dismissed the sheet — not an error
+            if ((e as { code?: string }).code === 'ERR_REQUEST_CANCELED') return { error: null };
+            return { error: e instanceof Error ? e.message : 'Unknown error' };
+        }
     };
 
     const signInWithGoogle = async (): Promise<{ error: string | null }> => {
@@ -107,6 +132,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             user: session?.user ?? null,
             loading,
             signInWithGoogle,
+            signInWithApple,
             signInWithEmail,
             signUpWithEmail,
             signOut,

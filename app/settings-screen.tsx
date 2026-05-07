@@ -1,7 +1,8 @@
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import * as Location from 'expo-location';
 import React, { useCallback, useEffect, useState } from 'react';
+import { Image } from 'expo-image';
 import GeometricBackground from '@/components/GeometricBackground';
 import {
   Alert,
@@ -14,6 +15,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import type { HealthProviderId } from '@/lib/health/providers/types';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import * as SecureStore from 'expo-secure-store';
@@ -23,7 +25,7 @@ import { useHealthProviders } from '@/hooks/useHealthProviders';
 import { HealthProviderNotImplementedError } from '@/lib/health/providers';
 import { ACTIVITIES, type ActivityType } from '@/constants/activities';
 import { supabase } from '@/lib/supabase';
-import { fetchProfile, updateLeaderboardVisibility } from '@/lib/api/user';
+import { getNotificationPreferences, updateNotificationPreferences } from '@/lib/api/notifications';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 
@@ -82,19 +84,17 @@ export default function SettingsScreen() {
 
   // Notification & privacy prefs — initialise from saved user_metadata
   const meta = user?.user_metadata ?? {};
-  const [notifWorkouts,  setNotifWorkouts]  = useState(meta.notif_workouts ?? true);
-  const [notifChallenges, setNotifChallenges] = useState(meta.notif_challenges ?? true);
-  const [notifRewards,   setNotifRewards]   = useState(meta.notif_rewards ?? false);
-  const [notifFriends,   setNotifFriends]   = useState(meta.notif_friends ?? true);
-  const [shareActivity,  setShareActivity]  = useState(meta.share_activity ?? true);
-  const [showOnLeaderboard, setShowOnLeaderboard] = useState(true);
-
-  // Load show_on_leaderboard from profiles table (source of truth)
+  const [notifWorkouts,   setNotifWorkouts]   = useState(true);
+  const [notifRewards,    setNotifRewards]    = useState(true);
+  const [notifFriends,    setNotifFriends]    = useState(meta.notif_friends ?? true);
+  const [shareActivity,   setShareActivity]   = useState(meta.share_activity ?? true);
   useEffect(() => {
-    fetchProfile().then(p => {
-      if (p !== null) setShowOnLeaderboard(p.show_on_leaderboard);
+    if (!user?.id) return;
+    getNotificationPreferences(user.id).then(prefs => {
+      setNotifWorkouts(prefs.daily_reminder);
+      setNotifRewards(prefs.reward_unlocked);
     });
-  }, []);
+  }, [user?.id]);
 
   // Persist a single metadata key when a toggle changes
   const persistMeta = async (key: string, value: boolean) => {
@@ -177,12 +177,6 @@ export default function SettingsScreen() {
             icon="lock-closed-outline"
             label="Change Password"
             onPress={() => router.push('/change-password')}
-          />
-          <RowLink
-            icon="card-outline"
-            label="Subscription"
-            value="Free"
-            onPress={() => {}}
             isLast
           />
         </View>
@@ -327,21 +321,22 @@ export default function SettingsScreen() {
             }
             valueColor={locationStatus === 'granted' ? '#4ade80' : locationStatus === 'denied' ? RED : undefined}
             onPress={async () => {
-              if (locationStatus === 'denied') {
+              if (locationStatus === 'granted') {
+                Alert.alert(
+                  'Disable Location?',
+                  'Without location access you won\'t be able to earn points at geofenced venues and partner gyms.',
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    { text: 'Open Settings', onPress: () => Linking.openSettings() },
+                  ],
+                );
+              } else if (locationStatus === 'denied') {
                 Linking.openSettings();
-              } else if (locationStatus === 'undetermined') {
+              } else {
                 const { status } = await Location.requestForegroundPermissionsAsync();
                 setLocationStatus(status === 'granted' ? 'granted' : 'denied');
               }
             }}
-          />
-          {/* Supabase backend */}
-          <RowLink
-            icon="cloud-outline"
-            label="POWR Cloud"
-            value={user ? 'Synced' : 'Offline'}
-            valueColor={user ? '#4ade80' : undefined}
-            onPress={() => {}}
             isLast
           />
         </View>
@@ -352,7 +347,7 @@ export default function SettingsScreen() {
         )}
         {locationStatus !== 'granted' && (
           <Text style={styles.sectionHint}>
-            Location is needed for automatic gym check-ins at partner venues.
+            Location is required to earn points at geofenced venues and partner gyms.
           </Text>
         )}
 
@@ -363,19 +358,21 @@ export default function SettingsScreen() {
             icon="barbell-outline"
             label="Workout reminders"
             value={notifWorkouts}
-            onValueChange={(v) => { setNotifWorkouts(v); persistMeta('notif_workouts', v); }}
-          />
-          <RowToggle
-            icon="trophy-outline"
-            label="New challenges"
-            value={notifChallenges}
-            onValueChange={(v) => { setNotifChallenges(v); persistMeta('notif_challenges', v); }}
+            onValueChange={(v) => {
+              setNotifWorkouts(v);
+              if (user?.id) updateNotificationPreferences(user.id, {
+                daily_reminder: v, check_in_reminder: v, inactivity_nudge: v, streak_at_risk: v,
+              });
+            }}
           />
           <RowToggle
             icon="gift-outline"
             label="Reward alerts"
             value={notifRewards}
-            onValueChange={(v) => { setNotifRewards(v); persistMeta('notif_rewards', v); }}
+            onValueChange={(v) => {
+              setNotifRewards(v);
+              if (user?.id) updateNotificationPreferences(user.id, { reward_unlocked: v, points_milestone: v });
+            }}
           />
           <RowToggle
             icon="people-outline"
@@ -395,12 +392,6 @@ export default function SettingsScreen() {
             sublabel="Friends can see your workouts"
             value={shareActivity}
             onValueChange={(v) => { setShareActivity(v); persistMeta('share_activity', v); }}
-          />
-          <RowToggle
-            icon="podium-outline"
-            label="Show on leaderboard"
-            value={showOnLeaderboard}
-            onValueChange={(v) => { setShowOnLeaderboard(v); updateLeaderboardVisibility(v); }}
             isLast
           />
         </View>
@@ -484,16 +475,58 @@ function SectionLabel({ label }: { label: string }) {
   );
 }
 
+const BRAND_LOGOS: Partial<Record<HealthProviderId, string>> = {
+  'apple-health': 'https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/partner-logos/apple.png',
+  'fitbit':       'https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/partner-logos/fitbit.png',
+  'garmin':       'https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/partner-logos/garmin.png',
+  'whoop':        'https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/partner-logos/whoop.png',
+};
+
+const providerLogoStyles = StyleSheet.create({
+  wrap:    { backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
+  blue:    { backgroundColor: '#4285F4' },
+  samsung: { backgroundColor: '#1428A0' },
+});
+
+function ProviderLogo({ id, size = 22 }: { id: HealthProviderId; size?: number }) {
+  const logoUrl = BRAND_LOGOS[id];
+  if (logoUrl) {
+    return (
+      <View style={[providerLogoStyles.wrap, { width: size, height: size, borderRadius: size * 0.25 }]}>
+        <Image source={{ uri: logoUrl }} style={{ width: size * 0.75, height: size * 0.75 }} contentFit="contain" />
+      </View>
+    );
+  }
+  switch (id) {
+    case 'health-connect':
+      return (
+        <View style={[providerLogoStyles.wrap, providerLogoStyles.blue, { width: size, height: size, borderRadius: size * 0.25 }]}>
+          <MaterialCommunityIcons name="heart-pulse" size={size * 0.65} color="#fff" />
+        </View>
+      );
+    case 'samsung-health':
+      return (
+        <View style={[providerLogoStyles.wrap, providerLogoStyles.samsung, { width: size, height: size, borderRadius: size * 0.25 }]}>
+          <MaterialCommunityIcons name="heart" size={size * 0.65} color="#fff" />
+        </View>
+      );
+    default:
+      return null;
+  }
+}
+
 interface RowLinkProps {
-  icon: string;
+  icon?: string;
+  logoElement?: React.ReactNode;
   label: string;
+  sublabel?: string;
   value?: string;
   valueColor?: string;
   onPress: () => void;
   isLast?: boolean;
 }
 
-function RowLink({ icon, label, value, valueColor, onPress, isLast }: RowLinkProps) {
+function RowLink({ icon, logoElement, label, sublabel, value, valueColor, onPress, isLast }: RowLinkProps) {
   return (
     <Pressable
       style={({ pressed }) => [
@@ -503,8 +536,11 @@ function RowLink({ icon, label, value, valueColor, onPress, isLast }: RowLinkPro
       ]}
       onPress={onPress}
     >
-      <Ionicons name={icon as any} size={18} color={DIM} style={styles.rowIcon} />
-      <Text style={styles.rowLabel}>{label}</Text>
+      {logoElement ?? (icon ? <Ionicons name={icon as any} size={18} color={DIM} style={styles.rowIcon} /> : null)}
+      <View style={styles.rowTextBlock}>
+        <Text style={styles.rowLabel}>{label}</Text>
+        {sublabel ? <Text style={styles.rowSublabel}>{sublabel}</Text> : null}
+      </View>
       {value ? (
         <Text style={[styles.rowValue, valueColor ? { color: valueColor } : null]}>
           {value}
@@ -549,8 +585,9 @@ function HealthSourceCard({
         return (
           <RowLink
             key={row.meta.id}
-            icon={row.meta.native ? 'phone-portrait-outline' : 'watch-outline'}
+            logoElement={<ProviderLogo id={row.meta.id} size={22} />}
             label={row.meta.name}
+            sublabel={row.meta.id === 'health-connect' ? 'Pixel Watch, Galaxy Watch & more' : undefined}
             value={value}
             valueColor={valueColor}
             isLast={isLast}

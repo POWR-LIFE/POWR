@@ -18,6 +18,7 @@ import { ProBadge } from '@/components/ui/ProBadge';
 import { getLevelInfo } from '@/constants/levels';
 import { useAuth } from '@/context/AuthContext';
 import { useActivity } from '@/hooks/useActivity';
+import { useAchievements } from '@/hooks/useAchievements';
 import { usePoints } from '@/hooks/usePoints';
 import { useStreak } from '@/hooks/useStreak';
 import { fetchProfile, type Profile } from '@/lib/api/user';
@@ -61,17 +62,6 @@ function getStreakPill(streak: number) {
   return               { label: 'LEGENDARY',    dotColor: GOLD };
 }
 
-// ─── Achievements ─────────────────────────────────────────────────────────────
-
-const TEASER_ACHIEVEMENTS = [
-  { id: 'c1', code: '7D',  name: 'First Week',   earned: true,  colour: GOLD,      icon: 'flame' },
-  { id: 'm2', code: '5K',  name: '5K Club',      earned: true,  colour: GREEN,     icon: 'footsteps' },
-  { id: 'm5', code: 'GYM', name: 'POWR',      earned: true,  colour: GREEN,     icon: 'barbell' },
-  { id: 'c2', code: '30D', name: 'Month Strong', earned: false, colour: GOLD,      icon: 'calendar' },
-  { id: 'l1', code: 'AM',  name: 'Early Bird',   earned: true,  colour: '#38bdf8', icon: 'sunny' },
-  { id: 's1', code: 'TOP', name: 'Top 10%',      earned: false, colour: ORANGE,    icon: 'trophy' },
-];
-
 const TILE_GAP = 10;
 const TILE_W = Math.floor((SCREEN_W - 32 - TILE_GAP * 2) / 3);
 
@@ -85,6 +75,7 @@ export default function ProfileScreen() {
   const { totalEarned } = usePoints();
   const { currentStreak, longestStreak, multiplier } = useStreak();
   const { weekActiveDays, weeklyMetrics } = useActivity();
+  const { earned: earnedAchievements, locked: lockedAchievements, earnedCount, totalCount } = useAchievements(totalEarned);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [avatarError, setAvatarError] = useState(false);
   const [gallery, setGallery] = useState<GalleryPhoto[]>([]);
@@ -113,8 +104,13 @@ export default function ProfileScreen() {
   const { current: levelInfo, next: nextLevel, xpIntoLevel, xpForLevel } = getLevelInfo(totalEarned);
   const xpPct = Math.min(xpIntoLevel / xpForLevel, 1);
   const pill = levelInfo.pill;
-  const earnedCount = TEASER_ACHIEVEMENTS.filter(a => a.earned).length;
   const totalSessions = weeklyMetrics.sessionCount * 4; // rough lifetime approx
+
+  // Teaser: show up to 4 earned (highest rarity first) + 2 nearest locked
+  const teaserAchievements = [
+    ...earnedAchievements.slice(0, 4),
+    ...lockedAchievements.slice(0, 2),
+  ].slice(0, 6);
 
   const TICK_R = R + SW / 2 + 3;
   const todayIndex = new Date().getDay() === 0 ? 6 : new Date().getDay() - 1;
@@ -314,17 +310,17 @@ export default function ProfileScreen() {
         <View style={s.section}>
           <View style={s.sectionHeader}>
             <Text style={s.sectionTitle}>Achievements</Text>
-            <Pressable onPress={() => router.push({ pathname: '/(tabs)/league', params: { tab: 'journey' } })}>
-              <Text style={s.seeAll}>{earnedCount} earned · See all</Text>
+            <Pressable onPress={() => router.push('/achievements')}>
+              <Text style={s.seeAll}>{earnedCount} / {totalCount} · See all</Text>
             </Pressable>
           </View>
 
           <View style={s.achieveGrid}>
-            {TEASER_ACHIEVEMENTS.map((a) => (
+            {teaserAchievements.map((a) => (
               <Pressable
                 key={a.id}
                 style={[s.achieveTile, { width: TILE_W }, !a.earned && { opacity: 0.4 }]}
-                onPress={() => router.push({ pathname: '/(tabs)/league', params: { tab: 'journey' } })}
+                onPress={() => router.push('/achievements')}
               >
                 <View style={[s.achieveMedallion, {
                   borderColor: a.earned ? a.colour : 'rgba(255,255,255,0.10)',
