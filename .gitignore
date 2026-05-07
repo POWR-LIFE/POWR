@@ -51,3 +51,6 @@ app-example
 # Local agent state
 .claude/
 GoogleService-Info.plist
+scripts/import-gyms.js
+
+scripts/import-gyms.js

@@ -1,11 +1,13 @@
 import { useAuth } from '@/context/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { useEffect, useRef } from 'react';
-import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Animated, Easing, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 import GeometricBackground from '@/components/GeometricBackground';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { supabase } from '@/lib/supabase';
 
 const GOLD = '#E8D200';
 const BG = '#0d0d0d';
@@ -62,6 +64,9 @@ export default function OnboardingAchievementScreen() {
     const insets = useSafeAreaInsets();
     const { markOnboardingComplete } = useAuth();
     const params = useLocalSearchParams<{ streakDays?: string; totalSessions?: string; activeDays?: string }>();
+
+    const [showCodeInput, setShowCodeInput] = useState(false);
+    const [inviteCode, setInviteCode] = useState('');
 
     // Parse sync results from route params (0 = skipped / no data)
     const streakDays = parseInt(params.streakDays ?? '0', 10) || 0;
@@ -320,10 +325,41 @@ export default function OnboardingAchievementScreen() {
             {/* ── CTA ── */}
             <Animated.View style={[styles.bottom, { paddingBottom: insets.bottom + 28, opacity: buttonOpacity }]}>
                 <StepDots current={4} />
+                {/* Optional invite code entry */}
+                <Pressable
+                    onPress={() => setShowCodeInput(v => !v)}
+                    style={styles.codeToggle}
+                >
+                    <Text style={styles.codeToggleText}>Have an invite code?</Text>
+                    <Ionicons
+                        name={showCodeInput ? 'chevron-up' : 'chevron-down'}
+                        size={13}
+                        color="rgba(255,255,255,0.35)"
+                    />
+                </Pressable>
+                {showCodeInput && (
+                    <TextInput
+                        style={styles.codeInput}
+                        placeholder="Enter 8-character code"
+                        placeholderTextColor="rgba(255,255,255,0.25)"
+                        value={inviteCode}
+                        onChangeText={t => setInviteCode(t.toUpperCase())}
+                        autoCapitalize="characters"
+                        autoCorrect={false}
+                        maxLength={8}
+                    />
+                )}
                 <Pressable
                     style={({ pressed }) => [styles.primaryButton, pressed && { opacity: 0.86 }]}
                     onPress={async () => {
                         await markOnboardingComplete();
+                        // Process referral: manual code takes priority, else check deep-link capture
+                        const deepCode = await AsyncStorage.getItem('pending_referral_code').catch(() => null);
+                        const code = inviteCode.trim() || deepCode || null;
+                        if (code) {
+                            await supabase.rpc('process_referral', { p_referral_code: code });
+                            await AsyncStorage.removeItem('pending_referral_code').catch(() => {});
+                        }
                         router.replace('/(tabs)');
                     }}
                 >
@@ -451,6 +487,32 @@ const styles = StyleSheet.create({
     // CTA
     bottom: {
         paddingHorizontal: 24,
+    },
+    codeToggle: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 5,
+        marginBottom: 12,
+        opacity: 0.55,
+    },
+    codeToggleText: {
+        color: '#F2F2F2',
+        fontSize: 12,
+        letterSpacing: 0.3,
+    },
+    codeInput: {
+        height: 44,
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.12)',
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        color: '#F2F2F2',
+        fontSize: 15,
+        letterSpacing: 2,
+        textAlign: 'center',
+        marginBottom: 12,
+        paddingHorizontal: 16,
     },
     primaryButton: {
         height: 52,

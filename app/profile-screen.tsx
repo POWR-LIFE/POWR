@@ -6,6 +6,7 @@ import {
   Dimensions,
   Pressable,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   View,
@@ -103,6 +104,18 @@ export default function ProfileScreen() {
 
   const { current: levelInfo, next: nextLevel, xpIntoLevel, xpForLevel } = getLevelInfo(totalEarned);
   const xpPct = Math.min(xpIntoLevel / xpForLevel, 1);
+
+  const handleInvite = async () => {
+    const code = profile?.referral_code;
+    if (!code) return;
+    const url = `https://powr.life/?ref=${code}`;
+    const message = `Join me on POWR – the app that rewards you for every workout! 💪\n\nDownload the app and we both earn 200 POWR points free:\n${url}`;
+    try {
+      await Share.share({ message, url });
+    } catch (_) {
+      // user dismissed – no-op
+    }
+  };
   const pill = levelInfo.pill;
   const totalSessions = weeklyMetrics.sessionCount * 4; // rough lifetime approx
 
@@ -344,8 +357,9 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        {/* ── Invite Card ────────────────────────────────────── */}
-        <Pressable style={({ pressed }) => [s.glassCard, s.inviteCard, pressed && { opacity: 0.7 }]}>
+        {/* ── Invite Card — hidden until app store launch ──────── */}
+        {/* TODO: re-enable once published on App Store / Play Store
+        <Pressable onPress={handleInvite} style={({ pressed }) => [s.glassCard, s.inviteCard, pressed && { opacity: 0.7 }]}>
           <View style={s.inviteLeft}>
             <Ionicons name="gift-outline" size={20} color={GOLD} />
             <View style={s.inviteText}>
@@ -357,6 +371,7 @@ export default function ProfileScreen() {
             <Text style={s.inviteBtnText}>SHARE</Text>
           </View>
         </Pressable>
+        */}
 
         {/* ── Gallery (Pro only) ─────────────────────────────── */}
         {profile?.is_pro && gallery.length > 0 && (

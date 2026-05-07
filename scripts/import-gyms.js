@@ -36,6 +36,17 @@ const COL_ALIASES = {
   hours:   ['opening_hours', 'opening hours', 'hours', 'working_hours', 'business hours', 'schedule', 'times'],
 };
 
+// Per-day column headers (sheets may have separate columns for each day)
+const DAY_COL_ALIASES = {
+  mon: ['mon', 'monday'],
+  tue: ['tue', 'tuesday'],
+  wed: ['wed', 'wednesday'],
+  thu: ['thu', 'thursday'],
+  fri: ['fri', 'friday'],
+  sat: ['sat', 'saturday'],
+  sun: ['sun', 'sunday'],
+};
+
 function detectColumns(headers) {
   const normalised = headers.map(h => (h || '').toString().toLowerCase().trim());
   const map = {};
@@ -43,6 +54,13 @@ function detectColumns(headers) {
     const idx = normalised.findIndex(h => aliases.includes(h));
     if (idx !== -1) map[field] = idx;
   }
+  // Detect per-day columns
+  const dayColMap = {};
+  for (const [dayKey, aliases] of Object.entries(DAY_COL_ALIASES)) {
+    const idx = normalised.findIndex(h => aliases.includes(h));
+    if (idx !== -1) dayColMap[dayKey] = idx;
+  }
+  if (Object.keys(dayColMap).length > 0) map.dayCols = dayColMap;
   return map;
 }
 
@@ -175,20 +193,29 @@ const HEADERS = {
   apikey: SERVICE_ROLE_KEY,
   Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
   'Content-Type': 'application/json',
-  Prefer: 'resolution=ignore-duplicates,return=representation',
+  Prefer: 'resolution=merge-duplicates,return=representation',
 };
 
 async function fetchExistingCodes() {
-  const res = await fetch(
-    `${SUPABASE_URL}/rest/v1/partners?select=partner_code&category=eq.gym`,
-    { headers: HEADERS }
-  );
-  const rows = await res.json();
-  return new Set(rows.map(r => r.partner_code));
+  const allCodes = new Set();
+  const pageSize = 1000;
+  let offset = 0;
+  while (true) {
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/partners?select=partner_code&limit=${pageSize}&offset=${offset}`,
+      { headers: HEADERS }
+    );
+    const rows = await res.json();
+    if (!Array.isArray(rows) || rows.length === 0) break;
+    rows.forEach(r => allCodes.add(r.partner_code));
+    if (rows.length < pageSize) break;
+    offset += pageSize;
+  }
+  return allCodes;
 }
 
 async function insertBatch(rows) {
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/partners`, {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/partners?on_conflict=partner_code`, {
     method: 'POST',
     headers: HEADERS,
     body: JSON.stringify(rows),
@@ -202,12 +229,19 @@ async function insertBatch(rows) {
 
 async function main() {
   const args = process.argv.slice(2);
-  const dryRun = args.includes('--dry-run');
+  const dryRun   = args.includes('--dry-run');
+  const hoursOnly = args.includes('--hours-only');
   const filePath = args.find(a => !a.startsWith('--'));
 
   if (!filePath) {
-    console.error('Usage: node scripts/import-gyms.js <file.xlsx> [--dry-run]');
+    console.error('Usage: node scripts/import-gyms.js <file.xlsx> [--dry-run] [--hours-only]');
     process.exit(1);
+  }
+
+  if (hoursOnly) {
+    console.log(`\n[Hours-only] ${path.basename(filePath)}`);
+    await runHoursOnly(filePath);
+    return;
   }
 
   const wb = XLSX.readFile(path.resolve(filePath));
@@ -224,7 +258,13 @@ async function main() {
 
   console.log('\nDetected columns:');
   for (const [field, idx] of Object.entries(colMap)) {
-    console.log(`  ${field.padEnd(8)} → col ${idx} ("${headers[idx]}")`);
+    if (field === 'dayCols') {
+      for (const [day, i] of Object.entries(idx)) {
+        console.log(`  ${('hours:' + day).padEnd(12)} → col ${i} ("${headers[i]}")`);
+      }
+    } else {
+      console.log(`  ${field.padEnd(8)} → col ${idx} ("${headers[idx]}")`);
+    }
   }
 
   const required = ['name', 'lat', 'lng'];
@@ -254,13 +294,27 @@ async function main() {
     const address = colMap.address !== undefined ? normaliseStr(String(row[colMap.address] || '')) : '';
     const phone   = colMap.phone   !== undefined ? normaliseStr(String(row[colMap.phone]   || '')) || null : null;
     const website = colMap.website !== undefined ? normaliseStr(String(row[colMap.website] || '')) || null : null;
-    const hours   = colMap.hours   !== undefined ? parseOpeningHours(row[colMap.hours]) : null;
+
+    let hours = colMap.hours !== undefined ? parseOpeningHours(row[colMap.hours]) : null;
+    // If no combined hours column, try per-day columns (Mon, Tue, ... Sun)
+    if (!hours && colMap.dayCols) {
+      const assembled = {};
+      for (const [dayKey, colIdx] of Object.entries(colMap.dayCols)) {
+        const raw = row[colIdx];
+        if (!raw) continue;
+        const parsed = parseTimeRange(normaliseStr(String(raw)));
+        if (parsed) assembled[dayKey] = parsed;
+        else if (/open 24 hours/i.test(String(raw))) assembled[dayKey] = { open: '00:00', close: '23:59' };
+        else if (/closed/i.test(String(raw))) assembled[dayKey] = null;
+      }
+      if (Object.keys(assembled).length > 0) hours = assembled;
+    }
 
     partners.push({
       name,
       partner_code:   makeCode(name, usedCodes),
       category:       'gym',
-      active:         false,
+      active:         true,
       contact_phone:  phone,
       website,
       address,
@@ -289,6 +343,66 @@ async function main() {
   }
 
   console.log(`\nDone. ${inserted} inserted, ${ignored} skipped.`);
+}
+
+// ─── Hours-only update (backfill opening_hours by name match) ────────────────
+
+async function runHoursOnly(filePath) {
+  const wb = XLSX.readFile(path.resolve(filePath));
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+
+  if (rows.length < 2) { console.log('  No data rows — skipping'); return { found: 0, updated: 0 }; }
+
+  const headers = rows[0];
+  const colMap = detectColumns(headers);
+
+  const nameHours = [];
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i];
+    const name = normaliseStr(String(row[colMap.name] || ''));
+    if (!name) continue;
+
+    let hours = colMap.hours !== undefined ? parseOpeningHours(row[colMap.hours]) : null;
+    if (!hours && colMap.dayCols) {
+      const assembled = {};
+      for (const [dayKey, colIdx] of Object.entries(colMap.dayCols)) {
+        const raw = row[colIdx];
+        if (!raw) continue;
+        const s = normaliseStr(String(raw));
+        if (/open 24 hours/i.test(s)) assembled[dayKey] = { open: '00:00', close: '23:59' };
+        else if (/closed/i.test(s)) assembled[dayKey] = null;
+        else { const parsed = parseTimeRange(s); if (parsed) assembled[dayKey] = parsed; }
+      }
+      if (Object.keys(assembled).length > 0) hours = assembled;
+    }
+    if (hours) nameHours.push({ name, hours });
+  }
+
+  console.log(`  ${nameHours.length} rows with parseable hours`);
+  if (nameHours.length === 0) return { found: 0, updated: 0 };
+
+  // Patch 20 at a time concurrently — only update rows where opening_hours IS NULL
+  const PATCH_HEADERS = { ...HEADERS, Prefer: 'return=minimal' };
+  let updated = 0;
+  let errors  = 0;
+  const CONCURRENCY = 20;
+
+  for (let i = 0; i < nameHours.length; i += CONCURRENCY) {
+    const chunk = nameHours.slice(i, i + CONCURRENCY);
+    await Promise.all(chunk.map(async ({ name, hours }) => {
+      const nameEnc = encodeURIComponent(name);
+      const res = await fetch(
+        `${SUPABASE_URL}/rest/v1/partners?name=eq.${nameEnc}&opening_hours=is.null`,
+        { method: 'PATCH', headers: PATCH_HEADERS, body: JSON.stringify({ opening_hours: hours }) }
+      );
+      if (res.ok) updated++;
+      else { errors++; const t = await res.text(); console.error(`  PATCH failed for "${name}": ${res.status} ${t}`); }
+    }));
+    if ((i / CONCURRENCY) % 10 === 0) process.stdout.write(`  ${Math.min(i + CONCURRENCY, nameHours.length)}/${nameHours.length}\r`);
+  }
+  console.log(`  Updated ${updated}, errors ${errors}          `);
+  return { found: nameHours.length, updated, errors };
 }
 
 main().catch(err => {
