@@ -481,7 +481,13 @@ const TrainersEditor = ({ partnerId, toast }) => {
     );
 };
 
-function LogoUploadField({ value, uploading, onFile }) {
+const LOGO_BG_MODES = [
+    { id: 'dark',  label: 'Dark',  style: { background: '#1a1a1a' } },
+    { id: 'black', label: 'Black', style: { background: '#000000' } },
+    { id: 'white', label: 'White', style: { background: '#FFFFFF' } },
+];
+
+function LogoUploadField({ value, uploading, onFile, logoBg = 'dark', onBgChange }) {
     const fileRef = useRef(null);
     const [dragOver, setDragOver] = useState(false);
 
@@ -492,16 +498,35 @@ function LogoUploadField({ value, uploading, onFile }) {
         if (file) onFile(file);
     };
 
+    const activeBg = LOGO_BG_MODES.find(m => m.id === logoBg)?.style ?? {};
+
     return (
         <div>
-            <label className="block text-[10px] uppercase tracking-[0.4em] text-[#CCC] font-black mb-4">Logo Asset</label>
+            <div className="flex items-center justify-between mb-4">
+                <label className="block text-[10px] uppercase tracking-[0.4em] text-[#CCC] font-black">Logo Asset</label>
+                {value && !uploading && (
+                    <div className="flex items-center gap-1">
+                        {LOGO_BG_MODES.map(m => (
+                            <button
+                                key={m.id}
+                                type="button"
+                                title={`${m.label} background`}
+                                onClick={() => onBgChange?.(m.id)}
+                                className={`w-5 h-5 rounded-full border-2 transition-all ${logoBg === m.id ? 'border-[#E8D200] scale-110' : 'border-[#333] hover:border-[#555]'}`}
+                                style={m.style}
+                            />
+                        ))}
+                    </div>
+                )}
+            </div>
             <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) onFile(f); e.target.value = ''; }} />
             <div
                 onClick={() => !uploading && fileRef.current?.click()}
                 onDragOver={e => { e.preventDefault(); setDragOver(true); }}
                 onDragLeave={() => setDragOver(false)}
                 onDrop={handleDrop}
-                className={`relative w-full h-32 rounded-3xl border-2 border-dashed transition-all flex items-center justify-center gap-5 ${dragOver ? 'border-[#E8D200] bg-[#E8D200]/5' : 'border-[#222] bg-[#0A0A0A] hover:border-[#E8D200]/30'} ${uploading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                className={`relative w-full h-32 rounded-3xl border-2 border-dashed transition-all flex items-center justify-center gap-5 ${dragOver ? 'border-[#E8D200] bg-[#E8D200]/5' : 'border-[#222] hover:border-[#E8D200]/30'} ${uploading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                style={value && !uploading ? activeBg : undefined}
             >
                 {uploading ? (
                     <div className="flex items-center gap-3">
@@ -512,8 +537,8 @@ function LogoUploadField({ value, uploading, onFile }) {
                     <>
                         <img src={value} alt="logo preview" className="h-14 w-14 object-contain rounded-xl shrink-0" />
                         <div>
-                            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[#E8D200]">Logo Active</p>
-                            <p className="text-[10px] text-[#555] mt-1">Drop or click to replace</p>
+                            <p className={`text-[10px] font-black uppercase tracking-[0.3em] ${logoBg === 'white' ? 'text-[#111]' : 'text-[#E8D200]'}`}>Logo Active</p>
+                            <p className={`text-[10px] mt-1 ${logoBg === 'white' ? 'text-[#555]' : 'text-[#555]'}`}>Drop or click to replace</p>
                         </div>
                     </>
                 ) : (
@@ -575,7 +600,7 @@ function ImageUploadField({ label, value, uploading, onFile }) {
 }
 
 const CATEGORIES = ['gym', 'fashion', 'gear', 'nutrition', 'food', 'health'];
-const EMPTY_FORM = { name: '', partner_code: '', address: '', logo_url: '', image1_url: '', image2_url: '', category: 'gym', active: true, roles: ['earning_location'], locations: [], opening_hours: { ...DEFAULT_HOURS } };
+const EMPTY_FORM = { name: '', partner_code: '', address: '', logo_url: '', image1_url: '', image2_url: '', logo_bg: 'dark', category: 'gym', active: true, roles: ['earning_location'], locations: [], opening_hours: { ...DEFAULT_HOURS } };
 const toPartnerCode = (name) => name.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
 
 export default function PartnerManager() {
@@ -585,6 +610,7 @@ export default function PartnerManager() {
     const [search, setSearch] = useState('');
     const [filterCat, setFilterCat] = useState('all');
     const [filterStatus, setFilterStatus] = useState('all');
+    const [totalCount, setTotalCount] = useState(0);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingPartner, setEditingPartner] = useState(null);
     const [formData, setFormData] = useState(EMPTY_FORM);
@@ -635,23 +661,38 @@ export default function PartnerManager() {
     const handleImage1Upload = makeImageUploader('image1_url', setImage1Uploading);
     const handleImage2Upload = makeImageUploader('image2_url', setImage2Uploading);
 
-    useEffect(() => { fetchPartners(); }, []);
+    // Debounced server-side fetch — filters applied in Supabase, no 1000-row cap
+    const searchTimerRef = useRef(null);
+
+    useEffect(() => {
+        clearTimeout(searchTimerRef.current);
+        searchTimerRef.current = setTimeout(() => fetchPartners(), search ? 350 : 0);
+        return () => clearTimeout(searchTimerRef.current);
+    }, [search, filterCat, filterStatus, viewMode]);
 
     const fetchPartners = async () => {
         setLoading(true);
-        const { data, error } = await supabase.from('partners').select('*').order('created_at', { ascending: false });
+        let query = supabase
+            .from('partners')
+            .select('*', { count: 'exact' })
+            .order('name', { ascending: true });
+
+        if (search.trim()) query = query.ilike('name', `%${search.trim()}%`);
+        if (filterCat !== 'all') query = query.eq('category', filterCat);
+        if (filterStatus === 'active') query = query.eq('active', true);
+        if (filterStatus === 'inactive') query = query.eq('active', false);
+        if (viewMode === 'locations') query = query.contains('roles', ['earning_location']);
+        if (viewMode === 'brands') query = query.contains('roles', ['reward_provider']);
+
+        query = query.limit(500);
+
+        const { data, error, count } = await query;
         if (error) toast.error('Failed to load fleet');
-        else setPartners(data || []);
+        else { setPartners(data || []); setTotalCount(count ?? 0); }
         setLoading(false);
     };
 
-    const filtered = partners
-        .filter(p => viewMode === 'locations'
-            ? (p.roles || ['earning_location']).includes('earning_location')
-            : (p.roles || []).includes('reward_provider'))
-        .filter(p => !search || p.name.toLowerCase().includes(search.toLowerCase()))
-        .filter(p => filterCat === 'all' || p.category === filterCat)
-        .filter(p => filterStatus === 'all' || (filterStatus === 'active' ? p.active : !p.active));
+    const filtered = partners;
 
     const openCreate = () => {
         setEditingPartner(null);
@@ -673,11 +714,12 @@ export default function PartnerManager() {
             logo_url: partner.logo_url || '',
             image1_url: partner.image1_url || '',
             image2_url: partner.image2_url || '',
+            logo_bg: partner.logo_bg || 'dark',
             category: partner.category,
             active: partner.active,
             roles: partner.roles && partner.roles.length ? partner.roles : ['earning_location'],
             locations: partner.locations || [],
-            opening_hours: partner.opening_hours || { ...DEFAULT_HOURS },
+            opening_hours: partner.opening_hours ?? null,
         });
         setIsModalOpen(true);
     };
@@ -788,6 +830,11 @@ export default function PartnerManager() {
                         value={search}
                         onChange={e => setSearch(e.target.value)}
                     />
+                    {totalCount > 0 && (
+                        <span className="absolute right-6 top-1/2 -translate-y-1/2 text-[9px] font-black uppercase tracking-[0.3em] text-[#555]">
+                            {totalCount.toLocaleString()} results
+                        </span>
+                    )}
                 </div>
                 <div className="flex bg-[#0A0A0A] border border-[#151515] rounded-[2rem] p-2 gap-2 overflow-x-auto no-scrollbar">
                     <select
@@ -955,7 +1002,7 @@ export default function PartnerManager() {
                                                 {CATEGORIES.map(c => <option key={c} value={c}>{c.toUpperCase()}</option>)}
                                             </select>
                                         </div>
-                                        <LogoUploadField value={formData.logo_url} uploading={logoUploading} onFile={handleLogoUpload} />
+                                        <LogoUploadField value={formData.logo_url} logoBg={formData.logo_bg} onBgChange={bg => setFormData(prev => ({ ...prev, logo_bg: bg }))} uploading={logoUploading} onFile={handleLogoUpload} />
                                         <div className="p-8 bg-[#0A0A0A] border border-[#151515] rounded-[2rem] flex items-center gap-6">
                                             <button
                                                 type="button"
@@ -1007,7 +1054,7 @@ export default function PartnerManager() {
                                         </div>
                                     </div>
                                     <div className="space-y-8">
-                                        <LogoUploadField value={formData.logo_url} uploading={logoUploading} onFile={handleLogoUpload} />
+                                        <LogoUploadField value={formData.logo_url} logoBg={formData.logo_bg} onBgChange={bg => setFormData(prev => ({ ...prev, logo_bg: bg }))} uploading={logoUploading} onFile={handleLogoUpload} />
                                         <div className="p-8 bg-[#0A0A0A] border border-[#151515] rounded-[2rem]">
                                             <p className="text-[10px] uppercase tracking-[0.4em] text-[#555] font-black mb-2">No geofence required</p>
                                             <p className="text-[11px] text-[#444] font-black">Reward brands are linked to rewards directly — no location data needed.</p>

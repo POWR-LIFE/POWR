@@ -100,8 +100,8 @@ function getDistanceMiles(lat1: number, lon1: number, lat2: number, lon2: number
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-function formatHours(oh: OpeningHours | undefined): string {
-  if (!oh) return 'Hours not listed';
+function formatHours(oh: OpeningHours | undefined): string | null {
+  if (!oh) return null;
   const now = new Date();
   const todayKey = DAY_KEYS[now.getDay()];
   const todayHours = oh[todayKey];
@@ -768,12 +768,12 @@ export default function DiscoverScreen() {
 
                   {/* Logo + name + status */}
                   <View style={styles.modalHeroFooter}>
-                    <View style={styles.modalLogoCard}>
+                    <View style={[styles.modalLogoCard, { backgroundColor: selectedPartner.logoBg === 'white' ? '#FFFFFF' : selectedPartner.logoBg === 'black' ? '#000000' : 'rgba(20,20,20,0.85)' }]}>
                       {selectedPartner.logoUrl ? (
                         <Image source={{ uri: selectedPartner.logoUrl }} style={styles.modalLogoImg} contentFit="contain" />
                       ) : (
                         <Text
-                          style={[styles.modalLogoFallback, selectedPartner.logoLight && { color: '#1a1a1a' }]}
+                          style={[styles.modalLogoFallback, selectedPartner.logoBg === 'white' && { color: '#1a1a1a' }]}
                           numberOfLines={2}
                           adjustsFontSizeToFit
                         >
@@ -783,12 +783,7 @@ export default function DiscoverScreen() {
                     </View>
                     <View style={styles.modalHeroTitleWrap}>
                       <Text style={styles.modalPartnerName} numberOfLines={1} adjustsFontSizeToFit>{selectedPartner.name}</Text>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
-                        <View style={[styles.modalStatusDot, selectedPartner.isOpenNow ? styles.modalStatusOpen : styles.modalStatusClosed]} />
-                        <Text style={styles.modalHeroArea}>
-                          {selectedPartner.isOpenNow ? 'Open' : 'Closed'} · {selectedPartner.area}
-                        </Text>
-                      </View>
+                      <Text style={styles.modalHeroArea} numberOfLines={1}>{selectedPartner.area}</Text>
                     </View>
                   </View>
                 </View>
@@ -797,9 +792,17 @@ export default function DiscoverScreen() {
                 <View style={styles.infoRow}>
                   <View style={styles.infoDetails}>
                     <View style={styles.modalDetailItem}>
-                      <Ionicons name="time-outline" size={13} color={DIM} />
-                      <Text style={styles.modalDetailText}>{formatHours(selectedPartner.openingHours)}</Text>
+                      <View style={[styles.modalStatusDot, selectedPartner.isOpenNow ? styles.modalStatusOpen : styles.modalStatusClosed]} />
+                      <Text style={[styles.modalDetailText, { color: selectedPartner.isOpenNow ? '#4ade80' : '#f87171' }]}>
+                        {selectedPartner.isOpenNow ? 'Open now' : 'Closed'}
+                      </Text>
                     </View>
+                    {formatHours(selectedPartner.openingHours) !== null && (
+                      <View style={styles.modalDetailItem}>
+                        <Ionicons name="time-outline" size={13} color={DIM} />
+                        <Text style={styles.modalDetailText}>{formatHours(selectedPartner.openingHours)}</Text>
+                      </View>
+                    )}
                     <View style={styles.modalDetailItem}>
                       <Ionicons name="location-sharp" size={13} color={DIM} />
                       <Text style={styles.modalDetailText}>{selectedPartner.distance} · {selectedPartner.area}</Text>
@@ -1172,11 +1175,11 @@ function MapMarker({ partner, isActive }: { partner: Partner; isActive: boolean 
 
 function PartnerPin({ partner, isActive }: { partner: Partner; isActive?: boolean }) {
   return (
-    <View style={[styles.pinCircle, partner.logoLight && styles.pinCircleLight, isActive && styles.pinCircleActive]}>
+    <View style={[styles.pinCircle, isActive && styles.pinCircleActive, { backgroundColor: partner.logoBg === 'white' ? '#FFFFFF' : partner.logoBg === 'black' ? '#000000' : '#1a1a1a' }]}>
       {partner.logoUrl ? (
         <RNImage source={{ uri: partner.logoUrl }} style={styles.pinLogoImage} resizeMode="contain" />
       ) : (
-        <Text style={[styles.pinLogoFallback, partner.logoLight && { color: '#000' }]} numberOfLines={1}>
+        <Text style={[styles.pinLogoFallback, partner.logoBg === 'white' && { color: '#000' }]} numberOfLines={1}>
           {partner.logoText.split('\n')[0]}
         </Text>
       )}
@@ -1198,11 +1201,11 @@ function PartnerListRow({
       ]}
       onPress={onPress}
     >
-      <View style={[styles.logoBox, partner.logoLight && styles.logoBoxLight]}>
+      <View style={[styles.logoBox, { backgroundColor: partner.logoBg === 'white' ? '#FFFFFF' : partner.logoBg === 'black' ? '#000000' : '#1a1a1a' }]}>
         {partner.logoUrl ? (
           <Image source={{ uri: partner.logoUrl }} style={styles.logoImage} contentFit="contain" />
         ) : (
-          <Text style={[styles.logoText, partner.logoLight && styles.logoTextDark]} numberOfLines={2} adjustsFontSizeToFit>
+          <Text style={[styles.logoText, partner.logoBg === 'white' && styles.logoTextDark]} numberOfLines={2} adjustsFontSizeToFit>
             {partner.logoText}
           </Text>
         )}

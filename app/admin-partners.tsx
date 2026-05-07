@@ -51,6 +51,7 @@ interface PartnerRow {
   description: string | null;
   category: PartnerCategory;
   logo_url: string | null;
+  logo_bg: 'dark' | 'black' | 'white';
   active: boolean;
   opening_hours: OpeningHours | null;
   locations: Location[] | null;
@@ -72,6 +73,7 @@ const BLANK_PARTNER: Omit<PartnerRow, 'id' | 'created_at'> = {
   description: null,
   category: 'gym',
   logo_url: null,
+  logo_bg: 'dark',
   active: true,
   opening_hours: {
     mon: { open: '06:00', close: '22:00' },
@@ -119,7 +121,7 @@ export default function AdminPartnersScreen() {
   const fetchPartners = useCallback(async () => {
     const { data, error } = await supabase
       .from('partners')
-      .select('id, name, description, category, logo_url, active, opening_hours, locations, created_at')
+      .select('id, name, description, category, logo_url, logo_bg, active, opening_hours, locations, created_at')
       .order('name');
     if (!error && data) setPartners(data as PartnerRow[]);
   }, []);
@@ -204,6 +206,7 @@ export default function AdminPartnersScreen() {
         description:   editPartner.description || null,
         category:      editPartner.category,
         logo_url:      editPartner.logo_url || null,
+        logo_bg:       editPartner.logo_bg ?? 'dark',
         active:        editPartner.active ?? true,
         opening_hours: editPartner.opening_hours ?? null,
         locations:     editPartner.locations ?? null,
@@ -373,6 +376,42 @@ export default function AdminPartnersScreen() {
                   autoCapitalize="none"
                   keyboardType="url"
                 />
+
+                {/* Logo preview with background toggle */}
+                {!!editPartner.logo_url && (
+                  <View style={styles.logoPreviewCard}>
+                    <View style={styles.logoPreviewBgRow}>
+                      <Text style={styles.logoPreviewBgLabel}>LOGO BACKGROUND</Text>
+                      <View style={styles.logoPreviewSwatches}>
+                        {(['dark', 'black', 'white'] as const).map(mode => (
+                          <Pressable
+                            key={mode}
+                            onPress={() => setEditPartner(p => ({ ...p!, logo_bg: mode }))}
+                            style={[
+                              styles.logoBgSwatch,
+                              mode === 'dark'  && { backgroundColor: '#1a1a1a' },
+                              mode === 'black' && { backgroundColor: '#000000' },
+                              mode === 'white' && { backgroundColor: '#ffffff' },
+                              (editPartner.logo_bg ?? 'dark') === mode && styles.logoBgSwatchActive,
+                            ]}
+                          />
+                        ))}
+                      </View>
+                    </View>
+                    <View style={[
+                      styles.logoPreviewBox,
+                      (editPartner.logo_bg ?? 'dark') === 'dark'  && { backgroundColor: '#1a1a1a' },
+                      (editPartner.logo_bg ?? 'dark') === 'black' && { backgroundColor: '#000000' },
+                      (editPartner.logo_bg ?? 'dark') === 'white' && { backgroundColor: '#ffffff' },
+                    ]}>
+                      <Image
+                        source={{ uri: editPartner.logo_url }}
+                        style={styles.logoPreviewImg}
+                        contentFit="contain"
+                      />
+                    </View>
+                  </View>
+                )}
 
                 {/* Active toggle */}
                 <View style={styles.toggleRow}>
@@ -866,6 +905,32 @@ const styles = StyleSheet.create({
   },
   toggleLabel: { fontSize: 14, color: TEXT, fontWeight: '300' },
   toggleSub: { fontSize: 11, color: DIM, marginTop: 2 },
+
+  // Logo preview
+  logoPreviewCard: {
+    marginTop: 10, borderRadius: 12, overflow: 'hidden',
+    borderWidth: 1, borderColor: BORDER,
+  },
+  logoPreviewBgRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 12, paddingVertical: 8,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+  },
+  logoPreviewBgLabel: {
+    fontSize: 9, letterSpacing: 2, color: MUTED, fontWeight: '700',
+  },
+  logoPreviewSwatches: { flexDirection: 'row', gap: 8 },
+  logoBgSwatch: {
+    width: 20, height: 20, borderRadius: 10,
+    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.15)',
+  },
+  logoBgSwatchActive: {
+    borderColor: GOLD, transform: [{ scale: 1.2 }],
+  },
+  logoPreviewBox: {
+    height: 100, alignItems: 'center', justifyContent: 'center',
+  },
+  logoPreviewImg: { width: 140, height: 80 },
 
   // Opening hours
   hoursContainer: {
