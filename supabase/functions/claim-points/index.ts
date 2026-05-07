@@ -5,7 +5,7 @@ import { createClient } from '@supabase/supabase-js';
 // Types
 // ─────────────────────────────────────────────
 
-type ActivityType = 'walking' | 'running' | 'cycling' | 'swimming' | 'gym' | 'hiit' | 'sports' | 'yoga' | 'sleep';
+type ActivityType = 'walking' | 'running' | 'cycling' | 'swimming' | 'gym' | 'hiit' | 'sports' | 'yoga' | 'dance' | 'sleep';
 
 interface ClaimRequest {
   session_id: string;
@@ -48,6 +48,7 @@ const DAILY_CAPS: Record<ActivityType, number> = {
   hiit:     10,
   sports:   10,
   yoga:     6,
+  dance:    8,
   sleep:    5,
 };
 
@@ -109,6 +110,13 @@ function calcBasePoints(session: ActivitySession): number {
       if (mins >= 20) return 3;
       return 0;
 
+    case 'dance':
+      if (mins >= 60) return 8;
+      if (mins >= 45) return 7;
+      if (mins >= 30) return 6;
+      if (mins >= 20) return 5;
+      return 0;
+
     case 'sleep': {
       // Sleep is measured by duration_sec (total sleep time)
       const hours = mins / 60;
@@ -138,8 +146,8 @@ function calcStreakBonus(type: ActivityType, streak: number, base: number): numb
   // No streak bonus for walking or sleep
   if (type === 'walking' || type === 'sleep') return 0;
 
-  // Flat bonuses for running, cycling, swimming, hiit, yoga
-  const flatTypes: ActivityType[] = ['running', 'cycling', 'swimming', 'hiit', 'yoga'];
+  // Flat bonuses for running, cycling, swimming, hiit, yoga, dance
+  const flatTypes: ActivityType[] = ['running', 'cycling', 'swimming', 'hiit', 'yoga', 'dance'];
   if (!flatTypes.includes(type)) return 0;
 
   if (streak >= 7 && ['running', 'cycling', 'swimming'].includes(type)) {
@@ -346,16 +354,29 @@ Deno.serve(async (req) => {
   const cap = DAILY_CAPS[session.type as ActivityType];
   const earned = Math.min(base + streakBonus, cap);
 
-  // 9. Check how much already earned today for this type
-  const { data: todayEarned } = await supabase
-    .from('point_transactions')
-    .select('amount')
+  // 9. Check how much already earned today for THIS activity type specifically.
+  // point_transactions has no type column, so we resolve it via the session join.
+  const { data: todaySessions } = await supabase
+    .from('activity_sessions')
+    .select('id')
     .eq('user_id', user.id)
-    .eq('type', 'earn')
-    .gte('created_at', `${sessionDay}T00:00:00Z`)
-    .lte('created_at', `${sessionDay}T23:59:59Z`);
+    .eq('type', session.type)
+    .gte('started_at', `${sessionDay}T00:00:00Z`)
+    .lte('started_at', `${sessionDay}T23:59:59Z`);
 
-  const todayTotal = (todayEarned ?? []).reduce((sum: number, t: { amount: number }) => sum + t.amount, 0);
+  const todaySessionIds = (todaySessions ?? []).map((s: { id: string }) => s.id);
+
+  let todayTotal = 0;
+  if (todaySessionIds.length > 0) {
+    const { data: todayEarned } = await supabase
+      .from('point_transactions')
+      .select('amount')
+      .eq('user_id', user.id)
+      .eq('type', 'earn')
+      .in('session_id', todaySessionIds);
+    todayTotal = (todayEarned ?? []).reduce((sum: number, t: { amount: number }) => sum + t.amount, 0);
+  }
+
   const remaining = cap - todayTotal;
 
   if (remaining <= 0) {

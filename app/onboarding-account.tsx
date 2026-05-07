@@ -3,7 +3,7 @@ import { FontAwesome, Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Animated, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import GeometricBackground from '@/components/GeometricBackground';
 
@@ -56,11 +56,11 @@ type AuthOption = {
 };
 
 const AUTH_OPTIONS: AuthOption[] = [
-    {
+    ...(Platform.OS === 'ios' ? [{
         id: 'apple',
         label: 'Continue with Apple',
         icon: <FontAwesome name="apple" size={19} color="#F2F2F2" />,
-    },
+    }] : []),
     {
         id: 'google',
         label: 'Continue with Google',
@@ -76,7 +76,13 @@ const AUTH_OPTIONS: AuthOption[] = [
 export default function OnboardingAccountScreen() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
-    const { signInWithGoogle } = useAuth();
+    const { signInWithGoogle, signInWithApple, session } = useAuth();
+
+    useEffect(() => {
+        if (!session) return;
+        const onboardingComplete = session.user.user_metadata?.onboarding_complete;
+        router.replace(onboardingComplete ? '/(tabs)' : '/onboarding-permission');
+    }, [session]);
     const [loadingMethod, setLoadingMethod] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const canGoBack = router.canGoBack();
@@ -101,7 +107,12 @@ export default function OnboardingAccountScreen() {
 
     const handleAuth = async (method: string) => {
         setError(null);
-        if (method === 'google') {
+        if (method === 'apple') {
+            setLoadingMethod('apple');
+            const { error } = await signInWithApple();
+            setLoadingMethod(null);
+            if (error) { setError(error); return; }
+        } else if (method === 'google') {
             setLoadingMethod('google');
             const { error } = await signInWithGoogle();
             setLoadingMethod(null);
@@ -166,7 +177,7 @@ export default function OnboardingAccountScreen() {
                 >
                     {/* Social Row */}
                     <View style={styles.socialRow}>
-                        {AUTH_OPTIONS.slice(0, 2).map((opt) => (
+                        {AUTH_OPTIONS.filter(o => o.id !== 'email').map((opt) => (
                             <Pressable
                                 key={opt.id}
                                 style={({ pressed }) => [
@@ -207,11 +218,11 @@ export default function OnboardingAccountScreen() {
                         <View style={[styles.authIconWrap, styles.authIconAbsolute]}>
                             {loadingMethod === 'email'
                                 ? <ActivityIndicator color="#F2F2F2" size="small" />
-                                : AUTH_OPTIONS[2].icon
+                                : AUTH_OPTIONS.find(o => o.id === 'email')!.icon
                             }
                         </View>
                         <Text style={styles.authLabel}>
-                            {AUTH_OPTIONS[2].label}
+                            {AUTH_OPTIONS.find(o => o.id === 'email')!.label}
                         </Text>
                     </Pressable>
 

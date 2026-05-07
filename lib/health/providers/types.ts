@@ -12,7 +12,8 @@ export type HealthProviderId =
     | 'health-connect'
     | 'fitbit'
     | 'whoop'
-    | 'garmin';
+    | 'garmin'
+    | 'samsung-health';
 
 export type ConnectResult = 'connected' | 'pending' | 'failed';
 
@@ -31,6 +32,8 @@ export type HealthProviderMeta = {
     /** Backed by the OS health platform (HealthKit / Health Connect). */
     native: boolean;
     capabilities: HealthProviderCapability[];
+    /** Hidden from UI — integration exists in code but is not yet available to users. */
+    hidden?: boolean;
 };
 
 /**

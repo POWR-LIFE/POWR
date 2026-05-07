@@ -35,15 +35,15 @@ export const WALKING_SYNC_TASK = 'powr-walking-sync';
 async function getStepsTodayIOS(): Promise<number> {
     try {
         // eslint-disable-next-line @typescript-eslint/no-require-imports
-        const { default: AppleHealthKit } = require('react-native-health');
+        const HK = require('@kingstinct/react-native-healthkit') as typeof import('@kingstinct/react-native-healthkit');
         const midnight = new Date();
         midnight.setHours(0, 0, 0, 0);
-        return new Promise<number>((resolve) => {
-            AppleHealthKit.getStepCount(
-                { startDate: midnight.toISOString() },
-                (err: string, result: { value: number }) => resolve(err ? 0 : (result?.value ?? 0)),
-            );
+        const samples = await HK.queryQuantitySamples('HKQuantityTypeIdentifierStepCount', {
+            filter: { date: { startDate: midnight, endDate: new Date() } },
+            unit: 'count',
+            limit: -1,
         });
+        return samples.reduce((sum, s) => sum + s.quantity, 0);
     } catch {
         return 0;
     }

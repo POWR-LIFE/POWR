@@ -18,7 +18,7 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import MapViewDirections from 'react-native-maps-directions';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ProfileButton } from '@/components/ProfileButton';
@@ -71,6 +71,13 @@ type Category = 'All' | 'Gym' | 'Yoga' | 'Pilates' | 'Cycling' | 'Running';
 const CATEGORIES: Category[] = ['All', 'Gym', 'Yoga', 'Pilates', 'Cycling', 'Running'];
 
 type SortMode = 'nearest' | 'pts' | 'az';
+type RouteCoordinate = { latitude: number; longitude: number };
+type RouteStep = {
+  instruction: string;
+  distanceText: string;
+  durationText: string;
+  endCoordinate?: RouteCoordinate;
+};
 
 const DAY_KEYS: DayKey[] = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 
@@ -100,11 +107,42 @@ function formatHours(oh: OpeningHours | undefined): string {
   return `Today ${todayHours.open} – ${todayHours.close}`;
 }
 
+function formatRouteEta(totalMinutes: number): string {
+  const rounded = Math.max(1, Math.round(totalMinutes));
+  if (rounded < 60) return `${rounded} min`;
+  const hours = Math.floor(rounded / 60);
+  const mins = rounded % 60;
+  return mins === 0 ? `${hours} hr` : `${hours} hr ${mins} min`;
+}
+
+function stripHtmlInstructions(input: string): string {
+  return input
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&#39;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function getDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number) {
+  const R = 6371000;
+  const dLat = (lat2 - lat1) * (Math.PI / 180);
+  const dLon = (lon2 - lon1) * (Math.PI / 180);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function DiscoverScreen() {
   const insets = useSafeAreaInsets();
   const mapRef = useRef<MapView>(null);
+  const navMapRef = useRef<MapView>(null);
 
   const [locationGranted, setLocationGranted] = useState(false);
   const [userLoc, setUserLoc] = useState<Location.LocationObject | null>(null);
@@ -119,6 +157,13 @@ export default function DiscoverScreen() {
   const [search, setSearch] = useState('');
   const [selectedPartner, setSelectedPartner] = useState<Partner | null>(null);
   const [routePartner, setRoutePartner] = useState<Partner | null>(null);
+  const [routeSummary, setRouteSummary] = useState<{ distanceKm: number; durationMin: number } | null>(null);
+  const [routeCoordinates, setRouteCoordinates] = useState<RouteCoordinate[]>([]);
+  const [routeSteps, setRouteSteps] = useState<RouteStep[]>([]);
+  const [routeStepsVisible, setRouteStepsVisible] = useState(false);
+  const [routeStepsLoading, setRouteStepsLoading] = useState(false);
+  const [walkingNavVisible, setWalkingNavVisible] = useState(false);
+  const [isNavFollowing, setIsNavFollowing] = useState(true);
   const [filtersVisible, setFiltersVisible] = useState(false);
   const [sortMenuVisible, setSortMenuVisible] = useState(false);
 
@@ -231,6 +276,177 @@ export default function DiscoverScreen() {
     activeCategory !== 'All',
   ].filter(Boolean).length;
 
+  const fitMapToRoute = useCallback((coordinates: RouteCoordinate[]) => {
+    if (!mapRef.current || coordinates.length === 0) return;
+    mapRef.current.fitToCoordinates(coordinates, {
+      edgePadding: {
+        top: 88,
+        right: 64,
+        bottom: 88,
+        left: 64,
+      },
+      animated: true,
+    });
+  }, []);
+
+  const fitNavToOverview = useCallback(() => {
+    if (!navMapRef.current || !routePartner) return;
+    if (routeCoordinates.length > 0) {
+      navMapRef.current.fitToCoordinates(routeCoordinates, {
+        edgePadding: { top: 130, right: 54, bottom: 250, left: 54 },
+        animated: true,
+      });
+      return;
+    }
+    const start = userLoc
+      ? [{ latitude: userLoc.coords.latitude, longitude: userLoc.coords.longitude }]
+      : [];
+    const end = [{ latitude: routePartner.lat, longitude: routePartner.lng }];
+    navMapRef.current.fitToCoordinates([...start, ...end], {
+      edgePadding: { top: 130, right: 54, bottom: 250, left: 54 },
+      animated: true,
+    });
+  }, [routeCoordinates, routePartner, userLoc]);
+
+  useEffect(() => {
+    if (!routePartner || !userLoc || !process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY) {
+      setRouteSteps([]);
+      setRouteStepsLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    (async () => {
+      setRouteStepsLoading(true);
+      try {
+        const origin = `${userLoc.coords.latitude},${userLoc.coords.longitude}`;
+        const destination = `${routePartner.lat},${routePartner.lng}`;
+        const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&mode=walking&key=${process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY}`;
+        const response = await fetch(url);
+        const data = await response.json();
+
+        if (cancelled) return;
+
+        const leg = data?.routes?.[0]?.legs?.[0];
+        if (!leg) {
+          setRouteSteps([]);
+          return;
+        }
+
+        const steps = (leg.steps ?? []).map((step: any) => ({
+          instruction: stripHtmlInstructions(step.html_instructions ?? ''),
+          distanceText: step.distance?.text ?? '',
+          durationText: step.duration?.text ?? '',
+          endCoordinate: step.end_location
+            ? {
+                latitude: step.end_location.lat,
+                longitude: step.end_location.lng,
+              }
+            : undefined,
+        }));
+
+        setRouteSteps(steps);
+
+        if (!routeSummary && leg.distance?.value && leg.duration?.value) {
+          setRouteSummary({
+            distanceKm: leg.distance.value / 1000,
+            durationMin: leg.duration.value / 60,
+          });
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setRouteSteps([]);
+          console.error('Directions steps error:', error);
+        }
+      } finally {
+        if (!cancelled) setRouteStepsLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [routePartner, userLoc, routeSummary]);
+
+  const activeStepIndex = useMemo(() => {
+    if (!userLoc || routeSteps.length === 0) return 0;
+    for (let i = 0; i < routeSteps.length; i += 1) {
+      const end = routeSteps[i].endCoordinate;
+      if (!end) return i;
+      const meters = getDistanceMeters(
+        userLoc.coords.latitude,
+        userLoc.coords.longitude,
+        end.latitude,
+        end.longitude,
+      );
+      if (meters > 20) return i;
+    }
+    return routeSteps.length - 1;
+  }, [routeSteps, userLoc]);
+
+  const activeStep = routeSteps[activeStepIndex] ?? null;
+
+  useEffect(() => {
+    if (!walkingNavVisible || !locationGranted) return;
+
+    let isCancelled = false;
+    let subscription: Location.LocationSubscription | null = null;
+
+    (async () => {
+      try {
+        subscription = await Location.watchPositionAsync(
+          {
+            accuracy: Location.Accuracy.BestForNavigation,
+            timeInterval: 2000,
+            distanceInterval: 2,
+          },
+          (loc) => {
+            if (isCancelled) return;
+            setUserLoc(loc);
+            if (!isNavFollowing) return;
+            navMapRef.current?.animateCamera(
+              {
+                center: {
+                  latitude: loc.coords.latitude,
+                  longitude: loc.coords.longitude,
+                },
+                zoom: 17,
+                heading: loc.coords.heading && loc.coords.heading > 0 ? loc.coords.heading : 0,
+                pitch: 50,
+              },
+              { duration: 700 }
+            );
+          }
+        );
+      } catch {
+        // fallback to last known map state if tracking fails
+      }
+    })();
+
+    return () => {
+      isCancelled = true;
+      if (subscription) subscription.remove();
+    };
+  }, [walkingNavVisible, locationGranted, isNavFollowing]);
+
+  useEffect(() => {
+    if (!walkingNavVisible || !userLoc || !navMapRef.current) return;
+    setIsNavFollowing(true);
+    navMapRef.current.animateCamera(
+      {
+        center: {
+          latitude: userLoc.coords.latitude,
+          longitude: userLoc.coords.longitude,
+        },
+        zoom: 17,
+        heading: userLoc.coords.heading && userLoc.coords.heading > 0 ? userLoc.coords.heading : 0,
+        pitch: 50,
+      },
+      { duration: 450 }
+    );
+  }, [walkingNavVisible, userLoc]);
+
   return (
     <View style={styles.screen}>
       <GeometricBackground />
@@ -253,7 +469,14 @@ export default function DiscoverScreen() {
           showsTraffic={false}
           rotateEnabled={false}
           pitchEnabled={false}
-          onPress={() => setRoutePartner(null)}
+          onPress={() => {
+            setRoutePartner(null);
+            setRouteSummary(null);
+            setRouteCoordinates([]);
+            setRouteSteps([]);
+            setRouteStepsVisible(false);
+            setWalkingNavVisible(false);
+          }}
         >
           {filtered.map((partner) => (
             <React.Fragment key={partner.id}>
@@ -275,11 +498,22 @@ export default function DiscoverScreen() {
               origin={{ latitude: userLoc.coords.latitude, longitude: userLoc.coords.longitude }}
               destination={{ latitude: routePartner.lat, longitude: routePartner.lng }}
               apikey={process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY}
-              strokeWidth={4}
+              precision="high"
+              strokeWidth={5}
               strokeColor={GOLD}
               mode="WALKING"
               resetOnChange={false}
-              onError={(msg) => console.error('Directions error:', msg)}
+              onReady={(result: { coordinates: RouteCoordinate[]; distance: number; duration: number }) => {
+                setRouteSummary({ distanceKm: result.distance, durationMin: result.duration });
+                setRouteCoordinates(result.coordinates);
+                fitMapToRoute(result.coordinates);
+              }}
+              onError={(msg) => {
+                setRouteSummary(null);
+                setRouteCoordinates([]);
+                setRouteSteps([]);
+                console.error('Directions error:', msg);
+              }}
             />
           )}
         </MapView>
@@ -287,6 +521,41 @@ export default function DiscoverScreen() {
         <View style={{ position: 'absolute', top: insets.top + 12, right: 16 }}>
           <ProfileButton />
         </View>
+
+        {routePartner && (
+          <View style={styles.routeOverlay}>
+            <View style={styles.routeOverlayHeader}>
+              <Text style={styles.routeOverlayTitle} numberOfLines={1}>{routePartner.name}</Text>
+              <Text style={styles.routeOverlayMeta}>
+                {routeSummary
+                  ? `${formatRouteEta(routeSummary.durationMin)} • ${routeSummary.distanceKm.toFixed(1)} km`
+                  : 'Loading walking route...'}
+              </Text>
+            </View>
+            <View style={styles.routeOverlayActions}>
+              <Pressable
+                style={({ pressed }) => [styles.routeStartButton, pressed && styles.actionButtonPressed]}
+                onPress={() => setWalkingNavVisible(true)}
+              >
+                <Ionicons name="navigate" size={14} color="#0d0d0d" />
+                <Text style={styles.routeStartButtonText}>Start Walk</Text>
+              </Pressable>
+              <Pressable
+                style={({ pressed }) => [styles.routeClearButton, pressed && { opacity: 0.75 }]}
+                onPress={() => {
+                  setRoutePartner(null);
+                  setRouteSummary(null);
+                  setRouteCoordinates([]);
+                  setRouteSteps([]);
+                  setRouteStepsVisible(false);
+                  setWalkingNavVisible(false);
+                }}
+              >
+                <Text style={styles.routeClearButtonText}>Clear</Text>
+              </Pressable>
+            </View>
+          </View>
+        )}
       </View>
 
       {/* ── List + filters ───────────────────────────────────── */}
@@ -383,6 +652,11 @@ export default function DiscoverScreen() {
             isActive={partner.id === activeGeofence?.partnerId}
             onPress={() => {
               setRoutePartner(null);
+              setRouteSummary(null);
+              setRouteCoordinates([]);
+              setRouteSteps([]);
+              setRouteStepsVisible(false);
+              setWalkingNavVisible(false);
               mapRef.current?.animateCamera(
                 {
                   center: { latitude: partner.lat, longitude: partner.lng },
@@ -543,7 +817,16 @@ export default function DiscoverScreen() {
                   <Pressable
                     style={({ pressed }) => [styles.actionButton, pressed && styles.actionButtonPressed]}
                     onPress={() => {
+                      const start = userLoc
+                        ? [{ latitude: userLoc.coords.latitude, longitude: userLoc.coords.longitude }]
+                        : [];
+                      const end = [{ latitude: selectedPartner.lat, longitude: selectedPartner.lng }];
+                      fitMapToRoute([...start, ...end]);
+                      setRouteSummary(null);
+                      setRouteCoordinates([]);
+                      setRouteSteps([]);
                       setRoutePartner(selectedPartner);
+                      setWalkingNavVisible(true);
                       setSelectedPartner(null);
                     }}
                   >
@@ -553,6 +836,182 @@ export default function DiscoverScreen() {
                 </View>
               </ScrollView>
             )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* ── Full-screen walking nav ────────────────────────── */}
+      <Modal
+        visible={walkingNavVisible && !!routePartner}
+        animationType="slide"
+        onRequestClose={() => setWalkingNavVisible(false)}
+      >
+        <View style={styles.walkNavScreen}>
+          <MapView
+            ref={navMapRef}
+            style={StyleSheet.absoluteFillObject}
+            provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
+            customMapStyle={Platform.OS === 'android' ? DARK_MAP_STYLE : undefined}
+            userInterfaceStyle="dark"
+            initialRegion={DEFAULT_REGION}
+            showsUserLocation
+            followsUserLocation={false}
+            showsMyLocationButton={false}
+            showsCompass={false}
+            showsTraffic={false}
+            rotateEnabled
+            pitchEnabled
+            onPanDrag={() => setIsNavFollowing(false)}
+          >
+            {routePartner && (
+              <Marker
+                coordinate={{ latitude: routePartner.lat, longitude: routePartner.lng }}
+                title={routePartner.name}
+              >
+                <PartnerPin partner={routePartner} />
+              </Marker>
+            )}
+
+            {routeCoordinates.length > 1 && (
+              <Polyline
+                coordinates={routeCoordinates}
+                strokeColor={GOLD}
+                strokeWidth={6}
+                lineCap="round"
+                lineJoin="round"
+              />
+            )}
+          </MapView>
+
+          <View style={[styles.walkNavTopBar, { paddingTop: insets.top + 8 }]}> 
+            <Pressable
+              style={({ pressed }) => [styles.walkNavIconButton, pressed && { opacity: 0.8 }]}
+              onPress={() => setWalkingNavVisible(false)}
+            >
+              <Ionicons name="chevron-back" size={20} color={TEXT} />
+            </Pressable>
+            <View style={styles.walkNavSummary}>
+              <Text style={styles.walkNavTitle} numberOfLines={1}>{routePartner?.name ?? 'Route'}</Text>
+              <Text style={styles.walkNavMeta}>
+                {routeSummary
+                  ? `${formatRouteEta(routeSummary.durationMin)} • ${routeSummary.distanceKm.toFixed(1)} km walk`
+                  : 'Walking route'}
+              </Text>
+            </View>
+            <Pressable
+              style={({ pressed }) => [styles.walkNavIconButton, pressed && { opacity: 0.8 }]}
+              onPress={() => setRouteStepsVisible(true)}
+            >
+              <Ionicons name="list" size={18} color={TEXT} />
+            </Pressable>
+          </View>
+
+          {activeStep && (
+            <View style={[styles.nextStepCard, { top: insets.top + 64 }]}>
+              <Text style={styles.nextStepLabel}>Next</Text>
+              <Text style={styles.nextStepInstruction} numberOfLines={2}>{activeStep.instruction}</Text>
+              <Text style={styles.nextStepMeta}>{activeStep.distanceText} • {activeStep.durationText}</Text>
+            </View>
+          )}
+
+          <View style={[styles.walkNavBottomBar, { paddingBottom: Math.max(insets.bottom, 12) }]}> 
+            <Pressable
+              style={({ pressed }) => [styles.routeStartButton, pressed && styles.actionButtonPressed]}
+              onPress={() => {
+                if (!userLoc) return;
+                setIsNavFollowing(true);
+                navMapRef.current?.animateCamera(
+                  {
+                    center: {
+                      latitude: userLoc.coords.latitude,
+                      longitude: userLoc.coords.longitude,
+                    },
+                    zoom: 17,
+                    heading: userLoc.coords.heading && userLoc.coords.heading > 0 ? userLoc.coords.heading : 0,
+                    pitch: 50,
+                  },
+                  { duration: 500 }
+                );
+              }}
+            >
+              <Ionicons name="locate" size={14} color="#0d0d0d" />
+              <Text style={styles.routeStartButtonText}>Recenter</Text>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [styles.routeClearButton, pressed && { opacity: 0.75 }]}
+              onPress={() => {
+                setIsNavFollowing(false);
+                fitNavToOverview();
+              }}
+            >
+              <Text style={styles.routeClearButtonText}>Overview</Text>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [styles.routeClearButton, pressed && { opacity: 0.75 }]}
+              onPress={() => {
+                setWalkingNavVisible(false);
+                setRoutePartner(null);
+                setRouteSummary(null);
+                setRouteCoordinates([]);
+                setRouteSteps([]);
+                setRouteStepsVisible(false);
+              }}
+            >
+              <Text style={styles.routeClearButtonText}>End Route</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ── In-app directions steps ────────────────────────── */}
+      <Modal
+        visible={routeStepsVisible && !!routePartner}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setRouteStepsVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <Pressable style={StyleSheet.absoluteFillObject} onPress={() => setRouteStepsVisible(false)} />
+          <View style={[styles.stepsSheet, { paddingBottom: Math.max(insets.bottom, 24) }]}>
+            <View style={styles.modalHandle} />
+            <Text style={styles.sortTitle}>Walking Directions</Text>
+            {routePartner && (
+              <Text style={styles.stepsDestination} numberOfLines={1}>To {routePartner.name}</Text>
+            )}
+            <ScrollView
+              style={styles.stepsScroll}
+              contentContainerStyle={styles.stepsScrollContent}
+              showsVerticalScrollIndicator={false}
+              nestedScrollEnabled
+            >
+              {routeStepsLoading ? (
+                <Text style={styles.stepsLoadingText}>Loading route steps...</Text>
+              ) : routeSteps.length === 0 ? (
+                <Text style={styles.stepsLoadingText}>No detailed steps available yet.</Text>
+              ) : (
+                routeSteps.map((step, index) => (
+                  <View
+                    key={`${step.instruction}-${index}`}
+                    style={[styles.stepRow, index === activeStepIndex && styles.stepRowActive]}
+                  >
+                    <View style={styles.stepIndexBubble}>
+                      <Text style={styles.stepIndexText}>{index + 1}</Text>
+                    </View>
+                    <View style={styles.stepBody}>
+                      <Text style={styles.stepInstruction}>{step.instruction}</Text>
+                      <Text style={styles.stepMeta}>{step.distanceText} · {step.durationText}</Text>
+                    </View>
+                  </View>
+                ))
+              )}
+            </ScrollView>
+
+            <Pressable
+              style={[styles.actionButton, { marginTop: 12 }]}
+              onPress={() => setRouteStepsVisible(false)}
+            >
+              <Text style={styles.actionButtonText}>Done</Text>
+            </Pressable>
           </View>
         </View>
       </Modal>
@@ -713,7 +1172,6 @@ function PartnerListRow({
         <Text style={styles.partnerMeta} numberOfLines={1}>
           {isActive ? 'Session active' : partner.isOpenNow ? 'Open now' : 'Closed'} · {partner.area}
         </Text>
-        <Text style={styles.partnerValueInline}>+{partner.pts} pts per visit</Text>
       </View>
       <View style={styles.partnerRight}>
         <Text style={styles.partnerDistanceNum}>{partner.distance}</Text>
@@ -877,6 +1335,158 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: BG },
 
   mapContainer: { width: '100%', overflow: 'hidden' },
+
+  walkNavScreen: {
+    flex: 1,
+    backgroundColor: BG,
+  },
+  walkNavTopBar: {
+    position: 'absolute',
+    left: 12,
+    right: 12,
+    top: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  walkNavSummary: {
+    flex: 1,
+    backgroundColor: 'rgba(15,15,15,0.9)',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    gap: 2,
+  },
+  walkNavIconButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    backgroundColor: 'rgba(15,15,15,0.9)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  walkNavTitle: { fontSize: 13, fontWeight: '500', color: TEXT },
+  walkNavMeta: { fontSize: 11, fontWeight: '300', color: DIM },
+  walkNavBottomBar: {
+    position: 'absolute',
+    left: 12,
+    right: 12,
+    bottom: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  nextStepCard: {
+    position: 'absolute',
+    left: 12,
+    right: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.16)',
+    backgroundColor: 'rgba(10,10,10,0.9)',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 2,
+  },
+  nextStepLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: GOLD,
+    letterSpacing: 0.7,
+    textTransform: 'uppercase',
+  },
+  nextStepInstruction: { fontSize: 13, fontWeight: '500', color: TEXT, lineHeight: 18 },
+  nextStepMeta: { fontSize: 11, fontWeight: '300', color: DIM },
+
+  routeOverlay: {
+    position: 'absolute',
+    left: 12,
+    right: 12,
+    bottom: 12,
+    backgroundColor: 'rgba(15,15,15,0.92)',
+    borderColor: 'rgba(255,255,255,0.14)',
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  routeOverlayHeader: { flex: 1, gap: 2 },
+  routeOverlayTitle: { fontSize: 13, fontWeight: '500', color: TEXT },
+  routeOverlayMeta: { fontSize: 11, fontWeight: '300', color: DIM },
+  routeOverlayActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  routeStartButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    backgroundColor: GOLD,
+  },
+  routeStartButtonText: { fontSize: 12, fontWeight: '600', color: '#0d0d0d' },
+  routeClearButton: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  routeClearButtonText: { fontSize: 12, fontWeight: '500', color: TEXT },
+
+  stepsSheet: {
+    backgroundColor: '#121212',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    height: '72%',
+  },
+  stepsDestination: {
+    fontSize: 12,
+    fontWeight: '300',
+    color: DIM,
+    marginTop: -10,
+    marginBottom: 14,
+  },
+  stepsScroll: { flex: 1 },
+  stepsScrollContent: { gap: 10, paddingBottom: 8, flexGrow: 1 },
+  stepsLoadingText: { fontSize: 13, color: DIM, fontWeight: '300', paddingVertical: 12 },
+  stepRow: {
+    flexDirection: 'row',
+    gap: 10,
+    borderWidth: 1,
+    borderColor: BORDER,
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    backgroundColor: CARD_BG,
+  },
+  stepRowActive: {
+    borderColor: 'rgba(232,210,0,0.65)',
+    backgroundColor: 'rgba(232,210,0,0.10)',
+  },
+  stepIndexBubble: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: 'rgba(232,210,0,0.22)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 2,
+  },
+  stepIndexText: { fontSize: 11, fontWeight: '700', color: GOLD },
+  stepBody: { flex: 1, gap: 4 },
+  stepInstruction: { fontSize: 13, fontWeight: '400', color: TEXT, lineHeight: 18 },
+  stepMeta: { fontSize: 11, fontWeight: '300', color: DIM },
 
   pinCircle: {
     width: 36, height: 36, borderRadius: 18,
