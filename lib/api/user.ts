@@ -13,6 +13,7 @@ export type Profile = {
     is_pro: boolean;
     show_on_leaderboard: boolean;
     activity_preferences: string[];
+    referral_code: string | null;
 };
 
 export type PublicProfile = Pick<Profile,
@@ -25,7 +26,7 @@ export async function fetchProfile(): Promise<Profile | null> {
 
     const { data, error } = await supabase
         .from('profiles')
-        .select('id, username, display_name, avatar_url, cover_url, bio, level, is_pro, show_on_leaderboard, activity_preferences')
+        .select('id, username, display_name, avatar_url, cover_url, bio, level, is_pro, show_on_leaderboard, activity_preferences, referral_code')
         .eq('id', user.id)
         .single();
     if (error) return null;

@@ -4,6 +4,7 @@ import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
 import { router } from 'expo-router';
 import React, { createContext, useContext, useEffect, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { supabase } from '@/lib/supabase';
 
@@ -40,11 +41,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // so the tab fires the system deep link intent instead of closing with a URL.
         // openAuthSessionAsync therefore returns 'cancel' and never exchanges the code.
         // This listener catches the incoming deep link and exchanges the code directly.
+        const captureRef = (url: string) => {
+            const m = url.match(/[?&]ref=([A-Z0-9]{6,10})/i);
+            if (m) AsyncStorage.setItem('pending_referral_code', m[1].toUpperCase()).catch(() => {});
+        };
+
+        Linking.getInitialURL().then(url => { if (url) captureRef(url); }).catch(() => {});
+
         const linkingSubscription = Linking.addEventListener('url', async ({ url }) => {
             if (url.includes('code=')) {
                 const { error } = await supabase.auth.exchangeCodeForSession(url);
                 if (!error) await supabase.auth.signOut({ scope: 'others' });
             }
+            captureRef(url);
         });
 
         return () => {
