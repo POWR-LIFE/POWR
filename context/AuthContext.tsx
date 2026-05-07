@@ -36,7 +36,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setSession(session);
         });
 
-        return () => subscription.unsubscribe();
+        // On Android, Chrome Custom Tabs can't navigate to custom schemes (powr://),
+        // so the tab fires the system deep link intent instead of closing with a URL.
+        // openAuthSessionAsync therefore returns 'cancel' and never exchanges the code.
+        // This listener catches the incoming deep link and exchanges the code directly.
+        const linkingSubscription = Linking.addEventListener('url', async ({ url }) => {
+            if (url.includes('code=')) {
+                await supabase.auth.exchangeCodeForSession(url);
+            }
+        });
+
+        return () => {
+            subscription.unsubscribe();
+            linkingSubscription.remove();
+        };
     }, []);
 
     /**
