@@ -259,6 +259,45 @@ function haversineMetres(lat1: number, lon1: number, lat2: number, lon2: number)
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+// ─── Row formatter ────────────────────────────────────────────────────────────
+
+function formatPartnerRows(data: any[]): Partner[] {
+  const formatted: Partner[] = [];
+  data.forEach((p: any) => {
+    if (!p.locations) return;
+    const locs = Array.isArray(p.locations) ? p.locations : [p.locations];
+    locs.forEach((loc: any, idx: number) => {
+      const words = p.name.split(' ');
+      const logoText = words.length > 1
+        ? `${words[0]}\n${words[1]}`.toUpperCase()
+        : p.name.toUpperCase();
+      const oh: OpeningHours | undefined = p.opening_hours ?? undefined;
+      const openNow = checkIsOpenNow(oh);
+      formatted.push({
+        id:             `${p.id}-${idx}`,
+        name:           p.name,
+        description:    p.description ?? undefined,
+        category:       p.category.charAt(0).toUpperCase() + p.category.slice(1),
+        status:         openNow ? 'Open now' : 'Closed',
+        area:           loc.name || 'Local',
+        pts:            p.category.toLowerCase() === 'gym' ? 15 : 10,
+        distance:       '',
+        logoText:       logoText.length > 10 ? logoText.substring(0, 10) : logoText,
+        logoUrl:        p.logo_url,
+        logoLight:      p.category.toLowerCase() !== 'gym',
+        image1Url:      p.image1_url ?? undefined,
+        image2Url:      p.image2_url ?? undefined,
+        lat:            loc.lat,
+        lng:            loc.lng,
+        geofenceRadius: DEV_RADIUS_M[p.name] ?? loc.radius ?? 50,
+        openingHours:   oh,
+        isOpenNow:      openNow,
+      });
+    });
+  });
+  return formatted;
+}
+
 // ─── Context ──────────────────────────────────────────────────────────────────
 
 interface GeofenceContextValue {
@@ -310,41 +349,7 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
 
       if (!data) return;
 
-      const formatted: Partner[] = [];
-      data.forEach((p: any) => {
-        if (!p.locations) return;
-        const locs = Array.isArray(p.locations) ? p.locations : [p.locations];
-        locs.forEach((loc: any, idx: number) => {
-          const words = p.name.split(' ');
-          const logoText = words.length > 1
-            ? `${words[0]}\n${words[1]}`.toUpperCase()
-            : p.name.toUpperCase();
-          const oh: OpeningHours | undefined = p.opening_hours ?? undefined;
-          const openNow = checkIsOpenNow(oh);
-          formatted.push({
-            id:             `${p.id}-${idx}`,
-            name:           p.name,
-            description:    p.description ?? undefined,
-            category:       p.category.charAt(0).toUpperCase() + p.category.slice(1),
-            status:         openNow ? 'Open now' : 'Closed',
-            area:           loc.name || 'Local',
-            pts:            p.category.toLowerCase() === 'gym' ? 15 : 10,
-            distance:       '',
-            logoText:       logoText.length > 10 ? logoText.substring(0, 10) : logoText,
-            logoUrl:        p.logo_url,
-            logoLight:      p.category.toLowerCase() !== 'gym',
-            image1Url:      p.image1_url ?? undefined,
-            image2Url:      p.image2_url ?? undefined,
-            lat:            loc.lat,
-            lng:            loc.lng,
-            geofenceRadius: DEV_RADIUS_M[p.name] ?? loc.radius ?? 50,
-            openingHours:   oh,
-            isOpenNow:      openNow,
-          });
-        });
-      });
-
-      setPartners(formatted);
+      setPartners(formatPartnerRows(data));
     } finally {
       setLoading(false);
     }
@@ -483,4 +488,19 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
 
 export function useGeofenceContext(): GeofenceContextValue {
   return useContext(GeofenceContext);
+}
+
+// ─── Standalone name search (searches entire DB, not just nearby) ─────────────
+
+export async function searchPartners(query: string): Promise<Partner[]> {
+  const q = query.trim();
+  if (!q) return [];
+  const { data, error } = await supabase
+    .from('partners')
+    .select('id, name, description, category, locations, logo_url, image1_url, image2_url, opening_hours')
+    .eq('active', true)
+    .ilike('name', `%${q}%`)
+    .limit(200);
+  if (error || !data) return [];
+  return formatPartnerRows(data);
 }

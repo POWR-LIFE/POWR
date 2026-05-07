@@ -2,7 +2,9 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Image as RNImage,
+  KeyboardAvoidingView,
   LayoutAnimation,
   Linking,
   Modal,
@@ -23,7 +25,7 @@ import MapViewDirections from 'react-native-maps-directions';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ProfileButton } from '@/components/ProfileButton';
 import { useActiveGeofence } from '@/hooks/useActiveGeofence';
-import { useGeofenceContext, type Partner, type Trainer, type DayKey, type OpeningHours } from '@/context/GeofenceContext';
+import { useGeofenceContext, searchPartners, type Partner, type Trainer, type DayKey, type OpeningHours } from '@/context/GeofenceContext';
 import { supabase } from '@/lib/supabase';
 import { GeometricBackground } from '@/components/home/GeometricBackground';
 
@@ -155,6 +157,8 @@ export default function DiscoverScreen() {
 
   // UI state
   const [search, setSearch] = useState('');
+  const [searchResults, setSearchResults] = useState<Partner[] | null>(null); // null = use local list
+  const [searchLoading, setSearchLoading] = useState(false);
   const [selectedPartner, setSelectedPartner] = useState<Partner | null>(null);
   const [routePartner, setRoutePartner] = useState<Partner | null>(null);
   const [routeSummary, setRouteSummary] = useState<{ distanceKm: number; durationMin: number } | null>(null);
@@ -250,26 +254,46 @@ export default function DiscoverScreen() {
     })();
   }, []);
 
+  // Debounced DB search — fires when user types, bypasses the nearby-only local list
+  useEffect(() => {
+    const q = search.trim();
+    if (!q) {
+      setSearchResults(null);
+      setSearchLoading(false);
+      return;
+    }
+    setSearchLoading(true);
+    const timer = setTimeout(async () => {
+      const results = await searchPartners(q);
+      setSearchResults(results);
+      setSearchLoading(false);
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [search]);
+
   // Apply all filters
   const filtered = useMemo(() => {
-    let list = partners;
+    // When a search query is active, use server-side results (covers the whole DB)
+    let list = searchResults !== null ? searchResults : partners;
     if (activeCategory !== 'All') {
       list = list.filter(p => p.category.toLowerCase() === activeCategory.toLowerCase());
     }
     if (openNowFilter) {
       list = list.filter(p => p.isOpenNow);
     }
-    if (maxDistanceMi !== null && userLoc) {
+    if (maxDistanceMi !== null && userLoc && searchResults === null) {
+      // Distance filter only applies to the local nearby list; skip for search results
       list = list.filter(p => (p as any)._distMi <= maxDistanceMi);
     }
-    if (search.trim()) {
+    // Name filtering is handled server-side when searchResults is active
+    if (search.trim() && searchResults === null) {
       const q = search.trim().toLowerCase();
       list = list.filter(p =>
         p.name.toLowerCase().includes(q) || p.area.toLowerCase().includes(q) || p.category.toLowerCase().includes(q),
       );
     }
     return list;
-  }, [partners, activeCategory, openNowFilter, maxDistanceMi, search, userLoc]);
+  }, [partners, searchResults, activeCategory, openNowFilter, maxDistanceMi, search, userLoc]);
 
   const sortLabel = sortMode === 'nearest' ? 'Nearest' : sortMode === 'pts' ? 'Most Points' : 'A–Z';
 
@@ -567,78 +591,92 @@ export default function DiscoverScreen() {
       </View>
 
       {/* ── List + filters ───────────────────────────────────── */}
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 80 }]}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor="#E8D200"
-            colors={['#E8D200']}
-          />
-        }
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={0}
       >
-        {/* Filter chips */}
-        <View style={styles.filterRow}>
-          <FilterChip
-            label="Open Now"
-            active={openNowFilter}
-            onPress={() => setOpenNowFilter(v => !v)}
-          />
-          <Pressable
-            style={({ pressed }) => [styles.filterChip, pressed && { opacity: 0.75 }]}
-            onPress={() => setSortMenuVisible(true)}
-          >
-            <Text style={styles.filterChipText}>{sortLabel}</Text>
-            <Text style={styles.filterChipTrailing}>▾</Text>
-          </Pressable>
-          <FilterChip
-            label="Filters"
-            active={activeFilterCount > 0}
-            onPress={() => setFiltersVisible(true)}
-            icon="options-outline"
-            badge={activeFilterCount > 0 ? activeFilterCount : undefined}
-          />
+        {/* ── Sticky header: filters + search + tabs ─────────── */}
+        <View style={styles.listHeader}>
+          {/* Filter chips */}
+          <View style={styles.filterRow}>
+            <FilterChip
+              label="Open Now"
+              active={openNowFilter}
+              onPress={() => setOpenNowFilter(v => !v)}
+            />
+            <Pressable
+              style={({ pressed }) => [styles.filterChip, pressed && { opacity: 0.75 }]}
+              onPress={() => setSortMenuVisible(true)}
+            >
+              <Text style={styles.filterChipText}>{sortLabel}</Text>
+              <Text style={styles.filterChipTrailing}>▾</Text>
+            </Pressable>
+            <FilterChip
+              label="Filters"
+              active={activeFilterCount > 0}
+              onPress={() => setFiltersVisible(true)}
+              icon="options-outline"
+              badge={activeFilterCount > 0 ? activeFilterCount : undefined}
+            />
+          </View>
+
+          {/* Search bar */}
+          <View style={styles.searchBar}>
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search gyms, classes..."
+              placeholderTextColor={MUTED}
+              value={search}
+              onChangeText={setSearch}
+              autoCorrect={false}
+              autoCapitalize="none"
+              clearButtonMode="while-editing"
+            />
+            {searchLoading
+              ? <ActivityIndicator size="small" color={MUTED} />
+              : <Ionicons name="search-outline" size={16} color={MUTED} />}
+          </View>
+
+          <View style={styles.catTabBar}>
+            {CATEGORIES.map((cat) => {
+              const active = cat === activeCategory;
+              return (
+                <Pressable
+                  key={cat}
+                  style={styles.catTab}
+                  onPress={() => setActiveCategory(cat)}
+                >
+                  <Text style={[styles.catTabLabel, active && styles.catTabLabelActive]}>
+                    {cat.toUpperCase()}
+                  </Text>
+                  {active && <View style={styles.catTabIndicator} />}
+                </Pressable>
+              );
+            })}
+          </View>
+
+          <Text style={styles.sectionLabel}>
+            {filtered.length} PARTNER{filtered.length !== 1 ? 'S' : ''} · {sortLabel.toUpperCase()}
+          </Text>
         </View>
 
-        {/* Search bar */}
-        <View style={styles.searchBar}>
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search gyms, classes..."
-            placeholderTextColor={MUTED}
-            value={search}
-            onChangeText={setSearch}
-          />
-          <Ionicons name="search-outline" size={16} color={MUTED} />
-        </View>
-
-        <View style={styles.catTabBar}>
-          {CATEGORIES.map((cat) => {
-            const active = cat === activeCategory;
-            return (
-              <Pressable
-                key={cat}
-                style={styles.catTab}
-                onPress={() => setActiveCategory(cat)}
-              >
-                <Text style={[styles.catTabLabel, active && styles.catTabLabelActive]}>
-                  {cat.toUpperCase()}
-                </Text>
-                {active && <View style={styles.catTabIndicator} />}
-              </Pressable>
-            );
-          })}
-        </View>
-
-        <Text style={styles.sectionLabel}>
-          {filtered.length} PARTNER{filtered.length !== 1 ? 'S' : ''} · {sortLabel.toUpperCase()}
-        </Text>
-
-        {filtered.length === 0 && (
+        {/* ── Scrollable list ─────────────────────────────────── */}
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 80 }]}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor="#E8D200"
+              colors={['#E8D200']}
+            />
+          }
+        >
+          {filtered.length === 0 && (
           <View style={styles.emptyState}>
             <Ionicons name="search-outline" size={32} color={MUTED} />
             <Text style={styles.emptyText}>No partners match your filters</Text>
@@ -651,7 +689,7 @@ export default function DiscoverScreen() {
               <Text style={styles.emptyReset}>Clear filters</Text>
             </Pressable>
           </View>
-        )}
+          )}
 
         {filtered.map((partner) => (
           <PartnerListRow
@@ -689,6 +727,7 @@ export default function DiscoverScreen() {
           </View>
         </View>
       </ScrollView>
+      </KeyboardAvoidingView>
 
       {/* ── Partner detail modal ─────────────────────────────── */}
       <Modal
@@ -717,26 +756,8 @@ export default function DiscoverScreen() {
                 bounces
                 contentContainerStyle={{ paddingBottom: 8 }}
               >
-                {/* Full-bleed hero */}
-                <View style={styles.modalHero}>
-                  {selectedPartner.image1Url ? (
-                    <Image source={{ uri: selectedPartner.image1Url }} style={StyleSheet.absoluteFillObject} contentFit="cover" />
-                  ) : selectedPartner.image2Url ? (
-                    <Image source={{ uri: selectedPartner.image2Url }} style={StyleSheet.absoluteFillObject} contentFit="cover" />
-                  ) : (
-                    <View style={styles.modalHeroPlaceholder}>
-                      <Ionicons name="fitness-outline" size={40} color="rgba(255,255,255,0.08)" />
-                    </View>
-                  )}
-
-                  {/* Top-to-bottom fade for legibility */}
-                  <LinearGradient
-                    colors={['rgba(18,18,18,0.55)', 'rgba(18,18,18,0)', 'rgba(18,18,18,0.95)']}
-                    locations={[0, 0.35, 1]}
-                    style={StyleSheet.absoluteFillObject}
-                    pointerEvents="none"
-                  />
-
+                {/* Compact header — hero cover hidden until all gyms have images */}
+                <View style={styles.modalCompactHeader}>
                   {/* Handle */}
                   <View style={styles.modalHeroHandle} />
 
@@ -745,15 +766,7 @@ export default function DiscoverScreen() {
                     <Ionicons name="close" size={18} color="rgba(255,255,255,0.9)" />
                   </Pressable>
 
-                  {/* Category badge top-left */}
-                  <View style={styles.modalHeroBadge}>
-                    <View style={[styles.modalStatusDot, selectedPartner.isOpenNow ? styles.modalStatusOpen : styles.modalStatusClosed]} />
-                    <Text style={styles.modalHeroBadgeText}>
-                      {selectedPartner.isOpenNow ? 'Open' : 'Closed'} · {selectedPartner.category}
-                    </Text>
-                  </View>
-
-                  {/* Overlay: logo + name pinned to bottom of hero */}
+                  {/* Logo + name + status */}
                   <View style={styles.modalHeroFooter}>
                     <View style={styles.modalLogoCard}>
                       {selectedPartner.logoUrl ? (
@@ -770,7 +783,12 @@ export default function DiscoverScreen() {
                     </View>
                     <View style={styles.modalHeroTitleWrap}>
                       <Text style={styles.modalPartnerName} numberOfLines={1} adjustsFontSizeToFit>{selectedPartner.name}</Text>
-                      <Text style={styles.modalHeroArea} numberOfLines={1}>{selectedPartner.area}</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                        <View style={[styles.modalStatusDot, selectedPartner.isOpenNow ? styles.modalStatusOpen : styles.modalStatusClosed]} />
+                        <Text style={styles.modalHeroArea}>
+                          {selectedPartner.isOpenNow ? 'Open' : 'Closed'} · {selectedPartner.area}
+                        </Text>
+                      </View>
                     </View>
                   </View>
                 </View>
@@ -1526,7 +1544,17 @@ const styles = StyleSheet.create({
   pinLogoFallback: { fontSize: 8, fontWeight: '700', color: '#fff', textAlign: 'center' },
 
   scroll: { flex: 1 },
-  content: { paddingHorizontal: 12, gap: 10, paddingTop: 14 },
+  content: { paddingHorizontal: 12, gap: 10, paddingTop: 10 },
+
+  listHeader: {
+    backgroundColor: BG,
+    paddingHorizontal: 12,
+    paddingTop: 14,
+    paddingBottom: 6,
+    gap: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(255,255,255,0.06)',
+  },
 
   filterRow: { flexDirection: 'row', gap: 8 },
   filterChip: {
@@ -1555,8 +1583,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255,255,255,0.07)',
-    marginTop: 4,
-    marginBottom: 8,
+    marginBottom: 0,
   },
   catTab: {
     flex: 1,
@@ -1673,6 +1700,11 @@ const styles = StyleSheet.create({
     width: 32, height: 32, borderRadius: 16,
     backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center',
   },
+  modalCompactHeader: {
+    paddingTop: 20, paddingHorizontal: 16, paddingBottom: 16,
+    borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    position: 'relative',
+  },
   modalHeroBadge: {
     position: 'absolute', top: 18, left: 16,
     flexDirection: 'row', alignItems: 'center', gap: 6,
@@ -1681,8 +1713,8 @@ const styles = StyleSheet.create({
   },
   modalHeroBadgeText: { fontSize: 11, color: TEXT, fontWeight: '400', letterSpacing: 0.3 },
   modalHeroFooter: {
-    position: 'absolute', left: 16, right: 16, bottom: 14,
-    flexDirection: 'row', alignItems: 'flex-end', gap: 12,
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    marginTop: 28,
   },
   modalHeroTitleWrap: { flex: 1, gap: 2, paddingBottom: 4 },
   modalHeroArea: { fontSize: 12, color: 'rgba(255,255,255,0.7)', fontWeight: '300' },
