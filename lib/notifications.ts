@@ -17,7 +17,8 @@ export type NotificationType =
   | 'check_in_reminder'
   | 'points_milestone'
   | 'inactivity_nudge'
-  | 'session_completed';
+  | 'session_completed'
+  | 'sleep_target_met';
 
 export interface NotificationPayload {
   type: NotificationType;
@@ -378,6 +379,24 @@ export async function scheduleInactivityNudge(daysInactive: number) {
       type: Notifications.SchedulableTriggerInputTypes.DATE,
       date: fireAt,
     },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Sleep target reached — fired immediately after a wearable sleep sync
+// ---------------------------------------------------------------------------
+
+export async function notifySleepTargetMet(hours: number, points: number) {
+  await Notifications.scheduleNotificationAsync({
+    identifier: `powr-sleep_target_met-${Date.now()}`,
+    content: {
+      title: "Sleep goal reached 🌙",
+      body: `${hours.toFixed(1)}h of sleep earned you ${points} POWR point${points !== 1 ? 's' : ''}.`,
+      data: { type: 'sleep_target_met', route: '/(tabs)/index' } satisfies NotificationPayload,
+      sound: 'default',
+      ...(Platform.OS === 'android' && { channelId: CHANNEL_DEFAULT }),
+    },
+    trigger: null, // immediate
   });
 }
 

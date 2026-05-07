@@ -10,7 +10,8 @@ type NotificationType =
   | 'reward_unlocked'
   | 'check_in_reminder'
   | 'points_milestone'
-  | 'inactivity_nudge';
+  | 'inactivity_nudge'
+  | 'sleep_target_met';
 
 interface RequestBody {
   target_user_id: string;
@@ -119,6 +120,18 @@ function buildMessage(
           body: bodies[days] ?? "Log any activity today and start your next streak.",
           data: { type, route: '/(tabs)/index' },
           sound: 'default',
+        };
+      }
+
+      case 'sleep_target_met': {
+        const hours = (payload.hours as number) ?? 0;
+        const points = (payload.points as number) ?? 0;
+        return {
+          title: "Sleep goal reached 🌙",
+          body: `${hours.toFixed(1)}h of sleep earned you ${points} POWR point${points !== 1 ? 's' : ''}.`,
+          data: { type, route: '/(tabs)/index' },
+          sound: 'default',
+          channelId: 'powr_default_v2',
         };
       }
     }

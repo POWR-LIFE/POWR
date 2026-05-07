@@ -49,6 +49,7 @@ export interface NotificationPreferences {
   check_in_reminder: boolean;
   points_milestone: boolean;
   inactivity_nudge: boolean;
+  sleep_target_met: boolean;
 }
 
 export const DEFAULT_PREFERENCES: NotificationPreferences = {
@@ -61,6 +62,7 @@ export const DEFAULT_PREFERENCES: NotificationPreferences = {
   check_in_reminder: true,
   points_milestone: true,
   inactivity_nudge: true,
+  sleep_target_met: true,
 };
 
 export async function getNotificationPreferences(
@@ -85,6 +87,7 @@ export async function getNotificationPreferences(
     check_in_reminder: data.check_in_reminder ?? true,
     points_milestone: data.points_milestone ?? true,
     inactivity_nudge: data.inactivity_nudge ?? true,
+    sleep_target_met: data.sleep_target_met ?? true,
   };
 }
 

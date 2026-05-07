@@ -10,13 +10,27 @@ const TEXT   = '#F2F2F2';
 const MUTED  = 'rgba(255,255,255,0.25)';
 const DIM    = 'rgba(255,255,255,0.45)';
 
-function sleepPoints(hours: number): number {
-    if (hours >= 8) return 5;
-    if (hours >= 7) return 4;
-    if (hours >= 6) return 3;
-    if (hours >= 5) return 2;
-    if (hours >= 4) return 1;
-    return 0;
+function sleepPoints(hours: number, deepHours?: number, remHours?: number): number {
+    let base = 0;
+    if (hours >= 8) base = 5;
+    else if (hours >= 7) base = 4;
+    else if (hours >= 6) base = 3;
+    else if (hours >= 5) base = 2;
+    else if (hours >= 3) base = 1;
+
+    if (base === 0) return 0;
+
+    if (deepHours !== undefined && remHours !== undefined) {
+        const restorativeRatio = (deepHours + remHours) / hours;
+        const multiplier =
+            restorativeRatio >= 0.35 ? 1.0 :
+            restorativeRatio >= 0.25 ? 0.85 :
+            restorativeRatio >= 0.15 ? 0.70 :
+            0.60;
+        return Math.max(1, Math.round(base * multiplier));
+    }
+
+    return base;
 }
 
 interface Props {
@@ -53,7 +67,7 @@ export function SleepProgressCard({ sleep, loading }: Props) {
         );
     }
 
-    const pts = sleepPoints(sleep.durationHours);
+    const pts = sleepPoints(sleep.durationHours, sleep.deepHours, sleep.remHours);
     const hasStages = (sleep.deepHours ?? 0) + (sleep.remHours ?? 0) > 0;
 
     // Progress bar: 0–9h, ideal target is 8h
