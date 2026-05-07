@@ -1,6 +1,6 @@
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
-import { Platform } from 'react-native';
+import { Platform, NativeModules } from 'react-native';
 const CHANNEL_DEFAULT = 'powr_default_v2';
 const CHANNEL_STREAK = 'powr_streak_v2';
 const CHANNEL_REWARDS = 'powr_rewards_v2';
@@ -32,16 +32,12 @@ export interface NotificationPayload {
 // Must be registered outside of any React component (module-level)
 // ---------------------------------------------------------------------------
 
-if (Platform.OS === 'android' || Platform.OS === 'ios') {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const messaging = require('@react-native-firebase/messaging').default;
-    messaging().setBackgroundMessageHandler(async (_remoteMessage: unknown) => {
-      // Background FCM messages are handled silently by the system.
-    });
-  } catch {
-    // Native Firebase module not available (e.g. running in Expo Go or pre-build)
-  }
+if ((Platform.OS === 'android' || Platform.OS === 'ios') && NativeModules.RNFBAppModule) {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const messaging = require('@react-native-firebase/messaging').default;
+  messaging().setBackgroundMessageHandler(async (_remoteMessage: unknown) => {
+    // Background FCM messages are handled silently by the system.
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -127,7 +123,7 @@ export async function requestPermissionsAndGetToken(): Promise<PushRegistration 
 
   // Get the raw FCM token via Firebase Messaging (Android) or fallback
   let deviceToken: string | null = null;
-  if (Platform.OS === 'android') {
+  if (Platform.OS === 'android' && NativeModules.RNFBAppModule) {
     try {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const messaging = require('@react-native-firebase/messaging').default;

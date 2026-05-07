@@ -284,21 +284,31 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      // Try full schema; fall back if opening_hours/description columns don't exist yet
-      let fetchResult: { data: any[] | null; error: any } = await supabase
-        .from('partners')
-        .select('id, name, description, category, locations, logo_url, image1_url, image2_url, opening_hours')
-        .eq('active', true);
+      // Get last-known position quickly (no GPS warmup) to filter partners by proximity.
+      // Falls back to fetching all active partners if location is unavailable.
+      let data: any[] | null = null;
 
-      if (fetchResult.error) {
-        fetchResult = await supabase
-          .from('partners')
-          .select('id, name, category, locations, logo_url')
-          .eq('active', true);
+      const pos = await Location.getLastKnownPositionAsync().catch(() => null);
+      if (pos) {
+        const { data: rpcData, error: rpcError } = await supabase.rpc('nearby_partners', {
+          user_lat:   pos.coords.latitude,
+          user_lng:   pos.coords.longitude,
+          radius_deg: 0.15, // ~15 km bounding box
+        });
+        if (!rpcError) data = rpcData;
       }
 
-      const { data, error } = fetchResult;
-      if (error || !data) return;
+      // Fallback: fetch all if no location or RPC failed
+      if (!data) {
+        const { data: allData, error } = await supabase
+          .from('partners')
+          .select('id, name, description, category, locations, logo_url, image1_url, image2_url, opening_hours')
+          .eq('active', true);
+        if (error || !allData) return;
+        data = allData;
+      }
+
+      if (!data) return;
 
       const formatted: Partner[] = [];
       data.forEach((p: any) => {
@@ -367,7 +377,18 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
       partners.forEach(p => { partnerMap[p.id] = p.name; });
       await AsyncStorage.setItem(PARTNER_MAP_KEY, JSON.stringify(partnerMap));
 
-      const regions: Location.LocationRegion[] = partners.map(p => ({
+      // iOS allows max 20 geofence regions; Android allows 100.
+      // Sort by distance from current position and monitor only the 50 nearest.
+      const MAX_REGIONS = 50;
+      const userPos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Low });
+      const nearby = [...partners]
+        .sort((a, b) =>
+          haversineMetres(userPos.coords.latitude, userPos.coords.longitude, a.lat, a.lng) -
+          haversineMetres(userPos.coords.latitude, userPos.coords.longitude, b.lat, b.lng)
+        )
+        .slice(0, MAX_REGIONS);
+
+      const regions: Location.LocationRegion[] = nearby.map(p => ({
         identifier:    p.id,
         latitude:      p.lat,
         longitude:     p.lng,
