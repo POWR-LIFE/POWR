@@ -42,7 +42,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // This listener catches the incoming deep link and exchanges the code directly.
         const linkingSubscription = Linking.addEventListener('url', async ({ url }) => {
             if (url.includes('code=')) {
-                await supabase.auth.exchangeCodeForSession(url);
+                const { error } = await supabase.auth.exchangeCodeForSession(url);
+                if (!error) await supabase.auth.signOut({ scope: 'others' });
             }
         });
 
@@ -86,7 +87,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const signInWithGoogle = async (): Promise<{ error: string | null }> => {
         try {
-            const redirectTo = Linking.createURL('/');
+            // Use the explicit custom scheme so the redirectTo is always powr:///
+            // regardless of whether this is Expo Go, an EAS dev build, or production.
+            // Supabase must have powr:// in its Additional Redirect URLs allowlist.
+            const redirectTo = 'powr:///';
             const { data, error } = await supabase.auth.signInWithOAuth({
                 provider: 'google',
                 options: { redirectTo, skipBrowserRedirect: true },
