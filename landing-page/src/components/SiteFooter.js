@@ -17,6 +17,8 @@ export function initFooter() {
             </div>
 
             <div class="site-footer-legal">
+                <a href="/support">Support</a>
+                <a href="mailto:support@powr.life">support@powr.life</a>
                 <a href="/privacy">Privacy Policy</a>
                 <a href="/cookies">Cookie Policy</a>
             </div>

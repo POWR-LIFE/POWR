@@ -37,6 +37,7 @@
 .site-footer-legal {
     display: flex;
     gap: 24px;
+    flex-wrap: wrap;
 }
 
 .site-footer-legal a {
@@ -68,5 +69,10 @@
     .site-footer-brand {
         flex-direction: column;
         gap: 8px;
+    }
+
+    .site-footer-legal {
+        justify-content: center;
+        gap: 14px 18px;
     }
 }
