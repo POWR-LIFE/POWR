@@ -26,6 +26,7 @@ import FeaturedSchedule from './pages/admin/FeaturedSchedule';
 import PrivacyPolicy from './pages/PrivacyPolicy';
 import CookiePolicy from './pages/CookiePolicy';
 import TermsOfService from './pages/TermsOfService';
+import SupportPage from './pages/SupportPage';
 import AthleteSignup from './pages/AthleteSignup';
 import AthleteApplications from './pages/admin/AthleteApplications';
 
@@ -537,6 +538,7 @@ export default function App() {
                     <Route path="/privacy" element={<PrivacyPolicy />} />
                     <Route path="/terms" element={<TermsOfService />} />
                     <Route path="/cookies" element={<CookiePolicy />} />
+                    <Route path="/support" element={<SupportPage />} />
                     <Route path="/athlete/:token" element={<AthleteSignup />} />
                     <Route path="/admin/login" element={<AdminLogin />} />
                     <Route path="/admin" element={<ProtectedRoute><AdminLayout><AdminHome /></AdminLayout></ProtectedRoute>} />
