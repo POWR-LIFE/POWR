@@ -77,9 +77,11 @@ export default function OnboardingAccountScreen() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
     const { signInWithGoogle, signInWithApple, session } = useAuth();
+    const didNavigate = useRef(false);
 
     useEffect(() => {
-        if (!session) return;
+        if (!session || didNavigate.current) return;
+        didNavigate.current = true;
         const onboardingComplete = session.user.user_metadata?.onboarding_complete;
         router.replace(onboardingComplete ? '/(tabs)' : '/onboarding-permission');
     }, [session]);

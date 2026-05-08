@@ -352,7 +352,10 @@ export default function OnboardingAchievementScreen() {
                 <Pressable
                     style={({ pressed }) => [styles.primaryButton, pressed && { opacity: 0.86 }]}
                     onPress={async () => {
-                        await markOnboardingComplete();
+                        // Retry once on failure — network blip at this step would send the user
+                        // back through the whole onboarding flow on next launch.
+                        let { error } = await markOnboardingComplete();
+                        if (error) ({ error } = await markOnboardingComplete());
                         // Process referral: manual code takes priority, else check deep-link capture
                         const deepCode = await AsyncStorage.getItem('pending_referral_code').catch(() => null);
                         const code = inviteCode.trim() || deepCode || null;
