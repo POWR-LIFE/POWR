@@ -268,6 +268,7 @@ function formatPartnerRows(data: any[]): Partner[] {
     if (!p.locations) return;
     const locs = Array.isArray(p.locations) ? p.locations : [p.locations];
     locs.forEach((loc: any, idx: number) => {
+      if (loc.lat == null || loc.lng == null || !isFinite(loc.lat) || !isFinite(loc.lng)) return;
       const words = p.name.split(' ');
       const logoText = words.length > 1
         ? `${words[0]}\n${words[1]}`.toUpperCase()

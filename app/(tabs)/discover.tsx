@@ -506,7 +506,7 @@ export default function DiscoverScreen() {
             setWalkingNavVisible(false);
           }}
         >
-          {filtered.slice(0, 200).map((partner) => (
+          {filtered.slice(0, 200).filter(p => isFinite(p.lat) && isFinite(p.lng)).map((partner) => (
             <Circle
               key={`circle-${partner.id}`}
               center={{ latitude: partner.lat, longitude: partner.lng }}
@@ -517,7 +517,7 @@ export default function DiscoverScreen() {
             />
           ))}
 
-          {filtered.slice(0, 200).map((partner) => (
+          {filtered.slice(0, 200).filter(p => isFinite(p.lat) && isFinite(p.lng)).map((partner) => (
             <MapMarker
               key={partner.id}
               partner={partner}
