@@ -17,7 +17,7 @@ type AuthContextType = {
     signInWithEmail: (email: string, password: string) => Promise<{ error: string | null }>;
     signUpWithEmail: (email: string, password: string) => Promise<{ error: string | null; needsConfirmation?: boolean }>;
     signOut: () => Promise<void>;
-    markOnboardingComplete: () => Promise<void>;
+    markOnboardingComplete: () => Promise<{ error: string | null }>;
     updateUserMetadata: (data: Record<string, any>) => Promise<{ error: string | null }>;
 };
 
@@ -143,8 +143,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         router.replace('/');
     };
 
-    const markOnboardingComplete = async () => {
-        await supabase.auth.updateUser({ data: { onboarding_complete: true } });
+    const markOnboardingComplete = async (): Promise<{ error: string | null }> => {
+        const { error } = await supabase.auth.updateUser({ data: { onboarding_complete: true } });
+        return { error: error?.message ?? null };
     };
 
     const updateUserMetadata = async (data: Record<string, any>): Promise<{ error: string | null }> => {
