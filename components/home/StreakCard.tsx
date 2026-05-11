@@ -131,7 +131,7 @@ export function StreakCard({
       <View style={styles.content}>
         {/* Header row */}
         <View style={styles.header}>
-          <Text style={styles.label}>CURRENT STREAK</Text>
+          <Text style={styles.label}>YOUR STREAK</Text>
           <View style={styles.headerRight}>
             <View style={styles.pill}>
               <Animated.View
