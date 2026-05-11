@@ -1,6 +1,8 @@
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  NativeScrollEvent,
+  NativeSyntheticEvent,
     Pressable,
     ScrollView,
     StyleSheet,
@@ -316,20 +318,13 @@ export default function ProgressScreen() {
 
   const tabs = radialData.map(d => d.id);
   const activeIndex = tabs.indexOf(activeTab);
-  const [carouselIndex, setCarouselIndex] = useState(0);
 
   const handleIndexChange = (index: number) => {
-    setCarouselIndex(index);
-    setActiveTab(tabs[index]);
-  };
-
-  // Keep carousel in sync when activeTab changes from tab clicks or external navigation
-  useEffect(() => {
-    const idx = tabs.indexOf(activeTab);
-    if (idx >= 0 && idx !== carouselIndex) {
-      setCarouselIndex(idx);
+    const nextTab = tabs[index];
+    if (nextTab && nextTab !== activeTab) {
+      setActiveTab(nextTab);
     }
-  }, [activeTab, tabs]);
+  };
 
   // Set initial tab once prefs load
   useEffect(() => {
@@ -380,7 +375,8 @@ export default function ProgressScreen() {
         <Text style={styles.sectionLabel}>THIS WEEK</Text>
         <BreakdownSection
           activeTab={activeTab}
-          setActiveTab={setActiveTab}
+          activeIndex={activeIndex >= 0 ? activeIndex : 0}
+          onIndexChange={handleIndexChange}
           period={period}
           onPeriodChange={setPeriod}
           tabs={radialData.map(d => ({ key: d.id, label: ACTIVITIES[d.id as ActivityType]?.labelShort.toUpperCase() || d.id.toUpperCase() }))}
@@ -397,7 +393,7 @@ export default function ProgressScreen() {
         <Text style={styles.sectionLabel}>ACTIVITY OVERVIEW</Text>
         <RadialCarousel
           data={radialData}
-          activeIndex={carouselIndex}
+          activeIndex={activeIndex >= 0 ? activeIndex : 0}
           onChange={handleIndexChange}
         />
 
@@ -413,10 +409,11 @@ export default function ProgressScreen() {
 type BreakdownTabItem = { key: string; label: string };
 
 function BreakdownSection({
-  activeTab, setActiveTab, period, onPeriodChange, tabs, walking, weeklyMetrics, stepsF, weekActiveDays, weeklyEarned, sleepHrs, sleepBedtimes,
+  activeTab, activeIndex, onIndexChange, period, onPeriodChange, tabs, walking, weeklyMetrics, stepsF, weekActiveDays, weeklyEarned, sleepHrs, sleepBedtimes,
 }: {
   activeTab: string;
-  setActiveTab: (tab: string) => void;
+  activeIndex: number;
+  onIndexChange: (index: number) => void;
   period: Period;
   onPeriodChange: (period: Period) => void;
   tabs: BreakdownTabItem[];
@@ -428,13 +425,40 @@ function BreakdownSection({
   sleepHrs: number[];
   sleepBedtimes: (string | null)[];
 }) {
+  const carouselRef = useRef<ScrollView>(null);
+  const [pageWidth, setPageWidth] = useState(0);
+  const currentIndexRef = useRef(0);
+  const isSyncingRef = useRef(false);
+
+  useEffect(() => {
+    if (!pageWidth) return;
+    const index = Math.max(0, Math.min(tabs.length - 1, activeIndex));
+    if (index === currentIndexRef.current) return;
+
+    isSyncingRef.current = true;
+    currentIndexRef.current = index;
+    carouselRef.current?.scrollTo({ x: index * pageWidth, animated: false });
+    requestAnimationFrame(() => {
+      isSyncingRef.current = false;
+    });
+  }, [activeIndex, pageWidth, tabs.length]);
+
+  const handleScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    if (!pageWidth || isSyncingRef.current) return;
+    const index = Math.max(0, Math.min(tabs.length - 1, Math.round(event.nativeEvent.contentOffset.x / pageWidth)));
+    if (index === currentIndexRef.current) return;
+    currentIndexRef.current = index;
+    onIndexChange(index);
+  }, [onIndexChange, pageWidth, tabs.length]);
+
   return (
     <View style={styles.breakdownCard}>
       <View style={styles.tabBar}>
         {tabs.map(({ key, label }) => {
           const isActive = activeTab === key;
+          const index = tabs.findIndex(tab => tab.key === key);
           return (
-            <Pressable key={key} style={styles.tabItem} onPress={() => setActiveTab(key)}>
+            <Pressable key={key} style={styles.tabItem} onPress={() => onIndexChange(index)}>
               <Text style={[styles.tabLabel, isActive && styles.tabLabelActive]}>{label}</Text>
               {isActive && <View style={styles.tabIndicator} />}
             </Pressable>
@@ -442,28 +466,45 @@ function BreakdownSection({
         })}
       </View>
 
-      <View style={styles.tabContent}>
-        {activeTab === 'walking' && (
-          <MovementTab
-            walking={walking}
-            totalSteps={weeklyMetrics.totalSteps}
-            stepsF={stepsF}
-            weekActiveDays={weekActiveDays}
-            period={period}
-            onPeriodChange={onPeriodChange}
-          />
-        )}
-        {activeTab !== 'walking' && activeTab !== 'sleep' && (
-          <WorkoutsTab
-            type={activeTab as ActivityType}
-            count={weeklyMetrics.perType[activeTab] ?? 0}
-            weekActiveDays={weeklyMetrics.activeDaysPerType[activeTab] ?? [false, false, false, false, false, false, false]}
-            weeklyEarned={weeklyEarned}
-            period={period}
-            onPeriodChange={onPeriodChange}
-          />
-        )}
-        {activeTab === 'sleep' && <SleepTab sleepHrs={sleepHrs} sleepBedtimes={sleepBedtimes} />}
+      <View
+        style={styles.tabContentViewport}
+        onLayout={(event) => setPageWidth(event.nativeEvent.layout.width)}
+      >
+        <ScrollView
+          ref={carouselRef}
+          horizontal
+          pagingEnabled
+          bounces={false}
+          showsHorizontalScrollIndicator={false}
+          onScroll={handleScroll}
+          scrollEventThrottle={16}
+        >
+          {tabs.map(({ key }) => (
+            <View key={key} style={[styles.tabContentPage, { width: pageWidth || undefined }]}>
+              {key === 'walking' && (
+                <MovementTab
+                  walking={walking}
+                  totalSteps={weeklyMetrics.totalSteps}
+                  stepsF={stepsF}
+                  weekActiveDays={weekActiveDays}
+                  period={period}
+                  onPeriodChange={onPeriodChange}
+                />
+              )}
+              {key !== 'walking' && key !== 'sleep' && (
+                <WorkoutsTab
+                  type={key as ActivityType}
+                  count={weeklyMetrics.perType[key] ?? 0}
+                  weekActiveDays={weeklyMetrics.activeDaysPerType[key] ?? [false, false, false, false, false, false, false]}
+                  weeklyEarned={weeklyEarned}
+                  period={period}
+                  onPeriodChange={onPeriodChange}
+                />
+              )}
+              {key === 'sleep' && <SleepTab sleepHrs={sleepHrs} sleepBedtimes={sleepBedtimes} />}
+            </View>
+          ))}
+        </ScrollView>
       </View>
     </View>
   );
@@ -501,7 +542,13 @@ const styles = StyleSheet.create({
     position: 'absolute', bottom: -1, left: '20%', right: '20%',
     height: 1.5, backgroundColor: GOLD, borderRadius: 1,
   },
-  tabContent: { padding: 20, minHeight: 480 },
+  tabContentViewport: {
+    minHeight: 480,
+  },
+  tabContentPage: {
+    padding: 20,
+    minHeight: 480,
+  },
 
   sectionLabelFirst: {
     paddingHorizontal: 14,

@@ -71,11 +71,11 @@ export function RadialCarousel({ data, activeIndex, onChange }: RadialCarouselPr
   // Sync scroll position when activeIndex changes from parent (tab click)
   useEffect(() => {
     isProgrammaticScroll.value = true;
-    flatListRef.current?.scrollToOffset({ offset: activeIndex * ITEM_WIDTH, animated: true });
-    const timer = setTimeout(() => {
+    flatListRef.current?.scrollToOffset({ offset: activeIndex * ITEM_WIDTH, animated: false });
+    const timer = requestAnimationFrame(() => {
       isProgrammaticScroll.value = false;
-    }, 500);
-    return () => clearTimeout(timer);
+    });
+    return () => cancelAnimationFrame(timer);
   }, [activeIndex]);
 
   const setRef = useCallback((node: any) => {
