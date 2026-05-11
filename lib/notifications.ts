@@ -20,6 +20,11 @@ export type NotificationType =
   | 'session_completed'
   | 'sleep_target_met';
 
+export interface PointsMilestoneOptions {
+  pointsToUnlock?: number;
+  rewardName?: string;
+}
+
 export interface NotificationPayload {
   type: NotificationType;
   /** Deep-link route, e.g. '/(tabs)/rewards' */
@@ -286,12 +291,13 @@ export async function notifyCheckInAvailable(partnerName: string, locationId: st
   await Notifications.scheduleNotificationAsync({
     identifier: `powr-check_in_reminder-${locationId}`,
     content: {
-      title: `You've entered ${partnerName} 📍`,
-      body: "Stay for 20 minutes to earn POWR points — your countdown has started.",
+      title: 'POWR',
+      body: "You're in. Every minute counts.",
       data: {
         type: 'check_in_reminder',
         route: '/(tabs)/index',
         locationId,
+        partnerName,
       } satisfies NotificationPayload,
       sound: 'default',
       ...(Platform.OS === 'android' && { channelId: CHANNEL_DEFAULT }),
@@ -304,12 +310,13 @@ export async function notifySessionCompleted(partnerName: string, sessionId: str
   await Notifications.scheduleNotificationAsync({
     identifier: `powr-session_completed-${sessionId}`,
     content: {
-      title: "POWR points earned! 🏆",
-      body: `Great work at ${partnerName}! Tap to share your session.`,
+      title: 'POWR',
+      body: 'Session logged. Points added.',
       data: {
         type: 'session_completed',
         route: `/share-stats?mode=check-in&sessionId=${sessionId}`,
         sessionId,
+        partnerName,
       } satisfies NotificationPayload,
       sound: 'default',
       ...(Platform.OS === 'android' && { channelId: CHANNEL_REWARDS }),
@@ -322,16 +329,27 @@ export async function notifySessionCompleted(partnerName: string, sessionId: str
 // Points milestone — sent server-side; this helper fires locally as fallback
 // ---------------------------------------------------------------------------
 
-export async function notifyPointsMilestone(points: number) {
+export async function notifyPointsMilestone(points: number, options?: PointsMilestoneOptions) {
+  const pointsToUnlock = Math.max(0, Math.ceil(options?.pointsToUnlock ?? 0));
+  const rewardName = options?.rewardName?.trim();
+  const hasWithinReach = pointsToUnlock > 0;
+
+  const title = hasWithinReach ? 'Reward within reach' : `${points.toLocaleString()} POWR points`;
+  const body = hasWithinReach
+    ? `You're close. ${pointsToUnlock.toLocaleString()} pts to unlock your ${rewardName || 'next'} reward.`
+    : "You're crushing it. Check your rewards — something new might be waiting.";
+
   await Notifications.scheduleNotificationAsync({
     identifier: `powr-points_milestone-${points}`,
     content: {
-      title: `${points.toLocaleString()} POWR points 🏆`,
-      body: "You're crushing it. Check your rewards — something new might be waiting.",
+      title,
+      body,
       data: {
         type: 'points_milestone',
         route: '/(tabs)/rewards',
         points,
+        pointsToUnlock: hasWithinReach ? pointsToUnlock : undefined,
+        rewardName,
       } satisfies NotificationPayload,
       sound: 'default',
     },

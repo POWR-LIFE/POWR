@@ -34,9 +34,46 @@ const GREEN   = '#4ade80';
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
-type PartnerCategory = 'fashion' | 'gear' | 'nutrition' | 'gym' | 'food' | 'health';
+type PartnerCategory = 'eat' | 'move' | 'mind' | 'sleep';
+type LegacyPartnerCategory = 'food' | 'nutrition' | 'gym' | 'health' | 'gear' | 'fashion';
 
-const CATEGORIES: PartnerCategory[] = ['gym', 'health', 'nutrition', 'gear', 'fashion', 'food'];
+const CATEGORIES: PartnerCategory[] = ['eat', 'move', 'mind', 'sleep'];
+
+const normalizePartnerCategory = (category?: string | null): PartnerCategory => {
+  switch (category) {
+    case 'eat':
+    case 'nutrition':
+    case 'food':
+      return 'eat';
+    case 'move':
+    case 'gym':
+      return 'move';
+    case 'mind':
+    case 'health':
+      return 'mind';
+    case 'sleep':
+    case 'gear':
+    case 'fashion':
+      return 'sleep';
+    default:
+      return 'move';
+  }
+};
+
+const toLegacyPartnerCategory = (category: PartnerCategory): LegacyPartnerCategory => {
+  switch (category) {
+    case 'eat':
+      return 'food';
+    case 'move':
+      return 'gym';
+    case 'mind':
+      return 'health';
+    case 'sleep':
+      return 'gear';
+    default:
+      return 'gym';
+  }
+};
 
 interface Location {
   name: string;
@@ -71,7 +108,7 @@ const DAY_LABELS: { key: DayKey; label: string }[] = [
 const BLANK_PARTNER: Omit<PartnerRow, 'id' | 'created_at'> = {
   name: '',
   description: null,
-  category: 'gym',
+  category: 'move',
   logo_url: null,
   logo_bg: 'dark',
   active: true,
@@ -123,7 +160,13 @@ export default function AdminPartnersScreen() {
       .from('partners')
       .select('id, name, description, category, logo_url, logo_bg, active, opening_hours, locations, created_at')
       .order('name');
-    if (!error && data) setPartners(data as PartnerRow[]);
+    if (!error && data) {
+      const normalized = (data as PartnerRow[]).map((partner) => ({
+        ...partner,
+        category: normalizePartnerCategory(partner.category),
+      }));
+      setPartners(normalized);
+    }
   }, []);
 
   useEffect(() => {
@@ -137,7 +180,7 @@ export default function AdminPartnersScreen() {
   };
 
   const openEdit = async (p: PartnerRow) => {
-    setEditPartner({ ...p });
+    setEditPartner({ ...p, category: normalizePartnerCategory(p.category) });
     setIsNew(false);
     const { data } = await supabase
       .from('trainers')
@@ -204,7 +247,7 @@ export default function AdminPartnersScreen() {
       const payload = {
         name:          editPartner.name.trim(),
         description:   editPartner.description || null,
-        category:      editPartner.category,
+        category:      toLegacyPartnerCategory((editPartner.category as PartnerCategory) ?? 'move'),
         logo_url:      editPartner.logo_url || null,
         logo_bg:       editPartner.logo_bg ?? 'dark',
         active:        editPartner.active ?? true,

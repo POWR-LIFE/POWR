@@ -23,6 +23,7 @@ import {
   scheduleInactivityNudge,
   clearBadge,
   getRouteFromNotification,
+  type PointsMilestoneOptions,
   type NotificationType,
 } from '@/lib/notifications';
 import {
@@ -52,7 +53,7 @@ interface NotificationsContextValue {
   scheduleWeeklyChallenge: (name: string, expiresAt: Date) => Promise<void>;
   sendRewardUnlocked: (rewardName: string, rewardId: string) => Promise<void>;
   sendCheckInAvailable: (partnerName: string, locationId: string) => Promise<void>;
-  sendPointsMilestone: (points: number) => Promise<void>;
+  sendPointsMilestone: (points: number, options?: PointsMilestoneOptions) => Promise<void>;
   sendInactivityNudge: (daysInactive: number) => Promise<void>;
 }
 
@@ -233,9 +234,9 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   );
 
   const sendPointsMilestone = useCallback(
-    async (points: number) => {
+    async (points: number, options?: PointsMilestoneOptions) => {
       if (!preferences.points_milestone || !permissionGranted) return;
-      await notifyPointsMilestone(points);
+      await notifyPointsMilestone(points, options);
     },
     [preferences.points_milestone, permissionGranted],
   );

@@ -1,9 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
-import MaskedView from '@react-native-masked-view/masked-view';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Image, LayoutChangeEvent, Modal, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { Animated, Easing, LayoutChangeEvent, Modal, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import ReAnimated, {
     Extrapolate,
     interpolate,
@@ -15,7 +13,8 @@ import ReAnimated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ChallengeCard } from '@/components/home/ChallengeCard';
-import { CombinedProgressRing, type TickOverlayData } from '@/components/home/CombinedProgressRing';
+import { RewardCard } from '@/components/home/RewardCard';
+import { LevelProgressRow } from '@/components/home/LevelProgressRow';
 import { GeometricBackground } from '@/components/home/GeometricBackground';
 import { HealthConnectCard } from '@/components/home/HealthConnectCard';
 import { StickyActivityIndicators } from '@/components/home/StickyActivityIndicators';
@@ -35,9 +34,7 @@ import { useHealthData } from '@/hooks/useHealthData';
 import { usePoints } from '@/hooks/usePoints';
 import { useStreak } from '@/hooks/useStreak';
 import { useWalkingProgress } from '@/hooks/useWalkingProgress';
-import { fetchMonthlyMetrics, type MonthlyMetrics } from '@/lib/api/activity';
-import { fetchMonthlyEarned } from '@/lib/api/points';
-import { fetchFeaturedReward, type Reward } from '@/lib/api/rewards';
+import { fetchSmartFeaturedReward, type Reward } from '@/lib/api/rewards';
 import { fetchProfile } from '@/lib/api/user';
 import { computeExpiresIn, computeUrgency } from '@/shared/weeklyChallenges';
 import { useWeeklyChallenge } from '@/hooks/useWeeklyChallenge';
@@ -62,188 +59,28 @@ function formatElapsed(entryTimestamp: number): string {
     return `${mins}m ${secs.toString().padStart(2, '0')}s`;
 }
 
-// ─── Weekly Reward Teaser ─────────────────────────────────────────────────────
-
-function getDiscountLabel(reward: Reward): string {
-    if (reward.discount_type === 'percentage' && reward.discount_value != null)
-        return `${reward.discount_value}% OFF`;
-    if (reward.discount_type === 'fixed_amount' && reward.discount_value != null)
-        return `£${reward.discount_value} OFF`;
-    return reward.value_label ?? '';
-}
-
-function getDiscountParts(label: string): { amount: string; suffix: string } {
-    const match = label.match(/^(.+?)\s*(OFF|off)$/);
-    if (match) return { amount: match[1].trim(), suffix: 'OFF' };
-    return { amount: label, suffix: '' };
-}
-
-function WeeklyRewardTeaser({ reward, balance }: { reward: Reward; balance: number }) {
-    const pct = Math.min(balance / reward.powr_cost, 1);
-    const remaining = Math.max(reward.powr_cost - balance, 0);
-    const partnerName = (reward.partner?.name ?? reward.brand_name ?? '').toUpperCase();
-    const discountLabel = getDiscountLabel(reward);
-    const { amount: discountAmount, suffix: discountSuffix } = getDiscountParts(discountLabel);
-    const imageUri = reward.hero_image_url ?? reward.image_url;
-
-    return (
-        <View style={rewardStyles.card}>
-            {imageUri && (
-                <MaskedView
-                    style={rewardStyles.maskedImage}
-                    maskElement={
-                        <LinearGradient
-                            colors={['rgba(0,0,0,0)', 'black']}
-                            start={{ x: 0, y: 0 }}
-                            end={{ x: 1, y: 0 }}
-                            locations={[0.35, 0.92]}
-                            style={StyleSheet.absoluteFillObject}
-                        />
-                    }
-                >
-                    <Image
-                        source={{ uri: imageUri }}
-                        style={StyleSheet.absoluteFillObject}
-                        resizeMode="cover"
-                    />
-                </MaskedView>
-            )}
-
-            <View style={rewardStyles.content}>
-                <View style={rewardStyles.topRow}>
-                    <View style={rewardStyles.categoryBadge}>
-                        <Text style={rewardStyles.categoryBadgeText}>{reward.category.toUpperCase()}</Text>
-                    </View>
-                    {discountLabel ? (
-                        <View style={rewardStyles.discountBadge}>
-                            <Text style={rewardStyles.discountBadgeText}>{discountAmount}</Text>
-                            {discountSuffix ? <Text style={rewardStyles.discountBadgeOff}>{discountSuffix}</Text> : null}
-                        </View>
-                    ) : null}
-                </View>
-
-                {partnerName ? <Text style={rewardStyles.partnerLabel}>{partnerName}</Text> : null}
-                <Text style={rewardStyles.name}>{reward.title}</Text>
-                {reward.description ? <Text style={rewardStyles.discount}>{reward.description}</Text> : null}
-
-                <View style={rewardStyles.progressRow}>
-                    <View style={rewardStyles.track}>
-                        <View style={[rewardStyles.fill, { width: `${Math.round(pct * 100)}%` as any }]} />
-                    </View>
-                    <Text style={rewardStyles.progressPts}>{balance}/{reward.powr_cost}</Text>
-                </View>
-
-                <Text style={rewardStyles.progressHint}>
-                    {pct >= 1 ? 'Ready to claim!' : `${remaining} pts to unlock`}
-                </Text>
-            </View>
-        </View>
-    );
-}
-
-const rewardStyles = StyleSheet.create({
-    card: {
-        position: 'relative',
-    },
-    maskedImage: {
-        position: 'absolute',
-        top: 0,
-        bottom: 0,
-        right: 0,
-        width: '100%',
-    },
-    content: {
-        padding: 14,
-        gap: 6,
-    },
-    topRow: {
-        flexDirection: 'row',
+const connectorStyles = StyleSheet.create({
+    wrapper: {
         alignItems: 'center',
-        justifyContent: 'space-between',
-        marginBottom: 4,
+        marginVertical: -2,
     },
-    categoryBadge: {
-        backgroundColor: 'rgba(22,101,52,0.75)',
+    line: {
+        width: 1,
+        height: 14,
+        backgroundColor: '#2a2a2a',
+    },
+    pill: {
         borderWidth: 1,
-        borderColor: 'rgba(34,197,94,0.5)',
-        borderRadius: 6,
-        paddingHorizontal: 8,
-        paddingVertical: 3,
-    },
-    categoryBadgeText: {
-        fontSize: 8,
-        fontWeight: '700',
-        letterSpacing: 1.5,
-        color: '#86efac',
-    },
-    discountBadge: {
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: 'rgba(232,210,0,0.08)',
-        borderWidth: 1,
-        borderColor: 'rgba(232,210,0,0.2)',
-        borderRadius: 10,
-        paddingHorizontal: 8,
+        borderColor: '#2a2a2a',
+        borderRadius: 100,
+        paddingHorizontal: 10,
         paddingVertical: 4,
     },
-    discountBadgeText: {
-        fontSize: 14,
-        fontWeight: '300',
-        color: GOLD,
-        lineHeight: 16,
-    },
-    discountBadgeOff: {
-        fontSize: 7,
-        fontWeight: '600',
-        letterSpacing: 1,
-        color: GOLD,
-        opacity: 0.7,
-    },
-    partnerLabel: {
-        fontSize: 8,
-        fontWeight: '600',
-        letterSpacing: 1.5,
-        color: 'rgba(255,255,255,0.25)',
-    },
-    name: {
-        fontSize: 15,
-        fontWeight: '300',
-        color: TEXT_PRIMARY,
-        letterSpacing: -0.2,
-    },
-    discount: {
+    pillText: {
         fontSize: 10,
-        fontWeight: '300',
-        color: 'rgba(255,255,255,0.4)',
-        marginBottom: 4,
-    },
-    progressRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
-    },
-    track: {
-        flex: 1,
-        height: 2,
-        backgroundColor: 'rgba(232,210,0,0.12)',
-        borderRadius: 1,
-        overflow: 'hidden',
-    },
-    fill: {
-        height: '100%',
-        backgroundColor: GOLD,
-        borderRadius: 1,
-    },
-    progressPts: {
-        fontSize: 9,
         fontWeight: '500',
-        color: GOLD,
-        flexShrink: 0,
-    },
-    progressHint: {
-        fontSize: 10,
-        fontWeight: '300',
-        color: 'rgba(255,255,255,0.25)',
+        color: '#555',
+        letterSpacing: 0.3,
     },
 });
 
@@ -268,41 +105,19 @@ export default function HomeScreen() {
     const [profileName, setProfileName] = useState<string | null>(null);
     const [refreshing, setRefreshing] = useState(false);
     const { challenge: weeklyChallenge, completion: challengeCompletion } = useWeeklyChallenge(activePrefs);
-    const [monthlyMetrics, setMonthlyMetrics] = useState<MonthlyMetrics>({ activeDays: 0, sessionCount: 0, totalSteps: 0, perType: {}, weekActiveDays: [0,0,0,0], activeDayTypes: {}, dayDetails: {} });
-    const [monthlyXP, setMonthlyXP] = useState(0);
     const [featuredReward, setFeaturedReward] = useState<Reward | null>(null);
     const [sleepData, setSleepData] = useState<SleepSession | null>(null);
     const [sleepLoading, setSleepLoading] = useState(false);
 
-    // ─── Tick overlay (interactive ring ticks) ───────────────────────────────────
-    const [tickOverlay, setTickOverlay] = useState<TickOverlayData | null>(null);
-
-    const handleTickActive = useCallback((data: TickOverlayData | null) => {
-        setTickOverlay(data);
-    }, []);
-
-    const loadMonthlyData = useCallback(async () => {
-        try {
-            const [metrics, xp] = await Promise.all([
-                fetchMonthlyMetrics(),
-                fetchMonthlyEarned(),
-            ]);
-            setMonthlyMetrics(metrics);
-            setMonthlyXP(xp);
-        } catch (e) {
-            console.warn('[HomeScreen] monthly data fetch failed:', e);
-        }
-    }, []);
-
     const loadFeaturedReward = useCallback(async () => {
         try {
-            setFeaturedReward(await fetchFeaturedReward());
+            setFeaturedReward(await fetchSmartFeaturedReward(balance));
         } catch (e) {
             console.warn('[HomeScreen] featured reward fetch failed:', e);
         }
-    }, []);
+    }, [balance]);
 
-    useEffect(() => { loadMonthlyData(); loadFeaturedReward(); }, [loadMonthlyData, loadFeaturedReward]);
+    useEffect(() => { loadFeaturedReward(); }, [loadFeaturedReward]);
 
     useEffect(() => {
         if (!health.isAuthorized) return;
@@ -321,7 +136,6 @@ export default function HomeScreen() {
                 refreshActivity(),
                 refreshStreak(),
                 refreshWalking(),
-                loadMonthlyData(),
                 loadFeaturedReward(),
             ];
             if (health.isAuthorized) {
@@ -331,7 +145,7 @@ export default function HomeScreen() {
         } finally {
             setRefreshing(false);
         }
-    }, [refreshActivity, refreshPoints, refreshStreak, refreshWalking, loadMonthlyData, loadFeaturedReward, health]);
+    }, [refreshActivity, refreshPoints, refreshStreak, refreshWalking, loadFeaturedReward, health]);
 
     // New user detection: no points earned and no recent activity
     const isNewUser = totalEarned === 0 && recentItems.length === 0;
@@ -443,7 +257,7 @@ export default function HomeScreen() {
                 label: config.labelShort,
                 icon: config.iconActive,
                 iconLib: (config.iconLib ?? 'ionicons') as 'ionicons' | 'material-community',
-                colour: config.colour,
+                colour: GOLD,
                 current: steps,
                 target: WEEKLY_STEPS_TARGET,
                 pct,
@@ -457,7 +271,7 @@ export default function HomeScreen() {
             label: config.labelShort,
             icon: config.iconActive,
             iconLib: (config.iconLib ?? 'ionicons') as 'ionicons' | 'material-community',
-            colour: config.colour,
+            colour: GOLD,
             current: sessions,
             target: WEEKLY_SESSION_TARGET,
             pct,
@@ -477,63 +291,10 @@ export default function HomeScreen() {
 
     const weeklyRings = sortForHero(activePrefs.map(buildWeeklyRing));
 
-    // When a tick is active, override the weekly circles to show that day's activities
-    const displayRings: [WeeklyRingData, WeeklyRingData, WeeklyRingData] = (() => {
-        if (!tickOverlay) return weeklyRings;
-        const detail = monthlyMetrics.dayDetails[tickOverlay.dayNum];
-        const types = tickOverlay.types;
-        // Use the day's types if available, else fall back to the user's pref types (all zeroed)
-        const baseTypes: ActivityType[] = types.length > 0
-            ? (types.slice(0, 3) as ActivityType[])
-            : (activePrefs.slice(0, 3) as ActivityType[]);
-        // Pad to exactly 3 using prefs not already present, then any fallback
-        const allFallbacks = [...activePrefs, 'walking', 'running', 'gym'] as ActivityType[];
-        for (const fb of allFallbacks) {
-            if (baseTypes.length >= 3) break;
-            if (!baseTypes.includes(fb)) baseTypes.push(fb);
-        }
-        return baseTypes.slice(0, 3).map((type) => {
-            const config = ACTIVITIES[type as keyof typeof ACTIVITIES] ?? ACTIVITIES.walking;
-            const done = types.includes(type);
-            if (type === 'walking' && detail?.totalSteps) {
-                const steps = detail.totalSteps;
-                const pct = Math.min(steps / 10000, 2);
-                return {
-                    type: type as ActivityType,
-                    label: config.labelShort,
-                    icon: config.iconActive,
-                    iconLib: (config.iconLib ?? 'ionicons') as 'ionicons' | 'material-community',
-                    colour: config.colour,
-                    current: steps,
-                    target: 10000,
-                    pct,
-                    overachieving: steps > 10000,
-                };
-            }
-            return {
-                type: type as ActivityType,
-                label: config.labelShort,
-                icon: config.iconActive,
-                iconLib: (config.iconLib ?? 'ionicons') as 'ionicons' | 'material-community',
-                colour: config.colour,
-                current: done ? 1 : 0,
-                target: 1,
-                pct: done ? 1 : 0,
-                overachieving: false,
-            };
-        }) as [WeeklyRingData, WeeklyRingData, WeeklyRingData];
-    })();
-
-    const tickDateLabel: string | null = tickOverlay ? (() => {
-        const d = new Date(new Date().getFullYear(), new Date().getMonth(), tickOverlay.dayNum);
-        const dayName = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()];
-        const monthShort = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()];
-        return `${monthShort} ${tickOverlay.dayNum} · ${dayName}`;
-    })() : null;
-
     // ── Scroll-based sticky indicators ──
     const scrollY = useSharedValue(0);
     const barsOffsetY = useSharedValue(0);
+    const barsHeight = useSharedValue(0);
     const HEADER_HEIGHT = 56;
 
     const onReanimatedScroll = useAnimatedScrollHandler((event) => {
@@ -542,11 +303,10 @@ export default function HomeScreen() {
 
     const onBarsLayout = (e: LayoutChangeEvent) => {
       barsOffsetY.value = e.nativeEvent.layout.y;
-      // Capture natural height the first time so we can lock it during tick scrubbing
-      if (weeklyNaturalHeight === 0) setWeeklyNaturalHeight(e.nativeEvent.layout.height);
+      if (barsHeight.value === 0) {
+        barsHeight.value = e.nativeEvent.layout.height;
+      }
     };
-
-    const [weeklyNaturalHeight, setWeeklyNaturalHeight] = useState(0);
 
     const STICKY_BAR_HEIGHT = 82; // circle (48) + gap (4) + icon (14) + padding (16)
 
@@ -570,36 +330,23 @@ export default function HomeScreen() {
     const barsAnimatedStyle = useAnimatedStyle(() => {
       const threshold = barsOffsetY.value - HEADER_HEIGHT;
       const distance = scrollY.value - threshold;
+      const isSticky = barsOffsetY.value > 0 && scrollY.value > threshold;
       const opacity = interpolate(distance, [0, 40], [1, 0], Extrapolate.CLAMP);
-      return { opacity };
+      return {
+        opacity,
+        height: withTiming(isSticky ? 0 : (barsHeight.value || 130), { duration: 200 }),
+        overflow: 'hidden',
+      };
     });
-
-    const daysElapsed = new Date().getDate(); // day of month (1-based)
-    const now = new Date();
-    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-    const MONTH_NAMES = ['JANUARY','FEBRUARY','MARCH','APRIL','MAY','JUNE','JULY','AUGUST','SEPTEMBER','OCTOBER','NOVEMBER','DECEMBER'];
-    const currentMonthLabel = MONTH_NAMES[now.getMonth()];
-
-    // Week quarter caps: days 1-7, 8-14, 15-21, 22-end
-    const weekCaps = [7, 7, 7, daysInMonth - 21] as const;
-    const wad = monthlyMetrics.weekActiveDays ?? [0, 0, 0, 0];
-
-    // Days elapsed within each week quarter
-    const weekElapsed = [
-      Math.min(7, daysElapsed),
-      Math.max(0, Math.min(7, daysElapsed - 7)),
-      Math.max(0, Math.min(7, daysElapsed - 14)),
-      Math.max(0, Math.min(weekCaps[3], daysElapsed - 21)),
-    ] as const;
-
-    // A week is "completed" when every elapsed day in it had activity
-    const weekCompleted = weekElapsed.map((elapsed, i) => elapsed > 0 && wad[i] === elapsed);
 
     return (
         <View style={[styles.screen, { paddingTop: insets.top }]}>
             <GeometricBackground />
             <View style={styles.header}>
-                <Text style={styles.greeting}>{firstName}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
+                    <Text style={styles.greeting}>{balance.toLocaleString()}</Text>
+                    <Text style={styles.pointsLabel}>pts</Text>
+                </View>
                 <ProfileButton />
             </View>
 
@@ -665,6 +412,21 @@ export default function HomeScreen() {
                     onShare={() => router.push({ pathname: '/share-stats', params: { mode: 'streak' } })}
                 />
 
+                <ReAnimated.View
+                    onLayout={onBarsLayout}
+                    style={barsAnimatedStyle}
+                >
+                    <WeeklyActivityCircles
+                        rings={weeklyRings}
+                        onPressRing={(type) => router.push({ pathname: '/(tabs)/progress', params: { tab: type } })}
+                    />
+                </ReAnimated.View>
+
+                <LevelProgressRow
+                    totalEarned={totalEarned}
+                    onPress={() => router.push('/achievements')}
+                />
+
                 <Text style={styles.sectionLabel}>CHALLENGE</Text>
                 <ChallengeCard
                     title={weeklyChallenge.title}
@@ -672,44 +434,29 @@ export default function HomeScreen() {
                     bonus={weeklyChallenge.bonusLabel}
                     expiresIn={computeExpiresIn(weeklyChallenge.expiresAt) || weeklyChallenge.expiresIn}
                     urgency={computeUrgency(weeklyChallenge.expiresAt)}
-                    imageUri={weeklyChallenge.imageUri}
-                    imageOffsetY={weeklyChallenge.imageOffsetY}
-                    hint={weeklyChallenge.hint}
                     powrRewardText={weeklyChallenge.powrRewardText}
                     completed={challengeCompletion ?? undefined}
+                    sessionsCompleted={challengeCompletion ? 1 : 0}
+                    sessionsRequired={weeklyChallenge.requiredSessions ?? 1}
                 />
 
-                <Text style={styles.sectionLabel}>{tickDateLabel ?? 'WEEKLY'}</Text>
-
-                <ReAnimated.View
-                    onLayout={onBarsLayout}
-                    style={[
-                        barsAnimatedStyle,
-                        tickOverlay && weeklyNaturalHeight > 0 ? { height: weeklyNaturalHeight, overflow: 'hidden' } : undefined,
-                    ]}
-                >
-                    <WeeklyActivityCircles
-                        rings={displayRings}
-                        onPressRing={tickOverlay ? undefined : (type) => router.push({ pathname: '/(tabs)/progress', params: { tab: type } })}
-                    />
-                </ReAnimated.View>
-
-                <Text style={styles.sectionLabel}>MONTHLY PROGRESS</Text>
-
-                <CombinedProgressRing
-                    activeDays={monthlyMetrics.activeDays}
-                    daysElapsed={daysElapsed}
-                    daysInMonth={daysInMonth}
-                    activeDayTypes={monthlyMetrics.activeDayTypes ?? {}}
-                    monthlyLabel={currentMonthLabel}
-                    onTickActive={handleTickActive}
-                    armMetrics={[
-                      { label: 'WEEK 1', value: `${wad[0]}/${weekElapsed[0]}`, completed: weekCompleted[0] },
-                      { label: 'WEEK 2', value: `${wad[1]}/${weekElapsed[1]}`, completed: weekCompleted[1] },
-                      { label: 'WEEK 3', value: `${wad[2]}/${weekElapsed[2]}`, completed: weekCompleted[2] },
-                      { label: 'WEEK 4', value: `${wad[3]}/${weekElapsed[3]}`, completed: weekCompleted[3] },
-                    ]}
-                />
+                {featuredReward && (
+                    <>
+                        <View style={connectorStyles.wrapper}>
+                            <View style={connectorStyles.line} />
+                            <View style={connectorStyles.pill}>
+                                <Text style={connectorStyles.pillText}>Unlocks reward</Text>
+                            </View>
+                            <View style={connectorStyles.line} />
+                        </View>
+                        <Pressable
+                            onPress={() => router.push('/(tabs)/rewards')}
+                            style={({ pressed }) => [pressed && { opacity: 0.92 }]}
+                        >
+                            <RewardCard reward={featuredReward} balance={balance} challengeTitle={weeklyChallenge.title} />
+                        </Pressable>
+                    </>
+                )}
 
                 {showHealthNudge && (
                     <>
@@ -733,13 +480,6 @@ export default function HomeScreen() {
                     <>
                         <Text style={styles.sectionLabel}>LAST NIGHT&apos;S SLEEP</Text>
                         <SleepProgressCard sleep={sleepData} loading={sleepLoading} />
-                    </>
-                )}
-
-                {featuredReward && (
-                    <>
-                        <Text style={styles.sectionLabel}>WEEKLY REWARD</Text>
-                        <WeeklyRewardTeaser reward={featuredReward} balance={balance} />
                     </>
                 )}
 
@@ -864,7 +604,14 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: '200',
     letterSpacing: -0.4,
-    color: TEXT_PRIMARY,
+    color: GOLD,
+  },
+  pointsLabel: {
+    fontSize: 13,
+    fontWeight: '400',
+    color: GOLD,
+    opacity: 0.7,
+    letterSpacing: 0.5,
   },
   avatar: {
     width: 36,

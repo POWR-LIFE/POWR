@@ -9,8 +9,10 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { CombinedProgressRing, type TickOverlayData } from '@/components/home/CombinedProgressRing';
 import { GeometricBackground } from '@/components/home/GeometricBackground';
 import { RadialCarousel } from '@/components/home/RadialCarousel';
+import { WeeklyActivityCircles, type WeeklyRingData } from '@/components/home/WeeklyActivityRings';
 import { ProfileButton } from '@/components/ProfileButton';
 import { MovementTab } from '@/components/progress/MovementTab';
 import { SleepTab } from '@/components/progress/SleepTab';
@@ -22,7 +24,7 @@ import { useHealthData } from '@/hooks/useHealthData';
 import { useHealthProviders } from '@/hooks/useHealthProviders';
 import { usePoints } from '@/hooks/usePoints';
 import { useWalkingProgress } from '@/hooks/useWalkingProgress';
-import { fetchWeeklySleepHours } from '@/lib/api/activity';
+import { fetchMonthlyMetrics, fetchWeeklySleepHours, type MonthlyMetrics } from '@/lib/api/activity';
 import { fetchProfile } from '@/lib/api/user';
 import { getProvider, type HealthProviderId } from '@/lib/health/providers';
 
@@ -53,11 +55,21 @@ export default function ProgressScreen() {
   const walking = useWalkingProgress();
 
   const [activePrefs, setActivePrefs] = useState<ActivityType[]>(['gym', 'running', 'walking']);
+  const [monthlyMetrics, setMonthlyMetrics] = useState<MonthlyMetrics>({ activeDays: 0, sessionCount: 0, totalSteps: 0, perType: {}, weekActiveDays: [0,0,0,0], activeDayTypes: {}, dayDetails: {} });
   const [sleepHrs, setSleepHrs] = useState<number[]>(EMPTY_SLEEP_HRS);
   const [sleepBedtimes, setSleepBedtimes] = useState<(string | null)[]>([null, null, null, null, null, null, null]);
   const health = useHealthData();
   const { activeId, refresh: refreshProviders } = useHealthProviders();
   const isNativeProvider = !activeId || activeId === 'apple-health' || activeId === 'health-connect';
+
+  const loadMonthlyData = useCallback(async () => {
+    try {
+      const metrics = await fetchMonthlyMetrics();
+      setMonthlyMetrics(metrics);
+    } catch (e) {
+      console.warn('[Progress] monthly data fetch failed:', e);
+    }
+  }, []);
 
   // Fetch real sleep data from synced activity sessions
   const loadSleep = useCallback(async () => {
@@ -130,11 +142,12 @@ export default function ProgressScreen() {
 
   // Run on mount/dep-change and whenever the screen comes into focus (handles
   // the case where the user connects WHOOP in settings then returns here).
-  useEffect(() => { loadSleep(); }, [loadSleep]);
+  useEffect(() => { loadSleep(); loadMonthlyData(); }, [loadSleep, loadMonthlyData]);
   useFocusEffect(useCallback(() => {
     refreshProviders(); // ensure activeId is current after OAuth reconnect
     loadSleep();
-  }, [refreshProviders, loadSleep]));
+    loadMonthlyData();
+  }, [refreshProviders, loadSleep, loadMonthlyData]));
 
   // Fetch and sync activity preferences
   useEffect(() => {
@@ -158,6 +171,60 @@ export default function ProgressScreen() {
   const stepsF = weeklyMetrics.totalSteps >= 1000
     ? `${(weeklyMetrics.totalSteps / 1000).toFixed(1)}k`
     : String(weeklyMetrics.totalSteps);
+
+  // Build the three small weekly activity circles (same logic as home screen)
+  const WEEKLY_SESSION_TARGET = 3;
+  const WEEKLY_STEPS_TARGET = 50000;
+  function buildWeeklyRing(type: ActivityType): WeeklyRingData {
+    const config = ACTIVITIES[type] ?? ACTIVITIES.walking;
+    if (type === 'walking') {
+      const steps = weeklyMetrics.totalSteps;
+      const pct = Math.min(steps / WEEKLY_STEPS_TARGET, 2);
+      return { type, label: config.labelShort, icon: config.iconActive, iconLib: (config.iconLib ?? 'ionicons') as 'ionicons' | 'material-community', colour: GOLD, current: steps, target: WEEKLY_STEPS_TARGET, pct, overachieving: steps > WEEKLY_STEPS_TARGET };
+    }
+    const sessions = weeklyMetrics.perType[type] ?? 0;
+    const pct = Math.min(sessions / WEEKLY_SESSION_TARGET, 2);
+    return { type, label: config.labelShort, icon: config.iconActive, iconLib: (config.iconLib ?? 'ionicons') as 'ionicons' | 'material-community', colour: GOLD, current: sessions, target: WEEKLY_SESSION_TARGET, pct, overachieving: sessions > WEEKLY_SESSION_TARGET };
+  }
+  const weeklyRings = (activePrefs.slice(0, 3).map(buildWeeklyRing)) as [WeeklyRingData, WeeklyRingData, WeeklyRingData];
+
+  // Tick overlay: when the user scrubs the monthly ring, show that day's data
+  const [tickOverlay, setTickOverlay] = useState<TickOverlayData | null>(null);
+
+  const handleTickActive = useCallback((data: TickOverlayData | null) => {
+    setTickOverlay(data);
+  }, []);
+
+  // Derive what the three circles should display
+  const displayRings: [WeeklyRingData, WeeklyRingData, WeeklyRingData] = (() => {
+    if (!tickOverlay) return weeklyRings;
+    const detail = monthlyMetrics.dayDetails?.[tickOverlay.dayNum];
+    const types = tickOverlay.types;
+    const baseTypes: ActivityType[] = types.length > 0
+      ? (types.slice(0, 3) as ActivityType[])
+      : (activePrefs.slice(0, 3) as ActivityType[]);
+    const allFallbacks = [...activePrefs, 'walking', 'running', 'gym'] as ActivityType[];
+    for (const fb of allFallbacks) {
+      if (baseTypes.length >= 3) break;
+      if (!baseTypes.includes(fb)) baseTypes.push(fb);
+    }
+    return baseTypes.slice(0, 3).map((type) => {
+      const config = ACTIVITIES[type as keyof typeof ACTIVITIES] ?? ACTIVITIES.walking;
+      const done = types.includes(type);
+      if (type === 'walking' && detail?.totalSteps) {
+        const steps = detail.totalSteps;
+        return { type: type as ActivityType, label: config.labelShort, icon: config.iconActive, iconLib: (config.iconLib ?? 'ionicons') as 'ionicons' | 'material-community', colour: GOLD, current: steps, target: 10000, pct: Math.min(steps / 10000, 2), overachieving: steps > 10000 };
+      }
+      return { type: type as ActivityType, label: config.labelShort, icon: config.iconActive, iconLib: (config.iconLib ?? 'ionicons') as 'ionicons' | 'material-community', colour: GOLD, current: done ? 1 : 0, target: 1, pct: done ? 1 : 0, overachieving: false };
+    }) as [WeeklyRingData, WeeklyRingData, WeeklyRingData];
+  })();
+
+  const tickDateLabel: string | null = tickOverlay ? (() => {
+    const d = new Date(new Date().getFullYear(), new Date().getMonth(), tickOverlay.dayNum);
+    const dayName = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()];
+    const monthShort = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()];
+    return `${monthShort} ${tickOverlay.dayNum} · ${dayName}`;
+  })() : null;
 
   const [activeTab, setActiveTab] = useState<string>(tab || 'walking');
   const [period, setPeriod] = useState<Period>('M');
@@ -231,12 +298,38 @@ export default function ProgressScreen() {
     })),
   });
 
+  // Monthly ring derived values
+  const daysElapsed = new Date().getDate();
+  const now = new Date();
+  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const MONTH_NAMES = ['JANUARY','FEBRUARY','MARCH','APRIL','MAY','JUNE','JULY','AUGUST','SEPTEMBER','OCTOBER','NOVEMBER','DECEMBER'];
+  const currentMonthLabel = MONTH_NAMES[now.getMonth()];
+  const weekCaps = [7, 7, 7, daysInMonth - 21] as const;
+  const wad = monthlyMetrics.weekActiveDays ?? [0, 0, 0, 0];
+  const weekElapsed = [
+    Math.min(7, daysElapsed),
+    Math.max(0, Math.min(7, daysElapsed - 7)),
+    Math.max(0, Math.min(7, daysElapsed - 14)),
+    Math.max(0, Math.min(weekCaps[3], daysElapsed - 21)),
+  ] as const;
+  const weekCompleted = weekElapsed.map((elapsed, i) => elapsed > 0 && wad[i] === elapsed);
+
   const tabs = radialData.map(d => d.id);
   const activeIndex = tabs.indexOf(activeTab);
+  const [carouselIndex, setCarouselIndex] = useState(0);
 
   const handleIndexChange = (index: number) => {
+    setCarouselIndex(index);
     setActiveTab(tabs[index]);
   };
+
+  // Keep carousel in sync when activeTab changes from tab clicks or external navigation
+  useEffect(() => {
+    const idx = tabs.indexOf(activeTab);
+    if (idx >= 0 && idx !== carouselIndex) {
+      setCarouselIndex(idx);
+    }
+  }, [activeTab, tabs]);
 
   // Set initial tab once prefs load
   useEffect(() => {
@@ -259,14 +352,32 @@ export default function ProgressScreen() {
         showsVerticalScrollIndicator={false}
       >
 
-        {/* ── Swipable Radials ───────────────────────────── */}
-        <RadialCarousel 
-          data={radialData} 
-          activeIndex={activeIndex} 
-          onChange={handleIndexChange} 
+        {/* ── Weekly Activity Circles ─────────────────────── */}
+        <Text style={styles.sectionLabelFirst}>{tickDateLabel ?? 'THIS WEEK'}</Text>
+        <WeeklyActivityCircles
+          rings={displayRings}
+          onPressRing={tickOverlay ? undefined : (type) => setActiveTab(type)}
+        />
+
+        {/* ── Monthly Progress ───────────────────────────── */}
+        <Text style={styles.sectionLabel}>MONTHLY PROGRESS</Text>
+        <CombinedProgressRing
+          activeDays={monthlyMetrics.activeDays}
+          daysElapsed={daysElapsed}
+          daysInMonth={daysInMonth}
+          activeDayTypes={monthlyMetrics.activeDayTypes ?? {}}
+          monthlyLabel={currentMonthLabel}
+          onTickActive={handleTickActive}
+          armMetrics={[
+            { label: 'WEEK 1', value: `${wad[0]}/${weekElapsed[0]}`, completed: weekCompleted[0] },
+            { label: 'WEEK 2', value: `${wad[1]}/${weekElapsed[1]}`, completed: weekCompleted[1] },
+            { label: 'WEEK 3', value: `${wad[2]}/${weekElapsed[2]}`, completed: weekCompleted[2] },
+            { label: 'WEEK 4', value: `${wad[3]}/${weekElapsed[3]}`, completed: weekCompleted[3] },
+          ]}
         />
 
         {/* ── Breakdown Tabs ─────────────────────────────── */}
+        <Text style={styles.sectionLabel}>THIS WEEK</Text>
         <BreakdownSection
           activeTab={activeTab}
           setActiveTab={setActiveTab}
@@ -280,6 +391,14 @@ export default function ProgressScreen() {
           weeklyEarned={weeklyEarned}
           sleepHrs={sleepHrs}
           sleepBedtimes={sleepBedtimes}
+        />
+
+        {/* ── Activity Radials ───────────────────────────── */}
+        <Text style={styles.sectionLabel}>ACTIVITY OVERVIEW</Text>
+        <RadialCarousel
+          data={radialData}
+          activeIndex={carouselIndex}
+          onChange={handleIndexChange}
         />
 
       </ScrollView>
@@ -382,7 +501,25 @@ const styles = StyleSheet.create({
     position: 'absolute', bottom: -1, left: '20%', right: '20%',
     height: 1.5, backgroundColor: GOLD, borderRadius: 1,
   },
-  tabContent: { padding: 20 },
+  tabContent: { padding: 20, minHeight: 480 },
 
-
+  sectionLabelFirst: {
+    paddingHorizontal: 14,
+    paddingTop: 8,
+    fontSize: 9,
+    fontWeight: '500',
+    letterSpacing: 2,
+    color: '#F2F2F2',
+  },
+  sectionLabel: {
+    paddingHorizontal: 14,
+    paddingTop: 16,
+    marginTop: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(255,255,255,0.07)',
+    fontSize: 9,
+    fontWeight: '500',
+    letterSpacing: 2,
+    color: '#F2F2F2',
+  },
 });

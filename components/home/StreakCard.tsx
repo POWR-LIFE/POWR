@@ -1,12 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
-    useAnimatedStyle,
-    useSharedValue,
-    withRepeat,
-    withSequence,
-    withTiming,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withSequence,
+  withTiming,
 } from 'react-native-reanimated';
 
 import { formatHMS, msUntilMidnight } from '@/lib/journey';
@@ -35,8 +35,8 @@ const DAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 type PillConfig = { label: string; dotColor: string };
 
 function getStreakPill(streak: number): PillConfig {
-  if (streak === 0)  return { label: 'START TODAY',  dotColor: GOLD };
-  if (streak < 3)    return { label: 'WARMING UP',  dotColor: 'rgba(255,255,255,0.55)' };
+  if (streak === 0)  return { label: 'JUST STARTED',  dotColor: GOLD };
+  if (streak < 3)    return { label: 'SHOWING UP',  dotColor: 'rgba(255,255,255,0.55)' };
   if (streak < 7)    return { label: 'BUILDING',     dotColor: '#4ade80' };
   if (streak < 14)   return { label: 'ON A ROLL',    dotColor: '#22c55e' };
   if (streak < 21)   return { label: 'ON FIRE',      dotColor: ORANGE };
@@ -57,6 +57,19 @@ export function StreakCard({
   sessionProjectedPts = 10,
   onShare,
 }: StreakCardProps) {
+  const streakWeeks = Math.floor(streak / 7);
+  const weekDates = useMemo(() => {
+    const now = new Date();
+    const monday = new Date(now);
+    monday.setDate(now.getDate() - todayIndex);
+    monday.setHours(0, 0, 0, 0);
+
+    return Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(monday);
+      d.setDate(monday.getDate() + i);
+      return d.getDate();
+    });
+  }, [todayIndex]);
   const [countdown, setCountdown] = useState(formatHMS(msUntilMidnight()));
   const dotScale = useSharedValue(1);
   const sessionPulse = useSharedValue(0.3);
@@ -145,10 +158,10 @@ export function StreakCard({
         {/* Main row: streak left, day dots right */}
         <View style={styles.mainRow}>
           <View style={styles.streakGroup}>
-            <Text style={styles.number} adjustsFontSizeToFit numberOfLines={1} minimumFontScale={0.5}>{streak}</Text>
+            <Text style={styles.number} adjustsFontSizeToFit numberOfLines={1} minimumFontScale={0.5}>{streakWeeks}</Text>
             <View style={styles.unitCol}>
               <Text style={styles.unit}>
-                {`day${streak !== 1 ? 's' : ''}`}
+                {`week${streakWeeks !== 1 ? 's' : ''}`}
               </Text>
               {multiplier && multiplier > 1 && (
                 <Text style={styles.bonus}>{multiplier}×</Text>
@@ -156,26 +169,33 @@ export function StreakCard({
             </View>
           </View>
 
-          {/* Day dots */}
-          <View style={styles.dots}>
+          {/* Week strip */}
+          <View style={styles.weekStrip}>
             {DAYS.map((day, i) => {
               const done = activeDays[i] ?? false;
               const isToday = i === todayIndex;
               const isFuture = i > todayIndex;
               return (
-                <View
-                  key={i}
-                  style={[
-                    styles.dot,
-                    done && styles.dotDone,
-                    isToday && styles.dotToday,
-                    isFuture && styles.dotFuture,
-                  ]}
-                >
-                  {done && !isFuture && (
-                    <Text style={styles.dotCheck}>✓</Text>
-                  )}
-                  <Text style={[styles.dotDay, done && styles.dotDayDone]}>{day}</Text>
+                <View key={i} style={styles.weekDayCol}>
+                  <Text style={[
+                    styles.weekDayName,
+                    isToday && styles.weekDayNameToday,
+                    isFuture && styles.weekDayNameFuture,
+                  ]}>{day}</Text>
+                  <View style={[
+                    styles.weekDateCircle,
+                    done && styles.weekDateCircleDone,
+                    isToday && styles.weekDateCircleToday,
+                    isFuture && styles.weekDateCircleFuture,
+                  ]}>
+                    <Text style={[
+                      styles.weekDateNumber,
+                      done && styles.weekDateNumberDone,
+                      isToday && styles.weekDateNumberToday,
+                    ]}>
+                      {weekDates[i]}
+                    </Text>
+                  </View>
                 </View>
               );
             })}
@@ -294,7 +314,7 @@ const styles = StyleSheet.create({
   },
   mainRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
     marginTop: 8,
   },
@@ -302,7 +322,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    flexShrink: 1,
+    width: 108,
+    marginRight: 10,
+    flexShrink: 0,
   },
   unitCol: {
     alignItems: 'flex-start',
@@ -327,45 +349,62 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginTop: -2,
   },
-  dots: {
+  weekStrip: {
     flexDirection: 'row',
-    gap: 6,
-    alignItems: 'center',
-    flexShrink: 1,
+    gap: 4,
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    flex: 1,
   },
-  dot: {
-    width: 31,
-    height: 31,
-    borderRadius: 15.5,
+  weekDayCol: {
+    alignItems: 'center',
+    gap: 6,
+  },
+  weekDayName: {
+    fontSize: 9,
+    fontWeight: '500',
+    color: 'rgba(255,255,255,0.6)',
+    letterSpacing: 0.3,
+  },
+  weekDayNameToday: {
+    color: '#ffffff',
+  },
+  weekDayNameFuture: {
+    opacity: 0.4,
+  },
+  weekDateCircle: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(255,255,255,0.10)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.2)',
   },
-  dotDone: {
+  weekDateCircleDone: {
     backgroundColor: 'transparent',
     borderColor: 'rgba(255,255,255,0.5)',
   },
-  dotToday: {
+  weekDateCircleToday: {
     backgroundColor: 'rgba(255,255,255,0.1)',
     borderWidth: 1.5,
     borderColor: '#ffffff',
   },
-  dotFuture: {
+  weekDateCircleFuture: {
     opacity: 0.4,
   },
-  dotCheck: {
-    fontSize: 8,
-    color: '#ffffff',
-    lineHeight: 9,
-  },
-  dotDay: {
-    fontSize: 7,
+  weekDateNumber: {
+    fontSize: 12,
+    fontWeight: '500',
     color: 'rgba(255,255,255,0.5)',
-    lineHeight: 8,
+    lineHeight: 14,
+    fontVariant: ['tabular-nums'],
   },
-  dotDayDone: {
+  weekDateNumberDone: {
+    color: '#ffffff',
+  },
+  weekDateNumberToday: {
     color: '#ffffff',
   },
   // Countdown to midnight

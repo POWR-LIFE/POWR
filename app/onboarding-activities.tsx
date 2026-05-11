@@ -14,6 +14,10 @@ const GOLD = '#E8D200';
 const BG = '#0d0d0d';
 const CARD_BG = 'rgba(40,40,40,0.85)';
 const MAX_SELECTED = 3;
+const FONT_LIGHT = 'Outfit_300Light';
+const FONT_MEDIUM = 'Outfit_500Medium';
+const FONT_SEMIBOLD = 'Outfit_600SemiBold';
+const FONT_BOLD = 'Outfit_700Bold';
 
 // Activities in display order: gym first (highest scoring), then walk → cycle → run, then the rest
 const PINNED: ActivityType[] = ['gym', 'walking', 'cycling', 'running'];
@@ -94,15 +98,7 @@ export default function OnboardingActivitiesScreen() {
 
       <Animated.View style={[styles.header, { paddingTop: insets.top + 56, opacity: headerFade }]}>
         <Text style={styles.eyebrow}>STEP 4 OF 5</Text>
-        <Text style={styles.headline}>
-          What's your{'\n'}
-          <Text style={styles.headlineGold}>focus?</Text>
-        </Text>
-        <Text style={styles.body}>
-          {connectedIds.length > 0
-            ? 'Pick three activities to track — we\'ll auto-track what your wearable supports.'
-            : 'Pick three activities to track — most will need manual logging without a wearable.'}
-        </Text>
+        <Text style={styles.headline}>Pick your movements</Text>
       </Animated.View>
 
       <Animated.View style={[styles.gridWrap, { opacity: listFade }]}>
@@ -196,7 +192,7 @@ const styles = StyleSheet.create({
 
   header: { paddingHorizontal: 28, marginBottom: 20 },
   eyebrow: { color: 'rgba(255,255,255,0.22)', fontSize: 10, fontWeight: '600', letterSpacing: 2.5, marginBottom: 6 },
-  headline: { color: '#F2F2F2', fontSize: 36, fontWeight: '200', letterSpacing: -1, lineHeight: 42, marginBottom: 8 },
+  headline: { color: '#F2F2F2', fontSize: 36, fontFamily: FONT_LIGHT, fontWeight: '200', letterSpacing: -1, lineHeight: 42, marginBottom: 8 },
   headlineGold: { color: GOLD, fontWeight: '700' },
   body: { color: 'rgba(255,255,255,0.4)', fontSize: 14, fontWeight: '300', lineHeight: 20 },
 
@@ -215,15 +211,14 @@ const styles = StyleSheet.create({
   card: {
     width: '47%',
     backgroundColor: CARD_BG,
-    borderWidth: 1,
-    borderColor: 'rgba(232,210,0,0.15)',
+    borderWidth: 0,
+    borderColor: 'transparent',
     borderRadius: 16,
     padding: 14,
     gap: 8,
   },
   cardActive: {
-    backgroundColor: 'transparent',
-    borderColor: 'rgba(255,255,255,0.6)',
+    backgroundColor: 'rgba(255,255,255,0.03)',
   },
   cardDisabled: {
     opacity: 0.35,
@@ -243,19 +238,17 @@ const styles = StyleSheet.create({
     height: 36,
     borderRadius: 18,
     backgroundColor: 'rgba(255,255,255,0.06)',
-    borderWidth: 1,
-    borderColor: 'rgba(232,210,0,0.30)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   iconWrapActive: {
     backgroundColor: 'transparent',
-    borderColor: 'rgba(255,255,255,0.8)',
   },
 
   cardLabel: {
     color: 'rgba(255,255,255,0.5)',
     fontSize: 14,
+    fontFamily: FONT_SEMIBOLD,
     fontWeight: '600',
     letterSpacing: -0.2,
   },
@@ -272,18 +265,17 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
   },
   ptsBadgeActive: {
-    backgroundColor: 'rgba(232,210,0,0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(232,210,0,0.25)',
+    backgroundColor: 'rgba(255,255,255,0.10)',
   },
   ptsText: {
     fontSize: 9,
+    fontFamily: FONT_BOLD,
     fontWeight: '700',
     letterSpacing: 0.5,
-    color: 'rgba(255,255,255,0.25)',
+    color: 'rgba(255,255,255,0.35)',
   },
   ptsTextActive: {
-    color: GOLD,
+    color: 'rgba(255,255,255,0.75)',
   },
 
   wearableBadge: {
@@ -296,18 +288,17 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
   },
   wearableBadgeActive: {
-    backgroundColor: 'rgba(232,210,0,0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(232,210,0,0.25)',
+    backgroundColor: 'rgba(255,255,255,0.10)',
   },
   wearableText: {
     fontSize: 8,
+    fontFamily: FONT_BOLD,
     fontWeight: '700',
     letterSpacing: 0.5,
     color: 'rgba(255,255,255,0.35)',
   },
   wearableTextActive: {
-    color: GOLD,
+    color: 'rgba(255,255,255,0.75)',
   },
 
   checkCircle: {
@@ -315,7 +306,7 @@ const styles = StyleSheet.create({
     height: 24,
     borderRadius: 12,
     borderWidth: 1.5,
-    borderColor: 'rgba(232,210,0,0.25)',
+    borderColor: 'rgba(255,255,255,0.25)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -334,6 +325,7 @@ const styles = StyleSheet.create({
   hint: {
     textAlign: 'center',
     fontSize: 12,
+    fontFamily: FONT_LIGHT,
     fontWeight: '300',
     color: 'rgba(255,255,255,0.3)',
     marginBottom: 12,
@@ -348,6 +340,6 @@ const styles = StyleSheet.create({
   primaryButtonDisabled: {
     backgroundColor: 'rgba(232,210,0,0.15)',
   },
-  primaryLabel: { color: '#000', fontSize: 14, fontWeight: '700', letterSpacing: 1.5 },
+  primaryLabel: { color: '#000', fontSize: 14, fontFamily: FONT_BOLD, fontWeight: '700', letterSpacing: 1.5 },
   primaryLabelDisabled: { color: 'rgba(255,255,255,0.2)' },
 });

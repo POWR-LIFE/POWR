@@ -328,6 +328,17 @@ Deno.serve(async (req) => {
   // 8. Calculate points
   let base = calcBasePoints(session);
 
+  // ⚠️ DEV MODE: if DEV_MIN_DWELL_SEC is set, geofence-verified gym sessions meeting
+  // that lower threshold qualify for base points (mirrors client-side MIN_DWELL_MS override).
+  // Remove/unset DEV_MIN_DWELL_SEC before going to production.
+  const devMinDwellSec = parseInt(Deno.env.get('DEV_MIN_DWELL_SEC') ?? '0', 10);
+  if (base === 0 && devMinDwellSec > 0 && session.verification === 'geofence' && session.type === 'gym') {
+    if (session.duration_sec >= devMinDwellSec) {
+      base = 10; // minimum qualifying gym tier
+      console.log(`[DEV] Awarded base gym points for short session (${session.duration_sec}s >= ${devMinDwellSec}s dev threshold)`);
+    }
+  }
+
   if (base === 0) {
     return new Response(JSON.stringify({ error: 'Session does not meet eligibility minimum' }), { status: 422 });
   }
@@ -425,6 +436,58 @@ Deno.serve(async (req) => {
         multiplier: 1.0,
       });
     }
+  }
+
+  // 12. "Reward within reach" push — fires once when the user first crosses 80%
+  //     of their next locked reward's cost.
+  try {
+    // Sum all earn/streak transactions to get current balance
+    const { data: allTx } = await supabase
+      .from('point_transactions')
+      .select('amount')
+      .eq('user_id', user.id)
+      .in('type', ['earn', 'streak']);
+
+    const newBalance = (allTx ?? []).reduce((s, t) => s + (t.amount ?? 0), 0);
+    const prevBalance = newBalance - finalAmount;
+
+    // Find the cheapest active reward the user hasn't yet unlocked
+    const { data: nextReward } = await supabase
+      .from('rewards')
+      .select('title, powr_cost')
+      .eq('active', true)
+      .gt('powr_cost', newBalance)
+      .order('powr_cost', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    if (nextReward) {
+      const threshold = nextReward.powr_cost * 0.8;
+      // Only notify if this session crossed the threshold (not already above it)
+      if (prevBalance < threshold && newBalance >= threshold) {
+        const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+        const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+        await fetch(`${supabaseUrl}/functions/v1/send-push-notification`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${serviceKey}`,
+          },
+          body: JSON.stringify({
+            target_user_id: user.id,
+            type: 'points_milestone',
+            payload: {
+              points: newBalance,
+              points_to_unlock: Math.ceil(nextReward.powr_cost - newBalance),
+              reward_name: nextReward.title,
+            },
+          }),
+        });
+      }
+    }
+  } catch (notifErr) {
+    // Non-fatal — points were already saved successfully
+    console.warn('[claim-points] milestone notification failed:', notifErr);
   }
 
   return new Response(

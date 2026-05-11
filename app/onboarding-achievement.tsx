@@ -11,13 +11,18 @@ import { supabase } from '@/lib/supabase';
 
 const GOLD = '#E8D200';
 const BG = '#0d0d0d';
+const FONT_LIGHT = 'Outfit_300Light';
+const FONT_REGULAR = 'Outfit_400Regular';
+const FONT_MEDIUM = 'Outfit_500Medium';
+const FONT_SEMIBOLD = 'Outfit_600SemiBold';
+const FONT_BOLD = 'Outfit_700Bold';
 
 const AnimatedPath = Animated.createAnimatedComponent(Path);
 
 // Ring geometry — 7 segments
 const CONTAINER = 340;
 const RING_R = 138;
-const SW = 3;
+const SW = 5;
 const CX = CONTAINER / 2;
 const CY = CONTAINER / 2;
 const SEGMENTS = 7;
@@ -35,9 +40,6 @@ function arcPath(r: number, startDeg: number, endDeg: number) {
     const large = endDeg - startDeg > 180 ? 1 : 0;
     return `M ${s.x} ${s.y} A ${r} ${r} 0 ${large} 1 ${e.x} ${e.y}`;
 }
-
-// Sparkle burst — 12 evenly spaced dots
-const SPARKS = Array.from({ length: 12 }, (_, i) => (i * 360) / 12);
 
 function StepDots({ current }: { current: number }) {
     return (
@@ -89,26 +91,6 @@ export default function OnboardingAchievementScreen() {
     const buttonOpacity = useRef(new Animated.Value(0)).current;
     const pulse         = useRef(new Animated.Value(1)).current;
 
-    // Per-spark: opacity + radial translate progress
-    const sparks = useRef(
-        SPARKS.map(() => ({
-            op: new Animated.Value(0),
-            r:  new Animated.Value(0),
-        }))
-    ).current;
-
-    const burstSparks = () => {
-        Animated.parallel(
-            sparks.flatMap((s) => [
-                Animated.sequence([
-                    Animated.timing(s.op, { toValue: 1, duration: 60, useNativeDriver: true }),
-                    Animated.timing(s.op, { toValue: 0, duration: 500, useNativeDriver: true }),
-                ]),
-                Animated.timing(s.r, { toValue: 1, duration: 560, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
-            ])
-        ).start();
-    };
-
     useEffect(() => {
         Animated.sequence([
             // 1. Glow + ring scale in
@@ -134,8 +116,7 @@ export default function OnboardingAchievementScreen() {
                 ),
             ),
         ]).start(() => {
-            // Ring complete → sparks + number pop
-            burstSparks();
+            // Ring complete -> number pop
             Animated.spring(numberScale, { toValue: 1, tension: 75, friction: 5, useNativeDriver: true }).start();
             Animated.timing(numberOpacity, { toValue: 1, duration: 180, useNativeDriver: true }).start();
 
@@ -194,18 +175,10 @@ export default function OnboardingAchievementScreen() {
                     <Animated.View
                         style={[styles.ringContainer, { transform: [{ scale: ringScaleIn }] }]}
                     >
-                        {/* Layered glow — stacked circles faking a radial gradient */}
+                        {/* Dark ambient halo to match leaderboard ring language */}
                         <Animated.View style={[
-                            styles.glow, { width: 140, height: 140, borderRadius: 70, left: (CONTAINER - 140) / 2, top: (CONTAINER - 140) / 2 },
-                            { opacity: glowIn.interpolate({ inputRange: [0, 1], outputRange: [0, 0.32] }) },
-                        ]} />
-                        <Animated.View style={[
-                            styles.glow, { width: 220, height: 220, borderRadius: 110, left: (CONTAINER - 220) / 2, top: (CONTAINER - 220) / 2 },
-                            { opacity: glowIn.interpolate({ inputRange: [0, 1], outputRange: [0, 0.14] }) },
-                        ]} />
-                        <Animated.View style={[
-                            styles.glow, { width: 310, height: 310, borderRadius: 155, left: (CONTAINER - 310) / 2, top: (CONTAINER - 310) / 2 },
-                            { opacity: glowIn.interpolate({ inputRange: [0, 1], outputRange: [0, 0.07] }) },
+                            styles.darkHalo,
+                            { opacity: glowIn.interpolate({ inputRange: [0, 1], outputRange: [0, 1] }) },
                         ]} />
 
                         {/* SVG segmented ring */}
@@ -218,7 +191,7 @@ export default function OnboardingAchievementScreen() {
                                     <Path
                                         key={`track-${i}`}
                                         d={d}
-                                        stroke="rgba(255,255,255,0.07)"
+                                        stroke="rgba(255,255,255,0.05)"
                                         strokeWidth={SW}
                                         strokeLinecap="round"
                                         fill="none"
@@ -242,35 +215,6 @@ export default function OnboardingAchievementScreen() {
                                 );
                             })}
                         </Svg>
-
-                        {/* Sparkle burst dots */}
-                        {SPARKS.map((angle, i) => {
-                            const rad = (angle * Math.PI) / 180;
-                            const bx = CX + Math.cos(rad) * (RING_R + SW / 2 + 1);
-                            const by = CY + Math.sin(rad) * (RING_R + SW / 2 + 1);
-                            const sz = i % 3 === 0 ? 5 : 3;
-                            const dist = i % 3 === 0 ? 32 : 22;
-                            return (
-                                <Animated.View
-                                    key={i}
-                                    style={{
-                                        position: 'absolute',
-                                        left: bx - sz / 2,
-                                        top:  by - sz / 2,
-                                        width: sz,
-                                        height: sz,
-                                        borderRadius: sz / 2,
-                                        backgroundColor: GOLD,
-                                        opacity: sparks[i].op,
-                                        transform: [
-                                            { translateX: sparks[i].r.interpolate({ inputRange: [0, 1], outputRange: [0, Math.cos(rad) * dist] }) },
-                                            { translateY: sparks[i].r.interpolate({ inputRange: [0, 1], outputRange: [0, Math.sin(rad) * dist] }) },
-                                            { scale: sparks[i].r.interpolate({ inputRange: [0, 0.3, 1], outputRange: [0, 1, 0.4] }) },
-                                        ],
-                                    }}
-                                />
-                            );
-                        })}
 
                         {/* Inner number + label */}
                         <View style={styles.ringInner}>
@@ -298,15 +242,7 @@ export default function OnboardingAchievementScreen() {
                         { opacity: contentOpacity, transform: [{ translateY: contentY }] },
                     ]}
                 >
-                    <Text style={styles.headline}>
-                        {hasSyncData ? `You're already on a roll` : `The streak starts here`}
-                    </Text>
-                    <Text style={styles.body}>
-                        {hasSyncData
-                            ? `${activeDays} days already locked in.`
-                            : `Every session from here builds something real.`
-                        }
-                    </Text>
+                    <Text style={styles.headline}>7 days already locked in.</Text>
                 </Animated.View>
 
                 {/* ── Earned today — inline ── */}
@@ -366,7 +302,7 @@ export default function OnboardingAchievementScreen() {
                         router.replace('/(tabs)');
                     }}
                 >
-                    <Text style={styles.primaryLabel}>SEE TOMORROW'S GOAL</Text>
+                    <Text style={styles.primaryLabel}>LET'S GO →</Text>
                 </Pressable>
             </Animated.View>
         </View>
@@ -399,9 +335,18 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         overflow: 'visible',
     },
-    glow: {
+    darkHalo: {
         position: 'absolute',
-        backgroundColor: GOLD,
+        width: 292,
+        height: 292,
+        borderRadius: 146,
+        backgroundColor: 'rgba(0,0,0,0.55)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.04)',
+        shadowColor: GOLD,
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.16,
+        shadowRadius: 20,
     },
     ringInner: {
         alignItems: 'center',
@@ -410,6 +355,7 @@ const styles = StyleSheet.create({
     dayEyebrow: {
         color: 'rgba(255,255,255,0.28)',
         fontSize: 10,
+        fontFamily: FONT_MEDIUM,
         fontWeight: '500',
         letterSpacing: 4,
         textTransform: 'uppercase',
@@ -418,6 +364,7 @@ const styles = StyleSheet.create({
     dayNumber: {
         color: '#FFFFFF',
         fontSize: 128,
+        fontFamily: FONT_LIGHT,
         fontWeight: '100',
         lineHeight: 132,
         textAlign: 'center',
@@ -425,6 +372,7 @@ const styles = StyleSheet.create({
     daySub: {
         color: 'rgba(255,255,255,0.32)',
         fontSize: 13,
+        fontFamily: FONT_LIGHT,
         fontWeight: '300',
         letterSpacing: 0.3,
         marginTop: 4,
@@ -439,11 +387,12 @@ const styles = StyleSheet.create({
     headline: {
         color: '#F2F2F2',
         fontSize: 26,
+        fontFamily: FONT_LIGHT,
         fontWeight: '300',
         letterSpacing: -0.4,
         textAlign: 'center',
         lineHeight: 32,
-        marginBottom: 10,
+        marginBottom: 0,
     },
     body: {
         color: 'rgba(255,255,255,0.42)',
@@ -459,12 +408,8 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        paddingVertical: 10,
-        paddingHorizontal: 18,
-        borderRadius: 999,
-        borderWidth: StyleSheet.hairlineWidth,
-        borderColor: 'rgba(232,210,0,0.28)',
-        backgroundColor: 'rgba(232,210,0,0.04)',
+        paddingVertical: 6,
+        paddingHorizontal: 0,
     },
     bonusDot: {
         width: 5,
@@ -476,6 +421,7 @@ const styles = StyleSheet.create({
     bonusLabel: {
         color: 'rgba(255,255,255,0.5)',
         fontSize: 12,
+        fontFamily: FONT_REGULAR,
         fontWeight: '400',
         letterSpacing: 0.2,
         marginRight: 10,
@@ -483,6 +429,7 @@ const styles = StyleSheet.create({
     bonusAmount: {
         color: GOLD,
         fontSize: 13,
+        fontFamily: FONT_SEMIBOLD,
         fontWeight: '600',
         letterSpacing: 0.4,
     },
@@ -502,6 +449,7 @@ const styles = StyleSheet.create({
     codeToggleText: {
         color: '#F2F2F2',
         fontSize: 12,
+        fontFamily: FONT_REGULAR,
         letterSpacing: 0.3,
     },
     codeInput: {
@@ -527,6 +475,7 @@ const styles = StyleSheet.create({
     primaryLabel: {
         color: '#0a0a0a',
         fontSize: 12,
+        fontFamily: FONT_BOLD,
         fontWeight: '700',
         letterSpacing: 1.5,
     },

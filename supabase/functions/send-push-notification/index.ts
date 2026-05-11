@@ -86,10 +86,9 @@ function buildMessage(
       }
 
       case 'check_in_reminder': {
-        const partner = (payload.partner_name as string) ?? 'a partner gym';
         return {
-          title: `You're at ${partner} 📍`,
-          body: "Tap to check in and earn POWR points for your visit.",
+          title: 'POWR',
+          body: "You're in. Every minute counts.",
           data: { type, route: '/(tabs)/index', location_id: payload.location_id },
           sound: 'default',
         };
@@ -97,10 +96,29 @@ function buildMessage(
 
       case 'points_milestone': {
         const points = (payload.points as number) ?? 0;
+        const rawPointsToUnlock =
+          (payload.points_to_unlock as number | undefined) ??
+          (payload.pointsToUnlock as number | undefined);
+        const pointsToUnlock = Math.max(0, Math.ceil(rawPointsToUnlock ?? 0));
+        const rewardName =
+          ((payload.reward_name as string | undefined) ??
+            (payload.rewardName as string | undefined) ??
+            '')
+            .trim();
+        const hasWithinReach = pointsToUnlock > 0;
+
         return {
-          title: `${points.toLocaleString()} POWR points 🏆`,
-          body: "You're crushing it. Check your rewards — something new might be waiting.",
-          data: { type, route: '/(tabs)/rewards', points },
+          title: hasWithinReach ? 'Reward within reach' : `${points.toLocaleString()} POWR points 🏆`,
+          body: hasWithinReach
+            ? `You're close. ${pointsToUnlock.toLocaleString()} pts to unlock your ${rewardName || 'next'} reward.`
+            : "You're crushing it. Check your rewards — something new might be waiting.",
+          data: {
+            type,
+            route: '/(tabs)/rewards',
+            points,
+            points_to_unlock: hasWithinReach ? pointsToUnlock : undefined,
+            reward_name: rewardName || undefined,
+          },
           sound: 'default',
         };
       }
@@ -231,6 +249,42 @@ Deno.serve(async (req: Request) => {
       }
 
       payload = { ...payload, current_streak: computedStreak };
+    }
+
+    // For points_milestone: derive a dynamic "within reach" payload from the
+    // next active reward when callers only send current points.
+    if (type === 'points_milestone') {
+      const points = Number(payload.points ?? 0);
+      const hasExplicitRemaining =
+        payload.points_to_unlock !== undefined || payload.pointsToUnlock !== undefined;
+      const hasExplicitRewardName =
+        payload.reward_name !== undefined || payload.rewardName !== undefined;
+
+      if (!hasExplicitRemaining || !hasExplicitRewardName) {
+        const { data: nextReward, error: rewardError } = await supabase
+          .from('rewards')
+          .select('title, powr_cost')
+          .eq('active', true)
+          .gt('powr_cost', points)
+          .order('powr_cost', { ascending: true })
+          .limit(1)
+          .maybeSingle();
+
+        if (!rewardError && nextReward?.powr_cost) {
+          const rewardCost = Number(nextReward.powr_cost);
+          const remaining = Math.max(0, Math.ceil(rewardCost - points));
+          const atOrAboveWithinReachThreshold = points >= rewardCost * 0.8;
+
+          payload = {
+            ...payload,
+            points,
+            points_to_unlock: atOrAboveWithinReachThreshold ? remaining : undefined,
+            reward_name: atOrAboveWithinReachThreshold ? nextReward.title : undefined,
+          };
+        } else {
+          payload = { ...payload, points };
+        }
+      }
     }
 
     // Fetch push tokens for the target user

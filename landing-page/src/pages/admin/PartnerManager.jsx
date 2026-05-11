@@ -599,8 +599,48 @@ function ImageUploadField({ label, value, uploading, onFile }) {
     );
 }
 
-const CATEGORIES = ['gym', 'fashion', 'gear', 'nutrition', 'food', 'health'];
-const EMPTY_FORM = { name: '', partner_code: '', address: '', logo_url: '', image1_url: '', image2_url: '', logo_bg: 'dark', category: 'gym', active: true, roles: ['earning_location'], locations: [], opening_hours: { ...DEFAULT_HOURS } };
+const CATEGORIES = ['eat', 'move', 'mind', 'sleep'];
+const UI_TO_DB_PARTNER_CATEGORIES = {
+    eat: ['food', 'nutrition'],
+    move: ['gym'],
+    mind: ['health'],
+    sleep: ['gear', 'fashion'],
+};
+const normalizePartnerCategory = (category) => {
+    switch (category) {
+        case 'eat':
+        case 'nutrition':
+        case 'food':
+            return 'eat';
+        case 'move':
+        case 'gym':
+            return 'move';
+        case 'mind':
+        case 'health':
+            return 'mind';
+        case 'sleep':
+        case 'gear':
+        case 'fashion':
+            return 'sleep';
+        default:
+            return 'move';
+    }
+};
+const toLegacyPartnerCategory = (category) => {
+    switch (category) {
+        case 'eat':
+            return 'food';
+        case 'move':
+            return 'gym';
+        case 'mind':
+            return 'health';
+        case 'sleep':
+            return 'gear';
+        default:
+            return 'gym';
+    }
+};
+const EMPTY_FORM = { name: '', partner_code: '', address: '', logo_url: '', image1_url: '', image2_url: '', logo_bg: 'dark', category: 'move', active: true, roles: ['earning_location'], locations: [], opening_hours: { ...DEFAULT_HOURS } };
 const toPartnerCode = (name) => name.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
 
 export default function PartnerManager() {
@@ -678,7 +718,12 @@ export default function PartnerManager() {
             .order('name', { ascending: true });
 
         if (search.trim()) query = query.ilike('name', `%${search.trim()}%`);
-        if (filterCat !== 'all') query = query.eq('category', filterCat);
+        if (filterCat !== 'all') {
+            const dbCats = UI_TO_DB_PARTNER_CATEGORIES[filterCat] || [filterCat];
+            query = dbCats.length === 1
+                ? query.eq('category', dbCats[0])
+                : query.in('category', dbCats);
+        }
         if (filterStatus === 'active') query = query.eq('active', true);
         if (filterStatus === 'inactive') query = query.eq('active', false);
         if (viewMode === 'locations') query = query.contains('roles', ['earning_location']);
@@ -688,7 +733,14 @@ export default function PartnerManager() {
 
         const { data, error, count } = await query;
         if (error) toast.error('Failed to load fleet');
-        else { setPartners(data || []); setTotalCount(count ?? 0); }
+        else {
+            const normalized = (data || []).map(partner => ({
+                ...partner,
+                category: normalizePartnerCategory(partner.category),
+            }));
+            setPartners(normalized);
+            setTotalCount(count ?? 0);
+        }
         setLoading(false);
     };
 
@@ -715,7 +767,7 @@ export default function PartnerManager() {
             image1_url: partner.image1_url || '',
             image2_url: partner.image2_url || '',
             logo_bg: partner.logo_bg || 'dark',
-            category: partner.category,
+            category: normalizePartnerCategory(partner.category),
             active: partner.active,
             roles: partner.roles && partner.roles.length ? partner.roles : ['earning_location'],
             locations: partner.locations || [],
@@ -729,6 +781,7 @@ export default function PartnerManager() {
         setSaving(true);
         const payload = {
             ...formData,
+            category: toLegacyPartnerCategory(formData.category),
             opening_hours: formData.opening_hours || null,
             locations: formData.locations.map(loc => ({
                 name: loc.name,

@@ -18,12 +18,12 @@ import { ProfileGeometricBackground } from '@/components/ProfileGeometricBackgro
 import { ProBadge } from '@/components/ui/ProBadge';
 import { getLevelInfo } from '@/constants/levels';
 import { useAuth } from '@/context/AuthContext';
-import { useActivity } from '@/hooks/useActivity';
 import { useAchievements } from '@/hooks/useAchievements';
+import { useActivity } from '@/hooks/useActivity';
 import { usePoints } from '@/hooks/usePoints';
 import { useStreak } from '@/hooks/useStreak';
-import { fetchProfile, type Profile } from '@/lib/api/user';
 import { fetchGallery, type GalleryPhoto } from '@/lib/api/pro-gallery';
+import { fetchProfile, type Profile } from '@/lib/api/user';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 
@@ -54,8 +54,8 @@ function dashOff(r: number, pct: number) { return circ(r) - pct * circ(r); }
 const DAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
 function getStreakPill(streak: number) {
-  if (streak === 0)  return { label: 'START TODAY',  dotColor: GOLD };
-  if (streak < 3)    return { label: 'WARMING UP',   dotColor: 'rgba(255,255,255,0.55)' };
+  if (streak === 0)  return { label: 'JUST STARTING',  dotColor: GOLD };
+  if (streak < 3)    return { label: 'SHOWING UP',   dotColor: 'rgba(255,255,255,0.55)' };
   if (streak < 7)    return { label: 'BUILDING',     dotColor: '#4ade80' };
   if (streak < 14)   return { label: 'ON A ROLL',    dotColor: '#22c55e' };
   if (streak < 21)   return { label: 'ON FIRE',      dotColor: ORANGE };
@@ -73,7 +73,7 @@ export default function ProfileScreen() {
   const router = useRouter();
 
   const { user } = useAuth();
-  const { totalEarned } = usePoints();
+  const { totalEarned, refresh: refreshPoints } = usePoints();
   const { currentStreak, longestStreak, multiplier } = useStreak();
   const { weekActiveDays, weeklyMetrics } = useActivity();
   const { earned: earnedAchievements, locked: lockedAchievements, earnedCount, totalCount } = useAchievements(totalEarned);
@@ -84,11 +84,12 @@ export default function ProfileScreen() {
   useFocusEffect(
     useCallback(() => {
       setAvatarError(false);
+      refreshPoints();
       fetchProfile().then(p => {
         setProfile(p);
         if (p?.is_pro) fetchGallery(p.id).then(setGallery);
       });
-    }, [])
+    }, [refreshPoints])
   );
 
   const displayName = profile?.display_name
@@ -256,7 +257,7 @@ export default function ProfileScreen() {
 
           <View style={s.heroStatBlock}>
             <Text style={s.heroStatNumber}>{totalEarned.toLocaleString()}</Text>
-            <Text style={s.heroStatLabel}>POWR POINTS</Text>
+            <Text style={s.heroStatLabel}>TOTAL XP</Text>
           </View>
 
           {/* XP bar */}

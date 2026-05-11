@@ -24,7 +24,7 @@ export async function fetchTotalEarned(): Promise<number> {
     const { data, error } = await supabase
         .from('point_transactions')
         .select('amount')
-        .in('type', ['earn', 'adjustment']);
+        .gt('amount', 0);
     if (error) throw error;
     return (data ?? []).reduce((sum, t) => sum + t.amount, 0);
 }

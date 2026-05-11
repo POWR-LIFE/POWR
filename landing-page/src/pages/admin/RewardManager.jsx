@@ -6,7 +6,41 @@ import { Link } from 'react-router-dom';
 import { uploadPublicImage } from '../../lib/storage';
 import { parseCodes, uploadCodes, fetchCodeStats, fetchCodePool, getCSVTemplate } from '../../lib/promoCodes';
 
-const CATEGORIES = ['gym', 'fashion', 'gear', 'nutrition', 'food', 'health'];
+const CATEGORIES = ['eat', 'move', 'mind', 'sleep'];
+const normalizeRewardCategory = (category) => {
+    switch (category) {
+        case 'eat':
+        case 'nutrition':
+        case 'food':
+            return 'eat';
+        case 'move':
+        case 'gym':
+            return 'move';
+        case 'mind':
+        case 'health':
+            return 'mind';
+        case 'sleep':
+        case 'gear':
+        case 'fashion':
+            return 'sleep';
+        default:
+            return 'move';
+    }
+};
+const toLegacyRewardCategory = (category) => {
+    switch (category) {
+        case 'eat':
+            return 'food';
+        case 'move':
+            return 'gym';
+        case 'mind':
+            return 'health';
+        case 'sleep':
+            return 'gear';
+        default:
+            return 'gym';
+    }
+};
 const KINDS = ['digital', 'physical'];
 const DISCOUNT_TYPES = [
     { value: '', label: 'None' },
@@ -34,7 +68,7 @@ const EMPTY_FORM = {
     title: '',
     description: '',
     powr_cost: 100,
-    category: 'gym',
+    category: 'move',
     stock: null,
     active: true,
     featured_on_home: false,
@@ -86,7 +120,13 @@ export default function RewardManager() {
             supabase.from('partners').select('id, name, partner_code, roles').contains('roles', ['reward_provider']).order('name'),
         ]);
         if (rew.error) toast.error('Failed to load inventory');
-        else setRewards(rew.data || []);
+        else {
+            const normalized = (rew.data || []).map((reward) => ({
+                ...reward,
+                category: normalizeRewardCategory(reward.category),
+            }));
+            setRewards(normalized);
+        }
         if (part.data) setPartners(part.data);
         setLoading(false);
     };
@@ -138,7 +178,7 @@ export default function RewardManager() {
             title: reward.title,
             description: reward.description || '',
             powr_cost: reward.powr_cost,
-            category: reward.category,
+            category: normalizeRewardCategory(reward.category),
             stock: reward.stock,
             active: reward.active,
             featured_on_home: reward.featured_on_home || false,
@@ -254,6 +294,7 @@ export default function RewardManager() {
         setSaving(true);
         const payload = {
             ...formData,
+            category: toLegacyRewardCategory(formData.category),
             partner_id: formData.partner_id || null,
             brand_name: formData.brand_name || null,
             discount_type: formData.discount_type || null,
