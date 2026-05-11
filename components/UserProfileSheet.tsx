@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Path, Polyline, Stop } from 'react-native-svg';
 
 import { ProBadge } from '@/components/ui/ProBadge';
+import { getLevelInfo } from '@/constants/levels';
 import { fetchAchievements, type Achievement } from '@/lib/api/pro-achievements';
 import { fetchEarnedAchievementCount } from '@/lib/api/achievement-stats';
 import { fetchGallery, type GalleryPhoto } from '@/lib/api/pro-gallery';
@@ -96,6 +97,8 @@ export function UserProfileSheet({ userId, myPoints, userPoints, onClose }: User
     const diff = (userPoints ?? 0) - (myPoints ?? 0);
     const diffSign = diff > 0 ? '+' : '';
     const showComparison = userPoints !== undefined && myPoints !== undefined;
+    const profileTotalPoints = stats?.totalPoints ?? userPoints ?? 0;
+    const { current: computedLevel } = getLevelInfo(profileTotalPoints);
 
     return (
         <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
@@ -144,9 +147,9 @@ export function UserProfileSheet({ userId, myPoints, userPoints, onClose }: User
                                     ) : null}
                                     <View style={s.identityPills}>
                                         {profile.is_pro && <ProBadge size="sm" />}
-                                        <TierPill totalPoints={stats?.totalPoints ?? 0} />
+                                        <TierPill totalPoints={profileTotalPoints} />
                                         <View style={s.levelPill}>
-                                            <Text style={s.levelText}>LVL {profile.level}</Text>
+                                            <Text style={s.levelText}>LVL {computedLevel.level}</Text>
                                         </View>
                                     </View>
                                 </View>

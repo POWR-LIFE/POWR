@@ -1,13 +1,14 @@
 import { GeometricBackground } from '@/components/home/GeometricBackground';
+import MagicRings from '@/components/MagicRings';
 import { ProfileButton } from '@/components/ProfileButton';
 import { usePoints } from '@/hooks/usePoints';
-import { fetchRewards, fetchFeaturedScheduledReward, type Reward as ApiReward } from '@/lib/api/rewards';
+import { fetchRewards, fetchSmartFeaturedReward, type Reward as ApiReward } from '@/lib/api/rewards';
 import { Ionicons } from '@expo/vector-icons';
-import { Image as ExpoImage } from 'expo-image';
 import * as Haptics from 'expo-haptics';
+import { Image as ExpoImage } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Image,
   LayoutAnimation,
@@ -30,6 +31,7 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 // ─── Design tokens ────────────────────────────────────────────────────────────
 
 const GOLD    = '#E8D200';
+const GOLD_RGBA = (a: number) => `rgba(232,210,0,${a})`;
 const BG      = '#1E1E1E';
 const CARD_BG = 'rgba(40,40,40,0.85)';
 const BORDER  = 'rgba(255,255,255,0.08)';
@@ -39,8 +41,8 @@ const DIM     = 'rgba(255,255,255,0.55)';
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
-type Category = 'ALL' | 'MOVE' | 'EAT' | 'MIND' | 'GEAR';
-const CATEGORIES: Category[] = ['ALL', 'MOVE', 'EAT', 'MIND', 'GEAR'];
+type Category = 'ALL' | 'EAT' | 'MOVE' | 'MIND' | 'SLEEP';
+const CATEGORIES: Category[] = ['ALL', 'EAT', 'MOVE', 'MIND', 'SLEEP'];
 
 interface Reward {
   id: string;
@@ -63,9 +65,9 @@ interface Reward {
 const REWARDS: Reward[] = [
   { id: '1', category: 'MOVE', logoText: 'TS',     logoLight: false, title: 'Free gym class',          subtitle: 'Third Space · Any location',  pts: 800,  value: '£20 value' },
   { id: '2', category: 'EAT',  logoText: 'NOTTO',  logoLight: true,  title: '25% off your bill',       subtitle: 'Notto Pasta · Any branch',    pts: 500,  value: 'Up to £15 off' },
-  { id: '3', category: 'GEAR', logoText: 'bulk',   logoLight: false, title: '30% off protein powder',  subtitle: 'bulk® · Any product',         pts: 400,  value: 'Up to £20 off' },
+  { id: '3', category: 'EAT',  logoText: 'bulk',   logoLight: false, title: '30% off protein powder',  subtitle: 'bulk® · Any product',         pts: 400,  value: 'Up to £20 off' },
   { id: '4', category: 'MIND', logoText: 'calm',   logoLight: false, title: '3 months free',           subtitle: 'Calm · Premium subscription', pts: 600,  value: '£45 value' },
-  { id: '5', category: 'GEAR', logoText: 'eight',  logoLight: false, title: '£50 off mattress',        subtitle: 'Eight Sleep · Any model',     pts: 1200, value: '£50 off' },
+  { id: '5', category: 'SLEEP',logoText: 'eight',  logoLight: false, title: '£50 off mattress',        subtitle: 'Eight Sleep · Any model',     pts: 1200, value: '£50 off' },
   { id: '6', category: 'EAT',  logoText: 'WH',     logoLight: true,  title: '20% off supplements',     subtitle: 'Whole Health · Any order',    pts: 350,  value: '20% off' },
   { id: '7', category: 'MOVE', logoText: 'barry',  logoLight: true,  title: 'Single class pass',       subtitle: "Barry's · Any studio",        pts: 650,  value: '£22 value' },
   { id: '8', category: 'MIND', logoText: 'head',   logoLight: false, title: '1 month free',            subtitle: 'Headspace · Plus plan',       pts: 300,  value: '£12 value' },
@@ -93,15 +95,25 @@ function getRewardDisplayValue(reward: Pick<ApiReward, 'discount_type' | 'discou
   return reward.value_label ?? undefined;
 }
 
+function splitDiscount(label?: string): { amount: string; suffix: string } {
+  if (!label) return { amount: '', suffix: '' };
+  const m = label.match(/^(.+?)\s*(OFF|off)$/);
+  return m ? { amount: m[1].trim(), suffix: 'OFF' } : { amount: label, suffix: '' };
+}
+
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 const DB_TO_UI_CATEGORY: Record<string, Exclude<Category, 'ALL'>> = {
   gym: 'MOVE',
+  move: 'MOVE',
   health: 'MIND',
+  mind: 'MIND',
   nutrition: 'EAT',
   food: 'EAT',
-  fashion: 'GEAR',
-  gear: 'GEAR',
+  eat: 'EAT',
+  sleep: 'SLEEP',
+  fashion: 'SLEEP',
+  gear: 'SLEEP',
 };
 
 function apiRewardToUI(r: ApiReward): Reward {
@@ -109,7 +121,7 @@ function apiRewardToUI(r: ApiReward): Reward {
   const logoText = (displayName ?? '??').slice(0, 5).toLowerCase();
   return {
     id: r.id,
-    category: DB_TO_UI_CATEGORY[r.category] ?? 'GEAR',
+    category: DB_TO_UI_CATEGORY[r.category] ?? 'SLEEP',
     logoText,
     logoLight: false,
     logoImage: r.image_url ? { uri: r.image_url } : r.partner?.logo_url ? { uri: r.partner.logo_url } : undefined,
@@ -132,6 +144,9 @@ export default function SpendScreen() {
   const [activeCategory, setActiveCategory] = useState<Category>('ALL');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const { balance, todayEarned, loading, refresh: refreshPoints } = usePoints();
+  const scrollViewRef = useRef<ScrollView>(null);
+  const rewardPositions = useRef<Record<string, number>>({});
+  const pendingRevealId = useRef<string | null>(null);
 
   const toggleExpand = (id: string) => {
     LayoutAnimation.configureNext({
@@ -149,14 +164,22 @@ export default function SpendScreen() {
 
   const loadRewards = useCallback(async () => {
     try {
-      const [data, featured] = await Promise.all([fetchRewards(), fetchFeaturedScheduledReward()]);
+      const [data, featured] = await Promise.all([fetchRewards(), fetchSmartFeaturedReward(balance)]);
       if (data.length > 0) setRewards(data.map(apiRewardToUI));
       setFeaturedReward(featured);
     } catch {
       // keep mock fallback
     }
-  }, []);
+  }, [balance]);
   useEffect(() => { loadRewards(); }, [loadRewards]);
+
+
+
+  useFocusEffect(
+    useCallback(() => {
+      refreshPoints();
+    }, [refreshPoints])
+  );
 
   const [refreshing, setRefreshing] = useState(false);
   const onRefresh = useCallback(async () => {
@@ -178,6 +201,20 @@ export default function SpendScreen() {
   });
 
   const featuredAfford = featuredReward ? affordability(balance, featuredReward.powr_cost) : 'locked';
+  const showKeepMovingUnlock = activeCategory === 'MIND' || activeCategory === 'SLEEP';
+  const revealFeaturedInList = useCallback((id: string) => {
+    Haptics.selectionAsync();
+    setActiveCategory('ALL');
+    setExpandedId(id);
+    pendingRevealId.current = id;
+    setTimeout(() => {
+      const y = rewardPositions.current[id];
+      if (typeof y === 'number') {
+        scrollViewRef.current?.scrollTo({ y: Math.max(0, y - 24), animated: true });
+        pendingRevealId.current = null;
+      }
+    }, 80);
+  }, []);
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
@@ -187,19 +224,7 @@ export default function SpendScreen() {
         <ProfileButton />
       </View>
 
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 80 }]}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor="#E8D200"
-            colors={['#E8D200']}
-          />
-        }
-      >
+      <View style={styles.topContent}>
         <BalanceCard
           balance={balance}
           todayEarned={todayEarned}
@@ -211,7 +236,7 @@ export default function SpendScreen() {
             featured={featuredReward}
             afford={featuredAfford}
             balance={balance}
-            onRedeem={() => router.push({ pathname: '/redeem-modal', params: { id: featuredReward.id } })}
+            onRedeem={() => revealFeaturedInList(featuredReward.id)}
           />
         )}
 
@@ -235,26 +260,52 @@ export default function SpendScreen() {
             );
           })}
         </View>
+      </View>
 
-        <View style={styles.rewardsList}>
-          {sorted.map((reward) => (
-            <RewardCard
-              key={reward.id}
-              reward={reward}
-              afford={affordability(balance, reward.pts)}
-              balance={balance}
-              expanded={expandedId === reward.id}
-              onToggle={() => toggleExpand(reward.id)}
-              onRedeem={() => router.push({ pathname: '/redeem-modal', params: { id: reward.id } })}
-            />
-          ))}
-        </View>
-
-        <Pressable style={({ pressed }) => [styles.nearbyRow, pressed && { opacity: 0.75 }]}>
-          <Ionicons name="location-outline" size={16} color={DIM} />
-          <Text style={styles.nearbyText}>Find nearby fitness partners</Text>
-          <Ionicons name="arrow-forward" size={16} color={MUTED} />
-        </Pressable>
+      <ScrollView
+        ref={scrollViewRef}
+        style={styles.scroll}
+        contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 80 }]}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#E8D200"
+            colors={['#E8D200']}
+          />
+        }
+      >
+        {showKeepMovingUnlock ? (
+          <View style={styles.keepMovingCenterWrap}>
+            <KeepMovingUnlockCard />
+          </View>
+        ) : (
+          <View style={styles.rewardsList}>
+            {sorted.map((reward) => (
+              <View
+                key={reward.id}
+                onLayout={(e) => {
+                  const y = e.nativeEvent.layout.y;
+                  rewardPositions.current[reward.id] = y;
+                  if (pendingRevealId.current === reward.id) {
+                    scrollViewRef.current?.scrollTo({ y: Math.max(0, y - 24), animated: true });
+                    pendingRevealId.current = null;
+                  }
+                }}
+              >
+                <RewardCard
+                  reward={reward}
+                  afford={affordability(balance, reward.pts)}
+                  balance={balance}
+                  expanded={expandedId === reward.id}
+                  onToggle={() => toggleExpand(reward.id)}
+                  onRedeem={() => router.push({ pathname: '/redeem-modal', params: { id: reward.id } })}
+                />
+              </View>
+            ))}
+          </View>
+        )}
       </ScrollView>
     </View>
   );
@@ -276,7 +327,7 @@ function BalanceCard({ balance, todayEarned, loading }: BalanceCardProps) {
         <Text style={[styles.balanceNumber, loading && { opacity: 0.4 }]}>
           {balance.toLocaleString()}
         </Text>
-        <Text style={styles.balanceUnit}>POWR</Text>
+        <Text style={styles.balanceUnit}>Points</Text>
         {todayEarned > 0 && (
           <View style={styles.todayBadge}>
             <View style={styles.todayDot} />
@@ -301,9 +352,9 @@ function FeaturedCard({ featured, afford, balance, onRedeem }: FeaturedProps) {
   const pts = featured.powr_cost;
   const ptsNeeded = pts - balance;
   const progress = Math.min(balance / pts, 1);
-  const partnerName = featured.partner?.name ?? featured.brand_name ?? '';
-  const subtitle = `${partnerName}${featured.description ? ' · ' + featured.description : ''}`;
+  const subtitle = featured.description ?? '';
   const value = getRewardDisplayValue(featured);
+  const { amount, suffix } = splitDiscount(value);
   const logoSrc = featured.image_url
     ? { uri: featured.image_url }
     : featured.partner?.logo_url
@@ -315,42 +366,24 @@ function FeaturedCard({ featured, afford, balance, onRedeem }: FeaturedProps) {
     <View style={styles.featuredCard}>
       <View style={styles.featuredHero}>
         {heroSrc && (
-          <Image source={heroSrc} style={styles.featuredHeroImg} resizeMode="cover" />
+          <ExpoImage source={heroSrc} style={styles.featuredHeroImg} contentFit="cover" contentPosition="top" />
         )}
         <LinearGradient
-          colors={['rgba(10,10,10,0.85)', 'rgba(10,10,10,0.35)', 'rgba(10,10,10,0)']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          locations={[0, 0.45, 1]}
-          style={StyleSheet.absoluteFillObject}
-        />
-        <LinearGradient
-          colors={['rgba(10,10,10,0)', 'rgba(10,10,10,0.6)', 'rgba(10,10,10,0.95)']}
-          locations={[0, 0.55, 1]}
+          colors={['rgba(10,10,10,0)', 'rgba(10,10,10,0.45)', 'rgba(10,10,10,0.85)']}
+          locations={[0.3, 0.65, 1]}
           style={StyleSheet.absoluteFillObject}
         />
 
-        <View style={styles.featuredHeroBadges}>
-          <Text style={styles.rotateBadgeText}>Rotates weekly</Text>
+        <View style={styles.featuredPointsBlock}>
+          <Text style={styles.featuredPtsNum}>{pts} <Text style={styles.featuredPtsUnit}>points</Text></Text>
         </View>
 
-        {logoSrc && (
-          <View style={styles.featuredLogoFloat}>
-            <ExpoImage source={logoSrc} style={styles.featuredLogoImg} contentFit="contain" />
-          </View>
-        )}
-
         <View style={styles.featuredOverlayBody}>
-          <View style={styles.featuredTitleRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.featuredTitle}>{featured.title}</Text>
-              <Text style={styles.featuredSubtitle}>{subtitle}</Text>
+          {logoSrc && (
+            <View style={styles.featuredLogoSubtitleRow}>
+              <ExpoImage source={logoSrc} style={styles.featuredLogoInline} contentFit="contain" />
             </View>
-            <View style={styles.featuredPtsBlock}>
-              <Text style={styles.featuredPtsNum}>{pts}</Text>
-              <Text style={styles.featuredPtsUnit}>pts</Text>
-            </View>
-          </View>
+          )}
 
           {afford !== 'can' && (
             <View style={styles.featuredProgressWrap}>
@@ -359,7 +392,12 @@ function FeaturedCard({ featured, afford, balance, onRedeem }: FeaturedProps) {
           )}
 
           <View style={styles.featuredFooter}>
-            <Text style={styles.featuredValueInline}>{value}</Text>
+            {value ? (
+              <View style={styles.featuredDiscountBadge}>
+                <Text style={styles.featuredDiscountAmount}>{amount}</Text>
+                {suffix ? <Text style={styles.featuredDiscountSuffix}> {suffix}</Text> : null}
+              </View>
+            ) : <View />}
             {afford === 'can' ? (
               <Pressable style={({ pressed }) => [styles.redeemPrimary, pressed && { opacity: 0.85 }]} onPress={onRedeem}>
                 <Text style={styles.redeemPrimaryText}>Redeem</Text>
@@ -492,24 +530,28 @@ function RewardCard({ reward, afford, balance, expanded, onToggle, onRedeem }: R
 
       {expanded && (
         <View style={styles.expandedPanel}>
-          {reward.value && (
-            <View style={[
-              styles.expandedValueBadge,
-              { borderColor: brand + '66', backgroundColor: brand + '14' },
-              afford === 'close' && { opacity: progress },
-            ]}>
-              <Text style={[styles.expandedValueBadgeText, { color: brand }]}>{reward.value}</Text>
+          {(reward.value || reward.partnerBlurb) && (
+            <View style={styles.expandedTopRow}>
+              {reward.value && (
+                <View style={[
+                  styles.expandedValueBadge,
+                  { borderColor: brand + '66', backgroundColor: brand + '14' },
+                  afford === 'close' && { opacity: progress },
+                ]}>
+                  <Text style={[styles.expandedValueBadgeText, { color: brand }]}>{reward.value}</Text>
+                </View>
+              )}
+
+              {reward.partnerBlurb && (
+                <View style={styles.aboutBlock}>
+                  <Text style={styles.expandedLabel}>About {reward.logoText.toUpperCase()}</Text>
+                  <Text style={styles.expandedBlurb}>{reward.partnerBlurb}</Text>
+                </View>
+              )}
             </View>
           )}
 
           {reward.offer && <Text style={styles.expandedOffer}>{reward.offer}</Text>}
-
-          {reward.partnerBlurb && (
-            <View style={styles.aboutBlock}>
-              <Text style={styles.expandedLabel}>About {reward.logoText.toUpperCase()}</Text>
-              <Text style={styles.expandedBlurb}>{reward.partnerBlurb}</Text>
-            </View>
-          )}
 
           {afford === 'can' && (
             <Pressable
@@ -554,6 +596,35 @@ function RewardCard({ reward, afford, balance, expanded, onToggle, onRedeem }: R
   );
 }
 
+function KeepMovingUnlockCard() {
+  return (
+    <View style={styles.keepMovingCard}>
+      <View style={styles.keepMovingRingWrap}>
+        <MagicRings
+          color="#E8D200"
+          colorTwo="#f59e0b"
+          ringCount={5}
+          speed={0.75}
+          attenuation={8}
+          lineThickness={2}
+          baseRadius={0.18}
+          radiusStep={0.07}
+          scaleRate={0.08}
+          opacity={0.95}
+          noiseAmount={0.03}
+        />
+        <View style={styles.keepMovingRingCenter}>
+          <Ionicons name="lock-closed" size={14} color={GOLD} />
+        </View>
+      </View>
+
+      <View style={styles.keepMovingTextWrap}>
+        <Text style={styles.keepMovingTitle}>Keep moving to unlock</Text>
+      </View>
+    </View>
+  );
+}
+
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
@@ -575,10 +646,15 @@ const styles = StyleSheet.create({
     color: TEXT,
   },
   scroll: { flex: 1 },
-  content: {
+  topContent: {
     paddingHorizontal: 12,
     gap: 10,
     paddingTop: 4,
+  },
+  listContent: {
+    paddingHorizontal: 12,
+    paddingTop: 0,
+    gap: 10,
   },
 
   // ── Balance card (floating, no background)
@@ -608,6 +684,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-end',
     gap: 8,
+    width: '100%',
   },
   balanceNumber: {
     fontSize: 64,
@@ -655,7 +732,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    paddingTop: 2,
+    marginLeft: 'auto',
+    alignSelf: 'center',
   },
   todayDot: {
     width: 5,
@@ -698,6 +776,17 @@ const styles = StyleSheet.create({
     gap: 12,
     marginBottom: 12,
   },
+  featuredPointsBlock: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
   featuredPtsBlock: {
     alignItems: 'flex-end',
   },
@@ -716,11 +805,29 @@ const styles = StyleSheet.create({
     letterSpacing: 1.5,
     textTransform: 'uppercase',
   },
-  featuredValueInline: {
-    fontSize: 13,
-    fontWeight: '400',
-    color: DIM,
-    letterSpacing: 0.2,
+  featuredDiscountBadge: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    backgroundColor: GOLD_RGBA(0.07),
+    borderWidth: 1,
+    borderColor: GOLD_RGBA(0.2),
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    alignSelf: 'flex-start',
+  },
+  featuredDiscountAmount: {
+    fontSize: 16,
+    fontWeight: '200',
+    color: GOLD,
+    letterSpacing: -0.3,
+  },
+  featuredDiscountSuffix: {
+    fontSize: 8,
+    fontWeight: '600',
+    color: GOLD,
+    letterSpacing: 1,
+    opacity: 0.7,
   },
   featuredBadge: {
     flexDirection: 'row',
@@ -776,7 +883,7 @@ const styles = StyleSheet.create({
     color: DIM,
   },
   featuredHero: {
-    height: 260,
+    height: 200,
     position: 'relative',
     backgroundColor: 'transparent',
   },
@@ -817,6 +924,16 @@ const styles = StyleSheet.create({
   featuredLogoImg: {
     width: '100%',
     height: '100%',
+  },
+  featuredLogoSubtitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 10,
+  },
+  featuredLogoInline: {
+    width: 72,
+    height: 72,
   },
   featuredProgressWrap: {
     height: 3,
@@ -1103,6 +1220,12 @@ const styles = StyleSheet.create({
     borderTopColor: BORDER,
     gap: 14,
   },
+  expandedTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    flexWrap: 'wrap',
+  },
   expandedValueBadge: {
     alignSelf: 'flex-start',
     paddingHorizontal: 14,
@@ -1123,6 +1246,8 @@ const styles = StyleSheet.create({
     lineHeight: 21,
   },
   aboutBlock: {
+    flex: 1,
+    minWidth: 170,
     gap: 6,
   },
   expandedLabel: {
@@ -1206,22 +1331,61 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.22)',
   },
 
-  // ── Nearby row
-  nearbyRow: {
-    flexDirection: 'row',
+  keepMovingCard: {
     alignItems: 'center',
-    gap: 10,
-    backgroundColor: CARD_BG,
-    borderWidth: 1,
-    borderColor: BORDER,
-    borderRadius: 16,
-    padding: 14,
-    marginTop: 4,
+    justifyContent: 'center',
+    gap: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
   },
-  nearbyText: {
-    flex: 1,
-    fontSize: 13,
+  keepMovingCenterWrap: {
+    minHeight: 420,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  keepMovingRingWrap: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(232,210,0,0.25)',
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  keepMovingRingCenter: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(232,210,0,0.2)',
+  },
+  keepMovingTextWrap: {
+    alignItems: 'center',
+    gap: 4,
+  },
+  keepMovingEyebrow: {
+    fontSize: 9,
+    fontWeight: '600',
+    letterSpacing: 1.6,
+    textTransform: 'uppercase',
+    color: GOLD,
+    opacity: 0.9,
+  },
+  keepMovingTitle: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: TEXT,
+    letterSpacing: -0.1,
+  },
+  keepMovingBody: {
+    fontSize: 12,
     fontWeight: '300',
     color: DIM,
+    lineHeight: 17,
   },
 });

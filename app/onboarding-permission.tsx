@@ -62,6 +62,9 @@ export default function OnboardingPermissionScreen() {
     useEffect(() => {
         // Check if permission is already granted (e.g. reinstall or granted elsewhere)
         (async () => {
+            // Award the one-time signup bonus (idempotent — server deduplicates per user)
+            awardBonus('signup').catch(() => {});
+
             const { status } = await Location.getForegroundPermissionsAsync();
             if (status === 'granted') {
                 // Award bonus idempotently (server deduplicates) and advance

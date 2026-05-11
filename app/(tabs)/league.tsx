@@ -138,8 +138,9 @@ export default function LeagueScreen() {
 
       {!LEAGUE_LIVE ? (
         <ComingSoon
-          title="League coming soon"
-          subtitle="Weekly leagues, podiums, and promotions are on the way."
+          eyebrow="KEEP MOVING"
+          title="The league is waiting for you."
+          subtitle="Train consistently to unlock weekly podiums and rankings."
         />
       ) : (
         <>

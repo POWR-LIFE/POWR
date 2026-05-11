@@ -11,6 +11,10 @@ const GOLD = '#E8D200';
 const BG = '#0d0d0d';
 const CARD_BG = 'rgba(40,40,40,0.85)';
 const BORDER = 'rgba(255,255,255,0.08)';
+const FONT_LIGHT = 'Outfit_300Light';
+const FONT_REGULAR = 'Outfit_400Regular';
+const FONT_MEDIUM = 'Outfit_500Medium';
+const FONT_SEMIBOLD = 'Outfit_600SemiBold';
 
 function StepDots({ current }: { current: number }) {
     return (
@@ -158,16 +162,8 @@ export default function OnboardingAccountScreen() {
 
                     {/* Headline */}
                     <View style={styles.headlineRow}>
-                        <Text style={styles.headline}>
-                            Your streak{'\n'}
-                            <Text style={styles.headlineGold}>is yours.</Text>
-                        </Text>
+                        <Text style={[styles.headline, styles.headlineGold]}>Start earning.</Text>
                     </View>
-
-                    {/* Body */}
-                    <Text style={styles.body}>
-                        Movement, streaks, points — everything{'\n'}you've earned, secured and with you.
-                    </Text>
                 </Animated.View>
 
                 {/* Auth buttons */}
@@ -299,6 +295,7 @@ const styles = StyleSheet.create({
     headline: {
         color: '#F2F2F2',
         fontSize: 44,
+        fontFamily: FONT_LIGHT,
         fontWeight: '200',
         letterSpacing: -1.5,
         lineHeight: 50,
@@ -306,6 +303,7 @@ const styles = StyleSheet.create({
     },
     headlineGold: {
         color: GOLD,
+        fontFamily: FONT_SEMIBOLD,
         fontWeight: '700',
         letterSpacing: -1.5,
     },
@@ -382,6 +380,7 @@ const styles = StyleSheet.create({
     authLabel: {
         color: 'rgba(255,255,255,0.75)',
         fontSize: 14,
+        fontFamily: FONT_REGULAR,
         fontWeight: '400',
         flex: 1,
         textAlign: 'center',
@@ -394,6 +393,7 @@ const styles = StyleSheet.create({
     authLabelSocial: {
         color: 'rgba(255,255,255,0.85)',
         fontSize: 15,
+        fontFamily: FONT_SEMIBOLD,
         fontWeight: '600',
         letterSpacing: 0.2,
     },
@@ -421,11 +421,13 @@ const styles = StyleSheet.create({
     footerText: {
         color: 'rgba(255,255,255,0.25)',
         fontSize: 13,
+        fontFamily: FONT_LIGHT,
         fontWeight: '300',
         letterSpacing: 0.1,
     },
     footerLink: {
         color: '#FFFFFF',
+        fontFamily: FONT_MEDIUM,
         fontWeight: '600',
     },
 });

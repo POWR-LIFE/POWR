@@ -1,4 +1,3 @@
-import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useEffect, useRef } from 'react';
 import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -7,27 +6,25 @@ import { Video, ResizeMode } from 'expo-av';
 
 const GOLD = '#E8D200';
 const BG = '#0d0d0d';
+const FONT_LIGHT = 'Outfit_300Light';
+const FONT_MEDIUM = 'Outfit_500Medium';
+const FONT_SEMIBOLD = 'Outfit_600SemiBold';
+const FONT_BOLD = 'Outfit_700Bold';
 
 export default function OnboardingScreen() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
 
     const line1Fade = useRef(new Animated.Value(0)).current;
-    const line2Fade = useRef(new Animated.Value(0)).current;
-    const subFade = useRef(new Animated.Value(0)).current;
     const buttonsFade = useRef(new Animated.Value(0)).current;
 
     useEffect(() => {
         Animated.sequence([
             Animated.delay(900),
             Animated.timing(line1Fade, { toValue: 1, duration: 900, useNativeDriver: true }),
-            Animated.delay(200),
-            Animated.timing(line2Fade, { toValue: 1, duration: 900, useNativeDriver: true }),
-            Animated.delay(200),
-            Animated.timing(subFade, { toValue: 1, duration: 700, useNativeDriver: true }),
             Animated.timing(buttonsFade, { toValue: 1, duration: 600, useNativeDriver: true }),
         ]).start();
-    }, [line1Fade, line2Fade, subFade, buttonsFade]);
+    }, [line1Fade, buttonsFade]);
 
     return (
         <View style={styles.container}>
@@ -48,17 +45,15 @@ export default function OnboardingScreen() {
                 {/* Headlines */}
                 <View style={styles.headlineBlock}>
                     <Animated.Text style={[styles.headline, { opacity: line1Fade }]}>
-                        Your last workout
+                        Train.
                     </Animated.Text>
-                    <Animated.Text style={[styles.headlineGoldLine, { opacity: line2Fade }]}>
-                        earned you nothing.
+                    <Animated.Text style={[styles.headline, { opacity: line1Fade }]}>
+                        Earn.
+                    </Animated.Text>
+                    <Animated.Text style={[styles.headline, { opacity: line1Fade }]}>
+                        Repeat.
                     </Animated.Text>
                 </View>
-
-                {/* Sub copy */}
-                <Animated.Text style={[styles.subCopy, { opacity: subFade }]}>
-                    POWR makes sure it counts. Every gym session, run, walk and ride - rewarded.
-                </Animated.Text>
 
                 {/* Buttons */}
                 <Animated.View style={[styles.buttons, { opacity: buttonsFade }]}>
@@ -76,11 +71,6 @@ export default function OnboardingScreen() {
                         <Text style={styles.ghostLabel}>LOG IN</Text>
                     </Pressable>
                 </Animated.View>
-
-                {/* Legal */}
-                <Animated.Text style={[styles.legal, { opacity: buttonsFade }]}>
-                    Free to join · No credit card required
-                </Animated.Text>
             </View>
         </View>
     );
@@ -103,29 +93,12 @@ const styles = StyleSheet.create({
         marginBottom: 14,
     },
     headline: {
-        color: '#F2F2F2',
-        fontSize: 44,
-        fontWeight: '200',
-        letterSpacing: -1.5,
-        lineHeight: 50,
-    },
-    headlineGoldLine: {
         color: GOLD,
         fontSize: 44,
-        fontWeight: '400',
+        fontFamily: FONT_MEDIUM,
+        fontWeight: '500',
         letterSpacing: -1.5,
         lineHeight: 50,
-    },
-    headlineGold: {
-        color: GOLD,
-        fontWeight: '700',
-    },
-    subCopy: {
-        color: 'rgba(255,255,255,0.45)',
-        fontSize: 15,
-        fontWeight: '300',
-        lineHeight: 23,
-        marginBottom: 32,
     },
     buttons: {
         gap: 10,
@@ -141,6 +114,7 @@ const styles = StyleSheet.create({
     primaryLabel: {
         color: '#0a0a0a',
         fontSize: 12,
+        fontFamily: FONT_BOLD,
         fontWeight: '700',
         letterSpacing: 1.5,
     },
@@ -155,14 +129,8 @@ const styles = StyleSheet.create({
     ghostLabel: {
         color: 'rgba(255,255,255,0.6)',
         fontSize: 12,
+        fontFamily: FONT_SEMIBOLD,
         fontWeight: '600',
         letterSpacing: 1.5,
-    },
-    legal: {
-        color: 'rgba(255,255,255,0.2)',
-        fontSize: 11,
-        fontWeight: '300',
-        textAlign: 'center',
-        letterSpacing: 0.3,
     },
 });

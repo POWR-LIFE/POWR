@@ -19,6 +19,7 @@ import {
   type AchievementCategory,
   type AchievementWithState,
 } from '@/constants/achievements';
+import { LEVELS, getLevelInfo } from '@/constants/levels';
 import { useAchievements } from '@/hooks/useAchievements';
 import { usePoints } from '@/hooks/usePoints';
 
@@ -39,21 +40,28 @@ const TILE_W   = Math.floor((SCREEN_W - 32 - COL_GAP * (COLS - 1)) / COLS);
 
 // ─── Category filter config ───────────────────────────────────────────────────
 
-const ALL_CATEGORIES: (AchievementCategory | 'all')[] = [
-  'all',
-  'habit',
-  'sessions',
-  'points',
-  'level',
-  'running',
-  'gym',
-  'cycling',
-  'swimming',
-  'hiit',
-  'yoga',
-  'sports',
-  'walking',
-];
+const AVAILABLE_CATEGORIES = Array.from(
+  new Set(ACHIEVEMENTS.map(a => a.category)),
+) as AchievementCategory[];
+
+const ALL_CATEGORIES: (AchievementCategory | 'all')[] = ['all', ...AVAILABLE_CATEGORIES];
+
+const LEVEL_BY_NUMBER = new Map(LEVELS.map(level => [level.level, level]));
+
+function clamp01(value: number) {
+  return Math.max(0, Math.min(1, value));
+}
+
+function progressToTarget(totalEarned: number, targetLevel: number): number {
+  const target = LEVEL_BY_NUMBER.get(targetLevel);
+  if (!target) return 0;
+  if (totalEarned >= target.xpMin) return 1;
+
+  const prev = LEVEL_BY_NUMBER.get(targetLevel - 1);
+  const fromXp = prev?.xpMin ?? 0;
+  const span = Math.max(1, target.xpMin - fromXp);
+  return clamp01((totalEarned - fromXp) / span);
+}
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
@@ -183,7 +191,7 @@ export default function AchievementsScreen() {
         ) : (
           <View style={styles.tileGrid}>
             {filtered.map(a => (
-              <AchievementTile key={a.id} achievement={a} width={TILE_W} />
+              <AchievementTile key={a.id} achievement={a} width={TILE_W} totalEarned={totalEarned} />
             ))}
           </View>
         )}
@@ -197,36 +205,71 @@ export default function AchievementsScreen() {
 function AchievementTile({
   achievement: a,
   width,
+  totalEarned,
 }: {
   achievement: AchievementWithState;
   width: number;
+  totalEarned: number;
 }) {
   const [expanded, setExpanded] = useState(false);
   const rarity = RARITY_META[a.rarity];
+  const targetLevel = a.unlock.type === 'level' ? a.unlock.level : undefined;
+  const levelDef = targetLevel ? LEVEL_BY_NUMBER.get(targetLevel) : undefined;
+  const levelProgress = targetLevel ? progressToTarget(totalEarned, targetLevel) : 0;
+  const { current: currentLevel } = getLevelInfo(totalEarned);
 
-  const borderColor = a.earned ? a.colour : 'rgba(255,255,255,0.08)';
-  const iconColor   = a.earned ? a.colour : 'rgba(255,255,255,0.2)';
+  const borderColor = 'rgba(255,255,255,0.1)';
+  const iconColor = a.earned
+    ? levelDef?.pill.text ?? '#E8D200'
+    : 'rgba(255,255,255,0.2)';
+  const levelWash = a.earned ? 0.22 : 0.12;
+  const accentAlpha = a.earned ? 0.9 : 0.1 + levelProgress * 0.7;
+  const accentBorder = `rgba(232,210,0,${accentAlpha.toFixed(3)})`;
+  const progressLabel = a.earned
+    ? 'COMPLETE'
+    : `${Math.round(levelProgress * 100)}% to LV${targetLevel}`;
+  const isCurrentTarget = Boolean(targetLevel && currentLevel.level + 1 === targetLevel);
 
   return (
     <Pressable
-      style={[styles.tile, { width }]}
+      style={[
+        styles.tile,
+        {
+          width,
+          borderColor,
+          backgroundColor: CARD,
+        },
+      ]}
       onPress={() => setExpanded(v => !v)}
     >
+      <View pointerEvents="none" style={[styles.tileProgressAccent, { borderColor: accentBorder }]} />
+      {!!levelDef && (
+        <View
+          pointerEvents="none"
+          style={[
+            styles.levelWash,
+            {
+              backgroundColor: levelDef.pill.bg,
+              opacity: levelWash,
+            },
+          ]}
+        />
+      )}
+
       {/* Rarity glow ring */}
-      {a.earned && a.rarity !== 'common' && (
-        <View style={[styles.rarityGlow, { backgroundColor: rarity.glow }]} />
+      {a.earned && a.rarity === 'legendary' && (
+        <View style={[styles.rarityGlow, { backgroundColor: 'rgba(232,210,0,0.08)' }]} />
       )}
 
       {/* Medallion */}
       <View style={[
         styles.medallion,
-        { borderColor },
-        a.earned && a.rarity !== 'common' && { borderColor: rarity.border },
+        { borderColor: a.earned ? GOLD : borderColor },
         !a.earned && { opacity: 0.45 },
       ]}>
         <View style={styles.medallionInner}>
           <Ionicons
-            name={(a.earned ? a.icon : 'lock-closed') as any}
+            name={(a.earned ? (levelDef?.stageIcon ?? a.icon) : 'lock-closed') as any}
             size={24}
             color={iconColor}
           />
@@ -241,7 +284,7 @@ function AchievementTile({
       </View>
 
       {/* Code label */}
-      <Text style={[styles.tileCode, { color: a.earned ? a.colour : MUTED }]}>
+      <Text style={[styles.tileCode, { color: a.earned ? 'rgba(255,255,255,0.78)' : MUTED }]}> 
         {a.code}
       </Text>
 
@@ -250,20 +293,14 @@ function AchievementTile({
         {a.name}
       </Text>
 
-      {/* Rarity badge */}
-      {a.rarity !== 'common' && (
-        <View style={[
-          styles.rarityBadge,
-          a.earned && { borderColor: rarity.border + '99' },
-        ]}>
-          <Text style={[
-            styles.rarityBadgeText,
-            { color: a.earned ? rarity.border.replace('0.5)', '0.9)').replace('0.6)', '0.9)').replace('0.7)', '1)') : MUTED },
-          ]}>
-            {a.rarity.toUpperCase()}
-          </Text>
-        </View>
-      )}
+      <Text
+        style={[
+          styles.progressHint,
+          isCurrentTarget && !a.earned && { color: GOLD },
+        ]}
+      >
+        {progressLabel}
+      </Text>
 
       {/* Expanded description */}
       {expanded && (
@@ -397,6 +434,22 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
 
+  tileProgressAccent: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 16,
+    borderWidth: 0.5,
+  },
+
+  levelWash: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 72,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+  },
+
   rarityGlow: {
     position: 'absolute',
     top: 0, left: 0, right: 0,
@@ -459,6 +512,14 @@ const styles = StyleSheet.create({
     fontSize: 7,
     fontWeight: '600',
     letterSpacing: 1,
+  },
+
+  progressHint: {
+    fontSize: 8,
+    fontWeight: '500',
+    letterSpacing: 0.7,
+    color: 'rgba(255,255,255,0.42)',
+    textTransform: 'uppercase',
   },
 
   tileDesc: {

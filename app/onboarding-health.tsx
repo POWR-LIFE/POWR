@@ -15,6 +15,11 @@ const GOLD = '#E8D200';
 const BG = '#0d0d0d';
 const CARD_BG = 'rgba(40,40,40,0.85)';
 const BORDER = 'rgba(255,255,255,0.08)';
+const FONT_LIGHT = 'Outfit_300Light';
+const FONT_REGULAR = 'Outfit_400Regular';
+const FONT_MEDIUM = 'Outfit_500Medium';
+const FONT_SEMIBOLD = 'Outfit_600SemiBold';
+const FONT_BOLD = 'Outfit_700Bold';
 
 interface HealthSource {
     id: string;
@@ -406,16 +411,10 @@ export default function OnboardingHealthScreen() {
 
             {/* Header */}
             <Animated.View style={[styles.header, { paddingTop: insets.top + 72, opacity: headerFade }]}>
-                <Text style={styles.eyebrow}>CONNECT YOUR DATA</Text>
+                <Text style={styles.eyebrow}>{showSyncProgress ? 'ALMOST THERE' : 'CONNECT YOUR APPS'}</Text>
                 <Text style={styles.headline}>
-                    Connect your{'\n'}
-                    <Text style={styles.headlineGold}>health data</Text>
-                </Text>
-                <Text style={styles.headerBody}>
-                    {showSyncProgress
-                        ? 'Pulling your last 7 days of activity…'
-                        : 'Connect the apps you already use. Verified workouts earn 2× points.'
-                    }
+                    {showSyncProgress ? 'Pulling in ' : 'Every move '}
+                    <Text style={styles.headlineGold}>{showSyncProgress ? 'your history.' : 'counts automatically.'}</Text>
                 </Text>
             </Animated.View>
 
@@ -546,18 +545,12 @@ export default function OnboardingHealthScreen() {
                                 {phoneSources.length > 0 && (
                                     <>
                                         <Text style={styles.sectionHeading}>ON YOUR PHONE</Text>
-                                        <Text style={styles.sectionCaption}>
-                                            Steps and workouts your phone tracks
-                                        </Text>
                                         {phoneSources.map(s => renderRow(s, idx++))}
                                     </>
                                 )}
                                 {wearableSources.length > 0 && (
                                     <>
                                         <Text style={[styles.sectionHeading, { marginTop: 18 }]}>WEARABLES</Text>
-                                        <Text style={styles.sectionCaption}>
-                                            Richer data — sleep, heart rate, verified workouts
-                                        </Text>
                                         {wearableSources.map(s => renderRow(s, idx++))}
                                     </>
                                 )}
@@ -776,6 +769,7 @@ const styles = StyleSheet.create({
     eyebrow: {
         color: 'rgba(255,255,255,0.22)',
         fontSize: 10,
+        fontFamily: FONT_MEDIUM,
         fontWeight: '500',
         letterSpacing: 2.5,
         textTransform: 'uppercase',
@@ -784,34 +778,24 @@ const styles = StyleSheet.create({
     headline: {
         color: '#F2F2F2',
         fontSize: 32,
+        fontFamily: FONT_LIGHT,
         fontWeight: '200',
         letterSpacing: -1,
         lineHeight: 36,
         marginBottom: 8,
     },
-    headlineGold: { color: GOLD, fontWeight: '700' },
-    headerBody: {
-        color: 'rgba(255,255,255,0.38)',
-        fontSize: 13,
-        fontWeight: '300',
-        lineHeight: 20,
-    },
+    headlineGold: { color: GOLD, fontFamily: FONT_SEMIBOLD, fontWeight: '700' },
     list: { flex: 1 },
     listContent: { paddingHorizontal: 24, gap: 6, paddingBottom: 8 },
     sectionHeading: {
         color: 'rgba(255,255,255,0.35)',
         fontSize: 10,
+        fontFamily: FONT_SEMIBOLD,
         fontWeight: '600',
         letterSpacing: 2,
         textTransform: 'uppercase',
         marginTop: 4,
         marginBottom: 2,
-    },
-    sectionCaption: {
-        color: 'rgba(255,255,255,0.3)',
-        fontSize: 11,
-        fontWeight: '300',
-        marginBottom: 6,
     },
     sourceRow: {
         flexDirection: 'row',
@@ -863,17 +847,20 @@ const styles = StyleSheet.create({
     sourceName: {
         color: '#F2F2F2',
         fontSize: 14,
+        fontFamily: FONT_MEDIUM,
         fontWeight: '500',
     },
     sourceHint: {
         color: 'rgba(255,255,255,0.3)',
         fontSize: 11,
+        fontFamily: FONT_LIGHT,
         fontWeight: '300',
         marginTop: 1,
     },
     stepsLabel: {
         color: GOLD,
         fontSize: 11,
+        fontFamily: FONT_MEDIUM,
         fontWeight: '500',
         marginTop: 2,
     },
@@ -895,6 +882,7 @@ const styles = StyleSheet.create({
     pointsBadgeText: {
         color: GOLD,
         fontSize: 8,
+        fontFamily: FONT_BOLD,
         fontWeight: '700',
         letterSpacing: 0.8,
     },
@@ -924,6 +912,7 @@ const styles = StyleSheet.create({
     },
     pillLabel: {
         fontSize: 9,
+        fontFamily: FONT_BOLD,
         fontWeight: '700',
         letterSpacing: 1.5,
     },
@@ -939,6 +928,7 @@ const styles = StyleSheet.create({
     primaryLabel: {
         color: '#0a0a0a',
         fontSize: 12,
+        fontFamily: FONT_BOLD,
         fontWeight: '700',
         letterSpacing: 1.5,
     },
@@ -946,6 +936,7 @@ const styles = StyleSheet.create({
     skipLabel: {
         color: 'rgba(255,255,255,0.22)',
         fontSize: 12,
+        fontFamily: FONT_LIGHT,
         fontWeight: '300',
         letterSpacing: 0.2,
     },

@@ -22,11 +22,13 @@ const C_OUTER = 2 * Math.PI * R_OUTER;
 const C_INNER = 2 * Math.PI * R_INNER;
 
 interface ComingSoonProps {
+  eyebrow?: string;
   title?: string;
   subtitle?: string;
 }
 
 export function ComingSoon({
+  eyebrow = 'IN DEVELOPMENT',
   title = 'Coming Soon',
   subtitle = "We're putting the finishing touches on this.",
 }: ComingSoonProps) {
@@ -124,7 +126,7 @@ export function ComingSoon({
       </View>
 
       <View style={styles.textBlock}>
-        <Text style={styles.eyebrow}>IN DEVELOPMENT</Text>
+        <Text style={styles.eyebrow}>{eyebrow}</Text>
         <Text style={styles.title}>{title}</Text>
         <Text style={styles.subtitle}>{subtitle}</Text>
       </View>

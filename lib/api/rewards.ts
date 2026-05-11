@@ -162,3 +162,45 @@ export async function fetchFeaturedScheduledReward(): Promise<Reward | null> {
 
   return null;
 }
+
+/**
+ * Smart featured reward selection based on unlock status:
+ * - All rewards unlocked: cycle all rewards, highest points first
+ * - No rewards unlocked: show closest redeemable reward (lowest pts needed)
+ * - Mixed: prioritize unlocked rewards, cycle them by highest points first
+ */
+export async function fetchSmartFeaturedReward(balance: number): Promise<Reward | null> {
+  try {
+    const rewards = await fetchRewards();
+    if (rewards.length === 0) return null;
+
+    // Categorize rewards
+    const unlocked = rewards.filter(r => balance >= r.powr_cost);
+    const locked = rewards.filter(r => balance < r.powr_cost);
+
+    let featured: Reward | null = null;
+
+    if (unlocked.length === rewards.length) {
+      // All rewards unlocked → cycle all, highest points first
+      const sorted = [...unlocked].sort((a, b) => b.powr_cost - a.powr_cost);
+      // Cycle based on current hour to rotate through rewards
+      const hour = new Date().getHours();
+      featured = sorted[hour % sorted.length];
+    } else if (locked.length === rewards.length) {
+      // No rewards unlocked → show closest (minimum pts needed)
+      const sorted = [...locked].sort((a, b) => a.powr_cost - b.powr_cost);
+      featured = sorted[0];
+    } else {
+      // Mixed → prioritize unlocked, cycle them by highest points
+      const sortedUnlocked = [...unlocked].sort((a, b) => b.powr_cost - a.powr_cost);
+      // Cycle based on current hour
+      const hour = new Date().getHours();
+      featured = sortedUnlocked[hour % sortedUnlocked.length];
+    }
+
+    return featured;
+  } catch (e) {
+    console.warn('[fetchSmartFeaturedReward] error:', e);
+    return null;
+  }
+}

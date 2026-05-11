@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { fetchBalance, fetchTodayEarned, fetchTotalEarned, fetchWeeklyEarned } from '@/lib/api/points';
+import { onSessionCompleted } from '@/context/GeofenceContext';
 
 type PointsState = {
     balance: number;
@@ -41,6 +42,9 @@ export function usePoints(): PointsState {
     }, []);
 
     useEffect(() => { load(); }, [load]);
+
+    // Refresh whenever a foreground geofence session is claimed
+    useEffect(() => onSessionCompleted(load), [load]);
 
     return { balance, todayEarned, totalEarned, weeklyEarned, loading, error, refresh: load };
 }
