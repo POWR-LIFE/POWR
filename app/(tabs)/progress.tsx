@@ -60,8 +60,11 @@ export default function ProgressScreen() {
   const health = useHealthData();
   const { activeId, rows, refresh: refreshProviders } = useHealthProviders();
   const isNativeProvider = !activeId || activeId === 'apple-health' || activeId === 'health-connect';
+  // Sleep is wearable-only: require the user to have explicitly connected a native health
+  // platform (apple-health / health-connect) or a third-party provider with sleep support.
+  // A null activeId means no wearable has been set up, so sleep should not be shown.
   const hasSleepTrackingConnected =
-    (isNativeProvider && health.isAuthorized) ||
+    ((activeId === 'apple-health' || activeId === 'health-connect') && health.isAuthorized) ||
     rows.some((row) => !!row.connection && row.meta.capabilities.includes('sleep')) ||
     (!!activeId && ALL_PROVIDER_META.some((meta) => meta.id === activeId && meta.capabilities.includes('sleep')));
 
