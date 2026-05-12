@@ -17,10 +17,16 @@ export interface WeeklyRingData {
   /** 0 → 2 (capped) */
   pct: number;
   overachieving: boolean;
+  /** Future day preview state (used when month tick points to an upcoming day). */
+  isGetReady?: boolean;
+  /** Optional supporting copy shown under the ring in get-ready mode. */
+  hintText?: string;
+  /** Activity detected by health data but not in user's focus preferences. */
+  isBonus?: boolean;
 }
 
 interface WeeklyActivityBarsProps {
-  rings: [WeeklyRingData, WeeklyRingData, WeeklyRingData];
+  rings: WeeklyRingData[];
   onPressRing?: (type: string) => void;
 }
 
@@ -80,11 +86,6 @@ function ActivityBar({ data, onPress }: { data: WeeklyRingData; onPress?: () => 
         </View>
       </View>
 
-      {data.current === 0 && (
-        <Text style={[styles.encourageText, { color: data.colour }]}>
-          {data.type === 'walking' ? 'First steps = 2× pts' : 'First visit = 2× pts'}
-        </Text>
-      )}
     </Pressable>
   );
 }
@@ -108,12 +109,17 @@ const CIRCLE_R = 32;
 const CIRCLE_SW = 5;
 
 function ActivityCircle({ data, onPress }: { data: WeeklyRingData; onPress?: () => void }) {
-  const pct = Math.min(data.pct, 1);
+  const isGetReady = !!data.isGetReady;
+  const pct = isGetReady ? 0.2 : Math.min(data.pct, 1);
   const circ = 2 * Math.PI * CIRCLE_R;
   const offset = circ - pct * circ;
   const barColour = data.overachieving
     ? (OVERFLOW_COLOURS[data.colour] ?? data.colour)
     : data.colour;
+  const ringTrackColour = isGetReady ? `${data.colour}30` : 'rgba(255,255,255,0.07)';
+  const countText = isGetReady ? 'GET READY' : `${formatCount(data)}${data.overachieving ? ' ✓' : ''}`;
+  const encourageText = isGetReady ? (data.hintText ?? 'Opens this day') : null;
+  const encourageOpacity = isGetReady ? 1 : 0;
   const IconComp = data.iconLib === 'material-community' ? MaterialCommunityIcons : Ionicons;
 
   return (
@@ -123,16 +129,17 @@ function ActivityCircle({ data, onPress }: { data: WeeklyRingData; onPress?: () 
           {/* Track */}
           <Circle
             cx={CIRCLE_SIZE / 2} cy={CIRCLE_SIZE / 2} r={CIRCLE_R}
-            fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth={CIRCLE_SW}
+            fill="none" stroke={ringTrackColour} strokeWidth={CIRCLE_SW}
           />
           {/* Progress arc */}
           <Circle
             cx={CIRCLE_SIZE / 2} cy={CIRCLE_SIZE / 2} r={CIRCLE_R}
             fill="none" stroke={barColour} strokeWidth={CIRCLE_SW}
             strokeLinecap="round"
-            strokeDasharray={circ}
+            strokeDasharray={isGetReady ? `${circ * 0.22} ${circ * 0.78}` : circ}
             strokeDashoffset={offset}
             transform={`rotate(-90 ${CIRCLE_SIZE / 2} ${CIRCLE_SIZE / 2})`}
+            opacity={isGetReady ? 0.9 : 1}
           />
         </Svg>
         {/* Center icon */}
@@ -143,18 +150,26 @@ function ActivityCircle({ data, onPress }: { data: WeeklyRingData; onPress?: () 
 
       <Text style={circleStyles.label}>{data.label.toUpperCase()}</Text>
       <Text style={[circleStyles.count, { color: barColour }]}>
-        {formatCount(data)}{data.overachieving ? ' ✓' : ''}
+        {countText}
       </Text>
       {/* Always render to keep height constant — invisible when not applicable */}
-      <Text style={[circleStyles.encourage, { color: data.colour, opacity: data.current === 0 ? 1 : 0 }]}>
-        2× pts
-      </Text>
+      {data.isBonus ? (
+        <Text style={[circleStyles.encourage, { color: 'rgba(255,255,255,0.35)', opacity: 1 }]}>
+          DETECTED
+        </Text>
+      ) : encourageText !== null ? (
+        <Text style={[circleStyles.encourage, { color: data.colour, opacity: encourageOpacity }]}>
+          {encourageText}
+        </Text>
+      ) : (
+        <Text style={[circleStyles.encourage, { opacity: 0 }]}>{' '}</Text>
+      )}
     </Pressable>
   );
 }
 
 interface WeeklyActivityCirclesProps {
-  rings: [WeeklyRingData, WeeklyRingData, WeeklyRingData];
+  rings: WeeklyRingData[];
   onPressRing?: (type: string) => void;
 }
 
@@ -215,13 +230,7 @@ const styles = StyleSheet.create({
     height: '100%',
     borderRadius: 2,
   },
-  encourageText: {
-    fontSize: 8,
-    fontWeight: '400',
-    letterSpacing: 0.5,
-    textAlign: 'center',
-    marginTop: 2,
-  },
+
 });
 
 /* ── Circle styles ──────────────────────────────────────────────────── */

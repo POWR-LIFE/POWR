@@ -16,11 +16,8 @@ import { ChallengeCard } from '@/components/home/ChallengeCard';
 import { RewardCard } from '@/components/home/RewardCard';
 import { LevelProgressRow } from '@/components/home/LevelProgressRow';
 import { GeometricBackground } from '@/components/home/GeometricBackground';
-import { HealthConnectCard } from '@/components/home/HealthConnectCard';
 import { StickyActivityIndicators } from '@/components/home/StickyActivityIndicators';
-import { SleepProgressCard } from '@/components/home/SleepProgressCard';
 import { StreakCard } from '@/components/home/StreakCard';
-import { WalkingProgressCard } from '@/components/home/WalkingProgressCard';
 import { WeeklyActivityBars, type WeeklyRingData } from '@/components/home/WeeklyActivityRings';
 import { WeeklyActivityCircles } from '@/components/home/WeeklyActivityRings';
 import { WelcomeNextCard } from '@/components/home/WelcomeNextCard';
@@ -28,12 +25,10 @@ import { ProfileButton } from '@/components/ProfileButton';
 import { ACTIVITIES, type ActivityType } from '@/constants/activities';
 import { useAuth } from '@/context/AuthContext';
 import { useActiveGeofence } from '@/hooks/useActiveGeofence';
-import { type SleepSession } from '@/hooks/useHealthData';
 import { useActivity } from '@/hooks/useActivity';
 import { useHealthData } from '@/hooks/useHealthData';
 import { usePoints } from '@/hooks/usePoints';
 import { useStreak } from '@/hooks/useStreak';
-import { useWalkingProgress } from '@/hooks/useWalkingProgress';
 import { fetchSmartFeaturedReward, type Reward } from '@/lib/api/rewards';
 import { fetchProfile } from '@/lib/api/user';
 import { computeExpiresIn, computeUrgency } from '@/shared/weeklyChallenges';
@@ -94,20 +89,15 @@ export default function HomeScreen() {
     const { recentItems, weekActiveDays, weeklyMetrics, dailyMetrics, refresh: refreshActivity } = useActivity();
     const { balance, totalEarned, weeklyEarned, refresh: refreshPoints } = usePoints();
     const { activeGeofence, sessionCompleted, clearSessionCompleted } = useActiveGeofence();
-    const walking = useWalkingProgress();
     const health = useHealthData();
-    const refreshWalking = walking.refresh;
 
     const [sessionModalVisible, setSessionModalVisible] = useState(false);
     const [elapsedStr, setElapsedStr] = useState('0m 00s');
     const [activePrefs, setActivePrefs] = useState<ActivityType[]>(['gym', 'running', 'walking']);
-    const [healthCardDismissed, setHealthCardDismissed] = useState(false);
     const [profileName, setProfileName] = useState<string | null>(null);
     const [refreshing, setRefreshing] = useState(false);
     const { challenge: weeklyChallenge, completion: challengeCompletion } = useWeeklyChallenge(activePrefs);
     const [featuredReward, setFeaturedReward] = useState<Reward | null>(null);
-    const [sleepData, setSleepData] = useState<SleepSession | null>(null);
-    const [sleepLoading, setSleepLoading] = useState(false);
 
     const loadFeaturedReward = useCallback(async () => {
         try {
@@ -119,15 +109,6 @@ export default function HomeScreen() {
 
     useEffect(() => { loadFeaturedReward(); }, [loadFeaturedReward]);
 
-    useEffect(() => {
-        if (!health.isAuthorized) return;
-        setSleepLoading(true);
-        health.getLastNightSleep()
-            .then(setSleepData)
-            .catch(() => setSleepData(null))
-            .finally(() => setSleepLoading(false));
-    }, [health.isAuthorized]);
-
     const onRefresh = useCallback(async () => {
         setRefreshing(true);
         try {
@@ -135,22 +116,16 @@ export default function HomeScreen() {
                 refreshPoints(),
                 refreshActivity(),
                 refreshStreak(),
-                refreshWalking(),
                 loadFeaturedReward(),
             ];
-            if (health.isAuthorized) {
-                tasks.push(health.getLastNightSleep().then(setSleepData).catch(() => {}));
-            }
             await Promise.all(tasks);
         } finally {
             setRefreshing(false);
         }
-    }, [refreshActivity, refreshPoints, refreshStreak, refreshWalking, loadFeaturedReward, health]);
+    }, [refreshActivity, refreshPoints, refreshStreak, loadFeaturedReward]);
 
     // New user detection: no points earned and no recent activity
     const isNewUser = totalEarned === 0 && recentItems.length === 0;
-    // Show health nudge if health is available but not connected (and not dismissed)
-    const showHealthNudge = health.isAvailable && !health.isAuthorized && !healthCardDismissed;
 
     // Derived session state — re-computed every second via elapsedStr re-renders
     const DWELL_MS = 20 * 60 * 1000;
@@ -257,7 +232,7 @@ export default function HomeScreen() {
                 label: config.labelShort,
                 icon: config.iconActive,
                 iconLib: (config.iconLib ?? 'ionicons') as 'ionicons' | 'material-community',
-                colour: GOLD,
+                colour: config.colour,
                 current: steps,
                 target: WEEKLY_STEPS_TARGET,
                 pct,
@@ -271,7 +246,7 @@ export default function HomeScreen() {
             label: config.labelShort,
             icon: config.iconActive,
             iconLib: (config.iconLib ?? 'ionicons') as 'ionicons' | 'material-community',
-            colour: GOLD,
+            colour: config.colour,
             current: sessions,
             target: WEEKLY_SESSION_TARGET,
             pct,
@@ -279,17 +254,31 @@ export default function HomeScreen() {
         };
     }
 
-    function sortForHero(rings: WeeklyRingData[]): [WeeklyRingData, WeeklyRingData, WeeklyRingData] {
-        const sorted = [...rings].sort((a, b) => {
+    function sortForHero(rings: WeeklyRingData[]): WeeklyRingData[] {
+        return [...rings].sort((a, b) => {
             // Incomplete activities take priority for hero spot
             if (a.overachieving !== b.overachieving) return a.overachieving ? 1 : -1;
             // Highest progress = closest to goal = hero
             return b.pct - a.pct;
         });
-        return sorted as [WeeklyRingData, WeeklyRingData, WeeklyRingData];
     }
 
     const weeklyRings = sortForHero(activePrefs.map(buildWeeklyRing));
+
+    // If health data detected an activity outside the user's 3 preferences, smart-
+    // swap it into the ring with the least progress so we always show exactly 3.
+    // The weakest preferred ring is displaced — points for it are still earned.
+    const detectedBonus = (Object.keys(weeklyMetrics.perType) as ActivityType[])
+        .filter(type => !activePrefs.includes(type) && (weeklyMetrics.perType[type] ?? 0) > 0)
+        .map(type => ({ ...buildWeeklyRing(type), isBonus: true }))
+        .sort((a, b) => b.pct - a.pct)[0] ?? null;
+
+    const displayRings: WeeklyRingData[] = detectedBonus
+        ? (() => {
+            const weakest = [...weeklyRings].sort((a, b) => a.pct - b.pct)[0];
+            return weeklyRings.map(r => r.type === weakest.type ? detectedBonus : r);
+          })()
+        : weeklyRings;
 
     // ── Scroll-based sticky indicators ──
     const scrollY = useSharedValue(0);
@@ -332,10 +321,19 @@ export default function HomeScreen() {
       const distance = scrollY.value - threshold;
       const isSticky = barsOffsetY.value > 0 && scrollY.value > threshold;
       const opacity = interpolate(distance, [0, 40], [1, 0], Extrapolate.CLAMP);
+
+            if (isSticky) {
+                return {
+                    opacity,
+                    height: withTiming(0, { duration: 200 }),
+                    overflow: 'hidden',
+                };
+            }
+
       return {
         opacity,
-        height: withTiming(isSticky ? 0 : (barsHeight.value || 130), { duration: 200 }),
-        overflow: 'hidden',
+                height: barsHeight.value > 0 ? barsHeight.value : undefined,
+                overflow: 'visible',
       };
     });
 
@@ -366,7 +364,7 @@ export default function HomeScreen() {
                 pointerEvents="box-none"
             >
                 <StickyActivityIndicators
-                    rings={weeklyRings}
+                    rings={displayRings}
                     onPressRing={(type) => router.push({ pathname: '/(tabs)/progress', params: { tab: type } })}
                 />
             </ReAnimated.View>
@@ -417,7 +415,7 @@ export default function HomeScreen() {
                     style={barsAnimatedStyle}
                 >
                     <WeeklyActivityCircles
-                        rings={weeklyRings}
+                        rings={displayRings}
                         onPressRing={(type) => router.push({ pathname: '/(tabs)/progress', params: { tab: type } })}
                     />
                 </ReAnimated.View>
@@ -455,31 +453,6 @@ export default function HomeScreen() {
                         >
                             <RewardCard reward={featuredReward} balance={balance} challengeTitle={weeklyChallenge.title} />
                         </Pressable>
-                    </>
-                )}
-
-                {showHealthNudge && (
-                    <>
-                        <Text style={styles.sectionLabel}>CONNECT HEALTH</Text>
-                        <HealthConnectCard
-                            onConnect={() => health.requestPermissions()}
-                            onDismiss={() => setHealthCardDismissed(true)}
-                            requesting={health.requesting}
-                        />
-                    </>
-                )}
-
-                {walking.isAvailable && !showHealthNudge && (
-                    <>
-                        <Text style={styles.sectionLabel}>TODAY&apos;S STEPS</Text>
-                        <WalkingProgressCard progress={walking} />
-                    </>
-                )}
-
-                {health.isAuthorized && (
-                    <>
-                        <Text style={styles.sectionLabel}>LAST NIGHT&apos;S SLEEP</Text>
-                        <SleepProgressCard sleep={sleepData} loading={sleepLoading} />
                     </>
                 )}
 

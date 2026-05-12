@@ -163,9 +163,7 @@ export function StreakCard({
               <Text style={styles.unit}>
                 {`week${streakWeeks !== 1 ? 's' : ''}`}
               </Text>
-              {multiplier && multiplier > 1 && (
-                <Text style={styles.bonus}>{multiplier}×</Text>
-              )}
+
             </View>
           </View>
 
@@ -351,7 +349,6 @@ const styles = StyleSheet.create({
   },
   weekStrip: {
     flexDirection: 'row',
-    gap: 4,
     alignItems: 'flex-start',
     justifyContent: 'space-between',
     flex: 1,
@@ -359,6 +356,7 @@ const styles = StyleSheet.create({
   weekDayCol: {
     alignItems: 'center',
     gap: 6,
+    flex: 1,
   },
   weekDayName: {
     fontSize: 9,
@@ -373,9 +371,9 @@ const styles = StyleSheet.create({
     opacity: 0.4,
   },
   weekDateCircle: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(255,255,255,0.10)',

@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Location from 'expo-location';
 import { useEffect, useRef, useState } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
 
@@ -11,6 +12,12 @@ export interface ActiveGeofence {
   partnerId:      string;
   partnerName:    string;
   entryTimestamp: number;
+  latitude?:      number;
+  longitude?:     number;
+  radius?:        number;
+  sessionRecorded?: boolean;
+  pointsPending?:   boolean;
+  tierUpgraded?:    boolean;
 }
 
 export interface SessionCompletedEvent {
@@ -28,6 +35,48 @@ export function useActiveGeofence(): {
   const [sessionCompleted, setSessionCompleted] = useState<SessionCompletedEvent | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  function haversineMetres(lat1: number, lon1: number, lat2: number, lon2: number): number {
+    const R = 6_371_000;
+    const dLat = (lat2 - lat1) * (Math.PI / 180);
+    const dLon = (lon2 - lon1) * (Math.PI / 180);
+    const a =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) * Math.sin(dLon / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+
+  async function clearIfOutside(parsed: ActiveGeofence): Promise<ActiveGeofence | null> {
+    if (
+      parsed.latitude == null ||
+      parsed.longitude == null ||
+      parsed.radius == null ||
+      !Number.isFinite(parsed.latitude) ||
+      !Number.isFinite(parsed.longitude) ||
+      !Number.isFinite(parsed.radius)
+    ) {
+      return parsed;
+    }
+
+    const pos = await Location.getLastKnownPositionAsync().catch(() => null)
+      ?? await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Low }).catch(() => null);
+
+    if (!pos) return parsed;
+
+    const distance = haversineMetres(
+      pos.coords.latitude,
+      pos.coords.longitude,
+      parsed.latitude,
+      parsed.longitude,
+    );
+
+    if (distance > parsed.radius + 10) {
+      await AsyncStorage.removeItem(ACTIVE_GEOFENCE_KEY);
+      return null;
+    }
+
+    return parsed;
+  }
+
   async function readStorage() {
     try {
       // Active geofence
@@ -36,11 +85,13 @@ export function useActiveGeofence(): {
         setActiveGeofence(null);
       } else {
         const parsed = JSON.parse(raw);
-        if (Date.now() - parsed.entryTimestamp > MAX_SESSION_MS) {
+        const elapsedMs = Date.now() - parsed.entryTimestamp;
+
+        if (elapsedMs > MAX_SESSION_MS) {
           await AsyncStorage.removeItem(ACTIVE_GEOFENCE_KEY);
           setActiveGeofence(null);
         } else {
-          setActiveGeofence(parsed);
+          setActiveGeofence(await clearIfOutside(parsed));
         }
       }
 

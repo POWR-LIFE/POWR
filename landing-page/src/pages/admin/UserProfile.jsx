@@ -831,11 +831,24 @@ export default function UserProfile() {
                                     <tbody className="divide-y divide-[#121212]">
                                         {filteredTransactions.length === 0 ? (
                                             <tr><td colSpan={3} className="px-6 py-12 text-center text-[#777] text-[10px] uppercase tracking-[0.4em] font-black">No transactions recorded</td></tr>
-                                        ) : filteredTransactions.slice(0, visibleTransactions).map(t => (
+                                        ) : filteredTransactions.slice(0, visibleTransactions).map(t => {
+                                            const multiplier = t.multiplier ?? 1.0;
+                                            const baseAmount = multiplier > 1.0 ? Math.round(Math.abs(t.amount) / multiplier) : Math.abs(t.amount);
+                                            const hasMultiplier = multiplier > 1.0;
+                                            const isVerified = !!t.session_id;
+                                            return (
                                             <tr key={t.id} className="group hover:bg-[#050505] transition-all">
                                                 <td className="px-6 py-6">
                                                     <div className="text-base font-bold text-[#BBB] group-hover:text-[#F2F2F2] transition-colors mb-1">{t.description || 'System Adjustment'}</div>
-                                                    <div className="text-[9px] text-[#999] font-black uppercase tracking-[0.4em]">{new Date(t.created_at).toLocaleDateString()}</div>
+                                                    <div className="flex items-center gap-3 mt-2 flex-wrap">
+                                                        <span className="text-[9px] text-[#999] font-black uppercase tracking-[0.4em]">{new Date(t.created_at).toLocaleDateString()}</span>
+                                                        {t.activity_type && (
+                                                            <span className="text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded bg-[#1A1A1A] text-[#888] border border-[#222]">{t.activity_type}</span>
+                                                        )}
+                                                        {isVerified && (
+                                                            <span className="text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded bg-[#0D2B1F] text-[#10B981] border border-[#10B981]/20">verified</span>
+                                                        )}
+                                                    </div>
                                                 </td>
                                                 <td className="px-6 py-6 font-mono text-[11px] uppercase tracking-widest text-[#AAA]">{t.type}</td>
                                                 <td className="px-6 py-6 text-right">
@@ -843,9 +856,15 @@ export default function UserProfile() {
                                                         {t.amount >= 0 ? <ArrowUpRight size={16} /> : <ArrowDownRight size={16} />}
                                                         {Math.abs(t.amount)}
                                                     </div>
+                                                    {hasMultiplier && (
+                                                        <div className="text-[9px] text-[#666] font-mono mt-1 tracking-wider">
+                                                            {baseAmount} base × {multiplier}×
+                                                        </div>
+                                                    )}
                                                 </td>
                                             </tr>
-                                        ))}
+                                            );
+                                        })}
                                     </tbody>
                                 </table>
                             </div>

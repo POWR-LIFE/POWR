@@ -178,14 +178,13 @@ export async function fetchSmartFeaturedReward(balance: number): Promise<Reward 
     const unlocked = rewards.filter(r => balance >= r.powr_cost);
     const locked = rewards.filter(r => balance < r.powr_cost);
 
+    const dayIndex = Math.floor(Date.now() / 86_400_000);
     let featured: Reward | null = null;
 
     if (unlocked.length === rewards.length) {
       // All rewards unlocked → cycle all, highest points first
       const sorted = [...unlocked].sort((a, b) => b.powr_cost - a.powr_cost);
-      // Cycle based on current hour to rotate through rewards
-      const hour = new Date().getHours();
-      featured = sorted[hour % sorted.length];
+      featured = sorted[dayIndex % sorted.length];
     } else if (locked.length === rewards.length) {
       // No rewards unlocked → show closest (minimum pts needed)
       const sorted = [...locked].sort((a, b) => a.powr_cost - b.powr_cost);
@@ -193,9 +192,7 @@ export async function fetchSmartFeaturedReward(balance: number): Promise<Reward 
     } else {
       // Mixed → prioritize unlocked, cycle them by highest points
       const sortedUnlocked = [...unlocked].sort((a, b) => b.powr_cost - a.powr_cost);
-      // Cycle based on current hour
-      const hour = new Date().getHours();
-      featured = sortedUnlocked[hour % sortedUnlocked.length];
+      featured = sortedUnlocked[dayIndex % sortedUnlocked.length];
     }
 
     return featured;
