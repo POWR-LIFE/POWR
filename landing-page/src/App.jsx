@@ -29,6 +29,7 @@ import TermsOfService from './pages/TermsOfService';
 import SupportPage from './pages/SupportPage';
 import AthleteSignup from './pages/AthleteSignup';
 import AthleteApplications from './pages/admin/AthleteApplications';
+import DeleteAccount from './pages/DeleteAccount';
 
 // --- Auth Context ---
 const AuthContext = createContext({ user: null, isAdmin: false, loading: true });
@@ -539,6 +540,7 @@ export default function App() {
                     <Route path="/terms" element={<TermsOfService />} />
                     <Route path="/cookies" element={<CookiePolicy />} />
                     <Route path="/support" element={<SupportPage />} />
+                    <Route path="/delete-account" element={<DeleteAccount />} />
                     <Route path="/athlete/:token" element={<AthleteSignup />} />
                     <Route path="/admin/login" element={<AdminLogin />} />
                     <Route path="/admin" element={<ProtectedRoute><AdminLayout><AdminHome /></AdminLayout></ProtectedRoute>} />
