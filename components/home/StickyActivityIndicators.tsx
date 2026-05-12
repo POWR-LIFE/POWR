@@ -42,7 +42,7 @@ function MiniCircle({ data, onPress }: { data: WeeklyRingData; onPress?: () => v
 }
 
 interface StickyActivityIndicatorsProps {
-  rings: [WeeklyRingData, WeeklyRingData, WeeklyRingData];
+  rings: WeeklyRingData[];
   onPressRing?: (type: string) => void;
 }
 

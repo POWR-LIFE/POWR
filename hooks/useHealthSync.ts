@@ -7,7 +7,6 @@ import { ProviderAuthExpiredError } from '@/lib/health/providers/types';
 import { supabase } from '@/lib/supabase';
 import { ACTIVITIES, type ActivityType } from '@/constants/activities';
 import { logManualSession, saveHealthSnapshot } from '@/lib/api/activity';
-import { notifySleepTargetMet } from '@/lib/notifications';
 
 /** Map provider id → snapshot source label */
 function sourceForProvider(id: HealthProviderId | null): 'healthkit' | 'health_connect' | 'fitbit' | 'whoop' | 'garmin' {
@@ -102,12 +101,6 @@ export function useHealthSync() {
         });
 
         console.log(`[HealthSync] Synced sleep ${day.date}: ${sleep.durationHours}h → ${points} pts`);
-
-        // Notify once for recent sessions that hit the 7-hour target
-        const ageMs = Date.now() - new Date(sleep.startedAt).getTime();
-        if (sleep.durationHours >= 7 && ageMs < 36 * 60 * 60 * 1000) {
-          notifySleepTargetMet(sleep.durationHours, points).catch(() => {});
-        }
       }
     } catch (e) {
       console.error('[HealthSync] Error syncing sleep:', e);

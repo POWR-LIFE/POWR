@@ -5,10 +5,10 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Dimensions,
   Pressable,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -86,9 +86,10 @@ export default function ShareStatsScreen() {
     }
   }
 
-  function effectiveBgSource(): string | number | undefined {
+  function effectiveBgSource(): string | number | null | undefined {
     if (bgMode === 'gallery') return galleryUri ?? undefined;
-    return undefined; // cover/powr → dark gradient background
+    if (bgMode === 'powr')    return null;   // solid dark
+    return null;                             // cover → solid dark + circular avatar overlay
   }
 
   function effectiveAvatarUri(): string | null {
@@ -101,8 +102,12 @@ export default function ShareStatsScreen() {
     return null;
   }
 
-  const screenWidth = Dimensions.get('window').width;
-  const previewWidth = Math.min(screenWidth - 48, 360);
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  // Reserve space for header (~52) + picker row (~56) + footer (~94) + gaps (~38)
+  const NON_CARD_HEIGHT = 240;
+  const maxCardHeight = windowHeight - insets.top - insets.bottom - NON_CARD_HEIGHT;
+  const maxWidthFromHeight = maxCardHeight * (9 / 16);
+  const previewWidth = Math.min(windowWidth - 48, 360, maxWidthFromHeight);
 
   async function handleShare() {
     if (!cardRef.current || sharing) return;

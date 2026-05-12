@@ -128,7 +128,7 @@ function apiRewardToUI(r: ApiReward): Reward {
     heroImage: r.hero_image_url ? { uri: r.hero_image_url } : undefined,
     brandColor: undefined,
     title: r.title,
-    subtitle: `${displayName ?? ''}${r.description ? ' · ' + r.description : ''}`,
+    subtitle: r.description ?? displayName ?? '',
     pts: r.powr_cost,
     value: getRewardDisplayValue(r),
     offer: r.offer ?? undefined,

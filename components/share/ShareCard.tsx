@@ -5,13 +5,13 @@ import { StyleSheet, Text, View, type ViewProps } from 'react-native';
 
 import { ACTIVITIES } from '@/constants/activities';
 import { fontFamily } from '@/constants/tokens';
-import type { ShareReward, ShareSummary } from '@/lib/api/share';
+import type { ShareSummary } from '@/lib/api/share';
 
-const GOLD = '#E8D200';
+const GOLD   = '#E8D200';
 const ORANGE = '#FF9944';
-const TEXT = '#F2F2F2';
-const DIM = 'rgba(255,255,255,0.55)';
-const MUTED = 'rgba(255,255,255,0.35)';
+const TEXT   = '#F2F2F2';
+const DIM    = 'rgba(255,255,255,0.55)';
+const MUTED  = 'rgba(255,255,255,0.32)';
 
 interface ShareCardProps extends ViewProps {
   summary: ShareSummary;
@@ -22,9 +22,12 @@ interface ShareCardProps extends ViewProps {
    * local require() result. When omitted, falls back to cover_url then gradient.
    */
   backgroundSource?: string | number | null;
-  /** When provided, renders a circular avatar in the top portion of the card. */
+  /** When provided, renders a circular avatar in the upper half of the card. */
   avatarUri?: string | null;
-  /** When provided, renders a brand image (contained) in the top portion of the card. */
+  /**
+   * When provided, renders a brand/logo image centred in the upper half of the card.
+   * Pass a URI string or local require() result.
+   */
   topImage?: string | number | null;
   /** Hide the POWR logo in the header. */
   hideLogo?: boolean;
@@ -35,11 +38,6 @@ export const ShareCard = forwardRef<View, ShareCardProps>(({ summary, width, bac
   // Scale tokens proportionally to width — base sizes designed for ~1080dp.
   const s = width / 1080;
 
-  const todayDow = (() => {
-    const d = new Date().getDay();
-    return d === 0 ? 6 : d - 1;
-  })();
-
   // backgroundSource prop takes priority; undefined → fall back to cover_url only; null → gradient
   const resolvedBgSource: string | number | null =
     backgroundSource !== undefined
@@ -49,9 +47,7 @@ export const ShareCard = forwardRef<View, ShareCardProps>(({ summary, width, bac
   const heroTitle = renderHeroTitle(summary);
   const heroSubtitle = renderHeroSubtitle(summary);
   const status = renderStatus(summary);
-  const heroStat = renderHeroStat(summary);
   const stats = renderStatsRow(summary);
-  const rewardSlot = renderRewardSlot(summary);
 
   return (
     <View ref={ref} collapsable={false} style={[styles.root, { width, height }, style]} {...rest}>
@@ -65,163 +61,104 @@ export const ShareCard = forwardRef<View, ShareCardProps>(({ summary, width, bac
         />
       ) : (
         <LinearGradient
-          colors={['#1f1f1f', '#0d0d0d']}
+          colors={['#181818', '#0d0d0d']}
           style={StyleSheet.absoluteFillObject}
         />
       )}
 
-      {/* Top-to-mid darkening for legibility of header chrome */}
+      {/* Gradient overlay — heavy at top and bottom, transparent in middle */}
       <LinearGradient
-        colors={['rgba(0,0,0,0.65)', 'rgba(0,0,0,0.10)', 'rgba(0,0,0,0.85)', 'rgba(0,0,0,0.95)']}
-        locations={[0, 0.35, 0.7, 1]}
+        colors={['rgba(0,0,0,0.72)', 'rgba(0,0,0,0.0)', 'rgba(0,0,0,0.82)', 'rgba(0,0,0,0.96)']}
+        locations={[0, 0.3, 0.62, 1]}
         style={StyleSheet.absoluteFillObject}
       />
 
+      {/* POWR / brand logo — centred in upper half */}
+      {topImage != null && (
+        <View style={[StyleSheet.absoluteFillObject, styles.topImageSlot]} pointerEvents="none">
+          <Image
+            source={typeof topImage === 'string' ? { uri: topImage } : topImage}
+            style={{ width: width * 0.95, height: height * 0.50 }}
+            contentFit="contain"
+            transition={0}
+          />
+        </View>
+      )}
+
       {/* Circular avatar — My Photo mode */}
-      {avatarUri && (
-        <View style={[StyleSheet.absoluteFillObject, styles.topSlot, { paddingTop: 260 * s }]} pointerEvents="none">
+      {avatarUri ? (
+        <View style={[StyleSheet.absoluteFillObject, styles.topImageSlot]} pointerEvents="none">
           <Image
             source={{ uri: avatarUri }}
             style={{
-              width: 460 * s,
-              height: 460 * s,
-              borderRadius: 230 * s,
-              borderWidth: 4 * s,
-              borderColor: 'rgba(255,255,255,0.3)',
+              width: 520 * s,
+              height: 520 * s,
+              borderRadius: 260 * s,
+              borderWidth: 3 * s,
+              borderColor: 'rgba(255,255,255,0.25)',
             }}
             contentFit="cover"
             transition={0}
           />
         </View>
-      )}
+      ) : null}
 
-      {/* Brand image (contained) — POWR mode */}
-      {topImage != null && (
-        <View style={[StyleSheet.absoluteFillObject, styles.topSlot, { paddingTop: 120 * s }]} pointerEvents="none">
+      {/* ── Header ─────────────────────────────────────────────── */}
+      <View style={[styles.header, { paddingHorizontal: 60 * s, paddingTop: 60 * s }]}>
+        {!hideLogo ? (
           <Image
-            source={typeof topImage === 'string' ? { uri: topImage } : topImage}
-            style={{ width: width, height: height * 0.45 }}
+            source={require('@/assets/images/powrlogotext.png')}
+            style={{ width: 400 * s, height: 120 * s, marginLeft: -50 * s }}
             contentFit="contain"
             transition={0}
           />
-        </View>
-      )}
-
-      {/* ── Header row ─────────────────────────────────────────── */}
-      <View style={[styles.header, { paddingHorizontal: 56 * s, paddingTop: 56 * s }]}>
-        {!hideLogo && (
-          <Image
-            source={require('@/assets/images/powr_icon_foreground.png')}
-            style={{ width: 140 * s, height: 140 * s }}
-            contentFit="contain"
-            transition={0}
-          />
+        ) : (
+          <View style={{ width: 110 * s }} />
         )}
-        {hideLogo && <View style={{ width: 70 * s }} />}
-        <View style={styles.statusRow}>
-          <View style={[styles.statusDot, { width: 14 * s, height: 14 * s, borderRadius: 7 * s, backgroundColor: status.dotColor }]} />
-          <Text style={[styles.statusLabel, { fontSize: 28 * s, letterSpacing: 4 * s, marginLeft: 14 * s }]}>
+        <View style={{ flex: 1 }} />
+        <View style={styles.statusPill}>
+          <View style={[styles.statusDot, {
+            width: 16 * s,
+            height: 16 * s,
+            borderRadius: 8 * s,
+            backgroundColor: status.dotColor,
+          }]} />
+          <Text style={[styles.statusLabel, { fontSize: 26 * s, letterSpacing: 5 * s, marginLeft: 16 * s }]}>
             {status.label.toUpperCase()}
           </Text>
         </View>
       </View>
 
-      {/* ── Body (anchored to lower half) ─────────────────────── */}
-      <View style={[styles.body, { paddingHorizontal: 56 * s, paddingBottom: 48 * s }]}>
-        {/* Title + subtitle */}
-        <Text style={[styles.heroTitle, { fontSize: 60 * s, letterSpacing: 4 * s }]} numberOfLines={1}>
+      {/* ── Body (pinned to bottom) ─────────────────────────────── */}
+      <View style={[styles.body, { paddingHorizontal: 60 * s, paddingBottom: 72 * s }]}>
+        {/* Venue / name */}
+        <Text style={[styles.heroTitle, { fontSize: 80 * s, letterSpacing: 2 * s, lineHeight: 88 * s }]} numberOfLines={2}>
           {heroTitle.toUpperCase()}
         </Text>
-        {heroSubtitle && (
-          <Text style={[styles.heroSubtitle, { fontSize: 28 * s, marginTop: 10 * s }]} numberOfLines={1}>
+        {heroSubtitle ? (
+          <Text style={[styles.heroSubtitle, { fontSize: 30 * s, marginTop: 14 * s }]} numberOfLines={1}>
             {heroSubtitle}
           </Text>
-        )}
-
-        {/* Hero stat */}
-        <Text style={[styles.statLabel, { fontSize: 26 * s, letterSpacing: 4 * s, marginTop: 80 * s }]}>
-          {heroStat.label.toUpperCase()}
-        </Text>
-        <View style={[styles.heroStatRow, { marginTop: 4 * s }]}>
-          <Text style={[styles.heroStatNum, { fontSize: 280 * s, lineHeight: 280 * s }]}>
-            {heroStat.value}
-          </Text>
-          <Text style={[styles.heroStatUnit, { fontSize: 60 * s, marginLeft: 12 * s, marginBottom: 32 * s }]}>
-            {heroStat.unit}
-          </Text>
-        </View>
+        ) : null}
 
         {/* Divider */}
-        <View style={[styles.divider, { marginTop: 36 * s, marginBottom: 36 * s }]} />
+        <View style={[styles.divider, { marginTop: 56 * s, marginBottom: 44 * s }]} />
 
         {/* Stats row */}
         <View style={styles.statsRow}>
           <StatCol scale={s} {...stats[0]} />
-          <View style={[styles.statDivider, { height: 90 * s, marginHorizontal: 28 * s }]} />
+          <View style={[styles.statDivider, { height: 100 * s }]} />
           <StatCol scale={s} {...stats[1]} />
-          <View style={[styles.statDivider, { height: 90 * s, marginHorizontal: 28 * s }]} />
+          <View style={[styles.statDivider, { height: 100 * s }]} />
           <StatCol scale={s} {...stats[2]} />
-        </View>
-
-        {/* Reward + points card */}
-        <View style={[styles.rewardCard, {
-          marginTop: 44 * s,
-          padding: 36 * s,
-          borderRadius: 18 * s,
-          borderWidth: 2 * s,
-        }]}>
-          <View style={styles.rewardCol}>
-            <Text style={[styles.rewardHeader, { fontSize: 24 * s, letterSpacing: 3 * s }]}>
-              {rewardSlot.label}
-            </Text>
-            <Text
-              style={[styles.rewardValue, { fontSize: 38 * s, marginTop: 12 * s }]}
-              numberOfLines={1}
-            >
-              {rewardSlot.value}
-            </Text>
-          </View>
-          <View style={[styles.rewardDivider, { height: 110 * s }]} />
-          <View style={styles.pointsCol}>
-            <Text style={[styles.rewardHeader, { fontSize: 24 * s, letterSpacing: 3 * s }]}>
-              {rewardSlot.pointsLabel}
-            </Text>
-            <Text style={[styles.pointsValue, { fontSize: 64 * s, marginTop: 4 * s }]}>
-              {rewardSlot.pointsValue}
-            </Text>
-          </View>
-        </View>
-
-        {/* Week dots */}
-        <View style={[styles.weekRow, { marginTop: 48 * s }]}>
-          <Text style={[styles.weekLabel, { fontSize: 22 * s, letterSpacing: 3 * s }]}>THIS WEEK</Text>
-          <View style={styles.weekDots}>
-            {summary.weekActiveDays.map((active, i) => {
-              const isToday = i === todayDow;
-              const isPast = i < todayDow;
-              const colour = active
-                ? (isToday ? GOLD : ORANGE)
-                : isPast ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.10)';
-              return (
-                <View
-                  key={i}
-                  style={{
-                    width: 18 * s,
-                    height: 18 * s,
-                    borderRadius: 9 * s,
-                    backgroundColor: colour,
-                    marginLeft: i === 0 ? 0 : 14 * s,
-                  }}
-                />
-              );
-            })}
-          </View>
         </View>
       </View>
     </View>
   );
 });
 ShareCard.displayName = 'ShareCard';
+
+
 
 // ─── Mode-aware renderers ───────────────────────────────────────────────────
 
@@ -253,66 +190,29 @@ function renderHeroSubtitle(summary: ShareSummary): string {
   return summary.profile.username ? `@${summary.profile.username}` : '';
 }
 
-function renderHeroStat(summary: ShareSummary): { label: string; value: string; unit: string } {
-  if (summary.mode === 'check-in') {
-    return {
-      label: `Time in ${checkInTimeNoun(summary.type)}`,
-      value: summary.durationMin.toString(),
-      unit: 'min',
-    };
-  }
-  return {
-    label: 'Current Streak',
-    value: summary.currentStreak.toString(),
-    unit: summary.currentStreak === 1 ? 'day' : 'days',
-  };
-}
-
 function renderStatsRow(summary: ShareSummary): StatColProps[] {
   if (summary.mode === 'check-in') {
     return [
-      { label: 'CHECK-INS', value: summary.lifetimeCount.toString(), unit: 'total' },
-      { label: 'THIS MONTH', value: summary.monthCount.toString() },
+      { label: 'TODAY', value: summary.durationMin.toString(), unit: 'min' },
+      { label: 'TOTAL', value: summary.lifetimeCount.toString(), unit: 'visits' },
       {
         label: 'STREAK',
         value: summary.currentStreak.toString(),
         unit: 'days',
-        valueColor: summary.currentStreak > 0 ? ORANGE : TEXT,
+        valueColor: summary.currentStreak > 0 ? GOLD : TEXT,
       },
     ];
   }
   return [
-    { label: 'CHECK-INS', value: summary.lifetimeCount.toString(), unit: 'total' },
+    { label: 'TOTAL', value: summary.lifetimeCount.toString(), unit: 'visits' },
     { label: 'THIS MONTH', value: summary.monthCount.toString() },
     {
-      label: 'BEST STREAK',
-      value: summary.longestStreak.toString(),
+      label: 'STREAK',
+      value: summary.currentStreak.toString(),
       unit: 'days',
-      valueColor: summary.longestStreak > 0 ? ORANGE : TEXT,
+      valueColor: summary.currentStreak > 0 ? GOLD : TEXT,
     },
   ];
-}
-
-function renderRewardSlot(summary: ShareSummary): {
-  label: string;
-  value: string;
-  pointsLabel: string;
-  pointsValue: string;
-} {
-  if (summary.mode === 'check-in') {
-    return {
-      label: 'REWARD UNLOCKED',
-      value: summary.reward ? formatRewardLine(summary.reward) : 'View rewards →',
-      pointsLabel: 'POINTS EARNED',
-      pointsValue: `+${summary.sessionPoints}`,
-    };
-  }
-  return {
-    label: summary.reward ? 'TOP REWARD UNLOCKED' : 'KEEP EARNING',
-    value: summary.reward ? formatRewardLine(summary.reward) : 'View rewards →',
-    pointsLabel: 'POWR BALANCE',
-    pointsValue: summary.pointsBalance.toLocaleString(),
-  };
 }
 
 function getStreakStatus(streak: number): { label: string; dotColor: string } {
@@ -337,50 +237,21 @@ interface StatColProps {
 function StatCol({ scale, label, value, unit, valueColor = TEXT }: StatColProps & { scale: number }) {
   return (
     <View style={styles.statCol}>
-      <Text style={[styles.statColLabel, { fontSize: 22 * scale, letterSpacing: 3 * scale }]}>
-        {label}
-      </Text>
-      <View style={[styles.statColValueRow, { marginTop: 16 * scale }]}>
-        <Text style={[styles.statColValue, { color: valueColor, fontSize: 76 * scale, lineHeight: 76 * scale }]}>
+      <View style={styles.statColValueRow}>
+        <Text style={[styles.statColValue, { color: valueColor, fontSize: 84 * scale, lineHeight: 84 * scale }]}>
           {value}
         </Text>
         {unit && (
-          <Text style={[styles.statColUnit, { fontSize: 24 * scale, marginLeft: 8 * scale, marginBottom: 8 * scale }]}>
+          <Text style={[styles.statColUnit, { fontSize: 28 * scale, marginLeft: 10 * scale, marginBottom: 10 * scale }]}>
             {unit}
           </Text>
         )}
       </View>
+      <Text style={[styles.statColLabel, { fontSize: 22 * scale, letterSpacing: 4 * scale, marginTop: 14 * scale }]}>
+        {label}
+      </Text>
     </View>
   );
-}
-
-function checkInTimeNoun(type: string): string {
-  switch (type) {
-    case 'gym':
-    case 'hiit':
-      return 'Gym';
-    case 'walking':
-      return 'Movement';
-    case 'running':
-      return 'Run';
-    case 'cycling':
-      return 'Ride';
-    case 'swimming':
-      return 'Pool';
-    case 'sports':
-      return 'Game';
-    case 'yoga':
-      return 'Practice';
-    default:
-      return 'Activity';
-  }
-}
-
-function formatRewardLine(r: ShareReward): string {
-  const brand = r.brandName ?? r.partnerName;
-  const value = r.valueLabel ?? r.offer ?? r.title;
-  if (brand && value) return `${value} ${brand}`.trim();
-  return value || r.title;
 }
 
 function dayLabel(d: Date): string {
@@ -408,9 +279,10 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     position: 'relative',
   },
-  topSlot: {
+  topImageSlot: {
     alignItems: 'center',
-    justifyContent: 'flex-start',
+    justifyContent: 'center',
+    paddingBottom: '30%', // shift up slightly from true centre
     zIndex: 2,
   },
   header: {
@@ -421,13 +293,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     zIndex: 2,
   },
-  statusRow: {
+  statusPill: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   statusDot: {},
   statusLabel: {
-    fontFamily: fontFamily.medium,
+    fontFamily: fontFamily.light,
     color: TEXT,
   },
   body: {
@@ -436,38 +308,20 @@ const styles = StyleSheet.create({
     zIndex: 2,
   },
   heroTitle: {
-    fontFamily: fontFamily.bold,
+    fontFamily: fontFamily.regular,
     color: TEXT,
   },
   heroSubtitle: {
     fontFamily: fontFamily.light,
     color: DIM,
   },
-  statLabel: {
-    fontFamily: fontFamily.medium,
-    color: MUTED,
-  },
-  heroStatRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-  },
-  heroStatNum: {
-    fontFamily: fontFamily.extraLight,
-    color: TEXT,
-    letterSpacing: -10,
-  },
-  heroStatUnit: {
-    fontFamily: fontFamily.light,
-    color: DIM,
-  },
   divider: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: 'rgba(255,255,255,0.18)',
+    backgroundColor: 'rgba(255,255,255,0.20)',
   },
   statsRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    alignItems: 'flex-start',
   },
   statCol: {
     flex: 1,
@@ -475,11 +329,8 @@ const styles = StyleSheet.create({
   statDivider: {
     width: StyleSheet.hairlineWidth,
     backgroundColor: 'rgba(255,255,255,0.18)',
-    alignSelf: 'center',
-  },
-  statColLabel: {
-    fontFamily: fontFamily.medium,
-    color: MUTED,
+    alignSelf: 'stretch',
+    marginHorizontal: 32,
   },
   statColValueRow: {
     flexDirection: 'row',
@@ -493,49 +344,9 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.light,
     color: DIM,
   },
-  rewardCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderColor: 'rgba(255,255,255,0.12)',
-    backgroundColor: 'rgba(0,0,0,0.35)',
-  },
-  rewardCol: {
-    flex: 1.4,
-  },
-  pointsCol: {
-    flex: 1,
-    alignItems: 'flex-start',
-  },
-  rewardDivider: {
-    width: StyleSheet.hairlineWidth,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    marginHorizontal: 24,
-  },
-  rewardHeader: {
+  statColLabel: {
     fontFamily: fontFamily.medium,
     color: MUTED,
     textTransform: 'uppercase',
-  },
-  rewardValue: {
-    fontFamily: fontFamily.medium,
-    color: GOLD,
-  },
-  pointsValue: {
-    fontFamily: fontFamily.semiBold,
-    color: GOLD,
-    letterSpacing: -1,
-  },
-  weekRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  weekLabel: {
-    fontFamily: fontFamily.medium,
-    color: MUTED,
-  },
-  weekDots: {
-    flexDirection: 'row',
-    alignItems: 'center',
   },
 });

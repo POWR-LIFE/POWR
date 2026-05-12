@@ -95,7 +95,8 @@ const SESSION_COMPLETED_KEY  = '@powr/session_completed';
 // ⚠️ DEV OVERRIDES — restore before release
 const MIN_DWELL_MS  = __DEV__ ? 30 * 1000 : 20 * 60 * 1000;
 // Production eligibility minimum — used for pointsPending retry regardless of MIN_DWELL_MS
-const PROD_DWELL_MS = 20 * 60 * 1000;
+const PROD_DWELL_MS   = 20 * 60 * 1000;
+const PROD_UPGRADE_MS = 45 * 60 * 1000;
 const DEV_RADIUS_M: Record<string, number> = {
   'POWR Test Gym': 2,
 };
@@ -106,20 +107,25 @@ interface StoredGeofence {
   partnerId:        string;
   partnerName:      string;
   entryTimestamp:   number;
+  latitude?:        number;
+  longitude?:       number;
+  radius?:          number;
   sessionRecorded?: boolean; // true once session has been written to DB
   pointsPending?:   boolean; // true if session exists but claim was too short — retry on exit
+  sessionId?:       string;  // set after the initial 20-min claim succeeds
+  tierUpgraded?:    boolean; // true once the 45-min upgrade has been attempted
 }
 
 // ─── Shared session recording ─────────────────────────────────────────────────
 // Called by both the foreground dwell timer and the background exit handler.
 
-async function recordDwellSession(activeGeofence: StoredGeofence): Promise<'claimed' | 'too_short' | 'error'> {
+async function recordDwellSession(activeGeofence: StoredGeofence): Promise<{ outcome: 'claimed' | 'too_short' | 'error'; sessionId?: string }> {
   const dwellMs = Date.now() - activeGeofence.entryTimestamp;
   try {
     const { data: { session: authSession }, error: refreshError } = await supabase.auth.refreshSession();
     if (refreshError || !authSession?.user) {
       console.error('[Geofence] Token refresh failed — cannot record session:', refreshError?.message ?? 'no session');
-      return 'error';
+      return { outcome: 'error' };
     }
     const user = authSession.user;
 
@@ -169,7 +175,7 @@ async function recordDwellSession(activeGeofence: StoredGeofence): Promise<'clai
 
         if (!existing) {
           console.error('[Geofence] 23505 but could not find existing session');
-          return 'error';
+          return { outcome: 'error' };
         }
 
         await supabase
@@ -181,10 +187,10 @@ async function recordDwellSession(activeGeofence: StoredGeofence): Promise<'clai
         console.log(`[Geofence] Updated existing session to ${Math.round(durationSec / 60)}min.`);
       } else {
         console.error('[Geofence] Failed to create session:', sessionError);
-        return 'error';
+        return { outcome: 'error' };
       }
     } else {
-      if (!session) return 'error';
+      if (!session) return { outcome: 'error' };
       sessionId = session.id;
     }
 
@@ -196,9 +202,9 @@ async function recordDwellSession(activeGeofence: StoredGeofence): Promise<'clai
       const body = await (claimError as any)?.context?.json?.().catch(() => null);
       console.error('[Geofence] Claim points error:', body ?? claimError.message);
       if (body?.error === 'Session does not meet eligibility minimum') {
-        return 'too_short';
+        return { outcome: 'too_short' };
       }
-      return 'error';
+      return { outcome: 'error' };
     }
 
     // Points successfully claimed — now surface completion to the app
@@ -218,10 +224,30 @@ async function recordDwellSession(activeGeofence: StoredGeofence): Promise<'clai
     }
 
     console.log(`[Geofence] Points claimed after ${Math.round(dwellMs / 60000)}min dwell.`, claimData);
-    return 'claimed';
+    return { outcome: 'claimed', sessionId };
   } catch (err) {
     console.error('[Geofence] recordDwellSession failed:', err);
-    return 'error';
+    return { outcome: 'error' };
+  }
+}
+
+// ─── Gym tier upgrade ─────────────────────────────────────────────────────────
+// Called when a session crosses the 45-min threshold. Awards the delta between
+// what was claimed at the 20-min tier and the 45-min tier target.
+
+async function upgradeGymTier(sessionId: string): Promise<void> {
+  try {
+    const { error: fnError } = await supabase.functions.invoke('upgrade-gym-tier', {
+      body: { session_id: sessionId },
+    });
+    if (fnError) {
+      console.warn('[Geofence] Tier upgrade failed:', fnError.message);
+    } else {
+      console.log('[Geofence] Gym session upgraded to 45-min tier.');
+      _emitSessionCompleted();
+    }
+  } catch (err) {
+    console.warn('[Geofence] upgradeGymTier error:', err);
   }
 }
 
@@ -279,6 +305,9 @@ TaskManager.defineTask(GEOFENCE_TASK_NAME, async ({ data, error }) => {
         partnerId:      regionId,
         partnerName,
         entryTimestamp: Date.now(),
+        latitude:       region.latitude,
+        longitude:      region.longitude,
+        radius:         region.radius,
       })
     );
     console.log(`[Geofence] Entered "${partnerName}"`);
@@ -300,7 +329,13 @@ TaskManager.defineTask(GEOFENCE_TASK_NAME, async ({ data, error }) => {
 
     // Foreground dwell timer already recorded AND claimed this session
     if (activeGeofence.sessionRecorded && !activeGeofence.pointsPending) {
-      console.log('[Geofence] Exit: session already recorded by foreground timer — skipping.');
+      const dwellMs = Date.now() - activeGeofence.entryTimestamp;
+      if (dwellMs >= PROD_UPGRADE_MS && activeGeofence.sessionId && !activeGeofence.tierUpgraded) {
+        console.log('[Geofence] Exit: session crossed 45-min tier — upgrading.');
+        await upgradeGymTier(activeGeofence.sessionId);
+      } else {
+        console.log('[Geofence] Exit: session already recorded by foreground timer — skipping.');
+      }
       return;
     }
 
@@ -447,8 +482,8 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
       if (remaining <= 0) {
         console.log('[Geofence] Foreground: retrying pending claim now (production threshold met).');
         await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...activeGeofence, pointsPending: false }));
-        const result = await recordDwellSession(activeGeofence);
-        if (result !== 'claimed') {
+        const { outcome } = await recordDwellSession(activeGeofence);
+        if (outcome !== 'claimed') {
           // Still failing — restore flag and keep retrying via the poll interval
           await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...activeGeofence, pointsPending: true }));
           console.log('[Geofence] Retry claim failed — will try again.');
@@ -463,11 +498,35 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
           if (!gf.pointsPending) return;
           console.log('[Geofence] Foreground: pending-claim retry timer fired.');
           await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...gf, pointsPending: false }));
-          const result = await recordDwellSession(gf);
-          if (result !== 'claimed') {
+          const { outcome } = await recordDwellSession(gf);
+          if (outcome !== 'claimed') {
             await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...gf, pointsPending: true }));
             console.log('[Geofence] Retry claim failed — poll will try again.');
           }
+        }, remaining);
+      }
+      return;
+    }
+
+    // Tier upgrade path: session already claimed at 20-min tier, schedule/trigger 45-min upgrade
+    if (activeGeofence.sessionRecorded && !activeGeofence.pointsPending && activeGeofence.sessionId && !activeGeofence.tierUpgraded) {
+      const elapsed   = Date.now() - activeGeofence.entryTimestamp;
+      const remaining = PROD_UPGRADE_MS - elapsed;
+      if (remaining <= 0) {
+        console.log('[Geofence] Foreground: already past 45-min mark — upgrading tier now.');
+        await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...activeGeofence, tierUpgraded: true }));
+        await upgradeGymTier(activeGeofence.sessionId);
+      } else {
+        console.log(`[Geofence] Foreground: scheduling 45-min tier upgrade in ${Math.round(remaining / 1000)}s`);
+        dwellTimerRef.current = setTimeout(async () => {
+          dwellTimerRef.current = null;
+          const raw2 = await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY);
+          if (!raw2) return;
+          const gf: StoredGeofence = JSON.parse(raw2);
+          if (gf.tierUpgraded || !gf.sessionId) return;
+          console.log('[Geofence] Foreground: 45-min upgrade timer fired.');
+          await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...gf, tierUpgraded: true }));
+          await upgradeGymTier(gf.sessionId);
         }, remaining);
       }
       return;
@@ -481,9 +540,11 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
     if (remaining <= 0) {
       console.log('[Geofence] Foreground: dwell already met — recording session now.');
       await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...activeGeofence, sessionRecorded: true }));
-      const result = await recordDwellSession(activeGeofence);
-      if (result === 'too_short') {
+      const { outcome, sessionId } = await recordDwellSession(activeGeofence);
+      if (outcome === 'too_short') {
         await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...activeGeofence, sessionRecorded: true, pointsPending: true }));
+      } else if (outcome === 'claimed' && sessionId) {
+        await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...activeGeofence, sessionRecorded: true, sessionId }));
       }
       return;
     }
@@ -497,9 +558,11 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
       if (gf.sessionRecorded) return;
       console.log('[Geofence] Foreground: dwell timer fired — recording session.');
       await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...gf, sessionRecorded: true }));
-      const result = await recordDwellSession(gf);
-      if (result === 'too_short') {
+      const { outcome, sessionId } = await recordDwellSession(gf);
+      if (outcome === 'too_short') {
         await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...gf, sessionRecorded: true, pointsPending: true }));
+      } else if (outcome === 'claimed' && sessionId) {
+        await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...gf, sessionRecorded: true, sessionId }));
       }
     }, remaining);
   }, []);
@@ -530,11 +593,36 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
     refresh();
   }, [refresh]);
 
+  // Reconcile partner circles when the app becomes active, and periodically while
+  // the app stays open, so admin radius edits don't leave stale native regions behind.
+  useEffect(() => {
+    const refreshInterval = setInterval(() => {
+      if (AppState.currentState === 'active') {
+        refresh();
+      }
+    }, 5 * 60 * 1000);
+
+    const sub = AppState.addEventListener('change', (state: AppStateStatus) => {
+      if (state === 'active') {
+        refresh();
+      }
+    });
+
+    return () => {
+      clearInterval(refreshInterval);
+      sub.remove();
+    };
+  }, [refresh]);
+
   // Start geofencing when partners load — never torn down by navigation
   useEffect(() => {
     if (!partners.length) return;
 
-    const fingerprint = partners.map(p => p.id).sort().join(',');
+    // Restart native monitoring whenever the monitored circles change.
+    const fingerprint = partners
+      .map(p => `${p.id}:${p.lat.toFixed(6)}:${p.lng.toFixed(6)}:${p.geofenceRadius}`)
+      .sort()
+      .join(',');
     if (fingerprint === fingerprintRef.current) return;
     fingerprintRef.current = fingerprint;
 
@@ -633,6 +721,9 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
                       partnerId:      partner.id,
                       partnerName:    partner.name,
                       entryTimestamp: Date.now(),
+                      latitude:       partner.lat,
+                      longitude:      partner.lng,
+                      radius:         partner.geofenceRadius,
                     }),
                   );
                   console.log(`[Geofence] Already inside "${partner.name}" — active state set.`);

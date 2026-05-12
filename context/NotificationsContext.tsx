@@ -12,7 +12,6 @@ import { AppState, AppStateStatus } from 'react-native';
 import { useAuth } from '@/context/AuthContext';
 import {
   requestPermissionsAndGetToken,
-  scheduleDailyReminder,
   cancelDailyReminder,
   scheduleStreakAtRiskWarning,
   cancelStreakWarning,
@@ -106,12 +105,8 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   // -------------------------------------------------------------------------
 
   const applyLocalSchedules = useCallback(
-    async (prefs: NotificationPreferences) => {
-      if (prefs.daily_reminder) {
-        await scheduleDailyReminder(prefs.daily_reminder_hour, prefs.daily_reminder_minute);
-      } else {
-        await cancelDailyReminder();
-      }
+    async (_prefs: NotificationPreferences) => {
+      await cancelDailyReminder();
     },
     [],
   );

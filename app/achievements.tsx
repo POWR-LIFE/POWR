@@ -12,6 +12,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import GeometricBackground from '@/components/GeometricBackground';
+import { LevelIcon } from '@/components/LevelIcon';
 import {
   ACHIEVEMENTS,
   CATEGORY_META,
@@ -19,7 +20,7 @@ import {
   type AchievementCategory,
   type AchievementWithState,
 } from '@/constants/achievements';
-import { LEVELS, getLevelInfo } from '@/constants/levels';
+import { LEVELS, TIER_META, getLevelInfo, type LevelDef, type LevelTier } from '@/constants/levels';
 import { useAchievements } from '@/hooks/useAchievements';
 import { usePoints } from '@/hooks/usePoints';
 
@@ -38,6 +39,9 @@ const COL_GAP  = 10;
 const COLS     = 3;
 const TILE_W   = Math.floor((SCREEN_W - 32 - COL_GAP * (COLS - 1)) / COLS);
 
+// Level grid: 2 per row
+const CARD_W   = Math.floor((SCREEN_W - 32 - COL_GAP) / 2);
+
 // ─── Category filter config ───────────────────────────────────────────────────
 
 const AVAILABLE_CATEGORIES = Array.from(
@@ -47,6 +51,8 @@ const AVAILABLE_CATEGORIES = Array.from(
 const ALL_CATEGORIES: (AchievementCategory | 'all')[] = ['all', ...AVAILABLE_CATEGORIES];
 
 const LEVEL_BY_NUMBER = new Map(LEVELS.map(level => [level.level, level]));
+
+const TIER_ORDER: LevelTier[] = ['recruit', 'athlete', 'elite', 'legend'];
 
 function clamp01(value: number) {
   return Math.max(0, Math.min(1, value));
@@ -63,6 +69,8 @@ function progressToTarget(totalEarned: number, targetLevel: number): number {
   return clamp01((totalEarned - fromXp) / span);
 }
 
+type MainView = 'levels' | 'badges';
+
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function AchievementsScreen() {
@@ -71,6 +79,7 @@ export default function AchievementsScreen() {
   const { totalEarned } = usePoints();
   const { all, earnedCount, totalCount, loading } = useAchievements(totalEarned);
 
+  const [mainView, setMainView] = useState<MainView>('levels');
   const [activeCategory, setActiveCategory] = useState<AchievementCategory | 'all'>('all');
   const [showEarnedOnly, setShowEarnedOnly] = useState(false);
 
@@ -89,6 +98,7 @@ export default function AchievementsScreen() {
     : ACHIEVEMENTS.filter(a => a.category === activeCategory).length;
 
   const pct = totalCount > 0 ? Math.round((earnedCount / totalCount) * 100) : 0;
+  const { current: currentLevel } = getLevelInfo(totalEarned);
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
@@ -118,84 +128,171 @@ export default function AchievementsScreen() {
         </View>
       </View>
 
-      {/* Category filter pills */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.filterScroll}
-        contentContainerStyle={styles.filterContent}
-      >
-        {ALL_CATEGORIES.map(cat => {
-          const isActive = cat === activeCategory;
-          const meta = cat === 'all' ? null : CATEGORY_META[cat];
-          const colour = meta?.colour ?? GOLD;
-          return (
-            <Pressable
-              key={cat}
-              style={[
-                styles.filterPill,
-                isActive && { backgroundColor: colour + '22', borderColor: colour + '66' },
-              ]}
-              onPress={() => setActiveCategory(cat)}
-            >
-              {meta && (
-                <Ionicons
-                  name={meta.icon as any}
-                  size={11}
-                  color={isActive ? colour : MUTED}
-                />
-              )}
-              <Text style={[styles.filterPillText, isActive && { color: colour }]}>
-                {cat === 'all' ? 'All' : meta!.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-
-        {/* Earned-only toggle */}
-        <Pressable
-          style={[
-            styles.filterPill,
-            showEarnedOnly && { backgroundColor: GOLD + '22', borderColor: GOLD + '66' },
-          ]}
-          onPress={() => setShowEarnedOnly(v => !v)}
-        >
-          <Ionicons name="checkmark-circle-outline" size={11} color={showEarnedOnly ? GOLD : MUTED} />
-          <Text style={[styles.filterPillText, showEarnedOnly && { color: GOLD }]}>Earned</Text>
-        </Pressable>
-      </ScrollView>
-
-      {/* Category progress line */}
-      <View style={styles.catProgress}>
-        <Text style={styles.catProgressText}>
-          {earnedInCategory} / {totalInCategory}
-          {activeCategory !== 'all' ? `  ·  ${CATEGORY_META[activeCategory].label}` : '  ·  All categories'}
-        </Text>
+      {/* Main view toggle */}
+      <View style={styles.viewToggle}>
+        {(['levels', 'badges'] as MainView[]).map(v => (
+          <Pressable
+            key={v}
+            style={[styles.viewTab, mainView === v && styles.viewTabActive]}
+            onPress={() => setMainView(v)}
+          >
+            <Text style={[styles.viewTabText, mainView === v && styles.viewTabTextActive]}>
+              {v === 'levels' ? 'LEVELS' : 'BADGES'}
+            </Text>
+          </Pressable>
+        ))}
       </View>
 
-      {/* Grid */}
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={[styles.grid, { paddingBottom: insets.bottom + 32 }]}
-        showsVerticalScrollIndicator={false}
-      >
-        {loading ? (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyText}>Loading…</Text>
+      {mainView === 'levels' ? (
+        /* ── Levels grid ──────────────────────────────────────────────── */
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={[styles.levelsContent, { paddingBottom: insets.bottom + 32 }]}
+          showsVerticalScrollIndicator={false}
+        >
+          {TIER_ORDER.map(tier => {
+            const meta = TIER_META[tier];
+            const tierLevels = LEVELS.filter(l => l.tier === tier);
+            return (
+              <View key={tier} style={styles.tierSection}>
+                <Text style={[styles.tierHeader, { color: meta.color }]}>
+                  {meta.label} — {meta.range}
+                </Text>
+                <View style={styles.levelGrid}>
+                  {tierLevels.map(levelDef => (
+                    <LevelCard
+                      key={levelDef.level}
+                      levelDef={levelDef}
+                      tierColor={meta.color}
+                      isUnlocked={totalEarned >= levelDef.xpMin}
+                      isCurrent={levelDef.level === currentLevel.level}
+                    />
+                  ))}
+                </View>
+              </View>
+            );
+          })}
+        </ScrollView>
+      ) : (
+        /* ── Badges grid ──────────────────────────────────────────────── */
+        <>
+          {/* Category filter pills */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.filterScroll}
+            contentContainerStyle={styles.filterContent}
+          >
+            {ALL_CATEGORIES.map(cat => {
+              const isActive = cat === activeCategory;
+              const meta = cat === 'all' ? null : CATEGORY_META[cat];
+              const colour = meta?.colour ?? GOLD;
+              return (
+                <Pressable
+                  key={cat}
+                  style={[
+                    styles.filterPill,
+                    isActive && { backgroundColor: colour + '22', borderColor: colour + '66' },
+                  ]}
+                  onPress={() => setActiveCategory(cat)}
+                >
+                  {meta && (
+                    <Ionicons name={meta.icon as any} size={11} color={isActive ? colour : MUTED} />
+                  )}
+                  <Text style={[styles.filterPillText, isActive && { color: colour }]}>
+                    {cat === 'all' ? 'All' : meta!.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+
+            <Pressable
+              style={[
+                styles.filterPill,
+                showEarnedOnly && { backgroundColor: GOLD + '22', borderColor: GOLD + '66' },
+              ]}
+              onPress={() => setShowEarnedOnly(v => !v)}
+            >
+              <Ionicons name="checkmark-circle-outline" size={11} color={showEarnedOnly ? GOLD : MUTED} />
+              <Text style={[styles.filterPillText, showEarnedOnly && { color: GOLD }]}>Earned</Text>
+            </Pressable>
+          </ScrollView>
+
+          <View style={styles.catProgress}>
+            <Text style={styles.catProgressText}>
+              {earnedInCategory} / {totalInCategory}
+              {activeCategory !== 'all' ? `  ·  ${CATEGORY_META[activeCategory].label}` : '  ·  All categories'}
+            </Text>
           </View>
-        ) : filtered.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Ionicons name="trophy-outline" size={40} color={MUTED} />
-            <Text style={styles.emptyText}>No achievements here yet</Text>
-          </View>
-        ) : (
-          <View style={styles.tileGrid}>
-            {filtered.map(a => (
-              <AchievementTile key={a.id} achievement={a} width={TILE_W} totalEarned={totalEarned} />
-            ))}
-          </View>
-        )}
-      </ScrollView>
+
+          <ScrollView
+            style={styles.scroll}
+            contentContainerStyle={[styles.grid, { paddingBottom: insets.bottom + 32 }]}
+            showsVerticalScrollIndicator={false}
+          >
+            {loading ? (
+              <View style={styles.emptyState}>
+                <Text style={styles.emptyText}>Loading…</Text>
+              </View>
+            ) : filtered.length === 0 ? (
+              <View style={styles.emptyState}>
+                <Ionicons name="trophy-outline" size={40} color={MUTED} />
+                <Text style={styles.emptyText}>No achievements here yet</Text>
+              </View>
+            ) : (
+              <View style={styles.tileGrid}>
+                {filtered.map(a => (
+                  <AchievementTile key={a.id} achievement={a} width={TILE_W} totalEarned={totalEarned} />
+                ))}
+              </View>
+            )}
+          </ScrollView>
+        </>
+      )}
+    </View>
+  );
+}
+
+// ─── Level Card ───────────────────────────────────────────────────────────────
+
+function LevelCard({ levelDef, tierColor, isUnlocked, isCurrent }: {
+  levelDef: LevelDef;
+  tierColor: string;
+  isUnlocked: boolean;
+  isCurrent: boolean;
+}) {
+  const iconColor = isUnlocked ? tierColor : 'rgba(255,255,255,0.18)';
+  const nameColor = isUnlocked ? TEXT : 'rgba(255,255,255,0.3)';
+  const xpLabel = levelDef.level === 20
+    ? '∞'
+    : levelDef.xpMin.toLocaleString();
+
+  return (
+    <View style={[
+      styles.levelCard,
+      { width: CARD_W },
+      isCurrent && styles.levelCardCurrent,
+    ]}>
+      {/* Tier dot */}
+      <View style={[styles.levelDot, { backgroundColor: isUnlocked ? tierColor : 'rgba(255,255,255,0.15)' }]} />
+
+      {/* Level number */}
+      <Text style={styles.levelNum}>LVL {levelDef.level}</Text>
+
+      {/* Premium icon */}
+      <View style={styles.levelIconWrap}>
+        <LevelIcon level={levelDef.level} size={42} color={iconColor} strokeWidth={1.7} />
+      </View>
+
+      {/* Level name */}
+      <Text style={[styles.levelName, { color: nameColor }]}>
+        {levelDef.name.toUpperCase()}
+      </Text>
+
+      {/* XP threshold */}
+      <Text style={[styles.levelXp, { color: isUnlocked ? tierColor : 'rgba(255,255,255,0.2)' }]}>
+        {xpLabel} pts
+      </Text>
     </View>
   );
 }
@@ -232,31 +329,17 @@ function AchievementTile({
 
   return (
     <Pressable
-      style={[
-        styles.tile,
-        {
-          width,
-          borderColor,
-          backgroundColor: CARD,
-        },
-      ]}
+      style={[styles.tile, { width, borderColor, backgroundColor: CARD }]}
       onPress={() => setExpanded(v => !v)}
     >
       <View pointerEvents="none" style={[styles.tileProgressAccent, { borderColor: accentBorder }]} />
       {!!levelDef && (
         <View
           pointerEvents="none"
-          style={[
-            styles.levelWash,
-            {
-              backgroundColor: levelDef.pill.bg,
-              opacity: levelWash,
-            },
-          ]}
+          style={[styles.levelWash, { backgroundColor: levelDef.pill.bg, opacity: levelWash }]}
         />
       )}
 
-      {/* Rarity glow ring */}
       {a.earned && a.rarity === 'legendary' && (
         <View style={[styles.rarityGlow, { backgroundColor: 'rgba(232,210,0,0.08)' }]} />
       )}
@@ -265,17 +348,15 @@ function AchievementTile({
       <View style={[
         styles.medallion,
         { borderColor: a.earned ? GOLD : borderColor },
-        !a.earned && { opacity: 0.45 },
       ]}>
         <View style={styles.medallionInner}>
-          <Ionicons
-            name={(a.earned ? (levelDef?.stageIcon ?? a.icon) : 'lock-closed') as any}
-            size={24}
-            color={iconColor}
-          />
+          {levelDef ? (
+            <LevelIcon level={levelDef.level} size={32} color={iconColor} strokeWidth={1.6} />
+          ) : (
+            <Ionicons name={a.icon as any} size={24} color={iconColor} />
+          )}
         </View>
 
-        {/* Earned check badge */}
         {a.earned && (
           <View style={styles.checkBadge}>
             <Text style={styles.checkMark}>✓</Text>
@@ -283,26 +364,18 @@ function AchievementTile({
         )}
       </View>
 
-      {/* Code label */}
-      <Text style={[styles.tileCode, { color: a.earned ? 'rgba(255,255,255,0.78)' : MUTED }]}> 
+      <Text style={[styles.tileCode, { color: a.earned ? 'rgba(255,255,255,0.78)' : MUTED }]}>
         {a.code}
       </Text>
 
-      {/* Name */}
       <Text style={[styles.tileName, !a.earned && { opacity: 0.5 }]} numberOfLines={2}>
         {a.name}
       </Text>
 
-      <Text
-        style={[
-          styles.progressHint,
-          isCurrentTarget && !a.earned && { color: GOLD },
-        ]}
-      >
+      <Text style={[styles.progressHint, isCurrentTarget && !a.earned && { color: GOLD }]}>
         {progressLabel}
       </Text>
 
-      {/* Expanded description */}
       {expanded && (
         <Text style={styles.tileDesc}>{a.description}</Text>
       )}
@@ -340,29 +413,116 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: BORDER,
   },
-  summaryLeft: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: 2,
-  },
+  summaryLeft: { flexDirection: 'row', alignItems: 'baseline', gap: 2 },
   summaryEarned: { fontSize: 28, fontWeight: '200', color: GOLD, letterSpacing: -1 },
   summaryOf:    { fontSize: 16, fontWeight: '200', color: DIM, letterSpacing: -0.5 },
   summaryLabel: { fontSize: 11, fontWeight: '300', color: MUTED },
   summaryRight: { alignItems: 'flex-end', gap: 4 },
   progressTrack: {
-    width: 120,
-    height: 3,
+    width: 120, height: 3,
     backgroundColor: 'rgba(255,255,255,0.06)',
-    borderRadius: 2,
-    overflow: 'hidden',
+    borderRadius: 2, overflow: 'hidden',
   },
-  progressFill: {
-    height: '100%',
-    borderRadius: 2,
-    backgroundColor: GOLD,
-  },
+  progressFill: { height: '100%', borderRadius: 2, backgroundColor: GOLD },
   progressPct: { fontSize: 10, fontWeight: '400', color: MUTED },
 
+  // ── View toggle ────────────────────────────────────────────────────────────
+  viewToggle: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: BORDER,
+  },
+  viewTab: {
+    flex: 1,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  viewTabActive: {
+    borderBottomWidth: 1.5,
+    borderBottomColor: GOLD,
+  },
+  viewTabText: {
+    fontSize: 9,
+    fontWeight: '600',
+    letterSpacing: 2,
+    color: MUTED,
+  },
+  viewTabTextActive: { color: GOLD },
+
+  scroll: { flex: 1 },
+
+  // ── Levels grid ────────────────────────────────────────────────────────────
+  levelsContent: { paddingHorizontal: 16, paddingTop: 20, gap: 28 },
+
+  tierSection: { gap: 12 },
+  tierHeader: {
+    fontSize: 9,
+    fontWeight: '600',
+    letterSpacing: 2,
+    textTransform: 'uppercase',
+  },
+  levelGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: COL_GAP,
+  },
+  levelCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(22,22,22,0.92)',
+    paddingTop: 14,
+    paddingBottom: 16,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    gap: 6,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  levelCardCurrent: {
+    borderColor: '#E8D200',
+    borderWidth: 1,
+    shadowColor: '#E8D200',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.45,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  levelDot: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  levelNum: {
+    fontSize: 8,
+    fontWeight: '500',
+    letterSpacing: 1.5,
+    color: 'rgba(255,255,255,0.35)',
+    alignSelf: 'flex-start',
+    marginLeft: 2,
+  },
+  levelIconWrap: {
+    marginTop: 4,
+    marginBottom: 2,
+  },
+  levelName: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+    color: TEXT,
+    textAlign: 'center',
+  },
+  levelXp: {
+    fontSize: 9,
+    fontWeight: '500',
+    letterSpacing: 0.3,
+    color: GOLD,
+  },
+
+  // ── Badges grid ────────────────────────────────────────────────────────────
   filterScroll: { flexGrow: 0 },
   filterContent: {
     paddingHorizontal: 16,
@@ -381,45 +541,18 @@ const styles = StyleSheet.create({
     borderColor: BORDER,
     backgroundColor: 'rgba(255,255,255,0.04)',
   },
-  filterPillText: {
-    fontSize: 10,
-    fontWeight: '500',
-    letterSpacing: 0.3,
-    color: MUTED,
-  },
+  filterPillText: { fontSize: 10, fontWeight: '500', letterSpacing: 0.3, color: MUTED },
 
-  catProgress: {
-    paddingHorizontal: 16,
-    paddingBottom: 10,
-  },
-  catProgressText: {
-    fontSize: 10,
-    fontWeight: '300',
-    color: MUTED,
-    letterSpacing: 0.5,
-  },
+  catProgress: { paddingHorizontal: 16, paddingBottom: 10 },
+  catProgressText: { fontSize: 10, fontWeight: '300', color: MUTED, letterSpacing: 0.5 },
 
-  scroll: { flex: 1 },
   grid: { paddingHorizontal: 16 },
-  tileGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: COL_GAP,
-  },
+  tileGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: COL_GAP },
 
-  emptyState: {
-    paddingTop: 80,
-    alignItems: 'center',
-    gap: 12,
-  },
-  emptyText: {
-    fontSize: 14,
-    fontWeight: '300',
-    color: MUTED,
-  },
+  emptyState: { paddingTop: 80, alignItems: 'center', gap: 12 },
+  emptyText:  { fontSize: 14, fontWeight: '300', color: MUTED },
 
-  // ── Tile ──────────────────────────────────────────────────────────────────
-
+  // ── Achievement tile ───────────────────────────────────────────────────────
   tile: {
     alignItems: 'center',
     paddingVertical: 14,
@@ -433,23 +566,18 @@ const styles = StyleSheet.create({
     position: 'relative',
     overflow: 'hidden',
   },
-
   tileProgressAccent: {
     ...StyleSheet.absoluteFillObject,
     borderRadius: 16,
     borderWidth: 0.5,
   },
-
   levelWash: {
     position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
+    top: 0, left: 0, right: 0,
     height: 72,
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
   },
-
   rarityGlow: {
     position: 'absolute',
     top: 0, left: 0, right: 0,
@@ -457,7 +585,6 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
   },
-
   medallion: {
     width: 60,
     height: 60,
@@ -468,16 +595,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     position: 'relative',
   },
-  medallionInner: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  medallionInner: { alignItems: 'center', justifyContent: 'center' },
   checkBadge: {
     position: 'absolute',
-    bottom: -2,
-    right: -2,
-    width: 18,
-    height: 18,
+    bottom: -2, right: -2,
+    width: 18, height: 18,
     borderRadius: 9,
     backgroundColor: GOLD,
     borderWidth: 2,
@@ -487,32 +609,8 @@ const styles = StyleSheet.create({
   },
   checkMark: { fontSize: 9, fontWeight: '700', color: '#0a0a0a', lineHeight: 11 },
 
-  tileCode: {
-    fontSize: 9,
-    fontWeight: '700',
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-  },
-  tileName: {
-    fontSize: 11,
-    fontWeight: '300',
-    color: TEXT,
-    textAlign: 'center',
-    lineHeight: 15,
-  },
-
-  rarityBadge: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-  },
-  rarityBadgeText: {
-    fontSize: 7,
-    fontWeight: '600',
-    letterSpacing: 1,
-  },
+  tileCode: { fontSize: 9, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase' },
+  tileName:  { fontSize: 11, fontWeight: '300', color: TEXT, textAlign: 'center', lineHeight: 15 },
 
   progressHint: {
     fontSize: 8,
@@ -521,13 +619,8 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.42)',
     textTransform: 'uppercase',
   },
-
   tileDesc: {
-    fontSize: 9,
-    fontWeight: '300',
-    color: MUTED,
-    textAlign: 'center',
-    lineHeight: 13,
-    marginTop: 2,
+    fontSize: 9, fontWeight: '300', color: MUTED,
+    textAlign: 'center', lineHeight: 13, marginTop: 2,
   },
 });

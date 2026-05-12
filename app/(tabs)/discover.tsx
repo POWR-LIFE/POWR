@@ -69,9 +69,6 @@ const DARK_MAP_STYLE = [
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Category = 'All' | 'Gym' | 'Yoga' | 'Pilates' | 'Cycling' | 'Running';
-const CATEGORIES: Category[] = ['All', 'Gym', 'Yoga', 'Pilates', 'Cycling', 'Running'];
-
 type SortMode = 'nearest' | 'pts' | 'az';
 type RouteCoordinate = { latitude: number; longitude: number };
 type RouteStep = {
@@ -150,7 +147,6 @@ export default function DiscoverScreen() {
   const [userLoc, setUserLoc] = useState<Location.LocationObject | null>(null);
 
   // Filter state
-  const [activeCategory, setActiveCategory] = useState<Category>('All');
   const [openNowFilter, setOpenNowFilter] = useState(false);
   const [sortMode, setSortMode] = useState<SortMode>('nearest');
   const [maxDistanceMi, setMaxDistanceMi] = useState<number | null>(null); // null = any
@@ -275,9 +271,6 @@ export default function DiscoverScreen() {
   const filtered = useMemo(() => {
     // When a search query is active, use server-side results (covers the whole DB)
     let list = searchResults !== null ? searchResults : partners;
-    if (activeCategory !== 'All') {
-      list = list.filter(p => p.category.toLowerCase() === activeCategory.toLowerCase());
-    }
     if (openNowFilter) {
       list = list.filter(p => p.isOpenNow);
     }
@@ -293,14 +286,13 @@ export default function DiscoverScreen() {
       );
     }
     return list;
-  }, [partners, searchResults, activeCategory, openNowFilter, maxDistanceMi, search, userLoc]);
+  }, [partners, searchResults, openNowFilter, maxDistanceMi, search, userLoc]);
 
   const sortLabel = sortMode === 'nearest' ? 'Nearest' : sortMode === 'pts' ? 'Most Points' : 'A–Z';
 
   // Count active non-default filters for the badge
   const activeFilterCount = [
     maxDistanceMi !== null,
-    activeCategory !== 'All',
   ].filter(Boolean).length;
 
   const fitMapToRoute = useCallback((coordinates: RouteCoordinate[]) => {
@@ -638,24 +630,6 @@ export default function DiscoverScreen() {
               : <Ionicons name="search-outline" size={16} color={MUTED} />}
           </View>
 
-          <View style={styles.catTabBar}>
-            {CATEGORIES.map((cat) => {
-              const active = cat === activeCategory;
-              return (
-                <Pressable
-                  key={cat}
-                  style={styles.catTab}
-                  onPress={() => setActiveCategory(cat)}
-                >
-                  <Text style={[styles.catTabLabel, active && styles.catTabLabelActive]}>
-                    {cat.toUpperCase()}
-                  </Text>
-                  {active && <View style={styles.catTabIndicator} />}
-                </Pressable>
-              );
-            })}
-          </View>
-
           <Text style={styles.sectionLabel}>
             {filtered.length} PARTNER{filtered.length !== 1 ? 'S' : ''} · {sortLabel.toUpperCase()}
           </Text>
@@ -682,7 +656,6 @@ export default function DiscoverScreen() {
             <Text style={styles.emptyText}>No partners match your filters</Text>
             <Pressable onPress={() => {
               setOpenNowFilter(false);
-              setActiveCategory('All');
               setMaxDistanceMi(null);
               setSearch('');
             }}>
@@ -1094,29 +1067,11 @@ export default function DiscoverScreen() {
             <View style={styles.filtersHeader}>
               <Text style={styles.sortTitle}>Filters</Text>
               <Pressable onPress={() => {
-                setActiveCategory('All');
                 setMaxDistanceMi(null);
               }}>
                 <Text style={styles.resetText}>Reset</Text>
               </Pressable>
             </View>
-
-            {/* Category */}
-            <Text style={styles.filterSectionLabel}>CATEGORY</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryRow}>
-              {CATEGORIES.map(cat => {
-                const active = cat === activeCategory;
-                return (
-                  <Pressable
-                    key={cat}
-                    style={[styles.categoryChip, active && styles.categoryChipActive]}
-                    onPress={() => setActiveCategory(cat)}
-                  >
-                    <Text style={[styles.categoryChipText, active && styles.categoryChipTextActive]}>{cat}</Text>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
 
             {/* Max distance */}
             <Text style={[styles.filterSectionLabel, { marginTop: 20 }]}>MAX DISTANCE</Text>
@@ -1582,37 +1537,6 @@ const styles = StyleSheet.create({
   },
   searchInput: { flex: 1, fontSize: 14, fontWeight: '300', color: TEXT, padding: 0 },
 
-  catTabBar: {
-    flexDirection: 'row',
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.07)',
-    marginBottom: 0,
-  },
-  catTab: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: 10,
-    position: 'relative',
-  },
-  catTabLabel: {
-    fontSize: 9,
-    fontWeight: '500',
-    letterSpacing: 1.5,
-    color: 'rgba(255,255,255,0.5)',
-  },
-  catTabLabelActive: {
-    color: '#FFFFFF',
-  },
-  catTabIndicator: {
-    position: 'absolute',
-    bottom: -1,
-    left: '20%',
-    right: '20%',
-    height: 1.5,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 1,
-  },
-
   sectionLabel: {
     fontSize: 9, fontWeight: '500', letterSpacing: 2, color: MUTED,
     textTransform: 'uppercase', paddingLeft: 2,
@@ -1915,12 +1839,4 @@ const styles = StyleSheet.create({
   distanceChipActive: { backgroundColor: GOLD, borderColor: GOLD },
   distanceChipText: { fontSize: 13, fontWeight: '400', color: DIM },
   distanceChipTextActive: { color: '#0a0a0a', fontWeight: '600' },
-  categoryRow: { paddingHorizontal: 16, gap: 8 },
-  categoryChip: {
-    paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20,
-    borderWidth: 1, borderColor: BORDER, backgroundColor: CARD_BG,
-  },
-  categoryChipActive: { backgroundColor: GOLD, borderColor: GOLD },
-  categoryChipText: { fontSize: 13, fontWeight: '400', color: DIM },
-  categoryChipTextActive: { color: '#0a0a0a', fontWeight: '600' },
 });

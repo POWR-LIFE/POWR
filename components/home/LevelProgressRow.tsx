@@ -1,4 +1,3 @@
-import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
@@ -16,52 +15,43 @@ export function LevelProgressRow({ totalEarned, onPress }: Props) {
   const { current, next, xpIntoLevel, xpForLevel } = getLevelInfo(totalEarned);
   const pct = xpForLevel > 0 ? Math.min(xpIntoLevel / xpForLevel, 1) : 1;
   const ptsToNext = xpForLevel - xpIntoLevel;
-  const { pill } = current;
-  const title = `Level ${current.level} · ${current.name}`;
-  const hint = next
-    ? `${ptsToNext.toLocaleString()} pts to Level ${next.level} · ${next.name}`
-    : "You've reached the top";
-
-  const fillColors: [string, string] = [GOLD, '#FFF27A'];
 
   return (
     <Pressable
       onPress={onPress}
       style={({ pressed }) => [styles.row, pressed && { opacity: 0.8, transform: [{ scale: 0.99 }] }]}
     >
-      {/* Dark card background */}
-
-      {/* Subtle colour wash from accent */}
       <LinearGradient
-        colors={[pill.bg, 'transparent']}
+        colors={['rgba(255,255,255,0.04)', 'transparent']}
         start={{ x: 0, y: 0.5 }}
         end={{ x: 0.6, y: 0.5 }}
         style={[StyleSheet.absoluteFillObject, { borderRadius: 18 }]}
         pointerEvents="none"
       />
 
-      {/* Ring */}
-      <View style={styles.circleWrap}>
-        <View style={[styles.ring, { borderColor: pill.border, backgroundColor: 'rgba(0,0,0,0.4)' }]}>
-          <Text style={styles.levelNumber}>{current.level}</Text>
-        </View>
+      {/* Badge tile */}
+      <View style={styles.badge}>
+        <Text style={styles.badgeMeta}>LVL</Text>
+        <Text style={styles.badgeNumber}>{current.level}</Text>
       </View>
 
-      {/* Progress content */}
-      <View style={styles.center}>
-        <Text style={styles.nextLabel}>{title}</Text>
-        <Text style={styles.ptsHint}>{hint}</Text>
-        <View style={styles.track}>
-          <LinearGradient
-            colors={fillColors}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={[styles.fill, { width: `${Math.round(pct * 100)}%` as any }]}
-          />
+      {/* Right: name + bar + pts */}
+      <View style={styles.right}>
+        <Text style={styles.levelName}>{current.name}</Text>
+        <View style={styles.barTrack}>
+          <View style={[styles.barFill, { width: `${Math.round(pct * 100)}%` }]} />
         </View>
+        {next ? (
+          <Text style={styles.ptsText}>
+            <Text style={styles.ptsNum}>{ptsToNext.toLocaleString()}</Text>
+            {' pts to next level'}
+          </Text>
+        ) : (
+          <Text style={styles.ptsText}>You've reached the top</Text>
+        )}
       </View>
 
-      <Ionicons name="chevron-forward" size={15} color="rgba(255,255,255,0.2)" />
+      <Text style={styles.chevron}>›</Text>
     </Pressable>
   );
 }
@@ -72,64 +62,76 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 14,
     paddingHorizontal: 14,
-    paddingVertical: 16,
+    paddingVertical: 14,
     borderRadius: 18,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: 'rgba(255,255,255,0.1)',
     backgroundColor: '#111111',
     overflow: 'hidden',
-    position: 'relative',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.4,
     shadowRadius: 8,
     elevation: 4,
   },
-  circleWrap: {
-    alignItems: 'center',
-    gap: 5,
-    width: 52,
-  },
-  ring: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    borderWidth: 1.5,
+
+  badge: {
+    width: 58,
     alignItems: 'center',
     justifyContent: 'center',
+    flexShrink: 0,
   },
-  levelNumber: {
-    fontSize: 19,
-    fontWeight: '400',
-    letterSpacing: -0.2,
-    lineHeight: 20,
-    color: GOLD,
+  badgeMeta: {
+    fontSize: 8,
+    fontWeight: '600',
+    letterSpacing: 2,
+    color: 'rgba(255,255,255,0.3)',
   },
-  center: {
+  badgeNumber: {
+    fontSize: 28,
+    fontWeight: '200',
+    letterSpacing: -1,
+    lineHeight: 30,
+    color: '#F2F2F2',
+  },
+
+  right: {
     flex: 1,
-    gap: 3,
+    gap: 6,
   },
-  nextLabel: {
-    fontSize: 13,
+  levelName: {
+    fontSize: 15,
     fontWeight: '300',
     color: '#F2F2F2',
-    letterSpacing: -0.1,
+    letterSpacing: 0.2,
   },
-  ptsHint: {
-    fontSize: 10,
-    fontWeight: '300',
-    color: 'rgba(255,255,255,0.35)',
-    marginBottom: 4,
-  },
-  track: {
-    height: 2,
-    backgroundColor: 'rgba(255,255,255,0.07)',
-    borderRadius: 1,
+  barTrack: {
+    width: '100%',
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.06)',
     overflow: 'hidden',
   },
-  fill: {
+  barFill: {
     height: '100%',
-    borderRadius: 1,
+    borderRadius: 2,
+    backgroundColor: GOLD,
+  },
+  ptsText: {
+    fontSize: 11,
+    fontWeight: '300',
+    color: 'rgba(255,255,255,0.35)',
+  },
+  ptsNum: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: GOLD,
+  },
+
+  chevron: {
+    fontSize: 20,
+    color: 'rgba(255,255,255,0.2)',
+    lineHeight: 22,
+    flexShrink: 0,
   },
 });
-
