@@ -19,7 +19,8 @@
           {
             "CFBundleURLSchemes": ["powr"]
           }
-        ]
+        ],
+        "ITSAppUsesNonExemptEncryption": false
       },
       "entitlements": {
         "aps-environment": "production"
