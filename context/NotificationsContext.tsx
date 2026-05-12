@@ -63,7 +63,7 @@ const NotificationsContext = createContext<NotificationsContextValue | null>(nul
 // ---------------------------------------------------------------------------
 
 export function NotificationsProvider({ children }: { children: React.ReactNode }) {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const router = useRouter();
 
   const [permissionGranted, setPermissionGranted] = useState(false);
@@ -73,6 +73,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   const notificationListener = useRef<Notifications.EventSubscription | null>(null);
   const responseListener = useRef<Notifications.EventSubscription | null>(null);
   const appState = useRef<AppStateStatus>(AppState.currentState);
+  const coldStartHandled = useRef(false);
 
   // -------------------------------------------------------------------------
   // Register device for push when user signs in
@@ -174,6 +175,22 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
       appStateSub.remove();
     };
   }, [router]);
+
+  // Handle notification that launched the app from a killed state (cold start).
+  // addNotificationResponseReceivedListener does not fire for cold starts on iOS;
+  // getLastNotificationResponseAsync is the only way to get that response.
+  useEffect(() => {
+    if (authLoading || !user?.id || coldStartHandled.current) return;
+    coldStartHandled.current = true;
+
+    Notifications.getLastNotificationResponseAsync().then((response) => {
+      if (!response) return;
+      const route = getRouteFromNotification(response);
+      if (route) {
+        router.push(route as Parameters<typeof router.push>[0]);
+      }
+    });
+  }, [authLoading, user?.id, router]);
 
   // -------------------------------------------------------------------------
   // Public API
