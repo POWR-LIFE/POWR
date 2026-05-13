@@ -46,14 +46,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             if (m) AsyncStorage.setItem('pending_referral_code', m[1].toUpperCase()).catch(() => {});
         };
 
-        Linking.getInitialURL().then(url => { if (url) captureRef(url); }).catch(() => {});
+        // Extract OAuth code using string slicing — new URL() can't parse custom schemes in RN.
+        const extractCode = (url: string): string | null => {
+            const m = url.match(/[?&]code=([^&#]+)/);
+            return m ? decodeURIComponent(m[1]) : null;
+        };
 
-        const linkingSubscription = Linking.addEventListener('url', async ({ url }) => {
-            if (url.includes('code=')) {
-                const { error } = await supabase.auth.exchangeCodeForSession(url);
-                if (!error) await supabase.auth.signOut({ scope: 'others' });
+        const tryExchangeCode = async (url: string) => {
+            const code = extractCode(url);
+            if (!code) return;
+            const { error } = await supabase.auth.exchangeCodeForSession(code);
+            if (!error) await supabase.auth.signOut({ scope: 'others' });
+        };
+
+        // On Android, the app may be cold-started by the deep link intent (e.g. low-memory kill).
+        // In that case getInitialURL() delivers the URL, not addEventListener.
+        Linking.getInitialURL().then(url => {
+            if (url) {
+                captureRef(url);
+                tryExchangeCode(url);
             }
+        }).catch(() => {});
+
+        // On Android (warm resume), Chrome Custom Tabs fire the deep link as a system intent.
+        // openAuthSessionAsync returns 'cancel'; this listener catches the URL and exchanges it.
+        const linkingSubscription = Linking.addEventListener('url', async ({ url }) => {
             captureRef(url);
+            await tryExchangeCode(url);
         });
 
         return () => {
@@ -99,7 +118,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             // Use the explicit custom scheme so the redirectTo is always powr:///
             // regardless of whether this is Expo Go, an EAS dev build, or production.
             // Supabase must have powr:// in its Additional Redirect URLs allowlist.
-            const redirectTo = 'powr:///';
+            const redirectTo = 'powr://auth-callback';
             const { data, error } = await supabase.auth.signInWithOAuth({
                 provider: 'google',
                 options: { redirectTo, skipBrowserRedirect: true },
@@ -109,8 +128,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
             const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
             if (result.type === 'success') {
-                const { error: sessionError } = await supabase.auth.exchangeCodeForSession(result.url);
-                if (sessionError) return { error: sessionError.message };
+                // Extract just the code — GoTrue expects a raw code string, not a full URL.
+                // Use string matching rather than new URL() which can't parse custom schemes in RN.
+                const code = result.url.match(/[?&]code=([^&#]+)/)?.[1];
+                if (code) {
+                    const { error: sessionError } = await supabase.auth.exchangeCodeForSession(decodeURIComponent(code));
+                    if (sessionError) return { error: sessionError.message };
+                }
                 await enforceOneSession();
             }
             // result.type === 'cancel' means user closed browser — not an error
