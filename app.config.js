@@ -21,7 +21,6 @@ module.exports = {
     },
     android: {
       ...expo.android,
-      minSdkVersion: 26,
       config: {
         googleMaps: {
           apiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ?? '',

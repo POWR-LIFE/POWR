@@ -438,7 +438,27 @@ Deno.serve(async (req) => {
     }
   }
 
-  // 12. "Reward within reach" push — fires once when the user first crosses 80%
+  // 12. Session completed push — server-side for reliability (fires regardless of app/background state)
+  try {
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    await fetch(`${supabaseUrl}/functions/v1/send-push-notification`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${serviceKey}`,
+      },
+      body: JSON.stringify({
+        target_user_id: user.id,
+        type: 'session_completed',
+        payload: { session_id: session.id, earned: finalAmount },
+      }),
+    });
+  } catch (notifErr) {
+    console.warn('[claim-points] session_completed notification failed:', notifErr);
+  }
+
+  // 13. "Reward within reach" push — fires once when the user first crosses 80%
   //     of their next locked reward's cost.
   try {
     // Sum all earn/streak transactions to get current balance

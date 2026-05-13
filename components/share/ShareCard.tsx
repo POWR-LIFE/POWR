@@ -254,15 +254,16 @@ function StatCol({ scale, label, value, unit, valueColor = TEXT }: StatColProps 
   );
 }
 
+function ordinal(n: number): string {
+  const s = ['th', 'st', 'nd', 'rd'];
+  const v = n % 100;
+  return n + (s[(v - 20) % 10] ?? s[v] ?? s[0]);
+}
+
 function dayLabel(d: Date): string {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const target = new Date(d);
-  target.setHours(0, 0, 0, 0);
-  const diff = Math.round((today.getTime() - target.getTime()) / 86400000);
-  if (diff === 0) return 'Today';
-  if (diff === 1) return 'Yesterday';
-  return d.toLocaleDateString(undefined, { weekday: 'long' });
+  const month = d.toLocaleDateString(undefined, { month: 'long' });
+  const year  = d.getFullYear();
+  return `${ordinal(d.getDate())} ${month} ${year}`;
 }
 
 function formatTime(d: Date): string {

@@ -61,7 +61,7 @@ export async function fetchCheckInSummary(sessionId: string): Promise<CheckInSum
 
   const { data: session, error: sErr } = await supabase
     .from('activity_sessions')
-    .select('id, type, started_at, duration_sec, partner_id, partner_location_idx, point_transactions(amount)')
+    .select('id, type, started_at, duration_sec, partner_id, partner_location_idx, raw_gps, point_transactions(amount)')
     .eq('id', sessionId)
     .single();
   if (sErr || !session) throw sErr ?? new Error('Session not found');
@@ -71,9 +71,11 @@ export async function fetchCheckInSummary(sessionId: string): Promise<CheckInSum
 
   const aggregates = await fetchAggregates(user.id, session.type as ActivityType);
 
-  // Venue resolution — only if geofence detection populated partner_id
+  // Venue resolution: prefer partner_id column, fall back to raw_gps for older sessions
   let venue: ShareVenue | null = null;
   const partnerId = (session as any).partner_id as string | null;
+  const rawGps = (session as any).raw_gps as { partnerName?: string; partnerId?: string } | null;
+
   if (partnerId) {
     const { data: partner } = await supabase
       .from('partners')
@@ -89,6 +91,21 @@ export async function fetchCheckInSummary(sessionId: string): Promise<CheckInSum
         locationLabel: loc?.name ?? null,
         category: partner.category,
       };
+    }
+  } else if (rawGps?.partnerId) {
+    const { data: partner } = await supabase
+      .from('partners')
+      .select('name, category, locations')
+      .eq('id', rawGps.partnerId)
+      .maybeSingle();
+    if (partner) {
+      venue = {
+        name: partner.name,
+        locationLabel: (partner as any).locations?.[0]?.name ?? null,
+        category: partner.category,
+      };
+    } else if (rawGps.partnerName) {
+      venue = { name: rawGps.partnerName, locationLabel: null, category: 'gym' };
     }
   }
 

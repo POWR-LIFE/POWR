@@ -149,6 +149,7 @@ async function recordDwellSession(activeGeofence: StoredGeofence): Promise<{ out
         verification: 'geofence',
         trust_score:  0.94,
         device_id:    deviceId,
+        partner_id:   activeGeofence.partnerId,
         raw_gps:      {
           partnerId:      activeGeofence.partnerId,
           partnerName:    activeGeofence.partnerName,
@@ -215,13 +216,6 @@ async function recordDwellSession(activeGeofence: StoredGeofence): Promise<{ out
 
     // Notify all in-process listeners (e.g. usePoints) immediately
     _emitSessionCompleted();
-
-    try {
-      const { notifySessionCompleted } = await import('@/lib/notifications');
-      await notifySessionCompleted(activeGeofence.partnerName, sessionId);
-    } catch (err) {
-      console.warn('[Geofence] Session completed notification failed:', err);
-    }
 
     console.log(`[Geofence] Points claimed after ${Math.round(dwellMs / 60000)}min dwell.`, claimData);
     return { outcome: 'claimed', sessionId };
@@ -382,7 +376,7 @@ function formatPartnerRows(data: any[]): Partner[] {
         description:    p.description ?? undefined,
         category:       p.category.charAt(0).toUpperCase() + p.category.slice(1),
         status:         openNow ? 'Open now' : 'Closed',
-        area:           loc.name || 'Local',
+        area:           (loc.address?.trim() || loc.name?.trim()) || 'Local',
         pts:            p.category.toLowerCase() === 'gym' ? 15 : 10,
         distance:       '',
         logoText:       logoText.length > 10 ? logoText.substring(0, 10) : logoText,
@@ -466,13 +460,19 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
   const scheduleDwellTimer = useCallback(async () => {
     if (dwellTimerRef.current != null) return; // timer already running
 
-    const completedRaw = await AsyncStorage.getItem(SESSION_COMPLETED_KEY);
-    if (completedRaw) return;
-
     const raw = await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY);
     if (!raw) return;
 
     const activeGeofence: StoredGeofence = JSON.parse(raw);
+
+    // Skip only if the completion belongs to THIS session (timestamp after entry).
+    // A stale key from a previous visit (timestamp before current entry) should not
+    // block the foreground timer for new sessions.
+    const completedRaw = await AsyncStorage.getItem(SESSION_COMPLETED_KEY);
+    if (completedRaw) {
+      const completed: { timestamp: number } = JSON.parse(completedRaw);
+      if (completed.timestamp >= activeGeofence.entryTimestamp) return;
+    }
 
     // If the previous claim attempt failed (session too short at the time), retry as soon
     // as the production eligibility threshold is met — don't wait for exit.

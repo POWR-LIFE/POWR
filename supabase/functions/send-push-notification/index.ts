@@ -11,7 +11,8 @@ type NotificationType =
   | 'check_in_reminder'
   | 'points_milestone'
   | 'inactivity_nudge'
-  | 'sleep_target_met';
+  | 'sleep_target_met'
+  | 'session_completed';
 
 interface RequestBody {
   target_user_id: string;
@@ -150,6 +151,22 @@ function buildMessage(
           data: { type, route: '/(tabs)/index' },
           sound: 'default',
           channelId: 'powr_default_v2',
+        };
+      }
+
+      case 'session_completed': {
+        const sessionId = (payload.session_id as string) ?? '';
+        return {
+          title: 'POWR',
+          body: 'Session logged. Points added.',
+          data: {
+            type,
+            route: `/share-stats?mode=check-in&sessionId=${sessionId}`,
+            session_id: sessionId,
+          },
+          sound: 'default',
+          channelId: 'powr_rewards_v2',
+          priority: 'high',
         };
       }
     }
