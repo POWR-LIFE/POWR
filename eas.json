@@ -16,7 +16,8 @@
     "production": {
       "env": {
         "EXPO_PUBLIC_SUPABASE_URL": "https://wjvvujnicwkruaeibttt.supabase.co",
-        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_kh2lOAPJRrdykLLOR1QVxA_jj3H4CAL"
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_kh2lOAPJRrdykLLOR1QVxA_jj3H4CAL",
+        "EXPO_PUBLIC_GOOGLE_MAPS_API_KEY": "AIzaSyBlWjadfjwrtx62Rmb_b5aAPMM-l2pSgww"
       },
       "android": {
         "buildType": "app-bundle"
