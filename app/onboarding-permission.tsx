@@ -167,7 +167,7 @@ export default function OnboardingPermissionScreen() {
                     disabled={requesting}
                 >
                     <Text style={styles.primaryLabel}>
-                        {requesting ? 'REQUESTING...' : 'ALLOW LOCATION ACCESS'}
+                        {requesting ? 'REQUESTING...' : 'CONTINUE'}
                     </Text>
                     {!requesting && (
                         <View style={styles.bonusBadge}>

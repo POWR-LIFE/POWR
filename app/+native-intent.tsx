@@ -32,8 +32,11 @@ export const redirectSystemPath: NonNullable<NativeIntent['redirectSystemPath']>
     const host = withoutScheme.slice(0, hostEnd);
     const rest = withoutScheme.slice(hostEnd); // '' | '?...' | '/path?...'
 
-    // Empty host → root
+    // Empty host = bare powr:// scheme → root
     if (!host) return '/';
+
+    // auth-callback carries the Google OAuth code — let Linking listener handle it, don't navigate.
+    if (host === 'auth-callback') return '/';
 
     // powr://whoop-callback?code=X → /whoop-callback?code=X
     return `/${host}${rest}`;
