@@ -37,6 +37,7 @@ module.exports = {
     plugins: [
       ...expo.plugins,
       './withGoogleUtilitiesModularHeaders.js',
+      './withFirebaseMessagingManifestFix.js',
       '@react-native-firebase/app',
       'expo-apple-authentication',
       ['react-native-health-connect'],
