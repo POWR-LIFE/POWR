@@ -7,7 +7,7 @@
     "icon": "./assets/images/ios_icon_black.png",
     "scheme": "powr",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": false,
+    "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.powr.life",
