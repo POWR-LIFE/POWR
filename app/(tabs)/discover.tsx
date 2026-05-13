@@ -761,7 +761,7 @@ export default function DiscoverScreen() {
                       </View>
                       <View style={styles.modalHeroTitleWrap}>
                         <Text style={styles.modalPartnerName} numberOfLines={1} adjustsFontSizeToFit>{selectedPartner.name}</Text>
-                        <Text style={styles.modalHeroArea} numberOfLines={1}>{selectedPartner.area}</Text>
+                        <Text style={styles.modalHeroArea} numberOfLines={1}>{selectedPartner.address || selectedPartner.area}</Text>
                       </View>
                     </View>
                   </View>
@@ -788,7 +788,7 @@ export default function DiscoverScreen() {
                       </View>
                       <View style={styles.modalHeroTitleWrap}>
                         <Text style={styles.modalPartnerName} numberOfLines={1} adjustsFontSizeToFit>{selectedPartner.name}</Text>
-                        <Text style={styles.modalHeroArea} numberOfLines={1}>{selectedPartner.area}</Text>
+                        <Text style={styles.modalHeroArea} numberOfLines={1}>{selectedPartner.address || selectedPartner.area}</Text>
                       </View>
                     </View>
                   </View>

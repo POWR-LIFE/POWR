@@ -38,6 +38,7 @@ export interface Partner {
   description?: string;
   category: string;
   status: string;
+  address: string;
   area: string;
   pts: number;
   distance: string;
@@ -376,6 +377,7 @@ function formatPartnerRows(data: any[]): Partner[] {
         description:    p.description ?? undefined,
         category:       p.category.charAt(0).toUpperCase() + p.category.slice(1),
         status:         openNow ? 'Open now' : 'Closed',
+        address:        p.address?.trim() || '',
         area:           (loc.address?.trim() || loc.name?.trim()) || 'Local',
         pts:            p.category.toLowerCase() === 'gym' ? 15 : 10,
         distance:       '',
@@ -440,7 +442,7 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
       if (!data) {
         const { data: allData, error } = await supabase
           .from('partners')
-          .select('id, name, description, category, locations, logo_url, logo_bg, image1_url, image2_url, opening_hours')
+          .select('id, name, description, category, address, locations, logo_url, logo_bg, image1_url, image2_url, opening_hours')
           .eq('active', true);
         if (error || !allData) return;
         data = allData;
@@ -758,7 +760,7 @@ export async function searchPartners(query: string): Promise<Partner[]> {
   if (!q) return [];
   const { data, error } = await supabase
     .from('partners')
-    .select('id, name, description, category, locations, logo_url, logo_bg, image1_url, image2_url, opening_hours')
+    .select('id, name, description, category, address, locations, logo_url, logo_bg, image1_url, image2_url, opening_hours')
     .eq('active', true)
     .ilike('name', `%${q}%`)
     .limit(200);
