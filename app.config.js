@@ -35,10 +35,10 @@ module.exports = {
       },
     },
     plugins: [
+      './withFirebaseMessagingManifestFix.js',
       ...expo.plugins,
       './withGoogleUtilitiesModularHeaders.js',
       '@react-native-firebase/app',
-      './withFirebaseMessagingManifestFix.js',
       'expo-apple-authentication',
       ['react-native-health-connect'],
       'expo-secure-store',
