@@ -117,10 +117,10 @@ const LocationEditor = ({ locations, onChange }) => {
                                     />
                                 </div>
                                 <div className="space-y-3">
-                                    <label className="block text-[8px] uppercase tracking-[0.5em] text-[#BBB] font-black ml-2">Physical Address</label>
+                                    <label className="block text-[8px] uppercase tracking-[0.5em] text-[#BBB] font-black ml-2">Venue Description</label>
                                     <input
                                         type="text"
-                                        placeholder="123 MARKET ST, SYDNEY..."
+                                        placeholder="e.g. GYM, PILATES STUDIO..."
                                         className="w-full h-14 px-6 bg-[#0A0A0A] border border-[#151515] rounded-2xl text-[13px] font-bold text-[#F2F2F2] placeholder-[#222] focus:border-[#E8D200]/40 outline-none transition-all"
                                         value={loc.address || ''}
                                         onChange={e => update(i, 'address', e.target.value)}
@@ -1047,11 +1047,11 @@ export default function PartnerManager() {
                                         </div>
                                         <div>
                                             <label className="block text-[10px] uppercase tracking-[0.4em] text-[#CCC] font-black mb-4">Corporate Address</label>
-                                            <input type="text" placeholder="MAIN HEADQUARTERS..." className="w-full h-16 px-8 bg-[#0A0A0A] border border-[#151515] rounded-3xl focus:border-[#E8D200]/40 outline-none transition-all text-[12px] font-bold text-[#DDD] placeholder-[#151515]" value={formData.address} onChange={e => setFormData({ ...formData, address: e.target.value })} />
+                                            <input type="text" placeholder="MAIN HEADQUARTERS..." className="w-full h-16 px-8 bg-[#0A0A0A] border border-[#151515] rounded-3xl focus:border-[#E8D200]/40 outline-none transition-all text-[12px] font-bold text-[#DDD] placeholder-[#151515]" value={formData.address} onChange={e => setFormData(prev => ({ ...prev, address: e.target.value }))} />
                                         </div>
                                         <div>
                                             <label className="block text-[10px] uppercase tracking-[0.4em] text-[#CCC] font-black mb-4">Operating Sector</label>
-                                            <select className="w-full h-16 px-8 bg-[#0A0A0A] border border-[#151515] rounded-3xl focus:border-[#E8D200]/40 outline-none transition-all appearance-none text-[12px] font-black text-[#DDD] tracking-[0.1em] uppercase" value={formData.category} onChange={e => setFormData({ ...formData, category: e.target.value })}>
+                                            <select className="w-full h-16 px-8 bg-[#0A0A0A] border border-[#151515] rounded-3xl focus:border-[#E8D200]/40 outline-none transition-all appearance-none text-[12px] font-black text-[#DDD] tracking-[0.1em] uppercase" value={formData.category} onChange={e => setFormData(prev => ({ ...prev, category: e.target.value }))}>
                                                 {CATEGORIES.map(c => <option key={c} value={c}>{c.toUpperCase()}</option>)}
                                             </select>
                                         </div>
@@ -1059,7 +1059,7 @@ export default function PartnerManager() {
                                         <div className="p-8 bg-[#0A0A0A] border border-[#151515] rounded-[2rem] flex items-center gap-6">
                                             <button
                                                 type="button"
-                                                onClick={() => setFormData({ ...formData, active: !formData.active })}
+                                                onClick={() => setFormData(prev => ({ ...prev, active: !prev.active }))}
                                                 className={`w-12 h-7 rounded-full transition-all relative shrink-0 ${formData.active ? 'bg-[#10B981]' : 'bg-[#151515]'}`}
                                             >
                                                 <span className={`absolute top-1 w-5 h-5 rounded-full transition-all ${formData.active ? 'left-[24px] bg-[#000]' : 'left-1 bg-[#666]'}`} />
@@ -1071,7 +1071,7 @@ export default function PartnerManager() {
                                     <div className="space-y-8">
                                         <LocationEditor
                                             locations={formData.locations}
-                                            onChange={locs => setFormData({ ...formData, locations: locs })}
+                                            onChange={locs => setFormData(prev => ({ ...prev, locations: locs }))}
                                         />
                                         <ImageUploadField label="Cover Image" value={formData.image1_url} uploading={image1Uploading} onFile={handleImage1Upload} />
                                         <ImageUploadField label="Gallery Image" value={formData.image2_url} uploading={image2Uploading} onFile={handleImage2Upload} />
@@ -1091,14 +1091,14 @@ export default function PartnerManager() {
                                         </div>
                                         <div>
                                             <label className="block text-[10px] uppercase tracking-[0.4em] text-[#CCC] font-black mb-4">Sector</label>
-                                            <select className="w-full h-16 px-8 bg-[#0A0A0A] border border-[#151515] rounded-3xl focus:border-[#E8D200]/40 outline-none transition-all appearance-none text-[12px] font-black text-[#DDD] tracking-[0.1em] uppercase" value={formData.category} onChange={e => setFormData({ ...formData, category: e.target.value })}>
+                                            <select className="w-full h-16 px-8 bg-[#0A0A0A] border border-[#151515] rounded-3xl focus:border-[#E8D200]/40 outline-none transition-all appearance-none text-[12px] font-black text-[#DDD] tracking-[0.1em] uppercase" value={formData.category} onChange={e => setFormData(prev => ({ ...prev, category: e.target.value }))}>
                                                 {CATEGORIES.map(c => <option key={c} value={c}>{c.toUpperCase()}</option>)}
                                             </select>
                                         </div>
                                         <div className="p-8 bg-[#0A0A0A] border border-[#151515] rounded-[2rem] flex items-center gap-6">
                                             <button
                                                 type="button"
-                                                onClick={() => setFormData({ ...formData, active: !formData.active })}
+                                                onClick={() => setFormData(prev => ({ ...prev, active: !prev.active }))}
                                                 className={`w-12 h-7 rounded-full transition-all relative shrink-0 ${formData.active ? 'bg-[#10B981]' : 'bg-[#151515]'}`}
                                             >
                                                 <span className={`absolute top-1 w-5 h-5 rounded-full transition-all ${formData.active ? 'left-[24px] bg-[#000]' : 'left-1 bg-[#666]'}`} />
@@ -1125,7 +1125,7 @@ export default function PartnerManager() {
                                     </label>
                                     <button
                                         type="button"
-                                        onClick={() => setFormData({ ...formData, opening_hours: formData.opening_hours ? null : { ...DEFAULT_HOURS } })}
+                                        onClick={() => setFormData(prev => ({ ...prev, opening_hours: prev.opening_hours ? null : { ...DEFAULT_HOURS } }))}
                                         className="text-[9px] uppercase tracking-[0.3em] font-black text-[#999] hover:text-[#E8D200] transition-colors"
                                     >
                                         {formData.opening_hours ? 'Clear Hours' : 'Set Hours'}
@@ -1134,12 +1134,12 @@ export default function PartnerManager() {
                                 {formData.opening_hours ? (
                                     <OpeningHoursEditor
                                         value={formData.opening_hours}
-                                        onChange={oh => setFormData({ ...formData, opening_hours: oh })}
+                                        onChange={oh => setFormData(prev => ({ ...prev, opening_hours: oh }))}
                                     />
                                 ) : (
                                     <button
                                         type="button"
-                                        onClick={() => setFormData({ ...formData, opening_hours: { ...DEFAULT_HOURS } })}
+                                        onClick={() => setFormData(prev => ({ ...prev, opening_hours: { ...DEFAULT_HOURS } }))}
                                         className="w-full py-8 border border-dashed border-[#151515] rounded-[2rem] text-[10px] uppercase tracking-[0.4em] text-[#AAA] font-black hover:border-[#E8D200]/30 hover:text-[#E8D200] transition-all"
                                     >
                                         + Configure Schedule
