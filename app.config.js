@@ -21,6 +21,7 @@ module.exports = {
     },
     android: {
       ...expo.android,
+      googleServicesFile: './google-services.json',
       config: {
         googleMaps: {
           apiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ?? '',

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1032153326456",
+    "project_id": "powr-life",
+    "storage_bucket": "powr-life.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1032153326456:android:8741fb88a3f55018b99e8d",
+        "android_client_info": {
+          "package_name": "com.powr.life"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCiZ9t7l2ksq6wezcxrFo42-HTpjbbvJUA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
