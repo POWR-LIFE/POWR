@@ -729,37 +729,70 @@ export default function DiscoverScreen() {
                 bounces
                 contentContainerStyle={{ paddingBottom: 8 }}
               >
-                {/* Compact header — hero cover hidden until all gyms have images */}
-                <View style={styles.modalCompactHeader}>
-                  {/* Handle */}
-                  <View style={styles.modalHeroHandle} />
-
-                  {/* Close button */}
-                  <Pressable onPress={() => setSelectedPartner(null)} style={styles.modalHeroClose}>
-                    <Ionicons name="close" size={18} color="rgba(255,255,255,0.9)" />
-                  </Pressable>
-
-                  {/* Logo + name + status */}
-                  <View style={styles.modalHeroFooter}>
-                    <View style={[styles.modalLogoCard, { backgroundColor: selectedPartner.logoBg === 'white' ? '#FFFFFF' : selectedPartner.logoBg === 'black' ? '#000000' : 'rgba(20,20,20,0.85)' }]}>
-                      {selectedPartner.logoUrl ? (
-                        <Image source={{ uri: selectedPartner.logoUrl }} style={styles.modalLogoImg} contentFit="contain" />
-                      ) : (
-                        <Text
-                          style={[styles.modalLogoFallback, selectedPartner.logoBg === 'white' && { color: '#1a1a1a' }]}
-                          numberOfLines={2}
-                          adjustsFontSizeToFit
-                        >
-                          {selectedPartner.logoText}
-                        </Text>
-                      )}
-                    </View>
-                    <View style={styles.modalHeroTitleWrap}>
-                      <Text style={styles.modalPartnerName} numberOfLines={1} adjustsFontSizeToFit>{selectedPartner.name}</Text>
-                      <Text style={styles.modalHeroArea} numberOfLines={1}>{selectedPartner.area}</Text>
+                {selectedPartner.image1Url ? (
+                  /* ── Hero cover image header ── */
+                  <View style={styles.modalHero}>
+                    <Image
+                      source={{ uri: selectedPartner.image1Url }}
+                      style={StyleSheet.absoluteFillObject}
+                      contentFit="cover"
+                    />
+                    <LinearGradient
+                      colors={['transparent', 'rgba(18,18,18,0.7)', '#121212']}
+                      style={[StyleSheet.absoluteFillObject, { top: '35%' }]}
+                    />
+                    <View style={styles.modalHeroHandle} />
+                    <Pressable onPress={() => setSelectedPartner(null)} style={styles.modalHeroClose}>
+                      <Ionicons name="close" size={18} color="rgba(255,255,255,0.9)" />
+                    </Pressable>
+                    <View style={styles.modalHeroFooterAbsolute}>
+                      <View style={[styles.modalLogoCard, { backgroundColor: selectedPartner.logoBg === 'white' ? '#FFFFFF' : selectedPartner.logoBg === 'black' ? '#000000' : 'rgba(20,20,20,0.85)' }]}>
+                        {selectedPartner.logoUrl ? (
+                          <Image source={{ uri: selectedPartner.logoUrl }} style={styles.modalLogoImg} contentFit="contain" />
+                        ) : (
+                          <Text
+                            style={[styles.modalLogoFallback, selectedPartner.logoBg === 'white' && { color: '#1a1a1a' }]}
+                            numberOfLines={2}
+                            adjustsFontSizeToFit
+                          >
+                            {selectedPartner.logoText}
+                          </Text>
+                        )}
+                      </View>
+                      <View style={styles.modalHeroTitleWrap}>
+                        <Text style={styles.modalPartnerName} numberOfLines={1} adjustsFontSizeToFit>{selectedPartner.name}</Text>
+                        <Text style={styles.modalHeroArea} numberOfLines={1}>{selectedPartner.area}</Text>
+                      </View>
                     </View>
                   </View>
-                </View>
+                ) : (
+                  /* ── Compact header — no cover image ── */
+                  <View style={styles.modalCompactHeader}>
+                    <View style={styles.modalHeroHandle} />
+                    <Pressable onPress={() => setSelectedPartner(null)} style={styles.modalHeroClose}>
+                      <Ionicons name="close" size={18} color="rgba(255,255,255,0.9)" />
+                    </Pressable>
+                    <View style={styles.modalHeroFooter}>
+                      <View style={[styles.modalLogoCard, { backgroundColor: selectedPartner.logoBg === 'white' ? '#FFFFFF' : selectedPartner.logoBg === 'black' ? '#000000' : 'rgba(20,20,20,0.85)' }]}>
+                        {selectedPartner.logoUrl ? (
+                          <Image source={{ uri: selectedPartner.logoUrl }} style={styles.modalLogoImg} contentFit="contain" />
+                        ) : (
+                          <Text
+                            style={[styles.modalLogoFallback, selectedPartner.logoBg === 'white' && { color: '#1a1a1a' }]}
+                            numberOfLines={2}
+                            adjustsFontSizeToFit
+                          >
+                            {selectedPartner.logoText}
+                          </Text>
+                        )}
+                      </View>
+                      <View style={styles.modalHeroTitleWrap}>
+                        <Text style={styles.modalPartnerName} numberOfLines={1} adjustsFontSizeToFit>{selectedPartner.name}</Text>
+                        <Text style={styles.modalHeroArea} numberOfLines={1}>{selectedPartner.area}</Text>
+                      </View>
+                    </View>
+                  </View>
+                )}
 
                 {/* Info row: stacked details + reward pills */}
                 <View style={styles.infoRow}>
@@ -1642,6 +1675,10 @@ const styles = StyleSheet.create({
   modalHeroFooter: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
     marginTop: 28,
+  },
+  modalHeroFooterAbsolute: {
+    position: 'absolute', bottom: 16, left: 16, right: 16,
+    flexDirection: 'row', alignItems: 'center', gap: 12,
   },
   modalHeroTitleWrap: { flex: 1, gap: 2, paddingBottom: 4 },
   modalHeroArea: { fontSize: 12, color: 'rgba(255,255,255,0.7)', fontWeight: '300' },

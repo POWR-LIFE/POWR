@@ -69,7 +69,10 @@ export function useActiveGeofence(): {
       parsed.longitude,
     );
 
-    if (distance > parsed.radius + 10) {
+    // Use a 100 m GPS-accuracy buffer — raw positions from getLastKnownPositionAsync
+    // or Low-accuracy mode can be off by 50–200 m, so a small radius + 10 m would
+    // clear the active session prematurely due to normal GPS drift.
+    if (distance > parsed.radius + 100) {
       await AsyncStorage.removeItem(ACTIVE_GEOFENCE_KEY);
       return null;
     }
