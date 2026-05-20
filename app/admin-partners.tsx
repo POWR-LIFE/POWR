@@ -92,6 +92,7 @@ interface PartnerRow {
   active: boolean;
   opening_hours: OpeningHours | null;
   locations: Location[] | null;
+  checkout_url_template: string | null;
   created_at: string;
 }
 
@@ -112,6 +113,7 @@ const BLANK_PARTNER: Omit<PartnerRow, 'id' | 'created_at'> = {
   logo_url: null,
   logo_bg: 'dark',
   active: true,
+  checkout_url_template: null,
   opening_hours: {
     mon: { open: '06:00', close: '22:00' },
     tue: { open: '06:00', close: '22:00' },
@@ -158,7 +160,7 @@ export default function AdminPartnersScreen() {
   const fetchPartners = useCallback(async () => {
     const { data, error } = await supabase
       .from('partners')
-      .select('id, name, description, category, logo_url, logo_bg, active, opening_hours, locations, created_at')
+      .select('id, name, description, category, logo_url, logo_bg, active, opening_hours, locations, checkout_url_template, created_at')
       .order('name');
     if (!error && data) {
       const normalized = (data as PartnerRow[]).map((partner) => ({
@@ -245,14 +247,15 @@ export default function AdminPartnersScreen() {
     setSaving(true);
     try {
       const payload = {
-        name:          editPartner.name.trim(),
-        description:   editPartner.description || null,
-        category:      toLegacyPartnerCategory((editPartner.category as PartnerCategory) ?? 'move'),
-        logo_url:      editPartner.logo_url || null,
-        logo_bg:       editPartner.logo_bg ?? 'dark',
-        active:        editPartner.active ?? true,
-        opening_hours: editPartner.opening_hours ?? null,
-        locations:     editPartner.locations ?? null,
+        name:                  editPartner.name.trim(),
+        description:           editPartner.description || null,
+        category:              toLegacyPartnerCategory((editPartner.category as PartnerCategory) ?? 'move'),
+        logo_url:              editPartner.logo_url || null,
+        logo_bg:               editPartner.logo_bg ?? 'dark',
+        active:                editPartner.active ?? true,
+        checkout_url_template: editPartner.checkout_url_template || null,
+        opening_hours:         editPartner.opening_hours ?? null,
+        locations:             editPartner.locations ?? null,
       };
 
       if (isNew) {
@@ -455,6 +458,17 @@ export default function AdminPartnersScreen() {
                     </View>
                   </View>
                 )}
+
+                <FieldLabel label="AFFILIATE / CHECKOUT URL" />
+                <TextInput
+                  style={styles.textInput}
+                  value={editPartner.checkout_url_template ?? ''}
+                  onChangeText={v => setEditPartner(p => ({ ...p!, checkout_url_template: v || null }))}
+                  placeholder="https://huel.com/ref/powr"
+                  placeholderTextColor={MUTED}
+                  autoCapitalize="none"
+                  keyboardType="url"
+                />
 
                 {/* Active toggle */}
                 <View style={styles.toggleRow}>

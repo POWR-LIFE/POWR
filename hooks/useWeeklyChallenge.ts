@@ -90,8 +90,11 @@ export function useWeeklyChallenge(userPreferences: string[]): WeeklyChallengeSt
 
     setState({ challenge: activeChallenge, targetActivityType, completion: null });
 
-    // 4. Check for a qualifying session this week that started before 12pm local
-    if (!targetActivityType) return;
+    // 4. Check for a qualifying session this week that started before 12pm local.
+    // Query ALL qualifying types — not just the user's top-priority one — so any
+    // eligible morning session triggers completion regardless of which activity they did.
+    const qualifyingTypes = activeChallenge.qualifyingTypes ?? [];
+    if (!qualifyingTypes.length) return;
 
     const utcOffsetMinutes = -new Date().getTimezoneOffset();
     const weekStart = getMondayUTC();
@@ -99,7 +102,7 @@ export function useWeeklyChallenge(userPreferences: string[]): WeeklyChallengeSt
     const { data: sessions } = await supabase
       .from('activity_sessions')
       .select('id, started_at')
-      .eq('type', targetActivityType)
+      .in('type', qualifyingTypes)
       .gte('started_at', weekStart)
       .order('started_at', { ascending: true });
 

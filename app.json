@@ -99,7 +99,7 @@
         {
           "locationAlwaysAndWhenInUsePermission": "POWR uses your location to detect when you arrive at partner gyms and automatically track your workouts.",
           "locationWhenInUsePermission": "POWR uses your location to show nearby partner gyms and rewards.",
-          "isIosBackgroundLocationEnabled": true,
+          "isIosBackgroundLocationEnabled": false,
           "isAndroidBackgroundLocationEnabled": true
         }
       ],

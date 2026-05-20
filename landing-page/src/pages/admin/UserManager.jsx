@@ -252,10 +252,14 @@ export default function UserManager() {
                                             <div className="flex items-center gap-6">
                                                 <div className="w-12 h-12 rounded-2xl bg-[#050505] border border-[#151515] flex items-center justify-center overflow-hidden shrink-0">
                                                     {user.avatar_url ? (
-                                                        <img src={user.avatar_url} alt="" className="w-full h-full object-cover" />
-                                                    ) : (
-                                                        <User size={18} className="text-[#777]" />
-                                                    )}
+                                                        <img
+                                                            src={user.avatar_url}
+                                                            alt=""
+                                                            className="w-full h-full object-cover"
+                                                            onError={e => { e.currentTarget.style.display = 'none'; e.currentTarget.nextSibling.style.display = ''; }}
+                                                        />
+                                                    ) : null}
+                                                    <User size={18} className="text-[#777]" style={{ display: user.avatar_url ? 'none' : '' }} />
                                                 </div>
                                                 <div>
                                                     <span className="text-base font-bold text-[#DDD] group-hover:text-[#F2F2F2] transition-colors block mb-1">
