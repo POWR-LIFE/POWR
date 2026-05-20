@@ -48,7 +48,7 @@ Deno.serve(async (req) => {
   // 1. Load reward + partner
   const { data: reward, error: rErr } = await admin
     .from('rewards')
-    .select('id, partner_id, title, powr_cost, active, integration_type, code_expiry_days, max_redemptions_per_user, partners(partner_code, checkout_url_template, name)')
+    .select('id, partner_id, title, powr_cost, active, integration_type, code_expiry_days, max_redemptions_per_user, url, partners(partner_code, checkout_url_template, name)')
     .eq('id', body.reward_id)
     .single();
 
@@ -192,7 +192,7 @@ Deno.serve(async (req) => {
 
   const checkoutUrl = partner.checkout_url_template
     ? partner.checkout_url_template.replace('{code}', codeRow.code)
-    : null;
+    : (reward.url ?? null);
 
   return json({
     ok: true,

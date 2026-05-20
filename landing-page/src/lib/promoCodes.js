@@ -1,7 +1,7 @@
 import { supabase } from './supabase';
 
-// Format: POWR-<identifier>-<6-char token>
-// The middle identifier can be any length (1+ chars) — e.g. TRIBE, BULK, GYM
+// Default format: POWR-<identifier>-<6-char token>
+// When a custom scheme is used the rigid 6-char suffix restriction is lifted.
 const CODE_REGEX = /^POWR-[A-Z0-9]+-[A-Z0-9]{6}$/;
 
 export function normalise(code) {
@@ -10,6 +10,46 @@ export function normalise(code) {
 
 export function isValidFormat(code) {
     return CODE_REGEX.test(code);
+}
+
+// ─── Custom scheme helpers ────────────────────────────────────────────────────
+
+// Parse an example code into a scheme object.
+// Each segment is classified by its characters:
+//   all-numeric   → variable (e.g. "74675"  → [0-9]{5})
+//   mixed alphanum → variable (e.g. "X9K286" → [A-Z0-9]{6})
+//   all-alpha      → fixed literal (e.g. "REP" stays "REP")
+//   "POWR"         → always fixed
+// Returns null if the code doesn't start with POWR- or contains invalid chars.
+export function buildScheme(exampleCode) {
+    const normalised = normalise(exampleCode);
+    const parts = normalised.split('-');
+    if (parts.length < 2 || parts[0] !== 'POWR') return null;
+    if (parts.some(p => !p || !/^[A-Z0-9]+$/.test(p))) return null;
+
+    const segments = parts.map((p, i) => {
+        if (i === 0) return { value: p, fixed: true, pattern: 'POWR' };
+        if (/^[0-9]+$/.test(p)) return { value: p, fixed: false, pattern: `[0-9]{${p.length}}` };
+        if (/^[A-Z]+$/.test(p)) return { value: p, fixed: true, pattern: p };
+        return { value: p, fixed: false, pattern: `[A-Z0-9]{${p.length}}` };
+    });
+
+    const regex = new RegExp('^' + segments.map(s => s.pattern).join('-') + '$');
+    const firstVarIdx = segments.findIndex(s => !s.fixed);
+    const prefix = firstVarIdx > 0
+        ? segments.slice(0, firstVarIdx).map(s => s.value).join('-') + '-'
+        : 'POWR-';
+    const lastVar = [...segments].reverse().find(s => !s.fixed);
+    const exampleSuffix = lastVar?.value ?? '';
+
+    return { segments, regex, prefix, exampleSuffix, exampleCode: normalised };
+}
+
+// Validate a code against a scheme.
+// If no scheme is supplied, falls back to the default CODE_REGEX.
+export function isValidForScheme(code, scheme) {
+    if (!scheme) return isValidFormat(code);
+    return scheme.regex.test(code);
 }
 
 // Standard partner CSV column names (case-insensitive).
@@ -26,6 +66,27 @@ export function getCSVTemplate(partnerCode, sampleCount = 3) {
         const seed = i * 7; // offset into CHARS so each row looks different
         const token = Array.from({ length: 6 }, (__, j) => CHARS[(seed + j * 4) % CHARS.length]).join('');
         return `POWR-${(partnerCode || 'XXXX').toUpperCase()}-${token},${today},Partner Name,partner@email.com,Active,`;
+    });
+    return [header, ...samples].join('\n');
+}
+
+// Returns a CSV template based on a custom scheme (from buildScheme).
+export function getSchemeCSVTemplate(scheme, sampleCount = 3) {
+    const header = CSV_COLUMNS.join(',');
+    const today = new Date().toISOString().slice(0, 10);
+    const ALPHA = 'ABCDEFGHJKMNPQRSTVWXYZ';
+    const DIGITS = '23456789';
+    const ALNUM = ALPHA + DIGITS;
+    const samples = Array.from({ length: sampleCount }, (_, i) => {
+        const code = scheme.segments.map((seg, si) => {
+            if (seg.fixed) return seg.value;
+            const chars = /^\[0-9\]/.test(seg.pattern) ? DIGITS + '01' : ALNUM;
+            const seed = i * 7 + si * 3;
+            return Array.from({ length: seg.value.length }, (__, j) =>
+                chars[(seed + j * 4) % chars.length]
+            ).join('');
+        }).join('-');
+        return `${code},${today},Partner Name,partner@email.com,Active,`;
     });
     return [header, ...samples].join('\n');
 }
@@ -94,8 +155,9 @@ export function parseCodes(raw) {
 }
 
 // Uploads codes for a reward. Validates format + partner prefix.
+// Pass `scheme` (from buildScheme) to use a custom format instead of the default regex.
 // Returns { accepted, rejected: [{code, reason}] }.
-export async function uploadCodes({ rewardId, codes, expiresAt }) {
+export async function uploadCodes({ rewardId, codes, expiresAt, scheme }) {
     if (!rewardId) throw new Error('rewardId required');
     if (!codes?.length) return { accepted: 0, rejected: [] };
 
@@ -124,8 +186,13 @@ export async function uploadCodes({ rewardId, codes, expiresAt }) {
         if (!code) continue;
         if (seen.has(code)) { rejected.push({ code, reason: 'duplicate_in_batch' }); continue; }
         seen.add(code);
-        if (!isValidFormat(code)) { rejected.push({ code, reason: 'invalid_format' }); continue; }
-        if (prefix && !code.startsWith(prefix)) { rejected.push({ code, reason: 'wrong_partner_prefix' }); continue; }
+        if (scheme) {
+            // Custom scheme: prefix + alphanumeric suffix, skip default regex + partner prefix
+            if (!isValidForScheme(code, scheme)) { rejected.push({ code, reason: 'invalid_format' }); continue; }
+        } else {
+            if (!isValidFormat(code)) { rejected.push({ code, reason: 'invalid_format' }); continue; }
+            if (prefix && !code.startsWith(prefix)) { rejected.push({ code, reason: 'wrong_partner_prefix' }); continue; }
+        }
         accepted.push({
             reward_id: rewardId,
             code,
@@ -137,11 +204,36 @@ export async function uploadCodes({ rewardId, codes, expiresAt }) {
 
     if (accepted.length === 0) return { accepted: 0, rejected };
 
+    // Pre-check: find which codes already exist so we can skip same-reward duplicates
+    // without falling through to noisy per-row insert failures.
+    const allCodes = accepted.map(r => r.code);
+    const { data: existing } = await supabase
+        .from('redemption_codes')
+        .select('code, reward_id')
+        .in('code', allCodes);
+
+    const existingMap = new Map((existing ?? []).map(r => [r.code, r.reward_id]));
+    const toInsert = [];
+    let alreadyInPool = 0;
+
+    for (const row of accepted) {
+        const existingRewardId = existingMap.get(row.code);
+        if (existingRewardId === undefined) {
+            toInsert.push(row);
+        } else if (existingRewardId === rewardId) {
+            alreadyInPool++;
+        } else {
+            rejected.push({ code: row.code, reason: 'code_in_different_reward' });
+        }
+    }
+
+    if (toInsert.length === 0) return { accepted: 0, alreadyInPool, rejected };
+
     // Insert in chunks; on unique violation mark as rejected.
     const chunkSize = 500;
     let insertedCount = 0;
-    for (let i = 0; i < accepted.length; i += chunkSize) {
-        const chunk = accepted.slice(i, i + chunkSize);
+    for (let i = 0; i < toInsert.length; i += chunkSize) {
+        const chunk = toInsert.slice(i, i + chunkSize);
         const { data, error } = await supabase
             .from('redemption_codes')
             .insert(chunk)
@@ -161,7 +253,86 @@ export async function uploadCodes({ rewardId, codes, expiresAt }) {
         }
     }
 
-    return { accepted: insertedCount, rejected };
+    return { accepted: insertedCount, alreadyInPool, rejected };
+}
+
+// Generates `count` unique codes for a reward and inserts them directly.
+// Uses the provided scheme prefix (or falls back to POWR-{partnerCode}-).
+// Returns { generated, duplicatesSkipped }.
+export async function generateCodes({ rewardId, count, scheme, expiresAt }) {
+    if (!rewardId) throw new Error('rewardId required');
+    if (!count || count < 1) throw new Error('count must be >= 1');
+
+    const { data: reward, error: rErr } = await supabase
+        .from('rewards')
+        .select('id, code_expiry_days, partners(partner_code)')
+        .eq('id', rewardId)
+        .single();
+    if (rErr || !reward) throw new Error('Reward not found');
+
+    const partnerRow = Array.isArray(reward.partners) ? reward.partners[0] : reward.partners;
+    const prefix = scheme?.prefix ?? (partnerRow?.partner_code ? `POWR-${partnerRow.partner_code}-` : 'POWR-');
+    const suffixLen = scheme?.exampleSuffix?.length ?? 6;
+    const expiry = expiresAt
+        ? new Date(expiresAt).toISOString()
+        : new Date(Date.now() + (reward.code_expiry_days || 90) * 86400_000).toISOString();
+
+    const CHARS = 'ABCDEFGHJKMNPQRSTVWXYZ23456789';
+    const DIGITS = '0123456789';
+    const rows = [];
+    const seen = new Set();
+    let attempts = 0;
+    const maxAttempts = count * 10;
+
+    while (rows.length < count && attempts < maxAttempts) {
+        attempts++;
+        let code;
+        if (scheme?.segments) {
+            code = scheme.segments.map(seg => {
+                if (seg.fixed) return seg.value;
+                const chars = /^\[0-9\]/.test(seg.pattern) ? DIGITS : CHARS;
+                return Array.from({ length: seg.value.length }, () =>
+                    chars[Math.floor(Math.random() * chars.length)]
+                ).join('');
+            }).join('-');
+        } else {
+            const suffix = Array.from({ length: suffixLen }, () =>
+                CHARS[Math.floor(Math.random() * CHARS.length)]
+            ).join('');
+            code = `${prefix}${suffix}`;
+        }
+        if (seen.has(code)) continue;
+        seen.add(code);
+        rows.push({ reward_id: rewardId, code, source: 'POWR_GENERATED', status: 'available', expires_at: expiry });
+    }
+
+    let generated = 0;
+    let duplicatesSkipped = 0;
+    const chunkSize = 500;
+    for (let i = 0; i < rows.length; i += chunkSize) {
+        const chunk = rows.slice(i, i + chunkSize);
+        const { data, error } = await supabase.from('redemption_codes').insert(chunk).select('code');
+        if (error) {
+            for (const row of chunk) {
+                const { error: rowErr } = await supabase.from('redemption_codes').insert(row);
+                if (rowErr) { duplicatesSkipped++; } else { generated++; }
+            }
+        } else {
+            generated += data?.length ?? chunk.length;
+        }
+    }
+    return { generated, duplicatesSkipped };
+}
+
+// Toggle a single code's status between 'available' and 'expired'.
+export async function toggleCodeStatus(codeId, currentStatus) {
+    const newStatus = currentStatus === 'available' ? 'expired' : 'available';
+    const { error } = await supabase
+        .from('redemption_codes')
+        .update({ status: newStatus })
+        .eq('id', codeId);
+    if (error) throw error;
+    return newStatus;
 }
 
 // Fetches paginated code pool for a reward with optional status filter.

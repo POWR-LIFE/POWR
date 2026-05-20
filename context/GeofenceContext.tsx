@@ -340,7 +340,15 @@ TaskManager.defineTask(GEOFENCE_TASK_NAME, async ({ data, error }) => {
       return;
     }
 
-    await recordDwellSession(activeGeofence);
+    const { outcome: exitOutcome, sessionId: exitSessionId } = await recordDwellSession(activeGeofence);
+    if (exitOutcome === 'claimed' && exitSessionId) {
+      try {
+        const { notifySessionCompleted } = await import('@/lib/notifications');
+        await notifySessionCompleted(activeGeofence.partnerName, exitSessionId);
+      } catch (err) {
+        console.warn('[Geofence] Exit notification failed:', err);
+      }
+    }
   }
 });
 
@@ -547,6 +555,12 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
         await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...activeGeofence, sessionRecorded: true, pointsPending: true }));
       } else if (outcome === 'claimed' && sessionId) {
         await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...activeGeofence, sessionRecorded: true, sessionId }));
+        try {
+          const { notifySessionCompleted } = await import('@/lib/notifications');
+          await notifySessionCompleted(activeGeofence.partnerName, sessionId);
+        } catch (err) {
+          console.warn('[Geofence] Session completed notification failed:', err);
+        }
       }
       return;
     }
@@ -565,6 +579,12 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
         await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...gf, sessionRecorded: true, pointsPending: true }));
       } else if (outcome === 'claimed' && sessionId) {
         await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...gf, sessionRecorded: true, sessionId }));
+        try {
+          const { notifySessionCompleted } = await import('@/lib/notifications');
+          await notifySessionCompleted(gf.partnerName, sessionId);
+        } catch (err) {
+          console.warn('[Geofence] Session completed notification failed:', err);
+        }
       }
     }, remaining);
   }, []);

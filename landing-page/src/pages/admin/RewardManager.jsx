@@ -4,7 +4,7 @@ import { useToast } from '../../lib/toast';
 import { Plus, Edit2, Trash2, Ticket, Loader2, X, Search, Award, Activity, ChevronRight, AlertTriangle, Upload, Image as ImageIcon, Tag, FileText } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { uploadPublicImage } from '../../lib/storage';
-import { parseCodes, uploadCodes, fetchCodeStats, fetchCodePool, getCSVTemplate } from '../../lib/promoCodes';
+import { parseCodes, uploadCodes, fetchCodeStats, fetchCodePool, getCSVTemplate, buildScheme, isValidForScheme, getSchemeCSVTemplate, generateCodes, toggleCodeStatus } from '../../lib/promoCodes';
 
 const CATEGORIES = ['eat', 'move', 'mind', 'sleep'];
 const normalizeRewardCategory = (category) => {
@@ -73,6 +73,7 @@ const EMPTY_FORM = {
     active: true,
     featured_on_home: false,
     reward_kind: 'digital',
+    integration_type: 'POOL',
     value_label: '',
     discount_type: '',
     discount_value: '',
@@ -109,7 +110,12 @@ export default function RewardManager() {
     const [codePoolPage, setCodePoolPage] = useState(0);
     const [codePoolStatus, setCodePoolStatus] = useState('all');
     const [codePoolLoading, setCodePoolLoading] = useState(false);
+    const [schemeExample, setSchemeExample] = useState('');
+    const [generateCount, setGenerateCount] = useState(100);
+    const [generatingCodes, setGeneratingCodes] = useState(false);
+    const [togglingCodeId, setTogglingCodeId] = useState(null);
     const CODE_POOL_PAGE_SIZE = 20;
+    const parsedScheme = schemeExample ? buildScheme(schemeExample) : null;
 
     useEffect(() => { fetchData(); }, []);
 
@@ -173,7 +179,7 @@ export default function RewardManager() {
     const openEdit = async (reward) => {
         setEditingReward(reward);
         setFormData({
-            partner_id: reward.partner_id,
+            partner_id: reward.partner_id ?? '',
             brand_name: reward.brand_name || '',
             title: reward.title,
             description: reward.description || '',
@@ -183,6 +189,7 @@ export default function RewardManager() {
             active: reward.active,
             featured_on_home: reward.featured_on_home || false,
             reward_kind: reward.reward_kind || 'digital',
+            integration_type: reward.integration_type || 'POOL',
             value_label: reward.value_label || '',
             discount_type: reward.discount_type || '',
             discount_value: reward.discount_value ?? '',
@@ -197,8 +204,19 @@ export default function RewardManager() {
         });
         setBulkCodesText('');
         setSingleCode('');
+        setGenerateCount(100);
         setCodePoolPage(0);
         setCodePoolStatus('all');
+        // Restore persisted scheme for this reward, or fall back to partner-code pre-seed
+        const foundPartner = partners.find(p => p.id === reward.partner_id);
+        const savedScheme = localStorage.getItem(`powr_scheme_${reward.id}`);
+        if (savedScheme) {
+            setSchemeExample(savedScheme);
+        } else if (foundPartner?.partner_code) {
+            setSchemeExample(`POWR-${foundPartner.partner_code}-A1B2C3`);
+        } else {
+            setSchemeExample('');
+        }
         await Promise.all([refreshCodeStats(reward.id), refreshCodePool(reward.id)]);
         setIsModalOpen(true);
     };
@@ -225,8 +243,11 @@ export default function RewardManager() {
         if (codes.length === 0) { toast.error('No codes detected'); return; }
         setUploadingCodes(true);
         try {
-            const result = await uploadCodes({ rewardId: editingReward.id, codes });
-            toast.success(`${result.accepted} accepted · ${result.rejected.length} rejected`);
+            const result = await uploadCodes({ rewardId: editingReward.id, codes, scheme: parsedScheme || undefined });
+            const parts = [`${result.accepted} added`];
+            if (result.alreadyInPool) parts.push(`${result.alreadyInPool} already in pool`);
+            if (result.rejected.length) parts.push(`${result.rejected.length} rejected`);
+            toast.success(parts.join(' · '));
             if (result.rejected.length) {
                 console.warn('Rejected codes:', result.rejected);
             }
@@ -254,15 +275,48 @@ export default function RewardManager() {
         }
     };
 
+    const handleGenerate = async () => {
+        if (!editingReward) { toast.error('Save the reward first, then generate codes'); return; }
+        if (!generateCount || generateCount < 1) return;
+        setGeneratingCodes(true);
+        try {
+            const result = await generateCodes({ rewardId: editingReward.id, count: generateCount, scheme: parsedScheme || undefined });
+            toast.success(`${result.generated} codes generated${result.duplicatesSkipped ? ` · ${result.duplicatesSkipped} skipped (duplicates)` : ''}`);
+            await refreshCodeStats(editingReward.id);
+            await refreshCodePool(editingReward.id, 0, codePoolStatus);
+        } catch (err) {
+            toast.error(err.message || 'Generation failed');
+        } finally {
+            setGeneratingCodes(false);
+        }
+    };
+
+    const handleToggleCodeStatus = async (row) => {
+        if (togglingCodeId === row.id) return;
+        setTogglingCodeId(row.id);
+        try {
+            const newStatus = await toggleCodeStatus(row.id, row.status);
+            setCodePool(prev => ({
+                ...prev,
+                rows: prev.rows.map(r => r.id === row.id ? { ...r, status: newStatus } : r),
+            }));
+            await refreshCodeStats(editingReward.id);
+        } catch (err) {
+            toast.error(err.message || 'Toggle failed');
+        } finally {
+            setTogglingCodeId(null);
+        }
+    };
+
     const handleDownloadTemplate = () => {
         const partner = partners.find(p => p.id === formData.partner_id);
         const partnerCode = partner?.partner_code ?? 'XXXX';
-        const csv = getCSVTemplate(partnerCode);
+        const csv = parsedScheme ? getSchemeCSVTemplate(parsedScheme) : getCSVTemplate(partnerCode);
         const blob = new Blob([csv], { type: 'text/csv' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `POWR-${partnerCode}-codes-template.csv`;
+        a.download = `POWR-${parsedScheme ? parsedScheme.prefix.replace(/-$/, '').replace(/^POWR-/, '') : partnerCode}-codes-template.csv`;
         a.click();
         URL.revokeObjectURL(url);
     };
@@ -272,12 +326,14 @@ export default function RewardManager() {
         if (!singleCode.trim()) return;
         setUploadingCodes(true);
         try {
-            const result = await uploadCodes({ rewardId: editingReward.id, codes: [singleCode] });
+            const result = await uploadCodes({ rewardId: editingReward.id, codes: [singleCode], scheme: parsedScheme || undefined });
             if (result.accepted === 1) {
                 toast.success('Code added');
                 setSingleCode('');
                 await refreshCodeStats(editingReward.id);
                 await refreshCodePool(editingReward.id, 0, codePoolStatus);
+            } else if (result.alreadyInPool) {
+                toast.success('Code already in pool');
             } else {
                 const reason = result.rejected[0]?.reason || 'rejected';
                 toast.error(`Rejected: ${reason}`);
@@ -299,6 +355,7 @@ export default function RewardManager() {
             brand_name: formData.brand_name || null,
             discount_type: formData.discount_type || null,
             discount_value: formData.discount_type && formData.discount_value !== '' ? Number(formData.discount_value) : null,
+            integration_type: formData.integration_type || 'POOL',
             max_redemptions_per_user: formData.max_redemptions_per_user !== '' && formData.max_redemptions_per_user !== null
                 ? parseInt(formData.max_redemptions_per_user, 10)
                 : null,
@@ -437,8 +494,12 @@ export default function RewardManager() {
                                     <tr key={reward.id} className="group hover:bg-[#080808] transition-all">
                                         <td className="px-12 py-10">
                                             <div className="flex items-center gap-8">
-                                                <div className="w-14 h-14 rounded-3xl bg-[#050505] border border-[#151515] flex items-center justify-center shrink-0 group-hover:border-[#E8D200]/20 transition-all shadow-2xl">
-                                                    <Award size={22} className="text-[#999] group-hover:text-[#E8D200]/60 transition-colors" />
+                                                <div className="w-14 h-14 rounded-3xl bg-[#050505] border border-[#151515] flex items-center justify-center shrink-0 group-hover:border-[#E8D200]/20 transition-all shadow-2xl overflow-hidden">
+                                                    {(reward.image_url || reward.partners?.logo_url) ? (
+                                                        <img src={reward.image_url || reward.partners.logo_url} alt="" className="w-full h-full object-contain p-2" />
+                                                    ) : (
+                                                        <Award size={22} className="text-[#999] group-hover:text-[#E8D200]/60 transition-colors" />
+                                                    )}
                                                 </div>
                                                 <div>
                                                     <div className="flex items-center gap-2 mb-1">
@@ -589,7 +650,7 @@ export default function RewardManager() {
                                 <textarea rows={2} className="w-full p-8 bg-[#0A0A0A] border border-[#151515] rounded-[2rem] focus:border-[#E8D200]/40 outline-none transition-all text-sm text-[#DDD] leading-relaxed resize-none" value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} />
                             </div>
 
-                            {/* Kind + value label */}
+                            {/* Kind + code source */}
                             <div className="grid grid-cols-2 gap-8 mb-8">
                                 <div>
                                     <label className="block text-[10px] uppercase tracking-[0.4em] text-[#999] font-black mb-4">Reward Type</label>
@@ -603,9 +664,23 @@ export default function RewardManager() {
                                     </div>
                                 </div>
                                 <div>
-                                    <label className="block text-[10px] uppercase tracking-[0.4em] text-[#999] font-black mb-4">Value Label <span className="text-[#CCC] normal-case font-black ml-2">— e.g. £20 VALUE / 30% OFF</span></label>
-                                    <input type="text" placeholder="£20 VALUE" className="w-full h-16 px-8 bg-[#0A0A0A] border border-[#151515] rounded-3xl focus:border-[#E8D200]/40 outline-none transition-all text-[12px] font-black text-[#F2F2F2] placeholder-[#151515] uppercase tracking-[0.2em]" value={formData.value_label} onChange={e => setFormData({ ...formData, value_label: e.target.value })} />
+                                    <label className="block text-[10px] uppercase tracking-[0.4em] text-[#999] font-black mb-1">Code Source</label>
+                                    <p className="text-[9px] uppercase tracking-[0.3em] text-[#555] font-black mb-3">Pool = upload codes · Auto = generate per user (affiliate)</p>
+                                    <div className="flex bg-[#0A0A0A] border border-[#151515] rounded-3xl p-2 gap-2">
+                                        {[['POOL', 'Pool'], ['API_VALIDATED', 'Auto']].map(([val, label]) => {
+                                            const active = formData.integration_type === val;
+                                            return (
+                                                <button key={val} type="button" onClick={() => setFormData({ ...formData, integration_type: val })} className={`flex-1 h-12 rounded-[1.25rem] text-[10px] font-black uppercase tracking-[0.3em] transition-all ${active ? 'bg-[#E8D200] text-[#080808]' : 'text-[#BBB] hover:text-[#E8D200]'}`}>{label}</button>
+                                            );
+                                        })}
+                                    </div>
                                 </div>
+                            </div>
+
+                            {/* Value label */}
+                            <div className="mb-8">
+                                <label className="block text-[10px] uppercase tracking-[0.4em] text-[#999] font-black mb-4">Value Label <span className="text-[#CCC] normal-case font-black ml-2">— e.g. £20 VALUE / 30% OFF</span></label>
+                                <input type="text" placeholder="£20 VALUE" className="w-full h-16 px-8 bg-[#0A0A0A] border border-[#151515] rounded-3xl focus:border-[#E8D200]/40 outline-none transition-all text-[12px] font-black text-[#F2F2F2] placeholder-[#151515] uppercase tracking-[0.2em]" value={formData.value_label} onChange={e => setFormData({ ...formData, value_label: e.target.value })} />
                             </div>
 
                             <div className="grid grid-cols-2 gap-8 mb-8">
@@ -778,6 +853,90 @@ export default function RewardManager() {
                                         </button>
                                     </div>
 
+                                    {/* Code Format Builder */}
+                                    <div className="px-8 py-5 border-b border-[#151515]">
+                                        <div className="text-[9px] uppercase tracking-[0.4em] text-[#777] font-black mb-3">Code Format</div>
+                                        <div className="flex gap-3 items-center">
+                                            <input
+                                                type="text"
+                                                placeholder="Enter one example code to define the format — e.g. POWR-TRIBE-ABC123"
+                                                className="flex-1 h-11 px-5 bg-[#050505] border border-[#151515] rounded-full text-[11px] font-mono text-[#F2F2F2] placeholder-[#333] focus:border-[#E8D200]/40 outline-none uppercase tracking-[0.05em]"
+                                                value={schemeExample}
+                                                onChange={e => {
+                                                    const v = e.target.value.toUpperCase();
+                                                    setSchemeExample(v);
+                                                    if (editingReward?.id) {
+                                                        if (v) localStorage.setItem(`powr_scheme_${editingReward.id}`, v);
+                                                        else localStorage.removeItem(`powr_scheme_${editingReward.id}`);
+                                                    }
+                                                }}
+                                            />
+                                            {schemeExample && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setSchemeExample('');
+                                                        if (editingReward?.id) localStorage.removeItem(`powr_scheme_${editingReward.id}`);
+                                                    }}
+                                                    className="h-11 w-11 flex items-center justify-center bg-[#050505] border border-[#151515] rounded-full text-[#555] hover:text-[#999] transition-colors"
+                                                >
+                                                    <X size={14} />
+                                                </button>
+                                            )}
+                                        </div>
+                                        {parsedScheme && (
+                                            <div className="mt-3 flex items-center gap-2 flex-wrap">
+                                                <span className="text-[9px] uppercase tracking-[0.3em] text-[#555] font-black">Detected:</span>
+                                                {parsedScheme.segments.map((seg, i) => (
+                                                    <React.Fragment key={i}>
+                                                        {i > 0 && <span className="text-[#444] text-xs font-mono">-</span>}
+                                                        <span className={`font-mono text-[11px] rounded-lg px-3 py-1 border ${seg.fixed ? 'text-[#E8D200] bg-[#E8D200]/5 border-[#E8D200]/20' : 'text-[#10B981] bg-[#10B981]/5 border-[#10B981]/20'}`}>
+                                                            {seg.fixed ? seg.value : seg.pattern}
+                                                        </span>
+                                                    </React.Fragment>
+                                                ))}
+                                                <span className="text-[9px] uppercase tracking-[0.3em] text-[#555] font-black ml-2">· gold = fixed · green = variable</span>
+                                            </div>
+                                        )}
+                                        {schemeExample && !parsedScheme && (
+                                            <p className="mt-2 text-[10px] uppercase tracking-[0.3em] text-red-400 font-black">
+                                                Must start with POWR- and contain only A–Z, 0–9, and dashes
+                                            </p>
+                                        )}
+                                        {!schemeExample && (
+                                            <p className="mt-2 text-[9px] uppercase tracking-[0.3em] text-[#444] font-black">
+                                                Leave blank to use the default POWR-XXXX-XXXXXX (6-char) format
+                                            </p>
+                                        )}
+                                    </div>
+
+                                    {/* Auto-generate row */}
+                                    <div className="px-8 py-5 border-b border-[#151515]">
+                                        <div className="text-[9px] uppercase tracking-[0.4em] text-[#777] font-black mb-3">Auto-Generate</div>
+                                        <div className="flex gap-3 items-center">
+                                            <input
+                                                type="number"
+                                                min="1"
+                                                max="5000"
+                                                value={generateCount}
+                                                onChange={e => setGenerateCount(Math.max(1, Math.min(5000, parseInt(e.target.value) || 1)))}
+                                                className="w-28 h-11 px-4 bg-[#050505] border border-[#151515] rounded-full text-[13px] font-light text-[#E8D200] text-center focus:border-[#E8D200]/40 outline-none"
+                                            />
+                                            <span className="text-[9px] uppercase tracking-[0.3em] text-[#555] font-black">codes</span>
+                                            <button
+                                                type="button"
+                                                onClick={handleGenerate}
+                                                disabled={generatingCodes || !editingReward}
+                                                className="h-11 px-7 bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.3em] rounded-full transition-all hover:translate-y-[-2px] disabled:opacity-40"
+                                            >
+                                                {generatingCodes ? 'Generating...' : 'Generate Batch'}
+                                            </button>
+                                            <span className="text-[9px] uppercase tracking-[0.3em] text-[#444] font-black">
+                                                using {parsedScheme ? `${parsedScheme.prefix}•••` : 'default POWR format'}
+                                            </span>
+                                        </div>
+                                    </div>
+
                                     {/* Upload row */}
                                     <div className="px-8 pb-6 border-b border-[#151515]">
                                         <div className="flex items-center justify-between mb-3 px-4 py-2 bg-[#050505] border border-[#151515] rounded-2xl">
@@ -786,7 +945,7 @@ export default function RewardManager() {
                                         <div className="flex gap-3 mb-3">
                                             <input
                                                 type="text"
-                                                placeholder="POWR-TRIBE-XXXXXX  (single code)"
+                                                placeholder={parsedScheme ? `${parsedScheme.prefix}XXXXXX  (single code)` : 'POWR-TRIBE-XXXXXX  (single code)'}
                                                 className="flex-1 h-11 px-5 bg-[#050505] border border-[#151515] rounded-full text-[11px] font-mono text-[#F2F2F2] placeholder-[#333] focus:border-[#E8D200]/40 outline-none uppercase tracking-[0.05em]"
                                                 value={singleCode}
                                                 onChange={e => setSingleCode(e.target.value.toUpperCase())}
@@ -849,7 +1008,7 @@ export default function RewardManager() {
                                                     <table className="w-full text-left border-collapse">
                                                         <thead>
                                                             <tr className="bg-[#050505] border-b border-[#151515]">
-                                                                {['Code', 'Status', 'Claimed by', 'Claimed at', 'Used at', 'Expires'].map(h => (
+                                                                {['Code', 'Status', 'Claimed by', 'Claimed at', 'Used at', 'Expires', ''].map(h => (
                                                                     <th key={h} className="px-4 py-3 text-[9px] font-black uppercase tracking-[0.4em] text-[#555]">{h}</th>
                                                                 ))}
                                                             </tr>
@@ -874,6 +1033,19 @@ export default function RewardManager() {
                                                                         <td className="px-4 py-3 text-[11px] text-[#777]">{fmt(row.assigned_at)}</td>
                                                                         <td className="px-4 py-3 text-[11px] text-[#777]">{fmt(row.used_at)}</td>
                                                                         <td className="px-4 py-3 text-[11px] text-[#777]">{fmt(row.expires_at)}</td>
+                                                                        <td className="px-4 py-3 text-right">
+                                                                            {(row.status === 'available' || row.status === 'expired') && (
+                                                                                <button
+                                                                                    type="button"
+                                                                                    disabled={togglingCodeId === row.id}
+                                                                                    onClick={() => handleToggleCodeStatus(row)}
+                                                                                    title={row.status === 'available' ? 'Expire this code' : 'Re-activate this code'}
+                                                                                    className={`h-6 w-11 rounded-full relative transition-all shrink-0 ${row.status === 'available' ? 'bg-[#10B981]/30' : 'bg-[#151515]'} ${togglingCodeId === row.id ? 'opacity-50' : ''}`}
+                                                                                >
+                                                                                    <span className={`absolute top-0.5 w-5 h-5 rounded-full transition-all ${row.status === 'available' ? 'left-[22px] bg-[#10B981]' : 'left-0.5 bg-[#333]'}`} />
+                                                                                </button>
+                                                                            )}
+                                                                        </td>
                                                                     </tr>
                                                                 );
                                                             })}
