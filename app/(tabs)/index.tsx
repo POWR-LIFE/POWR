@@ -1,3 +1,5 @@
+import { supabase } from '@/lib/supabase';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -24,6 +26,7 @@ import { WelcomeNextCard } from '@/components/home/WelcomeNextCard';
 import { ProfileButton } from '@/components/ProfileButton';
 import { ACTIVITIES, type ActivityType } from '@/constants/activities';
 import { useAuth } from '@/context/AuthContext';
+import { useGeofenceContext } from '@/context/GeofenceContext';
 import { useActiveGeofence } from '@/hooks/useActiveGeofence';
 import { useActivity } from '@/hooks/useActivity';
 import { useHealthData } from '@/hooks/useHealthData';
@@ -89,6 +92,85 @@ export default function HomeScreen() {
     const { recentItems, weekActiveDays, weeklyMetrics, dailyMetrics, refresh: refreshActivity } = useActivity();
     const { balance, totalEarned, weeklyEarned, refresh: refreshPoints } = usePoints();
     const { activeGeofence, sessionCompleted, clearSessionCompleted } = useActiveGeofence();
+    const { partners } = useGeofenceContext();
+    const [devMsg, setDevMsg] = useState<string | null>(null);
+
+    const handleDevClaim = useCallback(async () => {
+        setDevMsg('…running');
+        try {
+            const { data: { session: authSession } } = await supabase.auth.getSession();
+            if (!authSession) { setDevMsg('✗ Not signed in'); return; }
+
+            const p = partners[0];
+            if (!p) { setDevMsg('✗ No partners loaded — wait and retry'); return; }
+
+            // Insert session backdated 22 min so duration_sec qualifies for gym points
+            const startedAt = new Date(Date.now() - 22 * 60 * 1000).toISOString();
+            const endedAt = new Date().toISOString();
+            let sessionId: string;
+            const { data: sess, error: sessErr } = await supabase
+                .from('activity_sessions')
+                .insert({
+                    user_id:      authSession.user.id,
+                    type:         'gym',
+                    started_at:   startedAt,
+                    ended_at:     endedAt,
+                    duration_sec: 22 * 60,
+                    verification: 'geofence',
+                    trust_score:  0.94,
+                    partner_id:   p.dbId,
+                })
+                .select('id')
+                .single();
+
+            if (sessErr) {
+                if (sessErr.code === '23505') {
+                    // Already have a gym session today — find it and re-use it
+                    const today = new Date(); today.setHours(0, 0, 0, 0);
+                    const { data: existing } = await supabase
+                        .from('activity_sessions')
+                        .select('id')
+                        .eq('user_id', authSession.user.id)
+                        .eq('type', 'gym')
+                        .gte('started_at', today.toISOString())
+                        .order('started_at', { ascending: false })
+                        .limit(1)
+                        .single();
+                    if (!existing) { setDevMsg('✗ 23505 but no existing session found'); return; }
+                    // Update duration so it qualifies and re-claim
+                    await supabase.from('activity_sessions')
+                        .update({ ended_at: endedAt, duration_sec: 22 * 60 })
+                        .eq('id', existing.id);
+                    sessionId = existing.id;
+                } else {
+                    setDevMsg(`✗ DB insert: ${sessErr.message} (${sessErr.code})`); return;
+                }
+            } else {
+                if (!sess) { setDevMsg('✗ No session returned'); return; }
+                sessionId = sess.id;
+            }
+            setDevMsg(`Session ${sessionId.slice(0, 8)}… claiming…`);
+
+            const { data: claimData, error: claimErr } = await supabase.functions.invoke('claim-points', {
+                body: { session_id: sessionId },
+            });
+
+            if (claimErr) {
+                const body = await (claimErr as { context?: { json?: () => Promise<{ error?: string }> } })
+                    ?.context?.json?.().catch(() => null);
+                setDevMsg(`✗ Claim: ${body?.error ?? claimErr.message}`);
+                return;
+            }
+
+            const earned = (claimData as { earned?: number; amount?: number } | null)?.earned
+                ?? (claimData as { earned?: number; amount?: number } | null)?.amount
+                ?? '?';
+            setDevMsg(`✓ +${earned} pts  (session ${sessionId.slice(0, 8)}…)`);
+            await refreshPoints();
+        } catch (e) {
+            setDevMsg(`✗ ${e instanceof Error ? e.message : String(e)}`);
+        }
+    }, [partners, refreshPoints]);
     const health = useHealthData();
 
     const [sessionModalVisible, setSessionModalVisible] = useState(false);
@@ -396,6 +478,51 @@ export default function HomeScreen() {
                     />
                 )}
 
+                {__DEV__ && (
+                    <View style={{ marginBottom: 12, borderWidth: 1, borderColor: '#ff0', borderRadius: 8, padding: 10, gap: 8 }}>
+                        <Text style={{ color: '#ff0', fontSize: 10, fontWeight: '700', letterSpacing: 1 }}>⚠ DEV TOOLS</Text>
+                        {devMsg && <Text style={{ color: '#aaa', fontSize: 11 }}>{devMsg}</Text>}
+                        <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+                            <Pressable
+                                onPress={handleDevClaim}
+                                style={{ backgroundColor: '#030', borderRadius: 6, paddingHorizontal: 12, paddingVertical: 6 }}
+                            >
+                                <Text style={{ color: '#4f4', fontSize: 12, fontWeight: '600' }}>Claim Session</Text>
+                            </Pressable>
+                            <Pressable
+                                onPress={async () => {
+                                    await AsyncStorage.removeItem('@powr/active_geofence');
+                                    await AsyncStorage.removeItem('@powr/session_completed');
+                                    setDevMsg('Session state cleared — pull to refresh.');
+                                    refreshPoints();
+                                }}
+                                style={{ backgroundColor: '#300', borderRadius: 6, paddingHorizontal: 12, paddingVertical: 6 }}
+                            >
+                                <Text style={{ color: '#f55', fontSize: 12, fontWeight: '600' }}>Clear Session</Text>
+                            </Pressable>
+                            <Pressable
+                                onPress={async () => {
+                                    const raw = await AsyncStorage.getItem('@powr/active_geofence');
+                                    if (!raw) { setDevMsg('No active session in storage.'); return; }
+                                    setDevMsg(`Active: ${JSON.parse(raw).partnerName} | partnerId: ${JSON.parse(raw).partnerId}`);
+                                }}
+                                style={{ backgroundColor: '#222', borderRadius: 6, paddingHorizontal: 12, paddingVertical: 6 }}
+                            >
+                                <Text style={{ color: '#aaa', fontSize: 12, fontWeight: '600' }}>Inspect Session</Text>
+                            </Pressable>
+                            <Pressable
+                                onPress={async () => {
+                                    await refreshPoints();
+                                    setDevMsg(`Balance refreshed: ${balance} pts`);
+                                }}
+                                style={{ backgroundColor: '#222', borderRadius: 6, paddingHorizontal: 12, paddingVertical: 6 }}
+                            >
+                                <Text style={{ color: '#aaa', fontSize: 12, fontWeight: '600' }}>Refresh Points</Text>
+                            </Pressable>
+                        </View>
+                    </View>
+                )}
+
                 <StreakCard
                     streak={currentStreak}
                     multiplier={multiplier}
@@ -520,7 +647,7 @@ export default function HomeScreen() {
                                     </View>
                                     <Text style={styles.modalDwellHint}>
                                         {dwellProgress >= 1
-                                            ? `Auto-tracking will award ${projectedPoints} POWR on exit`
+                                            ? `${projectedPoints} POWR will be awarded automatically`
                                             : `${minsRemaining} min until points qualify`
                                         }
                                     </Text>

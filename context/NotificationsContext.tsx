@@ -12,7 +12,6 @@ import { AppState, AppStateStatus } from 'react-native';
 import { useAuth } from '@/context/AuthContext';
 import {
   requestPermissionsAndGetToken,
-  cancelDailyReminder,
   scheduleStreakAtRiskWarning,
   cancelStreakWarning,
   scheduleWeeklyChallengeExpiryWarning,
@@ -102,15 +101,8 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   }, []);
 
   // -------------------------------------------------------------------------
-  // Load preferences and apply local schedules
+  // Load preferences
   // -------------------------------------------------------------------------
-
-  const applyLocalSchedules = useCallback(
-    async (_prefs: NotificationPreferences) => {
-      await cancelDailyReminder();
-    },
-    [],
-  );
 
   useEffect(() => {
     if (!user?.id) return;
@@ -118,12 +110,9 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     registerForPush(user.id);
 
     getNotificationPreferences(user.id)
-      .then((prefs) => {
-        setPreferences(prefs);
-        applyLocalSchedules(prefs);
-      })
+      .then((prefs) => setPreferences(prefs))
       .catch((err) => console.warn('[Notifications] Failed to load preferences:', err));
-  }, [user?.id, registerForPush, applyLocalSchedules]);
+  }, [user?.id, registerForPush]);
 
   // -------------------------------------------------------------------------
   // Clean up token on sign-out
@@ -205,12 +194,10 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   const updatePreferences = useCallback(
     async (partial: Partial<NotificationPreferences>) => {
       if (!user?.id) return;
-      const next = { ...preferences, ...partial };
-      setPreferences(next);
+      setPreferences((prev) => ({ ...prev, ...partial }));
       await updateNotificationPreferences(user.id, partial);
-      await applyLocalSchedules(next);
     },
-    [user?.id, preferences, applyLocalSchedules],
+    [user?.id],
   );
 
   const scheduleStreakWarning = useCallback(

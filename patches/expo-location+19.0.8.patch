@@ -1,0 +1,19 @@
+diff --git a/node_modules/expo-location/ios/TaskConsumers/EXGeofencingTaskConsumer.m b/node_modules/expo-location/ios/TaskConsumers/EXGeofencingTaskConsumer.m
+index 7e6482e..be2ed5e 100644
+--- a/node_modules/expo-location/ios/TaskConsumers/EXGeofencingTaskConsumer.m
++++ b/node_modules/expo-location/ios/TaskConsumers/EXGeofencingTaskConsumer.m
+@@ -71,8 +71,12 @@ - (void)startMonitoringRegionsForTask:(id<EXTaskInterface>)task
+     self->_regionStates = regionStates;
+ 
+     locationManager.delegate = self;
+-    locationManager.allowsBackgroundLocationUpdates = YES;
+-    locationManager.pausesLocationUpdatesAutomatically = NO;
++    // NOTE: allowsBackgroundLocationUpdates is NOT set here.
++    // Region monitoring (geofencing) is handled by the OS and does not require
++    // continuous background location access. Setting this flag requires the
++    // "location" UIBackgroundModes key, which Apple rejects under Guideline 2.5.4
++    // unless the app uses persistent real-time location. Region monitoring works
++    // correctly without it — the OS wakes the app on boundary transitions.
+ 
+     for (NSDictionary *regionDict in regions) {
+       NSString *identifier = regionDict[@"identifier"] ?: [[NSUUID UUID] UUIDString];
