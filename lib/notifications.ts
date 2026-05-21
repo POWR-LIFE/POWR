@@ -10,7 +10,6 @@ const CHANNEL_REWARDS = 'powr_rewards_v2';
 // ---------------------------------------------------------------------------
 
 export type NotificationType =
-  | 'daily_reminder'
   | 'streak_at_risk'
   | 'weekly_challenge_expiry'
   | 'reward_unlocked'
@@ -164,35 +163,6 @@ export async function cancelNotificationsOfType(type: NotificationType) {
   const scheduled = await Notifications.getAllScheduledNotificationsAsync();
   const toCancel = scheduled.filter((n) => n.identifier.startsWith(`powr-${type}`));
   await Promise.all(toCancel.map((n) => Notifications.cancelScheduledNotificationAsync(n.identifier)));
-}
-
-// ---------------------------------------------------------------------------
-// Daily reminder
-// ---------------------------------------------------------------------------
-
-export async function scheduleDailyReminder(hour = 8, minute = 0) {
-  await cancelNotificationsOfType('daily_reminder');
-
-  await Notifications.scheduleNotificationAsync({
-    identifier: 'powr-daily_reminder',
-    content: {
-      title: "Time to move 💪",
-      body: "Every step earns POWR. Log your activity and keep the streak alive.",
-      data: { type: 'daily_reminder', route: '/(tabs)/index' } satisfies NotificationPayload,
-      sound: 'default',
-      ...(Platform.OS === 'android' && { channelId: CHANNEL_DEFAULT }),
-      categoryIdentifier: 'daily_reminder',
-    },
-    trigger: {
-      type: Notifications.SchedulableTriggerInputTypes.DAILY,
-      hour,
-      minute,
-    },
-  });
-}
-
-export async function cancelDailyReminder() {
-  await cancelNotificationsOfType('daily_reminder');
 }
 
 // ---------------------------------------------------------------------------

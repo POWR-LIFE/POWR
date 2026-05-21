@@ -40,9 +40,6 @@ export async function removePushToken(userId: string, expoPushToken: string) {
 // ---------------------------------------------------------------------------
 
 export interface NotificationPreferences {
-  daily_reminder: boolean;
-  daily_reminder_hour: number;
-  daily_reminder_minute: number;
   streak_at_risk: boolean;
   weekly_challenge_expiry: boolean;
   reward_unlocked: boolean;
@@ -53,9 +50,6 @@ export interface NotificationPreferences {
 }
 
 export const DEFAULT_PREFERENCES: NotificationPreferences = {
-  daily_reminder: true,
-  daily_reminder_hour: 8,
-  daily_reminder_minute: 0,
   streak_at_risk: true,
   weekly_challenge_expiry: true,
   reward_unlocked: true,
@@ -78,9 +72,6 @@ export async function getNotificationPreferences(
   if (!data) return DEFAULT_PREFERENCES;
 
   return {
-    daily_reminder: data.daily_reminder ?? true,
-    daily_reminder_hour: data.daily_reminder_hour ?? 8,
-    daily_reminder_minute: data.daily_reminder_minute ?? 0,
     streak_at_risk: data.streak_at_risk ?? true,
     weekly_challenge_expiry: data.weekly_challenge_expiry ?? true,
     reward_unlocked: data.reward_unlocked ?? true,

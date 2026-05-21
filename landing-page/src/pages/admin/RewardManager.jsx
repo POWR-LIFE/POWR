@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
-import { Plus, Edit2, Trash2, Ticket, Loader2, X, Search, Award, Activity, ChevronRight, AlertTriangle, Upload, Image as ImageIcon, Tag, FileText } from 'lucide-react';
+import { Plus, Edit2, Trash2, Ticket, Loader2, X, Search, Award, Activity, ChevronRight, AlertTriangle, Upload, Image as ImageIcon, Tag, FileText, Download } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { uploadPublicImage } from '../../lib/storage';
-import { parseCodes, uploadCodes, fetchCodeStats, fetchCodePool, getCSVTemplate, buildScheme, isValidForScheme, getSchemeCSVTemplate, generateCodes, toggleCodeStatus } from '../../lib/promoCodes';
+import * as XLSX from 'xlsx';
+import { parseCodes, uploadCodes, fetchCodeStats, fetchCodePool, fetchAllCodes, getCSVTemplate, buildScheme, isValidForScheme, getSchemeCSVTemplate, generateCodes, toggleCodeStatus } from '../../lib/promoCodes';
 
 const CATEGORIES = ['eat', 'move', 'mind', 'sleep'];
 const normalizeRewardCategory = (category) => {
@@ -319,6 +320,37 @@ export default function RewardManager() {
         a.download = `POWR-${parsedScheme ? parsedScheme.prefix.replace(/-$/, '').replace(/^POWR-/, '') : partnerCode}-codes-template.csv`;
         a.click();
         URL.revokeObjectURL(url);
+    };
+
+    const handleDownloadCodes = async (format) => {
+        if (!editingReward) return;
+        try {
+            const rows = await fetchAllCodes({ rewardId: editingReward.id, status: codePoolStatus });
+            const fmt = d => d ? new Date(d).toISOString().slice(0, 10) : '';
+            const data = rows.map(r => ({
+                Code: r.code,
+                Status: r.status,
+                Source: r.source,
+                'Claimed By': r.profiles?.display_name || r.profiles?.username || '',
+                'Claimed At': fmt(r.assigned_at),
+                'Used At': fmt(r.used_at),
+                'Expires At': fmt(r.expires_at),
+                'Created At': fmt(r.created_at),
+            }));
+            const rewardSlug = (editingReward.title || 'codes').toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+            const filterSuffix = codePoolStatus !== 'all' ? `-${codePoolStatus}` : '';
+            const ws = XLSX.utils.json_to_sheet(data);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Codes');
+            if (format === 'xlsx') {
+                XLSX.writeFile(wb, `POWR-${rewardSlug}${filterSuffix}-codes.xlsx`);
+            } else {
+                XLSX.writeFile(wb, `POWR-${rewardSlug}${filterSuffix}-codes.csv`, { bookType: 'csv' });
+            }
+            toast.success(`${rows.length} codes exported`);
+        } catch (err) {
+            toast.error(err.message || 'Export failed');
+        }
     };
 
     const handleAddSingleCode = async () => {
@@ -976,9 +1008,29 @@ export default function RewardManager() {
                                     {/* Ledger */}
                                     <div className="px-8 py-5">
                                         <div className="flex items-center justify-between mb-4">
-                                            <span className="text-[10px] uppercase tracking-[0.4em] text-[#777] font-black">
-                                                Ledger {codePool.total > 0 && `· ${codePool.total} total`}
-                                            </span>
+                                            <div className="flex items-center gap-4">
+                                                <span className="text-[10px] uppercase tracking-[0.4em] text-[#777] font-black">
+                                                    Ledger {codePool.total > 0 && `· ${codePool.total} total`}
+                                                </span>
+                                                {codePool.total > 0 && (
+                                                    <div className="flex gap-2">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleDownloadCodes('csv')}
+                                                            className="flex items-center gap-1.5 h-7 px-4 bg-[#050505] border border-[#151515] rounded-full text-[9px] uppercase tracking-[0.3em] text-[#AAA] hover:text-[#E8D200] hover:border-[#E8D200]/40 transition-all font-black"
+                                                        >
+                                                            <Download size={10} /> CSV
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleDownloadCodes('xlsx')}
+                                                            className="flex items-center gap-1.5 h-7 px-4 bg-[#050505] border border-[#151515] rounded-full text-[9px] uppercase tracking-[0.3em] text-[#AAA] hover:text-[#E8D200] hover:border-[#E8D200]/40 transition-all font-black"
+                                                        >
+                                                            <Download size={10} /> Excel
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
                                             <div className="flex bg-[#050505] border border-[#151515] rounded-2xl p-1 gap-1">
                                                 {['all', 'available', 'reserved', 'used', 'expired'].map(s => (
                                                     <button

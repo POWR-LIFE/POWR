@@ -245,6 +245,10 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ error: 'Session not found' }), { status: 404 });
   }
 
+  // Dev test accounts bypass per-day limits so repeated testing is possible
+  const DEV_TEST_EMAILS = new Set((Deno.env.get('DEV_TEST_EMAILS') ?? 'jamiemasonwright@gmail.com').split(',').map(e => e.trim()));
+  const isDevTestUser = DEV_TEST_EMAILS.has(user.email ?? '');
+
   // 4. Check session hasn't already been claimed
   const { count: existingClaims } = await supabase
     .from('point_transactions')
@@ -261,7 +265,8 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ error: 'Trust score too low' }), { status: 422 });
   }
 
-  // 6. Anti-abuse: rate limit — max 3 claims per hour
+  // 6. Anti-abuse: rate limit — max 3 claims per hour (skipped for dev test accounts)
+  if (!isDevTestUser) {
   const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
   const { count: recentClaims } = await supabase
     .from('point_transactions')
@@ -272,6 +277,7 @@ Deno.serve(async (req) => {
 
   if ((recentClaims ?? 0) >= 3) {
     return new Response(JSON.stringify({ error: 'Rate limit exceeded' }), { status: 429 });
+  }
   }
 
   // 7. Anti-abuse: duplicate detection — same activity type same day
@@ -390,11 +396,11 @@ Deno.serve(async (req) => {
 
   const remaining = cap - todayTotal;
 
-  if (remaining <= 0) {
+  if (!isDevTestUser && remaining <= 0) {
     return new Response(JSON.stringify({ error: 'Daily cap reached', cap }), { status: 422 });
   }
 
-  const finalAmount = Math.min(earned, remaining);
+  const finalAmount = Math.min(earned, isDevTestUser ? cap : remaining);
 
   // 10. Insert point transaction (service role — bypasses RLS)
   const { data: tx, error: txError } = await supabase

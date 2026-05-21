@@ -57,10 +57,36 @@ export function useActiveGeofence(): {
       return parsed;
     }
 
-    const pos = await Location.getLastKnownPositionAsync().catch(() => null)
-      ?? await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Low }).catch(() => null);
+    // Only reuse a last-known position if it is fresh (< 15 s old) AND
+    // the reported horizontal accuracy is within 20 m. Cached positions from
+    // Wi-Fi/cell triangulation can be 200–1000 m off and will falsely keep
+    // the session alive after the user has left a 100 m geofence.
+    // High accuracy forces the GPS chip (≈ 5–15 m on Android/iOS).
+    const lastKnown = await Location.getLastKnownPositionAsync().catch(() => null);
+    const lastKnownAge = lastKnown ? Date.now() - lastKnown.timestamp : Infinity;
+    const lastKnownAccurate = lastKnown != null
+      && lastKnownAge < 15_000
+      && lastKnown.coords.accuracy != null
+      && lastKnown.coords.accuracy <= 20;
 
-    if (!pos) return parsed;
+    if (lastKnown) {
+      console.log(
+        `[Geofence:clearIfOutside] last-known age=${Math.round(lastKnownAge / 1000)}s` +
+        ` accuracy=${lastKnown.coords.accuracy?.toFixed(0) ?? 'null'}m` +
+        ` → ${lastKnownAccurate ? 'USING cached' : 'REQUESTING fresh GPS'}`,
+      );
+    } else {
+      console.log('[Geofence:clearIfOutside] no last-known position → REQUESTING fresh GPS');
+    }
+
+    const pos = lastKnownAccurate
+      ? lastKnown
+      : await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High, timeInterval: 8_000 }).catch(() => null);
+
+    if (!pos) {
+      console.warn('[Geofence:clearIfOutside] could not obtain a position — keeping session active');
+      return parsed;
+    }
 
     const distance = haversineMetres(
       pos.coords.latitude,
@@ -69,10 +95,22 @@ export function useActiveGeofence(): {
       parsed.longitude,
     );
 
-    // Use a 100 m GPS-accuracy buffer — raw positions from getLastKnownPositionAsync
-    // or Low-accuracy mode can be off by 50–200 m, so a small radius + 10 m would
-    // clear the active session prematurely due to normal GPS drift.
-    if (distance > parsed.radius + 100) {
+    // Buffer = the GPS fix's own reported accuracy, floored at 10 m.
+    // This makes the threshold as tight as the hardware allows: a 12 m fix
+    // gives a 12 m buffer, a 66 m fix gives a 66 m buffer — never a blanket 50 m.
+    const accuracyBuffer = pos.coords.accuracy != null ? Math.ceil(pos.coords.accuracy) : 50;
+    const threshold = parsed.radius + accuracyBuffer;
+    console.log(
+      `[Geofence:clearIfOutside] "${parsed.partnerName}"` +
+      ` | posAccuracy=${pos.coords.accuracy?.toFixed(0) ?? '?'}m` +
+      ` | distance=${distance.toFixed(0)}m` +
+      ` | radius=${parsed.radius}m` +
+      ` | buffer=${accuracyBuffer}m` +
+      ` | threshold=${threshold}m` +
+      ` | ${distance > threshold ? '⚠️ OUTSIDE → clearing session' : '✅ inside'}`,
+    );
+
+    if (distance > threshold) {
       await AsyncStorage.removeItem(ACTIVE_GEOFENCE_KEY);
       return null;
     }

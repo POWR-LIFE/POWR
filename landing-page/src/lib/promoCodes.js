@@ -355,6 +355,19 @@ export async function fetchCodePool({ rewardId, status = 'all', page = 0, pageSi
     return { rows: data ?? [], total: count ?? 0 };
 }
 
+// Fetches ALL codes for a reward (no pagination) for export purposes.
+export async function fetchAllCodes({ rewardId, status = 'all' }) {
+    let query = supabase
+        .from('redemption_codes')
+        .select('code, status, source, assigned_at, used_at, expires_at, created_at, profiles:assigned_user_id(display_name, username)')
+        .eq('reward_id', rewardId)
+        .order('created_at', { ascending: false });
+    if (status !== 'all') query = query.eq('status', status);
+    const { data, error } = await query;
+    if (error) throw error;
+    return data ?? [];
+}
+
 export async function fetchCodeStats(rewardId) {
     // Prefer the lightweight GROUP BY RPC; fall back to client-side count
     const { data, error } = await supabase.rpc('get_code_stats', { p_reward_id: rewardId });

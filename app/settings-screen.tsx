@@ -91,7 +91,7 @@ export default function SettingsScreen() {
   useEffect(() => {
     if (!user?.id) return;
     getNotificationPreferences(user.id).then(prefs => {
-      setNotifWorkouts(prefs.daily_reminder);
+      setNotifWorkouts(prefs.check_in_reminder);
       setNotifRewards(prefs.reward_unlocked);
     });
   }, [user?.id]);
@@ -360,9 +360,7 @@ export default function SettingsScreen() {
             value={notifWorkouts}
             onValueChange={(v) => {
               setNotifWorkouts(v);
-              if (user?.id) updateNotificationPreferences(user.id, {
-                daily_reminder: v, check_in_reminder: v, inactivity_nudge: v, streak_at_risk: v,
-              });
+              if (user?.id) updateNotificationPreferences(user.id, { check_in_reminder: v });
             }}
           />
           <RowToggle

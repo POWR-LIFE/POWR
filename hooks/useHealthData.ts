@@ -301,9 +301,7 @@ export async function androidRequestPermissions(): Promise<boolean> {
         console.log('[HealthData] Requesting Health Connect permissions...');
         const granted: unknown[] = await requestPermission([
             { accessType: 'read', recordType: 'Steps' },
-            { accessType: 'read', recordType: 'Distance' },
             { accessType: 'read', recordType: 'ExerciseSession' },
-            { accessType: 'read', recordType: 'SleepSession' },
             { accessType: 'read', recordType: 'HeartRate' },
             { accessType: 'read', recordType: 'ActiveCaloriesBurned' },
             { accessType: 'read', recordType: 'TotalCaloriesBurned' },

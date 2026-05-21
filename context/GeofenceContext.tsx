@@ -33,7 +33,8 @@ export interface DayHours {
 export type OpeningHours = Partial<Record<DayKey, DayHours | null>>;
 
 export interface Partner {
-  id: string;
+  id: string;    // composite UI key: "${dbId}-${locationIndex}"
+  dbId: string;  // raw Supabase UUID — use this for all DB operations
   name: string;
   description?: string;
   category: string;
@@ -93,14 +94,19 @@ const ACTIVE_GEOFENCE_KEY    = '@powr/active_geofence';
 const PARTNER_MAP_KEY        = '@powr/partner_map';
 const SESSION_COMPLETED_KEY  = '@powr/session_completed';
 
+// Accounts that bypass the one-session-per-day guard during testing
+const DEV_TEST_EMAILS = new Set(['jamiemasonwright@gmail.com']);
+
 // ⚠️ DEV OVERRIDES — restore before release
-const MIN_DWELL_MS  = __DEV__ ? 30 * 1000 : 20 * 60 * 1000;
+const MIN_DWELL_MS    = __DEV__ ? 30 * 1000 : 20 * 60 * 1000;
+const UPGRADE_MS      = __DEV__ ? 60 * 1000 : 45 * 60 * 1000; // 1 min in dev, 45 min in prod
 // Production eligibility minimum — used for pointsPending retry regardless of MIN_DWELL_MS
 const PROD_DWELL_MS   = 20 * 60 * 1000;
 const PROD_UPGRADE_MS = 45 * 60 * 1000;
-const DEV_RADIUS_M: Record<string, number> = {
-  'POWR Test Gym': 2,
-};
+const DEV_RADIUS_M: Record<string, number> = __DEV__ ? {
+  'POWR Test Gym': 100,
+  'Jamie':         100,
+} : {};
 
 // ─── Stored geofence shape ────────────────────────────────────────────────────
 
@@ -202,10 +208,21 @@ async function recordDwellSession(activeGeofence: StoredGeofence): Promise<{ out
 
     if (claimError) {
       const body = await (claimError as any)?.context?.json?.().catch(() => null);
-      console.error('[Geofence] Claim points error:', body ?? claimError.message);
       if (body?.error === 'Session does not meet eligibility minimum') {
         return { outcome: 'too_short' };
       }
+      if (body?.error === 'Session already claimed') {
+        // Points were already awarded (e.g. previous claim or duplicate call).
+        // Still surface the completion so the UI and usePoints refresh correctly.
+        console.log('[Geofence] Session already claimed — surfacing completion to UI.');
+        await AsyncStorage.setItem(
+          SESSION_COMPLETED_KEY,
+          JSON.stringify({ partnerName: activeGeofence.partnerName, durationSec, timestamp: Date.now() }),
+        );
+        _emitSessionCompleted();
+        return { outcome: 'claimed', sessionId };
+      }
+      console.error('[Geofence] Claim points error:', body ?? claimError.message);
       return { outcome: 'error' };
     }
 
@@ -232,8 +249,15 @@ async function recordDwellSession(activeGeofence: StoredGeofence): Promise<{ out
 
 async function upgradeGymTier(sessionId: string): Promise<void> {
   try {
+    // Refresh token before calling — session may be 45+ min old
+    const { data: { session: authSession }, error: refreshError } = await supabase.auth.refreshSession();
+    if (refreshError || !authSession) {
+      console.warn('[Geofence] Tier upgrade: token refresh failed — will retry on next poll.', refreshError?.message);
+      return;
+    }
     const { error: fnError } = await supabase.functions.invoke('upgrade-gym-tier', {
       body: { session_id: sessionId },
+      headers: { Authorization: `Bearer ${authSession.access_token}` },
     });
     if (fnError) {
       console.warn('[Geofence] Tier upgrade failed:', fnError.message);
@@ -268,10 +292,10 @@ TaskManager.defineTask(GEOFENCE_TASK_NAME, async ({ data, error }) => {
       return;
     }
 
-    // One gym session per day — skip if already completed
+    // One gym session per day — skip if already completed (bypassed for dev test accounts)
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
+      if (user && !DEV_TEST_EMAILS.has(user.email ?? '')) {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         const { count } = await supabase
@@ -291,13 +315,16 @@ TaskManager.defineTask(GEOFENCE_TASK_NAME, async ({ data, error }) => {
 
     const regionId = region.identifier ?? '';
     const mapJson = await AsyncStorage.getItem(PARTNER_MAP_KEY);
-    const partnerMap: Record<string, string> = mapJson ? JSON.parse(mapJson) : {};
-    const partnerName = partnerMap[regionId] ?? regionId;
+    const partnerMap: Record<string, { name: string; dbId: string }> = mapJson ? JSON.parse(mapJson) : {};
+    const mapEntry = partnerMap[regionId];
+    const partnerName = mapEntry?.name ?? regionId;
+    // Use the raw DB UUID — regionId is the composite "uuid-idx" UI key which is not a valid UUID
+    const dbPartnerId = mapEntry?.dbId ?? regionId;
 
     await AsyncStorage.setItem(
       ACTIVE_GEOFENCE_KEY,
       JSON.stringify({
-        partnerId:      regionId,
+        partnerId:      dbPartnerId,
         partnerName,
         entryTimestamp: Date.now(),
         latitude:       region.latitude,
@@ -328,8 +355,13 @@ TaskManager.defineTask(GEOFENCE_TASK_NAME, async ({ data, error }) => {
       if (dwellMs >= PROD_UPGRADE_MS && activeGeofence.sessionId && !activeGeofence.tierUpgraded) {
         console.log('[Geofence] Exit: session crossed 45-min tier — upgrading.');
         await upgradeGymTier(activeGeofence.sessionId);
-      } else {
+      } else if (activeGeofence.sessionId) {
         console.log('[Geofence] Exit: session already recorded by foreground timer — skipping.');
+      } else {
+        // sessionRecorded but no sessionId: foreground claim failed without setting pointsPending
+        // (legacy stuck state). Attempt to claim on exit as a safety net.
+        console.log('[Geofence] Exit: foreground claim has no sessionId — retrying on exit.');
+        await recordDwellSession(activeGeofence);
       }
       return;
     }
@@ -381,6 +413,7 @@ function formatPartnerRows(data: any[]): Partner[] {
       const openNow = checkIsOpenNow(oh);
       formatted.push({
         id:             `${p.id}-${idx}`,
+        dbId:           p.id,
         name:           p.name,
         description:    p.description ?? undefined,
         category:       p.category.charAt(0).toUpperCase() + p.category.slice(1),
@@ -397,7 +430,7 @@ function formatPartnerRows(data: any[]): Partner[] {
         image2Url:      p.image2_url ?? undefined,
         lat:            loc.lat,
         lng:            loc.lng,
-        geofenceRadius: DEV_RADIUS_M[p.name] ?? loc.radius ?? 50,
+        geofenceRadius: DEV_RADIUS_M[p.name] ?? loc.radius ?? 100,
         openingHours:   oh,
         isOpenNow:      openNow,
       });
@@ -427,7 +460,9 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
   const [isMonitoring, setIsMonitoring] = useState(false);
   const [loading, setLoading] = useState(true);
   const fingerprintRef = useRef('');
-  const dwellTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dwellTimerRef      = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const partnersRef        = useRef<Partner[]>([]);
+  const lastInsideCheckRef = useRef<number>(0);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -471,17 +506,83 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
     if (dwellTimerRef.current != null) return; // timer already running
 
     const raw = await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY);
-    if (!raw) return;
+    if (!raw) {
+      // Native geofence ENTER event can be delayed 30–60 s on iOS/Android.
+      // Periodically check if we are already inside using the last-known GPS
+      // position (free — no GPS wake-up). Rate-limited to once per 30 s.
+      const now = Date.now();
+      if (now - lastInsideCheckRef.current >= 30_000 && partnersRef.current.length > 0) {
+        lastInsideCheckRef.current = now;
+        try {
+          let gymLoggedToday = false;
+          try {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user && !DEV_TEST_EMAILS.has(user.email ?? '')) {
+              const today = new Date();
+              today.setHours(0, 0, 0, 0);
+              const { count } = await supabase
+                .from('activity_sessions')
+                .select('id', { count: 'exact', head: true })
+                .eq('user_id', user.id)
+                .eq('type', 'gym')
+                .gte('started_at', today.toISOString());
+              gymLoggedToday = (count ?? 0) > 0;
+            }
+          } catch { /* non-fatal */ }
+
+          if (!gymLoggedToday) {
+            const loc = await Location.getLastKnownPositionAsync().catch(() => null);
+            if (loc) {
+              for (const partner of partnersRef.current) {
+                const dist = haversineMetres(
+                  loc.coords.latitude, loc.coords.longitude,
+                  partner.lat, partner.lng,
+                );
+                const accuracyBuffer = loc.coords.accuracy != null ? Math.ceil(loc.coords.accuracy) : 50;
+                if (dist <= partner.geofenceRadius + accuracyBuffer) {
+                  const existing = await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY);
+                  if (!existing) {
+                    await AsyncStorage.setItem(
+                      ACTIVE_GEOFENCE_KEY,
+                      JSON.stringify({
+                        partnerId:      partner.dbId,
+                        partnerName:    partner.name,
+                        entryTimestamp: Date.now(),
+                        latitude:       partner.lat,
+                        longitude:      partner.lng,
+                        radius:         partner.geofenceRadius,
+                      }),
+                    );
+                    console.log(`[Geofence] Periodic scan: inside "${partner.name}" — active state set.`);
+                    try {
+                      const { notifyCheckInAvailable } = await import('@/lib/notifications');
+                      await notifyCheckInAvailable(partner.name, partner.id);
+                    } catch { /* non-fatal */ }
+                  }
+                  break;
+                }
+              }
+            }
+          }
+        } catch { /* non-fatal */ }
+      }
+      return;
+    }
 
     const activeGeofence: StoredGeofence = JSON.parse(raw);
 
-    // Skip only if the completion belongs to THIS session (timestamp after entry).
+    // Skip only if the completion belongs to THIS session (timestamp after entry)
+    // AND we don't still need to schedule the tier upgrade.
     // A stale key from a previous visit (timestamp before current entry) should not
     // block the foreground timer for new sessions.
     const completedRaw = await AsyncStorage.getItem(SESSION_COMPLETED_KEY);
     if (completedRaw) {
       const completed: { timestamp: number } = JSON.parse(completedRaw);
-      if (completed.timestamp >= activeGeofence.entryTimestamp) return;
+      const needsTierUpgrade = activeGeofence.sessionRecorded
+        && !activeGeofence.pointsPending
+        && !!activeGeofence.sessionId
+        && !activeGeofence.tierUpgraded;
+      if (completed.timestamp >= activeGeofence.entryTimestamp && !needsTierUpgrade) return;
     }
 
     // If the previous claim attempt failed (session too short at the time), retry as soon
@@ -492,8 +593,14 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
       if (remaining <= 0) {
         console.log('[Geofence] Foreground: retrying pending claim now (production threshold met).');
         await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...activeGeofence, pointsPending: false }));
-        const { outcome } = await recordDwellSession(activeGeofence);
-        if (outcome !== 'claimed') {
+        const { outcome, sessionId: retriedId } = await recordDwellSession(activeGeofence);
+        if (outcome === 'claimed' && retriedId) {
+          await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...activeGeofence, pointsPending: false, sessionId: retriedId }));
+          try {
+            const { notifySessionCompleted } = await import('@/lib/notifications');
+            await notifySessionCompleted(activeGeofence.partnerName, retriedId);
+          } catch { /* non-fatal */ }
+        } else {
           // Still failing — restore flag and keep retrying via the poll interval
           await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...activeGeofence, pointsPending: true }));
           console.log('[Geofence] Retry claim failed — will try again.');
@@ -508,8 +615,14 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
           if (!gf.pointsPending) return;
           console.log('[Geofence] Foreground: pending-claim retry timer fired.');
           await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...gf, pointsPending: false }));
-          const { outcome } = await recordDwellSession(gf);
-          if (outcome !== 'claimed') {
+          const { outcome, sessionId: retriedId } = await recordDwellSession(gf);
+          if (outcome === 'claimed' && retriedId) {
+            await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...gf, pointsPending: false, sessionId: retriedId }));
+            try {
+              const { notifySessionCompleted } = await import('@/lib/notifications');
+              await notifySessionCompleted(gf.partnerName, retriedId);
+            } catch { /* non-fatal */ }
+          } else {
             await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...gf, pointsPending: true }));
             console.log('[Geofence] Retry claim failed — poll will try again.');
           }
@@ -521,7 +634,7 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
     // Tier upgrade path: session already claimed at 20-min tier, schedule/trigger 45-min upgrade
     if (activeGeofence.sessionRecorded && !activeGeofence.pointsPending && activeGeofence.sessionId && !activeGeofence.tierUpgraded) {
       const elapsed   = Date.now() - activeGeofence.entryTimestamp;
-      const remaining = PROD_UPGRADE_MS - elapsed;
+      const remaining = UPGRADE_MS - elapsed;
       if (remaining <= 0) {
         console.log('[Geofence] Foreground: already past 45-min mark — upgrading tier now.');
         await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...activeGeofence, tierUpgraded: true }));
@@ -545,13 +658,17 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
     if (activeGeofence.sessionRecorded) return;
 
     const elapsed   = Date.now() - activeGeofence.entryTimestamp;
-    const remaining = MIN_DWELL_MS - elapsed;
+    // Add a 5 s grace buffer so JS timer imprecision never produces a sub-threshold
+    // duration_sec that gets rejected by claim-points as "does not meet eligibility minimum".
+    const remaining = (MIN_DWELL_MS + 5_000) - elapsed;
 
     if (remaining <= 0) {
       console.log('[Geofence] Foreground: dwell already met — recording session now.');
       await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...activeGeofence, sessionRecorded: true }));
       const { outcome, sessionId } = await recordDwellSession(activeGeofence);
-      if (outcome === 'too_short') {
+      if (outcome === 'too_short' || outcome === 'error') {
+        // too_short: claim rejected because duration < eligibility minimum — retry at PROD_DWELL_MS.
+        // error:     transient failure (network, auth, rate-limit, etc.) — retry via the same path.
         await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...activeGeofence, sessionRecorded: true, pointsPending: true }));
       } else if (outcome === 'claimed' && sessionId) {
         await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...activeGeofence, sessionRecorded: true, sessionId }));
@@ -575,7 +692,9 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
       console.log('[Geofence] Foreground: dwell timer fired — recording session.');
       await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...gf, sessionRecorded: true }));
       const { outcome, sessionId } = await recordDwellSession(gf);
-      if (outcome === 'too_short') {
+      if (outcome === 'too_short' || outcome === 'error') {
+        // too_short: claim rejected because duration < eligibility minimum — retry at PROD_DWELL_MS.
+        // error:     transient failure (network, auth, rate-limit, etc.) — retry via the same path.
         await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...gf, sessionRecorded: true, pointsPending: true }));
       } else if (outcome === 'claimed' && sessionId) {
         await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...gf, sessionRecorded: true, sessionId }));
@@ -609,6 +728,10 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
       if (dwellTimerRef.current != null) clearTimeout(dwellTimerRef.current);
     };
   }, [scheduleDwellTimer]);
+
+  // Keep partnersRef in sync so scheduleDwellTimer can access partners without
+  // needing partners as a dependency (which would restart the poll interval).
+  useEffect(() => { partnersRef.current = partners; }, [partners]);
 
   // Fetch partners once on mount
   useEffect(() => {
@@ -658,8 +781,8 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      const partnerMap: Record<string, string> = {};
-      partners.forEach(p => { partnerMap[p.id] = p.name; });
+      const partnerMap: Record<string, { name: string; dbId: string }> = {};
+      partners.forEach(p => { partnerMap[p.id] = { name: p.name, dbId: p.dbId }; });
       await AsyncStorage.setItem(PARTNER_MAP_KEY, JSON.stringify(partnerMap));
 
       // iOS allows max 20 geofence regions; Android allows 100.
@@ -704,16 +827,21 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
 
       // If the user is already inside a geofence when monitoring starts, record it
       try {
-        const loc =
-          (await Location.getLastKnownPositionAsync()) ??
-          (await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }));
+        const lastKnown = await Location.getLastKnownPositionAsync().catch(() => null);
+        const lastKnownFresh = lastKnown != null
+          && (Date.now() - lastKnown.timestamp) < 15_000
+          && lastKnown.coords.accuracy != null
+          && lastKnown.coords.accuracy <= 20;
+        const loc = lastKnownFresh
+          ? lastKnown
+          : await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High }).catch(() => null);
 
         if (loc) {
           // Check if a gym session was already logged today before setting active state
           let gymLoggedToday = false;
           try {
             const { data: { user } } = await supabase.auth.getUser();
-            if (user) {
+            if (user && !DEV_TEST_EMAILS.has(user.email ?? '')) {
               const today = new Date();
               today.setHours(0, 0, 0, 0);
               const { count } = await supabase
@@ -731,7 +859,9 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
               loc.coords.latitude, loc.coords.longitude,
               partner.lat, partner.lng,
             );
-            if (dist <= partner.geofenceRadius) {
+            // Add accuracy buffer so near-edge positions aren't missed
+            const accuracyBuffer = loc.coords.accuracy != null ? Math.ceil(loc.coords.accuracy) : 50;
+            if (dist <= partner.geofenceRadius + accuracyBuffer) {
               if (gymLoggedToday) {
                 console.log(`[Geofence] Already inside "${partner.name}" but gym session logged today — skipping.`);
               } else {
@@ -740,7 +870,7 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
                   await AsyncStorage.setItem(
                     ACTIVE_GEOFENCE_KEY,
                     JSON.stringify({
-                      partnerId:      partner.id,
+                      partnerId:      partner.dbId,
                       partnerName:    partner.name,
                       entryTimestamp: Date.now(),
                       latitude:       partner.lat,

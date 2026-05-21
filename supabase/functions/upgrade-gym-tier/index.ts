@@ -45,6 +45,10 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ error: 'session_id required' }), { status: 400 });
   }
 
+  // Dev test accounts bypass daily cap
+  const DEV_TEST_EMAILS = new Set((Deno.env.get('DEV_TEST_EMAILS') ?? 'jamiemasonwright@gmail.com').split(',').map(e => e.trim()));
+  const isDevTestUser = DEV_TEST_EMAILS.has(user.email ?? '');
+
   // Fetch session — must be gym type, belong to this user
   const { data: session, error: sessionError } = await supabase
     .from('activity_sessions')
@@ -64,7 +68,12 @@ Deno.serve(async (req) => {
   const actualMins = Math.floor(actualDurationSec / 60);
 
   if (actualMins < 45) {
-    return new Response(JSON.stringify({ error: 'Session has not reached the 45-min tier' }), { status: 422 });
+    // DEV override: if DEV_MIN_UPGRADE_SEC is set, allow upgrades at a lower threshold
+    const devMinUpgradeSec = parseInt(Deno.env.get('DEV_MIN_UPGRADE_SEC') ?? '0', 10);
+    if (devMinUpgradeSec <= 0 || actualDurationSec < devMinUpgradeSec) {
+      return new Response(JSON.stringify({ error: 'Session has not reached the 45-min tier' }), { status: 422 });
+    }
+    console.log(`[DEV] Allowing tier upgrade for short session (${actualDurationSec}s >= ${devMinUpgradeSec}s dev threshold)`);
   }
 
   await supabase
@@ -120,11 +129,11 @@ Deno.serve(async (req) => {
   }
 
   const remaining = 30 - todayTotal;
-  if (remaining <= 0) {
+  if (!isDevTestUser && remaining <= 0) {
     return new Response(JSON.stringify({ error: 'Daily cap reached' }), { status: 422 });
   }
 
-  const finalDelta = Math.min(delta, remaining);
+  const finalDelta = Math.min(delta, isDevTestUser ? delta : remaining);
 
   const { data: tx, error: txError } = await supabase
     .from('point_transactions')

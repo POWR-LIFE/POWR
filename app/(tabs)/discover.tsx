@@ -191,8 +191,8 @@ export default function DiscoverScreen() {
       setTrainers([]);
       return;
     }
-    // partner id may have location suffix (e.g. "uuid-0"), extract base uuid
-    const baseId = selectedPartner.id.replace(/-\d+$/, '');
+    // partner.dbId is the raw Supabase UUID (partner.id has a location-index suffix)
+    const baseId = selectedPartner.dbId;
     (async () => {
       const { data } = await supabase
         .from('trainers')
@@ -513,7 +513,7 @@ export default function DiscoverScreen() {
             <MapMarker
               key={partner.id}
               partner={partner}
-              isActive={partner.id === activeGeofence?.partnerId}
+            isActive={partner.dbId === activeGeofence?.partnerId}
             />
           ))}
 
@@ -668,7 +668,7 @@ export default function DiscoverScreen() {
           <PartnerListRow
             key={partner.id}
             partner={partner}
-            isActive={partner.id === activeGeofence?.partnerId}
+            isActive={partner.dbId === activeGeofence?.partnerId}
             onPress={() => {
               setRoutePartner(null);
               setRouteSummary(null);
