@@ -494,15 +494,16 @@ export async function fetchRecentWorkoutHistory(type: ActivityType, days = 5): P
     rangeStart.setDate(rangeStart.getDate() - days);
     rangeStart.setHours(0, 0, 0, 0);
 
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
+    const tomorrowStart = new Date();
+    tomorrowStart.setDate(tomorrowStart.getDate() + 1);
+    tomorrowStart.setHours(0, 0, 0, 0);
 
     const { data, error } = await supabase
         .from('activity_sessions')
         .select('started_at, duration_sec, point_transactions(amount)')
         .eq('type', type)
         .gte('started_at', rangeStart.toISOString())
-        .lt('started_at', todayStart.toISOString())
+        .lt('started_at', tomorrowStart.toISOString())
         .order('started_at', { ascending: true });
     if (error) throw error;
 
@@ -522,7 +523,7 @@ export async function fetchRecentWorkoutHistory(type: ActivityType, days = 5): P
     }
 
     const result: DailyWorkoutHistory[] = [];
-    for (let i = days; i >= 1; i--) {
+    for (let i = days; i >= 0; i--) {
         const d = new Date();
         d.setDate(d.getDate() - i);
         const dateKey = d.toISOString().split('T')[0];

@@ -164,13 +164,29 @@ export async function fetchFeaturedScheduledReward(): Promise<Reward | null> {
 }
 
 /**
- * Smart featured reward selection based on unlock status:
- * - All rewards unlocked: cycle all rewards, highest points first
- * - No rewards unlocked: show closest redeemable reward (lowest pts needed)
- * - Mixed: prioritize unlocked rewards, cycle them by highest points first
+ * Smart featured reward selection — priority order:
+ * 1. Active time-boxed schedule slot (featured_reward_schedule table)
+ * 2. Permanent pin (featured_on_home = true on the reward itself)
+ * 3. Smart rotation based on unlock status:
+ *    - All rewards unlocked: cycle all, highest points first
+ *    - No rewards unlocked: show closest redeemable reward (lowest pts needed)
+ *    - Mixed: prioritize unlocked rewards, cycle them by highest points first
+ *
+ * Admins can control the hero card without a new app build:
+ *  - Pin a reward permanently via the "Featured on Home" toggle in RewardManager
+ *  - Schedule timed campaigns via the Featured Schedule admin page
  */
 export async function fetchSmartFeaturedReward(balance: number): Promise<Reward | null> {
   try {
+    // 1. Active schedule slot
+    const scheduled = await fetchFeaturedScheduledReward();
+    if (scheduled) return scheduled;
+
+    // 2. Permanent pin
+    const pinned = await fetchFeaturedReward();
+    if (pinned) return pinned;
+
+    // 3. Smart rotation fallback
     const rewards = await fetchRewards();
     if (rewards.length === 0) return null;
 

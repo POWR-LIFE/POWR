@@ -56,7 +56,11 @@ Deno.serve(async (req) => {
   if (!reward.active) return json({ error: 'REWARD_INACTIVE' }, 422);
 
   const partner = Array.isArray(reward.partners) ? reward.partners[0] : reward.partners;
-  if (!partner?.partner_code) return json({ error: 'PARTNER_MISCONFIGURED' }, 500);
+
+  // API_VALIDATED rewards need a partner_code to mint codes; POOL rewards use pre-loaded codes
+  if (reward.integration_type === 'API_VALIDATED' && !partner?.partner_code) {
+    return json({ error: 'PARTNER_MISCONFIGURED' }, 500);
+  }
 
   // 2a. Check per-user redemption limit
   if (reward.max_redemptions_per_user !== null && reward.max_redemptions_per_user !== undefined) {
@@ -190,9 +194,9 @@ Deno.serve(async (req) => {
     console.error('Redemption insert failed', redErr);
   }
 
-  const checkoutUrl = partner.checkout_url_template
+  const checkoutUrl = partner?.checkout_url_template
     ? partner.checkout_url_template.replace('{code}', codeRow.code)
-    : (reward.url ?? null);
+    : (reward.url || null);
 
   return json({
     ok: true,

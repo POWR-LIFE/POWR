@@ -276,12 +276,32 @@ export async function notifyCheckInAvailable(partnerName: string, locationId: st
   });
 }
 
-export async function notifySessionCompleted(partnerName: string, sessionId: string) {
+export async function notifySessionCompleted(
+  partnerName: string,
+  sessionId: string,
+  earned?: number,
+  currentStreak?: number,
+) {
+  const hasEarned = earned !== undefined && earned > 0;
+  const title = hasEarned ? `+${earned!.toLocaleString()} pts earned! 🔥` : 'Session complete 🔥';
+
+  const name = partnerName.trim();
+  let body: string;
+  if (name && currentStreak && currentStreak > 0) {
+    body = `${name} · Day ${currentStreak} streak`;
+  } else if (name) {
+    body = name;
+  } else if (currentStreak && currentStreak > 0) {
+    body = `Day ${currentStreak} streak`;
+  } else {
+    body = 'Your session counted.';
+  }
+
   await Notifications.scheduleNotificationAsync({
     identifier: `powr-session_completed-${sessionId}`,
     content: {
-      title: 'POWR',
-      body: 'Session logged. Points added.',
+      title,
+      body,
       data: {
         type: 'session_completed',
         route: `/share-stats?mode=check-in&sessionId=${sessionId}`,
