@@ -31,6 +31,25 @@ interface ExpoMessage {
   priority?: 'default' | 'normal' | 'high';
 }
 
+function formatSessionCompletedBody(partnerName?: string | null, currentStreak?: number | null): string {
+  const name = partnerName?.trim();
+  const streak = Number(currentStreak ?? 0);
+
+  if (name && streak > 0) {
+    return `${name} · Day ${streak} streak`;
+  }
+
+  if (name) {
+    return name;
+  }
+
+  if (streak > 0) {
+    return `Day ${streak} streak`;
+  }
+
+  return 'Your session counted.';
+}
+
 // ---------------------------------------------------------------------------
 // Notification copy per type
 // ---------------------------------------------------------------------------
@@ -156,13 +175,25 @@ function buildMessage(
 
       case 'session_completed': {
         const sessionId = (payload.session_id as string) ?? '';
+        const earned = Math.max(0, Math.round(Number(payload.earned ?? payload.points ?? 0)));
+        const availableBalance = payload.available_balance != null
+          ? Math.round(Number(payload.available_balance))
+          : undefined;
+        const partnerName = payload.partner_name as string | undefined;
+        const currentStreak = payload.current_streak as number | undefined;
+
+        const titlePoints = availableBalance ?? earned;
+
         return {
-          title: 'POWR',
-          body: 'Session logged. Points added.',
+          title: titlePoints > 0 ? `+${titlePoints.toLocaleString()} pts earned! 🔥` : 'Session complete 🔥',
+          body: formatSessionCompletedBody(partnerName, currentStreak),
           data: {
             type,
             route: `/share-stats?mode=check-in&sessionId=${sessionId}`,
             session_id: sessionId,
+            earned: earned > 0 ? earned : undefined,
+            partner_name: partnerName,
+            current_streak: currentStreak,
           },
           sound: 'default',
           channelId: 'powr_rewards_v2',
@@ -300,6 +331,67 @@ Deno.serve(async (req: Request) => {
           };
         } else {
           payload = { ...payload, points };
+        }
+      }
+    }
+
+    if (type === 'session_completed') {
+      const sessionId = String(payload.session_id ?? '').trim();
+
+      if (sessionId) {
+        const { data: session } = await supabase
+          .from('activity_sessions')
+          .select('user_id, partner_id')
+          .eq('id', sessionId)
+          .maybeSingle();
+
+        if (session) {
+          payload = { ...payload, user_id: session.user_id };
+
+          if (session.partner_id) {
+            const { data: partner } = await supabase
+              .from('partners')
+              .select('name')
+              .eq('id', session.partner_id)
+              .maybeSingle();
+
+            if (partner?.name) {
+              payload = { ...payload, partner_name: partner.name };
+            }
+          }
+
+          const { data: streak } = await supabase
+            .from('user_streaks')
+            .select('current_streak')
+            .eq('user_id', session.user_id)
+            .maybeSingle();
+
+          if (streak?.current_streak !== undefined && streak.current_streak !== null) {
+            payload = { ...payload, current_streak: streak.current_streak };
+          }
+
+          // Fetch actual points earned for this session from the ledger
+          const { data: txn } = await supabase
+            .from('point_transactions')
+            .select('amount')
+            .eq('session_id', sessionId)
+            .eq('type', 'earn')
+            .maybeSingle();
+
+          if (txn?.amount !== undefined && txn.amount !== null) {
+            payload = { ...payload, earned: txn.amount };
+          }
+
+          // Fetch the user's current available rewards balance
+          const { data: balanceRow } = await supabase
+            .from('user_balances')
+            .select('balance')
+            .eq('user_id', session.user_id)
+            .maybeSingle();
+
+          if (balanceRow?.balance !== undefined && balanceRow.balance !== null) {
+            payload = { ...payload, available_balance: balanceRow.balance };
+          }
         }
       }
     }

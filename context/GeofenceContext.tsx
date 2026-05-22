@@ -126,7 +126,7 @@ interface StoredGeofence {
 // ─── Shared session recording ─────────────────────────────────────────────────
 // Called by both the foreground dwell timer and the background exit handler.
 
-async function recordDwellSession(activeGeofence: StoredGeofence): Promise<{ outcome: 'claimed' | 'too_short' | 'error'; sessionId?: string }> {
+async function recordDwellSession(activeGeofence: StoredGeofence): Promise<{ outcome: 'claimed' | 'too_short' | 'error'; sessionId?: string; earned?: number; currentStreak?: number }> {
   const dwellMs = Date.now() - activeGeofence.entryTimestamp;
   try {
     const { data: { session: authSession }, error: refreshError } = await supabase.auth.refreshSession();
@@ -235,8 +235,19 @@ async function recordDwellSession(activeGeofence: StoredGeofence): Promise<{ out
     // Notify all in-process listeners (e.g. usePoints) immediately
     _emitSessionCompleted();
 
+    const earned = (claimData as { earned?: number })?.earned;
+    let currentStreak: number | undefined;
+    try {
+      const { data: streakRow } = await supabase
+        .from('user_streaks')
+        .select('current_streak')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      currentStreak = streakRow?.current_streak ?? undefined;
+    } catch { /* non-fatal */ }
+
     console.log(`[Geofence] Points claimed after ${Math.round(dwellMs / 60000)}min dwell.`, claimData);
-    return { outcome: 'claimed', sessionId };
+    return { outcome: 'claimed', sessionId, earned, currentStreak };
   } catch (err) {
     console.error('[Geofence] recordDwellSession failed:', err);
     return { outcome: 'error' };
@@ -247,26 +258,28 @@ async function recordDwellSession(activeGeofence: StoredGeofence): Promise<{ out
 // Called when a session crosses the 45-min threshold. Awards the delta between
 // what was claimed at the 20-min tier and the 45-min tier target.
 
-async function upgradeGymTier(sessionId: string): Promise<void> {
+async function upgradeGymTier(sessionId: string): Promise<boolean> {
   try {
     // Refresh token before calling — session may be 45+ min old
     const { data: { session: authSession }, error: refreshError } = await supabase.auth.refreshSession();
     if (refreshError || !authSession) {
       console.warn('[Geofence] Tier upgrade: token refresh failed — will retry on next poll.', refreshError?.message);
-      return;
+      return false;
     }
-    const { error: fnError } = await supabase.functions.invoke('upgrade-gym-tier', {
+    const { data: upgradeData, error: fnError } = await supabase.functions.invoke('upgrade-gym-tier', {
       body: { session_id: sessionId },
       headers: { Authorization: `Bearer ${authSession.access_token}` },
     });
     if (fnError) {
       console.warn('[Geofence] Tier upgrade failed:', fnError.message);
-    } else {
-      console.log('[Geofence] Gym session upgraded to 45-min tier.');
-      _emitSessionCompleted();
+      return false;
     }
+    console.log('[Geofence] Gym session upgraded to 45-min tier.', upgradeData);
+    _emitSessionCompleted();
+    return true;
   } catch (err) {
     console.warn('[Geofence] upgradeGymTier error:', err);
+    return false;
   }
 }
 
@@ -372,11 +385,11 @@ TaskManager.defineTask(GEOFENCE_TASK_NAME, async ({ data, error }) => {
       return;
     }
 
-    const { outcome: exitOutcome, sessionId: exitSessionId } = await recordDwellSession(activeGeofence);
+    const { outcome: exitOutcome, sessionId: exitSessionId, earned: exitEarned, currentStreak: exitStreak } = await recordDwellSession(activeGeofence);
     if (exitOutcome === 'claimed' && exitSessionId) {
       try {
         const { notifySessionCompleted } = await import('@/lib/notifications');
-        await notifySessionCompleted(activeGeofence.partnerName, exitSessionId);
+        await notifySessionCompleted(activeGeofence.partnerName, exitSessionId, exitEarned, exitStreak);
       } catch (err) {
         console.warn('[Geofence] Exit notification failed:', err);
       }
@@ -593,12 +606,12 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
       if (remaining <= 0) {
         console.log('[Geofence] Foreground: retrying pending claim now (production threshold met).');
         await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...activeGeofence, pointsPending: false }));
-        const { outcome, sessionId: retriedId } = await recordDwellSession(activeGeofence);
+        const { outcome, sessionId: retriedId, earned: retriedEarned, currentStreak: retriedStreak } = await recordDwellSession(activeGeofence);
         if (outcome === 'claimed' && retriedId) {
           await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...activeGeofence, pointsPending: false, sessionId: retriedId }));
           try {
             const { notifySessionCompleted } = await import('@/lib/notifications');
-            await notifySessionCompleted(activeGeofence.partnerName, retriedId);
+            await notifySessionCompleted(activeGeofence.partnerName, retriedId, retriedEarned, retriedStreak);
           } catch { /* non-fatal */ }
         } else {
           // Still failing — restore flag and keep retrying via the poll interval
@@ -615,12 +628,12 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
           if (!gf.pointsPending) return;
           console.log('[Geofence] Foreground: pending-claim retry timer fired.');
           await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...gf, pointsPending: false }));
-          const { outcome, sessionId: retriedId } = await recordDwellSession(gf);
+          const { outcome, sessionId: retriedId, earned: retriedEarned, currentStreak: retriedStreak } = await recordDwellSession(gf);
           if (outcome === 'claimed' && retriedId) {
             await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...gf, pointsPending: false, sessionId: retriedId }));
             try {
               const { notifySessionCompleted } = await import('@/lib/notifications');
-              await notifySessionCompleted(gf.partnerName, retriedId);
+              await notifySessionCompleted(gf.partnerName, retriedId, retriedEarned, retriedStreak);
             } catch { /* non-fatal */ }
           } else {
             await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...gf, pointsPending: true }));
@@ -637,8 +650,10 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
       const remaining = UPGRADE_MS - elapsed;
       if (remaining <= 0) {
         console.log('[Geofence] Foreground: already past 45-min mark — upgrading tier now.');
-        await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...activeGeofence, tierUpgraded: true }));
-        await upgradeGymTier(activeGeofence.sessionId);
+        const upgraded1 = await upgradeGymTier(activeGeofence.sessionId);
+        if (upgraded1) {
+          await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...activeGeofence, tierUpgraded: true }));
+        }
       } else {
         console.log(`[Geofence] Foreground: scheduling 45-min tier upgrade in ${Math.round(remaining / 1000)}s`);
         dwellTimerRef.current = setTimeout(async () => {
@@ -648,8 +663,10 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
           const gf: StoredGeofence = JSON.parse(raw2);
           if (gf.tierUpgraded || !gf.sessionId) return;
           console.log('[Geofence] Foreground: 45-min upgrade timer fired.');
-          await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...gf, tierUpgraded: true }));
-          await upgradeGymTier(gf.sessionId);
+          const upgraded2 = await upgradeGymTier(gf.sessionId);
+          if (upgraded2) {
+            await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...gf, tierUpgraded: true }));
+          }
         }, remaining);
       }
       return;
@@ -665,7 +682,7 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
     if (remaining <= 0) {
       console.log('[Geofence] Foreground: dwell already met — recording session now.');
       await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...activeGeofence, sessionRecorded: true }));
-      const { outcome, sessionId } = await recordDwellSession(activeGeofence);
+      const { outcome, sessionId, earned: dwellEarned, currentStreak: dwellStreak } = await recordDwellSession(activeGeofence);
       if (outcome === 'too_short' || outcome === 'error') {
         // too_short: claim rejected because duration < eligibility minimum — retry at PROD_DWELL_MS.
         // error:     transient failure (network, auth, rate-limit, etc.) — retry via the same path.
@@ -674,7 +691,7 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
         await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...activeGeofence, sessionRecorded: true, sessionId }));
         try {
           const { notifySessionCompleted } = await import('@/lib/notifications');
-          await notifySessionCompleted(activeGeofence.partnerName, sessionId);
+          await notifySessionCompleted(activeGeofence.partnerName, sessionId, dwellEarned, dwellStreak);
         } catch (err) {
           console.warn('[Geofence] Session completed notification failed:', err);
         }
@@ -691,7 +708,7 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
       if (gf.sessionRecorded) return;
       console.log('[Geofence] Foreground: dwell timer fired — recording session.');
       await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...gf, sessionRecorded: true }));
-      const { outcome, sessionId } = await recordDwellSession(gf);
+      const { outcome, sessionId, earned: timerEarned, currentStreak: timerStreak } = await recordDwellSession(gf);
       if (outcome === 'too_short' || outcome === 'error') {
         // too_short: claim rejected because duration < eligibility minimum — retry at PROD_DWELL_MS.
         // error:     transient failure (network, auth, rate-limit, etc.) — retry via the same path.
@@ -700,7 +717,7 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
         await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...gf, sessionRecorded: true, sessionId }));
         try {
           const { notifySessionCompleted } = await import('@/lib/notifications');
-          await notifySessionCompleted(gf.partnerName, sessionId);
+          await notifySessionCompleted(gf.partnerName, sessionId, timerEarned, timerStreak);
         } catch (err) {
           console.warn('[Geofence] Session completed notification failed:', err);
         }
