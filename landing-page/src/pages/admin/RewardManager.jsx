@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
-import { Plus, Edit2, Trash2, Ticket, Loader2, X, Search, Award, Activity, ChevronRight, AlertTriangle, Upload, Image as ImageIcon, Tag, FileText, Download } from 'lucide-react';
+import { Plus, Edit2, Trash2, Ticket, Loader2, X, Search, Award, Activity, ChevronRight, AlertTriangle, Upload, Image as ImageIcon, Tag, FileText, Download, GripVertical, Save, Pin } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { uploadPublicImage } from '../../lib/storage';
 import * as XLSX from 'xlsx';
@@ -115,6 +115,12 @@ export default function RewardManager() {
     const [generateCount, setGenerateCount] = useState(100);
     const [generatingCodes, setGeneratingCodes] = useState(false);
     const [togglingCodeId, setTogglingCodeId] = useState(null);
+    const [dragId, setDragId] = useState(null);
+    const [dragOverId, setDragOverId] = useState(null);
+    const [unsavedOrder, setUnsavedOrder] = useState(false);
+    const [savingOrder, setSavingOrder] = useState(false);
+    const [heroPickerOpen, setHeroPickerOpen] = useState(false);
+    const [settingHero, setSettingHero] = useState(false);
     const CODE_POOL_PAGE_SIZE = 20;
     const parsedScheme = schemeExample ? buildScheme(schemeExample) : null;
 
@@ -123,7 +129,7 @@ export default function RewardManager() {
     const fetchData = async () => {
         setLoading(true);
         const [rew, part] = await Promise.all([
-            supabase.from('rewards').select('*, partners(name, partner_code, logo_url)').order('created_at', { ascending: false }),
+            supabase.from('rewards').select('*, partners(name, partner_code, logo_url)').order('sort_order', { ascending: true }).order('created_at', { ascending: false }),
             supabase.from('partners').select('id, name, partner_code, roles').contains('roles', ['reward_provider']).order('name'),
         ]);
         if (rew.error) toast.error('Failed to load inventory');
@@ -136,6 +142,7 @@ export default function RewardManager() {
         }
         if (part.data) setPartners(part.data);
         setLoading(false);
+        setUnsavedOrder(false);
     };
 
     const refreshCodeStats = async (rewardId) => {
@@ -427,6 +434,91 @@ export default function RewardManager() {
         setTogglingId(null);
     };
 
+    const isDragEnabled = !search && filterCat === 'all' && filterPartner === 'all';
+
+    const handleDragStart = (e, id) => {
+        setDragId(id);
+        e.dataTransfer.effectAllowed = 'move';
+    };
+
+    const handleDragOver = (e, id) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        if (id !== dragId) setDragOverId(id);
+    };
+
+    const handleDrop = (e, targetId) => {
+        e.preventDefault();
+        if (!dragId || dragId === targetId) {
+            setDragId(null);
+            setDragOverId(null);
+            return;
+        }
+        setRewards(prev => {
+            const next = [...prev];
+            const fromIdx = next.findIndex(r => r.id === dragId);
+            const toIdx = next.findIndex(r => r.id === targetId);
+            const [moved] = next.splice(fromIdx, 1);
+            next.splice(toIdx, 0, moved);
+            return next;
+        });
+        setUnsavedOrder(true);
+        setDragId(null);
+        setDragOverId(null);
+    };
+
+    const handleDragEnd = () => {
+        setDragId(null);
+        setDragOverId(null);
+    };
+
+    const heroReward = rewards.find(r => r.featured_on_home);
+
+    const handleSaveOrder = async () => {
+        setSavingOrder(true);
+        const results = await Promise.all(
+            rewards.map((r, i) =>
+                supabase.from('rewards').update({ sort_order: i }).eq('id', r.id)
+            )
+        );
+        setSavingOrder(false);
+        const firstError = results.find(r => r.error);
+        if (firstError) {
+            toast.error(firstError.error.message || 'Failed to save order');
+            return;
+        }
+        setUnsavedOrder(false);
+        toast.success('Display order saved');
+    };
+
+    const handleSetHero = async (rewardId) => {
+        setSettingHero(true);
+        // Clear any existing pin first (partial unique index allows only one)
+        const { error: clearErr } = await supabase.from('rewards').update({ featured_on_home: false }).eq('featured_on_home', true);
+        if (clearErr) { toast.error(clearErr.message); setSettingHero(false); return; }
+        const { error } = await supabase.from('rewards').update({ featured_on_home: true }).eq('id', rewardId);
+        if (error) {
+            toast.error(error.message);
+        } else {
+            setRewards(prev => prev.map(r => ({ ...r, featured_on_home: r.id === rewardId })));
+            setHeroPickerOpen(false);
+            toast.success('Hero card updated');
+        }
+        setSettingHero(false);
+    };
+
+    const handleClearHero = async () => {
+        setSettingHero(true);
+        const { error } = await supabase.from('rewards').update({ featured_on_home: false }).eq('featured_on_home', true);
+        if (error) {
+            toast.error(error.message);
+        } else {
+            setRewards(prev => prev.map(r => ({ ...r, featured_on_home: false })));
+            toast.success('Hero pin cleared — smart rotation active');
+        }
+        setSettingHero(false);
+    };
+
     const handleDelete = async (id) => {
         const { error } = await supabase.from('rewards').delete().eq('id', id);
         if (error) {
@@ -452,12 +544,112 @@ export default function RewardManager() {
                         Management of global digital assets and retail partner redemptions.
                     </p>
                 </div>
-                <button
-                    onClick={openCreate}
-                    className="flex items-center gap-4 h-16 px-10 bg-[#E8D200] text-[#080808] text-[11px] font-black uppercase tracking-[0.3em] rounded-full transition-all hover:translate-y-[-4px] shadow-2xl shadow-[#E8D200]/20 shrink-0"
-                >
-                    <Plus size={18} /> Initialize Reward
-                </button>
+                <div className="flex items-center gap-4 shrink-0">
+                    {unsavedOrder && (
+                        <button
+                            onClick={handleSaveOrder}
+                            disabled={savingOrder}
+                            className="flex items-center gap-3 h-16 px-10 bg-[#10B981]/10 text-[#10B981] border border-[#10B981]/30 text-[11px] font-black uppercase tracking-[0.3em] rounded-full transition-all hover:bg-[#10B981]/20 disabled:opacity-50"
+                        >
+                            {savingOrder ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                            Save Order
+                        </button>
+                    )}
+                    <button
+                        onClick={openCreate}
+                        className="flex items-center gap-4 h-16 px-10 bg-[#E8D200] text-[#080808] text-[11px] font-black uppercase tracking-[0.3em] rounded-full transition-all hover:translate-y-[-4px] shadow-2xl shadow-[#E8D200]/20"
+                    >
+                        <Plus size={18} /> Initialize Reward
+                    </button>
+                </div>
+            </div>
+
+            {/* Hero Card Panel */}
+            <div className="mb-12 bg-[#0A0A0A] border border-[#151515] rounded-3xl overflow-hidden">
+                <div className="flex items-center justify-between px-10 py-6 border-b border-[#111]">
+                    <div className="flex items-center gap-4">
+                        <Pin size={13} className="text-[#E8D200]" />
+                        <span className="text-[10px] uppercase tracking-[0.5em] text-[#999] font-black">Hero Card</span>
+                        <span className="text-[9px] uppercase tracking-[0.3em] text-[#555] font-black ml-2">— large card shown at the top of the app rewards page</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                        {heroReward && !heroPickerOpen && (
+                            <button
+                                onClick={handleClearHero}
+                                disabled={settingHero}
+                                className="h-9 px-5 text-[9px] font-black uppercase tracking-[0.3em] text-[#666] hover:text-red-500 border border-[#151515] hover:border-red-500/20 rounded-full transition-all disabled:opacity-40"
+                            >
+                                Clear Pin
+                            </button>
+                        )}
+                        <button
+                            onClick={() => setHeroPickerOpen(prev => !prev)}
+                            className="h-9 px-5 text-[9px] font-black uppercase tracking-[0.3em] bg-[#E8D200]/10 text-[#E8D200] border border-[#E8D200]/20 rounded-full hover:bg-[#E8D200]/20 transition-all"
+                        >
+                            {heroPickerOpen ? 'Cancel' : heroReward ? 'Change Hero' : 'Pin a Reward'}
+                        </button>
+                    </div>
+                </div>
+
+                {heroPickerOpen ? (
+                    <div className="p-4 grid gap-1.5 max-h-80 overflow-y-auto">
+                        {rewards.filter(r => r.active).map(r => (
+                            <button
+                                key={r.id}
+                                onClick={() => handleSetHero(r.id)}
+                                disabled={settingHero}
+                                className={`flex items-center gap-5 p-4 rounded-2xl text-left transition-all border ${
+                                    r.featured_on_home
+                                        ? 'border-[#E8D200]/30 bg-[#E8D200]/5'
+                                        : 'border-transparent hover:border-[#151515] hover:bg-[#080808]'
+                                } disabled:opacity-40`}
+                            >
+                                <div className="w-9 h-9 rounded-xl bg-[#050505] border border-[#151515] flex items-center justify-center shrink-0 overflow-hidden">
+                                    {(r.image_url || r.partners?.logo_url) ? (
+                                        <img src={r.image_url || r.partners.logo_url} alt="" className="w-full h-full object-contain p-1" />
+                                    ) : (
+                                        <Award size={13} className="text-[#555]" />
+                                    )}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <span className="text-sm font-bold text-[#DDD] block truncate">{r.title}</span>
+                                    <span className="text-[9px] uppercase tracking-[0.3em] text-[#777] font-black">{r.powr_cost.toLocaleString()} POWR · {r.category}</span>
+                                </div>
+                                {r.featured_on_home && <span className="text-[8px] font-black uppercase tracking-[0.3em] text-[#E8D200] shrink-0">Current</span>}
+                                {settingHero && <Loader2 size={13} className="animate-spin text-[#555] shrink-0" />}
+                            </button>
+                        ))}
+                    </div>
+                ) : heroReward ? (
+                    <div className="flex items-center gap-8 px-10 py-7">
+                        <div className="w-14 h-14 rounded-2xl bg-[#050505] border border-[#E8D200]/20 flex items-center justify-center shrink-0 overflow-hidden">
+                            {(heroReward.image_url || heroReward.partners?.logo_url) ? (
+                                <img src={heroReward.image_url || heroReward.partners.logo_url} alt="" className="w-full h-full object-contain p-2" />
+                            ) : (
+                                <Award size={20} className="text-[#E8D200]/60" />
+                            )}
+                        </div>
+                        <div>
+                            <div className="flex items-center gap-3 mb-1">
+                                <span className="text-base font-bold text-[#F2F2F2]">{heroReward.title}</span>
+                                <span className="px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.3em] bg-[#E8D200]/10 text-[#E8D200] border border-[#E8D200]/20 rounded-full">Pinned</span>
+                            </div>
+                            <span className="text-[10px] uppercase tracking-[0.3em] text-[#777] font-black">
+                                {heroReward.powr_cost?.toLocaleString()} POWR · {heroReward.partners?.name || heroReward.brand_name || 'Standalone'}
+                            </span>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="flex items-center gap-6 px-10 py-7">
+                        <div className="w-10 h-10 rounded-2xl bg-[#050505] border border-[#151515] flex items-center justify-center shrink-0">
+                            <Activity size={15} className="text-[#444]" />
+                        </div>
+                        <div>
+                            <span className="text-sm font-bold text-[#666] block mb-0.5">Smart rotation active</span>
+                            <span className="text-[9px] uppercase tracking-[0.3em] text-[#444] font-black">No reward pinned — app auto-selects based on user balance &amp; unlock status</span>
+                        </div>
+                    </div>
+                )}
             </div>
 
             {/* Controls */}
@@ -493,6 +685,14 @@ export default function RewardManager() {
                 </div>
             </div>
 
+            {/* Drag hint */}
+            {!isDragEnabled && (search || filterCat !== 'all' || filterPartner !== 'all') && (
+                <div className="flex items-center gap-3 mb-6 px-6 py-3 bg-[#0A0A0A] border border-[#151515] rounded-2xl">
+                    <GripVertical size={14} className="text-[#444]" />
+                    <span className="text-[10px] uppercase tracking-[0.3em] text-[#555] font-black">Clear filters to enable drag-to-reorder</span>
+                </div>
+            )}
+
             {/* Content Container */}
             <div className="bg-[#0A0A0A] border border-[#151515] rounded-3xl overflow-hidden">
                 {loading ? (
@@ -505,6 +705,7 @@ export default function RewardManager() {
                         <table className="w-full text-left border-collapse">
                             <thead>
                                 <tr className="bg-[#050505] border-b border-[#151515]">
+                                    <th className="w-10 pl-6 py-8" />
                                     {['Reward / Asset', 'Partner Node', 'Cost / Value', 'Inventory', 'Status', ''].map(h => (
                                         <th key={h} className={`px-12 py-8 text-[10px] font-black uppercase tracking-[0.5em] text-[#777] ${h === '' ? 'text-right' : ''}`}>{h}</th>
                                     ))}
@@ -513,7 +714,7 @@ export default function RewardManager() {
                             <tbody className="divide-y divide-[#111]">
                                 {filtered.length === 0 ? (
                                     <tr>
-                                        <td colSpan={6} className="px-12 py-32 text-center">
+                                        <td colSpan={7} className="px-12 py-32 text-center">
                                             <div className="flex flex-col items-center gap-6">
                                                 <div className="w-20 h-20 rounded-3xl bg-[#050505] border border-[#151515] flex items-center justify-center">
                                                     <Ticket size={32} className="text-[#CCC]" />
@@ -523,7 +724,22 @@ export default function RewardManager() {
                                         </td>
                                     </tr>
                                 ) : filtered.map(reward => (
-                                    <tr key={reward.id} className="group hover:bg-[#080808] transition-all">
+                                    <tr
+                                        key={reward.id}
+                                        draggable={isDragEnabled}
+                                        onDragStart={isDragEnabled ? (e) => handleDragStart(e, reward.id) : undefined}
+                                        onDragOver={isDragEnabled ? (e) => handleDragOver(e, reward.id) : undefined}
+                                        onDrop={isDragEnabled ? (e) => handleDrop(e, reward.id) : undefined}
+                                        onDragEnd={isDragEnabled ? handleDragEnd : undefined}
+                                        className={`group transition-all ${
+                                            dragId === reward.id ? 'opacity-40' :
+                                            dragOverId === reward.id ? 'bg-[#E8D200]/5 border-t-2 border-t-[#E8D200]/30' :
+                                            'hover:bg-[#080808]'
+                                        }`}
+                                    >
+                                        <td className={`pl-6 py-10 ${isDragEnabled ? 'cursor-grab active:cursor-grabbing' : ''}`}>
+                                            <GripVertical size={16} className={isDragEnabled ? 'text-[#333] group-hover:text-[#666] transition-colors' : 'text-[#1a1a1a]'} />
+                                        </td>
                                         <td className="px-12 py-10">
                                             <div className="flex items-center gap-8">
                                                 <div className="w-14 h-14 rounded-3xl bg-[#050505] border border-[#151515] flex items-center justify-center shrink-0 group-hover:border-[#E8D200]/20 transition-all shadow-2xl overflow-hidden">

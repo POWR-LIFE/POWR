@@ -88,6 +88,7 @@ export default function UserProfile() {
     const [pointsSearchFilter, setPointsSearchFilter] = useState('');
 
     const [preferredGym, setPreferredGym] = useState(null);
+    const [userEmail, setUserEmail] = useState(null);
 
     const filteredSessions = sessions.filter(s => {
         let match = true;
@@ -434,6 +435,10 @@ export default function UserProfile() {
             setRedemptions(r.data || []);
             setHealthSnapshots(hs.data || []);
 
+            // Fetch email (lives in auth.users, not profiles)
+            const { data: emailData } = await supabase.rpc('admin_get_user_email', { p_user_id: userId });
+            setUserEmail(emailData || null);
+
             // Load preferred gym name if set
             if (p.data.preferred_gym_id) {
                 const { data: gymData } = await supabase
@@ -514,7 +519,7 @@ export default function UserProfile() {
                     </label>
                     <div className="flex-1 min-w-0">
                         <h1 className="text-5xl font-light tracking-tighter text-[#F2F2F2] mb-2 truncate">
-                            {profile.display_name || profile.username || 'Anonymous Node'}
+                            {profile.display_name || profile.username || userEmail?.split('@')[0] || 'Anonymous Node'}
                         </h1>
                         <div className="flex items-center flex-wrap gap-3">
                             <span className="px-3 py-1 rounded-full bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.2em]">LVL {profile.level || 1}</span>

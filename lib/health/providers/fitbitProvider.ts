@@ -247,7 +247,7 @@ export function createFitbitProvider(): HealthProvider {
                     prompt: 'login consent',
                 }).toString();
 
-            await WebBrowser.openBrowserAsync(authUrl);
+            await WebBrowser.openAuthSessionAsync(authUrl, REDIRECT_URI);
             // Handoff to /fitbit-callback — that route calls completeFitbitAuth()
             // and is the sole writer of connected state on the profile.
             return 'pending';

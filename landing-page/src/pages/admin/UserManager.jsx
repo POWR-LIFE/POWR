@@ -46,12 +46,9 @@ export default function UserManager() {
         try {
             const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
-            // Fetch users and active-today count in parallel
+            // Fetch users (with email via admin RPC) and active-today count in parallel
             const [profilesRes, activeRes] = await Promise.all([
-                supabase
-                    .from('profiles')
-                    .select('*')
-                    .order('created_at', { ascending: false }),
+                supabase.rpc('admin_get_users'),
                 supabase
                     .from('activity_sessions')
                     .select('user_id', { count: 'exact', head: false })
@@ -86,7 +83,8 @@ export default function UserManager() {
     const filtered = users.filter(u => 
         !search || 
         (u.display_name?.toLowerCase().includes(search.toLowerCase())) ||
-        (u.username?.toLowerCase().includes(search.toLowerCase()))
+        (u.username?.toLowerCase().includes(search.toLowerCase())) ||
+        (u.email?.toLowerCase().includes(search.toLowerCase()))
     );
 
     useEffect(() => { fetchUsers(); }, []);
@@ -276,10 +274,10 @@ export default function UserManager() {
                                                 </div>
                                                 <div>
                                                     <span className="text-base font-bold text-[#DDD] group-hover:text-[#F2F2F2] transition-colors block mb-1">
-                                                        {user.display_name || user.username || 'Anonymous Node'}
+                                                        {user.display_name || user.username || user.email?.split('@')[0] || 'Anonymous Node'}
                                                     </span>
                                                     <span className="text-[10px] uppercase tracking-[0.4em] text-[#999] font-black">
-                                                        @{user.username || 'unidentified'}
+                                                        {user.username ? `@${user.username}` : user.email || 'unidentified'}
                                                     </span>
                                                 </div>
                                             </div>

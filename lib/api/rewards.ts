@@ -72,6 +72,7 @@ export async function fetchRewards(): Promise<Reward[]> {
     .from('rewards')
     .select('id, partner_id, title, description, powr_cost, category, integration_type, code_expiry_days, active, offer, hero_image_url, brand_color, url, partner_blurb, value_label, image_url, promo_code, discount_type, discount_value, brand_name, partners(id, name, partner_code, logo_url, category, checkout_url_template)')
     .eq('active', true)
+    .order('sort_order', { ascending: true })
     .order('powr_cost', { ascending: true });
   if (error) throw error;
   return (data ?? []).map((r: any) => ({

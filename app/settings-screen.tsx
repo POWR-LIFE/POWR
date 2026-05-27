@@ -185,6 +185,11 @@ export default function SettingsScreen() {
         <SectionLabel label="Points" />
         <View style={styles.card}>
           <RowLink
+            icon="add-circle-outline"
+            label="Log Activity Manually"
+            onPress={() => router.push('/manual-log')}
+          />
+          <RowLink
             icon="receipt-outline"
             label="Points History"
             onPress={() => router.push('/points-ledger')}

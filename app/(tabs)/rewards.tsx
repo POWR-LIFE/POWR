@@ -187,7 +187,8 @@ export default function SpendScreen() {
   useFocusEffect(
     useCallback(() => {
       refreshPoints();
-    }, [refreshPoints])
+      loadRewards();
+    }, [refreshPoints, loadRewards])
   );
 
   const [refreshing, setRefreshing] = useState(false);
@@ -204,10 +205,7 @@ export default function SpendScreen() {
     ? rewards
     : rewards.filter((r) => r.category === activeCategory);
 
-  const sorted = [...filtered].sort((a, b) => {
-    const order = { can: 0, close: 1, locked: 2 };
-    return order[affordability(balance, a.pts)] - order[affordability(balance, b.pts)];
-  });
+  const sorted = filtered;
 
   const featuredAfford = featuredReward ? affordability(balance, featuredReward.powr_cost) : 'locked';
   const showKeepMovingUnlock = activeCategory === 'MIND' || activeCategory === 'SLEEP';
@@ -514,24 +512,28 @@ function RewardCard({ reward, afford, balance, expanded, isRedeemed, onToggle, o
 
         </View>
 
-        {!expanded && reward.value && (
-          <View style={[
-            styles.rewardValueBadge,
-            { borderColor: brand + '55', backgroundColor: brand + '12' },
-            afford === 'close' && { opacity: progress },
-            afford === 'locked' && { opacity: 1 },
-          ]}>
-            <Text style={[styles.rewardValueBadgeText, { color: brand }]}>{reward.value}</Text>
-          </View>
+        {!expanded && (
+          isRedeemed ? (
+            <View style={[styles.rewardValueBadge, { borderColor: 'rgba(74,222,128,0.35)', backgroundColor: 'rgba(74,222,128,0.1)' }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <Ionicons name="checkmark" size={11} color="#4ade80" />
+                <Text style={[styles.rewardValueBadgeText, { color: '#4ade80' }]}>Active</Text>
+              </View>
+            </View>
+          ) : reward.value ? (
+            <View style={[
+              styles.rewardValueBadge,
+              { borderColor: brand + '55', backgroundColor: brand + '12' },
+              afford === 'close' && { opacity: progress },
+              afford === 'locked' && { opacity: 1 },
+            ]}>
+              <Text style={[styles.rewardValueBadgeText, { color: brand }]}>{reward.value}</Text>
+            </View>
+          ) : null
         )}
 
         <View style={styles.rewardRight}>
-          {isRedeemed ? (
-            <View style={styles.redeemedBadge}>
-              <Ionicons name="checkmark" size={11} color="#4ade80" />
-              <Text style={styles.redeemedBadgeText}>Redeemed</Text>
-            </View>
-          ) : (
+          {!isRedeemed && (
             <>
               <Text style={[styles.rewardPts, isLocked && styles.rewardPtsLocked]}>
                 {reward.pts}
@@ -601,7 +603,7 @@ function RewardCard({ reward, afford, balance, expanded, isRedeemed, onToggle, o
             </Pressable>
           ) : null}
 
-          {afford !== 'can' && (
+          {!isRedeemed && afford !== 'can' && (
             <View style={styles.lockedBlock}>
               <Ionicons name="lock-closed" size={10} color={MUTED} />
               <Text style={styles.lockedText}>

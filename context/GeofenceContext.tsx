@@ -349,6 +349,7 @@ TaskManager.defineTask(GEOFENCE_TASK_NAME, async ({ data, error }) => {
           .select('id', { count: 'exact', head: true })
           .eq('user_id', user.id)
           .eq('type', 'gym')
+          .eq('verification', 'geofence')
           .gte('started_at', today.toISOString());
         if ((count ?? 0) > 0) {
           console.log('[Geofence] Gym session already logged today — clearing active state.');
@@ -560,6 +561,7 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
                 .select('id', { count: 'exact', head: true })
                 .eq('user_id', user.id)
                 .eq('type', 'gym')
+                .eq('verification', 'geofence')
                 .gte('started_at', today.toISOString());
               gymLoggedToday = (count ?? 0) > 0;
             }
@@ -890,6 +892,7 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
                 .select('id', { count: 'exact', head: true })
                 .eq('user_id', user.id)
                 .eq('type', 'gym')
+                .eq('verification', 'geofence')
                 .gte('started_at', today.toISOString());
               gymLoggedToday = (count ?? 0) > 0;
             }

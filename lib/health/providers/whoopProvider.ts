@@ -296,6 +296,78 @@ const SPORT_NAMES: Record<number, string> = {
     272: 'Public Speaking',
 };
 
+// ── Whoop sport ID → POWR canonical activity type ────────────────────────────
+// Used by verifyWorkout and mapWorkout so POWR types are matched correctly
+// rather than relying on substring matching against sport display names.
+const SPORT_TO_POWR: Record<number, string> = {
+    // Running
+    0:   'running',
+    49:  'running', // Duathlon Running
+    62:  'running', // Triathlon Running
+    253: 'running', // Stroller Jogging
+    // Cycling
+    1:   'cycling',
+    57:  'cycling', // Mountain Biking
+    97:  'cycling', // Spin
+    126: 'cycling', // Assault Bike
+    // Walking
+    63:  'walking',
+    52:  'walking', // Hiking
+    89:  'walking', // Commuting
+    252: 'walking', // Stroller Walking
+    254: 'walking', // Toddlerwearing Walking
+    255: 'walking', // Babywearing Walking
+    266: 'walking', // Dog Walking
+    // Swimming
+    33:  'swimming',
+    73:  'swimming', // Diving
+    // Gym / strength / machines
+    45:  'gym',     // Weightlifting
+    59:  'gym',     // Powerlifting
+    65:  'gym',     // Elliptical
+    66:  'gym',     // Stairmaster
+    123: 'gym',     // Strength Trainer
+    128: 'gym',     // Stretching
+    // HIIT / high-intensity
+    48:  'hiit',    // CrossFit
+    84:  'hiit',    // Jumping Rope HIIT
+    94:  'hiit',    // Obstacle Course HIIT
+    96:  'hiit',    // HIIT
+    248: 'hiit',    // F45 Training
+    250: 'hiit',    // Barry's HIIT
+    // Yoga / mindfulness / pilates
+    43:  'yoga',    // Pilates
+    44:  'yoga',
+    70:  'yoga',    // Meditation
+    259: 'yoga',    // Hot Yoga
+    // Dance
+    42:  'dance',
+    107: 'dance',   // Barre
+    108: 'dance',   // Stage Performance
+    258: 'dance',   // Barre3
+    263: 'dance',   // Musical Performance
+};
+
+function whoopSportToPOWR(sportId: number): string {
+    if (sportId in SPORT_TO_POWR) return SPORT_TO_POWR[sportId];
+    const name = (SPORT_NAMES[sportId] ?? '').toLowerCase();
+    // Fallback name-based heuristics for unmapped IDs
+    if (name.includes('run') || name.includes('jog')) return 'running';
+    if (name.includes('cycl') || name.includes('biking') || name.includes('spin')) return 'cycling';
+    if (name.includes('swim')) return 'swimming';
+    if (name.includes('walk') || name.includes('hik')) return 'walking';
+    if (name.includes('dance') || name.includes('barre')) return 'dance';
+    if (name.includes('yoga') || name.includes('pilates')) return 'yoga';
+    if (name.includes('hiit') || name.includes('crossfit') || name.includes('f45')) return 'hiit';
+    if (name.includes('sport') || name.includes('tennis') || name.includes('soccer')
+        || name.includes('basketball') || name.includes('football') || name.includes('boxing')
+        || name.includes('martial') || name.includes('rugby') || name.includes('golf')
+        || name.includes('ski') || name.includes('snowboard') || name.includes('climb')
+        || name.includes('kayak') || name.includes('surf') || name.includes('gymnastics')) return 'sports';
+    // Default: treat any unrecognised wrist-based workout as gym
+    return 'gym';
+}
+
 // ── Mappers ──────────────────────────────────────────────────────────────────
 
 function mapWorkout(w: any): HealthActivity {
@@ -408,7 +480,7 @@ export function createWhoopProvider(): HealthProvider {
                     state,
                 }).toString();
 
-            await WebBrowser.openBrowserAsync(authUrl);
+            await WebBrowser.openAuthSessionAsync(authUrl, REDIRECT_URI);
             // Handoff to /whoop-callback — that route calls completeWhoopAuth()
             // and is the sole writer of connected state on the profile.
             return 'pending';
@@ -428,8 +500,10 @@ export function createWhoopProvider(): HealthProvider {
             const data = await whoopGet<{ records: any[] }>(
                 `/activity/workout?start=${encodeURIComponent(isoStart(today))}&end=${encodeURIComponent(isoEnd(today))}`,
             );
+            // Accept SCORED and PENDING_SCORE — a workout that was just completed
+            // may still be processing. We still have start/end times to work with.
             return (data.records ?? [])
-                .filter((w: any) => w.score_state === 'SCORED')
+                .filter((w: any) => (w.score_state === 'SCORED' || w.score_state === 'PENDING_SCORE') && w.start)
                 .map(mapWorkout);
         },
 
@@ -515,7 +589,7 @@ export function createWhoopProvider(): HealthProvider {
                 const inDay = (ts: string) => ts >= dayStart && ts <= dayEnd;
 
                 const dayWorkouts = (workouts.records ?? [])
-                    .filter((w: any) => w.score_state === 'SCORED' && w.start && inDay(w.start))
+                    .filter((w: any) => (w.score_state === 'SCORED' || w.score_state === 'PENDING_SCORE') && w.start && inDay(w.start))
                     .map(mapWorkout);
 
                 const daySleep = (sleeps.records ?? [])
@@ -562,15 +636,18 @@ export function createWhoopProvider(): HealthProvider {
             const data = await whoopGet<{ records: any[] }>(
                 `/activity/workout?start=${encodeURIComponent(isoStart(today))}&end=${encodeURIComponent(isoEnd(today))}`,
             );
+            // Accept SCORED and PENDING_SCORE — a recently-completed workout may
+            // not yet have a final score, but we can still verify the activity type
+            // and duration from the start/end timestamps.
+            // Use the sport→POWR mapping for matching (not substring search) so
+            // that e.g. "gym" correctly matches "Weightlifting" (sport_id 45).
             const match = (data.records ?? [])
-                .filter((w: any) => w.score_state === 'SCORED')
+                .filter((w: any) => (w.score_state === 'SCORED' || w.score_state === 'PENDING_SCORE') && w.start && w.end)
                 .find((w: any) => {
-                    const name = (SPORT_NAMES[w.sport_id] ?? '').toLowerCase();
-                    const dMs = w.end && w.start
-                        ? new Date(w.end).getTime() - new Date(w.start).getTime()
-                        : 0;
+                    const powrType = whoopSportToPOWR(w.sport_id);
+                    const dMs = new Date(w.end).getTime() - new Date(w.start).getTime();
                     const dMin = dMs / 60_000;
-                    return name.includes(activityType.toLowerCase()) && dMin >= durationMinutes * 0.8;
+                    return powrType === activityType && dMin >= durationMinutes * 0.8;
                 });
             if (match) {
                 const dur = Math.round(
