@@ -1,8 +1,8 @@
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  NativeScrollEvent,
-  NativeSyntheticEvent,
+    NativeScrollEvent,
+    NativeSyntheticEvent,
     Pressable,
     ScrollView,
     StyleSheet,

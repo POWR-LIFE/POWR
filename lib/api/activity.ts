@@ -116,11 +116,38 @@ export type ManualSessionParams = {
     healthVerified?: boolean;
 };
 
+/** Max unverified manual logs allowed per calendar week (Mon–Sun). */
+const WEEKLY_MANUAL_CAP = 3;
+
 export async function logManualSession(params: ManualSessionParams): Promise<boolean> {
     const ended_at = new Date().toISOString();
     const verification = params.healthVerified ? 'wearable' : 'manual';
     const trust_score = params.healthVerified ? 0.85 : 0.55;
     const device_id = await getDeviceId();
+
+    // Anti-abuse: cap unverified manual logs at WEEKLY_MANUAL_CAP per week.
+    // Health-verified logs (wearable) are exempt — they have real sensor backing.
+    if (!params.healthVerified) {
+        const now = new Date();
+        const dayOfWeek = now.getDay();
+        const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+        const monday = new Date(now);
+        monday.setDate(now.getDate() + mondayOffset);
+        monday.setHours(0, 0, 0, 0);
+
+        const { count, error: countError } = await supabase
+            .from('activity_sessions')
+            .select('id', { count: 'exact', head: true })
+            .eq('verification', 'manual')
+            .gte('started_at', monday.toISOString());
+
+        if (!countError && (count ?? 0) >= WEEKLY_MANUAL_CAP) {
+            throw new Error(
+                `You've reached the ${WEEKLY_MANUAL_CAP} manual log limit for this week. ` +
+                'Connect a health provider to keep logging sessions.',
+            );
+        }
+    }
 
     const { data: session, error: sessionError } = await supabase
         .from('activity_sessions')

@@ -128,13 +128,22 @@ Deno.serve(async (req) => {
   // 1. Fetch the session — verify it belongs to this user
   const { data: session, error: sessionError } = await supabase
     .from('activity_sessions')
-    .select('id, user_id, type, started_at, ended_at, duration_sec, distance_m, steps')
+    .select('id, user_id, type, started_at, ended_at, duration_sec, distance_m, steps, verification')
     .eq('id', session_id)
     .eq('user_id', user.id)
     .single();
 
   if (sessionError || !session) {
     return new Response(JSON.stringify({ error: 'Session not found' }), { status: 404 });
+  }
+
+  // Manual sessions are not eligible for weekly challenge bonuses — they have no
+  // sensor-backed verification so awarding a 3× multiplier would be abusable.
+  if (session.verification === 'manual') {
+    return new Response(
+      JSON.stringify({ error: 'Manual sessions are not eligible for weekly challenge bonuses. Connect a health provider to qualify.' }),
+      { status: 422 },
+    );
   }
 
   // 2. Check the session started before 12:00 PM in the user's local time
