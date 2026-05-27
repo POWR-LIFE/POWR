@@ -11,7 +11,7 @@ module.exports = {
           'POWR reads your steps and workouts to verify your activity and award full points.',
         NSHealthUpdateUsageDescription:
           'POWR needs health access to verify your workouts.',
-        UIBackgroundModes: ['fetch'],
+        UIBackgroundModes: ['fetch', 'remote-notification'],
       },
       entitlements: {
         ...expo.ios?.entitlements,

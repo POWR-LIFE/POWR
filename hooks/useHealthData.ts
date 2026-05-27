@@ -112,20 +112,58 @@ async function iosGetStepsToday(): Promise<number> {
     }
 }
 
-// Maps HKWorkoutActivityType numeric values to POWR activity type strings
+// Maps HKWorkoutActivityType numeric values to POWR activity type strings.
+// Full enum: https://developer.apple.com/documentation/healthkit/hkworkoutactivitytype
 const HK_WORKOUT_TYPE_MAP: Record<number, string> = {
+    6:  'sports',          // basketball
+    8:  'sports',          // boxing
+    9:  'gym',             // climbing
+    11: 'gym',             // crossTraining
     13: 'cycling',
-    16: 'cycling',         // elliptical → cycling (closest cardio)
+    14: 'dance',           // dance
+    16: 'gym',             // elliptical
+    18: 'sports',          // fencing
     20: 'gym',             // functionalStrengthTraining
+    22: 'sports',          // gymnastics
+    23: 'sports',          // handball
+    24: 'walking',         // hiking
+    28: 'sports',          // martialArts
+    29: 'yoga',            // mindAndBody
+    30: 'hiit',            // mixedMetabolicCardioTraining
+    34: 'sports',          // racquetball
+    35: 'gym',             // rowing
     37: 'running',
+    39: 'sports',          // skatingSports
     41: 'sports',          // soccer
+    43: 'sports',          // squash
+    44: 'gym',             // stairClimbing
+    45: 'sports',          // surfingSports
     46: 'swimming',
+    47: 'sports',          // tableTennis
     48: 'sports',          // tennis
+    49: 'running',         // trackAndField
     50: 'gym',             // traditionalStrengthTraining
+    51: 'sports',          // volleyball
     52: 'walking',
+    53: 'swimming',        // waterFitness
     57: 'yoga',
+    58: 'yoga',            // barre
+    59: 'gym',             // coreTraining
+    60: 'sports',          // crossCountrySkiing
+    61: 'sports',          // downhillSkiing
     63: 'hiit',            // highIntensityIntervalTraining
+    64: 'hiit',            // jumpRope
+    65: 'hiit',            // kickboxing
     66: 'yoga',            // pilates
+    67: 'sports',          // snowboarding
+    68: 'gym',             // stairs
+    69: 'gym',             // stepTraining
+    72: 'yoga',            // taiChi
+    73: 'hiit',            // mixedCardio
+    74: 'cycling',         // handCycling
+    77: 'dance',           // cardioDance (iOS 14+)
+    78: 'dance',           // socialDance (iOS 14+)
+    79: 'sports',          // pickleball (iOS 16+)
 };
 
 async function iosGetActivitiesToday(): Promise<HealthActivity[]> {
@@ -302,6 +340,7 @@ export async function androidRequestPermissions(): Promise<boolean> {
         const granted: unknown[] = await requestPermission([
             { accessType: 'read', recordType: 'Steps' },
             { accessType: 'read', recordType: 'ExerciseSession' },
+            { accessType: 'read', recordType: 'SleepSession' },
             { accessType: 'read', recordType: 'HeartRate' },
             { accessType: 'read', recordType: 'ActiveCaloriesBurned' },
             { accessType: 'read', recordType: 'TotalCaloriesBurned' },
@@ -351,6 +390,7 @@ async function androidGetStepsToday(): Promise<number> {
 // Health Connect ExerciseType numeric constants
 // See: https://developer.android.com/reference/kotlin/androidx/health/connect/client/records/ExerciseSessionRecord
 const HC_EXERCISE_TYPE: Record<number, string> = {
+    2:  'dancing',         // EXERCISE_TYPE_DANCING
     8:  'biking',          // EXERCISE_TYPE_BIKING
     9:  'biking_stationary',
     11: 'boot_camp',

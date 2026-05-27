@@ -305,27 +305,6 @@ TaskManager.defineTask(GEOFENCE_TASK_NAME, async ({ data, error }) => {
       return;
     }
 
-    // One gym session per day — skip if already completed (bypassed for dev test accounts)
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user && !DEV_TEST_EMAILS.has(user.email ?? '')) {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const { count } = await supabase
-          .from('activity_sessions')
-          .select('id', { count: 'exact', head: true })
-          .eq('user_id', user.id)
-          .eq('type', 'gym')
-          .gte('started_at', today.toISOString());
-        if ((count ?? 0) > 0) {
-          console.log('[Geofence] Gym session already logged today — entry ignored.');
-          return;
-        }
-      }
-    } catch {
-      // Non-fatal — proceed with entry recording
-    }
-
     const regionId = region.identifier ?? '';
     const mapJson = await AsyncStorage.getItem(PARTNER_MAP_KEY);
     const partnerMap: Record<string, { name: string; dbId: string }> = mapJson ? JSON.parse(mapJson) : {};
@@ -334,6 +313,9 @@ TaskManager.defineTask(GEOFENCE_TASK_NAME, async ({ data, error }) => {
     // Use the raw DB UUID — regionId is the composite "uuid-idx" UI key which is not a valid UUID
     const dbPartnerId = mapEntry?.dbId ?? regionId;
 
+    // Write entry state and fire the notification BEFORE any network I/O.
+    // iOS background tasks have a tight execution window; network calls can be killed
+    // before the notification is reached if they run first.
     await AsyncStorage.setItem(
       ACTIVE_GEOFENCE_KEY,
       JSON.stringify({
@@ -352,6 +334,30 @@ TaskManager.defineTask(GEOFENCE_TASK_NAME, async ({ data, error }) => {
       await notifyCheckInAvailable(partnerName, regionId);
     } catch (err) {
       console.warn('[Geofence] Entry notification failed:', err);
+    }
+
+    // One gym session per day — check AFTER writing active state + firing notification.
+    // If already logged today, clean up the state we just set (best-effort: the
+    // entry notification may already have been delivered, which is acceptable).
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user && !DEV_TEST_EMAILS.has(user.email ?? '')) {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const { count } = await supabase
+          .from('activity_sessions')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', user.id)
+          .eq('type', 'gym')
+          .gte('started_at', today.toISOString());
+        if ((count ?? 0) > 0) {
+          console.log('[Geofence] Gym session already logged today — clearing active state.');
+          await AsyncStorage.removeItem(ACTIVE_GEOFENCE_KEY);
+          return;
+        }
+      }
+    } catch {
+      // Non-fatal — active state already written, proceed
     }
 
   } else if (eventType === Location.GeofencingEventType.Exit) {
@@ -385,10 +391,26 @@ TaskManager.defineTask(GEOFENCE_TASK_NAME, async ({ data, error }) => {
       return;
     }
 
+    // Schedule a safety-net notification with a short DATE trigger BEFORE the
+    // network-heavy recordDwellSession call. Scheduled notifications survive a
+    // background-task kill, so this guarantees the user sees feedback even if iOS
+    // terminates the JS runtime before recordDwellSession completes.
+    // If the session is successfully claimed in time, the safety-net is cancelled
+    // and replaced with the full notification (including points earned).
+    try {
+      const { notifyGymExited } = await import('@/lib/notifications');
+      await notifyGymExited(activeGeofence.partnerName);
+    } catch (err) {
+      console.warn('[Geofence] Safety-net exit notification failed:', err);
+    }
+
     const { outcome: exitOutcome, sessionId: exitSessionId, earned: exitEarned, currentStreak: exitStreak } = await recordDwellSession(activeGeofence);
     if (exitOutcome === 'claimed' && exitSessionId) {
       try {
-        const { notifySessionCompleted } = await import('@/lib/notifications');
+        const { notifySessionCompleted, cancelNotificationsOfType } = await import('@/lib/notifications');
+        // Cancel the safety-net (still pending in the scheduler) and fire the
+        // richer notification now that we know the exact points earned.
+        await cancelNotificationsOfType('session_completed');
         await notifySessionCompleted(activeGeofence.partnerName, exitSessionId, exitEarned, exitStreak);
       } catch (err) {
         console.warn('[Geofence] Exit notification failed:', err);

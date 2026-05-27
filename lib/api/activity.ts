@@ -211,6 +211,11 @@ function todayMidnight(): string {
     return d.toISOString();
 }
 
+/** Returns a YYYY-MM-DD string in the device's local timezone. */
+function localDateStr(d: Date): string {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 /** Returns the health-auto-synced walking session for today, if it exists. */
 export async function getTodayHealthWalkingSession(): Promise<HealthWalkingSession | null> {
     const { data } = await supabase
@@ -426,7 +431,7 @@ export async function fetchRecentWalkingHistory(days = 5): Promise<DailyWalkingH
 
     const byDate = new Map<string, { steps: number; points: number }>();
     for (const s of (data ?? []) as Array<{ started_at: string; steps: number | null; point_transactions: { amount: number }[] }>) {
-        const dateKey = new Date(s.started_at).toISOString().split('T')[0];
+        const dateKey = localDateStr(new Date(s.started_at));
         const pts = (s.point_transactions ?? []).reduce((sum, t) => sum + t.amount, 0);
         const existing = byDate.get(dateKey);
         if (existing) {
@@ -441,7 +446,7 @@ export async function fetchRecentWalkingHistory(days = 5): Promise<DailyWalkingH
     for (let i = days; i >= 1; i--) {
         const d = new Date();
         d.setDate(d.getDate() - i);
-        const dateKey = d.toISOString().split('T')[0];
+        const dateKey = localDateStr(d);
         const val = byDate.get(dateKey);
         result.push({ date: dateKey, steps: val?.steps ?? 0, points: val?.points ?? 0 });
     }
@@ -509,7 +514,7 @@ export async function fetchRecentWorkoutHistory(type: ActivityType, days = 5): P
 
     const byDate = new Map<string, { sessions: number; durationMin: number; points: number }>();
     for (const s of (data ?? []) as Array<{ started_at: string; duration_sec: number | null; point_transactions: { amount: number }[] }>) {
-        const dateKey = new Date(s.started_at).toISOString().split('T')[0];
+        const dateKey = localDateStr(new Date(s.started_at));
         const pts = (s.point_transactions ?? []).reduce((sum, t) => sum + t.amount, 0);
         const durMin = Math.round((s.duration_sec ?? 0) / 60);
         const existing = byDate.get(dateKey);
@@ -526,7 +531,7 @@ export async function fetchRecentWorkoutHistory(type: ActivityType, days = 5): P
     for (let i = days; i >= 0; i--) {
         const d = new Date();
         d.setDate(d.getDate() - i);
-        const dateKey = d.toISOString().split('T')[0];
+        const dateKey = localDateStr(d);
         const val = byDate.get(dateKey);
         result.push({
             date: dateKey,
@@ -568,7 +573,7 @@ export async function fetchRecentSleepHistory(days = 5): Promise<DailySleepHisto
 
     const byDate = new Map<string, number>();
     for (const s of (data ?? []) as Array<{ started_at: string; duration_sec: number | null }>) {
-        const dateKey = new Date(s.started_at).toISOString().split('T')[0];
+        const dateKey = localDateStr(new Date(s.started_at));
         byDate.set(dateKey, (byDate.get(dateKey) ?? 0) + ((s.duration_sec ?? 0) / 3600));
     }
 
@@ -576,7 +581,7 @@ export async function fetchRecentSleepHistory(days = 5): Promise<DailySleepHisto
     for (let i = days; i >= 1; i--) {
         const d = new Date();
         d.setDate(d.getDate() - i);
-        const dateKey = d.toISOString().split('T')[0];
+        const dateKey = localDateStr(d);
         result.push({ date: dateKey, hours: byDate.get(dateKey) ?? 0 });
     }
     return result;

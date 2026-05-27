@@ -14,6 +14,7 @@ export type Profile = {
     show_on_leaderboard: boolean;
     activity_preferences: string[];
     referral_code: string | null;
+    preferred_gym_id: string | null;
 };
 
 export type PublicProfile = Pick<Profile,
@@ -26,7 +27,7 @@ export async function fetchProfile(): Promise<Profile | null> {
 
     const { data, error } = await supabase
         .from('profiles')
-        .select('id, username, display_name, avatar_url, cover_url, bio, level, is_pro, show_on_leaderboard, activity_preferences, referral_code')
+        .select('id, username, display_name, avatar_url, cover_url, bio, level, is_pro, show_on_leaderboard, activity_preferences, referral_code, preferred_gym_id')
         .eq('id', user.id)
         .single();
     if (error) return null;
@@ -59,6 +60,16 @@ export async function updateProProfile(
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return { error: 'Not authenticated' };
     const { error } = await supabase.from('profiles').update(fields).eq('id', user.id);
+    return { error: error?.message ?? null };
+}
+
+export async function setPreferredGym(gymId: string | null): Promise<{ error: string | null }> {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { error: 'Not authenticated' };
+    const { error } = await supabase
+        .from('profiles')
+        .update({ preferred_gym_id: gymId })
+        .eq('id', user.id);
     return { error: error?.message ?? null };
 }
 

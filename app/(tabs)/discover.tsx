@@ -3,7 +3,6 @@ import * as Location from 'expo-location';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Image as RNImage,
   KeyboardAvoidingView,
   LayoutAnimation,
   Linking,
@@ -170,6 +169,8 @@ export default function DiscoverScreen() {
 
   const [trainers, setTrainers] = useState<Trainer[]>([]);
   const [expandedTrainerId, setExpandedTrainerId] = useState<string | null>(null);
+  const [preferredGymId, setPreferredGymId] = useState<string | null>(null);
+  const [savingPreferred, setSavingPreferred] = useState(false);
 
   const { partners: rawPartners, refresh: refreshPartners } = useGeofenceContext();
   const { activeGeofence } = useActiveGeofence();
@@ -183,6 +184,34 @@ export default function DiscoverScreen() {
       setRefreshing(false);
     }
   }, [refreshPartners]);
+
+  // Load user's preferred gym
+  useEffect(() => {
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data } = await supabase
+        .from('profiles')
+        .select('preferred_gym_id')
+        .eq('id', user.id)
+        .single();
+      if (data) setPreferredGymId(data.preferred_gym_id ?? null);
+    })();
+  }, []);
+
+  const handleTogglePreferred = useCallback(async (partner: Partner) => {
+    if (savingPreferred) return;
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    const newValue = preferredGymId === partner.dbId ? null : partner.dbId;
+    setSavingPreferred(true);
+    const { error } = await supabase
+      .from('profiles')
+      .update({ preferred_gym_id: newValue })
+      .eq('id', user.id);
+    if (!error) setPreferredGymId(newValue);
+    setSavingPreferred(false);
+  }, [preferredGymId, savingPreferred]);
 
   // Fetch trainers when a gym partner is selected
   useEffect(() => {
@@ -669,6 +698,8 @@ export default function DiscoverScreen() {
             key={partner.id}
             partner={partner}
             isActive={partner.dbId === activeGeofence?.partnerId}
+            isPreferred={partner.dbId === preferredGymId}
+            onStarPress={() => handleTogglePreferred(partner)}
             onPress={() => {
               setRoutePartner(null);
               setRouteSummary(null);
@@ -848,6 +879,27 @@ export default function DiscoverScreen() {
                       ))}
                     </View>
                   )}
+
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.preferredBtn,
+                      preferredGymId === selectedPartner.dbId && styles.preferredBtnActive,
+                      pressed && { opacity: 0.8 },
+                    ]}
+                    onPress={() => handleTogglePreferred(selectedPartner)}
+                  >
+                    <Ionicons
+                      name={preferredGymId === selectedPartner.dbId ? 'star' : 'star-outline'}
+                      size={16}
+                      color={preferredGymId === selectedPartner.dbId ? GOLD : DIM}
+                    />
+                    <Text style={[
+                      styles.preferredBtnText,
+                      preferredGymId === selectedPartner.dbId && { color: GOLD },
+                    ]}>
+                      {preferredGymId === selectedPartner.dbId ? 'Home Gym' : 'Set as Home Gym'}
+                    </Text>
+                  </Pressable>
 
                   <Pressable
                     style={({ pressed }) => [styles.actionButton, pressed && styles.actionButtonPressed]}
@@ -1143,29 +1195,30 @@ export default function DiscoverScreen() {
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 function MapMarker({ partner, isActive }: { partner: Partner; isActive: boolean }) {
-  const [snapshotReady, setSnapshotReady] = useState(false);
-
-  useEffect(() => {
-    const id = setTimeout(() => setSnapshotReady(true), 200);
-    return () => clearTimeout(id);
-  }, []);
+  const [imageReady, setImageReady] = useState(!partner.logoUrl);
 
   return (
     <Marker
       coordinate={{ latitude: partner.lat, longitude: partner.lng }}
       title={partner.name}
-      tracksViewChanges={!snapshotReady || isActive}
+      tracksViewChanges={!imageReady || isActive}
     >
-      <PartnerPin partner={partner} isActive={isActive} />
+      <PartnerPin partner={partner} isActive={isActive} onImageLoad={() => setImageReady(true)} />
     </Marker>
   );
 }
 
-function PartnerPin({ partner, isActive }: { partner: Partner; isActive?: boolean }) {
+function PartnerPin({ partner, isActive, onImageLoad }: { partner: Partner; isActive?: boolean; onImageLoad?: () => void }) {
   return (
     <View style={[styles.pinCircle, isActive && styles.pinCircleActive, { backgroundColor: partner.logoBg === 'white' ? '#FFFFFF' : partner.logoBg === 'black' ? '#000000' : '#1a1a1a' }]}>
       {partner.logoUrl ? (
-        <RNImage source={{ uri: partner.logoUrl }} style={styles.pinLogoImage} resizeMode="contain" />
+        <Image
+          source={{ uri: partner.logoUrl }}
+          style={styles.pinLogoImage}
+          contentFit="contain"
+          onLoad={onImageLoad}
+          onError={onImageLoad}
+        />
       ) : (
         <Text style={[styles.pinLogoFallback, partner.logoBg === 'white' && { color: '#000' }]} numberOfLines={1}>
           {partner.logoText.split('\n')[0]}
@@ -1176,9 +1229,9 @@ function PartnerPin({ partner, isActive }: { partner: Partner; isActive?: boolea
 }
 
 function PartnerListRow({
-  partner, isActive, onPress,
+  partner, isActive, isPreferred, onPress, onStarPress,
 }: {
-  partner: Partner; isActive?: boolean; onPress?: () => void;
+  partner: Partner; isActive?: boolean; isPreferred?: boolean; onPress?: () => void; onStarPress?: () => void;
 }) {
   return (
     <Pressable
@@ -1211,7 +1264,16 @@ function PartnerListRow({
       </View>
       <View style={styles.partnerRight}>
         <Text style={styles.partnerDistanceNum}>{partner.distance}</Text>
-        <Ionicons name="chevron-forward" size={14} color={DIM} style={{ marginTop: 2 }} />
+        <View style={styles.partnerRightIcons}>
+          <Pressable hitSlop={8} onPress={onStarPress} style={styles.starBtn}>
+            <Ionicons
+              name={isPreferred ? 'star' : 'star-outline'}
+              size={15}
+              color={isPreferred ? GOLD : DIM}
+            />
+          </Pressable>
+          <Ionicons name="chevron-forward" size={14} color={DIM} />
+        </View>
       </View>
     </Pressable>
   );
@@ -1531,7 +1593,7 @@ const styles = StyleSheet.create({
   },
   pinCircleLight: { backgroundColor: '#F2F2F2' },
   pinCircleActive: { borderColor: GOLD, borderWidth: 2.5 },
-  pinLogoImage: { width: '100%', height: '100%' },
+  pinLogoImage: { width: 26, height: 26 },
   pinLogoFallback: { fontSize: 8, fontWeight: '700', color: '#fff', textAlign: 'center' },
 
   scroll: { flex: 1 },
@@ -1606,6 +1668,15 @@ const styles = StyleSheet.create({
     marginTop: 3, letterSpacing: 0.3,
   },
   partnerRight: { alignItems: 'center', flexShrink: 0, minWidth: 52 },
+  partnerRightIcons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 4,
+  },
+  starBtn: {
+    padding: 2,
+  },
   partnerDistanceNum: {
     fontSize: 13, fontWeight: '400', color: TEXT, letterSpacing: -0.2,
   },
@@ -1845,6 +1916,17 @@ const styles = StyleSheet.create({
   },
   actionButtonPressed: { opacity: 0.8 },
   actionButtonText: { fontSize: 16, fontWeight: '600', color: '#0d0d0d' },
+
+  preferredBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 8, paddingVertical: 14, borderRadius: 14, borderWidth: 1,
+    borderColor: BORDER, marginTop: 8,
+  },
+  preferredBtnActive: {
+    borderColor: 'rgba(232,210,0,0.4)',
+    backgroundColor: 'rgba(232,210,0,0.06)',
+  },
+  preferredBtnText: { fontSize: 15, fontWeight: '400', color: DIM },
 
   // Sort sheet
   sortSheet: { backgroundColor: '#121212', borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 20, paddingTop: 12 },

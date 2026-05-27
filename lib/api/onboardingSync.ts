@@ -35,17 +35,25 @@ export type OnboardingSyncResult = {
 
 function mapHealthType(name: string): ActivityType | null {
     const n = name.toLowerCase();
-    if (n.includes('run')) return 'running';
-    if (n.includes('cycl') || n.includes('biking')) return 'cycling';
+    if (n.includes('run') || n.includes('jog')) return 'running';
+    if (n.includes('cycl') || n.includes('biking') || n.includes('spin')) return 'cycling';
     if (n.includes('swim')) return 'swimming';
-    if (n.includes('gym') || n.includes('weight') || n.includes('crossfit') || n.includes('calisthenics') || n.includes('strength')) return 'gym';
-    if (n.includes('hiit') || n.includes('boot_camp')) return 'hiit';
-    if (n.includes('yoga') || n.includes('pilates')) return 'yoga';
+    // Dance before gym to avoid 'dance' matching nothing (checked independently)
+    if (n.includes('danc') || n.includes('barre')) return 'dance';
+    if (n.includes('gym') || n.includes('weight') || n.includes('crossfit') || n.includes('calisthenics')
+        || n.includes('strength') || n.includes('elliptical') || n.includes('rowing')
+        || n.includes('stair') || n.includes('core')) return 'gym';
+    if (n.includes('hiit') || n.includes('boot_camp') || n.includes('bootcamp') || n.includes('circuit')) return 'hiit';
+    if (n.includes('yoga') || n.includes('pilates') || n.includes('tai')) return 'yoga';
     if (n.includes('sport') || n.includes('tennis') || n.includes('soccer') || n.includes('basketball')
         || n.includes('handball') || n.includes('volleyball') || n.includes('squash') || n.includes('racquetball')
-        || n.includes('fencing') || n.includes('martial')) return 'sports';
+        || n.includes('fencing') || n.includes('martial') || n.includes('boxing') || n.includes('kickbox')
+        || n.includes('rugby') || n.includes('football') || n.includes('baseball') || n.includes('softball')
+        || n.includes('hockey') || n.includes('cricket') || n.includes('lacrosse') || n.includes('golf')
+        || n.includes('pickleball') || n.includes('badminton') || n.includes('climbing') || n.includes('ski')
+        || n.includes('snowboard') || n.includes('skat') || n.includes('paddl') || n.includes('surf')
+        || n.includes('gymnastics')) return 'sports';
     if (n.includes('walk') || n.includes('hik')) return 'walking';
-    if (n.includes('danc')) return 'dance';
     return null;
 }
 

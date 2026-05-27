@@ -34,7 +34,7 @@ export const ALL_PROVIDER_META: HealthProviderMeta[] = [
         capabilities: ['steps', 'activities', 'sleep', 'heart-rate', 'calories'],
     },
     { id: 'whoop',  name: 'Whoop',  native: false, capabilities: ['activities', 'sleep', 'heart-rate', 'calories'] },
-    { id: 'garmin', name: 'Garmin', native: false, capabilities: ['steps', 'activities', 'heart-rate'] },
+    { id: 'garmin', name: 'Garmin', native: false, capabilities: ['steps', 'activities', 'heart-rate'], hidden: true },
     {
         id: 'samsung-health',
         name: 'Samsung Health',
