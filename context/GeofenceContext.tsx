@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { AppState, AppStateStatus } from 'react-native';
+import { AppState, AppStateStatus, Platform } from 'react-native';
 import { supabase } from '@/lib/supabase';
 
 // ─── Session-completed event bus ─────────────────────────────────────────────
@@ -825,13 +825,15 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
       await AsyncStorage.setItem(PARTNER_MAP_KEY, JSON.stringify(partnerMap));
 
       // iOS allows max 20 geofence regions; Android allows 100.
-      // Sort by distance from current position and monitor only the 50 nearest.
-      const MAX_REGIONS = 50;
-      const userPos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Low });
+      // iOS hard-limits to 20 monitored regions; Android allows 100.
+      // Sort by proximity so the nearest partners are always included.
+      const MAX_REGIONS = Platform.OS === 'ios' ? 20 : 50;
+      const userPos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Low }).catch(() => null);
       const nearby = [...partners]
-        .sort((a, b) =>
-          haversineMetres(userPos.coords.latitude, userPos.coords.longitude, a.lat, a.lng) -
-          haversineMetres(userPos.coords.latitude, userPos.coords.longitude, b.lat, b.lng)
+        .sort((a, b) => userPos
+          ? haversineMetres(userPos.coords.latitude, userPos.coords.longitude, a.lat, a.lng) -
+            haversineMetres(userPos.coords.latitude, userPos.coords.longitude, b.lat, b.lng)
+          : 0
         )
         .slice(0, MAX_REGIONS);
 
@@ -918,6 +920,10 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
                     }),
                   );
                   console.log(`[Geofence] Already inside "${partner.name}" — active state set.`);
+                  try {
+                    const { notifyCheckInAvailable } = await import('@/lib/notifications');
+                    await notifyCheckInAvailable(partner.name, partner.id);
+                  } catch { /* non-fatal */ }
                 }
               }
               break;
