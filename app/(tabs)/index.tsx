@@ -178,7 +178,7 @@ export default function HomeScreen() {
     const [activePrefs, setActivePrefs] = useState<ActivityType[]>(['gym', 'running', 'walking']);
     const [profileName, setProfileName] = useState<string | null>(null);
     const [refreshing, setRefreshing] = useState(false);
-    const { challenge: weeklyChallenge, completion: challengeCompletion } = useWeeklyChallenge(activePrefs);
+    const { challenge: weeklyChallenge, completion: challengeCompletion, sessionsCompleted: challengeSessionsCompleted } = useWeeklyChallenge(activePrefs);
     const [featuredReward, setFeaturedReward] = useState<Reward | null>(null);
 
     const loadFeaturedReward = useCallback(async () => {
@@ -561,8 +561,9 @@ export default function HomeScreen() {
                     urgency={computeUrgency(weeklyChallenge.expiresAt)}
                     powrRewardText={weeklyChallenge.powrRewardText}
                     completed={challengeCompletion ?? undefined}
-                    sessionsCompleted={challengeCompletion ? 1 : 0}
-                    sessionsRequired={weeklyChallenge.requiredSessions ?? 1}
+                    sessionsCompleted={challengeSessionsCompleted}
+                    sessionsRequired={weeklyChallenge.requiredSessions ?? 3}
+                    steps={weeklyChallenge.steps}
                 />
 
                 {featuredReward && (

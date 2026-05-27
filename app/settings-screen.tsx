@@ -206,7 +206,7 @@ export default function SettingsScreen() {
 
         {/* ── Health data sources ───────────────────────────── */}
         <SectionLabel label="On your phone" />
-        <Text style={styles.sectionHint}>Steps and workouts your phone tracks.</Text>
+        <Text style={styles.sectionHint}>Steps and workouts your phone tracks. Garmin and Samsung devices sync automatically.</Text>
         <HealthSourceCard
           rows={providers.rows.filter(r => r.meta.native)}
           providers={providers}

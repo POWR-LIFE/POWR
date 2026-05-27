@@ -35,7 +35,6 @@ const HEALTH_SOURCES: HealthSource[] = [
     { id: 'apple-health',    name: 'Apple Health',    color: '#FF3B30', native: true,  platforms: ['ios'] },
     { id: 'health-connect',  name: 'Health Connect',  color: '#4285F4', native: true,  platforms: ['android'] },
     { id: 'whoop',           name: 'Whoop',           color: '#44D62C' },
-    { id: 'garmin',          name: 'Garmin',          color: '#007DC3' },
     { id: 'fitbit',          name: 'Fitbit',          color: '#00B0B9' },
 ];
 
@@ -502,9 +501,14 @@ export default function OnboardingHealthScreen() {
                                             {isComingSoon && (
                                                 <Text style={styles.comingSoonLabel}>Coming soon</Text>
                                             )}
+                                            {source.id === 'apple-health' && !isConnected && (
+                                                <Text style={styles.sourceHint}>
+                                                    Garmin, Withings &amp; more sync automatically
+                                                </Text>
+                                            )}
                                             {source.id === 'health-connect' && !isConnected && (
                                                 <Text style={styles.sourceHint}>
-                                                    Pixel Watch, Galaxy Watch &amp; more
+                                                    Garmin, Galaxy Watch, Pixel Watch &amp; more
                                                 </Text>
                                             )}
                                             {source.native && isConnected && stepsToday !== null && (
@@ -512,9 +516,14 @@ export default function OnboardingHealthScreen() {
                                                     {stepsToday.toLocaleString()} steps today
                                                 </Text>
                                             )}
+                                            {source.id === 'apple-health' && isConnected && stepsToday === null && (
+                                                <Text style={styles.sourceHint}>
+                                                    Garmin, Withings &amp; more sync automatically
+                                                </Text>
+                                            )}
                                             {source.id === 'health-connect' && isConnected && stepsToday === null && (
                                                 <Text style={styles.sourceHint}>
-                                                    Pixel Watch, Galaxy Watch &amp; more
+                                                    Garmin, Galaxy Watch, Pixel Watch &amp; more
                                                 </Text>
                                             )}
                                         </View>

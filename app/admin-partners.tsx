@@ -27,8 +27,9 @@ const BG      = '#0d0d0d';
 const CARD_BG = 'rgba(40,40,40,0.9)';
 const BORDER  = 'rgba(255,255,255,0.08)';
 const TEXT    = '#F2F2F2';
-const MUTED   = 'rgba(255,255,255,0.25)';
-const DIM     = 'rgba(255,255,255,0.5)';
+const MUTED       = 'rgba(255,255,255,0.75)';
+const DIM         = '#F2F2F2';
+const PLACEHOLDER = 'rgba(255,255,255,0.3)';
 const RED     = '#ef4444';
 const GREEN   = '#4ade80';
 
@@ -294,7 +295,7 @@ export default function AdminPartnersScreen() {
     return (
       <View style={[styles.screen, { paddingTop: insets.top, justifyContent: 'center', alignItems: 'center', gap: 12 }]}>
         <Ionicons name="lock-closed-outline" size={40} color={MUTED} />
-        <Text style={{ color: DIM, fontSize: 15 }}>Admin access required</Text>
+        <Text style={{ color: DIM, fontSize: 15, fontFamily: 'Outfit_400Regular' }}>Admin access required</Text>
         <Pressable onPress={() => router.back()} style={styles.backBtn}>
           <Text style={{ color: GOLD, fontSize: 14 }}>Go back</Text>
         </Pressable>
@@ -380,7 +381,7 @@ export default function AdminPartnersScreen() {
                   value={editPartner.name ?? ''}
                   onChangeText={v => setEditPartner(p => ({ ...p!, name: v }))}
                   placeholder="e.g. The Iron Room"
-                  placeholderTextColor={MUTED}
+                  placeholderTextColor={PLACEHOLDER}
                 />
 
                 <FieldLabel label="DESCRIPTION" />
@@ -389,7 +390,7 @@ export default function AdminPartnersScreen() {
                   value={editPartner.description ?? ''}
                   onChangeText={v => setEditPartner(p => ({ ...p!, description: v || null }))}
                   placeholder="Short description shown on the partner card"
-                  placeholderTextColor={MUTED}
+                  placeholderTextColor={PLACEHOLDER}
                   multiline
                   numberOfLines={3}
                 />
@@ -418,7 +419,7 @@ export default function AdminPartnersScreen() {
                   value={editPartner.logo_url ?? ''}
                   onChangeText={v => setEditPartner(p => ({ ...p!, logo_url: v || null }))}
                   placeholder="https://..."
-                  placeholderTextColor={MUTED}
+                  placeholderTextColor={PLACEHOLDER}
                   autoCapitalize="none"
                   keyboardType="url"
                 />
@@ -465,7 +466,7 @@ export default function AdminPartnersScreen() {
                   value={editPartner.checkout_url_template ?? ''}
                   onChangeText={v => setEditPartner(p => ({ ...p!, checkout_url_template: v || null }))}
                   placeholder="https://huel.com/ref/powr"
-                  placeholderTextColor={MUTED}
+                  placeholderTextColor={PLACEHOLDER}
                   autoCapitalize="none"
                   keyboardType="url"
                 />
@@ -590,7 +591,7 @@ function TimeInput({ value, onChange }: { value: string; onChange: (v: string) =
       value={value}
       onChangeText={onChange}
       placeholder="HH:MM"
-      placeholderTextColor={MUTED}
+      placeholderTextColor={PLACEHOLDER}
       keyboardType="numbers-and-punctuation"
       maxLength={5}
     />
@@ -635,7 +636,7 @@ function LocationsEditor({
             value={loc.name}
             onChangeText={v => update(i, 'name', v)}
             placeholder="Location name (e.g. Main Gym)"
-            placeholderTextColor={MUTED}
+            placeholderTextColor={PLACEHOLDER}
           />
           <View style={styles.coordRow}>
             <View style={{ flex: 1 }}>
@@ -646,7 +647,7 @@ function LocationsEditor({
                 onChangeText={v => update(i, 'lat', v)}
                 keyboardType="numeric"
                 placeholder="51.5074"
-                placeholderTextColor={MUTED}
+                placeholderTextColor={PLACEHOLDER}
               />
             </View>
             <View style={{ flex: 1 }}>
@@ -657,7 +658,7 @@ function LocationsEditor({
                 onChangeText={v => update(i, 'lng', v)}
                 keyboardType="numeric"
                 placeholder="-0.1278"
-                placeholderTextColor={MUTED}
+                placeholderTextColor={PLACEHOLDER}
               />
             </View>
           </View>
@@ -668,7 +669,7 @@ function LocationsEditor({
             onChangeText={v => update(i, 'radius', v)}
             keyboardType="numeric"
             placeholder="100"
-            placeholderTextColor={MUTED}
+            placeholderTextColor={PLACEHOLDER}
           />
         </View>
       ))}
@@ -790,7 +791,7 @@ function TrainersEditor({
         value={editingTrainer.name ?? ''}
         onChangeText={v => setEditingTrainer(p => ({ ...p!, name: v }))}
         placeholder="e.g. Sarah Johnson"
-        placeholderTextColor={MUTED}
+        placeholderTextColor={PLACEHOLDER}
       />
 
       <Text style={styles.trainerFieldLabel}>PHOTO</Text>
@@ -820,7 +821,7 @@ function TrainersEditor({
         value={editingTrainer.bio ?? ''}
         onChangeText={v => setEditingTrainer(p => ({ ...p!, bio: v || null }))}
         placeholder="Short bio (2-3 sentences)"
-        placeholderTextColor={MUTED}
+        placeholderTextColor={PLACEHOLDER}
         multiline
         numberOfLines={3}
       />
@@ -834,7 +835,7 @@ function TrainersEditor({
           specialties: v.split(',').map(s => s.trim()).filter(Boolean),
         }))}
         placeholder="e.g. Strength, HIIT, Yoga"
-        placeholderTextColor={MUTED}
+        placeholderTextColor={PLACEHOLDER}
       />
 
       <Text style={styles.trainerFieldLabel}>EXPERIENCE</Text>
@@ -843,7 +844,7 @@ function TrainersEditor({
         value={editingTrainer.experience ?? ''}
         onChangeText={v => setEditingTrainer(p => ({ ...p!, experience: v || null }))}
         placeholder="e.g. 8 years / Level 3 Certified"
-        placeholderTextColor={MUTED}
+        placeholderTextColor={PLACEHOLDER}
       />
 
       <View style={[styles.toggleRow, { marginTop: 8 }]}>
@@ -866,7 +867,7 @@ function TrainersEditor({
         onChangeText={v => setEditingTrainer(p => ({ ...p!, sort_order: parseInt(v) || 0 }))}
         keyboardType="numeric"
         placeholder="0"
-        placeholderTextColor={MUTED}
+        placeholderTextColor={PLACEHOLDER}
       />
 
       <Pressable
@@ -898,7 +899,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 16, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: BORDER,
   },
-  headerTitle: { fontSize: 17, fontWeight: '500', color: TEXT },
+  headerTitle: { fontSize: 17, fontWeight: '500', color: TEXT, fontFamily: 'Outfit_500Medium' },
   backBtn: { padding: 8 },
   addBtn: { padding: 8 },
 
@@ -907,7 +908,7 @@ const styles = StyleSheet.create({
 
   sectionLabel: {
     fontSize: 9, fontWeight: '600', letterSpacing: 2, color: MUTED,
-    textTransform: 'uppercase', marginBottom: 2,
+    textTransform: 'uppercase', marginBottom: 2, fontFamily: 'Outfit_600SemiBold',
   },
 
   partnerCard: {
@@ -919,8 +920,8 @@ const styles = StyleSheet.create({
   activeDot: { width: 8, height: 8, borderRadius: 4, flexShrink: 0 },
   activeDotOn: { backgroundColor: GREEN },
   activeDotOff: { backgroundColor: RED },
-  partnerCardName: { fontSize: 15, fontWeight: '300', color: TEXT },
-  partnerCardMeta: { fontSize: 11, fontWeight: '300', color: DIM, marginTop: 2 },
+  partnerCardName: { fontSize: 15, fontWeight: '300', color: TEXT, fontFamily: 'Outfit_300Light' },
+  partnerCardMeta: { fontSize: 11, fontWeight: '300', color: DIM, marginTop: 2, fontFamily: 'Outfit_300Light' },
 
   // Edit modal
   editOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
@@ -933,16 +934,16 @@ const styles = StyleSheet.create({
     borderRadius: 2, alignSelf: 'center', marginBottom: 16,
   },
   editHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 },
-  editTitle: { fontSize: 18, fontWeight: '500', color: TEXT },
+  editTitle: { fontSize: 18, fontWeight: '500', color: TEXT, fontFamily: 'Outfit_500Medium' },
 
   fieldLabel: {
     fontSize: 9, fontWeight: '600', letterSpacing: 2, color: MUTED,
-    textTransform: 'uppercase', marginBottom: 6, marginTop: 16,
+    textTransform: 'uppercase', marginBottom: 6, marginTop: 16, fontFamily: 'Outfit_600SemiBold',
   },
   textInput: {
     backgroundColor: 'transparent', borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)',
     borderRadius: 10, paddingHorizontal: 14, paddingVertical: 11,
-    fontSize: 14, color: TEXT, fontWeight: '300',
+    fontSize: 14, color: TEXT, fontWeight: '300', fontFamily: 'Outfit_300Light',
   },
   textArea: { minHeight: 72, textAlignVertical: 'top' },
 
@@ -952,16 +953,16 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: BORDER, backgroundColor: 'rgba(255,255,255,0.04)',
   },
   chipActive: { backgroundColor: 'transparent', borderColor: 'rgba(255,255,255,0.8)' },
-  chipText: { fontSize: 13, color: DIM },
-  chipTextActive: { color: '#FFFFFF', fontWeight: '600' },
+  chipText: { fontSize: 13, color: DIM, fontFamily: 'Outfit_400Regular' },
+  chipTextActive: { color: '#FFFFFF', fontWeight: '600', fontFamily: 'Outfit_600SemiBold' },
 
   toggleRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: BORDER,
     borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, marginTop: 16,
   },
-  toggleLabel: { fontSize: 14, color: TEXT, fontWeight: '300' },
-  toggleSub: { fontSize: 11, color: DIM, marginTop: 2 },
+  toggleLabel: { fontSize: 14, color: TEXT, fontWeight: '300', fontFamily: 'Outfit_300Light' },
+  toggleSub: { fontSize: 11, color: DIM, marginTop: 2, fontFamily: 'Outfit_400Regular' },
 
   // Logo preview
   logoPreviewCard: {
@@ -974,7 +975,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.04)',
   },
   logoPreviewBgLabel: {
-    fontSize: 9, letterSpacing: 2, color: MUTED, fontWeight: '700',
+    fontSize: 9, letterSpacing: 2, color: MUTED, fontWeight: '700', fontFamily: 'Outfit_700Bold',
   },
   logoPreviewSwatches: { flexDirection: 'row', gap: 8 },
   logoBgSwatch: {
@@ -1000,15 +1001,15 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1, borderBottomColor: BORDER,
   },
   dayLeft: { flexDirection: 'row', alignItems: 'center', gap: 4, width: 110 },
-  dayLabel: { fontSize: 13, color: TEXT, fontWeight: '300' },
+  dayLabel: { fontSize: 13, color: TEXT, fontWeight: '300', fontFamily: 'Outfit_300Light' },
   timeInputs: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   timeInput: {
     backgroundColor: 'rgba(255,255,255,0.06)', borderWidth: 1, borderColor: BORDER,
     borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6,
-    fontSize: 13, color: TEXT, width: 64, textAlign: 'center',
+    fontSize: 13, color: TEXT, width: 64, textAlign: 'center', fontFamily: 'Outfit_400Regular',
   },
-  timeSep: { fontSize: 14, color: MUTED },
-  closedLabel: { fontSize: 12, color: MUTED, fontStyle: 'italic' },
+  timeSep: { fontSize: 14, color: MUTED, fontFamily: 'Outfit_400Regular' },
+  closedLabel: { fontSize: 12, color: MUTED, fontStyle: 'italic', fontFamily: 'Outfit_400Regular' },
 
   // Locations
   locationCard: {
@@ -1016,16 +1017,16 @@ const styles = StyleSheet.create({
     borderRadius: 12, padding: 12, gap: 8,
   },
   locationHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  locationIndex: { fontSize: 12, fontWeight: '500', color: DIM, letterSpacing: 1, textTransform: 'uppercase' },
+  locationIndex: { fontSize: 12, fontWeight: '500', color: DIM, letterSpacing: 1, textTransform: 'uppercase', fontFamily: 'Outfit_500Medium' },
   coordRow: { flexDirection: 'row', gap: 8 },
-  coordLabel: { fontSize: 11, color: MUTED, marginBottom: 4, marginTop: 4 },
+  coordLabel: { fontSize: 11, color: MUTED, marginBottom: 4, marginTop: 4, fontFamily: 'Outfit_400Regular' },
   addLocationBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
     paddingVertical: 12, borderWidth: 1, borderColor: 'rgba(232,210,0,0.3)',
     borderRadius: 12, backgroundColor: 'rgba(232,210,0,0.05)',
     borderStyle: 'dashed',
   },
-  addLocationText: { fontSize: 13, color: GOLD, fontWeight: '400' },
+  addLocationText: { fontSize: 13, color: GOLD, fontWeight: '400', fontFamily: 'Outfit_400Regular' },
 
   // Trainers
   trainerRow: {
@@ -1034,24 +1035,24 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
   },
   trainerRowInfo: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
-  trainerRowName: { fontSize: 14, fontWeight: '300', color: TEXT },
-  trainerRowMeta: { fontSize: 11, fontWeight: '300', color: DIM, marginTop: 2 },
+  trainerRowName: { fontSize: 14, fontWeight: '300', color: TEXT, fontFamily: 'Outfit_300Light' },
+  trainerRowMeta: { fontSize: 11, fontWeight: '300', color: DIM, marginTop: 2, fontFamily: 'Outfit_300Light' },
   addTrainerBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
     paddingVertical: 12, borderWidth: 1, borderColor: 'rgba(232,210,0,0.3)',
     borderRadius: 12, backgroundColor: 'rgba(232,210,0,0.05)',
     borderStyle: 'dashed',
   },
-  addTrainerText: { fontSize: 13, color: GOLD, fontWeight: '400' },
+  addTrainerText: { fontSize: 13, color: GOLD, fontWeight: '400', fontFamily: 'Outfit_400Regular' },
   trainerForm: {
     backgroundColor: 'rgba(255,255,255,0.03)', borderWidth: 1, borderColor: BORDER,
     borderRadius: 12, padding: 12, gap: 4,
   },
   trainerFormHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
-  trainerFormTitle: { fontSize: 14, fontWeight: '500', color: TEXT },
+  trainerFormTitle: { fontSize: 14, fontWeight: '500', color: TEXT, fontFamily: 'Outfit_500Medium' },
   trainerFieldLabel: {
     fontSize: 9, fontWeight: '600', letterSpacing: 2, color: MUTED,
-    textTransform: 'uppercase', marginBottom: 4, marginTop: 10,
+    textTransform: 'uppercase', marginBottom: 4, marginTop: 10, fontFamily: 'Outfit_600SemiBold',
   },
   photoUploadRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   photoPreview: {
@@ -1065,17 +1066,17 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: BORDER, backgroundColor: 'rgba(255,255,255,0.04)',
     alignItems: 'center', justifyContent: 'center',
   },
-  photoUploadText: { fontSize: 12, fontWeight: '500', color: DIM },
+  photoUploadText: { fontSize: 12, fontWeight: '500', color: DIM, fontFamily: 'Outfit_500Medium' },
 
   trainerSaveBtn: {
     backgroundColor: GOLD, paddingVertical: 10, borderRadius: 10,
     alignItems: 'center', justifyContent: 'center', marginTop: 12,
   },
-  trainerSaveBtnText: { fontSize: 14, fontWeight: '600', color: '#0d0d0d' },
+  trainerSaveBtnText: { fontSize: 14, fontWeight: '600', color: '#0d0d0d', fontFamily: 'Outfit_600SemiBold' },
 
   saveBtn: {
     backgroundColor: GOLD, paddingVertical: 14, borderRadius: 14,
     alignItems: 'center', justifyContent: 'center', marginTop: 24, marginBottom: 8,
   },
-  saveBtnText: { fontSize: 16, fontWeight: '600', color: '#0d0d0d' },
+  saveBtnText: { fontSize: 16, fontWeight: '600', color: '#0d0d0d', fontFamily: 'Outfit_600SemiBold' },
 });

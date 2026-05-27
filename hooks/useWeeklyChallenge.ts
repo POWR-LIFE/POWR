@@ -18,6 +18,7 @@ export type WeeklyChallengeState = {
   challenge: typeof ACTIVE_WEEKLY_CHALLENGE;
   targetActivityType: string | null;
   completion: ChallengeCompletion | null;
+  sessionsCompleted: number;
 };
 
 function getISOWeek(date: Date): string {
@@ -29,13 +30,22 @@ function getISOWeek(date: Date): string {
   return `${d.getUTCFullYear()}-W${weekNo.toString().padStart(2, '0')}`;
 }
 
-function getMondayUTC(): string {
-  const now = new Date();
-  const day = now.getUTCDay() || 7;
-  const monday = new Date(now);
-  monday.setUTCDate(now.getUTCDate() - (day - 1));
-  monday.setUTCHours(0, 0, 0, 0);
-  return monday.toISOString();
+/**
+ * Returns the start of the current week (Monday 00:00) in the user's local
+ * timezone, expressed as a UTC ISO string. This ensures sessions logged on
+ * Monday morning in UTC+ zones are not missed because their UTC timestamp
+ * still falls on Sunday.
+ */
+function getLocalMondayAsUTC(utcOffsetMinutes: number): string {
+  const localNowMs = Date.now() + utcOffsetMinutes * 60 * 1000;
+  const localNow = new Date(localNowMs);
+  const day = localNow.getUTCDay() || 7; // 1=Mon … 7=Sun
+  // Rewind to local midnight of Monday
+  const mondayLocalMs = localNowMs - (day - 1) * 24 * 60 * 60 * 1000;
+  const mondayLocal = new Date(mondayLocalMs);
+  mondayLocal.setUTCHours(0, 0, 0, 0);
+  // Translate back to real UTC
+  return new Date(mondayLocal.getTime() - utcOffsetMinutes * 60 * 1000).toISOString();
 }
 
 export function useWeeklyChallenge(userPreferences: string[]): WeeklyChallengeState {
@@ -43,6 +53,7 @@ export function useWeeklyChallenge(userPreferences: string[]): WeeklyChallengeSt
     challenge: ACTIVE_WEEKLY_CHALLENGE,
     targetActivityType: null,
     completion: null,
+    sessionsCompleted: 0,
   });
 
   const completing = useRef(false);
@@ -66,14 +77,21 @@ export function useWeeklyChallenge(userPreferences: string[]): WeeklyChallengeSt
     // 2. Pick the user's highest-scoring qualifying activity
     const targetActivityType = getTargetActivityType(activeChallenge, userPreferences);
 
-    // 3. Check for existing completion this week
-    const challengeWeek = getISOWeek(new Date());
+    // 3. Check for existing completion this week.
+    // Use the user's LOCAL date (mirroring the edge function) so the week key
+    // matches what was stored — prevents UTC+ users from missing their record
+    // when their local Monday morning is still Sunday in UTC.
+    const utcOffsetMinutes = -new Date().getTimezoneOffset();
+    const localNow = new Date(Date.now() + utcOffsetMinutes * 60 * 1000);
+    const challengeWeek = getISOWeek(localNow);
     const { data: existing } = await supabase
       .from('user_challenge_completions')
       .select('points_awarded, completed_at, activity_type')
       .eq('challenge_id', activeChallenge.id)
       .eq('challenge_week', challengeWeek)
       .maybeSingle();
+
+    const requiredSessions = activeChallenge.requiredSessions ?? 1;
 
     if (existing) {
       setState({
@@ -84,20 +102,25 @@ export function useWeeklyChallenge(userPreferences: string[]): WeeklyChallengeSt
           completedAt: existing.completed_at,
           activityType: existing.activity_type,
         },
+        sessionsCompleted: requiredSessions,
       });
       return;
     }
 
-    setState({ challenge: activeChallenge, targetActivityType, completion: null });
+    setState(prev => ({ ...prev, challenge: activeChallenge, targetActivityType, completion: null }));
 
     // 4. Check for a qualifying session this week that started before 12pm local.
     // Query ALL qualifying types — not just the user's top-priority one — so any
     // eligible morning session triggers completion regardless of which activity they did.
     const qualifyingTypes = activeChallenge.qualifyingTypes ?? [];
-    if (!qualifyingTypes.length) return;
+    if (!qualifyingTypes.length) {
+      setState(prev => ({ ...prev, sessionsCompleted: 0 }));
+      return;
+    }
 
-    const utcOffsetMinutes = -new Date().getTimezoneOffset();
-    const weekStart = getMondayUTC();
+    // weekStart is Monday 00:00 in the user's LOCAL timezone (as a UTC string)
+    // so UTC+ users' early-morning Monday sessions are included in the query.
+    const weekStart = getLocalMondayAsUTC(utcOffsetMinutes);
 
     const { data: sessions } = await supabase
       .from('activity_sessions')
@@ -106,16 +129,19 @@ export function useWeeklyChallenge(userPreferences: string[]): WeeklyChallengeSt
       .gte('started_at', weekStart)
       .order('started_at', { ascending: true });
 
-    if (!sessions?.length) return;
-
-    const qualifying = sessions.find((s) => {
+    // Count all qualifying sessions (before 12pm local) up to requiredSessions
+    const qualifyingSessions = (sessions ?? []).filter((s) => {
       const localMs = new Date(s.started_at).getTime() + utcOffsetMinutes * 60 * 1000;
       return new Date(localMs).getUTCHours() < 12;
     });
 
-    if (!qualifying || completing.current) return;
+    const sessionsCount = Math.min(qualifyingSessions.length, requiredSessions);
+    setState(prev => ({ ...prev, sessionsCompleted: sessionsCount }));
 
-    // 5. Attempt completion via edge function
+    // 5. Attempt full completion via edge function once all sessions are done
+    if (qualifyingSessions.length < requiredSessions || completing.current) return;
+
+    const triggerSession = qualifyingSessions[requiredSessions - 1];
     completing.current = true;
     try {
       const { data: { session: authSession } } = await supabase.auth.getSession();
@@ -124,7 +150,7 @@ export function useWeeklyChallenge(userPreferences: string[]): WeeklyChallengeSt
       const { data: result, error } = await supabase.functions.invoke('complete-weekly-challenge', {
         body: {
           challenge_id: activeChallenge.id,
-          session_id: qualifying.id,
+          session_id: triggerSession.id,
           utc_offset_minutes: utcOffsetMinutes,
         },
         headers: { Authorization: `Bearer ${authSession.access_token}` },
@@ -133,6 +159,7 @@ export function useWeeklyChallenge(userPreferences: string[]): WeeklyChallengeSt
       if (!error && result?.ok) {
         setState(prev => ({
           ...prev,
+          sessionsCompleted: requiredSessions,
           completion: {
             pointsAwarded: result.points_awarded ?? 0,
             completedAt: new Date().toISOString(),

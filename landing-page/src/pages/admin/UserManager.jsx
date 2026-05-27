@@ -44,23 +44,36 @@ export default function UserManager() {
     const fetchUsers = async () => {
         setLoading(true);
         try {
-            // Fetch users
-            const { data: profiles, error } = await supabase
-                .from('profiles')
-                .select('*')
-                .order('created_at', { ascending: false });
+            const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
-            if (error) throw error;
-            setUsers(profiles || []);
+            // Fetch users and active-today count in parallel
+            const [profilesRes, activeRes] = await Promise.all([
+                supabase
+                    .from('profiles')
+                    .select('*')
+                    .order('created_at', { ascending: false }),
+                supabase
+                    .from('activity_sessions')
+                    .select('user_id', { count: 'exact', head: false })
+                    .gte('started_at', since24h),
+            ]);
+
+            if (profilesRes.error) throw profilesRes.error;
+            const profiles = profilesRes.data || [];
+            setUsers(profiles);
 
             // Calculate stats
             const total = profiles.length;
-            const avgLevel = total > 0 
+            const avgLevel = total > 0
                 ? (profiles.reduce((acc, u) => acc + (u.level || 1), 0) / total).toFixed(1)
                 : 0;
-            
-            // For activeToday, we could check activity_sessions, but for now let's just use profiles count
-            setStats({ total, avgLevel, activeToday: total }); // Placeholder for active logic
+
+            // Distinct users with a session in the last 24 h
+            const activeToday = activeRes.data
+                ? new Set(activeRes.data.map(r => r.user_id)).size
+                : 0;
+
+            setStats({ total, avgLevel, activeToday });
 
         } catch (e) {
             toast.error('Failed to load user intelligence');

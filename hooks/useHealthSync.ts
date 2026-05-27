@@ -216,10 +216,11 @@ function mapHealthType(name: string): ActivityType | null {
   if (n.includes('swim')) return 'swimming';
   // Dance (check before sports to avoid false matches)
   if (n.includes('dance') || n.includes('barre')) return 'dance';
-  // Gym / weight training
+  // Gym / weight training / cardio machines
   if (n.includes('gym') || n.includes('weight') || n.includes('crossfit') || n.includes('calisthenics')
       || n.includes('strength') || n.includes('powerlift') || n.includes('functional fitness')
-      || n.includes('bodybuilding')) return 'gym';
+      || n.includes('bodybuilding') || n.includes('elliptical') || n.includes('rowing')
+      || n.includes('stair') || n.includes('core')) return 'gym';
   // HIIT / boot camp / circuit
   if (n.includes('hiit') || n.includes('boot_camp') || n.includes('bootcamp')
       || n.includes('circuit') || n.includes('tabata') || n.includes('f45')) return 'hiit';
@@ -232,7 +233,8 @@ function mapHealthType(name: string): ActivityType | null {
       || n.includes('kickbox') || n.includes('rugby') || n.includes('football') || n.includes('baseball')
       || n.includes('softball') || n.includes('hockey') || n.includes('cricket') || n.includes('lacrosse')
       || n.includes('golf') || n.includes('pickleball') || n.includes('badminton') || n.includes('table tennis')
-      || n.includes('wrestl') || n.includes('surf') || n.includes('climbing')) return 'sports';
+      || n.includes('wrestl') || n.includes('surf') || n.includes('climbing') || n.includes('ski')
+      || n.includes('snowboard') || n.includes('skat') || n.includes('paddl') || n.includes('gymnastics')) return 'sports';
   // Walking / hiking — handled by walkingSync, not activity sync
   if (n.includes('walk') || n.includes('hik')) return null;
   return null;

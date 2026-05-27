@@ -14,7 +14,7 @@ export const WEEKLY_CHALLENGES = [
     active: true,
     status: 'live',
     title: 'Early Bird',
-    description: 'Morning session before 12pm — triple your points',
+    description: 'Log 3 morning sessions before 12pm this week to unlock your bonus',
     bonusLabel: '3× BONUS',
     expiresAt: nextSundayMidnight(),
     imageUri:
@@ -25,6 +25,12 @@ export const WEEKLY_CHALLENGES = [
     cadenceLabel: 'Rotates weekly',
     scheduleLabel: 'Before 12pm',
     audienceLabel: 'All members',
+    requiredSessions: 3,
+    steps: [
+      'Morning session #1',
+      'Morning session #2',
+      'Morning session #3',
+    ],
     qualifyingTypes: ['gym', 'running', 'cycling', 'swimming', 'hiit', 'sports', 'yoga', 'dance', 'walking'],
   },
 ];
@@ -44,6 +50,8 @@ const challengeDefaults = {
   cadenceLabel: 'Rotates weekly',
   scheduleLabel: '',
   audienceLabel: 'All members',
+  requiredSessions: 1,
+  steps: [],
   qualifyingTypes: [],
 };
 

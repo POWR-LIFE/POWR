@@ -276,6 +276,35 @@ export async function notifyCheckInAvailable(partnerName: string, locationId: st
   });
 }
 
+// ---------------------------------------------------------------------------
+// Gym exit safety-net — scheduled with a short DATE trigger so it survives
+// a background-task kill. Cancelled and replaced with notifySessionCompleted
+// if the session is successfully claimed within the execution window.
+// ---------------------------------------------------------------------------
+
+export async function notifyGymExited(partnerName: string) {
+  const name = partnerName.trim();
+  await Notifications.scheduleNotificationAsync({
+    identifier: `powr-session_completed-exit`,
+    content: {
+      title: 'Session recorded 🔥',
+      body: name ? `${name} · Calculating your points…` : 'Calculating your points…',
+      data: {
+        type: 'session_completed',
+        route: '/(tabs)/index',
+      } satisfies NotificationPayload,
+      sound: 'default',
+      ...(Platform.OS === 'android' && { channelId: CHANNEL_REWARDS }),
+    },
+    trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.DATE,
+      // 8-second delay: long enough for recordDwellSession to cancel this before
+      // delivery if network is fast; short enough to be useful if the task dies.
+      date: new Date(Date.now() + 8_000),
+    },
+  });
+}
+
 export async function notifySessionCompleted(
   partnerName: string,
   sessionId: string,

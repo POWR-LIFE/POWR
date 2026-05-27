@@ -23,8 +23,9 @@ const BG      = '#0d0d0d';
 const CARD_BG = 'rgba(40,40,40,0.9)';
 const BORDER  = 'rgba(255,255,255,0.08)';
 const TEXT    = '#F2F2F2';
-const MUTED   = 'rgba(255,255,255,0.25)';
-const DIM     = 'rgba(255,255,255,0.5)';
+const MUTED       = 'rgba(255,255,255,0.75)';
+const DIM         = '#F2F2F2';
+const PLACEHOLDER = 'rgba(255,255,255,0.3)';
 const RED     = '#ef4444';
 const GREEN   = '#4ade80';
 const ORANGE  = '#f97316';
@@ -471,7 +472,7 @@ function ApplicationDetail({
             value={reviewNotes}
             onChangeText={onNotesChange}
             placeholder="Optional internal notes…"
-            placeholderTextColor={MUTED}
+            placeholderTextColor={PLACEHOLDER}
             multiline
             editable={!saving}
           />
@@ -554,8 +555,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16, paddingVertical: 12, gap: 10,
   },
   backBtn: { padding: 4 },
-  title: { fontSize: 22, fontWeight: '200', color: TEXT, letterSpacing: -0.3 },
-  pendingHint: { fontSize: 11, color: ORANGE, marginTop: 2 },
+  title: { fontSize: 22, fontWeight: '200', color: TEXT, letterSpacing: -0.3, fontFamily: 'Outfit_200ExtraLight' },
+  pendingHint: { fontSize: 11, color: ORANGE, marginTop: 2, fontFamily: 'Outfit_400Regular' },
 
   filterRow: {
     flexDirection: 'row',
@@ -566,7 +567,7 @@ const styles = StyleSheet.create({
     borderRadius: 20, borderWidth: 1, borderColor: BORDER,
   },
   filterTabActive: { borderColor: GOLD, backgroundColor: 'rgba(232,210,0,0.08)' },
-  filterTabText: { fontSize: 9, fontWeight: '600', letterSpacing: 1.5, color: MUTED },
+  filterTabText: { fontSize: 9, fontWeight: '600', letterSpacing: 1.5, color: MUTED, fontFamily: 'Outfit_600SemiBold' },
   filterTabTextActive: { color: GOLD },
 
   list: { paddingHorizontal: 16, paddingTop: 4, gap: 10 },
@@ -581,10 +582,10 @@ const styles = StyleSheet.create({
 
   avatar: { width: 48, height: 48, borderRadius: 24, overflow: 'hidden', backgroundColor: 'rgba(40,40,40,0.8)' },
   avatarFallback: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(40,40,40,0.8)' },
-  avatarInitials: { fontSize: 16, fontWeight: '500', color: DIM },
+  avatarInitials: { fontSize: 16, fontWeight: '500', color: DIM, fontFamily: 'Outfit_500Medium' },
 
-  cardName: { fontSize: 15, fontWeight: '400', color: TEXT },
-  cardEmail: { fontSize: 12, fontWeight: '300', color: DIM },
+  cardName: { fontSize: 15, fontWeight: '400', color: TEXT, fontFamily: 'Outfit_400Regular' },
+  cardEmail: { fontSize: 12, fontWeight: '300', color: DIM, fontFamily: 'Outfit_300Light' },
 
   tagsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 2 },
   tag: {
@@ -592,17 +593,17 @@ const styles = StyleSheet.create({
     borderRadius: 20, borderWidth: 1,
     borderColor: BORDER, backgroundColor: 'rgba(255,255,255,0.04)',
   },
-  tagText: { fontSize: 9, fontWeight: '500', letterSpacing: 0.8, color: MUTED, textTransform: 'uppercase' },
+  tagText: { fontSize: 9, fontWeight: '500', letterSpacing: 0.8, color: MUTED, textTransform: 'uppercase', fontFamily: 'Outfit_500Medium' },
 
   statusBadge: {
     paddingHorizontal: 8, paddingVertical: 3,
     borderRadius: 20, borderWidth: 1,
   },
-  statusText: { fontSize: 9, fontWeight: '700', letterSpacing: 1 },
-  dateText: { fontSize: 10, color: MUTED },
+  statusText: { fontSize: 9, fontWeight: '700', letterSpacing: 1, fontFamily: 'Outfit_700Bold' },
+  dateText: { fontSize: 10, color: MUTED, fontFamily: 'Outfit_400Regular' },
 
   empty: { paddingVertical: 60, alignItems: 'center' },
-  emptyText: { fontSize: 13, fontWeight: '300', color: MUTED },
+  emptyText: { fontSize: 13, fontWeight: '300', color: MUTED, fontFamily: 'Outfit_300Light' },
 
   // ── Modal
   modal: { flex: 1, backgroundColor: BG },
@@ -611,7 +612,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20, paddingVertical: 16,
     borderBottomWidth: 1, borderBottomColor: BORDER,
   },
-  modalTitle: { fontSize: 18, fontWeight: '300', color: TEXT },
+  modalTitle: { fontSize: 18, fontWeight: '300', color: TEXT, fontFamily: 'Outfit_300Light' },
   modalContent: { paddingHorizontal: 20, paddingTop: 16, gap: 20, paddingBottom: 40 },
 
   coverWrap: { height: 140, borderRadius: 12, overflow: 'hidden', marginBottom: -30 },
@@ -619,36 +620,36 @@ const styles = StyleSheet.create({
 
   detailAvatarRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 14, paddingTop: 8 },
   detailAvatar: { width: 68, height: 68, borderRadius: 34, overflow: 'hidden', borderWidth: 2, borderColor: GOLD },
-  detailInitials: { fontSize: 22, fontWeight: '400', color: DIM },
-  detailName: { fontSize: 20, fontWeight: '300', color: TEXT, letterSpacing: -0.3 },
-  detailUsername: { fontSize: 13, color: MUTED },
+  detailInitials: { fontSize: 22, fontWeight: '400', color: DIM, fontFamily: 'Outfit_400Regular' },
+  detailName: { fontSize: 20, fontWeight: '300', color: TEXT, letterSpacing: -0.3, fontFamily: 'Outfit_300Light' },
+  detailUsername: { fontSize: 13, color: MUTED, fontFamily: 'Outfit_400Regular' },
 
   detailSection: { gap: 8 },
-  detailSectionLabel: { fontSize: 9, fontWeight: '700', letterSpacing: 2, color: MUTED },
+  detailSectionLabel: { fontSize: 9, fontWeight: '700', letterSpacing: 2, color: MUTED, fontFamily: 'Outfit_700Bold' },
   detailRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  detailRowText: { fontSize: 13, color: DIM, flex: 1 },
+  detailRowText: { fontSize: 13, color: DIM, flex: 1, fontFamily: 'Outfit_400Regular' },
 
-  bioText: { fontSize: 13, fontWeight: '300', color: DIM, lineHeight: 20 },
+  bioText: { fontSize: 13, fontWeight: '300', color: DIM, lineHeight: 20, fontFamily: 'Outfit_300Light' },
 
   achievementRow: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
     paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: BORDER,
   },
-  achievementValue: { fontSize: 22, fontWeight: '200', color: GOLD, minWidth: 60, letterSpacing: -0.5 },
-  achievementTitle: { fontSize: 13, fontWeight: '400', color: TEXT },
-  achievementContext: { fontSize: 11, color: MUTED, marginTop: 2 },
+  achievementValue: { fontSize: 22, fontWeight: '200', color: GOLD, minWidth: 60, letterSpacing: -0.5, fontFamily: 'Outfit_200ExtraLight' },
+  achievementTitle: { fontSize: 13, fontWeight: '400', color: TEXT, fontFamily: 'Outfit_400Regular' },
+  achievementContext: { fontSize: 11, color: MUTED, marginTop: 2, fontFamily: 'Outfit_400Regular' },
 
   galleryThumb: { width: 80, height: 80, borderRadius: 8, overflow: 'hidden' },
 
-  metaText: { fontSize: 12, color: MUTED },
+  metaText: { fontSize: 12, color: MUTED, fontFamily: 'Outfit_400Regular' },
 
   notesSection: { gap: 8 },
-  notesLabel: { fontSize: 9, fontWeight: '700', letterSpacing: 2, color: MUTED },
+  notesLabel: { fontSize: 9, fontWeight: '700', letterSpacing: 2, color: MUTED, fontFamily: 'Outfit_700Bold' },
   notesInput: {
     borderRadius: 10, borderWidth: 1, borderColor: BORDER,
     backgroundColor: CARD_BG, color: TEXT,
     padding: 12, fontSize: 13, minHeight: 80,
-    textAlignVertical: 'top',
+    textAlignVertical: 'top', fontFamily: 'Outfit_400Regular',
   },
 
   actionRow: { flexDirection: 'row', gap: 12 },
@@ -659,11 +660,11 @@ const styles = StyleSheet.create({
   actionBtnDisabled: { opacity: 0.5 },
   rejectBtn: { borderColor: `${RED}30`, backgroundColor: `${RED}08` },
   approveBtn: { borderColor: `${GREEN}30`, backgroundColor: `${GREEN}08` },
-  actionBtnText: { fontSize: 14, fontWeight: '500' },
+  actionBtnText: { fontSize: 14, fontWeight: '500', fontFamily: 'Outfit_500Medium' },
 
   reviewedBanner: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
     padding: 14, borderRadius: 12, borderWidth: 1,
   },
-  reviewedText: { fontSize: 13, fontWeight: '400' },
+  reviewedText: { fontSize: 13, fontWeight: '400', fontFamily: 'Outfit_400Regular' },
 });

@@ -3,6 +3,7 @@ import MagicRings from '@/components/MagicRings';
 import { ProfileButton } from '@/components/ProfileButton';
 import { usePoints } from '@/hooks/usePoints';
 import { fetchRewards, fetchSmartFeaturedReward, type Reward as ApiReward } from '@/lib/api/rewards';
+import { supabase } from '@/lib/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Image as ExpoImage } from 'expo-image';
@@ -161,12 +162,20 @@ export default function SpendScreen() {
 
   const [featuredReward, setFeaturedReward] = useState<ApiReward | null>(null);
   const [rewards, setRewards] = useState<Reward[]>(REWARDS);
+  const [redeemedIds, setRedeemedIds] = useState<Set<string>>(new Set());
 
   const loadRewards = useCallback(async () => {
     try {
-      const [data, featured] = await Promise.all([fetchRewards(), fetchSmartFeaturedReward(balance)]);
+      const [data, featured, redemptionsRes] = await Promise.all([
+        fetchRewards(),
+        fetchSmartFeaturedReward(balance),
+        supabase.from('redemptions').select('reward_id').eq('status', 'active'),
+      ]);
       if (data.length > 0) setRewards(data.map(apiRewardToUI));
       setFeaturedReward(featured);
+      if (redemptionsRes.data) {
+        setRedeemedIds(new Set(redemptionsRes.data.map((r: { reward_id: string }) => r.reward_id)));
+      }
     } catch {
       // keep mock fallback
     }
@@ -299,6 +308,7 @@ export default function SpendScreen() {
                   afford={affordability(balance, reward.pts)}
                   balance={balance}
                   expanded={expandedId === reward.id}
+                  isRedeemed={redeemedIds.has(reward.id)}
                   onToggle={() => toggleExpand(reward.id)}
                   onRedeem={() => router.push({ pathname: '/redeem-modal', params: { id: reward.id } })}
                 />
@@ -425,11 +435,12 @@ interface RewardCardProps {
   afford: Afford;
   balance: number;
   expanded: boolean;
+  isRedeemed: boolean;
   onToggle: () => void;
   onRedeem: () => void;
 }
 
-function RewardCard({ reward, afford, balance, expanded, onToggle, onRedeem }: RewardCardProps) {
+function RewardCard({ reward, afford, balance, expanded, isRedeemed, onToggle, onRedeem }: RewardCardProps) {
   const ptsNeeded = reward.pts - balance;
   const progress = Math.min(balance / reward.pts, 1);
   const isLocked = afford === 'locked';
@@ -515,10 +526,19 @@ function RewardCard({ reward, afford, balance, expanded, onToggle, onRedeem }: R
         )}
 
         <View style={styles.rewardRight}>
-          <Text style={[styles.rewardPts, isLocked && styles.rewardPtsLocked]}>
-            {reward.pts}
-          </Text>
-          <Text style={[styles.rewardPtsUnit, isLocked && styles.rewardPtsLocked]}>pts</Text>
+          {isRedeemed ? (
+            <View style={styles.redeemedBadge}>
+              <Ionicons name="checkmark" size={11} color="#4ade80" />
+              <Text style={styles.redeemedBadgeText}>Redeemed</Text>
+            </View>
+          ) : (
+            <>
+              <Text style={[styles.rewardPts, isLocked && styles.rewardPtsLocked]}>
+                {reward.pts}
+              </Text>
+              <Text style={[styles.rewardPtsUnit, isLocked && styles.rewardPtsLocked]}>pts</Text>
+            </>
+          )}
           <Ionicons
             name={expanded ? 'chevron-up' : 'chevron-down'}
             size={14}
@@ -553,7 +573,18 @@ function RewardCard({ reward, afford, balance, expanded, onToggle, onRedeem }: R
 
           {reward.offer && <Text style={styles.expandedOffer}>{reward.offer}</Text>}
 
-          {afford === 'can' && (
+          {isRedeemed ? (
+            <Pressable
+              onPress={() => {
+                Haptics.selectionAsync();
+                onRedeem();
+              }}
+              style={({ pressed }) => [styles.redeemInlineBtn, { backgroundColor: 'rgba(74,222,128,0.12)', borderWidth: 1, borderColor: 'rgba(74,222,128,0.3)' }, pressed && { opacity: 0.85 }]}
+            >
+              <Ionicons name="checkmark-circle-outline" size={14} color="#4ade80" />
+              <Text style={[styles.redeemInlineBtnText, { color: '#4ade80' }]}>Redeemed · View code</Text>
+            </Pressable>
+          ) : afford === 'can' ? (
             <Pressable
               onPress={() => {
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -568,7 +599,7 @@ function RewardCard({ reward, afford, balance, expanded, onToggle, onRedeem }: R
               <Ionicons name="gift-outline" size={14} color="#000" />
               <Text style={styles.redeemInlineBtnText}>Redeem for {reward.pts} pts</Text>
             </Pressable>
-          )}
+          ) : null}
 
           {afford !== 'can' && (
             <View style={styles.lockedBlock}>
@@ -1186,6 +1217,17 @@ const styles = StyleSheet.create({
   },
   rewardPtsLocked: {
     color: MUTED,
+  },
+  redeemedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  redeemedBadgeText: {
+    fontSize: 10,
+    fontWeight: '500',
+    color: '#4ade80',
+    letterSpacing: 0.3,
   },
 
   // ── Hero banner (expanded)

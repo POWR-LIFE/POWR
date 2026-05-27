@@ -87,6 +87,8 @@ export default function UserProfile() {
     const [pointsTypeFilter, setPointsTypeFilter] = useState('');
     const [pointsSearchFilter, setPointsSearchFilter] = useState('');
 
+    const [preferredGym, setPreferredGym] = useState(null);
+
     const filteredSessions = sessions.filter(s => {
         let match = true;
         if (activityDateFilter) match = match && s.started_at.startsWith(activityDateFilter);
@@ -432,6 +434,18 @@ export default function UserProfile() {
             setRedemptions(r.data || []);
             setHealthSnapshots(hs.data || []);
 
+            // Load preferred gym name if set
+            if (p.data.preferred_gym_id) {
+                const { data: gymData } = await supabase
+                    .from('partners')
+                    .select('id, name')
+                    .eq('id', p.data.preferred_gym_id)
+                    .single();
+                setPreferredGym(gymData || null);
+            } else {
+                setPreferredGym(null);
+            }
+
         } catch (e) {
             toast.error('Telemetry Sync Failed');
             console.error(e);
@@ -580,6 +594,16 @@ export default function UserProfile() {
                         </div>
                         <div className="text-4xl font-light tracking-tighter text-[#DDD] leading-none">{redemptions.length}</div>
                     </div>
+
+                    {preferredGym && (
+                        <div className="bg-[#0A0A0A] border border-[#E8D200]/20 p-6 px-8 rounded-2xl min-w-[200px]">
+                            <div className="flex items-center gap-3 mb-3">
+                                <Star size={15} className="text-[#E8D200]" fill="#E8D200" />
+                                <span className="text-[9px] uppercase tracking-[0.4em] text-[#999] font-black">Home Gym</span>
+                            </div>
+                            <div className="text-base font-medium tracking-tight text-[#F2F2F2] leading-tight">{preferredGym.name}</div>
+                        </div>
+                    )}
                 </div>
             </header>
 

@@ -14,9 +14,10 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Defs, Line, Stop, LinearGradient as SvgLinearGradient } from 'react-native-svg';
 
+import { LevelIcon } from '@/components/LevelIcon';
 import { ProfileGeometricBackground } from '@/components/ProfileGeometricBackground';
 import { ProBadge } from '@/components/ui/ProBadge';
-import { getLevelInfo } from '@/constants/levels';
+import { getLevelInfo, LEVELS } from '@/constants/levels';
 import { useAuth } from '@/context/AuthContext';
 import { useAchievements } from '@/hooks/useAchievements';
 import { useActivity } from '@/hooks/useActivity';
@@ -65,6 +66,8 @@ function getStreakPill(streak: number) {
 
 const TILE_GAP = 10;
 const TILE_W = Math.floor((SCREEN_W - 32 - TILE_GAP * 2) / 3);
+
+const LEVEL_BY_NUMBER = new Map(LEVELS.map(l => [l.level, l]));
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
@@ -340,11 +343,18 @@ export default function ProfileScreen() {
                   borderColor: a.earned ? a.colour : 'rgba(255,255,255,0.10)',
                 }]}>
                   <View style={s.achieveMedallionInner}>
-                    <Ionicons
-                      name={(a.earned ? a.icon : 'lock-closed') as any}
-                      size={24}
-                      color={a.earned ? a.colour : 'rgba(255,255,255,0.25)'}
-                    />
+                    {(() => {
+                      if (!a.earned) {
+                        return <Ionicons name="lock-closed" size={24} color="rgba(255,255,255,0.25)" />;
+                      }
+                      if (a.unlock.type === 'level') {
+                        const levelDef = LEVEL_BY_NUMBER.get(a.unlock.level);
+                        if (levelDef) {
+                          return <LevelIcon level={levelDef.level} size={28} color={a.colour} strokeWidth={1.6} />;
+                        }
+                      }
+                      return <Ionicons name={a.icon as any} size={24} color={a.colour} />;
+                    })()}
                   </View>
                   {a.earned && (
                     <View style={s.achieveCheckBadge}>
@@ -352,7 +362,11 @@ export default function ProfileScreen() {
                     </View>
                   )}
                 </View>
-                <Text style={s.achieveName} numberOfLines={2}>{a.name}</Text>
+                <Text style={s.achieveName} numberOfLines={2}>
+                  {a.unlock.type === 'level'
+                    ? (LEVEL_BY_NUMBER.get(a.unlock.level)?.name ?? a.name)
+                    : a.name}
+                </Text>
               </Pressable>
             ))}
           </View>
