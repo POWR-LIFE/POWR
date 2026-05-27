@@ -179,15 +179,11 @@ export async function fetchFeaturedScheduledReward(): Promise<Reward | null> {
  */
 export async function fetchSmartFeaturedReward(balance: number): Promise<Reward | null> {
   try {
-    // 1. Active schedule slot
-    const scheduled = await fetchFeaturedScheduledReward();
-    if (scheduled) return scheduled;
-
-    // 2. Permanent pin
+    // 1. Permanent pin — set via admin panel Hero Card section
     const pinned = await fetchFeaturedReward();
     if (pinned) return pinned;
 
-    // 3. Smart rotation fallback
+    // 2. Smart rotation fallback
     const rewards = await fetchRewards();
     if (rewards.length === 0) return null;
 
