@@ -7,6 +7,7 @@ interface CompleteRequest {
   challenge_id: string;
   session_id: string;
   utc_offset_minutes: number; // client's offset from UTC, e.g. BST = 60, EST = -300
+  start_before_hour?: number | null; // restrict to sessions starting before this local hour; null/absent = no restriction
 }
 
 // Base points table — mirrors claim-points and manual-log.
@@ -120,7 +121,7 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ error: 'Invalid JSON' }), { status: 400 });
   }
 
-  const { challenge_id, session_id, utc_offset_minutes } = body;
+  const { challenge_id, session_id, utc_offset_minutes, start_before_hour } = body;
   if (!challenge_id || !session_id || utc_offset_minutes === undefined) {
     return new Response(JSON.stringify({ error: 'Missing required fields' }), { status: 400 });
   }
@@ -146,15 +147,15 @@ Deno.serve(async (req) => {
     );
   }
 
-  // 2. Check the session started before 12:00 PM in the user's local time
+  // 2. Check the session started before the required local hour (if the challenge has a time window)
   const sessionUTC = new Date(session.started_at);
   const localMs = sessionUTC.getTime() + utc_offset_minutes * 60 * 1000;
   const localDate = new Date(localMs);
   const localHour = localDate.getUTCHours(); // UTC hours of the offset-adjusted time = local hour
 
-  if (localHour >= 12) {
+  if (start_before_hour != null && localHour >= start_before_hour) {
     return new Response(
-      JSON.stringify({ error: 'Session did not start before 12pm local time' }),
+      JSON.stringify({ error: `Session did not start before ${start_before_hour}:00 local time` }),
       { status: 422 },
     );
   }
@@ -203,7 +204,7 @@ Deno.serve(async (req) => {
         amount: bonusPoints,
         type: 'earn',
         source: 'weekly_challenge',
-        description: `Early Bird challenge bonus (3× ${session.type})`,
+        description: `Weekly challenge bonus (3× ${session.type}) — ${challenge_id}`,
       });
 
     if (ptError) {

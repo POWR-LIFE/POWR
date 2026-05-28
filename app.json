@@ -52,7 +52,7 @@
         "android.permission.VIBRATE"
       ],
       "package": "com.powr.life",
-      "versionCode": 2,
+      "versionCode": 4,
       "intentFilters": [
         {
           "action": "VIEW",

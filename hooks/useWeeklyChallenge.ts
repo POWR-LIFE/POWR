@@ -109,10 +109,11 @@ export function useWeeklyChallenge(userPreferences: string[]): WeeklyChallengeSt
 
     setState(prev => ({ ...prev, challenge: activeChallenge, targetActivityType, completion: null }));
 
-    // 4. Check for a qualifying session this week that started before 12pm local.
-    // Query ALL qualifying types — not just the user's top-priority one — so any
-    // eligible morning session triggers completion regardless of which activity they did.
+    // 4. Check for a qualifying session this week that started before the challenge's
+    // time limit (startBeforeHour). Query ALL qualifying types — not just the user's
+    // top-priority one — so any eligible session triggers completion.
     const qualifyingTypes = activeChallenge.qualifyingTypes ?? [];
+    const startBeforeHour: number | null = activeChallenge.startBeforeHour ?? null;
     if (!qualifyingTypes.length) {
       setState(prev => ({ ...prev, sessionsCompleted: 0 }));
       return;
@@ -129,10 +130,12 @@ export function useWeeklyChallenge(userPreferences: string[]): WeeklyChallengeSt
       .gte('started_at', weekStart)
       .order('started_at', { ascending: true });
 
-    // Count all qualifying sessions (before 12pm local) up to requiredSessions
+    // Count all qualifying sessions up to requiredSessions, applying time-of-day
+    // restriction only when the challenge specifies one.
     const qualifyingSessions = (sessions ?? []).filter((s) => {
+      if (startBeforeHour === null) return true;
       const localMs = new Date(s.started_at).getTime() + utcOffsetMinutes * 60 * 1000;
-      return new Date(localMs).getUTCHours() < 12;
+      return new Date(localMs).getUTCHours() < startBeforeHour;
     });
 
     const sessionsCount = Math.min(qualifyingSessions.length, requiredSessions);
@@ -152,6 +155,7 @@ export function useWeeklyChallenge(userPreferences: string[]): WeeklyChallengeSt
           challenge_id: activeChallenge.id,
           session_id: triggerSession.id,
           utc_offset_minutes: utcOffsetMinutes,
+          start_before_hour: startBeforeHour,
         },
         headers: { Authorization: `Bearer ${authSession.access_token}` },
       });

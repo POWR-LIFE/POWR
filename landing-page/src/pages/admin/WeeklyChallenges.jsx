@@ -23,6 +23,18 @@ function toDatetimeLocal(isoString) {
 
 const CONFIG_KEY = 'weekly_challenges';
 
+const ALL_ACTIVITY_TYPES = [
+	{ value: 'gym', label: 'Gym' },
+	{ value: 'hiit', label: 'HIIT' },
+	{ value: 'running', label: 'Running' },
+	{ value: 'cycling', label: 'Cycling' },
+	{ value: 'swimming', label: 'Swimming' },
+	{ value: 'sports', label: 'Sports' },
+	{ value: 'yoga', label: 'Yoga' },
+	{ value: 'dance', label: 'Dance' },
+	{ value: 'walking', label: 'Walking' },
+];
+
 const EMPTY_FORM = {
 	id: '',
 	active: false,
@@ -39,6 +51,10 @@ const EMPTY_FORM = {
 	cadenceLabel: 'Rotates weekly',
 	scheduleLabel: '',
 	audienceLabel: 'All members',
+	requiredSessions: 1,       // how many sessions needed to complete
+	qualifyingTypes: [],       // which activity types count toward this challenge
+	steps: [],                 // step labels (auto-generated on card if empty)
+	startBeforeHour: null,     // null = no time restriction; number = must start before this local hour
 };
 
 const statusTone = {
@@ -201,11 +217,25 @@ export default function WeeklyChallenges() {
 	const handleSave = async (event) => {
 		event.preventDefault();
 
+		const rawSteps = Array.isArray(form.steps) ? form.steps.filter(Boolean) : [];
+		const numSessions = Math.max(1, parseInt(form.requiredSessions, 10) || 1);
+		// Auto-generate step labels if none were provided manually
+		const steps = rawSteps.length === numSessions
+			? rawSteps
+			: Array.from({ length: numSessions }, (_, i) =>
+					i === 0 ? 'First session'
+					: i === numSessions - 1 ? 'Final session'
+					: `Session ${i + 1}`);
+
 		const normalizedForm = {
 			...form,
 			id: slugify(form.id || form.title) || `challenge-${Date.now()}`,
 			imageOffsetY: Number(form.imageOffsetY) || 0,
 			xpReward: Number(form.xpReward) || 0,
+			requiredSessions: numSessions,
+			qualifyingTypes: Array.isArray(form.qualifyingTypes) ? form.qualifyingTypes : [],
+			steps,
+			startBeforeHour: form.startBeforeHour != null && form.startBeforeHour !== '' ? Number(form.startBeforeHour) : null,
 		};
 
 		const nextChallenges = editingId
@@ -513,16 +543,83 @@ export default function WeeklyChallenges() {
 									</label>
 								</div>
 
-								<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+								<div className="grid grid-cols-1 md:grid-cols-3 gap-6">
 									<label className="block">
 										<div className="text-[10px] uppercase tracking-[0.35em] text-[#555] font-black mb-3">Cadence Label</div>
 										<input value={form.cadenceLabel} onChange={(e) => setForm((prev) => ({ ...prev, cadenceLabel: e.target.value }))} className="w-full h-14 px-5 bg-[#050505] border border-[#151515] rounded-2xl text-[#F2F2F2] outline-none" />
 									</label>
-									<label className="flex items-center gap-4 pt-9">
-										<input type="checkbox" checked={form.active} onChange={(e) => setForm((prev) => ({ ...prev, active: e.target.checked, status: e.target.checked ? 'live' : prev.status }))} className="h-5 w-5" />
-										<span className="text-[11px] uppercase tracking-[0.3em] text-[#DDD] font-black">Set as live challenge</span>
+									<label className="block">
+										<div className="text-[10px] uppercase tracking-[0.35em] text-[#555] font-black mb-3">
+											Sessions Required
+											<span className="ml-2 normal-case tracking-normal text-[#444]">(1–10)</span>
+										</div>
+										<input
+											type="number"
+											min="1"
+											max="10"
+											value={form.requiredSessions ?? 1}
+											onChange={(e) => setForm((prev) => ({ ...prev, requiredSessions: Math.max(1, Math.min(10, parseInt(e.target.value, 10) || 1)), steps: [] }))}
+											className="w-full h-14 px-5 bg-[#050505] border border-[#151515] rounded-2xl text-[#F2F2F2] outline-none"
+										/>
+									</label>
+									<label className="block">
+										<div className="text-[10px] uppercase tracking-[0.35em] text-[#555] font-black mb-3">
+											Start Before Hour
+											<span className="ml-2 normal-case tracking-normal text-[#444]">(local, 0–23; blank = no restriction)</span>
+										</div>
+										<input
+											type="number"
+											min="0"
+											max="23"
+											placeholder="e.g. 12"
+											value={form.startBeforeHour ?? ''}
+											onChange={(e) => {
+												const val = e.target.value === '' ? null : Math.min(23, Math.max(0, parseInt(e.target.value, 10)));
+												setForm((prev) => ({ ...prev, startBeforeHour: isNaN(val) ? null : val }));
+											}}
+											className="w-full h-14 px-5 bg-[#050505] border border-[#151515] rounded-2xl text-[#F2F2F2] outline-none"
+										/>
 									</label>
 								</div>
+
+								<div>
+									<div className="text-[10px] uppercase tracking-[0.35em] text-[#555] font-black mb-3">
+										Qualifying Activity Types
+										<span className="ml-2 normal-case tracking-normal text-[#444]">(sessions of these types count toward completion)</span>
+									</div>
+									<div className="flex flex-wrap gap-3">
+										{ALL_ACTIVITY_TYPES.map(({ value, label }) => {
+											const checked = (form.qualifyingTypes ?? []).includes(value);
+											return (
+												<button
+													type="button"
+													key={value}
+													onClick={() => setForm((prev) => ({
+														...prev,
+														qualifyingTypes: checked
+															? (prev.qualifyingTypes ?? []).filter((t) => t !== value)
+															: [...(prev.qualifyingTypes ?? []), value],
+													}))}
+													className={`h-10 px-4 rounded-full border text-[10px] font-black uppercase tracking-[0.25em] transition-colors ${
+														checked
+															? 'border-[#E8D200]/40 bg-[#E8D200]/15 text-[#E8D200]'
+															: 'border-[#222] bg-[#050505] text-[#555]'
+													}`}
+												>
+													{label}
+												</button>
+											);
+										})}
+									</div>
+									{(form.qualifyingTypes ?? []).length === 0 && (
+										<p className="mt-3 text-[11px] text-[#F43F5E]">⚠ No types selected — no session will ever qualify</p>
+									)}
+								</div>
+
+								<label className="flex items-center gap-4">
+									<input type="checkbox" checked={form.active} onChange={(e) => setForm((prev) => ({ ...prev, active: e.target.checked, status: e.target.checked ? 'live' : prev.status }))} className="h-5 w-5" />
+									<span className="text-[11px] uppercase tracking-[0.3em] text-[#DDD] font-black">Set as live challenge</span>
+								</label>
 							</div>
 
 							<div className="space-y-6">

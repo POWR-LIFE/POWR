@@ -114,7 +114,7 @@ export function RadialCarousel({ data, activeIndex, onChange }: RadialCarouselPr
 
       {/* Static POWR earned panel — always visible, left of centre */}
       <View style={styles.pointsPanel} pointerEvents="none">
-        <Text style={styles.pointsNum}>{data[activeIndex]?.pointsValue ?? 0}</Text>
+        <Text style={styles.pointsNum} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5}>{data[activeIndex]?.pointsValue ?? 0}</Text>
         <Text style={styles.pointsLbl}>{`POWR\nEARNED`}</Text>
       </View>
 

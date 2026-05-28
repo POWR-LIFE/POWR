@@ -257,7 +257,10 @@ function SleepWeekView({ sleepHrs, sleepBedtimes }: { sleepHrs: number[]; sleepB
         <View style={styles.bigMetricDivider} />
         <View style={styles.bigMetric}>
           <Text style={styles.bigMetricSup}>AVG BEDTIME</Text>
-          <Text style={[styles.bigMetricVal, { color: INDIGO }]}>{avgBedtime}</Text>
+          <Text style={[styles.bigMetricVal, { color: INDIGO }]}>
+            {avgBedtime.replace(/(am|pm)$/i, '')}
+            <Text style={{ fontSize: 22, fontWeight: '100', letterSpacing: -0.5 }}>{avgBedtime.match(/(am|pm)$/i)?.[0] ?? ''}</Text>
+          </Text>
           <Text style={styles.bigMetricMax}>goal: 10:30pm</Text>
           <View style={styles.metricBar}>
             {hasData ? (
