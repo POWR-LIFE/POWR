@@ -1,5 +1,6 @@
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform, NativeModules } from 'react-native';
 const CHANNEL_DEFAULT = 'powr_default_v2';
 const CHANNEL_STREAK = 'powr_streak_v2';
@@ -62,7 +63,7 @@ Notifications.setNotificationHandler({
 // Android channel setup
 // ---------------------------------------------------------------------------
 
-async function ensureAndroidChannels() {
+export async function ensureAndroidChannels() {
   if (Platform.OS !== 'android') return;
 
   await Notifications.setNotificationChannelAsync(CHANNEL_DEFAULT, {
@@ -254,10 +255,34 @@ export async function notifyRewardUnlocked(rewardName: string, rewardId: string)
 }
 
 // ---------------------------------------------------------------------------
+// Check-in reminder preference cache
+// The entry notification fires from the geofence background task, which runs
+// outside React and can't read NotificationsContext. We mirror the user's
+// check_in_reminder toggle into AsyncStorage so that code can respect it.
+// ---------------------------------------------------------------------------
+
+const CHECK_IN_PREF_KEY = '@powr/pref_check_in_reminder';
+
+export async function cacheCheckInReminderPreference(enabled: boolean) {
+  await AsyncStorage.setItem(CHECK_IN_PREF_KEY, enabled ? '1' : '0');
+}
+
+// Defaults to enabled when nothing has been cached yet, so the notification
+// always fires unless the user has explicitly turned it off.
+async function isCheckInReminderEnabled(): Promise<boolean> {
+  try {
+    return (await AsyncStorage.getItem(CHECK_IN_PREF_KEY)) !== '0';
+  } catch {
+    return true;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Check-in reminder — fired from GeofenceContext when entering a gym zone
 // ---------------------------------------------------------------------------
 
 export async function notifyCheckInAvailable(partnerName: string, locationId: string) {
+  if (!(await isCheckInReminderEnabled())) return;
   await Notifications.scheduleNotificationAsync({
     identifier: `powr-check_in_reminder-${locationId}`,
     content: {
@@ -459,15 +484,25 @@ export function getRouteFromNotification(
   // Support both in-app route strings (`/(tabs)/index`) and full deep links.
   if (rawRoute.startsWith('/')) return rawRoute;
 
+  // Deep link: powr://host?query or powr://host/path?query.
+  // Parse by string slicing — new URL() throws on custom schemes in Hermes.
   if (rawRoute.startsWith('powr://')) {
-    try {
-      const url = new URL(rawRoute);
-      const path = url.pathname?.trim();
-      if (!path || path === '/') return '/';
-      return path.startsWith('/') ? path : `/${path}`;
-    } catch {
-      return '/';
-    }
+    const withoutScheme = rawRoute.slice('powr://'.length);
+    if (!withoutScheme || withoutScheme === '/') return '/';
+
+    const queryIdx = withoutScheme.indexOf('?');
+    const slashIdx = withoutScheme.indexOf('/');
+    let hostEnd: number;
+    if (slashIdx >= 0 && queryIdx >= 0) hostEnd = Math.min(slashIdx, queryIdx);
+    else if (slashIdx >= 0) hostEnd = slashIdx;
+    else if (queryIdx >= 0) hostEnd = queryIdx;
+    else hostEnd = withoutScheme.length;
+
+    const host = withoutScheme.slice(0, hostEnd);
+    const rest = withoutScheme.slice(hostEnd); // '' | '?...' | '/path?...'
+    if (!host) return '/';
+
+    return `/${host}${rest}`;
   }
 
   return null;

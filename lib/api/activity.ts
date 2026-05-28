@@ -1030,6 +1030,31 @@ export async function saveHealthSnapshot(params: HealthSnapshotParams): Promise<
     if (error) console.warn('[healthSnapshot] insert failed:', error.message);
 }
 
+/**
+ * Upsert today's intraday step windows (user's LOCAL date) so time-of-day
+ * walking challenges can be evaluated server-side. Idempotent per (user, date).
+ */
+export async function saveDailyStepWindows(params: {
+    date: string; // local YYYY-MM-DD
+    before9am: number;
+    midday12to14: number;
+    after6pm: number;
+}): Promise<void> {
+    const { error } = await supabase
+        .from('daily_step_windows')
+        .upsert(
+            {
+                date: params.date,
+                before_9am: Math.round(params.before9am),
+                midday_12_14: Math.round(params.midday12to14),
+                after_6pm: Math.round(params.after6pm),
+                updated_at: new Date().toISOString(),
+            },
+            { onConflict: 'user_id,date' },
+        );
+    if (error) console.warn('[stepWindows] upsert failed:', error.message);
+}
+
 export { WALKING_DAILY_CAP };
 
 // ── Monthly home-screen summary ───────────────────────────────────────────────

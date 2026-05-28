@@ -21,6 +21,7 @@ import { GeofenceProvider } from '@/context/GeofenceContext';
 import { NotificationsProvider } from '@/context/NotificationsContext';
 import { ThemeProvider as AppThemeProvider, useAppTheme } from '@/context/ThemeContext';
 import { registerWalkingSync } from '@/lib/health/walkingSync';
+import { ensureAndroidChannels } from '@/lib/notifications';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -52,6 +53,15 @@ function RootLayoutNav() {
       SplashScreen.hideAsync().catch(() => {});
     }
   }, [fontsLoaded]);
+
+  // Create Android notification channels at launch so any notification — local
+  // or a remote push referencing a channel — always has a valid channel to land
+  // in, rather than only after the user signs in.
+  useEffect(() => {
+    ensureAndroidChannels().catch((err) =>
+      console.warn('[Notifications] Failed to create Android channels:', err),
+    );
+  }, []);
 
   if (!fontsLoaded) {
     return null;

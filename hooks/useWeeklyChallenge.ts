@@ -1,186 +1,214 @@
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+// challengeRules.js is CommonJS — import the namespace for interop.
+import { buildContext, evaluateChallenge } from '@/shared/challengeRules';
 import {
-  ACTIVE_WEEKLY_CHALLENGE,
-  getActiveWeeklyChallenge,
-  getTargetActivityType,
-  parseWeeklyChallengesConfig,
+  CATALOG,
+  CATEGORY_META,
+  getActiveChallengesForWeek,
+  getISOWeek,
+  nextSundayMidnight,
+  parseChallengeCatalog,
+  computeExpiresIn,
 } from '@/shared/weeklyChallenges';
 
-export type ChallengeCompletion = {
-  pointsAwarded: number;
-  completedAt: string;
-  activityType: string;
-};
-
-export type WeeklyChallengeState = {
-  challenge: typeof ACTIVE_WEEKLY_CHALLENGE;
-  targetActivityType: string | null;
-  completion: ChallengeCompletion | null;
-  sessionsCompleted: number;
-};
-
-function getISOWeek(date: Date): string {
-  const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
-  const dayNum = d.getUTCDay() || 7;
-  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
-  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-  const weekNo = Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
-  return `${d.getUTCFullYear()}-W${weekNo.toString().padStart(2, '0')}`;
+export interface ChallengeCardData {
+  id: string;
+  category: string;
+  categoryLabel: string;
+  icon: { lib: 'ion' | 'mc'; name: string };
+  tier: 'easy' | 'medium' | 'hard';
+  title: string;
+  description: string;
+  points: number;
+  /** 0–1 bar fill. */
+  fraction: number;
+  /** Human display values, e.g. 2 / 3 check-ins, 35,000 / 70,000 steps, 12 / 20 km. */
+  displayValue: number;
+  displayGoal: number;
+  unit: string;
+  /** Show the per-step dot row (only for small count/day goals). */
+  showDots: boolean;
+  /** Completed (recorded in user_challenge_completions) this week. */
+  completed: boolean;
+  expiresIn: string;
+  /** Mon–Sun, true where a qualifying session happened. */
+  streak: boolean[];
+  todayIndex: number;
+  /** Short celebratory subtitle shown on completion. */
+  completeSubtitle: string;
 }
 
-/**
- * Returns the start of the current week (Monday 00:00) in the user's local
- * timezone, expressed as a UTC ISO string. This ensures sessions logged on
- * Monday morning in UTC+ zones are not missed because their UTC timestamp
- * still falls on Sunday.
- */
-function getLocalMondayAsUTC(utcOffsetMinutes: number): string {
-  const localNowMs = Date.now() + utcOffsetMinutes * 60 * 1000;
-  const localNow = new Date(localNowMs);
-  const day = localNow.getUTCDay() || 7; // 1=Mon … 7=Sun
-  // Rewind to local midnight of Monday
-  const mondayLocalMs = localNowMs - (day - 1) * 24 * 60 * 60 * 1000;
-  const mondayLocal = new Date(mondayLocalMs);
+/** Per-category noun for count-based goals. */
+const COUNT_NOUN: Record<string, string> = {
+  gym: 'check-ins', running: 'runs', cycling: 'rides', walking: 'sessions', multi: 'sessions',
+};
+
+/** Derive display value/goal/unit + dot visibility from a rule + raw progress. */
+function formatProgress(rule: any, category: string, progress: number, target: number) {
+  const fraction = target > 0 ? Math.min(progress / target, 1) : 0;
+  switch (rule.kind) {
+    case 'weekly_sum':
+    case 'weekend_sum':
+      if (rule.metric === 'steps') {
+        return { fraction, displayValue: progress, displayGoal: target, unit: 'steps', showDots: false };
+      }
+      return { fraction, displayValue: Math.round(progress / 1000), displayGoal: Math.round(target / 1000), unit: 'km', showDots: false };
+    case 'daily_metric_days':
+    case 'distinct_days':
+    case 'spaced_days':
+    case 'step_window':
+      return { fraction, displayValue: progress, displayGoal: target, unit: 'days', showDots: target <= 7 };
+    case 'distinct_categories':
+      return { fraction, displayValue: progress, displayGoal: target, unit: 'categories', showDots: true };
+    case 'same_day_combo':
+      return { fraction, displayValue: progress, displayGoal: target, unit: 'days', showDots: true };
+    default:
+      return { fraction, displayValue: progress, displayGoal: target, unit: COUNT_NOUN[category] ?? 'sessions', showDots: target <= 7 };
+  }
+}
+
+export interface WeeklyChallengesState {
+  challenges: ChallengeCardData[];
+  loading: boolean;
+  /** Set to the challenge id that was just awarded this load (drives the celebration). */
+  newlyCompletedId: string | null;
+}
+
+/** Local Monday 00:00 (user tz) as a UTC ISO string — matches the edge function. */
+function localMondayAsUTC(utcOffsetMinutes: number): string {
+  const localMs = Date.now() + utcOffsetMinutes * 60 * 1000;
+  const day = new Date(localMs).getUTCDay() || 7;
+  const mondayLocal = new Date(localMs - (day - 1) * 86400000);
   mondayLocal.setUTCHours(0, 0, 0, 0);
-  // Translate back to real UTC
   return new Date(mondayLocal.getTime() - utcOffsetMinutes * 60 * 1000).toISOString();
 }
 
-export function useWeeklyChallenge(userPreferences: string[]): WeeklyChallengeState {
-  const [state, setState] = useState<WeeklyChallengeState>({
-    challenge: ACTIVE_WEEKLY_CHALLENGE,
-    targetActivityType: null,
-    completion: null,
-    sessionsCompleted: 0,
-  });
+/** Mon–Sun activity flags for a category (null = any category). */
+function streakFor(sessions: any[], category: string | null): boolean[] {
+  const days = [false, false, false, false, false, false, false];
+  for (const s of sessions) {
+    if (category && s.category !== category) continue;
+    days[s.dow] = true;
+  }
+  return days;
+}
 
-  const completing = useRef(false);
+export function useWeeklyChallenges(): WeeklyChallengesState {
+  const [state, setState] = useState<WeeklyChallengesState>({
+    challenges: [],
+    loading: true,
+    newlyCompletedId: null,
+  });
+  const awarding = useRef<Set<string>>(new Set());
 
   const load = useCallback(async () => {
-    // 1. Load challenge config from system_config, fall back to bundled
-    let activeChallenge = ACTIVE_WEEKLY_CHALLENGE;
+    const utcOffsetMinutes = -new Date().getTimezoneOffset();
+    const localNow = new Date(Date.now() + utcOffsetMinutes * 60 * 1000);
+    const challengeWeek = getISOWeek(localNow);
+    const todayIndex = (localNow.getUTCDay() + 6) % 7;
+    const expiresIn = computeExpiresIn(nextSundayMidnight());
+
+    // 1. Resolve catalog (system_config override → bundled) and the week's 5 active.
+    let catalog = CATALOG;
     try {
       const { data } = await supabase
         .from('system_config')
         .select('value')
         .eq('key', 'weekly_challenges')
         .maybeSingle();
-      if (data?.value) {
-        activeChallenge = getActiveWeeklyChallenge(parseWeeklyChallengesConfig(data.value));
-      }
+      if (data?.value) catalog = parseChallengeCatalog(data.value);
     } catch {
-      // silently fall back to bundled
+      /* fall back to bundled */
     }
+    const active = getActiveChallengesForWeek(challengeWeek, catalog);
 
-    // 2. Pick the user's highest-scoring qualifying activity
-    const targetActivityType = getTargetActivityType(activeChallenge, userPreferences);
-
-    // 3. Check for existing completion this week.
-    // Use the user's LOCAL date (mirroring the edge function) so the week key
-    // matches what was stored — prevents UTC+ users from missing their record
-    // when their local Monday morning is still Sunday in UTC.
-    const utcOffsetMinutes = -new Date().getTimezoneOffset();
-    const localNow = new Date(Date.now() + utcOffsetMinutes * 60 * 1000);
-    const challengeWeek = getISOWeek(localNow);
-    const { data: existing } = await supabase
-      .from('user_challenge_completions')
-      .select('points_awarded, completed_at, activity_type')
-      .eq('challenge_id', activeChallenge.id)
-      .eq('challenge_week', challengeWeek)
-      .maybeSingle();
-
-    const requiredSessions = activeChallenge.requiredSessions ?? 1;
-
-    if (existing) {
-      setState({
-        challenge: activeChallenge,
-        targetActivityType,
-        completion: {
-          pointsAwarded: existing.points_awarded,
-          completedAt: existing.completed_at,
-          activityType: existing.activity_type,
-        },
-        sessionsCompleted: requiredSessions,
-      });
-      return;
-    }
-
-    setState(prev => ({ ...prev, challenge: activeChallenge, targetActivityType, completion: null }));
-
-    // 4. Check for a qualifying session this week that started before the challenge's
-    // time limit (startBeforeHour). Query ALL qualifying types — not just the user's
-    // top-priority one — so any eligible session triggers completion.
-    const qualifyingTypes = activeChallenge.qualifyingTypes ?? [];
-    const startBeforeHour: number | null = activeChallenge.startBeforeHour ?? null;
-    if (!qualifyingTypes.length) {
-      setState(prev => ({ ...prev, sessionsCompleted: 0 }));
-      return;
-    }
-
-    // weekStart is Monday 00:00 in the user's LOCAL timezone (as a UTC string)
-    // so UTC+ users' early-morning Monday sessions are included in the query.
-    const weekStart = getLocalMondayAsUTC(utcOffsetMinutes);
-
+    // 2. This week's sessions + step windows (only if a step_window challenge is active).
+    const weekStart = localMondayAsUTC(utcOffsetMinutes);
     const { data: sessions } = await supabase
       .from('activity_sessions')
-      .select('id, started_at')
-      .in('type', qualifyingTypes)
+      .select('type, started_at, duration_sec, distance_m, steps, verification')
       .gte('started_at', weekStart)
       .order('started_at', { ascending: true });
 
-    // Count all qualifying sessions up to requiredSessions, applying time-of-day
-    // restriction only when the challenge specifies one.
-    const qualifyingSessions = (sessions ?? []).filter((s) => {
-      if (startBeforeHour === null) return true;
-      const localMs = new Date(s.started_at).getTime() + utcOffsetMinutes * 60 * 1000;
-      return new Date(localMs).getUTCHours() < startBeforeHour;
-    });
-
-    const sessionsCount = Math.min(qualifyingSessions.length, requiredSessions);
-    setState(prev => ({ ...prev, sessionsCompleted: sessionsCount }));
-
-    // 5. Attempt full completion via edge function once all sessions are done
-    if (qualifyingSessions.length < requiredSessions || completing.current) return;
-
-    const triggerSession = qualifyingSessions[requiredSessions - 1];
-    completing.current = true;
-    try {
-      const { data: { session: authSession } } = await supabase.auth.getSession();
-      if (!authSession) return;
-
-      const { data: result, error } = await supabase.functions.invoke('complete-weekly-challenge', {
-        body: {
-          challenge_id: activeChallenge.id,
-          session_id: triggerSession.id,
-          utc_offset_minutes: utcOffsetMinutes,
-          start_before_hour: startBeforeHour,
-        },
-        headers: { Authorization: `Bearer ${authSession.access_token}` },
-      });
-
-      if (!error && result?.ok) {
-        setState(prev => ({
-          ...prev,
-          sessionsCompleted: requiredSessions,
-          completion: {
-            pointsAwarded: result.points_awarded ?? 0,
-            completedAt: new Date().toISOString(),
-            activityType: result.activity_type ?? targetActivityType,
-          },
-        }));
-      }
-    } catch (e) {
-      console.warn('[useWeeklyChallenge] completion failed:', e);
-    } finally {
-      completing.current = false;
+    let stepWindowRows: any[] = [];
+    if (active.some((c) => c.rule.kind === 'step_window')) {
+      const { data: windows } = await supabase
+        .from('daily_step_windows')
+        .select('date, before_9am, midday_12_14, after_6pm')
+        .gte('date', weekStart.slice(0, 10));
+      stepWindowRows = windows ?? [];
     }
-  }, [userPreferences]);
 
-  useFocusEffect(useCallback(() => {
-    load();
-  }, [load]));
+    const ctx = buildContext(sessions ?? [], utcOffsetMinutes, stepWindowRows);
+
+    // 3. Existing completions this week.
+    const { data: completions } = await supabase
+      .from('user_challenge_completions')
+      .select('challenge_id')
+      .eq('challenge_week', challengeWeek);
+    const completedIds = new Set((completions ?? []).map((c) => c.challenge_id));
+
+    // 4. Evaluate each active challenge; award any newly met.
+    let newlyCompletedId: string | null = null;
+    const cards: ChallengeCardData[] = [];
+
+    for (const c of active) {
+      const { progress, target, met } = evaluateChallenge(c.rule, ctx);
+      let completed = completedIds.has(c.id);
+
+      if (met && !completed && !awarding.current.has(c.id)) {
+        awarding.current.add(c.id);
+        try {
+          const { data: { session: authSession } } = await supabase.auth.getSession();
+          if (authSession) {
+            const { data: result, error } = await supabase.functions.invoke('complete-weekly-challenge', {
+              body: { challenge_id: c.id, utc_offset_minutes: utcOffsetMinutes },
+              headers: { Authorization: `Bearer ${authSession.access_token}` },
+            });
+            if (!error && result?.ok && (result.completed || result.already_completed)) {
+              completed = true;
+              if (!result.already_completed) newlyCompletedId = c.id;
+            }
+          }
+        } catch (e) {
+          console.warn('[useWeeklyChallenges] award failed:', c.id, e);
+        } finally {
+          awarding.current.delete(c.id);
+        }
+      }
+
+      const effectiveProgress = completed ? target : progress;
+      const metaMap = CATEGORY_META as Record<string, { label: string; icon: { lib: 'ion' | 'mc'; name: string } }>;
+      const meta = metaMap[c.category] ?? { label: c.category, icon: { lib: 'ion' as const, name: 'flame' } };
+      const fmt = formatProgress(c.rule, c.category, effectiveProgress, target);
+      cards.push({
+        id: c.id,
+        category: c.category,
+        categoryLabel: meta.label,
+        icon: meta.icon,
+        tier: c.tier as ChallengeCardData['tier'],
+        title: c.title,
+        description: c.description,
+        points: c.points,
+        ...fmt,
+        completed,
+        expiresIn,
+        streak: streakFor(ctx.sessions, c.category === 'multi' ? null : c.category),
+        todayIndex,
+        completeSubtitle: c.description,
+      });
+    }
+
+    setState({ challenges: cards, loading: false, newlyCompletedId });
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load])
+  );
 
   return state;
 }
