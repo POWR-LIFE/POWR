@@ -18,6 +18,7 @@ import {
     updateStreakForToday,
     fetchTodayWalkingPoints,
     saveHealthSnapshot,
+    saveDailyStepWindows,
     WALKING_DAILY_CAP,
 } from '@/lib/api/activity';
 import {
@@ -87,6 +88,80 @@ export async function getStepsToday(): Promise<number> {
     if (Platform.OS === 'ios')     return getStepsTodayIOS();
     if (Platform.OS === 'android') return getStepsTodayAndroid();
     return 0;
+}
+
+// ── Windowed step readers (intraday challenges) ───────────────────────────────
+
+async function getStepsInRangeIOS(start: Date, end: Date): Promise<number> {
+    try {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const HK = require('@kingstinct/react-native-healthkit') as typeof import('@kingstinct/react-native-healthkit');
+        const samples = await HK.queryQuantitySamples('HKQuantityTypeIdentifierStepCount', {
+            filter: { date: { startDate: start, endDate: end } },
+            unit: 'count',
+            limit: -1,
+        });
+        return samples.reduce((sum, s) => sum + s.quantity, 0);
+    } catch {
+        return 0;
+    }
+}
+
+async function getStepsInRangeAndroid(start: Date, end: Date): Promise<number> {
+    try {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const { initialize, readRecords } = require('react-native-health-connect');
+        await initialize();
+        const result = await readRecords('Steps', {
+            timeRangeFilter: { operator: 'between', startTime: start.toISOString(), endTime: end.toISOString() },
+        });
+        const records = result?.records ?? [];
+        return (records as Array<{ count: number }>).reduce((sum, r) => sum + r.count, 0);
+    } catch {
+        return 0;
+    }
+}
+
+function getStepsInRange(start: Date, end: Date): Promise<number> {
+    if (start >= end) return Promise.resolve(0);
+    if (Platform.OS === 'ios')     return getStepsInRangeIOS(start, end);
+    if (Platform.OS === 'android') return getStepsInRangeAndroid(start, end);
+    return Promise.resolve(0);
+}
+
+/** Local YYYY-MM-DD for `d`. */
+function localDateKey(d: Date): string {
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+function atLocalHour(base: Date, hour: number): Date {
+    const d = new Date(base);
+    d.setHours(hour, 0, 0, 0);
+    return d;
+}
+
+/**
+ * Reads today's intraday step windows from the native health store and upserts
+ * them. Windows are capped at "now" so partial days report only elapsed steps.
+ */
+export async function syncStepWindowsNow(): Promise<void> {
+    if (Platform.OS === 'web') return;
+    const now = new Date();
+    const before9am = await getStepsInRange(atLocalHour(now, 0), new Date(Math.min(+atLocalHour(now, 9), +now)));
+    const midday = await getStepsInRange(
+        new Date(Math.min(+atLocalHour(now, 12), +now)),
+        new Date(Math.min(+atLocalHour(now, 14), +now)),
+    );
+    const evening = await getStepsInRange(new Date(Math.min(+atLocalHour(now, 18), +now)), now);
+
+    if (before9am === 0 && midday === 0 && evening === 0) return;
+    await saveDailyStepWindows({
+        date: localDateKey(now),
+        before9am,
+        midday12to14: midday,
+        after6pm: evening,
+    });
 }
 
 /** Reads `profiles.active_health_provider`, falls back to the native provider for this OS. */
@@ -183,6 +258,9 @@ export async function syncWalkingNow(): Promise<void> {
 
     // Mark today as an active streak day (idempotent)
     await updateStreakForToday();
+
+    // Record intraday step windows for time-of-day walking challenges.
+    await syncStepWindowsNow();
 }
 
 // ── Background task ───────────────────────────────────────────────────────────

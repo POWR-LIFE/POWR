@@ -19,6 +19,7 @@ import {
   notifyCheckInAvailable,
   notifyPointsMilestone,
   scheduleInactivityNudge,
+  cacheCheckInReminderPreference,
   clearBadge,
   getRouteFromNotification,
   type PointsMilestoneOptions,
@@ -110,7 +111,10 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     registerForPush(user.id);
 
     getNotificationPreferences(user.id)
-      .then((prefs) => setPreferences(prefs))
+      .then((prefs) => {
+        setPreferences(prefs);
+        cacheCheckInReminderPreference(prefs.check_in_reminder);
+      })
       .catch((err) => console.warn('[Notifications] Failed to load preferences:', err));
   }, [user?.id, registerForPush]);
 
@@ -195,6 +199,9 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     async (partial: Partial<NotificationPreferences>) => {
       if (!user?.id) return;
       setPreferences((prev) => ({ ...prev, ...partial }));
+      if (partial.check_in_reminder !== undefined) {
+        await cacheCheckInReminderPreference(partial.check_in_reminder);
+      }
       await updateNotificationPreferences(user.id, partial);
     },
     [user?.id],

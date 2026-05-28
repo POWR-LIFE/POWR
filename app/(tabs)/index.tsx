@@ -33,8 +33,7 @@ import { usePoints } from '@/hooks/usePoints';
 import { useStreak } from '@/hooks/useStreak';
 import { fetchSmartFeaturedReward, type Reward } from '@/lib/api/rewards';
 import { fetchProfile } from '@/lib/api/user';
-import { computeExpiresIn, computeUrgency } from '@/shared/weeklyChallenges';
-import { useWeeklyChallenge } from '@/hooks/useWeeklyChallenge';
+import { useWeeklyChallenges } from '@/hooks/useWeeklyChallenge';
 
 const GOLD = '#E8D200';
 const TEXT_PRIMARY = '#F2F2F2';
@@ -177,7 +176,7 @@ export default function HomeScreen() {
     const [activePrefs, setActivePrefs] = useState<ActivityType[]>(['gym', 'running', 'walking']);
     const [profileName, setProfileName] = useState<string | null>(null);
     const [refreshing, setRefreshing] = useState(false);
-    const { challenge: weeklyChallenge, completion: challengeCompletion, sessionsCompleted: challengeSessionsCompleted } = useWeeklyChallenge(activePrefs);
+    const { challenges: weeklyChallenges, newlyCompletedId } = useWeeklyChallenges();
     const [featuredReward, setFeaturedReward] = useState<Reward | null>(null);
 
     const loadFeaturedReward = useCallback(async () => {
@@ -543,16 +542,10 @@ export default function HomeScreen() {
 
                 <Text style={styles.sectionLabel}>CHALLENGE</Text>
                 <ChallengeCard
-                    title={weeklyChallenge.title}
-                    description={weeklyChallenge.description}
-                    bonus={weeklyChallenge.bonusLabel}
-                    expiresIn={computeExpiresIn(weeklyChallenge.expiresAt) || weeklyChallenge.expiresIn}
-                    urgency={computeUrgency(weeklyChallenge.expiresAt)}
-                    powrRewardText={weeklyChallenge.powrRewardText}
-                    completed={challengeCompletion ?? undefined}
-                    sessionsCompleted={challengeSessionsCompleted}
-                    sessionsRequired={weeklyChallenge.requiredSessions ?? 3}
-                    steps={weeklyChallenge.steps}
+                    challenges={weeklyChallenges}
+                    totalBalance={balance}
+                    celebrateId={newlyCompletedId}
+                    onShare={() => router.push({ pathname: '/share-stats', params: { mode: 'streak' } })}
                 />
 
                 {featuredReward && (
@@ -568,7 +561,7 @@ export default function HomeScreen() {
                             onPress={() => router.push('/(tabs)/rewards')}
                             style={({ pressed }) => [pressed && { opacity: 0.92 }]}
                         >
-                            <RewardCard reward={featuredReward} balance={balance} challengeTitle={weeklyChallenge.title} />
+                            <RewardCard reward={featuredReward} balance={balance} challengeTitle={weeklyChallenges[0]?.title ?? 'this week’s challenge'} />
                         </Pressable>
                     </>
                 )}
