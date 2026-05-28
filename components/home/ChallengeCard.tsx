@@ -262,12 +262,12 @@ export function ChallengeCard({
             <Text style={[styles.badgeText, { color: accent.hex }]}>WEEKLY CHALLENGE</Text>
           </View>
         )}
-        <View style={styles.timerRow}>
-          {!allDone && (
+        {!allDone && (
+          <View style={styles.timerRow}>
             <Animated.View style={[styles.timerDot, { opacity: dotAnim, backgroundColor: accent.hex }]} />
-          )}
-          <Text style={styles.timerText}>{expiresIn}</Text>
-        </View>
+            <Text style={styles.timerText}>{expiresIn}</Text>
+          </View>
+        )}
       </View>
 
       {/* Title */}

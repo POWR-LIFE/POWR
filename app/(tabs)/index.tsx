@@ -22,7 +22,6 @@ import { StickyActivityIndicators } from '@/components/home/StickyActivityIndica
 import { StreakCard } from '@/components/home/StreakCard';
 import { WeeklyActivityBars, type WeeklyRingData } from '@/components/home/WeeklyActivityRings';
 import { WeeklyActivityCircles } from '@/components/home/WeeklyActivityRings';
-import { WelcomeNextCard } from '@/components/home/WelcomeNextCard';
 import { ProfileButton } from '@/components/ProfileButton';
 import { ACTIVITIES, type ActivityType } from '@/constants/activities';
 import { useAuth } from '@/context/AuthContext';
@@ -468,16 +467,6 @@ export default function HomeScreen() {
                         />
                     }
                 >
-                {isNewUser && (
-                    <WelcomeNextCard
-                        healthConnected={health.isAuthorized}
-                        hasActivity={recentItems.length > 0}
-                        onConnectHealth={() => health.requestPermissions()}
-                        onFindGym={() => router.push('/(tabs)/discover')}
-                        onLogWorkout={() => router.push('/manual-log')}
-                    />
-                )}
-
                 {__DEV__ && (
                     <View style={{ marginBottom: 12, borderWidth: 1, borderColor: '#ff0', borderRadius: 8, padding: 10, gap: 8 }}>
                         <Text style={{ color: '#ff0', fontSize: 10, fontWeight: '700', letterSpacing: 1 }}>⚠ DEV TOOLS</Text>

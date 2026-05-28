@@ -1,7 +1,8 @@
-/** Returns the ISO timestamp for the upcoming Sunday at 23:59:59 local time. */
+/** Returns the ISO timestamp for the end of the current week's Sunday at 23:59:59 local time. */
 function nextSundayMidnight() {
   const now = new Date();
-  const daysUntilSunday = (7 - now.getDay()) % 7 || 7;
+  // If today IS Sunday (getDay() === 0) daysUntilSunday is 0 — we want end of today, not +7.
+  const daysUntilSunday = now.getDay() === 0 ? 0 : 7 - now.getDay();
   const sunday = new Date(now);
   sunday.setDate(now.getDate() + daysUntilSunday);
   sunday.setHours(23, 59, 59, 0);
@@ -32,6 +33,7 @@ export const WEEKLY_CHALLENGES = [
       'Morning session #3',
     ],
     qualifyingTypes: ['gym', 'running', 'cycling', 'swimming', 'hiit', 'sports', 'yoga', 'dance', 'walking'],
+    startBeforeHour: 12, // sessions must start before 12:00 local time
   },
 ];
 
@@ -53,6 +55,7 @@ const challengeDefaults = {
   requiredSessions: 1,
   steps: [],
   qualifyingTypes: [],
+  startBeforeHour: null, // null = no time restriction; number = local hour before which session must start
 };
 
 /**
@@ -81,12 +84,19 @@ export function getTargetActivityType(challenge, userPreferences = []) {
 }
 
 export function normalizeWeeklyChallenge(challenge, index = 0) {
+  const base = { ...challengeDefaults, ...challenge };
   return {
-    ...challengeDefaults,
-    ...challenge,
+    ...base,
     id: challenge?.id || `weekly-challenge-${index + 1}`,
     imageOffsetY: Number.isFinite(Number(challenge?.imageOffsetY)) ? Number(challenge.imageOffsetY) : 0,
     xpReward: Number.isFinite(Number(challenge?.xpReward)) ? Number(challenge.xpReward) : 0,
+    // Guard critical fields so undefined from spread never overrides defaults
+    requiredSessions: Number.isFinite(Number(challenge?.requiredSessions)) && Number(challenge.requiredSessions) >= 1
+      ? Number(challenge.requiredSessions) : challengeDefaults.requiredSessions,
+    qualifyingTypes: Array.isArray(challenge?.qualifyingTypes) ? challenge.qualifyingTypes : challengeDefaults.qualifyingTypes,
+    steps: Array.isArray(challenge?.steps) ? challenge.steps : challengeDefaults.steps,
+    startBeforeHour: (challenge?.startBeforeHour != null && Number.isFinite(Number(challenge.startBeforeHour)))
+      ? Number(challenge.startBeforeHour) : challengeDefaults.startBeforeHour,
   };
 }
 

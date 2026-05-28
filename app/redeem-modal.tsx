@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Linking,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View
@@ -359,7 +360,12 @@ function SuccessView({ reward, code, expiresAt, copied, checkoutUrl, alreadyRede
   const partnerLabel = reward.partner && reward.partner.toUpperCase() !== reward.title.toUpperCase() ? reward.partner : null;
 
   return (
-    <View style={styles.successSheet}>
+    <ScrollView
+      style={{ flex: 1 }}
+      contentContainerStyle={styles.successSheet}
+      showsVerticalScrollIndicator={false}
+      bounces={false}
+    >
       {/* TOP: logo */}
       <View style={styles.successHeroWrap}>
         {reward.logoUrl ? (
@@ -429,7 +435,7 @@ function SuccessView({ reward, code, expiresAt, copied, checkoutUrl, alreadyRede
           <Text style={styles.doneBtnText}>Done</Text>
         </Pressable>
       </View>
-    </View>
+    </ScrollView>
   );
 }
 
@@ -618,8 +624,7 @@ const styles = StyleSheet.create({
 
   // Success screen
   successSheet: {
-    flex: 1,
-    justifyContent: 'space-between',
+    flexGrow: 1,
   },
   successScrollContent: {
     flexGrow: 1,
@@ -708,7 +713,8 @@ const styles = StyleSheet.create({
   successBottom: {
     gap: 14,
     paddingHorizontal: 20,
-    paddingBottom: 4,
+    paddingBottom: 8,
+    marginTop: 'auto',
   },
   alreadyRedeemedBanner: {
     flexDirection: 'row',
