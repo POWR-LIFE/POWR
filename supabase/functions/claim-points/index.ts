@@ -417,6 +417,15 @@ Deno.serve(async (req) => {
     .single();
 
   if (txError) {
+    // 23505 = unique violation on (session_id, description) — a concurrent claim
+    // for this same session already inserted the base row. The step-4 count check
+    // is not atomic, so two simultaneous invocations can both pass it; the DB
+    // index is the real backstop. Treat the loser of the race as already-claimed
+    // rather than a 500 so the client's recordDwellSession surfaces completion
+    // (the "Session already claimed" branch) instead of retrying.
+    if ((txError as { code?: string }).code === '23505') {
+      return new Response(JSON.stringify({ error: 'Session already claimed' }), { status: 409 });
+    }
     console.error('Transaction insert failed:', txError);
     return new Response(JSON.stringify({ error: 'Failed to record transaction' }), { status: 500 });
   }

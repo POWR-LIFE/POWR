@@ -122,7 +122,34 @@ export function useWeeklyChallenges(): WeeklyChallengesState {
     } catch {
       /* fall back to bundled */
     }
-    const active = getActiveChallengesForWeek(challengeWeek, catalog);
+    const baseActive = getActiveChallengesForWeek(challengeWeek, catalog);
+
+    // Apply per-week category overrides stored in system_config.challenge_week_overrides.
+    let active = baseActive;
+    try {
+      const { data: ovData } = await supabase
+        .from('system_config')
+        .select('value')
+        .eq('key', 'challenge_week_overrides')
+        .maybeSingle();
+      if (ovData?.value) {
+        const allOv: Record<string, Record<string, string>> =
+          typeof ovData.value === 'string' ? JSON.parse(ovData.value) : ovData.value;
+        const weekOv = allOv[challengeWeek] ?? {};
+        if (Object.keys(weekOv).length > 0) {
+          active = baseActive.map((c) => {
+            const ovId = weekOv[c.category];
+            if (ovId) {
+              const found = (catalog as any[]).find((x: any) => x.id === ovId);
+              if (found) return found;
+            }
+            return c;
+          });
+        }
+      }
+    } catch {
+      /* use auto rotation */
+    }
 
     // 2. This week's sessions + step windows (only if a step_window challenge is active).
     const weekStart = localMondayAsUTC(utcOffsetMinutes);

@@ -149,6 +149,13 @@ Deno.serve(async (req) => {
     .single();
 
   if (txError) {
+    // 23505 = unique violation on (session_id, description) — a concurrent upgrade
+    // already inserted the 'gym session upgrade (45min)' row. The delta check above
+    // is not atomic, so two simultaneous calls can both compute a positive delta;
+    // the DB index is the backstop. Treat the loser as a no-op success.
+    if ((txError as { code?: string }).code === '23505') {
+      return new Response(JSON.stringify({ ok: true, delta: 0, message: 'Upgrade already recorded' }), { status: 200 });
+    }
     console.error('[upgrade-gym-tier] Transaction insert failed:', txError);
     return new Response(JSON.stringify({ error: 'Failed to record upgrade' }), { status: 500 });
   }

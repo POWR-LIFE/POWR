@@ -194,8 +194,27 @@ function snapshotSourceFor(id: HealthProviderId | null): 'healthkit' | 'health_c
 
 // ── Core sync logic ───────────────────────────────────────────────────────────
 
+// Single-flight guard: foreground (useWalkingProgress) and the ~15-min background
+// task can both call syncWalkingNow. Without coordination, two concurrent runs each
+// read the same stale today-points, both compute the same incremental award, and
+// both insert — producing the duplicate point_transactions seen in prod (the
+// sub-millisecond [2,2] / [3,3] rows). Coalescing concurrent callers onto one
+// in-flight promise serialises the read-modify-write. NOTE: this only guards within
+// a single JS context; the background task can run in a separate context, so it is
+// not a substitute for a server-side atomic award (tracked as a follow-up).
+let _walkingSyncInFlight: Promise<void> | null = null;
+
 /** Syncs today's step count to Supabase. Safe to call multiple times. */
-export async function syncWalkingNow(): Promise<void> {
+export function syncWalkingNow(): Promise<void> {
+    if (_walkingSyncInFlight) {
+        console.log('[walkingSync] sync already in flight — joining existing run.');
+        return _walkingSyncInFlight;
+    }
+    _walkingSyncInFlight = _syncWalkingNowImpl().finally(() => { _walkingSyncInFlight = null; });
+    return _walkingSyncInFlight;
+}
+
+async function _syncWalkingNowImpl(): Promise<void> {
     const activeId = await resolveActiveProviderId();
     let steps = 0;
     if (activeId) {

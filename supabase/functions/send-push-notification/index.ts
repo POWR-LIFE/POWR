@@ -176,16 +176,11 @@ function buildMessage(
       case 'session_completed': {
         const sessionId = (payload.session_id as string) ?? '';
         const earned = Math.max(0, Math.round(Number(payload.earned ?? payload.points ?? 0)));
-        const availableBalance = payload.available_balance != null
-          ? Math.round(Number(payload.available_balance))
-          : undefined;
         const partnerName = payload.partner_name as string | undefined;
         const currentStreak = payload.current_streak as number | undefined;
 
-        const titlePoints = availableBalance ?? earned;
-
         return {
-          title: titlePoints > 0 ? `+${titlePoints.toLocaleString()} pts earned! 🔥` : 'Session complete 🔥',
+          title: earned > 0 ? `+${earned.toLocaleString()} pts earned! 🔥` : 'Session complete 🔥',
           body: formatSessionCompletedBody(partnerName, currentStreak),
           data: {
             type,
@@ -380,17 +375,6 @@ Deno.serve(async (req: Request) => {
 
           if (txn?.amount !== undefined && txn.amount !== null) {
             payload = { ...payload, earned: txn.amount };
-          }
-
-          // Fetch the user's current available rewards balance
-          const { data: balanceRow } = await supabase
-            .from('user_balances')
-            .select('balance')
-            .eq('user_id', session.user_id)
-            .maybeSingle();
-
-          if (balanceRow?.balance !== undefined && balanceRow.balance !== null) {
-            payload = { ...payload, available_balance: balanceRow.balance };
           }
         }
       }
