@@ -281,8 +281,26 @@ async function isCheckInReminderEnabled(): Promise<boolean> {
 // Check-in reminder — fired from GeofenceContext when entering a gym zone
 // ---------------------------------------------------------------------------
 
+// Suppress repeat check-in notifications for the same location within this
+// window. The geofence ENTER event, the "already inside" check on app open,
+// and the periodic foreground scan can all fire for the same visit; without a
+// cooldown, reopening the app at a gym re-notifies on every launch.
+const CHECK_IN_COOLDOWN_MS = 30 * 60 * 1000;
+const CHECK_IN_LAST_FIRED_PREFIX = '@powr/check_in_last_fired/';
+
 export async function notifyCheckInAvailable(partnerName: string, locationId: string) {
   if (!(await isCheckInReminderEnabled())) return;
+
+  const cooldownKey = `${CHECK_IN_LAST_FIRED_PREFIX}${locationId}`;
+  try {
+    const lastFiredRaw = await AsyncStorage.getItem(cooldownKey);
+    if (lastFiredRaw) {
+      const lastFired = parseInt(lastFiredRaw, 10);
+      if (Number.isFinite(lastFired) && Date.now() - lastFired < CHECK_IN_COOLDOWN_MS) return;
+    }
+    await AsyncStorage.setItem(cooldownKey, String(Date.now()));
+  } catch { /* non-fatal — fall through and notify */ }
+
   await Notifications.scheduleNotificationAsync({
     identifier: `powr-check_in_reminder-${locationId}`,
     content: {
@@ -303,8 +321,9 @@ export async function notifyCheckInAvailable(partnerName: string, locationId: st
 
 // ---------------------------------------------------------------------------
 // Gym exit safety-net — scheduled with a short DATE trigger so it survives
-// a background-task kill. Cancelled and replaced with notifySessionCompleted
-// if the session is successfully claimed within the execution window.
+// a background-task kill. Cancelled once the session is successfully claimed
+// (the richer "+X earned" notification is then delivered server-side by the
+// claim-points edge function, the single source of truth for session_completed).
 // ---------------------------------------------------------------------------
 
 export async function notifyGymExited(partnerName: string) {

@@ -6,6 +6,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
 import { useRouter } from 'expo-router';
 import { AppState, AppStateStatus } from 'react-native';
@@ -58,6 +59,11 @@ interface NotificationsContextValue {
 
 const NotificationsContext = createContext<NotificationsContextValue | null>(null);
 
+// Identifier of the last notification response we navigated for. Persisted so a
+// stale cold-start response (getLastNotificationResponseAsync returns the most
+// recent tap even on a normal launch) isn't acted on more than once.
+const LAST_HANDLED_NOTIF_KEY = '@powr/last_handled_notification_id';
+
 // ---------------------------------------------------------------------------
 // Provider
 // ---------------------------------------------------------------------------
@@ -74,6 +80,48 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   const responseListener = useRef<Notifications.EventSubscription | null>(null);
   const appState = useRef<AppStateStatus>(AppState.currentState);
   const coldStartHandled = useRef(false);
+  const handledResponseIds = useRef<Set<string>>(new Set());
+
+  // -------------------------------------------------------------------------
+  // Shared notification-tap handler (foreground listener + cold start)
+  // -------------------------------------------------------------------------
+
+  const handleNotificationResponse = useCallback(
+    async (response: Notifications.NotificationResponse, fromColdStart: boolean) => {
+      const id = response.notification.request.identifier;
+
+      // Guard against acting on the same response twice within this session — on
+      // Android both the listener and the cold-start path can see the launch tap.
+      // Add to the set synchronously, before any await, so the second caller bails.
+      if (id) {
+        if (handledResponseIds.current.has(id)) return;
+        handledResponseIds.current.add(id);
+      }
+
+      // getLastNotificationResponseAsync() returns the most recent tap even on a
+      // normal cold start, which would re-navigate to a stale screen days later.
+      // Skip if we already acted on this exact notification in a previous session.
+      if (fromColdStart && id) {
+        try {
+          const lastHandled = await AsyncStorage.getItem(LAST_HANDLED_NOTIF_KEY);
+          if (lastHandled === id) return;
+        } catch {
+          // storage unavailable — fall through and handle the tap
+        }
+      }
+
+      if (id) {
+        AsyncStorage.setItem(LAST_HANDLED_NOTIF_KEY, id).catch(() => { /* non-fatal */ });
+      }
+
+      const route = getRouteFromNotification(response);
+      if (route) {
+        router.push(route as Parameters<typeof router.push>[0]);
+      }
+      clearBadge();
+    },
+    [router],
+  );
 
   // -------------------------------------------------------------------------
   // Register device for push when user signs in
@@ -146,11 +194,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     // User tapped a notification
     responseListener.current = Notifications.addNotificationResponseReceivedListener(
       (response) => {
-        const route = getRouteFromNotification(response);
-        if (route) {
-          router.push(route as Parameters<typeof router.push>[0]);
-        }
-        clearBadge();
+        handleNotificationResponse(response, false);
       },
     );
 
@@ -167,7 +211,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
       responseListener.current?.remove();
       appStateSub.remove();
     };
-  }, [router]);
+  }, [handleNotificationResponse]);
 
   // Handle notification that launched the app from a killed state (cold start).
   // addNotificationResponseReceivedListener does not fire for cold starts on iOS;
@@ -178,12 +222,9 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
 
     Notifications.getLastNotificationResponseAsync().then((response) => {
       if (!response) return;
-      const route = getRouteFromNotification(response);
-      if (route) {
-        router.push(route as Parameters<typeof router.push>[0]);
-      }
+      handleNotificationResponse(response, true);
     });
-  }, [authLoading, user?.id, router]);
+  }, [authLoading, user?.id, handleNotificationResponse]);
 
   // -------------------------------------------------------------------------
   // Public API

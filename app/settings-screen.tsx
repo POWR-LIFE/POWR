@@ -413,6 +413,11 @@ export default function SettingsScreen() {
                 icon="person-add-outline"
                 label="Athlete Applications"
                 onPress={() => router.push('/admin-athletes')}
+              />
+              <RowLink
+                icon="flag-outline"
+                label="Manage Challenges"
+                onPress={() => router.push('/admin-challenges')}
                 isLast
               />
             </View>
