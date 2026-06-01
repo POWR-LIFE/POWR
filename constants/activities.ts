@@ -97,7 +97,7 @@ export const ACTIVITIES: Record<ActivityType, ActivityConfig> = {
     tag: 'Premium Lane',
     dailyCap: 30,
     colour: '#E8D200',
-    minDuration: 20,
+    minDuration: 30,
     verification: 'geofence',
   },
   hiit: {

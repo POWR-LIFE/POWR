@@ -65,9 +65,9 @@ function calcBasePoints(type: ActivityType, durationMins: number, steps: number)
             return 10;
         }
         case 'gym': {
-            if (durationMins < 20) return 0;
-            if (durationMins < 45) return 10;
-            return 15;
+            if (durationMins < 30) return 0;
+            if (durationMins < 40) return 15;
+            return 20;
         }
         case 'hiit': {
             if (durationMins < 20) return 0;
@@ -104,7 +104,7 @@ function getMinimumNote(type: ActivityType): string {
         case 'running':  return 'Minimum 15 min to qualify';
         case 'cycling':  return 'Minimum 20 min to qualify';
         case 'swimming': return 'Minimum 15 min to qualify';
-        case 'gym':      return 'Minimum 20 min to qualify';
+        case 'gym':      return 'Minimum 30 min to qualify';
         case 'hiit':     return 'Minimum 20 min to qualify';
         case 'sports':   return 'Minimum 30 min to qualify';
         case 'yoga':     return 'Minimum 20 min to qualify';

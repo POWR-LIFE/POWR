@@ -35,10 +35,18 @@ export type ActivitySession = {
     point_transactions: { amount: number }[];
 };
 
+async function getCurrentUserId(): Promise<string | null> {
+    const { data: { user } } = await supabase.auth.getUser();
+    return user?.id ?? null;
+}
+
 export async function fetchRecentSessions(limit = 5): Promise<ActivitySession[]> {
+    const uid = await getCurrentUserId();
+    if (!uid) return [];
     const { data, error } = await supabase
         .from('activity_sessions')
         .select('id, type, started_at, ended_at, duration_sec, distance_m, steps, verification, trust_score, point_transactions(amount)')
+        .eq('user_id', uid)
         .order('ended_at', { ascending: false, nullsFirst: false })
         .limit(limit);
     if (error) throw error;
@@ -47,6 +55,8 @@ export async function fetchRecentSessions(limit = 5): Promise<ActivitySession[]>
 
 /** Returns a Mon–Sun boolean[7] for the current week */
 export async function fetchWeekActiveDays(): Promise<boolean[]> {
+    const uid = await getCurrentUserId();
+    if (!uid) return [false, false, false, false, false, false, false];
     const now = new Date();
     const dayOfWeek = now.getDay(); // 0=Sun
     const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
@@ -57,6 +67,7 @@ export async function fetchWeekActiveDays(): Promise<boolean[]> {
     const { data, error } = await supabase
         .from('activity_sessions')
         .select('started_at')
+        .eq('user_id', uid)
         .neq('verification', 'manual')
         .gte('started_at', monday.toISOString());
     if (error) throw error;
@@ -87,12 +98,15 @@ export type DailyMetrics = {
 };
 
 export async function fetchDailyMetrics(): Promise<DailyMetrics> {
+    const uid = await getCurrentUserId();
+    if (!uid) return { perType: {}, stepsToday: 0 };
     const start = new Date();
     start.setHours(0, 0, 0, 0);
 
     const { data, error } = await supabase
         .from('activity_sessions')
         .select('type, steps')
+        .eq('user_id', uid)
         .gte('started_at', start.toISOString());
     if (error) throw error;
 
@@ -138,6 +152,7 @@ export async function logManualSession(params: ManualSessionParams): Promise<boo
         const { count, error: countError } = await supabase
             .from('activity_sessions')
             .select('id', { count: 'exact', head: true })
+            .eq('user_id', (await getCurrentUserId()) ?? '')
             .eq('verification', 'manual')
             .gte('started_at', monday.toISOString());
 
@@ -192,6 +207,8 @@ export async function logManualSession(params: ManualSessionParams): Promise<boo
 }
 
 export async function fetchWeeklyMetrics(): Promise<WeeklyMetrics> {
+    const uid = await getCurrentUserId();
+    if (!uid) return { gymVisits: 0, runs: 0, totalSteps: 0, sessionCount: 0, perType: {}, activeDaysPerType: {} };
     const now = new Date();
     const dayOfWeek = now.getDay();
     const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
@@ -202,6 +219,7 @@ export async function fetchWeeklyMetrics(): Promise<WeeklyMetrics> {
     const { data, error } = await supabase
         .from('activity_sessions')
         .select('type, steps, started_at')
+        .eq('user_id', uid)
         .gte('started_at', monday.toISOString());
     if (error) throw error;
 
@@ -245,9 +263,12 @@ function localDateStr(d: Date): string {
 
 /** Returns the health-auto-synced walking session for today, if it exists. */
 export async function getTodayHealthWalkingSession(): Promise<HealthWalkingSession | null> {
+    const uid = await getCurrentUserId();
+    if (!uid) return null;
     const { data } = await supabase
         .from('activity_sessions')
         .select('id, steps, point_transactions(amount)')
+        .eq('user_id', uid)
         .eq('type', 'walking')
         .eq('trust_score', 0.90)
         .gte('started_at', todayMidnight())

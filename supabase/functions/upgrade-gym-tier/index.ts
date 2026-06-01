@@ -67,11 +67,11 @@ Deno.serve(async (req) => {
   const actualDurationSec = Math.round((now.getTime() - new Date(session.started_at).getTime()) / 1000);
   const actualMins = Math.floor(actualDurationSec / 60);
 
-  if (actualMins < 45) {
+  if (actualMins < 40) {
     // DEV override: if DEV_MIN_UPGRADE_SEC is set, allow upgrades at a lower threshold
     const devMinUpgradeSec = parseInt(Deno.env.get('DEV_MIN_UPGRADE_SEC') ?? '0', 10);
     if (devMinUpgradeSec <= 0 || actualDurationSec < devMinUpgradeSec) {
-      return new Response(JSON.stringify({ error: 'Session has not reached the 45-min tier' }), { status: 422 });
+      return new Response(JSON.stringify({ error: 'Session has not reached the 40-min tier' }), { status: 422 });
     }
     console.log(`[DEV] Allowing tier upgrade for short session (${actualDurationSec}s >= ${devMinUpgradeSec}s dev threshold)`);
   }
@@ -81,8 +81,8 @@ Deno.serve(async (req) => {
     .update({ ended_at: now.toISOString(), duration_sec: actualDurationSec })
     .eq('id', session.id);
 
-  // Calculate target earnings at 45-min tier including streak multiplier
-  const targetBase = 15;
+  // Calculate target earnings at 40-min tier including streak multiplier
+  const targetBase = 20;
   const { data: streak } = await supabase
     .from('user_streaks')
     .select('current_streak')
@@ -142,7 +142,7 @@ Deno.serve(async (req) => {
       session_id: session.id,
       amount: finalDelta,
       type: 'earn',
-      description: 'gym session upgrade (45min)',
+      description: 'gym session upgrade (40min)',
       multiplier: 1.0,
     })
     .select()
@@ -150,7 +150,7 @@ Deno.serve(async (req) => {
 
   if (txError) {
     // 23505 = unique violation on (session_id, description) — a concurrent upgrade
-    // already inserted the 'gym session upgrade (45min)' row. The delta check above
+    // already inserted the 'gym session upgrade (40min)' row. The delta check above
     // is not atomic, so two simultaneous calls can both compute a positive delta;
     // the DB index is the backstop. Treat the loser as a no-op success.
     if ((txError as { code?: string }).code === '23505') {

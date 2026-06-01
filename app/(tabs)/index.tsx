@@ -208,10 +208,10 @@ export default function HomeScreen() {
     const isNewUser = totalEarned === 0 && recentItems.length === 0;
 
     // Derived session state — re-computed every second via elapsedStr re-renders
-    const DWELL_MS = 20 * 60 * 1000;
+    const DWELL_MS = 30 * 60 * 1000;
     const elapsedMs = activeGeofence ? Date.now() - activeGeofence.entryTimestamp : 0;
     const dwellProgress = Math.min(elapsedMs / DWELL_MS, 1);
-    const projectedPoints = elapsedMs >= 45 * 60 * 1000 ? 15 : 10;
+    const projectedPoints = elapsedMs >= 40 * 60 * 1000 ? 20 : 15;
     const minsRemaining = Math.max(0, Math.ceil((DWELL_MS - elapsedMs) / 60000));
 
     const rotateAnim = useRef(new Animated.Value(0)).current;

@@ -3,11 +3,16 @@ import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import * as Location from 'expo-location';
 import { useEffect, useRef, useState } from 'react';
-import { Animated, Pressable, StyleSheet, Text, View, Alert } from 'react-native';
+import { Animated, Linking, Platform, Pressable, StyleSheet, Text, View, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import MagicRings from '@/components/MagicRings';
 import GeometricBackground from '@/components/GeometricBackground';
 import { awardBonus } from '@/lib/api/points';
+import {
+    hasPromptedBatteryOptimization,
+    markBatteryOptimizationPrompted,
+    requestBatteryOptimizationExemption,
+} from '@/lib/batteryOptimization';
 
 const GOLD = '#E8D200';
 const BG = '#0d0d0d';
@@ -102,8 +107,10 @@ export default function OnboardingPermissionScreen() {
             }
 
             // Request background location (optional, needed for passive tracking)
+            let bgGranted = false;
             try {
-                await Location.requestBackgroundPermissionsAsync();
+                const { status: bgStatus } = await Location.requestBackgroundPermissionsAsync();
+                bgGranted = bgStatus === 'granted';
             } catch (e) {
                 console.warn('Background permission request failed', e);
             }
@@ -112,6 +119,49 @@ export default function OnboardingPermissionScreen() {
             awardBonus('location_permission').catch((e) =>
                 console.warn('Failed to award location bonus', e)
             );
+
+            // iOS: if "Always" wasn't granted, guide the user to fix it in Settings.
+            // Without "Always", iOS won't wake the app for geofence events when it's
+            // killed — the "You're in" notification will never fire.
+            if (Platform.OS === 'ios' && !bgGranted) {
+                Alert.alert(
+                    'Enable "Always" for gym check-ins',
+                    'To detect gym arrivals when POWR is closed, set location to "Always" in Settings › Privacy & Security › Location Services › POWR.',
+                    [
+                        { text: 'Later', onPress: () => router.push(NEXT_SCREEN) },
+                        {
+                            text: 'Open Settings',
+                            onPress: () => {
+                                Linking.openSettings();
+                                router.push(NEXT_SCREEN);
+                            },
+                        },
+                    ],
+                );
+                return;
+            }
+
+            // Android: ask the user to exempt POWR from battery optimization so
+            // arrival detection keeps working when the app is fully closed. One-time,
+            // gated behind our own explainer. Navigation continues either way.
+            if (Platform.OS === 'android' && !(await hasPromptedBatteryOptimization())) {
+                await markBatteryOptimizationPrompted();
+                Alert.alert(
+                    'Keep earning when POWR is closed',
+                    'To detect when you arrive at a gym while the app is closed, allow POWR to run without battery restrictions on the next screen.',
+                    [
+                        { text: 'Not now', style: 'cancel', onPress: () => router.push(NEXT_SCREEN) },
+                        {
+                            text: 'Allow',
+                            onPress: async () => {
+                                await requestBatteryOptimizationExemption();
+                                router.push(NEXT_SCREEN);
+                            },
+                        },
+                    ],
+                );
+                return;
+            }
 
             // Navigate to next screen
             router.push(NEXT_SCREEN);

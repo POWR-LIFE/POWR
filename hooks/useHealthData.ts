@@ -100,12 +100,14 @@ async function iosGetStepsToday(): Promise<number> {
         const HK = getHK();
         const midnight = new Date();
         midnight.setHours(0, 0, 0, 0);
-        const samples = await HK.queryQuantitySamples('HKQuantityTypeIdentifierStepCount', {
+        // Use a cumulative-sum statistics query, not a raw sample sum. HKStatisticsQuery
+        // de-duplicates overlapping samples across sources (iPhone + any 3rd-party step
+        // apps) exactly like Apple's Health app, so this matches what the user sees.
+        const res = await HK.queryStatisticsForQuantity('HKQuantityTypeIdentifierStepCount', ['cumulativeSum'], {
             filter: { date: { startDate: midnight, endDate: new Date() } },
             unit: 'count',
-            limit: -1,
         });
-        return samples.reduce((sum, s) => sum + s.quantity, 0);
+        return Math.round(res.sumQuantity?.quantity ?? 0);
     } catch (e) {
         console.warn('Failed to read Apple HealthKit steps:', e);
         return 0;
@@ -231,17 +233,29 @@ async function iosGetHeartRateToday(): Promise<HeartRateSummary | null> {
         const HK = getHK();
         const midnight = new Date();
         midnight.setHours(0, 0, 0, 0);
-        const samples = await HK.queryQuantitySamples('HKQuantityTypeIdentifierHeartRate', {
-            filter: { date: { startDate: midnight, endDate: new Date() } },
+        const filter = { date: { startDate: midnight, endDate: new Date() } };
+        const res = await HK.queryStatisticsForQuantity('HKQuantityTypeIdentifierHeartRate', ['discreteAverage', 'discreteMax'], {
+            filter,
             unit: 'count/min',
-            limit: -1,
         });
-        if (samples.length === 0) return null;
-        const values = samples.map(s => s.quantity);
+        const avg = res.averageQuantity?.quantity;
+        const max = res.maximumQuantity?.quantity;
+        if (avg === undefined && max === undefined) return null;
+
+        // Resting HR is a distinct type — read today's most recent value.
+        let resting = 0;
+        try {
+            const restRes = await HK.queryStatisticsForQuantity('HKQuantityTypeIdentifierRestingHeartRate', ['mostRecent'], {
+                filter,
+                unit: 'count/min',
+            });
+            resting = Math.round(restRes.mostRecentQuantity?.quantity ?? 0);
+        } catch { /* resting HR not available */ }
+
         return {
-            avg: Math.round(values.reduce((a, v) => a + v, 0) / values.length),
-            max: Math.max(...values),
-            resting: 0,
+            avg: Math.round(avg ?? 0),
+            max: Math.round(max ?? 0),
+            resting,
         };
     } catch {
         return null;
@@ -255,19 +269,17 @@ async function iosGetCaloriesToday(): Promise<CalorieSummary | null> {
         midnight.setHours(0, 0, 0, 0);
         const dateFilter = { date: { startDate: midnight, endDate: new Date() } };
 
-        const activeSamples = await HK.queryQuantitySamples('HKQuantityTypeIdentifierActiveEnergyBurned', {
+        const activeRes = await HK.queryStatisticsForQuantity('HKQuantityTypeIdentifierActiveEnergyBurned', ['cumulativeSum'], {
             filter: dateFilter,
             unit: 'kcal',
-            limit: -1,
         });
-        const active = activeSamples.reduce((s, r) => s + r.quantity, 0);
+        const active = activeRes.sumQuantity?.quantity ?? 0;
 
-        const basalSamples = await HK.queryQuantitySamples('HKQuantityTypeIdentifierBasalEnergyBurned', {
+        const basalRes = await HK.queryStatisticsForQuantity('HKQuantityTypeIdentifierBasalEnergyBurned', ['cumulativeSum'], {
             filter: dateFilter,
             unit: 'kcal',
-            limit: -1,
         });
-        const basal = basalSamples.reduce((s, r) => s + r.quantity, 0);
+        const basal = basalRes.sumQuantity?.quantity ?? 0;
 
         if (active === 0 && basal === 0) return null;
         return { active: Math.round(active), total: Math.round(active + basal) };
@@ -602,7 +614,11 @@ function dayRange(daysAgo: number): { start: Date; end: Date } {
 }
 
 function formatDateKey(d: Date): string {
-    return d.toISOString().split('T')[0];
+    // Use local calendar components, not toISOString() (UTC): the day ranges are
+    // built in local time, so a UTC key would mis-attribute days for users ahead
+    // of UTC (e.g. local midnight maps to the previous UTC date).
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
 async function iosGetWeekHistory(): Promise<DayHealthSummary[]> {
@@ -613,16 +629,15 @@ async function iosGetWeekHistory(): Promise<DayHealthSummary[]> {
         const dateKey = formatDateKey(start);
         const dateFilter = { date: { startDate: start, endDate: end } };
 
-        // Steps
+        // Steps (de-duped cumulative sum, matches Apple Health)
         let steps = 0;
         try {
             const HK = getHK();
-            const samples = await HK.queryQuantitySamples('HKQuantityTypeIdentifierStepCount', {
+            const res = await HK.queryStatisticsForQuantity('HKQuantityTypeIdentifierStepCount', ['cumulativeSum'], {
                 filter: dateFilter,
                 unit: 'count',
-                limit: -1,
             });
-            steps = samples.reduce((sum, s) => sum + s.quantity, 0);
+            steps = Math.round(res.sumQuantity?.quantity ?? 0);
         } catch { /* ignore */ }
 
         // Workouts
@@ -675,37 +690,37 @@ async function iosGetWeekHistory(): Promise<DayHealthSummary[]> {
             }
         } catch { /* ignore */ }
 
-        // Heart rate
+        // Heart rate (de-duped average/max)
         let heartRate: HeartRateSummary | null = null;
         try {
             const HK = getHK();
-            const samples = await HK.queryQuantitySamples('HKQuantityTypeIdentifierHeartRate', {
+            const res = await HK.queryStatisticsForQuantity('HKQuantityTypeIdentifierHeartRate', ['discreteAverage', 'discreteMax'], {
                 filter: dateFilter,
                 unit: 'count/min',
-                limit: -1,
             });
-            if (samples.length > 0) {
-                const vals = samples.map(s => s.quantity);
+            const avg = res.averageQuantity?.quantity;
+            const max = res.maximumQuantity?.quantity;
+            if (avg !== undefined || max !== undefined) {
                 heartRate = {
-                    avg: Math.round(vals.reduce((a, v) => a + v, 0) / vals.length),
-                    max: Math.max(...vals),
+                    avg: Math.round(avg ?? 0),
+                    max: Math.round(max ?? 0),
                     resting: 0,
                 };
             }
         } catch { /* ignore */ }
 
-        // Calories
+        // Calories (de-duped cumulative sums)
         let calories: CalorieSummary | null = null;
         try {
             const HK = getHK();
-            const activeSamples = await HK.queryQuantitySamples('HKQuantityTypeIdentifierActiveEnergyBurned', {
-                filter: dateFilter, unit: 'kcal', limit: -1,
+            const activeRes = await HK.queryStatisticsForQuantity('HKQuantityTypeIdentifierActiveEnergyBurned', ['cumulativeSum'], {
+                filter: dateFilter, unit: 'kcal',
             });
-            const active = activeSamples.reduce((s, r) => s + r.quantity, 0);
-            const basalSamples = await HK.queryQuantitySamples('HKQuantityTypeIdentifierBasalEnergyBurned', {
-                filter: dateFilter, unit: 'kcal', limit: -1,
+            const active = activeRes.sumQuantity?.quantity ?? 0;
+            const basalRes = await HK.queryStatisticsForQuantity('HKQuantityTypeIdentifierBasalEnergyBurned', ['cumulativeSum'], {
+                filter: dateFilter, unit: 'kcal',
             });
-            const basal = basalSamples.reduce((s, r) => s + r.quantity, 0);
+            const basal = basalRes.sumQuantity?.quantity ?? 0;
             if (active > 0 || basal > 0) {
                 calories = { active: Math.round(active), total: Math.round(active + basal) };
             }

@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
@@ -33,6 +34,24 @@ const TEXT   = '#F2F2F2';
 const MUTED  = 'rgba(255,255,255,0.25)';
 const DIM    = 'rgba(255,255,255,0.5)';
 const CARD   = 'rgba(28,28,28,0.9)';
+
+// Solid per-tier accent for earned-level styling (metal progression:
+// silver → bronze/orange → gold). Distinct from TIER_META.color, which keeps
+// the muted-white recruit header — earned cards deserve a richer hue.
+const TIER_ACCENT: Record<LevelTier, string> = {
+  recruit: '#C9CED6', // silver
+  athlete: '#FB923C', // bronze / orange
+  elite:   '#E8D200', // gold
+  legend:  '#F2D640', // bright gold
+};
+
+function withAlpha(hex: string, alpha: number): string {
+  const h = hex.replace('#', '');
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
 
 const SCREEN_W = Dimensions.get('window').width;
 const COL_GAP  = 10;
@@ -163,7 +182,6 @@ export default function AchievementsScreen() {
                     <LevelCard
                       key={levelDef.level}
                       levelDef={levelDef}
-                      tierColor={meta.color}
                       isUnlocked={totalEarned >= levelDef.xpMin}
                       isCurrent={levelDef.level === currentLevel.level}
                     />
@@ -255,13 +273,14 @@ export default function AchievementsScreen() {
 
 // ─── Level Card ───────────────────────────────────────────────────────────────
 
-function LevelCard({ levelDef, tierColor, isUnlocked, isCurrent }: {
+function LevelCard({ levelDef, isUnlocked, isCurrent }: {
   levelDef: LevelDef;
-  tierColor: string;
   isUnlocked: boolean;
   isCurrent: boolean;
 }) {
-  const iconColor = isUnlocked ? tierColor : 'rgba(255,255,255,0.18)';
+  // Three states: locked (dim), earned (tier-accent premium), current (gold hero).
+  const accent = isCurrent ? GOLD : TIER_ACCENT[levelDef.tier];
+  const iconColor = isUnlocked ? accent : 'rgba(255,255,255,0.18)';
   const nameColor = isUnlocked ? TEXT : 'rgba(255,255,255,0.3)';
   const xpLabel = levelDef.level === 20
     ? '∞'
@@ -271,13 +290,40 @@ function LevelCard({ levelDef, tierColor, isUnlocked, isCurrent }: {
     <View style={[
       styles.levelCard,
       { width: CARD_W },
-      isCurrent && styles.levelCardCurrent,
+      isUnlocked && {
+        borderColor: withAlpha(accent, isCurrent ? 0.9 : 0.4),
+        borderWidth: isCurrent ? 1.4 : 1,
+        shadowColor: accent,
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: isCurrent ? 0.5 : 0.28,
+        shadowRadius: isCurrent ? 10 : 7,
+        elevation: isCurrent ? 7 : 4,
+      },
     ]}>
-      {/* Tier dot */}
-      <View style={[styles.levelDot, { backgroundColor: isUnlocked ? tierColor : 'rgba(255,255,255,0.15)' }]} />
+      {/* Premium tier wash — lit from the top for earned levels */}
+      {isUnlocked && (
+        <LinearGradient
+          pointerEvents="none"
+          colors={[withAlpha(accent, isCurrent ? 0.24 : 0.16), withAlpha(accent, 0.04), 'transparent']}
+          start={{ x: 0.15, y: 0 }}
+          end={{ x: 0.85, y: 1 }}
+          style={StyleSheet.absoluteFill}
+        />
+      )}
+
+      {/* Earned seal / locked dot */}
+      {isUnlocked ? (
+        <View style={[styles.levelSeal, { backgroundColor: accent }]}>
+          <Text style={styles.levelSealCheck}>✓</Text>
+        </View>
+      ) : (
+        <View style={[styles.levelDot, { backgroundColor: 'rgba(255,255,255,0.15)' }]} />
+      )}
 
       {/* Level number */}
-      <Text style={styles.levelNum}>LVL {levelDef.level}</Text>
+      <Text style={[styles.levelNum, isUnlocked && styles.levelNumEarned]}>
+        LVL {levelDef.level}
+      </Text>
 
       {/* Premium icon */}
       <View style={styles.levelIconWrap}>
@@ -290,7 +336,7 @@ function LevelCard({ levelDef, tierColor, isUnlocked, isCurrent }: {
       </Text>
 
       {/* XP threshold */}
-      <Text style={[styles.levelXp, { color: isUnlocked ? tierColor : 'rgba(255,255,255,0.2)' }]}>
+      <Text style={[styles.levelXp, { color: isUnlocked ? accent : 'rgba(255,255,255,0.2)' }]}>
         {xpLabel} pts
       </Text>
     </View>
@@ -479,15 +525,6 @@ const styles = StyleSheet.create({
     position: 'relative',
     overflow: 'hidden',
   },
-  levelCardCurrent: {
-    borderColor: '#E8D200',
-    borderWidth: 1,
-    shadowColor: '#E8D200',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.45,
-    shadowRadius: 8,
-    elevation: 6,
-  },
   levelDot: {
     position: 'absolute',
     top: 10,
@@ -496,6 +533,23 @@ const styles = StyleSheet.create({
     height: 6,
     borderRadius: 3,
   },
+  levelSeal: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 2,
+  },
+  levelSealCheck: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#0a0a0a',
+    lineHeight: 11,
+  },
   levelNum: {
     fontSize: 8,
     fontWeight: '500',
@@ -503,6 +557,9 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.35)',
     alignSelf: 'flex-start',
     marginLeft: 2,
+  },
+  levelNumEarned: {
+    color: 'rgba(255,255,255,0.55)',
   },
   levelIconWrap: {
     marginTop: 4,

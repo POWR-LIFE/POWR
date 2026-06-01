@@ -1919,13 +1919,9 @@ const styles = StyleSheet.create({
 
   preferredBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 8, paddingVertical: 14, borderRadius: 14, borderWidth: 1,
-    borderColor: BORDER, marginTop: 8,
+    gap: 8, paddingVertical: 14, marginTop: 8,
   },
-  preferredBtnActive: {
-    borderColor: 'rgba(232,210,0,0.4)',
-    backgroundColor: 'rgba(232,210,0,0.06)',
-  },
+  preferredBtnActive: {},
   preferredBtnText: { fontSize: 15, fontWeight: '400', color: DIM },
 
   // Sort sheet
