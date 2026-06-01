@@ -2,7 +2,7 @@
   "expo": {
     "name": "POWR",
     "slug": "POWR",
-    "version": "1.0.2",
+    "version": "1.0.4",
     "orientation": "portrait",
     "icon": "./assets/images/ios_icon_black.png",
     "scheme": "powr",
@@ -11,11 +11,12 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.powr.life",
-      "buildNumber": "4",
+      "buildNumber": "6",
       "googleServicesFile": "./GoogleService-Info.plist",
       "infoPlist": {
         "NSHealthShareUsageDescription": "POWR needs access to your sleep and workout data to reward you for healthy habits.",
         "NSHealthUpdateUsageDescription": "POWR needs access to log your habits.",
+        "UIBackgroundModes": ["location"],
         "CFBundleURLTypes": [
           {
             "CFBundleURLSchemes": ["powr"]
@@ -49,10 +50,11 @@
         "android.permission.health.READ_EXERCISE",
         "android.permission.POST_NOTIFICATIONS",
         "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS",
         "android.permission.VIBRATE"
       ],
       "package": "com.powr.life",
-      "versionCode": 5,
+      "versionCode": 7,
       "intentFilters": [
         {
           "action": "VIEW",
@@ -99,7 +101,7 @@
         {
           "locationAlwaysAndWhenInUsePermission": "POWR uses your location to detect when you arrive at partner gyms and automatically track your workouts.",
           "locationWhenInUsePermission": "POWR uses your location to show nearby partner gyms and rewards.",
-          "isIosBackgroundLocationEnabled": false,
+          "isIosBackgroundLocationEnabled": true,
           "isAndroidBackgroundLocationEnabled": true
         }
       ],

@@ -33,8 +33,10 @@ export interface ChallengeCardData {
   /** Completed (recorded in user_challenge_completions) this week. */
   completed: boolean;
   expiresIn: string;
-  /** Mon–Sun, true where a qualifying session happened. */
+  /** Mon–Sun, true where a qualifying session happened in this challenge's category. */
   streak: boolean[];
+  /** Mon–Sun, true where any activity (all categories) happened — drives the top day dashes. */
+  overallStreak: boolean[];
   todayIndex: number;
   /** Short celebratory subtitle shown on completion. */
   completeSubtitle: string;
@@ -223,6 +225,7 @@ export function useWeeklyChallenges(): WeeklyChallengesState {
         completed,
         expiresIn,
         streak: streakFor(ctx.sessions, c.category === 'multi' ? null : c.category),
+        overallStreak: streakFor(ctx.sessions, null),
         todayIndex,
         completeSubtitle: c.description,
       });

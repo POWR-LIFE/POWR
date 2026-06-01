@@ -87,6 +87,36 @@ Deno.serve(async (req) => {
 
   // 3. Acquire a code based on integration type
   const expiresAt = new Date(Date.now() + reward.code_expiry_days * 86400_000).toISOString();
+
+  // AFFILIATE: no unique code — just deduct points and return the reward URL
+  if (reward.integration_type === 'AFFILIATE') {
+    const receiptId = `POWR-AFF-${generateToken(8)}`;
+    const { error: txErr } = await admin.from('point_transactions').insert({
+      user_id: user.id,
+      amount: -reward.powr_cost,
+      type: 'redeem',
+      description: `Redeemed: ${reward.title}`,
+    });
+    if (txErr) return json({ error: 'TX_FAILED' }, 500);
+    const { data: redemption } = await admin.from('redemptions').insert({
+      user_id: user.id,
+      reward_id: reward.id,
+      code: receiptId,
+      integration_type: 'AFFILIATE',
+      powr_spent: reward.powr_cost,
+      status: 'active',
+      expires_at: expiresAt,
+    }).select('id').single();
+    return json({
+      ok: true,
+      code: receiptId,
+      checkout_url: reward.url,
+      expires_at: expiresAt,
+      redemption_id: redemption?.id ?? null,
+      integration_type: 'AFFILIATE',
+    });
+  }
+
   let codeRow: { id: string; code: string } | null = null;
 
   if (reward.integration_type === 'POOL') {

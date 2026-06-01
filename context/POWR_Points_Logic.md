@@ -105,22 +105,22 @@ POWR awards points (POWR) for verified physical activity across 8 activity types
 **Daily Cap:** 30 POWR  
 **Verification:** Geofencing · Heart Rate · Background Location
 
-**Eligibility:** Geofence entry at verified gym or partner location. 20+ min dwell time required.
+**Eligibility:** Geofence entry at verified gym or partner location. 30+ min dwell time required.
 
 | Tier | POWR |
 |------|------|
-| 20–45 min session | 10 |
-| 45+ min session | 15 |
+| 30–40 min session | 15 |
+| 40+ min session | 20 |
 
 **Streak Multipliers:**
 
 | Streak | Multiplier | Earn Range |
 |--------|-----------|------------|
-| No streak | 1.0× | 10–15 POWR |
-| 3-session streak | 1.2× | 12–18 POWR |
-| 5-session streak | 1.5× | 15–22 POWR |
-| 7-session streak | 2.0× | 20–30 POWR |
-| 10+ session streak | 3.0× | 30–45 POWR |
+| No streak | 1.0× | 15–20 POWR |
+| 3-session streak | 1.2× | 18–24 POWR |
+| 5-session streak | 1.5× | 22–30 POWR |
+| 7-session streak | 2.0× | 30–40 POWR |
+| 10+ session streak | 3.0× | 45–60 POWR |
 
 **Weekly consistency bonus:** +5 POWR flat for 5+ sessions in a week.
 

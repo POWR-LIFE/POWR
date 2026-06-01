@@ -136,7 +136,7 @@ function WorkoutDayView({ type, data }: { type: ActivityType; data: TodayActivit
                   {hasData && <View style={[styles.historyBarFill, { backgroundColor: config.colour }]} />}
                 </View>
                 <Text style={[styles.historyMeta, !hasData && { color: MUTED }]}>
-                  {hasData ? `${day.sessions} · ${formatDuration(day.totalDurationMin)}` : '—'}
+                  {hasData ? `${formatDuration(day.totalDurationMin)} · ${day.sessions}` : '—'}
                 </Text>
                 <Text style={[styles.historyPoints, !hasData && { color: MUTED }]}>
                   {hasData && day.points > 0 ? `${day.points}pt` : '—'}
@@ -253,13 +253,8 @@ function WorkoutWeekView({
 // ─── Month View ──────────────────────────────────────────────────────────────
 
 function heatmapColorForType(count: number, colour: string): string {
-  const r = parseInt(colour.slice(1, 3), 16);
-  const g = parseInt(colour.slice(3, 5), 16);
-  const b = parseInt(colour.slice(5, 7), 16);
-  if (count <= 0) return `rgba(${r},${g},${b},0.06)`;
-  if (count === 1) return `rgba(${r},${g},${b},0.35)`;
-  if (count === 2) return `rgba(${r},${g},${b},0.60)`;
-  return colour; // 3+
+  if (count <= 0) return 'rgba(255,255,255,0.06)';
+  return colour;
 }
 
 function WorkoutMonthView({ type, data }: { type: ActivityType; data: MonthlyActivityData | null }) {
@@ -368,13 +363,6 @@ function WorkoutMonthView({ type, data }: { type: ActivityType; data: MonthlyAct
         </View>
       ))}
 
-      <View style={styles.heatmapLegend}>
-        <Text style={styles.heatmapLegendLabel}>None</Text>
-        {[0, 1, 2, 3].map(n => (
-          <View key={n} style={[styles.heatmapLegendDot, { backgroundColor: heatmapColorForType(n, config.colour) }]} />
-        ))}
-        <Text style={styles.heatmapLegendLabel}>3+</Text>
-      </View>
     </View>
   );
 }
@@ -628,7 +616,7 @@ const styles = StyleSheet.create({
     fontSize: 11, fontWeight: '400', color: TEXT, width: 64, textAlign: 'right',
   },
   historyPoints: {
-    fontSize: 10, fontWeight: '600', color: GOLD, width: 26, textAlign: 'right',
+    fontSize: 10, fontWeight: '600', color: GOLD, width: 36, textAlign: 'right',
   },
 
   // Week bar chart

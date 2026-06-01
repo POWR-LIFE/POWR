@@ -87,8 +87,8 @@ function calcBasePoints(session: ActivitySession): number {
       return 0;
 
     case 'gym':
-      if (mins >= 45) return 15;
-      if (mins >= 20) return 10;
+      if (mins >= 40) return 20;
+      if (mins >= 30) return 15;
       return 0;
 
     case 'hiit':
@@ -340,7 +340,7 @@ Deno.serve(async (req) => {
   const devMinDwellSec = parseInt(Deno.env.get('DEV_MIN_DWELL_SEC') ?? '0', 10);
   if (base === 0 && devMinDwellSec > 0 && session.verification === 'geofence' && session.type === 'gym') {
     if (session.duration_sec >= devMinDwellSec) {
-      base = 10; // minimum qualifying gym tier
+      base = 15; // minimum qualifying gym tier
       console.log(`[DEV] Awarded base gym points for short session (${session.duration_sec}s >= ${devMinDwellSec}s dev threshold)`);
     }
   }

@@ -1,6 +1,7 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import * as Location from 'expo-location';
+import * as Notifications from 'expo-notifications';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Image } from 'expo-image';
 import GeometricBackground from '@/components/GeometricBackground';
@@ -26,6 +27,7 @@ import { HealthProviderNotImplementedError } from '@/lib/health/providers';
 import { ACTIVITIES, type ActivityType } from '@/constants/activities';
 import { supabase } from '@/lib/supabase';
 import { getNotificationPreferences, updateNotificationPreferences } from '@/lib/api/notifications';
+import { requestBatteryOptimizationExemption } from '@/lib/batteryOptimization';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 
@@ -57,6 +59,10 @@ export default function SettingsScreen() {
     useCallback(() => { providers.refresh(); }, [providers.refresh]),
   );
   const [locationStatus, setLocationStatus] = useState<'granted' | 'denied' | 'undetermined'>('undetermined');
+  // Background ("Always" / "Allow all the time") location + OS notification permission.
+  // Closed-app gym detection silently fails without background location, so we surface it.
+  const [bgLocationGranted, setBgLocationGranted] = useState<boolean | null>(null);
+  const [notifGranted, setNotifGranted] = useState<boolean | null>(null);
 
   React.useEffect(() => {
     (async () => {
@@ -72,12 +78,20 @@ export default function SettingsScreen() {
     })();
   }, []);
 
-  // Check location permission status
-  useEffect(() => {
-    Location.getForegroundPermissionsAsync().then(({ status }) => {
-      setLocationStatus(status === 'granted' ? 'granted' : status === 'denied' ? 'denied' : 'undetermined');
-    });
+  // Check location + notification permission status. Re-checked on focus so it
+  // updates after the user returns from the system settings app.
+  const refreshPermissionStatuses = useCallback(async () => {
+    const fg = await Location.getForegroundPermissionsAsync().catch(() => null);
+    if (fg) setLocationStatus(fg.status === 'granted' ? 'granted' : fg.status === 'denied' ? 'denied' : 'undetermined');
+    const bg = await Location.getBackgroundPermissionsAsync().catch(() => null);
+    if (bg) setBgLocationGranted(bg.status === 'granted');
+    const notif = await Notifications.getPermissionsAsync().catch(() => null);
+    if (notif) setNotifGranted(notif.status === 'granted');
   }, []);
+
+  useFocusEffect(
+    useCallback(() => { refreshPermissionStatuses(); }, [refreshPermissionStatuses]),
+  );
 
   // Activity preferences (saved in user_metadata, edited on dedicated screen)
   const savedPrefs: ActivityType[] = user?.user_metadata?.activity_preferences ?? ['gym', 'running', 'walking'];
@@ -318,15 +332,36 @@ export default function SettingsScreen() {
             icon="location-outline"
             label="Location Services"
             value={
-              locationStatus === 'granted'
-                ? 'Enabled'
-                : locationStatus === 'denied'
-                  ? 'Denied'
-                  : 'Not set up'
+              locationStatus === 'granted' && bgLocationGranted === false
+                ? 'Limited'
+                : locationStatus === 'granted'
+                  ? 'Enabled'
+                  : locationStatus === 'denied'
+                    ? 'Denied'
+                    : 'Not set up'
             }
-            valueColor={locationStatus === 'granted' ? '#4ade80' : locationStatus === 'denied' ? RED : undefined}
+            valueColor={
+              locationStatus === 'granted' && bgLocationGranted === false
+                ? RED
+                : locationStatus === 'granted'
+                  ? '#4ade80'
+                  : locationStatus === 'denied'
+                    ? RED
+                    : undefined
+            }
             onPress={async () => {
-              if (locationStatus === 'granted') {
+              if (locationStatus === 'granted' && bgLocationGranted === false) {
+                Alert.alert(
+                  Platform.OS === 'ios' ? 'Enable "Always" Location' : 'Enable "Allow all the time"',
+                  Platform.OS === 'ios'
+                    ? 'POWR can\'t detect gym arrivals when the app is closed unless location is set to "Always". Go to Settings › Privacy & Security › Location Services › POWR, then select "Always".'
+                    : 'POWR can\'t detect gym arrivals when the app is closed unless location is set to "Allow all the time".',
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    { text: 'Open Settings', onPress: () => Linking.openSettings() },
+                  ],
+                );
+              } else if (locationStatus === 'granted') {
                 Alert.alert(
                   'Disable Location?',
                   'Without location access you won\'t be able to earn points at geofenced venues and partner gyms.',
@@ -342,8 +377,26 @@ export default function SettingsScreen() {
                 setLocationStatus(status === 'granted' ? 'granted' : 'denied');
               }
             }}
-            isLast
+            isLast={Platform.OS !== 'android'}
           />
+          {Platform.OS === 'android' && (
+            <RowLink
+              icon="battery-charging-outline"
+              label="Background activity"
+              sublabel="Detect gym arrivals while POWR is closed"
+              onPress={() => {
+                Alert.alert(
+                  'Background activity',
+                  "To detect gym arrivals while POWR is closed, allow it to run without battery restrictions. You'll be taken to the system battery settings.",
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    { text: 'Open Settings', onPress: () => { requestBatteryOptimizationExemption(); } },
+                  ],
+                );
+              }}
+              isLast
+            />
+          )}
         </View>
         {!providers.activeId && (
           <Text style={styles.sectionHint}>
@@ -358,6 +411,13 @@ export default function SettingsScreen() {
 
         {/* ── Notifications ─────────────────────────────────── */}
         <SectionLabel label="Notifications" />
+        {notifGranted === false && (
+          <Pressable onPress={() => Linking.openSettings()}>
+            <Text style={[styles.sectionHint, { color: RED }]}>
+              ⚠️ Notifications are turned off, so you won’t get gym check-ins or reward alerts. Tap to open settings.
+            </Text>
+          </Pressable>
+        )}
         <View style={styles.card}>
           <RowToggle
             icon="barbell-outline"

@@ -913,9 +913,9 @@ export default function RewardManager() {
                                 </div>
                                 <div>
                                     <label className="block text-[10px] uppercase tracking-[0.4em] text-[#999] font-black mb-1">Code Source</label>
-                                    <p className="text-[9px] uppercase tracking-[0.3em] text-[#555] font-black mb-3">Pool = upload codes · Auto = generate per user (affiliate)</p>
+                                    <p className="text-[9px] uppercase tracking-[0.3em] text-[#555] font-black mb-3">Pool = upload codes · Auto = generate per user · Affiliate = shared link, no code</p>
                                     <div className="flex bg-[#0A0A0A] border border-[#151515] rounded-3xl p-2 gap-2">
-                                        {[['POOL', 'Pool'], ['API_VALIDATED', 'Auto']].map(([val, label]) => {
+                                        {[['POOL', 'Pool'], ['API_VALIDATED', 'Auto'], ['AFFILIATE', 'Affiliate']].map(([val, label]) => {
                                             const active = formData.integration_type === val;
                                             return (
                                                 <button key={val} type="button" onClick={() => setFormData({ ...formData, integration_type: val })} className={`flex-1 h-12 rounded-[1.25rem] text-[10px] font-black uppercase tracking-[0.3em] transition-all ${active ? 'bg-[#E8D200] text-[#080808]' : 'text-[#BBB] hover:text-[#E8D200]'}`}>{label}</button>
@@ -1039,7 +1039,7 @@ export default function RewardManager() {
                                     </div>
                                 </div>
                                 <div>
-                                    <label className="block text-[10px] uppercase tracking-[0.4em] text-[#999] font-black mb-4">Product / Partner URL <span className="text-[#CCC] normal-case font-black ml-2">— "Visit partner" link</span></label>
+                                    <label className="block text-[10px] uppercase tracking-[0.4em] text-[#999] font-black mb-4">Product / Partner URL <span className="text-[#CCC] normal-case font-black ml-2">— "Visit partner" link{formData.integration_type === 'AFFILIATE' ? ' · used as the affiliate destination' : ''}</span></label>
                                     <input type="url" placeholder="HTTPS://..." className="w-full h-16 px-8 bg-[#0A0A0A] border border-[#151515] rounded-3xl focus:border-[#E8D200]/40 outline-none transition-all text-[12px] font-bold text-[#F2F2F2] placeholder-[#151515] tracking-[0.1em]" value={formData.url} onChange={e => setFormData({ ...formData, url: e.target.value })} />
                                 </div>
                             </div>
@@ -1075,7 +1075,7 @@ export default function RewardManager() {
                             </div>
 
                             {/* Code pool — upload + ledger */}
-                            {editingReward && formData.reward_kind === 'digital' && (
+                            {editingReward && formData.reward_kind === 'digital' && formData.integration_type !== 'AFFILIATE' && (
                                 <div className="mb-8 bg-[#0A0A0A] border border-[#151515] rounded-[2rem] overflow-hidden">
 
                                     {/* Header row with stats */}

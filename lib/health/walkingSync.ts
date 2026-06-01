@@ -39,12 +39,13 @@ async function getStepsTodayIOS(): Promise<number> {
         const HK = require('@kingstinct/react-native-healthkit') as typeof import('@kingstinct/react-native-healthkit');
         const midnight = new Date();
         midnight.setHours(0, 0, 0, 0);
-        const samples = await HK.queryQuantitySamples('HKQuantityTypeIdentifierStepCount', {
+        // Cumulative-sum statistics query de-dupes overlapping samples across sources
+        // the way Apple's Health app does, so the value we sync matches what the user sees.
+        const res = await HK.queryStatisticsForQuantity('HKQuantityTypeIdentifierStepCount', ['cumulativeSum'], {
             filter: { date: { startDate: midnight, endDate: new Date() } },
             unit: 'count',
-            limit: -1,
         });
-        return samples.reduce((sum, s) => sum + s.quantity, 0);
+        return Math.round(res.sumQuantity?.quantity ?? 0);
     } catch {
         return 0;
     }
@@ -96,12 +97,11 @@ async function getStepsInRangeIOS(start: Date, end: Date): Promise<number> {
     try {
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         const HK = require('@kingstinct/react-native-healthkit') as typeof import('@kingstinct/react-native-healthkit');
-        const samples = await HK.queryQuantitySamples('HKQuantityTypeIdentifierStepCount', {
+        const res = await HK.queryStatisticsForQuantity('HKQuantityTypeIdentifierStepCount', ['cumulativeSum'], {
             filter: { date: { startDate: start, endDate: end } },
             unit: 'count',
-            limit: -1,
         });
-        return samples.reduce((sum, s) => sum + s.quantity, 0);
+        return Math.round(res.sumQuantity?.quantity ?? 0);
     } catch {
         return 0;
     }

@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabase';
 
-export type IntegrationType = 'POOL' | 'API_VALIDATED';
+export type IntegrationType = 'POOL' | 'API_VALIDATED' | 'AFFILIATE';
 
 export interface PartnerSummary {
   id: string;

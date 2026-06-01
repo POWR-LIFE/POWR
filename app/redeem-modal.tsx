@@ -17,7 +17,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { usePoints } from '@/hooks/usePoints';
-import { redeemReward, RedemptionError, type Reward } from '@/lib/api/rewards';
+import { redeemReward, RedemptionError, type IntegrationType, type Reward } from '@/lib/api/rewards';
 import { supabase } from '@/lib/supabase';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
@@ -42,6 +42,7 @@ interface UIReward {
   logoUrl: string | null;
   heroUrl: string | null;
   url: string | null;
+  integrationType: IntegrationType;
 }
 
 function formatValue(r: Reward): string {
@@ -64,6 +65,7 @@ function toUIReward(r: Reward): UIReward {
     logoUrl: r.image_url ?? r.partner?.logo_url ?? null,
     heroUrl: r.hero_image_url ?? null,
     url: r.url || null,
+    integrationType: r.integration_type,
   };
 }
 
@@ -395,38 +397,59 @@ function SuccessView({ reward, code, expiresAt, copied, checkoutUrl, alreadyRede
         {alreadyRedeemed && (
           <View style={styles.alreadyRedeemedBanner}>
             <Ionicons name="information-circle-outline" size={14} color={GOLD} />
-            <Text style={styles.alreadyRedeemedText}>You've already redeemed this reward. Your code is below.</Text>
+            <Text style={styles.alreadyRedeemedText}>
+              {reward.integrationType === 'AFFILIATE'
+                ? 'Your discount is included in the link below.'
+                : "You've already redeemed this reward. Your code is below."}
+            </Text>
           </View>
         )}
 
-        <Pressable
-          style={({ pressed }) => [styles.codeBlock, pressed && { opacity: 0.8 }]}
-          onPress={onCopy}
-        >
-          <Text style={styles.codeLabel}>YOUR CODE</Text>
-          <Text style={styles.codeText}>{code}</Text>
-          <View style={styles.copyRow}>
-            <Ionicons
-              name={copied ? 'checkmark' : 'copy-outline'}
-              size={13}
-              color={copied ? '#4ade80' : MUTED}
-            />
-            <Text style={[styles.copyLabel, copied && { color: '#4ade80' }]}>
-              {copied ? 'Copied' : 'Tap to copy'}
-            </Text>
-          </View>
-        </Pressable>
+        {reward.integrationType === 'AFFILIATE' ? (
+          <>
+            <Text style={styles.affiliateHint}>Your discount is applied automatically at checkout.</Text>
+            {checkoutUrl && (
+              <Pressable
+                style={({ pressed }) => [styles.confirmBtn, pressed && { opacity: 0.85 }]}
+                onPress={onOpenCheckout}
+              >
+                <Ionicons name="open-outline" size={16} color="#0a0a0a" />
+                <Text style={styles.confirmBtnText}>Shop at {partnerLabel || reward.title}</Text>
+              </Pressable>
+            )}
+          </>
+        ) : (
+          <>
+            <Pressable
+              style={({ pressed }) => [styles.codeBlock, pressed && { opacity: 0.8 }]}
+              onPress={onCopy}
+            >
+              <Text style={styles.codeLabel}>YOUR CODE</Text>
+              <Text style={styles.codeText}>{code}</Text>
+              <View style={styles.copyRow}>
+                <Ionicons
+                  name={copied ? 'checkmark' : 'copy-outline'}
+                  size={13}
+                  color={copied ? '#4ade80' : MUTED}
+                />
+                <Text style={[styles.copyLabel, copied && { color: '#4ade80' }]}>
+                  {copied ? 'Copied' : 'Tap to copy'}
+                </Text>
+              </View>
+            </Pressable>
 
-        <Text style={styles.codeExpiry}>{formatExpiry(expiresAt)}</Text>
+            <Text style={styles.codeExpiry}>{formatExpiry(expiresAt)}</Text>
 
-        {checkoutUrl && (
-          <Pressable
-            style={({ pressed }) => [styles.visitBtn, pressed && { opacity: 0.85 }]}
-            onPress={onOpenCheckout}
-          >
-            <Ionicons name="open-outline" size={14} color="#0a0a0a" />
-            <Text style={styles.visitBtnText}>Use code at {partnerLabel || reward.title}</Text>
-          </Pressable>
+            {checkoutUrl && (
+              <Pressable
+                style={({ pressed }) => [styles.visitBtn, pressed && { opacity: 0.85 }]}
+                onPress={onOpenCheckout}
+              >
+                <Ionicons name="open-outline" size={14} color="#0a0a0a" />
+                <Text style={styles.visitBtnText}>Use code at {partnerLabel || reward.title}</Text>
+              </Pressable>
+            )}
+          </>
         )}
         <Pressable
           style={({ pressed }) => [styles.doneBtn, pressed && { opacity: 0.85 }]}
@@ -772,6 +795,14 @@ const styles = StyleSheet.create({
     fontWeight: '300',
     color: MUTED,
     textAlign: 'center',
+  },
+
+  affiliateHint: {
+    fontSize: 13,
+    fontWeight: '300',
+    color: DIM,
+    textAlign: 'center',
+    paddingHorizontal: 8,
   },
 
   visitBtn: {

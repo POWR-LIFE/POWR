@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as BackgroundFetch from 'expo-background-fetch';
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
@@ -90,35 +91,70 @@ export function checkIsOpenNow(openingHours?: OpeningHours): boolean {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const GEOFENCE_TASK_NAME     = 'GEOFENCE_CHECK_IN';
+const LOCATION_TRACKING_TASK = 'POWR_LOCATION_TRACKING';   // foreground-service location stream
+const GEOFENCE_REARM_TASK    = 'POWR_GEOFENCE_BOOT_REARM'; // re-arms monitoring after reboot
 const ACTIVE_GEOFENCE_KEY    = '@powr/active_geofence';
 const PARTNER_MAP_KEY        = '@powr/partner_map';
 const SESSION_COMPLETED_KEY  = '@powr/session_completed';
 const PENDING_CLAIMS_KEY     = '@powr/pending_claims';
 
+// Persistent background-location stream. On Android this runs a foreground
+// service so arrival/dwell/exit detection survives the app being swiped away or
+// fully closed; on iOS it backs up native region monitoring. Balanced accuracy +
+// 60 s / 50 m throttling keeps battery reasonable for a passive always-on stream.
+const LOCATION_UPDATE_OPTIONS: Location.LocationTaskOptions = {
+  accuracy:                         Location.Accuracy.Balanced,
+  timeInterval:                     60_000,
+  distanceInterval:                 50,
+  deferredUpdatesInterval:          60_000,
+  pausesUpdatesAutomatically:       false,
+  showsBackgroundLocationIndicator: false,
+  foregroundService: {
+    notificationTitle: 'POWR is tracking your workouts',
+    notificationBody:  'Detecting when you arrive at partner gyms.',
+    notificationColor: '#facc15',
+  },
+};
+
+// Location-detected EXIT is a backstop for when the native geofence exit never
+// fires (closed app). Require the fix to be clearly outside the circle before
+// trusting it, so GPS noise can't flap a genuinely-inside session out early.
+const LOCATION_EXIT_HYSTERESIS_M = 50;
+
 // Accounts that bypass the one-session-per-day guard during testing
 const DEV_TEST_EMAILS = new Set(['jamiemasonwright@gmail.com']);
 
-// Proximity checks (foreground "already inside" + periodic scan) inflate the
-// geofence radius by the GPS fix's reported accuracy so near-edge positions
-// aren't missed. Cap that buffer and reject coarse fixes outright — Android's
-// first fix on app open is often a network/fused position accurate to only a
-// few hundred metres, which would otherwise match a gym up to that far away
-// and fire a false "You're in" check-in notification.
-const MAX_ACCURACY_BUFFER_M = 30;
-const MAX_FIX_ACCURACY_M    = 100;
+// Proximity checks trigger at exactly the partner's configured radius — no GPS
+// accuracy buffer is added, so a 25 m circle means 25 m, not 25 m + the user's
+// position uncertainty. Coarse fixes are still rejected outright: Android's first
+// fix on app open is often a network/fused position accurate to only a few hundred
+// metres, which can't be trusted against a tight radius and would otherwise fire a
+// false "You're in" from far away.
+const MAX_FIX_ACCURACY_M = 100;
 
 // ⚠️ DEV OVERRIDES — restore before release
-const MIN_DWELL_MS    = __DEV__ ? 30 * 1000 : 20 * 60 * 1000;
-const UPGRADE_MS      = __DEV__ ? 60 * 1000 : 45 * 60 * 1000; // 1 min in dev, 45 min in prod
+const MIN_DWELL_MS    = __DEV__ ? 30 * 1000 : 30 * 60 * 1000;
+const UPGRADE_MS      = __DEV__ ? 60 * 1000 : 40 * 60 * 1000; // 1 min in dev, 40 min in prod
 // Production eligibility minimum — used for pointsPending retry regardless of MIN_DWELL_MS
-const PROD_DWELL_MS   = 20 * 60 * 1000;
-const PROD_UPGRADE_MS = 45 * 60 * 1000;
+const PROD_DWELL_MS   = 30 * 60 * 1000;
+const PROD_UPGRADE_MS = 40 * 60 * 1000;
 const DEV_RADIUS_M: Record<string, number> = __DEV__ ? {
   'POWR Test Gym': 100,
   'Jamie':         100,
 } : {};
 
 // ─── Stored geofence shape ────────────────────────────────────────────────────
+
+// Cached per-region partner data, keyed by the composite region id. Geometry is
+// persisted (not just name/dbId) so the headless location task can compute
+// proximity without React state or a network fetch.
+interface PartnerMapEntry {
+  name:    string;
+  dbId:    string;
+  lat?:    number;
+  lng?:    number;
+  radius?: number;
+}
 
 interface StoredGeofence {
   partnerId:        string;
@@ -129,8 +165,8 @@ interface StoredGeofence {
   radius?:          number;
   sessionRecorded?: boolean; // true once session has been written to DB
   pointsPending?:   boolean; // true if session exists but claim was too short — retry on exit
-  sessionId?:       string;  // set after the initial 20-min claim succeeds
-  tierUpgraded?:    boolean; // true once the 45-min upgrade has been attempted
+  sessionId?:       string;  // set after the initial 30-min claim succeeds
+  tierUpgraded?:    boolean; // true once the 40-min upgrade has been attempted
   endedAtMs?:       number;  // frozen exit time — used by post-exit retry claims so
                              // the recorded duration stays the true session length
 }
@@ -143,7 +179,7 @@ interface StoredGeofence {
 // 'active' handler, both hitting the "dwell already met" path before either has
 // written sessionRecorded. Without it, two claim-points calls slip past the
 // (non-atomic) server-side "already claimed" check and the user is awarded twice,
-// and a stale write can clobber the stored sessionId so the 45-min upgrade never
+// and a stale write can clobber the stored sessionId so the 40-min upgrade never
 // schedules. The DB unique index is the cross-context backstop (the background
 // task runs in a separate JS context and can't share this Set).
 const _recordingInFlight = new Set<string>();
@@ -158,7 +194,7 @@ async function recordDwellSession(activeGeofence: StoredGeofence): Promise<{ out
 
   // Use the frozen exit time when present (post-exit retry) so a claim that runs
   // minutes/hours later still records the real session length — not entry→now,
-  // which would keep growing and wrongly cross the 45-min tier.
+  // which would keep growing and wrongly cross the 40-min tier.
   const endedAtMs = activeGeofence.endedAtMs ?? Date.now();
   const dwellMs = endedAtMs - activeGeofence.entryTimestamp;
   try {
@@ -363,12 +399,12 @@ async function flushPendingClaims(): Promise<void> {
 }
 
 // ─── Gym tier upgrade ─────────────────────────────────────────────────────────
-// Called when a session crosses the 45-min threshold. Awards the delta between
-// what was claimed at the 20-min tier and the 45-min tier target.
+// Called when a session crosses the 40-min threshold. Awards the delta between
+// what was claimed at the 30-min tier and the 40-min tier target.
 
 // Fallback resolver for the upgrade path: if the stored sessionId was lost (e.g.
 // an older build, or a partial write), find today's geofence gym session in the
-// DB so the 45-min upgrade can still fire. upgradeGymTier is idempotent server
+// DB so the 40-min upgrade can still fire. upgradeGymTier is idempotent server
 // side, so a redundant call is harmless.
 async function resolveTodayGymSessionId(): Promise<string | undefined> {
   try {
@@ -408,7 +444,7 @@ async function upgradeGymTier(sessionId: string): Promise<boolean> {
       console.warn('[Geofence] Tier upgrade failed:', fnError.message);
       return false;
     }
-    console.log('[Geofence] Gym session upgraded to 45-min tier.', upgradeData);
+    console.log('[Geofence] Gym session upgraded to 40-min tier.', upgradeData);
     _emitSessionCompleted();
     return true;
   } catch (err) {
@@ -417,9 +453,308 @@ async function upgradeGymTier(sessionId: string): Promise<boolean> {
   }
 }
 
-// ─── Background Task ──────────────────────────────────────────────────────────
-// Defined at module level so it is registered before any geofencing starts.
+// ─── Shared check-in / claim helpers ─────────────────────────────────────────
+// Used by both the native geofence task and the foreground-service location task
+// so the two detection paths run through one claim/record/upgrade code path.
 
+/** True if the user has already logged a geofence gym session today. Uses the
+ *  cached auth token (getSession — local, no network round-trip) for the user id. */
+async function gymAlreadyLoggedToday(): Promise<boolean> {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user;
+    if (!user || DEV_TEST_EMAILS.has(user.email ?? '')) return false;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const { count } = await supabase
+      .from('activity_sessions')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .eq('type', 'gym')
+      .eq('verification', 'geofence')
+      .gte('started_at', today.toISOString());
+    return (count ?? 0) > 0;
+  } catch {
+    return false;
+  }
+}
+
+/** Writes active-geofence state and fires the "You're in" notification for a
+ *  newly-entered circle. No-ops if a session is already active or a gym was
+ *  already logged today. `regionId` is the composite UI key so the notification
+ *  cooldown dedups against the native ENTER path for the same gym. */
+async function setActiveAndNotify(regionId: string, entry: PartnerMapEntry): Promise<void> {
+  if (await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY)) return;
+  if (await gymAlreadyLoggedToday()) return;
+  await AsyncStorage.setItem(
+    ACTIVE_GEOFENCE_KEY,
+    JSON.stringify({
+      partnerId:      entry.dbId,
+      partnerName:    entry.name,
+      entryTimestamp: Date.now(),
+      latitude:       entry.lat,
+      longitude:      entry.lng,
+      radius:         entry.radius,
+    }),
+  );
+  console.log(`[Geofence] Location task: entered "${entry.name}".`);
+  try {
+    const { notifyCheckInAvailable } = await import('@/lib/notifications');
+    await notifyCheckInAvailable(entry.name, regionId);
+  } catch { /* non-fatal */ }
+}
+
+/** Runs the exit claim/upgrade path for a session that has just ended. The caller
+ *  must clear ACTIVE_GEOFENCE_KEY first. Shared by the native geofence EXIT and
+ *  the location-task EXIT. The exit time is frozen so a retry that runs later
+ *  still records the true session length rather than an ever-growing one. */
+async function recordExitAndClaim(activeGeofence: StoredGeofence): Promise<void> {
+  const exitMs = Date.now();
+  const claimEntry: StoredGeofence = { ...activeGeofence, endedAtMs: exitMs };
+
+  // Session already recorded AND claimed (e.g. by the foreground/location dwell path).
+  if (activeGeofence.sessionRecorded && !activeGeofence.pointsPending) {
+    const dwellMs = exitMs - activeGeofence.entryTimestamp;
+    if (dwellMs >= PROD_UPGRADE_MS && !activeGeofence.tierUpgraded) {
+      // Crossed the 40-min tier. Use the stored sessionId, or recover it from the
+      // DB if it was lost — the upgrade is the user's bonus and must not depend on
+      // fragile local state. upgradeGymTier is idempotent, so re-calling is safe.
+      const sid = activeGeofence.sessionId ?? await resolveTodayGymSessionId();
+      if (sid) {
+        console.log('[Geofence] Exit: session crossed 40-min tier — upgrading.');
+        await upgradeGymTier(sid);
+      } else {
+        console.warn('[Geofence] Exit: 40-min tier reached but no sessionId resolvable — skipping upgrade.');
+      }
+    } else if (activeGeofence.sessionId) {
+      console.log('[Geofence] Exit: session already recorded — skipping.');
+    } else {
+      // sessionRecorded but no sessionId: a claim succeeded without persisting the id.
+      // Retry on exit; if it still fails, queue it so it's never lost.
+      console.log('[Geofence] Exit: recorded session has no sessionId — retrying on exit.');
+      const { outcome } = await recordDwellSession(claimEntry);
+      if (outcome === 'error') await enqueuePendingClaim(claimEntry);
+    }
+    return;
+  }
+
+  const dwellMs = exitMs - activeGeofence.entryTimestamp;
+  if (dwellMs < MIN_DWELL_MS) {
+    console.log(`[Geofence] Dwell ${Math.round(dwellMs / 60000)}min < threshold — no points.`);
+    return;
+  }
+
+  // Schedule a safety-net notification with a short DATE trigger BEFORE the
+  // network-heavy recordDwellSession call. Scheduled notifications survive a
+  // background-task kill, so the user sees feedback even if the JS runtime is
+  // terminated before recordDwellSession completes.
+  try {
+    const { notifyGymExited } = await import('@/lib/notifications');
+    await notifyGymExited(activeGeofence.partnerName);
+  } catch (err) {
+    console.warn('[Geofence] Safety-net exit notification failed:', err);
+  }
+
+  const { outcome: exitOutcome } = await recordDwellSession(claimEntry);
+  if (exitOutcome === 'claimed') {
+    // claim-points already sent the rich session_completed push (the single source
+    // of truth). Cancel the local "Calculating…" safety-net if still pending.
+    try {
+      const { cancelNotificationsOfType } = await import('@/lib/notifications');
+      await cancelNotificationsOfType('session_completed');
+    } catch (err) {
+      console.warn('[Geofence] Failed to cancel safety-net notification:', err);
+    }
+  } else if (exitOutcome === 'error') {
+    // Transient failure (offline, token refresh) — queue for retry so a
+    // genuinely-earned session is never silently lost.
+    console.log('[Geofence] Exit claim failed — queued for retry.');
+    await enqueuePendingClaim(claimEntry);
+  }
+  // 'too_short' cannot normally occur here (dwell >= MIN_DWELL_MS) — no action.
+}
+
+/** Immediate (timer-free) dwell state machine driven by the background-location
+ *  task while the user is still inside a gym. Mirrors the foreground dwell timer's
+ *  branches but acts the moment a GPS batch shows a threshold was crossed — so a
+ *  session is recorded and the tier upgraded even when the app is fully closed,
+ *  without depending on the EXIT event ever firing. Claims are idempotent (the
+ *  in-flight lock, sessionRecorded flag, and DB unique index dedup against the
+ *  foreground path). */
+async function advanceActiveSession(active: StoredGeofence): Promise<void> {
+  const elapsed = Date.now() - active.entryTimestamp;
+
+  // 1. Prior claim was too short / failed — retry once the prod threshold is met.
+  if (active.sessionRecorded && active.pointsPending) {
+    if (elapsed < PROD_DWELL_MS) return;
+    await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...active, pointsPending: false }));
+    const { outcome, sessionId } = await recordDwellSession(active);
+    if (outcome === 'claimed' && sessionId) {
+      await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...active, pointsPending: false, sessionId }));
+    } else {
+      await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...active, pointsPending: true }));
+    }
+    return;
+  }
+
+  // 2. Claimed at the 30-min tier — upgrade once the 40-min threshold is met.
+  if (active.sessionRecorded && active.sessionId && !active.tierUpgraded) {
+    if (elapsed < PROD_UPGRADE_MS) return;
+    const ok = await upgradeGymTier(active.sessionId);
+    if (ok) await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...active, tierUpgraded: true }));
+    return;
+  }
+
+  if (active.sessionRecorded) return;
+
+  // 3. Initial claim once the dwell threshold is met.
+  if (elapsed < MIN_DWELL_MS) return;
+  await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...active, sessionRecorded: true }));
+  const { outcome, sessionId } = await recordDwellSession(active);
+  if (outcome === 'claimed' && sessionId) {
+    await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...active, sessionRecorded: true, sessionId }));
+  } else if (outcome === 'too_short' || outcome === 'error') {
+    await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...active, sessionRecorded: true, pointsPending: true }));
+  }
+}
+
+/** Core of the foreground-service location task. Given a GPS fix, drives ENTER,
+ *  dwell, and EXIT against the cached partner circles + active-session state. Runs
+ *  headless (separate JS context) when the app is closed, so it reads everything
+ *  from AsyncStorage and never touches React. */
+async function evaluateLocationFix(coords: Location.LocationObjectCoords): Promise<void> {
+  // Reject coarse fixes — a low-accuracy position can't be trusted against a tight
+  // radius and would otherwise fire a false "You're in" from far away.
+  if (coords.accuracy != null && coords.accuracy > MAX_FIX_ACCURACY_M) return;
+
+  const raw = await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY);
+  const active: StoredGeofence | null = raw ? JSON.parse(raw) : null;
+
+  if (active) {
+    // Still inside the active circle? If geometry is missing (older active state),
+    // assume inside so we never drop a session on incomplete data. EXIT keeps a
+    // small hysteresis (not the entry radius) so GPS noise can't flap a real
+    // session out early — entry detection itself stays exactly at the radius.
+    let stillInside = true;
+    if (active.latitude != null && active.longitude != null && active.radius != null) {
+      const dist = haversineMetres(coords.latitude, coords.longitude, active.latitude, active.longitude);
+      stillInside = dist <= active.radius + LOCATION_EXIT_HYSTERESIS_M;
+    }
+    if (stillInside) {
+      await advanceActiveSession(active);
+    } else {
+      // Location-detected EXIT — the native exit event may never arrive when closed.
+      await AsyncStorage.removeItem(ACTIVE_GEOFENCE_KEY);
+      await recordExitAndClaim(active);
+    }
+    return;
+  }
+
+  // No active session — look for an ENTER against the cached circles.
+  const mapJson = await AsyncStorage.getItem(PARTNER_MAP_KEY);
+  if (!mapJson) return;
+  let partnerMap: Record<string, PartnerMapEntry>;
+  try { partnerMap = JSON.parse(mapJson); } catch { return; }
+
+  for (const [regionId, entry] of Object.entries(partnerMap)) {
+    if (entry.lat == null || entry.lng == null) continue;
+    const dist = haversineMetres(coords.latitude, coords.longitude, entry.lat, entry.lng);
+    // Exact partner radius — no accuracy buffer added, so a 25 m circle means 25 m.
+    if (dist <= (entry.radius ?? 100)) {
+      await setActiveAndNotify(regionId, entry);
+      return;
+    }
+  }
+}
+
+/** Re-registers native geofencing + the location stream from the cached partner
+ *  circles. Network-free, so it can run on boot. No-op without background permission. */
+async function rearmGeofencingFromCache(): Promise<void> {
+  const mapJson = await AsyncStorage.getItem(PARTNER_MAP_KEY);
+  if (!mapJson) return;
+  let partnerMap: Record<string, PartnerMapEntry>;
+  try { partnerMap = JSON.parse(mapJson); } catch { return; }
+
+  const { status } = await Location.getBackgroundPermissionsAsync().catch(() => ({ status: 'denied' as Location.PermissionStatus }));
+  if (status !== 'granted') return;
+
+  const MAX_REGIONS = Platform.OS === 'ios' ? 20 : 50;
+  const regions: Location.LocationRegion[] = Object.entries(partnerMap)
+    .filter(([, e]) => e.lat != null && e.lng != null)
+    .slice(0, MAX_REGIONS)
+    .map(([id, e]) => ({
+      identifier:    id,
+      latitude:      e.lat!,
+      longitude:     e.lng!,
+      radius:        e.radius ?? 100,
+      notifyOnEnter: true,
+      notifyOnExit:  true,
+    }));
+  if (regions.length === 0) return;
+
+  try {
+    if (!(await Location.hasStartedGeofencingAsync(GEOFENCE_TASK_NAME).catch(() => false))) {
+      await Location.startGeofencingAsync(GEOFENCE_TASK_NAME, regions);
+    }
+  } catch (err) {
+    console.warn('[Geofence] Boot re-arm geofencing failed:', err);
+  }
+
+  if (Platform.OS === 'android') {
+    try {
+      if (!(await Location.hasStartedLocationUpdatesAsync(LOCATION_TRACKING_TASK).catch(() => false))) {
+        await Location.startLocationUpdatesAsync(LOCATION_TRACKING_TASK, LOCATION_UPDATE_OPTIONS);
+      }
+    } catch (err) {
+      console.warn('[Geofence] Boot re-arm location stream failed:', err);
+    }
+  }
+}
+
+/** Registers the boot re-arm task once. Call at app startup. */
+export async function registerGeofenceBootRearm(): Promise<void> {
+  if (Platform.OS === 'web') return;
+  try {
+    const registered = await TaskManager.isTaskRegisteredAsync(GEOFENCE_REARM_TASK);
+    if (!registered) {
+      await BackgroundFetch.registerTaskAsync(GEOFENCE_REARM_TASK, {
+        minimumInterval: 15 * 60,
+        stopOnTerminate:  false,
+        startOnBoot:      true,
+      });
+    }
+  } catch { /* background fetch unavailable (e.g. simulator) */ }
+}
+
+// ─── Background Tasks ─────────────────────────────────────────────────────────
+// Defined at module level so they are registered before any monitoring starts.
+
+// Foreground-service location stream (primary closed-app detector on Android).
+TaskManager.defineTask(LOCATION_TRACKING_TASK, async ({ data, error }) => {
+  if (error) {
+    console.error('[Geofence] Location task error:', error);
+    return;
+  }
+  const { locations } = (data ?? {}) as { locations?: Location.LocationObject[] };
+  if (!locations || locations.length === 0) return;
+  try {
+    await evaluateLocationFix(locations[locations.length - 1].coords);
+  } catch (err) {
+    console.warn('[Geofence] evaluateLocationFix failed:', err);
+  }
+});
+
+// Boot re-arm: re-issues monitoring from cached circles after a device restart.
+TaskManager.defineTask(GEOFENCE_REARM_TASK, async () => {
+  try {
+    await rearmGeofencingFromCache();
+    return BackgroundFetch.BackgroundFetchResult.NewData;
+  } catch {
+    return BackgroundFetch.BackgroundFetchResult.Failed;
+  }
+});
+
+// Native geofence (fast, low-power ENTER/EXIT trigger when the OS delivers it).
 TaskManager.defineTask(GEOFENCE_TASK_NAME, async ({ data, error }) => {
   if (error) {
     console.error('[Geofence] Task error:', error);
@@ -441,7 +776,7 @@ TaskManager.defineTask(GEOFENCE_TASK_NAME, async ({ data, error }) => {
 
     const regionId = region.identifier ?? '';
     const mapJson = await AsyncStorage.getItem(PARTNER_MAP_KEY);
-    const partnerMap: Record<string, { name: string; dbId: string }> = mapJson ? JSON.parse(mapJson) : {};
+    const partnerMap: Record<string, PartnerMapEntry> = mapJson ? JSON.parse(mapJson) : {};
     const mapEntry = partnerMap[regionId];
     const partnerName = mapEntry?.name ?? regionId;
     // Use the raw DB UUID — regionId is the composite "uuid-idx" UI key which is not a valid UUID
@@ -503,74 +838,8 @@ TaskManager.defineTask(GEOFENCE_TASK_NAME, async ({ data, error }) => {
 
     if (!activeGeofence) return;
 
-    // Freeze the exit time. Every claim below is computed against this fixed
-    // endpoint (not Date.now()), so a retry that runs minutes/hours later still
-    // records the true session duration rather than an ever-growing one.
-    const exitMs = Date.now();
-    const claimEntry: StoredGeofence = { ...activeGeofence, endedAtMs: exitMs };
-
-    // Foreground dwell timer already recorded AND claimed this session
-    if (activeGeofence.sessionRecorded && !activeGeofence.pointsPending) {
-      const dwellMs = exitMs - activeGeofence.entryTimestamp;
-      if (dwellMs >= PROD_UPGRADE_MS && !activeGeofence.tierUpgraded) {
-        // Crossed the 45-min tier. Use the stored sessionId, or recover it from the
-        // DB if it was lost — the upgrade is the user's bonus and must not depend on
-        // fragile local state. upgradeGymTier is idempotent, so re-calling is safe.
-        const sid = activeGeofence.sessionId ?? await resolveTodayGymSessionId();
-        if (sid) {
-          console.log('[Geofence] Exit: session crossed 45-min tier — upgrading.');
-          await upgradeGymTier(sid);
-        } else {
-          console.warn('[Geofence] Exit: 45-min tier reached but no sessionId resolvable — skipping upgrade.');
-        }
-      } else if (activeGeofence.sessionId) {
-        console.log('[Geofence] Exit: session already recorded by foreground timer — skipping.');
-      } else {
-        // sessionRecorded but no sessionId: foreground claim failed without setting
-        // pointsPending. Retry on exit; if it still fails, queue it so it's never lost.
-        console.log('[Geofence] Exit: foreground claim has no sessionId — retrying on exit.');
-        const { outcome } = await recordDwellSession(claimEntry);
-        if (outcome === 'error') await enqueuePendingClaim(claimEntry);
-      }
-      return;
-    }
-
-    const dwellMs = exitMs - activeGeofence.entryTimestamp;
-    if (dwellMs < MIN_DWELL_MS) {
-      console.log(`[Geofence] Dwell ${Math.round(dwellMs / 60000)}min < threshold — no points.`);
-      return;
-    }
-
-    // Schedule a safety-net notification with a short DATE trigger BEFORE the
-    // network-heavy recordDwellSession call. Scheduled notifications survive a
-    // background-task kill, so this guarantees the user sees feedback even if iOS
-    // terminates the JS runtime before recordDwellSession completes.
-    try {
-      const { notifyGymExited } = await import('@/lib/notifications');
-      await notifyGymExited(activeGeofence.partnerName);
-    } catch (err) {
-      console.warn('[Geofence] Safety-net exit notification failed:', err);
-    }
-
-    const { outcome: exitOutcome } = await recordDwellSession(claimEntry);
-    if (exitOutcome === 'claimed') {
-      // Points claimed — claim-points already sent the rich session_completed
-      // push (the single source of truth, reliable across app states). Just
-      // cancel the local "Calculating…" safety-net if it's still pending.
-      try {
-        const { cancelNotificationsOfType } = await import('@/lib/notifications');
-        await cancelNotificationsOfType('session_completed');
-      } catch (err) {
-        console.warn('[Geofence] Failed to cancel safety-net notification:', err);
-      }
-    } else if (exitOutcome === 'error') {
-      // Transient failure (offline, token refresh, etc.) — queue for retry so a
-      // genuinely-earned session is never silently lost. The "Calculating…"
-      // safety-net stays visible as the fallback until the retry succeeds.
-      console.log('[Geofence] Exit claim failed — queued for retry.');
-      await enqueuePendingClaim(claimEntry);
-    }
-    // 'too_short' cannot normally occur here (dwell >= MIN_DWELL_MS) — no action.
+    // All exit claim/upgrade logic is shared with the location-task EXIT path.
+    await recordExitAndClaim(activeGeofence);
   }
 });
 
@@ -719,14 +988,13 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
           // actually inside a partner radius, so we don't run a Supabase query
           // every 30 s for the (overwhelmingly common) case of not being at a gym.
           const loc = await Location.getLastKnownPositionAsync().catch(() => null);
-          // Ignore coarse fixes — they'd inflate the radius and cause false matches.
+          // Ignore coarse fixes — a low-accuracy position can't be trusted against a
+          // tight radius and would otherwise match a gym from far away.
           if (loc && (loc.coords.accuracy == null || loc.coords.accuracy <= MAX_FIX_ACCURACY_M)) {
-            const accuracyBuffer = loc.coords.accuracy != null
-              ? Math.min(Math.ceil(loc.coords.accuracy), MAX_ACCURACY_BUFFER_M)
-              : MAX_ACCURACY_BUFFER_M;
+            // Exact partner radius — no accuracy buffer added.
             const insidePartner = partnersRef.current.find(p =>
               haversineMetres(loc.coords.latitude, loc.coords.longitude, p.lat, p.lng)
-                <= p.geofenceRadius + accuracyBuffer,
+                <= p.geofenceRadius,
             );
 
             if (insidePartner && !(await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY))) {
@@ -832,25 +1100,25 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    // Tier upgrade path: session already claimed at 20-min tier, schedule/trigger 45-min upgrade
+    // Tier upgrade path: session already claimed at 30-min tier, schedule/trigger 40-min upgrade
     if (activeGeofence.sessionRecorded && !activeGeofence.pointsPending && activeGeofence.sessionId && !activeGeofence.tierUpgraded) {
       const elapsed   = Date.now() - activeGeofence.entryTimestamp;
       const remaining = UPGRADE_MS - elapsed;
       if (remaining <= 0) {
-        console.log('[Geofence] Foreground: already past 45-min mark — upgrading tier now.');
+        console.log('[Geofence] Foreground: already past 40-min mark — upgrading tier now.');
         const upgraded1 = await upgradeGymTier(activeGeofence.sessionId);
         if (upgraded1) {
           await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...activeGeofence, tierUpgraded: true }));
         }
       } else {
-        console.log(`[Geofence] Foreground: scheduling 45-min tier upgrade in ${Math.round(remaining / 1000)}s`);
+        console.log(`[Geofence] Foreground: scheduling 40-min tier upgrade in ${Math.round(remaining / 1000)}s`);
         dwellTimerRef.current = setTimeout(async () => {
           dwellTimerRef.current = null;
           const raw2 = await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY);
           if (!raw2) return;
           const gf: StoredGeofence = JSON.parse(raw2);
           if (gf.tierUpgraded || !gf.sessionId) return;
-          console.log('[Geofence] Foreground: 45-min upgrade timer fired.');
+          console.log('[Geofence] Foreground: 40-min upgrade timer fired.');
           const upgraded2 = await upgradeGymTier(gf.sessionId);
           if (upgraded2) {
             await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...gf, tierUpgraded: true }));
@@ -976,8 +1244,12 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      const partnerMap: Record<string, { name: string; dbId: string }> = {};
-      partners.forEach(p => { partnerMap[p.id] = { name: p.name, dbId: p.dbId }; });
+      // Persist full geometry (not just name/dbId) so the headless location task
+      // can compute proximity from cache with no React state or network fetch.
+      const partnerMap: Record<string, PartnerMapEntry> = {};
+      partners.forEach(p => {
+        partnerMap[p.id] = { name: p.name, dbId: p.dbId, lat: p.lat, lng: p.lng, radius: p.geofenceRadius };
+      });
       await AsyncStorage.setItem(PARTNER_MAP_KEY, JSON.stringify(partnerMap));
 
       // iOS allows max 20 geofence regions; Android allows 100.
@@ -1022,6 +1294,27 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
         console.error('[Geofence] Failed to start:', err);
       }
 
+      // Android: run a persistent foreground-service location stream alongside the
+      // native geofence. The geofence is the fast low-power trigger; this keeps a
+      // resident process so arrival/dwell/exit detection survives the app being
+      // swiped away or fully closed (the native geofence's PendingIntent does not).
+      // It reads circles from the partner map written above, so it never needs a
+      // restart when the monitored set changes — only start it once.
+      if (Platform.OS === 'android') {
+        try {
+          const alreadyStreaming = await Location.hasStartedLocationUpdatesAsync(LOCATION_TRACKING_TASK).catch(() => false);
+          if (!alreadyStreaming) {
+            await Location.startLocationUpdatesAsync(LOCATION_TRACKING_TASK, LOCATION_UPDATE_OPTIONS);
+            console.log('[Geofence] Foreground-service location stream started.');
+          }
+        } catch (err) {
+          console.warn('[Geofence] Failed to start location stream:', err);
+        }
+      }
+
+      // Register the boot re-arm task so monitoring resumes after a device restart.
+      registerGeofenceBootRearm().catch(() => { /* non-fatal */ });
+
       // If the user is already inside a geofence when monitoring starts, record it
       try {
         const lastKnown = await Location.getLastKnownPositionAsync().catch(() => null);
@@ -1058,11 +1351,8 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
               loc.coords.latitude, loc.coords.longitude,
               partner.lat, partner.lng,
             );
-            // Add a bounded accuracy buffer so near-edge positions aren't missed
-            const accuracyBuffer = loc.coords.accuracy != null
-              ? Math.min(Math.ceil(loc.coords.accuracy), MAX_ACCURACY_BUFFER_M)
-              : MAX_ACCURACY_BUFFER_M;
-            if (dist <= partner.geofenceRadius + accuracyBuffer) {
+            // Exact partner radius — no accuracy buffer added, so a 25 m circle means 25 m.
+            if (dist <= partner.geofenceRadius) {
               if (gymLoggedToday) {
                 console.log(`[Geofence] Already inside "${partner.name}" but gym session logged today — skipping.`);
               } else {

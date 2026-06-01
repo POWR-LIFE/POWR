@@ -19,6 +19,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
+import { fontFamily } from '@/constants/tokens';
 import type { ChallengeCardData } from '@/hooks/useWeeklyChallenge';
 
 // ─── Palette ───────────────────────────────────────────────────────────────
@@ -27,11 +28,20 @@ const GOLD = '#E8D200';
 const ORANGE = '#FF5C00';
 const GREEN = '#00CC66';
 const TEXT = '#F2F2F2';
+const SECONDARY = '#888888';
+const MUTED = '#555555';
+const FAINT = '#444444';
 const CARD_BG = '#111111';
-const CARD_BG_DEEP = '#0d0d0d';
-const BORDER = '#1e1e1e';
+const BORDER = '#222222';
 
-const TIER_COLOR: Record<string, string> = { easy: GREEN, medium: GOLD, hard: ORANGE };
+/** Tier pill — coloured text + border over a faint tint. */
+const TIER_STYLE: Record<string, { color: string; bg: string; border: string }> = {
+  easy: { color: GREEN, bg: 'rgba(0,204,102,0.08)', border: 'rgba(0,204,102,0.35)' },
+  medium: { color: GOLD, bg: 'rgba(232,210,0,0.08)', border: 'rgba(232,210,0,0.35)' },
+  hard: { color: ORANGE, bg: 'rgba(255,92,0,0.08)', border: 'rgba(255,92,0,0.35)' },
+};
+
+const DAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
 // ─── Icons ───────────────────────────────────────────────────────────────────
 
@@ -43,8 +53,6 @@ function CatIcon({ spec, size, color }: { spec: IconSpec; size: number; color: s
   }
   return <Ionicons name={spec.name as any} size={size} color={color} />;
 }
-
-const DAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
 // ─── Category pill ────────────────────────────────────────────────────────────
 
@@ -59,7 +67,7 @@ function CategoryPill({
 }) {
   return (
     <Pressable onPress={onPress} style={[styles.pill, active && styles.pillOn]}>
-      <CatIcon spec={challenge.icon} size={13} color={active ? CARD_BG : '#555'} />
+      <CatIcon spec={challenge.icon} size={13} color={active ? CARD_BG : MUTED} />
       <Text style={[styles.pillText, active && styles.pillTextOn]}>{challenge.categoryLabel}</Text>
       {challenge.completed && (
         <Ionicons name="checkmark-circle" size={12} color={active ? CARD_BG : GREEN} />
@@ -68,35 +76,24 @@ function CategoryPill({
   );
 }
 
-// ─── Streak bar ───────────────────────────────────────────────────────────────
+// ─── Day dashes ───────────────────────────────────────────────────────────────
+// Seven dashes (Mon–Sun) for overall weekly activity across ALL challenges;
+// gold marks a day the user was active in any category. (The circular dots below
+// show the same week filtered to this challenge's category.)
 
-function StreakBar({ streak, todayIndex }: { streak: boolean[]; todayIndex: number }) {
-  const pulse = useSharedValue(1);
-  useEffect(() => {
-    pulse.value = withRepeat(
-      withSequence(withTiming(0.4, { duration: 600 }), withTiming(1, { duration: 600 })),
-      -1, false
-    );
-    return () => cancelAnimation(pulse);
-  }, [pulse]);
-  const todayStyle = useAnimatedStyle(() => ({ opacity: pulse.value }));
-
+function DayDashes({ streak }: { streak: boolean[] }) {
   return (
-    <View style={styles.streakBar}>
-      {Array.from({ length: 7 }).map((_, i) => {
-        const hit = streak[i];
-        if (i === todayIndex) {
-          return <Animated.View key={i} style={[styles.sday, { backgroundColor: hit ? GOLD : ORANGE }, todayStyle]} />;
-        }
-        return <View key={i} style={[styles.sday, hit && { backgroundColor: GOLD }]} />;
-      })}
+    <View style={styles.dashes}>
+      {DAYS.map((_, i) => (
+        <View key={i} style={[styles.dash, streak[i] && styles.dashDone]} />
+      ))}
     </View>
   );
 }
 
 // ─── Progress bar with shimmer ────────────────────────────────────────────────
 
-function ProgressBar({ fraction }: { fraction: number }) {
+function ProgressBar({ fraction, complete }: { fraction: number; complete: boolean }) {
   const widthPct = useSharedValue(0);
   const [trackW, setTrackW] = useState(0);
   const shimmerX = useSharedValue(-120);
@@ -106,31 +103,54 @@ function ProgressBar({ fraction }: { fraction: number }) {
   }, [fraction, widthPct]);
 
   useEffect(() => {
-    if (trackW <= 0) return;
+    if (trackW <= 0 || complete) return;
     shimmerX.value = -120;
     shimmerX.value = withRepeat(withTiming(trackW + 120, { duration: 2500, easing: Easing.linear }), -1, false);
     return () => cancelAnimation(shimmerX);
-  }, [trackW, shimmerX]);
+  }, [trackW, complete, shimmerX]);
 
   const fillStyle = useAnimatedStyle(() => ({ width: `${widthPct.value * 100}%` }));
   const shimmerStyle = useAnimatedStyle(() => ({ transform: [{ translateX: shimmerX.value }] }));
 
   return (
     <View style={styles.barBg} onLayout={(e: LayoutChangeEvent) => setTrackW(e.nativeEvent.layout.width)}>
-      <Animated.View style={[styles.barFill, fillStyle]}>
-        <Animated.View style={[styles.barShine, shimmerStyle]} />
+      <Animated.View style={[styles.barFill, complete && styles.barFillDone, fillStyle]}>
+        {!complete && <Animated.View style={[styles.barShine, shimmerStyle]} />}
       </Animated.View>
     </View>
   );
 }
 
-// ─── Step dot ─────────────────────────────────────────────────────────────────
+// ─── Day dots (weekly streak) ─────────────────────────────────────────────────
 
-function StepDot({ done, label }: { done: boolean; label: string }) {
+function DayDots({ streak, todayIndex }: { streak: boolean[]; todayIndex: number }) {
+  const pulse = useSharedValue(1);
+  useEffect(() => {
+    pulse.value = withRepeat(
+      withSequence(withTiming(0.4, { duration: 900 }), withTiming(1, { duration: 900 })),
+      -1, false
+    );
+    return () => cancelAnimation(pulse);
+  }, [pulse]);
+  const todayStyle = useAnimatedStyle(() => ({ opacity: pulse.value }));
+
   return (
-    <View style={[styles.stepDot, done && styles.stepDotDone]}>
-      <Ionicons name={done ? 'checkmark' : 'ellipse-outline'} size={14} color={done ? GOLD : '#333'} />
-      <Text style={[styles.slabel, done && styles.slabelDone]}>{label}</Text>
+    <View style={styles.daysRow}>
+      {DAYS.map((label, i) => {
+        const done = streak[i];
+        const today = i === todayIndex && !done;
+        return (
+          <View key={i} style={styles.dayItem}>
+            <View style={[styles.dayDot, done && styles.dayDotDone, today && styles.dayDotToday]}>
+              {done && <View style={styles.dayCoreDone} />}
+              {today && <Animated.View style={[styles.dayCoreToday, todayStyle]} />}
+            </View>
+            <Text style={[styles.dayLabel, done && styles.dayLabelDone, today && styles.dayLabelToday]}>
+              {label}
+            </Text>
+          </View>
+        );
+      })}
     </View>
   );
 }
@@ -285,7 +305,7 @@ function Celebration({
           <Text style={styles.celBtnDoneText}>Done</Text>
         </Pressable>
         <Pressable style={styles.celBtnShare} onPress={onShare}>
-          <Ionicons name="share-outline" size={13} color="#555" />
+          <Ionicons name="share-outline" size={13} color={MUTED} />
           <Text style={styles.celBtnShareText}>Share</Text>
         </Pressable>
       </Animated.View>
@@ -327,7 +347,8 @@ export function ChallengeCard({ challenges, totalBalance = 0, onShare, celebrate
 
   if (!challenges.length) return null;
   const active = challenges[Math.min(activeIdx, challenges.length - 1)];
-  const dotCount = Math.min(active.displayGoal, 7);
+  const tier = TIER_STYLE[active.tier] ?? TIER_STYLE.medium;
+  const complete = active.completed || active.fraction >= 1;
 
   return (
     <View>
@@ -340,56 +361,52 @@ export function ChallengeCard({ challenges, totalBalance = 0, onShare, celebrate
 
       {/* Card */}
       <Animated.View style={[styles.card, cardStyle]}>
-        <StreakBar streak={active.streak} todayIndex={active.todayIndex} />
+        <DayDashes streak={active.overallStreak} />
 
         {/* Badge row + points */}
-        <View style={styles.chTop}>
-          <View style={styles.badgeRow}>
-            <View style={styles.chBadge}><Text style={styles.chBadgeText}>WEEKLY</Text></View>
-            <View style={[styles.tierPill, { borderColor: TIER_COLOR[active.tier] }]}>
-              <Text style={[styles.tierText, { color: TIER_COLOR[active.tier] }]}>{active.tier.toUpperCase()}</Text>
+        <View style={styles.header}>
+          <View style={styles.tags}>
+            <View style={styles.tag}>
+              <Text style={styles.tagText}>WEEKLY</Text>
+            </View>
+            <View style={[styles.tag, { borderColor: tier.border, backgroundColor: tier.bg }]}>
+              <Text style={[styles.tagText, { color: tier.color }]}>{active.tier.toUpperCase()}</Text>
             </View>
           </View>
-          <View style={{ alignItems: 'flex-end' }}>
-            <Text style={styles.points}>+{active.points}</Text>
-            <Text style={styles.pointsLabel}>points</Text>
+          <View style={styles.points}>
+            <Text style={styles.pointsValue}>+{active.points}</Text>
+            <Text style={styles.pointsLabel}>pts</Text>
           </View>
         </View>
 
-        <Text style={styles.chTitle}>{active.title}</Text>
-        <Text style={styles.chDesc}>{active.description}</Text>
+        {/* Title + description */}
+        <View style={styles.titleWrap}>
+          <Text style={styles.chTitle}>{active.title}</Text>
+          <Text style={styles.chDesc}>{active.description}</Text>
+        </View>
 
         {/* Progress */}
-        <View style={styles.progRow}>
-          <Text style={styles.progTxt}>{active.completed ? 'Completed' : active.unit}</Text>
-          <Text style={styles.progNum}>{active.displayValue.toLocaleString()} / {active.displayGoal.toLocaleString()}</Text>
+        <View style={styles.progSection}>
+          <View style={styles.progMeta}>
+            <Text style={styles.progLabel}>{active.unit}</Text>
+            <Text style={styles.progValue}>
+              {active.displayValue.toLocaleString()} / {active.displayGoal.toLocaleString()}
+            </Text>
+          </View>
+          <ProgressBar fraction={active.fraction} complete={complete} />
         </View>
-        <ProgressBar fraction={active.fraction} />
 
-        {/* Step dots (count/day goals only) */}
-        {active.showDots && (
-          <View style={styles.stepsRow}>
-            {Array.from({ length: dotCount }).map((_, i) => (
-              <StepDot key={i} done={i < active.displayValue} label={DAYS[i] ?? String(i + 1)} />
-            ))}
-          </View>
-        )}
+        {/* Weekly streak */}
+        <DayDots streak={active.streak} todayIndex={active.todayIndex} />
 
-        {/* Reward pill */}
-        <View style={styles.rewardPill}>
-          <View style={styles.ricon}>
-            <Ionicons name="trophy" size={17} color={active.completed ? GREEN : GOLD} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.rlabel}>{active.completed ? 'EARNED' : 'COMPLETE TO EARN'}</Text>
-            <Text style={styles.rname}>{active.points} POWR points</Text>
-          </View>
-          <Text style={styles.rpts}>{active.expiresIn}</Text>
+        {/* Time remaining */}
+        <View style={styles.timeRow}>
+          <Text style={styles.timeLeft}>{active.expiresIn}</Text>
         </View>
 
         {/* Share */}
         <Pressable style={styles.btnShare} onPress={onShare}>
-          <Ionicons name="share-outline" size={13} color={CARD_BG} />
+          <Ionicons name="share-social-outline" size={13} color={SECONDARY} />
           <Text style={styles.btnShareText}>Share streak</Text>
         </Pressable>
 
@@ -409,69 +426,82 @@ export function ChallengeCard({ challenges, totalBalance = 0, onShare, celebrate
 const styles = StyleSheet.create({
   catScroll: { gap: 8, paddingBottom: 14, paddingRight: 16 },
   pill: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    paddingHorizontal: 16, paddingVertical: 7, borderRadius: 20,
-    borderWidth: 1, borderColor: '#222', backgroundColor: 'transparent',
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 16, paddingVertical: 8, borderRadius: 100,
+    borderWidth: 1, borderColor: BORDER, backgroundColor: 'transparent',
   },
   pillOn: { backgroundColor: GOLD, borderColor: GOLD },
-  pillText: { fontSize: 11, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', color: '#555' },
+  pillText: { fontFamily: fontFamily.medium, fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: MUTED },
   pillTextOn: { color: CARD_BG },
 
   card: { backgroundColor: CARD_BG, borderRadius: 22, borderWidth: 1, borderColor: BORDER, padding: 20, overflow: 'hidden', position: 'relative' },
 
-  streakBar: { flexDirection: 'row', gap: 4, marginBottom: 16 },
-  sday: { flex: 1, height: 5, borderRadius: 3, backgroundColor: '#1a1a1a' },
+  // day dashes (overall weekly activity, Mon–Sun)
+  dashes: { flexDirection: 'row', gap: 6, alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
+  dash: { width: 20, height: 3, borderRadius: 2, backgroundColor: BORDER },
+  dashDone: { backgroundColor: GOLD },
 
-  chTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 },
-  badgeRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  chBadge: { backgroundColor: GOLD, paddingHorizontal: 10, paddingVertical: 3, borderRadius: 20 },
-  chBadgeText: { fontSize: 10, fontWeight: '700', letterSpacing: 1.2, color: CARD_BG },
-  tierPill: { borderWidth: 1, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 20 },
-  tierText: { fontSize: 9, fontWeight: '700', letterSpacing: 1 },
-  points: { fontSize: 22, fontWeight: '700', color: GOLD, lineHeight: 24 },
-  pointsLabel: { fontSize: 9, color: '#555', letterSpacing: 1, textTransform: 'uppercase' },
+  // header
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 },
+  tags: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  tag: { borderWidth: 1, borderColor: BORDER, borderRadius: 100, paddingHorizontal: 10, paddingVertical: 4 },
+  tagText: { fontFamily: fontFamily.medium, fontSize: 10, letterSpacing: 1.2, color: SECONDARY, textTransform: 'uppercase' },
+  points: { alignItems: 'flex-end' },
+  pointsValue: { fontFamily: fontFamily.extraLight, fontSize: 30, color: GOLD, lineHeight: 30, letterSpacing: -0.5 },
+  pointsLabel: { fontFamily: fontFamily.medium, fontSize: 9, letterSpacing: 2, color: FAINT, textTransform: 'uppercase', marginTop: 3 },
 
-  chTitle: { fontSize: 30, fontWeight: '200', color: TEXT, letterSpacing: -0.5, marginBottom: 5, lineHeight: 34 },
-  chDesc: { fontSize: 12, color: '#666', marginBottom: 16, lineHeight: 19 },
+  // title
+  titleWrap: { marginBottom: 16 },
+  chTitle: { fontFamily: fontFamily.light, fontSize: 28, color: TEXT, letterSpacing: -0.3, lineHeight: 32 },
+  chDesc: { fontFamily: fontFamily.light, fontSize: 13, color: SECONDARY, marginTop: 6, lineHeight: 18 },
 
-  progRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 7 },
-  progTxt: { fontSize: 11, color: '#555', textTransform: 'capitalize' },
-  progNum: { fontSize: 13, fontWeight: '600', color: GOLD },
-  barBg: { height: 6, backgroundColor: '#1a1a1a', borderRadius: 6, overflow: 'hidden', marginBottom: 14 },
-  barFill: { height: 6, borderRadius: 6, backgroundColor: GOLD, overflow: 'hidden' },
+  // progress
+  progSection: { marginBottom: 16 },
+  progMeta: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+  progLabel: { fontFamily: fontFamily.medium, fontSize: 10, letterSpacing: 2, color: FAINT, textTransform: 'uppercase' },
+  progValue: { fontFamily: fontFamily.regular, fontSize: 12, color: SECONDARY },
+  barBg: { height: 3, backgroundColor: BORDER, borderRadius: 3, overflow: 'hidden' },
+  barFill: { height: 3, borderRadius: 3, backgroundColor: GOLD, overflow: 'hidden' },
+  barFillDone: { backgroundColor: GREEN },
   barShine: { position: 'absolute', top: 0, width: 60, height: '100%', backgroundColor: 'rgba(255,255,255,0.25)' },
 
-  stepsRow: { flexDirection: 'row', gap: 6, marginBottom: 14 },
-  stepDot: { flex: 1, height: 42, borderRadius: 10, borderWidth: 1, borderColor: BORDER, alignItems: 'center', justifyContent: 'center', gap: 3, backgroundColor: CARD_BG_DEEP },
-  stepDotDone: { backgroundColor: '#0f1a00', borderColor: GOLD },
-  slabel: { fontSize: 8, color: '#333', letterSpacing: 0.5, textTransform: 'uppercase' },
-  slabelDone: { color: '#5a5000' },
+  // day dots
+  daysRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 14 },
+  dayItem: { flex: 1, alignItems: 'center', gap: 7 },
+  dayDot: { width: 30, height: 30, borderRadius: 15, borderWidth: 1, borderColor: BORDER, alignItems: 'center', justifyContent: 'center' },
+  dayDotDone: { borderColor: GOLD, backgroundColor: 'rgba(232,210,0,0.08)' },
+  dayDotToday: { borderColor: TEXT },
+  dayCoreDone: { width: 7, height: 7, borderRadius: 4, backgroundColor: GOLD },
+  dayCoreToday: { width: 5, height: 5, borderRadius: 3, backgroundColor: TEXT },
+  dayLabel: { fontFamily: fontFamily.medium, fontSize: 9, letterSpacing: 1, color: FAINT, textTransform: 'uppercase' },
+  dayLabelDone: { color: SECONDARY },
+  dayLabelToday: { color: TEXT },
 
-  rewardPill: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: CARD_BG_DEEP, borderWidth: 1, borderColor: BORDER, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 11, marginBottom: 10 },
-  ricon: { width: 34, height: 34, borderRadius: 10, backgroundColor: '#1a1a00', borderWidth: 1, borderColor: '#2a2a00', alignItems: 'center', justifyContent: 'center' },
-  rlabel: { fontSize: 9, color: '#444', letterSpacing: 1.2, textTransform: 'uppercase' },
-  rname: { fontSize: 12, fontWeight: '500', color: TEXT },
-  rpts: { fontSize: 11, color: GOLD, fontWeight: '600' },
+  // time row
+  timeRow: { borderTopWidth: 1, borderTopColor: BORDER, paddingTop: 10, alignItems: 'flex-end', marginBottom: 2 },
+  timeLeft: { fontFamily: fontFamily.regular, fontSize: 11, color: FAINT },
 
-  btnShare: { paddingVertical: 12, backgroundColor: GOLD, borderRadius: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5 },
-  btnShareText: { fontSize: 11, fontWeight: '700', color: CARD_BG, letterSpacing: 0.5 },
+  // share
+  btnShare: { marginTop: 10, paddingVertical: 12, borderRadius: 100, borderWidth: 1, borderColor: BORDER, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  btnShareText: { fontFamily: fontFamily.medium, fontSize: 12, letterSpacing: 1.5, color: SECONDARY, textTransform: 'uppercase' },
 
+  // celebration
   cel: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: 22, backgroundColor: '#080808', zIndex: 10, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24, paddingVertical: 28, overflow: 'hidden' },
   celGlow: { position: 'absolute', top: '22%', width: 240, height: 240, borderRadius: 120, backgroundColor: GOLD },
   celRing: { position: 'absolute', top: '38%', left: '50%', width: 90, height: 90, borderRadius: 45, borderWidth: 2 },
   celTrophy: { fontSize: 56, marginBottom: 4 },
-  celTitle: { fontSize: 24, fontWeight: '700', color: TEXT, marginTop: 14, letterSpacing: -0.5, textAlign: 'center' },
-  celSub: { fontSize: 12, color: '#666', marginTop: 5, textAlign: 'center', lineHeight: 18 },
+  celTitle: { fontFamily: fontFamily.bold, fontSize: 24, color: TEXT, marginTop: 14, letterSpacing: -0.5, textAlign: 'center' },
+  celSub: { fontFamily: fontFamily.light, fontSize: 12, color: SECONDARY, marginTop: 5, textAlign: 'center', lineHeight: 18 },
   celPtsWrap: { flexDirection: 'row', alignItems: 'flex-end', gap: 6, marginTop: 18 },
-  celPts: { fontSize: 56, fontWeight: '800', color: GOLD, letterSpacing: -2, lineHeight: 58 },
-  celPtsUnit: { fontSize: 16, fontWeight: '600', color: GOLD, opacity: 0.7, marginBottom: 6 },
-  celPtsLabel: { fontSize: 10, color: '#555', letterSpacing: 2, textTransform: 'uppercase', marginTop: 4 },
+  celPts: { fontFamily: fontFamily.extraLight, fontSize: 56, color: GOLD, letterSpacing: -2, lineHeight: 58 },
+  celPtsUnit: { fontFamily: fontFamily.semiBold, fontSize: 16, color: GOLD, opacity: 0.7, marginBottom: 6 },
+  celPtsLabel: { fontFamily: fontFamily.medium, fontSize: 10, color: MUTED, letterSpacing: 2, textTransform: 'uppercase', marginTop: 4 },
   celDivider: { width: 40, height: 1, backgroundColor: BORDER, marginVertical: 18 },
-  celTotal: { fontSize: 13, color: '#555' },
-  celTotalNum: { color: '#888', fontWeight: '600' },
+  celTotal: { fontFamily: fontFamily.regular, fontSize: 13, color: MUTED },
+  celTotalNum: { color: SECONDARY, fontFamily: fontFamily.semiBold },
   celActions: { flexDirection: 'row', gap: 8, marginTop: 20, alignSelf: 'stretch' },
   celBtnDone: { flex: 1, paddingVertical: 13, backgroundColor: GOLD, borderRadius: 12, alignItems: 'center' },
-  celBtnDoneText: { fontSize: 12, fontWeight: '700', color: CARD_BG, letterSpacing: 0.5 },
-  celBtnShare: { paddingVertical: 13, paddingHorizontal: 16, borderWidth: 1, borderColor: '#222', borderRadius: 12, flexDirection: 'row', alignItems: 'center', gap: 5 },
-  celBtnShareText: { fontSize: 12, color: '#555' },
+  celBtnDoneText: { fontFamily: fontFamily.bold, fontSize: 12, color: CARD_BG, letterSpacing: 0.5 },
+  celBtnShare: { paddingVertical: 13, paddingHorizontal: 16, borderWidth: 1, borderColor: BORDER, borderRadius: 12, flexDirection: 'row', alignItems: 'center', gap: 5 },
+  celBtnShareText: { fontFamily: fontFamily.regular, fontSize: 12, color: MUTED },
 });
