@@ -306,7 +306,7 @@ Deno.serve(async (req) => {
       // Flag but don't block — let the claim go through as a flagged transaction
       await supabase
         .from('activity_sessions')
-        .update({ flagged: true })
+        .update({ flagged: true, flag_reason: 'duplicate' })
         .eq('id', session.id);
     }
   }
@@ -326,7 +326,7 @@ Deno.serve(async (req) => {
       // Flag the session but allow the claim — this is a soft signal for review
       await supabase
         .from('activity_sessions')
-        .update({ flagged: true })
+        .update({ flagged: true, flag_reason: 'multi_device' })
         .eq('id', session.id);
     }
   }

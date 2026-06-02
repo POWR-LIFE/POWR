@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Platform } from 'react-native';
 
+import type { HealthDataProvenance } from '@/lib/health/dataSource';
+
 function toLocalISO(d: Date): string {
     return d.toISOString();
 }
@@ -19,6 +21,8 @@ export type HealthActivity = {
     steps?: number;
     hrAvg?: number;
     calories?: number;
+    /** Which app/device wrote this sample — used to classify wearable vs phone. */
+    source?: HealthDataProvenance;
 };
 
 export type SleepSession = {
@@ -65,6 +69,35 @@ export type HealthDataHook = {
     verifyWalking: (claimedSteps: number) => Promise<VerifyResult>;
     verifyWorkout: (activityType: string, durationMinutes: number) => Promise<VerifyResult>;
 };
+
+// ── Provenance builders (which app/device wrote a sample) ────────────────────
+
+/** Build provenance from a HealthKit sample's sourceRevision + device. */
+function iosProvenance(s: {
+    sourceRevision?: { source?: { bundleIdentifier?: string; name?: string } };
+    device?: { name?: string; model?: string; hardwareVersion?: string; manufacturer?: string };
+}): HealthDataProvenance {
+    return {
+        platform: 'ios',
+        sourceBundleId: s.sourceRevision?.source?.bundleIdentifier,
+        sourceName: s.sourceRevision?.source?.name,
+        deviceName: s.device?.name,
+        deviceModel: s.device?.model,
+        deviceHardware: s.device?.hardwareVersion,
+        deviceManufacturer: s.device?.manufacturer,
+    };
+}
+
+/** Build provenance from a Health Connect record's metadata. */
+function androidProvenance(r: {
+    metadata?: { dataOrigin?: string; device?: { type?: number } };
+}): HealthDataProvenance {
+    return {
+        platform: 'android',
+        dataOrigin: r.metadata?.dataOrigin,
+        deviceType: r.metadata?.device?.type,
+    };
+}
 
 // ── iOS (HealthKit via @kingstinct/react-native-healthkit) ───────────────────
 
@@ -182,6 +215,7 @@ async function iosGetActivitiesToday(): Promise<HealthActivity[]> {
             startedAt: w.startDate.toISOString(),
             durationMin: Math.round(w.duration.quantity / 60),
             distanceM: w.totalDistance ? Math.round(w.totalDistance.quantity) : undefined,
+            source: iosProvenance(w),
         }));
     } catch (e) {
         console.warn('Failed to read Apple HealthKit workouts:', e);
@@ -455,12 +489,13 @@ async function androidGetActivitiesToday(): Promise<HealthActivity[]> {
                 endTime: toLocalISO(new Date()),
             },
         });
-        return (records as Array<{ startTime: string; endTime: string; exerciseType: number }>).map(r => ({
+        return (records as Array<{ startTime: string; endTime: string; exerciseType: number; metadata?: { dataOrigin?: string; device?: { type?: number } } }>).map(r => ({
             type: mapHCExerciseType(r.exerciseType),
             startedAt: r.startTime,
             durationMin: Math.round(
                 (new Date(r.endTime).getTime() - new Date(r.startTime).getTime()) / 60000,
             ),
+            source: androidProvenance(r),
         }));
     } catch {
         return [];
@@ -653,6 +688,7 @@ async function iosGetWeekHistory(): Promise<DayHealthSummary[]> {
                 startedAt: w.startDate.toISOString(),
                 durationMin: Math.round(w.duration.quantity / 60),
                 distanceM: w.totalDistance ? Math.round(w.totalDistance.quantity) : undefined,
+                source: iosProvenance(w),
             }));
         } catch { /* ignore */ }
 
@@ -761,10 +797,11 @@ async function androidGetWeekHistory(): Promise<DayHealthSummary[]> {
             // eslint-disable-next-line @typescript-eslint/no-require-imports
             const { readRecords } = require('react-native-health-connect');
             const { records } = await readRecords('ExerciseSession', timeFilter);
-            activities = (records as Array<{ startTime: string; endTime: string; exerciseType: number }>).map(r => ({
+            activities = (records as Array<{ startTime: string; endTime: string; exerciseType: number; metadata?: { dataOrigin?: string; device?: { type?: number } } }>).map(r => ({
                 type: mapHCExerciseType(r.exerciseType),
                 startedAt: r.startTime,
                 durationMin: Math.round((new Date(r.endTime).getTime() - new Date(r.startTime).getTime()) / 60000),
+                source: androidProvenance(r),
             }));
         } catch { /* ignore */ }
 

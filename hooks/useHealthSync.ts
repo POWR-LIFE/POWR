@@ -2,8 +2,9 @@ import { useEffect, useCallback, useRef } from 'react';
 import { Alert, Platform } from 'react-native';
 import { useHealthData } from './useHealthData';
 import { useHealthProviders } from './useHealthProviders';
-import { getProvider, ALL_PROVIDER_META, type HealthProviderId } from '@/lib/health/providers';
+import { getProvider, verificationForProvider, ALL_PROVIDER_META, type HealthProviderId } from '@/lib/health/providers';
 import { ProviderAuthExpiredError } from '@/lib/health/providers/types';
+import { verificationFromProvenance, sourceLabel } from '@/lib/health/dataSource';
 import { supabase } from '@/lib/supabase';
 import { ACTIVITIES, type ActivityType } from '@/constants/activities';
 import { logManualSession, saveHealthSnapshot } from '@/lib/api/activity';
@@ -55,6 +56,8 @@ export function useHealthSync() {
   // or a third-party provider is the active provider.
   const isAuthorized = isNativeProvider ? nativeHealth.isAuthorized : !!activeId;
   const source = sourceForProvider(activeId);
+  // 'wearable' only for dedicated wearable providers; native phone sync is 'health'.
+  const verificationSource = verificationForProvider(activeId);
 
   const getWeekHistory = useCallback(async () => {
     if (isNativeProvider) return nativeHealth.getWeekHistory();
@@ -86,6 +89,7 @@ export function useHealthSync() {
           started_at: sleep.startedAt,
           points,
           healthVerified: true,
+          healthSource: verificationSource,
         });
 
         if (!isNew) continue;
@@ -105,7 +109,7 @@ export function useHealthSync() {
     } catch (e) {
       console.error('[HealthSync] Error syncing sleep:', e);
     }
-  }, [getWeekHistory, source]);
+  }, [getWeekHistory, source, verificationSource]);
 
   const syncActivities = useCallback(async () => {
     if (!isAuthorized) return;
@@ -120,7 +124,8 @@ export function useHealthSync() {
       const { data: existingSessions } = await supabase
         .from('activity_sessions')
         .select('type, started_at')
-        .eq('verification', 'wearable')
+        // Match both health-synced sources so dedup survives the wearable→health split.
+        .in('verification', ['wearable', 'health'])
         .gte('started_at', today.toISOString());
 
       const syncedKeys = new Set(
@@ -140,6 +145,13 @@ export function useHealthSync() {
         const key = `${mappedType}_${new Date(health.startedAt).toISOString()}`;
         if (syncedKeys.has(key)) continue;
 
+        // On the native path, derive wearable-vs-phone from the sample's own
+        // provenance (which app/device wrote it); fall back to the provider-level
+        // label when there's no per-sample source (e.g. OAuth providers).
+        const activityVerification = isNativeProvider
+          ? verificationFromProvenance(health.source, verificationSource)
+          : verificationSource;
+
         await logManualSession({
           type: mappedType,
           duration_sec: health.durationMin * 60,
@@ -148,6 +160,7 @@ export function useHealthSync() {
           started_at: health.startedAt,
           points: calculateBasePoints(mappedType, health.durationMin),
           healthVerified: true,
+          healthSource: activityVerification,
         });
 
         // Save full health snapshot for this session
@@ -162,6 +175,7 @@ export function useHealthSync() {
           activityType: health.type,
           durationSec: health.durationMin * 60,
           source,
+          sourceDetail: health.source ? sourceLabel(health.source) : undefined,
         });
 
         console.log(`[HealthSync] Synced ${mappedType} from ${health.startedAt}`);
@@ -193,7 +207,7 @@ export function useHealthSync() {
         console.error('[HealthSync] Error syncing activities:', e);
       }
     }
-  }, [isAuthorized, getActivitiesToday, getHeartRateToday, getCaloriesToday, source, syncSleep]);
+  }, [isAuthorized, getActivitiesToday, getHeartRateToday, getCaloriesToday, source, verificationSource, syncSleep]);
 
   useEffect(() => {
     if (isAuthorized) {

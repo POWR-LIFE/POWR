@@ -1,8 +1,14 @@
-import { Activity, AlertTriangle, CheckCircle, Clock, Search, Shield, XCircle } from 'lucide-react';
+import { AlertTriangle, CheckCircle, Clock, History, Search, Users, XCircle } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { useAuth } from '../../App';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
+
+// Why claim-points flagged the session (set in supabase/functions/claim-points).
+const FLAG_REASONS = {
+    duplicate:    { label: 'Duplicate',    color: '#F59E0B' },
+    multi_device: { label: 'Multi-Device', color: '#F43F5E' },
+};
+const flagReason = (r) => FLAG_REASONS[r] || { label: 'Flagged', color: '#999' };
 
 const timeAgo = (dateStr) => {
     const diff = Date.now() - new Date(dateStr).getTime();
@@ -14,33 +20,48 @@ const timeAgo = (dateStr) => {
     return `${Math.floor(h / 24)}d ago`;
 };
 
-const logAction = async (adminId, action, targetType, targetId, metadata = {}) => {
-    await supabase.from('admin_audit_log').insert({ admin_id: adminId, action, target_type: targetType, target_id: targetId, metadata });
+// Both actions run through a service-role edge function so the writes persist
+// (activity_sessions has no client UPDATE/DELETE policy) and reject can also
+// reverse the points that were already awarded for the session.
+const callReview = async (body) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    const res = await fetch(
+        `${import.meta.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/admin-review-session`,
+        {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${session.access_token}`,
+                'apikey': import.meta.env.EXPO_PUBLIC_SUPABASE_ANON_KEY,
+            },
+            body: JSON.stringify(body),
+        }
+    );
+    return res.json();
 };
 
 export default function SessionReview() {
     const toast = useToast();
-    const { user } = useAuth();
     const [sessions, setSessions] = useState([]);
-    const [filter, setFilter] = useState('flagged'); // flagged, low_trust, all", 'pending'
     const [loading, setLoading] = useState(true);
+    const [busyId, setBusyId] = useState(null);
 
     const [search, setSearch] = useState('');
 
-    useEffect(() => { fetchSessions(); }, [filter]);
+    useEffect(() => { fetchSessions(); }, []);
 
+    // Only genuinely flagged sessions land here — duplicates or multi-device
+    // activity caught by claim-points. Everything else is auto-trusted, so this
+    // queue is an abuse-triage view, not a verification gate.
     const fetchSessions = async () => {
         setLoading(true);
         try {
-            let query = supabase
+            const { data, error } = await supabase
                 .from('activity_sessions')
                 .select('*, profiles!activity_sessions_user_id_fkey(display_name, username)')
-                .order('started_at', { ascending: false });
-
-            if (filter === 'flagged') query = query.eq('flagged', true);
-            else if (filter === 'low_trust') query = query.lt('trust_score', 0.5);
-
-            const { data, error } = await query.limit(100);
+                .eq('flagged', true)
+                .order('started_at', { ascending: false })
+                .limit(100);
             if (error) throw error;
             setSessions(data || []);
         } catch (e) {
@@ -52,24 +73,23 @@ export default function SessionReview() {
     };
 
     const handleApprove = async (session) => {
-        const { error } = await supabase
-            .from('activity_sessions')
-            .update({ flagged: false, trust_score: 1.0 })
-            .eq('id', session.id);
-        if (error) { toast.error(error.message); return; }
-        await logAction(user.id, 'session_approved', 'activity_session', session.id, { previous_trust: session.trust_score });
-        toast.success('Session approved');
+        setBusyId(session.id);
+        const result = await callReview({ action: 'approve', session_id: session.id });
+        setBusyId(null);
+        if (result.error) { toast.error(result.error); return; }
+        toast.success('Session approved — flag cleared');
         setSessions(prev => prev.filter(s => s.id !== session.id));
     };
 
     const handleReject = async (session) => {
-        const { error } = await supabase
-            .from('activity_sessions')
-            .delete()
-            .eq('id', session.id);
-        if (error) { toast.error(error.message); return; }
-        await logAction(user.id, 'session_rejected', 'activity_session', session.id, { type: session.type, user_id: session.user_id });
-        toast.success('Session rejected & removed');
+        setBusyId(session.id);
+        const result = await callReview({ action: 'reject', session_id: session.id });
+        setBusyId(null);
+        if (result.error) { toast.error(result.error); return; }
+        const reversed = result.reversed_points ?? 0;
+        toast.success(reversed > 0
+            ? `Session rejected — ${reversed} pts reversed`
+            : 'Session rejected & removed');
         setSessions(prev => prev.filter(s => s.id !== session.id));
     };
 
@@ -77,11 +97,13 @@ export default function SessionReview() {
         if (!search) return true;
         const name = s.profiles?.display_name || s.profiles?.username || '';
         const q = search.toLowerCase();
-        return name.toLowerCase().includes(q) || s.type.toLowerCase().includes(q); 
+        return name.toLowerCase().includes(q) || s.type.toLowerCase().includes(q);
     });
 
-    const flaggedCount = sessions.filter(s => s.flagged).length;
-    const lowTrustCount = sessions.filter(s => s.trust_score < 0.5).length;
+    const uniqueUsers = new Set(sessions.map(s => s.user_id)).size;
+    const oldest = sessions.length
+        ? timeAgo(sessions.reduce((a, b) => (a.started_at < b.started_at ? a : b)).started_at)
+        : '—';
 
     return (
         <div className="px-4 lg:px-0 py-20 animate-in fade-in slide-in-from-bottom-8 duration-1000">
@@ -93,7 +115,7 @@ export default function SessionReview() {
                     </div>
                     <h1 className="text-6xl font-light tracking-tighter text-[#F2F2F2] mb-6">Session Review</h1>
                     <p className="text-[#999] text-[11px] max-w-xl font-black uppercase tracking-[0.4em] leading-relaxed">
-                        Flagged and low-trust activity sessions pending human verification.
+                        Flagged sessions — duplicates &amp; multi-device activity. Approve to clear, or reject to remove the session and reverse its points.
                     </p>
                 </div>
             </div>
@@ -101,9 +123,9 @@ export default function SessionReview() {
             {/* Stats */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-20">
                 {[
-                    { label: 'Flagged Sessions', value: flaggedCount, icon: AlertTriangle, color: '#F43F5E', desc: 'CRITICAL' },
-                    { label: 'Low Trust', value: lowTrustCount, icon: Shield, color: '#F59E0B', desc: 'WARNING' },
-                    { label: 'Total In Queue', value: sessions.length, icon: Activity, color: '#0EA5E9', desc: 'QUEUE' },
+                    { label: 'Flagged Sessions', value: sessions.length, icon: AlertTriangle, color: '#F43F5E', desc: 'CRITICAL' },
+                    { label: 'Unique Users', value: uniqueUsers, icon: Users, color: '#F59E0B', desc: 'ACCOUNTS' },
+                    { label: 'Oldest Pending', value: oldest, icon: History, color: '#0EA5E9', desc: 'BACKLOG' },
                 ].map(s => (
                     <div key={s.label} className="bg-[#0A0A0A] border border-[#151515] p-10 rounded-3xl flex items-center gap-8 group hover:border-[#202020] transition-all relative overflow-hidden">
                         <div className="absolute top-0 right-0 p-8 opacity-5">
@@ -128,17 +150,6 @@ export default function SessionReview() {
                     <Search size={18} className="absolute left-6 top-1/2 -translate-y-1/2 text-[#777] group-focus-within:text-[#E8D200] transition-colors" />
                     <input type="text" placeholder="SEARCH BY USER OR TYPE..." className="w-full h-16 pl-16 pr-8 bg-[#0A0A0A] border border-[#151515] rounded-[2rem] text-[11px] font-black tracking-[0.2em] text-[#F2F2F2] placeholder-[#151515] focus:border-[#E8D200]/40 outline-none transition-all uppercase" value={search} onChange={e => setSearch(e.target.value)} />
                 </div>
-                <div className="flex bg-[#0A0A0A] border border-[#151515] rounded-[2rem] p-2 gap-2">
-                    {[
-                        { key: 'flagged', label: 'Flagged' },
-                        { key: 'low_trust', label: 'Low Trust' },
-                        { key: 'all', label: 'All Sessions' },
-                    ].map(t => (
-                        <button key={t.key} onClick={() => setFilter(t.key)} className={`h-12 px-8 rounded-[1.5rem] text-[10px] font-black uppercase tracking-[0.3em] transition-all ${filter === t.key ? 'bg-[#F43F5E] text-white shadow-lg shadow-[#F43F5E]/10' : 'text-[#999] hover:text-[#BBB]'}`}>
-                            {t.label}
-                        </button>
-                    ))}
-                </div>
             </div>
 
             {/* Table */}
@@ -153,7 +164,7 @@ export default function SessionReview() {
                         <table className="w-full text-left border-collapse">
                             <thead>
                                 <tr className="bg-[#050505] border-b border-[#151515]">
-                                    {['User', 'Activity', 'Duration', 'Verification', 'Trust', 'Actions'].map(h => (
+                                    {['User', 'Activity', 'Duration', 'Verification', 'Reason', 'Actions'].map(h => (
                                         <th key={h} className={`px-10 py-8 text-[10px] font-black uppercase tracking-[0.5em] text-[#777] ${h === 'Actions' ? 'text-right' : ''}`}>{h}</th>
                                     ))}
                                 </tr>
@@ -188,16 +199,21 @@ export default function SessionReview() {
                                             </span>
                                         </td>
                                         <td className="px-10 py-8">
-                                            <div className={`text-2xl font-light tracking-tighter ${session.trust_score >= 0.7 ? 'text-[#10B981]' : session.trust_score >= 0.4 ? 'text-[#F59E0B]' : 'text-[#F43F5E]'}`}>
-                                                {(session.trust_score * 100).toFixed(0)}%
-                                            </div>
+                                            {(() => {
+                                                const r = flagReason(session.flag_reason);
+                                                return (
+                                                    <span className="px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-[0.2em] border" style={{ color: r.color, borderColor: `${r.color}33` }}>
+                                                        {r.label}
+                                                    </span>
+                                                );
+                                            })()}
                                         </td>
                                         <td className="px-10 py-8 text-right">
                                             <div className="flex items-center justify-end gap-3">
-                                                <button onClick={() => handleApprove(session)} className="h-10 px-5 rounded-full bg-[#10B981]/10 border border-[#10B981]/20 text-[#10B981] text-[9px] font-black uppercase tracking-[0.2em] hover:bg-[#10B981]/20 transition-all flex items-center gap-2">
+                                                <button onClick={() => handleApprove(session)} disabled={busyId === session.id} className="h-10 px-5 rounded-full bg-[#10B981]/10 border border-[#10B981]/20 text-[#10B981] text-[9px] font-black uppercase tracking-[0.2em] hover:bg-[#10B981]/20 transition-all flex items-center gap-2 disabled:opacity-40 disabled:pointer-events-none">
                                                     <CheckCircle size={14} /> Approve
                                                 </button>
-                                                <button onClick={() => handleReject(session)} className="h-10 px-5 rounded-full bg-[#F43F5E]/10 border border-[#F43F5E]/20 text-[#F43F5E] text-[9px] font-black uppercase tracking-[0.2em] hover:bg-[#F43F5E]/20 transition-all flex items-center gap-2">
+                                                <button onClick={() => handleReject(session)} disabled={busyId === session.id} className="h-10 px-5 rounded-full bg-[#F43F5E]/10 border border-[#F43F5E]/20 text-[#F43F5E] text-[9px] font-black uppercase tracking-[0.2em] hover:bg-[#F43F5E]/20 transition-all flex items-center gap-2 disabled:opacity-40 disabled:pointer-events-none">
                                                     <XCircle size={14} /> Reject
                                                 </button>
                                             </div>

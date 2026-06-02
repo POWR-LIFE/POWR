@@ -128,7 +128,7 @@ export async function syncHistoricalHealthData(
                     distance_m: activity.distanceM ?? null,
                     steps: activity.steps ?? null,
                     hr_avg: day.heartRate?.avg ?? null,
-                    verification: 'wearable',
+                    verification: 'health',
                     trust_score: 0.85,
                 });
             if (sessErr) {
@@ -178,7 +178,7 @@ export async function syncHistoricalHealthData(
                         ended_at: `${day.date}T23:59:59.000Z`,
                         duration_sec: 0,
                         steps: day.steps,
-                        verification: 'wearable',
+                        verification: 'health',
                         trust_score: 0.85,
                     });
 
@@ -213,7 +213,7 @@ export async function syncHistoricalHealthData(
                         started_at: day.sleep.startedAt,
                         ended_at: day.sleep.endedAt,
                         duration_sec: Math.round(day.sleep.durationHours * 3600),
-                        verification: 'wearable',
+                        verification: 'health',
                         trust_score: 0.85,
                     });
 
