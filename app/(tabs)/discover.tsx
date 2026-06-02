@@ -1242,11 +1242,11 @@ function PartnerListRow({
       ]}
       onPress={onPress}
     >
-      <View style={[styles.logoBox, { backgroundColor: partner.logoBg === 'white' ? '#FFFFFF' : partner.logoBg === 'black' ? '#000000' : '#1a1a1a' }]}>
+      <View style={styles.logoBox}>
         {partner.logoUrl ? (
           <Image source={{ uri: partner.logoUrl }} style={styles.logoImage} contentFit="contain" />
         ) : (
-          <Text style={[styles.logoText, partner.logoBg === 'white' && styles.logoTextDark]} numberOfLines={2} adjustsFontSizeToFit>
+          <Text style={styles.logoText} numberOfLines={2} adjustsFontSizeToFit>
             {partner.logoText}
           </Text>
         )}

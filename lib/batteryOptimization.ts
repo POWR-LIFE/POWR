@@ -45,10 +45,19 @@ export async function requestBatteryOptimizationExemption(): Promise<boolean> {
     // Permission/module missing from the running binary, or OEM blocks the dialog.
   }
 
-  // 2. The full battery-optimization list (still needs the intent-launcher module).
+  // 2. POWR's own App-info page (Battery → Unrestricted lives here). Unlike the
+  //    one-tap dialog above — which shows NOTHING when the app is already exempt —
+  //    this always opens a visible, actionable screen, so the button never feels
+  //    dead when step 1 silently no-ops or isn't available in this binary.
   try {
-    await IntentLauncher.startActivityAsync('android.settings.IGNORE_BATTERY_OPTIMIZATION_SETTINGS');
-    return true;
+    const pkg = Application.applicationId;
+    if (pkg) {
+      await IntentLauncher.startActivityAsync(
+        'android.settings.APPLICATION_DETAILS_SETTINGS',
+        { data: `package:${pkg}` },
+      );
+      return true;
+    }
   } catch {
     // expo-intent-launcher not linked in this build, or intent unavailable.
   }

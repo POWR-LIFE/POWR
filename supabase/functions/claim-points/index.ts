@@ -473,8 +473,15 @@ Deno.serve(async (req) => {
     console.warn('[claim-points] session_completed notification failed:', notifErr);
   }
 
-  // 13. "Reward within reach" push — fires once when the user first crosses 80%
-  //     of their next locked reward's cost.
+  // 13. "Reward within reach" — returned (not pushed) so the client can schedule
+  //     it as a spaced-out, daytime-clamped, once-per-day local notification
+  //     instead of firing it back-to-back with the session push. To avoid
+  //     nagging about every reward the user is near, we pick the single
+  //     HIGHEST-VALUE still-locked reward they're at >=85% of: a user 85% to a
+  //     big reward is already past 100% of the small ones, so the cheapest-first
+  //     logic would point at a less aspirational target.
+  const WITHIN_REACH_PCT = 0.85;
+  let withinReach: { points_to_unlock: number; reward_name: string } | null = null;
   try {
     // Sum all earn/streak transactions to get current balance
     const { data: allTx } = await supabase
@@ -484,45 +491,39 @@ Deno.serve(async (req) => {
       .in('type', ['earn', 'streak']);
 
     const newBalance = (allTx ?? []).reduce((s, t) => s + (t.amount ?? 0), 0);
-    const prevBalance = newBalance - finalAmount;
 
-    // Find the cheapest active reward the user hasn't yet unlocked
-    const { data: nextReward } = await supabase
+    // Highest-cost active reward still locked (cost > balance) but within 85%
+    // reach (cost <= balance / 0.85). Order by cost DESC → the biggest one near.
+    const maxReachableCost = newBalance / WITHIN_REACH_PCT;
+    const { data: target } = await supabase
       .from('rewards')
       .select('title, powr_cost')
       .eq('active', true)
       .gt('powr_cost', newBalance)
-      .order('powr_cost', { ascending: true })
+      .lte('powr_cost', maxReachableCost)
+      .order('powr_cost', { ascending: false })
       .limit(1)
       .maybeSingle();
 
-    if (nextReward) {
-      const threshold = nextReward.powr_cost * 0.8;
-      // Only notify if this session crossed the threshold (not already above it)
-      if (prevBalance < threshold && newBalance >= threshold) {
-        const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
-        const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-        await fetch(`${supabaseUrl}/functions/v1/send-push-notification`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${serviceKey}`,
-          },
-          body: JSON.stringify({
-            target_user_id: user.id,
-            type: 'points_milestone',
-            payload: {
-              points: newBalance,
-              points_to_unlock: Math.ceil(nextReward.powr_cost - newBalance),
-              reward_name: nextReward.title,
-            },
-          }),
-        });
+    if (target) {
+      // Respect the user's points_milestone preference — the client schedule
+      // bypasses send-push-notification's server-side preference gate.
+      const { data: pref } = await supabase
+        .from('notification_preferences')
+        .select('points_milestone')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (!pref || pref.points_milestone !== false) {
+        withinReach = {
+          points_to_unlock: Math.ceil(target.powr_cost - newBalance),
+          reward_name: target.title,
+        };
       }
     }
   } catch (notifErr) {
     // Non-fatal — points were already saved successfully
-    console.warn('[claim-points] milestone notification failed:', notifErr);
+    console.warn('[claim-points] within-reach computation failed:', notifErr);
   }
 
   return new Response(
@@ -532,6 +533,7 @@ Deno.serve(async (req) => {
       streak_bonus: streakBonus,
       base,
       transaction_id: tx.id,
+      within_reach: withinReach,
     }),
     { status: 200, headers: { 'Content-Type': 'application/json' } },
   );
