@@ -2190,43 +2190,58 @@ img {
     letter-spacing: 0.5px;
 }
 
-.store-btn {
+/* ─── App store download badges ─── */
+.store-badges {
     display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+}
+
+.store-badges--center {
+    justify-content: center;
+}
+
+.store-badge {
+    display: inline-flex;
     align-items: center;
     gap: 14px;
-    padding: 14px 28px;
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid var(--border);
+    padding: 12px 26px;
+    min-width: 210px;
+    background: var(--accent);
+    color: var(--on-accent);
     border-radius: 14px;
-    transition: all 0.25s ease;
+    transition: transform 0.25s ease, box-shadow 0.25s ease;
 }
 
-.store-btn:hover {
-    background: rgba(255, 255, 255, 0.1);
-    border-color: rgba(255, 255, 255, 0.15);
+.store-badge:hover {
     transform: translateY(-2px);
+    box-shadow: 0 10px 30px rgba(232, 210, 0, 0.3);
 }
 
-.store-icon {
+.store-badge-icon {
+    width: 30px;
+    height: 30px;
     flex-shrink: 0;
+    fill: currentColor;
 }
 
-.store-text {
+.store-badge-text {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.15;
     text-align: left;
 }
 
-.store-small {
-    display: block;
-    font-size: 11px;
-    color: var(--text-secondary);
-    letter-spacing: 0.5px;
+.store-badge-small {
+    font-size: 12px;
+    font-weight: 500;
+    opacity: 0.85;
 }
 
-.store-big {
-    display: block;
-    font-size: 18px;
+.store-badge-large {
+    font-size: 20px;
     font-weight: 700;
-    margin-top: 2px;
+    letter-spacing: -0.3px;
 }
 
 
@@ -2376,6 +2391,18 @@ img {
 
     .btn-primary {
         width: 100%;
+    }
+
+    /* Store badges */
+    .store-badges {
+        justify-content: center;
+        margin-top: 2rem;
+    }
+
+    .store-badge {
+        flex: 1 1 100%;
+        justify-content: center;
+        max-width: 320px;
     }
 
     /* Features */
