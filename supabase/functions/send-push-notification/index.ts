@@ -31,23 +31,23 @@ interface ExpoMessage {
   priority?: 'default' | 'normal' | 'high';
 }
 
-function formatSessionCompletedBody(partnerName?: string | null, currentStreak?: number | null): string {
+function formatSessionCompletedBody(
+  partnerName?: string | null,
+  currentStreak?: number | null,
+  earned?: number | null,
+): string {
   const name = partnerName?.trim();
   const streak = Number(currentStreak ?? 0);
+  const pts = Math.max(0, Math.round(Number(earned ?? 0)));
 
-  if (name && streak > 0) {
-    return `${name} · Day ${streak} streak`;
-  }
+  // Fold the points earned into the body so the single "Session recorded"
+  // notification carries everything — no separate "+X pts" push needed.
+  const parts: string[] = [];
+  if (name) parts.push(name);
+  if (pts > 0) parts.push(`+${pts.toLocaleString()} pts`);
+  if (streak > 0) parts.push(`Day ${streak} streak`);
 
-  if (name) {
-    return name;
-  }
-
-  if (streak > 0) {
-    return `Day ${streak} streak`;
-  }
-
-  return 'Your session counted.';
+  return parts.length > 0 ? parts.join(' · ') : 'Your session counted.';
 }
 
 // ---------------------------------------------------------------------------
@@ -180,8 +180,8 @@ function buildMessage(
         const currentStreak = payload.current_streak as number | undefined;
 
         return {
-          title: earned > 0 ? `+${earned.toLocaleString()} pts earned! 🔥` : 'Session complete 🔥',
-          body: formatSessionCompletedBody(partnerName, currentStreak),
+          title: earned > 0 ? 'Session recorded 🔥' : 'Session complete 🔥',
+          body: formatSessionCompletedBody(partnerName, currentStreak, earned),
           data: {
             type,
             route: `/share-stats?mode=check-in&sessionId=${sessionId}`,

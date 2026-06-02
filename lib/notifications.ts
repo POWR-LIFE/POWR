@@ -319,36 +319,6 @@ export async function notifyCheckInAvailable(partnerName: string, locationId: st
   });
 }
 
-// ---------------------------------------------------------------------------
-// Gym exit safety-net — scheduled with a short DATE trigger so it survives
-// a background-task kill. Cancelled once the session is successfully claimed
-// (the richer "+X earned" notification is then delivered server-side by the
-// claim-points edge function, the single source of truth for session_completed).
-// ---------------------------------------------------------------------------
-
-export async function notifyGymExited(partnerName: string) {
-  const name = partnerName.trim();
-  await Notifications.scheduleNotificationAsync({
-    identifier: `powr-session_completed-exit`,
-    content: {
-      title: 'Session recorded 🔥',
-      body: name ? `${name} · Calculating your points…` : 'Calculating your points…',
-      data: {
-        type: 'session_completed',
-        route: '/(tabs)/index',
-      } satisfies NotificationPayload,
-      sound: 'default',
-      ...(Platform.OS === 'android' && { channelId: CHANNEL_REWARDS }),
-    },
-    trigger: {
-      type: Notifications.SchedulableTriggerInputTypes.DATE,
-      // 8-second delay: long enough for recordDwellSession to cancel this before
-      // delivery if network is fast; short enough to be useful if the task dies.
-      date: new Date(Date.now() + 8_000),
-    },
-  });
-}
-
 export async function notifySessionCompleted(
   partnerName: string,
   sessionId: string,
@@ -417,6 +387,102 @@ export async function notifyPointsMilestone(points: number, options?: PointsMile
       sound: 'default',
     },
     trigger: null,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Reward within reach — spaced out, not fired back-to-back with the session
+// push. Scheduled locally ~2.5h after a qualifying claim so it lands as its own
+// re-engagement moment, and clamped to daytime so it never buzzes overnight.
+// ---------------------------------------------------------------------------
+
+const WITHIN_REACH_DELAY_MS = 2.5 * 60 * 60 * 1000; // ~2.5h after the session
+const WITHIN_REACH_DAY_START = 8;  // earliest acceptable hour (08:00)
+const WITHIN_REACH_DAY_END = 21;   // latest acceptable hour (21:00)
+// Epoch-ms of the most recently scheduled within-reach fire time. Used to cap
+// the nudge to once per calendar day regardless of how many sessions are claimed.
+const WITHIN_REACH_FIRED_KEY = '@powr/within_reach_fire_at';
+
+/** Fire time ~2.5h out, pulled into the 08:00–21:00 daytime window so the nudge
+ *  never arrives overnight (defers to 09:00 the next morning if it would). */
+function withinReachFireDate(): Date {
+  const fireAt = new Date(Date.now() + WITHIN_REACH_DELAY_MS);
+  const hour = fireAt.getHours();
+  if (hour >= WITHIN_REACH_DAY_END) {
+    fireAt.setDate(fireAt.getDate() + 1);
+    fireAt.setHours(9, 0, 0, 0);
+  } else if (hour < WITHIN_REACH_DAY_START) {
+    fireAt.setHours(9, 0, 0, 0);
+  }
+  return fireAt;
+}
+
+function isSameLocalDay(a: number, b: number): boolean {
+  const da = new Date(a);
+  const db = new Date(b);
+  return (
+    da.getFullYear() === db.getFullYear() &&
+    da.getMonth() === db.getMonth() &&
+    da.getDate() === db.getDate()
+  );
+}
+
+/**
+ * Schedule (or refresh) the spaced-out "Reward within reach" nudge from the
+ * latest claim's within-reach state (the single highest-value reward the user
+ * is >=85% toward — resolved server-side), or pass `null` to clear it.
+ *
+ * Capped at **once per calendar day**: if a nudge has already been delivered
+ * today, later claims won't queue another. While today's nudge is still pending,
+ * a new claim cancels and reschedules it (deferring ~2.5h and refreshing the
+ * numbers), so only one is ever queued and it never double-buzzes in a day.
+ */
+export async function scheduleRewardWithinReach(
+  data: { points_to_unlock: number; reward_name: string } | null,
+) {
+  const now = Date.now();
+
+  // Once-per-day cap: if the last scheduled nudge already fired earlier today,
+  // leave it alone — don't queue a second one for the same day.
+  try {
+    const raw = await AsyncStorage.getItem(WITHIN_REACH_FIRED_KEY);
+    const lastFireAt = raw ? parseInt(raw, 10) : NaN;
+    if (Number.isFinite(lastFireAt) && lastFireAt <= now && isSameLocalDay(lastFireAt, now)) {
+      return;
+    }
+  } catch { /* non-fatal — fall through and (re)schedule */ }
+
+  // Clear any still-pending nudge before re-evaluating.
+  await cancelNotificationsOfType('points_milestone');
+  if (!data) return; // no longer within reach (unlocked / moved out of range)
+
+  const pointsToUnlock = Math.max(0, Math.ceil(data.points_to_unlock));
+  if (pointsToUnlock <= 0) return; // already unlocked — nothing to nudge
+  const rewardName = data.reward_name?.trim();
+
+  const fireDate = withinReachFireDate();
+  try {
+    await AsyncStorage.setItem(WITHIN_REACH_FIRED_KEY, String(fireDate.getTime()));
+  } catch { /* non-fatal */ }
+
+  await Notifications.scheduleNotificationAsync({
+    identifier: 'powr-points_milestone-within-reach',
+    content: {
+      title: 'Reward within reach',
+      body: `You're close. ${pointsToUnlock.toLocaleString()} pts to unlock your ${rewardName || 'next'} reward.`,
+      data: {
+        type: 'points_milestone',
+        route: '/(tabs)/rewards',
+        pointsToUnlock,
+        rewardName,
+      } satisfies NotificationPayload,
+      sound: 'default',
+      ...(Platform.OS === 'android' && { channelId: CHANNEL_REWARDS }),
+    },
+    trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.DATE,
+      date: fireDate,
+    },
   });
 }
 

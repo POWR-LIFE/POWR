@@ -116,6 +116,14 @@ const LOCATION_UPDATE_OPTIONS: Location.LocationTaskOptions = {
   },
 };
 
+// A device reboot kills the foreground service (and its banner), but TaskManager
+// still reports the location task as "started" across the reboot — so trusting
+// hasStartedLocationUpdatesAsync() would skip the restart and the banner would
+// never return. We force one stop+start on the first run of each JS process to
+// guarantee a live service, then trust the cheap "already streaming" check for
+// later (fingerprint-change) restarts within the same process.
+let _locationStreamEnsuredThisProcess = false;
+
 // Location-detected EXIT is a backstop for when the native geofence exit never
 // fires (closed app). Require the fix to be clearly outside the circle before
 // trusting it, so GPS noise can't flap a genuinely-inside session out early.
@@ -305,6 +313,20 @@ async function recordDwellSession(activeGeofence: StoredGeofence): Promise<{ out
     _emitSessionCompleted();
 
     const earned = (claimData as { earned?: number })?.earned;
+
+    // Schedule (or clear) the spaced-out "Reward within reach" nudge from the
+    // latest within-reach state, so it lands as its own moment ~2.5h later
+    // instead of buzzing back-to-back with the session-recorded push.
+    try {
+      const withinReach = (claimData as {
+        within_reach?: { points_to_unlock: number; reward_name: string } | null;
+      })?.within_reach ?? null;
+      const { scheduleRewardWithinReach } = await import('@/lib/notifications');
+      await scheduleRewardWithinReach(withinReach);
+    } catch (err) {
+      console.warn('[Geofence] Failed to schedule within-reach notification:', err);
+    }
+
     let currentStreak: number | undefined;
     try {
       const { data: streakRow } = await supabase
@@ -544,34 +566,16 @@ async function recordExitAndClaim(activeGeofence: StoredGeofence): Promise<void>
     return;
   }
 
-  // Schedule a safety-net notification with a short DATE trigger BEFORE the
-  // network-heavy recordDwellSession call. Scheduled notifications survive a
-  // background-task kill, so the user sees feedback even if the JS runtime is
-  // terminated before recordDwellSession completes.
-  try {
-    const { notifyGymExited } = await import('@/lib/notifications');
-    await notifyGymExited(activeGeofence.partnerName);
-  } catch (err) {
-    console.warn('[Geofence] Safety-net exit notification failed:', err);
-  }
-
   const { outcome: exitOutcome } = await recordDwellSession(claimEntry);
-  if (exitOutcome === 'claimed') {
-    // claim-points already sent the rich session_completed push (the single source
-    // of truth). Cancel the local "Calculating…" safety-net if still pending.
-    try {
-      const { cancelNotificationsOfType } = await import('@/lib/notifications');
-      await cancelNotificationsOfType('session_completed');
-    } catch (err) {
-      console.warn('[Geofence] Failed to cancel safety-net notification:', err);
-    }
-  } else if (exitOutcome === 'error') {
+  if (exitOutcome === 'error') {
     // Transient failure (offline, token refresh) — queue for retry so a
-    // genuinely-earned session is never silently lost.
+    // genuinely-earned session is never silently lost. The retry eventually
+    // claims and the server-side session_completed push delivers then.
     console.log('[Geofence] Exit claim failed — queued for retry.');
     await enqueuePendingClaim(claimEntry);
   }
-  // 'too_short' cannot normally occur here (dwell >= MIN_DWELL_MS) — no action.
+  // 'claimed' → claim-points fires the single "Session recorded" push (source of
+  // truth). 'too_short' cannot normally occur here (dwell >= MIN_DWELL_MS).
 }
 
 /** Immediate (timer-free) dwell state machine driven by the background-location
@@ -1303,10 +1307,18 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
       if (Platform.OS === 'android') {
         try {
           const alreadyStreaming = await Location.hasStartedLocationUpdatesAsync(LOCATION_TRACKING_TASK).catch(() => false);
-          if (!alreadyStreaming) {
+          // On the first run of this JS process, the "started" flag may be stale
+          // (the service was killed by a reboot but TaskManager kept the task
+          // registered). Force a clean restart so the service — and its banner —
+          // is actually live. Later restarts in the same process trust the flag.
+          if (!_locationStreamEnsuredThisProcess && alreadyStreaming) {
+            await Location.stopLocationUpdatesAsync(LOCATION_TRACKING_TASK).catch(() => {});
+          }
+          if (!_locationStreamEnsuredThisProcess || !alreadyStreaming) {
             await Location.startLocationUpdatesAsync(LOCATION_TRACKING_TASK, LOCATION_UPDATE_OPTIONS);
             console.log('[Geofence] Foreground-service location stream started.');
           }
+          _locationStreamEnsuredThisProcess = true;
         } catch (err) {
           console.warn('[Geofence] Failed to start location stream:', err);
         }
