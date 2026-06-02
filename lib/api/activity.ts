@@ -128,6 +128,13 @@ export type ManualSessionParams = {
     points: number;
     started_at: string;
     healthVerified?: boolean;
+    /**
+     * When `healthVerified`, the provenance of the data: 'wearable' for dedicated
+     * wearable providers (Fitbit/Whoop/Garmin), 'health' for native phone sync.
+     * Defaults to 'health' — native phone health is the common case and never a
+     * true wearable. See `verificationForProvider`.
+     */
+    healthSource?: 'wearable' | 'health';
 };
 
 /** Max unverified manual logs allowed per calendar week (Mon–Sun). */
@@ -135,7 +142,7 @@ const WEEKLY_MANUAL_CAP = 3;
 
 export async function logManualSession(params: ManualSessionParams): Promise<boolean> {
     const ended_at = new Date().toISOString();
-    const verification = params.healthVerified ? 'wearable' : 'manual';
+    const verification = params.healthVerified ? (params.healthSource ?? 'health') : 'manual';
     const trust_score = params.healthVerified ? 0.85 : 0.55;
     const device_id = await getDeviceId();
 
@@ -282,8 +289,16 @@ export async function getTodayHealthWalkingSession(): Promise<HealthWalkingSessi
     return { id: data.id, steps: (data as any).steps ?? 0, points };
 }
 
-/** Creates a new health-auto-synced walking session and awards initial points. */
-export async function logHealthWalkingSession(steps: number, points: number): Promise<string | null> {
+/**
+ * Creates a new health-auto-synced walking session and awards initial points.
+ * `verification` reflects the data source — 'wearable' for dedicated wearables,
+ * 'health' for native phone sync (the default). See `verificationForProvider`.
+ */
+export async function logHealthWalkingSession(
+    steps: number,
+    points: number,
+    verification: 'wearable' | 'health' = 'health',
+): Promise<string | null> {
     const now = new Date().toISOString();
     const device_id = await getDeviceId();
     const { data: session, error: sErr } = await supabase
@@ -294,7 +309,7 @@ export async function logHealthWalkingSession(steps: number, points: number): Pr
             ended_at: now,
             duration_sec: 0,
             steps,
-            verification: 'wearable',
+            verification,
             trust_score: 0.90,
             device_id,
         })
@@ -1027,6 +1042,12 @@ export type HealthSnapshotParams = {
     activityType?: string;
     durationSec?: number;
     source: 'healthkit' | 'health_connect' | 'fitbit' | 'whoop' | 'garmin';
+    /**
+     * Specific app/device behind a native sync ("Apple Watch", "Garmin", "iPhone").
+     * Powers the admin device overview; derived from per-sample provenance. Null
+     * when provenance is unavailable. See lib/health/dataSource.ts.
+     */
+    sourceDetail?: string;
 };
 
 /** Persists a health data snapshot to the health_snapshots table. */
@@ -1047,6 +1068,7 @@ export async function saveHealthSnapshot(params: HealthSnapshotParams): Promise<
         activity_type: params.activityType ?? null,
         duration_sec: params.durationSec ?? null,
         source: params.source,
+        source_detail: params.sourceDetail ?? null,
     });
     if (error) console.warn('[healthSnapshot] insert failed:', error.message);
 }

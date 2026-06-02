@@ -29,25 +29,25 @@ function ts(daysAgo, hour = 8, minute = 0) {
 // Unique constraint: (user_id, type, trust_score, date(started_at))
 const SESSIONS = [
   // Week of Apr 7–13
-  ['gym',      14, 7,  60, null,  null,   4, 'wearable'],
-  ['running',  13, 7,  32, 3800,  null,   3, 'wearable'],
+  ['gym',      14, 7,  60, null,  null,   4, 'health'],
+  ['running',  13, 7,  32, 3800,  null,   3, 'health'],
   ['walking',  12, 8,  45, 4200,  5200,   2, 'manual'],
   ['hiit',     11, 6,  40, null,  null,   5, 'manual'],
-  ['cycling',  10, 7,  58, 15000, null,   5, 'wearable'],
+  ['cycling',  10, 7,  58, 15000, null,   5, 'health'],
   ['yoga',      9, 8,  50, null,  null,   3, 'manual'],
-  ['running',   9, 6,  35, 4100,  null,   4, 'wearable'],
+  ['running',   9, 6,  35, 4100,  null,   4, 'health'],
   // Week of Apr 14–20
-  ['gym',       7, 7,  55, null,  null,   4, 'wearable'],
+  ['gym',       7, 7,  55, null,  null,   4, 'health'],
   ['hiit',      6, 6,  38, null,  null,   5, 'manual'],
-  ['cycling',   5, 7,  48, 12500, null,   4, 'wearable'],
-  ['running',   4, 7,  33, 3600,  null,   3, 'wearable'],
-  ['gym',       3, 7,  62, null,  null,   4, 'wearable'],
+  ['cycling',   5, 7,  48, 12500, null,   4, 'health'],
+  ['running',   4, 7,  33, 3600,  null,   3, 'health'],
+  ['gym',       3, 7,  62, null,  null,   4, 'health'],
   ['sports',    2, 16, 65, null,  null,   4, 'manual'],
   ['yoga',      1, 9,  45, null,  null,   3, 'manual'],
-  ['walking',   1, 7,  52, 5100,  8200,   4, 'wearable'],
+  ['walking',   1, 7,  52, 5100,  8200,   4, 'health'],
   // Today (Apr 21)
-  ['running',   0, 7,  36, 4300,  null,   4, 'wearable'],
-  ['gym',       0, 7,  55, null,  null,   4, 'wearable'],  // different trust_score handles dupe
+  ['running',   0, 7,  36, 4300,  null,   4, 'health'],
+  ['gym',       0, 7,  55, null,  null,   4, 'health'],  // different trust_score handles dupe
 ];
 
 // Deduplicate: one entry per (type, daysAgo, trust_score)
@@ -55,22 +55,22 @@ const SESSIONS = [
 // Actually both running+gym on day 0 share trust_score 0.85 — we need to remove the gym duplicate
 // Let's keep running on day 0 only and remove the gym duplicate
 const DEDUPED_SESSIONS = [
-  ['gym',      14, 7,  60, null,  null,   4, 'wearable'],
-  ['running',  13, 7,  32, 3800,  null,   3, 'wearable'],
+  ['gym',      14, 7,  60, null,  null,   4, 'health'],
+  ['running',  13, 7,  32, 3800,  null,   3, 'health'],
   ['walking',  12, 8,  45, 4200,  5200,   2, 'manual'],
   ['hiit',     11, 6,  40, null,  null,   5, 'manual'],
-  ['cycling',  10, 7,  58, 15000, null,   5, 'wearable'],
+  ['cycling',  10, 7,  58, 15000, null,   5, 'health'],
   ['yoga',      9, 8,  50, null,  null,   3, 'manual'],
-  ['running',   9, 6,  35, 4100,  null,   4, 'wearable'],
-  ['gym',       7, 7,  55, null,  null,   4, 'wearable'],
+  ['running',   9, 6,  35, 4100,  null,   4, 'health'],
+  ['gym',       7, 7,  55, null,  null,   4, 'health'],
   ['hiit',      6, 6,  38, null,  null,   5, 'manual'],
-  ['cycling',   5, 7,  48, 12500, null,   4, 'wearable'],
-  ['running',   4, 7,  33, 3600,  null,   3, 'wearable'],
-  ['gym',       3, 7,  62, null,  null,   4, 'wearable'],
+  ['cycling',   5, 7,  48, 12500, null,   4, 'health'],
+  ['running',   4, 7,  33, 3600,  null,   3, 'health'],
+  ['gym',       3, 7,  62, null,  null,   4, 'health'],
   ['sports',    2, 16, 65, null,  null,   4, 'manual'],
   ['yoga',      1, 9,  45, null,  null,   3, 'manual'],
-  ['walking',   1, 7,  52, 5100,  8200,   4, 'wearable'],
-  ['running',   0, 7,  36, 4300,  null,   4, 'wearable'],
+  ['walking',   1, 7,  52, 5100,  8200,   4, 'health'],
+  ['running',   0, 7,  36, 4300,  null,   4, 'health'],
 ];
 
 async function post(path, body) {
@@ -89,7 +89,7 @@ async function main() {
   let skipped = 0;
 
   for (const [type, daysAgo, startHour, durationMin, distanceM, steps, points, verification] of DEDUPED_SESSIONS) {
-    const trust_score = verification === 'wearable' ? 0.85 : 0.55;
+    const trust_score = (verification === 'wearable' || verification === 'health') ? 0.85 : 0.55;
     const started_at = ts(daysAgo, startHour, 0);
     const ended_at   = ts(daysAgo, startHour, durationMin);
     const duration_sec = durationMin * 60;

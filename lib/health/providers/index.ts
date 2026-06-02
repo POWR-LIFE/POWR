@@ -63,6 +63,24 @@ export const PROVIDER_ACTIVITY_SUPPORT: Record<HealthProviderId, ActivityType[]>
 /** Activities that work with no wearable connected (GPS or geofence on the phone). */
 export const PHONE_ONLY_SUPPORT: ActivityType[] = ['walking', 'running', 'cycling', 'gym', 'hiit'];
 
+/**
+ * Dedicated wearable providers whose data genuinely originates from a worn
+ * device (band/watch). Native phone sources (Apple Health / Health Connect) and
+ * phone-side aggregators (Samsung Health) report the phone's own motion sensors,
+ * so a connection to them does NOT imply a wearable.
+ */
+export const WEARABLE_PROVIDERS: HealthProviderId[] = ['fitbit', 'whoop', 'garmin'];
+
+/**
+ * The verification source to stamp on a session synced from `id`. Returns
+ * 'wearable' only for dedicated wearable providers; everything else (native
+ * phone health, aggregators, no provider) is 'health'. Keeps the "wearable
+ * verified" label honest — see migration 20260601000002.
+ */
+export function verificationForProvider(id: HealthProviderId | null): 'wearable' | 'health' {
+    return id !== null && WEARABLE_PROVIDERS.includes(id) ? 'wearable' : 'health';
+}
+
 /** Activities that are always manual-only regardless of provider. */
 export const ALWAYS_MANUAL: ActivityType[] = [];
 

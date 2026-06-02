@@ -11,6 +11,7 @@ import {
 interface CompleteRequest {
   challenge_id: string;
   utc_offset_minutes: number; // client offset from UTC, e.g. BST=60, EST=-300
+  target?: 'current' | 'previous'; // which week to evaluate; defaults to current
 }
 
 Deno.serve(async (req) => {
@@ -59,10 +60,18 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ error: 'Challenge not currently supported' }), { status: 422 });
   }
 
-  // 2. Determine the user's current local week + its Monday start.
-  const localNow = new Date(Date.now() + utc_offset_minutes * 60 * 1000);
+  // 2. Determine which week to evaluate. 'previous' enables a grace re-check so a
+  //    user who met a challenge but never opened the app before the Monday
+  //    rollover can still be awarded on their next visit. Only current/previous
+  //    are accepted — never an arbitrary client-supplied week.
+  const target = body.target === 'previous' ? 'previous' : 'current';
+  const shiftMs = target === 'previous' ? 7 * 24 * 60 * 60 * 1000 : 0;
+  const localNow = new Date(Date.now() + utc_offset_minutes * 60 * 1000 - shiftMs);
   const challengeWeek = getISOWeek(localNow);
-  const weekStart = getLocalMondayAsUTC(utc_offset_minutes);
+  const weekStart = getLocalMondayAsUTC(utc_offset_minutes, Date.now() - shiftMs);
+  // For the previous week, bound the upper end at this week's Monday so current
+  // sessions don't leak into the evaluation.
+  const weekEnd = target === 'previous' ? getLocalMondayAsUTC(utc_offset_minutes) : null;
 
   // 3. Idempotency — already completed this week?
   const { data: existing } = await supabase
@@ -80,13 +89,14 @@ Deno.serve(async (req) => {
     );
   }
 
-  // 4. Load this week's sessions (sensor-backed only is enforced by the evaluator).
-  const { data: sessions, error: sessErr } = await supabase
+  // 4. Load the target week's sessions (sensor-backed only is enforced by the evaluator).
+  let sessionQuery = supabase
     .from('activity_sessions')
     .select('type, started_at, duration_sec, distance_m, steps, verification')
     .eq('user_id', user.id)
-    .gte('started_at', weekStart)
-    .order('started_at', { ascending: true });
+    .gte('started_at', weekStart);
+  if (weekEnd) sessionQuery = sessionQuery.lt('started_at', weekEnd);
+  const { data: sessions, error: sessErr } = await sessionQuery.order('started_at', { ascending: true });
 
   if (sessErr) {
     return new Response(JSON.stringify({ error: 'Failed to load sessions' }), { status: 500 });
@@ -95,12 +105,13 @@ Deno.serve(async (req) => {
   // 5. Load step windows (only needed for intraday challenges; harmless otherwise).
   let stepWindows: any[] = [];
   if (challenge.rule.kind === 'step_window') {
-    const weekStartDate = weekStart.slice(0, 10);
-    const { data: windows } = await supabase
+    let windowQuery = supabase
       .from('daily_step_windows')
       .select('date, before_9am, midday_12_14, after_6pm')
       .eq('user_id', user.id)
-      .gte('date', weekStartDate);
+      .gte('date', weekStart.slice(0, 10));
+    if (weekEnd) windowQuery = windowQuery.lt('date', weekEnd.slice(0, 10));
+    const { data: windows } = await windowQuery;
     stepWindows = windows ?? [];
   }
 
@@ -111,24 +122,15 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ ok: false, completed: false }), { status: 200 });
   }
 
-  // 7. Award the challenge's fixed points (type 'earn' → counts toward XP/level).
   const points = challenge.points;
-  const { error: ptError } = await supabase
-    .from('point_transactions')
-    .insert({
-      user_id: user.id,
-      amount: points,
-      type: 'earn',
-      source: 'weekly_challenge',
-      description: `Weekly challenge: ${challenge.title} (+${points})`,
-    });
-  if (ptError) {
-    console.error('Failed to insert challenge points:', ptError);
-    return new Response(JSON.stringify({ error: 'Failed to award points' }), { status: 500 });
-  }
 
-  // 8. Record the completion (idempotent on the unique constraint).
-  const { error: completionError } = await supabase
+  // 7. Record the completion FIRST. The unique (user, challenge, week) constraint
+  //    is the authoritative guard against concurrent double-awards: whichever
+  //    writer loses the race (a second device, or a remount mid-flight) gets a
+  //    23505 here and returns before ever reaching the points insert. Awarding
+  //    points first — as this used to — let both racers insert points and only
+  //    blocked the second completion, leaking a duplicate point transaction.
+  const { data: completion, error: completionError } = await supabase
     .from('user_challenge_completions')
     .insert({
       user_id: user.id,
@@ -136,7 +138,9 @@ Deno.serve(async (req) => {
       challenge_week: challengeWeek,
       activity_type: challenge.category,
       points_awarded: points,
-    });
+    })
+    .select('id')
+    .single();
 
   if (completionError) {
     if (completionError.code === '23505') {
@@ -147,6 +151,25 @@ Deno.serve(async (req) => {
     }
     console.error('Failed to record completion:', completionError);
     return new Response(JSON.stringify({ error: 'Failed to record completion' }), { status: 500 });
+  }
+
+  // 8. Award the challenge's fixed points (type 'earn' → counts toward XP/level).
+  //    If this fails, compensate by removing the completion we just wrote so a
+  //    later retry can re-award, rather than marking the user complete with no
+  //    points (the safe failure direction).
+  const { error: ptError } = await supabase
+    .from('point_transactions')
+    .insert({
+      user_id: user.id,
+      amount: points,
+      type: 'earn',
+      source: 'weekly_challenge',
+      description: `Weekly challenge: ${challenge.title} (+${points})`,
+    });
+  if (ptError) {
+    console.error('Failed to insert challenge points, rolling back completion:', ptError);
+    await supabase.from('user_challenge_completions').delete().eq('id', completion.id);
+    return new Response(JSON.stringify({ error: 'Failed to award points' }), { status: 500 });
   }
 
   return new Response(

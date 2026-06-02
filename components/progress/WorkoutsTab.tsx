@@ -136,7 +136,7 @@ function WorkoutDayView({ type, data }: { type: ActivityType; data: TodayActivit
                   {hasData && <View style={[styles.historyBarFill, { backgroundColor: config.colour }]} />}
                 </View>
                 <Text style={[styles.historyMeta, !hasData && { color: MUTED }]}>
-                  {hasData ? `${formatDuration(day.totalDurationMin)} · ${day.sessions}` : '—'}
+                  {hasData ? formatDuration(day.totalDurationMin) : '—'}
                 </Text>
                 <Text style={[styles.historyPoints, !hasData && { color: MUTED }]}>
                   {hasData && day.points > 0 ? `${day.points}pt` : '—'}

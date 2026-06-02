@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
@@ -42,6 +43,9 @@ export interface ChallengeCardData {
   completeSubtitle: string;
 }
 
+/** Remembers the last ISO week the previous-week grace sweep ran for. */
+const PREV_WEEK_SWEEP_KEY = 'weeklyChallengeSweptWeek';
+
 /** Per-category noun for count-based goals. */
 const COUNT_NOUN: Record<string, string> = {
   gym: 'check-ins', running: 'runs', cycling: 'rides', walking: 'sessions', multi: 'sessions',
@@ -79,12 +83,25 @@ export interface WeeklyChallengesState {
 }
 
 /** Local Monday 00:00 (user tz) as a UTC ISO string — matches the edge function. */
-function localMondayAsUTC(utcOffsetMinutes: number): string {
-  const localMs = Date.now() + utcOffsetMinutes * 60 * 1000;
+function localMondayAsUTC(utcOffsetMinutes: number, now: number = Date.now()): string {
+  const localMs = now + utcOffsetMinutes * 60 * 1000;
   const day = new Date(localMs).getUTCDay() || 7;
   const mondayLocal = new Date(localMs - (day - 1) * 86400000);
   mondayLocal.setUTCHours(0, 0, 0, 0);
   return new Date(mondayLocal.getTime() - utcOffsetMinutes * 60 * 1000).toISOString();
+}
+
+/** Apply per-week category overrides (admin) to a rotation's active set. */
+function applyOverrides(list: any[], weekOv: Record<string, string> | undefined, catalog: any[]): any[] {
+  if (!weekOv || Object.keys(weekOv).length === 0) return list;
+  return list.map((c) => {
+    const ovId = weekOv[c.category];
+    if (ovId) {
+      const found = catalog.find((x: any) => x.id === ovId);
+      if (found) return found;
+    }
+    return c;
+  });
 }
 
 /** Mon–Sun activity flags for a category (null = any category). */
@@ -104,6 +121,7 @@ export function useWeeklyChallenges(): WeeklyChallengesState {
     newlyCompletedId: null,
   });
   const awarding = useRef<Set<string>>(new Set());
+  const sweptPrevWeek = useRef(false);
 
   const load = useCallback(async () => {
     const utcOffsetMinutes = -new Date().getTimezoneOffset();
@@ -128,6 +146,7 @@ export function useWeeklyChallenges(): WeeklyChallengesState {
 
     // Apply per-week category overrides stored in system_config.challenge_week_overrides.
     let active = baseActive;
+    let allOv: Record<string, Record<string, string>> | null = null;
     try {
       const { data: ovData } = await supabase
         .from('system_config')
@@ -135,19 +154,8 @@ export function useWeeklyChallenges(): WeeklyChallengesState {
         .eq('key', 'challenge_week_overrides')
         .maybeSingle();
       if (ovData?.value) {
-        const allOv: Record<string, Record<string, string>> =
-          typeof ovData.value === 'string' ? JSON.parse(ovData.value) : ovData.value;
-        const weekOv = allOv[challengeWeek] ?? {};
-        if (Object.keys(weekOv).length > 0) {
-          active = baseActive.map((c) => {
-            const ovId = weekOv[c.category];
-            if (ovId) {
-              const found = (catalog as any[]).find((x: any) => x.id === ovId);
-              if (found) return found;
-            }
-            return c;
-          });
-        }
+        allOv = typeof ovData.value === 'string' ? JSON.parse(ovData.value) : ovData.value;
+        active = applyOverrides(baseActive, allOv?.[challengeWeek], catalog as any[]);
       }
     } catch {
       /* use auto rotation */
@@ -232,6 +240,80 @@ export function useWeeklyChallenges(): WeeklyChallengesState {
     }
 
     setState({ challenges: cards, loading: false, newlyCompletedId });
+
+    // 5. Grace sweep — retro-award any unclaimed completions from LAST week, once
+    //    per week (on the first home load of the new week, any day). Covers a user
+    //    who met a challenge but never opened the app before the Monday rollover,
+    //    after which last week's sessions fall out of the current window. The
+    //    award path is idempotent, so a repeat would be a safe no-op regardless.
+    const prevWeek = getISOWeek(new Date(localNow.getTime() - 7 * 86400000));
+    if (!sweptPrevWeek.current) {
+      sweptPrevWeek.current = true; // at most one sweep per mount
+      try {
+        const lastSwept = await AsyncStorage.getItem(PREV_WEEK_SWEEP_KEY);
+        if (lastSwept !== prevWeek) {
+          const prevActive = applyOverrides(
+            getActiveChallengesForWeek(prevWeek, catalog),
+            allOv?.[prevWeek],
+            catalog as any[],
+          );
+
+          const { data: prevCompletions, error: pcErr } = await supabase
+            .from('user_challenge_completions')
+            .select('challenge_id')
+            .eq('challenge_week', prevWeek);
+          if (pcErr) throw pcErr;
+          const prevCompleted = new Set((prevCompletions ?? []).map((c) => c.challenge_id));
+
+          let anyFailed = false;
+          // Skip the heavier session fetch when every prev-week challenge is recorded.
+          if (prevActive.some((c) => !prevCompleted.has(c.id))) {
+            const prevWeekStart = localMondayAsUTC(utcOffsetMinutes, Date.now() - 7 * 86400000);
+            const prevWeekEnd = weekStart; // this week's Monday — exclusive upper bound
+            const { data: prevSessions, error: psErr } = await supabase
+              .from('activity_sessions')
+              .select('type, started_at, duration_sec, distance_m, steps, verification')
+              .gte('started_at', prevWeekStart)
+              .lt('started_at', prevWeekEnd)
+              .order('started_at', { ascending: true });
+            if (psErr) throw psErr;
+
+            let prevStepRows: any[] = [];
+            if (prevActive.some((c) => c.rule.kind === 'step_window')) {
+              const { data: windows } = await supabase
+                .from('daily_step_windows')
+                .select('date, before_9am, midday_12_14, after_6pm')
+                .gte('date', prevWeekStart.slice(0, 10))
+                .lt('date', prevWeekEnd.slice(0, 10));
+              prevStepRows = windows ?? [];
+            }
+
+            const prevCtx = buildContext(prevSessions ?? [], utcOffsetMinutes, prevStepRows);
+            const { data: { session: authSession } } = await supabase.auth.getSession();
+            for (const c of prevActive) {
+              if (prevCompleted.has(c.id)) continue;
+              if (!evaluateChallenge(c.rule, prevCtx).met) continue;
+              if (!authSession) { anyFailed = true; break; }
+              try {
+                await supabase.functions.invoke('complete-weekly-challenge', {
+                  body: { challenge_id: c.id, utc_offset_minutes: utcOffsetMinutes, target: 'previous' },
+                  headers: { Authorization: `Bearer ${authSession.access_token}` },
+                });
+              } catch (e) {
+                anyFailed = true;
+                console.warn('[useWeeklyChallenges] prev-week award failed:', c.id, e);
+              }
+            }
+          }
+
+          // Only mark the week swept once the pass fully succeeds, so a transient
+          // failure retries on the next mount rather than being silently skipped.
+          if (!anyFailed) await AsyncStorage.setItem(PREV_WEEK_SWEEP_KEY, prevWeek);
+        }
+      } catch (e) {
+        console.warn('[useWeeklyChallenges] previous-week sweep failed:', e);
+      }
+    }
   }, []);
 
   useFocusEffect(

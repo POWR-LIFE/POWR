@@ -25,8 +25,10 @@ import {
     getNativeProviderId,
     getProvider,
     HealthProviderNotImplementedError,
+    verificationForProvider,
     type HealthProviderId,
 } from '@/lib/health/providers';
+import { verificationFromProvenances, summarizeSources, type HealthDataProvenance } from '@/lib/health/dataSource';
 import { supabase } from '@/lib/supabase';
 
 export const WALKING_SYNC_TASK = 'powr-walking-sync';
@@ -89,6 +91,65 @@ export async function getStepsToday(): Promise<number> {
     if (Platform.OS === 'ios')     return getStepsTodayIOS();
     if (Platform.OS === 'android') return getStepsTodayAndroid();
     return 0;
+}
+
+// ── Step provenance (which app/device recorded today's steps) ─────────────────
+// Read separately from the step *count* above: the count uses a de-duped
+// statistics query (no per-source breakdown), so to learn the sources we read the
+// raw samples. Used only to label walking sessions wearable-vs-phone — never for
+// point math — so it's best-effort and returns [] on any failure.
+
+async function getStepSourcesTodayIOS(): Promise<HealthDataProvenance[]> {
+    try {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const HK = require('@kingstinct/react-native-healthkit') as typeof import('@kingstinct/react-native-healthkit');
+        const midnight = new Date();
+        midnight.setHours(0, 0, 0, 0);
+        const samples = await HK.queryQuantitySamples('HKQuantityTypeIdentifierStepCount', {
+            filter: { date: { startDate: midnight, endDate: new Date() } },
+            limit: 0, // non-positive = fetch all samples
+            unit: 'count',
+        });
+        return samples.map(s => ({
+            platform: 'ios' as const,
+            sourceBundleId: s.sourceRevision?.source?.bundleIdentifier,
+            sourceName: s.sourceRevision?.source?.name,
+            deviceName: s.device?.name,
+            deviceModel: s.device?.model,
+            deviceHardware: s.device?.hardwareVersion,
+            deviceManufacturer: s.device?.manufacturer,
+        }));
+    } catch {
+        return [];
+    }
+}
+
+async function getStepSourcesTodayAndroid(): Promise<HealthDataProvenance[]> {
+    try {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const { initialize, readRecords } = require('react-native-health-connect');
+        await initialize();
+        const midnight = new Date();
+        midnight.setHours(0, 0, 0, 0);
+        const result = await readRecords('Steps', {
+            timeRangeFilter: { operator: 'between', startTime: midnight.toISOString(), endTime: new Date().toISOString() },
+        });
+        const records = (result?.records ?? []) as Array<{ metadata?: { dataOrigin?: string; device?: { type?: number } } }>;
+        return records.map(r => ({
+            platform: 'android' as const,
+            dataOrigin: r.metadata?.dataOrigin,
+            deviceType: r.metadata?.device?.type,
+        }));
+    } catch {
+        return [];
+    }
+}
+
+/** Distinct provenance of today's step samples (native store only). */
+export async function getStepSourcesToday(): Promise<HealthDataProvenance[]> {
+    if (Platform.OS === 'ios')     return getStepSourcesTodayIOS();
+    if (Platform.OS === 'android') return getStepSourcesTodayAndroid();
+    return [];
 }
 
 // ── Windowed step readers (intraday challenges) ───────────────────────────────
@@ -234,6 +295,17 @@ async function _syncWalkingNowImpl(): Promise<void> {
     console.log(`[walkingSync] syncWalkingNow: ${steps} steps from ${activeId ?? Platform.OS}`);
     if (steps === 0) return;
 
+    // Per-sample provenance — read once (native store only; OAuth providers carry
+    // no inspectable source) and reused for both the verification label and the
+    // admin "who's on what" snapshot detail.
+    const baseVerification = verificationForProvider(activeId);
+    const usedNativeStore = !activeId || activeId === 'apple-health' || activeId === 'health-connect';
+    const stepSources = baseVerification !== 'wearable' && usedNativeStore
+        ? await getStepSourcesToday().catch(() => [])
+        : [];
+    const verification = verificationFromProvenances(stepSources, baseVerification);
+    const sourceDetail = summarizeSources(stepSources);
+
     const tierPoints = stepTierPoints(steps);
 
     // Enforce daily cap across all walking sources (health-sync + manual)
@@ -247,7 +319,7 @@ async function _syncWalkingNowImpl(): Promise<void> {
     if (!existing) {
         // First sync of the day — cap the initial award
         const points = Math.min(tierPoints, capRemaining);
-        const newId = await logHealthWalkingSession(steps, points);
+        const newId = await logHealthWalkingSession(steps, points, verification);
         if (!newId) {
             // Constraint conflict — re-fetch the existing session and update it
             const refetched = await getTodayHealthWalkingSession();
@@ -273,6 +345,7 @@ async function _syncWalkingNowImpl(): Promise<void> {
         steps,
         activityType: 'walking',
         source: snapshotSourceFor(activeId),
+        sourceDetail,
     });
 
     // Mark today as an active streak day (idempotent)

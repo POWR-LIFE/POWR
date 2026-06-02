@@ -1,0 +1,12 @@
+-- Add 'health' to the verification method enum.
+--
+-- Background: every health-synced session was previously stamped 'wearable',
+-- even when the data came from the phone's own motion sensors (Apple Health on
+-- an iPhone with no watch, Health Connect aggregating phone-pedometer steps).
+-- 'wearable' is now reserved for dedicated wearable providers (Fitbit, Whoop,
+-- Garmin); native/phone-aggregator sources use 'health'.
+--
+-- NOTE: ADD VALUE must commit before the value can be referenced. The backfill
+-- of existing rows therefore lives in a separate migration
+-- (20260601000003_backfill_health_verification.sql).
+ALTER TYPE public.verification_method ADD VALUE IF NOT EXISTS 'health';
