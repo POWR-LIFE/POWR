@@ -135,11 +135,11 @@ function MovementDayView({ walking }: { walking: ReturnType<typeof useWalkingPro
                     <View style={[styles.historyBarFill, { width: `${Math.round(pct * 100)}%` as any }]} />
                   )}
                 </View>
-                <Text style={[styles.historySteps, !hasData && { color: MUTED }]}>
-                  {hasData ? formatSteps(day.steps) : '—'}
+                  <Text style={[styles.historySteps, !hasData && { color: MUTED }]} numberOfLines={1}>
+                    {hasData ? formatSteps(day.steps) : '—'}
                 </Text>
-                <Text style={[styles.historyPoints, !hasData && { color: MUTED }]}>
-                  {hasData && day.points > 0 ? `${day.points}pt` : '—'}
+                  <Text style={[styles.historyPoints, !hasData && { color: MUTED }]} numberOfLines={1}>
+                    {hasData && day.points > 0 ? `${day.points}pt` : '—'}
                 </Text>
               </View>
             );
@@ -628,9 +628,9 @@ const styles = StyleSheet.create({
     height: '100%', backgroundColor: GREEN, borderRadius: 2,
   },
   historySteps: {
-    fontSize: 11, fontWeight: '500', color: TEXT, width: 38, textAlign: 'right',
+    fontSize: 11, fontWeight: '500', color: TEXT, width: 44, textAlign: 'right',
   },
   historyPoints: {
-    fontSize: 10, fontWeight: '600', color: GOLD, width: 26, textAlign: 'right',
+    fontSize: 10, fontWeight: '600', color: GOLD, width: 34, textAlign: 'right',
   },
 });

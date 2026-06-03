@@ -310,6 +310,12 @@ if (horizontalWrapper && horizontalTrack) {
                 overlay1.classList.remove('visible', 'expanded');
                 overlay1.style.opacity = '';
                 overlay1.style.transform = '';
+                overlay1.style.transition = '';
+                overlay1.style.left = '';
+                overlay1.style.top = '';
+                overlay1.style.width = '';
+                overlay1.style.height = '';
+                overlay1.style.borderRadius = '';
             }
             
             if (viewportEl) {
@@ -480,12 +486,6 @@ if (horizontalWrapper && horizontalTrack) {
             redeemCard.classList.remove('expanding');
             redeemCard.style.cssText = '';
             if (infoPanel) infoPanel.style.opacity = '';
-            const overlay2 = document.getElementById('expandOverlay');
-            if (overlay2) {
-                overlay2.classList.remove('visible', 'expanded');
-                overlay2.style.opacity = '';
-                overlay2.style.transform = '';
-            }
             const vp2 = horizontalWrapper.querySelector('.horizontal-scroll-viewport');
             if (vp2) vp2.style.opacity = '';
             const sticky2 = horizontalWrapper.querySelector('.horizontal-scroll-sticky');
@@ -495,6 +495,25 @@ if (horizontalWrapper && horizontalTrack) {
                 card.classList.toggle('active', i === 2);
                 card.classList.toggle('in-view', i === 2);
             });
+
+            // Pre-warm the overlay map directly over the small map (hidden) so its tiles are
+            // already rendered at the right size — the Phase-3 handoff then has nothing to "pop".
+            const overlay2 = document.getElementById('expandOverlay');
+            const baseEl2 = document.getElementById('mapBase');
+            if (overlay2 && baseEl2 && sticky2) {
+                const sR = sticky2.getBoundingClientRect();
+                const bR = baseEl2.getBoundingClientRect();
+                overlay2.classList.remove('expanded');
+                overlay2.style.transition = 'none';
+                overlay2.style.opacity = '0';
+                overlay2.style.transform = 'none';
+                overlay2.style.left = `${bR.left - sR.left}px`;
+                overlay2.style.top = `${bR.top - sR.top}px`;
+                overlay2.style.width = `${bR.width}px`;
+                overlay2.style.height = `${bR.height}px`;
+                overlay2.style.borderRadius = getComputedStyle(baseEl2).borderTopLeftRadius || '16px';
+                if (mapOverlay) mapOverlay.invalidateSize();
+            }
             const stepNumbers = document.getElementById('stepNumbers')?.querySelectorAll('.step-num');
             if (stepNumbers) stepNumbers.forEach((num, i) => num.classList.toggle('active', i === 2));
             const stepDividers2 = document.getElementById('stepNumbers')?.querySelectorAll('.step-divider');
@@ -504,74 +523,53 @@ if (horizontalWrapper && horizontalTrack) {
         } else if (progress <= EXPAND_END) {
             horizontalWrapper.classList.add('expanding-active');
             const expandProgress = (progress - HOLD_END) / (EXPAND_END - HOLD_END); // 0 → 1
+            const eased = expandProgress * expandProgress * (3 - 2 * expandProgress);
             const expandOverlay = document.getElementById('expandOverlay');
-            if (expandOverlay) {
-                expandOverlay.classList.remove('expanded');
-                expandOverlay.style.opacity = '';
-                expandOverlay.style.transform = '';
-            }
 
-            // Hide the actual cards and the viewport during expansion
-            stepCards.forEach(card => card.classList.remove('active', 'in-view'));
-            if (viewportEl) viewportEl.style.opacity = '0';
+            // Keep the Redeem card at full size so the small map and the overlay stay pixel-aligned
+            // (no shrink, no re-crop) — the overlay simply grows out of exactly where the small map sits.
+            stepCards.forEach((card, i) => {
+                card.classList.toggle('active', i === 2);
+                card.classList.toggle('in-view', i === 2);
+            });
 
-            // Get the sticky container rect (our coordinate system for absolute positioning)
             const stickyEl = horizontalWrapper.querySelector('.horizontal-scroll-sticky');
             const stickyRect = stickyEl.getBoundingClientRect();
+            const baseEl = document.getElementById('mapBase');
 
-            // Get the viewport element's position to know where the card was resting
-            const vpEl = horizontalWrapper.querySelector('.horizontal-scroll-viewport');
-            const vpRect = vpEl.getBoundingClientRect();
+            if (expandOverlay && baseEl) {
+                // Start = the small map's exact on-screen rect; End = the full sticky container.
+                const bR = baseEl.getBoundingClientRect();
+                const startLeft = bR.left - stickyRect.left;
+                const startTop = bR.top - stickyRect.top;
+                const startW = bR.width;
+                const startH = bR.height;
+                // The small map's corners are rounded by the parent card, so read the radius from it
+                const startRadius = parseFloat(getComputedStyle(redeemCard).borderTopLeftRadius) || 16;
 
-            // Card's resting position relative to the sticky container
-            const cardW = Math.min(680, vpRect.width - 60); // More side margin
-            const cardH = 400; // Shorter card
-            const cardRestLeft = (vpRect.left - stickyRect.left) + (vpRect.width - cardW) / 2;
-            const cardRestTop = (vpRect.top - stickyRect.top) + (vpRect.height - cardH) / 2;
-
-            // Show the overlay
-            if (expandOverlay) {
                 expandOverlay.classList.add('visible');
+                expandOverlay.classList.remove('expanded');
+                expandOverlay.style.transition = 'none';
+                expandOverlay.style.transform = 'none';
+                expandOverlay.style.left = `${startLeft + (0 - startLeft) * eased}px`;
+                expandOverlay.style.top = `${startTop + (0 - startTop) * eased}px`;
+                expandOverlay.style.width = `${startW + (stickyRect.width - startW) * eased}px`;
+                expandOverlay.style.height = `${startH + (stickyRect.height - startH) * eased}px`;
+                expandOverlay.style.borderRadius = `${startRadius * (1 - eased)}px`;
 
-                if (expandProgress <= 0.5) {
-                    // ── Step A: Slide left ──
-                    const slideProgress = expandProgress / 0.5;
-                    const eased = slideProgress * slideProgress * (3 - 2 * slideProgress);
+                // Quick crossfade at the identical start rect: overlay fades in as the small map
+                // fades out, so the handoff between the two map instances is invisible.
+                const fadeIn = Math.min(1, expandProgress / 0.18);
+                expandOverlay.style.opacity = String(fadeIn);
+                if (viewportEl) viewportEl.style.opacity = String(1 - fadeIn);
 
-                    // Fade out the info panel
-                    if (infoPanel) infoPanel.style.opacity = String(1 - eased);
+                // Info panel ("Redeem 1-2-3") fades out as the map grows across it
+                if (infoPanel) infoPanel.style.opacity = String(1 - eased);
 
-                    // Overlay slides from card's resting spot to left edge
-                    const currentLeft = cardRestLeft + eased * (0 - cardRestLeft);
+                if (mapOverlay) mapOverlay.invalidateSize();
 
-                    expandOverlay.style.left = `${currentLeft}px`;
-                    expandOverlay.style.top = `${cardRestTop}px`;
-                    expandOverlay.style.width = `${cardW}px`;
-                    expandOverlay.style.height = `${cardH}px`;
-                    expandOverlay.style.borderRadius = '16px';
-
-                } else {
-                    // ── Step B: Expand from left edge to fill viewport ──
-                    const expandProg = (expandProgress - 0.5) / 0.5;
-                    const eased = expandProg * expandProg * (3 - 2 * expandProg);
-
-                    if (infoPanel) infoPanel.style.opacity = '0';
-
-                    const currentTop = cardRestTop + eased * (0 - cardRestTop);
-                    const currentWidth = cardW + eased * (stickyRect.width - cardW);
-                    const currentHeight = cardH + eased * (stickyRect.height - cardH);
-                    const currentRadius = 16 * (1 - eased);
-
-                    expandOverlay.style.left = '0px';
-                    expandOverlay.style.top = `${currentTop}px`;
-                    expandOverlay.style.width = `${currentWidth}px`;
-                    expandOverlay.style.height = `${currentHeight}px`;
-                    expandOverlay.style.borderRadius = `${currentRadius}px`;
-                }
-
-                // Clear pin highlights when map is not fully expanded (Phase 4)
-                const pins = expandOverlay.querySelectorAll('.partner-pin');
-                pins.forEach(pin => pin.classList.remove('highlighted'));
+                // No reward cards until fully expanded (Phase 4)
+                expandOverlay.querySelectorAll('.partner-pin').forEach(pin => pin.classList.remove('highlighted'));
             }
 
             // Hide words/numbers during expansion
