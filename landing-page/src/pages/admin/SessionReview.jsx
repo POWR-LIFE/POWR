@@ -113,8 +113,8 @@ export default function SessionReview() {
                         <div className="h-[1px] w-12 bg-[#F43F5E]"></div>
                         <span className="text-[10px] uppercase tracking-[0.5em] text-[#F43F5E] font-black">Subsystem / Integrity</span>
                     </div>
-                    <h1 className="text-6xl font-light tracking-tighter text-[#F2F2F2] mb-6">Session Review</h1>
-                    <p className="text-[#999] text-[11px] max-w-xl font-black uppercase tracking-[0.4em] leading-relaxed">
+                    <h1 className="text-6xl font-light tracking-tighter text-[#1A1A1A] mb-6">Session Review</h1>
+                    <p className="text-[#666666] text-[11px] max-w-xl font-black uppercase tracking-[0.4em] leading-relaxed">
                         Flagged sessions — duplicates &amp; multi-device activity. Approve to clear, or reject to remove the session and reverse its points.
                     </p>
                 </div>
@@ -127,18 +127,18 @@ export default function SessionReview() {
                     { label: 'Unique Users', value: uniqueUsers, icon: Users, color: '#F59E0B', desc: 'ACCOUNTS' },
                     { label: 'Oldest Pending', value: oldest, icon: History, color: '#0EA5E9', desc: 'BACKLOG' },
                 ].map(s => (
-                    <div key={s.label} className="bg-[#0A0A0A] border border-[#151515] p-10 rounded-3xl flex items-center gap-8 group hover:border-[#202020] transition-all relative overflow-hidden">
+                    <div key={s.label} className="bg-white border border-[#E6E6E1] p-10 rounded-3xl flex items-center gap-8 group hover:border-[#E6E6E1] transition-all relative overflow-hidden">
                         <div className="absolute top-0 right-0 p-8 opacity-5">
-                            <span className="text-[9px] font-black text-[#999] uppercase tracking-[0.4em]">{s.desc}</span>
+                            <span className="text-[9px] font-black text-[#666666] uppercase tracking-[0.4em]">{s.desc}</span>
                         </div>
-                        <div className="w-14 h-14 rounded-2xl bg-[#050505] border border-[#151515] flex items-center justify-center shrink-0">
+                        <div className="w-14 h-14 rounded-2xl bg-[#F4F4F1] border border-[#E6E6E1] flex items-center justify-center shrink-0">
                             <s.icon size={22} style={{ color: s.color }} />
                         </div>
                         <div>
-                            <div className="text-4xl font-light tracking-tighter text-[#DDD] leading-none mb-2">
+                            <div className="text-4xl font-light tracking-tighter text-[#222222] leading-none mb-2">
                                 {loading ? '...' : s.value}
                             </div>
-                            <div className="text-[10px] uppercase tracking-[0.4em] text-[#999] font-black">{s.label}</div>
+                            <div className="text-[10px] uppercase tracking-[0.4em] text-[#666666] font-black">{s.label}</div>
                         </div>
                     </div>
                 ))}
@@ -147,58 +147,58 @@ export default function SessionReview() {
             {/* Controls */}
             <div className="flex flex-col md:flex-row gap-6 mb-10">
                 <div className="relative flex-1 group">
-                    <Search size={18} className="absolute left-6 top-1/2 -translate-y-1/2 text-[#777] group-focus-within:text-[#E8D200] transition-colors" />
-                    <input type="text" placeholder="SEARCH BY USER OR TYPE..." className="w-full h-16 pl-16 pr-8 bg-[#0A0A0A] border border-[#151515] rounded-[2rem] text-[11px] font-black tracking-[0.2em] text-[#F2F2F2] placeholder-[#151515] focus:border-[#E8D200]/40 outline-none transition-all uppercase" value={search} onChange={e => setSearch(e.target.value)} />
+                    <Search size={18} className="absolute left-6 top-1/2 -translate-y-1/2 text-[#888888] group-focus-within:text-[#8a7600] transition-colors" />
+                    <input type="text" placeholder="SEARCH BY USER OR TYPE..." className="w-full h-16 pl-16 pr-8 bg-white border border-[#E6E6E1] rounded-[2rem] text-[11px] font-black tracking-[0.2em] text-[#1A1A1A] placeholder-[#BBBBBB] focus:border-[#E8D200]/40 outline-none transition-all uppercase" value={search} onChange={e => setSearch(e.target.value)} />
                 </div>
             </div>
 
             {/* Table */}
-            <div className="bg-[#0A0A0A] border border-[#151515] rounded-3xl overflow-hidden">
+            <div className="bg-white border border-[#E6E6E1] rounded-3xl overflow-hidden">
                 {loading ? (
                     <div className="flex flex-col items-center justify-center py-48 gap-6">
                         <div className="w-12 h-12 border-2 border-[#F43F5E]/20 border-t-[#F43F5E] rounded-full animate-spin" />
-                        <span className="text-[10px] uppercase tracking-[0.6em] text-[#999] font-black">Scanning Integrity Layer...</span>
+                        <span className="text-[10px] uppercase tracking-[0.6em] text-[#666666] font-black">Scanning Integrity Layer...</span>
                     </div>
                 ) : (
                     <div className="overflow-x-auto">
                         <table className="w-full text-left border-collapse">
                             <thead>
-                                <tr className="bg-[#050505] border-b border-[#151515]">
+                                <tr className="bg-[#F4F4F1] border-b border-[#E6E6E1]">
                                     {['User', 'Activity', 'Duration', 'Verification', 'Reason', 'Actions'].map(h => (
-                                        <th key={h} className={`px-10 py-8 text-[10px] font-black uppercase tracking-[0.5em] text-[#777] ${h === 'Actions' ? 'text-right' : ''}`}>{h}</th>
+                                        <th key={h} className={`px-6 py-5 text-[10px] font-black uppercase tracking-[0.5em] text-[#888888] ${h === 'Actions' ? 'text-right' : ''}`}>{h}</th>
                                     ))}
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-[#111]">
+                            <tbody className="divide-y divide-[#E6E6E1]">
                                 {filtered.length === 0 ? (
                                     <tr>
-                                        <td colSpan={6} className="px-12 py-32 text-center">
+                                        <td colSpan={6} className="px-6 py-24 text-center">
                                             <div className="flex flex-col items-center gap-6">
                                                 <CheckCircle size={48} className="text-[#10B981]/30" />
-                                                <p className="text-[11px] uppercase tracking-[0.4em] text-[#777] font-black">All Clear — No Sessions Require Review</p>
+                                                <p className="text-[11px] uppercase tracking-[0.4em] text-[#888888] font-black">All Clear — No Sessions Require Review</p>
                                             </div>
                                         </td>
                                     </tr>
                                 ) : filtered.map(session => (
-                                    <tr key={session.id} className="group hover:bg-[#080808] transition-all">
-                                        <td className="px-10 py-8">
-                                            <span className="text-base font-bold text-[#DDD] block mb-1">{session.profiles?.display_name || session.profiles?.username || 'Unknown'}</span>
-                                            <span className="text-[9px] text-[#999] font-black uppercase tracking-[0.3em]">{timeAgo(session.started_at)}</span>
+                                    <tr key={session.id} className="group hover:bg-[#F4F4F1] transition-all">
+                                        <td className="px-6 py-5">
+                                            <span className="text-base font-bold text-[#222222] block mb-1">{session.profiles?.display_name || session.profiles?.username || 'Unknown'}</span>
+                                            <span className="text-[9px] text-[#666666] font-black uppercase tracking-[0.3em]">{timeAgo(session.started_at)}</span>
                                         </td>
-                                        <td className="px-10 py-8">
+                                        <td className="px-6 py-5">
                                             <span className="text-sm font-bold text-[#BBB] capitalize">{session.type}</span>
                                         </td>
-                                        <td className="px-10 py-8">
+                                        <td className="px-6 py-5">
                                             <div className="flex items-center gap-2 text-[11px] text-[#BBB]">
                                                 <Clock size={14} /> {Math.floor(session.duration_sec / 60)}m
                                             </div>
                                         </td>
-                                        <td className="px-10 py-8">
-                                            <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-[0.2em] border ${session.verification === 'geofence' ? 'border-[#10B981]/20 text-[#10B981]' : session.verification === 'gps' ? 'border-[#0EA5E9]/20 text-[#0EA5E9]' : 'border-[#151515] text-[#999]'}`}>
+                                        <td className="px-6 py-5">
+                                            <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-[0.2em] border ${session.verification === 'geofence' ? 'border-[#10B981]/20 text-[#10B981]' : session.verification === 'gps' ? 'border-[#0EA5E9]/20 text-[#0EA5E9]' : 'border-[#E6E6E1] text-[#666666]'}`}>
                                                 {session.verification}
                                             </span>
                                         </td>
-                                        <td className="px-10 py-8">
+                                        <td className="px-6 py-5">
                                             {(() => {
                                                 const r = flagReason(session.flag_reason);
                                                 return (
@@ -208,7 +208,7 @@ export default function SessionReview() {
                                                 );
                                             })()}
                                         </td>
-                                        <td className="px-10 py-8 text-right">
+                                        <td className="px-6 py-5 text-right">
                                             <div className="flex items-center justify-end gap-3">
                                                 <button onClick={() => handleApprove(session)} disabled={busyId === session.id} className="h-10 px-5 rounded-full bg-[#10B981]/10 border border-[#10B981]/20 text-[#10B981] text-[9px] font-black uppercase tracking-[0.2em] hover:bg-[#10B981]/20 transition-all flex items-center gap-2 disabled:opacity-40 disabled:pointer-events-none">
                                                     <CheckCircle size={14} /> Approve

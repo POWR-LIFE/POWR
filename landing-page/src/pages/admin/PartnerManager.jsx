@@ -19,15 +19,15 @@ function OpeningHoursEditor({ value, onChange }) {
                 const dayHours = hours[key];
                 const isOpen = dayHours != null;
                 return (
-                    <div key={key} className="flex items-center gap-4 bg-[#0A0A0A] border border-[#151515] rounded-2xl px-5 py-3">
+                    <div key={key} className="flex items-center gap-4 bg-white border border-[#E6E6E1] rounded-2xl px-5 py-3">
                         <button
                             type="button"
                             onClick={() => setDay(key, isOpen ? null : { open: '06:00', close: '22:00' })}
-                            className={`w-9 h-5 rounded-full transition-all relative shrink-0 ${isOpen ? 'bg-[#E8D200]' : 'bg-[#151515]'}`}
+                            className={`w-9 h-5 rounded-full transition-all relative shrink-0 ${isOpen ? 'bg-[#E8D200]' : 'bg-[#EFEFEC]'}`}
                         >
-                            <span className={`absolute top-0.5 w-4 h-4 rounded-full transition-all ${isOpen ? 'left-4 bg-[#080808]' : 'left-0.5 bg-[#333]'}`} />
+                            <span className={`absolute top-0.5 w-4 h-4 rounded-full transition-all ${isOpen ? 'left-4 bg-[#F4F4F1]' : 'left-0.5 bg-[#DADAD3]'}`} />
                         </button>
-                        <span className={`text-[10px] font-black uppercase tracking-[0.3em] w-8 shrink-0 ${isOpen ? 'text-[#DDD]' : 'text-[#CCC]'}`}>
+                        <span className={`text-[10px] font-black uppercase tracking-[0.3em] w-8 shrink-0 ${isOpen ? 'text-[#222222]' : 'text-[#333333]'}`}>
                             {DAY_LABELS[key]}
                         </span>
                         {isOpen ? (
@@ -36,18 +36,18 @@ function OpeningHoursEditor({ value, onChange }) {
                                     type="time"
                                     value={dayHours.open}
                                     onChange={e => setDay(key, { ...dayHours, open: e.target.value })}
-                                    className="flex-1 h-9 px-3 bg-[#050505] border border-[#151515] rounded-xl text-xs font-mono text-[#DDD] focus:border-[#E8D200]/40 outline-none"
+                                    className="flex-1 h-9 px-3 bg-[#F4F4F1] border border-[#E6E6E1] rounded-xl text-xs font-mono text-[#222222] focus:border-[#E8D200]/40 outline-none"
                                 />
-                                <span className="text-[#AAA] text-xs font-black shrink-0">—</span>
+                                <span className="text-[#555555] text-xs font-black shrink-0">—</span>
                                 <input
                                     type="time"
                                     value={dayHours.close}
                                     onChange={e => setDay(key, { ...dayHours, close: e.target.value })}
-                                    className="flex-1 h-9 px-3 bg-[#050505] border border-[#151515] rounded-xl text-xs font-mono text-[#DDD] focus:border-[#E8D200]/40 outline-none"
+                                    className="flex-1 h-9 px-3 bg-[#F4F4F1] border border-[#E6E6E1] rounded-xl text-xs font-mono text-[#222222] focus:border-[#E8D200]/40 outline-none"
                                 />
                             </div>
                         ) : (
-                            <span className="text-[9px] uppercase tracking-[0.4em] text-[#777] font-black flex-1">Closed</span>
+                            <span className="text-[9px] uppercase tracking-[0.4em] text-[#888888] font-black flex-1">Closed</span>
                         )}
                     </div>
                 );
@@ -66,39 +66,39 @@ const LocationEditor = ({ locations, onChange }) => {
 
     return (
         <div className="space-y-6">
-            <div className="flex justify-between items-center bg-[#050505] p-6 rounded-[1.5rem] border border-[#151515]">
+            <div className="flex justify-between items-center bg-[#F4F4F1] p-6 rounded-[1.5rem] border border-[#E6E6E1]">
                 <div className="flex items-center gap-4">
-                    <Satellite size={16} className="text-[#E8D200]" />
-                    <label className="text-[10px] uppercase tracking-[0.4em] text-[#CCC] font-black">
-                        Active Nodes <span className="text-[#E8D200] ml-2">[{locations.length}]</span>
+                    <Satellite size={16} className="text-[#8a7600]" />
+                    <label className="text-[10px] uppercase tracking-[0.4em] text-[#333333] font-black">
+                        Active Nodes <span className="text-[#8a7600] ml-2">[{locations.length}]</span>
                     </label>
                 </div>
-                <button type="button" onClick={add} className="flex items-center gap-3 px-6 py-3 bg-[#0A0A0A] border border-[#151515] rounded-full text-[9px] uppercase tracking-[0.3em] text-[#CCC] hover:text-[#E8D200] hover:border-[#E8D200]/40 transition-all font-black">
+                <button type="button" onClick={add} className="flex items-center gap-3 px-6 py-3 bg-white border border-[#E6E6E1] rounded-full text-[9px] uppercase tracking-[0.3em] text-[#333333] hover:text-[#8a7600] hover:border-[#E8D200]/40 transition-all font-black">
                     <Plus size={12} /> Add Point
                 </button>
             </div>
 
             {locations.length === 0 ? (
-                <div className="p-16 bg-[#050505] border border-dashed border-[#151515] rounded-[2rem] text-center">
-                    <MapPin size={24} className="mx-auto text-[#CCC] mb-4" />
+                <div className="p-16 bg-[#F4F4F1] border border-dashed border-[#E6E6E1] rounded-[2rem] text-center">
+                    <MapPin size={24} className="mx-auto text-[#333333] mb-4" />
                     <p className="text-[10px] text-[#BBB] uppercase tracking-[0.5em] font-black">No Geofence Data</p>
                 </div>
             ) : (
                 <div className="space-y-6">
                     {locations.map((loc, i) => (
-                        <div key={i} className="bg-[#070707] border border-[#151515] rounded-3xl p-8 space-y-6 animate-in fade-in slide-in-from-top-4 duration-500 relative group/loc">
+                        <div key={i} className="bg-[#F4F4F1] border border-[#E6E6E1] rounded-3xl p-8 space-y-6 animate-in fade-in slide-in-from-top-4 duration-500 relative group/loc">
                             {/* Node Header */}
-                            <div className="flex items-center justify-between pb-4 border-b border-[#111]">
+                            <div className="flex items-center justify-between pb-4 border-b border-[#EFEFEC]">
                                 <div className="flex items-center gap-3">
-                                    <div className="w-8 h-8 rounded-xl bg-[#0A0A0A] border border-[#151515] flex items-center justify-center text-[10px] font-black text-[#E8D200]">
+                                    <div className="w-8 h-8 rounded-xl bg-white border border-[#E6E6E1] flex items-center justify-center text-[10px] font-black text-[#8a7600]">
                                         {i + 1}
                                     </div>
-                                    <span className="text-[10px] uppercase tracking-[0.4em] text-[#AAA] font-black">Geofence Node Information</span>
+                                    <span className="text-[10px] uppercase tracking-[0.4em] text-[#555555] font-black">Geofence Node Information</span>
                                 </div>
                                 <button
                                     type="button"
                                     onClick={() => remove(i)}
-                                    className="w-10 h-10 flex items-center justify-center text-[#999] hover:text-red-500 hover:bg-red-500/5 rounded-xl transition-all"
+                                    className="w-10 h-10 flex items-center justify-center text-[#666666] hover:text-red-500 hover:bg-red-500/5 rounded-xl transition-all"
                                 >
                                     <Trash2 size={16} />
                                 </button>
@@ -111,7 +111,7 @@ const LocationEditor = ({ locations, onChange }) => {
                                     <input
                                         type="text"
                                         placeholder="e.g. SYDNEY CBD FLAGSHIP..."
-                                        className="w-full h-14 px-6 bg-[#0A0A0A] border border-[#151515] rounded-2xl text-[13px] font-bold text-[#F2F2F2] placeholder-[#222] focus:border-[#E8D200]/40 outline-none transition-all uppercase"
+                                        className="w-full h-14 px-6 bg-white border border-[#E6E6E1] rounded-2xl text-[13px] font-bold text-[#1A1A1A] placeholder-[#BBBBBB] focus:border-[#E8D200]/40 outline-none transition-all uppercase"
                                         value={loc.name}
                                         onChange={e => update(i, 'name', e.target.value)}
                                     />
@@ -121,7 +121,7 @@ const LocationEditor = ({ locations, onChange }) => {
                                     <input
                                         type="text"
                                         placeholder="e.g. GYM, PILATES STUDIO..."
-                                        className="w-full h-14 px-6 bg-[#0A0A0A] border border-[#151515] rounded-2xl text-[13px] font-bold text-[#F2F2F2] placeholder-[#222] focus:border-[#E8D200]/40 outline-none transition-all"
+                                        className="w-full h-14 px-6 bg-white border border-[#E6E6E1] rounded-2xl text-[13px] font-bold text-[#1A1A1A] placeholder-[#BBBBBB] focus:border-[#E8D200]/40 outline-none transition-all"
                                         value={loc.address || ''}
                                         onChange={e => update(i, 'address', e.target.value)}
                                     />
@@ -136,7 +136,7 @@ const LocationEditor = ({ locations, onChange }) => {
                                         type="text"
                                         inputMode="decimal"
                                         placeholder="-33.8688..."
-                                        className="w-full h-14 px-6 bg-[#0A0A0A] border border-[#151515] rounded-2xl text-[13px] font-bold text-[#F2F2F2] placeholder-[#222] focus:border-[#E8D200]/40 outline-none transition-all"
+                                        className="w-full h-14 px-6 bg-white border border-[#E6E6E1] rounded-2xl text-[13px] font-bold text-[#1A1A1A] placeholder-[#BBBBBB] focus:border-[#E8D200]/40 outline-none transition-all"
                                         value={loc.lat ?? ''}
                                         onChange={e => update(i, 'lat', e.target.value)}
                                     />
@@ -147,7 +147,7 @@ const LocationEditor = ({ locations, onChange }) => {
                                         type="text"
                                         inputMode="decimal"
                                         placeholder="151.2093..."
-                                        className="w-full h-14 px-6 bg-[#0A0A0A] border border-[#151515] rounded-2xl text-[13px] font-bold text-[#F2F2F2] placeholder-[#222] focus:border-[#E8D200]/40 outline-none transition-all"
+                                        className="w-full h-14 px-6 bg-white border border-[#E6E6E1] rounded-2xl text-[13px] font-bold text-[#1A1A1A] placeholder-[#BBBBBB] focus:border-[#E8D200]/40 outline-none transition-all"
                                         value={loc.lng ?? ''}
                                         onChange={e => update(i, 'lng', e.target.value)}
                                     />
@@ -161,7 +161,7 @@ const LocationEditor = ({ locations, onChange }) => {
                                     type="text"
                                     inputMode="numeric"
                                     placeholder="100"
-                                    className="w-full h-14 px-6 bg-[#0A0A0A] border border-[#151515] rounded-2xl text-[13px] font-bold text-[#F2F2F2] placeholder-[#222] focus:border-[#E8D200]/40 outline-none transition-all"
+                                    className="w-full h-14 px-6 bg-white border border-[#E6E6E1] rounded-2xl text-[13px] font-bold text-[#1A1A1A] placeholder-[#BBBBBB] focus:border-[#E8D200]/40 outline-none transition-all"
                                     value={loc.radius ?? ''}
                                     onChange={e => update(i, 'radius', e.target.value)}
                                 />
@@ -286,13 +286,13 @@ const TrainersEditor = ({ partnerId, toast }) => {
         <div className="space-y-6">
             {/* Header */}
             <div className="flex justify-between items-center">
-                <label className="text-[10px] uppercase tracking-[0.4em] text-[#CCC] font-black flex items-center gap-3">
-                    <Users size={14} className="text-[#E8D200]" /> Personal Trainers
+                <label className="text-[10px] uppercase tracking-[0.4em] text-[#333333] font-black flex items-center gap-3">
+                    <Users size={14} className="text-[#8a7600]" /> Personal Trainers
                 </label>
                 <button
                     type="button"
                     onClick={openNewTrainer}
-                    className="text-[9px] uppercase tracking-[0.3em] font-black text-[#999] hover:text-[#E8D200] transition-colors flex items-center gap-2"
+                    className="text-[9px] uppercase tracking-[0.3em] font-black text-[#666666] hover:text-[#8a7600] transition-colors flex items-center gap-2"
                 >
                     <Plus size={12} /> Add Trainer
                 </button>
@@ -309,27 +309,27 @@ const TrainersEditor = ({ partnerId, toast }) => {
                         <button
                             type="button"
                             onClick={openNewTrainer}
-                            className="w-full py-8 border border-dashed border-[#151515] rounded-[2rem] text-[10px] uppercase tracking-[0.4em] text-[#AAA] font-black hover:border-[#E8D200]/30 hover:text-[#E8D200] transition-all"
+                            className="w-full py-8 border border-dashed border-[#E6E6E1] rounded-[2rem] text-[10px] uppercase tracking-[0.4em] text-[#555555] font-black hover:border-[#E8D200]/30 hover:text-[#8a7600] transition-all"
                         >
                             + Add Personal Trainer
                         </button>
                     )}
 
                     {trainers.map(t => (
-                        <div key={t.id} className="flex items-center gap-6 bg-[#0A0A0A] border border-[#151515] rounded-2xl px-6 py-4 group/trainer">
+                        <div key={t.id} className="flex items-center gap-6 bg-white border border-[#E6E6E1] rounded-2xl px-6 py-4 group/trainer">
                             {/* Photo */}
-                            <div className="w-12 h-12 rounded-full bg-[#050505] border border-[#151515] flex items-center justify-center shrink-0 overflow-hidden">
+                            <div className="w-12 h-12 rounded-full bg-[#F4F4F1] border border-[#E6E6E1] flex items-center justify-center shrink-0 overflow-hidden">
                                 {t.photo_url ? (
                                     <img src={t.photo_url} className="w-full h-full object-cover rounded-full" alt="" />
                                 ) : (
-                                    <User size={18} className="text-[#CCC]" />
+                                    <User size={18} className="text-[#333333]" />
                                 )}
                             </div>
                             {/* Info */}
                             <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-3">
-                                    <span className="text-sm font-bold text-[#DDD]">{t.name}</span>
-                                    <div className={`h-1.5 w-1.5 rounded-full ${t.active ? 'bg-[#10B981]' : 'bg-[#333]'}`} />
+                                    <span className="text-sm font-bold text-[#222222]">{t.name}</span>
+                                    <div className={`h-1.5 w-1.5 rounded-full ${t.active ? 'bg-[#10B981]' : 'bg-[#DADAD3]'}`} />
                                 </div>
                                 <p className="text-[10px] text-[#BBB] font-bold uppercase tracking-wider truncate mt-0.5">
                                     {[t.experience, ...(t.specialties || [])].filter(Boolean).join(' · ') || 'No details'}
@@ -337,7 +337,7 @@ const TrainersEditor = ({ partnerId, toast }) => {
                             </div>
                             {/* Actions */}
                             <div className="flex gap-2 opacity-0 group-hover/trainer:opacity-100 transition-all">
-                                <button type="button" onClick={() => openEditTrainer(t)} className="w-9 h-9 flex items-center justify-center text-[#BBB] hover:text-[#E8D200] hover:bg-[#E8D200]/5 rounded-xl transition-all">
+                                <button type="button" onClick={() => openEditTrainer(t)} className="w-9 h-9 flex items-center justify-center text-[#BBB] hover:text-[#8a7600] hover:bg-[#E8D200]/5 rounded-xl transition-all">
                                     <Edit2 size={14} />
                                 </button>
                                 <button type="button" onClick={() => handleDeleteTrainer(t.id)} className="w-9 h-9 flex items-center justify-center text-[#BBB] hover:text-red-500 hover:bg-red-500/5 rounded-xl transition-all">
@@ -349,12 +349,12 @@ const TrainersEditor = ({ partnerId, toast }) => {
 
                     {/* Inline form */}
                     {formOpen && (
-                        <div className="bg-[#070707] border border-[#151515] rounded-3xl p-8 space-y-6 animate-in fade-in slide-in-from-top-4 duration-500">
-                            <div className="flex items-center justify-between pb-4 border-b border-[#111]">
-                                <span className="text-[10px] uppercase tracking-[0.4em] text-[#AAA] font-black">
+                        <div className="bg-[#F4F4F1] border border-[#E6E6E1] rounded-3xl p-8 space-y-6 animate-in fade-in slide-in-from-top-4 duration-500">
+                            <div className="flex items-center justify-between pb-4 border-b border-[#EFEFEC]">
+                                <span className="text-[10px] uppercase tracking-[0.4em] text-[#555555] font-black">
                                     {editingTrainer ? 'Edit Trainer' : 'New Trainer'}
                                 </span>
-                                <button type="button" onClick={cancelTrainerEdit} className="w-8 h-8 flex items-center justify-center text-[#999] hover:text-[#DDD] rounded-lg transition-all">
+                                <button type="button" onClick={cancelTrainerEdit} className="w-8 h-8 flex items-center justify-center text-[#666666] hover:text-[#222222] rounded-lg transition-all">
                                     <X size={14} />
                                 </button>
                             </div>
@@ -365,7 +365,7 @@ const TrainersEditor = ({ partnerId, toast }) => {
                                     <input
                                         type="text"
                                         placeholder="e.g. Sarah Johnson"
-                                        className="w-full h-14 px-6 bg-[#0A0A0A] border border-[#151515] rounded-2xl text-[13px] font-bold text-[#F2F2F2] placeholder-[#222] focus:border-[#E8D200]/40 outline-none transition-all"
+                                        className="w-full h-14 px-6 bg-white border border-[#E6E6E1] rounded-2xl text-[13px] font-bold text-[#1A1A1A] placeholder-[#BBBBBB] focus:border-[#E8D200]/40 outline-none transition-all"
                                         value={trainerForm.name}
                                         onChange={e => setTrainerForm({ ...trainerForm, name: e.target.value })}
                                     />
@@ -374,15 +374,15 @@ const TrainersEditor = ({ partnerId, toast }) => {
                                     <label className="block text-[8px] uppercase tracking-[0.5em] text-[#BBB] font-black ml-2">Photo</label>
                                     <div className="flex items-center gap-4">
                                         {/* Preview */}
-                                        <div className="w-14 h-14 rounded-full bg-[#050505] border border-[#151515] flex items-center justify-center shrink-0 overflow-hidden">
+                                        <div className="w-14 h-14 rounded-full bg-[#F4F4F1] border border-[#E6E6E1] flex items-center justify-center shrink-0 overflow-hidden">
                                             {trainerForm.photo_url ? (
                                                 <img src={trainerForm.photo_url} className="w-full h-full object-cover rounded-full" alt="" />
                                             ) : (
-                                                <User size={20} className="text-[#CCC]" />
+                                                <User size={20} className="text-[#333333]" />
                                             )}
                                         </div>
                                         {/* Upload button */}
-                                        <label className={`flex-1 h-14 flex items-center justify-center gap-3 bg-[#0A0A0A] border border-[#151515] rounded-2xl text-[10px] font-black uppercase tracking-[0.3em] cursor-pointer transition-all hover:border-[#E8D200]/40 hover:text-[#E8D200] ${uploadingPhoto ? 'opacity-50 pointer-events-none' : 'text-[#BBB]'}`}>
+                                        <label className={`flex-1 h-14 flex items-center justify-center gap-3 bg-white border border-[#E6E6E1] rounded-2xl text-[10px] font-black uppercase tracking-[0.3em] cursor-pointer transition-all hover:border-[#E8D200]/40 hover:text-[#8a7600] ${uploadingPhoto ? 'opacity-50 pointer-events-none' : 'text-[#BBB]'}`}>
                                             {uploadingPhoto ? (
                                                 <><div className="w-4 h-4 border-2 border-[#E8D200]/20 border-t-[#E8D200] rounded-full animate-spin" /> Uploading...</>
                                             ) : (
@@ -399,7 +399,7 @@ const TrainersEditor = ({ partnerId, toast }) => {
                                 <textarea
                                     placeholder="Short bio (2-3 sentences)..."
                                     rows={2}
-                                    className="w-full px-6 py-4 bg-[#0A0A0A] border border-[#151515] rounded-2xl text-[13px] text-[#DDD] placeholder-[#222] focus:border-[#E8D200]/40 outline-none transition-all resize-none"
+                                    className="w-full px-6 py-4 bg-white border border-[#E6E6E1] rounded-2xl text-[13px] text-[#222222] placeholder-[#BBBBBB] focus:border-[#E8D200]/40 outline-none transition-all resize-none"
                                     value={trainerForm.bio}
                                     onChange={e => setTrainerForm({ ...trainerForm, bio: e.target.value })}
                                 />
@@ -411,7 +411,7 @@ const TrainersEditor = ({ partnerId, toast }) => {
                                     <input
                                         type="text"
                                         placeholder="e.g. Strength, HIIT, Yoga"
-                                        className="w-full h-14 px-6 bg-[#0A0A0A] border border-[#151515] rounded-2xl text-[13px] font-bold text-[#F2F2F2] placeholder-[#222] focus:border-[#E8D200]/40 outline-none transition-all"
+                                        className="w-full h-14 px-6 bg-white border border-[#E6E6E1] rounded-2xl text-[13px] font-bold text-[#1A1A1A] placeholder-[#BBBBBB] focus:border-[#E8D200]/40 outline-none transition-all"
                                         value={trainerForm.specialties}
                                         onChange={e => setTrainerForm({ ...trainerForm, specialties: e.target.value })}
                                     />
@@ -421,7 +421,7 @@ const TrainersEditor = ({ partnerId, toast }) => {
                                     <input
                                         type="text"
                                         placeholder="e.g. 8 years / Level 3 Certified"
-                                        className="w-full h-14 px-6 bg-[#0A0A0A] border border-[#151515] rounded-2xl text-[13px] font-bold text-[#F2F2F2] placeholder-[#222] focus:border-[#E8D200]/40 outline-none transition-all"
+                                        className="w-full h-14 px-6 bg-white border border-[#E6E6E1] rounded-2xl text-[13px] font-bold text-[#1A1A1A] placeholder-[#BBBBBB] focus:border-[#E8D200]/40 outline-none transition-all"
                                         value={trainerForm.experience}
                                         onChange={e => setTrainerForm({ ...trainerForm, experience: e.target.value })}
                                     />
@@ -434,7 +434,7 @@ const TrainersEditor = ({ partnerId, toast }) => {
                                     <input
                                         type="url"
                                         placeholder="https://gym.com/trainers/sarah"
-                                        className="w-full h-14 px-6 bg-[#0A0A0A] border border-[#151515] rounded-2xl text-[13px] font-bold text-[#F2F2F2] placeholder-[#222] focus:border-[#E8D200]/40 outline-none transition-all"
+                                        className="w-full h-14 px-6 bg-white border border-[#E6E6E1] rounded-2xl text-[13px] font-bold text-[#1A1A1A] placeholder-[#BBBBBB] focus:border-[#E8D200]/40 outline-none transition-all"
                                         value={trainerForm.profile_url}
                                         onChange={e => setTrainerForm({ ...trainerForm, profile_url: e.target.value })}
                                     />
@@ -444,26 +444,26 @@ const TrainersEditor = ({ partnerId, toast }) => {
                                     <input
                                         type="url"
                                         placeholder="https://calendly.com/sarah-pt"
-                                        className="w-full h-14 px-6 bg-[#0A0A0A] border border-[#151515] rounded-2xl text-[13px] font-bold text-[#F2F2F2] placeholder-[#222] focus:border-[#E8D200]/40 outline-none transition-all"
+                                        className="w-full h-14 px-6 bg-white border border-[#E6E6E1] rounded-2xl text-[13px] font-bold text-[#1A1A1A] placeholder-[#BBBBBB] focus:border-[#E8D200]/40 outline-none transition-all"
                                         value={trainerForm.booking_url}
                                         onChange={e => setTrainerForm({ ...trainerForm, booking_url: e.target.value })}
                                     />
                                 </div>
                             </div>
 
-                            <div className="flex items-center gap-6 bg-[#0A0A0A] border border-[#151515] rounded-2xl px-6 py-4">
+                            <div className="flex items-center gap-6 bg-white border border-[#E6E6E1] rounded-2xl px-6 py-4">
                                 <button
                                     type="button"
                                     onClick={() => setTrainerForm({ ...trainerForm, active: !trainerForm.active })}
-                                    className={`w-9 h-5 rounded-full transition-all relative shrink-0 ${trainerForm.active ? 'bg-[#10B981]' : 'bg-[#151515]'}`}
+                                    className={`w-9 h-5 rounded-full transition-all relative shrink-0 ${trainerForm.active ? 'bg-[#10B981]' : 'bg-[#EFEFEC]'}`}
                                 >
-                                    <span className={`absolute top-0.5 w-4 h-4 rounded-full transition-all ${trainerForm.active ? 'left-4 bg-[#080808]' : 'left-0.5 bg-[#333]'}`} />
+                                    <span className={`absolute top-0.5 w-4 h-4 rounded-full transition-all ${trainerForm.active ? 'left-4 bg-[#F4F4F1]' : 'left-0.5 bg-[#DADAD3]'}`} />
                                 </button>
-                                <span className="text-[10px] uppercase tracking-[0.4em] text-[#CCC] font-black">Visible on Discover</span>
+                                <span className="text-[10px] uppercase tracking-[0.4em] text-[#333333] font-black">Visible on Discover</span>
                             </div>
 
                             <div className="flex justify-end gap-4 pt-4">
-                                <button type="button" onClick={cancelTrainerEdit} className="h-12 px-8 text-[10px] uppercase tracking-[0.3em] font-black text-[#CCC] hover:text-[#DDD] transition-colors">Cancel</button>
+                                <button type="button" onClick={cancelTrainerEdit} className="h-12 px-8 text-[10px] uppercase tracking-[0.3em] font-black text-[#333333] hover:text-[#222222] transition-colors">Cancel</button>
                                 <button
                                     type="button"
                                     onClick={handleSaveTrainer}
@@ -503,7 +503,7 @@ function LogoUploadField({ value, uploading, onFile, logoBg = 'dark', onBgChange
     return (
         <div>
             <div className="flex items-center justify-between mb-4">
-                <label className="block text-[10px] uppercase tracking-[0.4em] text-[#CCC] font-black">Logo Asset</label>
+                <label className="block text-[10px] uppercase tracking-[0.4em] text-[#333333] font-black">Logo Asset</label>
                 {value && !uploading && (
                     <div className="flex items-center gap-1">
                         {LOGO_BG_MODES.map(m => (
@@ -512,7 +512,7 @@ function LogoUploadField({ value, uploading, onFile, logoBg = 'dark', onBgChange
                                 type="button"
                                 title={`${m.label} background`}
                                 onClick={() => onBgChange?.(m.id)}
-                                className={`w-5 h-5 rounded-full border-2 transition-all ${logoBg === m.id ? 'border-[#E8D200] scale-110' : 'border-[#333] hover:border-[#555]'}`}
+                                className={`w-5 h-5 rounded-full border-2 transition-all ${logoBg === m.id ? 'border-[#E8D200] scale-110' : 'border-[#DDDDDD] hover:border-[#CCCCCC]'}`}
                                 style={m.style}
                             />
                         ))}
@@ -525,26 +525,26 @@ function LogoUploadField({ value, uploading, onFile, logoBg = 'dark', onBgChange
                 onDragOver={e => { e.preventDefault(); setDragOver(true); }}
                 onDragLeave={() => setDragOver(false)}
                 onDrop={handleDrop}
-                className={`relative w-full h-32 rounded-3xl border-2 border-dashed transition-all flex items-center justify-center gap-5 ${dragOver ? 'border-[#E8D200] bg-[#E8D200]/5' : 'border-[#222] hover:border-[#E8D200]/30'} ${uploading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                className={`relative w-full h-32 rounded-3xl border-2 border-dashed transition-all flex items-center justify-center gap-5 ${dragOver ? 'border-[#E8D200] bg-[#E8D200]/5' : 'border-[#E6E6E1] hover:border-[#E8D200]/30'} ${uploading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
                 style={value && !uploading ? activeBg : undefined}
             >
                 {uploading ? (
                     <div className="flex items-center gap-3">
-                        <Loader2 className="w-5 h-5 text-[#E8D200] animate-spin" />
-                        <span className="text-[10px] font-black uppercase tracking-[0.3em] text-[#CCC]">Uploading...</span>
+                        <Loader2 className="w-5 h-5 text-[#8a7600] animate-spin" />
+                        <span className="text-[10px] font-black uppercase tracking-[0.3em] text-[#333333]">Uploading...</span>
                     </div>
                 ) : value ? (
                     <>
                         <img src={value} alt="logo preview" className="h-14 w-14 object-contain rounded-xl shrink-0" />
                         <div>
-                            <p className={`text-[10px] font-black uppercase tracking-[0.3em] ${logoBg === 'white' ? 'text-[#111]' : 'text-[#E8D200]'}`}>Logo Active</p>
-                            <p className={`text-[10px] mt-1 ${logoBg === 'white' ? 'text-[#555]' : 'text-[#555]'}`}>Drop or click to replace</p>
+                            <p className={`text-[10px] font-black uppercase tracking-[0.3em] ${logoBg === 'white' ? 'text-[#CCCCCC]' : 'text-[#8a7600]'}`}>Logo Active</p>
+                            <p className={`text-[10px] mt-1 ${logoBg === 'white' ? 'text-[#999999]' : 'text-[#999999]'}`}>Drop or click to replace</p>
                         </div>
                     </>
                 ) : (
                     <div className="text-center">
-                        <Upload className="w-5 h-5 text-[#555] mx-auto mb-2" />
-                        <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[#555]">Drop image or click to browse</p>
+                        <Upload className="w-5 h-5 text-[#999999] mx-auto mb-2" />
+                        <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[#999999]">Drop image or click to browse</p>
                     </div>
                 )}
             </div>
@@ -565,14 +565,14 @@ function ImageUploadField({ label, value, uploading, onFile }) {
 
     return (
         <div>
-            <label className="block text-[10px] uppercase tracking-[0.4em] text-[#CCC] font-black mb-4">{label}</label>
+            <label className="block text-[10px] uppercase tracking-[0.4em] text-[#333333] font-black mb-4">{label}</label>
             <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) onFile(f); e.target.value = ''; }} />
             <div
                 onClick={() => !uploading && fileRef.current?.click()}
                 onDragOver={e => { e.preventDefault(); setDragOver(true); }}
                 onDragLeave={() => setDragOver(false)}
                 onDrop={handleDrop}
-                className={`relative w-full rounded-3xl border-2 border-dashed transition-all overflow-hidden ${dragOver ? 'border-[#E8D200] bg-[#E8D200]/5' : 'border-[#222] bg-[#0A0A0A] hover:border-[#E8D200]/30'} ${uploading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                className={`relative w-full rounded-3xl border-2 border-dashed transition-all overflow-hidden ${dragOver ? 'border-[#E8D200] bg-[#E8D200]/5' : 'border-[#E6E6E1] bg-white hover:border-[#E8D200]/30'} ${uploading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
                 style={{ minHeight: '10rem' }}
             >
                 {value ? (
@@ -584,14 +584,14 @@ function ImageUploadField({ label, value, uploading, onFile }) {
                     </>
                 ) : uploading ? (
                     <div className="flex items-center justify-center gap-3 h-40">
-                        <Loader2 className="w-5 h-5 text-[#E8D200] animate-spin" />
-                        <span className="text-[10px] font-black uppercase tracking-[0.3em] text-[#CCC]">Uploading...</span>
+                        <Loader2 className="w-5 h-5 text-[#8a7600] animate-spin" />
+                        <span className="text-[10px] font-black uppercase tracking-[0.3em] text-[#333333]">Uploading...</span>
                     </div>
                 ) : (
                     <div className="flex flex-col items-center justify-center gap-2 h-40">
-                        <ImageIcon className="w-6 h-6 text-[#333]" />
-                        <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[#555]">Drop image or click to browse</p>
-                        <p className="text-[10px] text-[#333]">Landscape recommended · JPG / PNG / WEBP</p>
+                        <ImageIcon className="w-6 h-6 text-[#BBBBBB]" />
+                        <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[#999999]">Drop image or click to browse</p>
+                        <p className="text-[10px] text-[#BBBBBB]">Landscape recommended · JPG / PNG / WEBP</p>
                     </div>
                 )}
             </div>
@@ -839,8 +839,8 @@ export default function PartnerManager() {
                         <div className="h-[1px] w-12 bg-[#0EA5E9]"></div>
                         <span className="text-[10px] uppercase tracking-[0.5em] text-[#0EA5E9] font-black">Subsystem / Logistics</span>
                     </div>
-                    <h1 className="text-6xl font-light tracking-tighter text-[#F2F2F2] mb-6">Partner Fleet</h1>
-                    <p className="text-[#999] text-[11px] max-w-xl font-black uppercase tracking-[0.4em] leading-relaxed">
+                    <h1 className="text-6xl font-light tracking-tighter text-[#1A1A1A] mb-6">Partner Fleet</h1>
+                    <p className="text-[#666666] text-[11px] max-w-xl font-black uppercase tracking-[0.4em] leading-relaxed">
                         Authorized retail locations and geofence telemetry orchestration.
                     </p>
                 </div>
@@ -853,7 +853,7 @@ export default function PartnerManager() {
             </div>
 
             {/* View mode tabs */}
-            <div className="flex gap-2 mb-10 bg-[#0A0A0A] border border-[#151515] rounded-[2rem] p-2 w-fit">
+            <div className="flex gap-2 mb-10 bg-white border border-[#E6E6E1] rounded-[2rem] p-2 w-fit">
                 {[
                     { key: 'locations', label: 'Location Partners' },
                     { key: 'brands', label: 'Reward Brands' },
@@ -864,7 +864,7 @@ export default function PartnerManager() {
                         className={`h-12 px-8 rounded-[1.5rem] text-[10px] font-black uppercase tracking-[0.3em] transition-all ${
                             viewMode === tab.key
                                 ? 'bg-[#0EA5E9] text-[#080808]'
-                                : 'text-[#AAA] hover:text-[#DDD]'
+                                : 'text-[#555555] hover:text-[#222222]'
                         }`}
                     >
                         {tab.label}
@@ -875,25 +875,25 @@ export default function PartnerManager() {
             {/* Controls */}
             <div className="flex flex-col lg:flex-row gap-6 mb-12">
                 <div className="relative flex-1 group">
-                    <Search size={18} className="absolute left-6 top-1/2 -translate-y-1/2 text-[#777] group-focus-within:text-[#E8D200] transition-colors" />
+                    <Search size={18} className="absolute left-6 top-1/2 -translate-y-1/2 text-[#888888] group-focus-within:text-[#8a7600] transition-colors" />
                     <input
                         type="text"
                         placeholder="SEARCH RETAIL IDENTIFIER..."
-                        className="w-full h-16 pl-16 pr-8 bg-[#0A0A0A] border border-[#151515] rounded-[2rem] text-[11px] font-black tracking-[0.2em] text-[#F2F2F2] placeholder-[#151515] focus:border-[#E8D200]/40 outline-none transition-all uppercase"
+                        className="w-full h-16 pl-16 pr-8 bg-white border border-[#E6E6E1] rounded-[2rem] text-[11px] font-black tracking-[0.2em] text-[#1A1A1A] placeholder-[#BBBBBB] focus:border-[#E8D200]/40 outline-none transition-all uppercase"
                         value={search}
                         onChange={e => setSearch(e.target.value)}
                     />
                     {totalCount > 0 && (
-                        <span className="absolute right-6 top-1/2 -translate-y-1/2 text-[9px] font-black uppercase tracking-[0.3em] text-[#555]">
+                        <span className="absolute right-6 top-1/2 -translate-y-1/2 text-[9px] font-black uppercase tracking-[0.3em] text-[#999999]">
                             {totalCount.toLocaleString()} results
                         </span>
                     )}
                 </div>
-                <div className="flex bg-[#0A0A0A] border border-[#151515] rounded-[2rem] p-2 gap-2 overflow-x-auto no-scrollbar">
+                <div className="flex bg-white border border-[#E6E6E1] rounded-[2rem] p-2 gap-2 overflow-x-auto no-scrollbar">
                     <select
                         value={filterCat}
                         onChange={e => setFilterCat(e.target.value)}
-                        className="h-12 px-6 bg-[#050505] border border-[#151515] rounded-[1.5rem] text-[10px] text-[#AAA] font-black uppercase tracking-[0.2em] outline-none cursor-pointer focus:border-[#E8D200]/20"
+                        className="h-12 px-6 bg-[#F4F4F1] border border-[#E6E6E1] rounded-[1.5rem] text-[10px] text-[#555555] font-black uppercase tracking-[0.2em] outline-none cursor-pointer focus:border-[#E8D200]/20"
                     >
                         <option value="all">All Sectors</option>
                         {CATEGORIES.map(c => <option key={c} value={c}>{c.toUpperCase()}</option>)}
@@ -901,7 +901,7 @@ export default function PartnerManager() {
                     <select
                         value={filterStatus}
                         onChange={e => setFilterStatus(e.target.value)}
-                        className="h-12 px-6 bg-[#050505] border border-[#151515] rounded-[1.5rem] text-[10px] text-[#AAA] font-black uppercase tracking-[0.2em] outline-none cursor-pointer focus:border-[#E8D200]/20"
+                        className="h-12 px-6 bg-[#F4F4F1] border border-[#E6E6E1] rounded-[1.5rem] text-[10px] text-[#555555] font-black uppercase tracking-[0.2em] outline-none cursor-pointer focus:border-[#E8D200]/20"
                     >
                         <option value="all">All Status</option>
                         <option value="active">Active Nodes</option>
@@ -911,63 +911,63 @@ export default function PartnerManager() {
             </div>
 
             {/* Content Container */}
-            <div className="bg-[#0A0A0A] border border-[#151515] rounded-3xl overflow-hidden">
+            <div className="bg-white border border-[#E6E6E1] rounded-3xl overflow-hidden">
                 {loading ? (
                     <div className="flex flex-col items-center justify-center py-48 gap-6">
                         <div className="w-12 h-12 border-2 border-[#0EA5E9]/20 border-t-[#0EA5E9] rounded-full animate-spin" />
-                        <span className="text-[10px] uppercase tracking-[0.6em] text-[#AAA] font-black">Syncing Fleet...</span>
+                        <span className="text-[10px] uppercase tracking-[0.6em] text-[#555555] font-black">Syncing Fleet...</span>
                     </div>
                 ) : (
                     <div className="overflow-x-auto">
                         <table className="w-full text-left border-collapse">
                             <thead>
-                                <tr className="bg-[#050505] border-b border-[#151515]">
+                                <tr className="bg-[#F4F4F1] border-b border-[#E6E6E1]">
                                     {['Node Identity', 'Sector', viewMode === 'brands' ? 'Type' : 'Points of Interest', 'Status', ''].map(h => (
-                                        <th key={h} className={`px-12 py-8 text-[10px] font-black uppercase tracking-[0.5em] text-[#777] ${h === '' ? 'text-right' : ''}`}>{h}</th>
+                                        <th key={h} className={`px-6 py-5 text-[10px] font-black uppercase tracking-[0.5em] text-[#888888] ${h === '' ? 'text-right' : ''}`}>{h}</th>
                                     ))}
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-[#111]">
+                            <tbody className="divide-y divide-[#E6E6E1]">
                                 {filtered.length === 0 ? (
                                     <tr>
-                                        <td colSpan={5} className="px-12 py-32 text-center">
+                                        <td colSpan={5} className="px-6 py-24 text-center">
                                             <div className="flex flex-col items-center gap-6">
-                                                <div className="w-20 h-20 rounded-3xl bg-[#050505] border border-[#151515] flex items-center justify-center">
-                                                    <Globe size={32} className="text-[#CCC]" />
+                                                <div className="w-20 h-20 rounded-3xl bg-[#F4F4F1] border border-[#E6E6E1] flex items-center justify-center">
+                                                    <Globe size={32} className="text-[#333333]" />
                                                 </div>
-                                                <p className="text-[11px] uppercase tracking-[0.4em] text-[#999] font-black">Fleet Empty</p>
+                                                <p className="text-[11px] uppercase tracking-[0.4em] text-[#666666] font-black">Fleet Empty</p>
                                             </div>
                                         </td>
                                     </tr>
                                 ) : filtered.map(partner => (
-                                    <tr key={partner.id} className="group hover:bg-[#080808] transition-all">
-                                        <td className="px-12 py-10">
+                                    <tr key={partner.id} className="group hover:bg-[#F4F4F1] transition-all">
+                                        <td className="px-6 py-5">
                                             <div className="flex items-center gap-8">
                                                 {partner.logo_url ? (
-                                                    <img src={partner.logo_url} className="w-14 h-14 rounded-[1.5rem] bg-[#050505] object-contain border border-[#151515] group-hover:border-[#E8D200]/20 transition-all p-2 shadow-2xl" alt="" />
+                                                    <img src={partner.logo_url} className="w-14 h-14 rounded-[1.5rem] bg-[#F4F4F1] object-contain border border-[#E6E6E1] group-hover:border-[#E8D200]/20 transition-all p-2 shadow-2xl" alt="" />
                                                 ) : (
-                                                    <div className="w-14 h-14 rounded-[1.5rem] bg-[#050505] border border-[#151515] flex items-center justify-center text-xs font-black text-[#CCC] group-hover:text-[#E8D200] group-hover:border-[#E8D200]/20 transition-all shadow-2xl uppercase">
+                                                    <div className="w-14 h-14 rounded-[1.5rem] bg-[#F4F4F1] border border-[#E6E6E1] flex items-center justify-center text-xs font-black text-[#333333] group-hover:text-[#8a7600] group-hover:border-[#E8D200]/20 transition-all shadow-2xl uppercase">
                                                         {partner.name[0]}
                                                     </div>
                                                 )}
                                                 <div>
-                                                    <span className="text-base font-bold text-[#DDD] group-hover:text-[#F2F2F2] transition-colors block mb-1">{partner.name}</span>
+                                                    <span className="text-base font-bold text-[#222222] group-hover:text-[#1A1A1A] transition-colors block mb-1">{partner.name}</span>
                                                     {partner.address && (
                                                         <span className="text-[10px] text-[#BBB] font-bold block mb-1 uppercase tracking-wider line-clamp-1">{partner.address}</span>
                                                     )}
-                                                    <span className="text-[10px] uppercase tracking-[0.4em] text-[#999] font-black font-mono">ID: {partner.id.slice(0,8)}</span>
+                                                    <span className="text-[10px] uppercase tracking-[0.4em] text-[#666666] font-black font-mono">ID: {partner.id.slice(0,8)}</span>
                                                 </div>
                                             </div>
                                         </td>
-                                        <td className="px-12 py-10">
-                                            <span className="px-4 py-1.5 bg-[#050505] border border-[#151515] rounded-full text-[9px] uppercase font-black tracking-[0.3em] text-[#999] group-hover:text-[#DDD] transition-colors">
+                                        <td className="px-6 py-5">
+                                            <span className="px-4 py-1.5 bg-[#F4F4F1] border border-[#E6E6E1] rounded-full text-[9px] uppercase font-black tracking-[0.3em] text-[#666666] group-hover:text-[#222222] transition-colors">
                                                 {partner.category}
                                             </span>
                                         </td>
-                                        <td className="px-12 py-10">
+                                        <td className="px-6 py-5">
                                             {(partner.roles || []).includes('earning_location') ? (
-                                                <div className="flex items-center gap-4 text-[#BBB] group-hover:text-[#EEE] transition-colors font-black">
-                                                    <MapPin size={16} className="text-[#CCC] group-hover:text-[#E8D200]" />
+                                                <div className="flex items-center gap-4 text-[#BBB] group-hover:text-[#1A1A1A] transition-colors font-black">
+                                                    <MapPin size={16} className="text-[#333333] group-hover:text-[#8a7600]" />
                                                     <span className="text-[12px] uppercase tracking-[0.2em]">{partner.locations?.length || 0} NODES</span>
                                                 </div>
                                             ) : (
@@ -976,30 +976,30 @@ export default function PartnerManager() {
                                                 </span>
                                             )}
                                         </td>
-                                        <td className="px-12 py-10 whitespace-nowrap">
+                                        <td className="px-6 py-5 whitespace-nowrap">
                                             <button
                                                 onClick={() => handleToggleActive(partner)}
                                                 disabled={togglingId === partner.id}
                                                 className={`flex items-center gap-3 px-5 py-2.5 rounded-full text-[10px] font-black uppercase tracking-[0.3em] border transition-all ${
                                                     partner.active
                                                         ? 'bg-[#10B981]/5 text-[#10B981] border-[#10B981]/20 hover:bg-[#10B981]/10'
-                                                        : 'bg-[#050505] text-[#BBB] border-[#151515] hover:border-[#333]'
+                                                        : 'bg-[#F4F4F1] text-[#BBB] border-[#E6E6E1] hover:border-[#DDDDDD]'
                                                 }`}
                                             >
-                                                <div className={`h-1.5 w-1.5 rounded-full ${partner.active ? 'bg-[#10B981] animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-[#151515]'}`} />
+                                                <div className={`h-1.5 w-1.5 rounded-full ${partner.active ? 'bg-[#10B981] animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-[#EFEFEC]'}`} />
                                                 {partner.active ? 'LIVE NODE' : 'INACTIVE'}
                                             </button>
                                         </td>
-                                        <td className="px-12 py-10 text-right">
+                                        <td className="px-6 py-5 text-right">
                                             {confirmDeleteId === partner.id ? (
                                                 <div className="flex items-center justify-end gap-3 scale-90 origin-right transition-all">
                                                     <button onClick={() => handleDelete(partner.id)} className="h-10 px-6 bg-red-500/10 text-red-500 text-[10px] font-black uppercase tracking-[0.3em] rounded-full hover:bg-red-500/20 transition-all border border-red-500/20 shadow-lg shadow-red-500/5">DELETE</button>
-                                                    <button onClick={() => setConfirmDeleteId(null)} className="h-10 px-6 bg-[#050505] text-[#CCC] text-[10px] font-black uppercase tracking-[0.3em] rounded-full hover:text-[#CCC] transition-all border border-[#151515]">CANCEL</button>
+                                                    <button onClick={() => setConfirmDeleteId(null)} className="h-10 px-6 bg-[#F4F4F1] text-[#333333] text-[10px] font-black uppercase tracking-[0.3em] rounded-full hover:text-[#333333] transition-all border border-[#E6E6E1]">CANCEL</button>
                                                 </div>
                                             ) : (
                                                 <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-all">
                                                     <Link to={`/admin/partners/${partner.id}`} className="w-12 h-12 flex items-center justify-center text-[#BBB] hover:text-[#0EA5E9] hover:bg-[#0EA5E9]/5 rounded-2xl transition-all"><Eye size={16} /></Link>
-                                                    <button onClick={() => openEdit(partner)} className="w-12 h-12 flex items-center justify-center text-[#BBB] hover:text-[#E8D200] hover:bg-[#E8D200]/5 rounded-2xl transition-all"><Edit2 size={16} /></button>
+                                                    <button onClick={() => openEdit(partner)} className="w-12 h-12 flex items-center justify-center text-[#BBB] hover:text-[#8a7600] hover:bg-[#E8D200]/5 rounded-2xl transition-all"><Edit2 size={16} /></button>
                                                     <button onClick={() => setConfirmDeleteId(partner.id)} className="w-12 h-12 flex items-center justify-center text-[#BBB] hover:text-red-500 hover:bg-red-500/5 rounded-2xl transition-all"><Trash2 size={16} /></button>
                                                 </div>
                                             )}
@@ -1015,22 +1015,22 @@ export default function PartnerManager() {
             {/* Modal */}
             {isModalOpen && (
                 <div className="fixed inset-0 z-[200] overflow-y-auto bg-black/95 backdrop-blur-xl animate-in fade-in duration-300 py-20 px-4">
-                    <div className="bg-[#050505] border border-[#151515] rounded-3xl w-full max-w-4xl mx-auto shadow-[0_0_100px_rgba(14,165,233,0.05)]">
+                    <div className="bg-[#F4F4F1] border border-[#E6E6E1] rounded-3xl w-full max-w-4xl mx-auto shadow-[0_0_100px_rgba(14,165,233,0.05)]">
                         <form onSubmit={handleSave} className="p-12">
                             <div className="flex items-center justify-between mb-16">
                                 <div>
-                                    <h2 className="text-4xl font-light tracking-tighter text-[#F2F2F2] mb-3">
+                                    <h2 className="text-4xl font-light tracking-tighter text-[#1A1A1A] mb-3">
                                         {editingPartner
                                             ? ((editingPartner.roles || []).includes('reward_provider') && !(editingPartner.roles || []).includes('earning_location') ? 'Edit Reward Brand' : 'Edit Fleet Node')
                                             : (formData.roles.includes('reward_provider') && !formData.roles.includes('earning_location') ? 'New Reward Brand' : 'Initialize Fleet Node')}
                                     </h2>
-                                    <p className="text-[10px] uppercase tracking-[0.4em] text-[#CCC] font-black">
+                                    <p className="text-[10px] uppercase tracking-[0.4em] text-[#333333] font-black">
                                         {formData.roles.includes('reward_provider') && !formData.roles.includes('earning_location')
                                             ? 'Configure Reward Brand Partner'
                                             : 'Configure Retail Logistics & Geofencing'}
                                     </p>
                                 </div>
-                                <button type="button" onClick={() => setIsModalOpen(false)} className="w-14 h-14 bg-[#0A0A0A] border border-[#151515] rounded-3xl flex items-center justify-center text-[#CCC] hover:text-[#F2F2F2] hover:border-[#0EA5E9]/40 transition-all"><X size={20} /></button>
+                                <button type="button" onClick={() => setIsModalOpen(false)} className="w-14 h-14 bg-white border border-[#E6E6E1] rounded-3xl flex items-center justify-center text-[#333333] hover:text-[#1A1A1A] hover:border-[#0EA5E9]/40 transition-all"><X size={20} /></button>
                             </div>
 
                             {/* Location partner: two-column layout with LocationEditor on right */}
@@ -1038,33 +1038,33 @@ export default function PartnerManager() {
                                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 mb-12">
                                     <div className="space-y-8">
                                         <div>
-                                            <label className="block text-[10px] uppercase tracking-[0.4em] text-[#CCC] font-black mb-4">Node Brand Name</label>
-                                            <input type="text" required className="w-full h-16 px-8 bg-[#0A0A0A] border border-[#151515] rounded-3xl focus:border-[#E8D200]/40 outline-none transition-all text-base font-bold text-[#F2F2F2] placeholder-[#333]" value={formData.name} onChange={e => setFormData(prev => ({ ...prev, name: e.target.value, partner_code: editingPartner ? prev.partner_code : toPartnerCode(e.target.value) }))} />
+                                            <label className="block text-[10px] uppercase tracking-[0.4em] text-[#333333] font-black mb-4">Node Brand Name</label>
+                                            <input type="text" required className="w-full h-16 px-8 bg-white border border-[#E6E6E1] rounded-3xl focus:border-[#E8D200]/40 outline-none transition-all text-base font-bold text-[#1A1A1A] placeholder-[#BBBBBB]" value={formData.name} onChange={e => setFormData(prev => ({ ...prev, name: e.target.value, partner_code: editingPartner ? prev.partner_code : toPartnerCode(e.target.value) }))} />
                                         </div>
                                         <div>
-                                            <label className="block text-[10px] uppercase tracking-[0.4em] text-[#CCC] font-black mb-4">Partner Code <span className="text-[#555]">/ auto-generated, editable</span></label>
-                                            <input type="text" required maxLength={6} placeholder="e.g. XTREME" className="w-full h-16 px-8 bg-[#0A0A0A] border border-[#151515] rounded-3xl focus:border-[#E8D200]/40 outline-none transition-all text-[14px] font-black tracking-[0.3em] text-[#E8D200] placeholder-[#333] uppercase" value={formData.partner_code} onChange={e => setFormData(prev => ({ ...prev, partner_code: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6) }))} />
+                                            <label className="block text-[10px] uppercase tracking-[0.4em] text-[#333333] font-black mb-4">Partner Code <span className="text-[#999999]">/ auto-generated, editable</span></label>
+                                            <input type="text" required maxLength={6} placeholder="e.g. XTREME" className="w-full h-16 px-8 bg-white border border-[#E6E6E1] rounded-3xl focus:border-[#E8D200]/40 outline-none transition-all text-[14px] font-black tracking-[0.3em] text-[#8a7600] placeholder-[#BBBBBB] uppercase" value={formData.partner_code} onChange={e => setFormData(prev => ({ ...prev, partner_code: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6) }))} />
                                         </div>
                                         <div>
-                                            <label className="block text-[10px] uppercase tracking-[0.4em] text-[#CCC] font-black mb-4">Corporate Address</label>
-                                            <input type="text" placeholder="MAIN HEADQUARTERS..." className="w-full h-16 px-8 bg-[#0A0A0A] border border-[#151515] rounded-3xl focus:border-[#E8D200]/40 outline-none transition-all text-[12px] font-bold text-[#DDD] placeholder-[#151515]" value={formData.address} onChange={e => setFormData(prev => ({ ...prev, address: e.target.value }))} />
+                                            <label className="block text-[10px] uppercase tracking-[0.4em] text-[#333333] font-black mb-4">Corporate Address</label>
+                                            <input type="text" placeholder="MAIN HEADQUARTERS..." className="w-full h-16 px-8 bg-white border border-[#E6E6E1] rounded-3xl focus:border-[#E8D200]/40 outline-none transition-all text-[12px] font-bold text-[#222222] placeholder-[#BBBBBB]" value={formData.address} onChange={e => setFormData(prev => ({ ...prev, address: e.target.value }))} />
                                         </div>
                                         <div>
-                                            <label className="block text-[10px] uppercase tracking-[0.4em] text-[#CCC] font-black mb-4">Operating Sector</label>
-                                            <select className="w-full h-16 px-8 bg-[#0A0A0A] border border-[#151515] rounded-3xl focus:border-[#E8D200]/40 outline-none transition-all appearance-none text-[12px] font-black text-[#DDD] tracking-[0.1em] uppercase" value={formData.category} onChange={e => setFormData(prev => ({ ...prev, category: e.target.value }))}>
+                                            <label className="block text-[10px] uppercase tracking-[0.4em] text-[#333333] font-black mb-4">Operating Sector</label>
+                                            <select className="w-full h-16 px-8 bg-white border border-[#E6E6E1] rounded-3xl focus:border-[#E8D200]/40 outline-none transition-all appearance-none text-[12px] font-black text-[#222222] tracking-[0.1em] uppercase" value={formData.category} onChange={e => setFormData(prev => ({ ...prev, category: e.target.value }))}>
                                                 {CATEGORIES.map(c => <option key={c} value={c}>{c.toUpperCase()}</option>)}
                                             </select>
                                         </div>
                                         <LogoUploadField value={formData.logo_url} logoBg={formData.logo_bg} onBgChange={bg => setFormData(prev => ({ ...prev, logo_bg: bg }))} uploading={logoUploading} onFile={handleLogoUpload} />
-                                        <div className="p-8 bg-[#0A0A0A] border border-[#151515] rounded-[2rem] flex items-center gap-6">
+                                        <div className="p-8 bg-white border border-[#E6E6E1] rounded-[2rem] flex items-center gap-6">
                                             <button
                                                 type="button"
                                                 onClick={() => setFormData(prev => ({ ...prev, active: !prev.active }))}
-                                                className={`w-12 h-7 rounded-full transition-all relative shrink-0 ${formData.active ? 'bg-[#10B981]' : 'bg-[#151515]'}`}
+                                                className={`w-12 h-7 rounded-full transition-all relative shrink-0 ${formData.active ? 'bg-[#10B981]' : 'bg-[#EFEFEC]'}`}
                                             >
-                                                <span className={`absolute top-1 w-5 h-5 rounded-full transition-all ${formData.active ? 'left-[24px] bg-[#000]' : 'left-1 bg-[#666]'}`} />
+                                                <span className={`absolute top-1 w-5 h-5 rounded-full transition-all ${formData.active ? 'left-[24px] bg-white' : 'left-1 bg-white'}`} />
                                             </button>
-                                            <span className="text-[10px] uppercase tracking-[0.4em] text-[#CCC] font-black">Enable Real-time Discovery</span>
+                                            <span className="text-[10px] uppercase tracking-[0.4em] text-[#333333] font-black">Enable Real-time Discovery</span>
                                         </div>
                                     </div>
 
@@ -1082,35 +1082,35 @@ export default function PartnerManager() {
                                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-12">
                                     <div className="space-y-8">
                                         <div>
-                                            <label className="block text-[10px] uppercase tracking-[0.4em] text-[#CCC] font-black mb-4">Brand Name</label>
-                                            <input type="text" required className="w-full h-16 px-8 bg-[#0A0A0A] border border-[#151515] rounded-3xl focus:border-[#E8D200]/40 outline-none transition-all text-base font-bold text-[#F2F2F2] placeholder-[#333]" value={formData.name} onChange={e => setFormData(prev => ({ ...prev, name: e.target.value, partner_code: editingPartner ? prev.partner_code : toPartnerCode(e.target.value) }))} />
+                                            <label className="block text-[10px] uppercase tracking-[0.4em] text-[#333333] font-black mb-4">Brand Name</label>
+                                            <input type="text" required className="w-full h-16 px-8 bg-white border border-[#E6E6E1] rounded-3xl focus:border-[#E8D200]/40 outline-none transition-all text-base font-bold text-[#1A1A1A] placeholder-[#BBBBBB]" value={formData.name} onChange={e => setFormData(prev => ({ ...prev, name: e.target.value, partner_code: editingPartner ? prev.partner_code : toPartnerCode(e.target.value) }))} />
                                         </div>
                                         <div>
-                                            <label className="block text-[10px] uppercase tracking-[0.4em] text-[#CCC] font-black mb-4">Partner Code <span className="text-[#555]">/ auto-generated, editable</span></label>
-                                            <input type="text" required maxLength={6} placeholder="e.g. TRIBE" className="w-full h-16 px-8 bg-[#0A0A0A] border border-[#151515] rounded-3xl focus:border-[#E8D200]/40 outline-none transition-all text-[14px] font-black tracking-[0.3em] text-[#E8D200] placeholder-[#333] uppercase" value={formData.partner_code} onChange={e => setFormData(prev => ({ ...prev, partner_code: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6) }))} />
+                                            <label className="block text-[10px] uppercase tracking-[0.4em] text-[#333333] font-black mb-4">Partner Code <span className="text-[#999999]">/ auto-generated, editable</span></label>
+                                            <input type="text" required maxLength={6} placeholder="e.g. TRIBE" className="w-full h-16 px-8 bg-white border border-[#E6E6E1] rounded-3xl focus:border-[#E8D200]/40 outline-none transition-all text-[14px] font-black tracking-[0.3em] text-[#8a7600] placeholder-[#BBBBBB] uppercase" value={formData.partner_code} onChange={e => setFormData(prev => ({ ...prev, partner_code: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6) }))} />
                                         </div>
                                         <div>
-                                            <label className="block text-[10px] uppercase tracking-[0.4em] text-[#CCC] font-black mb-4">Sector</label>
-                                            <select className="w-full h-16 px-8 bg-[#0A0A0A] border border-[#151515] rounded-3xl focus:border-[#E8D200]/40 outline-none transition-all appearance-none text-[12px] font-black text-[#DDD] tracking-[0.1em] uppercase" value={formData.category} onChange={e => setFormData(prev => ({ ...prev, category: e.target.value }))}>
+                                            <label className="block text-[10px] uppercase tracking-[0.4em] text-[#333333] font-black mb-4">Sector</label>
+                                            <select className="w-full h-16 px-8 bg-white border border-[#E6E6E1] rounded-3xl focus:border-[#E8D200]/40 outline-none transition-all appearance-none text-[12px] font-black text-[#222222] tracking-[0.1em] uppercase" value={formData.category} onChange={e => setFormData(prev => ({ ...prev, category: e.target.value }))}>
                                                 {CATEGORIES.map(c => <option key={c} value={c}>{c.toUpperCase()}</option>)}
                                             </select>
                                         </div>
-                                        <div className="p-8 bg-[#0A0A0A] border border-[#151515] rounded-[2rem] flex items-center gap-6">
+                                        <div className="p-8 bg-white border border-[#E6E6E1] rounded-[2rem] flex items-center gap-6">
                                             <button
                                                 type="button"
                                                 onClick={() => setFormData(prev => ({ ...prev, active: !prev.active }))}
-                                                className={`w-12 h-7 rounded-full transition-all relative shrink-0 ${formData.active ? 'bg-[#10B981]' : 'bg-[#151515]'}`}
+                                                className={`w-12 h-7 rounded-full transition-all relative shrink-0 ${formData.active ? 'bg-[#10B981]' : 'bg-[#EFEFEC]'}`}
                                             >
-                                                <span className={`absolute top-1 w-5 h-5 rounded-full transition-all ${formData.active ? 'left-[24px] bg-[#000]' : 'left-1 bg-[#666]'}`} />
+                                                <span className={`absolute top-1 w-5 h-5 rounded-full transition-all ${formData.active ? 'left-[24px] bg-white' : 'left-1 bg-white'}`} />
                                             </button>
-                                            <span className="text-[10px] uppercase tracking-[0.4em] text-[#CCC] font-black">Active</span>
+                                            <span className="text-[10px] uppercase tracking-[0.4em] text-[#333333] font-black">Active</span>
                                         </div>
                                     </div>
                                     <div className="space-y-8">
                                         <LogoUploadField value={formData.logo_url} logoBg={formData.logo_bg} onBgChange={bg => setFormData(prev => ({ ...prev, logo_bg: bg }))} uploading={logoUploading} onFile={handleLogoUpload} />
-                                        <div className="p-8 bg-[#0A0A0A] border border-[#151515] rounded-[2rem]">
-                                            <p className="text-[10px] uppercase tracking-[0.4em] text-[#555] font-black mb-2">No geofence required</p>
-                                            <p className="text-[11px] text-[#444] font-black">Reward brands are linked to rewards directly — no location data needed.</p>
+                                        <div className="p-8 bg-white border border-[#E6E6E1] rounded-[2rem]">
+                                            <p className="text-[10px] uppercase tracking-[0.4em] text-[#999999] font-black mb-2">No geofence required</p>
+                                            <p className="text-[11px] text-[#AAAAAA] font-black">Reward brands are linked to rewards directly — no location data needed.</p>
                                         </div>
                                     </div>
                                 </div>
@@ -1120,13 +1120,13 @@ export default function PartnerManager() {
                             {formData.roles.includes('earning_location') && (
                             <div className="space-y-6">
                                 <div className="flex items-center justify-between">
-                                    <label className="text-[10px] uppercase tracking-[0.4em] text-[#CCC] font-black flex items-center gap-3">
-                                        <Clock size={14} className="text-[#E8D200]" /> Opening Hours
+                                    <label className="text-[10px] uppercase tracking-[0.4em] text-[#333333] font-black flex items-center gap-3">
+                                        <Clock size={14} className="text-[#8a7600]" /> Opening Hours
                                     </label>
                                     <button
                                         type="button"
                                         onClick={() => setFormData(prev => ({ ...prev, opening_hours: prev.opening_hours ? null : { ...DEFAULT_HOURS } }))}
-                                        className="text-[9px] uppercase tracking-[0.3em] font-black text-[#999] hover:text-[#E8D200] transition-colors"
+                                        className="text-[9px] uppercase tracking-[0.3em] font-black text-[#666666] hover:text-[#8a7600] transition-colors"
                                     >
                                         {formData.opening_hours ? 'Clear Hours' : 'Set Hours'}
                                     </button>
@@ -1140,7 +1140,7 @@ export default function PartnerManager() {
                                     <button
                                         type="button"
                                         onClick={() => setFormData(prev => ({ ...prev, opening_hours: { ...DEFAULT_HOURS } }))}
-                                        className="w-full py-8 border border-dashed border-[#151515] rounded-[2rem] text-[10px] uppercase tracking-[0.4em] text-[#AAA] font-black hover:border-[#E8D200]/30 hover:text-[#E8D200] transition-all"
+                                        className="w-full py-8 border border-dashed border-[#E6E6E1] rounded-[2rem] text-[10px] uppercase tracking-[0.4em] text-[#555555] font-black hover:border-[#E8D200]/30 hover:text-[#8a7600] transition-all"
                                     >
                                         + Configure Schedule
                                     </button>
@@ -1155,8 +1155,8 @@ export default function PartnerManager() {
                                 </div>
                             )}
 
-                            <div className="flex justify-end gap-6 pt-12 border-t border-[#151515]">
-                                <button type="button" onClick={() => setIsModalOpen(false)} className="h-16 px-12 text-[11px] uppercase tracking-[0.4em] font-black text-[#CCC] hover:text-[#DDD] transition-colors">Abort Mission</button>
+                            <div className="flex justify-end gap-6 pt-12 border-t border-[#E6E6E1]">
+                                <button type="button" onClick={() => setIsModalOpen(false)} className="h-16 px-12 text-[11px] uppercase tracking-[0.4em] font-black text-[#333333] hover:text-[#222222] transition-colors">Abort Mission</button>
                                 <button type="submit" disabled={saving} className="h-16 px-16 bg-[#E8D200] text-[#080808] text-[11px] font-black uppercase tracking-[0.4em] rounded-full transition-all hover:translate-y-[-4px] shadow-2xl shadow-[#E8D200]/20 disabled:opacity-50">
                                 {saving ? 'COMMITTING...' : (formData.roles.includes('reward_provider') && !formData.roles.includes('earning_location') ? (editingPartner ? 'UPDATE BRAND' : 'ADD BRAND') : 'INITIALIZE NODE')}
                                 </button>

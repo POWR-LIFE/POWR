@@ -173,10 +173,10 @@ export default function UserManager() {
                 <div>
                     <div className="flex items-center gap-3 mb-6">
                         <div className="h-[1px] w-12 bg-[#E8D200]"></div>
-                        <span className="text-[10px] uppercase tracking-[0.5em] text-[#E8D200] font-black">Subsystem / Intelligence</span>
+                        <span className="text-[10px] uppercase tracking-[0.5em] text-[#8a7600] font-black">Subsystem / Intelligence</span>
                     </div>
-                    <h1 className="text-6xl font-light tracking-tighter text-[#F2F2F2] mb-6">User Network</h1>
-                    <p className="text-[#999] text-[11px] max-w-xl font-black uppercase tracking-[0.4em] leading-relaxed">
+                    <h1 className="text-6xl font-light tracking-tighter text-[#1A1A1A] mb-6">User Network</h1>
+                    <p className="text-[#666666] text-[11px] max-w-xl font-black uppercase tracking-[0.4em] leading-relaxed">
                         Global registry of active nodes and historical performance telemetry.
                     </p>
                 </div>
@@ -185,22 +185,22 @@ export default function UserManager() {
             {/* Stats Bar */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-20">
                 {[
-                    { label: 'Total Nodes', value: stats.total, icon: Users, color: '#E8D200', desc: 'SATELLITE' },
+                    { label: 'Total Nodes', value: stats.total, icon: Users, color: '#8a7600', desc: 'SATELLITE' },
                     { label: 'Avg Performance', value: `LVL ${stats.avgLevel}`, icon: Award, color: '#10B981', desc: 'EFFICIENCY' },
                     { label: 'Active Uplinks', value: stats.activeToday, icon: Activity, color: '#0EA5E9', desc: 'TELEMETRY' },
                 ].map(s => (
-                    <div key={s.label} className="bg-[#0A0A0A] border border-[#151515] p-10 rounded-3xl flex items-center gap-8 group hover:border-[#202020] transition-all relative overflow-hidden">
+                    <div key={s.label} className="bg-white border border-[#E6E6E1] p-10 rounded-3xl flex items-center gap-8 group hover:border-[#E6E6E1] transition-all relative overflow-hidden">
                         <div className="absolute top-0 right-0 p-8 opacity-5">
-                            <span className="text-[9px] font-black text-[#999] uppercase tracking-[0.4em]">{s.desc}</span>
+                            <span className="text-[9px] font-black text-[#666666] uppercase tracking-[0.4em]">{s.desc}</span>
                         </div>
-                        <div className="w-14 h-14 rounded-2xl bg-[#050505] border border-[#151515] flex items-center justify-center shrink-0 group-hover:border-[#E8D200]/20 transition-all">
+                        <div className="w-14 h-14 rounded-2xl bg-[#F4F4F1] border border-[#E6E6E1] flex items-center justify-center shrink-0 group-hover:border-[#E8D200]/20 transition-all">
                             <s.icon size={22} style={{ color: s.color }} />
                         </div>
                         <div>
-                            <div className="text-4xl font-light tracking-tighter text-[#DDD] leading-none mb-2">
+                            <div className="text-4xl font-light tracking-tighter text-[#222222] leading-none mb-2">
                                 {loading ? '...' : s.value}
                             </div>
-                            <div className="text-[10px] uppercase tracking-[0.4em] text-[#999] font-black">{s.label}</div>
+                            <div className="text-[10px] uppercase tracking-[0.4em] text-[#666666] font-black">{s.label}</div>
                         </div>
                     </div>
                 ))}
@@ -209,11 +209,11 @@ export default function UserManager() {
             {/* Controls */}
             <div className="flex flex-col md:flex-row gap-6 mb-10">
                 <div className="relative flex-1 group">
-                    <Search size={18} className="absolute left-6 top-1/2 -translate-y-1/2 text-[#777] group-focus-within:text-[#E8D200] transition-colors" />
+                    <Search size={18} className="absolute left-6 top-1/2 -translate-y-1/2 text-[#888888] group-focus-within:text-[#8a7600] transition-colors" />
                     <input
                         type="text"
                         placeholder="SEARCH NODE IDENTIFIER..."
-                        className="w-full h-16 pl-16 pr-8 bg-[#0A0A0A] border border-[#151515] rounded-[2rem] text-[11px] font-black tracking-[0.2em] text-[#F2F2F2] placeholder-[#151515] focus:border-[#E8D200]/40 outline-none transition-all uppercase"
+                        className="w-full h-16 pl-16 pr-8 bg-white border border-[#E6E6E1] rounded-[2rem] text-[11px] font-black tracking-[0.2em] text-[#1A1A1A] placeholder-[#BBBBBB] focus:border-[#E8D200]/40 outline-none transition-all uppercase"
                         value={search}
                         onChange={e => setSearch(e.target.value)}
                     />
@@ -227,41 +227,41 @@ export default function UserManager() {
             </div>
 
             {/* Content Container */}
-            <div className="bg-[#0A0A0A] border border-[#151515] rounded-3xl overflow-hidden">
+            <div className="bg-white border border-[#E6E6E1] rounded-3xl overflow-hidden">
                 {loading ? (
                     <div className="flex flex-col items-center justify-center py-48 gap-6">
                         <div className="w-12 h-12 border-2 border-[#E8D200]/20 border-t-[#E8D200] rounded-full animate-spin" />
-                        <span className="text-[10px] uppercase tracking-[0.6em] text-[#999] font-black">Syncing Node Hive...</span>
+                        <span className="text-[10px] uppercase tracking-[0.6em] text-[#666666] font-black">Syncing Node Hive...</span>
                     </div>
                 ) : (
                     <div className="overflow-x-auto">
                         <table className="w-full text-left border-collapse">
                             <thead>
-                                <tr className="bg-[#050505] border-b border-[#151515]">
+                                <tr className="bg-[#F4F4F1] border-b border-[#E6E6E1]">
                                     {['User Identity', 'Protocol Level', 'Location', 'Registration', 'Status', ''].map(h => (
-                                        <th key={h} className={`px-12 py-8 text-[10px] font-black uppercase tracking-[0.5em] text-[#777] ${h === '' ? 'text-right' : ''}`}>{h}</th>
+                                        <th key={h} className={`px-6 py-5 text-[10px] font-black uppercase tracking-[0.5em] text-[#888888] ${h === '' ? 'text-right' : ''}`}>{h}</th>
                                     ))}
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-[#111]">
+                            <tbody className="divide-y divide-[#E6E6E1]">
                                 {filtered.length === 0 ? (
                                     <tr>
-                                        <td colSpan={6} className="px-12 py-32 text-center">
+                                        <td colSpan={6} className="px-6 py-24 text-center">
                                             <div className="flex flex-col items-center gap-6">
-                                                <div className="w-20 h-20 rounded-3xl bg-[#050505] border border-[#151515] flex items-center justify-center">
-                                                    <Users size={32} className="text-[#CCC]" />
+                                                <div className="w-20 h-20 rounded-3xl bg-[#F4F4F1] border border-[#E6E6E1] flex items-center justify-center">
+                                                    <Users size={32} className="text-[#333333]" />
                                                 </div>
-                                                <p className="text-[11px] uppercase tracking-[0.4em] text-[#777] font-black">
+                                                <p className="text-[11px] uppercase tracking-[0.4em] text-[#888888] font-black">
                                                     No Nodes Detected
                                                 </p>
                                             </div>
                                         </td>
                                     </tr>
                                 ) : filtered.map(user => (
-                                    <tr key={user.id} className="group hover:bg-[#080808] transition-all">
-                                        <td className="px-12 py-10">
+                                    <tr key={user.id} className="group hover:bg-[#F4F4F1] transition-all">
+                                        <td className="px-6 py-5">
                                             <div className="flex items-center gap-6">
-                                                <div className="w-12 h-12 rounded-2xl bg-[#050505] border border-[#151515] flex items-center justify-center overflow-hidden shrink-0">
+                                                <div className="w-12 h-12 rounded-2xl bg-[#F4F4F1] border border-[#E6E6E1] flex items-center justify-center overflow-hidden shrink-0">
                                                     {user.avatar_url ? (
                                                         <img
                                                             src={user.avatar_url}
@@ -270,70 +270,70 @@ export default function UserManager() {
                                                             onError={e => { e.currentTarget.style.display = 'none'; e.currentTarget.nextSibling.style.display = ''; }}
                                                         />
                                                     ) : null}
-                                                    <User size={18} className="text-[#777]" style={{ display: user.avatar_url ? 'none' : '' }} />
+                                                    <User size={18} className="text-[#888888]" style={{ display: user.avatar_url ? 'none' : '' }} />
                                                 </div>
                                                 <div>
-                                                    <span className="text-base font-bold text-[#DDD] group-hover:text-[#F2F2F2] transition-colors block mb-1">
+                                                    <span className="text-base font-bold text-[#222222] group-hover:text-[#1A1A1A] transition-colors block mb-1">
                                                         {user.display_name || user.username || user.email?.split('@')[0] || 'Anonymous Node'}
                                                     </span>
-                                                    <span className="text-[10px] uppercase tracking-[0.4em] text-[#999] font-black">
+                                                    <span className="text-[10px] uppercase tracking-[0.4em] text-[#666666] font-black">
                                                         {user.username ? `@${user.username}` : user.email || 'unidentified'}
                                                     </span>
                                                 </div>
                                             </div>
                                         </td>
-                                        <td className="px-12 py-10">
+                                        <td className="px-6 py-5">
                                             <div className="flex items-center gap-4">
                                                 <span className="px-4 py-1.5 rounded-full bg-[#E8D200] text-[#080808] text-[9px] font-black uppercase tracking-[0.2em]">
                                                     LVL {user.level || 1}
                                                 </span>
                                             </div>
                                         </td>
-                                        <td className="px-12 py-10">
+                                        <td className="px-6 py-5">
                                             {user.location_granted ? (
                                                 <div className="flex items-center gap-3">
                                                     <MapPin size={14} className="text-[#10B981]" />
                                                     <span className="text-[9px] uppercase tracking-[0.3em] text-[#10B981] font-black">Granted</span>
                                                 </div>
                                             ) : (
-                                                <span className="text-[9px] uppercase tracking-[0.3em] text-[#999] font-black">Denied</span>
+                                                <span className="text-[9px] uppercase tracking-[0.3em] text-[#666666] font-black">Denied</span>
                                             )}
                                         </td>
-                                        <td className="px-12 py-10 whitespace-nowrap">
+                                        <td className="px-6 py-5 whitespace-nowrap">
                                             <div className="flex flex-col">
-                                                <span className="text-[12px] text-[#DDD] font-medium mb-1">
+                                                <span className="text-[12px] text-[#222222] font-medium mb-1">
                                                     {new Date(user.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
                                                 </span>
-                                                <span className="text-[9px] uppercase tracking-[0.4em] text-[#999] font-black">
+                                                <span className="text-[9px] uppercase tracking-[0.4em] text-[#666666] font-black">
                                                     {timeAgo(user.created_at)}
                                                 </span>
                                             </div>
                                         </td>
-                                        <td className="px-12 py-10">
+                                        <td className="px-6 py-5">
                                             <div className="flex flex-col gap-2">
                                                 <div className="flex items-center gap-4">
                                                     <div className="h-1.5 w-1.5 rounded-full bg-[#10B981] shadow-[0_0_10px_rgba(16,185,129,0.4)]"></div>
-                                                    <span className="text-[9px] uppercase tracking-[0.3em] text-[#AAA] font-black">ACTIVE</span>
+                                                    <span className="text-[9px] uppercase tracking-[0.3em] text-[#555555] font-black">ACTIVE</span>
                                                 </div>
                                                 {user.is_pro && (
-                                                    <span className="flex items-center gap-1.5 px-3 py-1 self-start rounded-full bg-[#E8D200]/10 border border-[#E8D200]/30 text-[#E8D200] text-[9px] font-black uppercase tracking-[0.2em]">
+                                                    <span className="flex items-center gap-1.5 px-3 py-1 self-start rounded-full bg-[#E8D200]/10 border border-[#E8D200]/30 text-[#8a7600] text-[9px] font-black uppercase tracking-[0.2em]">
                                                         <Star size={9} fill="#E8D200" /> Pro
                                                     </span>
                                                 )}
                                             </div>
                                         </td>
-                                        <td className="px-12 py-10 text-right">
+                                        <td className="px-6 py-5 text-right">
                                             <div className="flex items-center justify-end gap-3">
                                                 <Link 
                                                     to={`/admin/users/${user.id}`}
-                                                    className="inline-flex items-center gap-3 px-6 py-3 bg-[#050505] border border-[#151515] rounded-full text-[9px] font-black uppercase tracking-[0.3em] text-[#999] hover:text-[#E8D200] hover:border-[#E8D200]/40 transition-all group/btn"
+                                                    className="inline-flex items-center gap-3 px-6 py-3 bg-[#F4F4F1] border border-[#E6E6E1] rounded-full text-[9px] font-black uppercase tracking-[0.3em] text-[#666666] hover:text-[#8a7600] hover:border-[#E8D200]/40 transition-all group/btn"
                                                 >
                                                     Query Profile
-                                                    <ChevronRight size={14} className="text-[#CCC] group-hover/btn:text-[#E8D200] transition-colors" />
+                                                    <ChevronRight size={14} className="text-[#333333] group-hover/btn:text-[#8a7600] transition-colors" />
                                                 </Link>
                                                 <button
                                                     onClick={() => setDeletingId(user.id)}
-                                                    className="w-10 h-10 rounded-full bg-[#050505] border border-[#151515] flex items-center justify-center text-[#555] hover:text-red-400 hover:border-red-400/30 transition-all"
+                                                    className="w-10 h-10 rounded-full bg-[#F4F4F1] border border-[#E6E6E1] flex items-center justify-center text-[#999999] hover:text-red-400 hover:border-red-400/30 transition-all"
                                                     title="Delete user"
                                                 >
                                                     <Trash2 size={14} />
@@ -351,29 +351,29 @@ export default function UserManager() {
             <div className="mt-12 flex items-center justify-between px-12">
                 <div className="flex items-center gap-4">
                     <div className="h-1.5 w-1.5 rounded-full bg-[#10B981] animate-pulse"></div>
-                    <span className="text-[10px] uppercase tracking-[0.6em] text-[#999] font-black">Intra-Network Sync Active</span>
+                    <span className="text-[10px] uppercase tracking-[0.6em] text-[#666666] font-black">Intra-Network Sync Active</span>
                 </div>
-                <span className="text-[10px] uppercase tracking-[0.6em] text-[#CCC] font-black">POWR / USR / V3.0</span>
+                <span className="text-[10px] uppercase tracking-[0.6em] text-[#333333] font-black">POWR / USR / V3.0</span>
             </div>
 
             {/* ── Create User Modal ────────────────────────────────── */}
             {showCreate && (
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] flex items-center justify-center" onClick={() => setShowCreate(false)}>
-                    <div className="bg-[#0A0A0A] border border-[#1E1E1E] rounded-3xl p-12 w-full max-w-md shadow-2xl" onClick={e => e.stopPropagation()}>
+                    <div className="bg-white border border-[#E6E6E1] rounded-3xl p-12 w-full max-w-md shadow-2xl" onClick={e => e.stopPropagation()}>
                         <div className="flex justify-between items-center mb-10">
-                            <h3 className="text-2xl font-light tracking-tighter text-[#F2F2F2]">New User</h3>
-                            <button onClick={() => setShowCreate(false)} className="w-10 h-10 rounded-full bg-[#151515] flex items-center justify-center text-[#BBB] hover:text-[#F2F2F2] transition-colors"><X size={18} /></button>
+                            <h3 className="text-2xl font-light tracking-tighter text-[#1A1A1A]">New User</h3>
+                            <button onClick={() => setShowCreate(false)} className="w-10 h-10 rounded-full bg-[#EFEFEC] flex items-center justify-center text-[#BBB] hover:text-[#1A1A1A] transition-colors"><X size={18} /></button>
                         </div>
                         <div className="space-y-5">
                             <div>
                                 <label className="block text-[10px] uppercase tracking-widest text-[#BBB] font-black mb-3">Email *</label>
-                                <input type="email" value={createEmail} onChange={e => setCreateEmail(e.target.value)} placeholder="user@example.com" className="w-full h-14 px-6 bg-[#050505] border border-[#1E1E1E] rounded-xl text-[#F2F2F2] text-sm font-light outline-none focus:border-[#E8D200]/40 transition-all" />
+                                <input type="email" value={createEmail} onChange={e => setCreateEmail(e.target.value)} placeholder="user@example.com" className="w-full h-14 px-6 bg-[#F4F4F1] border border-[#E6E6E1] rounded-xl text-[#1A1A1A] text-sm font-light outline-none focus:border-[#E8D200]/40 transition-all" />
                             </div>
                             <div>
                                 <label className="block text-[10px] uppercase tracking-widest text-[#BBB] font-black mb-3">Password *</label>
                                 <div className="relative">
-                                    <input type={showPassword ? 'text' : 'password'} value={createPassword} onChange={e => setCreatePassword(e.target.value)} placeholder="Min 6 characters" className="w-full h-14 px-6 pr-14 bg-[#050505] border border-[#1E1E1E] rounded-xl text-[#F2F2F2] text-sm font-light outline-none focus:border-[#E8D200]/40 transition-all" />
-                                    <button type="button" onClick={() => setShowPassword(p => !p)} className="absolute right-4 top-1/2 -translate-y-1/2 text-[#555] hover:text-[#999] transition-colors">
+                                    <input type={showPassword ? 'text' : 'password'} value={createPassword} onChange={e => setCreatePassword(e.target.value)} placeholder="Min 6 characters" className="w-full h-14 px-6 pr-14 bg-[#F4F4F1] border border-[#E6E6E1] rounded-xl text-[#1A1A1A] text-sm font-light outline-none focus:border-[#E8D200]/40 transition-all" />
+                                    <button type="button" onClick={() => setShowPassword(p => !p)} className="absolute right-4 top-1/2 -translate-y-1/2 text-[#999999] hover:text-[#666666] transition-colors">
                                         {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                                     </button>
                                 </div>
@@ -381,19 +381,19 @@ export default function UserManager() {
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-[10px] uppercase tracking-widest text-[#BBB] font-black mb-3">Display Name</label>
-                                    <input type="text" value={createName} onChange={e => setCreateName(e.target.value)} placeholder="Jane Smith" className="w-full h-14 px-6 bg-[#050505] border border-[#1E1E1E] rounded-xl text-[#F2F2F2] text-sm font-light outline-none focus:border-[#E8D200]/40 transition-all" />
+                                    <input type="text" value={createName} onChange={e => setCreateName(e.target.value)} placeholder="Jane Smith" className="w-full h-14 px-6 bg-[#F4F4F1] border border-[#E6E6E1] rounded-xl text-[#1A1A1A] text-sm font-light outline-none focus:border-[#E8D200]/40 transition-all" />
                                 </div>
                                 <div>
                                     <label className="block text-[10px] uppercase tracking-widest text-[#BBB] font-black mb-3">Username</label>
-                                    <input type="text" value={createUsername} onChange={e => setCreateUsername(e.target.value)} placeholder="jane_smith" className="w-full h-14 px-6 bg-[#050505] border border-[#1E1E1E] rounded-xl text-[#F2F2F2] text-sm font-light outline-none focus:border-[#E8D200]/40 transition-all" />
+                                    <input type="text" value={createUsername} onChange={e => setCreateUsername(e.target.value)} placeholder="jane_smith" className="w-full h-14 px-6 bg-[#F4F4F1] border border-[#E6E6E1] rounded-xl text-[#1A1A1A] text-sm font-light outline-none focus:border-[#E8D200]/40 transition-all" />
                                 </div>
                             </div>
                             <button
                                 onClick={() => setCreateIsPro(p => !p)}
                                 className={`w-full h-12 rounded-xl border text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-3 transition-all ${
                                     createIsPro
-                                        ? 'bg-[#E8D200]/10 border-[#E8D200]/40 text-[#E8D200]'
-                                        : 'bg-[#050505] border-[#1E1E1E] text-[#666] hover:border-[#333]'
+                                        ? 'bg-[#E8D200]/10 border-[#E8D200]/40 text-[#8a7600]'
+                                        : 'bg-[#F4F4F1] border-[#E6E6E1] text-[#999999] hover:border-[#DDDDDD]'
                                 }`}
                             >
                                 <Star size={13} fill={createIsPro ? '#E8D200' : 'none'} />
@@ -410,28 +410,28 @@ export default function UserManager() {
             {/* ── Pro Athlete Invite Link Modal ───────────────────── */}
             {inviteLink && (
                 <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[200] flex items-center justify-center" onClick={() => setInviteLink(null)}>
-                    <div className="bg-[#0A0A0A] border border-[#E8D200]/20 rounded-3xl p-12 w-full max-w-lg shadow-2xl" onClick={e => e.stopPropagation()}>
+                    <div className="bg-white border border-[#E8D200]/20 rounded-3xl p-12 w-full max-w-lg shadow-2xl" onClick={e => e.stopPropagation()}>
                         <div className="flex justify-between items-start mb-8">
                             <div>
                                 <div className="flex items-center gap-3 mb-2">
-                                    <Star size={16} className="text-[#E8D200]" fill="#E8D200" />
-                                    <span className="text-[10px] uppercase tracking-widest font-black text-[#E8D200]">Pro Athlete Invite</span>
+                                    <Star size={16} className="text-[#8a7600]" fill="#E8D200" />
+                                    <span className="text-[10px] uppercase tracking-widest font-black text-[#8a7600]">Pro Athlete Invite</span>
                                 </div>
-                                <h3 className="text-2xl font-light tracking-tighter text-[#F2F2F2]">User created</h3>
+                                <h3 className="text-2xl font-light tracking-tighter text-[#1A1A1A]">User created</h3>
                             </div>
-                            <button onClick={() => setInviteLink(null)} className="w-10 h-10 rounded-full bg-[#151515] flex items-center justify-center text-[#BBB] hover:text-[#F2F2F2] transition-colors">
+                            <button onClick={() => setInviteLink(null)} className="w-10 h-10 rounded-full bg-[#EFEFEC] flex items-center justify-center text-[#BBB] hover:text-[#1A1A1A] transition-colors">
                                 <X size={18} />
                             </button>
                         </div>
 
-                        <p className="text-[#666] text-sm font-light mb-8 leading-relaxed">
+                        <p className="text-[#999999] text-sm font-light mb-8 leading-relaxed">
                             Send this link to the athlete. They'll use it to fill in their profile — it expires once submitted.
                         </p>
 
                         {/* Link display */}
                         <div className="flex gap-3 mb-6">
-                            <div className="flex-1 h-12 px-4 bg-[#050505] border border-[#1E1E1E] rounded-xl flex items-center overflow-hidden">
-                                <span className="text-[11px] text-[#666] font-mono truncate">{inviteLink}</span>
+                            <div className="flex-1 h-12 px-4 bg-[#F4F4F1] border border-[#E6E6E1] rounded-xl flex items-center overflow-hidden">
+                                <span className="text-[11px] text-[#999999] font-mono truncate">{inviteLink}</span>
                             </div>
                             <button
                                 onClick={copyInviteLink}
@@ -445,7 +445,7 @@ export default function UserManager() {
                             </button>
                         </div>
 
-                        <p className="text-[10px] text-[#333] font-mono text-center">
+                        <p className="text-[10px] text-[#BBBBBB] font-mono text-center">
                             This link is single-use. A new one can be generated from the athlete's profile.
                         </p>
                     </div>
@@ -455,17 +455,17 @@ export default function UserManager() {
             {/* ── Delete Confirmation Modal ────────────────────────── */}
             {deletingId && (
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] flex items-center justify-center" onClick={() => setDeletingId(null)}>
-                    <div className="bg-[#0A0A0A] border border-red-900/40 rounded-3xl p-12 w-full max-w-sm shadow-2xl" onClick={e => e.stopPropagation()}>
-                        <div className="w-14 h-14 rounded-2xl bg-red-950/50 border border-red-900/40 flex items-center justify-center mb-8">
+                    <div className="bg-white border border-red-200 rounded-3xl p-12 w-full max-w-sm shadow-2xl" onClick={e => e.stopPropagation()}>
+                        <div className="w-14 h-14 rounded-2xl bg-red-50 border border-red-200 flex items-center justify-center mb-8">
                             <Trash2 size={22} className="text-red-400" />
                         </div>
-                        <h3 className="text-2xl font-light tracking-tighter text-[#F2F2F2] mb-3">Delete User?</h3>
-                        <p className="text-[#666] text-sm font-light mb-10 leading-relaxed">This permanently removes the account, all activity data, and point history. This cannot be undone.</p>
+                        <h3 className="text-2xl font-light tracking-tighter text-[#1A1A1A] mb-3">Delete User?</h3>
+                        <p className="text-[#999999] text-sm font-light mb-10 leading-relaxed">This permanently removes the account, all activity data, and point history. This cannot be undone.</p>
                         <div className="flex gap-4">
-                            <button onClick={() => setDeletingId(null)} className="flex-1 h-12 bg-[#151515] border border-[#1E1E1E] rounded-xl text-[10px] font-black uppercase tracking-widest text-[#999] hover:text-[#F2F2F2] transition-colors">
+                            <button onClick={() => setDeletingId(null)} className="flex-1 h-12 bg-[#EFEFEC] border border-[#E6E6E1] rounded-xl text-[10px] font-black uppercase tracking-widest text-[#666666] hover:text-[#1A1A1A] transition-colors">
                                 Cancel
                             </button>
-                            <button onClick={() => handleDeleteUser(deletingId)} disabled={deleteLoading} className="flex-1 h-12 bg-red-950/60 border border-red-900/60 rounded-xl text-[10px] font-black uppercase tracking-widest text-red-400 hover:bg-red-900/40 transition-all disabled:opacity-50">
+                            <button onClick={() => handleDeleteUser(deletingId)} disabled={deleteLoading} className="flex-1 h-12 bg-red-50 border border-red-200 rounded-xl text-[10px] font-black uppercase tracking-widest text-red-400 hover:bg-red-100 transition-all disabled:opacity-50">
                                 {deleteLoading ? 'Deleting...' : 'Delete'}
                             </button>
                         </div>

@@ -24,10 +24,10 @@ const CATEGORY_LABELS = {
 };
 
 const STATUS_CONFIG = {
-    open:        { label: 'Open',        color: '#E8D200', bg: 'bg-[#E8D200]/10 border-[#E8D200]/30', icon: AlertCircle },
+    open:        { label: 'Open',        color: '#8a7600', bg: 'bg-[#E8D200]/10 border-[#E8D200]/30', icon: AlertCircle },
     in_progress: { label: 'In Progress', color: '#60A5FA', bg: 'bg-blue-500/10 border-blue-500/30',   icon: Clock       },
     resolved:    { label: 'Resolved',    color: '#4ADE80', bg: 'bg-green-500/10 border-green-500/30', icon: CheckCircle },
-    closed:      { label: 'Closed',      color: '#555',    bg: 'bg-[#111] border-[#222]',             icon: XCircle     },
+    closed:      { label: 'Closed',      color: '#555',    bg: 'bg-[#EFEFEC] border-[#E6E6E1]',             icon: XCircle     },
 };
 
 export default function SupportTickets() {
@@ -109,8 +109,8 @@ export default function SupportTickets() {
                         <div className="h-[1px] w-12 bg-[#60A5FA]"></div>
                         <span className="text-[10px] uppercase tracking-[0.5em] text-[#60A5FA] font-black">Subsystem / Support</span>
                     </div>
-                    <h1 className="text-6xl font-light tracking-tighter text-[#F2F2F2] mb-6">Support Tickets</h1>
-                    <p className="text-[#999] text-[11px] max-w-xl font-black uppercase tracking-[0.4em] leading-relaxed">
+                    <h1 className="text-6xl font-light tracking-tighter text-[#1A1A1A] mb-6">Support Tickets</h1>
+                    <p className="text-[#666666] text-[11px] max-w-xl font-black uppercase tracking-[0.4em] leading-relaxed">
                         Inbound user support requests. Triage, reply, and resolve.
                     </p>
                 </div>
@@ -119,7 +119,7 @@ export default function SupportTickets() {
             {/* Stats */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-16">
                 {[
-                    { key: 'open',        label: 'Open',        color: '#E8D200' },
+                    { key: 'open',        label: 'Open',        color: '#8a7600' },
                     { key: 'in_progress', label: 'In Progress', color: '#60A5FA' },
                     { key: 'resolved',    label: 'Resolved',    color: '#4ADE80' },
                     { key: 'closed',      label: 'Closed',      color: '#555'    },
@@ -129,27 +129,27 @@ export default function SupportTickets() {
                         onClick={() => setFilter(filterStatus === s.key ? 'all' : s.key)}
                         className={`p-8 rounded-3xl border transition-all text-left ${
                             filterStatus === s.key
-                                ? 'bg-[#0F0F0F] border-[#E8D200]/40'
-                                : 'bg-[#0A0A0A] border-[#151515] hover:border-[#222]'
+                                ? 'bg-white border-[#E8D200]/40'
+                                : 'bg-white border-[#E6E6E1] hover:border-[#E6E6E1]'
                         }`}
                     >
                         <div className="text-4xl font-light tracking-tighter mb-2" style={{ color: s.color }}>
                             {counts[s.key]}
                         </div>
-                        <div className="text-[10px] uppercase tracking-[0.4em] font-black text-[#333]">{s.label}</div>
+                        <div className="text-[10px] uppercase tracking-[0.4em] font-black text-[#BBBBBB]">{s.label}</div>
                     </button>
                 ))}
             </div>
 
             {/* Search */}
             <div className="relative mb-10">
-                <Search size={16} className="absolute left-5 top-1/2 -translate-y-1/2 text-[#333]" />
+                <Search size={16} className="absolute left-5 top-1/2 -translate-y-1/2 text-[#BBBBBB]" />
                 <input
                     type="text"
                     placeholder="Search by email, subject or message..."
                     value={search}
                     onChange={e => setSearch(e.target.value)}
-                    className="w-full h-14 bg-[#0A0A0A] border border-[#151515] rounded-2xl pl-12 pr-5 text-sm text-[#F2F2F2] placeholder-[#333] focus:border-[#E8D200]/40 outline-none transition-all"
+                    className="w-full h-14 bg-white border border-[#E6E6E1] rounded-2xl pl-12 pr-5 text-sm text-[#1A1A1A] placeholder-[#BBBBBB] focus:border-[#E8D200]/40 outline-none transition-all"
                 />
             </div>
 
@@ -160,8 +160,8 @@ export default function SupportTickets() {
                 </div>
             ) : filtered.length === 0 ? (
                 <div className="text-center py-32">
-                    <MessageSquare size={40} className="text-[#1A1A1A] mx-auto mb-6" />
-                    <p className="text-[#333] text-sm uppercase tracking-widest font-black">No tickets found</p>
+                    <MessageSquare size={40} className="text-[#CCCCCC] mx-auto mb-6" />
+                    <p className="text-[#BBBBBB] text-sm uppercase tracking-widest font-black">No tickets found</p>
                 </div>
             ) : (
                 <div className="space-y-4">
@@ -171,7 +171,7 @@ export default function SupportTickets() {
                         const isOpen = expanded === ticket.id;
 
                         return (
-                            <div key={ticket.id} className="bg-[#0A0A0A] border border-[#151515] rounded-3xl overflow-hidden transition-all hover:border-[#1A1A1A]">
+                            <div key={ticket.id} className="bg-white border border-[#E6E6E1] rounded-3xl overflow-hidden transition-all hover:border-[#E6E6E1]">
                                 {/* Ticket header row */}
                                 <button
                                     className="w-full p-8 flex items-start gap-6 text-left"
@@ -179,13 +179,13 @@ export default function SupportTickets() {
                                 >
                                     <div className="flex-1 min-w-0">
                                         <div className="flex items-center gap-4 flex-wrap mb-3">
-                                            <span className="text-base font-bold text-[#F2F2F2] truncate">{ticket.subject}</span>
+                                            <span className="text-base font-bold text-[#1A1A1A] truncate">{ticket.subject}</span>
                                             <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full border text-[10px] font-black uppercase tracking-widest ${cfg.bg}`} style={{ color: cfg.color }}>
                                                 <StatusIcon size={10} />
                                                 {cfg.label}
                                             </span>
                                         </div>
-                                        <div className="flex items-center gap-4 text-[11px] text-[#333] font-black uppercase tracking-[0.3em] flex-wrap">
+                                        <div className="flex items-center gap-4 text-[11px] text-[#BBBBBB] font-black uppercase tracking-[0.3em] flex-wrap">
                                             <span>{ticket.email}</span>
                                             <span>·</span>
                                             <span>{CATEGORY_LABELS[ticket.category] ?? ticket.category}</span>
@@ -193,31 +193,31 @@ export default function SupportTickets() {
                                             <span>{timeAgo(ticket.created_at)}</span>
                                         </div>
                                     </div>
-                                    <div className="flex-shrink-0 text-[#333] mt-1">
+                                    <div className="flex-shrink-0 text-[#BBBBBB] mt-1">
                                         {isOpen ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
                                     </div>
                                 </button>
 
                                 {/* Expanded detail */}
                                 {isOpen && (
-                                    <div className="border-t border-[#151515] p-8 space-y-8">
+                                    <div className="border-t border-[#E6E6E1] p-8 space-y-8">
                                         {/* User message */}
                                         <div>
-                                            <div className="text-[10px] uppercase tracking-[0.5em] text-[#333] font-black mb-3">User Message</div>
-                                            <p className="text-sm text-[#999] leading-relaxed whitespace-pre-wrap">{ticket.message}</p>
+                                            <div className="text-[10px] uppercase tracking-[0.5em] text-[#BBBBBB] font-black mb-3">User Message</div>
+                                            <p className="text-sm text-[#666666] leading-relaxed whitespace-pre-wrap">{ticket.message}</p>
                                         </div>
 
                                         {/* Existing reply */}
                                         {ticket.admin_reply && (
                                             <div className="border-l-2 border-[#E8D200] pl-6 bg-[#E8D200]/5 py-4 pr-4 rounded-r-xl">
-                                                <div className="text-[10px] uppercase tracking-[0.5em] text-[#E8D200] font-black mb-2">POWR Support Reply</div>
-                                                <p className="text-sm text-[#CCC] leading-relaxed whitespace-pre-wrap">{ticket.admin_reply}</p>
+                                                <div className="text-[10px] uppercase tracking-[0.5em] text-[#8a7600] font-black mb-2">POWR Support Reply</div>
+                                                <p className="text-sm text-[#333333] leading-relaxed whitespace-pre-wrap">{ticket.admin_reply}</p>
                                             </div>
                                         )}
 
                                         {/* Status controls */}
                                         <div>
-                                            <div className="text-[10px] uppercase tracking-[0.5em] text-[#333] font-black mb-3">Update Status</div>
+                                            <div className="text-[10px] uppercase tracking-[0.5em] text-[#BBBBBB] font-black mb-3">Update Status</div>
                                             <div className="flex flex-wrap gap-3">
                                                 {Object.entries(STATUS_CONFIG).map(([key, s]) => (
                                                     <button
@@ -226,7 +226,7 @@ export default function SupportTickets() {
                                                         className={`px-5 py-2.5 rounded-xl border text-[11px] font-black uppercase tracking-[0.3em] transition-all ${
                                                             ticket.status === key
                                                                 ? `${s.bg} opacity-100`
-                                                                : 'bg-[#0F0F0F] border-[#1A1A1A] text-[#333] hover:border-[#333]'
+                                                                : 'bg-white border-[#E6E6E1] text-[#BBBBBB] hover:border-[#DDDDDD]'
                                                         }`}
                                                         style={ticket.status === key ? { color: s.color } : {}}
                                                     >
@@ -238,7 +238,7 @@ export default function SupportTickets() {
 
                                         {/* Reply box */}
                                         <div>
-                                            <div className="text-[10px] uppercase tracking-[0.5em] text-[#333] font-black mb-3">
+                                            <div className="text-[10px] uppercase tracking-[0.5em] text-[#BBBBBB] font-black mb-3">
                                                 {ticket.admin_reply ? 'Update Reply' : 'Send Reply'}
                                             </div>
                                             <textarea
@@ -246,7 +246,7 @@ export default function SupportTickets() {
                                                 value={replyText[ticket.id] ?? (ticket.admin_reply ?? '')}
                                                 onChange={e => setReplyText(prev => ({ ...prev, [ticket.id]: e.target.value }))}
                                                 placeholder="Type your reply to the user…"
-                                                className="w-full bg-[#050505] border border-[#1A1A1A] rounded-2xl p-5 text-sm text-[#F2F2F2] placeholder-[#333] focus:border-[#E8D200]/40 outline-none resize-none transition-all"
+                                                className="w-full bg-[#F4F4F1] border border-[#E6E6E1] rounded-2xl p-5 text-sm text-[#1A1A1A] placeholder-[#BBBBBB] focus:border-[#E8D200]/40 outline-none resize-none transition-all"
                                             />
                                             <div className="flex justify-end mt-4">
                                                 <button
@@ -255,7 +255,7 @@ export default function SupportTickets() {
                                                     className="flex items-center gap-3 px-8 py-4 bg-[#E8D200] text-[#080808] font-black uppercase tracking-[0.3em] text-[11px] rounded-2xl hover:translate-y-[-2px] transition-all shadow-lg shadow-[#E8D200]/10 disabled:opacity-40 disabled:translate-y-0"
                                                 >
                                                     {saving === ticket.id
-                                                        ? <div className="w-4 h-4 border-2 border-[#080808] border-t-transparent rounded-full animate-spin" />
+                                                        ? <div className="w-4 h-4 border-2 border-[#E6E6E1] border-t-transparent rounded-full animate-spin" />
                                                         : <Send size={14} />}
                                                     {saving === ticket.id ? 'Sending…' : 'Send & Resolve'}
                                                 </button>

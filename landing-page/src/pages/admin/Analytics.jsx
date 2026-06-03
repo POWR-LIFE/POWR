@@ -82,8 +82,8 @@ export default function Analytics() {
                     <div className="h-[1px] w-12 bg-[#8B5CF6]"></div>
                     <span className="text-[10px] uppercase tracking-[0.5em] text-[#8B5CF6] font-black">Subsystem / Intelligence</span>
                 </div>
-                <h1 className="text-6xl font-light tracking-tighter text-[#F2F2F2] mb-6">Analytics</h1>
-                <p className="text-[#999] text-[11px] max-w-xl font-black uppercase tracking-[0.4em] leading-relaxed">
+                <h1 className="text-6xl font-light tracking-tighter text-[#1A1A1A] mb-6">Analytics</h1>
+                <p className="text-[#666666] text-[11px] max-w-xl font-black uppercase tracking-[0.4em] leading-relaxed">
                     Network-wide performance metrics and growth telemetry.
                 </p>
             </div>
@@ -91,17 +91,17 @@ export default function Analytics() {
             {/* KPI Cards */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-8 mb-20">
                 {[
-                    { label: 'Weekly Active', value: weeklyActive, icon: Users, color: '#E8D200' },
+                    { label: 'Weekly Active', value: weeklyActive, icon: Users, color: '#8a7600' },
                     { label: 'Total Sessions', value: totalSessions, icon: Activity, color: '#10B981' },
                     { label: 'Avg Duration', value: `${avgDuration}m`, icon: Calendar, color: '#0EA5E9' },
                     { label: 'Points Issued', value: totalPoints.toLocaleString(), icon: Zap, color: '#F59E0B' },
                 ].map(c => (
-                    <div key={c.label} className="bg-[#0A0A0A] border border-[#151515] p-10 rounded-3xl group hover:border-[#202020] transition-all">
+                    <div key={c.label} className="bg-white border border-[#E6E6E1] p-10 rounded-3xl group hover:border-[#E6E6E1] transition-all">
                         <div className="flex items-center gap-3 mb-6">
                             <c.icon size={16} style={{ color: c.color }} />
-                            <span className="text-[9px] uppercase tracking-[0.4em] text-[#999] font-black">{c.label}</span>
+                            <span className="text-[9px] uppercase tracking-[0.4em] text-[#666666] font-black">{c.label}</span>
                         </div>
-                        <div className="text-5xl font-light tracking-tighter text-[#DDD] leading-none">
+                        <div className="text-5xl font-light tracking-tighter text-[#222222] leading-none">
                             {loading ? '...' : c.value}
                         </div>
                     </div>
@@ -110,29 +110,29 @@ export default function Analytics() {
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-16">
                 {/* User Growth Chart */}
-                <div className="bg-[#0A0A0A] border border-[#151515] p-12 rounded-[2rem]">
+                <div className="bg-white border border-[#E6E6E1] p-12 rounded-[2rem]">
                     <div className="flex items-center justify-between mb-12">
                         <div>
-                            <h3 className="text-xl font-light tracking-tighter text-[#EEE]">User Growth</h3>
-                            <p className="text-[9px] uppercase tracking-[0.4em] text-[#999] font-black mt-2">Registrations by Month</p>
+                            <h3 className="text-xl font-light tracking-tighter text-[#1A1A1A]">User Growth</h3>
+                            <p className="text-[9px] uppercase tracking-[0.4em] text-[#666666] font-black mt-2">Registrations by Month</p>
                         </div>
-                        <TrendingUp size={20} className="text-[#999]" />
+                        <TrendingUp size={20} className="text-[#666666]" />
                     </div>
                     {loading ? (
-                        <div className="h-48 flex items-center justify-center"><span className="text-[#999] text-xs">Loading...</span></div>
+                        <div className="h-48 flex items-center justify-center"><span className="text-[#666666] text-xs">Loading...</span></div>
                     ) : userGrowth.length === 0 ? (
-                        <div className="h-48 flex items-center justify-center"><span className="text-[#777] text-[10px] uppercase tracking-[0.4em] font-black">No data yet</span></div>
+                        <div className="h-48 flex items-center justify-center"><span className="text-[#888888] text-[10px] uppercase tracking-[0.4em] font-black">No data yet</span></div>
                     ) : (
                         <div className="flex items-end gap-4 h-48">
                             {userGrowth.map((d, i) => (
                                 <div key={i} className="flex-1 flex flex-col items-center gap-3">
-                                    <span className="text-[11px] font-bold text-[#E8D200]">{d.count}</span>
+                                    <span className="text-[11px] font-bold text-[#8a7600]">{d.count}</span>
                                     <div className="w-full rounded-t-xl transition-all hover:opacity-80" style={{
                                         height: `${(d.count / maxGrowth) * 100}%`,
                                         minHeight: '8px',
                                         background: 'linear-gradient(180deg, #E8D200, #E8D200/40)',
                                     }} />
-                                    <span className="text-[8px] font-black uppercase tracking-[0.2em] text-[#999]">{d.month}</span>
+                                    <span className="text-[8px] font-black uppercase tracking-[0.2em] text-[#666666]">{d.month}</span>
                                 </div>
                             ))}
                         </div>
@@ -140,18 +140,18 @@ export default function Analytics() {
                 </div>
 
                 {/* Activity Breakdown */}
-                <div className="bg-[#0A0A0A] border border-[#151515] p-12 rounded-[2rem]">
+                <div className="bg-white border border-[#E6E6E1] p-12 rounded-[2rem]">
                     <div className="flex items-center justify-between mb-12">
                         <div>
-                            <h3 className="text-xl font-light tracking-tighter text-[#EEE]">Activity Mix</h3>
-                            <p className="text-[9px] uppercase tracking-[0.4em] text-[#999] font-black mt-2">Sessions by Type</p>
+                            <h3 className="text-xl font-light tracking-tighter text-[#1A1A1A]">Activity Mix</h3>
+                            <p className="text-[9px] uppercase tracking-[0.4em] text-[#666666] font-black mt-2">Sessions by Type</p>
                         </div>
-                        <BarChart3 size={20} className="text-[#999]" />
+                        <BarChart3 size={20} className="text-[#666666]" />
                     </div>
                     {loading ? (
-                        <div className="h-48 flex items-center justify-center"><span className="text-[#999] text-xs">Loading...</span></div>
+                        <div className="h-48 flex items-center justify-center"><span className="text-[#666666] text-xs">Loading...</span></div>
                     ) : activityBreakdown.length === 0 ? (
-                        <div className="h-48 flex items-center justify-center"><span className="text-[#777] text-[10px] uppercase tracking-[0.4em] font-black">No data yet</span></div>
+                        <div className="h-48 flex items-center justify-center"><span className="text-[#888888] text-[10px] uppercase tracking-[0.4em] font-black">No data yet</span></div>
                     ) : (
                         <div className="space-y-5">
                             {activityBreakdown.map((d, i) => (
@@ -160,7 +160,7 @@ export default function Analytics() {
                                         <span className="text-[11px] font-black uppercase tracking-[0.2em] text-[#BBB] capitalize">{d.type}</span>
                                         <span className="text-[10px] font-black text-[#BBB]">{d.count} ({d.pct}%)</span>
                                     </div>
-                                    <div className="w-full h-3 bg-[#111] rounded-full overflow-hidden">
+                                    <div className="w-full h-3 bg-[#EFEFEC] rounded-full overflow-hidden">
                                         <div className="h-full rounded-full transition-all duration-700" style={{
                                             width: `${(d.count / maxActivity) * 100}%`,
                                             backgroundColor: COLORS[d.type] || '#E8D200',

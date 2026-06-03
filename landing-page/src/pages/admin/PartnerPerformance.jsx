@@ -59,8 +59,8 @@ export default function PartnerPerformance() {
                     <div className="h-[1px] w-12 bg-[#0EA5E9]"></div>
                     <span className="text-[10px] uppercase tracking-[0.5em] text-[#0EA5E9] font-black">Subsystem / Network</span>
                 </div>
-                <h1 className="text-6xl font-light tracking-tighter text-[#F2F2F2] mb-6">Partner Performance</h1>
-                <p className="text-[#999] text-[11px] max-w-xl font-black uppercase tracking-[0.4em] leading-relaxed">
+                <h1 className="text-6xl font-light tracking-tighter text-[#1A1A1A] mb-6">Partner Performance</h1>
+                <p className="text-[#666666] text-[11px] max-w-xl font-black uppercase tracking-[0.4em] leading-relaxed">
                     Engagement metrics and visit frequency across the partner network.
                 </p>
             </div>
@@ -69,16 +69,16 @@ export default function PartnerPerformance() {
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-8 mb-20">
                 {[
                     { label: 'Geofence Visits', value: sessionStats.totalGeofence || 0, icon: MapPin, color: '#10B981' },
-                    { label: 'Unique Visitors', value: sessionStats.uniqueUsers || 0, icon: Users, color: '#E8D200' },
+                    { label: 'Unique Visitors', value: sessionStats.uniqueUsers || 0, icon: Users, color: '#8a7600' },
                     { label: 'Avg Session', value: `${sessionStats.avgDuration || 0}m`, icon: Clock, color: '#0EA5E9' },
                     { label: 'Total Sessions', value: sessionStats.totalSessions || 0, icon: Activity, color: '#8B5CF6' },
                 ].map(c => (
-                    <div key={c.label} className="bg-[#0A0A0A] border border-[#151515] p-10 rounded-3xl group hover:border-[#202020] transition-all">
+                    <div key={c.label} className="bg-white border border-[#E6E6E1] p-10 rounded-3xl group hover:border-[#E6E6E1] transition-all">
                         <div className="flex items-center gap-3 mb-6">
                             <c.icon size={16} style={{ color: c.color }} />
-                            <span className="text-[9px] uppercase tracking-[0.4em] text-[#999] font-black">{c.label}</span>
+                            <span className="text-[9px] uppercase tracking-[0.4em] text-[#666666] font-black">{c.label}</span>
                         </div>
-                        <div className="text-5xl font-light tracking-tighter text-[#DDD] leading-none">
+                        <div className="text-5xl font-light tracking-tighter text-[#222222] leading-none">
                             {loading ? '...' : c.value}
                         </div>
                     </div>
@@ -86,55 +86,55 @@ export default function PartnerPerformance() {
             </div>
 
             {/* Partner Leaderboard */}
-            <div className="bg-[#0A0A0A] border border-[#151515] rounded-3xl overflow-hidden">
-                <div className="p-10 border-b border-[#151515] flex items-center justify-between">
+            <div className="bg-white border border-[#E6E6E1] rounded-3xl overflow-hidden">
+                <div className="p-10 border-b border-[#E6E6E1] flex items-center justify-between">
                     <div>
-                        <h3 className="text-xl font-light tracking-tighter text-[#EEE]">Partner Leaderboard</h3>
-                        <p className="text-[9px] uppercase tracking-[0.4em] text-[#999] font-black mt-2">Ranked by Engagement Volume</p>
+                        <h3 className="text-xl font-light tracking-tighter text-[#1A1A1A]">Partner Leaderboard</h3>
+                        <p className="text-[9px] uppercase tracking-[0.4em] text-[#666666] font-black mt-2">Ranked by Engagement Volume</p>
                     </div>
-                    <TrendingUp size={20} className="text-[#999]" />
+                    <TrendingUp size={20} className="text-[#666666]" />
                 </div>
 
                 {loading ? (
                     <div className="flex flex-col items-center justify-center py-32 gap-6">
                         <div className="w-12 h-12 border-2 border-[#0EA5E9]/20 border-t-[#0EA5E9] rounded-full animate-spin" />
-                        <span className="text-[10px] uppercase tracking-[0.6em] text-[#999] font-black">Aggregating Network Data...</span>
+                        <span className="text-[10px] uppercase tracking-[0.6em] text-[#666666] font-black">Aggregating Network Data...</span>
                     </div>
                 ) : partners.length === 0 ? (
                     <div className="p-20 text-center">
-                        <Award size={48} className="mx-auto text-[#CCC] mb-6" />
-                        <p className="text-[10px] uppercase tracking-[0.4em] text-[#777] font-black">No active partners in network</p>
+                        <Award size={48} className="mx-auto text-[#333333] mb-6" />
+                        <p className="text-[10px] uppercase tracking-[0.4em] text-[#888888] font-black">No active partners in network</p>
                     </div>
                 ) : (
-                    <div className="divide-y divide-[#111]">
+                    <div className="divide-y divide-[#E6E6E1]">
                         {partners.map((p, i) => (
-                            <div key={p.id} className="flex items-center gap-10 p-10 group hover:bg-[#080808] transition-all">
-                                <div className="w-14 h-14 rounded-2xl bg-[#050505] border border-[#151515] flex items-center justify-center text-2xl font-light text-[#999] shrink-0">
+                            <div key={p.id} className="flex items-center gap-10 p-10 group hover:bg-[#F4F4F1] transition-all">
+                                <div className="w-14 h-14 rounded-2xl bg-[#F4F4F1] border border-[#E6E6E1] flex items-center justify-center text-2xl font-light text-[#666666] shrink-0">
                                     {i + 1}
                                 </div>
-                                <div className="w-14 h-14 rounded-2xl bg-[#050505] border border-[#151515] flex items-center justify-center overflow-hidden shrink-0">
+                                <div className="w-14 h-14 rounded-2xl bg-[#F4F4F1] border border-[#E6E6E1] flex items-center justify-center overflow-hidden shrink-0">
                                     {p.logo_url ? (
                                         <img src={p.logo_url} alt="" className="w-full h-full object-contain p-2" />
                                     ) : (
-                                        <Activity size={20} className="text-[#777]" />
+                                        <Activity size={20} className="text-[#888888]" />
                                     )}
                                 </div>
                                 <div className="flex-1">
-                                    <div className="text-lg font-bold text-[#DDD] group-hover:text-[#F2F2F2] transition-colors mb-1">{p.name}</div>
-                                    <div className="text-[10px] uppercase tracking-[0.3em] text-[#999] font-black capitalize">{p.category} Partner</div>
+                                    <div className="text-lg font-bold text-[#222222] group-hover:text-[#1A1A1A] transition-colors mb-1">{p.name}</div>
+                                    <div className="text-[10px] uppercase tracking-[0.3em] text-[#666666] font-black capitalize">{p.category} Partner</div>
                                 </div>
                                 <div className="flex gap-10">
                                     <div className="text-center">
-                                        <div className="text-2xl font-light tracking-tighter text-[#E8D200] mb-1">{p.visits}</div>
-                                        <div className="text-[8px] uppercase tracking-[0.3em] text-[#999] font-black">Visits</div>
+                                        <div className="text-2xl font-light tracking-tighter text-[#8a7600] mb-1">{p.visits}</div>
+                                        <div className="text-[8px] uppercase tracking-[0.3em] text-[#666666] font-black">Visits</div>
                                     </div>
                                     <div className="text-center">
                                         <div className="text-2xl font-light tracking-tighter text-[#10B981] mb-1">{p.uniqueVisitors}</div>
-                                        <div className="text-[8px] uppercase tracking-[0.3em] text-[#999] font-black">Users</div>
+                                        <div className="text-[8px] uppercase tracking-[0.3em] text-[#666666] font-black">Users</div>
                                     </div>
                                     <div className="text-center">
                                         <div className="text-2xl font-light tracking-tighter text-[#0EA5E9] mb-1">{p.avgSessionMin}m</div>
-                                        <div className="text-[8px] uppercase tracking-[0.3em] text-[#999] font-black">Avg</div>
+                                        <div className="text-[8px] uppercase tracking-[0.3em] text-[#666666] font-black">Avg</div>
                                     </div>
                                 </div>
                             </div>
