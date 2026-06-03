@@ -239,7 +239,7 @@ export default function UserManager() {
                             <thead>
                                 <tr className="bg-[#F4F4F1] border-b border-[#E6E6E1]">
                                     {['User Identity', 'Protocol Level', 'Location', 'Registration', 'Status', ''].map(h => (
-                                        <th key={h} className={`px-6 py-5 text-[10px] font-black uppercase tracking-[0.5em] text-[#888888] ${h === '' ? 'text-right' : ''}`}>{h}</th>
+                                        <th key={h} className={`px-6 py-5 text-[10px] font-black uppercase tracking-[0.3em] text-[#888888] whitespace-nowrap ${h === '' ? 'text-right' : ''}`}>{h}</th>
                                     ))}
                                 </tr>
                             </thead>
@@ -260,7 +260,7 @@ export default function UserManager() {
                                 ) : filtered.map(user => (
                                     <tr key={user.id} className="group hover:bg-[#F4F4F1] transition-all">
                                         <td className="px-6 py-5">
-                                            <div className="flex items-center gap-6">
+                                            <div className="flex items-center gap-6 max-w-[280px]">
                                                 <div className="w-12 h-12 rounded-2xl bg-[#F4F4F1] border border-[#E6E6E1] flex items-center justify-center overflow-hidden shrink-0">
                                                     {user.avatar_url ? (
                                                         <img
@@ -272,11 +272,11 @@ export default function UserManager() {
                                                     ) : null}
                                                     <User size={18} className="text-[#888888]" style={{ display: user.avatar_url ? 'none' : '' }} />
                                                 </div>
-                                                <div>
-                                                    <span className="text-base font-bold text-[#222222] group-hover:text-[#1A1A1A] transition-colors block mb-1">
+                                                <div className="min-w-0">
+                                                    <span className="text-base font-bold text-[#222222] group-hover:text-[#1A1A1A] transition-colors block mb-1 truncate">
                                                         {user.display_name || user.username || user.email?.split('@')[0] || 'Anonymous Node'}
                                                     </span>
-                                                    <span className="text-[10px] uppercase tracking-[0.4em] text-[#666666] font-black">
+                                                    <span className="block truncate text-[10px] uppercase tracking-[0.4em] text-[#666666] font-black">
                                                         {user.username ? `@${user.username}` : user.email || 'unidentified'}
                                                     </span>
                                                 </div>
@@ -324,11 +324,12 @@ export default function UserManager() {
                                         </td>
                                         <td className="px-6 py-5 text-right">
                                             <div className="flex items-center justify-end gap-3">
-                                                <Link 
+                                                <Link
                                                     to={`/admin/users/${user.id}`}
-                                                    className="inline-flex items-center gap-3 px-6 py-3 bg-[#F4F4F1] border border-[#E6E6E1] rounded-full text-[9px] font-black uppercase tracking-[0.3em] text-[#666666] hover:text-[#8a7600] hover:border-[#E8D200]/40 transition-all group/btn"
+                                                    title="Query profile"
+                                                    className="inline-flex items-center gap-3 px-5 py-3 bg-[#F4F4F1] border border-[#E6E6E1] rounded-full text-[9px] font-black uppercase tracking-[0.3em] text-[#666666] hover:text-[#8a7600] hover:border-[#E8D200]/40 transition-all group/btn whitespace-nowrap"
                                                 >
-                                                    Query Profile
+                                                    <span className="hidden 2xl:inline">Query Profile</span>
                                                     <ChevronRight size={14} className="text-[#333333] group-hover/btn:text-[#8a7600] transition-colors" />
                                                 </Link>
                                                 <button
