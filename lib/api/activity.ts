@@ -40,6 +40,15 @@ async function getCurrentUserId(): Promise<string | null> {
     return user?.id ?? null;
 }
 
+/** True if an ISO timestamp falls on the current local calendar day. */
+function isLocalToday(iso: string): boolean {
+    const d = new Date(iso);
+    const now = new Date();
+    return d.getFullYear() === now.getFullYear()
+        && d.getMonth() === now.getMonth()
+        && d.getDate() === now.getDate();
+}
+
 export async function fetchRecentSessions(limit = 5): Promise<ActivitySession[]> {
     const uid = await getCurrentUserId();
     if (!uid) return [];
@@ -205,8 +214,11 @@ export async function logManualSession(params: ManualSessionParams): Promise<boo
         if (ptError) throw ptError;
     }
 
-    // Wearable-verified activities count towards streak (unlike plain manual logs)
-    if (params.healthVerified) {
+    // Wearable-verified activities count towards streak (unlike plain manual logs).
+    // Only TODAY's activity advances the streak counter — backfilled past-day
+    // sessions still populate active-days (read from sessions directly) but must
+    // not retroactively bump today's streak.
+    if (params.healthVerified && isLocalToday(params.started_at)) {
         await updateStreakForToday();
     }
 

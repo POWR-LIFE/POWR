@@ -23,6 +23,7 @@ import { StreakCard } from '@/components/home/StreakCard';
 import { WeeklyActivityBars, type WeeklyRingData } from '@/components/home/WeeklyActivityRings';
 import { WeeklyActivityCircles } from '@/components/home/WeeklyActivityRings';
 import { ProfileButton } from '@/components/ProfileButton';
+import { HealthGapBanner } from '@/components/HealthGapBanner';
 import { ACTIVITIES, type ActivityType } from '@/constants/activities';
 import { useAuth } from '@/context/AuthContext';
 import { useGeofenceContext } from '@/context/GeofenceContext';
@@ -510,6 +511,8 @@ export default function HomeScreen() {
                         </View>
                     </View>
                 )}
+
+                <HealthGapBanner />
 
                 <StreakCard
                     streak={currentStreak}

@@ -1,13 +1,23 @@
 import { useEffect, useCallback, useRef } from 'react';
 import { Alert, Platform } from 'react-native';
-import { useHealthData } from './useHealthData';
+import { useHealthData, type DayHealthSummary } from './useHealthData';
 import { useHealthProviders } from './useHealthProviders';
 import { getProvider, verificationForProvider, ALL_PROVIDER_META, type HealthProviderId } from '@/lib/health/providers';
 import { ProviderAuthExpiredError } from '@/lib/health/providers/types';
 import { verificationFromProvenance, sourceLabel } from '@/lib/health/dataSource';
+import { getInferredActivitiesForWeek } from '@/lib/health/runInference';
 import { supabase } from '@/lib/supabase';
 import { ACTIVITIES, type ActivityType } from '@/constants/activities';
 import { logManualSession, saveHealthSnapshot } from '@/lib/api/activity';
+
+/** True if an ISO timestamp falls on the current local calendar day. */
+function isLocalToday(iso: string): boolean {
+  const d = new Date(iso);
+  const now = new Date();
+  return d.getFullYear() === now.getFullYear()
+    && d.getMonth() === now.getMonth()
+    && d.getDate() === now.getDate();
+}
 
 /** Map provider id → snapshot source label */
 function sourceForProvider(id: HealthProviderId | null): 'healthkit' | 'health_connect' | 'fitbit' | 'whoop' | 'garmin' {
@@ -28,14 +38,6 @@ export function useHealthSync() {
 
   // For native providers, use the useHealthData hook directly.
   // For third-party providers (Whoop, Fitbit, etc.), use the provider instance.
-  const getActivitiesToday = useCallback(async () => {
-    if (isNativeProvider) return nativeHealth.getActivitiesToday();
-    try {
-      const provider = getProvider(activeId!);
-      return provider.getActivitiesToday();
-    } catch { return []; }
-  }, [isNativeProvider, activeId, nativeHealth.getActivitiesToday]);
-
   const getHeartRateToday = useCallback(async () => {
     if (isNativeProvider) return nativeHealth.getHeartRateToday();
     try {
@@ -67,13 +69,8 @@ export function useHealthSync() {
     } catch { return []; }
   }, [isNativeProvider, activeId, nativeHealth.getWeekHistory]);
 
-  const syncSleep = useCallback(async (syncedKeys: Set<string>) => {
+  const syncSleep = useCallback(async (weekHistory: DayHealthSummary[], syncedKeys: Set<string>) => {
     try {
-      // Fetch the full week of health data so we can backfill all nights,
-      // not just the most recent one. This covers the case where a user
-      // connects a provider mid-week — previous nights still get synced.
-      const weekHistory = await getWeekHistory();
-
       for (const day of weekHistory) {
         const sleep = day.sleep;
         if (!sleep || sleep.durationHours < 1) continue; // ignore very short naps
@@ -109,42 +106,54 @@ export function useHealthSync() {
     } catch (e) {
       console.error('[HealthSync] Error syncing sleep:', e);
     }
-  }, [getWeekHistory, source, verificationSource]);
+  }, [source, verificationSource]);
 
   const syncActivities = useCallback(async () => {
     if (!isAuthorized) return;
 
     try {
-      const healthActivities = await getActivitiesToday();
+      // Pull a full week of health data so late-arriving activities (Garmin's
+      // delayed cloud→Health sync, or the app being closed across midnight) are
+      // still captured — not just today's. getWeekHistory already fetches per-day
+      // workouts for every provider; we used to read only today and silently drop
+      // anything older. Sleep (below) reuses the same fetch.
+      const weekHistory = await getWeekHistory();
 
-      // Fetch existing synced sessions for today to avoid duplicates
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
+      // Existing synced sessions over the same window, to avoid duplicates.
+      const weekAgo = new Date();
+      weekAgo.setDate(weekAgo.getDate() - 7);
+      weekAgo.setHours(0, 0, 0, 0);
 
       const { data: existingSessions } = await supabase
         .from('activity_sessions')
         .select('type, started_at')
         // Match both health-synced sources so dedup survives the wearable→health split.
         .in('verification', ['wearable', 'health'])
-        .gte('started_at', today.toISOString());
+        .gte('started_at', weekAgo.toISOString());
 
       const syncedKeys = new Set(
         (existingSessions ?? []).map(s => `${s.type}_${new Date(s.started_at).toISOString()}`)
       );
 
-      // Fetch heart rate + calories once for snapshot enrichment
+      // Today's heart rate + calories — used to enrich *today's* sessions only. We
+      // have no per-day aggregates for past days, so backfilled sessions are saved
+      // without (misleading) day-wide HR/calorie figures rather than wrong ones.
       const [heartRate, calories] = await Promise.all([
         getHeartRateToday().catch(() => null),
         getCaloriesToday().catch(() => null),
       ]);
 
-      for (const health of healthActivities) {
+      // ── Workouts (every provider; today + backfill) ─────────────────────
+      const workouts = weekHistory.flatMap(d => d.activities);
+      for (const health of workouts) {
         const mappedType = mapHealthType(health.type);
         if (!mappedType) continue;
 
         const key = `${mappedType}_${new Date(health.startedAt).toISOString()}`;
         if (syncedKeys.has(key)) continue;
+        syncedKeys.add(key); // also guard against duplicates within this run
 
+        const today = isLocalToday(health.startedAt);
         // On the native path, derive wearable-vs-phone from the sample's own
         // provenance (which app/device wrote it); fall back to the provider-level
         // label when there's no per-sample source (e.g. OAuth providers).
@@ -156,7 +165,7 @@ export function useHealthSync() {
           type: mappedType,
           duration_sec: health.durationMin * 60,
           distance_m: health.distanceM,
-          hr_avg: heartRate?.avg,
+          hr_avg: today ? heartRate?.avg : undefined,
           started_at: health.startedAt,
           points: calculateBasePoints(mappedType, health.durationMin),
           healthVerified: true,
@@ -167,11 +176,11 @@ export function useHealthSync() {
         await saveHealthSnapshot({
           steps: health.steps,
           distanceM: health.distanceM,
-          hrAvg: heartRate?.avg,
-          hrMax: heartRate?.max,
-          hrResting: heartRate?.resting,
-          caloriesActive: calories?.active,
-          caloriesTotal: calories?.total,
+          hrAvg: today ? heartRate?.avg : undefined,
+          hrMax: today ? heartRate?.max : undefined,
+          hrResting: today ? heartRate?.resting : undefined,
+          caloriesActive: today ? calories?.active : undefined,
+          caloriesTotal: today ? calories?.total : undefined,
           activityType: health.type,
           durationSec: health.durationMin * 60,
           source,
@@ -181,8 +190,62 @@ export function useHealthSync() {
         console.log(`[HealthSync] Synced ${mappedType} from ${health.startedAt}`);
       }
 
-      // ── Sleep sync ──────────────────────────────────────────────────
-      await syncSleep(syncedKeys);
+      // ── Inferred cardio (wearables that mirror metrics but write no workout) ──
+      // Garmin et al. push distance/HR into Apple Health without an HKWorkout, so
+      // the workout loop above never sees them. Reconstruct run/cycle/swim from the
+      // wearable-sourced distance across the week (each lives in its own HK distance
+      // type, so the type is self-identifying). iOS native path only; the once-per
+      // -type-per-day DB constraint dedups against the workout path and re-syncs.
+      if (isNativeProvider && Platform.OS === 'ios') {
+        const inferred = await getInferredActivitiesForWeek().catch(() => []);
+        for (const act of inferred) {
+          const key = `${act.type}_${new Date(act.startedAt).toISOString()}`;
+          if (syncedKeys.has(key)) continue;
+
+          // Skip if a real workout of the same type already covers this window
+          // (e.g. an Apple Watch run), so we never compete with the workout-path
+          // session for the same effort.
+          const actStart = +new Date(act.startedAt);
+          const actEnd = +new Date(act.endedAt);
+          const overlapsWorkout = workouts.some(h => {
+            if (mapHealthType(h.type) !== act.type) return false;
+            const hs = +new Date(h.startedAt);
+            const he = hs + h.durationMin * 60000;
+            return actStart < he && hs < actEnd;
+          });
+          if (overlapsWorkout) continue;
+          syncedKeys.add(key);
+
+          const today = isLocalToday(act.startedAt);
+          const actVerification = verificationFromProvenance(act.source, verificationSource);
+          await logManualSession({
+            type: act.type,
+            duration_sec: act.durationMin * 60,
+            distance_m: act.distanceM,
+            hr_avg: today ? heartRate?.avg : undefined,
+            started_at: act.startedAt,
+            points: calculateBasePoints(act.type, act.durationMin),
+            healthVerified: true,
+            healthSource: actVerification,
+          });
+
+          await saveHealthSnapshot({
+            distanceM: act.distanceM,
+            hrAvg: today ? heartRate?.avg : undefined,
+            hrMax: today ? heartRate?.max : undefined,
+            hrResting: today ? heartRate?.resting : undefined,
+            activityType: act.type,
+            durationSec: act.durationMin * 60,
+            source,
+            sourceDetail: act.source ? sourceLabel(act.source) : undefined,
+          });
+
+          console.log(`[HealthSync] Synced inferred ${act.type} ${act.startedAt} (${act.distanceM}m, ${act.avgSpeedKmh}km/h)`);
+        }
+      }
+
+      // ── Sleep sync (week backfill, same fetch) ──────────────────────────
+      await syncSleep(weekHistory, syncedKeys);
     } catch (e: any) {
       // OAuth token expired — auto-disconnect and alert the user once.
       if (e instanceof ProviderAuthExpiredError) {
@@ -207,7 +270,7 @@ export function useHealthSync() {
         console.error('[HealthSync] Error syncing activities:', e);
       }
     }
-  }, [isAuthorized, getActivitiesToday, getHeartRateToday, getCaloriesToday, source, verificationSource, syncSleep]);
+  }, [isAuthorized, getWeekHistory, getHeartRateToday, getCaloriesToday, source, verificationSource, isNativeProvider, syncSleep]);
 
   useEffect(() => {
     if (isAuthorized) {
