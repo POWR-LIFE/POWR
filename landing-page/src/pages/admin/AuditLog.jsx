@@ -58,8 +58,8 @@ export default function AuditLog() {
                     <div className="h-[1px] w-12 bg-[#F59E0B]"></div>
                     <span className="text-[10px] uppercase tracking-[0.5em] text-[#F59E0B] font-black">Subsystem / Compliance</span>
                 </div>
-                <h1 className="text-6xl font-light tracking-tighter text-[#F2F2F2] mb-6">Audit Log</h1>
-                <p className="text-[#999] text-[11px] max-w-xl font-black uppercase tracking-[0.4em] leading-relaxed">
+                <h1 className="text-6xl font-light tracking-tighter text-[#1A1A1A] mb-6">Audit Log</h1>
+                <p className="text-[#666666] text-[11px] max-w-xl font-black uppercase tracking-[0.4em] leading-relaxed">
                     Immutable record of all administrative actions performed on the platform.
                 </p>
             </div>
@@ -67,43 +67,43 @@ export default function AuditLog() {
             {/* Controls */}
             <div className="flex flex-col md:flex-row gap-6 mb-10">
                 <div className="relative flex-1 group">
-                    <Search size={18} className="absolute left-6 top-1/2 -translate-y-1/2 text-[#777] group-focus-within:text-[#E8D200] transition-colors" />
-                    <input type="text" placeholder="FILTER BY ACTION OR TARGET..." className="w-full h-16 pl-16 pr-8 bg-[#0A0A0A] border border-[#151515] rounded-[2rem] text-[11px] font-black tracking-[0.2em] text-[#F2F2F2] placeholder-[#151515] focus:border-[#E8D200]/40 outline-none transition-all uppercase" value={search} onChange={e => setSearch(e.target.value)} />
+                    <Search size={18} className="absolute left-6 top-1/2 -translate-y-1/2 text-[#888888] group-focus-within:text-[#8a7600] transition-colors" />
+                    <input type="text" placeholder="FILTER BY ACTION OR TARGET..." className="w-full h-16 pl-16 pr-8 bg-white border border-[#E6E6E1] rounded-[2rem] text-[11px] font-black tracking-[0.2em] text-[#1A1A1A] placeholder-[#BBBBBB] focus:border-[#E8D200]/40 outline-none transition-all uppercase" value={search} onChange={e => setSearch(e.target.value)} />
                 </div>
             </div>
 
             {/* Log Table */}
-            <div className="bg-[#0A0A0A] border border-[#151515] rounded-3xl overflow-hidden">
+            <div className="bg-white border border-[#E6E6E1] rounded-3xl overflow-hidden">
                 {loading ? (
                     <div className="flex flex-col items-center justify-center py-32 gap-6">
                         <div className="w-12 h-12 border-2 border-[#F59E0B]/20 border-t-[#F59E0B] rounded-full animate-spin" />
-                        <span className="text-[10px] uppercase tracking-[0.6em] text-[#999] font-black">Scanning Audit Trail...</span>
+                        <span className="text-[10px] uppercase tracking-[0.6em] text-[#666666] font-black">Scanning Audit Trail...</span>
                     </div>
                 ) : filtered.length === 0 ? (
                     <div className="p-20 text-center">
-                        <ScrollText size={48} className="mx-auto text-[#CCC] mb-6" />
-                        <p className="text-[10px] uppercase tracking-[0.4em] text-[#777] font-black">No audit records found</p>
+                        <ScrollText size={48} className="mx-auto text-[#333333] mb-6" />
+                        <p className="text-[10px] uppercase tracking-[0.4em] text-[#888888] font-black">No audit records found</p>
                     </div>
                 ) : (
-                    <div className="divide-y divide-[#111]">
+                    <div className="divide-y divide-[#E6E6E1]">
                         {filtered.map(log => (
-                            <div key={log.id} className="flex items-center gap-8 p-8 group hover:bg-[#080808] transition-all">
+                            <div key={log.id} className="flex items-center gap-8 p-8 group hover:bg-[#F4F4F1] transition-all">
                                 <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: ACTION_COLORS[log.action] || ACTION_COLORS.default }} />
                                 <div className="flex-1 min-w-0">
                                     <div className="flex items-center gap-4 mb-2">
-                                        <span className="text-sm font-bold text-[#DDD] capitalize">{log.action.replace(/_/g, ' ')}</span>
+                                        <span className="text-sm font-bold text-[#222222] capitalize">{log.action.replace(/_/g, ' ')}</span>
                                         {log.target_type && (
-                                            <span className="px-3 py-0.5 bg-[#050505] border border-[#151515] rounded-full text-[8px] font-black uppercase tracking-[0.3em] text-[#999]">{log.target_type}</span>
+                                            <span className="px-3 py-0.5 bg-[#F4F4F1] border border-[#E6E6E1] rounded-full text-[8px] font-black uppercase tracking-[0.3em] text-[#666666]">{log.target_type}</span>
                                         )}
                                     </div>
-                                    <div className="flex items-center gap-6 text-[9px] font-black uppercase tracking-[0.3em] text-[#999]">
+                                    <div className="flex items-center gap-6 text-[9px] font-black uppercase tracking-[0.3em] text-[#666666]">
                                         <span>Admin: {log.admin_id.substring(0, 12)}...</span>
                                         {log.target_id && <span>Target: {log.target_id.substring(0, 12)}...</span>}
                                     </div>
                                 </div>
                                 <div className="text-right shrink-0">
                                     <div className="text-[11px] text-[#BBB] mb-1">{new Date(log.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</div>
-                                    <div className="text-[9px] text-[#999] font-black uppercase tracking-[0.3em]">{timeAgo(log.created_at)}</div>
+                                    <div className="text-[9px] text-[#666666] font-black uppercase tracking-[0.3em]">{timeAgo(log.created_at)}</div>
                                 </div>
                             </div>
                         ))}

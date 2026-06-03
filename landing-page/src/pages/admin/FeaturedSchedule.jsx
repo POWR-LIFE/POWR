@@ -143,10 +143,10 @@ export default function FeaturedSchedule() {
                 <div>
                     <div className="flex items-center gap-3 mb-6">
                         <div className="h-[1px] w-12 bg-[#E8D200]" />
-                        <span className="text-[10px] uppercase tracking-[0.5em] text-[#E8D200] font-black">Subsystem / Featured Slot</span>
+                        <span className="text-[10px] uppercase tracking-[0.5em] text-[#8a7600] font-black">Subsystem / Featured Slot</span>
                     </div>
-                    <h1 className="text-6xl font-light tracking-tighter text-[#F2F2F2] mb-6">Featured Rotation</h1>
-                    <p className="text-[#999] text-[11px] max-w-xl font-black uppercase tracking-[0.4em] leading-relaxed">
+                    <h1 className="text-6xl font-light tracking-tighter text-[#1A1A1A] mb-6">Featured Rotation</h1>
+                    <p className="text-[#666666] text-[11px] max-w-xl font-black uppercase tracking-[0.4em] leading-relaxed">
                         Schedule which reward occupies the featured card on the rewards screen, week by week.
                     </p>
                 </div>
@@ -162,20 +162,20 @@ export default function FeaturedSchedule() {
             {current && (
                 <div className="mb-12 flex items-center gap-6 bg-[#E8D200]/5 border border-[#E8D200]/20 rounded-3xl px-10 py-7">
                     <div className="w-10 h-10 rounded-2xl bg-[#E8D200]/10 flex items-center justify-center shrink-0">
-                        <Star size={18} className="text-[#E8D200]" />
+                        <Star size={18} className="text-[#8a7600]" />
                     </div>
                     <div className="flex-1">
-                        <div className="text-[9px] uppercase tracking-[0.5em] text-[#E8D200] font-black mb-1">Live Now</div>
-                        <div className="text-base font-bold text-[#F2F2F2]">{rewardLabel(current)}</div>
-                        <div className="text-[11px] text-[#777] mt-0.5 font-black uppercase tracking-[0.2em]">{formatWindow(current.starts_at, current.ends_at)}</div>
+                        <div className="text-[9px] uppercase tracking-[0.5em] text-[#8a7600] font-black mb-1">Live Now</div>
+                        <div className="text-base font-bold text-[#1A1A1A]">{rewardLabel(current)}</div>
+                        <div className="text-[11px] text-[#888888] mt-0.5 font-black uppercase tracking-[0.2em]">{formatWindow(current.starts_at, current.ends_at)}</div>
                     </div>
                     {confirmDeleteId === current.id ? (
                         <div className="flex items-center gap-3">
                             <button onClick={() => handleDelete(current.id)} className="h-9 px-5 bg-red-500/10 text-red-500 text-[10px] font-black uppercase tracking-[0.3em] rounded-full border border-red-500/20 hover:bg-red-500/20 transition-all">Remove</button>
-                            <button onClick={() => setConfirmDeleteId(null)} className="h-9 px-5 bg-[#050505] text-[#999] text-[10px] font-black uppercase tracking-[0.3em] rounded-full border border-[#151515] hover:text-[#CCC] transition-all">Cancel</button>
+                            <button onClick={() => setConfirmDeleteId(null)} className="h-9 px-5 bg-[#F4F4F1] text-[#666666] text-[10px] font-black uppercase tracking-[0.3em] rounded-full border border-[#E6E6E1] hover:text-[#333333] transition-all">Cancel</button>
                         </div>
                     ) : (
-                        <button onClick={() => setConfirmDeleteId(current.id)} className="text-[#444] hover:text-red-500 transition-colors"><Trash2 size={16} /></button>
+                        <button onClick={() => setConfirmDeleteId(current.id)} className="text-[#AAAAAA] hover:text-red-500 transition-colors"><Trash2 size={16} /></button>
                     )}
                 </div>
             )}
@@ -183,7 +183,7 @@ export default function FeaturedSchedule() {
             {loading ? (
                 <div className="flex flex-col items-center justify-center py-48 gap-6">
                     <div className="w-12 h-12 border-2 border-[#E8D200]/20 border-t-[#E8D200] rounded-full animate-spin" />
-                    <span className="text-[10px] uppercase tracking-[0.6em] text-[#999] font-black">Loading Schedule...</span>
+                    <span className="text-[10px] uppercase tracking-[0.6em] text-[#666666] font-black">Loading Schedule...</span>
                 </div>
             ) : (
                 <>
@@ -230,23 +230,23 @@ export default function FeaturedSchedule() {
             {isModalOpen && (
                 <div className="fixed inset-0 z-[200] overflow-y-auto bg-black/95 backdrop-blur-xl animate-in fade-in duration-300">
                     <div className="flex min-h-full items-center justify-center p-8">
-                        <div className="bg-[#050505] border border-[#151515] rounded-3xl w-full max-w-xl shadow-[0_0_100px_rgba(232,210,0,0.05)]">
+                        <div className="bg-[#F4F4F1] border border-[#E6E6E1] rounded-3xl w-full max-w-xl shadow-[0_0_100px_rgba(232,210,0,0.05)]">
                             <form onSubmit={handleSave} className="p-12">
                                 <div className="flex items-center justify-between mb-12">
                                     <div>
-                                        <h2 className="text-3xl font-light tracking-tighter text-[#F2F2F2] mb-2">New Featured Slot</h2>
-                                        <p className="text-[10px] uppercase tracking-[0.4em] text-[#999] font-black">Assign a reward to a date window</p>
+                                        <h2 className="text-3xl font-light tracking-tighter text-[#1A1A1A] mb-2">New Featured Slot</h2>
+                                        <p className="text-[10px] uppercase tracking-[0.4em] text-[#666666] font-black">Assign a reward to a date window</p>
                                     </div>
-                                    <button type="button" onClick={() => setIsModalOpen(false)} className="w-12 h-12 bg-[#0A0A0A] border border-[#151515] rounded-3xl flex items-center justify-center text-[#999] hover:text-[#F2F2F2] hover:border-[#E8D200]/40 transition-all">
+                                    <button type="button" onClick={() => setIsModalOpen(false)} className="w-12 h-12 bg-white border border-[#E6E6E1] rounded-3xl flex items-center justify-center text-[#666666] hover:text-[#1A1A1A] hover:border-[#E8D200]/40 transition-all">
                                         <X size={18} />
                                     </button>
                                 </div>
 
                                 <div className="mb-8">
-                                    <label className="block text-[10px] uppercase tracking-[0.4em] text-[#999] font-black mb-4">Reward</label>
+                                    <label className="block text-[10px] uppercase tracking-[0.4em] text-[#666666] font-black mb-4">Reward</label>
                                     <select
                                         required
-                                        className="w-full h-16 px-8 bg-[#0A0A0A] border border-[#151515] rounded-3xl focus:border-[#E8D200]/40 outline-none transition-all appearance-none text-[12px] font-black text-[#DDD] tracking-[0.1em] uppercase"
+                                        className="w-full h-16 px-8 bg-white border border-[#E6E6E1] rounded-3xl focus:border-[#E8D200]/40 outline-none transition-all appearance-none text-[12px] font-black text-[#222222] tracking-[0.1em] uppercase"
                                         value={formData.reward_id}
                                         onChange={e => setFormData({ ...formData, reward_id: e.target.value })}
                                     >
@@ -260,21 +260,21 @@ export default function FeaturedSchedule() {
 
                                 <div className="grid grid-cols-2 gap-6 mb-10">
                                     <div>
-                                        <label className="block text-[10px] uppercase tracking-[0.4em] text-[#999] font-black mb-4">Starts</label>
+                                        <label className="block text-[10px] uppercase tracking-[0.4em] text-[#666666] font-black mb-4">Starts</label>
                                         <input
                                             type="datetime-local"
                                             required
-                                            className="w-full h-16 px-8 bg-[#0A0A0A] border border-[#151515] rounded-3xl focus:border-[#E8D200]/40 outline-none transition-all text-[12px] font-black text-[#F2F2F2]"
+                                            className="w-full h-16 px-8 bg-white border border-[#E6E6E1] rounded-3xl focus:border-[#E8D200]/40 outline-none transition-all text-[12px] font-black text-[#1A1A1A]"
                                             value={formData.starts_at}
                                             onChange={e => setFormData({ ...formData, starts_at: e.target.value })}
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-[10px] uppercase tracking-[0.4em] text-[#999] font-black mb-4">Ends</label>
+                                        <label className="block text-[10px] uppercase tracking-[0.4em] text-[#666666] font-black mb-4">Ends</label>
                                         <input
                                             type="datetime-local"
                                             required
-                                            className="w-full h-16 px-8 bg-[#0A0A0A] border border-[#151515] rounded-3xl focus:border-[#E8D200]/40 outline-none transition-all text-[12px] font-black text-[#F2F2F2]"
+                                            className="w-full h-16 px-8 bg-white border border-[#E6E6E1] rounded-3xl focus:border-[#E8D200]/40 outline-none transition-all text-[12px] font-black text-[#1A1A1A]"
                                             value={formData.ends_at}
                                             onChange={e => setFormData({ ...formData, ends_at: e.target.value })}
                                         />
@@ -283,7 +283,7 @@ export default function FeaturedSchedule() {
 
                                 {/* Quick-fill week buttons */}
                                 <div className="mb-10">
-                                    <div className="text-[10px] uppercase tracking-[0.4em] text-[#555] font-black mb-4">Quick fill — week of</div>
+                                    <div className="text-[10px] uppercase tracking-[0.4em] text-[#999999] font-black mb-4">Quick fill — week of</div>
                                     <div className="flex flex-wrap gap-3">
                                         {[0, 1, 2, 3].map(offset => {
                                             const start = addWeeks(nextMonday(), offset);
@@ -298,7 +298,7 @@ export default function FeaturedSchedule() {
                                                         starts_at: toDatetimeLocal(start.toISOString()),
                                                         ends_at: toDatetimeLocal(end.toISOString()),
                                                     }))}
-                                                    className="h-9 px-5 bg-[#0A0A0A] border border-[#151515] rounded-full text-[10px] font-black uppercase tracking-[0.2em] text-[#AAA] hover:text-[#E8D200] hover:border-[#E8D200]/40 transition-all"
+                                                    className="h-9 px-5 bg-white border border-[#E6E6E1] rounded-full text-[10px] font-black uppercase tracking-[0.2em] text-[#555555] hover:text-[#8a7600] hover:border-[#E8D200]/40 transition-all"
                                                 >
                                                     {label}
                                                 </button>
@@ -308,7 +308,7 @@ export default function FeaturedSchedule() {
                                 </div>
 
                                 <div className="flex justify-end gap-4">
-                                    <button type="button" onClick={() => setIsModalOpen(false)} className="h-14 px-8 text-[11px] uppercase tracking-[0.4em] font-black text-[#999] hover:text-[#BBB] transition-colors">Cancel</button>
+                                    <button type="button" onClick={() => setIsModalOpen(false)} className="h-14 px-8 text-[11px] uppercase tracking-[0.4em] font-black text-[#666666] hover:text-[#BBB] transition-colors">Cancel</button>
                                     <button type="submit" disabled={saving} className="h-14 px-10 bg-[#E8D200] text-[#080808] text-[11px] font-black uppercase tracking-[0.4em] rounded-full transition-all hover:translate-y-[-2px] shadow-xl shadow-[#E8D200]/20 disabled:opacity-50">
                                         {saving ? 'Saving...' : 'Schedule'}
                                     </button>
@@ -328,11 +328,11 @@ function Section({ title, count, muted, children }) {
     return (
         <div className="mb-12">
             <div className="flex items-center gap-4 mb-6">
-                <span className={`text-[10px] uppercase tracking-[0.5em] font-black ${muted ? 'text-[#444]' : 'text-[#999]'}`}>{title}</span>
-                <div className={`h-[1px] flex-1 ${muted ? 'bg-[#111]' : 'bg-[#1A1A1A]'}`} />
-                <span className={`text-[10px] font-black ${muted ? 'text-[#333]' : 'text-[#555]'}`}>{count}</span>
+                <span className={`text-[10px] uppercase tracking-[0.5em] font-black ${muted ? 'text-[#AAAAAA]' : 'text-[#666666]'}`}>{title}</span>
+                <div className={`h-[1px] flex-1 ${muted ? 'bg-[#EFEFEC]' : 'bg-[#E2E2DD]'}`} />
+                <span className={`text-[10px] font-black ${muted ? 'text-[#BBBBBB]' : 'text-[#999999]'}`}>{count}</span>
             </div>
-            <div className="bg-[#0A0A0A] border border-[#151515] rounded-3xl overflow-hidden divide-y divide-[#111]">
+            <div className="bg-white border border-[#E6E6E1] rounded-3xl overflow-hidden divide-y divide-[#E6E6E1]">
                 {children}
             </div>
         </div>
@@ -342,7 +342,7 @@ function Section({ title, count, muted, children }) {
 function EmptyState({ label }) {
     return (
         <div className="flex items-center justify-center py-16">
-            <span className="text-[10px] uppercase tracking-[0.4em] text-[#333] font-black">{label}</span>
+            <span className="text-[10px] uppercase tracking-[0.4em] text-[#BBBBBB] font-black">{label}</span>
         </div>
     );
 }
@@ -350,26 +350,26 @@ function EmptyState({ label }) {
 function SlotRow({ slot, label, logo, muted, confirmDeleteId, onConfirmDelete, onCancelDelete, onDelete }) {
     return (
         <div className={`flex items-center gap-6 px-10 py-7 group ${muted ? 'opacity-40' : ''}`}>
-            <div className="w-12 h-12 rounded-2xl bg-[#050505] border border-[#151515] flex items-center justify-center shrink-0 overflow-hidden">
+            <div className="w-12 h-12 rounded-2xl bg-[#F4F4F1] border border-[#E6E6E1] flex items-center justify-center shrink-0 overflow-hidden">
                 {logo ? (
                     <img src={logo} alt="" className="w-full h-full object-contain p-1" />
                 ) : (
-                    <CalendarClock size={16} className="text-[#555]" />
+                    <CalendarClock size={16} className="text-[#999999]" />
                 )}
             </div>
             <div className="flex-1 min-w-0">
-                <div className="text-sm font-bold text-[#DDD] truncate">{label}</div>
-                <div className="text-[11px] text-[#555] font-black uppercase tracking-[0.2em] mt-0.5">
+                <div className="text-sm font-bold text-[#222222] truncate">{label}</div>
+                <div className="text-[11px] text-[#999999] font-black uppercase tracking-[0.2em] mt-0.5">
                     {formatWindow(slot.starts_at, slot.ends_at)}
                 </div>
             </div>
             {confirmDeleteId === slot.id ? (
                 <div className="flex items-center gap-3">
                     <button onClick={onDelete} className="h-9 px-5 bg-red-500/10 text-red-500 text-[10px] font-black uppercase tracking-[0.3em] rounded-full border border-red-500/20 hover:bg-red-500/20 transition-all">Remove</button>
-                    <button onClick={onCancelDelete} className="h-9 px-5 bg-[#050505] text-[#999] text-[10px] font-black uppercase tracking-[0.3em] rounded-full border border-[#151515] hover:text-[#CCC] transition-all">Cancel</button>
+                    <button onClick={onCancelDelete} className="h-9 px-5 bg-[#F4F4F1] text-[#666666] text-[10px] font-black uppercase tracking-[0.3em] rounded-full border border-[#E6E6E1] hover:text-[#333333] transition-all">Cancel</button>
                 </div>
             ) : (
-                <button onClick={onConfirmDelete} className="text-[#222] group-hover:text-[#555] hover:!text-red-500 transition-colors">
+                <button onClick={onConfirmDelete} className="text-[#BBBBBB] group-hover:text-[#999999] hover:!text-red-500 transition-colors">
                     <Trash2 size={15} />
                 </button>
             )}

@@ -32,7 +32,7 @@ function OpeningHoursEditor({ value, onChange }) {
     const setDay = (key, dayHours) => onChange({ ...hours, [key]: dayHours });
 
     return (
-        <div className="divide-y divide-[#151515]">
+        <div className="divide-y divide-[#E6E6E1]">
             {DAY_KEYS.map(key => {
                 const dayHours = hours[key];
                 const isOpen = dayHours != null;
@@ -41,11 +41,11 @@ function OpeningHoursEditor({ value, onChange }) {
                         <button
                             type="button"
                             onClick={() => setDay(key, isOpen ? null : { open: '06:00', close: '22:00' })}
-                            className={`w-10 h-6 rounded-full transition-all relative shrink-0 ${isOpen ? 'bg-[#E8D200]' : 'bg-[#151515]'}`}
+                            className={`w-10 h-6 rounded-full transition-all relative shrink-0 ${isOpen ? 'bg-[#E8D200]' : 'bg-[#EFEFEC]'}`}
                         >
-                            <span className={`absolute top-1 w-4 h-4 rounded-full transition-all ${isOpen ? 'left-5 bg-[#080808]' : 'left-1 bg-[#333]'}`} />
+                            <span className={`absolute top-1 w-4 h-4 rounded-full transition-all ${isOpen ? 'left-5 bg-[#F4F4F1]' : 'left-1 bg-white'}`} />
                         </button>
-                        <span className={`text-[11px] font-black uppercase tracking-[0.3em] w-24 shrink-0 ${isOpen ? 'text-[#DDD]' : 'text-[#999]'}`}>
+                        <span className={`text-[11px] font-black uppercase tracking-[0.3em] w-24 shrink-0 ${isOpen ? 'text-[#222222]' : 'text-[#666666]'}`}>
                             {DAY_LABELS[key]}
                         </span>
                         {isOpen ? (
@@ -54,18 +54,18 @@ function OpeningHoursEditor({ value, onChange }) {
                                     type="time"
                                     value={dayHours.open}
                                     onChange={e => setDay(key, { ...dayHours, open: e.target.value })}
-                                    className="h-10 px-4 bg-[#0A0A0A] border border-[#151515] rounded-xl text-xs font-mono text-[#DDD] focus:border-[#E8D200]/40 outline-none"
+                                    className="h-10 px-4 bg-white border border-[#E6E6E1] rounded-xl text-xs font-mono text-[#222222] focus:border-[#E8D200]/40 outline-none"
                                 />
-                                <span className="text-[#999] text-xs font-black">—</span>
+                                <span className="text-[#666666] text-xs font-black">—</span>
                                 <input
                                     type="time"
                                     value={dayHours.close}
                                     onChange={e => setDay(key, { ...dayHours, close: e.target.value })}
-                                    className="h-10 px-4 bg-[#0A0A0A] border border-[#151515] rounded-xl text-xs font-mono text-[#DDD] focus:border-[#E8D200]/40 outline-none"
+                                    className="h-10 px-4 bg-white border border-[#E6E6E1] rounded-xl text-xs font-mono text-[#222222] focus:border-[#E8D200]/40 outline-none"
                                 />
                             </div>
                         ) : (
-                            <span className="text-[10px] uppercase tracking-[0.4em] text-[#777] font-black">Closed</span>
+                            <span className="text-[10px] uppercase tracking-[0.4em] text-[#888888] font-black">Closed</span>
                         )}
                     </div>
                 );
@@ -186,13 +186,13 @@ export default function PartnerProfile() {
     if (loading) return (
         <div className="flex flex-col items-center justify-center py-48 gap-6">
             <div className="w-12 h-12 border-2 border-[#0EA5E9]/20 border-t-[#0EA5E9] rounded-full animate-spin" />
-            <span className="text-[10px] uppercase tracking-[0.6em] text-[#999] font-black">Loading Partner Node...</span>
+            <span className="text-[10px] uppercase tracking-[0.6em] text-[#666666] font-black">Loading Partner Node...</span>
         </div>
     );
 
     if (!partner) return (
         <div className="py-20 text-center">
-            <h2 className="text-2xl font-light text-[#F2F2F2] mb-4">Partner Not Found</h2>
+            <h2 className="text-2xl font-light text-[#1A1A1A] mb-4">Partner Not Found</h2>
             <Link to="/admin/partners" className="text-[#0EA5E9] text-sm uppercase tracking-widest font-black">Back to Fleet</Link>
         </div>
     );
@@ -202,7 +202,7 @@ export default function PartnerProfile() {
     return (
         <div className="px-4 lg:px-0 py-20 animate-in fade-in slide-in-from-bottom-8 duration-1000">
             {/* Nav */}
-            <Link to="/admin/partners" className="group flex items-center gap-3 mb-12 text-[#999] hover:text-[#F2F2F2] transition-colors">
+            <Link to="/admin/partners" className="group flex items-center gap-3 mb-12 text-[#666666] hover:text-[#1A1A1A] transition-colors">
                 <ChevronLeft size={16} />
                 <span className="text-[10px] uppercase tracking-[0.4em] font-black">Back to Fleet</span>
             </Link>
@@ -212,11 +212,11 @@ export default function PartnerProfile() {
                 <div className="flex items-center gap-10">
                     {/* Logo with upload overlay */}
                     <div className="relative group/logo">
-                        <div className="w-32 h-32 rounded-[2.5rem] bg-[#0A0A0A] border border-[#151515] flex items-center justify-center overflow-hidden shrink-0 shadow-2xl">
+                        <div className="w-32 h-32 rounded-[2.5rem] bg-white border border-[#E6E6E1] flex items-center justify-center overflow-hidden shrink-0 shadow-2xl">
                             {partner.logo_url ? (
                                 <img src={partner.logo_url} alt="" className="w-full h-full object-contain p-4" />
                             ) : (
-                                <Building2 size={48} className="text-[#777]" />
+                                <Building2 size={48} className="text-[#888888]" />
                             )}
                         </div>
                         <button
@@ -228,8 +228,8 @@ export default function PartnerProfile() {
                                 <div className="w-8 h-8 border-2 border-[#E8D200]/20 border-t-[#E8D200] rounded-full animate-spin" />
                             ) : (
                                 <>
-                                    <Upload size={24} className="text-[#E8D200]" />
-                                    <span className="text-[8px] uppercase tracking-[0.3em] font-black text-[#E8D200]">Change Logo</span>
+                                    <Upload size={24} className="text-[#8a7600]" />
+                                    <span className="text-[8px] uppercase tracking-[0.3em] font-black text-[#8a7600]">Change Logo</span>
                                 </>
                             )}
                         </button>
@@ -238,15 +238,15 @@ export default function PartnerProfile() {
 
                     <div>
                         <div className="flex items-center gap-4 mb-3">
-                            <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-[0.2em] ${partner.active ? 'bg-[#10B981] text-[#080808]' : 'bg-[#151515] text-[#BBB]'}`}>
+                            <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-[0.2em] ${partner.active ? 'bg-[#10B981] text-[#080808]' : 'bg-[#EFEFEC] text-[#BBB]'}`}>
                                 {partner.active ? 'LIVE' : 'INACTIVE'}
                             </span>
-                            <span className="px-4 py-1.5 rounded-full bg-[#050505] border border-[#151515] text-[10px] font-black uppercase tracking-[0.2em] text-[#AAA]">
+                            <span className="px-4 py-1.5 rounded-full bg-[#F4F4F1] border border-[#E6E6E1] text-[10px] font-black uppercase tracking-[0.2em] text-[#555555]">
                                 {partner.category}
                             </span>
                         </div>
-                        <h1 className="text-6xl font-light tracking-tighter text-[#F2F2F2] mb-2">{partner.name}</h1>
-                        <p className="text-[#999] text-[12px] font-black uppercase tracking-[0.5em]">NID: {partner.id.substring(0, 18)}...</p>
+                        <h1 className="text-6xl font-light tracking-tighter text-[#1A1A1A] mb-2">{partner.name}</h1>
+                        <p className="text-[#666666] text-[12px] font-black uppercase tracking-[0.5em]">NID: {partner.id.substring(0, 18)}...</p>
                     </div>
                 </div>
 
@@ -256,7 +256,7 @@ export default function PartnerProfile() {
                     className={`h-14 px-8 rounded-full text-[10px] font-black uppercase tracking-[0.3em] transition-all shadow-lg flex items-center gap-3 shrink-0 ${
                         editing 
                             ? 'bg-[#10B981] text-[#080808] shadow-[#10B981]/10 hover:translate-y-[-2px]' 
-                            : 'bg-[#0A0A0A] border border-[#151515] text-[#AAA] hover:text-[#E8D200] hover:border-[#E8D200]/40'
+                            : 'bg-white border border-[#E6E6E1] text-[#555555] hover:text-[#8a7600] hover:border-[#E8D200]/40'
                     }`}
                 >
                     {editing ? <><Save size={16} /> {saving ? 'Saving...' : 'Save Changes'}</> : <><Edit2 size={16} /> Edit Partner</>}
@@ -267,10 +267,10 @@ export default function PartnerProfile() {
                 {/* Left: Contact & Details */}
                 <div className="lg:col-span-2 space-y-16">
                     {/* Contact Info */}
-                    <section className="bg-[#0A0A0A] border border-[#151515] rounded-[2rem] overflow-hidden">
-                        <div className="p-10 border-b border-[#151515]">
-                            <h3 className="text-xl font-light tracking-tighter text-[#EEE]">Contact & Details</h3>
-                            <p className="text-[9px] uppercase tracking-[0.4em] text-[#999] font-black mt-2">Partner Intelligence</p>
+                    <section className="bg-white border border-[#E6E6E1] rounded-[2rem] overflow-hidden">
+                        <div className="p-10 border-b border-[#E6E6E1]">
+                            <h3 className="text-xl font-light tracking-tighter text-[#1A1A1A]">Contact & Details</h3>
+                            <p className="text-[9px] uppercase tracking-[0.4em] text-[#666666] font-black mt-2">Partner Intelligence</p>
                         </div>
                         <div className="p-10 space-y-6">
                             {[
@@ -279,19 +279,19 @@ export default function PartnerProfile() {
                                 { label: 'Website', key: 'website', icon: Globe, type: 'url', placeholder: 'https://example.com' },
                                 { label: 'Address', key: 'address', icon: MapPin, type: 'text', placeholder: '123 King St, Sydney NSW' },
                             ].map(field => (
-                                <div key={field.key} className="flex items-center gap-6 p-6 bg-[#050505] border border-[#151515] rounded-2xl group hover:border-[#202020] transition-all">
-                                    <div className="w-12 h-12 rounded-xl bg-[#0A0A0A] border border-[#151515] flex items-center justify-center shrink-0">
-                                        <field.icon size={16} className="text-[#999]" />
+                                <div key={field.key} className="flex items-center gap-6 p-6 bg-[#F4F4F1] border border-[#E6E6E1] rounded-2xl group hover:border-[#E6E6E1] transition-all">
+                                    <div className="w-12 h-12 rounded-xl bg-white border border-[#E6E6E1] flex items-center justify-center shrink-0">
+                                        <field.icon size={16} className="text-[#666666]" />
                                     </div>
                                     <div className="flex-1">
-                                        <label className="block text-[9px] uppercase tracking-[0.4em] text-[#999] font-black mb-2">{field.label}</label>
+                                        <label className="block text-[9px] uppercase tracking-[0.4em] text-[#666666] font-black mb-2">{field.label}</label>
                                         {editing ? (
                                             <input
                                                 type={field.type}
                                                 value={form[field.key] || ''}
                                                 onChange={e => setForm({ ...form, [field.key]: e.target.value })}
                                                 placeholder={field.placeholder}
-                                                className="w-full bg-transparent text-sm text-[#F2F2F2] outline-none placeholder-[#222]"
+                                                className="w-full bg-transparent text-sm text-[#1A1A1A] outline-none placeholder-[#BBBBBB]"
                                             />
                                         ) : (
                                             <span className="text-sm text-[#BBB]">{partner[field.key] || '—'}</span>
@@ -301,15 +301,15 @@ export default function PartnerProfile() {
                             ))}
 
                             {/* Description */}
-                            <div className="p-6 bg-[#050505] border border-[#151515] rounded-2xl">
-                                <label className="block text-[9px] uppercase tracking-[0.4em] text-[#999] font-black mb-4">Description</label>
+                            <div className="p-6 bg-[#F4F4F1] border border-[#E6E6E1] rounded-2xl">
+                                <label className="block text-[9px] uppercase tracking-[0.4em] text-[#666666] font-black mb-4">Description</label>
                                 {editing ? (
                                     <textarea
                                         value={form.description || ''}
                                         onChange={e => setForm({ ...form, description: e.target.value })}
                                         placeholder="Brief description of the partner..."
                                         rows={3}
-                                        className="w-full bg-transparent text-sm text-[#F2F2F2] outline-none resize-none placeholder-[#222]"
+                                        className="w-full bg-transparent text-sm text-[#1A1A1A] outline-none resize-none placeholder-[#BBBBBB]"
                                     />
                                 ) : (
                                     <p className="text-sm text-[#BBB] leading-relaxed">{partner.description || '—'}</p>
@@ -318,14 +318,14 @@ export default function PartnerProfile() {
 
                             {/* Category (editable) */}
                             {editing && (
-                                <div className="p-6 bg-[#050505] border border-[#151515] rounded-2xl">
-                                    <label className="block text-[9px] uppercase tracking-[0.4em] text-[#999] font-black mb-4">Category</label>
+                                <div className="p-6 bg-[#F4F4F1] border border-[#E6E6E1] rounded-2xl">
+                                    <label className="block text-[9px] uppercase tracking-[0.4em] text-[#666666] font-black mb-4">Category</label>
                                     <select
                                         value={form.category}
                                         onChange={e => setForm({ ...form, category: e.target.value })}
-                                        className="w-full bg-transparent text-sm text-[#F2F2F2] outline-none uppercase tracking-wider"
+                                        className="w-full bg-transparent text-sm text-[#1A1A1A] outline-none uppercase tracking-wider"
                                     >
-                                        {CATEGORIES.map(c => <option key={c} value={c} className="bg-[#0A0A0A]">{c.toUpperCase()}</option>)}
+                                        {CATEGORIES.map(c => <option key={c} value={c} className="bg-white">{c.toUpperCase()}</option>)}
                                     </select>
                                 </div>
                             )}
@@ -333,51 +333,51 @@ export default function PartnerProfile() {
                     </section>
 
                     {/* Locations Map List */}
-                    <section className="bg-[#0A0A0A] border border-[#151515] rounded-[2rem] overflow-hidden">
-                        <div className="p-10 border-b border-[#151515] flex items-center justify-between">
+                    <section className="bg-white border border-[#E6E6E1] rounded-[2rem] overflow-hidden">
+                        <div className="p-10 border-b border-[#E6E6E1] flex items-center justify-between">
                             <div>
-                                <h3 className="text-xl font-light tracking-tighter text-[#EEE]">Geofence Points</h3>
-                                <p className="text-[9px] uppercase tracking-[0.4em] text-[#999] font-black mt-2">Active Location Nodes</p>
+                                <h3 className="text-xl font-light tracking-tighter text-[#1A1A1A]">Geofence Points</h3>
+                                <p className="text-[9px] uppercase tracking-[0.4em] text-[#666666] font-black mt-2">Active Location Nodes</p>
                             </div>
-                            <span className="text-[10px] font-black text-[#AAA] uppercase tracking-[0.3em]">{partner.locations?.length || 0} NODES</span>
+                            <span className="text-[10px] font-black text-[#555555] uppercase tracking-[0.3em]">{partner.locations?.length || 0} NODES</span>
                         </div>
-                        <div className="divide-y divide-[#151515]">
+                        <div className="divide-y divide-[#E6E6E1]">
                             {!(editing ? form.locations : partner.locations)?.length ? (
                                 <div className="p-20 text-center">
-                                    <MapPin size={48} className="mx-auto text-[#CCC] mb-6" />
-                                    <p className="text-[10px] uppercase tracking-[0.4em] text-[#777] font-black">No locations configured</p>
+                                    <MapPin size={48} className="mx-auto text-[#333333] mb-6" />
+                                    <p className="text-[10px] uppercase tracking-[0.4em] text-[#888888] font-black">No locations configured</p>
                                 </div>
                             ) : (editing ? form.locations : partner.locations).map((loc, i) => (
-                                <div key={i} className="p-10 flex items-center gap-8 group hover:bg-[#050505] transition-all">
-                                    <div className="w-14 h-14 rounded-3xl bg-[#050505] border border-[#151515] flex items-center justify-center shrink-0">
-                                        <MapPin size={20} className="text-[#0EA5E9] group-hover:text-[#E8D200] transition-colors" />
+                                <div key={i} className="p-10 flex items-center gap-8 group hover:bg-[#F4F4F1] transition-all">
+                                    <div className="w-14 h-14 rounded-3xl bg-[#F4F4F1] border border-[#E6E6E1] flex items-center justify-center shrink-0">
+                                        <MapPin size={20} className="text-[#0EA5E9] group-hover:text-[#8a7600] transition-colors" />
                                     </div>
                                     {editing ? (
                                         <div className="flex-1 grid grid-cols-2 md:grid-cols-4 gap-4">
                                             <div>
-                                                <label className="block text-[8px] uppercase tracking-[0.3em] text-[#999] font-black mb-1">Name</label>
-                                                <input type="text" value={loc.name || ''} onChange={e => updateLocation(i, 'name', e.target.value)} className="w-full h-10 px-4 bg-[#0A0A0A] border border-[#151515] rounded-lg text-xs text-[#F2F2F2] outline-none focus:border-[#E8D200]/40 transition-all" />
+                                                <label className="block text-[8px] uppercase tracking-[0.3em] text-[#666666] font-black mb-1">Name</label>
+                                                <input type="text" value={loc.name || ''} onChange={e => updateLocation(i, 'name', e.target.value)} className="w-full h-10 px-4 bg-white border border-[#E6E6E1] rounded-lg text-xs text-[#1A1A1A] outline-none focus:border-[#E8D200]/40 transition-all" />
                                             </div>
                                             <div>
-                                                <label className="block text-[8px] uppercase tracking-[0.3em] text-[#999] font-black mb-1">Latitude</label>
-                                                <input type="number" step="any" value={loc.lat} onChange={e => updateLocation(i, 'lat', e.target.value)} className="w-full h-10 px-4 bg-[#0A0A0A] border border-[#151515] rounded-lg text-xs font-mono text-[#DDD] outline-none focus:border-[#E8D200]/40 transition-all" />
+                                                <label className="block text-[8px] uppercase tracking-[0.3em] text-[#666666] font-black mb-1">Latitude</label>
+                                                <input type="number" step="any" value={loc.lat} onChange={e => updateLocation(i, 'lat', e.target.value)} className="w-full h-10 px-4 bg-white border border-[#E6E6E1] rounded-lg text-xs font-mono text-[#222222] outline-none focus:border-[#E8D200]/40 transition-all" />
                                             </div>
                                             <div>
-                                                <label className="block text-[8px] uppercase tracking-[0.3em] text-[#999] font-black mb-1">Longitude</label>
-                                                <input type="number" step="any" value={loc.lng} onChange={e => updateLocation(i, 'lng', e.target.value)} className="w-full h-10 px-4 bg-[#0A0A0A] border border-[#151515] rounded-lg text-xs font-mono text-[#DDD] outline-none focus:border-[#E8D200]/40 transition-all" />
+                                                <label className="block text-[8px] uppercase tracking-[0.3em] text-[#666666] font-black mb-1">Longitude</label>
+                                                <input type="number" step="any" value={loc.lng} onChange={e => updateLocation(i, 'lng', e.target.value)} className="w-full h-10 px-4 bg-white border border-[#E6E6E1] rounded-lg text-xs font-mono text-[#222222] outline-none focus:border-[#E8D200]/40 transition-all" />
                                             </div>
                                             <div>
-                                                <label className="block text-[8px] uppercase tracking-[0.3em] text-[#E8D200] font-black mb-1">Radius (m)</label>
-                                                <input type="number" min="1" value={loc.radius} onChange={e => updateLocation(i, 'radius', e.target.value)} className="w-full h-10 px-4 bg-[#0A0A0A] border border-[#E8D200]/20 rounded-lg text-xs font-mono text-[#E8D200] outline-none focus:border-[#E8D200]/40 transition-all" />
+                                                <label className="block text-[8px] uppercase tracking-[0.3em] text-[#8a7600] font-black mb-1">Radius (m)</label>
+                                                <input type="number" min="1" value={loc.radius} onChange={e => updateLocation(i, 'radius', e.target.value)} className="w-full h-10 px-4 bg-white border border-[#E8D200]/20 rounded-lg text-xs font-mono text-[#8a7600] outline-none focus:border-[#E8D200]/40 transition-all" />
                                             </div>
                                         </div>
                                     ) : (
                                         <div className="flex-1">
-                                            <div className="text-base font-bold text-[#DDD] mb-1">{loc.name || `Location ${i + 1}`}</div>
-                                            <div className="flex items-center gap-6 text-[10px] font-black text-[#999] uppercase tracking-[0.2em]">
+                                            <div className="text-base font-bold text-[#222222] mb-1">{loc.name || `Location ${i + 1}`}</div>
+                                            <div className="flex items-center gap-6 text-[10px] font-black text-[#666666] uppercase tracking-[0.2em]">
                                                 <span>LAT {loc.lat?.toFixed(4)}</span>
                                                 <span>LNG {loc.lng?.toFixed(4)}</span>
-                                                <span className="px-3 py-1 rounded-full border border-[#151515] text-[#AAA]">{loc.radius}m radius</span>
+                                                <span className="px-3 py-1 rounded-full border border-[#E6E6E1] text-[#555555]">{loc.radius}m radius</span>
                                             </div>
                                         </div>
                                     )}
@@ -387,17 +387,17 @@ export default function PartnerProfile() {
                     </section>
 
                     {/* Opening Hours */}
-                    <section className="bg-[#0A0A0A] border border-[#151515] rounded-[2rem] overflow-hidden">
-                        <div className="p-10 border-b border-[#151515] flex items-center justify-between">
+                    <section className="bg-white border border-[#E6E6E1] rounded-[2rem] overflow-hidden">
+                        <div className="p-10 border-b border-[#E6E6E1] flex items-center justify-between">
                             <div>
-                                <h3 className="text-xl font-light tracking-tighter text-[#EEE]">Opening Hours</h3>
-                                <p className="text-[9px] uppercase tracking-[0.4em] text-[#999] font-black mt-2">Weekly Schedule</p>
+                                <h3 className="text-xl font-light tracking-tighter text-[#1A1A1A]">Opening Hours</h3>
+                                <p className="text-[9px] uppercase tracking-[0.4em] text-[#666666] font-black mt-2">Weekly Schedule</p>
                             </div>
                             {editing && (
                                 <button
                                     type="button"
                                     onClick={() => setForm({ ...form, opening_hours: form.opening_hours ? null : { ...DEFAULT_HOURS } })}
-                                    className="text-[9px] uppercase tracking-[0.3em] font-black text-[#999] hover:text-[#E8D200] transition-colors"
+                                    className="text-[9px] uppercase tracking-[0.3em] font-black text-[#666666] hover:text-[#8a7600] transition-colors"
                                 >
                                     {form.opening_hours ? 'Clear Hours' : 'Set Hours'}
                                 </button>
@@ -410,19 +410,19 @@ export default function PartnerProfile() {
                                     onChange={oh => setForm({ ...form, opening_hours: oh })}
                                 />
                             ) : (
-                                <div className="divide-y divide-[#151515]">
+                                <div className="divide-y divide-[#E6E6E1]">
                                     {DAY_KEYS.map(key => {
                                         const dayHours = partner.opening_hours?.[key];
                                         const isOpen = dayHours != null;
                                         return (
                                             <div key={key} className="flex items-center justify-between px-10 py-5">
-                                                <span className={`text-[11px] font-black uppercase tracking-[0.3em] ${isOpen ? 'text-[#DDD]' : 'text-[#999]'}`}>
+                                                <span className={`text-[11px] font-black uppercase tracking-[0.3em] ${isOpen ? 'text-[#222222]' : 'text-[#666666]'}`}>
                                                     {DAY_LABELS[key]}
                                                 </span>
                                                 {isOpen ? (
-                                                    <span className="text-xs font-mono text-[#DDD]">{dayHours.open} – {dayHours.close}</span>
+                                                    <span className="text-xs font-mono text-[#222222]">{dayHours.open} – {dayHours.close}</span>
                                                 ) : (
-                                                    <span className="text-[10px] uppercase tracking-[0.4em] text-[#777] font-black">Closed</span>
+                                                    <span className="text-[10px] uppercase tracking-[0.4em] text-[#888888] font-black">Closed</span>
                                                 )}
                                             </div>
                                         );
@@ -431,13 +431,13 @@ export default function PartnerProfile() {
                             )
                         ) : (
                             <div className="p-20 text-center">
-                                <Clock size={48} className="mx-auto text-[#CCC] mb-6" />
-                                <p className="text-[10px] uppercase tracking-[0.4em] text-[#777] font-black">No hours configured</p>
+                                <Clock size={48} className="mx-auto text-[#333333] mb-6" />
+                                <p className="text-[10px] uppercase tracking-[0.4em] text-[#888888] font-black">No hours configured</p>
                                 {editing && (
                                     <button
                                         type="button"
                                         onClick={() => setForm({ ...form, opening_hours: { ...DEFAULT_HOURS } })}
-                                        className="mt-6 text-[10px] uppercase tracking-[0.3em] font-black text-[#E8D200] hover:text-[#F2F2F2] transition-colors"
+                                        className="mt-6 text-[10px] uppercase tracking-[0.3em] font-black text-[#8a7600] hover:text-[#1A1A1A] transition-colors"
                                     >
                                         + Set Opening Hours
                                     </button>
@@ -450,22 +450,22 @@ export default function PartnerProfile() {
                 {/* Right: Rewards & Metadata */}
                 <div className="space-y-16">
                     {/* Linked Rewards */}
-                    <section className="bg-[#0A0A0A] border border-[#151515] rounded-[2rem] overflow-hidden">
-                        <div className="p-10 border-b border-[#151515]">
-                            <h3 className="text-xl font-light tracking-tighter text-[#EEE]">Linked Rewards</h3>
-                            <p className="text-[9px] uppercase tracking-[0.4em] text-[#999] font-black mt-2">{rewards.length} Active Offers</p>
+                    <section className="bg-white border border-[#E6E6E1] rounded-[2rem] overflow-hidden">
+                        <div className="p-10 border-b border-[#E6E6E1]">
+                            <h3 className="text-xl font-light tracking-tighter text-[#1A1A1A]">Linked Rewards</h3>
+                            <p className="text-[9px] uppercase tracking-[0.4em] text-[#666666] font-black mt-2">{rewards.length} Active Offers</p>
                         </div>
                         <div className="p-10 space-y-6">
                             {rewards.length === 0 ? (
                                 <div className="text-center py-10">
-                                    <Award size={32} className="mx-auto text-[#CCC] mb-4" />
-                                    <p className="text-[10px] uppercase tracking-[0.4em] text-[#777] font-black">No rewards linked</p>
+                                    <Award size={32} className="mx-auto text-[#333333] mb-4" />
+                                    <p className="text-[10px] uppercase tracking-[0.4em] text-[#888888] font-black">No rewards linked</p>
                                 </div>
                             ) : rewards.map(r => (
-                                <div key={r.id} className="bg-[#050505] border border-[#151515] p-6 rounded-2xl group hover:border-[#E8D200]/20 transition-all">
+                                <div key={r.id} className="bg-[#F4F4F1] border border-[#E6E6E1] p-6 rounded-2xl group hover:border-[#E8D200]/20 transition-all">
                                     <div className="flex justify-between items-center mb-3">
-                                        <span className="text-sm font-bold text-[#DDD]">{r.title}</span>
-                                        <span className={`px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-[0.2em] ${r.active ? 'bg-[#10B981]/10 text-[#10B981] border border-[#10B981]/20' : 'bg-[#151515] text-[#999]'}`}>
+                                        <span className="text-sm font-bold text-[#222222]">{r.title}</span>
+                                        <span className={`px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-[0.2em] ${r.active ? 'bg-[#10B981]/10 text-[#10B981] border border-[#10B981]/20' : 'bg-[#EFEFEC] text-[#666666]'}`}>
                                             {r.active ? 'LIVE' : 'OFF'}
                                         </span>
                                     </div>
@@ -474,7 +474,7 @@ export default function PartnerProfile() {
                                             {getRewardDisplayValue(r)}
                                         </div>
                                     )}
-                                    <div className="flex justify-between items-center text-[9px] font-black uppercase tracking-[0.3em] text-[#999]">
+                                    <div className="flex justify-between items-center text-[9px] font-black uppercase tracking-[0.3em] text-[#666666]">
                                         <span>{r.powr_cost} PTS</span>
                                         <span>{r.stock !== null ? `${r.stock} left` : '∞ stock'}</span>
                                     </div>
@@ -484,8 +484,8 @@ export default function PartnerProfile() {
                     </section>
 
                     {/* System Metadata */}
-                    <section className="bg-[#0A0A0A] border border-[#151515] p-10 rounded-[2rem]">
-                        <h3 className="text-base font-black uppercase tracking-[0.3em] text-[#AAA] mb-10">System Data</h3>
+                    <section className="bg-white border border-[#E6E6E1] p-10 rounded-[2rem]">
+                        <h3 className="text-base font-black uppercase tracking-[0.3em] text-[#555555] mb-10">System Data</h3>
                         <div className="space-y-6">
                             {[
                                 { label: 'Node ID', value: partner.id.substring(0, 18) + '...' },
@@ -493,8 +493,8 @@ export default function PartnerProfile() {
                                 { label: 'Status', value: partner.active ? 'Active' : 'Inactive' },
                                 { label: 'Linked Rewards', value: `${rewards.length}` },
                             ].map(x => (
-                                <div key={x.label} className="flex items-center justify-between p-6 bg-[#050505] border border-[#151515] rounded-2xl">
-                                    <span className="text-[10px] uppercase tracking-[0.3em] text-[#999] font-black">{x.label}</span>
+                                <div key={x.label} className="flex items-center justify-between p-6 bg-[#F4F4F1] border border-[#E6E6E1] rounded-2xl">
+                                    <span className="text-[10px] uppercase tracking-[0.3em] text-[#666666] font-black">{x.label}</span>
                                     <span className="text-[11px] font-medium text-[#BBB] font-mono">{x.value}</span>
                                 </div>
                             ))}

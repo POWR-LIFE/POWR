@@ -209,10 +209,10 @@ export default function RewardSubmissions() {
         <div>
           <div className="flex items-center gap-3 mb-6">
             <div className="h-[1px] w-12 bg-[#E8D200]" />
-            <span className="text-[10px] uppercase tracking-[0.5em] text-[#E8D200] font-black">Subsystem / Partner Intake</span>
+            <span className="text-[10px] uppercase tracking-[0.5em] text-[#8a7600] font-black">Subsystem / Partner Intake</span>
           </div>
-          <h1 className="text-6xl font-light tracking-tighter text-[#F2F2F2] mb-6">Reward Submissions</h1>
-          <p className="text-[#999] text-[11px] max-w-xl font-black uppercase tracking-[0.4em] leading-relaxed">
+          <h1 className="text-6xl font-light tracking-tighter text-[#1A1A1A] mb-6">Reward Submissions</h1>
+          <p className="text-[#666666] text-[11px] max-w-xl font-black uppercase tracking-[0.4em] leading-relaxed">
             Invite partners to submit rewards, then review and commit them to the Vault.
           </p>
         </div>
@@ -225,18 +225,18 @@ export default function RewardSubmissions() {
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-16">
         {[
-          { label: 'Total', value: allStats.total, icon: Inbox, color: '#E8D200' },
+          { label: 'Total', value: allStats.total, icon: Inbox, color: '#8a7600' },
           { label: 'Awaiting Review', value: allStats.pending, icon: Clock, color: '#f97316' },
           { label: 'Invites Sent', value: allStats.invited, icon: Send, color: '#6366f1' },
           { label: 'Approved', value: allStats.approved, icon: CheckCircle, color: '#4ade80' },
         ].map(s => (
-          <div key={s.label} className="bg-[#0A0A0A] border border-[#151515] p-10 rounded-3xl flex items-center gap-8 group hover:border-[#202020] transition-all">
-            <div className="w-14 h-14 rounded-2xl bg-[#050505] border border-[#151515] flex items-center justify-center shrink-0 group-hover:border-[#E8D200]/20 transition-all">
+          <div key={s.label} className="bg-white border border-[#E6E6E1] p-10 rounded-3xl flex items-center gap-8 group hover:border-[#E6E6E1] transition-all">
+            <div className="w-14 h-14 rounded-2xl bg-[#F4F4F1] border border-[#E6E6E1] flex items-center justify-center shrink-0 group-hover:border-[#E8D200]/20 transition-all">
               <s.icon size={22} style={{ color: s.color }} />
             </div>
             <div>
-              <div className="text-4xl font-light tracking-tighter text-[#DDD] leading-none mb-2">{loading ? '—' : s.value}</div>
-              <div className="text-[10px] uppercase tracking-[0.4em] text-[#999] font-black">{s.label}</div>
+              <div className="text-4xl font-light tracking-tighter text-[#222222] leading-none mb-2">{loading ? '—' : s.value}</div>
+              <div className="text-[10px] uppercase tracking-[0.4em] text-[#666666] font-black">{s.label}</div>
             </div>
           </div>
         ))}
@@ -246,70 +246,70 @@ export default function RewardSubmissions() {
       <div className="flex gap-3 flex-wrap mb-10">
         {FILTERS.map(f => (
           <button key={f} onClick={() => setFilter(f)}
-            className={`h-16 px-10 rounded-full text-[10px] font-black uppercase tracking-[0.3em] transition-all ${filter === f ? 'bg-[#E8D200] text-[#080808] shadow-lg shadow-[#E8D200]/10' : 'bg-[#0A0A0A] border border-[#151515] text-[#444] hover:text-[#999] hover:border-[#222]'}`}>
+            className={`h-16 px-10 rounded-full text-[10px] font-black uppercase tracking-[0.3em] transition-all ${filter === f ? 'bg-[#E8D200] text-[#080808] shadow-lg shadow-[#E8D200]/10' : 'bg-white border border-[#E6E6E1] text-[#AAAAAA] hover:text-[#666666] hover:border-[#E6E6E1]'}`}>
             {f}
             {f === 'pending' && allStats.pending > 0 && (
-              <span className={`ml-3 inline-flex items-center justify-center w-5 h-5 rounded-full text-[9px] font-black ${filter === 'pending' ? 'bg-[#080808] text-[#E8D200]' : 'bg-[#f97316] text-white'}`}>{allStats.pending}</span>
+              <span className={`ml-3 inline-flex items-center justify-center w-5 h-5 rounded-full text-[9px] font-black ${filter === 'pending' ? 'bg-[#F4F4F1] text-[#8a7600]' : 'bg-[#f97316] text-white'}`}>{allStats.pending}</span>
             )}
           </button>
         ))}
       </div>
 
       {/* Table */}
-      <div className="bg-[#0A0A0A] border border-[#151515] rounded-3xl overflow-hidden">
+      <div className="bg-white border border-[#E6E6E1] rounded-3xl overflow-hidden">
         {loading ? (
           <div className="flex flex-col items-center justify-center py-48 gap-6">
             <div className="w-12 h-12 border-2 border-[#E8D200]/20 border-t-[#E8D200] rounded-full animate-spin" />
-            <span className="text-[10px] uppercase tracking-[0.6em] text-[#999] font-black">Loading…</span>
+            <span className="text-[10px] uppercase tracking-[0.6em] text-[#666666] font-black">Loading…</span>
           </div>
         ) : subs.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-48 gap-6">
-            <div className="w-20 h-20 rounded-3xl bg-[#050505] border border-[#151515] flex items-center justify-center"><Inbox size={32} className="text-[#1E1E1E]" /></div>
-            <p className="text-[11px] uppercase tracking-[0.4em] text-[#333] font-black">No {filter === 'all' ? '' : filter} submissions</p>
+            <div className="w-20 h-20 rounded-3xl bg-[#F4F4F1] border border-[#E6E6E1] flex items-center justify-center"><Inbox size={32} className="text-[#CCCCCC]" /></div>
+            <p className="text-[11px] uppercase tracking-[0.4em] text-[#BBBBBB] font-black">No {filter === 'all' ? '' : filter} submissions</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="bg-[#050505] border-b border-[#151515]">
+                <tr className="bg-[#F4F4F1] border-b border-[#E6E6E1]">
                   {['Reward / Brand', 'Sector', 'Updated', 'Status', ''].map(h => (
-                    <th key={h} className={`px-12 py-8 text-[10px] font-black uppercase tracking-[0.5em] text-[#444] ${h === '' ? 'text-right' : ''}`}>{h}</th>
+                    <th key={h} className={`px-6 py-5 text-[10px] font-black uppercase tracking-[0.5em] text-[#AAAAAA] ${h === '' ? 'text-right' : ''}`}>{h}</th>
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#0d0d0d]">
+              <tbody className="divide-y divide-[#E6E6E1]">
                 {subs.map(sub => (
-                  <tr key={sub.id} onClick={() => openDetail(sub)} className="group hover:bg-[#080808] transition-all cursor-pointer">
-                    <td className="px-12 py-10">
+                  <tr key={sub.id} onClick={() => openDetail(sub)} className="group hover:bg-[#F4F4F1] transition-all cursor-pointer">
+                    <td className="px-6 py-5">
                       <div className="flex items-center gap-6">
-                        <div className="w-12 h-12 rounded-2xl bg-[#050505] border border-[#151515] flex items-center justify-center overflow-hidden shrink-0">
-                          {(sub.image_url || sub.partners?.logo_url) ? <img src={sub.image_url || sub.partners.logo_url} alt="" className="w-full h-full object-contain p-1.5" /> : <Award size={18} className="text-[#333]" />}
+                        <div className="w-12 h-12 rounded-2xl bg-[#F4F4F1] border border-[#E6E6E1] flex items-center justify-center overflow-hidden shrink-0">
+                          {(sub.image_url || sub.partners?.logo_url) ? <img src={sub.image_url || sub.partners.logo_url} alt="" className="w-full h-full object-contain p-1.5" /> : <Award size={18} className="text-[#BBBBBB]" />}
                         </div>
                         <div>
-                          <div className="text-base font-bold text-[#DDD] group-hover:text-[#F2F2F2] transition-colors mb-1">{sub.title || <span className="text-[#444] italic font-light">Awaiting submission…</span>}</div>
-                          <div className="text-[10px] uppercase tracking-[0.3em] text-[#444] font-black">{sub.partners?.name || sub.brand_name || sub.contact_email || '—'}</div>
+                          <div className="text-base font-bold text-[#222222] group-hover:text-[#1A1A1A] transition-colors mb-1">{sub.title || <span className="text-[#AAAAAA] italic font-light">Awaiting submission…</span>}</div>
+                          <div className="text-[10px] uppercase tracking-[0.3em] text-[#AAAAAA] font-black">{sub.partners?.name || sub.brand_name || sub.contact_email || '—'}</div>
                         </div>
                       </div>
                     </td>
-                    <td className="px-12 py-10">
-                      <span className="text-[11px] font-black text-[#777] uppercase tracking-[0.2em]">{SECTOR_LABEL[sub.category] || '—'}</span>
+                    <td className="px-6 py-5">
+                      <span className="text-[11px] font-black text-[#888888] uppercase tracking-[0.2em]">{SECTOR_LABEL[sub.category] || '—'}</span>
                     </td>
-                    <td className="px-12 py-10 whitespace-nowrap">
-                      <div className="text-[12px] text-[#666] font-medium">{formatDate(sub.submitted_at || sub.created_at)}</div>
+                    <td className="px-6 py-5 whitespace-nowrap">
+                      <div className="text-[12px] text-[#999999] font-medium">{formatDate(sub.submitted_at || sub.created_at)}</div>
                     </td>
-                    <td className="px-12 py-10"><StatusBadge status={sub.status} /></td>
-                    <td className="px-12 py-10 text-right" onClick={e => e.stopPropagation()}>
+                    <td className="px-6 py-5"><StatusBadge status={sub.status} /></td>
+                    <td className="px-6 py-5 text-right" onClick={e => e.stopPropagation()}>
                       <div className="flex items-center justify-end gap-3">
                         {sub.status === 'invited' && (
-                          <button onClick={e => copyLink(sub, e)} className="inline-flex items-center gap-3 px-6 py-3 bg-[#050505] border border-[#151515] rounded-full text-[9px] font-black uppercase tracking-[0.3em] text-[#555] hover:text-[#E8D200] hover:border-[#E8D200]/30 transition-all">
+                          <button onClick={e => copyLink(sub, e)} className="inline-flex items-center gap-3 px-6 py-3 bg-[#F4F4F1] border border-[#E6E6E1] rounded-full text-[9px] font-black uppercase tracking-[0.3em] text-[#999999] hover:text-[#8a7600] hover:border-[#E8D200]/30 transition-all">
                             {copiedId === sub.id ? <><Check size={12} /> Copied</> : <><Copy size={12} /> Copy Link</>}
                           </button>
                         )}
                         {sub.status === 'rejected' && (
-                          <button onClick={e => reInvite(sub, e)} className="inline-flex items-center gap-3 px-6 py-3 bg-[#050505] border border-[#151515] rounded-full text-[9px] font-black uppercase tracking-[0.3em] text-[#555] hover:text-[#6366f1] hover:border-[#6366f1]/30 transition-all">Re-invite</button>
+                          <button onClick={e => reInvite(sub, e)} className="inline-flex items-center gap-3 px-6 py-3 bg-[#F4F4F1] border border-[#E6E6E1] rounded-full text-[9px] font-black uppercase tracking-[0.3em] text-[#999999] hover:text-[#6366f1] hover:border-[#6366f1]/30 transition-all">Re-invite</button>
                         )}
-                        <button onClick={() => openDetail(sub)} className="inline-flex items-center gap-3 px-6 py-3 bg-[#050505] border border-[#151515] rounded-full text-[9px] font-black uppercase tracking-[0.3em] text-[#999] hover:text-[#E8D200] hover:border-[#E8D200]/40 transition-all">
-                          {sub.status === 'pending' ? 'Review' : 'View'} <span className="text-[#555]">›</span>
+                        <button onClick={() => openDetail(sub)} className="inline-flex items-center gap-3 px-6 py-3 bg-[#F4F4F1] border border-[#E6E6E1] rounded-full text-[9px] font-black uppercase tracking-[0.3em] text-[#666666] hover:text-[#8a7600] hover:border-[#E8D200]/40 transition-all">
+                          {sub.status === 'pending' ? 'Review' : 'View'} <span className="text-[#999999]">›</span>
                         </button>
                       </div>
                     </td>
@@ -324,27 +324,27 @@ export default function RewardSubmissions() {
       {/* ── Invite modal ── */}
       {inviteOpen && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[200] flex items-center justify-center p-8" onClick={() => setInviteOpen(false)}>
-          <div className="bg-[#0A0A0A] border border-[#1E1E1E] rounded-3xl w-full max-w-lg shadow-2xl" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between p-10 border-b border-[#151515]">
-              <h2 className="text-2xl font-light tracking-tight text-[#F2F2F2]">Invite a Partner</h2>
-              <button onClick={() => setInviteOpen(false)} className="w-10 h-10 rounded-full bg-[#151515] flex items-center justify-center text-[#555] hover:text-[#F2F2F2] transition-colors"><X size={16} /></button>
+          <div className="bg-white border border-[#E6E6E1] rounded-3xl w-full max-w-lg shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-10 border-b border-[#E6E6E1]">
+              <h2 className="text-2xl font-light tracking-tight text-[#1A1A1A]">Invite a Partner</h2>
+              <button onClick={() => setInviteOpen(false)} className="w-10 h-10 rounded-full bg-[#EFEFEC] flex items-center justify-center text-[#999999] hover:text-[#1A1A1A] transition-colors"><X size={16} /></button>
             </div>
             {createdLink ? (
               <div className="p-10 space-y-6">
-                <p className="text-sm text-[#888] font-light">Invite created. Send this private link to the partner:</p>
+                <p className="text-sm text-[#777777] font-light">Invite created. Send this private link to the partner:</p>
                 <div className="flex gap-3">
-                  <div className="flex-1 h-14 px-6 bg-[#050505] border border-[#151515] rounded-2xl flex items-center overflow-hidden">
-                    <span className="text-[11px] text-[#777] font-mono truncate">{createdLink}</span>
+                  <div className="flex-1 h-14 px-6 bg-[#F4F4F1] border border-[#E6E6E1] rounded-2xl flex items-center overflow-hidden">
+                    <span className="text-[11px] text-[#888888] font-mono truncate">{createdLink}</span>
                   </div>
                   <button onClick={() => { navigator.clipboard.writeText(createdLink); toast.success('Link copied'); }}
                     className="h-14 px-8 rounded-2xl bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.3em] hover:opacity-90 transition-opacity shrink-0">Copy</button>
                 </div>
-                <button onClick={() => setInviteOpen(false)} className="w-full h-12 rounded-2xl border border-[#1A1A1A] text-[#999] text-[10px] font-black uppercase tracking-[0.3em] hover:text-[#F2F2F2] transition-colors">Done</button>
+                <button onClick={() => setInviteOpen(false)} className="w-full h-12 rounded-2xl border border-[#E6E6E1] text-[#666666] text-[10px] font-black uppercase tracking-[0.3em] hover:text-[#1A1A1A] transition-colors">Done</button>
               </div>
             ) : (
               <form onSubmit={handleCreateInvite} className="p-10 space-y-6">
                 <div>
-                  <label className="block text-[10px] uppercase tracking-[0.3em] text-[#555] font-black mb-2">Existing partner (optional)</label>
+                  <label className="block text-[10px] uppercase tracking-[0.3em] text-[#999999] font-black mb-2">Existing partner (optional)</label>
                   <select value={invPartnerId} onChange={e => setInvPartnerId(e.target.value)} className={modalInp}>
                     <option value="">— New / standalone brand —</option>
                     {partners.map(p => <option key={p.id} value={p.id}>{p.name}{p.partner_code ? ` (${p.partner_code})` : ''}</option>)}
@@ -353,17 +353,17 @@ export default function RewardSubmissions() {
                 {!invPartnerId && (
                   <>
                     <div>
-                      <label className="block text-[10px] uppercase tracking-[0.3em] text-[#555] font-black mb-2">Brand name</label>
+                      <label className="block text-[10px] uppercase tracking-[0.3em] text-[#999999] font-black mb-2">Brand name</label>
                       <input value={invBrand} onChange={e => setInvBrand(e.target.value)} placeholder="e.g. Tribe" className={modalInp} />
                     </div>
                     <div>
-                      <label className="block text-[10px] uppercase tracking-[0.3em] text-[#555] font-black mb-2">Suggested code name (optional)</label>
+                      <label className="block text-[10px] uppercase tracking-[0.3em] text-[#999999] font-black mb-2">Suggested code name (optional)</label>
                       <input value={invPrefix} onChange={e => setInvPrefix(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8))} placeholder="e.g. TRIBE" className={modalInp + ' uppercase tracking-[0.2em]'} />
                     </div>
                   </>
                 )}
                 <div>
-                  <label className="block text-[10px] uppercase tracking-[0.3em] text-[#555] font-black mb-2">Contact email (optional)</label>
+                  <label className="block text-[10px] uppercase tracking-[0.3em] text-[#999999] font-black mb-2">Contact email (optional)</label>
                   <input type="email" value={invEmail} onChange={e => setInvEmail(e.target.value)} placeholder="partner@brand.com" className={modalInp} />
                 </div>
                 <button type="submit" disabled={creating} className="w-full h-14 rounded-2xl bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.3em] hover:opacity-90 transition-opacity disabled:opacity-50">
@@ -378,13 +378,13 @@ export default function RewardSubmissions() {
       {/* ── Review modal ── */}
       {selected && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[200] flex items-center justify-center p-8" onClick={() => setSelected(null)}>
-          <div className="bg-[#0A0A0A] border border-[#1E1E1E] rounded-3xl w-full max-w-4xl max-h-[90vh] overflow-y-auto shadow-2xl" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between p-8 border-b border-[#151515] sticky top-0 bg-[#0A0A0A] z-10">
+          <div className="bg-white border border-[#E6E6E1] rounded-3xl w-full max-w-4xl max-h-[90vh] overflow-y-auto shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-8 border-b border-[#E6E6E1] sticky top-0 bg-white z-10">
               <div className="flex items-center gap-5">
-                <div className="text-lg font-light tracking-tight text-[#F2F2F2]">{selected.title || 'Submission'}</div>
+                <div className="text-lg font-light tracking-tight text-[#1A1A1A]">{selected.title || 'Submission'}</div>
                 <StatusBadge status={selected.status} />
               </div>
-              <button onClick={() => setSelected(null)} className="w-10 h-10 rounded-full bg-[#151515] flex items-center justify-center text-[#555] hover:text-[#F2F2F2] transition-colors"><X size={16} /></button>
+              <button onClick={() => setSelected(null)} className="w-10 h-10 rounded-full bg-[#EFEFEC] flex items-center justify-center text-[#999999] hover:text-[#1A1A1A] transition-colors"><X size={16} /></button>
             </div>
 
             <div className="grid lg:grid-cols-[1fr_320px] gap-8 p-8">
@@ -392,10 +392,10 @@ export default function RewardSubmissions() {
               <div className="space-y-8 order-2 lg:order-1">
                 {selected.status === 'invited' ? (
                   <div className="space-y-4">
-                    <p className="text-sm text-[#888] font-light">This partner hasn't submitted yet. Share their invite link:</p>
+                    <p className="text-sm text-[#777777] font-light">This partner hasn't submitted yet. Share their invite link:</p>
                     <div className="flex gap-3">
-                      <div className="flex-1 h-14 px-6 bg-[#050505] border border-[#151515] rounded-2xl flex items-center overflow-hidden">
-                        <span className="text-[11px] text-[#777] font-mono truncate">{window.location.origin}/partner-reward/{selected.invite_token}</span>
+                      <div className="flex-1 h-14 px-6 bg-[#F4F4F1] border border-[#E6E6E1] rounded-2xl flex items-center overflow-hidden">
+                        <span className="text-[11px] text-[#888888] font-mono truncate">{window.location.origin}/partner-reward/{selected.invite_token}</span>
                       </div>
                       <button onClick={() => { navigator.clipboard.writeText(`${window.location.origin}/partner-reward/${selected.invite_token}`); toast.success('Link copied'); }}
                         className="h-14 px-8 rounded-2xl bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.3em] hover:opacity-90 transition-opacity shrink-0">Copy</button>
@@ -414,20 +414,20 @@ export default function RewardSubmissions() {
 
                     {/* Reviewer notes */}
                     <div className="space-y-3">
-                      <span className="text-[9px] font-black uppercase tracking-[0.4em] text-[#333]">Reviewer notes</span>
+                      <span className="text-[9px] font-black uppercase tracking-[0.4em] text-[#BBBBBB]">Reviewer notes</span>
                       <textarea value={reviewNotes} onChange={e => setReviewNotes(e.target.value)} rows={2} disabled={saving} placeholder="Optional internal notes…"
-                        className="w-full px-6 py-4 bg-[#050505] border border-[#151515] rounded-2xl text-sm text-[#999] font-light outline-none focus:border-[#E8D200]/30 transition-colors resize-none placeholder-[#2A2A2A]" />
+                        className="w-full px-6 py-4 bg-[#F4F4F1] border border-[#E6E6E1] rounded-2xl text-sm text-[#666666] font-light outline-none focus:border-[#E8D200]/30 transition-colors resize-none placeholder-[#BBBBBB]" />
                     </div>
 
                     {/* Decision (pending only) */}
                     {selected.status === 'pending' && (
                       <div className="space-y-5 pt-2">
                         <div className="space-y-3">
-                          <span className="text-[9px] font-black uppercase tracking-[0.4em] text-[#E8D200]">Set points price *</span>
+                          <span className="text-[9px] font-black uppercase tracking-[0.4em] text-[#8a7600]">Set points price *</span>
                           <div className="flex items-center gap-3">
                             <input type="number" min="1" value={powrCost} onChange={e => setPowrCost(e.target.value)} placeholder="e.g. 500" disabled={saving}
-                              className="w-40 h-14 px-6 bg-[#050505] border border-[#E8D200]/20 rounded-2xl text-lg text-[#F2F2F2] font-light outline-none focus:border-[#E8D200]/50 transition-colors" />
-                            <span className="text-[10px] uppercase tracking-[0.3em] text-[#555] font-black">POWR points</span>
+                              className="w-40 h-14 px-6 bg-[#F4F4F1] border border-[#E8D200]/20 rounded-2xl text-lg text-[#1A1A1A] font-light outline-none focus:border-[#E8D200]/50 transition-colors" />
+                            <span className="text-[10px] uppercase tracking-[0.3em] text-[#999999] font-black">POWR points</span>
                           </div>
                         </div>
                         <div className="flex gap-4">
@@ -436,7 +436,7 @@ export default function RewardSubmissions() {
                           <button onClick={handleApprove} disabled={saving} className="flex-1 h-16 rounded-2xl border text-[10px] font-black uppercase tracking-[0.3em] transition-all disabled:opacity-50 hover:translate-y-[-2px] shadow-lg"
                             style={{ borderColor: 'rgba(74,222,128,0.4)', background: 'rgba(74,222,128,0.07)', color: '#4ade80' }}>{saving ? 'Creating…' : 'Approve & Create Reward'}</button>
                         </div>
-                        <p className="text-[11px] text-[#444] font-light leading-relaxed">Approving creates an <span className="text-[#777]">inactive</span> reward in the Vault with the promo-code scheme pre-loaded. Finalize and toggle it live there.</p>
+                        <p className="text-[11px] text-[#AAAAAA] font-light leading-relaxed">Approving creates an <span className="text-[#888888]">inactive</span> reward in the Vault with the promo-code scheme pre-loaded. Finalize and toggle it live there.</p>
                       </div>
                     )}
 
@@ -447,10 +447,10 @@ export default function RewardSubmissions() {
                           <div className="text-sm font-medium" style={{ color: STATUS[selected.status].color }}>
                             {STATUS[selected.status].label}{selected.reviewed_at ? ` · ${formatDate(selected.reviewed_at)}` : ''}
                           </div>
-                          {selected.reviewer_notes && <div className="text-xs text-[#555] mt-1 font-light">{selected.reviewer_notes}</div>}
+                          {selected.reviewer_notes && <div className="text-xs text-[#999999] mt-1 font-light">{selected.reviewer_notes}</div>}
                         </div>
                         {selected.created_reward_id && (
-                          <Link to="/admin/rewards" className="text-[9px] font-black uppercase tracking-[0.3em] text-[#E8D200] hover:underline shrink-0">Open in Vault ›</Link>
+                          <Link to="/admin/rewards" className="text-[9px] font-black uppercase tracking-[0.3em] text-[#8a7600] hover:underline shrink-0">Open in Vault ›</Link>
                         )}
                       </div>
                     )}
@@ -488,12 +488,12 @@ function Detail({ label, children }) {
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-4">
-        <div className="h-[1px] w-6 bg-[#1E1E1E]" />
-        <span className="text-[9px] font-black uppercase tracking-[0.4em] text-[#333]">{label}</span>
+        <div className="h-[1px] w-6 bg-[#E2E2DD]" />
+        <span className="text-[9px] font-black uppercase tracking-[0.4em] text-[#BBBBBB]">{label}</span>
       </div>
-      <p className="text-sm text-[#AAA] font-light leading-relaxed break-words">{children}</p>
+      <p className="text-sm text-[#555555] font-light leading-relaxed break-words">{children}</p>
     </div>
   );
 }
 
-const modalInp = "w-full h-14 px-6 bg-[#050505] border border-[#151515] rounded-2xl text-sm text-[#F2F2F2] font-light outline-none focus:border-[#E8D200]/30 transition-colors placeholder-[#2A2A2A]";
+const modalInp = "w-full h-14 px-6 bg-[#F4F4F1] border border-[#E6E6E1] rounded-2xl text-sm text-[#1A1A1A] font-light outline-none focus:border-[#E8D200]/30 transition-colors placeholder-[#BBBBBB]";
