@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { Sun, Moon } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { uploadPublicImage } from '../lib/storage';
 import RewardAppPreview from '../components/RewardAppPreview';
@@ -27,73 +26,50 @@ function cleanPrefix(raw) {
   return String(raw ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
 }
 
-// ─── Theme tokens ─────────────────────────────────────────────────────────────
-// Only the page chrome themes; the in-app preview stays dark (the POWR app is
-// dark-mode only, so the mockup must look like the real app on either theme).
-function tk(theme) {
-  const dark = theme === 'dark';
-  return {
-    dark,
-    page:        dark ? 'bg-[#080808] text-[#F2F2F2]'        : 'bg-[#F4F4F1] text-[#1A1A1A]',
-    nav:         dark ? 'border-[#111] bg-[#080808]/90'      : 'border-[#E6E6E1] bg-[#F4F4F1]/90',
-    navText:     dark ? 'text-[#555]'                        : 'text-[#888]',
-    toggle:      dark ? 'border-[#1A1A1A] text-[#888] hover:text-[#E8D200] hover:border-[#E8D200]/40'
-                      : 'border-[#DDD] text-[#666] hover:text-[#8a7600] hover:border-[#E8D200]',
-    heroBg:      dark ? 'bg-[#050505] border-[#111]'         : 'bg-white border-[#E6E6E1]',
-    heroBody:    dark ? 'text-[#555]'                        : 'text-[#666]',
-    heroBodyStrong: dark ? 'text-[#777]'                     : 'text-[#444]',
-    accentText:  dark ? 'text-[#E8D200]'                     : 'text-[#8a7600]',
-    sectionBorder: dark ? 'border-[#111]'                    : 'border-[#E6E6E1]',
-    indexNum:    dark ? 'text-[#2A2A2A]'                     : 'text-[#BBB]',
-    h2:          dark ? 'text-[#DDD]'                        : 'text-[#1A1A1A]',
-    sectionDesc: dark ? 'text-[#444]'                        : 'text-[#777]',
-    label:       dark ? 'text-[#555]'                        : 'text-[#666]',
-    input:       dark ? 'bg-[#0A0A0A] border-[#1A1A1A] text-[#F2F2F2] placeholder-[#2A2A2A] focus:border-[#E8D200]/30'
-                      : 'bg-white border-[#DDD] text-[#1A1A1A] placeholder-[#BBB] focus:border-[#E8D200]',
-    chipActive:  dark ? 'border-[#E8D200]/50 bg-[#E8D200]/10 text-[#E8D200]'
-                      : 'border-[#E8D200]/60 bg-[#E8D200]/10 text-[#8a7600]',
-    chipInactive: dark ? 'border-[#1A1A1A] bg-[#0A0A0A] text-[#444] hover:text-[#888]'
-                       : 'border-[#DDD] bg-white text-[#888] hover:text-[#444]',
-    imgBox:      dark ? 'border-[#1A1A1A] bg-[#050505] hover:border-[#2A2A2A]'
-                      : 'border-[#DDD] bg-[#FAFAFA] hover:border-[#BBB]',
-    imgInner:    dark ? 'border-[#1E1E1E]'                   : 'border-[#DDD]',
-    imgPlaceholder: dark ? 'text-[#333]'                     : 'text-[#AAA]',
-    promoBox:    dark ? 'border-[#E8D200]/20 bg-[#E8D200]/[0.04]' : 'border-[#E8D200]/40 bg-[#E8D200]/[0.10]',
-    promoLabel:  dark ? 'text-[#666]'                        : 'text-[#777]',
-    promoCode:   dark ? 'text-[#F2F2F2]'                     : 'text-[#1A1A1A]',
-    promoName:   dark ? 'text-[#E8D200]'                     : 'text-[#8a7600]',
-    promoSuffix: dark ? 'text-[#555]'                        : 'text-[#AAA]',
-    promoNote:   dark ? 'text-[#444]'                        : 'text-[#888]',
-    specStrong:  dark ? 'text-[#777]'                        : 'text-[#444]',
-    specText:    dark ? 'text-[#444]'                        : 'text-[#888]',
-    legal:       dark ? 'text-[#333]'                        : 'text-[#999]',
-    error:       dark ? 'border-red-500/20 bg-red-500/[0.06] text-red-400' : 'border-red-300 bg-red-50 text-red-600',
-    backLink:    dark ? 'text-[#333] hover:text-[#E8D200]'   : 'text-[#999] hover:text-[#8a7600]',
-    body:        dark ? 'text-[#444]'                        : 'text-[#777]',
-  };
-}
+// ─── Theme ────────────────────────────────────────────────────────────────────
+// Light/white is the standard theme for the partner portal. The in-app preview
+// stays dark regardless (the POWR app is dark-mode only).
+const t = {
+  page:        'bg-[#F4F4F1] text-[#1A1A1A]',
+  nav:         'border-[#E6E6E1] bg-[#F4F4F1]/90',
+  navText:     'text-[#888]',
+  heroBg:      'bg-white border-[#E6E6E1]',
+  heroBody:    'text-[#666]',
+  heroBodyStrong: 'text-[#444]',
+  accentText:  'text-[#8a7600]',
+  sectionBorder: 'border-[#E6E6E1]',
+  indexNum:    'text-[#BBB]',
+  h2:          'text-[#1A1A1A]',
+  sectionDesc: 'text-[#777]',
+  label:       'text-[#666]',
+  input:       'bg-white border-[#DDD] text-[#1A1A1A] placeholder-[#BBB] focus:border-[#E8D200]',
+  chipActive:  'border-[#E8D200]/60 bg-[#E8D200]/10 text-[#8a7600]',
+  chipInactive:'border-[#DDD] bg-white text-[#888] hover:text-[#444]',
+  imgBox:      'border-[#DDD] bg-[#FAFAFA] hover:border-[#BBB]',
+  imgInner:    'border-[#DDD]',
+  imgPlaceholder: 'text-[#AAA]',
+  promoBox:    'border-[#E8D200]/40 bg-[#E8D200]/[0.10]',
+  promoLabel:  'text-[#777]',
+  promoCode:   'text-[#1A1A1A]',
+  promoName:   'text-[#8a7600]',
+  promoSuffix: 'text-[#AAA]',
+  promoNote:   'text-[#888]',
+  specStrong:  'text-[#444]',
+  specText:    'text-[#888]',
+  legal:       'text-[#999]',
+  error:       'border-red-300 bg-red-50 text-red-600',
+  backLink:    'text-[#999] hover:text-[#8a7600]',
+  body:        'text-[#777]',
+};
 
 // ─── Shell ───────────────────────────────────────────────────────────────────
-function Shell({ children, t, onToggleTheme }) {
-  const logo = t.dark
-    ? 'https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/landing-page-assets/powrlogotext.png?v=1.1'
-    : '/powr-logo-black.png';
+function Shell({ children }) {
   return (
-    <div className={`min-h-screen font-['Outfit'] transition-colors ${t.page}`}>
-      <nav className={`border-b backdrop-blur-xl sticky top-0 z-50 transition-colors ${t.nav}`}>
+    <div className={`min-h-screen font-['Outfit'] ${t.page}`}>
+      <nav className={`border-b backdrop-blur-xl sticky top-0 z-50 ${t.nav}`}>
         <div className="max-w-7xl mx-auto px-8 h-16 flex items-center justify-between">
-          <Link to="/"><img src={logo} alt="POWR" className="h-7" /></Link>
-          <div className="flex items-center gap-4">
-            <span className={`text-[10px] uppercase tracking-[0.4em] font-black ${t.navText}`}>Partner Portal</span>
-            <button
-              type="button"
-              onClick={onToggleTheme}
-              aria-label="Toggle light / dark theme"
-              className={`w-9 h-9 rounded-full border flex items-center justify-center transition-colors ${t.toggle}`}
-            >
-              {t.dark ? <Sun size={15} /> : <Moon size={15} />}
-            </button>
-          </div>
+          <Link to="/"><img src="/powr-logo-black.png" alt="POWR" className="h-7" /></Link>
+          <span className={`text-[10px] uppercase tracking-[0.4em] font-black ${t.navText}`}>Partner Portal</span>
         </div>
       </nav>
       {children}
@@ -103,16 +79,6 @@ function Shell({ children, t, onToggleTheme }) {
 
 export default function PartnerRewardSubmit() {
   const { token } = useParams();
-
-  const [theme, setTheme] = useState(() => {
-    try { return localStorage.getItem('powr_partner_theme') || 'dark'; } catch { return 'dark'; }
-  });
-  const toggleTheme = () => setTheme(prev => {
-    const next = prev === 'dark' ? 'light' : 'dark';
-    try { localStorage.setItem('powr_partner_theme', next); } catch { /* ignore */ }
-    return next;
-  });
-  const t = tk(theme);
 
   const [tokenState, setTokenState] = useState('loading'); // loading | invalid | used | valid
   const [ctx, setCtx] = useState({ brandLocked: false, prefixLocked: false, partnerCode: null });
@@ -255,17 +221,15 @@ export default function PartnerRewardSubmit() {
     }
   }
 
-  const shellProps = { t, onToggleTheme: toggleTheme };
-
   // ── Token states ─────────────────────────────────────────────────────────
   if (tokenState === 'loading') {
-    return <Shell {...shellProps}><div className="min-h-[80vh] flex items-center justify-center"><div className="w-8 h-8 border-2 border-[#E8D200]/20 border-t-[#E8D200] rounded-full animate-spin" /></div></Shell>;
+    return <Shell><div className="min-h-[80vh] flex items-center justify-center"><div className="w-8 h-8 border-2 border-[#E8D200]/20 border-t-[#E8D200] rounded-full animate-spin" /></div></Shell>;
   }
   if (tokenState === 'invalid') {
     return (
-      <Shell {...shellProps}>
+      <Shell>
         <div className="min-h-[80vh] flex flex-col items-center justify-center gap-6 px-6 text-center">
-          <div className="w-16 h-16 rounded-full border border-red-500/30 flex items-center justify-center text-red-400 text-2xl">✕</div>
+          <div className="w-16 h-16 rounded-full border border-red-400/40 flex items-center justify-center text-red-500 text-2xl">✕</div>
           <h1 className="text-3xl font-light tracking-tight">Invalid link</h1>
           <p className={`${t.body} font-light max-w-xs leading-relaxed text-sm`}>This link isn't valid. Please check the URL or contact POWR for a new one.</p>
         </div>
@@ -274,9 +238,9 @@ export default function PartnerRewardSubmit() {
   }
   if (tokenState === 'used') {
     return (
-      <Shell {...shellProps}>
+      <Shell>
         <div className="min-h-[80vh] flex flex-col items-center justify-center gap-6 px-6 text-center">
-          <div className="w-16 h-16 rounded-full border border-[#E8D200]/30 flex items-center justify-center text-[#E8D200] text-2xl">✓</div>
+          <div className="w-16 h-16 rounded-full border border-[#E8D200]/50 flex items-center justify-center text-[#8a7600] text-2xl">✓</div>
           <h1 className="text-3xl font-light tracking-tight">Already submitted</h1>
           <p className={`${t.body} font-light max-w-xs leading-relaxed text-sm`}>This reward has already been submitted. Our team will be in touch once it's reviewed.</p>
         </div>
@@ -285,9 +249,9 @@ export default function PartnerRewardSubmit() {
   }
   if (submitted) {
     return (
-      <Shell {...shellProps}>
+      <Shell>
         <div className="min-h-[80vh] flex flex-col items-center justify-center gap-8 px-6 text-center">
-          <div className="w-20 h-20 rounded-full border border-[#E8D200] flex items-center justify-center text-[#E8D200] text-4xl">✓</div>
+          <div className="w-20 h-20 rounded-full border-2 border-[#E8D200] flex items-center justify-center text-[#8a7600] text-4xl">✓</div>
           <div>
             <h1 className="text-4xl font-light tracking-tight mb-3">Reward submitted</h1>
             <p className={`${t.heroBody} font-light max-w-sm leading-relaxed`}>Thanks{brandName ? `, ${brandName}` : ''}. Our team will review it and get it live on POWR shortly.</p>
@@ -300,9 +264,9 @@ export default function PartnerRewardSubmit() {
 
   // ── Form ─────────────────────────────────────────────────────────────────
   return (
-    <Shell {...shellProps}>
+    <Shell>
       {/* Hero header */}
-      <div className={`border-b transition-colors ${t.heroBg}`}>
+      <div className={`border-b ${t.heroBg}`}>
         <div className="max-w-7xl mx-auto px-8 py-16">
           <div className="flex items-center gap-3 mb-8">
             <div className="h-[1px] w-10 bg-[#E8D200]" />
@@ -322,55 +286,55 @@ export default function PartnerRewardSubmit() {
           {/* ── LEFT: form ── */}
           <div>
             {/* 01 Brand & contact */}
-            <FormSection t={t} index="01" title="Your Brand" description="Who's offering this reward, and how we reach you.">
+            <FormSection index="01" title="Your Brand" description="Who's offering this reward, and how we reach you.">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                <Field t={t} label="Brand name *">
+                <Field label="Brand name *">
                   <input value={brandName} onChange={e => setBrandName(e.target.value)} placeholder="e.g. Tribe" required readOnly={ctx.brandLocked} className={`${INPUT_BASE} ${t.input}` + (ctx.brandLocked ? ' opacity-60 cursor-default' : '')} />
                 </Field>
-                <Field t={t} label="Website *">
+                <Field label="Website *">
                   <input value={website} onChange={e => setWebsite(e.target.value)} placeholder="https://yourbrand.com" className={`${INPUT_BASE} ${t.input}`} />
                 </Field>
-                <Field t={t} label="Contact name *">
+                <Field label="Contact name *">
                   <input value={contactName} onChange={e => setContactName(e.target.value)} placeholder="Your name" className={`${INPUT_BASE} ${t.input}`} />
                 </Field>
-                <Field t={t} label="Contact email *">
+                <Field label="Contact email *">
                   <input type="email" value={contactEmail} onChange={e => setContactEmail(e.target.value)} placeholder="you@brand.com" required className={`${INPUT_BASE} ${t.input}`} />
                 </Field>
               </div>
             </FormSection>
 
             {/* 02 The offer */}
-            <FormSection t={t} index="02" title="The Offer" description="What members unlock. Keep the title short and punchy — it's the headline on the card.">
-              <Field t={t} label="Reward title *">
+            <FormSection index="02" title="The Offer" description="What members unlock. Keep the title short and punchy — it's the headline on the card.">
+              <Field label="Reward title *">
                 <input value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. 30% off your first order" required maxLength={60} className={`${INPUT_BASE} ${t.input}`} />
               </Field>
-              <Field t={t} label="Short description *">
+              <Field label="Short description *">
                 <input value={description} onChange={e => setDescription(e.target.value)} placeholder="e.g. Tribe · Any product" maxLength={80} className={`${INPUT_BASE} ${t.input}`} />
               </Field>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                <Field t={t} label="Value type *">
+                <Field label="Value type *">
                   <select value={discountType} onChange={e => setDiscountType(e.target.value)} className={`${INPUT_BASE} ${t.input}`}>
                     {DISCOUNT_OPTIONS.map(o => <option key={o.value || 'text'} value={o.value}>{o.label}</option>)}
                   </select>
                 </Field>
                 {discountType ? (
-                  <Field t={t} label={(discountType === 'percentage' ? 'Percent off' : 'Amount off (£)') + ' *'}>
+                  <Field label={(discountType === 'percentage' ? 'Percent off' : 'Amount off (£)') + ' *'}>
                     <input type="number" min="0" value={discountValue} onChange={e => setDiscountValue(e.target.value)} placeholder={discountType === 'percentage' ? '30' : '20'} className={`${INPUT_BASE} ${t.input}`} />
                   </Field>
                 ) : (
-                  <Field t={t} label="Value label *">
+                  <Field label="Value label *">
                     <input value={valueLabel} onChange={e => setValueLabel(e.target.value)} placeholder="e.g. £20 value" className={`${INPUT_BASE} ${t.input}`} />
                   </Field>
                 )}
-                <Field t={t} label="Sector *">
+                <Field label="Sector *">
                   <select value={category} onChange={e => setCategory(e.target.value)} className={`${INPUT_BASE} ${t.input}`}>
                     {CATEGORY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                   </select>
                 </Field>
               </div>
 
-              <Field t={t} label="Reward type *">
+              <Field label="Reward type *">
                 <div className="flex gap-3">
                   {[['digital', 'Digital code'], ['physical', 'Physical item']].map(([val, label]) => (
                     <button key={val} type="button" onClick={() => setRewardKind(val)}
@@ -381,20 +345,20 @@ export default function PartnerRewardSubmit() {
                 </div>
               </Field>
 
-              <Field t={t} label="Offer detail * (shown when the card is expanded)">
+              <Field label="Offer detail * (shown when the card is expanded)">
                 <textarea value={offer} onChange={e => setOffer(e.target.value)} rows={2} placeholder="e.g. Get 30% off any single order at tribe.com. New customers only." className={`${INPUT_BASE} ${t.input} h-auto py-4 resize-none`} />
               </Field>
-              <Field t={t} label="About your brand *">
+              <Field label="About your brand *">
                 <textarea value={partnerBlurb} onChange={e => setPartnerBlurb(e.target.value)} rows={2} placeholder="A short line about who you are." className={`${INPUT_BASE} ${t.input} h-auto py-4 resize-none`} />
               </Field>
-              <Field t={t} label="Terms & conditions *">
+              <Field label="Terms & conditions *">
                 <textarea value={terms} onChange={e => setTerms(e.target.value)} rows={2} placeholder="e.g. One use per member. Cannot be combined with other offers." className={`${INPUT_BASE} ${t.input} h-auto py-4 resize-none`} />
               </Field>
             </FormSection>
 
             {/* 03 Promo code */}
-            <FormSection t={t} index="03" title="Promo Code" description="Pick the middle of your code. POWR adds POWR- at the front and generates a unique 6-character suffix for every member.">
-              <Field t={t} label="Your code name *">
+            <FormSection index="03" title="Promo Code" description="Pick the middle of your code. POWR adds POWR- at the front and generates a unique 6-character suffix for every member.">
+              <Field label="Your code name *">
                 <input
                   value={codePrefix}
                   onChange={e => setCodePrefix(cleanPrefix(e.target.value))}
@@ -418,20 +382,20 @@ export default function PartnerRewardSubmit() {
             </FormSection>
 
             {/* 04 Imagery */}
-            <FormSection t={t} index="04" title="Imagery" description="Two images bring the card to life. Use crisp, high-resolution files.">
+            <FormSection index="04" title="Imagery" description="Two images bring the card to life. Use crisp, high-resolution files.">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* Logo */}
                 <div>
                   <p className={`text-[10px] uppercase tracking-[0.3em] font-black mb-2 ${t.label}`}>Logo / brand mark *</p>
                   <p className={`text-[11px] font-light mb-3 leading-relaxed ${t.specText}`}>Square, min <span className={t.specStrong}>512×512px</span>. Transparent PNG preferred. Max 5 MB.</p>
-                  <ImagePicker t={t} preview={logoUrl} uploading={uploadingLogo} onClick={() => logoRef.current?.click()} aspect="aspect-square" label="Add logo" />
+                  <ImagePicker preview={logoUrl} uploading={uploadingLogo} onClick={() => logoRef.current?.click()} aspect="aspect-square" label="Add logo" />
                   <input ref={logoRef} type="file" accept="image/*" className="hidden" onChange={e => handleImage(e, 'logo')} />
                 </div>
                 {/* Hero */}
                 <div>
                   <p className={`text-[10px] uppercase tracking-[0.3em] font-black mb-2 ${t.label}`}>Hero / banner image *</p>
                   <p className={`text-[11px] font-light mb-3 leading-relaxed ${t.specText}`}>Landscape 16:9, min <span className={t.specStrong}>1200×675px</span>. JPG or PNG. Max 5 MB.</p>
-                  <ImagePicker t={t} preview={heroUrl} uploading={uploadingHero} onClick={() => heroRef.current?.click()} aspect="aspect-video" label="Add hero" />
+                  <ImagePicker preview={heroUrl} uploading={uploadingHero} onClick={() => heroRef.current?.click()} aspect="aspect-video" label="Add hero" />
                   <input ref={heroRef} type="file" accept="image/*" className="hidden" onChange={e => handleImage(e, 'hero')} />
                 </div>
               </div>
@@ -445,7 +409,7 @@ export default function PartnerRewardSubmit() {
                   By submitting you agree to let POWR feature this reward in the app. We'll set the points price and review before it goes live.
                 </p>
                 <button type="submit" disabled={submitting || uploadingLogo || uploadingHero}
-                  className={`shrink-0 h-16 px-16 rounded-full bg-[#E8D200] text-[#080808] text-[11px] font-black uppercase tracking-[0.4em] transition-all shadow-lg shadow-[#E8D200]/10 ${(submitting || uploadingLogo || uploadingHero) ? 'opacity-50 cursor-not-allowed' : 'hover:translate-y-[-2px] cursor-pointer'}`}>
+                  className={`shrink-0 h-16 px-16 rounded-full bg-[#E8D200] text-[#080808] text-[11px] font-black uppercase tracking-[0.4em] transition-all shadow-lg shadow-[#E8D200]/20 ${(submitting || uploadingLogo || uploadingHero) ? 'opacity-50 cursor-not-allowed' : 'hover:translate-y-[-2px] cursor-pointer'}`}>
                   {submitting ? 'Submitting…' : 'Submit Reward'}
                 </button>
               </div>
@@ -456,7 +420,7 @@ export default function PartnerRewardSubmit() {
           <div className="hidden lg:block">
             <div className="sticky top-24 py-16">
               <RewardAppPreview
-                pageTheme={theme}
+                pageTheme="light"
                 brandName={brandName}
                 title={title}
                 description={description}
@@ -480,7 +444,7 @@ export default function PartnerRewardSubmit() {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-function FormSection({ t, index, title, description, children }) {
+function FormSection({ index, title, description, children }) {
   return (
     <div className={`py-12 border-b ${t.sectionBorder}`}>
       <div className="mb-8">
@@ -493,7 +457,7 @@ function FormSection({ t, index, title, description, children }) {
   );
 }
 
-function Field({ t, label, children }) {
+function Field({ label, children }) {
   return (
     <div className="flex flex-col gap-2">
       <label className={`text-[10px] uppercase tracking-[0.3em] font-black ${t.label}`}>{label}</label>
@@ -502,16 +466,16 @@ function Field({ t, label, children }) {
   );
 }
 
-function ImagePicker({ t, preview, uploading, onClick, aspect, label }) {
+function ImagePicker({ preview, uploading, onClick, aspect, label }) {
   return (
     <div onClick={onClick} className={`${aspect} rounded-2xl border flex items-center justify-center cursor-pointer overflow-hidden transition-colors group ${t.imgBox}`}>
       {uploading ? (
-        <div className="w-7 h-7 border-2 border-[#E8D200]/20 border-t-[#E8D200] rounded-full animate-spin" />
+        <div className="w-7 h-7 border-2 border-[#E8D200]/30 border-t-[#E8D200] rounded-full animate-spin" />
       ) : preview ? (
         <img src={preview} alt="" className="w-full h-full object-contain" />
       ) : (
         <div className="flex flex-col items-center gap-3">
-          <div className={`w-12 h-12 rounded-2xl border flex items-center justify-center group-hover:border-[#E8D200]/20 transition-colors ${t.imgInner}`}><span className={`${t.imgPlaceholder} text-xl`}>+</span></div>
+          <div className={`w-12 h-12 rounded-2xl border flex items-center justify-center group-hover:border-[#E8D200]/40 transition-colors ${t.imgInner}`}><span className={`${t.imgPlaceholder} text-xl`}>+</span></div>
           <span className={`text-[10px] uppercase tracking-[0.3em] font-black ${t.imgPlaceholder}`}>{label}</span>
         </div>
       )}
