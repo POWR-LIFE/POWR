@@ -110,6 +110,11 @@ function getHK() {
 const HK_READ_PERMISSIONS = [
     'HKQuantityTypeIdentifierStepCount',
     'HKQuantityTypeIdentifierDistanceWalkingRunning',
+    // Cycling/swimming distance — read by the run/cycle/swim inference
+    // (lib/health/runInference.ts). Without these, HealthKit returns empty for
+    // those types and inferred rides/swims silently never appear.
+    'HKQuantityTypeIdentifierDistanceCycling',
+    'HKQuantityTypeIdentifierDistanceSwimming',
     'HKWorkoutTypeIdentifier',
     'HKCategoryTypeIdentifierSleepAnalysis',
     'HKQuantityTypeIdentifierHeartRate',
@@ -373,6 +378,23 @@ export async function androidCheckAlreadyGranted(): Promise<boolean> {
         );
     } catch (e) {
         console.warn('[HealthData] androidCheckAlreadyGranted failed:', e);
+        return false;
+    }
+}
+
+/** Checks whether Health Connect ExerciseSession (workout) read is granted to POWR. */
+export async function androidExerciseSessionGranted(): Promise<boolean> {
+    try {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const { initialize, getGrantedPermissions } = require('react-native-health-connect');
+        await initialize();
+        const granted: Array<{ recordType: string; accessType: string }> = await getGrantedPermissions();
+        return granted.some(p =>
+            (p.recordType === 'ExerciseSession' || p.recordType === 'android.permission.health.READ_EXERCISE') &&
+            (p.accessType === 'read' || !p.accessType)
+        );
+    } catch (e) {
+        console.warn('[HealthData] androidExerciseSessionGranted failed:', e);
         return false;
     }
 }

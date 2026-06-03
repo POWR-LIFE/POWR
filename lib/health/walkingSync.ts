@@ -29,6 +29,7 @@ import {
     type HealthProviderId,
 } from '@/lib/health/providers';
 import { verificationFromProvenances, summarizeSources, type HealthDataProvenance } from '@/lib/health/dataSource';
+import { getInferredRunWindowsToday } from '@/lib/health/runInference';
 import { supabase } from '@/lib/supabase';
 
 export const WALKING_SYNC_TASK = 'powr-walking-sync';
@@ -306,7 +307,22 @@ async function _syncWalkingNowImpl(): Promise<void> {
     const verification = verificationFromProvenances(stepSources, baseVerification);
     const sourceDetail = summarizeSources(stepSources);
 
-    const tierPoints = stepTierPoints(steps);
+    // De-dup vs inferred runs: a Garmin/wearable run mirrors its distance into
+    // Apple Health and its steps fold into the day's total above. useHealthSync
+    // logs that as a separate run session, so excluding the run windows' steps
+    // here stops the same effort being paid as walking *and* as a run. The
+    // displayed step count (saved below) stays the full daily total; only the
+    // point tier is computed on the non-run steps.
+    let walkingSteps = steps;
+    if (usedNativeStore && Platform.OS === 'ios') {
+        const runWindows = await getInferredRunWindowsToday().catch(() => []);
+        for (const w of runWindows) {
+            walkingSteps -= await getStepsInRange(w.start, w.end);
+        }
+        walkingSteps = Math.max(0, walkingSteps);
+    }
+
+    const tierPoints = stepTierPoints(walkingSteps);
 
     // Enforce daily cap across all walking sources (health-sync + manual)
     const alreadyEarned = await fetchTodayWalkingPoints();
