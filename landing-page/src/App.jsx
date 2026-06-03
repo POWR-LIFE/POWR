@@ -5,11 +5,13 @@ import { supabase } from './lib/supabase';
 import { ToastProvider } from './lib/toast';
 import {
     LayoutDashboard, Users, ClipboardList, LogOut, ChevronRight,
-    Activity, Award, AlertTriangle, BarChart3, Shield, Settings, ScrollText, Gift, Target, MessageSquare, Star
+    Activity, Award, AlertTriangle, BarChart3, Shield, Settings, ScrollText, Gift, Target, MessageSquare, Star, Inbox
 } from 'lucide-react';
 
 import PartnerManager from './pages/admin/PartnerManager';
 import RewardManager from './pages/admin/RewardManager';
+import RewardSubmissions from './pages/admin/RewardSubmissions';
+import PartnerRewardSubmit from './pages/PartnerRewardSubmit';
 import WeeklyChallenges from './pages/admin/WeeklyChallenges';
 import WaitlistManager from './pages/admin/WaitlistManager';
 import UserManager from './pages/admin/UserManager';
@@ -109,6 +111,7 @@ const PATH_LABELS = {
     admin: 'Overview',
     partners: 'Partners',
     rewards: 'Rewards',
+    'reward-submissions': 'Submissions',
     challenges: 'Challenges',
     waitlist: 'Waitlist',
     users: 'Users',
@@ -348,6 +351,7 @@ const AdminLayout = ({ children }) => {
     const navigate = useNavigate();
     const { user } = useAuth();
     const [pendingAthletes, setPendingAthletes] = useState(0);
+    const [pendingSubmissions, setPendingSubmissions] = useState(0);
 
     useEffect(() => {
         supabase
@@ -355,13 +359,19 @@ const AdminLayout = ({ children }) => {
             .select('id', { count: 'exact', head: true })
             .eq('status', 'pending')
             .then(({ count }) => setPendingAthletes(count ?? 0));
+        supabase
+            .from('reward_submissions')
+            .select('id', { count: 'exact', head: true })
+            .eq('status', 'pending')
+            .then(({ count }) => setPendingSubmissions(count ?? 0));
     }, [location.pathname]);
 
     const navItems = [
-        { label: 'Overview',   path: '/admin',           icon: LayoutDashboard },
-        { label: 'Partners',   path: '/admin/partners',  icon: Activity        },
-        { label: 'Rewards',    path: '/admin/rewards',   icon: Award           },
-        { label: 'Featured',   path: '/admin/featured',  icon: Star            },
+        { label: 'Overview',    path: '/admin',                    icon: LayoutDashboard },
+        { label: 'Partners',    path: '/admin/partners',           icon: Activity        },
+        { label: 'Rewards',     path: '/admin/rewards',            icon: Award           },
+        { label: 'Submissions', path: '/admin/reward-submissions', icon: Inbox, badge: pendingSubmissions },
+        { label: 'Featured',    path: '/admin/featured',           icon: Star            },
         { label: 'Challenges', path: '/admin/challenges', icon: Target         },
         { label: 'Waitlist',   path: '/admin/waitlist',  icon: ClipboardList   },
         { label: 'Users',      path: '/admin/users',     icon: Users           },
@@ -542,10 +552,12 @@ export default function App() {
                     <Route path="/support" element={<SupportPage />} />
                     <Route path="/delete-account" element={<DeleteAccount />} />
                     <Route path="/athlete/:token" element={<AthleteSignup />} />
+                    <Route path="/partner-reward/:token" element={<PartnerRewardSubmit />} />
                     <Route path="/admin/login" element={<AdminLogin />} />
                     <Route path="/admin" element={<ProtectedRoute><AdminLayout><AdminHome /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/partners" element={<ProtectedRoute><AdminLayout><PartnerManager /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/rewards" element={<ProtectedRoute><AdminLayout><RewardManager /></AdminLayout></ProtectedRoute>} />
+                    <Route path="/admin/reward-submissions" element={<ProtectedRoute><AdminLayout><RewardSubmissions /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/featured" element={<ProtectedRoute><AdminLayout><FeaturedSchedule /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/challenges" element={<ProtectedRoute><AdminLayout><WeeklyChallenges /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/waitlist" element={<ProtectedRoute><AdminLayout><WaitlistManager /></AdminLayout></ProtectedRoute>} />

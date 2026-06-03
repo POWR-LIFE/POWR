@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
-import { Plus, Edit2, Trash2, Ticket, Loader2, X, Search, Award, Activity, ChevronRight, AlertTriangle, Upload, Image as ImageIcon, Tag, FileText, Download, GripVertical, Save, Pin } from 'lucide-react';
+import { Plus, Edit2, Trash2, Ticket, Loader2, X, Search, Award, Activity, ChevronRight, AlertTriangle, Upload, Image as ImageIcon, Tag, FileText, Download, GripVertical, Save, Pin, Send } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { uploadPublicImage } from '../../lib/storage';
 import * as XLSX from 'xlsx';
@@ -555,6 +555,12 @@ export default function RewardManager() {
                             Save Order
                         </button>
                     )}
+                    <Link
+                        to="/admin/reward-submissions"
+                        className="flex items-center gap-3 h-16 px-8 bg-[#0A0A0A] text-[#999] border border-[#151515] text-[11px] font-black uppercase tracking-[0.3em] rounded-full transition-all hover:text-[#E8D200] hover:border-[#E8D200]/30"
+                    >
+                        <Send size={16} /> Invite Partner
+                    </Link>
                     <button
                         onClick={openCreate}
                         className="flex items-center gap-4 h-16 px-10 bg-[#E8D200] text-[#080808] text-[11px] font-black uppercase tracking-[0.3em] rounded-full transition-all hover:translate-y-[-4px] shadow-2xl shadow-[#E8D200]/20"
