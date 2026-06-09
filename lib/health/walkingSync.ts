@@ -22,9 +22,11 @@ import {
     WALKING_DAILY_CAP,
 } from '@/lib/api/activity';
 import {
+    ALL_PROVIDER_META,
     getNativeProviderId,
     getProvider,
     HealthProviderNotImplementedError,
+    isTerraProvider,
     verificationForProvider,
     type HealthProviderId,
 } from '@/lib/health/providers';
@@ -278,6 +280,19 @@ export function syncWalkingNow(): Promise<void> {
 
 async function _syncWalkingNowImpl(): Promise<void> {
     const activeId = await resolveActiveProviderId();
+
+    // Wearable precedence: if the active wearable reports its own steps (Oura /
+    // Garmin / Fitbit / Huawei), Terra's `daily` webhook owns walking — don't
+    // double-source from the phone. A step-less wearable (e.g. Whoop) falls
+    // through to the native phone step reader below.
+    if (activeId && isTerraProvider(activeId)) {
+        const meta = ALL_PROVIDER_META.find(m => m.id === activeId);
+        if (meta?.capabilities.includes('steps')) {
+            console.log(`[walkingSync] ${activeId} reports steps — Terra owns walking, skipping native sync.`);
+            return;
+        }
+    }
+
     let steps = 0;
     if (activeId) {
         try {

@@ -19,6 +19,9 @@ const DIM = 'rgba(255,255,255,0.5)';
 const TEXT_COLOR = '#F2F2F2';
 const MAX_SELECTED = 3;
 
+// Gym is the core of POWR (geofence-verified) — always selected, never removable.
+const LOCKED: ActivityType = 'gym';
+
 const ORDERED_ACTIVITIES = [
   ACTIVITIES.gym,
   ...ACTIVITY_LIST.filter(a => a.type !== 'gym' && !a.hideFromPicker),
@@ -36,12 +39,18 @@ export default function ActivityPreferencesScreen() {
   );
   const supported = useMemo(() => supportedActivitiesFor(connectedIds), [connectedIds]);
 
-  const savedPrefs: ActivityType[] =
-    user?.user_metadata?.activity_preferences ?? ['gym', 'running', 'walking'];
-  const [selected, setSelected] = useState<Set<ActivityType>>(new Set(savedPrefs));
+  // Guarantee gym is one of the (max 3) selected, even for users whose saved
+  // prefs predate the gym lock — keep gym + their first 2 other choices.
+  const [selected, setSelected] = useState<Set<ActivityType>>(() => {
+    const saved: ActivityType[] =
+      user?.user_metadata?.activity_preferences ?? ['gym', 'running', 'walking'];
+    const others = saved.filter(t => t !== LOCKED).slice(0, MAX_SELECTED - 1);
+    return new Set<ActivityType>([LOCKED, ...others]);
+  });
   const [saving, setSaving] = useState(false);
 
   const toggleActivity = (type: ActivityType) => {
+    if (type === LOCKED) return; // gym is locked in — can't be deselected
     setSelected(prev => {
       const next = new Set(prev);
       if (next.has(type)) {
@@ -85,8 +94,8 @@ export default function ActivityPreferencesScreen() {
         </Text>
         <Text style={styles.body}>
           {connectedIds.length > 0
-            ? 'Pick three activities to track — we\'ll auto-track what your wearable supports.'
-            : 'Pick three activities to track — most will need manual logging without a wearable.'}
+            ? 'Gym stays locked in — pick 2 more. We\'ll auto-track what your wearable supports.'
+            : 'Gym stays locked in — pick 2 more. Most others need manual logging without a wearable.'}
         </Text>
       </View>
 
@@ -97,6 +106,7 @@ export default function ActivityPreferencesScreen() {
           showsVerticalScrollIndicator={false}
         >
         {ORDERED_ACTIVITIES.map(activity => {
+          const isLocked = activity.type === LOCKED;
           const isActive = selected.has(activity.type);
           const isAutoTracked = supported.has(activity.type);
           const isDisabled = !isActive && selected.size >= MAX_SELECTED;
@@ -107,6 +117,7 @@ export default function ActivityPreferencesScreen() {
               style={[
                 styles.card,
                 isActive && styles.cardActive,
+                isLocked && styles.cardLocked,
                 isDisabled && styles.cardDisabled,
                 !isAutoTracked && !isActive && styles.cardManual,
               ]}
@@ -121,9 +132,15 @@ export default function ActivityPreferencesScreen() {
                     active={isActive}
                   />
                 </View>
-                <View style={[styles.checkCircle, isActive && styles.checkCircleActive]}>
-                  {isActive && <Ionicons name="checkmark" size={13} color="#FFFFFF" />}
-                </View>
+                {isLocked ? (
+                  <View style={styles.lockCircle}>
+                    <Ionicons name="lock-closed" size={12} color={GOLD} />
+                  </View>
+                ) : (
+                  <View style={[styles.checkCircle, isActive && styles.checkCircleActive]}>
+                    {isActive && <Ionicons name="checkmark" size={13} color="#FFFFFF" />}
+                  </View>
+                )}
               </View>
 
               <Text style={[styles.cardLabel, isActive && styles.cardLabelActive]} numberOfLines={1}>
@@ -222,6 +239,10 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
     borderColor: 'rgba(255,255,255,0.6)',
   },
+  cardLocked: {
+    borderColor: 'rgba(232,210,0,0.45)',
+    backgroundColor: 'rgba(232,210,0,0.05)',
+  },
   cardDisabled: { opacity: 0.35 },
   cardManual: { opacity: 0.6 },
 
@@ -278,6 +299,12 @@ const styles = StyleSheet.create({
   checkCircleActive: {
     backgroundColor: 'transparent',
     borderColor: 'rgba(255,255,255,0.8)',
+  },
+  lockCircle: {
+    width: 24, height: 24, borderRadius: 12,
+    borderWidth: 1.5, borderColor: 'rgba(232,210,0,0.5)',
+    backgroundColor: 'rgba(232,210,0,0.08)',
+    alignItems: 'center', justifyContent: 'center',
   },
 
   bottom: { paddingHorizontal: 24, paddingTop: 12 },

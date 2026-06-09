@@ -9,13 +9,15 @@ function redirect(path: string) {
 describe('redirectSystemPath', () => {
   it('passes plain route paths straight through', () => {
     expect(redirect('/(tabs)/index')).toBe('/(tabs)/index');
-    expect(redirect('/whoop-callback?code=X')).toBe('/whoop-callback?code=X');
+    expect(redirect('/terra-callback?user_id=X')).toBe('/terra-callback?user_id=X');
   });
 
   it('maps powr://host?query to /host?query', () => {
-    expect(redirect('powr://whoop-callback?code=X')).toBe('/whoop-callback?code=X');
-    expect(redirect('powr://fitbit-callback?code=abc&state=y')).toBe(
-      '/fitbit-callback?code=abc&state=y',
+    expect(redirect('powr://terra-callback?user_id=X&resource=WHOOP')).toBe(
+      '/terra-callback?user_id=X&resource=WHOOP',
+    );
+    expect(redirect('powr://samsung-health-callback?code=abc&state=y')).toBe(
+      '/samsung-health-callback?code=abc&state=y',
     );
   });
 

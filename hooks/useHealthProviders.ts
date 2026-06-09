@@ -5,6 +5,7 @@ import {
     ALL_PROVIDER_META,
     getNativeProviderId,
     getProvider,
+    isTerraProvider,
     visibleProviders,
     type HealthProviderId,
     type HealthProviderMeta,
@@ -16,6 +17,8 @@ export type ProviderConnection = {
     connected_at?: string;
     last_sync_at?: string;
     scopes?: string[];
+    /** Terra's per-connection user id — present once Terra's auth webhook fires. */
+    terra_user_id?: string;
 };
 
 export type ProviderRow = {
@@ -28,6 +31,24 @@ type ProfileRow = {
     active_health_provider: HealthProviderId | null;
     health_provider_connections: Record<string, ProviderConnection> | null;
 };
+
+/**
+ * Drop stale Terra-provider connections that predate the Terra migration — i.e.
+ * an old direct Whoop/Fitbit entry that has no `terra_user_id`. Such an entry can
+ * no longer sync (the direct integrations were retired), so it must read as "not
+ * connected" to prompt the user to reconnect through Terra. Native entries are
+ * untouched (they never carry a terra_user_id).
+ */
+function sanitizeConnections(
+    conns: Record<string, ProviderConnection>,
+): Record<string, ProviderConnection> {
+    const out: Record<string, ProviderConnection> = {};
+    for (const [id, conn] of Object.entries(conns)) {
+        if (isTerraProvider(id as HealthProviderId) && !conn?.terra_user_id) continue;
+        out[id] = conn;
+    }
+    return out;
+}
 
 /**
  * Reads/writes the user's health-provider state on `profiles` and exposes
@@ -51,7 +72,7 @@ export function useHealthProviders() {
                 .eq('id', user.id)
                 .single<ProfileRow>();
             setActiveId(data?.active_health_provider ?? null);
-            setConnections(data?.health_provider_connections ?? {});
+            setConnections(sanitizeConnections(data?.health_provider_connections ?? {}));
         } finally {
             setLoading(false);
         }
@@ -107,19 +128,45 @@ export function useHealthProviders() {
         setBusyId(id);
         try {
             const provider = getProvider(id);
+
+            // One wearable at a time: before connecting a wearable, deauth + drop any
+            // other connected wearable so the new one is the single source of truth.
+            // Native phone health (Apple Health / Health Connect) is the baseline and
+            // is left alone.
+            let baseConns = connections;
+            let baseActive = activeId;
+            if (isTerraProvider(id)) {
+                const others = (Object.keys(connections) as HealthProviderId[])
+                    .filter(k => k !== id && isTerraProvider(k));
+                if (others.length) {
+                    for (const o of others) {
+                        try { await getProvider(o).disconnect(); }
+                        catch (e) { console.warn('[providers] deauth previous wearable failed:', e); }
+                    }
+                    baseConns = { ...connections };
+                    for (const o of others) delete baseConns[o];
+                    if (baseActive && others.includes(baseActive)) baseActive = getNativeProviderId();
+                    await writeProfile({ health_provider_connections: baseConns, active_health_provider: baseActive });
+                    setConnections(baseConns);
+                    setActiveId(baseActive);
+                }
+            }
+
             const result = await provider.connect();
             if (result !== 'connected') {
-                // 'pending' → an OAuth callback route will write the profile and
-                // a subsequent refresh() will pick it up. 'failed' → nothing to
-                // write. Either way we don't touch the DB here.
+                // 'pending' → /terra-callback (and Terra's auth webhook) write the
+                // connection and promote the wearable to active. 'failed' → nothing
+                // to write. Either way we don't write the connection here.
                 return result;
             }
+            // Synchronous connect (native permission granted).
             const next: Record<string, ProviderConnection> = {
-                ...connections,
-                [id]: { ...(connections[id] ?? {}), connected_at: new Date().toISOString() },
+                ...baseConns,
+                [id]: { ...(baseConns[id] ?? {}), connected_at: new Date().toISOString() },
             };
-            // First connect auto-promotes to active if nothing else is active.
-            const nextActive = activeId ?? id;
+            // A connected wearable becomes the source of truth; native only takes
+            // active if nothing else holds it.
+            const nextActive = isTerraProvider(id) ? id : (baseActive ?? id);
             await writeProfile({
                 health_provider_connections: next,
                 active_health_provider: nextActive,

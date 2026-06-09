@@ -379,14 +379,15 @@ authorization_url_path = "/oauth/consent"
 # Allow dynamic client registration
 allow_dynamic_registration = false
 
-[functions.whoop-oauth]
-# OAuth broker called during onboarding before the user has a session —
-# security rests on the PKCE code_verifier + one-time code from Whoop.
-verify_jwt = false
+[functions.terra-auth]
+# Called by a logged-in user to start a Terra provider connection (widget
+# session). JWT-verified (default) — the caller's user id stamps the session's
+# reference_id so the terra-webhook auth event can map the Terra user to POWR.
 
-[functions.fitbit-oauth]
-# OAuth broker called during onboarding before the user has a session —
-# security rests on the PKCE code_verifier + one-time code from Fitbit.
+[functions.terra-webhook]
+# Terra posts normalised health data + auth/deauth events here. Terra is not a
+# Supabase user, so verify_jwt is off — security rests on the terra-signature
+# HMAC check inside the function.
 verify_jwt = false
 
 [functions.samsung-health-oauth]

@@ -34,6 +34,7 @@ function makeMeta(): HealthProviderMeta {
             name: 'Apple Health',
             platforms: ['ios'],
             native: true,
+            transport: 'native',
             capabilities: ['steps', 'activities', 'sleep', 'heart-rate', 'calories'],
         };
     }
@@ -42,6 +43,7 @@ function makeMeta(): HealthProviderMeta {
         name: 'Health Connect',
         platforms: ['android'],
         native: true,
+        transport: 'native',
         capabilities: ['steps', 'activities', 'sleep', 'heart-rate', 'calories'],
     };
 }

@@ -48,7 +48,7 @@ Deno.serve(async (req) => {
   // 1. Load reward + partner
   const { data: reward, error: rErr } = await admin
     .from('rewards')
-    .select('id, partner_id, title, powr_cost, active, integration_type, code_expiry_days, max_redemptions_per_user, url, partners(partner_code, checkout_url_template, name)')
+    .select('id, partner_id, title, powr_cost, active, integration_type, code_expiry_days, max_redemptions_per_user, url, image_url, hero_image_url, brand_name, partners(partner_code, checkout_url_template, name, logo_url)')
     .eq('id', body.reward_id)
     .single();
 
@@ -56,6 +56,15 @@ Deno.serve(async (req) => {
   if (!reward.active) return json({ error: 'REWARD_INACTIVE' }, 422);
 
   const partner = Array.isArray(reward.partners) ? reward.partners[0] : reward.partners;
+
+  // Snapshot fields stored on every redemption so the wallet renders a complete
+  // receipt even if the reward/partner is later deactivated or edited.
+  const receiptFields = {
+    reward_title: reward.title,
+    partner_name: partner?.name ?? reward.brand_name ?? null,
+    reward_image_url: reward.image_url ?? partner?.logo_url ?? null,
+    reward_hero_image_url: reward.hero_image_url ?? null,
+  };
 
   // API_VALIDATED rewards need a partner_code to mint codes; POOL rewards use pre-loaded codes
   if (reward.integration_type === 'API_VALIDATED' && !partner?.partner_code) {
@@ -91,13 +100,14 @@ Deno.serve(async (req) => {
   // AFFILIATE: no unique code — just deduct points and return the reward URL
   if (reward.integration_type === 'AFFILIATE') {
     const receiptId = `POWR-AFF-${generateToken(8)}`;
-    const { error: txErr } = await admin.from('point_transactions').insert({
-      user_id: user.id,
-      amount: -reward.powr_cost,
-      type: 'redeem',
-      description: `Redeemed: ${reward.title}`,
+    const { error: spendErr } = await admin.rpc('spend_points', {
+      p_user_id: user.id,
+      p_amount: reward.powr_cost,
+      p_description: `Redeemed: ${reward.title}`,
     });
-    if (txErr) return json({ error: 'TX_FAILED' }, 500);
+    if (spendErr) {
+      return json({ error: String(spendErr.message).includes('INSUFFICIENT_POINTS') ? 'INSUFFICIENT_POINTS' : 'TX_FAILED' }, 422);
+    }
     const { data: redemption } = await admin.from('redemptions').insert({
       user_id: user.id,
       reward_id: reward.id,
@@ -106,6 +116,8 @@ Deno.serve(async (req) => {
       powr_spent: reward.powr_cost,
       status: 'active',
       expires_at: expiresAt,
+      checkout_url: reward.url ?? null,
+      ...receiptFields,
     }).select('id').single();
     return json({
       ok: true,
@@ -183,19 +195,23 @@ Deno.serve(async (req) => {
     if (!codeRow) return json({ error: 'CODE_GENERATION_FAILED' }, 500);
   }
 
-  // 4. Deduct points via point_transactions (service role bypasses RLS)
-  const { error: txErr } = await admin.from('point_transactions').insert({
-    user_id: user.id,
-    amount: -reward.powr_cost,
-    type: 'redeem',
-    description: `Redeemed: ${reward.title}`,
+  // Resolve the checkout URL now so it can be stored on the receipt and returned.
+  const checkoutUrl = partner?.checkout_url_template
+    ? partner.checkout_url_template.replace('{code}', codeRow.code)
+    : (reward.url || null);
+
+  // 4. Deduct points atomically — balance check + debit under a per-user lock.
+  const { error: spendErr } = await admin.rpc('spend_points', {
+    p_user_id: user.id,
+    p_amount: reward.powr_cost,
+    p_description: `Redeemed: ${reward.title}`,
   });
-  if (txErr) {
-    // Release the code
+  if (spendErr) {
+    // Release the code we reserved/minted for this attempt.
     await admin.from('redemption_codes')
       .update({ status: 'available', assigned_user_id: null, assigned_at: null })
       .eq('id', codeRow.id);
-    return json({ error: 'TX_FAILED' }, 500);
+    return json({ error: String(spendErr.message).includes('INSUFFICIENT_POINTS') ? 'INSUFFICIENT_POINTS' : 'TX_FAILED' }, 422);
   }
 
   // 5. Mark code as used now that points are deducted
@@ -216,6 +232,8 @@ Deno.serve(async (req) => {
       powr_spent: reward.powr_cost,
       status: 'active',
       expires_at: expiresAt,
+      checkout_url: checkoutUrl,
+      ...receiptFields,
     })
     .select('id')
     .single();
@@ -223,10 +241,6 @@ Deno.serve(async (req) => {
   if (redErr) {
     console.error('Redemption insert failed', redErr);
   }
-
-  const checkoutUrl = partner?.checkout_url_template
-    ? partner.checkout_url_template.replace('{code}', codeRow.code)
-    : (reward.url || null);
 
   return json({
     ok: true,

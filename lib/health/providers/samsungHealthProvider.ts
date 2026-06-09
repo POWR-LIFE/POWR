@@ -19,6 +19,7 @@ const META: HealthProviderMeta = {
     name: 'Samsung Health',
     platforms: ['android'],
     native: false,
+    transport: 'native',
     capabilities: ['steps', 'activities', 'sleep', 'heart-rate', 'calories'],
 };
 

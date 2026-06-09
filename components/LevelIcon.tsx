@@ -57,7 +57,7 @@ export function LevelIcon({ level, size = 40, color, strokeWidth = 1.8 }: LevelI
           strokeLinecap="round" strokeLinejoin="round"
         />;
 
-      case 5: // GRINDER — person silhouette
+      case 5: // GRAFTER — person silhouette
         return <>
           <Circle cx="20" cy="12" r="5.5" stroke={color} strokeWidth={sw} fill="none" />
           <Path d="M8,32 Q14,22 20,22 Q26,22 32,32"

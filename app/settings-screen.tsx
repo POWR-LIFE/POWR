@@ -51,10 +51,10 @@ export default function SettingsScreen() {
   const health = useHealthData();
   const providers = useHealthProviders();
 
-  // Provider state can change out-of-band — e.g. the /fitbit-callback and
-  // /whoop-callback routes write `health_provider_connections` after this
-  // screen has already mounted. Re-read on focus so the UI always reflects
-  // the profile truth and we never show "Connected" when OAuth actually failed.
+  // Provider state can change out-of-band — e.g. the /terra-callback route (and
+  // Terra's auth webhook) write `health_provider_connections` after this screen
+  // has already mounted. Re-read on focus so the UI always reflects the profile
+  // truth and we never show "Connected" when the connection actually failed.
   useFocusEffect(
     useCallback(() => { providers.refresh(); }, [providers.refresh]),
   );
@@ -233,10 +233,21 @@ export default function SettingsScreen() {
 
         <SectionLabel label="Wearables" />
         <Text style={styles.sectionHint}>Richer data — sleep, heart rate, verified workouts.</Text>
-        <HealthSourceCard
-          rows={providers.rows.filter(r => !r.meta.native)}
-          providers={providers}
-        />
+        <View style={styles.card}>
+          {(() => {
+            const active = providers.rows.find(r => !r.meta.native && !!r.connection);
+            return (
+              <RowLink
+                icon="watch-outline"
+                label="Connected Device"
+                value={active ? active.meta.name : 'None connected'}
+                valueColor={active ? '#4ade80' : undefined}
+                onPress={() => router.push('/wearables')}
+                isLast
+              />
+            );
+          })()}
+        </View>
         {false && (
         <View style={styles.card}>
           {providers.rows.map((row, idx) => {
@@ -543,17 +554,37 @@ function SectionLabel({ label }: { label: string }) {
   );
 }
 
+const _BASE = 'https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/partner-logos';
 const BRAND_LOGOS: Partial<Record<HealthProviderId, string>> = {
-  'apple-health': 'https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/partner-logos/apple.png',
-  'fitbit':       'https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/partner-logos/fitbit.png',
-  'garmin':       'https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/partner-logos/garmin.png',
-  'whoop':        'https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/partner-logos/whoop.png',
+  'apple-health':   `${_BASE}/apple.png`,
+  'fitbit':         `${_BASE}/fitbit.png`,
+  'garmin':         `${_BASE}/garmin.png`,
+  'whoop':          `${_BASE}/whoop.png`,
+  'polar':          `${_BASE}/polar-logo.svg`,
+  'oura':           `${_BASE}/oura_logo.png`,
+  'huawei':         `${_BASE}/huawei-Logo.png`,
+  'samsung-health': `${_BASE}/samsung-health-logo.png`,
 };
 
 const providerLogoStyles = StyleSheet.create({
   wrap:    { backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
   blue:    { backgroundColor: '#4285F4' },
   samsung: { backgroundColor: '#1428A0' },
+  oura:    { backgroundColor: '#0b0b0b' },
+  huawei:  { backgroundColor: '#CF0A2C' },
+  withings:  { backgroundColor: '#00B0A0' },
+  peloton:   { backgroundColor: '#E0002D' },
+  zepp:      { backgroundColor: '#FF6D00' },
+  technogym: { backgroundColor: '#E2001A' },
+  coros:     { backgroundColor: '#232323' },
+  suunto:    { backgroundColor: '#1B1B1B' },
+  wahoo:     { backgroundColor: '#0096D6' },
+  zwift:     { backgroundColor: '#FC6719' },
+  concept2:  { backgroundColor: '#002D62' },
+  ifit:      { backgroundColor: '#00B14F' },
+  underarmour: { backgroundColor: '#1D1D1D' },
+  strava:    { backgroundColor: '#FC4C02' },
+  neutral: { backgroundColor: '#2b2b2b' },
 });
 
 function ProviderLogo({ id, size = 22 }: { id: HealthProviderId; size?: number }) {
@@ -578,8 +609,96 @@ function ProviderLogo({ id, size = 22 }: { id: HealthProviderId; size?: number }
           <MaterialCommunityIcons name="heart" size={size * 0.65} color="#fff" />
         </View>
       );
+    case 'oura':
+      return (
+        <View style={[providerLogoStyles.wrap, providerLogoStyles.oura, { width: size, height: size, borderRadius: size * 0.25 }]}>
+          <MaterialCommunityIcons name="ring" size={size * 0.6} color="#fff" />
+        </View>
+      );
+    case 'huawei':
+      return (
+        <View style={[providerLogoStyles.wrap, providerLogoStyles.huawei, { width: size, height: size, borderRadius: size * 0.25 }]}>
+          <MaterialCommunityIcons name="watch-variant" size={size * 0.62} color="#fff" />
+        </View>
+      );
+    case 'withings':
+      return (
+        <View style={[providerLogoStyles.wrap, providerLogoStyles.withings, { width: size, height: size, borderRadius: size * 0.25 }]}>
+          <MaterialCommunityIcons name="scale-bathroom" size={size * 0.62} color="#fff" />
+        </View>
+      );
+    case 'peloton':
+      return (
+        <View style={[providerLogoStyles.wrap, providerLogoStyles.peloton, { width: size, height: size, borderRadius: size * 0.25 }]}>
+          <MaterialCommunityIcons name="bike" size={size * 0.65} color="#fff" />
+        </View>
+      );
+    case 'zepp':
+      return (
+        <View style={[providerLogoStyles.wrap, providerLogoStyles.zepp, { width: size, height: size, borderRadius: size * 0.25 }]}>
+          <MaterialCommunityIcons name="watch-variant" size={size * 0.62} color="#fff" />
+        </View>
+      );
+    case 'technogym':
+      return (
+        <View style={[providerLogoStyles.wrap, providerLogoStyles.technogym, { width: size, height: size, borderRadius: size * 0.25 }]}>
+          <MaterialCommunityIcons name="dumbbell" size={size * 0.6} color="#fff" />
+        </View>
+      );
+    case 'coros':
+      return (
+        <View style={[providerLogoStyles.wrap, providerLogoStyles.coros, { width: size, height: size, borderRadius: size * 0.25 }]}>
+          <MaterialCommunityIcons name="run" size={size * 0.62} color="#fff" />
+        </View>
+      );
+    case 'suunto':
+      return (
+        <View style={[providerLogoStyles.wrap, providerLogoStyles.suunto, { width: size, height: size, borderRadius: size * 0.25 }]}>
+          <MaterialCommunityIcons name="watch-variant" size={size * 0.62} color="#fff" />
+        </View>
+      );
+    case 'wahoo':
+      return (
+        <View style={[providerLogoStyles.wrap, providerLogoStyles.wahoo, { width: size, height: size, borderRadius: size * 0.25 }]}>
+          <MaterialCommunityIcons name="bike" size={size * 0.65} color="#fff" />
+        </View>
+      );
+    case 'zwift':
+      return (
+        <View style={[providerLogoStyles.wrap, providerLogoStyles.zwift, { width: size, height: size, borderRadius: size * 0.25 }]}>
+          <MaterialCommunityIcons name="bike" size={size * 0.65} color="#fff" />
+        </View>
+      );
+    case 'concept2':
+      return (
+        <View style={[providerLogoStyles.wrap, providerLogoStyles.concept2, { width: size, height: size, borderRadius: size * 0.25 }]}>
+          <MaterialCommunityIcons name="rowing" size={size * 0.62} color="#fff" />
+        </View>
+      );
+    case 'ifit':
+      return (
+        <View style={[providerLogoStyles.wrap, providerLogoStyles.ifit, { width: size, height: size, borderRadius: size * 0.25 }]}>
+          <MaterialCommunityIcons name="run" size={size * 0.62} color="#fff" />
+        </View>
+      );
+    case 'underarmour':
+      return (
+        <View style={[providerLogoStyles.wrap, providerLogoStyles.underarmour, { width: size, height: size, borderRadius: size * 0.25 }]}>
+          <MaterialCommunityIcons name="run" size={size * 0.62} color="#fff" />
+        </View>
+      );
+    case 'strava':
+      return (
+        <View style={[providerLogoStyles.wrap, providerLogoStyles.strava, { width: size, height: size, borderRadius: size * 0.25 }]}>
+          <MaterialCommunityIcons name="run" size={size * 0.62} color="#fff" />
+        </View>
+      );
     default:
-      return null;
+      return (
+        <View style={[providerLogoStyles.wrap, providerLogoStyles.neutral, { width: size, height: size, borderRadius: size * 0.25 }]}>
+          <MaterialCommunityIcons name="heart-pulse" size={size * 0.62} color="#fff" />
+        </View>
+      );
   }
 }
 

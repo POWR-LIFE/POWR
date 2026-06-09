@@ -70,7 +70,7 @@ export class RedemptionError extends Error {
 export async function fetchRewards(): Promise<Reward[]> {
   const { data, error } = await supabase
     .from('rewards')
-    .select('id, partner_id, title, description, powr_cost, category, integration_type, code_expiry_days, active, offer, hero_image_url, brand_color, url, partner_blurb, value_label, image_url, promo_code, discount_type, discount_value, brand_name, partners(id, name, partner_code, logo_url, category, checkout_url_template)')
+    .select('id, partner_id, title, description, powr_cost, category, integration_type, code_expiry_days, active, offer, hero_image_url, brand_color, url, partner_blurb, value_label, image_url, promo_code, discount_type, discount_value, brand_name, max_redemptions_per_user, partners(id, name, partner_code, logo_url, category, checkout_url_template)')
     .eq('active', true)
     .order('sort_order', { ascending: true })
     .order('powr_cost', { ascending: true });
@@ -121,6 +121,97 @@ export async function fetchRedemptionHistory(): Promise<RedemptionHistoryRow[]> 
     .order('redeemed_at', { ascending: false });
   if (error) throw error;
   return (data ?? []) as any;
+}
+
+// ─── Wallet ─────────────────────────────────────────────────────────────────
+
+/**
+ * A redeemed reward as it lives in the user's wallet. Reads the denormalised
+ * receipt columns on `redemptions` (snapshotted at redeem time) rather than
+ * joining `rewards`/`partners`, so a code still renders after its reward is
+ * deactivated.
+ */
+export interface WalletEntry {
+  id: string;
+  reward_id: string;
+  code: string;
+  powr_spent: number;
+  status: 'active' | 'used' | 'expired' | 'refunded';
+  redeemed_at: string;
+  expires_at: string | null;
+  integration_type: IntegrationType;
+  reward_title: string | null;
+  partner_name: string | null;
+  reward_image_url: string | null;
+  reward_hero_image_url: string | null;
+  checkout_url: string | null;
+}
+
+/** Display state for a wallet entry, derived from status + expiry. */
+export type WalletStatus = 'ready' | 'used' | 'expired';
+
+export function walletEntryStatus(
+  entry: Pick<WalletEntry, 'status' | 'expires_at'>,
+  now: number = Date.now(),
+): WalletStatus {
+  if (entry.status === 'used') return 'used';
+  if (entry.status === 'expired') return 'expired';
+  if (entry.expires_at && new Date(entry.expires_at).getTime() < now) return 'expired';
+  return 'ready';
+}
+
+/**
+ * Split wallet entries into "ready to use" and "past" (used/expired), pure so it
+ * can be unit-tested. Ready entries surface soonest-to-expire first; past
+ * entries stay newest-first.
+ */
+export function partitionWallet(
+  entries: WalletEntry[],
+  now: number = Date.now(),
+): { ready: WalletEntry[]; past: WalletEntry[] } {
+  const ready: WalletEntry[] = [];
+  const past: WalletEntry[] = [];
+  for (const e of entries) {
+    if (e.status === 'refunded') continue;
+    (walletEntryStatus(e, now) === 'ready' ? ready : past).push(e);
+  }
+  ready.sort((a, b) => {
+    const ax = a.expires_at ? new Date(a.expires_at).getTime() : Infinity;
+    const bx = b.expires_at ? new Date(b.expires_at).getTime() : Infinity;
+    return ax - bx;
+  });
+  past.sort((a, b) => new Date(b.redeemed_at).getTime() - new Date(a.redeemed_at).getTime());
+  return { ready, past };
+}
+
+export async function fetchWallet(): Promise<WalletEntry[]> {
+  const { data, error } = await supabase
+    .from('redemptions')
+    .select('id, reward_id, code, powr_spent, status, redeemed_at, expires_at, integration_type, reward_title, partner_name, reward_image_url, reward_hero_image_url, checkout_url')
+    .neq('status', 'refunded')
+    .order('redeemed_at', { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as WalletEntry[];
+}
+
+/**
+ * Per-reward redemption counts for the current user, used by the rewards list to
+ * surface "N in wallet" and to grey out rewards that have hit their admin cap.
+ * `nonRefunded` mirrors the cap counting in the redeem-reward edge function.
+ */
+export async function fetchMyRedemptionSummary(): Promise<Record<string, { active: number; nonRefunded: number }>> {
+  const { data, error } = await supabase
+    .from('redemptions')
+    .select('reward_id, status');
+  if (error) throw error;
+  const out: Record<string, { active: number; nonRefunded: number }> = {};
+  for (const r of (data ?? []) as { reward_id: string; status: string }[]) {
+    const e = out[r.reward_id] ?? { active: 0, nonRefunded: 0 };
+    if (r.status === 'active') e.active += 1;
+    if (r.status !== 'refunded') e.nonRefunded += 1;
+    out[r.reward_id] = e;
+  }
+  return out;
 }
 
 export async function fetchFeaturedReward(): Promise<Reward | null> {

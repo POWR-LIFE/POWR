@@ -38,7 +38,7 @@ export const redirectSystemPath: NonNullable<NativeIntent['redirectSystemPath']>
     // auth-callback carries the Google OAuth code — let Linking listener handle it, don't navigate.
     if (host === 'auth-callback') return '/';
 
-    // powr://whoop-callback?code=X → /whoop-callback?code=X
+    // powr://terra-callback?user_id=X → /terra-callback?user_id=X
     return `/${host}${rest}`;
   }
 

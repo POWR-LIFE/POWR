@@ -2,8 +2,7 @@ import { GeometricBackground } from '@/components/home/GeometricBackground';
 import MagicRings from '@/components/MagicRings';
 import { ProfileButton } from '@/components/ProfileButton';
 import { usePoints } from '@/hooks/usePoints';
-import { fetchRewards, fetchSmartFeaturedReward, type Reward as ApiReward } from '@/lib/api/rewards';
-import { supabase } from '@/lib/supabase';
+import { fetchMyRedemptionSummary, fetchRewards, fetchSmartFeaturedReward, type Reward as ApiReward } from '@/lib/api/rewards';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Image as ExpoImage } from 'expo-image';
@@ -61,6 +60,7 @@ interface Reward {
   partnerBlurb?: string;
   url?: string;
   promoCode?: string;
+  maxPerUser?: number | null;
 }
 
 const REWARDS: Reward[] = [
@@ -136,6 +136,7 @@ function apiRewardToUI(r: ApiReward): Reward {
     partnerBlurb: r.partner_blurb ?? undefined,
     url: r.url ?? undefined,
     promoCode: r.promo_code ?? undefined,
+    maxPerUser: r.max_redemptions_per_user,
   };
 }
 
@@ -162,20 +163,18 @@ export default function SpendScreen() {
 
   const [featuredReward, setFeaturedReward] = useState<ApiReward | null>(null);
   const [rewards, setRewards] = useState<Reward[]>(REWARDS);
-  const [redeemedIds, setRedeemedIds] = useState<Set<string>>(new Set());
+  const [redemptionInfo, setRedemptionInfo] = useState<Record<string, { active: number; nonRefunded: number }>>({});
 
   const loadRewards = useCallback(async () => {
     try {
-      const [data, featured, redemptionsRes] = await Promise.all([
+      const [data, featured, summary] = await Promise.all([
         fetchRewards(),
         fetchSmartFeaturedReward(balance),
-        supabase.from('redemptions').select('reward_id').eq('status', 'active'),
+        fetchMyRedemptionSummary().catch(() => ({})),
       ]);
       if (data.length > 0) setRewards(data.map(apiRewardToUI));
       setFeaturedReward(featured);
-      if (redemptionsRes.data) {
-        setRedeemedIds(new Set(redemptionsRes.data.map((r: { reward_id: string }) => r.reward_id)));
-      }
+      setRedemptionInfo(summary);
     } catch {
       // keep mock fallback
     }
@@ -208,6 +207,7 @@ export default function SpendScreen() {
   const sorted = filtered;
 
   const featuredAfford = featuredReward ? affordability(balance, featuredReward.powr_cost) : 'locked';
+  const walletCount = Object.values(redemptionInfo).reduce((sum, e) => sum + e.active, 0);
   const showKeepMovingUnlock = activeCategory === 'MIND' || activeCategory === 'SLEEP';
   const revealFeaturedInList = useCallback((id: string) => {
     Haptics.selectionAsync();
@@ -228,7 +228,21 @@ export default function SpendScreen() {
       <GeometricBackground />
       <View style={styles.header}>
         <Text style={styles.title}>Rewards</Text>
-        <ProfileButton />
+        <View style={styles.headerActions}>
+          <Pressable
+            style={styles.walletBtn}
+            onPress={() => { Haptics.selectionAsync(); router.push('/wallet'); }}
+            hitSlop={8}
+          >
+            <Ionicons name="wallet-outline" size={20} color={TEXT} />
+            {walletCount > 0 && (
+              <View style={styles.walletBadge}>
+                <Text style={styles.walletBadgeText}>{walletCount > 9 ? '9+' : walletCount}</Text>
+              </View>
+            )}
+          </Pressable>
+          <ProfileButton />
+        </View>
       </View>
 
       <View style={styles.topContent}>
@@ -306,9 +320,11 @@ export default function SpendScreen() {
                   afford={affordability(balance, reward.pts)}
                   balance={balance}
                   expanded={expandedId === reward.id}
-                  isRedeemed={redeemedIds.has(reward.id)}
+                  activeCount={redemptionInfo[reward.id]?.active ?? 0}
+                  capReached={reward.maxPerUser != null && (redemptionInfo[reward.id]?.nonRefunded ?? 0) >= reward.maxPerUser}
                   onToggle={() => toggleExpand(reward.id)}
                   onRedeem={() => router.push({ pathname: '/redeem-modal', params: { id: reward.id } })}
+                  onViewWallet={() => router.push('/wallet')}
                 />
               </View>
             ))}
@@ -433,12 +449,14 @@ interface RewardCardProps {
   afford: Afford;
   balance: number;
   expanded: boolean;
-  isRedeemed: boolean;
+  activeCount: number;
+  capReached: boolean;
   onToggle: () => void;
   onRedeem: () => void;
+  onViewWallet: () => void;
 }
 
-function RewardCard({ reward, afford, balance, expanded, isRedeemed, onToggle, onRedeem }: RewardCardProps) {
+function RewardCard({ reward, afford, balance, expanded, activeCount, capReached, onToggle, onRedeem, onViewWallet }: RewardCardProps) {
   const ptsNeeded = reward.pts - balance;
   const progress = Math.min(balance / reward.pts, 1);
   const isLocked = afford === 'locked';
@@ -513,27 +531,25 @@ function RewardCard({ reward, afford, balance, expanded, isRedeemed, onToggle, o
         </View>
 
         {!expanded && (
-          isRedeemed ? (
-            <View style={[styles.rewardValueBadge, { borderColor: 'rgba(74,222,128,0.35)', backgroundColor: 'rgba(74,222,128,0.1)' }]}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                <Ionicons name="checkmark" size={11} color="#4ade80" />
-                <Text style={[styles.rewardValueBadgeText, { color: '#4ade80' }]}>Active</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            {activeCount > 0 && (
+              <Ionicons name="wallet" size={14} color="#4ade80" />
+            )}
+            {reward.value ? (
+              <View style={[
+                styles.rewardValueBadge,
+                { borderColor: brand + '55', backgroundColor: brand + '12' },
+                afford === 'close' && { opacity: progress },
+                afford === 'locked' && { opacity: 1 },
+              ]}>
+                <Text style={[styles.rewardValueBadgeText, { color: brand }]}>{reward.value}</Text>
               </View>
-            </View>
-          ) : reward.value ? (
-            <View style={[
-              styles.rewardValueBadge,
-              { borderColor: brand + '55', backgroundColor: brand + '12' },
-              afford === 'close' && { opacity: progress },
-              afford === 'locked' && { opacity: 1 },
-            ]}>
-              <Text style={[styles.rewardValueBadgeText, { color: brand }]}>{reward.value}</Text>
-            </View>
-          ) : null
+            ) : null}
+          </View>
         )}
 
         <View style={styles.rewardRight}>
-          {!isRedeemed && (
+          {!capReached && (
             <>
               <Text style={[styles.rewardPts, isLocked && styles.rewardPtsLocked]}>
                 {reward.pts}
@@ -575,35 +591,44 @@ function RewardCard({ reward, afford, balance, expanded, isRedeemed, onToggle, o
 
           {reward.offer && <Text style={styles.expandedOffer}>{reward.offer}</Text>}
 
-          {isRedeemed ? (
+          {capReached ? (
             <Pressable
-              onPress={() => {
-                Haptics.selectionAsync();
-                onRedeem();
-              }}
+              onPress={() => { Haptics.selectionAsync(); onViewWallet(); }}
               style={({ pressed }) => [styles.redeemInlineBtn, { backgroundColor: 'rgba(74,222,128,0.12)', borderWidth: 1, borderColor: 'rgba(74,222,128,0.3)' }, pressed && { opacity: 0.85 }]}
             >
-              <Ionicons name="checkmark-circle-outline" size={14} color="#4ade80" />
-              <Text style={[styles.redeemInlineBtnText, { color: '#4ade80' }]}>Redeemed · View code</Text>
+              <Ionicons name="wallet-outline" size={14} color="#4ade80" />
+              <Text style={[styles.redeemInlineBtnText, { color: '#4ade80' }]}>In your wallet · View</Text>
             </Pressable>
           ) : afford === 'can' ? (
-            <Pressable
-              onPress={() => {
-                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                onRedeem();
-              }}
-              style={({ pressed }) => [
-                styles.redeemInlineBtn,
-                { backgroundColor: brand },
-                pressed && { opacity: 0.85 },
-              ]}
-            >
-              <Ionicons name="gift-outline" size={14} color="#000" />
-              <Text style={styles.redeemInlineBtnText}>Redeem for {reward.pts} pts</Text>
-            </Pressable>
+            <>
+              <Pressable
+                onPress={() => {
+                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                  onRedeem();
+                }}
+                style={({ pressed }) => [
+                  styles.redeemInlineBtn,
+                  { backgroundColor: brand },
+                  pressed && { opacity: 0.85 },
+                ]}
+              >
+                <Ionicons name="gift-outline" size={14} color="#000" />
+                <Text style={styles.redeemInlineBtnText}>{activeCount > 0 ? 'Redeem again' : 'Redeem'} for {reward.pts} pts</Text>
+              </Pressable>
+              {activeCount > 0 && (
+                <Pressable
+                  onPress={() => { Haptics.selectionAsync(); onViewWallet(); }}
+                  style={({ pressed }) => [styles.walletLink, pressed && { opacity: 0.7 }]}
+                >
+                  <Ionicons name="wallet-outline" size={12} color="#4ade80" />
+                  <Text style={styles.walletLinkText}>{activeCount} in your wallet</Text>
+                  <Ionicons name="chevron-forward" size={11} color="#4ade80" />
+                </Pressable>
+              )}
+            </>
           ) : null}
 
-          {!isRedeemed && afford !== 'can' && (
+          {!capReached && afford !== 'can' && (
             <View style={styles.lockedBlock}>
               <Ionicons name="lock-closed" size={10} color={MUTED} />
               <Text style={styles.lockedText}>
@@ -677,6 +702,34 @@ const styles = StyleSheet.create({
     fontWeight: '200',
     letterSpacing: -0.4,
     color: TEXT,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  walletBtn: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  walletBadge: {
+    position: 'absolute',
+    top: 2,
+    right: 2,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    paddingHorizontal: 4,
+    backgroundColor: GOLD,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  walletBadgeText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#0a0a0a',
   },
   scroll: { flex: 1 },
   topContent: {
@@ -841,12 +894,6 @@ const styles = StyleSheet.create({
   featuredDiscountBadge: {
     flexDirection: 'row',
     alignItems: 'baseline',
-    backgroundColor: GOLD_RGBA(0.07),
-    borderWidth: 1,
-    borderColor: GOLD_RGBA(0.2),
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
     alignSelf: 'flex-start',
   },
   featuredDiscountAmount: {
@@ -1321,6 +1368,19 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 0.3,
     color: '#000',
+  },
+  walletLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    paddingVertical: 6,
+  },
+  walletLinkText: {
+    fontSize: 12,
+    fontWeight: '400',
+    color: '#4ade80',
+    letterSpacing: 0.2,
   },
   expandedFooter: {
     flexDirection: 'row',

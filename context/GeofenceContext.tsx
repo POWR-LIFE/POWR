@@ -146,6 +146,13 @@ const UPGRADE_MS      = __DEV__ ? 60 * 1000 : 40 * 60 * 1000; // 1 min in dev, 4
 // Production eligibility minimum — used for pointsPending retry regardless of MIN_DWELL_MS
 const PROD_DWELL_MS   = 30 * 60 * 1000;
 const PROD_UPGRADE_MS = 40 * 60 * 1000;
+// Sanity backstop on a recorded gym dwell — a LOOSE guardrail, not the accuracy
+// mechanism. It only bounds the runaway wall-clock a missed/late EXIT used to
+// produce (observed up to 31 h); the true length is corrected after the fact,
+// off the critical path, against the health store (see lib/health/gymReconcile.ts).
+// 12 h matches MAX_SESSION_MS and covers all-day events. Points are unaffected —
+// gym tops out at the 40-min tier. Keep in sync with upgrade-gym-tier.
+const MAX_GYM_SESSION_SEC = 12 * 60 * 60; // 12 h backstop
 const DEV_RADIUS_M: Record<string, number> = __DEV__ ? {
   'POWR Test Gym': 100,
   'Jamie':         100,
@@ -214,8 +221,11 @@ async function recordDwellSession(activeGeofence: StoredGeofence): Promise<{ out
     const user = authSession.user;
 
     const startedAt   = new Date(activeGeofence.entryTimestamp);
-    const endedAt     = new Date(endedAtMs);
-    const durationSec = Math.round(dwellMs / 1000);
+    // Cap the dwell so a late EXIT/dwell detection can't record an impossible
+    // (multi-hour/-day) session. ended_at is derived from the capped length so
+    // the row stays internally consistent.
+    const durationSec = Math.min(Math.round(dwellMs / 1000), MAX_GYM_SESSION_SEC);
+    const endedAt     = new Date(activeGeofence.entryTimestamp + durationSec * 1000);
 
     const { getDeviceId } = await import('@/lib/device');
     const deviceId = await getDeviceId();

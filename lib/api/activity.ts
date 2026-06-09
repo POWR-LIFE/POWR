@@ -150,7 +150,12 @@ export type ManualSessionParams = {
 const WEEKLY_MANUAL_CAP = 3;
 
 export async function logManualSession(params: ManualSessionParams): Promise<boolean> {
-    const ended_at = new Date().toISOString();
+    // ended_at is the activity's true end (start + duration), NOT the moment we
+    // happen to sync it. Using `now` made backfilled health sessions span hours/
+    // days of wall-clock (e.g. a sleep "ending" at sync time, days after the
+    // bedtime) and surfaced a wrong wake time in the sleep detail view. For
+    // manual logs started_at is already (now - duration), so this is unchanged.
+    const ended_at = new Date(new Date(params.started_at).getTime() + params.duration_sec * 1000).toISOString();
     const verification = params.healthVerified ? (params.healthSource ?? 'health') : 'manual';
     const trust_score = params.healthVerified ? 0.85 : 0.55;
     const device_id = await getDeviceId();
@@ -574,16 +579,18 @@ export async function fetchRecentWorkoutHistory(type: ActivityType, days = 5): P
     rangeStart.setDate(rangeStart.getDate() - days);
     rangeStart.setHours(0, 0, 0, 0);
 
-    const tomorrowStart = new Date();
-    tomorrowStart.setDate(tomorrowStart.getDate() + 1);
-    tomorrowStart.setHours(0, 0, 0, 0);
+    // Exclude today — it already appears in the big "TODAY'S …" metric above the
+    // list. (Matches fetchRecentWalkingHistory / fetchRecentSleepHistory, which
+    // also stop at yesterday; previously this view double-counted today.)
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
 
     const { data, error } = await supabase
         .from('activity_sessions')
         .select('started_at, duration_sec, point_transactions(amount)')
         .eq('type', type)
         .gte('started_at', rangeStart.toISOString())
-        .lt('started_at', tomorrowStart.toISOString())
+        .lt('started_at', todayStart.toISOString())
         .order('started_at', { ascending: true });
     if (error) throw error;
 
@@ -603,7 +610,7 @@ export async function fetchRecentWorkoutHistory(type: ActivityType, days = 5): P
     }
 
     const result: DailyWorkoutHistory[] = [];
-    for (let i = days; i >= 0; i--) {
+    for (let i = days; i >= 1; i--) {
         const d = new Date();
         d.setDate(d.getDate() - i);
         const dateKey = localDateStr(d);
@@ -1053,7 +1060,7 @@ export type HealthSnapshotParams = {
     sleepLightH?: number;
     activityType?: string;
     durationSec?: number;
-    source: 'healthkit' | 'health_connect' | 'fitbit' | 'whoop' | 'garmin';
+    source: 'healthkit' | 'health_connect' | 'fitbit' | 'strava' | 'whoop' | 'garmin' | 'polar' | 'oura' | 'huawei' | 'withings' | 'peloton' | 'zepp' | 'technogym' | 'coros' | 'suunto' | 'wahoo' | 'zwift' | 'concept2' | 'ifit' | 'underarmour';
     /**
      * Specific app/device behind a native sync ("Apple Watch", "Garmin", "iPhone").
      * Powers the admin device overview; derived from per-sample provenance. Null

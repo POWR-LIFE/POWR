@@ -37,7 +37,7 @@ export const LEVELS: LevelDef[] = [
   { level: 2,  name: 'Starter',    tier: 'recruit', xpMin: 500,    xpMax: 1199,   pill: R_PILL },
   { level: 3,  name: 'Contender',  tier: 'recruit', xpMin: 1200,   xpMax: 2499,   pill: R_PILL },
   { level: 4,  name: 'Climber',    tier: 'recruit', xpMin: 2500,   xpMax: 4499,   pill: R_PILL },
-  { level: 5,  name: 'Grinder',    tier: 'recruit', xpMin: 4500,   xpMax: 6999,   pill: R_PILL },
+  { level: 5,  name: 'Grafter',    tier: 'recruit', xpMin: 4500,   xpMax: 6999,   pill: R_PILL },
   { level: 6,  name: 'Athlete',    tier: 'athlete', xpMin: 7000,   xpMax: 9999,   pill: A_PILL },
   { level: 7,  name: 'Competitor', tier: 'athlete', xpMin: 10000,  xpMax: 13999,  pill: A_PILL },
   { level: 8,  name: 'Performer',  tier: 'athlete', xpMin: 14000,  xpMax: 18999,  pill: A_PILL },
