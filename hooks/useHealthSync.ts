@@ -2,10 +2,11 @@ import { useEffect, useCallback, useRef } from 'react';
 import { Alert, Platform } from 'react-native';
 import { useHealthData, type DayHealthSummary } from './useHealthData';
 import { useHealthProviders } from './useHealthProviders';
-import { getProvider, verificationForProvider, ALL_PROVIDER_META, type HealthProviderId } from '@/lib/health/providers';
+import { getProvider, verificationForProvider, isTerraProvider, ALL_PROVIDER_META, type HealthProviderId } from '@/lib/health/providers';
 import { ProviderAuthExpiredError } from '@/lib/health/providers/types';
 import { verificationFromProvenance, sourceLabel } from '@/lib/health/dataSource';
 import { getInferredActivitiesForWeek } from '@/lib/health/runInference';
+import { reconcileRecentGymSessions } from '@/lib/health/gymReconcile';
 import { supabase } from '@/lib/supabase';
 import { ACTIVITIES, type ActivityType } from '@/constants/activities';
 import { logManualSession, saveHealthSnapshot } from '@/lib/api/activity';
@@ -31,6 +32,9 @@ export function useHealthSync() {
   const nativeHealth = useHealthData();
   const { activeId, disconnect } = useHealthProviders();
   const isNativeProvider = !activeId || activeId === 'apple-health' || activeId === 'health-connect';
+  // Terra providers are synced server-side by the terra-webhook edge function —
+  // the client must never pull their data here.
+  const isTerra = isTerraProvider(activeId);
   const authExpiredHandled = useRef(false);
 
   // Reset the guard when the active provider changes (e.g. user reconnects).
@@ -54,9 +58,10 @@ export function useHealthSync() {
     } catch { return null; }
   }, [isNativeProvider, activeId, nativeHealth.getCaloriesToday]);
 
-  // Consider syncing authorized if either native health is authorized
-  // or a third-party provider is the active provider.
-  const isAuthorized = isNativeProvider ? nativeHealth.isAuthorized : !!activeId;
+  // Consider syncing authorized if either native health is authorized or a
+  // (non-Terra) third-party provider is active. Terra providers deliver data via
+  // webhook, so the client sync loop stays off for them.
+  const isAuthorized = isTerra ? false : (isNativeProvider ? nativeHealth.isAuthorized : !!activeId);
   const source = sourceForProvider(activeId);
   // 'wearable' only for dedicated wearable providers; native phone sync is 'health'.
   const verificationSource = verificationForProvider(activeId);
@@ -246,6 +251,13 @@ export function useHealthSync() {
 
       // ── Sleep sync (week backfill, same fetch) ──────────────────────────
       await syncSleep(weekHistory, syncedKeys);
+
+      // ── Reconcile recent gym sessions against step activity ─────────────
+      // Corrects GPS-only durations (late entry / missed exit) using the health
+      // store. Idempotent + best-effort, so it never blocks the sync above.
+      await reconcileRecentGymSessions().catch(e =>
+        console.warn('[HealthSync] gym reconcile failed:', e),
+      );
     } catch (e: any) {
       // OAuth token expired — auto-disconnect and alert the user once.
       if (e instanceof ProviderAuthExpiredError) {
@@ -263,12 +275,7 @@ export function useHealthSync() {
         }
         return;
       }
-      const msg = e?.message ?? '';
-      if (msg.includes('whoop-oauth') || msg.includes('fitbit-oauth') || msg.includes('broker failed')) {
-        console.warn('[HealthSync] OAuth token expired or revoked:', msg);
-      } else {
-        console.error('[HealthSync] Error syncing activities:', e);
-      }
+      console.error('[HealthSync] Error syncing activities:', e);
     }
   }, [isAuthorized, getWeekHistory, getHeartRateToday, getCaloriesToday, source, verificationSource, isNativeProvider, syncSleep]);
 

@@ -26,12 +26,16 @@ const ORDERED_ACTIVITIES = [
   ...ACTIVITY_LIST.filter(a => !PINNED.includes(a.type) && !a.hideFromPicker),
 ];
 
+// Gym is the core of POWR (geofence-verified check-ins) — it's always selected
+// and cannot be deselected. The user picks the remaining 2 of 3 slots.
+const LOCKED: ActivityType = 'gym';
+
 export default function OnboardingActivitiesScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ streakDays?: string; totalSessions?: string; activeDays?: string }>();
   const providers = useHealthProviders();
-  const [selected, setSelected] = useState<Set<ActivityType>>(new Set());
+  const [selected, setSelected] = useState<Set<ActivityType>>(new Set([LOCKED]));
 
   const connectedIds = useMemo<HealthProviderId[]>(
     () => providers.rows.filter(r => !!r.connection).map(r => r.meta.id),
@@ -52,6 +56,7 @@ export default function OnboardingActivitiesScreen() {
   }, []);
 
   const toggleActivity = (type: ActivityType) => {
+    if (type === LOCKED) return; // gym is locked in — can't be deselected
     setSelected(prev => {
       const next = new Set(prev);
       if (next.has(type)) {
@@ -99,6 +104,9 @@ export default function OnboardingActivitiesScreen() {
       <Animated.View style={[styles.header, { paddingTop: insets.top + 56, opacity: headerFade }]}>
         <Text style={styles.eyebrow}>STEP 4 OF 5</Text>
         <Text style={styles.headline}>Pick your movements</Text>
+        <Text style={styles.subhead}>
+          Gym stays locked in — it's how POWR verifies you were there. Pick 2 more.
+        </Text>
       </Animated.View>
 
       <Animated.View style={[styles.gridWrap, { opacity: listFade }]}>
@@ -107,6 +115,7 @@ export default function OnboardingActivitiesScreen() {
           showsVerticalScrollIndicator={false}
         >
         {ORDERED_ACTIVITIES.map(activity => {
+          const isLocked = activity.type === LOCKED;
           const isActive = selected.has(activity.type);
           const isAutoTracked = supported.has(activity.type);
           const isDisabled = !isActive && selected.size >= MAX_SELECTED;
@@ -117,12 +126,13 @@ export default function OnboardingActivitiesScreen() {
               style={[
                 styles.card,
                 isActive && styles.cardActive,
+                isLocked && styles.cardLocked,
                 isDisabled && styles.cardDisabled,
                 !isAutoTracked && !isActive && styles.cardManual,
               ]}
               onPress={() => toggleActivity(activity.type)}
             >
-              {/* Top row: icon + check */}
+              {/* Top row: icon + check (or lock for gym) */}
               <View style={styles.cardTop}>
                 <View style={[styles.iconWrap, isActive && styles.iconWrapActive]}>
                   <ActivityIcon
@@ -132,9 +142,15 @@ export default function OnboardingActivitiesScreen() {
                     active={isActive}
                   />
                 </View>
-                <View style={[styles.checkCircle, isActive && styles.checkCircleActive]}>
-                  {isActive && <Ionicons name="checkmark" size={13} color="#FFFFFF" />}
-                </View>
+                {isLocked ? (
+                  <View style={styles.lockCircle}>
+                    <Ionicons name="lock-closed" size={12} color={GOLD} />
+                  </View>
+                ) : (
+                  <View style={[styles.checkCircle, isActive && styles.checkCircleActive]}>
+                    {isActive && <Ionicons name="checkmark" size={13} color="#FFFFFF" />}
+                  </View>
+                )}
               </View>
 
               {/* Label */}
@@ -194,6 +210,7 @@ const styles = StyleSheet.create({
   eyebrow: { color: 'rgba(255,255,255,0.22)', fontSize: 10, fontWeight: '600', letterSpacing: 2.5, marginBottom: 6 },
   headline: { color: '#F2F2F2', fontSize: 36, fontFamily: FONT_LIGHT, fontWeight: '200', letterSpacing: -1, lineHeight: 42, marginBottom: 8 },
   headlineGold: { color: GOLD, fontWeight: '700' },
+  subhead: { color: 'rgba(255,255,255,0.4)', fontSize: 13, fontFamily: FONT_LIGHT, fontWeight: '300', lineHeight: 18 },
   body: { color: 'rgba(255,255,255,0.4)', fontSize: 14, fontWeight: '300', lineHeight: 20 },
 
   gridWrap: {
@@ -219,6 +236,11 @@ const styles = StyleSheet.create({
   },
   cardActive: {
     backgroundColor: 'rgba(255,255,255,0.03)',
+  },
+  cardLocked: {
+    borderWidth: 1,
+    borderColor: 'rgba(232,210,0,0.35)',
+    backgroundColor: 'rgba(232,210,0,0.05)',
   },
   cardDisabled: {
     opacity: 0.35,
@@ -313,6 +335,16 @@ const styles = StyleSheet.create({
   checkCircleActive: {
     backgroundColor: 'transparent',
     borderColor: 'rgba(255,255,255,0.8)',
+  },
+  lockCircle: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: 'rgba(232,210,0,0.5)',
+    backgroundColor: 'rgba(232,210,0,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   bottom: {

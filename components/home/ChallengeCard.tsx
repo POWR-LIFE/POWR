@@ -122,32 +122,28 @@ function ProgressBar({ fraction, complete }: { fraction: number; complete: boole
 }
 
 // ─── Day dots (weekly streak) ─────────────────────────────────────────────────
+// Circle-per-day with the weekday letter inside, matching the profile screen:
+// done → gold border + ✓; today → white border; future → dimmed.
 
 function DayDots({ streak, todayIndex }: { streak: boolean[]; todayIndex: number }) {
-  const pulse = useSharedValue(1);
-  useEffect(() => {
-    pulse.value = withRepeat(
-      withSequence(withTiming(0.4, { duration: 900 }), withTiming(1, { duration: 900 })),
-      -1, false
-    );
-    return () => cancelAnimation(pulse);
-  }, [pulse]);
-  const todayStyle = useAnimatedStyle(() => ({ opacity: pulse.value }));
-
   return (
     <View style={styles.daysRow}>
       {DAYS.map((label, i) => {
         const done = streak[i];
-        const today = i === todayIndex && !done;
+        const isToday = i === todayIndex;
+        const isFuture = i > todayIndex;
         return (
-          <View key={i} style={styles.dayItem}>
-            <View style={[styles.dayDot, done && styles.dayDotDone, today && styles.dayDotToday]}>
-              {done && <View style={styles.dayCoreDone} />}
-              {today && <Animated.View style={[styles.dayCoreToday, todayStyle]} />}
-            </View>
-            <Text style={[styles.dayLabel, done && styles.dayLabelDone, today && styles.dayLabelToday]}>
-              {label}
-            </Text>
+          <View
+            key={i}
+            style={[
+              styles.dayDot,
+              done && styles.dayDotDone,
+              isToday && styles.dayDotToday,
+              isFuture && styles.dayDotFuture,
+            ]}
+          >
+            {done && !isFuture && <Text style={styles.dayDotCheck}>✓</Text>}
+            <Text style={[styles.dayDotLabel, done && styles.dayDotLabelDone]}>{label}</Text>
           </View>
         );
       })}
@@ -465,17 +461,21 @@ const styles = StyleSheet.create({
   barFillDone: { backgroundColor: GREEN },
   barShine: { position: 'absolute', top: 0, width: 60, height: '100%', backgroundColor: 'rgba(255,255,255,0.25)' },
 
-  // day dots
-  daysRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 14 },
-  dayItem: { flex: 1, alignItems: 'center', gap: 7 },
-  dayDot: { width: 30, height: 30, borderRadius: 15, borderWidth: 1, borderColor: BORDER, alignItems: 'center', justifyContent: 'center' },
-  dayDotDone: { borderColor: GOLD, backgroundColor: 'rgba(232,210,0,0.08)' },
-  dayDotToday: { borderColor: TEXT },
-  dayCoreDone: { width: 7, height: 7, borderRadius: 4, backgroundColor: GOLD },
-  dayCoreToday: { width: 5, height: 5, borderRadius: 3, backgroundColor: TEXT },
-  dayLabel: { fontFamily: fontFamily.medium, fontSize: 9, letterSpacing: 1, color: FAINT, textTransform: 'uppercase' },
-  dayLabelDone: { color: SECONDARY },
-  dayLabelToday: { color: TEXT },
+  // day dots (weekday letter inside the circle — matches profile screen)
+  daysRow: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 4, marginBottom: 14 },
+  dayDot: {
+    width: 36, height: 36, borderRadius: 18,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)',
+    gap: 1,
+  },
+  dayDotDone: { backgroundColor: 'transparent', borderColor: GOLD },
+  dayDotToday: { borderWidth: 1.5, borderColor: '#ffffff' },
+  dayDotFuture: { opacity: 0.35 },
+  dayDotCheck: { fontSize: 9, color: GOLD, lineHeight: 10 },
+  dayDotLabel: { fontSize: 8, color: 'rgba(255,255,255,0.4)', lineHeight: 9 },
+  dayDotLabelDone: { color: '#ffffff' },
 
   // time row
   timeRow: { borderTopWidth: 1, borderTopColor: BORDER, paddingTop: 10, alignItems: 'flex-end', marginBottom: 2 },

@@ -1,15 +1,14 @@
-import { FontAwesome5, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import GeometricBackground from '@/components/GeometricBackground';
+import { androidHealthConnectStatus, useHealthData } from '@/hooks/useHealthData';
+import { useHealthProviders } from '@/hooks/useHealthProviders';
+import { syncHistoricalHealthData, type DaySyncResult } from '@/lib/api/onboardingSync';
+import { getNativeProviderId, type HealthProviderId } from '@/lib/health/providers';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View, ActivityIndicator } from 'react-native';
-import { androidHealthConnectStatus } from '@/hooks/useHealthData';
+import { ActivityIndicator, Animated, Dimensions, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import GeometricBackground from '@/components/GeometricBackground';
-import { useHealthData } from '@/hooks/useHealthData';
-import { useHealthProviders } from '@/hooks/useHealthProviders';
-import { getNativeProviderId } from '@/lib/health/providers';
-import { syncHistoricalHealthData, type DaySyncResult } from '@/lib/api/onboardingSync';
 
 const GOLD = '#E8D200';
 const BG = '#0d0d0d';
@@ -20,6 +19,10 @@ const FONT_REGULAR = 'Outfit_400Regular';
 const FONT_MEDIUM = 'Outfit_500Medium';
 const FONT_SEMIBOLD = 'Outfit_600SemiBold';
 const FONT_BOLD = 'Outfit_700Bold';
+
+const GRID_GAP = 8;
+const GRID_PAD = 24;
+const CARD_W = Math.floor((Dimensions.get('window').width - GRID_PAD * 2 - GRID_GAP * 2) / 3);
 
 interface HealthSource {
     id: string;
@@ -34,8 +37,29 @@ interface HealthSource {
 const HEALTH_SOURCES: HealthSource[] = [
     { id: 'apple-health',    name: 'Apple Health',    color: '#FF3B30', native: true,  platforms: ['ios'] },
     { id: 'health-connect',  name: 'Health Connect',  color: '#4285F4', native: true,  platforms: ['android'] },
+    // Cloud wearables via Terra (all connect through the same authenticateUser flow).
     { id: 'whoop',           name: 'Whoop',           color: '#44D62C' },
+    { id: 'oura',            name: 'Oura',            color: '#8E8E93' },
+    { id: 'polar',           name: 'Polar',           color: '#D90011' },
+    { id: 'garmin',          name: 'Garmin',          color: '#007CC3' },
     { id: 'fitbit',          name: 'Fitbit',          color: '#00B0B9' },
+    { id: 'strava',          name: 'Strava',          color: '#FC4C02' },
+    { id: 'huawei',          name: 'Huawei Health',   color: '#CF0A2C' },
+    { id: 'withings',        name: 'Withings',        color: '#00B0A0' },
+    { id: 'peloton',         name: 'Peloton',         color: '#E0002D' },
+    { id: 'zepp',            name: 'Zepp',            color: '#FF6D00' },
+    { id: 'technogym',       name: 'Technogym',       color: '#E2001A' },
+    { id: 'coros',           name: 'Coros',           color: '#232323' },
+    { id: 'suunto',          name: 'Suunto',          color: '#1B1B1B' },
+    { id: 'wahoo',           name: 'Wahoo',           color: '#0096D6' },
+    { id: 'zwift',           name: 'Zwift',           color: '#FC6719' },
+    { id: 'concept2',        name: 'Concept2',        color: '#002D62' },
+    { id: 'ifit',            name: 'iFit',            color: '#00B14F' },
+    { id: 'underarmour',     name: 'Under Armour',    color: '#1D1D1D' },
+    // Samsung Health is SDK-only on Terra (no direct OAuth) — shown alongside the
+    // wearables for consistency, but tapping it routes through Health Connect via an
+    // explainer sheet (see handleConnect). Android only.
+    { id: 'samsung-health',  name: 'Samsung Health',  color: '#1428A0', platforms: ['android'] },
 ];
 
 function getVisibleSources(): HealthSource[] {
@@ -43,20 +67,36 @@ function getVisibleSources(): HealthSource[] {
     return HEALTH_SOURCES.filter(s => !s.platforms || s.platforms.includes(os as 'ios' | 'android'));
 }
 
+const BASE = 'https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/partner-logos';
 const BRAND_LOGOS: Record<string, string> = {
-    'apple-health': 'https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/partner-logos/apple.png',
-    'fitbit': 'https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/partner-logos/fitbit.png',
-    'garmin': 'https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/partner-logos/garmin.png',
-    'whoop': 'https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/partner-logos/whoop.png',
+    'apple-health':  `${BASE}/apple.png`,
+    'fitbit':        `${BASE}/fitbit.png`,
+    'garmin':        `${BASE}/garmin.png`,
+    'whoop':         `${BASE}/whoop.png`,
+    'polar':         `${BASE}/polar-logo.svg`,
+    'oura':          `${BASE}/oura_logo.png`,
+    'huawei':        `${BASE}/huawei-Logo.png`,
+    'coros':         `${BASE}/coros-logo.png`,
+    'withings':      `${BASE}/withings-logo.png`,
+    'peloton':       `${BASE}/pelaton-logo.png`,
+    'zepp':          `${BASE}/zepp-logo.png`,
+    'technogym':     `${BASE}/technogym-logo.png`,
+    'suunto':        `${BASE}/suunto-logo.png`,
+    'wahoo':         `${BASE}/wahoo-logo.png`,
+    'zwift':         `${BASE}/zwift-logo.png`,
+    'concept2':      `${BASE}/concept-two.png`,
+    'ifit':          `${BASE}/ifit-logo.png`,
+    'underarmour':   `${BASE}/under-armour-logo.png`,
+    'samsung-health':`${BASE}/samsung-health-logo.png`,
 };
 
-function BrandIcon({ id }: { id: string }) {
+function BrandIcon({ id, size = 24 }: { id: string; size?: number }) {
     const logoUrl = BRAND_LOGOS[id];
     if (logoUrl) {
         return (
             <Image
                 source={{ uri: logoUrl }}
-                style={{ width: 24, height: 24 }}
+                style={{ width: size, height: size }}
                 contentFit="contain"
             />
         );
@@ -66,8 +106,36 @@ function BrandIcon({ id }: { id: string }) {
             return <MaterialCommunityIcons name="heart-pulse" size={22} color="#fff" />;
         case 'samsung-health':
             return <MaterialCommunityIcons name="cellphone" size={22} color="#fff" />;
+        case 'oura':
+            return <MaterialCommunityIcons name="ring" size={20} color="#fff" />;
+        case 'huawei':
+            return <MaterialCommunityIcons name="watch-variant" size={20} color="#fff" />;
+        case 'withings':
+            return <MaterialCommunityIcons name="scale-bathroom" size={20} color="#fff" />;
+        case 'peloton':
+            return <MaterialCommunityIcons name="bike" size={22} color="#fff" />;
+        case 'zepp':
+            return <MaterialCommunityIcons name="watch-variant" size={20} color="#fff" />;
+        case 'technogym':
+            return <MaterialCommunityIcons name="dumbbell" size={20} color="#fff" />;
+        case 'coros':
+            return <MaterialCommunityIcons name="run" size={22} color="#fff" />;
+        case 'suunto':
+            return <MaterialCommunityIcons name="watch-variant" size={20} color="#fff" />;
+        case 'wahoo':
+            return <MaterialCommunityIcons name="bike" size={22} color="#fff" />;
+        case 'zwift':
+            return <MaterialCommunityIcons name="bike" size={22} color="#fff" />;
+        case 'concept2':
+            return <MaterialCommunityIcons name="rowing" size={20} color="#fff" />;
+        case 'ifit':
+            return <MaterialCommunityIcons name="run" size={22} color="#fff" />;
+        case 'underarmour':
+            return <MaterialCommunityIcons name="run" size={22} color="#fff" />;
+        case 'strava':
+            return <MaterialCommunityIcons name="run" size={22} color="#fff" />;
         default:
-            return null;
+            return <MaterialCommunityIcons name="heart-pulse" size={20} color="#fff" />;
     }
 }
 
@@ -220,8 +288,8 @@ export default function OnboardingHealthScreen() {
     const health = useHealthData();
     const providers = useHealthProviders();
     // Re-read provider state when this screen regains focus — the
-    // /fitbit-callback and /whoop-callback routes navigate back here after
-    // writing `health_provider_connections`, and we need to reflect that.
+    // /terra-callback route navigates back here after writing
+    // `health_provider_connections`, and we need to reflect that.
     useFocusEffect(
         useCallback(() => { providers.refresh(); }, [providers.refresh]),
     );
@@ -273,6 +341,12 @@ export default function OnboardingHealthScreen() {
             'isAvailable:', health.isAvailable,
             'isAuthorized:', health.isAuthorized,
             'requesting:', health.requesting);
+        // Samsung Health has no direct OAuth (SDK-only on Terra) — it shares data via
+        // Health Connect. Show the explainer sheet, which then connects Health Connect.
+        if (source.id === 'samsung-health') {
+            setShowSamsungSheet(true);
+            return;
+        }
         if (source.native) {
             if (health.isAuthorized) return; // already connected
             // On Android, check Health Connect is actually installed first.
@@ -299,17 +373,11 @@ export default function OnboardingHealthScreen() {
             }
             return;
         }
-        if (source.id === 'fitbit') {
-            try { await providers.connect('fitbit'); }
-            catch (e) { console.warn('[Onboarding] fitbit connect failed:', e); }
-            return;
-        }
-        if (source.id === 'whoop') {
-            try { await providers.connect('whoop'); }
-            catch (e) { console.warn('[Onboarding] whoop connect failed:', e); }
-            return;
-        }
-        // Garmin not yet implemented
+        // All non-native sources are Terra-backed cloud wearables — connect opens
+        // the provider's auth in a system browser and returns via /terra-callback
+        // (which navigates back here and refreshes provider state on focus).
+        try { await providers.connect(source.id as HealthProviderId); }
+        catch (e) { console.warn(`[Onboarding] ${source.id} connect failed:`, e); }
     }
 
     async function handleContinue() {
@@ -368,9 +436,10 @@ export default function OnboardingHealthScreen() {
     const [showSkipModal, setShowSkipModal] = useState(false);
     const [showHealthConnectInstall, setShowHealthConnectInstall] = useState(false);
     const [showPrimaryPicker, setShowPrimaryPicker] = useState(false);
+    const [showSamsungSheet, setShowSamsungSheet] = useState(false);
 
-    // Smart default for primary: Fitbit > Health Connect > Apple Health > Whoop > Garmin
-    const PROVIDER_PRIORITY = ['fitbit', 'apple-health', 'health-connect', 'whoop', 'garmin'] as const;
+    // Smart default for primary: dedicated wearables first, then phone health.
+    const PROVIDER_PRIORITY = ['fitbit', 'strava', 'whoop', 'oura', 'garmin', 'polar', 'coros', 'suunto', 'wahoo', 'huawei', 'zepp', 'withings', 'peloton', 'technogym', 'zwift', 'concept2', 'ifit', 'underarmour', 'apple-health', 'health-connect'] as const;
     const connectedRows = providers.rows.filter(r => !!r.connection);
     const needsPrimaryChoice = connectedRows.length >= 2;
 
@@ -455,10 +524,12 @@ export default function OnboardingHealthScreen() {
 
                         const renderRow = (source: HealthSource, i: number) => {
                             const providerRow = providers.rows.find(r => r.meta.id === source.id);
-                            const oauthConnected = (source.id === 'fitbit' || source.id === 'whoop') && !!providerRow?.connection;
+                            // Any non-native source is Terra-backed; connected once its
+                            // connection (with terra_user_id) is on the profile.
+                            const oauthConnected = !source.native && !!providerRow?.connection;
                             const isConnected = isNativeConnected(source) || oauthConnected;
                             const isPrimary = providerRow?.isActive ?? false;
-                            const isComingSoon = !source.native && source.id !== 'fitbit' && source.id !== 'whoop';
+                            const isComingSoon = false; // all listed sources are now supported (native + Terra)
                             return (
                                 <Animated.View
                                     key={source.id}
@@ -503,12 +574,12 @@ export default function OnboardingHealthScreen() {
                                             )}
                                             {source.id === 'apple-health' && !isConnected && (
                                                 <Text style={styles.sourceHint}>
-                                                    Garmin, Withings &amp; more sync automatically
+                                                    Apple Watch + any app that writes to Apple Health
                                                 </Text>
                                             )}
                                             {source.id === 'health-connect' && !isConnected && (
                                                 <Text style={styles.sourceHint}>
-                                                    Garmin, Galaxy Watch, Pixel Watch &amp; more
+                                                    Google Fit, Galaxy &amp; Pixel Watch &amp; more
                                                 </Text>
                                             )}
                                             {source.native && isConnected && stepsToday !== null && (
@@ -518,12 +589,12 @@ export default function OnboardingHealthScreen() {
                                             )}
                                             {source.id === 'apple-health' && isConnected && stepsToday === null && (
                                                 <Text style={styles.sourceHint}>
-                                                    Garmin, Withings &amp; more sync automatically
+                                                    Apple Watch + any app that writes to Apple Health
                                                 </Text>
                                             )}
                                             {source.id === 'health-connect' && isConnected && stepsToday === null && (
                                                 <Text style={styles.sourceHint}>
-                                                    Garmin, Galaxy Watch, Pixel Watch &amp; more
+                                                    Google Fit, Galaxy &amp; Pixel Watch &amp; more
                                                 </Text>
                                             )}
                                         </View>
@@ -548,6 +619,45 @@ export default function OnboardingHealthScreen() {
                             );
                         };
 
+                        const renderCard = (source: HealthSource, i: number) => {
+                            const providerRow = providers.rows.find(r => r.meta.id === source.id);
+                            const oauthConnected = !source.native && !!providerRow?.connection;
+                            // Samsung Health routes through Health Connect, so it reads as
+                            // connected whenever the native health platform is authorised.
+                            const isConnected = isNativeConnected(source) || oauthConnected
+                                || (source.id === 'samsung-health' && health.isAuthorized);
+                            return (
+                                <Animated.View
+                                    key={source.id}
+                                    style={{
+                                        opacity: rowAnims[i] ?? 1,
+                                        transform: [{
+                                            translateY: (rowAnims[i] ?? new Animated.Value(1)).interpolate({
+                                                inputRange: [0, 1],
+                                                outputRange: [14, 0],
+                                            }),
+                                        }],
+                                    }}
+                                >
+                                    <Pressable
+                                        style={[styles.wearableCard, isConnected && styles.wearableCardConnected]}
+                                        onPress={() => handleConnect(source)}
+                                        disabled={health.requesting}
+                                    >
+                                        <View style={[styles.cardLogoWrap, BRAND_LOGOS[source.id] && styles.cardLogoWrapWhite]}>
+                                            <BrandIcon id={source.id} size={Math.round(CARD_W * 0.44)} />
+                                        </View>
+                                        <Text style={styles.cardName} numberOfLines={1}>{source.name}</Text>
+                                        {isConnected && (
+                                            <View style={styles.cardCheckBadge}>
+                                                <MaterialCommunityIcons name="check" size={10} color="#fff" />
+                                            </View>
+                                        )}
+                                    </Pressable>
+                                </Animated.View>
+                            );
+                        };
+
                         let idx = 0;
                         return (
                             <>
@@ -560,7 +670,9 @@ export default function OnboardingHealthScreen() {
                                 {wearableSources.length > 0 && (
                                     <>
                                         <Text style={[styles.sectionHeading, { marginTop: 18 }]}>WEARABLES</Text>
-                                        {wearableSources.map(s => renderRow(s, idx++))}
+                                        <View style={styles.wearableGrid}>
+                                            {wearableSources.map(s => renderCard(s, idx++))}
+                                        </View>
                                     </>
                                 )}
                             </>
@@ -696,6 +808,64 @@ export default function OnboardingHealthScreen() {
                         </Pressable>
                         <Pressable style={skipModalStyles.skipBtn} onPress={() => setShowHealthConnectInstall(false)}>
                             <Text style={skipModalStyles.skipBtnText}>Not now</Text>
+                        </Pressable>
+                    </View>
+                </View>
+            </Modal>
+
+            {/* Samsung Health explainer (Android) — connects via Health Connect */}
+            <Modal
+                visible={showSamsungSheet}
+                animationType="slide"
+                transparent
+                onRequestClose={() => setShowSamsungSheet(false)}
+            >
+                <View style={skipModalStyles.overlay}>
+                    <View style={[skipModalStyles.sheet, { paddingBottom: insets.bottom + 24 }]}>
+                        <View style={skipModalStyles.handle} />
+                        <View style={skipModalStyles.iconRow}>
+                            <View style={skipModalStyles.iconWrap}>
+                                <MaterialCommunityIcons name="heart-pulse" size={24} color={GOLD} />
+                            </View>
+                        </View>
+                        <Text style={skipModalStyles.title}>Connect Samsung Health</Text>
+                        <Text style={skipModalStyles.reassurance}>
+                            Samsung Health shares your workouts, steps &amp; sleep through Health Connect. Two quick steps:
+                        </Text>
+                        <View style={skipModalStyles.benefits}>
+                            <View style={skipModalStyles.benefitRow}>
+                                <Ionicons name="link" size={16} color={GOLD} />
+                                <View style={skipModalStyles.benefitInfo}>
+                                    <Text style={skipModalStyles.benefitTitle}>1. Connect Health Connect</Text>
+                                    <Text style={skipModalStyles.benefitDesc}>POWR reads your data from Health Connect</Text>
+                                </View>
+                            </View>
+                            <View style={skipModalStyles.benefitRow}>
+                                <Ionicons name="toggle" size={16} color={GOLD} />
+                                <View style={skipModalStyles.benefitInfo}>
+                                    <Text style={skipModalStyles.benefitTitle}>2. Turn on sharing in Samsung Health</Text>
+                                    <Text style={skipModalStyles.benefitDesc}>Samsung Health → Settings → Health Connect → allow</Text>
+                                </View>
+                            </View>
+                        </View>
+                        <Pressable
+                            style={({ pressed }) => [skipModalStyles.connectBtn, pressed && { opacity: 0.8 }]}
+                            onPress={() => {
+                                setShowSamsungSheet(false);
+                                const hc = HEALTH_SOURCES.find(s => s.id === 'health-connect');
+                                if (hc) handleConnect(hc);
+                            }}
+                        >
+                            <Text style={skipModalStyles.connectBtnText}>CONNECT HEALTH CONNECT</Text>
+                        </Pressable>
+                        <Pressable
+                            style={skipModalStyles.skipBtn}
+                            onPress={() => {
+                                Linking.openURL('market://details?id=com.sec.android.app.shealth')
+                                    .catch(() => Linking.openURL('https://play.google.com/store/apps/details?id=com.sec.android.app.shealth'));
+                            }}
+                        >
+                            <Text style={skipModalStyles.skipBtnText}>Open Samsung Health</Text>
                         </Pressable>
                     </View>
                 </View>
@@ -948,6 +1118,56 @@ const styles = StyleSheet.create({
         fontFamily: FONT_LIGHT,
         fontWeight: '300',
         letterSpacing: 0.2,
+    },
+    wearableGrid: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: GRID_GAP,
+    },
+    wearableCard: {
+        width: CARD_W,
+        paddingVertical: 14,
+        alignItems: 'center',
+        backgroundColor: 'transparent',
+        borderWidth: 1,
+        borderColor: 'transparent',
+        borderRadius: 16,
+        gap: 8,
+    },
+    wearableCardConnected: {
+        borderColor: 'rgba(232,210,0,0.35)',
+        backgroundColor: 'rgba(232,210,0,0.04)',
+    },
+    cardLogoWrap: {
+        width: CARD_W * 0.56,
+        height: CARD_W * 0.56,
+        borderRadius: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'rgba(255,255,255,0.06)',
+    },
+    cardLogoWrapWhite: {
+        backgroundColor: '#FFFFFF',
+    },
+    cardName: {
+        color: 'rgba(255,255,255,0.65)',
+        fontSize: 10,
+        fontFamily: FONT_MEDIUM,
+        fontWeight: '500',
+        letterSpacing: 0.2,
+        textAlign: 'center',
+        paddingHorizontal: 4,
+    },
+    cardCheckBadge: {
+        position: 'absolute',
+        top: 7,
+        right: 7,
+        width: 18,
+        height: 18,
+        borderRadius: 9,
+        backgroundColor: GOLD,
+        alignItems: 'center',
+        justifyContent: 'center',
     },
 });
 

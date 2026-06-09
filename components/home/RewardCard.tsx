@@ -7,7 +7,6 @@ import { Image, StyleSheet, Text, View } from 'react-native';
 import type { Reward } from '@/lib/api/rewards';
 
 const GOLD = '#E8D200';
-const GOLD_RGBA = (a: number) => `rgba(232,210,0,${a})`;
 const TEXT_PRIMARY = '#F2F2F2';
 const DIM = 'rgba(255,255,255,0.55)';
 
@@ -137,12 +136,6 @@ const styles = StyleSheet.create({
   discountBadge: {
     flexDirection: 'row',
     alignItems: 'baseline',
-    backgroundColor: GOLD_RGBA(0.07),
-    borderWidth: 1,
-    borderColor: GOLD_RGBA(0.2),
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
     alignSelf: 'flex-start',
   },
   discountAmount: {

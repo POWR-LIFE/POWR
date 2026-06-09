@@ -228,6 +228,48 @@ async function iosGetActivitiesToday(): Promise<HealthActivity[]> {
     }
 }
 
+// ── Sleep aggregation (overlap-safe) ─────────────────────────────────────────
+// Sleep can be written by several sources for the same night (Apple Watch + a
+// sleep app, or iPhone "in-bed" overlapping watch stages). Summing every sample
+// naively double-counts the overlap and produces impossible nights (observed up
+// to 15.2 h). We instead merge overlapping intervals into a union before summing,
+// so each minute of sleep is counted once.
+
+type SleepStage = 'deep' | 'rem' | 'light';
+type StagedInterval = { start: number; end: number; stage: SleepStage };
+
+/** Total length (ms) of the union of intervals — overlaps counted once. */
+function mergeIntervalMs(intervals: { start: number; end: number }[]): number {
+    if (intervals.length === 0) return 0;
+    const sorted = [...intervals].sort((a, b) => a.start - b.start);
+    let total = 0;
+    let curStart = sorted[0].start;
+    let curEnd = sorted[0].end;
+    for (let i = 1; i < sorted.length; i++) {
+        const { start, end } = sorted[i];
+        if (start <= curEnd) {
+            if (end > curEnd) curEnd = end;       // overlap → extend current run
+        } else {
+            total += curEnd - curStart;           // gap → close current run
+            curStart = start;
+            curEnd = end;
+        }
+    }
+    return total + (curEnd - curStart);
+}
+
+/** Merged total + per-stage durations (ms) from stage-tagged sleep intervals. */
+function summariseSleepStages(intervals: StagedInterval[]): {
+    totalMs: number; deepMs: number; remMs: number; lightMs: number;
+} {
+    return {
+        totalMs: mergeIntervalMs(intervals),
+        deepMs:  mergeIntervalMs(intervals.filter(s => s.stage === 'deep')),
+        remMs:   mergeIntervalMs(intervals.filter(s => s.stage === 'rem')),
+        lightMs: mergeIntervalMs(intervals.filter(s => s.stage === 'light')),
+    };
+}
+
 async function iosGetLastNightSleep(): Promise<SleepSession | null> {
     try {
         const HK = getHK();
@@ -242,14 +284,14 @@ async function iosGetLastNightSleep(): Promise<SleepSession | null> {
         const asleep = samples.filter(s => s.value !== 0 && s.value !== 2);
         if (asleep.length === 0) return null;
 
-        let totalMs = 0, deepMs = 0, remMs = 0, lightMs = 0;
-        for (const s of asleep) {
-            const ms = s.endDate.getTime() - s.startDate.getTime();
-            totalMs += ms;
-            if (s.value === 4) deepMs += ms;       // asleepDeep
-            else if (s.value === 5) remMs += ms;   // asleepREM
-            else lightMs += ms;                     // asleepCore / asleepUnspecified
-        }
+        // Merge overlapping samples so multi-source nights aren't double-counted.
+        const { totalMs, deepMs, remMs, lightMs } = summariseSleepStages(
+            asleep.map(s => ({
+                start: s.startDate.getTime(),
+                end: s.endDate.getTime(),
+                stage: s.value === 4 ? 'deep' : s.value === 5 ? 'rem' : 'light',
+            })),
+        );
 
         const earliest = asleep.reduce((min, s) => s.startDate < min ? s.startDate : min, asleep[0].startDate);
         const latest = asleep.reduce((max, s) => s.endDate > max ? s.endDate : max, asleep[0].endDate);
@@ -542,11 +584,10 @@ async function androidGetLastNightSleep(): Promise<SleepSession | null> {
         const sessions = records as Array<{ startTime: string; endTime: string; stages?: Array<{ stage: number; startTime: string; endTime: string }> }>;
         if (!sessions || sessions.length === 0) return null;
 
-        // Sum total sleep time from stages (stages 1-5 are actual sleep, 0=unknown, 6=awake)
-        let totalMs = 0;
-        let deepMs = 0;
-        let remMs = 0;
-        let lightMs = 0;
+        // Build stage-tagged intervals, then merge overlaps so sleep written by
+        // multiple sources for the same night isn't double-counted.
+        // Health Connect stages: 1=AWAKE_IN_BED, 2=LIGHT, 3=DEEP, 4=REM, 5=OUT_OF_BED
+        const intervals: StagedInterval[] = [];
         let earliest = sessions[0].startTime;
         let latest = sessions[0].endTime;
 
@@ -555,21 +596,26 @@ async function androidGetLastNightSleep(): Promise<SleepSession | null> {
             if (s.endTime > latest) latest = s.endTime;
 
             if (s.stages && s.stages.length > 0) {
-                // Health Connect stages: 1=AWAKE_IN_BED, 2=LIGHT, 3=DEEP, 4=REM, 5=OUT_OF_BED
                 for (const stage of s.stages) {
-                    const ms = new Date(stage.endTime).getTime() - new Date(stage.startTime).getTime();
-                    if (stage.stage === 2) { lightMs += ms; totalMs += ms; }
-                    else if (stage.stage === 3) { deepMs += ms; totalMs += ms; }
-                    else if (stage.stage === 4) { remMs += ms; totalMs += ms; }
+                    if (stage.stage === 2 || stage.stage === 3 || stage.stage === 4) {
+                        intervals.push({
+                            start: new Date(stage.startTime).getTime(),
+                            end: new Date(stage.endTime).getTime(),
+                            stage: stage.stage === 3 ? 'deep' : stage.stage === 4 ? 'rem' : 'light',
+                        });
+                    }
                 }
             } else {
-                // No stage data — use total session duration as light sleep
-                const ms = new Date(s.endTime).getTime() - new Date(s.startTime).getTime();
-                totalMs += ms;
-                lightMs += ms;
+                // No stage data — treat the whole session as light sleep
+                intervals.push({
+                    start: new Date(s.startTime).getTime(),
+                    end: new Date(s.endTime).getTime(),
+                    stage: 'light',
+                });
             }
         }
 
+        const { totalMs, deepMs, remMs, lightMs } = summariseSleepStages(intervals);
         if (totalMs === 0) return null;
 
         return {
@@ -727,14 +773,14 @@ async function iosGetWeekHistory(): Promise<DayHealthSummary[]> {
             });
             const asleep = samples.filter(s => s.value !== 0 && s.value !== 2);
             if (asleep.length > 0) {
-                let totalMs = 0, deepMs = 0, remMs = 0, lightMs = 0;
-                for (const s of asleep) {
-                    const ms = s.endDate.getTime() - s.startDate.getTime();
-                    totalMs += ms;
-                    if (s.value === 4) deepMs += ms;
-                    else if (s.value === 5) remMs += ms;
-                    else lightMs += ms;
-                }
+                // Merge overlapping samples so multi-source nights aren't double-counted.
+                const { totalMs, deepMs, remMs, lightMs } = summariseSleepStages(
+                    asleep.map(s => ({
+                        start: s.startDate.getTime(),
+                        end: s.endDate.getTime(),
+                        stage: s.value === 4 ? 'deep' : s.value === 5 ? 'rem' : 'light',
+                    })),
+                );
                 const earliest = asleep.reduce((min, s) => s.startDate < min ? s.startDate : min, asleep[0].startDate);
                 const latest = asleep.reduce((max, s) => s.endDate > max ? s.endDate : max, asleep[0].endDate);
                 sleep = {
@@ -840,23 +886,31 @@ async function androidGetWeekHistory(): Promise<DayHealthSummary[]> {
             });
             const sessions = records as Array<{ startTime: string; endTime: string; stages?: Array<{ stage: number; startTime: string; endTime: string }> }>;
             if (sessions && sessions.length > 0) {
-                let totalMs = 0, deepMs = 0, remMs = 0, lightMs = 0;
+                // Stage-tagged intervals merged to remove multi-source overlap.
+                const intervals: StagedInterval[] = [];
                 let earliest = sessions[0].startTime, latest = sessions[0].endTime;
                 for (const s of sessions) {
                     if (s.startTime < earliest) earliest = s.startTime;
                     if (s.endTime > latest) latest = s.endTime;
                     if (s.stages && s.stages.length > 0) {
                         for (const st of s.stages) {
-                            const ms = new Date(st.endTime).getTime() - new Date(st.startTime).getTime();
-                            if (st.stage === 2) { lightMs += ms; totalMs += ms; }
-                            else if (st.stage === 3) { deepMs += ms; totalMs += ms; }
-                            else if (st.stage === 4) { remMs += ms; totalMs += ms; }
+                            if (st.stage === 2 || st.stage === 3 || st.stage === 4) {
+                                intervals.push({
+                                    start: new Date(st.startTime).getTime(),
+                                    end: new Date(st.endTime).getTime(),
+                                    stage: st.stage === 3 ? 'deep' : st.stage === 4 ? 'rem' : 'light',
+                                });
+                            }
                         }
                     } else {
-                        const ms = new Date(s.endTime).getTime() - new Date(s.startTime).getTime();
-                        totalMs += ms; lightMs += ms;
+                        intervals.push({
+                            start: new Date(s.startTime).getTime(),
+                            end: new Date(s.endTime).getTime(),
+                            stage: 'light',
+                        });
                     }
                 }
+                const { totalMs, deepMs, remMs, lightMs } = summariseSleepStages(intervals);
                 if (totalMs > 0) {
                     sleep = {
                         startedAt: earliest, endedAt: latest,

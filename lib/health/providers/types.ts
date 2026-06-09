@@ -11,11 +11,35 @@ export type HealthProviderId =
     | 'apple-health'
     | 'health-connect'
     | 'fitbit'
+    | 'strava'
     | 'whoop'
     | 'garmin'
+    | 'polar'
+    | 'oura'
+    | 'huawei'
+    | 'withings'
+    | 'peloton'
+    | 'zepp'
+    | 'technogym'
+    | 'coros'
+    | 'suunto'
+    | 'wahoo'
+    | 'zwift'
+    | 'concept2'
+    | 'ifit'
+    | 'underarmour'
     | 'samsung-health';
 
 export type ConnectResult = 'connected' | 'pending' | 'failed';
+
+/**
+ * How a provider's data reaches POWR:
+ *   - 'native': read on-device from HealthKit / Health Connect (client pull).
+ *   - 'terra':  aggregated by Terra and pushed to the terra-webhook edge
+ *     function (server side). The client never pulls these — it only drives the
+ *     connect/disconnect flow via the Terra widget.
+ */
+export type HealthProviderTransport = 'native' | 'terra';
 
 export type HealthProviderCapability =
     | 'steps'
@@ -31,6 +55,8 @@ export type HealthProviderMeta = {
     platforms?: ('ios' | 'android' | 'web')[];
     /** Backed by the OS health platform (HealthKit / Health Connect). */
     native: boolean;
+    /** How this provider's data reaches POWR. */
+    transport: HealthProviderTransport;
     capabilities: HealthProviderCapability[];
     /** Hidden from UI — integration exists in code but is not yet available to users. */
     hidden?: boolean;

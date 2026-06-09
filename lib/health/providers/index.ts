@@ -1,10 +1,9 @@
 import { Platform } from 'react-native';
 
 import type { ActivityType } from '@/constants/activities';
-import { createFitbitProvider } from './fitbitProvider';
 import { createNativeHealthProvider } from './nativeProvider';
 import { createSamsungHealthProvider } from './samsungHealthProvider';
-import { createWhoopProvider } from './whoopProvider';
+import { createTerraProvider } from './terraProvider';
 import type { HealthProvider, HealthProviderId, HealthProviderMeta } from './types';
 import { HealthProviderNotImplementedError } from './types';
 
@@ -18,6 +17,7 @@ export const ALL_PROVIDER_META: HealthProviderMeta[] = [
         name: 'Apple Health',
         platforms: ['ios'],
         native: true,
+        transport: 'native',
         capabilities: ['steps', 'activities', 'sleep', 'heart-rate', 'calories'],
     },
     {
@@ -25,21 +25,34 @@ export const ALL_PROVIDER_META: HealthProviderMeta[] = [
         name: 'Health Connect',
         platforms: ['android'],
         native: true,
+        transport: 'native',
         capabilities: ['steps', 'activities', 'sleep', 'heart-rate', 'calories'],
     },
-    {
-        id: 'fitbit',
-        name: 'Fitbit',
-        native: false,
-        capabilities: ['steps', 'activities', 'sleep', 'heart-rate', 'calories'],
-    },
-    { id: 'whoop',  name: 'Whoop',  native: false, capabilities: ['activities', 'sleep', 'heart-rate', 'calories'] },
-    { id: 'garmin', name: 'Garmin', native: false, capabilities: ['steps', 'activities', 'heart-rate'], hidden: true },
+    // ── Cloud wearables via Terra (data arrives server-side via terra-webhook) ──
+    { id: 'whoop',  name: 'Whoop',  native: false, transport: 'terra', capabilities: ['activities', 'sleep', 'heart-rate', 'calories'] },
+    { id: 'oura',   name: 'Oura',   native: false, transport: 'terra', capabilities: ['steps', 'activities', 'sleep', 'heart-rate'] },
+    { id: 'polar',  name: 'Polar',  native: false, transport: 'terra', capabilities: ['steps', 'activities', 'sleep', 'heart-rate', 'calories'] },
+    { id: 'garmin', name: 'Garmin', native: false, transport: 'terra', capabilities: ['steps', 'activities', 'sleep', 'heart-rate', 'calories'] },
+    { id: 'fitbit', name: 'Fitbit', native: false, transport: 'terra', capabilities: ['steps', 'activities', 'sleep', 'heart-rate', 'calories'] },
+    { id: 'strava', name: 'Strava', native: false, transport: 'terra', capabilities: ['activities', 'heart-rate'] },
+    { id: 'huawei', name: 'Huawei Health', native: false, transport: 'terra', capabilities: ['steps', 'activities', 'sleep', 'heart-rate', 'calories'] },
+    { id: 'withings',  name: 'Withings',  native: false, transport: 'terra', capabilities: ['steps', 'activities', 'sleep', 'heart-rate'] },
+    { id: 'peloton',   name: 'Peloton',   native: false, transport: 'terra', capabilities: ['activities', 'heart-rate', 'calories'] },
+    { id: 'zepp',      name: 'Zepp',      native: false, transport: 'terra', capabilities: ['steps', 'activities', 'sleep', 'heart-rate', 'calories'] },
+    { id: 'technogym', name: 'Technogym', native: false, transport: 'terra', capabilities: ['activities', 'heart-rate', 'calories'] },
+    { id: 'coros',     name: 'Coros',     native: false, transport: 'terra', capabilities: ['steps', 'activities', 'sleep', 'heart-rate', 'calories'] },
+    { id: 'suunto',    name: 'Suunto',    native: false, transport: 'terra', capabilities: ['activities', 'sleep', 'heart-rate'] },
+    { id: 'wahoo',     name: 'Wahoo',     native: false, transport: 'terra', capabilities: ['activities', 'heart-rate'] },
+    { id: 'zwift',     name: 'Zwift',     native: false, transport: 'terra', capabilities: ['activities', 'heart-rate'] },
+    { id: 'concept2',  name: 'Concept2',  native: false, transport: 'terra', capabilities: ['activities', 'heart-rate'] },
+    { id: 'ifit',      name: 'iFit',      native: false, transport: 'terra', capabilities: ['activities', 'heart-rate', 'calories'] },
+    { id: 'underarmour', name: 'Under Armour', native: false, transport: 'terra', capabilities: ['steps', 'activities', 'heart-rate'] },
     {
         id: 'samsung-health',
         name: 'Samsung Health',
         platforms: ['android'],
         native: false,
+        transport: 'native',
         capabilities: ['steps', 'activities', 'sleep', 'heart-rate', 'calories'],
         hidden: true,
     },
@@ -55,8 +68,23 @@ export const PROVIDER_ACTIVITY_SUPPORT: Record<HealthProviderId, ActivityType[]>
     'apple-health':   ['walking', 'running', 'cycling', 'swimming', 'gym', 'hiit', 'sports', 'yoga', 'dance', 'sleep'],
     'health-connect': ['walking', 'running', 'cycling', 'swimming', 'gym', 'hiit', 'sports', 'yoga', 'dance', 'sleep'],
     'fitbit':         ['walking', 'running', 'cycling', 'swimming', 'gym', 'hiit', 'sports', 'yoga', 'dance', 'sleep'],
+    'strava':         ['running', 'cycling', 'swimming', 'gym', 'hiit', 'sports', 'yoga'],
     'whoop':          ['walking', 'running', 'cycling', 'swimming', 'gym', 'hiit', 'sports', 'yoga', 'dance', 'sleep'],
-    'garmin':         ['walking', 'running', 'cycling', 'swimming', 'gym', 'hiit', 'sports', 'yoga'],
+    'oura':           ['walking', 'running', 'cycling', 'swimming', 'sports', 'sleep'],
+    'polar':          ['walking', 'running', 'cycling', 'swimming', 'gym', 'hiit', 'sports', 'yoga', 'sleep'],
+    'garmin':         ['walking', 'running', 'cycling', 'swimming', 'gym', 'hiit', 'sports', 'yoga', 'sleep'],
+    'huawei':         ['walking', 'running', 'cycling', 'swimming', 'gym', 'hiit', 'sports', 'yoga', 'dance', 'sleep'],
+    'withings':       ['walking', 'running', 'cycling', 'swimming', 'sleep'],
+    'peloton':        ['running', 'cycling', 'gym', 'hiit', 'yoga'],
+    'zepp':           ['walking', 'running', 'cycling', 'swimming', 'gym', 'hiit', 'sports', 'yoga', 'sleep'],
+    'technogym':      ['running', 'cycling', 'gym', 'hiit', 'sports'],
+    'coros':          ['walking', 'running', 'cycling', 'swimming', 'sports', 'sleep'],
+    'suunto':         ['walking', 'running', 'cycling', 'swimming', 'sports', 'sleep'],
+    'wahoo':          ['running', 'cycling', 'sports'],
+    'zwift':          ['running', 'cycling'],
+    'concept2':       ['cycling', 'gym', 'hiit'],
+    'ifit':           ['running', 'cycling', 'gym', 'hiit'],
+    'underarmour':    ['walking', 'running', 'cycling'],
     'samsung-health': ['walking', 'running', 'cycling', 'swimming', 'gym', 'hiit', 'sports', 'yoga', 'dance', 'sleep'],
 };
 
@@ -69,7 +97,17 @@ export const PHONE_ONLY_SUPPORT: ActivityType[] = ['walking', 'running', 'cyclin
  * phone-side aggregators (Samsung Health) report the phone's own motion sensors,
  * so a connection to them does NOT imply a wearable.
  */
-export const WEARABLE_PROVIDERS: HealthProviderId[] = ['fitbit', 'whoop', 'garmin'];
+export const WEARABLE_PROVIDERS: HealthProviderId[] = ['fitbit', 'strava', 'whoop', 'garmin', 'polar', 'oura', 'huawei', 'withings', 'peloton', 'zepp', 'technogym', 'coros', 'suunto', 'wahoo', 'zwift', 'concept2', 'ifit', 'underarmour'];
+
+/**
+ * Providers whose data is delivered server-side by Terra (terra-webhook) rather
+ * than pulled on-device. The client only drives their connect/disconnect flow;
+ * it must NOT attempt a data pull for these. See useHealthSync.
+ */
+export function isTerraProvider(id: HealthProviderId | null): boolean {
+    if (!id) return false;
+    return ALL_PROVIDER_META.find(m => m.id === id)?.transport === 'terra';
+}
 
 /**
  * The verification source to stamp on a session synced from `id`. Returns
@@ -109,14 +147,29 @@ export function getProvider(id: HealthProviderId): HealthProvider {
         case 'apple-health':
         case 'health-connect':
             return createNativeHealthProvider();
-        case 'fitbit':
-            return createFitbitProvider();
-        case 'whoop':
-            return createWhoopProvider();
         case 'samsung-health':
             return createSamsungHealthProvider();
+        case 'whoop':
+        case 'oura':
+        case 'polar':
         case 'garmin':
-            throw new HealthProviderNotImplementedError('garmin', 'connect');
+        case 'fitbit':
+        case 'strava':
+        case 'huawei':
+        case 'withings':
+        case 'peloton':
+        case 'zepp':
+        case 'technogym':
+        case 'coros':
+        case 'suunto':
+        case 'wahoo':
+        case 'zwift':
+        case 'concept2':
+        case 'ifit':
+        case 'underarmour': {
+            const meta = ALL_PROVIDER_META.find(m => m.id === id)!;
+            return createTerraProvider(meta);
+        }
     }
     throw new HealthProviderNotImplementedError(id, 'connect');
 }

@@ -193,7 +193,7 @@ function renderHeroSubtitle(summary: ShareSummary): string {
 function renderStatsRow(summary: ShareSummary): StatColProps[] {
   if (summary.mode === 'check-in') {
     return [
-      { label: 'TODAY', value: summary.durationMin.toString(), unit: 'min' },
+      { label: 'SESSION', value: summary.durationMin.toString(), unit: 'min' },
       { label: 'TOTAL', value: summary.lifetimeCount.toString(), unit: 'visits' },
       {
         label: 'STREAK',

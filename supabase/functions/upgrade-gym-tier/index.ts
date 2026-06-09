@@ -62,9 +62,21 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ error: 'Session not found' }), { status: 404 });
   }
 
-  // Update session to actual elapsed time
+  // Loose sanity backstop on a recorded gym dwell — keep in sync with GeofenceContext.
+  // A 40-min upgrade firing late (app reopened hours later, or a delayed EXIT)
+  // must not overwrite duration_sec with an impossible entry→now wall-clock.
+  // 12 h covers all-day events; the client reconciles the true length against GPS
+  // presence + the health store. The 40-min tier GATE below still uses real
+  // entry→now elapsed (anti-abuse), independent of this display backstop.
+  const MAX_GYM_SESSION_SEC = 12 * 60 * 60; // 12 h backstop
+
+  // Update session to actual elapsed time (capped)
   const now = new Date();
-  const actualDurationSec = Math.round((now.getTime() - new Date(session.started_at).getTime()) / 1000);
+  const startedMs = new Date(session.started_at).getTime();
+  const actualDurationSec = Math.min(
+    Math.round((now.getTime() - startedMs) / 1000),
+    MAX_GYM_SESSION_SEC,
+  );
   const actualMins = Math.floor(actualDurationSec / 60);
 
   if (actualMins < 40) {
@@ -76,9 +88,12 @@ Deno.serve(async (req) => {
     console.log(`[DEV] Allowing tier upgrade for short session (${actualDurationSec}s >= ${devMinUpgradeSec}s dev threshold)`);
   }
 
+  // Derive ended_at from the capped duration so the row stays internally consistent
+  // (started_at + duration). When uncapped this equals `now`, as before.
+  const endedAt = new Date(startedMs + actualDurationSec * 1000);
   await supabase
     .from('activity_sessions')
-    .update({ ended_at: now.toISOString(), duration_sec: actualDurationSec })
+    .update({ ended_at: endedAt.toISOString(), duration_sec: actualDurationSec })
     .eq('id', session.id);
 
   // Calculate target earnings at 40-min tier including streak multiplier

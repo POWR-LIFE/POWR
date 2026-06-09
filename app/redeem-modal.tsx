@@ -79,6 +79,7 @@ export default function RedeemModal() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [stage, setStage] = useState<'confirm' | 'success'>('confirm');
   const [alreadyRedeemed, setAlreadyRedeemed] = useState(false);
+  const [existingActiveCount, setExistingActiveCount] = useState(0);
   const [code, setCode] = useState('');
   const [expiresAt, setExpiresAt] = useState<string | null>(null);
   const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
@@ -98,23 +99,27 @@ export default function RedeemModal() {
           .single(),
         supabase
           .from('redemptions')
-          .select('code, expires_at, status')
+          .select('code, expires_at, status, checkout_url')
           .eq('reward_id', id)
           .eq('status', 'active')
-          .order('redeemed_at', { ascending: false })
-          .limit(1)
-          .maybeSingle(),
+          .order('redeemed_at', { ascending: false }),
       ]);
 
       if (rewardRes.error || !rewardRes.data) { setLoadError('Reward not found.'); return; }
       const full: Reward = { ...(rewardRes.data as any), partner: Array.isArray((rewardRes.data as any).partners) ? (rewardRes.data as any).partners[0] : (rewardRes.data as any).partners };
       setReward(toUIReward(full));
 
-      // If the user already has an active unreconciled code, show it immediately
-      if (redemptionRes.data?.code) {
-        setCode(redemptionRes.data.code);
-        setExpiresAt(redemptionRes.data.expires_at ?? null);
-        setCheckoutUrl(full.url || null);
+      const active = redemptionRes.data ?? [];
+      setExistingActiveCount(active.length);
+
+      // AFFILIATE rewards have no per-redemption code — redeeming again just
+      // re-charges points for the identical discount link, so show the existing
+      // one rather than allowing a wasted spend. Code-based rewards (POOL /
+      // API_VALIDATED) stay on the confirm screen so the user can redeem again.
+      if (full.integration_type === 'AFFILIATE' && active[0]?.code) {
+        setCode(active[0].code);
+        setExpiresAt(active[0].expires_at ?? null);
+        setCheckoutUrl(active[0].checkout_url ?? full.url ?? null);
         setAlreadyRedeemed(true);
         setStage('success');
       }
@@ -194,8 +199,10 @@ export default function RedeemModal() {
           remaining={remaining}
           submitting={submitting}
           error={redeemError}
+          existingActiveCount={existingActiveCount}
           onConfirm={handleConfirm}
           onCancel={() => router.back()}
+          onViewWallet={() => router.push('/wallet')}
         />
       ) : (
         <SuccessView
@@ -223,11 +230,13 @@ interface ConfirmProps {
   remaining: number;
   submitting: boolean;
   error: string | null;
+  existingActiveCount: number;
   onConfirm: () => void;
   onCancel: () => void;
+  onViewWallet: () => void;
 }
 
-function ConfirmView({ reward, balance, canAfford, remaining, submitting, error, onConfirm, onCancel }: ConfirmProps) {
+function ConfirmView({ reward, balance, canAfford, remaining, submitting, error, existingActiveCount, onConfirm, onCancel, onViewWallet }: ConfirmProps) {
   return (
     <View style={styles.sheet}>
       {/* Hero image */}
@@ -288,6 +297,16 @@ function ConfirmView({ reward, balance, canAfford, remaining, submitting, error,
           <Ionicons name="alert-circle-outline" size={14} color='#f87171' />
           <Text style={styles.insufficientText}>{error}</Text>
         </View>
+      )}
+
+      {existingActiveCount > 0 && (
+        <Pressable style={({ pressed }) => [styles.walletNote, pressed && { opacity: 0.7 }]} onPress={onViewWallet}>
+          <Ionicons name="wallet-outline" size={14} color={GOLD} />
+          <Text style={styles.walletNoteText}>
+            You already have {existingActiveCount} active {existingActiveCount === 1 ? 'code' : 'codes'} for this — view in your wallet
+          </Text>
+          <Ionicons name="chevron-forward" size={13} color={GOLD} />
+        </Pressable>
       )}
 
       {/* Actions */}
@@ -604,6 +623,23 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '300',
     color: '#f87171',
+  },
+  walletNote: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(232,210,0,0.07)',
+    borderWidth: 1,
+    borderColor: 'rgba(232,210,0,0.2)',
+    borderRadius: 10,
+    padding: 12,
+  },
+  walletNoteText: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '300',
+    color: 'rgba(232,210,0,0.85)',
+    lineHeight: 17,
   },
 
   // Actions
