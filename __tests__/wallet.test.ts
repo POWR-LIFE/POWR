@@ -1,11 +1,11 @@
 /**
  * Tests for the pure wallet helpers in lib/api/rewards.ts:
  *   - walletEntryStatus: status + expiry → display state
- *   - partitionWallet: split into "ready to use" vs "past", with ordering
+ * (Active/history split and ordering now happen server-side in
+ * fetchActiveWallet / fetchWalletHistory.)
  */
 
 import {
-  partitionWallet,
   walletEntryStatus,
   type WalletEntry,
 } from '@/lib/api/rewards';
@@ -25,6 +25,7 @@ function entry(overrides: Partial<WalletEntry>): WalletEntry {
     reward_title: 'Test reward',
     partner_name: 'Test partner',
     reward_image_url: null,
+    reward_hero_image_url: null,
     checkout_url: null,
     ...overrides,
   };
@@ -49,37 +50,5 @@ describe('walletEntryStatus', () => {
 
   it('treats an active code with no expiry as ready', () => {
     expect(walletEntryStatus(entry({ status: 'active', expires_at: null }), NOW)).toBe('ready');
-  });
-});
-
-describe('partitionWallet', () => {
-  it('puts ready codes first, used/expired in past, and drops refunded', () => {
-    const ready = entry({ id: 'ready', status: 'active', expires_at: '2026-08-01T00:00:00Z' });
-    const used = entry({ id: 'used', status: 'used' });
-    const expiredByDate = entry({ id: 'exp', status: 'active', expires_at: '2026-01-01T00:00:00Z' });
-    const refunded = entry({ id: 'ref', status: 'refunded' });
-
-    const { ready: r, past } = partitionWallet([used, ready, expiredByDate, refunded], NOW);
-
-    expect(r.map((e) => e.id)).toEqual(['ready']);
-    expect(past.map((e) => e.id).sort()).toEqual(['exp', 'used']);
-    expect([...r, ...past].some((e) => e.id === 'ref')).toBe(false);
-  });
-
-  it('orders ready entries by soonest expiry first', () => {
-    const soon = entry({ id: 'soon', expires_at: '2026-06-20T00:00:00Z' });
-    const later = entry({ id: 'later', expires_at: '2026-12-01T00:00:00Z' });
-    const noExpiry = entry({ id: 'noexp', expires_at: null });
-
-    const { ready } = partitionWallet([later, noExpiry, soon], NOW);
-    expect(ready.map((e) => e.id)).toEqual(['soon', 'later', 'noexp']);
-  });
-
-  it('orders past entries newest-redeemed first', () => {
-    const older = entry({ id: 'older', status: 'used', redeemed_at: '2026-05-01T00:00:00Z' });
-    const newer = entry({ id: 'newer', status: 'used', redeemed_at: '2026-06-05T00:00:00Z' });
-
-    const { past } = partitionWallet([older, newer], NOW);
-    expect(past.map((e) => e.id)).toEqual(['newer', 'older']);
   });
 });

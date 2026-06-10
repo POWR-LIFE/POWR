@@ -160,36 +160,43 @@ export function walletEntryStatus(
   return 'ready';
 }
 
-/**
- * Split wallet entries into "ready to use" and "past" (used/expired), pure so it
- * can be unit-tested. Ready entries surface soonest-to-expire first; past
- * entries stay newest-first.
- */
-export function partitionWallet(
-  entries: WalletEntry[],
-  now: number = Date.now(),
-): { ready: WalletEntry[]; past: WalletEntry[] } {
-  const ready: WalletEntry[] = [];
-  const past: WalletEntry[] = [];
-  for (const e of entries) {
-    if (e.status === 'refunded') continue;
-    (walletEntryStatus(e, now) === 'ready' ? ready : past).push(e);
-  }
-  ready.sort((a, b) => {
-    const ax = a.expires_at ? new Date(a.expires_at).getTime() : Infinity;
-    const bx = b.expires_at ? new Date(b.expires_at).getTime() : Infinity;
-    return ax - bx;
-  });
-  past.sort((a, b) => new Date(b.redeemed_at).getTime() - new Date(a.redeemed_at).getTime());
-  return { ready, past };
-}
+const WALLET_COLUMNS =
+  'id, reward_id, code, powr_spent, status, redeemed_at, expires_at, integration_type, reward_title, partner_name, reward_image_url, reward_hero_image_url, checkout_url';
 
-export async function fetchWallet(): Promise<WalletEntry[]> {
+export const WALLET_HISTORY_PAGE_SIZE = 20;
+
+/**
+ * Codes that are redeemable right now (active and not past expiry), sorted
+ * soonest-to-expire first so the most urgent code is on top.
+ */
+export async function fetchActiveWallet(): Promise<WalletEntry[]> {
+  const nowIso = new Date().toISOString();
   const { data, error } = await supabase
     .from('redemptions')
-    .select('id, reward_id, code, powr_spent, status, redeemed_at, expires_at, integration_type, reward_title, partner_name, reward_image_url, reward_hero_image_url, checkout_url')
+    .select(WALLET_COLUMNS)
+    .eq('status', 'active')
+    .or(`expires_at.is.null,expires_at.gte.${nowIso}`)
+    .order('expires_at', { ascending: true, nullsFirst: false });
+  if (error) throw error;
+  return (data ?? []) as WalletEntry[];
+}
+
+/**
+ * One page of past codes — used, expired, or active-but-past-expiry — newest
+ * redemption first. The history list can grow unbounded, hence the paging.
+ */
+export async function fetchWalletHistory(
+  offset: number,
+  limit: number = WALLET_HISTORY_PAGE_SIZE,
+): Promise<WalletEntry[]> {
+  const nowIso = new Date().toISOString();
+  const { data, error } = await supabase
+    .from('redemptions')
+    .select(WALLET_COLUMNS)
     .neq('status', 'refunded')
-    .order('redeemed_at', { ascending: false });
+    .or(`status.in.(used,expired),expires_at.lt.${nowIso}`)
+    .order('redeemed_at', { ascending: false })
+    .range(offset, offset + limit - 1);
   if (error) throw error;
   return (data ?? []) as WalletEntry[];
 }

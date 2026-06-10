@@ -1,8 +1,9 @@
 import GeometricBackground from '@/components/GeometricBackground';
 import { RewardShareCard } from '@/components/share/RewardShareCard';
 import {
-  fetchWallet,
-  partitionWallet,
+  fetchActiveWallet,
+  fetchWalletHistory,
+  WALLET_HISTORY_PAGE_SIZE,
   walletEntryStatus,
   type WalletEntry,
   type WalletStatus,
@@ -16,10 +17,10 @@ import * as Sharing from 'expo-sharing';
 import React, { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  FlatList,
   Linking,
   Platform,
   Pressable,
-  ScrollView,
   Share,
   StyleSheet,
   Text,
@@ -192,10 +193,16 @@ function WalletCard({
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
+type WalletTab = 'active' | 'history';
+
 export default function WalletScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const [entries, setEntries] = useState<WalletEntry[]>([]);
+  const [tab, setTab] = useState<WalletTab>('active');
+  const [active, setActive] = useState<WalletEntry[]>([]);
+  const [history, setHistory] = useState<WalletEntry[]>([]);
+  const [historyEnd, setHistoryEnd] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [pendingShare, setPendingShare] = useState<WalletEntry | null>(null);
@@ -204,7 +211,13 @@ export default function WalletScreen() {
 
   const load = useCallback(async () => {
     try {
-      setEntries(await fetchWallet());
+      const [activeEntries, firstPage] = await Promise.all([
+        fetchActiveWallet(),
+        fetchWalletHistory(0),
+      ]);
+      setActive(activeEntries);
+      setHistory(firstPage);
+      setHistoryEnd(firstPage.length < WALLET_HISTORY_PAGE_SIZE);
       setError(null);
     } catch {
       setError('Could not load your wallet.');
@@ -214,6 +227,24 @@ export default function WalletScreen() {
   }, []);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
+
+  const loadMoreHistory = useCallback(async () => {
+    if (loadingMore || historyEnd) return;
+    setLoadingMore(true);
+    try {
+      const page = await fetchWalletHistory(history.length);
+      // Dedupe by id: a code expiring between pages shifts offsets slightly.
+      setHistory((prev) => {
+        const seen = new Set(prev.map((e) => e.id));
+        return [...prev, ...page.filter((e) => !seen.has(e.id))];
+      });
+      if (page.length < WALLET_HISTORY_PAGE_SIZE) setHistoryEnd(true);
+    } catch {
+      // Leave historyEnd false so the next scroll retries.
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [loadingMore, historyEnd, history.length]);
 
   const handleCardReady = useCallback(() => {
     shareReadyRef.current?.();
@@ -264,7 +295,7 @@ export default function WalletScreen() {
     }
   }, []);
 
-  const { ready, past } = partitionWallet(entries);
+  const entries = tab === 'active' ? active : history;
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
@@ -278,41 +309,58 @@ export default function WalletScreen() {
         <View style={styles.headerSpacer} />
       </View>
 
+      <View style={styles.tabBar}>
+        {(['active', 'history'] as WalletTab[]).map((t) => (
+          <Pressable key={t} style={[styles.tabBtn, tab === t && styles.tabBtnActive]} onPress={() => setTab(t)}>
+            <Text style={[styles.tabLabel, tab === t && styles.tabLabelActive]}>
+              {t === 'active' ? `Active${active.length ? ` (${active.length})` : ''}` : 'History'}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+
       {loading ? (
         <View style={styles.centered}><ActivityIndicator color={GOLD} /></View>
       ) : error ? (
         <View style={styles.centered}><Text style={styles.statusText}>{error}</Text></View>
-      ) : entries.length === 0 ? (
-        <View style={styles.centered}>
-          <Ionicons name="gift-outline" size={28} color={MUTED} />
-          <Text style={styles.statusText}>No rewards yet.</Text>
-          <Pressable style={({ pressed }) => [styles.browseBtn, pressed && { opacity: 0.85 }]} onPress={() => router.back()}>
-            <Text style={styles.browseBtnText}>Browse rewards</Text>
-          </Pressable>
-        </View>
       ) : (
-        <ScrollView
+        <FlatList
+          key={tab}
+          data={entries}
+          keyExtractor={(e) => e.id}
+          renderItem={({ item }) => (
+            <WalletCard entry={item} onShare={handleShare} shareBusy={pendingShare?.id === item.id} />
+          )}
           style={styles.scroll}
-          contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 40 }]}
+          contentContainerStyle={[
+            styles.listContent,
+            { paddingBottom: insets.bottom + 40 },
+            entries.length === 0 && styles.listEmpty,
+          ]}
           showsVerticalScrollIndicator={false}
-        >
-          {ready.length > 0 && (
-            <>
-              <Text style={styles.sectionHeader}>Ready to use</Text>
-              {ready.map((e) => (
-                <WalletCard key={e.id} entry={e} onShare={handleShare} shareBusy={pendingShare?.id === e.id} />
-              ))}
-            </>
-          )}
-          {past.length > 0 && (
-            <>
-              <Text style={[styles.sectionHeader, { marginTop: ready.length ? 24 : 0 }]}>Past</Text>
-              {past.map((e) => (
-                <WalletCard key={e.id} entry={e} onShare={handleShare} shareBusy={pendingShare?.id === e.id} />
-              ))}
-            </>
-          )}
-        </ScrollView>
+          onEndReached={tab === 'history' ? loadMoreHistory : undefined}
+          onEndReachedThreshold={0.4}
+          ListEmptyComponent={
+            tab === 'active' ? (
+              <View style={styles.centered}>
+                <Ionicons name="gift-outline" size={28} color={MUTED} />
+                <Text style={styles.statusText}>No active rewards.</Text>
+                <Pressable style={({ pressed }) => [styles.browseBtn, pressed && { opacity: 0.85 }]} onPress={() => router.back()}>
+                  <Text style={styles.browseBtnText}>Browse rewards</Text>
+                </Pressable>
+              </View>
+            ) : (
+              <View style={styles.centered}>
+                <Text style={styles.statusText}>Nothing here yet.</Text>
+              </View>
+            )
+          }
+          ListFooterComponent={
+            tab === 'history' && loadingMore ? (
+              <ActivityIndicator color={GOLD} style={styles.footerSpinner} />
+            ) : null
+          }
+        />
       )}
 
       {/* Off-screen share card, mounted only while a share is being prepared */}
@@ -334,12 +382,26 @@ const styles = StyleSheet.create({
   headerTitle: { flex: 1, textAlign: 'center', fontSize: 16, fontWeight: '400', letterSpacing: 0.5, color: TEXT },
   headerSpacer: { width: 36 },
 
+  tabBar: {
+    flexDirection: 'row',
+    marginHorizontal: 16,
+    marginBottom: 8,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderRadius: 12,
+    padding: 3,
+  },
+  tabBtn: {
+    flex: 1, paddingVertical: 8, borderRadius: 10, alignItems: 'center',
+    borderWidth: 1, borderColor: 'transparent',
+  },
+  tabBtnActive: { borderColor: TEXT },
+  tabLabel: { fontSize: 12, fontWeight: '600', color: MUTED },
+  tabLabelActive: { color: TEXT },
+
   scroll: { flex: 1 },
   listContent: { paddingHorizontal: 16, paddingTop: 8 },
-  sectionHeader: {
-    fontSize: 9, fontWeight: '600', letterSpacing: 2, color: MUTED,
-    textTransform: 'uppercase', marginBottom: 12,
-  },
+  listEmpty: { flexGrow: 1 },
+  footerSpinner: { paddingVertical: 16 },
 
   card: {
     backgroundColor: 'rgba(40,40,40,0.6)',
