@@ -1,4 +1,5 @@
 import GeometricBackground from '@/components/GeometricBackground';
+import { RewardShareCard } from '@/components/share/RewardShareCard';
 import {
   fetchWallet,
   partitionWallet,
@@ -11,10 +12,12 @@ import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import { Image as ExpoImage } from 'expo-image';
 import { useFocusEffect, useRouter } from 'expo-router';
-import React, { useCallback, useState } from 'react';
+import * as Sharing from 'expo-sharing';
+import React, { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Linking,
+  Platform,
   Pressable,
   ScrollView,
   Share,
@@ -23,6 +26,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { captureRef } from 'react-native-view-shot';
 
 // ─── Design tokens (match redeem-modal / points-ledger) ───────────────────────
 
@@ -48,9 +52,48 @@ function formatExpiry(entry: WalletEntry, status: WalletStatus): string {
   return status === 'expired' ? `Expired ${date}` : `Valid until ${date}`;
 }
 
+/**
+ * react-native-share bundles image + caption text in one Android intent, but it
+ * is a native module that only exists in EAS builds — resolve it lazily so the
+ * wallet still works in Expo Go and older builds.
+ */
+function getNativeShare(): { open: (options: object) => Promise<unknown> } | null {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    return require('react-native-share').default;
+  } catch {
+    return null;
+  }
+}
+
+/** Share text with the code spelled out, so recipients can copy-paste it. */
+function buildShareMessage(entry: WalletEntry): string {
+  const title = entry.reward_title ?? 'Reward';
+  const label = entry.partner_name ? `${title} at ${entry.partner_name}` : title;
+  return entry.integration_type === 'AFFILIATE'
+    ? `Here's a ${label} reward from POWR${entry.checkout_url ? `: ${entry.checkout_url}` : ''}`
+    : `Here's my ${label} code from POWR: ${entry.code}${entry.checkout_url ? `\n${entry.checkout_url}` : ''}`;
+}
+
+/** Plain-text share, used as fallback when image capture/sharing fails. */
+function shareAsText(entry: WalletEntry): Promise<unknown> {
+  return Share.share({
+    message: buildShareMessage(entry),
+    ...(entry.checkout_url ? { url: entry.checkout_url } : {}),
+  }).catch(() => {});
+}
+
 // ─── Wallet card ──────────────────────────────────────────────────────────────
 
-function WalletCard({ entry }: { entry: WalletEntry }) {
+function WalletCard({
+  entry,
+  onShare,
+  shareBusy,
+}: {
+  entry: WalletEntry;
+  onShare: (entry: WalletEntry) => void;
+  shareBusy: boolean;
+}) {
   const [copied, setCopied] = useState(false);
   const status = walletEntryStatus(entry);
   const meta = STATUS_META[status];
@@ -65,16 +108,6 @@ function WalletCard({ entry }: { entry: WalletEntry }) {
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }, [entry.code]);
-
-  const share = useCallback(() => {
-    const label = partner ? `${title} at ${partner}` : title;
-    Share.share({
-      message: isAffiliate
-        ? `Here's a ${label} reward from POWR${entry.checkout_url ? `: ${entry.checkout_url}` : ''}`
-        : `Here's my ${label} code from POWR: ${entry.code}${entry.checkout_url ? `\n${entry.checkout_url}` : ''}`,
-      ...(entry.checkout_url ? { url: entry.checkout_url } : {}),
-    }).catch(() => {});
-  }, [isAffiliate, title, partner, entry.code, entry.checkout_url]);
 
   const openCheckout = useCallback(() => {
     if (entry.checkout_url) Linking.openURL(entry.checkout_url);
@@ -137,9 +170,19 @@ function WalletCard({ entry }: { entry: WalletEntry }) {
               <Text style={styles.primaryBtnText}>Use{partner ? ` at ${partner}` : ''}</Text>
             </Pressable>
           )}
-          <Pressable style={({ pressed }) => [styles.secondaryBtn, pressed && { opacity: 0.7 }]} onPress={share}>
-            <Ionicons name="share-outline" size={14} color={DIM} />
-            <Text style={styles.secondaryBtnText}>Share</Text>
+          <Pressable
+            style={({ pressed }) => [styles.secondaryBtn, pressed && { opacity: 0.7 }]}
+            onPress={() => onShare(entry)}
+            disabled={shareBusy}
+          >
+            {shareBusy ? (
+              <ActivityIndicator size="small" color={DIM} />
+            ) : (
+              <>
+                <Ionicons name="share-outline" size={14} color={DIM} />
+                <Text style={styles.secondaryBtnText}>Share</Text>
+              </>
+            )}
           </Pressable>
         </View>
       )}
@@ -155,6 +198,9 @@ export default function WalletScreen() {
   const [entries, setEntries] = useState<WalletEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [pendingShare, setPendingShare] = useState<WalletEntry | null>(null);
+  const shareCardRef = useRef<View>(null);
+  const shareReadyRef = useRef<(() => void) | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -168,6 +214,55 @@ export default function WalletScreen() {
   }, []);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
+
+  const handleCardReady = useCallback(() => {
+    shareReadyRef.current?.();
+  }, []);
+
+  const handleShare = useCallback(async (entry: WalletEntry) => {
+    Haptics.selectionAsync();
+    setPendingShare(entry);
+    try {
+      // Wait for the off-screen card's images, capped so a stalled load can't hang the share.
+      await new Promise<void>((resolve) => {
+        shareReadyRef.current = resolve;
+        setTimeout(resolve, 2500);
+      });
+      await new Promise((r) => setTimeout(r, 60)); // let the loaded images paint
+      const uri = await captureRef(shareCardRef, {
+        format: 'png',
+        quality: 1,
+        width: 1080,
+        height: 1350,
+        result: 'tmpfile',
+      });
+      const message = buildShareMessage(entry);
+      const nativeShare = Platform.OS === 'android' ? getNativeShare() : null;
+      if (Platform.OS === 'ios') {
+        // iOS share sheet carries the image and the copyable text together.
+        await Share.share({ url: uri, message });
+      } else if (nativeShare) {
+        // Image with the message as its caption, in one intent.
+        await nativeShare.open({ url: uri, type: 'image/png', message, failOnCancel: false });
+      } else if (await Sharing.isAvailableAsync()) {
+        // Builds without react-native-share can't bundle text with the image —
+        // put the message on the clipboard so it can be pasted as the caption.
+        await Clipboard.setStringAsync(message);
+        await Sharing.shareAsync(uri, {
+          mimeType: 'image/png',
+          dialogTitle: 'Share reward',
+          UTI: 'public.png',
+        });
+      } else {
+        await shareAsText(entry);
+      }
+    } catch {
+      await shareAsText(entry);
+    } finally {
+      shareReadyRef.current = null;
+      setPendingShare(null);
+    }
+  }, []);
 
   const { ready, past } = partitionWallet(entries);
 
@@ -204,16 +299,27 @@ export default function WalletScreen() {
           {ready.length > 0 && (
             <>
               <Text style={styles.sectionHeader}>Ready to use</Text>
-              {ready.map((e) => <WalletCard key={e.id} entry={e} />)}
+              {ready.map((e) => (
+                <WalletCard key={e.id} entry={e} onShare={handleShare} shareBusy={pendingShare?.id === e.id} />
+              ))}
             </>
           )}
           {past.length > 0 && (
             <>
               <Text style={[styles.sectionHeader, { marginTop: ready.length ? 24 : 0 }]}>Past</Text>
-              {past.map((e) => <WalletCard key={e.id} entry={e} />)}
+              {past.map((e) => (
+                <WalletCard key={e.id} entry={e} onShare={handleShare} shareBusy={pendingShare?.id === e.id} />
+              ))}
             </>
           )}
         </ScrollView>
+      )}
+
+      {/* Off-screen share card, mounted only while a share is being prepared */}
+      {pendingShare && (
+        <View style={styles.sharePrep} pointerEvents="none">
+          <RewardShareCard ref={shareCardRef} entry={pendingShare} width={360} onReady={handleCardReady} />
+        </View>
       )}
     </View>
   );
@@ -291,6 +397,8 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: BORDER, borderRadius: 20, paddingVertical: 12, paddingHorizontal: 18,
   },
   secondaryBtnText: { fontSize: 12, fontWeight: '400', letterSpacing: 0.5, color: DIM, textTransform: 'uppercase' },
+
+  sharePrep: { position: 'absolute', top: 0, left: -9999, width: 360 },
 
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 14, paddingBottom: 80 },
   statusText: { fontSize: 14, color: MUTED },
