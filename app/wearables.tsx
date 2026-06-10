@@ -40,6 +40,18 @@ const BRAND_LOGOS: Partial<Record<HealthProviderId, string>> = {
   'oura':           `${BASE}/oura_logo.png`,
   'huawei':         `${BASE}/huawei-Logo.png`,
   'samsung-health': `${BASE}/samsung-health-logo.png`,
+  'strava':         `${BASE}/strava-logo.png`,
+  'withings':       `${BASE}/withings-logo.png`,
+  'zepp':           `${BASE}/zepp-logo.png`,
+  'technogym':      `${BASE}/technogym-logo.png`,
+  'coros':          `${BASE}/coros-logo.png`,
+  'suunto':         `${BASE}/suunto-logo.png`,
+  'wahoo':          `${BASE}/wahoo-logo.jpeg`,
+  'zwift':          `${BASE}/zwift-logo.png`,
+  'concept2':       `${BASE}/concept-two.png`,
+  'ifit':           `${BASE}/ifit-logo.png`,
+  'underarmour':    `${BASE}/under-armour-logo.png`,
+  'peloton':        `${BASE}/pelaton-logo.png`,
 };
 
 // ─── Grid sizing ──────────────────────────────────────────────────────────────
