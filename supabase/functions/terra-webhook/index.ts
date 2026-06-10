@@ -384,6 +384,16 @@ Deno.serve(async (req) => {
   );
 
   try {
+    // Freshness stamp: any DATA payload marks this connection as recently
+    // delivered, so the terra-poll cron skips it (see terra-poll/index.ts).
+    // Lifecycle events (auth/deauth) deliberately don't count — a connection
+    // that only ever authed still needs polling.
+    if (['activity', 'sleep', 'daily', 'body'].includes(payload.type) && payload.user?.user_id) {
+      await supabase.from('terra_connections')
+        .update({ last_event_at: new Date().toISOString() })
+        .eq('terra_user_id', payload.user.user_id);
+    }
+
     switch (payload.type) {
       case 'auth': await handleAuth(supabase, payload); break;
       case 'deauth':

@@ -71,8 +71,23 @@ export function useHealthProviders() {
                 .select('active_health_provider, health_provider_connections')
                 .eq('id', user.id)
                 .single<ProfileRow>();
-            setActiveId(data?.active_health_provider ?? null);
-            setConnections(sanitizeConnections(data?.health_provider_connections ?? {}));
+            const sanitized = sanitizeConnections(data?.health_provider_connections ?? {});
+            let active = data?.active_health_provider ?? null;
+            // Self-heal: if active still points at a Terra wearable whose connection
+            // was dropped as stale (no terra_user_id), the sync gates would stay shut
+            // — useHealthSync treats a Terra active as "webhook owns sync" and turns
+            // native sleep/workout sync off, and walkingSync skips native steps for
+            // step-capable wearables. Re-point active at a still-valid connection
+            // (native first) and persist, so sync resumes from the phone.
+            if (active && isTerraProvider(active) && !sanitized[active]) {
+                const keys = Object.keys(sanitized) as HealthProviderId[];
+                active = keys.find(k => !isTerraProvider(k)) ?? keys[0] ?? null;
+                await supabase.from('profiles')
+                    .update({ health_provider_connections: sanitized, active_health_provider: active })
+                    .eq('id', user.id);
+            }
+            setActiveId(active);
+            setConnections(sanitized);
         } finally {
             setLoading(false);
         }

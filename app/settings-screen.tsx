@@ -563,6 +563,18 @@ const BRAND_LOGOS: Partial<Record<HealthProviderId, string>> = {
   'polar':          `${_BASE}/polar-logo.svg`,
   'oura':           `${_BASE}/oura_logo.png`,
   'huawei':         `${_BASE}/huawei-Logo.png`,
+  'strava':         `${_BASE}/strava-logo.png`,
+  'withings':       `${_BASE}/withings-logo.png`,
+  'peloton':        `${_BASE}/pelaton-logo.png`,
+  'zepp':           `${_BASE}/zepp-logo.png`,
+  'technogym':      `${_BASE}/technogym-logo.png`,
+  'coros':          `${_BASE}/coros-logo.png`,
+  'suunto':         `${_BASE}/suunto-logo.png`,
+  'wahoo':          `${_BASE}/wahoo-logo.jpeg`,
+  'zwift':          `${_BASE}/zwift-logo.png`,
+  'concept2':       `${_BASE}/concept-two.png`,
+  'ifit':           `${_BASE}/ifit-logo.png`,
+  'underarmour':    `${_BASE}/under-armour-logo.png`,
   'samsung-health': `${_BASE}/samsung-health-logo.png`,
 };
 

@@ -22,11 +22,7 @@ import {
     WALKING_DAILY_CAP,
 } from '@/lib/api/activity';
 import {
-    ALL_PROVIDER_META,
     getNativeProviderId,
-    getProvider,
-    HealthProviderNotImplementedError,
-    isTerraProvider,
     verificationForProvider,
     type HealthProviderId,
 } from '@/lib/health/providers';
@@ -65,24 +61,31 @@ function toLocalISOString(d: Date): string {
 async function getStepsTodayAndroid(): Promise<number> {
     try {
         // eslint-disable-next-line @typescript-eslint/no-require-imports
-        const { initialize, readRecords } = require('react-native-health-connect');
+        const { initialize, aggregateRecord, readRecords } = require('react-native-health-connect');
         await initialize();
         const midnight = new Date();
         midnight.setHours(0, 0, 0, 0);
-        const now = new Date();
-        const startTime = midnight.toISOString();
-        const endTime = now.toISOString();
-        console.log(`[walkingSync] Reading steps from ${startTime} to ${endTime}`);
-        const result = await readRecords('Steps', {
-            timeRangeFilter: {
-                operator: 'between',
-                startTime,
-                endTime,
-            },
-        });
+        const timeRangeFilter = {
+            operator: 'between' as const,
+            startTime: midnight.toISOString(),
+            endTime: new Date().toISOString(),
+        };
+        // Health Connect's aggregate API de-dupes overlapping samples across apps
+        // (phone pedometer + a wearable app mirroring the same steps) using the
+        // OS priority order — summing raw records would double-count them.
+        try {
+            const agg = await aggregateRecord({ recordType: 'Steps', timeRangeFilter });
+            if (typeof agg?.COUNT_TOTAL === 'number') {
+                console.log(`[walkingSync] Android steps today (aggregate): ${agg.COUNT_TOTAL}`);
+                return agg.COUNT_TOTAL;
+            }
+        } catch (e) {
+            console.warn('[walkingSync] aggregateRecord failed, falling back to raw sum:', e);
+        }
+        const result = await readRecords('Steps', { timeRangeFilter });
         const records = result?.records ?? [];
         const total = (records as Array<{ count: number }>).reduce((sum, r) => sum + r.count, 0);
-        console.log(`[walkingSync] Android steps today: ${total} (${records.length} records)`);
+        console.log(`[walkingSync] Android steps today (raw sum): ${total} (${records.length} records)`);
         return total;
     } catch (e) {
         console.warn('[walkingSync] Android getStepsToday failed:', e);
@@ -174,11 +177,17 @@ async function getStepsInRangeIOS(start: Date, end: Date): Promise<number> {
 async function getStepsInRangeAndroid(start: Date, end: Date): Promise<number> {
     try {
         // eslint-disable-next-line @typescript-eslint/no-require-imports
-        const { initialize, readRecords } = require('react-native-health-connect');
+        const { initialize, aggregateRecord, readRecords } = require('react-native-health-connect');
         await initialize();
-        const result = await readRecords('Steps', {
-            timeRangeFilter: { operator: 'between', startTime: start.toISOString(), endTime: end.toISOString() },
-        });
+        const timeRangeFilter = { operator: 'between' as const, startTime: start.toISOString(), endTime: end.toISOString() };
+        // Aggregate de-dupes overlapping samples across apps (see getStepsTodayAndroid).
+        try {
+            const agg = await aggregateRecord({ recordType: 'Steps', timeRangeFilter });
+            if (typeof agg?.COUNT_TOTAL === 'number') return agg.COUNT_TOTAL;
+        } catch {
+            // fall through to raw sum
+        }
+        const result = await readRecords('Steps', { timeRangeFilter });
         const records = result?.records ?? [];
         return (records as Array<{ count: number }>).reduce((sum, r) => sum + r.count, 0);
     } catch {
@@ -281,42 +290,20 @@ export function syncWalkingNow(): Promise<void> {
 async function _syncWalkingNowImpl(): Promise<void> {
     const activeId = await resolveActiveProviderId();
 
-    // Wearable precedence: if the active wearable reports its own steps (Oura /
-    // Garmin / Fitbit / Huawei), Terra's `daily` webhook owns walking — don't
-    // double-source from the phone. A step-less wearable (e.g. Whoop) falls
-    // through to the native phone step reader below.
-    if (activeId && isTerraProvider(activeId)) {
-        const meta = ALL_PROVIDER_META.find(m => m.id === activeId);
-        if (meta?.capabilities.includes('steps')) {
-            console.log(`[walkingSync] ${activeId} reports steps — Terra owns walking, skipping native sync.`);
-            return;
-        }
-    }
-
-    let steps = 0;
-    if (activeId) {
-        try {
-            steps = await getProvider(activeId).getStepsToday();
-        } catch (e) {
-            if (e instanceof HealthProviderNotImplementedError) {
-                console.log(`[walkingSync] active provider ${activeId} not implemented yet, falling back to native`);
-                steps = await getStepsToday();
-            } else {
-                throw e;
-            }
-        }
-    } else {
-        steps = await getStepsToday();
-    }
-    console.log(`[walkingSync] syncWalkingNow: ${steps} steps from ${activeId ?? Platform.OS}`);
+    // Walking is native-first: the phone's health store is the fastest source
+    // (local read, no cloud round-trip) and wearable companion apps mirror
+    // their step counts into HealthKit / Health Connect anyway. Terra's `daily`
+    // webhook stays as a server-side top-up — handleDaily updates the same
+    // per-day session and only awards the tier delta when the wearable reported
+    // more steps than the phone saw.
+    const steps = await getStepsToday();
+    console.log(`[walkingSync] syncWalkingNow: ${steps} steps (native store, active=${activeId ?? Platform.OS})`);
     if (steps === 0) return;
 
-    // Per-sample provenance — read once (native store only; OAuth providers carry
-    // no inspectable source) and reused for both the verification label and the
-    // admin "who's on what" snapshot detail.
+    // Per-sample provenance — read once (native store only) and reused for both
+    // the verification label and the admin "who's on what" snapshot detail.
     const baseVerification = verificationForProvider(activeId);
-    const usedNativeStore = !activeId || activeId === 'apple-health' || activeId === 'health-connect';
-    const stepSources = baseVerification !== 'wearable' && usedNativeStore
+    const stepSources = baseVerification !== 'wearable'
         ? await getStepSourcesToday().catch(() => [])
         : [];
     const verification = verificationFromProvenances(stepSources, baseVerification);
@@ -329,7 +316,7 @@ async function _syncWalkingNowImpl(): Promise<void> {
     // displayed step count (saved below) stays the full daily total; only the
     // point tier is computed on the non-run steps.
     let walkingSteps = steps;
-    if (usedNativeStore && Platform.OS === 'ios') {
+    if (Platform.OS === 'ios') {
         const runWindows = await getInferredRunWindowsToday().catch(() => []);
         for (const w of runWindows) {
             walkingSteps -= await getStepsInRange(w.start, w.end);
