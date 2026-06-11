@@ -23,8 +23,12 @@ const DEV_ID = Deno.env.get('TERRA_DEV_ID')!;
 const API_KEY = Deno.env.get('TERRA_API_KEY')!;
 const POLL_TOKEN = '06190b613be962a04476271cb6dc8c7fbb0a13758edd178b';
 
-/** No webhook data for this long ⇒ ask Terra to resend the recent window. */
-const STALE_AFTER_MIN = 90;
+/** No webhook data for this long ⇒ ask Terra to resend the recent window.
+ *  Kept below the 30-min cron cadence so every cycle re-asks: a delivery
+ *  stamps last_event_at, and a 90-min threshold was observed to stretch the
+ *  effective per-connection cadence to ~2h (fresh stamp ⇒ skipped cycles).
+ *  Cost: 3 light Terra GETs per active connection per 30 min. */
+const STALE_AFTER_MIN = 25;
 /** Resources worth polling. Gym/HIIT are geofence-verified, never Terra. */
 const RESOURCES = ['sleep', 'daily', 'activity'];
 /** Safety cap per run; the cron retries every 30 min so backlog drains fast. */
@@ -37,6 +41,27 @@ function isoDate(d: Date): string {
 Deno.serve(async (req) => {
   if (req.method !== 'POST') return new Response('method not allowed', { status: 405 });
   if (req.headers.get('x-poll-token') !== POLL_TOKEN) return new Response('forbidden', { status: 403 });
+
+  // Debug passthrough: { debug_user_id } fetches synchronously (to_webhook=false)
+  // and returns Terra's raw responses, so provider-side failures (which are
+  // swallowed by the async to_webhook=true path) become visible.
+  const body = await req.json().catch(() => ({}));
+  if (body?.debug_user_id) {
+    const start = isoDate(new Date(Date.now() - 2 * 24 * 60 * 60 * 1000));
+    const end = isoDate(new Date(Date.now() + 24 * 60 * 60 * 1000));
+    const out: Record<string, string> = {};
+    for (const r of RESOURCES) {
+      const url = `https://api.tryterra.co/v2/${r}?user_id=${encodeURIComponent(body.debug_user_id)}`
+        + `&start_date=${start}&end_date=${end}&to_webhook=false`;
+      try {
+        const res = await fetch(url, { headers: { 'dev-id': DEV_ID, 'x-api-key': API_KEY } });
+        out[r] = `${res.status} ${(await res.text().catch(() => '')).slice(0, 600)}`;
+      } catch (e) {
+        out[r] = `threw: ${e?.message ?? e}`;
+      }
+    }
+    return new Response(JSON.stringify(out), { headers: { 'Content-Type': 'application/json' } });
+  }
 
   const supabase = createClient(
     Deno.env.get('SUPABASE_URL')!,
@@ -61,17 +86,20 @@ Deno.serve(async (req) => {
   const end = isoDate(new Date(Date.now() + 24 * 60 * 60 * 1000));
 
   let requested = 0, failed = 0;
+  const detail: Record<string, string> = {};
   for (const conn of stale ?? []) {
     for (const r of RESOURCES) {
       const url = `https://api.tryterra.co/v2/${r}?user_id=${encodeURIComponent(conn.terra_user_id)}`
         + `&start_date=${start}&end_date=${end}&to_webhook=true`;
       try {
         const res = await fetch(url, { headers: { 'dev-id': DEV_ID, 'x-api-key': API_KEY } });
-        await res.text().catch(() => {}); // drain body
+        const body = await res.text().catch(() => '');
+        detail[`${conn.provider}:${r}`] = `${res.status} ${body.slice(0, 300)}`;
         if (res.ok) requested++;
-        else { failed++; console.warn(`[terra-poll] ${conn.provider} ${r} → ${res.status}`); }
+        else { failed++; console.warn(`[terra-poll] ${conn.provider} ${r} → ${res.status}: ${body.slice(0, 300)}`); }
       } catch (e) {
         failed++;
+        detail[`${conn.provider}:${r}`] = `threw: ${e?.message ?? e}`;
         console.warn(`[terra-poll] ${conn.provider} ${r} threw:`, e?.message ?? e);
       }
     }
@@ -79,7 +107,7 @@ Deno.serve(async (req) => {
 
   console.log(`[terra-poll] ${stale?.length ?? 0} stale connection(s): ${requested} requests ok, ${failed} failed`);
   return new Response(
-    JSON.stringify({ connections: stale?.length ?? 0, requested, failed }),
+    JSON.stringify({ connections: stale?.length ?? 0, requested, failed, detail }),
     { headers: { 'Content-Type': 'application/json' } },
   );
 });
