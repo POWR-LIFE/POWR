@@ -474,6 +474,7 @@ export default function RewardSubmissions() {
                   heroUrl={selected.hero_image_url || null}
                   codePrefix={selected.code_prefix || ''}
                   category={selected.category || ''}
+                  pageTheme="light"
                 />
               </div>
             </div>
