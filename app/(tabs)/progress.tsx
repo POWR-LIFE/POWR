@@ -4,6 +4,7 @@ import {
     NativeScrollEvent,
     NativeSyntheticEvent,
     Pressable,
+    RefreshControl,
     ScrollView,
     StyleSheet,
     Text,
@@ -50,9 +51,10 @@ export default function ProgressScreen() {
   const { tab } = useLocalSearchParams<{ tab?: string }>();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
-  const { weekActiveDays, weeklyMetrics } = useActivity();
-  const { weeklyEarned } = usePoints();
+  const { weekActiveDays, weeklyMetrics, refresh: refreshActivity } = useActivity();
+  const { weeklyEarned, refresh: refreshPoints } = usePoints();
   const walking = useWalkingProgress();
+  const [refreshing, setRefreshing] = useState(false);
 
   const [activePrefs, setActivePrefs] = useState<ActivityType[]>(['gym', 'running', 'walking']);
   const [sleepHrs, setSleepHrs] = useState<number[]>(EMPTY_SLEEP_HRS);
@@ -136,6 +138,21 @@ export default function ProgressScreen() {
       console.error('[Progress] Error fetching sleep data:', err);
     }
   }, [user, health.isAuthorized, health.getLastNightSleep, activeId, isNativeProvider]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        refreshActivity(),
+        refreshPoints(),
+        walking.refresh(),
+        refreshProviders(),
+        loadSleep(),
+      ]);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refreshActivity, refreshPoints, walking.refresh, refreshProviders, loadSleep]);
 
   // Run on mount/dep-change and whenever the screen comes into focus (handles
   // the case where the user connects WHOOP in settings then returns here).
@@ -270,6 +287,14 @@ export default function ProgressScreen() {
         style={styles.scroll}
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 20 }]}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#E8D200"
+            colors={['#E8D200']}
+          />
+        }
       >
 
         {/* ── Activity Radials ───────────────────────────── */}
