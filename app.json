@@ -16,7 +16,7 @@
       "infoPlist": {
         "NSHealthShareUsageDescription": "POWR needs access to your sleep and workout data to reward you for healthy habits.",
         "NSHealthUpdateUsageDescription": "POWR needs access to log your habits.",
-        "UIBackgroundModes": ["location"],
+        "UIBackgroundModes": ["location", "fetch"],
         "CFBundleURLTypes": [
           {
             "CFBundleURLSchemes": ["powr"]

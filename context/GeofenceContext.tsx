@@ -95,8 +95,21 @@ const LOCATION_TRACKING_TASK = 'POWR_LOCATION_TRACKING';   // foreground-service
 const GEOFENCE_REARM_TASK    = 'POWR_GEOFENCE_BOOT_REARM'; // re-arms monitoring after reboot
 const ACTIVE_GEOFENCE_KEY    = '@powr/active_geofence';
 const PARTNER_MAP_KEY        = '@powr/partner_map';
+const PARTNER_MAP_META_KEY   = '@powr/partner_map_meta';   // { fetchedAt } — bump invalidates the in-context parse memo
+const ARM_META_KEY           = '@powr/geofence_arm_meta';  // centre + sentinel radius of the currently armed region set
 const SESSION_COMPLETED_KEY  = '@powr/session_completed';
 const PENDING_CLAIMS_KEY     = '@powr/pending_claims';
+
+// iOS hard-limits an app to 20 monitored regions; Android allows 100 (we use 50).
+// One slot is reserved for the travel sentinel; the rest hold the nearest partners.
+const MAX_REGIONS         = Platform.OS === 'ios' ? 20 : 50;
+const SENTINEL_REGION_ID  = 'POWR_REARM_SENTINEL';
+// Sentinel bounds: dense areas re-arm on small moves without thrashing; sparse
+// areas still re-arm before the user is unreachably far from every armed circle.
+const SENTINEL_MIN_RADIUS_M = 2_000;
+const SENTINEL_MAX_RADIUS_M = 50_000;
+const REARM_COOLDOWN_MS     = 2 * 60 * 1000;  // storm guard between re-arms
+const PARTNER_CACHE_TTL_MS  = 24 * 60 * 60 * 1000;
 
 // Persistent background-location stream. On Android this runs a foreground
 // service so arrival/dwell/exit detection survives the app being swiped away or
@@ -184,6 +197,177 @@ interface StoredGeofence {
   tierUpgraded?:    boolean; // true once the 40-min upgrade has been attempted
   endedAtMs?:       number;  // frozen exit time — used by post-exit retry claims so
                              // the recorded duration stays the true session length
+}
+
+// ─── Partner geometry cache (nationwide) ─────────────────────────────────────
+// PARTNER_MAP_KEY holds the geometry of EVERY active partner location — not just
+// the ones near the last app open — so the headless detectors keep working no
+// matter where the user travels with the app closed. ~8k entries is ~1.5 MB of
+// AsyncStorage and a few ms of haversines per scan. The meta key carries
+// fetchedAt so each JS context (app + headless task) memoizes the parse and only
+// re-reads when the cache was actually rewritten.
+
+interface PartnerMapMeta { fetchedAt: number }
+
+let _partnerMapMemo: { fetchedAt: number; map: Record<string, PartnerMapEntry> } | null = null;
+
+async function readPartnerMap(): Promise<Record<string, PartnerMapEntry> | null> {
+  try {
+    const metaRaw = await AsyncStorage.getItem(PARTNER_MAP_META_KEY);
+    const fetchedAt = metaRaw ? ((JSON.parse(metaRaw) as PartnerMapMeta).fetchedAt ?? 0) : 0;
+    if (_partnerMapMemo && _partnerMapMemo.fetchedAt === fetchedAt) return _partnerMapMemo.map;
+    const raw = await AsyncStorage.getItem(PARTNER_MAP_KEY);
+    if (!raw) return null;
+    const map = JSON.parse(raw) as Record<string, PartnerMapEntry>;
+    _partnerMapMemo = { fetchedAt, map };
+    return map;
+  } catch {
+    return null;
+  }
+}
+
+async function writePartnerMap(map: Record<string, PartnerMapEntry>): Promise<void> {
+  const fetchedAt = Date.now();
+  await AsyncStorage.setItem(PARTNER_MAP_KEY, JSON.stringify(map));
+  await AsyncStorage.setItem(PARTNER_MAP_META_KEY, JSON.stringify({ fetchedAt } satisfies PartnerMapMeta));
+  _partnerMapMemo = { fetchedAt, map };
+}
+
+/** Fetches geometry-only columns for every active partner and rewrites the
+ *  cache. Kept lightweight (id/name/locations) so the payload stays small even
+ *  at ~8k partners. */
+async function fetchAndCacheAllPartnerGeometry(): Promise<boolean> {
+  try {
+    const { data, error } = await supabase
+      .from('partners')
+      .select('id, name, locations')
+      .eq('active', true);
+    if (error || !data) return false;
+    const map: Record<string, PartnerMapEntry> = {};
+    data.forEach((p: any) => {
+      if (!p.locations) return;
+      const locs = Array.isArray(p.locations) ? p.locations : [p.locations];
+      locs.forEach((loc: any, idx: number) => {
+        if (loc?.lat == null || loc?.lng == null || !isFinite(loc.lat) || !isFinite(loc.lng)) return;
+        map[`${p.id}-${idx}`] = {
+          name:   p.name,
+          dbId:   p.id,
+          lat:    loc.lat,
+          lng:    loc.lng,
+          radius: DEV_RADIUS_M[p.name] ?? loc.radius ?? 100,
+        };
+      });
+    });
+    if (Object.keys(map).length === 0) return false;
+    await writePartnerMap(map);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// ─── Native region arming ─────────────────────────────────────────────────────
+// Arms the nearest (MAX_REGIONS - 1) partner circles plus one large "sentinel"
+// region centred on the user. The sentinel is the travel fix: leaving it means
+// the armed set no longer matches the user's surroundings. iOS relaunches the
+// terminated app on that exit so we can re-arm around wherever they are now;
+// on Android the foreground-service stream calls this on drift. Re-arming is
+// network-free — it reads the nationwide geometry cache only — so it fits the
+// tight iOS background execution window.
+
+interface ArmMeta {
+  centerLat:      number;
+  centerLng:      number;
+  sentinelRadius: number;
+  armedAt:        number;
+}
+
+async function armNativeRegions(
+  fix: { latitude: number; longitude: number } | null,
+  opts: { force?: boolean } = {},
+): Promise<void> {
+  const { status } = await Location.getBackgroundPermissionsAsync()
+    .catch(() => ({ status: 'denied' as Location.PermissionStatus }));
+  if (status !== 'granted') return;
+
+  // Unless forced (data changed / boot), skip when the fix is still inside the
+  // armed envelope, and rate-limit genuine re-arms against event storms.
+  if (!opts.force) {
+    if (!fix) return;
+    try {
+      const metaRaw = await AsyncStorage.getItem(ARM_META_KEY);
+      if (metaRaw) {
+        const meta = JSON.parse(metaRaw) as ArmMeta;
+        const moved = haversineMetres(fix.latitude, fix.longitude, meta.centerLat, meta.centerLng);
+        if (moved <= meta.sentinelRadius) return;
+        if (Date.now() - meta.armedAt < REARM_COOLDOWN_MS) return;
+      }
+    } catch { /* fall through and arm */ }
+  }
+
+  const map = await readPartnerMap();
+  if (!map) return;
+  const entries = Object.entries(map).filter(([, e]) => e.lat != null && e.lng != null);
+  if (entries.length === 0) return;
+
+  let regions: Location.LocationRegion[];
+  let meta: ArmMeta | null = null;
+
+  if (fix) {
+    const sorted = entries
+      .map(([id, e]) => ({ id, e, dist: haversineMetres(fix.latitude, fix.longitude, e.lat!, e.lng!) }))
+      .sort((a, b) => a.dist - b.dist)
+      .slice(0, MAX_REGIONS - 1);
+    // Sentinel sized just inside the armed envelope: leaving it means the
+    // nearest-N membership has likely changed.
+    const envelope = sorted[sorted.length - 1]?.dist ?? SENTINEL_MIN_RADIUS_M;
+    const sentinelRadius = Math.min(Math.max(envelope * 0.8, SENTINEL_MIN_RADIUS_M), SENTINEL_MAX_RADIUS_M);
+    regions = sorted.map(({ id, e }) => ({
+      identifier:    id,
+      latitude:      e.lat!,
+      longitude:     e.lng!,
+      radius:        e.radius ?? 100,
+      notifyOnEnter: true,
+      notifyOnExit:  true,
+    }));
+    regions.push({
+      identifier:    SENTINEL_REGION_ID,
+      latitude:      fix.latitude,
+      longitude:     fix.longitude,
+      radius:        sentinelRadius,
+      notifyOnEnter: false,
+      notifyOnExit:  true,
+    });
+    meta = { centerLat: fix.latitude, centerLng: fix.longitude, sentinelRadius, armedAt: Date.now() };
+  } else {
+    // No fix at all (rare — e.g. boot before any location): arm an arbitrary
+    // subset with no sentinel; the first real fix re-arms properly.
+    regions = entries.slice(0, MAX_REGIONS).map(([id, e]) => ({
+      identifier:    id,
+      latitude:      e.lat!,
+      longitude:     e.lng!,
+      radius:        e.radius ?? 100,
+      notifyOnEnter: true,
+      notifyOnExit:  true,
+    }));
+  }
+
+  try {
+    // Stop first so we always start with a fresh region set (also avoids
+    // internal sync issues in Expo Go).
+    if (await Location.hasStartedGeofencingAsync(GEOFENCE_TASK_NAME).catch(() => false)) {
+      await Location.stopGeofencingAsync(GEOFENCE_TASK_NAME).catch(() => {});
+    }
+    await Location.startGeofencingAsync(GEOFENCE_TASK_NAME, regions);
+    if (meta) {
+      await AsyncStorage.setItem(ARM_META_KEY, JSON.stringify(meta));
+    } else {
+      await AsyncStorage.removeItem(ARM_META_KEY).catch(() => {});
+    }
+    console.log(`[Geofence] Armed ${regions.length} region(s)${fix ? ' around current fix' : ' (no fix — unsorted)'}.`);
+  } catch (err) {
+    console.warn('[Geofence] Failed to arm native regions:', err);
+  }
 }
 
 // ─── Shared session recording ─────────────────────────────────────────────────
@@ -665,10 +849,8 @@ async function evaluateLocationFix(coords: Location.LocationObjectCoords): Promi
   }
 
   // No active session — look for an ENTER against the cached circles.
-  const mapJson = await AsyncStorage.getItem(PARTNER_MAP_KEY);
-  if (!mapJson) return;
-  let partnerMap: Record<string, PartnerMapEntry>;
-  try { partnerMap = JSON.parse(mapJson); } catch { return; }
+  const partnerMap = await readPartnerMap();
+  if (!partnerMap) return;
 
   for (const [regionId, entry] of Object.entries(partnerMap)) {
     if (entry.lat == null || entry.lng == null) continue;
@@ -679,39 +861,28 @@ async function evaluateLocationFix(coords: Location.LocationObjectCoords): Promi
       return;
     }
   }
+
+  // Not near any partner. If this fix has drifted outside the armed sentinel
+  // (user travelled with the app closed), re-target the native regions around
+  // where they actually are — cache-only, no network. armNativeRegions itself
+  // no-ops while the fix is still inside the armed envelope.
+  await armNativeRegions({ latitude: coords.latitude, longitude: coords.longitude });
 }
 
 /** Re-registers native geofencing + the location stream from the cached partner
  *  circles. Network-free, so it can run on boot. No-op without background permission. */
 async function rearmGeofencingFromCache(): Promise<void> {
-  const mapJson = await AsyncStorage.getItem(PARTNER_MAP_KEY);
-  if (!mapJson) return;
-  let partnerMap: Record<string, PartnerMapEntry>;
-  try { partnerMap = JSON.parse(mapJson); } catch { return; }
-
   const { status } = await Location.getBackgroundPermissionsAsync().catch(() => ({ status: 'denied' as Location.PermissionStatus }));
   if (status !== 'granted') return;
 
-  const MAX_REGIONS = Platform.OS === 'ios' ? 20 : 50;
-  const regions: Location.LocationRegion[] = Object.entries(partnerMap)
-    .filter(([, e]) => e.lat != null && e.lng != null)
-    .slice(0, MAX_REGIONS)
-    .map(([id, e]) => ({
-      identifier:    id,
-      latitude:      e.lat!,
-      longitude:     e.lng!,
-      radius:        e.radius ?? 100,
-      notifyOnEnter: true,
-      notifyOnExit:  true,
-    }));
-  if (regions.length === 0) return;
-
-  try {
-    if (!(await Location.hasStartedGeofencingAsync(GEOFENCE_TASK_NAME).catch(() => false))) {
-      await Location.startGeofencingAsync(GEOFENCE_TASK_NAME, regions);
-    }
-  } catch (err) {
-    console.warn('[Geofence] Boot re-arm geofencing failed:', err);
+  // Only (re)arm when monitoring is actually down (fresh boot). While alive,
+  // the sentinel/drift logic owns re-targeting.
+  if (!(await Location.hasStartedGeofencingAsync(GEOFENCE_TASK_NAME).catch(() => false))) {
+    const lastKnown = await Location.getLastKnownPositionAsync().catch(() => null);
+    await armNativeRegions(
+      lastKnown ? { latitude: lastKnown.coords.latitude, longitude: lastKnown.coords.longitude } : null,
+      { force: true },
+    );
   }
 
   if (Platform.OS === 'android') {
@@ -780,6 +951,25 @@ TaskManager.defineTask(GEOFENCE_TASK_NAME, async ({ data, error }) => {
     region: Location.LocationRegion;
   };
 
+  const regionId = region.identifier ?? '';
+
+  // Sentinel crossings re-target coverage; they are never partner check-ins.
+  // Guard BEFORE any session state is touched — a sentinel EXIT can coincide
+  // with an active gym session and must not clear or claim it.
+  if (regionId === SENTINEL_REGION_ID) {
+    if (eventType === Location.GeofencingEventType.Exit) {
+      // The user left the armed envelope (iOS relaunches a terminated app for
+      // exactly this). Re-arm around wherever they are now. The OS just
+      // computed a fix to detect the crossing, so last-known is fresh.
+      const lastKnown = await Location.getLastKnownPositionAsync({ maxAge: 10 * 60_000 }).catch(() => null);
+      const fix = lastKnown ?? await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Low }).catch(() => null);
+      if (fix) {
+        await armNativeRegions({ latitude: fix.coords.latitude, longitude: fix.coords.longitude });
+      }
+    }
+    return;
+  }
+
   if (eventType === Location.GeofencingEventType.Enter) {
     // Don't overwrite an already-active session
     const existingRaw = await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY);
@@ -788,13 +978,12 @@ TaskManager.defineTask(GEOFENCE_TASK_NAME, async ({ data, error }) => {
       return;
     }
 
-    const regionId = region.identifier ?? '';
-    const mapJson = await AsyncStorage.getItem(PARTNER_MAP_KEY);
-    const partnerMap: Record<string, PartnerMapEntry> = mapJson ? JSON.parse(mapJson) : {};
-    const mapEntry = partnerMap[regionId];
+    const mapEntry = (await readPartnerMap())?.[regionId];
     const partnerName = mapEntry?.name ?? regionId;
-    // Use the raw DB UUID — regionId is the composite "uuid-idx" UI key which is not a valid UUID
-    const dbPartnerId = mapEntry?.dbId ?? regionId;
+    // Use the raw DB UUID — regionId is the composite "uuid-idx" UI key which is
+    // not a valid UUID. If the cache row is missing, recover the UUID by
+    // stripping the location-index suffix.
+    const dbPartnerId = mapEntry?.dbId ?? regionId.replace(/-\d+$/, '');
 
     // Write entry state and fire the notification BEFORE any network I/O.
     // iOS background tasks have a tight execution window; network calls can be killed
@@ -918,7 +1107,10 @@ interface GeofenceContextValue {
   partners: Partner[];
   isMonitoring: boolean;
   loading: boolean;
-  refresh: () => Promise<void>;
+  refresh: (coords?: { latitude: number; longitude: number }) => Promise<void>;
+  /** Re-fetches the nearby set when a fresh fix lands far from the last fetch
+   *  centre — e.g. Discover obtained GPS after the user travelled. */
+  ensureCoverage: (coords: { latitude: number; longitude: number }) => Promise<void>;
 }
 
 const GeofenceContext = createContext<GeofenceContextValue>({
@@ -926,6 +1118,7 @@ const GeofenceContext = createContext<GeofenceContextValue>({
   isMonitoring: false,
   loading: true,
   refresh: async () => {},
+  ensureCoverage: async () => {},
 });
 
 export function GeofenceProvider({ children }: { children: React.ReactNode }) {
@@ -934,25 +1127,52 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const fingerprintRef = useRef('');
   const dwellTimerRef      = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const partnersRef        = useRef<Partner[]>([]);
   const lastInsideCheckRef = useRef<number>(0);
   const lastFlushRef       = useRef<number>(0);
 
-  const refresh = useCallback(async () => {
+  const lastFetchCenterRef = useRef<{ latitude: number; longitude: number } | null>(null);
+
+  const refresh = useCallback(async (coords?: { latitude: number; longitude: number }) => {
     setLoading(true);
     try {
-      // Get last-known position quickly (no GPS warmup) to filter partners by proximity.
-      // Falls back to fetching all active partners if location is unavailable.
+      // Resolve the freshest centre available: caller-supplied fix → recent
+      // last-known (free) → quick low-accuracy fix → any last-known. A stale
+      // centre here is exactly what made a traveller's Discover keep showing
+      // their old city until the next blind refresh.
+      let center = coords ?? null;
+      if (!center) {
+        const recent = await Location.getLastKnownPositionAsync({ maxAge: 5 * 60_000 }).catch(() => null);
+        if (recent) center = { latitude: recent.coords.latitude, longitude: recent.coords.longitude };
+      }
+      if (!center) {
+        const current = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Low }).catch(() => null);
+        if (current) center = { latitude: current.coords.latitude, longitude: current.coords.longitude };
+      }
+      if (!center) {
+        const any = await Location.getLastKnownPositionAsync().catch(() => null);
+        if (any) center = { latitude: any.coords.latitude, longitude: any.coords.longitude };
+      }
+
       let data: any[] | null = null;
 
-      const pos = await Location.getLastKnownPositionAsync().catch(() => null);
-      if (pos) {
+      if (center) {
         const { data: rpcData, error: rpcError } = await supabase.rpc('nearby_partners', {
-          user_lat:   pos.coords.latitude,
-          user_lng:   pos.coords.longitude,
+          user_lat:   center.latitude,
+          user_lng:   center.longitude,
           radius_deg: 0.15, // ~15 km bounding box
         });
         if (!rpcError) data = rpcData;
+
+        // Sparse area: the box came back empty — fall back to the nearest N
+        // regardless of distance so Discover never shows an empty screen.
+        if (!rpcError && (data?.length ?? 0) === 0) {
+          const { data: nearestData, error: nearestError } = await supabase.rpc('nearest_partners', {
+            user_lat:    center.latitude,
+            user_lng:    center.longitude,
+            max_results: 20,
+          });
+          if (!nearestError && nearestData?.length) data = nearestData;
+        }
       }
 
       // Fallback: fetch all if no location or RPC failed
@@ -967,11 +1187,29 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
 
       if (!data) return;
 
+      if (center) lastFetchCenterRef.current = center;
       setPartners(formatPartnerRows(data));
+
+      // Opportunistic freshness: keep the nationwide geometry cache (the
+      // headless detectors' world view) no older than the TTL while the app
+      // is in use. Fire-and-forget — never blocks the UI list.
+      try {
+        const metaRaw = await AsyncStorage.getItem(PARTNER_MAP_META_KEY);
+        const fetchedAt = metaRaw ? ((JSON.parse(metaRaw) as PartnerMapMeta).fetchedAt ?? 0) : 0;
+        if (Date.now() - fetchedAt > PARTNER_CACHE_TTL_MS) {
+          fetchAndCacheAllPartnerGeometry().catch(() => {});
+        }
+      } catch { /* non-fatal */ }
     } finally {
       setLoading(false);
     }
   }, []);
+
+  const ensureCoverage = useCallback(async (coords: { latitude: number; longitude: number }) => {
+    const c = lastFetchCenterRef.current;
+    if (c && haversineMetres(c.latitude, c.longitude, coords.latitude, coords.longitude) < 5_000) return;
+    await refresh(coords);
+  }, [refresh]);
 
   // Foreground dwell timer — awards points immediately at the threshold without requiring an exit event.
   // Polls every 10 s to catch geofence entries that happen while the app is already open.
@@ -993,63 +1231,31 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
       // Native geofence ENTER event can be delayed 30–60 s on iOS/Android.
       // Periodically check if we are already inside using the last-known GPS
       // position (free — no GPS wake-up). Rate-limited to once per 30 s.
+      // Scans the nationwide geometry cache (not the nearby UI list) so it
+      // works immediately even when the user has just travelled somewhere new.
       const now = Date.now();
-      if (now - lastInsideCheckRef.current >= 30_000 && partnersRef.current.length > 0) {
+      if (now - lastInsideCheckRef.current >= 30_000) {
         lastInsideCheckRef.current = now;
         try {
           // Cheap checks first: last-known position (cached — no GPS wake-up) and
-          // an in-memory proximity scan. Only touch the network/DB once we're
-          // actually inside a partner radius, so we don't run a Supabase query
-          // every 30 s for the (overwhelmingly common) case of not being at a gym.
+          // an in-memory proximity scan. setActiveAndNotify only touches the
+          // network/DB once we're actually inside a partner radius, so there's no
+          // Supabase query every 30 s for the common case of not being at a gym.
           const loc = await Location.getLastKnownPositionAsync().catch(() => null);
           // Ignore coarse fixes — a low-accuracy position can't be trusted against a
           // tight radius and would otherwise match a gym from far away.
           if (loc && (loc.coords.accuracy == null || loc.coords.accuracy <= MAX_FIX_ACCURACY_M)) {
-            // Exact partner radius — no accuracy buffer added.
-            const insidePartner = partnersRef.current.find(p =>
-              haversineMetres(loc.coords.latitude, loc.coords.longitude, p.lat, p.lng)
-                <= p.geofenceRadius,
-            );
-
-            if (insidePartner && !(await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY))) {
-              // Inside a geofence with no active session — confirm a gym session
-              // wasn't already logged today before opening one. getSession() reads
-              // the cached token locally (no network round-trip).
-              let gymLoggedToday = false;
-              try {
-                const { data: { session } } = await supabase.auth.getSession();
-                const user = session?.user;
-                if (user && !DEV_TEST_EMAILS.has(user.email ?? '')) {
-                  const today = new Date();
-                  today.setHours(0, 0, 0, 0);
-                  const { count } = await supabase
-                    .from('activity_sessions')
-                    .select('id', { count: 'exact', head: true })
-                    .eq('user_id', user.id)
-                    .eq('type', 'gym')
-                    .eq('verification', 'geofence')
-                    .gte('started_at', today.toISOString());
-                  gymLoggedToday = (count ?? 0) > 0;
+            const map = await readPartnerMap();
+            if (map) {
+              for (const [regionId, entry] of Object.entries(map)) {
+                if (entry.lat == null || entry.lng == null) continue;
+                // Exact partner radius — no accuracy buffer added.
+                if (haversineMetres(loc.coords.latitude, loc.coords.longitude, entry.lat, entry.lng) <= (entry.radius ?? 100)) {
+                  // No-ops if a session is already active or a gym was already
+                  // logged today; dedups against the native ENTER notification.
+                  await setActiveAndNotify(regionId, entry);
+                  break;
                 }
-              } catch { /* non-fatal */ }
-
-              if (!gymLoggedToday) {
-                await AsyncStorage.setItem(
-                  ACTIVE_GEOFENCE_KEY,
-                  JSON.stringify({
-                    partnerId:      insidePartner.dbId,
-                    partnerName:    insidePartner.name,
-                    entryTimestamp: Date.now(),
-                    latitude:       insidePartner.lat,
-                    longitude:      insidePartner.lng,
-                    radius:         insidePartner.geofenceRadius,
-                  }),
-                );
-                console.log(`[Geofence] Periodic scan: inside "${insidePartner.name}" — active state set.`);
-                try {
-                  const { notifyCheckInAvailable } = await import('@/lib/notifications');
-                  await notifyCheckInAvailable(insidePartner.name, insidePartner.id);
-                } catch { /* non-fatal */ }
               }
             }
           }
@@ -1206,10 +1412,6 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
     };
   }, [scheduleDwellTimer]);
 
-  // Keep partnersRef in sync so scheduleDwellTimer can access partners without
-  // needing partners as a dependency (which would restart the poll interval).
-  useEffect(() => { partnersRef.current = partners; }, [partners]);
-
   // Fetch partners once on mount
   useEffect(() => {
     refresh();
@@ -1258,55 +1460,28 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      // Persist full geometry (not just name/dbId) so the headless location task
-      // can compute proximity from cache with no React state or network fetch.
-      const partnerMap: Record<string, PartnerMapEntry> = {};
-      partners.forEach(p => {
-        partnerMap[p.id] = { name: p.name, dbId: p.dbId, lat: p.lat, lng: p.lng, radius: p.geofenceRadius };
-      });
-      await AsyncStorage.setItem(PARTNER_MAP_KEY, JSON.stringify(partnerMap));
+      // Refresh the nationwide geometry cache — the headless detectors' world
+      // view. The fingerprint gate above means this runs only when local data
+      // actually changed (new partner, radius edit, different area), so admin
+      // edits propagate within one refresh cycle. If the fetch fails and no
+      // cache exists yet (first run offline), fall back to caching the nearby
+      // set so local detection still works.
+      const cached = await fetchAndCacheAllPartnerGeometry();
+      if (!cached && !(await readPartnerMap())) {
+        const fallbackMap: Record<string, PartnerMapEntry> = {};
+        partners.forEach(p => {
+          fallbackMap[p.id] = { name: p.name, dbId: p.dbId, lat: p.lat, lng: p.lng, radius: p.geofenceRadius };
+        });
+        if (Object.keys(fallbackMap).length) await writePartnerMap(fallbackMap);
+      }
 
-      // iOS allows max 20 geofence regions; Android allows 100.
-      // iOS hard-limits to 20 monitored regions; Android allows 100.
-      // Sort by proximity so the nearest partners are always included.
-      const MAX_REGIONS = Platform.OS === 'ios' ? 20 : 50;
+      // Arm the nearest partner circles + travel sentinel around a fresh fix.
       const userPos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Low }).catch(() => null);
-      const nearby = [...partners]
-        .sort((a, b) => userPos
-          ? haversineMetres(userPos.coords.latitude, userPos.coords.longitude, a.lat, a.lng) -
-            haversineMetres(userPos.coords.latitude, userPos.coords.longitude, b.lat, b.lng)
-          : 0
-        )
-        .slice(0, MAX_REGIONS);
-
-      const regions: Location.LocationRegion[] = nearby.map(p => ({
-        identifier:    p.id,
-        latitude:      p.lat,
-        longitude:     p.lng,
-        radius:        p.geofenceRadius,
-        notifyOnEnter: true,
-        notifyOnExit:  true,
-      }));
-
-      try {
-        // To avoid internal sync issues in Expo Go, we check if the task is already registered.
-        // If it is, we stop it first to ensure we're starting with a fresh set of regions.
-        const isRegistered = await TaskManager.isTaskRegisteredAsync(GEOFENCE_TASK_NAME);
-        if (isRegistered) {
-          await Location.stopGeofencingAsync(GEOFENCE_TASK_NAME);
-        }
-      } catch {
-        // If unregistration fails (e.g. because of TaskNotFoundException), we can safely ignore it
-        // and proceed to (re)start the geofencing.
-      }
-
-      try {
-        await Location.startGeofencingAsync(GEOFENCE_TASK_NAME, regions);
-        setIsMonitoring(true);
-        console.log(`[Geofence] Monitoring ${regions.length} location(s).`);
-      } catch (err) {
-        console.error('[Geofence] Failed to start:', err);
-      }
+      await armNativeRegions(
+        userPos ? { latitude: userPos.coords.latitude, longitude: userPos.coords.longitude } : null,
+        { force: true },
+      );
+      setIsMonitoring(true);
 
       // Android: run a persistent foreground-service location stream alongside the
       // native geofence. The geofence is the fast low-power trigger; this keeps a
@@ -1337,7 +1512,8 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
       // Register the boot re-arm task so monitoring resumes after a device restart.
       registerGeofenceBootRearm().catch(() => { /* non-fatal */ });
 
-      // If the user is already inside a geofence when monitoring starts, record it
+      // If the user is already inside a circle when monitoring starts, record it.
+      // Scans the nationwide cache so this works wherever the user opens the app.
       try {
         const lastKnown = await Location.getLastKnownPositionAsync().catch(() => null);
         const lastKnownFresh = lastKnown != null
@@ -1350,55 +1526,17 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
 
         // Ignore coarse fixes — they'd inflate the radius and cause false matches.
         if (loc && (loc.coords.accuracy == null || loc.coords.accuracy <= MAX_FIX_ACCURACY_M)) {
-          // Check if a gym session was already logged today before setting active state
-          let gymLoggedToday = false;
-          try {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (user && !DEV_TEST_EMAILS.has(user.email ?? '')) {
-              const today = new Date();
-              today.setHours(0, 0, 0, 0);
-              const { count } = await supabase
-                .from('activity_sessions')
-                .select('id', { count: 'exact', head: true })
-                .eq('user_id', user.id)
-                .eq('type', 'gym')
-                .eq('verification', 'geofence')
-                .gte('started_at', today.toISOString());
-              gymLoggedToday = (count ?? 0) > 0;
-            }
-          } catch { /* non-fatal */ }
-
-          for (const partner of partners) {
-            const dist = haversineMetres(
-              loc.coords.latitude, loc.coords.longitude,
-              partner.lat, partner.lng,
-            );
-            // Exact partner radius — no accuracy buffer added, so a 25 m circle means 25 m.
-            if (dist <= partner.geofenceRadius) {
-              if (gymLoggedToday) {
-                console.log(`[Geofence] Already inside "${partner.name}" but gym session logged today — skipping.`);
-              } else {
-                const existing = await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY);
-                if (!existing) {
-                  await AsyncStorage.setItem(
-                    ACTIVE_GEOFENCE_KEY,
-                    JSON.stringify({
-                      partnerId:      partner.dbId,
-                      partnerName:    partner.name,
-                      entryTimestamp: Date.now(),
-                      latitude:       partner.lat,
-                      longitude:      partner.lng,
-                      radius:         partner.geofenceRadius,
-                    }),
-                  );
-                  console.log(`[Geofence] Already inside "${partner.name}" — active state set.`);
-                  try {
-                    const { notifyCheckInAvailable } = await import('@/lib/notifications');
-                    await notifyCheckInAvailable(partner.name, partner.id);
-                  } catch { /* non-fatal */ }
-                }
+          const map = await readPartnerMap();
+          if (map) {
+            for (const [regionId, entry] of Object.entries(map)) {
+              if (entry.lat == null || entry.lng == null) continue;
+              const dist = haversineMetres(loc.coords.latitude, loc.coords.longitude, entry.lat, entry.lng);
+              // Exact partner radius — no accuracy buffer added, so a 25 m circle means 25 m.
+              if (dist <= (entry.radius ?? 100)) {
+                // No-ops if a session is already active or a gym was already logged today.
+                await setActiveAndNotify(regionId, entry);
+                break;
               }
-              break;
             }
           }
         }
@@ -1410,7 +1548,7 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
   }, [partners]);
 
   return (
-    <GeofenceContext.Provider value={{ partners, isMonitoring, loading, refresh }}>
+    <GeofenceContext.Provider value={{ partners, isMonitoring, loading, refresh, ensureCoverage }}>
       {children}
     </GeofenceContext.Provider>
   );

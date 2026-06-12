@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { X, Plus, Loader2, CheckCircle, AlertCircle, Users, KeyRound } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { X, Plus, Loader2, CheckCircle, AlertCircle, Users, KeyRound, Search } from 'lucide-react';
 import { invokeFn } from '../lib/invokeFn';
 import { useToast } from '../lib/toast';
 
@@ -15,6 +15,21 @@ export default function BrandPortalAccess({ brands, onClose }) {
     const [creatingLink, setCreatingLink] = useState(false);
     const [removingId, setRemovingId] = useState(null);
     const [copiedId, setCopiedId] = useState(null);
+    const [search, setSearch] = useState('');
+    const [dropdownOpen, setDropdownOpen] = useState(false);
+    const searchRef = useRef(null);
+    const dropdownRef = useRef(null);
+
+    const filteredBrands = brands.filter(b => b.toLowerCase().includes(search.toLowerCase()));
+
+    // Close dropdown when clicking outside
+    useEffect(() => {
+        const handler = (e) => {
+            if (dropdownRef.current && !dropdownRef.current.contains(e.target)) setDropdownOpen(false);
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, []);
 
     // Build setup links from the admin's own origin so they work on any deploy
     const setupUrl = (token) => `${window.location.origin}/partner/setup/${token}`;
@@ -109,16 +124,47 @@ export default function BrandPortalAccess({ brands, onClose }) {
                         link and send it over any channel — they choose their own email and password.
                     </p>
 
-                    {/* Brand selector */}
-                    <div>
+                    {/* Brand selector with search */}
+                    <div ref={dropdownRef}>
                         <label className="block text-[10px] uppercase tracking-[0.3em] text-[#999999] font-black mb-2">Brand</label>
-                        <select
-                            value={brandName}
-                            onChange={e => setBrandName(e.target.value)}
-                            className="w-full h-14 px-6 bg-[#F4F4F1] border border-[#E6E6E1] rounded-2xl text-sm text-[#1A1A1A] font-bold outline-none focus:border-[#E8D200]/30 transition-colors cursor-pointer"
-                        >
-                            {brands.map(b => <option key={b} value={b}>{b}</option>)}
-                        </select>
+                        <div className="relative">
+                            {/* Selected brand + search input */}
+                            <div
+                                className="w-full h-14 px-5 bg-[#F4F4F1] border border-[#E6E6E1] rounded-2xl flex items-center gap-3 cursor-pointer focus-within:border-[#E8D200]/30 transition-colors"
+                                onClick={() => { setDropdownOpen(true); setTimeout(() => searchRef.current?.focus(), 0); }}
+                            >
+                                <Search size={14} className="text-[#AAAAAA] shrink-0" />
+                                {dropdownOpen ? (
+                                    <input
+                                        ref={searchRef}
+                                        value={search}
+                                        onChange={e => setSearch(e.target.value)}
+                                        placeholder={brandName || 'Search brand…'}
+                                        className="flex-1 bg-transparent text-sm text-[#1A1A1A] font-bold outline-none placeholder-[#AAAAAA]"
+                                        onClick={e => e.stopPropagation()}
+                                    />
+                                ) : (
+                                    <span className="flex-1 text-sm text-[#1A1A1A] font-bold truncate">{brandName || 'Select brand…'}</span>
+                                )}
+                            </div>
+
+                            {/* Dropdown list */}
+                            {dropdownOpen && (
+                                <div className="absolute z-50 top-[calc(100%+6px)] left-0 right-0 bg-white border border-[#E6E6E1] rounded-2xl shadow-xl overflow-hidden max-h-52 overflow-y-auto">
+                                    {filteredBrands.length === 0 ? (
+                                        <div className="px-5 py-4 text-[10px] uppercase tracking-[0.3em] text-[#BBBBBB] font-black">No brands found</div>
+                                    ) : filteredBrands.map(b => (
+                                        <button
+                                            key={b}
+                                            onClick={() => { setBrandName(b); setSearch(''); setDropdownOpen(false); }}
+                                            className={`w-full text-left px-5 py-3.5 text-sm font-bold transition-colors hover:bg-[#F4F4F1] ${b === brandName ? 'text-[#8a7600] bg-[#E8D200]/5' : 'text-[#1A1A1A]'}`}
+                                        >
+                                            {b}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
                     </div>
 
                     {/* Generate setup link */}

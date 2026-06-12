@@ -1,45 +1,60 @@
-import React, { useEffect, useState, createContext, useContext } from 'react';
+import {
+    Activity, Award,
+    BarChart3,
+    ChevronLeft, ChevronRight,
+    ClipboardList,
+    Gift,
+    Inbox,
+    LayoutDashboard,
+    LogOut,
+    MessageSquare,
+    ScrollText,
+    Settings,
+    Shield,
+    Star,
+    Target,
+    TrendingUp,
+    Users,
+    Zap,
+} from 'lucide-react';
+import { createContext, useContext, useEffect, useState } from 'react';
+import { Link, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { initLandingPage } from '../main.js';
-import { Routes, Route, Navigate, Link, useLocation, useNavigate } from 'react-router-dom';
 import { supabase } from './lib/supabase';
 import { ToastProvider } from './lib/toast';
-import {
-    LayoutDashboard, Users, ClipboardList, LogOut, ChevronRight,
-    Activity, Award, AlertTriangle, BarChart3, Shield, Settings, ScrollText, Gift, Target, MessageSquare, Star, Inbox
-} from 'lucide-react';
 
 import PartnerPortalHome from './pages/partner/PartnerHome';
-import PartnerPortalRewards from './pages/partner/PartnerRewards';
+import { PartnerLayout } from './pages/partner/PartnerLayout';
 import PartnerPortalRedemptions from './pages/partner/PartnerRedemptions';
+import PartnerPortalRewards from './pages/partner/PartnerRewards';
 import PartnerPortalSettings from './pages/partner/PartnerSettings';
 import PartnerSetup from './pages/partner/PartnerSetup';
-import { PartnerLayout } from './pages/partner/PartnerLayout';
 
+import Analytics from './pages/admin/Analytics';
+import AthleteApplications from './pages/admin/AthleteApplications';
+import AuditLog from './pages/admin/AuditLog';
+import FeaturedSchedule from './pages/admin/FeaturedSchedule';
+import GymDetail from './pages/admin/GymDetail';
 import PartnerManager from './pages/admin/PartnerManager';
+import PartnerPerformance from './pages/admin/PartnerPerformance';
+import PartnerProfile from './pages/admin/PartnerProfile';
+import RedemptionTracker from './pages/admin/RedemptionTracker';
 import RewardManager from './pages/admin/RewardManager';
 import RewardSubmissions from './pages/admin/RewardSubmissions';
-import PartnerRewardSubmit from './pages/PartnerRewardSubmit';
-import WeeklyChallenges from './pages/admin/WeeklyChallenges';
-import WaitlistManager from './pages/admin/WaitlistManager';
+import SessionReview from './pages/admin/SessionReview';
+import SupportTickets from './pages/admin/SupportTickets';
+import SystemConfig from './pages/admin/SystemConfig';
 import UserManager from './pages/admin/UserManager';
 import UserProfile from './pages/admin/UserProfile';
-import SessionReview from './pages/admin/SessionReview';
-import Analytics from './pages/admin/Analytics';
-import PartnerPerformance from './pages/admin/PartnerPerformance';
-import RedemptionTracker from './pages/admin/RedemptionTracker';
-import AuditLog from './pages/admin/AuditLog';
-import SystemConfig from './pages/admin/SystemConfig';
-import SupportTickets from './pages/admin/SupportTickets';
-import PartnerProfile from './pages/admin/PartnerProfile';
-import GymDetail from './pages/admin/GymDetail';
-import FeaturedSchedule from './pages/admin/FeaturedSchedule';
-import PrivacyPolicy from './pages/PrivacyPolicy';
-import CookiePolicy from './pages/CookiePolicy';
-import TermsOfService from './pages/TermsOfService';
-import SupportPage from './pages/SupportPage';
+import WaitlistManager from './pages/admin/WaitlistManager';
+import WeeklyChallenges from './pages/admin/WeeklyChallenges';
 import AthleteSignup from './pages/AthleteSignup';
-import AthleteApplications from './pages/admin/AthleteApplications';
+import CookiePolicy from './pages/CookiePolicy';
 import DeleteAccount from './pages/DeleteAccount';
+import PartnerRewardSubmit from './pages/PartnerRewardSubmit';
+import PrivacyPolicy from './pages/PrivacyPolicy';
+import SupportPage from './pages/SupportPage';
+import TermsOfService from './pages/TermsOfService';
 
 // --- Auth Context ---
 const AuthContext = createContext({ user: null, isAdmin: false, isPartner: false, partnerData: null, loading: true });
@@ -377,24 +392,69 @@ const PartnerProtectedRoute = ({ children }) => {
 
 // --- Admin Home ---
 const AdminHome = () => {
-    const [stats, setStats] = useState({ users: 0, partners: 0, rewards: 0, waitlist: 0 });
-    const [recentSignups, setRecentSignups] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [stats, setStats] = useState({
+        users: 0, newUsers7d: 0,
+        partners: 0,
+        rewards: 0, rewardBrands: 0,
+        waitlist: 0,
+        flaggedSessions: 0, totalSessions: 0, weeklyActive: 0,
+        redemptions: 0, activeRedemptions: 0,
+        totalPoints: 0,
+        pendingAthletes: 0, pendingSubmissions: 0, openTickets: 0,
+    });
 
     useEffect(() => {
+        const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
         const fetchAll = async () => {
             try {
-                const [u, p, r, w, signups] = await Promise.all([
+                const [
+                    usersRes, newUsersRes, partnersRes,
+                    rewardsRes, brandsRes, waitlistRes,
+                    flaggedRes, sessionsRes, weeklyRes,
+                    redemptionsRes, pointsRes,
+                    athletesRes, submissionsRes, ticketsRes,
+                ] = await Promise.all([
                     supabase.from('profiles').select('id', { count: 'exact', head: true }),
+                    supabase.from('profiles').select('id', { count: 'exact', head: true }).gte('created_at', weekAgo),
                     supabase.from('partners').select('id', { count: 'exact', head: true }).eq('active', true),
                     supabase.from('rewards').select('id', { count: 'exact', head: true }).eq('active', true),
+                    supabase.from('rewards').select('brand_name'),
                     supabase.from('waitlist').select('id', { count: 'exact', head: true }),
-                    supabase.from('waitlist').select('email, typ, created_at').order('created_at', { ascending: false }).limit(6),
+                    supabase.from('activity_sessions').select('id', { count: 'exact', head: true }).eq('flagged', true),
+                    supabase.from('activity_sessions').select('id', { count: 'exact', head: true }),
+                    supabase.from('activity_sessions').select('user_id').gte('started_at', weekAgo),
+                    supabase.from('redemptions').select('id, status'),
+                    supabase.from('point_transactions').select('amount').gt('amount', 0),
+                    supabase.from('athlete_applications').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
+                    supabase.from('reward_submissions').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
+                    supabase.from('support_tickets').select('id', { count: 'exact', head: true }).in('status', ['open', 'in_progress']),
                 ]);
-                setStats({ users: u.count || 0, partners: p.count || 0, rewards: r.count || 0, waitlist: w.count || 0 });
-                if (signups.data) setRecentSignups(signups.data);
+
+                const weeklyUsers = new Set((weeklyRes.data || []).map(s => s.user_id));
+                const allRedemptions = redemptionsRes.data || [];
+                const brands = new Set((brandsRes.data || []).map(r => r.brand_name?.toLowerCase()).filter(Boolean));
+                const totalPts = (pointsRes.data || []).reduce((a, p) => a + (p.amount || 0), 0);
+
+                setStats({
+                    users: usersRes.count || 0,
+                    newUsers7d: newUsersRes.count || 0,
+                    partners: partnersRes.count || 0,
+                    rewards: rewardsRes.count || 0,
+                    rewardBrands: brands.size,
+                    waitlist: waitlistRes.count || 0,
+                    flaggedSessions: flaggedRes.count || 0,
+                    totalSessions: sessionsRes.count || 0,
+                    weeklyActive: weeklyUsers.size,
+                    redemptions: allRedemptions.length,
+                    activeRedemptions: allRedemptions.filter(r => r.status === 'active').length,
+                    totalPoints: totalPts,
+                    pendingAthletes: athletesRes.count || 0,
+                    pendingSubmissions: submissionsRes.count || 0,
+                    openTickets: ticketsRes.count || 0,
+                });
             } catch (e) {
-                console.error('[Dashboard] Error:', e);
+                console.error('[Overview] Error:', e);
             } finally {
                 setLoading(false);
             }
@@ -402,104 +462,165 @@ const AdminHome = () => {
         fetchAll();
     }, []);
 
-    const cards = [
-        { label: 'Network Users', value: stats.users, icon: Users, color: '#8a7600', desc: 'ACTIVE NODE' },
-        { label: 'Retail Partners', value: stats.partners, icon: Activity, color: '#0EA5E9', desc: 'LIVE' },
-        { label: 'Active Rewards', value: stats.rewards, icon: Award, color: '#10B981', desc: 'SATELLITE' },
-        { label: 'Access Queue', value: stats.waitlist, icon: ClipboardList, color: '#F43F5E', desc: 'DEMAND' },
+    const fmt = (n) => loading ? '—' : n.toLocaleString();
+    const fmtPts = (n) => {
+        if (loading) return '—';
+        if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+        if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+        return n.toLocaleString();
+    };
+
+    const kpiCards = [
+        { label: 'Total Users',     value: fmt(stats.users),         sub: `+${fmt(stats.newUsers7d)} this week`,         icon: Users,      color: '#8a7600' },
+        { label: 'Active Partners', value: fmt(stats.partners),       sub: 'Live gym locations',                           icon: Activity,   color: '#0EA5E9' },
+        { label: 'Active Rewards',  value: fmt(stats.rewards),        sub: `${fmt(stats.rewardBrands)} brands`,            icon: Award,      color: '#10B981' },
+        { label: 'Weekly Active',   value: fmt(stats.weeklyActive),   sub: 'Unique users (7d)',                            icon: TrendingUp, color: '#E8D200' },
+        { label: 'Redemptions',     value: fmt(stats.redemptions),    sub: `${fmt(stats.activeRedemptions)} active codes`, icon: Gift,       color: '#8B5CF6' },
+        { label: 'Points Issued',   value: fmtPts(stats.totalPoints), sub: 'All-time total earned',                        icon: Zap,        color: '#F97316' },
+    ];
+
+    const attentionItems = [
+        { label: 'Flagged Sessions',     count: stats.flaggedSessions,    to: '/admin/sessions',           color: '#F43F5E', desc: 'Duplicate / multi-device — approve or reject' },
+        { label: 'Reward Submissions',   count: stats.pendingSubmissions, to: '/admin/reward-submissions', color: '#F97316', desc: 'Pending brand reward review'                  },
+        { label: 'Athlete Applications', count: stats.pendingAthletes,    to: '/admin/athletes',           color: '#8B5CF6', desc: 'Awaiting eligibility approval'                },
+        { label: 'Support Tickets',      count: stats.openTickets,        to: '/admin/support',            color: '#0EA5E9', desc: 'Open and in-progress'                         },
+        { label: 'Waitlist Queue',       count: stats.waitlist,           to: '/admin/waitlist',           color: '#AAAAAA', desc: 'Access requests pending invite'               },
+    ];
+
+    // Flat list of all sections split into two columns
+    const sectionsLeft = [
+        { label: 'Partners',    path: '/admin/partners',           icon: Activity,      stat: fmt(stats.partners),          color: '#0EA5E9' },
+        { label: 'Rewards',     path: '/admin/rewards',            icon: Award,         stat: fmt(stats.rewards),           color: '#10B981' },
+        { label: 'Submissions', path: '/admin/reward-submissions', icon: Inbox,         stat: fmt(stats.pendingSubmissions), color: '#F97316' },
+        { label: 'Users',       path: '/admin/users',              icon: Users,         stat: fmt(stats.users),             color: '#8a7600' },
+        { label: 'Athletes',    path: '/admin/athletes',           icon: Star,          stat: fmt(stats.pendingAthletes),   color: '#8B5CF6' },
+        { label: 'Waitlist',    path: '/admin/waitlist',           icon: ClipboardList, stat: fmt(stats.waitlist),          color: '#0EA5E9' },
+        { label: 'Featured',    path: '/admin/featured',           icon: Star,          stat: '—',                          color: '#CCCCCC' },
+        { label: 'Challenges',  path: '/admin/challenges',         icon: Target,        stat: '—',                          color: '#CCCCCC' },
+    ];
+    const sectionsRight = [
+        { label: 'Analytics',   path: '/admin/analytics',   icon: BarChart3,     stat: fmt(stats.weeklyActive),    color: '#E8D200' },
+        { label: 'Sessions',    path: '/admin/sessions',    icon: Shield,        stat: fmt(stats.flaggedSessions), color: stats.flaggedSessions > 0 ? '#F43F5E' : '#CCCCCC' },
+        { label: 'Performance', path: '/admin/performance', icon: TrendingUp,    stat: fmt(stats.totalSessions),   color: '#F97316' },
+        { label: 'Redemptions', path: '/admin/redemptions', icon: Gift,          stat: fmt(stats.redemptions),     color: '#8B5CF6' },
+        { label: 'Support',     path: '/admin/support',     icon: MessageSquare, stat: fmt(stats.openTickets),     color: stats.openTickets > 0 ? '#0EA5E9' : '#CCCCCC' },
+        { label: 'Audit Log',   path: '/admin/audit',       icon: ScrollText,    stat: '—',                        color: '#CCCCCC' },
+        { label: 'Config',      path: '/admin/config',      icon: Settings,      stat: '—',                        color: '#CCCCCC' },
+    ];
+
+    const SectionRow = ({ label, path, icon: Icon, stat, color }) => (
+        <Link to={path} className="group flex items-center gap-4 px-6 py-3 hover:bg-[#FAFAF8] transition-colors">
+            <Icon size={13} style={{ color }} className="flex-shrink-0" />
+            <span className="text-[11px] font-black uppercase tracking-[0.3em] text-[#AAAAAA] group-hover:text-[#1A1A1A] transition-colors flex-1 truncate">{label}</span>
+            <span className="text-base font-light text-[#333333] flex-shrink-0">{stat}</span>
+            <ChevronRight size={11} className="text-[#DDDDDD] group-hover:text-[#8a7600] transition-colors flex-shrink-0" />
+        </Link>
+    );
+
+    const healthRows = [
+        { label: 'Total Users',      value: fmt(stats.users),             color: '#8a7600'  },
+        { label: 'Weekly Active',    value: fmt(stats.weeklyActive),      color: '#E8D200'  },
+        { label: 'Active Partners',  value: fmt(stats.partners),          color: '#0EA5E9'  },
+        { label: 'Active Rewards',   value: fmt(stats.rewards),           color: '#10B981'  },
+        { label: 'Reward Brands',    value: fmt(stats.rewardBrands),      color: '#8B5CF6'  },
+        { label: 'Total Sessions',   value: fmt(stats.totalSessions),     color: '#F97316'  },
+        { label: 'Active Codes',     value: fmt(stats.activeRedemptions), color: '#8B5CF6'  },
+        { label: 'Points Issued',    value: fmtPts(stats.totalPoints),    color: '#F97316'  },
+        { label: 'Flagged Sessions', value: fmt(stats.flaggedSessions),   color: stats.flaggedSessions > 0 ? '#F43F5E' : '#CCCCCC' },
+        { label: 'Open Tickets',     value: fmt(stats.openTickets),       color: stats.openTickets > 0 ? '#0EA5E9' : '#CCCCCC'   },
     ];
 
     return (
-        <div className="px-4 lg:px-0 py-20 animate-in fade-in slide-in-from-bottom-8 duration-1000">
-            <header className="mb-20">
-                <div className="flex items-center gap-4 mb-8">
-                    <div className="h-[1px] w-12 bg-[#E8D200]"></div>
-                    <span className="text-[10px] uppercase tracking-[0.6em] text-[#8a7600] font-black">Admin Intelligence Layer</span>
-                </div>
-                <h1 className="text-7xl font-light tracking-tighter text-[#1A1A1A] mb-6">Control Centre</h1>
-                <p className="text-[#BBBBBB] text-[11px] max-w-2xl font-black uppercase tracking-[0.4em] leading-relaxed">
-                    Real-time telemetry and management logic for the global POWR ecosystem.
-                </p>
-            </header>
+        <div className="py-8 animate-in fade-in duration-500">
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-10 mb-24">
-                {cards.map((c, i) => (
-                    <div key={c.label} className="group relative bg-white border border-[#E6E6E1] p-12 rounded-3xl transition-all hover:border-[#E8D200]/40 hover:bg-white overflow-hidden">
-                        <div className="absolute top-0 right-0 p-10 opacity-5 group-hover:opacity-100 transition-opacity">
-                            <span className="text-[9px] font-black text-[#BBBBBB] group-hover:text-[#8a7600] uppercase tracking-[0.4em] transition-colors">{c.desc}</span>
+            {/* Compact header */}
+            <div className="mb-8">
+                <div className="text-[10px] uppercase tracking-[0.6em] text-[#8a7600] font-black mb-2">Control Centre</div>
+                <h1 className="text-4xl font-light tracking-tighter text-[#1A1A1A]">Overview</h1>
+            </div>
+
+            {/* KPI strip */}
+            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 mb-8">
+                {kpiCards.map(c => (
+                    <div key={c.label} className="bg-white border border-[#E6E6E1] px-5 py-4 rounded-xl">
+                        <div className="flex items-center gap-2 mb-3">
+                            <c.icon size={12} style={{ color: c.color }} />
+                            <span className="text-[9px] uppercase tracking-[0.4em] text-[#AAAAAA] font-black truncate">{c.label}</span>
                         </div>
-                        <div className="relative z-10 text-center flex flex-col items-center">
-                            <div className="w-16 h-16 rounded-[2rem] bg-[#F4F4F1] border border-[#E6E6E1] flex items-center justify-center mb-10 group-hover:border-[#E8D200]/20 transition-all group-hover:scale-110 shadow-2xl">
-                                <c.icon size={28} style={{ color: c.color }} />
-                            </div>
-                            <div className="text-6xl font-light tracking-tighter text-[#1A1A1A] mb-2 leading-none">
-                                {loading ? '...' : c.value.toLocaleString()}
-                            </div>
-                            <div className="text-[10px] uppercase tracking-[0.4em] text-[#BBBBBB] font-black group-hover:text-[#999999] transition-colors">
-                                {c.label}
-                            </div>
-                        </div>
+                        <div className="text-3xl font-light tracking-tighter text-[#1A1A1A] leading-none mb-1">{c.value}</div>
+                        <div className="text-[8px] text-[#CCCCCC] font-black uppercase tracking-[0.3em]">{c.sub}</div>
                     </div>
                 ))}
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-16">
-                <div className="lg:col-span-2 space-y-12">
-                    <div className="bg-white border border-[#E6E6E1] p-16 rounded-3xl relative overflow-hidden">
-                        <div className="flex items-center justify-between mb-20 whitespace-nowrap overflow-hidden">
-                            <div>
-                                <h3 className="text-3xl font-light tracking-tighter text-[#1A1A1A]">Inbound Pipeline</h3>
-                                <p className="text-[9px] uppercase tracking-[0.4em] text-[#BBBBBB] font-black mt-3">Processing Latest Foundation Requests</p>
-                            </div>
-                            <Link to="/admin/waitlist" className="group flex items-center gap-3 px-8 py-4 bg-[#F4F4F1] border border-[#E6E6E1] rounded-full hover:border-[#E8D200]/40 transition-all ml-4">
-                                <span className="text-[10px] font-black text-[#BBBBBB] group-hover:text-[#1A1A1A] uppercase tracking-[0.3em]">Query Archive</span>
-                                <ChevronRight size={14} className="text-[#BBBBBB] group-hover:text-[#8a7600]" />
-                            </Link>
+            {/* Body */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+                {/* Left 2/3 */}
+                <div className="lg:col-span-2 space-y-6">
+
+                    {/* Needs Attention */}
+                    <div className="bg-white border border-[#E6E6E1] rounded-2xl overflow-hidden">
+                        <div className="px-6 py-4 border-b border-[#F0F0EE] flex items-center gap-3">
+                            <div className="h-[2px] w-5 bg-[#E8D200]"></div>
+                            <span className="text-[11px] uppercase tracking-[0.5em] font-black text-[#1A1A1A]">Needs Attention</span>
                         </div>
-                        
-                        <div className="space-y-4">
-                            {recentSignups.map((s, i) => (
-                                <div key={i} className="flex items-center gap-10 p-10 rounded-[2.5rem] bg-[#F4F4F1] border border-transparent hover:border-[#E6E6E1] transition-all group">
-                                    <div className={`w-14 h-14 rounded-3xl border transition-all flex items-center justify-center pointer-events-none ${s.typ === 'partner' ? 'bg-[#E8D200]/5 border-[#E8D200]/20 text-[#8a7600]' : 'bg-white border-[#E6E6E1] text-[#BBBBBB]'}`}>
-                                        {s.typ === 'partner' ? <Activity size={22} /> : <Users size={22} />}
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <div className="flex justify-between items-center mb-2">
-                                            <span className="text-base font-bold text-[#222222] group-hover:text-[#1A1A1A] transition-colors truncate">{s.email}</span>
-                                            <span className="text-[10px] text-[#BBBBBB] font-black uppercase tracking-[0.4em] whitespace-nowrap ml-4">{timeAgo(s.created_at)}</span>
+                        <div className="divide-y divide-[#F4F4F1]">
+                            {attentionItems.map(item => {
+                                const urgent = !loading && item.count > 0;
+                                return (
+                                    <Link key={item.to} to={item.to} className="group flex items-center gap-5 px-6 py-4 hover:bg-[#FAFAF8] transition-colors">
+                                        <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${urgent ? 'animate-pulse' : ''}`}
+                                            style={{ background: urgent ? item.color : '#DDDDDD' }} />
+                                        <div className="flex-1 min-w-0">
+                                            <span className="text-[12px] font-black uppercase tracking-[0.25em] text-[#444444] group-hover:text-[#1A1A1A] transition-colors">{item.label}</span>
+                                            <span className="ml-4 text-[9px] text-[#CCCCCC] uppercase tracking-[0.3em] font-black hidden md:inline">{item.desc}</span>
                                         </div>
-                                        <p className="text-[10px] uppercase tracking-[0.4em] text-[#BBBBBB] group-hover:text-[#999999] transition-all font-black">
-                                            {s.typ === 'partner' ? 'Strategic Retail Node Inquiry' : 'Foundation Tier User Request'}
-                                        </p>
-                                    </div>
-                                </div>
-                            ))}
+                                        <span className="text-2xl font-light tracking-tight min-w-[2rem] text-right flex-shrink-0"
+                                            style={{ color: urgent ? item.color : '#CCCCCC' }}>
+                                            {loading ? '—' : item.count}
+                                        </span>
+                                        <ChevronRight size={12} className="text-[#DDDDDD] group-hover:text-[#8a7600] transition-colors flex-shrink-0" />
+                                    </Link>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    {/* All sections — two-column table */}
+                    <div className="bg-white border border-[#E6E6E1] rounded-2xl overflow-hidden">
+                        <div className="px-6 py-4 border-b border-[#F0F0EE] flex items-center gap-3">
+                            <div className="h-[2px] w-5 bg-[#8B5CF6]/60"></div>
+                            <span className="text-[11px] uppercase tracking-[0.5em] font-black text-[#1A1A1A]">All Sections</span>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 sm:divide-x divide-[#F4F4F1]">
+                            <div className="divide-y divide-[#F4F4F1]">
+                                {sectionsLeft.map(s => <SectionRow key={s.label} {...s} />)}
+                            </div>
+                            <div className="divide-y divide-[#F4F4F1]">
+                                {sectionsRight.map(s => <SectionRow key={s.label} {...s} />)}
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                <div className="space-y-12">
-                    <div className="bg-white border border-[#E6E6E1] p-16 rounded-3xl">
-                        <h3 className="text-2xl font-light tracking-tighter text-[#1A1A1A] mb-16">Global Control</h3>
-                        <div className="space-y-8">
-                            {[
-                                { label: 'Partner Fleet', sub: 'Location Management', to: '/admin/partners', icon: Activity },
-                                { label: 'Reward Hub', sub: 'Inventory Health', to: '/admin/rewards', icon: Award },
-                                { label: 'User Queue', sub: 'Access Admission', to: '/admin/waitlist', icon: Users }
-                            ].map(item => (
-                                <Link key={item.to} to={item.to} className="group block">
-                                    <div className="p-10 bg-[#F4F4F1] border border-[#E6E6E1] rounded-3xl group-hover:border-[#E8D200]/40 transition-all flex items-center justify-between">
-                                        <div>
-                                            <div className="text-[14px] font-black uppercase tracking-[0.3em] text-[#AAAAAA] group-hover:text-[#1A1A1A] transition-colors mb-2">{item.label}</div>
-                                            <div className="text-[10px] uppercase tracking-[0.4em] text-[#BBBBBB] font-black leading-none">{item.sub}</div>
-                                        </div>
-                                        <div className="w-12 h-12 rounded-3xl bg-white border border-[#E6E6E1] flex items-center justify-center group-hover:bg-[#E8D200] transition-all">
-                                            <ChevronRight size={20} className="text-[#BBBBBB] group-hover:text-[#080808]" />
-                                        </div>
-                                    </div>
-                                </Link>
-                            ))}
-                        </div>
+                {/* Right 1/3 — health numbers */}
+                <div className="bg-white border border-[#E6E6E1] rounded-2xl overflow-hidden h-fit">
+                    <div className="px-6 py-4 border-b border-[#F0F0EE] flex items-center gap-3">
+                        <div className="h-[2px] w-5 bg-[#10B981]/60"></div>
+                        <span className="text-[11px] uppercase tracking-[0.5em] font-black text-[#1A1A1A]">Platform Health</span>
+                    </div>
+                    <div className="divide-y divide-[#F4F4F1]">
+                        {healthRows.map(row => (
+                            <div key={row.label} className="flex items-center justify-between px-6 py-3.5">
+                                <span className="text-[10px] uppercase tracking-[0.35em] text-[#AAAAAA] font-black">{row.label}</span>
+                                <span className="text-base font-light tracking-tight" style={{ color: row.color }}>{row.value}</span>
+                            </div>
+                        ))}
+                    </div>
+                    <div className="px-6 py-4 border-t border-[#F4F4F1] flex items-center gap-3">
+                        <div className="w-1.5 h-1.5 rounded-full bg-[#10B981] animate-pulse"></div>
+                        <span className="text-[9px] uppercase tracking-[0.4em] text-[#CCCCCC] font-black">All systems operational</span>
                     </div>
                 </div>
             </div>
@@ -513,6 +634,13 @@ const AdminLayout = ({ children }) => {
     const { user } = useAuth();
     const [pendingAthletes, setPendingAthletes] = useState(0);
     const [pendingSubmissions, setPendingSubmissions] = useState(0);
+    const [collapsed, setCollapsed] = useState(() => localStorage.getItem('admin_sidebar') === '1');
+
+    const toggleSidebar = () => setCollapsed(c => {
+        const next = !c;
+        localStorage.setItem('admin_sidebar', next ? '1' : '0');
+        return next;
+    });
 
     useEffect(() => {
         supabase
@@ -531,22 +659,22 @@ const AdminLayout = ({ children }) => {
         { label: 'Overview',    path: '/admin',                    icon: LayoutDashboard },
         { label: 'Partners',    path: '/admin/partners',           icon: Activity        },
         { label: 'Rewards',     path: '/admin/rewards',            icon: Award           },
-        { label: 'Submissions', path: '/admin/reward-submissions', icon: Inbox, badge: pendingSubmissions },
+        { label: 'Submissions', path: '/admin/reward-submissions', icon: Inbox,          badge: pendingSubmissions },
         { label: 'Featured',    path: '/admin/featured',           icon: Star            },
-        { label: 'Challenges', path: '/admin/challenges', icon: Target         },
-        { label: 'Waitlist',   path: '/admin/waitlist',  icon: ClipboardList   },
-        { label: 'Users',      path: '/admin/users',     icon: Users           },
-        { label: 'Athletes',   path: '/admin/athletes',  icon: Star, badge: pendingAthletes },
+        { label: 'Challenges',  path: '/admin/challenges',         icon: Target          },
+        { label: 'Waitlist',    path: '/admin/waitlist',           icon: ClipboardList   },
+        { label: 'Users',       path: '/admin/users',              icon: Users           },
+        { label: 'Athletes',    path: '/admin/athletes',           icon: Star,           badge: pendingAthletes },
     ];
 
     const opsItems = [
-        { label: 'Analytics',    path: '/admin/analytics',    icon: BarChart3   },
-        { label: 'Sessions',     path: '/admin/sessions',     icon: Shield      },
-        { label: 'Performance',  path: '/admin/performance',  icon: Activity    },
-        { label: 'Redemptions',  path: '/admin/redemptions',  icon: Gift        },
-        { label: 'Audit Log',    path: '/admin/audit',        icon: ScrollText     },
-        { label: 'Support',      path: '/admin/support',      icon: MessageSquare  },
-        { label: 'Config',       path: '/admin/config',       icon: Settings       },
+        { label: 'Analytics',   path: '/admin/analytics',   icon: BarChart3     },
+        { label: 'Sessions',    path: '/admin/sessions',    icon: Shield        },
+        { label: 'Performance', path: '/admin/performance', icon: Activity      },
+        { label: 'Redemptions', path: '/admin/redemptions', icon: Gift          },
+        { label: 'Audit Log',   path: '/admin/audit',       icon: ScrollText    },
+        { label: 'Support',     path: '/admin/support',     icon: MessageSquare },
+        { label: 'Config',      path: '/admin/config',      icon: Settings      },
     ];
 
     const segment = location.pathname.split('/')[2] || 'admin';
@@ -557,136 +685,118 @@ const AdminLayout = ({ children }) => {
         navigate('/admin/login');
     };
 
+    const NavLink = ({ item }) => {
+        const active = location.pathname === item.path;
+        return (
+            <Link
+                to={item.path}
+                title={collapsed ? item.label : undefined}
+                className={`relative flex items-center rounded-xl transition-all duration-150 group ${
+                    collapsed ? 'justify-center h-10 w-10 mx-auto' : 'gap-3 px-3 py-2.5'
+                } ${active
+                    ? 'bg-[#E8D200] text-[#080808]'
+                    : 'text-[#BBBBBB] hover:bg-[#F4F4F1] hover:text-[#333333]'
+                }`}
+            >
+                <item.icon size={18} strokeWidth={active ? 2.5 : 1.8}
+                    className={active ? '' : 'group-hover:text-[#8a7600] transition-colors'} />
+                {!collapsed && (
+                    <span className="text-[12px] uppercase tracking-[0.25em] font-black flex-1 leading-none">{item.label}</span>
+                )}
+                {item.badge > 0 && !collapsed && (
+                    <span className={`min-w-[18px] h-4 px-1 rounded-full text-[8px] font-black flex items-center justify-center ${
+                        active ? 'bg-[#F4F4F1] text-[#8a7600]' : 'bg-[#f97316] text-white'
+                    }`}>{item.badge}</span>
+                )}
+                {item.badge > 0 && collapsed && (
+                    <span className="absolute top-0 right-0 w-2 h-2 rounded-full bg-[#f97316] border border-white" />
+                )}
+            </Link>
+        );
+    };
+
     return (
         <div className="flex min-h-screen bg-[#F4F4F1] text-[#1A1A1A] font-['Outfit'] selection:bg-[#E8D200] selection:text-[#080808]">
             {/* Sidebar */}
-            <aside className="w-80 flex-shrink-0 border-r border-[#E6E6E1] bg-white flex flex-col h-screen sticky top-0 z-[100]">
-                <div className="p-16 mb-12 flex items-center justify-start pointer-events-none">
-                    <img
-                        src="/powr-logo-black.png"
-                        alt="POWR"
-                        style={{ height: '32px', width: 'auto', display: 'block' }}
-                    />
-                </div>
-                
-                <nav className="flex-1 px-8 space-y-3 overflow-y-auto">
-                    <div className="px-8 mb-12">
-                        <div className="text-[11px] uppercase tracking-[0.6em] text-[#BBBBBB] font-black mb-3">Core Subsystem</div>
-                        <div className="h-[2px] w-12 bg-[#E8D200]/60"></div>
-                    </div>
-                    {navItems.map(item => {
-                        const active = location.pathname === item.path;
-                        return (
-                            <Link
-                                key={item.path}
-                                to={item.path}
-                                className={`flex items-center gap-6 px-8 py-5 rounded-2xl transition-all group ${
-                                    active
-                                    ? 'bg-[#E8D200] text-[#080808] shadow-[0_25px_60px_rgba(232,210,0,0.25)]'
-                                    : 'text-[#BBBBBB] hover:bg-[#EFEFEC] hover:text-[#333333]'
-                                }`}
-                            >
-                                <item.icon size={22} className={active ? '' : 'group-hover:text-[#8a7600] transition-colors shadow-2xl'} strokeWidth={active ? 3 : 2} />
-                                <span className="text-[13px] uppercase tracking-[0.25em] font-black flex-1">{item.label}</span>
-                                {item.badge > 0 && (
-                                    <span className={`min-w-[20px] h-5 px-1.5 rounded-full text-[9px] font-black flex items-center justify-center ${active ? 'bg-[#F4F4F1] text-[#8a7600]' : 'bg-[#f97316] text-white'}`}>
-                                        {item.badge}
-                                    </span>
-                                )}
-                            </Link>
-                        );
-                    })}
+            <aside className={`flex-shrink-0 border-r border-[#E6E6E1] bg-white flex flex-col h-screen sticky top-0 z-[100] transition-[width] duration-300 ease-in-out ${collapsed ? 'w-[68px]' : 'w-64'}`}>
 
-                    <div className="px-8 mt-12 mb-8">
-                        <div className="text-[11px] uppercase tracking-[0.6em] text-[#BBBBBB] font-black mb-3">Operations</div>
-                        <div className="h-[2px] w-12 bg-[#8B5CF6]/60"></div>
-                    </div>
-                    {opsItems.map(item => {
-                        const active = location.pathname === item.path;
-                        return (
-                            <Link 
-                                key={item.path} 
-                                to={item.path} 
-                                className={`flex items-center gap-6 px-8 py-5 rounded-2xl transition-all group ${
-                                    active 
-                                    ? 'bg-[#E8D200] text-[#080808] shadow-[0_25px_60px_rgba(232,210,0,0.25)]' 
-                                    : 'text-[#BBBBBB] hover:bg-[#EFEFEC] hover:text-[#333333]'
-                                }`}
-                            >
-                                <item.icon size={22} className={active ? '' : 'group-hover:text-[#8a7600] transition-colors shadow-2xl'} strokeWidth={active ? 3 : 2} />
-                                <span className="text-[13px] uppercase tracking-[0.25em] font-black">{item.label}</span>
-                            </Link>
-                        );
-                    })}
-                </nav>
-
-                <div className="p-12 mt-auto">
-                    {user?.email && (
-                        <div className="mx-2 mb-10 p-8 bg-[#F4F4F1] rounded-3xl border border-[#E6E6E1] group">
-                            <div className="flex items-center gap-6">
-                                <div className="w-12 h-12 rounded-3xl bg-[#EFEFEC] border border-[#E6E6E1] flex items-center justify-center shrink-0">
-                                    <Users size={16} className="text-[#BBBBBB]" />
-                                </div>
-                                <div className="overflow-hidden">
-                                    <div className="text-[10px] uppercase tracking-[0.5em] text-[#BBBBBB] font-black leading-none mb-3">Authorized Host</div>
-                                    <div className="text-[12px] text-[#AAAAAA] truncate font-mono uppercase tracking-widest">{user.email.split('@')[0]}</div>
-                                </div>
-                            </div>
+                {/* Logo + toggle */}
+                <div className={`flex items-center h-20 border-b border-[#F0F0EE] flex-shrink-0 ${collapsed ? 'justify-center px-3' : 'justify-between px-6'}`}>
+                    {!collapsed && (
+                        <div className="flex-1 flex justify-center">
+                            <img src="/powr-logo-black.png" alt="POWR" className="h-10 w-auto" />
                         </div>
                     )}
-                    <button 
-                        onClick={handleSignOut} 
-                        className="w-full flex items-center justify-center gap-4 h-20 text-[12px] uppercase tracking-[0.4em] font-black text-red-500/40 hover:text-red-500 hover:bg-red-500/5 rounded-3xl transition-all border border-transparent hover:border-red-500/10"
+                    <button
+                        onClick={toggleSidebar}
+                        className="w-7 h-7 rounded-lg flex items-center justify-center text-[#CCCCCC] hover:text-[#555555] hover:bg-[#F4F4F1] transition-all flex-shrink-0"
                     >
-                        <LogOut size={20} /> Terminate
+                        {collapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
                     </button>
-                    <div className="mt-8 text-center">
-                        <span className="text-[9px] uppercase tracking-[0.6em] text-[#CCCCCC] font-black">SATELLITE DOWNLINK v3.0</span>
-                    </div>
+                </div>
+
+                {/* Nav */}
+                <nav className={`flex-1 py-4 overflow-y-auto overflow-x-hidden ${collapsed ? 'px-3 space-y-1' : 'px-3 space-y-0.5'}`}>
+                    {!collapsed && (
+                        <div className="px-3 pt-1 pb-3">
+                            <div className="text-[9px] uppercase tracking-[0.6em] text-[#CCCCCC] font-black mb-1.5">Core</div>
+                            <div className="h-[1.5px] w-6 bg-[#E8D200]/70"></div>
+                        </div>
+                    )}
+                    {collapsed && <div className="h-2" />}
+
+                    {navItems.map(item => <NavLink key={item.path} item={item} />)}
+
+                    {!collapsed && (
+                        <div className="px-3 pt-5 pb-3">
+                            <div className="text-[9px] uppercase tracking-[0.6em] text-[#CCCCCC] font-black mb-1.5">Operations</div>
+                            <div className="h-[1.5px] w-6 bg-[#8B5CF6]/60"></div>
+                        </div>
+                    )}
+                    {collapsed && <div className="h-3" />}
+
+                    {opsItems.map(item => <NavLink key={item.path} item={item} />)}
+                </nav>
+
+                {/* Footer */}
+                <div className={`border-t border-[#F0F0EE] flex-shrink-0 ${collapsed ? 'p-3 flex flex-col items-center gap-2' : 'p-4 space-y-3'}`}>
+                    {user?.email && !collapsed && (
+                        <div className="px-3 py-2.5 bg-[#F4F4F1] rounded-xl border border-[#EFEFEC]">
+                            <div className="text-[8px] uppercase tracking-[0.5em] text-[#CCCCCC] font-black mb-1">Admin</div>
+                            <div className="text-[11px] text-[#888888] truncate font-mono">{user.email.split('@')[0]}</div>
+                        </div>
+                    )}
+                    <button
+                        onClick={handleSignOut}
+                        title={collapsed ? 'Sign out' : undefined}
+                        className={`flex items-center justify-center gap-2 text-[11px] uppercase tracking-[0.3em] font-black text-red-400/50 hover:text-red-500 hover:bg-red-500/5 rounded-xl transition-all ${
+                            collapsed ? 'w-10 h-10' : 'w-full h-9'
+                        }`}
+                    >
+                        <LogOut size={15} />
+                        {!collapsed && 'Sign out'}
+                    </button>
                 </div>
             </aside>
-            
-            <style>{`
-                .admin-padding-fix {
-                    padding-left: 80px !important;
-                    padding-right: 48px !important;
-                }
-                @media (max-width: 1024px) {
-                    .admin-padding-fix {
-                        padding-left: 40px !important;
-                        padding-right: 24px !important;
-                    }
-                }
-            `}</style>
-            
-            {/* Main Content Area */}
-            <main className="flex-1 flex flex-col min-h-screen bg-[#F4F4F1] overflow-x-hidden border-l border-[#E6E6E1]">
-                <header className="h-28 border-b border-[#E6E6E1] flex-shrink-0 flex items-center justify-between admin-padding-fix bg-[#F4F4F1]/60 backdrop-blur-3xl sticky top-0 z-50">
-                    <div className="flex items-center gap-6">
-                        <div className="text-[11px] uppercase tracking-[0.6em] font-black text-[#CCCCCC]">Intelligence Node</div>
-                        <ChevronRight size={14} className="text-[#CCCCCC]" />
-                        <div className="flex items-center gap-4">
-                            <div className="h-2 w-2 rounded-full bg-[#E8D200] shadow-[0_0_15px_rgba(232,210,0,0.6)] animate-pulse"></div>
-                            <div className="text-[14px] uppercase tracking-[0.4em] font-black text-[#8a7600]">{currentLabel}</div>
-                        </div>
+
+            {/* Main */}
+            <main className="flex-1 flex flex-col min-h-screen bg-[#F4F4F1] overflow-x-hidden min-w-0">
+                <header className="h-14 border-b border-[#E6E6E1] flex-shrink-0 flex items-center justify-between px-8 bg-[#F4F4F1]/80 backdrop-blur-xl sticky top-0 z-50">
+                    <div className="flex items-center gap-3">
+                        <div className="h-1.5 w-1.5 rounded-full bg-[#E8D200] shadow-[0_0_8px_rgba(232,210,0,0.7)] animate-pulse"></div>
+                        <span className="text-[12px] uppercase tracking-[0.4em] font-black text-[#8a7600]">{currentLabel}</span>
                     </div>
-                    
-                    <div className="flex items-center gap-10">
-                        <div className="flex flex-col items-end">
-                            <span className="text-[10px] uppercase tracking-[0.5em] text-[#BBBBBB] font-black mb-2">Relay Health</span>
-                            <div className="flex items-center gap-4 px-5 py-3 bg-white border border-[#E6E6E1] rounded-full">
-                                <div className="h-2 w-2 rounded-full bg-[#10B981] shadow-[0_0_15px_rgba(16,185,129,0.5)] animate-pulse"></div>
-                                <span className="text-[10px] uppercase tracking-[0.3em] text-[#999999] font-black">99.9% UPTIME</span>
-                            </div>
-                        </div>
+                    <div className="flex items-center gap-2 px-4 py-1.5 bg-white border border-[#E6E6E1] rounded-full">
+                        <div className="h-1.5 w-1.5 rounded-full bg-[#10B981] shadow-[0_0_8px_rgba(16,185,129,0.5)] animate-pulse"></div>
+                        <span className="text-[9px] uppercase tracking-[0.3em] text-[#AAAAAA] font-black">Live</span>
                     </div>
                 </header>
 
                 <div className="flex-1 overflow-y-auto">
-                    <div className="max-w-[1800px] admin-padding-fix py-10">
+                    <div className="max-w-[1600px] px-8 py-8">
                         {children}
                     </div>
-                    <div className="h-32 w-full"></div> {/* Bottom Buffer */}
+                    <div className="h-20 w-full" />
                 </div>
             </main>
         </div>
