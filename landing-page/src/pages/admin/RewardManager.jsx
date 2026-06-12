@@ -632,7 +632,7 @@ export default function RewardManager() {
                                         : 'border-transparent hover:border-[#E6E6E1] hover:bg-[#F4F4F1]'
                                 } disabled:opacity-40`}
                             >
-                                <div className="w-9 h-9 rounded-xl bg-[#F4F4F1] border border-[#E6E6E1] flex items-center justify-center shrink-0 overflow-hidden">
+                                <div className="w-9 h-9 rounded-xl bg-[#111111] border border-[#333333] flex items-center justify-center shrink-0 overflow-hidden">
                                     {(r.image_url || r.partners?.logo_url) ? (
                                         <img src={r.image_url || r.partners.logo_url} alt="" className="w-full h-full object-contain p-1" />
                                     ) : (
@@ -650,7 +650,7 @@ export default function RewardManager() {
                     </div>
                 ) : heroReward ? (
                     <div className="flex items-center gap-8 px-10 py-7">
-                        <div className="w-14 h-14 rounded-2xl bg-[#F4F4F1] border border-[#E8D200]/20 flex items-center justify-center shrink-0 overflow-hidden">
+                        <div className="w-14 h-14 rounded-2xl bg-[#111111] border border-[#333333] flex items-center justify-center shrink-0 overflow-hidden">
                             {(heroReward.image_url || heroReward.partners?.logo_url) ? (
                                 <img src={heroReward.image_url || heroReward.partners.logo_url} alt="" className="w-full h-full object-contain p-2" />
                             ) : (
@@ -770,7 +770,7 @@ export default function RewardManager() {
                                         </td>
                                         <td className="px-6 py-5">
                                             <div className="flex items-center gap-8">
-                                                <div className="w-14 h-14 rounded-3xl bg-[#F4F4F1] border border-[#E6E6E1] flex items-center justify-center shrink-0 group-hover:border-[#E8D200]/20 transition-all shadow-2xl overflow-hidden">
+                                                <div className="w-14 h-14 rounded-3xl bg-[#111111] border border-[#333333] flex items-center justify-center shrink-0 group-hover:border-[#E8D200]/20 transition-all shadow-2xl overflow-hidden">
                                                     {(reward.image_url || reward.partners?.logo_url) ? (
                                                         <img src={reward.image_url || reward.partners.logo_url} alt="" className="w-full h-full object-contain p-2" />
                                                     ) : (

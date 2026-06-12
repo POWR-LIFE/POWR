@@ -141,6 +141,39 @@ function txLabel(tx: PointTransaction): string {
   return tx.description ?? (TYPE_META[tx.type]?.fallbackLabel ?? 'Activity');
 }
 
+function TxBadges({ tx }: { tx: PointTransaction }) {
+  const badges: { label: string; color: string; bg: string }[] = [];
+
+  if (tx.type === 'streak') {
+    badges.push({ label: 'STREAK', color: ORANGE, bg: ORANGE + '22' });
+  } else if (tx.type === 'bonus') {
+    badges.push({ label: 'BONUS', color: GOLD, bg: GOLD + '22' });
+  } else if (tx.type === 'earn') {
+    const isUpgrade = tx.description?.toLowerCase().includes('upgrade');
+    if (isUpgrade) {
+      badges.push({ label: '+40 MIN', color: '#6EC6FF', bg: '#6EC6FF22' });
+    } else if (tx.multiplier > 1) {
+      const label = `×${tx.multiplier % 1 === 0 ? tx.multiplier.toFixed(0) : tx.multiplier.toFixed(1)}`;
+      badges.push({ label, color: ORANGE, bg: ORANGE + '22' });
+    }
+  } else if (tx.type === 'adjustment') {
+    badges.push({ label: 'ADJ', color: DIM, bg: 'rgba(255,255,255,0.08)' });
+  } else if (tx.type === 'penalty') {
+    badges.push({ label: 'PENALTY', color: RED, bg: RED + '22' });
+  }
+
+  if (badges.length === 0) return null;
+  return (
+    <View style={styles.badgeRow}>
+      {badges.map((b) => (
+        <View key={b.label} style={[styles.badge, { backgroundColor: b.bg }]}>
+          <Text style={[styles.badgeText, { color: b.color }]}>{b.label}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
 function TransactionRow({
   tx,
   isFirst,
@@ -163,9 +196,12 @@ function TransactionRow({
     >
       <TxIcon tx={tx} />
       <View style={styles.txBody}>
-        <Text style={styles.txLabel} numberOfLines={1}>
-          {txLabel(tx)}
-        </Text>
+        <View style={styles.txLabelRow}>
+          <Text style={styles.txLabel} numberOfLines={1}>
+            {txLabel(tx)}
+          </Text>
+          <TxBadges tx={tx} />
+        </View>
         <Text style={styles.txTime}>{formatTime(tx.created_at)}</Text>
       </View>
       <View style={styles.txRight}>
@@ -366,15 +402,36 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 2,
   },
+  txLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexWrap: 'wrap',
+  },
   txLabel: {
     fontSize: 14,
     fontWeight: '300',
     color: TEXT,
+    flexShrink: 1,
   },
   txTime: {
     fontSize: 11,
     fontWeight: '300',
     color: MUTED,
+  },
+  badgeRow: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  badge: {
+    borderRadius: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+  },
+  badgeText: {
+    fontSize: 8,
+    fontWeight: '700',
+    letterSpacing: 0.8,
   },
   txRight: {
     alignItems: 'flex-end',

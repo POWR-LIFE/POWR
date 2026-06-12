@@ -173,18 +173,24 @@ export default function DiscoverScreen() {
   const [preferredGymId, setPreferredGymId] = useState<string | null>(null);
   const [savingPreferred, setSavingPreferred] = useState(false);
 
-  const { partners: rawPartners, refresh: refreshPartners } = useGeofenceContext();
+  const { partners: rawPartners, refresh: refreshPartners, ensureCoverage } = useGeofenceContext();
   const { activeGeofence } = useActiveGeofence();
   const [refreshing, setRefreshing] = useState(false);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      await refreshPartners();
+      // Pass the freshest fix we have so a refresh after travel fetches the
+      // user's actual surroundings, not the last city the provider saw.
+      await refreshPartners(
+        userLoc
+          ? { latitude: userLoc.coords.latitude, longitude: userLoc.coords.longitude }
+          : undefined,
+      );
     } finally {
       setRefreshing(false);
     }
-  }, [refreshPartners]);
+  }, [refreshPartners, userLoc]);
 
   // Load user's preferred gym
   useEffect(() => {
@@ -269,6 +275,11 @@ export default function DiscoverScreen() {
         }
         if (loc) {
           setUserLoc(loc);
+          // If this fresh fix is far from where the provider last fetched
+          // (user travelled), re-fetch the nearby set right now so the list
+          // and map show their actual surroundings immediately.
+          ensureCoverage({ latitude: loc.coords.latitude, longitude: loc.coords.longitude })
+            .catch(() => { /* non-fatal */ });
           const region = {
             latitude: loc.coords.latitude,
             longitude: loc.coords.longitude,

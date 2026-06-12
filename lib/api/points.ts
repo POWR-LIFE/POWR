@@ -93,6 +93,7 @@ export interface PointTransaction {
     created_at: string;
     session_id: string | null;
     activity_type: string | null;
+    multiplier: number;
 }
 
 export async function fetchTransactionHistory(): Promise<PointTransaction[]> {
@@ -100,7 +101,7 @@ export async function fetchTransactionHistory(): Promise<PointTransaction[]> {
     if (!session) return [];
     const { data, error } = await supabase
         .from('point_transactions')
-        .select('id, amount, type, description, created_at, session_id, activity_sessions(type)')
+        .select('id, amount, type, description, created_at, session_id, multiplier, activity_sessions(type)')
         .eq('user_id', session.user.id)
         .order('created_at', { ascending: false })
         .limit(500);
@@ -108,6 +109,7 @@ export async function fetchTransactionHistory(): Promise<PointTransaction[]> {
     return ((data ?? []) as any[]).map((row) => ({
         ...row,
         activity_type: row.activity_sessions?.type ?? null,
+        multiplier: row.multiplier ?? 1,
         activity_sessions: undefined,
     }));
 }
