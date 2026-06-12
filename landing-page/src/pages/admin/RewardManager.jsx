@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
-import { Plus, Edit2, Trash2, Ticket, Loader2, X, Search, Award, Activity, ChevronRight, AlertTriangle, Upload, Image as ImageIcon, Tag, FileText, Download, GripVertical, Save, Pin, Send } from 'lucide-react';
+import { Plus, Edit2, Trash2, Ticket, Loader2, X, Search, Award, Activity, ChevronLeft, ChevronRight, AlertTriangle, Upload, Image as ImageIcon, Tag, FileText, Download, GripVertical, Save, Pin, Send, KeyRound } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { uploadPublicImage } from '../../lib/storage';
 import * as XLSX from 'xlsx';
 import { parseCodes, uploadCodes, fetchCodeStats, fetchCodePool, fetchAllCodes, getCSVTemplate, buildScheme, isValidForScheme, getSchemeCSVTemplate, generateCodes, toggleCodeStatus } from '../../lib/promoCodes';
+import BrandPortalAccess from '../../components/BrandPortalAccess';
 
 const CATEGORIES = ['eat', 'move', 'mind', 'sleep'];
 const normalizeRewardCategory = (category) => {
@@ -96,7 +97,7 @@ export default function RewardManager() {
     const [search, setSearch] = useState('');
     const [filterCat, setFilterCat] = useState('all');
     const [filterPartner, setFilterPartner] = useState('all');
-    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [editorOpen, setEditorOpen] = useState(false);
     const [editingReward, setEditingReward] = useState(null);
     const [formData, setFormData] = useState(EMPTY_FORM);
     const [saving, setSaving] = useState(false);
@@ -120,6 +121,17 @@ export default function RewardManager() {
     const [unsavedOrder, setUnsavedOrder] = useState(false);
     const [savingOrder, setSavingOrder] = useState(false);
     const [heroPickerOpen, setHeroPickerOpen] = useState(false);
+    const [portalAccessOpen, setPortalAccessOpen] = useState(false);
+
+    // Distinct reward brands (case-insensitive) for the Portal Access modal
+    const portalBrands = (() => {
+        const seen = new Map();
+        rewards.forEach(r => {
+            const name = (r.brand_name ?? '').trim();
+            if (name && !seen.has(name.toLowerCase())) seen.set(name.toLowerCase(), name);
+        });
+        return [...seen.values()].sort((a, b) => a.localeCompare(b));
+    })();
     const [settingHero, setSettingHero] = useState(false);
     const CODE_POOL_PAGE_SIZE = 20;
     const parsedScheme = schemeExample ? buildScheme(schemeExample) : null;
@@ -181,7 +193,8 @@ export default function RewardManager() {
         setCodePoolStatus('all');
         setBulkCodesText('');
         setSingleCode('');
-        setIsModalOpen(true);
+        setEditorOpen(true);
+        window.scrollTo({ top: 0 });
     };
 
     const openEdit = async (reward) => {
@@ -226,7 +239,8 @@ export default function RewardManager() {
             setSchemeExample('');
         }
         await Promise.all([refreshCodeStats(reward.id), refreshCodePool(reward.id)]);
-        setIsModalOpen(true);
+        setEditorOpen(true);
+        window.scrollTo({ top: 0 });
     };
 
     const handleImagePick = async (e) => {
@@ -414,7 +428,7 @@ export default function RewardManager() {
             toast.error(error.message);
         } else {
             toast.success(editingReward ? 'Inventory synchronized' : 'New reward deployed');
-            setIsModalOpen(false);
+            setEditorOpen(false);
             fetchData();
         }
         setSaving(false);
@@ -532,6 +546,8 @@ export default function RewardManager() {
 
     return (
         <div className="px-4 lg:px-0 py-20 animate-in fade-in slide-in-from-bottom-8 duration-1000">
+            {!editorOpen && (
+            <>
             {/* Header */}
             <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-12 mb-20">
                 <div>
@@ -555,6 +571,12 @@ export default function RewardManager() {
                             Save Order
                         </button>
                     )}
+                    <button
+                        onClick={() => setPortalAccessOpen(true)}
+                        className="flex items-center gap-3 h-16 px-8 bg-white text-[#666666] border border-[#E6E6E1] text-[11px] font-black uppercase tracking-[0.3em] rounded-full transition-all hover:text-[#8a7600] hover:border-[#E8D200]/30"
+                    >
+                        <KeyRound size={16} /> Portal Access
+                    </button>
                     <Link
                         to="/admin/reward-submissions"
                         className="flex items-center gap-3 h-16 px-8 bg-white text-[#666666] border border-[#E6E6E1] text-[11px] font-black uppercase tracking-[0.3em] rounded-full transition-all hover:text-[#8a7600] hover:border-[#E8D200]/30"
@@ -845,20 +867,45 @@ export default function RewardManager() {
                 )}
             </div>
 
-            {/* Modal */}
-            {isModalOpen && (
-                <div className="fixed inset-0 z-[200] overflow-y-auto bg-black/95 backdrop-blur-xl animate-in fade-in duration-300">
-                    <div className="flex min-h-full items-center justify-center p-8">
-                    <div className="bg-[#F4F4F1] border border-[#E6E6E1] rounded-3xl w-full max-w-4xl shadow-[0_0_100px_rgba(232,210,0,0.05)]">
-                        <form onSubmit={handleSave} className="p-8 sm:p-10">
+            </>
+            )}
+
+            {/* Inline editor page — replaces the vault list while open */}
+            {editorOpen && (
+                <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <button
+                        type="button"
+                        onClick={() => setEditorOpen(false)}
+                        className="flex items-center gap-3 mb-10 text-[10px] uppercase tracking-[0.4em] text-[#666666] hover:text-[#8a7600] font-black transition-colors"
+                    >
+                        <ChevronLeft size={14} /> Back to Reward Vault
+                    </button>
+                    <div className="bg-[#F4F4F1] border border-[#E6E6E1] rounded-3xl w-full shadow-[0_0_100px_rgba(232,210,0,0.05)]">
+                        <form onSubmit={handleSave} className="p-8 sm:p-12">
                             <div className="flex items-center justify-between mb-16">
-                                <div>
-                                    <h2 className="text-4xl font-light tracking-tighter text-[#1A1A1A] mb-3">{editingReward ? 'Edit Host Asset' : 'New Asset Protocol'}</h2>
-                                    <p className="text-[10px] uppercase tracking-[0.4em] text-[#666666] font-black">Configure Reward Parameters</p>
+                                <div className="flex items-center gap-8 min-w-0 flex-1 pr-8">
+                                    <div className="w-24 h-24 rounded-3xl bg-white border border-[#E6E6E1] flex items-center justify-center shrink-0 overflow-hidden shadow-2xl">
+                                        {(formData.image_url || editingReward?.partners?.logo_url) ? (
+                                            <img src={formData.image_url || editingReward?.partners?.logo_url} alt="" className="w-full h-full object-contain p-3" />
+                                        ) : (
+                                            <Award size={32} className="text-[#BBBBBB]" />
+                                        )}
+                                    </div>
+                                    <div className="min-w-0">
+                                        <h2 className="text-4xl font-light tracking-tighter text-[#1A1A1A] mb-3 truncate">{editingReward ? (formData.title || 'Edit Host Asset') : 'New Asset Protocol'}</h2>
+                                        <p className="text-[10px] uppercase tracking-[0.4em] text-[#666666] font-black">
+                                            {editingReward
+                                                ? `${formData.brand_name ? `${formData.brand_name} — ` : ''}Edit Host Asset`
+                                                : 'Configure Reward Parameters'}
+                                        </p>
+                                    </div>
                                 </div>
-                                <button type="button" onClick={() => setIsModalOpen(false)} className="w-14 h-14 bg-white border border-[#E6E6E1] rounded-3xl flex items-center justify-center text-[#666666] hover:text-[#1A1A1A] hover:border-[#E8D200]/40 transition-all"><X size={20} /></button>
+                                <button type="button" onClick={() => setEditorOpen(false)} className="w-14 h-14 shrink-0 bg-white border border-[#E6E6E1] rounded-3xl flex items-center justify-center text-[#666666] hover:text-[#1A1A1A] hover:border-[#E8D200]/40 transition-all"><X size={20} /></button>
                             </div>
 
+                            <div className="grid lg:grid-cols-2 gap-x-14">
+                            {/* Left column — identity & copy */}
+                            <div>
                             <div className="mb-8">
                                 <label className="block text-[10px] uppercase tracking-[0.4em] text-[#666666] font-black mb-4">Brand Name <span className="text-[#999999] normal-case font-black ml-2">— shown on the reward card</span></label>
                                 <input
@@ -871,13 +918,11 @@ export default function RewardManager() {
                                 />
                             </div>
 
-                            <div className="grid grid-cols-2 gap-8 mb-8">
-                                <div>
-                                    <label className="block text-[10px] uppercase tracking-[0.4em] text-[#666666] font-black mb-4">Market Sector</label>
-                                    <select className="w-full h-16 px-8 bg-white border border-[#E6E6E1] rounded-3xl focus:border-[#E8D200]/40 outline-none transition-all appearance-none text-[12px] font-black text-[#222222] tracking-[0.1em] uppercase" value={formData.category} onChange={e => setFormData({ ...formData, category: e.target.value })}>
-                                        {CATEGORIES.map(c => <option key={c} value={c}>{c.toUpperCase()}</option>)}
-                                    </select>
-                                </div>
+                            <div className="mb-8">
+                                <label className="block text-[10px] uppercase tracking-[0.4em] text-[#666666] font-black mb-4">Market Sector</label>
+                                <select className="w-full h-16 px-8 bg-white border border-[#E6E6E1] rounded-3xl focus:border-[#E8D200]/40 outline-none transition-all appearance-none text-[12px] font-black text-[#222222] tracking-[0.1em] uppercase" value={formData.category} onChange={e => setFormData({ ...formData, category: e.target.value })}>
+                                    {CATEGORIES.map(c => <option key={c} value={c}>{c.toUpperCase()}</option>)}
+                                </select>
                             </div>
 
                             <div className="mb-8">
@@ -885,35 +930,78 @@ export default function RewardManager() {
                                 <input type="text" required placeholder="PROTOCOL IDENTIFIER..." className="w-full h-16 px-8 bg-white border border-[#E6E6E1] rounded-3xl focus:border-[#E8D200]/40 outline-none transition-all text-[12px] font-bold text-[#1A1A1A] placeholder-[#BBBBBB] uppercase tracking-[0.2em]" value={formData.title} onChange={e => setFormData({ ...formData, title: e.target.value })} />
                             </div>
 
+                            {/* Image upload */}
+                            <div className="mb-8">
+                                <label className="block text-[10px] uppercase tracking-[0.4em] text-[#666666] font-black mb-4">Logo Image</label>
+                                <div className="flex gap-6 items-center bg-white border border-[#E6E6E1] rounded-[2rem] p-6">
+                                    <div className="w-24 h-24 rounded-2xl bg-[#F4F4F1] border border-[#E6E6E1] flex items-center justify-center overflow-hidden shrink-0">
+                                        {formData.image_url ? (
+                                            <img src={formData.image_url} alt="" className="w-full h-full object-cover" />
+                                        ) : (
+                                            <ImageIcon size={28} className="text-[#666666]" />
+                                        )}
+                                    </div>
+                                    <div className="flex-1 flex items-center gap-4">
+                                        <label className="flex items-center gap-3 h-12 px-8 bg-[#F4F4F1] border border-[#E6E6E1] rounded-full text-[10px] uppercase tracking-[0.3em] text-[#333333] hover:text-[#8a7600] hover:border-[#E8D200]/40 transition-all font-black cursor-pointer">
+                                            <Upload size={14} /> {imageUploading ? 'Uploading...' : (formData.image_url ? 'Replace' : 'Upload')}
+                                            <input type="file" accept="image/*" className="hidden" onChange={handleImagePick} disabled={imageUploading} />
+                                        </label>
+                                        {formData.image_url && (
+                                            <button type="button" onClick={() => setFormData({ ...formData, image_url: '' })} className="text-[10px] uppercase tracking-[0.3em] text-[#555555] hover:text-red-500 transition-colors font-black">Remove</button>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+
                             <div className="mb-8">
                                 <label className="block text-[10px] uppercase tracking-[0.4em] text-[#666666] font-black mb-4">Intelligence Description</label>
                                 <textarea rows={2} className="w-full p-8 bg-white border border-[#E6E6E1] rounded-[2rem] focus:border-[#E8D200]/40 outline-none transition-all text-sm text-[#222222] leading-relaxed resize-none" value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} />
                             </div>
 
+                            {/* Offer description */}
+                            <div className="mb-8">
+                                <label className="block text-[10px] uppercase tracking-[0.4em] text-[#666666] font-black mb-4">Offer Description <span className="text-[#333333] normal-case font-black ml-2">— shown when user expands the reward card</span></label>
+                                <textarea rows={3} placeholder="E.G. REDEEM A 6-PACK TRIAL PACK OF TRIBE'S BEST-SELLING PLANT-BASED PROTEIN BARS — FREE WITH YOUR POWR POINTS." className="w-full p-6 bg-white border border-[#E6E6E1] rounded-[2rem] focus:border-[#E8D200]/40 outline-none transition-all text-sm text-[#222222] leading-relaxed resize-none" value={formData.offer} onChange={e => setFormData({ ...formData, offer: e.target.value })} />
+                            </div>
+
+                            {/* Partner blurb */}
+                            <div className="mb-8">
+                                <label className="block text-[10px] uppercase tracking-[0.4em] text-[#666666] font-black mb-4">Partner Blurb <span className="text-[#333333] normal-case font-black ml-2">— "About" section on expanded card</span></label>
+                                <textarea rows={2} placeholder="E.G. TRIBE MAKES NATURAL, PLANT-BASED PROTEIN BARS AND SHAKES, BUILT FOR REAL PERFORMANCE." className="w-full p-6 bg-white border border-[#E6E6E1] rounded-[2rem] focus:border-[#E8D200]/40 outline-none transition-all text-sm text-[#222222] leading-relaxed resize-none" value={formData.partner_blurb} onChange={e => setFormData({ ...formData, partner_blurb: e.target.value })} />
+                            </div>
+
+                            {/* Terms */}
+                            <div className="mb-8">
+                                <label className="block text-[10px] uppercase tracking-[0.4em] text-[#666666] font-black mb-4">Terms &amp; Conditions</label>
+                                <textarea rows={3} placeholder="E.G. SINGLE USE. VALID 90 DAYS. NOT COMBINABLE WITH OTHER OFFERS." className="w-full p-6 bg-white border border-[#E6E6E1] rounded-[2rem] focus:border-[#E8D200]/40 outline-none transition-all text-xs text-[#222222] leading-relaxed resize-none" value={formData.terms} onChange={e => setFormData({ ...formData, terms: e.target.value })} />
+                            </div>
+                            </div>
+
+                            {/* Right column — pricing, media & config */}
+                            <div>
                             {/* Kind + code source */}
-                            <div className="grid grid-cols-2 gap-8 mb-8">
-                                <div>
-                                    <label className="block text-[10px] uppercase tracking-[0.4em] text-[#666666] font-black mb-4">Reward Type</label>
-                                    <div className="flex bg-white border border-[#E6E6E1] rounded-3xl p-2 gap-2">
-                                        {KINDS.map(k => {
-                                            const active = formData.reward_kind === k;
-                                            return (
-                                                <button key={k} type="button" onClick={() => setFormData({ ...formData, reward_kind: k })} className={`flex-1 h-12 rounded-[1.25rem] text-[10px] font-black uppercase tracking-[0.3em] transition-all ${active ? 'bg-[#E8D200] text-[#080808]' : 'text-[#BBB] hover:text-[#8a7600]'}`}>{k}</button>
-                                            );
-                                        })}
-                                    </div>
+                            <div className="mb-8">
+                                <label className="block text-[10px] uppercase tracking-[0.4em] text-[#666666] font-black mb-4">Reward Type</label>
+                                <div className="flex bg-white border border-[#E6E6E1] rounded-3xl p-2 gap-2">
+                                    {KINDS.map(k => {
+                                        const active = formData.reward_kind === k;
+                                        return (
+                                            <button key={k} type="button" onClick={() => setFormData({ ...formData, reward_kind: k })} className={`flex-1 h-12 rounded-[1.25rem] text-[10px] font-black uppercase tracking-[0.3em] transition-all ${active ? 'bg-[#E8D200] text-[#080808]' : 'text-[#BBB] hover:text-[#8a7600]'}`}>{k}</button>
+                                        );
+                                    })}
                                 </div>
-                                <div>
-                                    <label className="block text-[10px] uppercase tracking-[0.4em] text-[#666666] font-black mb-1">Code Source</label>
-                                    <p className="text-[9px] uppercase tracking-[0.3em] text-[#999999] font-black mb-3">Pool = upload codes · Auto = generate per user · Affiliate = shared link, no code</p>
-                                    <div className="flex bg-white border border-[#E6E6E1] rounded-3xl p-2 gap-2">
-                                        {[['POOL', 'Pool'], ['API_VALIDATED', 'Auto'], ['AFFILIATE', 'Affiliate']].map(([val, label]) => {
-                                            const active = formData.integration_type === val;
-                                            return (
-                                                <button key={val} type="button" onClick={() => setFormData({ ...formData, integration_type: val })} className={`flex-1 h-12 rounded-[1.25rem] text-[10px] font-black uppercase tracking-[0.3em] transition-all ${active ? 'bg-[#E8D200] text-[#080808]' : 'text-[#BBB] hover:text-[#8a7600]'}`}>{label}</button>
-                                            );
-                                        })}
-                                    </div>
+                            </div>
+
+                            <div className="mb-8">
+                                <label className="block text-[10px] uppercase tracking-[0.4em] text-[#666666] font-black mb-1">Code Source</label>
+                                <p className="text-[9px] uppercase tracking-[0.3em] text-[#999999] font-black mb-3">Pool = upload codes · Auto = generate per user · Affiliate = shared link, no code</p>
+                                <div className="flex bg-white border border-[#E6E6E1] rounded-3xl p-2 gap-2">
+                                    {[['POOL', 'Pool'], ['API_VALIDATED', 'Auto'], ['AFFILIATE', 'Affiliate']].map(([val, label]) => {
+                                        const active = formData.integration_type === val;
+                                        return (
+                                            <button key={val} type="button" onClick={() => setFormData({ ...formData, integration_type: val })} className={`flex-1 h-12 rounded-[1.25rem] text-[10px] font-black uppercase tracking-[0.3em] transition-all ${active ? 'bg-[#E8D200] text-[#080808]' : 'text-[#BBB] hover:text-[#8a7600]'}`}>{label}</button>
+                                        );
+                                    })}
                                 </div>
                             </div>
 
@@ -944,47 +1032,6 @@ export default function RewardManager() {
                                     </div>
                                 </div>
                             )}
-
-                            {/* Image upload */}
-                            <div className="mb-8">
-                                <label className="block text-[10px] uppercase tracking-[0.4em] text-[#666666] font-black mb-4">Logo Image</label>
-                                <div className="flex gap-6 items-center bg-white border border-[#E6E6E1] rounded-[2rem] p-6">
-                                    <div className="w-24 h-24 rounded-2xl bg-[#F4F4F1] border border-[#E6E6E1] flex items-center justify-center overflow-hidden shrink-0">
-                                        {formData.image_url ? (
-                                            <img src={formData.image_url} alt="" className="w-full h-full object-cover" />
-                                        ) : (
-                                            <ImageIcon size={28} className="text-[#666666]" />
-                                        )}
-                                    </div>
-                                    <div className="flex-1 flex items-center gap-4">
-                                        <label className="flex items-center gap-3 h-12 px-8 bg-[#F4F4F1] border border-[#E6E6E1] rounded-full text-[10px] uppercase tracking-[0.3em] text-[#333333] hover:text-[#8a7600] hover:border-[#E8D200]/40 transition-all font-black cursor-pointer">
-                                            <Upload size={14} /> {imageUploading ? 'Uploading...' : (formData.image_url ? 'Replace' : 'Upload')}
-                                            <input type="file" accept="image/*" className="hidden" onChange={handleImagePick} disabled={imageUploading} />
-                                        </label>
-                                        {formData.image_url && (
-                                            <button type="button" onClick={() => setFormData({ ...formData, image_url: '' })} className="text-[10px] uppercase tracking-[0.3em] text-[#555555] hover:text-red-500 transition-colors font-black">Remove</button>
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Terms */}
-                            <div className="mb-8">
-                                <label className="block text-[10px] uppercase tracking-[0.4em] text-[#666666] font-black mb-4">Terms &amp; Conditions</label>
-                                <textarea rows={3} placeholder="E.G. SINGLE USE. VALID 90 DAYS. NOT COMBINABLE WITH OTHER OFFERS." className="w-full p-6 bg-white border border-[#E6E6E1] rounded-[2rem] focus:border-[#E8D200]/40 outline-none transition-all text-xs text-[#222222] leading-relaxed resize-none" value={formData.terms} onChange={e => setFormData({ ...formData, terms: e.target.value })} />
-                            </div>
-
-                            {/* Offer description */}
-                            <div className="mb-8">
-                                <label className="block text-[10px] uppercase tracking-[0.4em] text-[#666666] font-black mb-4">Offer Description <span className="text-[#333333] normal-case font-black ml-2">— shown when user expands the reward card</span></label>
-                                <textarea rows={3} placeholder="E.G. REDEEM A 6-PACK TRIAL PACK OF TRIBE'S BEST-SELLING PLANT-BASED PROTEIN BARS — FREE WITH YOUR POWR POINTS." className="w-full p-6 bg-white border border-[#E6E6E1] rounded-[2rem] focus:border-[#E8D200]/40 outline-none transition-all text-sm text-[#222222] leading-relaxed resize-none" value={formData.offer} onChange={e => setFormData({ ...formData, offer: e.target.value })} />
-                            </div>
-
-                            {/* Partner blurb */}
-                            <div className="mb-8">
-                                <label className="block text-[10px] uppercase tracking-[0.4em] text-[#666666] font-black mb-4">Partner Blurb <span className="text-[#333333] normal-case font-black ml-2">— "About" section on expanded card</span></label>
-                                <textarea rows={2} placeholder="E.G. TRIBE MAKES NATURAL, PLANT-BASED PROTEIN BARS AND SHAKES, BUILT FOR REAL PERFORMANCE." className="w-full p-6 bg-white border border-[#E6E6E1] rounded-[2rem] focus:border-[#E8D200]/40 outline-none transition-all text-sm text-[#222222] leading-relaxed resize-none" value={formData.partner_blurb} onChange={e => setFormData({ ...formData, partner_blurb: e.target.value })} />
-                            </div>
 
                             {/* Hero image upload */}
                             <div className="mb-8">
@@ -1064,6 +1111,8 @@ export default function RewardManager() {
                                 <p className="mt-3 text-[10px] uppercase tracking-[0.3em] text-[#999999] font-black">
                                     User must re-earn enough POWR to claim again (subject to this cap)
                                 </p>
+                            </div>
+                            </div>
                             </div>
 
                             {/* Code pool — upload + ledger */}
@@ -1341,33 +1390,34 @@ export default function RewardManager() {
                                 </div>
                             )}
 
-                            <div className="flex items-center gap-4 bg-white border border-[#E6E6E1] rounded-[2rem] p-8">
-                                <button
-                                    type="button"
-                                    onClick={() => setFormData({ ...formData, featured_on_home: !formData.featured_on_home })}
-                                    className={`w-12 h-7 rounded-full transition-all relative shrink-0 ${formData.featured_on_home ? 'bg-[#E8D200]' : 'bg-[#EFEFEC]'}`}
-                                >
-                                    <span className={`absolute top-1 w-5 h-5 rounded-full transition-all ${formData.featured_on_home ? 'left-[24px] bg-white' : 'left-1 bg-white'}`} />
-                                </button>
-                                <div>
-                                    <span className="text-[10px] uppercase tracking-[0.4em] text-[#666666] font-black">Feature on Home Screen</span>
-                                    <p className="text-[10px] text-[#999999] mt-0.5">Replaces the reward card on the app home screen. Only one reward can be featured at a time.</p>
+                            <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-10 bg-white border border-[#E6E6E1] rounded-[2rem] p-8">
+                                <div className="flex flex-col sm:flex-row sm:items-center gap-8 sm:gap-14">
+                                    <div className="flex items-center gap-4">
+                                        <button
+                                            type="button"
+                                            onClick={() => setFormData({ ...formData, featured_on_home: !formData.featured_on_home })}
+                                            className={`w-12 h-7 rounded-full transition-all relative shrink-0 ${formData.featured_on_home ? 'bg-[#E8D200]' : 'bg-[#EFEFEC]'}`}
+                                        >
+                                            <span className={`absolute top-1 w-5 h-5 rounded-full transition-all ${formData.featured_on_home ? 'left-[24px] bg-white' : 'left-1 bg-white'}`} />
+                                        </button>
+                                        <div>
+                                            <span className="text-[10px] uppercase tracking-[0.4em] text-[#666666] font-black">Feature on Home Screen</span>
+                                            <p className="text-[10px] text-[#999999] mt-0.5 max-w-sm">Replaces the reward card on the app home screen. Only one reward can be featured at a time.</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-4">
+                                        <button
+                                            type="button"
+                                            onClick={() => setFormData({ ...formData, active: !formData.active })}
+                                            className={`w-12 h-7 rounded-full transition-all relative shrink-0 ${formData.active ? 'bg-[#E8D200]' : 'bg-[#EFEFEC]'}`}
+                                        >
+                                            <span className={`absolute top-1 w-5 h-5 rounded-full transition-all ${formData.active ? 'left-[24px] bg-white' : 'left-1 bg-white'}`} />
+                                        </button>
+                                        <span className="text-[10px] uppercase tracking-[0.4em] text-[#666666] font-black whitespace-nowrap">Broadcast Live to Network</span>
+                                    </div>
                                 </div>
-                            </div>
-
-                            <div className="flex justify-between items-center bg-white border border-[#E6E6E1] rounded-[2rem] p-8">
-                                <div className="flex items-center gap-4">
-                                    <button
-                                        type="button"
-                                        onClick={() => setFormData({ ...formData, active: !formData.active })}
-                                        className={`w-12 h-7 rounded-full transition-all relative shrink-0 ${formData.active ? 'bg-[#E8D200]' : 'bg-[#EFEFEC]'}`}
-                                    >
-                                        <span className={`absolute top-1 w-5 h-5 rounded-full transition-all ${formData.active ? 'left-[24px] bg-white' : 'left-1 bg-white'}`} />
-                                    </button>
-                                    <span className="text-[10px] uppercase tracking-[0.4em] text-[#666666] font-black">Broadcast Live to Network</span>
-                                </div>
-                                <div className="flex gap-4">
-                                    <button type="button" onClick={() => setIsModalOpen(false)} className="h-16 px-10 text-[11px] uppercase tracking-[0.4em] font-black text-[#666666] hover:text-[#BBB] transition-colors">Abort</button>
+                                <div className="flex gap-4 shrink-0">
+                                    <button type="button" onClick={() => setEditorOpen(false)} className="h-16 px-10 text-[11px] uppercase tracking-[0.4em] font-black text-[#666666] hover:text-[#BBB] transition-colors">Abort</button>
                                     <button type="submit" disabled={saving} className="h-16 px-12 bg-[#E8D200] text-[#080808] text-[11px] font-black uppercase tracking-[0.4em] rounded-full transition-all hover:translate-y-[-4px] shadow-2xl shadow-[#E8D200]/20 disabled:opacity-50">
                                         {saving ? 'SYNCING...' : 'COMMIT PROTOCOL'}
                                     </button>
@@ -1375,8 +1425,12 @@ export default function RewardManager() {
                             </div>
                         </form>
                     </div>
-                    </div>
                 </div>
+            )}
+
+            {/* Portal Access modal — manage brand logins for the partner portal */}
+            {portalAccessOpen && (
+                <BrandPortalAccess brands={portalBrands} onClose={() => setPortalAccessOpen(false)} />
             )}
         </div>
     );

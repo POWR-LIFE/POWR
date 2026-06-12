@@ -8,6 +8,13 @@ import {
     Activity, Award, AlertTriangle, BarChart3, Shield, Settings, ScrollText, Gift, Target, MessageSquare, Star, Inbox
 } from 'lucide-react';
 
+import PartnerPortalHome from './pages/partner/PartnerHome';
+import PartnerPortalRewards from './pages/partner/PartnerRewards';
+import PartnerPortalRedemptions from './pages/partner/PartnerRedemptions';
+import PartnerPortalSettings from './pages/partner/PartnerSettings';
+import PartnerSetup from './pages/partner/PartnerSetup';
+import { PartnerLayout } from './pages/partner/PartnerLayout';
+
 import PartnerManager from './pages/admin/PartnerManager';
 import RewardManager from './pages/admin/RewardManager';
 import RewardSubmissions from './pages/admin/RewardSubmissions';
@@ -35,12 +42,47 @@ import AthleteApplications from './pages/admin/AthleteApplications';
 import DeleteAccount from './pages/DeleteAccount';
 
 // --- Auth Context ---
-const AuthContext = createContext({ user: null, isAdmin: false, loading: true });
+const AuthContext = createContext({ user: null, isAdmin: false, isPartner: false, partnerData: null, loading: true });
+
+const ACTING_BRAND_KEY = 'powr_acting_brand';
+
+// Brands have no table of their own — identity comes from rewards.brand_name,
+// with the logo borrowed from the brand's most recent reward.
+const fetchBrandProfile = async (brandName) => {
+    const { data } = await supabase
+        .from('rewards')
+        .select('image_url, category')
+        .ilike('brand_name', brandName)
+        .order('created_at', { ascending: false })
+        .limit(1);
+    return {
+        brand_name: brandName,
+        name: brandName,
+        logo_url: data?.[0]?.image_url ?? null,
+        logo_bg: 'dark',
+        category: data?.[0]?.category ?? null,
+    };
+};
 
 export const AuthProvider = ({ children }) => {
     const [user, setUser] = useState(null);
     const [isAdmin, setIsAdmin] = useState(false);
+    const [isPartner, setIsPartner] = useState(false);
+    const [partnerData, setPartnerData] = useState(null);
+    const [actingPartner, setActingPartnerState] = useState(null);
     const [loading, setLoading] = useState(true);
+
+    // Admin-only: preview the portal as any reward brand
+    const setActingPartner = async (brandName) => {
+        if (!brandName) {
+            localStorage.removeItem(ACTING_BRAND_KEY);
+            setActingPartnerState(null);
+            return;
+        }
+        const profile = await fetchBrandProfile(brandName);
+        localStorage.setItem(ACTING_BRAND_KEY, brandName);
+        setActingPartnerState(profile);
+    };
 
     const checkAdmin = async (userId) => {
         try {
@@ -56,6 +98,20 @@ export const AuthProvider = ({ children }) => {
         }
     };
 
+    const checkPartner = async (userId) => {
+        try {
+            const { data } = await supabase
+                .from('reward_brand_users')
+                .select('brand_name')
+                .eq('user_id', userId)
+                .single();
+            if (!data) return null;
+            return await fetchBrandProfile(data.brand_name);
+        } catch {
+            return null;
+        }
+    };
+
     useEffect(() => {
         let mounted = true;
         let lastUserId = null;
@@ -66,12 +122,30 @@ export const AuthProvider = ({ children }) => {
                 if (session.user.id === lastUserId) return;
                 lastUserId = session.user.id;
                 setUser(session.user);
-                const adminStatus = await checkAdmin(session.user.id);
-                if (mounted) { setIsAdmin(adminStatus); setLoading(false); }
+                const [adminStatus, partnerResult] = await Promise.all([
+                    checkAdmin(session.user.id),
+                    checkPartner(session.user.id),
+                ]);
+                // Restore admin preview selection (admins with no brand link)
+                let restoredActing = null;
+                if (adminStatus && !partnerResult) {
+                    const storedBrand = localStorage.getItem(ACTING_BRAND_KEY);
+                    if (storedBrand) restoredActing = await fetchBrandProfile(storedBrand);
+                }
+                if (mounted) {
+                    setIsAdmin(adminStatus);
+                    setIsPartner(!!partnerResult);
+                    setPartnerData(partnerResult);
+                    setActingPartnerState(restoredActing);
+                    setLoading(false);
+                }
             } else {
                 lastUserId = null;
                 setUser(null);
                 setIsAdmin(false);
+                setIsPartner(false);
+                setPartnerData(null);
+                setActingPartnerState(null);
                 if (mounted) setLoading(false);
             }
         };
@@ -89,7 +163,13 @@ export const AuthProvider = ({ children }) => {
     }, []);
 
     return (
-        <AuthContext.Provider value={{ user, isAdmin, loading }}>
+        <AuthContext.Provider value={{
+            user, isAdmin, isPartner,
+            partnerData: partnerData ?? actingPartner,
+            isActingPartner: !partnerData && !!actingPartner,
+            setActingPartner,
+            loading,
+        }}>
             {children}
         </AuthContext.Provider>
     );
@@ -136,6 +216,67 @@ const LandingPage = () => {
         return () => { if (landing) landing.style.display = 'none'; };
     }, []);
     return null;
+};
+
+// --- Partner Login ---
+const PartnerLogin = () => {
+    const navigate = useNavigate();
+    const { isAdmin, isPartner, user } = useAuth();
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState(null);
+    const [status, setStatus] = useState(null);
+
+    useEffect(() => {
+        // Admins are allowed into the partner portal too (preview mode)
+        if (user && (isPartner || isAdmin)) navigate('/partner');
+    }, [user, isAdmin, isPartner, navigate]);
+
+    const handleLogin = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        setError(null);
+        setStatus('Authenticating...');
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) {
+            setError(error.message);
+            setStatus(null);
+            setLoading(false);
+        } else {
+            setStatus('Loading your portal...');
+        }
+    };
+
+    return (
+        <div className="min-h-screen flex items-center justify-center bg-[#F4F4F1] text-[#1A1A1A] font-['Outfit'] fixed inset-0 z-[100]">
+            <div className="w-full max-w-md p-8 bg-white border border-[#E6E6E1] rounded-2xl shadow-2xl">
+                <div className="flex justify-center mb-8">
+                    <img src="/powr-logo-black.png" alt="POWR" className="h-12" />
+                </div>
+                <h2 className="text-2xl font-light text-center mb-2 tracking-tight">Partner Portal</h2>
+                <p className="text-center text-[10px] uppercase tracking-[0.4em] text-[#BBBBBB] font-black mb-8">Manage your rewards</p>
+                <form onSubmit={handleLogin} className="space-y-6">
+                    <div>
+                        <label className="block text-[10px] uppercase tracking-widest text-[#777777] font-bold mb-2">Email address</label>
+                        <input type="email" className="w-full h-12 px-4 bg-white border border-[#E6E6E1] rounded-lg focus:border-[#E8D200] outline-none transition-all text-sm text-[#1A1A1A]" value={email} onChange={e => setEmail(e.target.value)} required />
+                    </div>
+                    <div>
+                        <label className="block text-[10px] uppercase tracking-widest text-[#777777] font-bold mb-2">Password</label>
+                        <input type="password" className="w-full h-12 px-4 bg-white border border-[#E6E6E1] rounded-lg focus:border-[#E8D200] outline-none transition-all text-sm text-[#1A1A1A]" value={password} onChange={e => setPassword(e.target.value)} required />
+                    </div>
+                    {error && <div className="text-red-400 text-xs bg-red-500/5 p-3 border border-red-500/20 rounded-lg">{error}</div>}
+                    {status && <div className="text-[#8a7600] text-xs bg-[#E8D200]/5 p-3 border border-[#E8D200]/20 rounded-lg animate-pulse">{status}</div>}
+                    <button type="submit" disabled={loading} className="w-full h-12 bg-[#E8D200] text-[#080808] font-black uppercase tracking-widest text-xs rounded-lg hover:translate-y-[-2px] transition-all shadow-lg shadow-[#E8D200]/10 disabled:opacity-50">
+                        {loading ? 'Processing...' : 'Sign In'}
+                    </button>
+                    <div className="text-center pt-2">
+                        <Link to="/" className="text-[10px] uppercase tracking-widest text-[#AAAAAA] hover:text-[#8a7600] transition-colors">Back to home</Link>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
 };
 
 // --- Admin Login ---
@@ -212,6 +353,25 @@ const ProtectedRoute = ({ children }) => {
     );
 
     if (!user || !isAdmin) return <Navigate to="/admin/login" state={{ from: location }} replace />;
+    return children;
+};
+
+// --- Partner Protected Route ---
+// Admins are allowed in too: they can preview the portal as any partner.
+const PartnerProtectedRoute = ({ children }) => {
+    const { user, isPartner, isAdmin, loading } = useAuth();
+    const location = useLocation();
+
+    if (loading) return (
+        <div className="min-h-screen bg-[#F4F4F1] flex items-center justify-center fixed inset-0 z-[100]">
+            <div className="flex flex-col items-center gap-4">
+                <div className="w-8 h-8 border-2 border-[#E8D200] border-t-transparent rounded-full animate-spin" />
+                <p className="text-[10px] uppercase tracking-widest text-[#AAAAAA]">Loading portal...</p>
+            </div>
+        </div>
+    );
+
+    if (!user || (!isPartner && !isAdmin)) return <Navigate to="/partner/login" state={{ from: location }} replace />;
     return children;
 };
 
@@ -554,6 +714,12 @@ export default function App() {
                     <Route path="/delete-account" element={<DeleteAccount />} />
                     <Route path="/athlete/:token" element={<AthleteSignup />} />
                     <Route path="/partner-reward/:token" element={<PartnerRewardSubmit />} />
+                    <Route path="/partner/login" element={<PartnerLogin />} />
+                    <Route path="/partner/setup/:token" element={<PartnerSetup />} />
+                    <Route path="/partner" element={<PartnerProtectedRoute><PartnerLayout><PartnerPortalHome /></PartnerLayout></PartnerProtectedRoute>} />
+                    <Route path="/partner/rewards" element={<PartnerProtectedRoute><PartnerLayout><PartnerPortalRewards /></PartnerLayout></PartnerProtectedRoute>} />
+                    <Route path="/partner/redemptions" element={<PartnerProtectedRoute><PartnerLayout><PartnerPortalRedemptions /></PartnerLayout></PartnerProtectedRoute>} />
+                    <Route path="/partner/settings" element={<PartnerProtectedRoute><PartnerLayout><PartnerPortalSettings /></PartnerLayout></PartnerProtectedRoute>} />
                     <Route path="/admin/login" element={<AdminLogin />} />
                     <Route path="/admin" element={<ProtectedRoute><AdminLayout><AdminHome /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/partners" element={<ProtectedRoute><AdminLayout><PartnerManager /></AdminLayout></ProtectedRoute>} />
