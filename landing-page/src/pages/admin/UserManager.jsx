@@ -2,8 +2,39 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
 import { useAuth } from '../../App';
-import { User, Search, Users, Activity, Award, ChevronRight, Filter, MapPin, Star, UserPlus, Trash2, X, Eye, EyeOff } from 'lucide-react';
+import { User, Search, Users, Activity, Award, ChevronRight, Filter, MapPin, Star, UserPlus, Trash2, X, Eye, EyeOff, Watch } from 'lucide-react';
 import { Link } from 'react-router-dom';
+
+// Full connectable provider list — mirrors lib/health/providers/index.ts in the app
+// (native HealthKit/Health Connect + every Terra provider we expose).
+const PROVIDER_LABELS = {
+    'apple-health': 'Apple Health',
+    'health-connect': 'Health Connect',
+    'samsung-health': 'Samsung Health',
+    whoop: 'Whoop',
+    oura: 'Oura',
+    polar: 'Polar',
+    garmin: 'Garmin',
+    fitbit: 'Fitbit',
+    strava: 'Strava',
+    huawei: 'Huawei Health',
+    withings: 'Withings',
+    peloton: 'Peloton',
+    zepp: 'Zepp',
+    technogym: 'Technogym',
+    coros: 'Coros',
+    suunto: 'Suunto',
+    wahoo: 'Wahoo',
+    zwift: 'Zwift',
+    concept2: 'Concept2',
+    ifit: 'iFit',
+    underarmour: 'Under Armour',
+};
+const providerLabel = (p) => PROVIDER_LABELS[p] || p;
+
+const ACTIVITY_TYPES = ['walking', 'running', 'cycling', 'swimming', 'gym', 'hiit', 'sports', 'yoga', 'sleep', 'dance'];
+
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 const timeAgo = (dateStr) => {
     const diff = Date.now() - new Date(dateStr).getTime();
@@ -22,6 +53,16 @@ export default function UserManager() {
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
     const [stats, setStats] = useState({ total: 0, avgLevel: 0, activeToday: 0 });
+
+    // Filters
+    const [filterDevice, setFilterDevice] = useState('all');       // all | none | <provider>
+    const [filterActivity, setFilterActivity] = useState('all');   // all | none | <type>
+    const [activityOnly, setActivityOnly] = useState(false);       // exclusively that activity
+    const [filterTier, setFilterTier] = useState('all');           // all | pro | standard
+    const [filterLocation, setFilterLocation] = useState('all');   // all | granted | denied
+    const [filterActive, setFilterActive] = useState('all');       // all | 1 | 7 | 30 | inactive30 | never
+    const [filterMinLevel, setFilterMinLevel] = useState('');
+    const [showFilters, setShowFilters] = useState(false);
 
     // Create user modal
     const [showCreate, setShowCreate] = useState(false);
@@ -80,12 +121,72 @@ export default function UserManager() {
         }
     };
 
-    const filtered = users.filter(u => 
-        !search || 
-        (u.display_name?.toLowerCase().includes(search.toLowerCase())) ||
-        (u.username?.toLowerCase().includes(search.toLowerCase())) ||
-        (u.email?.toLowerCase().includes(search.toLowerCase()))
-    );
+    // Per-provider connected-user counts; dropdown shows the full connectable
+    // list plus anything unexpected found in the data.
+    const providerCounts = users.reduce((acc, u) => {
+        (u.connected_providers || []).forEach(p => { acc[p] = (acc[p] || 0) + 1; });
+        return acc;
+    }, {});
+    const knownProviders = [...new Set([...Object.keys(PROVIDER_LABELS), ...Object.keys(providerCounts)])]
+        .sort((a, b) => providerLabel(a).localeCompare(providerLabel(b)));
+
+    const activeFilterCount = [
+        filterDevice !== 'all',
+        filterActivity !== 'all',
+        filterTier !== 'all',
+        filterLocation !== 'all',
+        filterActive !== 'all',
+        filterMinLevel !== '',
+    ].filter(Boolean).length;
+
+    const clearFilters = () => {
+        setFilterDevice('all'); setFilterActivity('all'); setActivityOnly(false);
+        setFilterTier('all'); setFilterLocation('all'); setFilterActive('all');
+        setFilterMinLevel('');
+    };
+
+    const filtered = users.filter(u => {
+        if (search) {
+            const q = search.toLowerCase();
+            const hit = (u.display_name?.toLowerCase().includes(q)) ||
+                (u.username?.toLowerCase().includes(q)) ||
+                (u.email?.toLowerCase().includes(q));
+            if (!hit) return false;
+        }
+
+        const providers = u.connected_providers || [];
+        if (filterDevice === 'none' && providers.length > 0) return false;
+        if (filterDevice !== 'all' && filterDevice !== 'none' && !providers.includes(filterDevice)) return false;
+
+        const types = u.activity_types || [];
+        if (filterActivity === 'none' && types.length > 0) return false;
+        if (filterActivity !== 'all' && filterActivity !== 'none') {
+            if (!types.includes(filterActivity)) return false;
+            // "Only" = no other activity types besides this one (sleep doesn't count as activity)
+            if (activityOnly && types.some(t => t !== filterActivity && t !== 'sleep')) return false;
+        }
+
+        if (filterTier === 'pro' && !u.is_pro) return false;
+        if (filterTier === 'standard' && u.is_pro) return false;
+
+        if (filterLocation === 'granted' && !u.location_granted) return false;
+        if (filterLocation === 'denied' && u.location_granted) return false;
+
+        if (filterActive !== 'all') {
+            const last = u.last_active_at ? new Date(u.last_active_at).getTime() : null;
+            if (filterActive === 'never') {
+                if (last) return false;
+            } else if (filterActive === 'inactive30') {
+                if (last && Date.now() - last < 30 * DAY_MS) return false;
+            } else {
+                if (!last || Date.now() - last > Number(filterActive) * DAY_MS) return false;
+            }
+        }
+
+        if (filterMinLevel !== '' && (u.level || 1) < Number(filterMinLevel)) return false;
+
+        return true;
+    });
 
     useEffect(() => { fetchUsers(); }, []);
 
@@ -219,12 +320,134 @@ export default function UserManager() {
                     />
                 </div>
                 <button
+                    onClick={() => setShowFilters(f => !f)}
+                    className={`h-16 px-8 rounded-full flex items-center gap-3 text-[10px] font-black uppercase tracking-[0.3em] border transition-all shrink-0 ${
+                        showFilters || activeFilterCount > 0
+                            ? 'bg-[#E8D200]/10 border-[#E8D200]/40 text-[#8a7600]'
+                            : 'bg-white border-[#E6E6E1] text-[#666666] hover:border-[#DDDDDD]'
+                    }`}
+                >
+                    <Filter size={16} />
+                    Filters{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
+                </button>
+                <button
                     onClick={() => setShowCreate(true)}
                     className="h-16 px-10 bg-[#E8D200] text-[#080808] rounded-full flex items-center gap-4 text-[10px] font-black uppercase tracking-[0.3em] hover:translate-y-[-2px] transition-all shadow-lg shadow-[#E8D200]/10 shrink-0"
                 >
                     <UserPlus size={16} /> New User
                 </button>
             </div>
+
+            {/* Filter Panel */}
+            {showFilters && (
+                <div className="bg-white border border-[#E6E6E1] rounded-3xl p-8 mb-10 animate-in fade-in slide-in-from-top-2 duration-300">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6">
+                        <div>
+                            <label className="block text-[9px] uppercase tracking-[0.3em] text-[#888888] font-black mb-3">Connected Device</label>
+                            <select
+                                value={filterDevice}
+                                onChange={e => setFilterDevice(e.target.value)}
+                                className="w-full h-12 px-4 bg-[#F4F4F1] border border-[#E6E6E1] rounded-xl text-[11px] font-black uppercase tracking-[0.15em] text-[#1A1A1A] outline-none focus:border-[#E8D200]/40 transition-all"
+                            >
+                                <option value="all">All</option>
+                                {knownProviders.map(p => (
+                                    <option key={p} value={p}>{providerLabel(p)} ({providerCounts[p] || 0})</option>
+                                ))}
+                                <option value="none">No device</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-[9px] uppercase tracking-[0.3em] text-[#888888] font-black mb-3">Activity Type</label>
+                            <select
+                                value={filterActivity}
+                                onChange={e => setFilterActivity(e.target.value)}
+                                className="w-full h-12 px-4 bg-[#F4F4F1] border border-[#E6E6E1] rounded-xl text-[11px] font-black uppercase tracking-[0.15em] text-[#1A1A1A] outline-none focus:border-[#E8D200]/40 transition-all"
+                            >
+                                <option value="all">All</option>
+                                {ACTIVITY_TYPES.map(t => (
+                                    <option key={t} value={t}>{t}</option>
+                                ))}
+                                <option value="none">No sessions</option>
+                            </select>
+                            {filterActivity !== 'all' && filterActivity !== 'none' && (
+                                <button
+                                    onClick={() => setActivityOnly(o => !o)}
+                                    className={`mt-3 px-3 py-1.5 rounded-full border text-[9px] font-black uppercase tracking-[0.2em] transition-all ${
+                                        activityOnly
+                                            ? 'bg-[#E8D200]/10 border-[#E8D200]/40 text-[#8a7600]'
+                                            : 'bg-[#F4F4F1] border-[#E6E6E1] text-[#999999]'
+                                    }`}
+                                >
+                                    {filterActivity} only
+                                </button>
+                            )}
+                        </div>
+                        <div>
+                            <label className="block text-[9px] uppercase tracking-[0.3em] text-[#888888] font-black mb-3">Tier</label>
+                            <select
+                                value={filterTier}
+                                onChange={e => setFilterTier(e.target.value)}
+                                className="w-full h-12 px-4 bg-[#F4F4F1] border border-[#E6E6E1] rounded-xl text-[11px] font-black uppercase tracking-[0.15em] text-[#1A1A1A] outline-none focus:border-[#E8D200]/40 transition-all"
+                            >
+                                <option value="all">All</option>
+                                <option value="pro">Pro</option>
+                                <option value="standard">Standard</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-[9px] uppercase tracking-[0.3em] text-[#888888] font-black mb-3">Location</label>
+                            <select
+                                value={filterLocation}
+                                onChange={e => setFilterLocation(e.target.value)}
+                                className="w-full h-12 px-4 bg-[#F4F4F1] border border-[#E6E6E1] rounded-xl text-[11px] font-black uppercase tracking-[0.15em] text-[#1A1A1A] outline-none focus:border-[#E8D200]/40 transition-all"
+                            >
+                                <option value="all">All</option>
+                                <option value="granted">Granted</option>
+                                <option value="denied">Denied</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-[9px] uppercase tracking-[0.3em] text-[#888888] font-black mb-3">Last Active</label>
+                            <select
+                                value={filterActive}
+                                onChange={e => setFilterActive(e.target.value)}
+                                className="w-full h-12 px-4 bg-[#F4F4F1] border border-[#E6E6E1] rounded-xl text-[11px] font-black uppercase tracking-[0.15em] text-[#1A1A1A] outline-none focus:border-[#E8D200]/40 transition-all"
+                            >
+                                <option value="all">Any time</option>
+                                <option value="1">Last 24h</option>
+                                <option value="7">Last 7 days</option>
+                                <option value="30">Last 30 days</option>
+                                <option value="inactive30">Inactive 30d+</option>
+                                <option value="never">Never active</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-[9px] uppercase tracking-[0.3em] text-[#888888] font-black mb-3">Min Level</label>
+                            <input
+                                type="number"
+                                min="1"
+                                value={filterMinLevel}
+                                onChange={e => setFilterMinLevel(e.target.value)}
+                                placeholder="Any"
+                                className="w-full h-12 px-4 bg-[#F4F4F1] border border-[#E6E6E1] rounded-xl text-[11px] font-black tracking-[0.15em] text-[#1A1A1A] placeholder-[#BBBBBB] outline-none focus:border-[#E8D200]/40 transition-all"
+                            />
+                        </div>
+                    </div>
+                    <div className="flex items-center justify-between mt-8 pt-6 border-t border-[#E6E6E1]">
+                        <span className="text-[10px] uppercase tracking-[0.4em] text-[#666666] font-black">
+                            {filtered.length} of {users.length} users match
+                        </span>
+                        {activeFilterCount > 0 && (
+                            <button
+                                onClick={clearFilters}
+                                className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-[#F4F4F1] border border-[#E6E6E1] text-[9px] font-black uppercase tracking-[0.3em] text-[#666666] hover:text-[#1A1A1A] transition-all"
+                            >
+                                <X size={12} /> Clear Filters
+                            </button>
+                        )}
+                    </div>
+                </div>
+            )}
 
             {/* Content Container */}
             <div className="bg-white border border-[#E6E6E1] rounded-3xl overflow-hidden">
@@ -238,7 +461,7 @@ export default function UserManager() {
                         <table className="w-full text-left border-collapse">
                             <thead>
                                 <tr className="bg-[#F4F4F1] border-b border-[#E6E6E1]">
-                                    {['User Identity', 'Protocol Level', 'Location', 'Registration', 'Status', ''].map(h => (
+                                    {['User Identity', 'Protocol Level', 'Devices', 'Activity', 'Location', 'Registration', 'Status', ''].map(h => (
                                         <th key={h} className={`px-6 py-5 text-[10px] font-black uppercase tracking-[0.3em] text-[#888888] whitespace-nowrap ${h === '' ? 'text-right' : ''}`}>{h}</th>
                                     ))}
                                 </tr>
@@ -246,7 +469,7 @@ export default function UserManager() {
                             <tbody className="divide-y divide-[#E6E6E1]">
                                 {filtered.length === 0 ? (
                                     <tr>
-                                        <td colSpan={6} className="px-6 py-24 text-center">
+                                        <td colSpan={8} className="px-6 py-24 text-center">
                                             <div className="flex flex-col items-center gap-6">
                                                 <div className="w-20 h-20 rounded-3xl bg-[#F4F4F1] border border-[#E6E6E1] flex items-center justify-center">
                                                     <Users size={32} className="text-[#333333]" />
@@ -287,7 +510,42 @@ export default function UserManager() {
                                                 <span className="px-4 py-1.5 rounded-full bg-[#E8D200] text-[#080808] text-[9px] font-black uppercase tracking-[0.2em]">
                                                     LVL {user.level || 1}
                                                 </span>
+                                                <span className="text-[9px] uppercase tracking-[0.2em] text-[#888888] font-black whitespace-nowrap">
+                                                    {user.total_points ?? 0} PTS
+                                                </span>
                                             </div>
+                                        </td>
+                                        <td className="px-6 py-5">
+                                            {(user.connected_providers || []).length > 0 ? (
+                                                <div className="flex flex-wrap gap-1.5 max-w-[180px]">
+                                                    {user.connected_providers.map(p => (
+                                                        <span key={p} className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#F4F4F1] border border-[#E6E6E1] text-[8px] font-black uppercase tracking-[0.15em] text-[#555555] whitespace-nowrap">
+                                                            <Watch size={9} className="text-[#8a7600]" /> {providerLabel(p)}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            ) : (
+                                                <span className="text-[9px] uppercase tracking-[0.3em] text-[#BBBBBB] font-black">None</span>
+                                            )}
+                                        </td>
+                                        <td className="px-6 py-5">
+                                            {(user.activity_types || []).length > 0 ? (
+                                                <div className="flex flex-col gap-1.5 max-w-[160px]">
+                                                    <span className="text-[12px] text-[#222222] font-medium">
+                                                        {user.session_count} session{user.session_count === 1 ? '' : 's'}
+                                                    </span>
+                                                    <span className="text-[8px] uppercase tracking-[0.15em] text-[#888888] font-black leading-relaxed">
+                                                        {user.activity_types.join(' · ')}
+                                                    </span>
+                                                    {user.last_active_at && (
+                                                        <span className="text-[9px] uppercase tracking-[0.2em] text-[#666666] font-black">
+                                                            {timeAgo(user.last_active_at)}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                <span className="text-[9px] uppercase tracking-[0.3em] text-[#BBBBBB] font-black">No sessions</span>
+                                            )}
                                         </td>
                                         <td className="px-6 py-5">
                                             {user.location_granted ? (

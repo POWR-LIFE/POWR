@@ -144,6 +144,7 @@ export default function DiscoverScreen() {
 
   const [locationGranted, setLocationGranted] = useState(false);
   const [userLoc, setUserLoc] = useState<Location.LocationObject | null>(null);
+  const [locSettled, setLocSettled] = useState(false); // permission answered + first fix obtained (or unavailable)
 
   // Filter state
   const [openNowFilter, setOpenNowFilter] = useState(false);
@@ -256,25 +257,30 @@ export default function DiscoverScreen() {
 
   useEffect(() => {
     (async () => {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') return;
-      setLocationGranted(true);
-      let loc;
       try {
-        loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-      } catch {
-        loc = await Location.getLastKnownPositionAsync();
-      }
-      if (loc) {
-        setUserLoc(loc);
-        const region = {
-          latitude: loc.coords.latitude,
-          longitude: loc.coords.longitude,
-          latitudeDelta: 0.02,
-          longitudeDelta: 0.02,
-        };
-        setMapRegion(region);
-        mapRef.current?.animateToRegion(region, 800);
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted') return;
+        setLocationGranted(true);
+        let loc;
+        try {
+          loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        } catch {
+          loc = await Location.getLastKnownPositionAsync().catch(() => null);
+        }
+        if (loc) {
+          setUserLoc(loc);
+          const region = {
+            latitude: loc.coords.latitude,
+            longitude: loc.coords.longitude,
+            latitudeDelta: 0.02,
+            longitudeDelta: 0.02,
+          };
+          setMapRegion(region);
+          mapRef.current?.animateToRegion(region, 800);
+        }
+      } finally {
+        // Map overlays are held back until this flips — see mapPartners.
+        setLocSettled(true);
       }
     })();
   }, []);
@@ -316,6 +322,21 @@ export default function DiscoverScreen() {
     }
     return list;
   }, [partners, searchResults, openNowFilter, maxDistanceMi, search, userLoc]);
+
+  // Map circles/markers must first mount already in final nearest-first order:
+  // inserting them into a live MKMapView after the location re-sort can
+  // silently fail to attach on iOS (react-native-maps #54/#1524) — gym shows
+  // in the list but its ring/pin never draws. So hold them until the location
+  // fix settles, and cap at the nearest 50 (plenty for the viewport, far
+  // cheaper than 200 logo markers).
+  const mapPartners = useMemo(() => {
+    if (!locSettled) return [];
+    return filtered.filter(p => isFinite(p.lat) && isFinite(p.lng)).slice(0, 50);
+  }, [filtered, locSettled]);
+
+  // Remount native overlays when the set identity changes (search/sort/filter
+  // flips) rather than mutating a live set — same iOS attach issue as above.
+  const mapSetKey = `${searchResults !== null ? 's' : 'n'}-${sortMode}-${openNowFilter ? 1 : 0}-${maxDistanceMi ?? 'any'}`;
 
   const sortLabel = sortMode === 'nearest' ? 'Nearest' : sortMode === 'pts' ? 'Most Points' : 'A–Z';
 
@@ -527,9 +548,9 @@ export default function DiscoverScreen() {
             setWalkingNavVisible(false);
           }}
         >
-          {filtered.slice(0, 200).filter(p => isFinite(p.lat) && isFinite(p.lng)).map((partner) => (
+          {mapPartners.map((partner) => (
             <Circle
-              key={`circle-${partner.id}`}
+              key={`circle-${mapSetKey}-${partner.id}`}
               center={{ latitude: partner.lat, longitude: partner.lng }}
               radius={partner.geofenceRadius}
               strokeColor="rgba(232,210,0,0.5)"
@@ -538,11 +559,11 @@ export default function DiscoverScreen() {
             />
           ))}
 
-          {filtered.slice(0, 200).filter(p => isFinite(p.lat) && isFinite(p.lng)).map((partner) => (
+          {mapPartners.map((partner) => (
             <MapMarker
-              key={partner.id}
+              key={`${mapSetKey}-${partner.id}`}
               partner={partner}
-            isActive={partner.dbId === activeGeofence?.partnerId}
+              isActive={partner.dbId === activeGeofence?.partnerId}
             />
           ))}
 

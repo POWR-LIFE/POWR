@@ -119,56 +119,87 @@ export default function RewardSubmissions() {
     fetchSubs();
   }
 
-  // ── Approve → create the (inactive) reward ─────────────────────────────────
+  // ── Approve ─────────────────────────────────────────────────────────────────
+  // New submission → create an (inactive) reward in the Vault.
+  // Listing update (target_reward_id) → apply the changes to the live reward
+  // in place; points price is optional and kept unchanged when blank.
   async function handleApprove() {
     if (!selected) return;
+    const isEdit = !!selected.target_reward_id;
     const cost = parseInt(powrCost, 10);
-    if (!Number.isInteger(cost) || cost <= 0) { toast.error('Enter a valid points cost'); return; }
+    const hasCost = Number.isInteger(cost) && cost > 0;
+    if (!isEdit && !hasCost) { toast.error('Enter a valid points cost'); return; }
     setSaving(true);
     const { data: { user } } = await supabase.auth.getUser();
 
-    const rewardPayload = {
-      partner_id: selected.partner_id || null,
-      brand_name: selected.partner_id ? null : (selected.brand_name || null),
-      title: selected.title,
-      description: selected.description || null,
-      powr_cost: cost,
-      category: selected.category || 'gym',
-      reward_kind: selected.reward_kind || 'digital',
-      integration_type: 'API_VALIDATED',
-      value_label: selected.value_label || null,
-      discount_type: selected.discount_type || null,
-      discount_value: selected.discount_value ?? null,
-      offer: selected.offer || null,
-      partner_blurb: selected.partner_blurb || null,
-      terms: selected.terms || null,
-      url: selected.url || null,
-      image_url: selected.image_url || null,
-      hero_image_url: selected.hero_image_url || null,
-      brand_color: selected.brand_color || null,
-      active: false,
-      featured_on_home: false,
-    };
+    let rewardId;
+    if (isEdit) {
+      const updatePayload = {
+        title: selected.title,
+        description: selected.description || null,
+        category: selected.category || 'gym',
+        reward_kind: selected.reward_kind || 'digital',
+        value_label: selected.value_label || null,
+        discount_type: selected.discount_type || null,
+        discount_value: selected.discount_value ?? null,
+        offer: selected.offer || null,
+        partner_blurb: selected.partner_blurb || null,
+        terms: selected.terms || null,
+        url: selected.url || null,
+        image_url: selected.image_url || null,
+        hero_image_url: selected.hero_image_url || null,
+      };
+      if (hasCost) updatePayload.powr_cost = cost;
 
-    const { data: created, error: insErr } = await supabase
-      .from('rewards').insert(rewardPayload).select('id').single();
-    if (insErr) { setSaving(false); toast.error(insErr.message); return; }
+      const { error: editErr } = await supabase
+        .from('rewards').update(updatePayload).eq('id', selected.target_reward_id);
+      if (editErr) { setSaving(false); toast.error(editErr.message); return; }
+      rewardId = selected.target_reward_id;
+    } else {
+      const rewardPayload = {
+        partner_id: selected.partner_id || null,
+        brand_name: selected.partner_id ? null : (selected.brand_name || null),
+        title: selected.title,
+        description: selected.description || null,
+        powr_cost: cost,
+        category: selected.category || 'gym',
+        reward_kind: selected.reward_kind || 'digital',
+        integration_type: 'API_VALIDATED',
+        value_label: selected.value_label || null,
+        discount_type: selected.discount_type || null,
+        discount_value: selected.discount_value ?? null,
+        offer: selected.offer || null,
+        partner_blurb: selected.partner_blurb || null,
+        terms: selected.terms || null,
+        url: selected.url || null,
+        image_url: selected.image_url || null,
+        hero_image_url: selected.hero_image_url || null,
+        brand_color: selected.brand_color || null,
+        active: false,
+        featured_on_home: false,
+      };
 
-    // Pre-seed the promo-code scheme so RewardManager opens with it ready to generate.
-    if (selected.code_prefix) {
-      try { localStorage.setItem(`powr_scheme_${created.id}`, `POWR-${selected.code_prefix.toUpperCase()}-A1B2C3`); } catch { /* ignore */ }
+      const { data: created, error: insErr } = await supabase
+        .from('rewards').insert(rewardPayload).select('id').single();
+      if (insErr) { setSaving(false); toast.error(insErr.message); return; }
+      rewardId = created.id;
+
+      // Pre-seed the promo-code scheme so RewardManager opens with it ready to generate.
+      if (selected.code_prefix) {
+        try { localStorage.setItem(`powr_scheme_${rewardId}`, `POWR-${selected.code_prefix.toUpperCase()}-A1B2C3`); } catch { /* ignore */ }
+      }
     }
 
     const { error: updErr } = await supabase.from('reward_submissions').update({
       status: 'approved',
-      created_reward_id: created.id,
+      created_reward_id: rewardId,
       reviewer_notes: reviewNotes.trim() || null,
       reviewed_by: user?.id,
       reviewed_at: new Date().toISOString(),
     }).eq('id', selected.id);
     setSaving(false);
     if (updErr) { toast.error(updErr.message); return; }
-    toast.success('Reward created in the Vault — finalize & generate codes there');
+    toast.success(isEdit ? 'Listing updated — changes are live' : 'Reward created in the Vault — finalize & generate codes there');
     setSelected(null);
     fetchSubs();
   }
@@ -286,7 +317,12 @@ export default function RewardSubmissions() {
                           {(sub.image_url || sub.partners?.logo_url) ? <img src={sub.image_url || sub.partners.logo_url} alt="" className="w-full h-full object-contain p-1.5" /> : <Award size={18} className="text-[#BBBBBB]" />}
                         </div>
                         <div>
-                          <div className="text-base font-bold text-[#222222] group-hover:text-[#1A1A1A] transition-colors mb-1">{sub.title || <span className="text-[#AAAAAA] italic font-light">Awaiting submission…</span>}</div>
+                          <div className="flex items-center gap-3 mb-1">
+                            <span className="text-base font-bold text-[#222222] group-hover:text-[#1A1A1A] transition-colors">{sub.title || <span className="text-[#AAAAAA] italic font-light">Awaiting submission…</span>}</span>
+                            {sub.target_reward_id && (
+                              <span className="px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-[0.2em]" style={{ color: '#8B5CF6', background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.25)' }}>Listing Update</span>
+                            )}
+                          </div>
                           <div className="text-[10px] uppercase tracking-[0.3em] text-[#AAAAAA] font-black">{sub.partners?.name || sub.brand_name || sub.contact_email || '—'}</div>
                         </div>
                       </div>
@@ -423,9 +459,11 @@ export default function RewardSubmissions() {
                     {selected.status === 'pending' && (
                       <div className="space-y-5 pt-2">
                         <div className="space-y-3">
-                          <span className="text-[9px] font-black uppercase tracking-[0.4em] text-[#8a7600]">Set points price *</span>
+                          <span className="text-[9px] font-black uppercase tracking-[0.4em] text-[#8a7600]">
+                            {selected.target_reward_id ? 'Update points price (optional — blank keeps current)' : 'Set points price *'}
+                          </span>
                           <div className="flex items-center gap-3">
-                            <input type="number" min="1" value={powrCost} onChange={e => setPowrCost(e.target.value)} placeholder="e.g. 500" disabled={saving}
+                            <input type="number" min="1" value={powrCost} onChange={e => setPowrCost(e.target.value)} placeholder={selected.target_reward_id ? 'Keep current' : 'e.g. 500'} disabled={saving}
                               className="w-40 h-14 px-6 bg-[#F4F4F1] border border-[#E8D200]/20 rounded-2xl text-lg text-[#1A1A1A] font-light outline-none focus:border-[#E8D200]/50 transition-colors" />
                             <span className="text-[10px] uppercase tracking-[0.3em] text-[#999999] font-black">POWR points</span>
                           </div>
@@ -434,9 +472,15 @@ export default function RewardSubmissions() {
                           <button onClick={handleReject} disabled={saving} className="flex-1 h-16 rounded-2xl border text-[10px] font-black uppercase tracking-[0.3em] transition-all disabled:opacity-50 hover:translate-y-[-2px]"
                             style={{ borderColor: 'rgba(239,68,68,0.3)', background: 'rgba(239,68,68,0.05)', color: '#ef4444' }}>{saving ? '…' : 'Reject'}</button>
                           <button onClick={handleApprove} disabled={saving} className="flex-1 h-16 rounded-2xl border text-[10px] font-black uppercase tracking-[0.3em] transition-all disabled:opacity-50 hover:translate-y-[-2px] shadow-lg"
-                            style={{ borderColor: 'rgba(74,222,128,0.4)', background: 'rgba(74,222,128,0.07)', color: '#4ade80' }}>{saving ? 'Creating…' : 'Approve & Create Reward'}</button>
+                            style={{ borderColor: 'rgba(74,222,128,0.4)', background: 'rgba(74,222,128,0.07)', color: '#4ade80' }}>
+                            {saving ? 'Saving…' : selected.target_reward_id ? 'Approve & Update Listing' : 'Approve & Create Reward'}
+                          </button>
                         </div>
-                        <p className="text-[11px] text-[#AAAAAA] font-light leading-relaxed">Approving creates an <span className="text-[#888888]">inactive</span> reward in the Vault with the promo-code scheme pre-loaded. Finalize and toggle it live there.</p>
+                        <p className="text-[11px] text-[#AAAAAA] font-light leading-relaxed">
+                          {selected.target_reward_id
+                            ? <>Approving applies these changes <span className="text-[#888888]">directly to the live reward</span>. Rejecting leaves the listing untouched.</>
+                            : <>Approving creates an <span className="text-[#888888]">inactive</span> reward in the Vault with the promo-code scheme pre-loaded. Finalize and toggle it live there.</>}
+                        </p>
                       </div>
                     )}
 
