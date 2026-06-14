@@ -493,6 +493,9 @@ export type DailyWalkingHistory = {
  * aggregated by date with step counts and points earned.
  */
 export async function fetchRecentWalkingHistory(days = 5): Promise<DailyWalkingHistory[]> {
+    const uid = await getCurrentUserId();
+    if (!uid) return [];
+
     const rangeStart = new Date();
     rangeStart.setDate(rangeStart.getDate() - days);
     rangeStart.setHours(0, 0, 0, 0);
@@ -503,6 +506,7 @@ export async function fetchRecentWalkingHistory(days = 5): Promise<DailyWalkingH
     const { data, error } = await supabase
         .from('activity_sessions')
         .select('started_at, steps, point_transactions(amount)')
+        .eq('user_id', uid)
         .eq('type', 'walking')
         .gte('started_at', rangeStart.toISOString())
         .lt('started_at', todayStart.toISOString())
@@ -538,6 +542,9 @@ export async function fetchRecentWalkingHistory(days = 5): Promise<DailyWalkingH
  * Today's value includes all walking sessions so far today.
  */
 export async function fetchWeeklyStepsPerDay(): Promise<number[]> {
+    const uid = await getCurrentUserId();
+    if (!uid) return [0, 0, 0, 0, 0, 0, 0];
+
     const now = new Date();
     const dayOfWeek = now.getDay();
     const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
@@ -548,6 +555,7 @@ export async function fetchWeeklyStepsPerDay(): Promise<number[]> {
     const { data, error } = await supabase
         .from('activity_sessions')
         .select('started_at, steps')
+        .eq('user_id', uid)
         .eq('type', 'walking')
         .gte('started_at', monday.toISOString());
     if (error) throw error;
@@ -575,6 +583,9 @@ export type DailyWorkoutHistory = {
  * for the given activity type, grouped by date.
  */
 export async function fetchRecentWorkoutHistory(type: ActivityType, days = 5): Promise<DailyWorkoutHistory[]> {
+    const uid = await getCurrentUserId();
+    if (!uid) return [];
+
     const rangeStart = new Date();
     rangeStart.setDate(rangeStart.getDate() - days);
     rangeStart.setHours(0, 0, 0, 0);
@@ -588,6 +599,7 @@ export async function fetchRecentWorkoutHistory(type: ActivityType, days = 5): P
     const { data, error } = await supabase
         .from('activity_sessions')
         .select('started_at, duration_sec, point_transactions(amount)')
+        .eq('user_id', uid)
         .eq('type', type)
         .gte('started_at', rangeStart.toISOString())
         .lt('started_at', todayStart.toISOString())
@@ -637,6 +649,9 @@ export type DailySleepHistory = {
  * aggregated by date.
  */
 export async function fetchRecentSleepHistory(days = 5): Promise<DailySleepHistory[]> {
+    const uid = await getCurrentUserId();
+    if (!uid) return [];
+
     const rangeStart = new Date();
     rangeStart.setDate(rangeStart.getDate() - days);
     rangeStart.setHours(0, 0, 0, 0);
@@ -647,6 +662,7 @@ export async function fetchRecentSleepHistory(days = 5): Promise<DailySleepHisto
     const { data, error } = await supabase
         .from('activity_sessions')
         .select('started_at, duration_sec')
+        .eq('user_id', uid)
         .eq('type', 'sleep')
         .gte('started_at', rangeStart.toISOString())
         .lt('started_at', todayStart.toISOString())
@@ -698,6 +714,9 @@ export async function fetchTodayWalkingPoints(): Promise<number> {
 
 /** Returns Mon–Sun sleep hours for the current week from synced activity sessions. */
 export async function fetchWeeklySleepHours(): Promise<{ hours: number[]; bedtimes: (string | null)[] }> {
+    const uid = await getCurrentUserId();
+    if (!uid) return { hours: [0, 0, 0, 0, 0, 0, 0], bedtimes: [null, null, null, null, null, null, null] };
+
     const now = new Date();
     const dayOfWeek = now.getDay(); // 0=Sun
     const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
@@ -716,6 +735,7 @@ export async function fetchWeeklySleepHours(): Promise<{ hours: number[]; bedtim
     const { data, error } = await supabase
         .from('activity_sessions')
         .select('started_at, duration_sec')
+        .eq('user_id', uid)
         .eq('type', 'sleep')
         .gte('started_at', lookback.toISOString())
         .order('started_at', { ascending: true });
@@ -768,6 +788,9 @@ export type LastNightSleepDetail = {
  * "Last night" = the most recent sleep whose bedtime is after yesterday 6pm.
  */
 export async function fetchLastNightSleepDetail(): Promise<LastNightSleepDetail | null> {
+    const uid = await getCurrentUserId();
+    if (!uid) return null;
+
     const yesterday6pm = new Date();
     yesterday6pm.setDate(yesterday6pm.getDate() - 1);
     yesterday6pm.setHours(18, 0, 0, 0);
@@ -776,6 +799,7 @@ export async function fetchLastNightSleepDetail(): Promise<LastNightSleepDetail 
     const { data: session, error } = await supabase
         .from('activity_sessions')
         .select('id, started_at, ended_at, duration_sec')
+        .eq('user_id', uid)
         .eq('type', 'sleep')
         .gte('started_at', yesterday6pm.toISOString())
         .order('started_at', { ascending: false })
@@ -825,6 +849,9 @@ export type MonthlySleepData = {
 
 /** Fetches 30 days of sleep data for the month heatmap view. */
 export async function fetchMonthlySleepData(): Promise<MonthlySleepData> {
+    const uid = await getCurrentUserId();
+    if (!uid) return { entries: [], avgHours: 0, bestNight: null, worstNight: null };
+
     // Look back 32 days to cover the full 30-day window + evening-attribution offset
     const lookback = new Date();
     lookback.setDate(lookback.getDate() - 32);
@@ -837,6 +864,7 @@ export async function fetchMonthlySleepData(): Promise<MonthlySleepData> {
     const { data, error } = await supabase
         .from('activity_sessions')
         .select('started_at, duration_sec')
+        .eq('user_id', uid)
         .eq('type', 'sleep')
         .gte('started_at', lookback.toISOString())
         .order('started_at', { ascending: true });
@@ -915,12 +943,16 @@ export type TodayActivityDetail = {
 
 /** Returns today's session summary for a given activity type. */
 export async function fetchTodayActivityDetail(type: ActivityType): Promise<TodayActivityDetail> {
+    const uid = await getCurrentUserId();
+    if (!uid) return { sessionCount: 0, totalDurationMin: 0, totalPoints: 0, steps: null, distanceM: null, latestStartedAt: null };
+
     const start = new Date();
     start.setHours(0, 0, 0, 0);
 
     const { data, error } = await supabase
         .from('activity_sessions')
         .select('id, started_at, duration_sec, steps, distance_m, point_transactions(amount)')
+        .eq('user_id', uid)
         .eq('type', type)
         .gte('started_at', start.toISOString())
         .order('started_at', { ascending: false });
@@ -976,6 +1008,9 @@ export type MonthlyActivityData = {
 
 /** Fetches 30 days of activity data for a given type (heatmap + summary). */
 export async function fetchMonthlyActivityData(type: ActivityType): Promise<MonthlyActivityData> {
+    const uid = await getCurrentUserId();
+    if (!uid) return { entries: [], totalSessions: 0, avgPerDay: 0, bestDay: null, type };
+
     const rangeStart = new Date();
     rangeStart.setDate(rangeStart.getDate() - 29);
     rangeStart.setHours(0, 0, 0, 0);
@@ -983,6 +1018,7 @@ export async function fetchMonthlyActivityData(type: ActivityType): Promise<Mont
     const { data, error } = await supabase
         .from('activity_sessions')
         .select('started_at, duration_sec, steps')
+        .eq('user_id', uid)
         .eq('type', type)
         .gte('started_at', rangeStart.toISOString())
         .order('started_at', { ascending: true });
@@ -1147,6 +1183,9 @@ export type MonthlyMetrics = {
 
 /** Fetches all activity sessions for the current calendar month. */
 export async function fetchMonthlyMetrics(): Promise<MonthlyMetrics> {
+    const uid = await getCurrentUserId();
+    if (!uid) return { activeDays: 0, sessionCount: 0, totalSteps: 0, perType: {}, weekActiveDays: [0, 0, 0, 0], activeDayTypes: {}, dayDetails: {} };
+
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     monthStart.setHours(0, 0, 0, 0);
@@ -1154,6 +1193,7 @@ export async function fetchMonthlyMetrics(): Promise<MonthlyMetrics> {
     const { data, error } = await supabase
         .from('activity_sessions')
         .select('started_at, type, steps, duration_sec, point_transactions(amount)')
+        .eq('user_id', uid)
         .gte('started_at', monthStart.toISOString())
         .order('started_at', { ascending: true });
     if (error) throw error;
