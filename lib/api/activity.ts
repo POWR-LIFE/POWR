@@ -315,15 +315,21 @@ export async function logHealthWalkingSession(
     steps: number,
     points: number,
     verification: 'wearable' | 'health' = 'health',
+    startedAt?: string,
+    endedAt?: string,
 ): Promise<string | null> {
-    const now = new Date().toISOString();
+    // Defaults target today; the backfill path passes a past day's local midnight
+    // (and that day's end) to recover days the app was closed across (see
+    // backfillWalkingDays). The per-day unique index keeps this idempotent.
+    const start = startedAt ?? todayMidnight();
+    const end = endedAt ?? new Date().toISOString();
     const device_id = await getDeviceId();
     const { data: session, error: sErr } = await supabase
         .from('activity_sessions')
         .insert({
             type: 'walking',
-            started_at: todayMidnight(),
-            ended_at: now,
+            started_at: start,
+            ended_at: end,
             duration_sec: 0,
             steps,
             verification,
@@ -687,28 +693,23 @@ export async function fetchRecentSleepHistory(days = 5): Promise<DailySleepHisto
 
 /** Returns total walking points already earned today (all sources). */
 export async function fetchTodayWalkingPoints(): Promise<number> {
-    const midnight = todayMidnight();
-    const { data } = await supabase
-        .from('point_transactions')
-        .select('amount, session_id')
-        .eq('type', 'earn')
-        .gte('created_at', midnight);
-
-    if (!data || data.length === 0) return 0;
-
-    // Filter to walking sessions only
-    const sessionIds = [...new Set(data.map(t => t.session_id).filter(Boolean))];
-    if (sessionIds.length === 0) return 0;
-
+    const uid = await getCurrentUserId();
+    if (!uid) return 0;
+    // Scope by today's walking *session* (started_at), NOT by the transaction's
+    // created_at: a backfilled past-day session inserts its points with
+    // created_at = now, which would otherwise be miscounted against today's cap.
     const { data: sessions } = await supabase
         .from('activity_sessions')
-        .select('id')
-        .in('id', sessionIds)
-        .eq('type', 'walking');
+        .select('point_transactions(amount, type)')
+        .eq('user_id', uid)
+        .eq('type', 'walking')
+        .gte('started_at', todayMidnight());
 
-    const walkingIds = new Set((sessions ?? []).map(s => s.id));
-    return data
-        .filter(t => t.session_id && walkingIds.has(t.session_id))
+    if (!sessions || sessions.length === 0) return 0;
+
+    return (sessions as Array<{ point_transactions: { amount: number; type: string }[] }>)
+        .flatMap(s => s.point_transactions ?? [])
+        .filter(t => t.type === 'earn')
         .reduce((sum, t) => sum + t.amount, 0);
 }
 
