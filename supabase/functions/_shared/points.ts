@@ -82,11 +82,18 @@ export function stepTierPoints(steps: number): number {
 // `null` means "don't create a workout session": walking/hiking are handled via
 // the `daily` steps payload (same split as the native path), and non-exercise
 // entries (driving, housework, elevators, motorsport, etc.) are ignored.
+//
+// IMPORTANT: an activity payload that Terra DID send but we don't recognise is
+// still a real workout the user logged — it must land as a session, not vanish.
+// So the generic catch-alls "Unknown" (4) and "Other" (108) default to 'gym'
+// (Whoop's unspecified "Activity" comes through as 108), and terraActivityToPOWR
+// also defaults any future-unknown int to 'gym'. Only the explicit non-exercise
+// sensor states below stay null. See terraActivityToPOWR.
 const TERRA_TYPE_TO_POWR: Record<number, ActivityType | null> = {
   0: null,        // In Vehicle
   1: 'cycling',   // Biking
   3: null,        // Still
-  4: null,        // Unknown
+  4: 'gym',       // Unknown → generic workout, log as gym (don't drop)
   5: null,        // Tilting
   7: null,        // Walking → daily steps
   8: 'running',   // Running
@@ -187,7 +194,7 @@ const TERRA_TYPE_TO_POWR: Record<number, ActivityType | null> = {
   104: 'sports',  // Ice Skating
   105: 'sports',  // Indoor Skating
   106: 'sports',  // Curling
-  108: null,      // Other
+  108: 'gym',     // Other → generic workout, log as gym (Whoop's unspecified "Activity")
   113: 'hiit',    // CrossFit
   114: 'hiit',    // HIIT
   115: 'hiit',    // Interval Training
@@ -232,8 +239,11 @@ export function terraActivityToPOWR(name: string, terraType?: number): ActivityT
   }
   // Fallback for any unknown/new int: name heuristics. Order matters — check the
   // most specific buckets first (e.g. gymnastics before the bare 'gym' token).
+  // A workout we can't name is still a real workout the user did, so anything
+  // that reaches the end falls back to 'gym' rather than being dropped — except
+  // walking/hiking, which route to the daily-steps path instead.
   const n = (name ?? '').toLowerCase();
-  if (!n) return null;
+  if (!n) return 'gym'; // unnamed activity payload — still a logged workout
   if (n.includes('walk') || n.includes('hik')) return null; // handled via daily steps
   if (n.includes('run') || n.includes('jog') || n.includes('treadmill')) return 'running';
   if (n.includes('cycl') || n.includes('biking') || n.includes('bike') || n.includes('spin')) return 'cycling';
@@ -255,7 +265,8 @@ export function terraActivityToPOWR(name: string, terraType?: number): ActivityT
     || n.includes('golf') || n.includes('pickleball') || n.includes('badminton') || n.includes('polo')
     || n.includes('wrestl') || n.includes('surf') || n.includes('climb') || n.includes('ski')
     || n.includes('snowboard') || n.includes('skat') || n.includes('paddl') || n.includes('kayak')) return 'sports';
-  return null;
+  // Unrecognised but a real logged workout → default to gym (never drop).
+  return 'gym';
 }
 
 /** Terra resource slug → health_snapshots.source label. */

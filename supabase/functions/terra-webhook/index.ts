@@ -133,6 +133,52 @@ async function overlapsGeofenceGym(
   return false;
 }
 
+/**
+ * Source-of-truth priority is geofence (0.94) > wearable (0.85) > manual (0.55).
+ * A wearable session that lands here outranks any MANUAL session of the same type
+ * whose window overlaps — it's the same effort, sensor-backed. Remove the manual
+ * row and reverse its points so the higher-trust wearable entry stands alone
+ * (mirrors admin-review-session's reject: append a compensating penalty since the
+ * ledger is append-only + the session FK is ON DELETE SET NULL). Geofence still
+ * wins over both (handled earlier by overlapsGeofenceGym).
+ */
+async function supersedeManualOverlaps(
+  supabase, userId: string, type: string, startMs: number, endMs: number,
+): Promise<void> {
+  const windowStart = new Date(startMs - 24 * 60 * 60 * 1000).toISOString();
+  const windowEnd = new Date(endMs + 24 * 60 * 60 * 1000).toISOString();
+  const { data } = await supabase
+    .from('activity_sessions')
+    .select('id, started_at, ended_at, duration_sec')
+    .eq('user_id', userId)
+    .eq('type', type)
+    .eq('verification', 'manual')
+    .gte('started_at', windowStart)
+    .lte('started_at', windowEnd);
+  for (const m of data ?? []) {
+    const mStart = new Date(m.started_at).getTime();
+    const mEnd = m.ended_at
+      ? new Date(m.ended_at).getTime()
+      : mStart + (m.duration_sec ?? 0) * 1000;
+    if (!(startMs < mEnd && endMs > mStart)) continue; // no overlap
+
+    const { data: earns } = await supabase
+      .from('point_transactions')
+      .select('amount')
+      .eq('session_id', m.id)
+      .eq('type', 'earn');
+    const reversed = (earns ?? []).reduce((s, t) => s + (t.amount ?? 0), 0);
+    if (reversed > 0) {
+      await supabase.from('point_transactions').insert({
+        user_id: userId, amount: -reversed, type: 'penalty', multiplier: 1.0,
+        description: `Superseded manual ${type} by wearable sync`,
+      });
+    }
+    await supabase.from('activity_sessions').delete().eq('id', m.id);
+    console.log(`[terra-webhook] superseded manual ${type} ${m.started_at} (−${reversed} pts) — wearable outranks`);
+  }
+}
+
 // ── Payload handlers ────────────────────────────────────────────────────────────
 
 // Cloud-wearable provider keys (lowercased). Used to enforce one-wearable-at-a-time
@@ -247,6 +293,9 @@ async function handleActivity(supabase, payload): Promise<void> {
     }, points);
 
     if (inserted) {
+      // Wearable outranks manual: remove any overlapping manual session of this
+      // type and reverse its points (geofence already handled above).
+      await supersedeManualOverlaps(supabase, userId, type, startMs, endMs);
       await supabase.from('health_snapshots').insert({
         user_id: userId,
         distance_m: distanceM != null ? Math.round(distanceM) : null,

@@ -188,6 +188,56 @@ function updateStreakDay(streak: UserStreak, sessionDate: string): Partial<UserS
   };
 }
 
+/**
+ * Source-of-truth priority is geofence (0.94) > wearable (0.85) > manual (0.55).
+ * When a geofence gym check-in is claimed, it's the authoritative record for that
+ * time at the gym — remove any overlapping wearable/manual session of the same
+ * type and reverse its points so we never double-count or let a lower-trust entry
+ * stand alongside the check-in. Mirrors admin-review-session's reject: append a
+ * compensating penalty (the ledger is append-only) then delete the session (FK is
+ * ON DELETE SET NULL, so points are summed before deletion).
+ */
+async function supersedeLowerTrust(supabase, winner: ActivitySession): Promise<void> {
+  const startMs = new Date(winner.started_at).getTime();
+  const endMs = startMs + (winner.duration_sec ?? 0) * 1000;
+  const windowStart = new Date(startMs - 24 * 60 * 60 * 1000).toISOString();
+  const windowEnd = new Date(endMs + 24 * 60 * 60 * 1000).toISOString();
+
+  const { data: lower } = await supabase
+    .from('activity_sessions')
+    .select('id, started_at, ended_at, duration_sec')
+    .eq('user_id', winner.user_id)
+    .eq('type', winner.type)
+    .in('verification', ['wearable', 'manual'])
+    .lt('trust_score', winner.trust_score)
+    .gte('started_at', windowStart)
+    .lte('started_at', windowEnd)
+    .neq('id', winner.id);
+
+  for (const s of lower ?? []) {
+    const sStart = new Date(s.started_at).getTime();
+    const sEnd = s.ended_at
+      ? new Date(s.ended_at).getTime()
+      : sStart + (s.duration_sec ?? 0) * 1000;
+    if (!(startMs < sEnd && endMs > sStart)) continue; // no overlap
+
+    const { data: earns } = await supabase
+      .from('point_transactions')
+      .select('amount')
+      .eq('session_id', s.id)
+      .eq('type', 'earn');
+    const reversed = (earns ?? []).reduce((sum: number, t: { amount: number }) => sum + (t.amount ?? 0), 0);
+    if (reversed > 0) {
+      await supabase.from('point_transactions').insert({
+        user_id: winner.user_id, amount: -reversed, type: 'penalty', multiplier: 1.0,
+        description: `Superseded ${winner.type} by geofence check-in`,
+      });
+    }
+    await supabase.from('activity_sessions').delete().eq('id', s.id);
+    console.log(`[claim-points] superseded ${winner.type} ${s.started_at} (−${reversed} pts) — geofence check-in outranks`);
+  }
+}
+
 // ─────────────────────────────────────────────
 // Handler
 // ─────────────────────────────────────────────
@@ -263,6 +313,13 @@ Deno.serve(async (req) => {
   const MIN_TRUST = 0.5;
   if (session.trust_score < MIN_TRUST) {
     return new Response(JSON.stringify({ error: 'Trust score too low' }), { status: 422 });
+  }
+
+  // 5b. Source-of-truth priority: a geofence check-in supersedes any overlapping
+  // lower-trust (wearable/manual) session of the same type — remove them + reverse
+  // their points before we score this one, so the check-in is the sole record.
+  if (session.verification === 'geofence') {
+    await supersedeLowerTrust(supabase, session);
   }
 
   // 6. Anti-abuse: rate limit — max 3 claims per hour (skipped for dev test accounts)

@@ -146,8 +146,8 @@ export type ManualSessionParams = {
     healthSource?: 'wearable' | 'health';
 };
 
-/** Max unverified manual logs allowed per calendar week (Mon–Sun). */
-const WEEKLY_MANUAL_CAP = 3;
+/** Max unverified manual logs allowed per calendar day (across all types). */
+const DAILY_MANUAL_CAP = 1;
 
 export async function logManualSession(params: ManualSessionParams): Promise<boolean> {
     // ended_at is the activity's true end (start + duration), NOT the moment we
@@ -160,27 +160,55 @@ export async function logManualSession(params: ManualSessionParams): Promise<boo
     const trust_score = params.healthVerified ? 0.85 : 0.55;
     const device_id = await getDeviceId();
 
-    // Anti-abuse: cap unverified manual logs at WEEKLY_MANUAL_CAP per week.
-    // Health-verified logs (wearable) are exempt — they have real sensor backing.
+    // Source-of-truth priority is geofence > wearable > manual. A manual log must
+    // never be created when a higher-trust source (geofence check-in, wearable, or
+    // native health sync) already covers the same activity. We guard manual logs
+    // two ways below; health-verified writes (wearable/native sync) skip both.
     if (!params.healthVerified) {
-        const now = new Date();
-        const dayOfWeek = now.getDay();
-        const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-        const monday = new Date(now);
-        monday.setDate(now.getDate() + mondayOffset);
-        monday.setHours(0, 0, 0, 0);
+        const uid = (await getCurrentUserId()) ?? '';
+
+        // 1. Anti-abuse: cap unverified manual logs at DAILY_MANUAL_CAP per calendar
+        //    day, counted across all activity types.
+        const dayStart = new Date();
+        dayStart.setHours(0, 0, 0, 0);
 
         const { count, error: countError } = await supabase
             .from('activity_sessions')
             .select('id', { count: 'exact', head: true })
-            .eq('user_id', (await getCurrentUserId()) ?? '')
+            .eq('user_id', uid)
             .eq('verification', 'manual')
-            .gte('started_at', monday.toISOString());
+            .gte('started_at', dayStart.toISOString());
 
-        if (!countError && (count ?? 0) >= WEEKLY_MANUAL_CAP) {
+        if (!countError && (count ?? 0) >= DAILY_MANUAL_CAP) {
             throw new Error(
-                `You've reached the ${WEEKLY_MANUAL_CAP} manual log limit for this week. ` +
-                'Connect a health provider to keep logging sessions.',
+                "You've already logged a session manually today. " +
+                'Connect a health provider to log unlimited sessions automatically.',
+            );
+        }
+
+        // 2. Don't shadow a higher-trust source: if a geofence/wearable/health
+        //    session of this type overlaps the same window, that's the same effort
+        //    tracked more reliably — refuse the manual duplicate.
+        const startMs = new Date(params.started_at).getTime();
+        const endMs = new Date(ended_at).getTime();
+        const { data: higherTrust } = await supabase
+            .from('activity_sessions')
+            .select('started_at, ended_at, duration_sec')
+            .eq('user_id', uid)
+            .eq('type', params.type)
+            .in('verification', ['geofence', 'wearable', 'health'])
+            .gte('started_at', new Date(startMs - 24 * 60 * 60 * 1000).toISOString())
+            .lte('started_at', new Date(endMs + 24 * 60 * 60 * 1000).toISOString());
+        const overlaps = (higherTrust ?? []).some(s => {
+            const sStart = new Date(s.started_at).getTime();
+            const sEnd = s.ended_at
+                ? new Date(s.ended_at).getTime()
+                : sStart + (s.duration_sec ?? 0) * 1000;
+            return startMs < sEnd && endMs > sStart;
+        });
+        if (overlaps) {
+            throw new Error(
+                `This ${params.type} session is already tracked automatically by your connected device.`,
             );
         }
     }
