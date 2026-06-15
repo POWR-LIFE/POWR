@@ -2,7 +2,6 @@ import {
     Activity, Award,
     BarChart3,
     ChevronLeft, ChevronRight,
-    ClipboardList,
     Gift,
     Inbox,
     LayoutDashboard,
@@ -16,6 +15,8 @@ import {
     TrendingUp,
     Users,
     Zap,
+    ArrowUpRight,
+    ArrowDownRight,
 } from 'lucide-react';
 import { createContext, useContext, useEffect, useState } from 'react';
 import { Link, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
@@ -46,7 +47,6 @@ import SupportTickets from './pages/admin/SupportTickets';
 import SystemConfig from './pages/admin/SystemConfig';
 import UserManager from './pages/admin/UserManager';
 import UserProfile from './pages/admin/UserProfile';
-import WaitlistManager from './pages/admin/WaitlistManager';
 import WeeklyChallenges from './pages/admin/WeeklyChallenges';
 import AthleteSignup from './pages/AthleteSignup';
 import CookiePolicy from './pages/CookiePolicy';
@@ -209,7 +209,6 @@ const PATH_LABELS = {
     rewards: 'Rewards',
     'reward-submissions': 'Submissions',
     challenges: 'Challenges',
-    waitlist: 'Waitlist',
     users: 'Users',
     athletes: 'Athletes',
     profile: 'Profile',
@@ -397,30 +396,34 @@ const AdminHome = () => {
         users: 0, newUsers7d: 0,
         partners: 0,
         rewards: 0, rewardBrands: 0,
-        waitlist: 0,
         flaggedSessions: 0, totalSessions: 0, weeklyActive: 0,
         redemptions: 0, activeRedemptions: 0,
         totalPoints: 0,
         pendingAthletes: 0, pendingSubmissions: 0, openTickets: 0,
+        sessions7d: 0, sessionsPrev7d: 0,
     });
+    // 14-day daily session trend [{ day, count }] and activity-type mix [{ type, count }]
+    const [trend, setTrend] = useState([]);
+    const [activityMix, setActivityMix] = useState([]);
 
     useEffect(() => {
         const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+        const twoWeeksAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
         const fetchAll = async () => {
             try {
                 const [
                     usersRes, newUsersRes, partnersRes,
-                    rewardsRes, brandsRes, waitlistRes,
+                    rewardsRes, brandsRes,
                     flaggedRes, sessionsRes, weeklyRes,
                     redemptionsRes, pointsRes,
                     athletesRes, submissionsRes, ticketsRes,
+                    trendRes,
                 ] = await Promise.all([
                     supabase.from('profiles').select('id', { count: 'exact', head: true }),
                     supabase.from('profiles').select('id', { count: 'exact', head: true }).gte('created_at', weekAgo),
                     supabase.from('partners').select('id', { count: 'exact', head: true }).eq('active', true),
                     supabase.from('rewards').select('id', { count: 'exact', head: true }).eq('active', true),
                     supabase.from('rewards').select('brand_name'),
-                    supabase.from('waitlist').select('id', { count: 'exact', head: true }),
                     supabase.from('activity_sessions').select('id', { count: 'exact', head: true }).eq('flagged', true),
                     supabase.from('activity_sessions').select('id', { count: 'exact', head: true }),
                     supabase.from('activity_sessions').select('user_id').gte('started_at', weekAgo),
@@ -429,6 +432,8 @@ const AdminHome = () => {
                     supabase.from('athlete_applications').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
                     supabase.from('reward_submissions').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
                     supabase.from('support_tickets').select('id', { count: 'exact', head: true }).in('status', ['open', 'in_progress']),
+                    // last 14 days of sessions: drives the trend sparkline, 7d-over-7d delta, and activity mix
+                    supabase.from('activity_sessions').select('type, started_at').gte('started_at', twoWeeksAgo),
                 ]);
 
                 const weeklyUsers = new Set((weeklyRes.data || []).map(s => s.user_id));
@@ -436,13 +441,43 @@ const AdminHome = () => {
                 const brands = new Set((brandsRes.data || []).map(r => r.brand_name?.toLowerCase()).filter(Boolean));
                 const totalPts = (pointsRes.data || []).reduce((a, p) => a + (p.amount || 0), 0);
 
+                // --- Build 14-day daily trend, 7d delta, and activity mix from one pull ---
+                const sessRows = trendRes.data || [];
+                const dayKey = (d) => d.toISOString().slice(0, 10);
+                const counts = new Map();        // 'YYYY-MM-DD' -> count
+                const mix = new Map();           // type -> count (last 7d)
+                let sess7d = 0, sessPrev7d = 0;
+                const now = Date.now();
+                for (const r of sessRows) {
+                    if (!r.started_at) continue;
+                    const t = new Date(r.started_at);
+                    counts.set(dayKey(t), (counts.get(dayKey(t)) || 0) + 1);
+                    const ageDays = (now - t.getTime()) / 86_400_000;
+                    if (ageDays <= 7) {
+                        sess7d++;
+                        const ty = r.type || 'other';
+                        mix.set(ty, (mix.get(ty) || 0) + 1);
+                    } else {
+                        sessPrev7d++;
+                    }
+                }
+                // dense 14-day series so the line has no gaps
+                const series = [];
+                for (let i = 13; i >= 0; i--) {
+                    const d = new Date(now - i * 86_400_000);
+                    series.push({ day: dayKey(d), count: counts.get(dayKey(d)) || 0 });
+                }
+                setTrend(series);
+                setActivityMix([...mix.entries()]
+                    .map(([type, count]) => ({ type, count }))
+                    .sort((a, b) => b.count - a.count));
+
                 setStats({
                     users: usersRes.count || 0,
                     newUsers7d: newUsersRes.count || 0,
                     partners: partnersRes.count || 0,
                     rewards: rewardsRes.count || 0,
                     rewardBrands: brands.size,
-                    waitlist: waitlistRes.count || 0,
                     flaggedSessions: flaggedRes.count || 0,
                     totalSessions: sessionsRes.count || 0,
                     weeklyActive: weeklyUsers.size,
@@ -452,6 +487,8 @@ const AdminHome = () => {
                     pendingAthletes: athletesRes.count || 0,
                     pendingSubmissions: submissionsRes.count || 0,
                     openTickets: ticketsRes.count || 0,
+                    sessions7d: sess7d,
+                    sessionsPrev7d: sessPrev7d,
                 });
             } catch (e) {
                 console.error('[Overview] Error:', e);
@@ -470,6 +507,15 @@ const AdminHome = () => {
         return n.toLocaleString();
     };
 
+    // 7d-over-7d session momentum
+    const sessDelta = stats.sessionsPrev7d > 0
+        ? Math.round(((stats.sessions7d - stats.sessionsPrev7d) / stats.sessionsPrev7d) * 100)
+        : (stats.sessions7d > 0 ? 100 : 0);
+    // engagement = weekly active / total users
+    const engagementPct = stats.users > 0 ? Math.round((stats.weeklyActive / stats.users) * 100) : 0;
+    // active-code health = active codes / total redemptions
+    const codeHealthPct = stats.redemptions > 0 ? Math.round((stats.activeRedemptions / stats.redemptions) * 100) : 0;
+
     const kpiCards = [
         { label: 'Total Users',     value: fmt(stats.users),         sub: `+${fmt(stats.newUsers7d)} this week`,         icon: Users,      color: '#8a7600' },
         { label: 'Active Partners', value: fmt(stats.partners),       sub: 'Live gym locations',                           icon: Activity,   color: '#0EA5E9' },
@@ -480,55 +526,89 @@ const AdminHome = () => {
     ];
 
     const attentionItems = [
-        { label: 'Flagged Sessions',     count: stats.flaggedSessions,    to: '/admin/sessions',           color: '#F43F5E', desc: 'Duplicate / multi-device — approve or reject' },
-        { label: 'Reward Submissions',   count: stats.pendingSubmissions, to: '/admin/reward-submissions', color: '#F97316', desc: 'Pending brand reward review'                  },
-        { label: 'Athlete Applications', count: stats.pendingAthletes,    to: '/admin/athletes',           color: '#8B5CF6', desc: 'Awaiting eligibility approval'                },
-        { label: 'Support Tickets',      count: stats.openTickets,        to: '/admin/support',            color: '#0EA5E9', desc: 'Open and in-progress'                         },
-        { label: 'Waitlist Queue',       count: stats.waitlist,           to: '/admin/waitlist',           color: '#AAAAAA', desc: 'Access requests pending invite'               },
+        { label: 'Flagged Sessions',     count: stats.flaggedSessions,    to: '/admin/sessions',           color: '#F43F5E', icon: Shield,        desc: 'Duplicate / multi-device' },
+        { label: 'Reward Submissions',   count: stats.pendingSubmissions, to: '/admin/reward-submissions', color: '#F97316', icon: Inbox,         desc: 'Pending brand review'     },
+        { label: 'Athlete Applications', count: stats.pendingAthletes,    to: '/admin/athletes',           color: '#8B5CF6', icon: Star,          desc: 'Awaiting approval'        },
+        { label: 'Support Tickets',      count: stats.openTickets,        to: '/admin/support',            color: '#0EA5E9', icon: MessageSquare, desc: 'Open & in-progress'       },
     ];
 
-    // Flat list of all sections split into two columns
-    const sectionsLeft = [
-        { label: 'Partners',    path: '/admin/partners',           icon: Activity,      stat: fmt(stats.partners),          color: '#0EA5E9' },
-        { label: 'Rewards',     path: '/admin/rewards',            icon: Award,         stat: fmt(stats.rewards),           color: '#10B981' },
-        { label: 'Submissions', path: '/admin/reward-submissions', icon: Inbox,         stat: fmt(stats.pendingSubmissions), color: '#F97316' },
-        { label: 'Users',       path: '/admin/users',              icon: Users,         stat: fmt(stats.users),             color: '#8a7600' },
-        { label: 'Athletes',    path: '/admin/athletes',           icon: Star,          stat: fmt(stats.pendingAthletes),   color: '#8B5CF6' },
-        { label: 'Waitlist',    path: '/admin/waitlist',           icon: ClipboardList, stat: fmt(stats.waitlist),          color: '#0EA5E9' },
-        { label: 'Featured',    path: '/admin/featured',           icon: Star,          stat: '—',                          color: '#CCCCCC' },
-        { label: 'Challenges',  path: '/admin/challenges',         icon: Target,        stat: '—',                          color: '#CCCCCC' },
-    ];
-    const sectionsRight = [
-        { label: 'Analytics',   path: '/admin/analytics',   icon: BarChart3,     stat: fmt(stats.weeklyActive),    color: '#E8D200' },
-        { label: 'Sessions',    path: '/admin/sessions',    icon: Shield,        stat: fmt(stats.flaggedSessions), color: stats.flaggedSessions > 0 ? '#F43F5E' : '#CCCCCC' },
-        { label: 'Performance', path: '/admin/performance', icon: TrendingUp,    stat: fmt(stats.totalSessions),   color: '#F97316' },
-        { label: 'Redemptions', path: '/admin/redemptions', icon: Gift,          stat: fmt(stats.redemptions),     color: '#8B5CF6' },
-        { label: 'Support',     path: '/admin/support',     icon: MessageSquare, stat: fmt(stats.openTickets),     color: stats.openTickets > 0 ? '#0EA5E9' : '#CCCCCC' },
-        { label: 'Audit Log',   path: '/admin/audit',       icon: ScrollText,    stat: '—',                        color: '#CCCCCC' },
-        { label: 'Config',      path: '/admin/config',      icon: Settings,      stat: '—',                        color: '#CCCCCC' },
+    // Activity-mix colors (matched to type)
+    const MIX_COLORS = {
+        walking: '#0EA5E9', sleep: '#8B5CF6', gym: '#E8D200', running: '#F97316',
+        hiit: '#F43F5E', cycling: '#10B981', yoga: '#A78BFA', sports: '#8a7600', other: '#CCCCCC',
+    };
+    const maxMix = Math.max(1, ...activityMix.map(d => d.count));
+    const totalMix = activityMix.reduce((a, d) => a + d.count, 0) || 1;
+
+    // All sections — compact nav grid
+    const sections = [
+        { label: 'Partners',    path: '/admin/partners',           icon: Activity,      color: '#0EA5E9' },
+        { label: 'Rewards',     path: '/admin/rewards',            icon: Award,         color: '#10B981' },
+        { label: 'Submissions', path: '/admin/reward-submissions', icon: Inbox,         color: '#F97316' },
+        { label: 'Users',       path: '/admin/users',              icon: Users,         color: '#8a7600' },
+        { label: 'Athletes',    path: '/admin/athletes',           icon: Star,          color: '#8B5CF6' },
+        { label: 'Featured',    path: '/admin/featured',           icon: Star,          color: '#AAAAAA' },
+        { label: 'Challenges',  path: '/admin/challenges',         icon: Target,        color: '#AAAAAA' },
+        { label: 'Analytics',   path: '/admin/analytics',          icon: BarChart3,     color: '#E8D200' },
+        { label: 'Sessions',    path: '/admin/sessions',           icon: Shield,        color: '#F43F5E' },
+        { label: 'Performance', path: '/admin/performance',        icon: TrendingUp,    color: '#F97316' },
+        { label: 'Redemptions', path: '/admin/redemptions',        icon: Gift,          color: '#8B5CF6' },
+        { label: 'Support',     path: '/admin/support',            icon: MessageSquare, color: '#0EA5E9' },
+        { label: 'Audit Log',   path: '/admin/audit',              icon: ScrollText,    color: '#AAAAAA' },
+        { label: 'Config',      path: '/admin/config',             icon: Settings,      color: '#AAAAAA' },
     ];
 
-    const SectionRow = ({ label, path, icon: Icon, stat, color }) => (
-        <Link to={path} className="group flex items-center gap-4 px-6 py-3 hover:bg-[#FAFAF8] transition-colors">
-            <Icon size={13} style={{ color }} className="flex-shrink-0" />
-            <span className="text-[11px] font-black uppercase tracking-[0.3em] text-[#AAAAAA] group-hover:text-[#1A1A1A] transition-colors flex-1 truncate">{label}</span>
-            <span className="text-base font-light text-[#333333] flex-shrink-0">{stat}</span>
-            <ChevronRight size={11} className="text-[#DDDDDD] group-hover:text-[#8a7600] transition-colors flex-shrink-0" />
-        </Link>
-    );
+    // --- SVG trend area chart (14d sessions) ---
+    const TrendChart = () => {
+        const W = 560, H = 160, P = 6;
+        if (!trend.length) return <div className="h-40" />;
+        const max = Math.max(1, ...trend.map(d => d.count));
+        const stepX = (W - P * 2) / Math.max(1, trend.length - 1);
+        const pts = trend.map((d, i) => {
+            const x = P + i * stepX;
+            const y = H - P - (d.count / max) * (H - P * 2);
+            return [x, y];
+        });
+        const line = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');
+        const area = `${line} L${pts[pts.length - 1][0].toFixed(1)},${H} L${pts[0][0].toFixed(1)},${H} Z`;
+        return (
+            <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="w-full h-40">
+                <defs>
+                    <linearGradient id="trendFill" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#E8D200" stopOpacity="0.35" />
+                        <stop offset="100%" stopColor="#E8D200" stopOpacity="0" />
+                    </linearGradient>
+                </defs>
+                <path d={area} fill="url(#trendFill)" />
+                <path d={line} fill="none" stroke="#8a7600" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+                {pts.map((p, i) => (
+                    <circle key={i} cx={p[0]} cy={p[1]} r={i === pts.length - 1 ? 3.5 : 0} fill="#8a7600" />
+                ))}
+            </svg>
+        );
+    };
 
-    const healthRows = [
-        { label: 'Total Users',      value: fmt(stats.users),             color: '#8a7600'  },
-        { label: 'Weekly Active',    value: fmt(stats.weeklyActive),      color: '#E8D200'  },
-        { label: 'Active Partners',  value: fmt(stats.partners),          color: '#0EA5E9'  },
-        { label: 'Active Rewards',   value: fmt(stats.rewards),           color: '#10B981'  },
-        { label: 'Reward Brands',    value: fmt(stats.rewardBrands),      color: '#8B5CF6'  },
-        { label: 'Total Sessions',   value: fmt(stats.totalSessions),     color: '#F97316'  },
-        { label: 'Active Codes',     value: fmt(stats.activeRedemptions), color: '#8B5CF6'  },
-        { label: 'Points Issued',    value: fmtPts(stats.totalPoints),    color: '#F97316'  },
-        { label: 'Flagged Sessions', value: fmt(stats.flaggedSessions),   color: stats.flaggedSessions > 0 ? '#F43F5E' : '#CCCCCC' },
-        { label: 'Open Tickets',     value: fmt(stats.openTickets),       color: stats.openTickets > 0 ? '#0EA5E9' : '#CCCCCC'   },
-    ];
+    // --- SVG donut gauge ---
+    const Donut = ({ pct, color, label, value }) => {
+        const r = 32, c = 2 * Math.PI * r;
+        const dash = (Math.min(100, Math.max(0, pct)) / 100) * c;
+        return (
+            <div className="flex flex-col items-center gap-2">
+                <div className="relative w-[84px] h-[84px]">
+                    <svg viewBox="0 0 84 84" className="w-full h-full -rotate-90">
+                        <circle cx="42" cy="42" r={r} fill="none" stroke="#F0F0EC" strokeWidth="8" />
+                        <circle cx="42" cy="42" r={r} fill="none" stroke={color} strokeWidth="8"
+                            strokeLinecap="round" strokeDasharray={`${dash} ${c}`}
+                            style={{ transition: 'stroke-dasharray 0.8s ease' }} />
+                    </svg>
+                    <div className="absolute inset-0 flex items-center justify-center">
+                        <span className="text-lg font-light tracking-tighter text-[#1A1A1A]">{loading ? '—' : value}</span>
+                    </div>
+                </div>
+                <span className="text-[8px] uppercase tracking-[0.3em] text-[#AAAAAA] font-black text-center leading-tight">{label}</span>
+            </div>
+        );
+    };
 
     return (
         <div className="py-8 animate-in fade-in duration-500">
@@ -540,7 +620,7 @@ const AdminHome = () => {
             </div>
 
             {/* KPI strip */}
-            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 mb-8">
+            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 mb-6">
                 {kpiCards.map(c => (
                     <div key={c.label} className="bg-white border border-[#E6E6E1] px-5 py-4 rounded-xl">
                         <div className="flex items-center gap-2 mb-3">
@@ -553,74 +633,125 @@ const AdminHome = () => {
                 ))}
             </div>
 
+            {/* Hero: 14-day trend + engagement gauges */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+                {/* Trend area chart 2/3 */}
+                <div className="lg:col-span-2 bg-white border border-[#E6E6E1] rounded-2xl p-6">
+                    <div className="flex items-start justify-between mb-2">
+                        <div>
+                            <div className="text-[10px] uppercase tracking-[0.5em] text-[#AAAAAA] font-black mb-1">Session Activity</div>
+                            <div className="flex items-baseline gap-3">
+                                <span className="text-4xl font-light tracking-tighter text-[#1A1A1A]">{loading ? '—' : stats.sessions7d}</span>
+                                <span className="text-[9px] uppercase tracking-[0.3em] text-[#CCCCCC] font-black">last 7 days</span>
+                                {!loading && (
+                                    <span className="flex items-center gap-1 text-[11px] font-black"
+                                        style={{ color: sessDelta >= 0 ? '#10B981' : '#F43F5E' }}>
+                                        {sessDelta >= 0 ? <ArrowUpRight size={13} /> : <ArrowDownRight size={13} />}
+                                        {Math.abs(sessDelta)}%
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                        <Link to="/admin/analytics" className="text-[#DDDDDD] hover:text-[#8a7600] transition-colors">
+                            <BarChart3 size={18} />
+                        </Link>
+                    </div>
+                    <TrendChart />
+                    <div className="flex justify-between mt-2 text-[8px] uppercase tracking-[0.2em] text-[#CCCCCC] font-black">
+                        <span>14 days ago</span>
+                        <span>Today</span>
+                    </div>
+                </div>
+
+                {/* Engagement gauges 1/3 */}
+                <div className="bg-white border border-[#E6E6E1] rounded-2xl p-6 flex flex-col">
+                    <div className="text-[10px] uppercase tracking-[0.5em] text-[#AAAAAA] font-black mb-5">Engagement</div>
+                    <div className="grid grid-cols-2 gap-4 flex-1 place-items-center">
+                        <Donut pct={engagementPct} color="#E8D200" value={`${engagementPct}%`} label="Weekly Active" />
+                        <Donut pct={codeHealthPct} color="#8B5CF6" value={`${codeHealthPct}%`} label="Active Codes" />
+                    </div>
+                    <div className="mt-5 pt-4 border-t border-[#F4F4F1] flex items-center gap-2">
+                        <div className="w-1.5 h-1.5 rounded-full bg-[#10B981] animate-pulse" />
+                        <span className="text-[8px] uppercase tracking-[0.35em] text-[#CCCCCC] font-black">All systems operational</span>
+                    </div>
+                </div>
+            </div>
+
             {/* Body */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
                 {/* Left 2/3 */}
                 <div className="lg:col-span-2 space-y-6">
 
-                    {/* Needs Attention */}
+                    {/* Needs Attention — visual triage cards */}
                     <div className="bg-white border border-[#E6E6E1] rounded-2xl overflow-hidden">
                         <div className="px-6 py-4 border-b border-[#F0F0EE] flex items-center gap-3">
                             <div className="h-[2px] w-5 bg-[#E8D200]"></div>
                             <span className="text-[11px] uppercase tracking-[0.5em] font-black text-[#1A1A1A]">Needs Attention</span>
                         </div>
-                        <div className="divide-y divide-[#F4F4F1]">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-y divide-[#F4F4F1]">
                             {attentionItems.map(item => {
                                 const urgent = !loading && item.count > 0;
                                 return (
-                                    <Link key={item.to} to={item.to} className="group flex items-center gap-5 px-6 py-4 hover:bg-[#FAFAF8] transition-colors">
-                                        <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${urgent ? 'animate-pulse' : ''}`}
-                                            style={{ background: urgent ? item.color : '#DDDDDD' }} />
-                                        <div className="flex-1 min-w-0">
-                                            <span className="text-[12px] font-black uppercase tracking-[0.25em] text-[#444444] group-hover:text-[#1A1A1A] transition-colors">{item.label}</span>
-                                            <span className="ml-4 text-[9px] text-[#CCCCCC] uppercase tracking-[0.3em] font-black hidden md:inline">{item.desc}</span>
-                                        </div>
-                                        <span className="text-2xl font-light tracking-tight min-w-[2rem] text-right flex-shrink-0"
-                                            style={{ color: urgent ? item.color : '#CCCCCC' }}>
+                                    <Link key={item.to} to={item.to}
+                                        className="group relative flex flex-col items-center justify-center text-center gap-2 px-3 py-6 hover:bg-[#FAFAF8] transition-colors"
+                                        style={urgent ? { background: `${item.color}0A` } : undefined}>
+                                        {urgent && <div className="absolute top-2 right-2 w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: item.color }} />}
+                                        <item.icon size={16} style={{ color: urgent ? item.color : '#D8D8D4' }} />
+                                        <span className="text-3xl font-light tracking-tighter leading-none"
+                                            style={{ color: urgent ? item.color : '#D0D0CC' }}>
                                             {loading ? '—' : item.count}
                                         </span>
-                                        <ChevronRight size={12} className="text-[#DDDDDD] group-hover:text-[#8a7600] transition-colors flex-shrink-0" />
+                                        <span className="text-[8px] font-black uppercase tracking-[0.2em] leading-tight"
+                                            style={{ color: urgent ? '#444444' : '#BBBBBB' }}>{item.label}</span>
                                     </Link>
                                 );
                             })}
                         </div>
                     </div>
 
-                    {/* All sections — two-column table */}
+                    {/* Activity Mix — horizontal bars */}
                     <div className="bg-white border border-[#E6E6E1] rounded-2xl overflow-hidden">
                         <div className="px-6 py-4 border-b border-[#F0F0EE] flex items-center gap-3">
-                            <div className="h-[2px] w-5 bg-[#8B5CF6]/60"></div>
-                            <span className="text-[11px] uppercase tracking-[0.5em] font-black text-[#1A1A1A]">All Sections</span>
+                            <div className="h-[2px] w-5 bg-[#0EA5E9]/60"></div>
+                            <span className="text-[11px] uppercase tracking-[0.5em] font-black text-[#1A1A1A]">Activity Mix</span>
+                            <span className="ml-auto text-[8px] uppercase tracking-[0.3em] text-[#CCCCCC] font-black">Sessions · 7d</span>
                         </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 sm:divide-x divide-[#F4F4F1]">
-                            <div className="divide-y divide-[#F4F4F1]">
-                                {sectionsLeft.map(s => <SectionRow key={s.label} {...s} />)}
-                            </div>
-                            <div className="divide-y divide-[#F4F4F1]">
-                                {sectionsRight.map(s => <SectionRow key={s.label} {...s} />)}
-                            </div>
+                        <div className="px-6 py-5 space-y-3.5">
+                            {loading ? (
+                                <div className="h-32 flex items-center justify-center text-[10px] uppercase tracking-[0.4em] text-[#CCCCCC] font-black">Loading…</div>
+                            ) : activityMix.length === 0 ? (
+                                <div className="h-32 flex items-center justify-center text-[10px] uppercase tracking-[0.4em] text-[#CCCCCC] font-black">No sessions in last 7 days</div>
+                            ) : activityMix.map(d => (
+                                <div key={d.type}>
+                                    <div className="flex justify-between items-center mb-1.5">
+                                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[#888888] capitalize">{d.type}</span>
+                                        <span className="text-[10px] font-black text-[#AAAAAA]">{d.count} · {Math.round((d.count / totalMix) * 100)}%</span>
+                                    </div>
+                                    <div className="w-full h-2.5 bg-[#F0F0EC] rounded-full overflow-hidden">
+                                        <div className="h-full rounded-full transition-all duration-700"
+                                            style={{ width: `${(d.count / maxMix) * 100}%`, backgroundColor: MIX_COLORS[d.type] || '#E8D200' }} />
+                                    </div>
+                                </div>
+                            ))}
                         </div>
                     </div>
                 </div>
 
-                {/* Right 1/3 — health numbers */}
+                {/* Right 1/3 — section nav grid */}
                 <div className="bg-white border border-[#E6E6E1] rounded-2xl overflow-hidden h-fit">
                     <div className="px-6 py-4 border-b border-[#F0F0EE] flex items-center gap-3">
-                        <div className="h-[2px] w-5 bg-[#10B981]/60"></div>
-                        <span className="text-[11px] uppercase tracking-[0.5em] font-black text-[#1A1A1A]">Platform Health</span>
+                        <div className="h-[2px] w-5 bg-[#8B5CF6]/60"></div>
+                        <span className="text-[11px] uppercase tracking-[0.5em] font-black text-[#1A1A1A]">Jump To</span>
                     </div>
-                    <div className="divide-y divide-[#F4F4F1]">
-                        {healthRows.map(row => (
-                            <div key={row.label} className="flex items-center justify-between px-6 py-3.5">
-                                <span className="text-[10px] uppercase tracking-[0.35em] text-[#AAAAAA] font-black">{row.label}</span>
-                                <span className="text-base font-light tracking-tight" style={{ color: row.color }}>{row.value}</span>
-                            </div>
+                    <div className="grid grid-cols-3 gap-px bg-[#F4F4F1]">
+                        {sections.map(s => (
+                            <Link key={s.label} to={s.path}
+                                className="group bg-white flex flex-col items-center justify-center gap-2 py-5 hover:bg-[#FAFAF8] transition-colors">
+                                <s.icon size={16} style={{ color: s.color }} className="opacity-70 group-hover:opacity-100 transition-opacity" />
+                                <span className="text-[8px] font-black uppercase tracking-[0.15em] text-[#AAAAAA] group-hover:text-[#1A1A1A] transition-colors text-center leading-tight px-1">{s.label}</span>
+                            </Link>
                         ))}
-                    </div>
-                    <div className="px-6 py-4 border-t border-[#F4F4F1] flex items-center gap-3">
-                        <div className="w-1.5 h-1.5 rounded-full bg-[#10B981] animate-pulse"></div>
-                        <span className="text-[9px] uppercase tracking-[0.4em] text-[#CCCCCC] font-black">All systems operational</span>
                     </div>
                 </div>
             </div>
@@ -662,7 +793,6 @@ const AdminLayout = ({ children }) => {
         { label: 'Submissions', path: '/admin/reward-submissions', icon: Inbox,          badge: pendingSubmissions },
         { label: 'Featured',    path: '/admin/featured',           icon: Star            },
         { label: 'Challenges',  path: '/admin/challenges',         icon: Target          },
-        { label: 'Waitlist',    path: '/admin/waitlist',           icon: ClipboardList   },
         { label: 'Users',       path: '/admin/users',              icon: Users           },
         { label: 'Athletes',    path: '/admin/athletes',           icon: Star,           badge: pendingAthletes },
     ];
@@ -701,7 +831,7 @@ const AdminLayout = ({ children }) => {
                 <item.icon size={18} strokeWidth={active ? 2.5 : 1.8}
                     className={active ? '' : 'group-hover:text-[#8a7600] transition-colors'} />
                 {!collapsed && (
-                    <span className="text-[12px] uppercase tracking-[0.25em] font-black flex-1 leading-none">{item.label}</span>
+                    <span className={`text-[12px] uppercase tracking-[0.25em] flex-1 leading-none ${active ? 'font-semibold' : 'font-medium'}`}>{item.label}</span>
                 )}
                 {item.badge > 0 && !collapsed && (
                     <span className={`min-w-[18px] h-4 px-1 rounded-full text-[8px] font-black flex items-center justify-center ${
@@ -739,7 +869,7 @@ const AdminLayout = ({ children }) => {
                 <nav className={`flex-1 py-4 overflow-y-auto overflow-x-hidden ${collapsed ? 'px-3 space-y-1' : 'px-3 space-y-0.5'}`}>
                     {!collapsed && (
                         <div className="px-3 pt-1 pb-3">
-                            <div className="text-[9px] uppercase tracking-[0.6em] text-[#CCCCCC] font-black mb-1.5">Core</div>
+                            <div className="text-[9px] uppercase tracking-[0.6em] text-[#CCCCCC] font-semibold mb-1.5">Core</div>
                             <div className="h-[1.5px] w-6 bg-[#E8D200]/70"></div>
                         </div>
                     )}
@@ -749,7 +879,7 @@ const AdminLayout = ({ children }) => {
 
                     {!collapsed && (
                         <div className="px-3 pt-5 pb-3">
-                            <div className="text-[9px] uppercase tracking-[0.6em] text-[#CCCCCC] font-black mb-1.5">Operations</div>
+                            <div className="text-[9px] uppercase tracking-[0.6em] text-[#CCCCCC] font-semibold mb-1.5">Operations</div>
                             <div className="h-[1.5px] w-6 bg-[#8B5CF6]/60"></div>
                         </div>
                     )}
@@ -762,14 +892,14 @@ const AdminLayout = ({ children }) => {
                 <div className={`border-t border-[#F0F0EE] flex-shrink-0 ${collapsed ? 'p-3 flex flex-col items-center gap-2' : 'p-4 space-y-3'}`}>
                     {user?.email && !collapsed && (
                         <div className="px-3 py-2.5 bg-[#F4F4F1] rounded-xl border border-[#EFEFEC]">
-                            <div className="text-[8px] uppercase tracking-[0.5em] text-[#CCCCCC] font-black mb-1">Admin</div>
+                            <div className="text-[8px] uppercase tracking-[0.5em] text-[#CCCCCC] font-semibold mb-1">Admin</div>
                             <div className="text-[11px] text-[#888888] truncate font-mono">{user.email.split('@')[0]}</div>
                         </div>
                     )}
                     <button
                         onClick={handleSignOut}
                         title={collapsed ? 'Sign out' : undefined}
-                        className={`flex items-center justify-center gap-2 text-[11px] uppercase tracking-[0.3em] font-black text-red-400/50 hover:text-red-500 hover:bg-red-500/5 rounded-xl transition-all ${
+                        className={`flex items-center justify-center gap-2 text-[11px] uppercase tracking-[0.3em] font-medium text-red-400/50 hover:text-red-500 hover:bg-red-500/5 rounded-xl transition-all ${
                             collapsed ? 'w-10 h-10' : 'w-full h-9'
                         }`}
                     >
@@ -837,7 +967,6 @@ export default function App() {
                     <Route path="/admin/reward-submissions" element={<ProtectedRoute><AdminLayout><RewardSubmissions /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/featured" element={<ProtectedRoute><AdminLayout><FeaturedSchedule /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/challenges" element={<ProtectedRoute><AdminLayout><WeeklyChallenges /></AdminLayout></ProtectedRoute>} />
-                    <Route path="/admin/waitlist" element={<ProtectedRoute><AdminLayout><WaitlistManager /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/users" element={<ProtectedRoute><AdminLayout><UserManager /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/users/:userId" element={<ProtectedRoute><AdminLayout><UserProfile /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/partners/:partnerId" element={<ProtectedRoute><AdminLayout><PartnerProfile /></AdminLayout></ProtectedRoute>} />
