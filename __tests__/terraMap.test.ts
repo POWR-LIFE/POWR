@@ -53,14 +53,22 @@ describe('terraActivityToPOWR', () => {
     expect(terraActivityToPOWR('Zumba', 101)).toBe('dance');
   });
 
-  it('returns null for walking, non-exercise, and unknown types', () => {
+  it('returns null only for walking and genuine non-exercise sensor states', () => {
     expect(terraActivityToPOWR('', 7)).toBeNull();    // Walking → daily steps
     expect(terraActivityToPOWR('', 93)).toBeNull();   // Walking for Fitness → daily steps
     expect(terraActivityToPOWR('', 0)).toBeNull();    // In Vehicle
     expect(terraActivityToPOWR('', 135)).toBeNull();  // Driving
     expect(terraActivityToPOWR('Walking')).toBeNull();
-    expect(terraActivityToPOWR('')).toBeNull();
-    expect(terraActivityToPOWR('Underwater Basket Weaving')).toBeNull();
+  });
+
+  it('logs an unrecognised workout as gym rather than dropping it', () => {
+    // A real activity payload Terra sent but we can't name is still a workout —
+    // it must land as a session. Whoop's unspecified "Activity" arrives as 108.
+    expect(terraActivityToPOWR('', 108)).toBe('gym');                  // Other
+    expect(terraActivityToPOWR('', 4)).toBe('gym');                    // Unknown
+    expect(terraActivityToPOWR('Activity', 108)).toBe('gym');          // Whoop generic
+    expect(terraActivityToPOWR('')).toBe('gym');                       // unnamed, no type
+    expect(terraActivityToPOWR('Underwater Basket Weaving')).toBe('gym'); // unrecognised name
   });
 
   it('still resolves via name heuristics for unknown/future type ints', () => {
