@@ -67,17 +67,30 @@ const connectorStyles = StyleSheet.create({
         backgroundColor: '#2a2a2a',
     },
     pill: {
+        flexDirection: 'row',
+        alignItems: 'center',
         borderWidth: 1,
         borderColor: '#2a2a2a',
         borderRadius: 100,
         paddingHorizontal: 10,
         paddingVertical: 4,
     },
+    pillUnlocked: {
+        borderColor: 'rgba(232,210,0,0.45)',
+        backgroundColor: 'rgba(232,210,0,0.08)',
+    },
+    pillIcon: {
+        marginRight: 4,
+    },
     pillText: {
         fontSize: 10,
         fontWeight: '500',
         color: '#555',
         letterSpacing: 0.3,
+    },
+    pillTextUnlocked: {
+        color: GOLD,
+        fontWeight: '600',
     },
 });
 
@@ -551,23 +564,32 @@ export default function HomeScreen() {
                     onShare={() => router.push({ pathname: '/share-stats', params: { mode: 'streak' } })}
                 />
 
-                {featuredReward && (
-                    <>
-                        <View style={connectorStyles.wrapper}>
-                            <View style={connectorStyles.line} />
-                            <View style={connectorStyles.pill}>
-                                <Text style={connectorStyles.pillText}>Unlocks reward</Text>
+                {featuredReward && (() => {
+                    const rewardUnlocked = balance >= featuredReward.powr_cost;
+                    const ptsToUnlock = Math.max(0, Math.ceil(featuredReward.powr_cost - balance));
+                    return (
+                        <>
+                            <View style={connectorStyles.wrapper}>
+                                <View style={connectorStyles.line} />
+                                <View style={[connectorStyles.pill, rewardUnlocked && connectorStyles.pillUnlocked]}>
+                                    {rewardUnlocked && (
+                                        <Ionicons name="lock-open" size={10} color={GOLD} style={connectorStyles.pillIcon} />
+                                    )}
+                                    <Text style={[connectorStyles.pillText, rewardUnlocked && connectorStyles.pillTextUnlocked]}>
+                                        {rewardUnlocked ? 'Ready to redeem' : `${ptsToUnlock} pts to unlock`}
+                                    </Text>
+                                </View>
+                                <View style={connectorStyles.line} />
                             </View>
-                            <View style={connectorStyles.line} />
-                        </View>
-                        <Pressable
-                            onPress={() => router.push('/(tabs)/rewards')}
-                            style={({ pressed }) => [pressed && { opacity: 0.92 }]}
-                        >
-                            <RewardCard reward={featuredReward} balance={balance} challengeTitle={weeklyChallenges[0]?.title ?? 'this week’s challenge'} />
-                        </Pressable>
-                    </>
-                )}
+                            <Pressable
+                                onPress={() => router.push('/(tabs)/rewards')}
+                                style={({ pressed }) => [pressed && { opacity: 0.92 }]}
+                            >
+                                <RewardCard reward={featuredReward} balance={balance} challengeTitle={weeklyChallenges[0]?.title ?? 'this week’s challenge'} />
+                            </Pressable>
+                        </>
+                    );
+                })()}
 
             </ReAnimated.ScrollView>
             </ReAnimated.View>
