@@ -1,12 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
-import { Plus, Edit2, Trash2, Ticket, Loader2, X, Search, Award, Activity, ChevronLeft, ChevronRight, AlertTriangle, Upload, Image as ImageIcon, Tag, FileText, Download, GripVertical, Save, Pin, Send, KeyRound } from 'lucide-react';
+import { Plus, Edit2, Trash2, Ticket, Loader2, X, Search, Award, Activity, ChevronLeft, ChevronRight, AlertTriangle, Upload, Image as ImageIcon, Tag, FileText, Download, GripVertical, Save, Pin, Send, KeyRound, Building2, Link2, Palette } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { uploadPublicImage } from '../../lib/storage';
 import * as XLSX from 'xlsx';
 import { parseCodes, uploadCodes, fetchCodeStats, fetchCodePool, fetchAllCodes, getCSVTemplate, buildScheme, isValidForScheme, getSchemeCSVTemplate, generateCodes, toggleCodeStatus } from '../../lib/promoCodes';
 import BrandPortalAccess from '../../components/BrandPortalAccess';
+import BrandAccessPanel from '../../components/BrandAccessPanel';
+import RewardAppPreview from '../../components/RewardAppPreview';
 
 const CATEGORIES = ['eat', 'move', 'mind', 'sleep'];
 const normalizeRewardCategory = (category) => {
@@ -63,6 +65,32 @@ const getRewardDisplayValue = (reward) => {
     }
     return reward.value_label || '';
 };
+
+// Strip a promo-code name down to the brand segment used in the redeem screen.
+const cleanPrefix = (raw) => String(raw ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
+
+// Pull the brand segment from a code scheme example: 'POWR-TRIBE-A1B2C3' → 'TRIBE'.
+const prefixFromScheme = (scheme, fallbackName) => {
+    const parts = String(scheme ?? '').toUpperCase().split('-').filter(Boolean);
+    if (parts[0] === 'POWR') parts.shift();
+    return cleanPrefix(parts[0] ?? fallbackName ?? '');
+};
+
+// Map the admin edit form onto RewardAppPreview's props so the phone mirrors it live.
+const previewFromForm = (form, schemeExample) => ({
+    brandName: form.brand_name || '',
+    title: form.title,
+    description: form.description,
+    partnerBlurb: form.partner_blurb,
+    offer: form.offer,
+    valueLabel: form.value_label,
+    discountType: form.discount_type,
+    discountValue: form.discount_value,
+    pts: form.powr_cost,
+    logoUrl: form.image_url || null,
+    heroUrl: form.hero_image_url || null,
+    codePrefix: prefixFromScheme(schemeExample, form.brand_name),
+});
 
 const EMPTY_FORM = {
     partner_id: '',
@@ -122,6 +150,7 @@ export default function RewardManager() {
     const [savingOrder, setSavingOrder] = useState(false);
     const [heroPickerOpen, setHeroPickerOpen] = useState(false);
     const [portalAccessOpen, setPortalAccessOpen] = useState(false);
+    const [editorTab, setEditorTab] = useState('details'); // 'details' | 'partner'
 
     // Distinct reward brands (case-insensitive) for the Portal Access modal
     const portalBrands = (() => {
@@ -186,6 +215,7 @@ export default function RewardManager() {
 
     const openCreate = () => {
         setEditingReward(null);
+        setEditorTab('details');
         setFormData({ ...EMPTY_FORM });
         setCodeStats(null);
         setCodePool({ rows: [], total: 0 });
@@ -199,6 +229,7 @@ export default function RewardManager() {
 
     const openEdit = async (reward) => {
         setEditingReward(reward);
+        setEditorTab('details');
         setFormData({
             partner_id: reward.partner_id ?? '',
             brand_name: reward.brand_name || '',
@@ -903,7 +934,30 @@ export default function RewardManager() {
                                 <button type="button" onClick={() => setEditorOpen(false)} className="w-14 h-14 shrink-0 bg-white border border-[#E6E6E1] rounded-3xl flex items-center justify-center text-[#666666] hover:text-[#1A1A1A] hover:border-[#E8D200]/40 transition-all"><X size={20} /></button>
                             </div>
 
-                            <div className="grid lg:grid-cols-2 gap-x-14">
+                            {/* Editor tabs — reward details vs. partner brand & portal access */}
+                            <div className="flex bg-white border border-[#E6E6E1] rounded-3xl p-2 gap-2 mb-12 max-w-md">
+                                {[
+                                    ['details', 'Reward Details', Award],
+                                    ['partner', 'Partner & Access', Building2],
+                                ].map(([val, label, Icon]) => {
+                                    const active = editorTab === val;
+                                    return (
+                                        <button
+                                            key={val}
+                                            type="button"
+                                            onClick={() => setEditorTab(val)}
+                                            className={`flex-1 flex items-center justify-center gap-3 h-12 rounded-[1.25rem] text-[10px] font-black uppercase tracking-[0.3em] transition-all ${active ? 'bg-[#E8D200] text-[#080808]' : 'text-[#BBB] hover:text-[#8a7600]'}`}
+                                        >
+                                            <Icon size={14} /> {label}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+
+                            <div className={editorTab === 'details' ? 'grid 2xl:grid-cols-[minmax(0,1fr)_360px] gap-x-16 gap-y-12 items-start' : 'hidden'}>
+                            {/* Form fields — two columns when there's no phone beside them,
+                                back to a single column once the live preview claims the right rail. */}
+                            <div className="grid lg:grid-cols-2 2xl:grid-cols-1 gap-x-12 gap-y-0 min-w-0">
                             {/* Left column — identity & copy */}
                             <div>
                             <div className="mb-8">
@@ -1114,9 +1168,22 @@ export default function RewardManager() {
                             </div>
                             </div>
                             </div>
+                            {/* end two-column form fields */}
+
+                            {/* Live app preview — mirrors the form, identical to the partner portal */}
+                            <div className="hidden 2xl:block">
+                                <div className="sticky top-8">
+                                    <div className="flex items-center gap-3 mb-6 justify-center">
+                                        <div className="h-[1px] w-8 bg-[#E8D200]" />
+                                        <span className="text-[9px] uppercase tracking-[0.4em] text-[#888888] font-black">In-App Preview</span>
+                                    </div>
+                                    <RewardAppPreview pageTheme="light" {...previewFromForm(formData, schemeExample)} />
+                                </div>
+                            </div>
+                            </div>
 
                             {/* Code pool — upload + ledger */}
-                            {editingReward && formData.reward_kind === 'digital' && formData.integration_type !== 'AFFILIATE' && (
+                            {editorTab === 'details' && editingReward && formData.reward_kind === 'digital' && formData.integration_type !== 'AFFILIATE' && (
                                 <div className="mb-8 bg-white border border-[#E6E6E1] rounded-[2rem] overflow-hidden">
 
                                     {/* Header row with stats */}
@@ -1387,6 +1454,61 @@ export default function RewardManager() {
                                             </>
                                         )}
                                     </div>
+                                </div>
+                            )}
+
+                            {/* Partner & Access tab — brand identity summary + portal logins */}
+                            {editorTab === 'partner' && (
+                                <div className="mb-8 space-y-8">
+                                    {/* Brand identity card */}
+                                    <div className="bg-white border border-[#E6E6E1] rounded-[2rem] p-8">
+                                        <div className="flex items-center gap-3 mb-8">
+                                            <Building2 size={16} className="text-[#8a7600]" />
+                                            <span className="text-[10px] uppercase tracking-[0.4em] text-[#333333] font-black">Reward Partner</span>
+                                            <span className="text-[9px] uppercase tracking-[0.3em] text-[#AAAAAA] font-black ml-1">— edit these on the Reward Details tab</span>
+                                        </div>
+
+                                        <div className="flex items-start gap-8 mb-10">
+                                            <div className="w-20 h-20 rounded-3xl bg-[#111111] border border-[#333333] flex items-center justify-center shrink-0 overflow-hidden">
+                                                {(formData.image_url || editingReward?.partners?.logo_url) ? (
+                                                    <img src={formData.image_url || editingReward?.partners?.logo_url} alt="" className="w-full h-full object-contain p-2" />
+                                                ) : (
+                                                    <Award size={28} className="text-[#666666]" />
+                                                )}
+                                            </div>
+                                            <div className="min-w-0">
+                                                <div className="text-2xl font-light tracking-tight text-[#1A1A1A] mb-2 truncate">
+                                                    {formData.brand_name || 'Unnamed brand'}
+                                                </div>
+                                                <span className="text-[10px] uppercase tracking-[0.4em] text-[#888888] font-black">{formData.category} sector</span>
+                                            </div>
+                                        </div>
+
+                                        <dl className="grid sm:grid-cols-2 gap-x-10 gap-y-6">
+                                            <div>
+                                                <dt className="text-[9px] uppercase tracking-[0.4em] text-[#AAAAAA] font-black mb-2 flex items-center gap-2"><Palette size={11} /> Brand Colour</dt>
+                                                <dd className="flex items-center gap-3">
+                                                    <span className="w-6 h-6 rounded-lg border border-[#E6E6E1] shrink-0" style={{ backgroundColor: formData.brand_color || '#E6E6E1' }} />
+                                                    <span className="text-[12px] font-mono font-bold text-[#222222]">{formData.brand_color || '—'}</span>
+                                                </dd>
+                                            </div>
+                                            <div className="min-w-0">
+                                                <dt className="text-[9px] uppercase tracking-[0.4em] text-[#AAAAAA] font-black mb-2 flex items-center gap-2"><Link2 size={11} /> Partner URL</dt>
+                                                <dd className="text-[12px] font-bold text-[#222222] truncate">
+                                                    {formData.url ? (
+                                                        <a href={formData.url} target="_blank" rel="noreferrer" className="text-[#8a7600] hover:underline">{formData.url}</a>
+                                                    ) : '—'}
+                                                </dd>
+                                            </div>
+                                            <div className="sm:col-span-2">
+                                                <dt className="text-[9px] uppercase tracking-[0.4em] text-[#AAAAAA] font-black mb-2">Partner Blurb</dt>
+                                                <dd className="text-sm text-[#444444] leading-relaxed">{formData.partner_blurb || '—'}</dd>
+                                            </div>
+                                        </dl>
+                                    </div>
+
+                                    {/* Portal logins / email management */}
+                                    <BrandAccessPanel brandName={formData.brand_name?.trim() || ''} />
                                 </div>
                             )}
 
