@@ -373,6 +373,67 @@ async function _syncWalkingNowImpl(): Promise<void> {
     await syncStepWindowsNow();
 }
 
+// ── Multi-day backfill ────────────────────────────────────────────────────────
+// syncWalkingNow only ever reads *today* (midnight→now), so a day the app isn't
+// opened on — and iOS background fetch is throttled hard, especially when the app
+// is force-quit — never gets a walking session, even though the phone's pedometer
+// keeps writing those steps to HealthKit / Health Connect forever. This catches
+// those days up: for each recent day with no session yet, read that day's total
+// from the native store and record it. Idempotent — the per-day unique index
+// no-ops days already present (logHealthWalkingSession returns null on conflict).
+
+// Run once per JS context: cheap to repeat (the unique index dedups), but no need
+// to re-scan a week of history on every foreground. Reset on failure so a later
+// trigger can retry.
+let _backfilledThisSession = false;
+
+/** Local midnight `i` days before today. */
+function startOfDaysAgo(i: number): Date {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    d.setDate(d.getDate() - i);
+    return d;
+}
+
+/**
+ * Backfills walking sessions for the last `daysBack` days the app missed.
+ * Best-effort and safe to call repeatedly. Phone-store read, so it covers the
+ * phone-only users who have no wearable cloud push to top them up server-side.
+ */
+export async function backfillWalkingDays(daysBack = 7): Promise<void> {
+    if (Platform.OS === 'web') return;
+    if (_backfilledThisSession) return;
+    _backfilledThisSession = true;
+    try {
+        const activeId = await resolveActiveProviderId();
+        const verification = verificationForProvider(activeId);
+        const source = snapshotSourceFor(activeId);
+
+        for (let i = 1; i <= daysBack; i++) {
+            const dayStart = startOfDaysAgo(i);
+            const dayEnd = startOfDaysAgo(i - 1); // next local midnight
+
+            const steps = await getStepsInRange(dayStart, dayEnd);
+            if (steps <= 0) continue;
+
+            // No run-window subtraction here: the affected population is phone-only
+            // (a wearable cloud push would have topped these days up server-side),
+            // so there are no inferred runs to double-pay against. Cap as usual.
+            const points = Math.min(stepTierPoints(steps), WALKING_DAILY_CAP);
+            const sessionId = await logHealthWalkingSession(
+                steps, points, verification, dayStart.toISOString(), dayEnd.toISOString(),
+            );
+            if (!sessionId) continue; // day already recorded — unique index conflict
+
+            await saveHealthSnapshot({ sessionId, steps, activityType: 'walking', source });
+            console.log(`[walkingSync] backfilled ${localDateKey(dayStart)}: ${steps} steps → ${points} pts`);
+        }
+    } catch (e) {
+        console.warn('[walkingSync] backfill failed:', e);
+        _backfilledThisSession = false; // allow a retry on the next trigger
+    }
+}
+
 // ── Background task ───────────────────────────────────────────────────────────
 
 TaskManager.defineTask(WALKING_SYNC_TASK, async () => {

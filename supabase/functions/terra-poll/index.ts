@@ -24,11 +24,17 @@ const API_KEY = Deno.env.get('TERRA_API_KEY')!;
 const POLL_TOKEN = '06190b613be962a04476271cb6dc8c7fbb0a13758edd178b';
 
 /** No webhook data for this long ⇒ ask Terra to resend the recent window.
- *  Kept below the 30-min cron cadence so every cycle re-asks: a delivery
- *  stamps last_event_at, and a 90-min threshold was observed to stretch the
- *  effective per-connection cadence to ~2h (fresh stamp ⇒ skipped cycles).
- *  Cost: 3 light Terra GETs per active connection per 30 min. */
-const STALE_AFTER_MIN = 25;
+ *  Set just ABOVE the 30-min cron cadence: a connection that received any data
+ *  (organic auto-push OR a poll-triggered delivery) in the previous cycle stamps
+ *  last_event_at and is then skipped next cycle, so a working connection settles
+ *  to ~one poll/hour instead of one every 30 min. A genuinely quiet connection
+ *  (no push, no recent delivery) is still re-polled within ~60 min, well inside
+ *  the ≤90-min freshness target — so users never lose data, worst case it lands
+ *  one cycle later. Lower again toward the cadence only if auto-push regresses
+ *  and tighter freshness is worth the extra Terra GETs.
+ *  Cost: 3 light Terra GETs per active connection, but only on cycles where the
+ *  connection went quiet — roughly halves steady-state poll volume vs. 25. */
+const STALE_AFTER_MIN = 35;
 /** Resources worth polling. Gym/HIIT are geofence-verified, never Terra. */
 const RESOURCES = ['sleep', 'daily', 'activity'];
 /** Safety cap per run; the cron retries every 30 min so backlog drains fast. */

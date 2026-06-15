@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, Platform } from 'react-native';
 
 import { getTodayHealthWalkingSession, stepTierPoints, nextStepThreshold } from '@/lib/api/activity';
-import { getStepsToday, syncWalkingNow } from '@/lib/health/walkingSync';
+import { getStepsToday, syncWalkingNow, backfillWalkingDays } from '@/lib/health/walkingSync';
 import { useHealthData } from './useHealthData';
 
 export type WalkingProgressState = {
@@ -51,6 +51,13 @@ export function useWalkingProgress(): WalkingProgressState {
                 const session = await getTodayHealthWalkingSession();
                 setStepsToday(0);
                 setPointsEarned(session?.points ?? 0);
+            }
+
+            // Catch up any days the app missed (closed across midnight, bg fetch
+            // throttled). Guarded to run once per app session; fire-and-forget so
+            // it never blocks today's numbers from rendering.
+            if (steps > 0 || health.isAuthorized) {
+                backfillWalkingDays().catch(() => {});
             }
         } catch (e) {
             console.warn('[WalkingProgress] sync failed:', e);
