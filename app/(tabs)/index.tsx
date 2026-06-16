@@ -34,7 +34,7 @@ import { usePoints } from '@/hooks/usePoints';
 import { useStreak } from '@/hooks/useStreak';
 import { fetchSmartFeaturedReward, type Reward } from '@/lib/api/rewards';
 import { fetchProfile } from '@/lib/api/user';
-import { useWeeklyChallenges } from '@/hooks/useWeeklyChallenge';
+import { useWeeklyChallenges, type ChallengeCardData } from '@/hooks/useWeeklyChallenge';
 
 const GOLD = '#E8D200';
 const TEXT_PRIMARY = '#F2F2F2';
@@ -202,6 +202,26 @@ export default function HomeScreen() {
     }, [balance]);
 
     useEffect(() => { loadFeaturedReward(); }, [loadFeaturedReward]);
+
+    // Completed challenges share their own card (the share control is hidden until then).
+    const handleChallengeShare = useCallback((challenge: ChallengeCardData) => {
+        router.push({
+            pathname: '/share-stats',
+            params: {
+                mode: 'challenge',
+                challenge: JSON.stringify({
+                    challengeTitle: challenge.title,
+                    challengeDescription: challenge.description,
+                    categoryLabel: challenge.categoryLabel,
+                    tier: challenge.tier,
+                    points: challenge.points,
+                    displayValue: challenge.displayValue,
+                    displayGoal: challenge.displayGoal,
+                    unit: challenge.unit,
+                }),
+            },
+        });
+    }, [router]);
 
     const onRefresh = useCallback(async () => {
         setRefreshing(true);
@@ -561,7 +581,7 @@ export default function HomeScreen() {
                     challenges={weeklyChallenges}
                     totalBalance={balance}
                     celebrateId={newlyCompletedId}
-                    onShare={() => router.push({ pathname: '/share-stats', params: { mode: 'streak' } })}
+                    onShare={handleChallengeShare}
                 />
 
                 {featuredReward && (() => {

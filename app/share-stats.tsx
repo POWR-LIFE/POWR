@@ -15,7 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { captureRef } from 'react-native-view-shot';
 
 import { ShareCard } from '@/components/share/ShareCard';
-import { fetchAutoSummary, fetchCheckInSummary, type ShareSummary } from '@/lib/api/share';
+import { fetchAutoSummary, fetchChallengeSummary, fetchCheckInSummary, type ShareSummary } from '@/lib/api/share';
 
 const GOLD  = '#E8D200';
 const BG    = '#0d0d0d';
@@ -25,7 +25,7 @@ const MUTED = 'rgba(255,255,255,0.25)';
 
 const POWR_LOGO_URI = 'https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/landing-page-assets/powrlogotext.png';
 
-type Mode   = 'check-in' | 'streak';
+type Mode   = 'check-in' | 'streak' | 'challenge';
 type BgMode = 'cover' | 'powr' | 'gallery';
 
 const BG_OPTIONS: { key: BgMode; icon: React.ComponentProps<typeof Ionicons>['name']; label: string }[] = [
@@ -37,8 +37,9 @@ const BG_OPTIONS: { key: BgMode; icon: React.ComponentProps<typeof Ionicons>['na
 export default function ShareStatsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const params = useLocalSearchParams<{ mode?: string; sessionId?: string }>();
-  const mode: Mode = params.mode === 'check-in' ? 'check-in' : 'streak';
+  const params = useLocalSearchParams<{ mode?: string; sessionId?: string; challenge?: string }>();
+  const mode: Mode =
+    params.mode === 'check-in' ? 'check-in' : params.mode === 'challenge' ? 'challenge' : 'streak';
 
   const cardRef = useRef<View>(null);
   const [summary, setSummary]     = useState<ShareSummary | null>(null);
@@ -53,12 +54,24 @@ export default function ShareStatsScreen() {
       fetchCheckInSummary(params.sessionId)
         .then(setSummary)
         .catch((e: unknown) => setLoadError(e instanceof Error ? e.message : 'Could not load this check-in.'));
+    } else if (mode === 'challenge') {
+      if (!params.challenge) { setLoadError('No challenge specified.'); return; }
+      let challenge;
+      try {
+        challenge = JSON.parse(params.challenge);
+      } catch {
+        setLoadError('Could not load this challenge.');
+        return;
+      }
+      fetchChallengeSummary(challenge)
+        .then(setSummary)
+        .catch((e: unknown) => setLoadError(e instanceof Error ? e.message : 'Could not load this challenge.'));
     } else {
       fetchAutoSummary()
         .then(setSummary)
         .catch((e: unknown) => setLoadError(e instanceof Error ? e.message : 'Could not load your stats.'));
     }
-  }, [mode, params.sessionId]);
+  }, [mode, params.sessionId, params.challenge]);
 
   async function pickFromGallery() {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -124,7 +137,10 @@ export default function ShareStatsScreen() {
       if (!available) { setLoadError('Sharing is not available on this device.'); return; }
       await Sharing.shareAsync(uri, {
         mimeType: 'image/png',
-        dialogTitle: mode === 'check-in' ? 'Share your check-in' : 'Share your streak',
+        dialogTitle:
+          mode === 'check-in' ? 'Share your check-in'
+          : mode === 'challenge' ? 'Share your challenge'
+          : 'Share your streak',
         UTI: 'public.png',
       });
     } catch (e) {
@@ -134,7 +150,10 @@ export default function ShareStatsScreen() {
     }
   }
 
-  const headerTitle = mode === 'check-in' ? 'Share check-in' : 'Share your streak';
+  const headerTitle =
+    mode === 'check-in' ? 'Share check-in'
+    : mode === 'challenge' ? 'Share challenge'
+    : 'Share your streak';
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top, paddingBottom: insets.bottom + 16 }]}>

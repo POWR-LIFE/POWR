@@ -9,6 +9,7 @@ import type { ShareSummary } from '@/lib/api/share';
 
 const GOLD   = '#E8D200';
 const ORANGE = '#FF9944';
+const GREEN  = '#00CC66';
 const TEXT   = '#F2F2F2';
 const DIM    = 'rgba(255,255,255,0.55)';
 const MUTED  = 'rgba(255,255,255,0.32)';
@@ -169,6 +170,9 @@ function renderStatus(summary: ShareSummary): { label: string; dotColor: string 
       dotColor: GOLD,
     };
   }
+  if (summary.mode === 'challenge') {
+    return { label: 'Challenge Complete', dotColor: GREEN };
+  }
   return getStreakStatus(summary.currentStreak);
 }
 
@@ -176,6 +180,9 @@ function renderHeroTitle(summary: ShareSummary): string {
   if (summary.mode === 'check-in') {
     const config = ACTIVITIES[summary.type];
     return summary.venue?.name ?? config.label;
+  }
+  if (summary.mode === 'challenge') {
+    return summary.challengeTitle;
   }
   return summary.profile.displayName ?? 'POWR Member';
 }
@@ -187,6 +194,9 @@ function renderHeroSubtitle(summary: ShareSummary): string {
     const venueLine = summary.venue?.locationLabel;
     return venueLine ? `${venueLine} · ${timeLabel}` : timeLabel;
   }
+  if (summary.mode === 'challenge') {
+    return summary.challengeDescription;
+  }
   return summary.profile.username ? `@${summary.profile.username}` : '';
 }
 
@@ -197,6 +207,27 @@ function renderStatsRow(summary: ShareSummary): StatColProps[] {
       { label: 'TOTAL', value: summary.lifetimeCount.toString(), unit: 'visits' },
       {
         label: 'STREAK',
+        value: summary.currentStreak.toString(),
+        unit: 'days',
+        valueColor: summary.currentStreak > 0 ? GOLD : TEXT,
+      },
+    ];
+  }
+  if (summary.mode === 'challenge') {
+    return [
+      {
+        label: 'Earned',
+        value: `+${summary.points.toLocaleString()}`,
+        unit: 'pts',
+        valueColor: GOLD,
+      },
+      {
+        label: summary.categoryLabel,
+        value: summary.displayGoal.toLocaleString(),
+        unit: summary.unit,
+      },
+      {
+        label: 'Streak',
         value: summary.currentStreak.toString(),
         unit: 'days',
         valueColor: summary.currentStreak > 0 ? GOLD : TEXT,
