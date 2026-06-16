@@ -263,10 +263,6 @@ export default function OnboardingProfileScreen() {
         }
     }
 
-    const initials = trimmedName
-        ? trimmedName.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()
-        : '';
-
     return (
         <KeyboardAvoidingView
             style={styles.container}
@@ -301,7 +297,11 @@ export default function OnboardingProfileScreen() {
                         <Image key={avatarUri} source={{ uri: avatarUri }} style={styles.avatar} contentFit="cover" />
                     ) : (
                         <View style={[styles.avatar, styles.avatarPlaceholder]}>
-                            <Text style={styles.avatarInitials}>{initials || ' '}</Text>
+                            <Image
+                                source={require('@/assets/images/powr_transparent.png')}
+                                style={styles.avatarLogo}
+                                contentFit="contain"
+                            />
                         </View>
                     )}
                     <View style={styles.avatarBadge}>
@@ -446,11 +446,10 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         borderColor: BORDER,
     },
-    avatarInitials: {
-        color: 'rgba(255,255,255,0.5)',
-        fontSize: 32,
-        fontFamily: FONT_SEMIBOLD,
-        fontWeight: '600',
+    avatarLogo: {
+        width: '56%',
+        height: '56%',
+        opacity: 0.55,
     },
     avatarBadge: {
         position: 'absolute',
