@@ -8,8 +8,12 @@ import {
     ChevronLeft, TrendingUp, Zap, Shield, AlertCircle,
     ArrowUpRight, ArrowDownRight, Gift, Plus, X,
     Heart, Moon, Flame, Footprints, Star, Trash2,
-    Camera, ImagePlus, Trophy, Check, Link2, RefreshCw
+    Camera, ImagePlus, Trophy, Check, Link2, RefreshCw, Pencil
 } from 'lucide-react';
+
+const MIN_USERNAME = 3;
+const MAX_USERNAME = 20;
+const normalizeUsername = (raw) => raw.toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, MAX_USERNAME);
 
 const logAction = async (adminId, action, targetType, targetId, metadata = {}) => {
     await supabase.from('admin_audit_log').insert({ admin_id: adminId, action, target_type: targetType, target_id: targetId, metadata });
@@ -49,6 +53,9 @@ export default function UserProfile() {
     const [adjDesc, setAdjDesc] = useState('');
     const [adjLoading, setAdjLoading] = useState(false);
     const [proLoading, setProLoading] = useState(false);
+    const [editingUsername, setEditingUsername] = useState(false);
+    const [usernameEdit, setUsernameEdit] = useState('');
+    const [usernameSaving, setUsernameSaving] = useState(false);
     const [deleteConfirm, setDeleteConfirm] = useState(false);
     const [deleteLoading, setDeleteLoading] = useState(false);
     const [activeTab, setActiveTab] = useState('activity');
@@ -123,6 +130,37 @@ export default function UserProfile() {
         setProfile(prev => ({ ...prev, is_pro: newValue }));
         toast.success(newValue ? 'Pro status granted' : 'Pro status revoked');
         setProLoading(false);
+    };
+
+    const startEditUsername = () => {
+        setUsernameEdit(profile?.username || '');
+        setEditingUsername(true);
+    };
+
+    const handleSaveUsername = async () => {
+        const next = normalizeUsername(usernameEdit);
+        if (next === (profile.username || '')) { setEditingUsername(false); return; }
+        if (next.length < MIN_USERNAME) {
+            toast.error(`Username must be at least ${MIN_USERNAME} characters`);
+            return;
+        }
+        setUsernameSaving(true);
+        // Uniqueness pre-check (the DB unique constraint is the authoritative backstop).
+        const { data: existing, error: checkErr } = await supabase
+            .from('profiles').select('id').eq('username', next).neq('id', userId).limit(1).maybeSingle();
+        if (checkErr) { toast.error(checkErr.message); setUsernameSaving(false); return; }
+        if (existing) { toast.error('That username is already taken'); setUsernameSaving(false); return; }
+        const { error } = await supabase.from('profiles').update({ username: next }).eq('id', userId);
+        if (error) {
+            toast.error(error.code === '23505' ? 'That username is already taken' : error.message);
+            setUsernameSaving(false);
+            return;
+        }
+        await logAction(adminUser.id, 'update_username', 'user', userId, { from: profile.username || null, to: next });
+        setProfile(prev => ({ ...prev, username: next }));
+        toast.success('Username updated');
+        setEditingUsername(false);
+        setUsernameSaving(false);
     };
 
     const handleDeleteUser = async () => {
@@ -521,6 +559,55 @@ export default function UserProfile() {
                         <h1 className="text-5xl font-light tracking-tighter text-[#1A1A1A] mb-2 truncate">
                             {profile.display_name || profile.username || userEmail?.split('@')[0] || 'Anonymous Node'}
                         </h1>
+                        {/* Username (handle) — editable by admins so users who can't change it in-app can be fixed here */}
+                        <div className="flex items-center gap-3 mb-4">
+                            {editingUsername ? (
+                                <>
+                                    <div className="flex items-center h-9 px-3 bg-[#F4F4F1] border border-[#E6E6E1] rounded-lg focus-within:border-[#E8D200]/40 transition-[border-color]">
+                                        <span className="text-[#999999] text-sm font-medium">@</span>
+                                        <input
+                                            type="text"
+                                            autoFocus
+                                            value={usernameEdit}
+                                            onChange={e => setUsernameEdit(normalizeUsername(e.target.value))}
+                                            onKeyDown={e => {
+                                                if (e.key === 'Enter') handleSaveUsername();
+                                                if (e.key === 'Escape') setEditingUsername(false);
+                                            }}
+                                            placeholder="username"
+                                            className="w-44 bg-transparent outline-none text-sm text-[#1A1A1A] font-medium ml-0.5"
+                                        />
+                                    </div>
+                                    <button
+                                        onClick={handleSaveUsername}
+                                        disabled={usernameSaving}
+                                        className="flex items-center gap-1.5 h-9 px-4 rounded-lg bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-widest hover:translate-y-[-1px] transition-all disabled:opacity-50"
+                                    >
+                                        <Check size={13} /> {usernameSaving ? 'Saving…' : 'Save'}
+                                    </button>
+                                    <button
+                                        onClick={() => setEditingUsername(false)}
+                                        disabled={usernameSaving}
+                                        className="flex items-center gap-1.5 h-9 px-4 rounded-lg bg-white border border-[#E6E6E1] text-[#999999] text-[10px] font-black uppercase tracking-widest hover:text-[#1A1A1A] transition-all disabled:opacity-50"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <span className="text-[9px] uppercase tracking-[0.2em] text-[#AAAAAA] font-black">{MIN_USERNAME}–{MAX_USERNAME} chars · a–z 0–9 _</span>
+                                </>
+                            ) : (
+                                <>
+                                    <span className="text-sm text-[#666666] font-medium">
+                                        {profile.username ? `@${profile.username}` : 'No username set'}
+                                    </span>
+                                    <button
+                                        onClick={startEditUsername}
+                                        className="group flex items-center gap-1.5 h-7 px-3 rounded-full bg-white border border-[#E6E6E1] text-[#999999] hover:text-[#8a7600] hover:border-[#E8D200]/40 transition-all text-[9px] font-black uppercase tracking-widest"
+                                    >
+                                        <Pencil size={11} /> Edit
+                                    </button>
+                                </>
+                            )}
+                        </div>
                         <div className="flex items-center flex-wrap gap-3">
                             <span className="px-3 py-1 rounded-full bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.2em]">LVL {profile.level || 1}</span>
                             {profile.location_granted ? (
