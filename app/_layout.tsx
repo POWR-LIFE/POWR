@@ -77,6 +77,8 @@ function RootLayoutNav() {
           <Stack.Screen name="onboarding-activities" options={{ headerShown: false, contentStyle: { backgroundColor: 'transparent' } }} />
           <Stack.Screen name="onboarding-health" options={{ headerShown: false, contentStyle: { backgroundColor: 'transparent' } }} />
           <Stack.Screen name="onboarding-account" options={{ headerShown: false, contentStyle: { backgroundColor: 'transparent' } }} />
+          <Stack.Screen name="onboarding-profile" options={{ headerShown: false, contentStyle: { backgroundColor: 'transparent' } }} />
+          <Stack.Screen name="onboarding-gym" options={{ headerShown: false, contentStyle: { backgroundColor: 'transparent' } }} />
           <Stack.Screen name="onboarding-achievement" options={{ headerShown: false, contentStyle: { backgroundColor: 'transparent' } }} />
           <Stack.Screen name="auth-email" options={{ headerShown: false, contentStyle: { backgroundColor: 'transparent' } }} />
           <Stack.Screen name="(tabs)" options={{ headerShown: false, contentStyle: { backgroundColor: 'transparent' } }} />

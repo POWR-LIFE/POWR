@@ -6,6 +6,7 @@ import { Animated, Easing, Pressable, StyleSheet, Text, TextInput, View } from '
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 import GeometricBackground from '@/components/GeometricBackground';
+import { ONBOARDING_DOT_COUNT, dotIndexFor } from '@/lib/onboarding/flow';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/lib/supabase';
 
@@ -44,7 +45,7 @@ function arcPath(r: number, startDeg: number, endDeg: number) {
 function StepDots({ current }: { current: number }) {
     return (
         <View style={dotStyles.row}>
-            {[0, 1, 2, 3, 4].map(i => (
+            {Array.from({ length: ONBOARDING_DOT_COUNT }, (_, i) => i).map(i => (
                 <View
                     key={i}
                     style={[dotStyles.dot, i === current ? dotStyles.dotActive : dotStyles.dotInactive]}
@@ -260,7 +261,7 @@ export default function OnboardingAchievementScreen() {
 
             {/* ── CTA ── */}
             <Animated.View style={[styles.bottom, { paddingBottom: insets.bottom + 28, opacity: buttonOpacity }]}>
-                <StepDots current={4} />
+                <StepDots current={dotIndexFor('/onboarding-achievement')} />
                 {/* Optional invite code entry */}
                 <Pressable
                     onPress={() => setShowCodeInput(v => !v)}

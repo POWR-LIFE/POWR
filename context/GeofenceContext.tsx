@@ -1572,3 +1572,21 @@ export async function searchPartners(query: string): Promise<Partner[]> {
   if (error || !data) return [];
   return formatPartnerRows(data);
 }
+
+// ─── Nearest gyms to a coordinate (pure RPC, no native geofence stack) ────────
+// Used by onboarding's home-gym picker to show "gyms near you" before the user
+// types. Reuses the same row → Partner formatting as search.
+
+export async function fetchNearbyGyms(
+  lat: number,
+  lng: number,
+  maxResults = 20,
+): Promise<Partner[]> {
+  const { data, error } = await supabase.rpc('nearest_partners', {
+    user_lat: lat,
+    user_lng: lng,
+    max_results: maxResults,
+  });
+  if (error || !data) return [];
+  return formatPartnerRows(data);
+}

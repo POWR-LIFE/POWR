@@ -1,4 +1,5 @@
 import GeometricBackground from '@/components/GeometricBackground';
+import { ONBOARDING_DOT_COUNT, dotIndexFor } from '@/lib/onboarding/flow';
 import { androidHealthConnectStatus, useHealthData } from '@/hooks/useHealthData';
 import { useHealthProviders } from '@/hooks/useHealthProviders';
 import { syncHistoricalHealthData, type DaySyncResult } from '@/lib/api/onboardingSync';
@@ -143,7 +144,7 @@ function BrandIcon({ id, size = 24 }: { id: string; size?: number }) {
 function StepDots({ current }: { current: number }) {
     return (
         <View style={dotStyles.row}>
-            {[0, 1, 2, 3, 4].map(i => (
+            {Array.from({ length: ONBOARDING_DOT_COUNT }, (_, i) => i).map(i => (
                 <View
                     key={i}
                     style={[dotStyles.dot, i === current ? dotStyles.dotActive : dotStyles.dotInactive]}
@@ -684,7 +685,7 @@ export default function OnboardingHealthScreen() {
 
             {/* Bottom */}
             <Animated.View style={[styles.bottom, { paddingBottom: insets.bottom + 32, opacity: buttonFade }]}>
-                <StepDots current={2} />
+                <StepDots current={dotIndexFor('/onboarding-health')} />
 
                 <Pressable
                     style={[styles.primaryButton, syncing && { opacity: 0.7 }]}

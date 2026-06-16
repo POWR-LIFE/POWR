@@ -1,6 +1,7 @@
 import * as FileSystem from 'expo-file-system/legacy';
 
 import { supabase } from '@/lib/supabase';
+import { isHandleFree } from '@/lib/onboarding/username';
 
 export type Profile = {
     id: string;
@@ -52,6 +53,26 @@ export async function updateProfile(
         .update(fields)
         .eq('id', (await supabase.auth.getUser()).data.user?.id ?? '');
     return { error: error?.message ?? null };
+}
+
+/**
+ * Checks whether a username is free to claim. A username is "available" if no
+ * other profile holds it (the current user's own row is ignored, so re-saving
+ * your existing handle reports available). The DB unique constraint remains the
+ * authoritative backstop against races.
+ */
+export async function isUsernameAvailable(
+    username: string,
+): Promise<{ available: boolean; error: string | null }> {
+    const { data: { user } } = await supabase.auth.getUser();
+    const { data, error } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('username', username)
+        .limit(1)
+        .maybeSingle();
+    if (error) return { available: false, error: error.message };
+    return { available: isHandleFree(data, user?.id), error: null };
 }
 
 export async function updateProProfile(

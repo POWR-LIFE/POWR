@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Animated, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import GeometricBackground from '@/components/GeometricBackground';
+import { ONBOARDING_DOT_COUNT, dotIndexFor } from '@/lib/onboarding/flow';
 
 const GOLD = '#E8D200';
 const BG = '#0d0d0d';
@@ -19,7 +20,7 @@ const FONT_SEMIBOLD = 'Outfit_600SemiBold';
 function StepDots({ current }: { current: number }) {
     return (
         <View style={dotStyles.row}>
-            {[0, 1, 2, 3, 4].map(i => (
+            {Array.from({ length: ONBOARDING_DOT_COUNT }, (_, i) => i).map(i => (
                 <View
                     key={i}
                     style={[
@@ -87,7 +88,7 @@ export default function OnboardingAccountScreen() {
         if (!session || didNavigate.current) return;
         didNavigate.current = true;
         const onboardingComplete = session.user.user_metadata?.onboarding_complete;
-        router.replace(onboardingComplete ? '/(tabs)' : '/onboarding-permission');
+        router.replace(onboardingComplete ? '/(tabs)' : '/onboarding-profile');
     }, [session]);
     const [loadingMethod, setLoadingMethod] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -128,7 +129,7 @@ export default function OnboardingAccountScreen() {
         } else if (method === 'login') {
             router.push({ pathname: '/auth-email', params: { mode: 'signin' } });
         } else if (method === 'continue') {
-            router.push('/onboarding-permission');
+            router.push('/onboarding-profile');
         }
     };
 
@@ -236,7 +237,7 @@ export default function OnboardingAccountScreen() {
             <Animated.View
                 style={[styles.bottom, { paddingBottom: insets.bottom + 28, opacity: buttonsFade }]}
             >
-                <StepDots current={0} />
+                <StepDots current={dotIndexFor('/onboarding-account')} />
                 <Pressable onPress={() => handleAuth('login')}>
                     <Text style={styles.footerText}>
                         Already have an account?{'  '}

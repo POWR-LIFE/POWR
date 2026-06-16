@@ -7,6 +7,7 @@ import { Animated, Linking, Platform, Pressable, StyleSheet, Text, View, Alert }
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import MagicRings from '@/components/MagicRings';
 import GeometricBackground from '@/components/GeometricBackground';
+import { ONBOARDING_DOT_COUNT, dotIndexFor } from '@/lib/onboarding/flow';
 import { awardBonus } from '@/lib/api/points';
 import {
     hasPromptedBatteryOptimization,
@@ -20,7 +21,7 @@ const BG = '#0d0d0d';
 function StepDots({ current }: { current: number }) {
     return (
         <View style={dotStyles.row}>
-            {[0, 1, 2, 3, 4].map(i => (
+            {Array.from({ length: ONBOARDING_DOT_COUNT }, (_, i) => i).map(i => (
                 <View
                     key={i}
                     style={[
@@ -54,7 +55,7 @@ const dotStyles = StyleSheet.create({
     },
 });
 
-const NEXT_SCREEN = '/onboarding-health';
+const NEXT_SCREEN = '/onboarding-gym';
 
 export default function OnboardingPermissionScreen() {
     const router = useRouter();
@@ -209,7 +210,7 @@ export default function OnboardingPermissionScreen() {
 
             {/* Bottom */}
             <Animated.View style={[styles.bottom, { paddingBottom: insets.bottom + 32, opacity: buttonsFade }]}>
-                <StepDots current={1} />
+                <StepDots current={dotIndexFor('/onboarding-permission')} />
 
                 <Pressable
                     style={[styles.primaryButton, requesting && { opacity: 0.7 }]}
