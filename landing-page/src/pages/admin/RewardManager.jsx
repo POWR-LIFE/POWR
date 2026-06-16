@@ -101,7 +101,6 @@ const EMPTY_FORM = {
     category: 'move',
     stock: null,
     active: true,
-    featured_on_home: false,
     reward_kind: 'digital',
     integration_type: 'POOL',
     value_label: '',
@@ -148,7 +147,6 @@ export default function RewardManager() {
     const [dragOverId, setDragOverId] = useState(null);
     const [unsavedOrder, setUnsavedOrder] = useState(false);
     const [savingOrder, setSavingOrder] = useState(false);
-    const [heroPickerOpen, setHeroPickerOpen] = useState(false);
     const [portalAccessOpen, setPortalAccessOpen] = useState(false);
     const [editorTab, setEditorTab] = useState('details'); // 'details' | 'partner'
 
@@ -161,7 +159,6 @@ export default function RewardManager() {
         });
         return [...seen.values()].sort((a, b) => a.localeCompare(b));
     })();
-    const [settingHero, setSettingHero] = useState(false);
     const CODE_POOL_PAGE_SIZE = 20;
     const parsedScheme = schemeExample ? buildScheme(schemeExample) : null;
 
@@ -239,7 +236,6 @@ export default function RewardManager() {
             category: normalizeRewardCategory(reward.category),
             stock: reward.stock,
             active: reward.active,
-            featured_on_home: reward.featured_on_home || false,
             reward_kind: reward.reward_kind || 'digital',
             integration_type: reward.integration_type || 'POOL',
             value_label: reward.value_label || '',
@@ -444,14 +440,6 @@ export default function RewardManager() {
                 ? parseInt(formData.max_redemptions_per_user, 10)
                 : null,
         };
-        // Partial unique index only allows one featured_on_home=true row.
-        // Clear any existing featured reward first so the upsert doesn't conflict.
-        if (formData.featured_on_home) {
-            const excludeId = editingReward?.id;
-            const query = supabase.from('rewards').update({ featured_on_home: false }).eq('featured_on_home', true);
-            if (excludeId) query.neq('id', excludeId);
-            await query;
-        }
         const { error } = editingReward
             ? await supabase.from('rewards').update(payload).eq('id', editingReward.id)
             : await supabase.from('rewards').insert([payload]);
@@ -517,8 +505,6 @@ export default function RewardManager() {
         setDragOverId(null);
     };
 
-    const heroReward = rewards.find(r => r.featured_on_home);
-
     const handleSaveOrder = async () => {
         setSavingOrder(true);
         const results = await Promise.all(
@@ -534,34 +520,6 @@ export default function RewardManager() {
         }
         setUnsavedOrder(false);
         toast.success('Display order saved');
-    };
-
-    const handleSetHero = async (rewardId) => {
-        setSettingHero(true);
-        // Clear any existing pin first (partial unique index allows only one)
-        const { error: clearErr } = await supabase.from('rewards').update({ featured_on_home: false }).eq('featured_on_home', true);
-        if (clearErr) { toast.error(clearErr.message); setSettingHero(false); return; }
-        const { error } = await supabase.from('rewards').update({ featured_on_home: true }).eq('id', rewardId);
-        if (error) {
-            toast.error(error.message);
-        } else {
-            setRewards(prev => prev.map(r => ({ ...r, featured_on_home: r.id === rewardId })));
-            setHeroPickerOpen(false);
-            toast.success('Hero card updated');
-        }
-        setSettingHero(false);
-    };
-
-    const handleClearHero = async () => {
-        setSettingHero(true);
-        const { error } = await supabase.from('rewards').update({ featured_on_home: false }).eq('featured_on_home', true);
-        if (error) {
-            toast.error(error.message);
-        } else {
-            setRewards(prev => prev.map(r => ({ ...r, featured_on_home: false })));
-            toast.success('Hero pin cleared — smart rotation active');
-        }
-        setSettingHero(false);
     };
 
     const handleDelete = async (id) => {
@@ -623,93 +581,20 @@ export default function RewardManager() {
                 </div>
             </div>
 
-            {/* Hero Card Panel */}
-            <div className="mb-12 bg-white border border-[#E6E6E1] rounded-3xl overflow-hidden">
-                <div className="flex items-center justify-between px-10 py-6 border-b border-[#EFEFEC]">
-                    <div className="flex items-center gap-4">
-                        <Pin size={13} className="text-[#8a7600]" />
-                        <span className="text-[10px] uppercase tracking-[0.5em] text-[#666666] font-black">Hero Card</span>
-                        <span className="text-[9px] uppercase tracking-[0.3em] text-[#999999] font-black ml-2">— large card shown at the top of the app rewards page</span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                        {heroReward && !heroPickerOpen && (
-                            <button
-                                onClick={handleClearHero}
-                                disabled={settingHero}
-                                className="h-9 px-5 text-[9px] font-black uppercase tracking-[0.3em] text-[#999999] hover:text-red-500 border border-[#E6E6E1] hover:border-red-500/20 rounded-full transition-all disabled:opacity-40"
-                            >
-                                Clear Pin
-                            </button>
-                        )}
-                        <button
-                            onClick={() => setHeroPickerOpen(prev => !prev)}
-                            className="h-9 px-5 text-[9px] font-black uppercase tracking-[0.3em] bg-[#E8D200]/10 text-[#8a7600] border border-[#E8D200]/20 rounded-full hover:bg-[#E8D200]/20 transition-all"
-                        >
-                            {heroPickerOpen ? 'Cancel' : heroReward ? 'Change Hero' : 'Pin a Reward'}
-                        </button>
-                    </div>
+            {/* Featured hero is now scheduled via the Featured calendar */}
+            <Link
+                to="/admin/featured"
+                className="mb-12 flex items-center gap-5 bg-[#E8D200]/5 border border-[#E8D200]/20 rounded-3xl px-10 py-7 hover:bg-[#E8D200]/10 transition-all group"
+            >
+                <div className="w-10 h-10 rounded-2xl bg-[#E8D200]/10 flex items-center justify-center shrink-0">
+                    <Pin size={16} className="text-[#8a7600]" />
                 </div>
-
-                {heroPickerOpen ? (
-                    <div className="p-4 grid gap-1.5 max-h-80 overflow-y-auto">
-                        {rewards.filter(r => r.active).map(r => (
-                            <button
-                                key={r.id}
-                                onClick={() => handleSetHero(r.id)}
-                                disabled={settingHero}
-                                className={`flex items-center gap-5 p-4 rounded-2xl text-left transition-all border ${
-                                    r.featured_on_home
-                                        ? 'border-[#E8D200]/30 bg-[#E8D200]/5'
-                                        : 'border-transparent hover:border-[#E6E6E1] hover:bg-[#F4F4F1]'
-                                } disabled:opacity-40`}
-                            >
-                                <div className="w-9 h-9 rounded-xl bg-[#111111] border border-[#333333] flex items-center justify-center shrink-0 overflow-hidden">
-                                    {(r.image_url || r.partners?.logo_url) ? (
-                                        <img src={r.image_url || r.partners.logo_url} alt="" className="w-full h-full object-contain p-1" />
-                                    ) : (
-                                        <Award size={13} className="text-[#999999]" />
-                                    )}
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                    <span className="text-sm font-bold text-[#222222] block truncate">{r.title}</span>
-                                    <span className="text-[9px] uppercase tracking-[0.3em] text-[#888888] font-black">{r.powr_cost.toLocaleString()} POWR · {r.category}</span>
-                                </div>
-                                {r.featured_on_home && <span className="text-[8px] font-black uppercase tracking-[0.3em] text-[#8a7600] shrink-0">Current</span>}
-                                {settingHero && <Loader2 size={13} className="animate-spin text-[#999999] shrink-0" />}
-                            </button>
-                        ))}
-                    </div>
-                ) : heroReward ? (
-                    <div className="flex items-center gap-8 px-10 py-7">
-                        <div className="w-14 h-14 rounded-2xl bg-[#111111] border border-[#333333] flex items-center justify-center shrink-0 overflow-hidden">
-                            {(heroReward.image_url || heroReward.partners?.logo_url) ? (
-                                <img src={heroReward.image_url || heroReward.partners.logo_url} alt="" className="w-full h-full object-contain p-2" />
-                            ) : (
-                                <Award size={20} className="text-[#8a7600]" />
-                            )}
-                        </div>
-                        <div>
-                            <div className="flex items-center gap-3 mb-1">
-                                <span className="text-base font-bold text-[#1A1A1A]">{heroReward.title}</span>
-                                <span className="px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.3em] bg-[#E8D200]/10 text-[#8a7600] border border-[#E8D200]/20 rounded-full">Pinned</span>
-                            </div>
-                            <span className="text-[10px] uppercase tracking-[0.3em] text-[#888888] font-black">
-                                {heroReward.powr_cost?.toLocaleString()} POWR · {heroReward.brand_name || heroReward.partners?.name || 'Standalone'}
-                            </span>
-                        </div>
-                    </div>
-                ) : (
-                    <div className="flex items-center gap-6 px-10 py-7">
-                        <div className="w-10 h-10 rounded-2xl bg-[#F4F4F1] border border-[#E6E6E1] flex items-center justify-center shrink-0">
-                            <Activity size={15} className="text-[#AAAAAA]" />
-                        </div>
-                        <div>
-                            <span className="text-sm font-bold text-[#999999] block mb-0.5">Smart rotation active</span>
-                            <span className="text-[9px] uppercase tracking-[0.3em] text-[#AAAAAA] font-black">No reward pinned — app auto-selects based on user balance &amp; unlock status</span>
-                        </div>
-                    </div>
-                )}
-            </div>
+                <div className="flex-1">
+                    <div className="text-sm font-bold text-[#1A1A1A]">Featured hero is now scheduled</div>
+                    <div className="text-[9px] uppercase tracking-[0.3em] text-[#999999] font-black mt-0.5">The large card at the top of the app rewards page rotates by date — manage it on the Featured calendar</div>
+                </div>
+                <ChevronRight size={16} className="text-[#BBBBBB] group-hover:text-[#8a7600] transition-colors shrink-0" />
+            </Link>
 
             {/* Controls */}
             <div className="flex flex-col lg:flex-row gap-6 mb-12">
@@ -811,9 +696,6 @@ export default function RewardManager() {
                                                 <div>
                                                     <div className="flex items-center gap-2 mb-1">
                                                         <span className="text-base font-bold text-[#222222] group-hover:text-[#1A1A1A] transition-colors">{reward.title}</span>
-                                                        {reward.featured_on_home && (
-                                                            <span className="px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.3em] bg-[#E8D200]/10 text-[#8a7600] border border-[#E8D200]/20 rounded-full">Home</span>
-                                                        )}
                                                     </div>
                                                     <span className="text-[10px] uppercase tracking-[0.4em] text-[#666666] font-black">{reward.category} SECTOR</span>
                                                 </div>
@@ -1514,19 +1396,6 @@ export default function RewardManager() {
 
                             <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-10 bg-white border border-[#E6E6E1] rounded-[2rem] p-8">
                                 <div className="flex flex-col sm:flex-row sm:items-center gap-8 sm:gap-14">
-                                    <div className="flex items-center gap-4">
-                                        <button
-                                            type="button"
-                                            onClick={() => setFormData({ ...formData, featured_on_home: !formData.featured_on_home })}
-                                            className={`w-12 h-7 rounded-full transition-all relative shrink-0 ${formData.featured_on_home ? 'bg-[#E8D200]' : 'bg-[#EFEFEC]'}`}
-                                        >
-                                            <span className={`absolute top-1 w-5 h-5 rounded-full transition-all ${formData.featured_on_home ? 'left-[24px] bg-white' : 'left-1 bg-white'}`} />
-                                        </button>
-                                        <div>
-                                            <span className="text-[10px] uppercase tracking-[0.4em] text-[#666666] font-black">Feature on Home Screen</span>
-                                            <p className="text-[10px] text-[#999999] mt-0.5 max-w-sm">Replaces the reward card on the app home screen. Only one reward can be featured at a time.</p>
-                                        </div>
-                                    </div>
                                     <div className="flex items-center gap-4">
                                         <button
                                             type="button"

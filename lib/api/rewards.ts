@@ -221,17 +221,6 @@ export async function fetchMyRedemptionSummary(): Promise<Record<string, { activ
   return out;
 }
 
-export async function fetchFeaturedReward(): Promise<Reward | null> {
-  const { data, error } = await supabase
-    .from('rewards')
-    .select('id, partner_id, title, description, powr_cost, category, integration_type, code_expiry_days, active, featured_on_home, offer, hero_image_url, brand_color, url, partner_blurb, value_label, image_url, promo_code, discount_type, discount_value, brand_name, max_redemptions_per_user, partners(id, name, partner_code, logo_url, category, checkout_url_template)')
-    .eq('featured_on_home', true)
-    .eq('active', true)
-    .single();
-  if (error) return null;
-  return { ...data, partner: Array.isArray(data.partners) ? data.partners[0] : data.partners } as Reward;
-}
-
 const REWARD_FIELDS = 'id, partner_id, title, description, powr_cost, category, integration_type, code_expiry_days, active, featured_on_home, offer, hero_image_url, brand_color, url, partner_blurb, value_label, image_url, promo_code, discount_type, discount_value, brand_name, max_redemptions_per_user, partners(id, name, partner_code, logo_url, category, checkout_url_template)';
 
 export async function fetchFeaturedScheduledReward(): Promise<Reward | null> {
@@ -265,21 +254,20 @@ export async function fetchFeaturedScheduledReward(): Promise<Reward | null> {
 /**
  * Smart featured reward selection — priority order:
  * 1. Active time-boxed schedule slot (featured_reward_schedule table)
- * 2. Permanent pin (featured_on_home = true on the reward itself)
- * 3. Smart rotation based on unlock status:
+ * 2. Smart rotation based on unlock status:
  *    - All rewards unlocked: cycle all, highest points first
  *    - No rewards unlocked: show closest redeemable reward (lowest pts needed)
  *    - Mixed: prioritize unlocked rewards, cycle them by highest points first
  *
- * Admins can control the hero card without a new app build:
- *  - Pin a reward permanently via the "Featured on Home" toggle in RewardManager
- *  - Schedule timed campaigns via the Featured Schedule admin page
+ * Admins control the hero card without a new app build by scheduling timed
+ * campaigns on the Featured Schedule admin page (the calendar). When no slot is
+ * active for "now", the app falls back to smart rotation.
  */
 export async function fetchSmartFeaturedReward(balance: number): Promise<Reward | null> {
   try {
-    // 1. Permanent pin — set via admin panel Hero Card section
-    const pinned = await fetchFeaturedReward();
-    if (pinned) return pinned;
+    // 1. Active scheduled slot — set via the admin Featured calendar
+    const scheduled = await fetchFeaturedScheduledReward();
+    if (scheduled) return scheduled;
 
     // 2. Smart rotation fallback
     const rewards = await fetchRewards();
