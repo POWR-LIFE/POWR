@@ -28,6 +28,7 @@ import PartnerPortalHome from './pages/partner/PartnerHome';
 import { PartnerLayout } from './pages/partner/PartnerLayout';
 import PartnerPortalRedemptions from './pages/partner/PartnerRedemptions';
 import PartnerPortalRewards from './pages/partner/PartnerRewards';
+import PartnerPortalFeatured from './pages/partner/PartnerFeatured';
 import PartnerPortalSettings from './pages/partner/PartnerSettings';
 import PartnerSetup from './pages/partner/PartnerSetup';
 
@@ -958,6 +959,7 @@ export default function App() {
                     <Route path="/partner/setup/:token" element={<PartnerSetup />} />
                     <Route path="/partner" element={<PartnerProtectedRoute><PartnerLayout><PartnerPortalHome /></PartnerLayout></PartnerProtectedRoute>} />
                     <Route path="/partner/rewards" element={<PartnerProtectedRoute><PartnerLayout><PartnerPortalRewards /></PartnerLayout></PartnerProtectedRoute>} />
+                    <Route path="/partner/featured" element={<PartnerProtectedRoute><PartnerLayout><PartnerPortalFeatured /></PartnerLayout></PartnerProtectedRoute>} />
                     <Route path="/partner/redemptions" element={<PartnerProtectedRoute><PartnerLayout><PartnerPortalRedemptions /></PartnerLayout></PartnerProtectedRoute>} />
                     <Route path="/partner/settings" element={<PartnerProtectedRoute><PartnerLayout><PartnerPortalSettings /></PartnerLayout></PartnerProtectedRoute>} />
                     <Route path="/admin/login" element={<AdminLogin />} />
