@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Platform } from 'react-native';
 
-import type { HealthDataProvenance } from '@/lib/health/dataSource';
+import { classifyProvenance, type HealthDataProvenance } from '@/lib/health/dataSource';
 
 function toLocalISO(d: Date): string {
     return d.toISOString();
@@ -97,6 +97,18 @@ function androidProvenance(r: {
         dataOrigin: r.metadata?.dataOrigin,
         deviceType: r.metadata?.device?.type,
     };
+}
+
+// Sleep is wearable-only: only count sleep written by a worn device (Apple Watch,
+// Garmin / Oura / etc.) — never the phone's own Sleep Schedule estimates or a
+// non-wearable app. The phone-generated "asleep" samples HealthKit/Health Connect
+// expose look identical to wearable sleep apart from their provenance, so we gate on
+// that, mirroring the steps/activity classification (see lib/health/dataSource).
+function isWearableIOSSample(s: Parameters<typeof iosProvenance>[0]): boolean {
+    return classifyProvenance(iosProvenance(s)) === 'wearable';
+}
+function isWearableAndroidRecord(r: Parameters<typeof androidProvenance>[0]): boolean {
+    return classifyProvenance(androidProvenance(r)) === 'wearable';
 }
 
 // ── iOS (HealthKit via @kingstinct/react-native-healthkit) ───────────────────
@@ -280,8 +292,9 @@ async function iosGetLastNightSleep(): Promise<SleepSession | null> {
             filter: { date: { startDate: start, endDate: new Date() } },
             limit: -1,
         });
-        // Filter to actual sleep values (not inBed=0 or awake=2)
-        const asleep = samples.filter(s => s.value !== 0 && s.value !== 2);
+        // Filter to actual sleep values (not inBed=0 or awake=2), written by a worn
+        // wearable — phone-generated Sleep Schedule estimates are excluded.
+        const asleep = samples.filter(s => s.value !== 0 && s.value !== 2 && isWearableIOSSample(s));
         if (asleep.length === 0) return null;
 
         // Merge overlapping samples so multi-source nights aren't double-counted.
@@ -581,7 +594,9 @@ async function androidGetLastNightSleep(): Promise<SleepSession | null> {
                 endTime: toLocalISO(new Date()),
             },
         });
-        const sessions = records as Array<{ startTime: string; endTime: string; stages?: Array<{ stage: number; startTime: string; endTime: string }> }>;
+        const all = records as Array<{ startTime: string; endTime: string; metadata?: { dataOrigin?: string; device?: { type?: number } }; stages?: Array<{ stage: number; startTime: string; endTime: string }> }>;
+        // Wearable-only: keep sleep written by a worn device, drop phone-sourced sleep.
+        const sessions = all.filter(isWearableAndroidRecord);
         if (!sessions || sessions.length === 0) return null;
 
         // Build stage-tagged intervals, then merge overlaps so sleep written by
@@ -771,7 +786,8 @@ async function iosGetWeekHistory(): Promise<DayHealthSummary[]> {
                 filter: { date: { startDate: sleepStart, endDate: end } },
                 limit: -1,
             });
-            const asleep = samples.filter(s => s.value !== 0 && s.value !== 2);
+            // Wearable-only: drop phone-generated sleep, keep worn-device samples.
+            const asleep = samples.filter(s => s.value !== 0 && s.value !== 2 && isWearableIOSSample(s));
             if (asleep.length > 0) {
                 // Merge overlapping samples so multi-source nights aren't double-counted.
                 const { totalMs, deepMs, remMs, lightMs } = summariseSleepStages(
@@ -884,7 +900,9 @@ async function androidGetWeekHistory(): Promise<DayHealthSummary[]> {
             const { records } = await readRecords('SleepSession', {
                 timeRangeFilter: { operator: 'between', startTime: toLocalISO(sleepStart), endTime: toLocalISO(end) },
             });
-            const sessions = records as Array<{ startTime: string; endTime: string; stages?: Array<{ stage: number; startTime: string; endTime: string }> }>;
+            const allSleep = records as Array<{ startTime: string; endTime: string; metadata?: { dataOrigin?: string; device?: { type?: number } }; stages?: Array<{ stage: number; startTime: string; endTime: string }> }>;
+            // Wearable-only: drop phone-sourced sleep, keep worn-device sessions.
+            const sessions = allSleep.filter(isWearableAndroidRecord);
             if (sessions && sessions.length > 0) {
                 // Stage-tagged intervals merged to remove multi-source overlap.
                 const intervals: StagedInterval[] = [];
