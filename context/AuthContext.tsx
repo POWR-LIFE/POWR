@@ -4,6 +4,7 @@ import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
 import { router } from 'expo-router';
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
+import { Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { supabase } from '@/lib/supabase';
@@ -45,6 +46,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const sessionChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
     const currentSessionIdRef = useRef<string | null>(null);
     const registeringRef = useRef(false); // prevents concurrent registerAndWatchSession calls
+    const forcedSignOutRef = useRef(false); // set when another device kicked us, so we can explain why
 
     /**
      * Upserts this device's session_id into user_active_sessions, overwriting any
@@ -95,6 +97,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     // A different session_id means another device signed in — kick this one out now
                     if (incomingId && incomingId !== currentSessionIdRef.current) {
                         currentSessionIdRef.current = null;
+                        forcedSignOutRef.current = true;
                         supabase.auth.signOut();
                     }
                 },
@@ -125,6 +128,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             }
             if (!session) {
                 cleanupSessionWatch();
+            }
+            // SIGNED_OUT fires on manual sign-out, a token-refresh failure, or when the
+            // single-device watcher revokes this device. In every case the user must leave
+            // the authenticated stack — otherwise they're stranded on a now-userless screen
+            // rendering placeholders ("?" avatar, "You" name). Send them back to the login
+            // screen, and if another device kicked them out, say so.
+            if (event === 'SIGNED_OUT') {
+                const wasForced = forcedSignOutRef.current;
+                forcedSignOutRef.current = false;
+                router.replace('/onboarding');
+                if (wasForced) {
+                    Alert.alert(
+                        'Signed out',
+                        'You signed in on another device. POWR allows one device at a time, so you were signed out here. Sign in again to keep using this device.',
+                    );
+                }
             }
         });
 
@@ -255,8 +274,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
 
     const signOut = async () => {
+        // Navigation is handled centrally by the SIGNED_OUT branch in onAuthStateChange.
         await supabase.auth.signOut();
-        router.replace('/');
     };
 
     const markOnboardingComplete = async (): Promise<{ error: string | null }> => {
