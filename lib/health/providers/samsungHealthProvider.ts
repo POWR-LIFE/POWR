@@ -307,42 +307,17 @@ export function createSamsungHealthProvider(): HealthProvider {
         },
 
         async getLastNightSleep(): Promise<SleepSession | null> {
-            const now = new Date();
-            const yesterday = new Date(now);
-            yesterday.setDate(yesterday.getDate() - 1);
-            yesterday.setHours(18, 0, 0, 0);
-            const start = String(yesterday.getTime());
-            const end = String(now.getTime());
-            try {
-                const data = await shGet<any>('sleep', { start_time: start, end_time: end });
-                const items: any[] = data?.items ?? data?.sleep ?? [];
-                if (!items.length) return null;
-                const s = items[items.length - 1];
-
-                const totalMs = s.duration ?? (s.end_time - s.start_time);
-                const stages: any[] = s.stages ?? s.sleep_stages ?? [];
-
-                const deepMs = stages
-                    .filter((st: any) => st.type === 40 || st.stage === 'DEEP')
-                    .reduce((sum: number, st: any) => sum + (st.duration ?? 0), 0);
-                const remMs = stages
-                    .filter((st: any) => st.type === 50 || st.stage === 'REM')
-                    .reduce((sum: number, st: any) => sum + (st.duration ?? 0), 0);
-                const lightMs = stages
-                    .filter((st: any) => [30, 10, 20].includes(st.type) || st.stage === 'LIGHT')
-                    .reduce((sum: number, st: any) => sum + (st.duration ?? 0), 0);
-
-                return {
-                    startedAt: msToIso(s.start_time),
-                    endedAt: msToIso(s.end_time),
-                    durationHours: totalMs / 3_600_000,
-                    deepHours: deepMs / 3_600_000,
-                    remHours: remMs / 3_600_000,
-                    lightHours: lightMs / 3_600_000,
-                };
-            } catch {
-                return null;
-            }
+            // Sleep is wearable-only. Samsung Health is a phone-side aggregator that
+            // mixes phone-detected sleep with Galaxy Watch sleep, and the Data SDK
+            // sleep records read here carry no per-sample source/device, so we can't
+            // prove a given night came from a worn device (unlike Apple Health /
+            // Health Connect, where classifyProvenance filters by device). Per the
+            // "sleep only from a wearable, nothing else" rule we therefore don't
+            // surface Samsung Health sleep. Galaxy Watch sleep still flows through
+            // Health Connect (device.type = WATCH), which the native reader keeps.
+            // To re-enable: extend shGet('sleep') to return the record source/device
+            // and filter with classifyProvenance before returning.
+            return null;
         },
 
         async getHeartRateToday(): Promise<HeartRateSummary | null> {
@@ -384,10 +359,11 @@ export function createSamsungHealthProvider(): HealthProvider {
                 const { start, end } = dayRange(dateStr);
 
                 try {
-                    const [stepsData, exercisesData, sleepData, hrData] = await Promise.allSettled([
+                    // Sleep deliberately omitted — wearable-only, and Samsung Health
+                    // exposes no per-sample provenance to confirm it. See getLastNightSleep.
+                    const [stepsData, exercisesData, hrData] = await Promise.allSettled([
                         shGet<any>('step-daily-trends', { start_time: start, end_time: end }),
                         shGet<any>('exercises', { start_time: start, end_time: end }),
-                        shGet<any>('sleep', { start_time: start, end_time: end }),
                         shGet<any>('heart-rate', { start_time: start, end_time: end }),
                     ]);
 
@@ -407,32 +383,18 @@ export function createSamsungHealthProvider(): HealthProvider {
                         calories: r.calorie ?? r.calories ?? undefined,
                     }));
 
-                    const sleepItems = sleepData.status === 'fulfilled'
-                        ? (sleepData.value?.items ?? sleepData.value?.sleep ?? []) : [];
-                    let sleep: SleepSession | undefined;
-                    if (sleepItems.length) {
-                        const s = sleepItems[sleepItems.length - 1];
-                        const totalMs = s.duration ?? (s.end_time - s.start_time);
-                        const stages: any[] = s.stages ?? s.sleep_stages ?? [];
-                        sleep = {
-                            startedAt: msToIso(s.start_time),
-                            endedAt: msToIso(s.end_time),
-                            durationHours: totalMs / 3_600_000,
-                            deepHours: stages.filter((st: any) => st.type === 40 || st.stage === 'DEEP').reduce((a: number, st: any) => a + (st.duration ?? 0) / 3_600_000, 0),
-                            remHours: stages.filter((st: any) => st.type === 50 || st.stage === 'REM').reduce((a: number, st: any) => a + (st.duration ?? 0) / 3_600_000, 0),
-                            lightHours: stages.filter((st: any) => [30, 10, 20].includes(st.type) || st.stage === 'LIGHT').reduce((a: number, st: any) => a + (st.duration ?? 0) / 3_600_000, 0),
-                        };
-                    }
+                    const sleep: SleepSession | null = null;
 
                     const hrItems = hrData.status === 'fulfilled'
                         ? (hrData.value?.items ?? hrData.value?.heart_rate ?? []) : [];
-                    let heartRate: HeartRateSummary | undefined;
+                    let heartRate: HeartRateSummary | null = null;
                     if (hrItems.length) {
                         const values = hrItems.flatMap((r: any) => r.heart_rate ?? [r.heart_rate_value]).filter(Boolean);
                         if (values.length) {
                             heartRate = {
                                 avg: Math.round(values.reduce((a: number, b: number) => a + b, 0) / values.length),
                                 max: Math.max(...values),
+                                resting: 0,
                             };
                         }
                     }
@@ -445,10 +407,10 @@ export function createSamsungHealthProvider(): HealthProvider {
                         activities,
                         sleep,
                         heartRate,
-                        calories: activeCalories > 0 ? { active: Math.round(activeCalories), total: Math.round(activeCalories) } : undefined,
+                        calories: activeCalories > 0 ? { active: Math.round(activeCalories), total: Math.round(activeCalories) } : null,
                     });
                 } catch {
-                    days.push({ date: dateStr, steps: 0, activities: [] });
+                    days.push({ date: dateStr, steps: 0, activities: [], sleep: null, heartRate: null, calories: null });
                 }
             }
             return days;
