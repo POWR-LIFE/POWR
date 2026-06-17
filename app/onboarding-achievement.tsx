@@ -9,6 +9,7 @@ import GeometricBackground from '@/components/GeometricBackground';
 import { ONBOARDING_DOT_COUNT, dotIndexFor } from '@/lib/onboarding/flow';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/lib/supabase';
+import { sendWelcomeEmail } from '@/lib/api/email';
 
 const GOLD = '#E8D200';
 const BG = '#0d0d0d';
@@ -319,6 +320,10 @@ export default function OnboardingAchievementScreen() {
                         // back through the whole onboarding flow on next launch.
                         let { error } = await markOnboardingComplete();
                         if (error) ({ error } = await markOnboardingComplete());
+                        // Send the value-led welcome email (idempotent server-side, so a
+                        // retry here never double-sends). Fire-and-forget — never block the
+                        // user from entering the app on an email hiccup.
+                        sendWelcomeEmail().catch((e) => console.warn('Welcome email failed', e));
                         // Process referral: manual code takes priority, else check deep-link capture
                         const deepCode = await AsyncStorage.getItem('pending_referral_code').catch(() => null);
                         const code = inviteCode.trim() || deepCode || null;

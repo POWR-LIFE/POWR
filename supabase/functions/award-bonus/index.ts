@@ -4,6 +4,7 @@ import { createClient } from '@supabase/supabase-js';
 const ALLOWED_BONUSES: Record<string, { amount: number; description: string }> = {
   signup:              { amount: 20, description: 'Welcome bonus' },
   location_permission: { amount: 20, description: 'Location permission granted' },
+  wearable_connection: { amount: 20, description: 'Wearable connected' },
 };
 
 Deno.serve(async (req) => {

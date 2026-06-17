@@ -7,6 +7,7 @@ import * as SecureStore from 'expo-secure-store';
 import { isTerraProvider } from '@/lib/health/providers';
 import type { HealthProviderId } from '@/lib/health/providers';
 import { supabase } from '@/lib/supabase';
+import { awardBonus } from '@/lib/api/points';
 
 /**
  * Return surface for the Terra connection widget. Terra redirects here as
@@ -75,6 +76,8 @@ export default function TerraCallback() {
                         health_provider_connections: conns,
                         active_health_provider: providerId,
                     }).eq('id', user.id);
+                    // One-time +20 POWR for connecting a wearable. Idempotent server-side.
+                    awardBonus('wearable_connection').catch(() => {});
                 }
             } catch {}
 

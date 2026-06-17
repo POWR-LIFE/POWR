@@ -12,6 +12,7 @@ import {
 } from '@/lib/health/providers';
 import type { ConnectResult } from '@/lib/health/providers/types';
 import { supabase } from '@/lib/supabase';
+import { awardBonus } from '@/lib/api/points';
 
 export type ProviderConnection = {
     connected_at?: string;
@@ -188,6 +189,9 @@ export function useHealthProviders() {
             });
             setConnections(next);
             setActiveId(nextActive);
+            // One-time +20 POWR for connecting a health source / wearable.
+            // Idempotent on the server, so connecting more than one never stacks.
+            awardBonus('wearable_connection').catch(() => {});
             return 'connected';
         } finally {
             setBusyId(null);
