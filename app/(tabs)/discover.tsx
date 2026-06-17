@@ -25,6 +25,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ProfileButton } from '@/components/ProfileButton';
 import { useActiveGeofence } from '@/hooks/useActiveGeofence';
 import { useGeofenceContext, searchPartners, type Partner, type Trainer, type DayKey, type OpeningHours } from '@/context/GeofenceContext';
+import { createGymRequest } from '@/lib/api/gyms';
 import { supabase } from '@/lib/supabase';
 import { GeometricBackground } from '@/components/home/GeometricBackground';
 
@@ -168,6 +169,13 @@ export default function DiscoverScreen() {
   const [sortMenuVisible, setSortMenuVisible] = useState(false);
   const [mapRegion, setMapRegion] = useState<{ latitude: number; longitude: number; latitudeDelta: number; longitudeDelta: number }>(DEFAULT_REGION);
 
+  // Gym request (same flow as onboarding) — for gyms not yet on the platform
+  const [requestVisible, setRequestVisible] = useState(false);
+  const [reqName, setReqName] = useState('');
+  const [reqLocation, setReqLocation] = useState('');
+  const [reqSubmitting, setReqSubmitting] = useState(false);
+  const [reqSent, setReqSent] = useState(false);
+
   const [trainers, setTrainers] = useState<Trainer[]>([]);
   const [expandedTrainerId, setExpandedTrainerId] = useState<string | null>(null);
   const [preferredGymId, setPreferredGymId] = useState<string | null>(null);
@@ -219,6 +227,29 @@ export default function DiscoverScreen() {
     if (!error) setPreferredGymId(newValue);
     setSavingPreferred(false);
   }, [preferredGymId, savingPreferred]);
+
+  const openRequest = useCallback(() => {
+    setReqName(search.trim());
+    setReqLocation('');
+    setReqSent(false);
+    setRequestVisible(true);
+  }, [search]);
+
+  const submitRequest = useCallback(async () => {
+    const name = reqName.trim();
+    if (!name || reqSubmitting) return;
+    setReqSubmitting(true);
+    const { error } = await createGymRequest({ name, locationText: reqLocation });
+    setReqSubmitting(false);
+    if (error) return;
+    setReqSent(true);
+    setTimeout(() => {
+      setRequestVisible(false);
+      setReqSent(false);
+      setReqName('');
+      setReqLocation('');
+    }, 1400);
+  }, [reqName, reqLocation, reqSubmitting]);
 
   // Fetch trainers when a gym partner is selected
   useEffect(() => {
@@ -751,17 +782,21 @@ export default function DiscoverScreen() {
           />
         ))}
 
-        <View style={styles.comingSoonRow}>
+        <Pressable
+          style={({ pressed }) => [styles.comingSoonRow, pressed && { opacity: 0.7 }]}
+          onPress={openRequest}
+        >
           <View style={styles.comingSoonIcon}>
             <Text style={styles.comingSoonPlus}>+</Text>
           </View>
           <View style={styles.comingSoonInfo}>
-            <Text style={styles.comingSoonTitle}>More coming soon</Text>
+            <Text style={styles.comingSoonTitle}>Can't find your gym?</Text>
             <Text style={styles.comingSoonSub}>
-              Expanding across London. New partners added regularly.
+              Request it and we'll work on adding it to POWR.
             </Text>
           </View>
-        </View>
+          <Ionicons name="chevron-forward" size={16} color={DIM} />
+        </Pressable>
       </ScrollView>
       </KeyboardAvoidingView>
 
@@ -1219,6 +1254,71 @@ export default function DiscoverScreen() {
             </Pressable>
           </Pressable>
         </Pressable>
+      </Modal>
+
+      {/* ── Request a gym ─────────────────────────────────────── */}
+      <Modal
+        visible={requestVisible}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setRequestVisible(false)}
+      >
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <Pressable
+            style={styles.requestScrim}
+            onPress={() => !reqSubmitting && setRequestVisible(false)}
+          >
+            <Pressable style={styles.requestCard} onPress={e => e.stopPropagation()}>
+              {reqSent ? (
+                <View style={styles.requestSentBox}>
+                  <Ionicons name="checkmark-circle" size={42} color={GOLD} />
+                  <Text style={styles.requestSentTitle}>Thanks!</Text>
+                  <Text style={styles.requestSentBody}>We'll take a look and try to add it.</Text>
+                </View>
+              ) : (
+                <>
+                  <Text style={styles.sortTitle}>Request a gym</Text>
+                  <Text style={styles.requestSub}>Tell us where you train and we'll work on adding it.</Text>
+                  <TextInput
+                    style={styles.requestInput}
+                    value={reqName}
+                    onChangeText={setReqName}
+                    placeholder="Gym name"
+                    placeholderTextColor={MUTED}
+                    autoCapitalize="words"
+                  />
+                  <TextInput
+                    style={styles.requestInput}
+                    value={reqLocation}
+                    onChangeText={setReqLocation}
+                    placeholder="City or address (optional)"
+                    placeholderTextColor={MUTED}
+                    autoCapitalize="words"
+                  />
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.actionButton,
+                      (!reqName.trim() || reqSubmitting) && { opacity: 0.4 },
+                      pressed && styles.actionButtonPressed,
+                    ]}
+                    onPress={submitRequest}
+                    disabled={!reqName.trim() || reqSubmitting}
+                  >
+                    {reqSubmitting
+                      ? <ActivityIndicator color="#0d0d0d" size="small" />
+                      : <Text style={styles.actionButtonText}>Send Request</Text>}
+                  </Pressable>
+                  <Pressable onPress={() => setRequestVisible(false)} hitSlop={8}>
+                    <Text style={styles.requestCancel}>Cancel</Text>
+                  </Pressable>
+                </>
+              )}
+            </Pressable>
+          </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -1986,4 +2086,19 @@ const styles = StyleSheet.create({
   distanceChipActive: { backgroundColor: GOLD, borderColor: GOLD },
   distanceChipText: { fontSize: 13, fontWeight: '400', color: DIM },
   distanceChipTextActive: { color: '#0a0a0a', fontWeight: '600' },
+
+  // Request a gym modal
+  requestScrim: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', paddingHorizontal: 28 },
+  requestCard: {
+    backgroundColor: '#1a1a1c', borderRadius: 20, borderWidth: 1, borderColor: BORDER, padding: 22,
+  },
+  requestSub: { fontSize: 13, color: DIM, lineHeight: 19, marginTop: -8, marginBottom: 16 },
+  requestInput: {
+    height: 50, borderRadius: 13, backgroundColor: CARD_BG, borderWidth: 1, borderColor: BORDER,
+    paddingHorizontal: 14, color: TEXT, fontSize: 15, marginBottom: 10,
+  },
+  requestCancel: { fontSize: 14, color: DIM, textAlign: 'center', paddingVertical: 14 },
+  requestSentBox: { alignItems: 'center', paddingVertical: 16 },
+  requestSentTitle: { fontSize: 20, fontWeight: '600', color: TEXT, marginTop: 12 },
+  requestSentBody: { fontSize: 13, color: DIM, textAlign: 'center', marginTop: 6 },
 });
