@@ -73,7 +73,7 @@ const AUTH_OPTIONS: AuthOption[] = [
     },
     {
         id: 'email',
-        label: 'Continue with Email',
+        label: 'Sign up with Email',
         icon: <Ionicons name="mail-outline" size={18} color="#F2F2F2" />,
     },
 ];

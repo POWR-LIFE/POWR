@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
 import { Plus, Edit2, Trash2, MapPin, Loader2, X, Search, Activity, ChevronRight, Globe, Satellite, Eye, Clock, User, Users, Upload, Image as ImageIcon, Gift, Target } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { uploadPublicImage } from '../../lib/storage';
 
 const DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
@@ -661,6 +661,11 @@ export default function PartnerManager() {
     const [image1Uploading, setImage1Uploading] = useState(false);
     const [image2Uploading, setImage2Uploading] = useState(false);
     const [viewMode, setViewMode] = useState('locations'); // 'locations' | 'brands'
+    const location = useLocation();
+    const navigate = useNavigate();
+    // When arriving from a gym request ("Add as Partner"), holds the request id so
+    // a successful create can mark it added. Cleared after save or on unmount.
+    const gymRequestIdRef = useRef(null);
 
     const toggleRole = (role) => {
         setFormData(prev => {
@@ -747,6 +752,7 @@ export default function PartnerManager() {
     const filtered = partners;
 
     const openCreate = () => {
+        gymRequestIdRef.current = null;
         setEditingPartner(null);
         setFormData({
             ...EMPTY_FORM,
@@ -758,6 +764,7 @@ export default function PartnerManager() {
     };
 
     const openEdit = (partner) => {
+        gymRequestIdRef.current = null;
         setEditingPartner(partner);
         setFormData({
             name: partner.name,
@@ -775,6 +782,27 @@ export default function PartnerManager() {
         });
         setIsModalOpen(true);
     };
+
+    // Arrived from a gym request: open the create form prefilled with the gym
+    // name so the admin only has to set the geofence. Clear the nav state so a
+    // refresh/back doesn't re-trigger it.
+    useEffect(() => {
+        const createName = location.state?.createName;
+        if (!createName) return;
+        gymRequestIdRef.current = location.state?.gymRequestId ?? null;
+        setEditingPartner(null);
+        setFormData({
+            ...EMPTY_FORM,
+            name: createName,
+            partner_code: toPartnerCode(createName),
+            roles: ['earning_location'],
+            locations: [],
+            opening_hours: { ...DEFAULT_HOURS },
+        });
+        setIsModalOpen(true);
+        navigate(location.pathname, { replace: true, state: null });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [location.state]);
 
     const handleSave = async (e) => {
         e.preventDefault();
@@ -798,7 +826,19 @@ export default function PartnerManager() {
         if (error) {
             toast.error(error.message);
         } else {
-            toast.success(editingPartner ? 'Node synchronized' : 'New node deployed');
+            // Close out the originating gym request, if this create came from one.
+            if (!editingPartner && gymRequestIdRef.current) {
+                const { data: { user } } = await supabase.auth.getUser();
+                await supabase.from('gym_requests').update({
+                    status: 'added',
+                    reviewed_by: user?.id,
+                    reviewed_at: new Date().toISOString(),
+                }).eq('id', gymRequestIdRef.current);
+                gymRequestIdRef.current = null;
+                toast.success('Node deployed — gym request closed');
+            } else {
+                toast.success(editingPartner ? 'Node synchronized' : 'New node deployed');
+            }
             setIsModalOpen(false);
             fetchPartners();
         }

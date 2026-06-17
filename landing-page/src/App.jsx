@@ -1,6 +1,7 @@
 import {
     Activity, Award,
     BarChart3,
+    Building2,
     ChevronLeft, ChevronRight,
     Gift,
     Inbox,
@@ -37,6 +38,7 @@ import AthleteApplications from './pages/admin/AthleteApplications';
 import AuditLog from './pages/admin/AuditLog';
 import FeaturedSchedule from './pages/admin/FeaturedSchedule';
 import GymDetail from './pages/admin/GymDetail';
+import GymRequests from './pages/admin/GymRequests';
 import PartnerManager from './pages/admin/PartnerManager';
 import PartnerPerformance from './pages/admin/PartnerPerformance';
 import PartnerProfile from './pages/admin/PartnerProfile';
@@ -209,6 +211,7 @@ const PATH_LABELS = {
     partners: 'Partners',
     rewards: 'Rewards',
     'reward-submissions': 'Submissions',
+    'gym-requests': 'Gym Requests',
     challenges: 'Challenges',
     users: 'Users',
     athletes: 'Athletes',
@@ -400,7 +403,7 @@ const AdminHome = () => {
         flaggedSessions: 0, totalSessions: 0, weeklyActive: 0,
         redemptions: 0, activeRedemptions: 0,
         totalPoints: 0,
-        pendingAthletes: 0, pendingSubmissions: 0, openTickets: 0,
+        pendingAthletes: 0, pendingSubmissions: 0, openTickets: 0, pendingGymRequests: 0,
         sessions7d: 0, sessionsPrev7d: 0,
     });
     // 14-day daily session trend [{ day, count }] and activity-type mix [{ type, count }]
@@ -418,7 +421,7 @@ const AdminHome = () => {
                     flaggedRes, sessionsRes, weeklyRes,
                     redemptionsRes, pointsRes,
                     athletesRes, submissionsRes, ticketsRes,
-                    trendRes,
+                    trendRes, gymRequestsRes,
                 ] = await Promise.all([
                     supabase.from('profiles').select('id', { count: 'exact', head: true }),
                     supabase.from('profiles').select('id', { count: 'exact', head: true }).gte('created_at', weekAgo),
@@ -435,6 +438,7 @@ const AdminHome = () => {
                     supabase.from('support_tickets').select('id', { count: 'exact', head: true }).in('status', ['open', 'in_progress']),
                     // last 14 days of sessions: drives the trend sparkline, 7d-over-7d delta, and activity mix
                     supabase.from('activity_sessions').select('type, started_at').gte('started_at', twoWeeksAgo),
+                    supabase.from('gym_requests').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
                 ]);
 
                 const weeklyUsers = new Set((weeklyRes.data || []).map(s => s.user_id));
@@ -488,6 +492,7 @@ const AdminHome = () => {
                     pendingAthletes: athletesRes.count || 0,
                     pendingSubmissions: submissionsRes.count || 0,
                     openTickets: ticketsRes.count || 0,
+                    pendingGymRequests: gymRequestsRes.count || 0,
                     sessions7d: sess7d,
                     sessionsPrev7d: sessPrev7d,
                 });
@@ -528,6 +533,7 @@ const AdminHome = () => {
 
     const attentionItems = [
         { label: 'Flagged Sessions',     count: stats.flaggedSessions,    to: '/admin/sessions',           color: '#F43F5E', icon: Shield,        desc: 'Duplicate / multi-device' },
+        { label: 'Gym Requests',         count: stats.pendingGymRequests, to: '/admin/gym-requests',       color: '#E8D200', icon: Building2,     desc: 'Members couldn\'t find gym' },
         { label: 'Reward Submissions',   count: stats.pendingSubmissions, to: '/admin/reward-submissions', color: '#F97316', icon: Inbox,         desc: 'Pending brand review'     },
         { label: 'Athlete Applications', count: stats.pendingAthletes,    to: '/admin/athletes',           color: '#8B5CF6', icon: Star,          desc: 'Awaiting approval'        },
         { label: 'Support Tickets',      count: stats.openTickets,        to: '/admin/support',            color: '#0EA5E9', icon: MessageSquare, desc: 'Open & in-progress'       },
@@ -766,6 +772,7 @@ const AdminLayout = ({ children }) => {
     const { user } = useAuth();
     const [pendingAthletes, setPendingAthletes] = useState(0);
     const [pendingSubmissions, setPendingSubmissions] = useState(0);
+    const [pendingGymRequests, setPendingGymRequests] = useState(0);
     const [collapsed, setCollapsed] = useState(() => localStorage.getItem('admin_sidebar') === '1');
 
     const toggleSidebar = () => setCollapsed(c => {
@@ -785,11 +792,17 @@ const AdminLayout = ({ children }) => {
             .select('id', { count: 'exact', head: true })
             .eq('status', 'pending')
             .then(({ count }) => setPendingSubmissions(count ?? 0));
+        supabase
+            .from('gym_requests')
+            .select('id', { count: 'exact', head: true })
+            .eq('status', 'pending')
+            .then(({ count }) => setPendingGymRequests(count ?? 0));
     }, [location.pathname]);
 
     const navItems = [
         { label: 'Overview',    path: '/admin',                    icon: LayoutDashboard },
         { label: 'Partners',    path: '/admin/partners',           icon: Activity        },
+        { label: 'Gym Requests',path: '/admin/gym-requests',       icon: Building2,      badge: pendingGymRequests },
         { label: 'Rewards',     path: '/admin/rewards',            icon: Award           },
         { label: 'Submissions', path: '/admin/reward-submissions', icon: Inbox,          badge: pendingSubmissions },
         { label: 'Featured',    path: '/admin/featured',           icon: Star            },
@@ -965,6 +978,7 @@ export default function App() {
                     <Route path="/admin/login" element={<AdminLogin />} />
                     <Route path="/admin" element={<ProtectedRoute><AdminLayout><AdminHome /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/partners" element={<ProtectedRoute><AdminLayout><PartnerManager /></AdminLayout></ProtectedRoute>} />
+                    <Route path="/admin/gym-requests" element={<ProtectedRoute><AdminLayout><GymRequests /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/rewards" element={<ProtectedRoute><AdminLayout><RewardManager /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/reward-submissions" element={<ProtectedRoute><AdminLayout><RewardSubmissions /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/featured" element={<ProtectedRoute><AdminLayout><FeaturedSchedule /></AdminLayout></ProtectedRoute>} />
