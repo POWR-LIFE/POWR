@@ -2,7 +2,7 @@ import { useAuth } from '@/context/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Animated, Easing, Keyboard, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 import GeometricBackground from '@/components/GeometricBackground';
@@ -91,6 +91,8 @@ export default function OnboardingAchievementScreen() {
     const bonusY        = useRef(new Animated.Value(30)).current;
     const buttonOpacity = useRef(new Animated.Value(0)).current;
     const pulse         = useRef(new Animated.Value(1)).current;
+    // Lifts the CTA block above the keyboard so the invite-code input stays visible.
+    const kbOffset      = useRef(new Animated.Value(0)).current;
 
     useEffect(() => {
         Animated.sequence([
@@ -149,6 +151,30 @@ export default function OnboardingAchievementScreen() {
             }, 580);
         });
     }, []);
+
+    // Keep the invite-code input above the keyboard.
+    useEffect(() => {
+        const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+        const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+        const onShow = (e: any) => {
+            const h = e?.endCoordinates?.height ?? 0;
+            Animated.timing(kbOffset, {
+                toValue: -Math.max(0, h - insets.bottom),
+                duration: Platform.OS === 'ios' ? (e?.duration || 250) : 180,
+                useNativeDriver: true,
+            }).start();
+        };
+        const onHide = (e: any) => {
+            Animated.timing(kbOffset, {
+                toValue: 0,
+                duration: Platform.OS === 'ios' ? (e?.duration || 250) : 180,
+                useNativeDriver: true,
+            }).start();
+        };
+        const showSub = Keyboard.addListener(showEvt, onShow);
+        const hideSub = Keyboard.addListener(hideEvt, onHide);
+        return () => { showSub.remove(); hideSub.remove(); };
+    }, [insets.bottom]);
 
     return (
         <View style={styles.container}>
@@ -260,7 +286,7 @@ export default function OnboardingAchievementScreen() {
             </View>
 
             {/* ── CTA ── */}
-            <Animated.View style={[styles.bottom, { paddingBottom: insets.bottom + 28, opacity: buttonOpacity }]}>
+            <Animated.View style={[styles.bottom, { paddingBottom: insets.bottom + 28, opacity: buttonOpacity, transform: [{ translateY: kbOffset }] }]}>
                 <StepDots current={dotIndexFor('/onboarding-achievement')} />
                 {/* Optional invite code entry */}
                 <Pressable
@@ -296,11 +322,26 @@ export default function OnboardingAchievementScreen() {
                         // Process referral: manual code takes priority, else check deep-link capture
                         const deepCode = await AsyncStorage.getItem('pending_referral_code').catch(() => null);
                         const code = inviteCode.trim() || deepCode || null;
-                        if (code) {
-                            await supabase.rpc('process_referral', { p_referral_code: code });
-                            await AsyncStorage.removeItem('pending_referral_code').catch(() => {});
+                        const goHome = () => router.replace('/(tabs)');
+                        if (!code) { goHome(); return; }
+
+                        const { data, error: refErr } = await supabase.rpc('process_referral', { p_referral_code: code });
+                        await AsyncStorage.removeItem('pending_referral_code').catch(() => {});
+                        const result = (data ?? null) as { success?: boolean; error?: string; reward?: number } | null;
+
+                        if (!refErr && result?.success) {
+                            Alert.alert('Invite code applied 🎉', `You earned +${result.reward ?? 20} POWR!`, [{ text: 'Nice', onPress: goHome }]);
+                        } else {
+                            const reason = result?.error ?? 'network';
+                            const messages: Record<string, string> = {
+                                invalid_code: "That invite code wasn't recognised. Double-check it and you can add it later from your profile.",
+                                self_referral: "That's your own code — share it with a friend instead!",
+                                already_referred: "You've already used an invite code on this account.",
+                                not_authenticated: 'Please sign in again to apply your code.',
+                                network: 'We couldn’t apply your code just now. You can try again later from your profile.',
+                            };
+                            Alert.alert('Invite code', messages[reason] ?? messages.network, [{ text: 'Continue', onPress: goHome }]);
                         }
-                        router.replace('/(tabs)');
                     }}
                 >
                     <Text style={styles.primaryLabel}>LET'S GO →</Text>

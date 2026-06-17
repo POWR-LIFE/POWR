@@ -68,8 +68,10 @@ export default function OnboardingActivitiesScreen() {
     });
   };
 
-  const handleContinue = async () => {
-    await updateActivityPreferences(Array.from(selected));
+  const handleContinue = () => {
+    // Persist in the background — the next screen doesn't read preferences, so
+    // don't block the transition on 3 sequential network round-trips.
+    updateActivityPreferences(Array.from(selected)).catch(() => {});
     router.push({
       pathname: '/onboarding-achievement',
       params: {

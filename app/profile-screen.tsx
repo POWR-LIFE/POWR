@@ -1,4 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as Clipboard from 'expo-clipboard';
+import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useState } from 'react';
@@ -83,6 +85,7 @@ export default function ProfileScreen() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [avatarError, setAvatarError] = useState(false);
   const [gallery, setGallery] = useState<GalleryPhoto[]>([]);
+  const [codeCopied, setCodeCopied] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -113,12 +116,21 @@ export default function ProfileScreen() {
     const code = profile?.referral_code;
     if (!code) return;
     const url = `https://powr.life/?ref=${code}`;
-    const message = `Join me on POWR – the app that rewards you for every workout! 💪\n\nDownload the app and we both earn 200 POWR points free:\n${url}`;
+    const message = `Join me on POWR – the app that rewards you for every workout! 💪\n\nUse my invite code ${code} when you sign up and we both earn 20 POWR points free:\n${url}`;
     try {
       await Share.share({ message, url });
     } catch (_) {
       // user dismissed – no-op
     }
+  };
+
+  const handleCopyCode = async () => {
+    const code = profile?.referral_code;
+    if (!code) return;
+    await Clipboard.setStringAsync(code);
+    Haptics.selectionAsync();
+    setCodeCopied(true);
+    setTimeout(() => setCodeCopied(false), 2000);
   };
   const pill = levelInfo.pill;
   const totalSessions = weeklyMetrics.sessionCount * 4; // rough lifetime approx
@@ -372,21 +384,40 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        {/* ── Invite Card — hidden until app store launch ──────── */}
-        {/* TODO: re-enable once published on App Store / Play Store
-        <Pressable onPress={handleInvite} style={({ pressed }) => [s.glassCard, s.inviteCard, pressed && { opacity: 0.7 }]}>
-          <View style={s.inviteLeft}>
-            <Ionicons name="gift-outline" size={20} color={GOLD} />
-            <View style={s.inviteText}>
-              <Text style={s.inviteTitle}>Invite a friend</Text>
-              <Text style={s.inviteSub}>Both earn 200 POWR</Text>
+        {/* ── Invite Card ─────────────────────────────────────── */}
+        {profile?.referral_code && (
+          <View style={[s.glassCard, s.inviteCard]}>
+            <View style={s.inviteHeader}>
+              <Ionicons name="gift-outline" size={20} color={GOLD} />
+              <View style={s.inviteText}>
+                <Text style={s.inviteTitle}>Invite a friend</Text>
+                <Text style={s.inviteSub}>You both earn 20 POWR</Text>
+              </View>
             </View>
+            <View style={s.inviteCodeRow}>
+              <Pressable
+                onPress={handleCopyCode}
+                style={({ pressed }) => [s.codeChip, pressed && { opacity: 0.7 }]}
+              >
+                <Text style={s.codeChipText}>{profile.referral_code}</Text>
+                <Ionicons
+                  name={codeCopied ? 'checkmark' : 'copy-outline'}
+                  size={16}
+                  color={codeCopied ? GREEN : DIM}
+                />
+              </Pressable>
+              <Pressable
+                onPress={handleInvite}
+                style={({ pressed }) => [s.inviteBtn, pressed && { opacity: 0.86 }]}
+              >
+                <Text style={s.inviteBtnText}>SHARE</Text>
+              </Pressable>
+            </View>
+            <Text style={[s.copiedHint, !codeCopied && { opacity: 0 }]}>
+              Code copied to clipboard
+            </Text>
           </View>
-          <View style={s.inviteBtn}>
-            <Text style={s.inviteBtnText}>SHARE</Text>
-          </View>
-        </Pressable>
-        */}
+        )}
 
         {/* ── Gallery (Pro only) ─────────────────────────────── */}
         {profile?.is_pro && gallery.length > 0 && (
@@ -607,16 +638,26 @@ const s = StyleSheet.create({
   achieveName: { fontSize: 11, fontWeight: '300', color: TEXT, textAlign: 'center', lineHeight: 15 },
 
   // ── Invite Card ────────────────────────────────────────────────────────────
-  inviteCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  inviteLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
+  inviteCard: { gap: 14 },
+  inviteHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   inviteText: { gap: 2 },
   inviteTitle: { fontSize: 14, fontWeight: '300', color: TEXT },
   inviteSub: { fontSize: 11, fontWeight: '300', color: MUTED },
-  inviteBtn: {
-    backgroundColor: GOLD, borderRadius: 20,
-    paddingHorizontal: 16, paddingVertical: 7,
+  inviteCodeRow: { flexDirection: 'row', alignItems: 'stretch', gap: 10 },
+  codeChip: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    borderWidth: 1, borderColor: BORDER, borderRadius: 12,
+    paddingHorizontal: 14, paddingVertical: 12,
+    backgroundColor: 'rgba(255,255,255,0.04)',
   },
-  inviteBtnText: { fontSize: 9, fontWeight: '700', letterSpacing: 1.5, color: '#0a0a0a' },
+  codeChipText: { fontSize: 16, fontWeight: '600', letterSpacing: 3, color: TEXT },
+  inviteBtn: {
+    justifyContent: 'center',
+    backgroundColor: GOLD, borderRadius: 12,
+    paddingHorizontal: 20,
+  },
+  inviteBtnText: { fontSize: 10, fontWeight: '700', letterSpacing: 1.5, color: '#0a0a0a' },
+  copiedHint: { fontSize: 11, fontWeight: '300', color: GREEN, textAlign: 'center' },
 
   // ── Cover photo ────────────────────────────────────────────────────────────
   coverPhoto: {
