@@ -57,6 +57,38 @@ const DARK_MAP_STYLE = [
     { featureType: 'administrative', elementType: 'geometry', stylers: [{ color: '#272727' }] },
 ];
 
+// Map pin showing the gym's logo (first-letter fallback), mirroring discover's
+// PartnerPin. tracksViewChanges stays on until the logo image paints so the
+// marker snapshot includes it (otherwise Android renders an empty pin).
+function GymPin({ gym, isSelected, onPress }: { gym: Partner; isSelected: boolean; onPress: () => void }) {
+    const [imageReady, setImageReady] = useState(!gym.logoUrl);
+    const bg = gym.logoBg === 'white' ? '#FFFFFF' : gym.logoBg === 'black' ? '#000000' : '#1a1a1c';
+    return (
+        <Marker
+            coordinate={{ latitude: gym.lat, longitude: gym.lng }}
+            onPress={onPress}
+            anchor={{ x: 0.5, y: 0.5 }}
+            tracksViewChanges={!imageReady || isSelected}
+        >
+            <View style={[styles.pin, { backgroundColor: bg }, isSelected && styles.pinSelected]}>
+                {gym.logoUrl ? (
+                    <Image
+                        source={{ uri: gym.logoUrl }}
+                        style={styles.pinLogoImg}
+                        contentFit="contain"
+                        onLoad={() => setImageReady(true)}
+                        onError={() => setImageReady(true)}
+                    />
+                ) : (
+                    <Text style={[styles.pinLogoText, gym.logoBg === 'white' && { color: '#1a1a1a' }]} numberOfLines={1}>
+                        {(gym.name?.trim()[0] ?? '?').toUpperCase()}
+                    </Text>
+                )}
+            </View>
+        </Marker>
+    );
+}
+
 function StepDots({ current }: { current: number }) {
     return (
         <View style={dotStyles.row}>
@@ -223,21 +255,14 @@ export default function OnboardingGymScreen() {
                         showsMyLocationButton={false}
                         toolbarEnabled={false}
                     >
-                        {markers.map(gym => {
-                            const isSel = gym.dbId === selectedId;
-                            return (
-                                <Marker
-                                    key={gym.id}
-                                    coordinate={{ latitude: gym.lat, longitude: gym.lng }}
-                                    onPress={() => selectGym(gym)}
-                                    anchor={{ x: 0.5, y: 0.5 }}
-                                >
-                                    <View style={[styles.pin, isSel && styles.pinSelected]}>
-                                        <Ionicons name="barbell" size={13} color={isSel ? '#0a0a0a' : GOLD} />
-                                    </View>
-                                </Marker>
-                            );
-                        })}
+                        {markers.map(gym => (
+                            <GymPin
+                                key={gym.id}
+                                gym={gym}
+                                isSelected={gym.dbId === selectedId}
+                                onPress={() => selectGym(gym)}
+                            />
+                        ))}
                     </MapView>
                 </View>
 
@@ -273,11 +298,18 @@ export default function OnboardingGymScreen() {
                             const isSel = gym.dbId === selectedId;
                             return (
                                 <Pressable key={gym.id} style={[styles.gymRow, isSel && styles.gymRowSel]} onPress={() => selectGym(gym)}>
-                                    <View style={styles.gymLogo}>
+                                    <View
+                                        style={[
+                                            styles.gymLogo,
+                                            { backgroundColor: gym.logoBg === 'white' ? '#FFFFFF' : gym.logoBg === 'black' ? '#000000' : 'rgba(255,255,255,0.06)' },
+                                        ]}
+                                    >
                                         {gym.logoUrl ? (
-                                            <Image source={{ uri: gym.logoUrl }} style={StyleSheet.absoluteFill} contentFit="cover" />
+                                            <Image source={{ uri: gym.logoUrl }} style={styles.gymLogoImg} contentFit="contain" />
                                         ) : (
-                                            <Text style={styles.gymLogoText}>{gym.logoText}</Text>
+                                            <Text style={[styles.gymLogoText, gym.logoBg === 'white' && { color: '#1a1a1a' }]}>
+                                                {(gym.name?.trim()[0] ?? '?').toUpperCase()}
+                                            </Text>
                                         )}
                                     </View>
                                     <View style={styles.gymMeta}>
@@ -386,10 +418,12 @@ const styles = StyleSheet.create({
         borderWidth: 1, borderColor: BORDER, backgroundColor: '#131314', marginBottom: 12,
     },
     pin: {
-        width: 26, height: 26, borderRadius: 13, backgroundColor: '#1c1c1e',
-        borderWidth: 1.5, borderColor: GOLD, alignItems: 'center', justifyContent: 'center',
+        width: 34, height: 34, borderRadius: 17, padding: 5,
+        borderWidth: 1.5, borderColor: 'rgba(232,210,0,0.6)', alignItems: 'center', justifyContent: 'center',
     },
-    pinSelected: { backgroundColor: GOLD, borderColor: '#fff', transform: [{ scale: 1.15 }] },
+    pinSelected: { borderColor: GOLD, borderWidth: 2.5 },
+    pinLogoImg: { width: 24, height: 24, borderRadius: 12 },
+    pinLogoText: { color: '#F2F2F2', fontSize: 13, fontFamily: FONT_SEMIBOLD, fontWeight: '700', textAlign: 'center' },
     searchRow: {
         flexDirection: 'row', alignItems: 'center', gap: 8, height: 46,
         borderRadius: 13, backgroundColor: CARD_BG, borderWidth: 1, borderColor: BORDER,
@@ -408,7 +442,8 @@ const styles = StyleSheet.create({
         width: 44, height: 44, borderRadius: 11, overflow: 'hidden', backgroundColor: 'rgba(255,255,255,0.06)',
         alignItems: 'center', justifyContent: 'center',
     },
-    gymLogoText: { color: 'rgba(255,255,255,0.7)', fontSize: 14, fontFamily: FONT_SEMIBOLD, fontWeight: '600' },
+    gymLogoImg: { width: '78%', height: '78%' },
+    gymLogoText: { color: 'rgba(255,255,255,0.7)', fontSize: 18, fontFamily: FONT_SEMIBOLD, fontWeight: '600' },
     gymMeta: { flex: 1 },
     gymName: { color: '#F2F2F2', fontSize: 15, fontFamily: FONT_MEDIUM, fontWeight: '500' },
     gymAddr: { color: DIM, fontSize: 12, fontFamily: FONT_REGULAR, marginTop: 2 },
