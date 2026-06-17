@@ -314,7 +314,8 @@ function Celebration({
 interface ChallengeCardProps {
   challenges: ChallengeCardData[];
   totalBalance?: number;
-  onShare?: () => void;
+  /** Fires from the celebration + footer share controls with the completed challenge. */
+  onShare?: (challenge: ChallengeCardData) => void;
   /** When set, auto-selects that challenge and plays the celebration once. */
   celebrateId?: string | null;
 }
@@ -400,17 +401,19 @@ export function ChallengeCard({ challenges, totalBalance = 0, onShare, celebrate
           <Text style={styles.timeLeft}>{active.expiresIn}</Text>
         </View>
 
-        {/* Share */}
-        <Pressable style={styles.btnShare} onPress={onShare}>
-          <Ionicons name="share-social-outline" size={13} color={SECONDARY} />
-          <Text style={styles.btnShareText}>Share streak</Text>
-        </Pressable>
+        {/* Share — only once the challenge is complete and there's a card to share */}
+        {complete && (
+          <Pressable style={styles.btnShare} onPress={() => onShare?.(active)}>
+            <Ionicons name="share-social-outline" size={13} color={SECONDARY} />
+            <Text style={styles.btnShareText}>Share challenge</Text>
+          </Pressable>
+        )}
 
         {celebratingId === active.id && (
           <Celebration
             challenge={active}
             totalBalance={totalBalance}
-            onShare={onShare}
+            onShare={() => onShare?.(active)}
             onDone={() => { dismissed.current.add(active.id); setCelebratingId(null); }}
           />
         )}

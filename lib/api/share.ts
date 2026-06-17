@@ -51,7 +51,23 @@ export interface StatsSummary extends BaseShareSummary {
   longestStreak: number;
 }
 
-export type ShareSummary = CheckInSummary | StatsSummary;
+/** The challenge fields the home screen hands to the share screen via route params. */
+export interface ChallengeShareInput {
+  challengeTitle: string;
+  challengeDescription: string;
+  categoryLabel: string;
+  tier: 'easy' | 'medium' | 'hard';
+  points: number;
+  displayValue: number;
+  displayGoal: number;
+  unit: string;
+}
+
+export interface ChallengeShareSummary extends BaseShareSummary, ChallengeShareInput {
+  mode: 'challenge';
+}
+
+export type ShareSummary = CheckInSummary | StatsSummary | ChallengeShareSummary;
 
 // ─── Check-in summary (per-session) ────────────────────────────────────────
 
@@ -149,6 +165,27 @@ export async function fetchStatsSummary(): Promise<StatsSummary> {
     longestStreak: streakRow?.longest_streak ?? aggregates.currentStreak,
     ...aggregates,
     reward,
+  };
+}
+
+// ─── Challenge summary (completed weekly challenge) ─────────────────────────
+// The challenge itself is evaluated client-side (useWeeklyChallenges), so its
+// details arrive as route params; here we only enrich them with the member's
+// profile + lifetime/streak aggregates so the card matches the streak/check-in
+// shares.
+
+export async function fetchChallengeSummary(
+  challenge: ChallengeShareInput,
+): Promise<ChallengeShareSummary> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not authenticated');
+
+  const aggregates = await fetchAggregates(user.id, /* type */ null);
+
+  return {
+    mode: 'challenge',
+    ...challenge,
+    ...aggregates,
   };
 }
 
