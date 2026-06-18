@@ -101,12 +101,14 @@ export default function SettingsScreen() {
   const [notifWorkouts,   setNotifWorkouts]   = useState(true);
   const [notifRewards,    setNotifRewards]    = useState(true);
   const [notifFriends,    setNotifFriends]    = useState(meta.notif_friends ?? true);
+  const [emailWeekly,     setEmailWeekly]     = useState(true);
   const [shareActivity,   setShareActivity]   = useState(meta.share_activity ?? true);
   useEffect(() => {
     if (!user?.id) return;
     getNotificationPreferences(user.id).then(prefs => {
       setNotifWorkouts(prefs.check_in_reminder);
       setNotifRewards(prefs.reward_unlocked);
+      setEmailWeekly(prefs.email_weekly_summary);
     });
   }, [user?.id]);
 
@@ -453,6 +455,22 @@ export default function SettingsScreen() {
             label="Friend activity"
             value={notifFriends}
             onValueChange={(v) => { setNotifFriends(v); persistMeta('notif_friends', v); }}
+            isLast
+          />
+        </View>
+
+        {/* ── Email ─────────────────────────────────────────── */}
+        <SectionLabel label="Email" />
+        <View style={styles.card}>
+          <RowToggle
+            icon="mail-outline"
+            label="Weekly summary"
+            sublabel="Your week's points, workouts and rank, every Monday"
+            value={emailWeekly}
+            onValueChange={(v) => {
+              setEmailWeekly(v);
+              if (user?.id) updateNotificationPreferences(user.id, { email_weekly_summary: v });
+            }}
             isLast
           />
         </View>

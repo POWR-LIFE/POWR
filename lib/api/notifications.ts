@@ -47,6 +47,8 @@ export interface NotificationPreferences {
   points_milestone: boolean;
   inactivity_nudge: boolean;
   sleep_target_met: boolean;
+  /** Email: Monday weekly summary recap. */
+  email_weekly_summary: boolean;
 }
 
 export const DEFAULT_PREFERENCES: NotificationPreferences = {
@@ -57,6 +59,7 @@ export const DEFAULT_PREFERENCES: NotificationPreferences = {
   points_milestone: true,
   inactivity_nudge: true,
   sleep_target_met: true,
+  email_weekly_summary: true,
 };
 
 export async function getNotificationPreferences(
@@ -79,6 +82,7 @@ export async function getNotificationPreferences(
     points_milestone: data.points_milestone ?? true,
     inactivity_nudge: data.inactivity_nudge ?? true,
     sleep_target_met: data.sleep_target_met ?? true,
+    email_weekly_summary: data.email_weekly_summary ?? true,
   };
 }
 
