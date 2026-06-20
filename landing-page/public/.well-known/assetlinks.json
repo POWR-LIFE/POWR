@@ -5,7 +5,8 @@
       "namespace": "android_app",
       "package_name": "com.powr.life",
       "sha256_cert_fingerprints": [
-        "72:E7:40:0E:7F:F5:A6:EA:95:46:FF:7D:1D:66:07:71:2F:C2:B4:72:72:A5:98:6E:D9:AB:FF:F0:5C:C6:79:6A"
+        "72:E7:40:0E:7F:F5:A6:EA:95:46:FF:7D:1D:66:07:71:2F:C2:B4:72:72:A5:98:6E:D9:AB:FF:F0:5C:C6:79:6A",
+        "C6:A4:15:53:28:C6:A2:70:91:8A:49:DA:7F:DC:A0:69:BA:FA:5D:57:39:E1:7F:2A:89:0D:F7:67:05:09:9A:BE"
       ]
     }
   }
