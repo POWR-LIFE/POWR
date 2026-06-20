@@ -137,7 +137,8 @@ revoke all on function public.get_weekly_summary_recipients(timestamptz, timesta
 
 -- ── 3. Weekly cron → edge function ───────────────────────────
 -- Mondays 08:00 UTC. Security: send-weekly-summary runs verify_jwt=false and
--- is gated by the x-weekly-token shared secret (matches the terra-poll pattern).
+-- is gated by the x-weekly-token shared secret, read from Vault (secret name
+-- 'weekly_token') so no literal lives in source or migrations.
 do $job$
 begin
   perform cron.unschedule('weekly-summary-email');
@@ -154,7 +155,7 @@ select cron.schedule(
     url := 'https://wjvvujnicwkruaeibttt.supabase.co/functions/v1/send-weekly-summary',
     headers := jsonb_build_object(
       'Content-Type', 'application/json',
-      'x-weekly-token', '77f969448b906d79a482dfe7777513e6da50c321b938eb3b'
+      'x-weekly-token', (select decrypted_secret from vault.decrypted_secrets where name = 'weekly_token')
     ),
     body := '{}'::jsonb
   )

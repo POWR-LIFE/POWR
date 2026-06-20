@@ -66,7 +66,10 @@ function challengeTitles(ids: string[] | null): string[] {
   return titles;
 }
 
-const WEEKLY_TOKEN = "77f969448b906d79a482dfe7777513e6da50c321b938eb3b";
+// Shared secret gating the cron trigger (verify_jwt=false). Set as a function
+// secret — `supabase secrets set WEEKLY_TOKEN=…` — and store the matching value
+// in Vault (secret name 'weekly_token') so the cron job sends it. Never hardcode.
+const WEEKLY_TOKEN = Deno.env.get("WEEKLY_TOKEN") ?? "";
 const DAY_MS = 24 * 60 * 60 * 1000;
 const CONCURRENCY = 5;
 
@@ -166,7 +169,7 @@ function sampleWeeklyData(weekLabel: string): WeeklySummaryData {
 
 Deno.serve(async (req: Request) => {
   if (req.method !== "POST") return new Response("method not allowed", { status: 405 });
-  if (req.headers.get("x-weekly-token") !== WEEKLY_TOKEN) {
+  if (!WEEKLY_TOKEN || req.headers.get("x-weekly-token") !== WEEKLY_TOKEN) {
     return new Response("forbidden", { status: 403 });
   }
 
