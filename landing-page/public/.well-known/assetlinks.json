@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.powr.life",
+      "sha256_cert_fingerprints": [
+        "72:E7:40:0E:7F:F5:A6:EA:95:46:FF:7D:1D:66:07:71:2F:C2:B4:72:72:A5:98:6E:D9:AB:FF:F0:5C:C6:79:6A"
+      ]
+    }
+  }
+]
