@@ -139,6 +139,7 @@ export default function RewardManager() {
     const [codePoolPage, setCodePoolPage] = useState(0);
     const [codePoolStatus, setCodePoolStatus] = useState('all');
     const [codePoolLoading, setCodePoolLoading] = useState(false);
+    const [codeSearch, setCodeSearch] = useState('');
     const [schemeExample, setSchemeExample] = useState('');
     const [generateCount, setGenerateCount] = useState(100);
     const [generatingCodes, setGeneratingCodes] = useState(false);
@@ -189,17 +190,25 @@ export default function RewardManager() {
         catch { setCodeStats(null); }
     };
 
-    const refreshCodePool = async (rewardId, page = 0, status = 'all') => {
+    const refreshCodePool = async (rewardId, page = 0, status = 'all', search = codeSearch) => {
         if (!rewardId) { setCodePool({ rows: [], total: 0 }); return; }
         setCodePoolLoading(true);
         try {
-            const result = await fetchCodePool({ rewardId, status, page, pageSize: CODE_POOL_PAGE_SIZE });
+            const result = await fetchCodePool({ rewardId, status, page, search, pageSize: CODE_POOL_PAGE_SIZE });
             setCodePool(result);
             setCodePoolPage(page);
             setCodePoolStatus(status);
         } catch { setCodePool({ rows: [], total: 0 }); }
         finally { setCodePoolLoading(false); }
     };
+
+    // Debounced server-side code search within the open reward's pool.
+    useEffect(() => {
+        if (!editingReward) return;
+        const t = setTimeout(() => refreshCodePool(editingReward.id, 0, codePoolStatus, codeSearch), 300);
+        return () => clearTimeout(t);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [codeSearch]);
 
     const filtered = rewards
         .filter(r => !search || r.title.toLowerCase().includes(search.toLowerCase()))
@@ -218,6 +227,7 @@ export default function RewardManager() {
         setCodePool({ rows: [], total: 0 });
         setCodePoolPage(0);
         setCodePoolStatus('all');
+        setCodeSearch('');
         setBulkCodesText('');
         setSingleCode('');
         setEditorOpen(true);
@@ -255,6 +265,7 @@ export default function RewardManager() {
         setGenerateCount(100);
         setCodePoolPage(0);
         setCodePoolStatus('all');
+        setCodeSearch('');
         // Restore persisted scheme for this reward, or fall back to partner-code pre-seed
         const foundPartner = partners.find(p => p.id === reward.partner_id);
         const savedScheme = localStorage.getItem(`powr_scheme_${reward.id}`);
@@ -373,7 +384,7 @@ export default function RewardManager() {
     const handleDownloadCodes = async (format) => {
         if (!editingReward) return;
         try {
-            const rows = await fetchAllCodes({ rewardId: editingReward.id, status: codePoolStatus });
+            const rows = await fetchAllCodes({ rewardId: editingReward.id, status: codePoolStatus, search: codeSearch });
             const fmt = d => d ? new Date(d).toISOString().slice(0, 10) : '';
             const data = rows.map(r => ({
                 Code: r.code,
@@ -1251,6 +1262,23 @@ export default function RewardManager() {
                                             </div>
                                         </div>
 
+                                        {/* Code search */}
+                                        <div className="relative mb-4">
+                                            <Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-[#BBBBBB]" />
+                                            <input
+                                                type="text"
+                                                value={codeSearch}
+                                                onChange={e => setCodeSearch(e.target.value)}
+                                                placeholder="Search codes…"
+                                                className="w-full h-10 pl-11 pr-10 bg-[#F4F4F1] border border-[#E6E6E1] rounded-full text-[12px] font-mono text-[#1A1A1A] placeholder-[#BBBBBB] focus:border-[#E8D200]/40 outline-none"
+                                            />
+                                            {codeSearch && (
+                                                <button type="button" onClick={() => setCodeSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#BBBBBB] hover:text-[#666666]">
+                                                    <X size={14} />
+                                                </button>
+                                            )}
+                                        </div>
+
                                         {codePoolLoading ? (
                                             <div className="flex items-center justify-center py-10 gap-3">
                                                 <div className="w-5 h-5 border border-[#E8D200]/20 border-t-[#E8D200] rounded-full animate-spin" />
@@ -1258,7 +1286,7 @@ export default function RewardManager() {
                                             </div>
                                         ) : codePool.rows.length === 0 ? (
                                             <div className="text-center py-10">
-                                                <p className="text-[10px] uppercase tracking-[0.4em] text-[#AAAAAA] font-black">No codes{codePoolStatus !== 'all' ? ` with status "${codePoolStatus}"` : ' uploaded yet'}</p>
+                                                <p className="text-[10px] uppercase tracking-[0.4em] text-[#AAAAAA] font-black">{codeSearch ? `No codes matching "${codeSearch}"` : `No codes${codePoolStatus !== 'all' ? ` with status "${codePoolStatus}"` : ' uploaded yet'}`}</p>
                                             </div>
                                         ) : (
                                             <>

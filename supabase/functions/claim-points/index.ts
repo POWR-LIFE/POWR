@@ -1,5 +1,6 @@
 // @ts-nocheck — Deno runtime, not Node. Types enforced at deploy time.
 import { createClient } from '@supabase/supabase-js';
+import { geofenceSupersedes } from '../_shared/sessionPriority.ts';
 
 // ─────────────────────────────────────────────
 // Types
@@ -191,23 +192,32 @@ function updateStreakDay(streak: UserStreak, sessionDate: string): Partial<UserS
 /**
  * Source-of-truth priority is geofence (0.94) > wearable (0.85) > manual (0.55).
  * When a geofence gym check-in is claimed, it's the authoritative record for that
- * time at the gym — remove any overlapping wearable/manual session of the same
- * type and reverse its points so we never double-count or let a lower-trust entry
- * stand alongside the check-in. Mirrors admin-review-session's reject: append a
+ * time at the gym — remove ANY overlapping lower-trust (wearable/manual) workout
+ * and reverse its points so we never double-count or let a lower-trust entry stand
+ * alongside the check-in. Type-agnostic on purpose: the same gym visit can be
+ * logged by a wearable as cycling (stationary bike), hiit (a class), sports, yoga,
+ * etc. — it's the same time at the gym, so it defers to the check-in regardless of
+ * how the device classified it. This mirrors terra-webhook's overlapsGeofenceGym
+ * (the reverse arrival order). Daily categories are excluded: `walking` (its
+ * session spans the whole day) and `sleep` are independent of a gym visit and must
+ * never be superseded by one. Mirrors admin-review-session's reject: append a
  * compensating penalty (the ledger is append-only) then delete the session (FK is
  * ON DELETE SET NULL, so points are summed before deletion).
  */
 async function supersedeLowerTrust(supabase, winner: ActivitySession): Promise<void> {
   const startMs = new Date(winner.started_at).getTime();
   const endMs = startMs + (winner.duration_sec ?? 0) * 1000;
+  // Bound the scan by day (±1d) for index use; the exact rule (overlap + trust +
+  // type exclusion) is applied per-row by geofenceSupersedes so the predicate is
+  // the single source of truth shared with the unit tests.
   const windowStart = new Date(startMs - 24 * 60 * 60 * 1000).toISOString();
   const windowEnd = new Date(endMs + 24 * 60 * 60 * 1000).toISOString();
 
   const { data: lower } = await supabase
     .from('activity_sessions')
-    .select('id, started_at, ended_at, duration_sec')
+    .select('id, type, verification, trust_score, started_at, ended_at, duration_sec')
     .eq('user_id', winner.user_id)
-    .eq('type', winner.type)
+    .not('type', 'in', '("walking","sleep")')
     .in('verification', ['wearable', 'manual'])
     .lt('trust_score', winner.trust_score)
     .gte('started_at', windowStart)
@@ -215,11 +225,7 @@ async function supersedeLowerTrust(supabase, winner: ActivitySession): Promise<v
     .neq('id', winner.id);
 
   for (const s of lower ?? []) {
-    const sStart = new Date(s.started_at).getTime();
-    const sEnd = s.ended_at
-      ? new Date(s.ended_at).getTime()
-      : sStart + (s.duration_sec ?? 0) * 1000;
-    if (!(startMs < sEnd && endMs > sStart)) continue; // no overlap
+    if (!geofenceSupersedes(winner, s)) continue; // not the same time at the gym
 
     const { data: earns } = await supabase
       .from('point_transactions')
@@ -230,11 +236,11 @@ async function supersedeLowerTrust(supabase, winner: ActivitySession): Promise<v
     if (reversed > 0) {
       await supabase.from('point_transactions').insert({
         user_id: winner.user_id, amount: -reversed, type: 'penalty', multiplier: 1.0,
-        description: `Superseded ${winner.type} by geofence check-in`,
+        description: `Superseded ${s.type} by geofence check-in`,
       });
     }
     await supabase.from('activity_sessions').delete().eq('id', s.id);
-    console.log(`[claim-points] superseded ${winner.type} ${s.started_at} (−${reversed} pts) — geofence check-in outranks`);
+    console.log(`[claim-points] superseded ${s.type} ${s.started_at} (−${reversed} pts) — geofence check-in outranks`);
   }
 }
 

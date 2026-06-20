@@ -8,3 +8,5 @@ export { weeklyChallengeExpiryEmail, type WeeklyChallengeExpiryData } from "./em
 export { rewardUnlockedEmail, type RewardUnlockedData } from "./emails/reward-unlocked.ts";
 export { pointsMilestoneEmail, type PointsMilestoneData } from "./emails/points-milestone.ts";
 export { inactivityNudgeEmail, type InactivityNudgeData } from "./emails/inactivity-nudge.ts";
+export { weeklySummaryEmail, type WeeklySummaryData } from "./emails/weekly-summary.ts";
+export { brandInviteEmail, type BrandInviteData } from "./emails/brand-invite.ts";

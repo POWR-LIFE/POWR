@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>POWR — Contextual Sponsored Rewards</title>
+<style>
+  :root{
+    --bg:#0A0E13;
+    --panel:#141B24;
+    --panel2:#1B2430;
+    --line:#26303D;
+    --ink:#EAF1F7;
+    --muted:#8FA1B3;
+    --faint:#5C6E80;
+    --accent:#B8FF3C;     /* electric lime — POWR energy */
+    --accent2:#39E0C8;    /* cyan */
+    --sponsor:#FFB23C;    /* amber — paid placement */
+    --pink:#FF6B9D;
+    --radius:16px;
+    --shadow:0 10px 30px rgba(0,0,0,.45);
+    font-synthesis:none;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;line-height:1.5;}
+  .wrap{max-width:1100px;margin:0 auto;padding:48px 28px 80px;}
+
+  /* ---- header ---- */
+  .kicker{display:inline-flex;align-items:center;gap:8px;font-size:12px;letter-spacing:.18em;
+    text-transform:uppercase;color:var(--accent);font-weight:700;
+    border:1px solid var(--line);border-radius:999px;padding:6px 14px;background:var(--panel);}
+  h1{font-size:42px;line-height:1.08;margin:18px 0 8px;letter-spacing:-.02em;}
+  h1 .grad{background:linear-gradient(90deg,var(--accent),var(--accent2));
+    -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;}
+  .sub{font-size:18px;color:var(--muted);max-width:680px;margin:0;}
+  .tag-row{display:flex;flex-wrap:wrap;gap:10px;margin-top:22px;}
+  .tag{font-size:12.5px;color:var(--muted);background:var(--panel);border:1px solid var(--line);
+    padding:7px 12px;border-radius:999px;}
+  .tag b{color:var(--ink);}
+
+  section{margin-top:54px;}
+  .eyebrow{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--faint);
+    font-weight:700;margin:0 0 6px;}
+  h2{font-size:24px;margin:0 0 18px;letter-spacing:-.01em;}
+  h2 .num{color:var(--accent);font-variant-numeric:tabular-nums;margin-right:10px;}
+
+  /* ---- pipeline ---- */
+  .pipe{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;}
+  .step{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px 14px;
+    position:relative;display:flex;flex-direction:column;gap:8px;min-height:148px;}
+  .step .ic{font-size:22px;}
+  .step h3{font-size:14px;margin:0;letter-spacing:-.01em;}
+  .step p{font-size:12px;color:var(--muted);margin:0;}
+  .step .reuse{margin-top:auto;font-size:10.5px;color:var(--accent2);
+    border-top:1px dashed var(--line);padding-top:8px;}
+  .step .reuse.new{color:var(--accent);}
+  .step .arrow{position:absolute;right:-12px;top:50%;transform:translateY(-50%);
+    color:var(--faint);font-size:18px;z-index:2;}
+  .step:last-child .arrow{display:none;}
+
+  /* ---- targeting grid ---- */
+  .grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;}
+  .dim{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;}
+  .dim .ic{font-size:24px;margin-bottom:10px;}
+  .dim h3{font-size:15px;margin:0 0 6px;}
+  .dim p{font-size:12.5px;color:var(--muted);margin:0 0 12px;}
+  .chip{display:inline-block;font-size:11px;color:var(--ink);background:var(--panel2);
+    border:1px solid var(--line);border-radius:7px;padding:4px 8px;margin:0 6px 6px 0;}
+  .chip.x{color:var(--sponsor);border-color:#3a2f17;background:#221a0c;}
+
+  /* ---- showcase: phone + report ---- */
+  .show{display:grid;grid-template-columns:300px 1fr;gap:26px;align-items:start;}
+  .phone{background:linear-gradient(180deg,#0e141c,#0a0e13);border:1px solid var(--line);
+    border-radius:34px;padding:16px 14px 22px;box-shadow:var(--shadow);position:relative;}
+  .notch{width:120px;height:7px;background:#222c38;border-radius:99px;margin:2px auto 16px;}
+  .lockclock{text-align:center;color:var(--faint);font-size:13px;margin-bottom:6px;}
+  .locktime{text-align:center;font-size:40px;font-weight:300;letter-spacing:.01em;margin:0 0 22px;}
+  .push{background:rgba(28,38,50,.92);border:1px solid var(--line);border-radius:16px;padding:13px 14px;
+    backdrop-filter:blur(8px);margin-bottom:10px;}
+  .push .ph{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--faint);margin-bottom:7px;}
+  .push .ph .dot{width:18px;height:18px;border-radius:5px;
+    background:linear-gradient(135deg,var(--accent),var(--accent2));display:grid;place-items:center;
+    font-size:11px;color:#06210a;font-weight:800;}
+  .push .ph .src{font-weight:700;color:var(--muted);letter-spacing:.04em;text-transform:uppercase;font-size:10px;}
+  .push .ph .t{margin-left:auto;}
+  .push h4{font-size:14px;margin:0 0 3px;}
+  .push p{font-size:12.5px;color:var(--muted);margin:0;}
+  .push.sponsored{border-color:#3a2f17;}
+  .badge-spon{font-size:9px;color:var(--sponsor);border:1px solid #3a2f17;background:#221a0c;
+    border-radius:5px;padding:2px 6px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;}
+
+  .cards{display:flex;flex-direction:column;gap:16px;}
+  .report{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px;}
+  .report .rh{display:flex;align-items:center;gap:10px;margin-bottom:4px;}
+  .report .rh .dot{width:9px;height:9px;border-radius:99px;background:var(--accent);box-shadow:0 0 12px var(--accent);}
+  .report h3{font-size:13px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin:0;font-weight:700;}
+  .report .lead{font-size:13px;color:var(--faint);margin:2px 0 18px;}
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;}
+  .stat .big{font-size:30px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums;}
+  .stat .big.a{color:var(--accent);} .stat .big.c{color:var(--accent2);} .stat .big.s{color:var(--sponsor);}
+  .stat .lbl{font-size:11px;color:var(--muted);margin-top:2px;}
+  .funnel{margin-top:18px;display:flex;flex-direction:column;gap:7px;}
+  .fbar{display:flex;align-items:center;gap:12px;font-size:12px;}
+  .fbar .name{width:160px;color:var(--muted);}
+  .fbar .track{flex:1;height:24px;background:var(--panel2);border-radius:7px;overflow:hidden;border:1px solid var(--line);}
+  .fbar .fill{height:100%;display:flex;align-items:center;padding-left:10px;font-size:11px;font-weight:700;color:#06210a;}
+  .pitch{background:linear-gradient(135deg,rgba(184,255,60,.08),rgba(57,224,200,.06));
+    border:1px solid var(--line);border-radius:16px;padding:18px 20px;font-size:14px;color:var(--ink);}
+  .pitch b{color:var(--accent);}
+
+  /* ---- placement model ---- */
+  .slots{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;}
+  .slot{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;position:relative;overflow:hidden;}
+  .slot::before{content:"";position:absolute;inset:0 auto 0 0;width:4px;background:var(--sponsor);}
+  .slot .own{font-size:11px;color:var(--sponsor);text-transform:uppercase;letter-spacing:.08em;font-weight:700;}
+  .slot h3{font-size:16px;margin:6px 0 10px;}
+  .slot .meta{font-size:12px;color:var(--muted);display:flex;flex-direction:column;gap:5px;}
+  .slot .meta span b{color:var(--ink);font-weight:600;}
+  .note{font-size:12.5px;color:var(--faint);margin-top:14px;}
+  .note b{color:var(--muted);}
+
+  /* ---- schema ---- */
+  .schema{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;align-items:start;}
+  .col-h{font-size:12px;letter-spacing:.1em;text-transform:uppercase;font-weight:700;margin:0 0 12px;
+    display:flex;align-items:center;gap:8px;}
+  .col-h .pip{width:8px;height:8px;border-radius:99px;}
+  .reused .col-h .pip{background:var(--accent2);} .reused .col-h{color:var(--accent2);}
+  .newcol .col-h .pip{background:var(--accent);} .newcol .col-h{color:var(--accent);}
+  .repcol .col-h .pip{background:var(--sponsor);} .repcol .col-h{color:var(--sponsor);}
+  .tbl{background:var(--panel);border:1px solid var(--line);border-radius:12px;margin-bottom:12px;overflow:hidden;}
+  .tbl .name{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;font-weight:700;
+    padding:10px 14px;background:var(--panel2);border-bottom:1px solid var(--line);}
+  .tbl .name.new{color:var(--accent);} .tbl .name.reused{color:var(--accent2);} .tbl .name.rep{color:var(--sponsor);}
+  .tbl ul{margin:0;padding:8px 14px;list-style:none;}
+  .tbl li{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;color:var(--muted);
+    padding:3px 0;display:flex;justify-content:space-between;gap:10px;}
+  .tbl li .k{color:var(--ink);} .tbl li .ty{color:var(--faint);}
+
+  /* ---- risk strip ---- */
+  .strip{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;}
+  .gd{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;}
+  .gd .ic{font-size:20px;} .gd h3{font-size:14px;margin:8px 0 6px;} .gd p{font-size:12.5px;color:var(--muted);margin:0;}
+
+  footer{margin-top:60px;border-top:1px solid var(--line);padding-top:20px;display:flex;
+    justify-content:space-between;flex-wrap:wrap;gap:8px;color:var(--faint);font-size:12px;}
+  .legend{display:flex;gap:18px;flex-wrap:wrap;margin-top:14px;}
+  .legend span{font-size:11.5px;color:var(--muted);display:inline-flex;align-items:center;gap:6px;}
+  .legend i{width:10px;height:10px;border-radius:3px;display:inline-block;}
+
+  @media (max-width:880px){
+    .pipe{grid-template-columns:repeat(2,1fr);} .step .arrow{display:none;}
+    .grid4{grid-template-columns:repeat(2,1fr);}
+    .show{grid-template-columns:1fr;} .phone{max-width:300px;margin:0 auto;}
+    .schema{grid-template-columns:1fr;} .slots{grid-template-columns:1fr;}
+    .stats{grid-template-columns:repeat(2,1fr);} .strip{grid-template-columns:1fr;}
+    h1{font-size:32px;}
+  }
+  @media print{
+    body{background:#fff;color:#111;}
+    .wrap{max-width:none;}
+    section{break-inside:avoid;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- HEADER -->
+  <span class="kicker">● POWR · Product Concept</span>
+  <h1>Contextual <span class="grad">Sponsored Rewards</span></h1>
+  <p class="sub">Reward partners pay to surface their discount the moment a user is physically in a high-intent context — on a golf course, mid-walk, 7am near a café. Invisible on the map. First-party. Presence-attributed.</p>
+  <div class="tag-row">
+    <span class="tag"><b>Not</b> a map feature · not third-party ads</span>
+    <span class="tag">Sells <b>targeting</b>, not data</span>
+    <span class="tag">Reuses <b>~80%</b> of shipped infra</span>
+    <span class="tag">New revenue lever on existing partners</span>
+  </div>
+
+  <!-- PIPELINE -->
+  <section>
+    <p class="eyebrow">How a single offer fires</p>
+    <h2><span class="num">01</span>The delivery pipeline</h2>
+    <div class="pipe">
+      <div class="step">
+        <div class="ic">📍</div>
+        <h3>Enter context</h3>
+        <p>User crosses an invisible geofence or a time/activity trigger fires.</p>
+        <div class="reuse">reuses · geometry cache + geofence engine</div>
+        <div class="arrow">→</div>
+      </div>
+      <div class="step">
+        <div class="ic">🎯</div>
+        <h3>Match targeting</h3>
+        <p>Find sponsored placements whose rules fit location + time + activity.</p>
+        <div class="reuse new">new · targeting rules (thin)</div>
+        <div class="arrow">→</div>
+      </div>
+      <div class="step">
+        <div class="ic">🚦</div>
+        <h3>Frequency gate</h3>
+        <p>Capped, daytime-clamped, deduped so it never feels like spam.</p>
+        <div class="reuse">reuses · notification pacing</div>
+        <div class="arrow">→</div>
+      </div>
+      <div class="step">
+        <div class="ic">🔔</div>
+        <h3>Deliver</h3>
+        <p>Geofence push for high-value contexts; in-app boost as fallback.</p>
+        <div class="reuse">reuses · send-push + reward catalogue</div>
+        <div class="arrow">→</div>
+      </div>
+      <div class="step">
+        <div class="ic">🎟️</div>
+        <h3>Redeem</h3>
+        <p>User claims the discount in-store through the wallet.</p>
+        <div class="reuse">reuses · spend_points + receipts</div>
+        <div class="arrow">→</div>
+      </div>
+      <div class="step">
+        <div class="ic">📊</div>
+        <h3>Attribute</h3>
+        <p>Surfaced → tapped → redeemed, tied back to physical presence.</p>
+        <div class="reuse new">new · placement events (the product)</div>
+      </div>
+    </div>
+    <div class="legend">
+      <span><i style="background:var(--accent2)"></i> Already shipped — reused as-is</span>
+      <span><i style="background:var(--accent)"></i> New — thin layer to build</span>
+    </div>
+  </section>
+
+  <!-- TARGETING TAXONOMY -->
+  <section>
+    <p class="eyebrow">The inventory you sell</p>
+    <h2><span class="num">02</span>Targeting taxonomy</h2>
+    <div class="grid4">
+      <div class="dim">
+        <div class="ic">⛳</div>
+        <h3>Location</h3>
+        <p>A venue category or a specific place.</p>
+        <span class="chip">Golf courses</span><span class="chip">Parkrun routes</span>
+        <span class="chip">Cycle trails</span><span class="chip">This one venue</span>
+      </div>
+      <div class="dim">
+        <div class="ic">🕖</div>
+        <h3>Time of day</h3>
+        <p>Own the moments that matter to a brand.</p>
+        <span class="chip">6–9am coffee</span><span class="chip">Post-work</span>
+        <span class="chip">Weekend AM</span>
+      </div>
+      <div class="dim">
+        <div class="ic">📆</div>
+        <h3>Day of week</h3>
+        <p>Match weekly intent patterns.</p>
+        <span class="chip">Sat &amp; Sun</span><span class="chip">Weekday lunch</span>
+      </div>
+      <div class="dim">
+        <div class="ic">💪</div>
+        <h3>Activity context</h3>
+        <p>The cross-context inventory — most lucrative.</p>
+        <span class="chip x">Just finished gym → protein</span>
+        <span class="chip x">On a course Sat → post-round pint</span>
+      </div>
+    </div>
+    <p class="note"><b>Key design choice:</b> targeting need not be thematically literal. Golf course → golf brand is obvious; the bigger inventory is cross-context (gym session → recovery brand). Allow it from day one.</p>
+  </section>
+
+  <!-- SHOWCASE -->
+  <section>
+    <p class="eyebrow">User sees a perk · partner buys a report</p>
+    <h2><span class="num">03</span>Same event, two surfaces</h2>
+    <div class="show">
+      <!-- phone -->
+      <div class="phone">
+        <div class="notch"></div>
+        <div class="lockclock">Saturday, 14 June</div>
+        <div class="locktime">10:42</div>
+        <div class="push sponsored">
+          <div class="ph"><span class="dot">P</span><span class="src">POWR</span><span class="t">now</span></div>
+          <h4>⛳ You're at Royal Mickleham</h4>
+          <p>Tap for <b style="color:var(--accent)">20% off</b> a fresh set from FairwayCo + 50 points.</p>
+          <div style="margin-top:9px"><span class="badge-spon">Sponsored reward</span></div>
+        </div>
+        <div class="push">
+          <div class="ph"><span class="dot">P</span><span class="src">POWR</span><span class="t">7:58am</span></div>
+          <h4>☕ Morning — there's a perk nearby</h4>
+          <p>15% off at BrewLab, just round the corner.</p>
+        </div>
+      </div>
+      <!-- report + pitch -->
+      <div class="cards">
+        <div class="pitch">The user just sees a <b>relevant reward at the right moment.</b> No data left POWR, no third-party network, no map clutter. The partner is buying the moment — and the proof it happened.</div>
+        <div class="report">
+          <div class="rh"><span class="dot"></span><h3>FairwayCo · Golf-course placement · June</h3></div>
+          <p class="lead">Closed-loop, physical-presence attribution — what almost no ad channel can offer.</p>
+          <div class="stats">
+            <div class="stat"><div class="big">1,204</div><div class="lbl">On-course surfaces</div></div>
+            <div class="stat"><div class="big c">512</div><div class="lbl">Tapped offer</div></div>
+            <div class="stat"><div class="big a">340</div><div class="lbl">Redeemed in-store</div></div>
+            <div class="stat"><div class="big s">28%</div><div class="lbl">Surface → redeem</div></div>
+          </div>
+          <div class="funnel">
+            <div class="fbar"><span class="name">Physically present &amp; surfaced</span>
+              <div class="track"><div class="fill" style="width:100%;background:var(--faint)">1,204</div></div></div>
+            <div class="fbar"><span class="name">Engaged the offer</span>
+              <div class="track"><div class="fill" style="width:43%;background:var(--accent2)">512</div></div></div>
+            <div class="fbar"><span class="name">Redeemed in-store</span>
+              <div class="track"><div class="fill" style="width:28%;background:var(--accent)">340</div></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PLACEMENT MODEL -->
+  <section>
+    <p class="eyebrow">How it's priced &amp; arbitrated</p>
+    <h2><span class="num">04</span>Placement model — v1 sells fixed slots</h2>
+    <div class="slots">
+      <div class="slot">
+        <div class="own">★ Owned placement</div>
+        <h3>FairwayCo</h3>
+        <div class="meta">
+          <span>Location · <b>leisure = golf_course</b></span>
+          <span>Time · <b>all day</b></span>
+          <span>Sponsors · <b>1 (exclusive)</b></span>
+        </div>
+      </div>
+      <div class="slot">
+        <div class="own">★ Owned placement</div>
+        <h3>BrewLab</h3>
+        <div class="meta">
+          <span>Location · <b>any (city-wide)</b></span>
+          <span>Time · <b>06:00–09:00</b></span>
+          <span>Sponsors · <b>1 per city</b></span>
+        </div>
+      </div>
+      <div class="slot">
+        <div class="own">★ Owned placement</div>
+        <h3>Restore</h3>
+        <div class="meta">
+          <span>Context · <b>post gym-session</b></span>
+          <span>Time · <b>any</b></span>
+          <span>Sponsors · <b>priority weight</b></span>
+        </div>
+      </div>
+    </div>
+    <p class="note"><b>Why fixed slots first:</b> a real-time auction is a huge build. Sell a partner the right to <b>own</b> a context (golf courses, the 6–9am slot) as a priority weight. Add bidding only once demand outstrips inventory.</p>
+  </section>
+
+  <!-- SCHEMA -->
+  <section>
+    <p class="eyebrow">It mostly bolts onto what exists</p>
+    <h2><span class="num">05</span>Data model — thin layer over shipped systems</h2>
+    <div class="schema">
+      <div class="reused">
+        <div class="col-h"><span class="pip"></span>Reused as-is</div>
+        <div class="tbl"><div class="name reused">rewards</div>
+          <ul>
+            <li><span class="k">brand_name</span><span class="ty">text</span></li>
+            <li><span class="k">discount / points</span><span class="ty">…</span></li>
+          </ul></div>
+        <div class="tbl"><div class="name reused">geofence geometry cache</div>
+          <ul>
+            <li><span class="k">polygon / category</span><span class="ty">geom</span></li>
+            <li><span class="k">ensureCoverage()</span><span class="ty">fn</span></li>
+          </ul></div>
+        <div class="tbl"><div class="name reused">wallet / redemptions</div>
+          <ul>
+            <li><span class="k">spend_points()</span><span class="ty">rpc</span></li>
+            <li><span class="k">receipt cols</span><span class="ty">…</span></li>
+          </ul></div>
+      </div>
+      <div class="newcol">
+        <div class="col-h"><span class="pip"></span>New — the layer to build</div>
+        <div class="tbl"><div class="name new">placement_campaigns</div>
+          <ul>
+            <li><span class="k">id</span><span class="ty">uuid</span></li>
+            <li><span class="k">brand_name → rewards</span><span class="ty">fk</span></li>
+            <li><span class="k">reward_id</span><span class="ty">fk</span></li>
+            <li><span class="k">priority_weight</span><span class="ty">int</span></li>
+            <li><span class="k">starts / ends</span><span class="ty">tstz</span></li>
+          </ul></div>
+        <div class="tbl"><div class="name new">targeting_rules</div>
+          <ul>
+            <li><span class="k">campaign_id</span><span class="ty">fk</span></li>
+            <li><span class="k">venue_category</span><span class="ty">text?</span></li>
+            <li><span class="k">venue_id</span><span class="ty">fk?</span></li>
+            <li><span class="k">time_window</span><span class="ty">range?</span></li>
+            <li><span class="k">activity_context</span><span class="ty">enum?</span></li>
+          </ul></div>
+      </div>
+      <div class="repcol">
+        <div class="col-h"><span class="pip"></span>Reporting — the product</div>
+        <div class="tbl"><div class="name rep">placement_events</div>
+          <ul>
+            <li><span class="k">campaign_id</span><span class="ty">fk</span></li>
+            <li><span class="k">user_id</span><span class="ty">fk</span></li>
+            <li><span class="k">stage</span><span class="ty">surfaced|tapped|redeemed</span></li>
+            <li><span class="k">venue_id / context</span><span class="ty">…</span></li>
+            <li><span class="k">occurred_at</span><span class="ty">tstz</span></li>
+          </ul></div>
+        <div class="tbl"><div class="name rep">→ partner report</div>
+          <ul>
+            <li><span class="k">surfaces / taps</span><span class="ty">agg</span></li>
+            <li><span class="k">redemptions</span><span class="ty">agg</span></li>
+            <li><span class="k">conversion / CPA</span><span class="ty">calc</span></li>
+          </ul></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- GUARDRAILS -->
+  <section>
+    <p class="eyebrow">What keeps it on the right side of the line</p>
+    <h2><span class="num">06</span>Guardrails</h2>
+    <div class="strip">
+      <div class="gd"><div class="ic">🛡️</div><h3>First-party only</h3>
+        <p>Your partners, your catalogue, your data. Nothing leaves POWR — the App Store / privacy landmine of "selling location to advertisers" never applies.</p></div>
+      <div class="gd"><div class="ic">🎁</div><h3>Ship as a reward, never an ad</h3>
+        <p>"Here's 50 points + an offer" reads as a perk. "Here's an ad" reads as surveillance. Same backend, opposite reception.</p></div>
+      <div class="gd"><div class="ic">🚦</div><h3>Pace it hard</h3>
+        <p>Reuse the notification discipline already tuned: capped, daytime-clamped, deduped. One spammy week churns users.</p></div>
+    </div>
+  </section>
+
+  <footer>
+    <span>POWR — Contextual Sponsored Rewards · concept one-pager</span>
+    <span>Reuses: geofence geometry cache · reward-brand portal · wallet redemption loop · notification pacing</span>
+  </footer>
+
+</div>
+</body>
+</html>

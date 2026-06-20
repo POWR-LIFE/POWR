@@ -10,6 +10,7 @@ import {
   rewardUnlockedEmail,
   pointsMilestoneEmail,
   inactivityNudgeEmail,
+  weeklySummaryEmail,
   type WaitlistUserData,
   type WaitlistPartnerData,
   type WelcomeData,
@@ -19,6 +20,7 @@ import {
   type RewardUnlockedData,
   type PointsMilestoneData,
   type InactivityNudgeData,
+  type WeeklySummaryData,
 } from "../_shared/email-templates.ts";
 
 const SEND_EMAIL_SECRET = Deno.env.get("SEND_EMAIL_SECRET");
@@ -32,7 +34,8 @@ type EmailPayload =
   | { type: "weekly_challenge_expiry"; to: string; data: WeeklyChallengeExpiryData }
   | { type: "reward_unlocked"; to: string; data: RewardUnlockedData }
   | { type: "points_milestone"; to: string; data: PointsMilestoneData }
-  | { type: "inactivity_nudge"; to: string; data: InactivityNudgeData };
+  | { type: "inactivity_nudge"; to: string; data: InactivityNudgeData }
+  | { type: "weekly_summary"; to: string; data: WeeklySummaryData };
 
 Deno.serve(async (req: Request) => {
   if (req.method !== "POST") {
@@ -88,6 +91,9 @@ Deno.serve(async (req: Request) => {
         break;
       case "inactivity_nudge":
         email = inactivityNudgeEmail(payload.data);
+        break;
+      case "weekly_summary":
+        email = weeklySummaryEmail(payload.data);
         break;
       default:
         return new Response(`Unknown email type: ${(payload as { type: string }).type}`, { status: 400 });

@@ -9,13 +9,18 @@
 //                                                        row and burns the token
 //
 // ADMIN actions (caller must be in admin_roles):
-//   create_invite { brand_name }          → mints a tokenized setup link (no email needed)
+//   create_invite { brand_name, email? }  → mints a tokenized setup link. With an
+//                                            email, also sends the brand that link
+//                                            via Mailgun; without one it's copy-link
+//                                            only. The link is identical either way.
 //   revoke_invite { invite_id }           → revokes an unused setup link
 //   invite        { brand_name, email }   → email invite via Supabase (needs SMTP configured)
 //   list          { brand_name }          → portal users + open setup invites for a brand
 //   remove        { user_id }             → removes portal access (keeps auth user)
 
 import { createClient } from '@supabase/supabase-js';
+import { sendEmail } from '../_shared/mailgun.ts';
+import { brandInviteEmail } from '../_shared/emails/brand-invite.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -155,26 +160,50 @@ Deno.serve(async (req) => {
 
   const siteUrl = Deno.env.get('SITE_URL') ?? 'https://powr.life';
 
-  // ── create_invite: mint a tokenized setup link (no email needed) ───────────
+  // ── create_invite: mint a tokenized setup link, optionally email it ─────────
+  // The link (/partner/setup/{token}) is the credential. Pass an `email` to send
+  // the brand that same link via Mailgun; omit it for copy-link-only.
   if (body.action === 'create_invite') {
     const brandName = String(body.brand_name ?? '').trim();
     if (!brandName) return json({ error: 'brand_name is required' }, 400);
 
+    const email = String(body.email ?? '').toLowerCase().trim();
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return json({ error: 'Enter a valid email address' }, 400);
+    }
+
     const token = crypto.randomUUID();
     const { error: invErr } = await adminClient
       .from('reward_brand_invites')
-      .insert({ invite_token: token, brand_name: brandName, created_by: user.id });
+      .insert({ invite_token: token, brand_name: brandName, created_by: user.id, email: email || null });
     if (invErr) return json({ error: invErr.message }, 400);
+
+    const setupLink = `${siteUrl}/partner/setup/${token}`;
+
+    // Email the link if one was given. A send failure must NOT lose the invite —
+    // the row is already saved, so we surface the error and let the admin copy
+    // the link instead.
+    let emailed = false;
+    if (email) {
+      try {
+        const tpl = brandInviteEmail({ brandName, setupUrl: setupLink, logoUrl: await brandLogo(adminClient, brandName) });
+        await sendEmail({ to: email, subject: tpl.subject, html: tpl.html, text: tpl.text });
+        emailed = true;
+      } catch (err) {
+        console.error('create_invite: failed to email setup link:', err);
+        return json({ ok: true, token, url: setupLink, emailed: false, email_error: 'Link created, but the email could not be sent — copy it below instead.' });
+      }
+    }
 
     await adminClient.from('admin_audit_log').insert({
       admin_id: user.id,
-      action: 'create_brand_setup_link',
+      action: emailed ? 'email_brand_setup_link' : 'create_brand_setup_link',
       target_type: 'reward_brand',
       target_id: null,
-      metadata: { brand_name: brandName },
+      metadata: { brand_name: brandName, email: email || null, emailed },
     });
 
-    return json({ ok: true, token, url: `${siteUrl}/partner/setup/${token}` });
+    return json({ ok: true, token, url: setupLink, emailed });
   }
 
   // ── revoke_invite ───────────────────────────────────────────────────────────
@@ -238,7 +267,7 @@ Deno.serve(async (req) => {
         .order('created_at', { ascending: true }),
       adminClient
         .from('reward_brand_invites')
-        .select('id, invite_token, created_at')
+        .select('id, invite_token, created_at, email')
         .ilike('brand_name', brandName)
         .eq('status', 'invited')
         .order('created_at', { ascending: false }),
@@ -263,6 +292,7 @@ Deno.serve(async (req) => {
       id: i.id,
       created_at: i.created_at,
       token: i.invite_token,
+      email: i.email ?? null,
       url: `${siteUrl}/partner/setup/${i.invite_token}`,
     }));
 

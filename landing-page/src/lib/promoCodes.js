@@ -335,9 +335,14 @@ export async function toggleCodeStatus(codeId, currentStatus) {
     return newStatus;
 }
 
-// Fetches paginated code pool for a reward with optional status filter.
-// Requires the calling user to be an admin (RLS policy on redemption_codes).
-export async function fetchCodePool({ rewardId, status = 'all', page = 0, pageSize = 25 }) {
+// Escape LIKE wildcards so a code search treats % and _ as literals.
+function escapeLike(term) {
+    return term.replace(/[\\%_]/g, '\\$&');
+}
+
+// Fetches paginated code pool for a reward with optional status filter + code search.
+// Scoped by RLS (admins, or brand users for their own rewards' codes).
+export async function fetchCodePool({ rewardId, status = 'all', page = 0, pageSize = 25, search = '' }) {
     let query = supabase
         .from('redemption_codes')
         .select(
@@ -349,6 +354,8 @@ export async function fetchCodePool({ rewardId, status = 'all', page = 0, pageSi
         .range(page * pageSize, (page + 1) * pageSize - 1);
 
     if (status !== 'all') query = query.eq('status', status);
+    const term = search.trim();
+    if (term) query = query.ilike('code', `%${escapeLike(term)}%`);
 
     const { data, error, count } = await query;
     if (error) throw error;
@@ -356,16 +363,41 @@ export async function fetchCodePool({ rewardId, status = 'all', page = 0, pageSi
 }
 
 // Fetches ALL codes for a reward (no pagination) for export purposes.
-export async function fetchAllCodes({ rewardId, status = 'all' }) {
+export async function fetchAllCodes({ rewardId, status = 'all', search = '' }) {
     let query = supabase
         .from('redemption_codes')
         .select('code, status, source, assigned_at, used_at, expires_at, created_at, profiles:assigned_user_id(display_name, username)')
         .eq('reward_id', rewardId)
         .order('created_at', { ascending: false });
     if (status !== 'all') query = query.eq('status', status);
+    const term = search.trim();
+    if (term) query = query.ilike('code', `%${escapeLike(term)}%`);
     const { data, error } = await query;
     if (error) throw error;
     return data ?? [];
+}
+
+// Brand-portal stats. get_code_stats is admin-gated, so brand users count
+// directly via four head-only count queries (no rows transferred, RLS-scoped
+// to the brand's own rewards).
+export async function fetchCodeStatsDirect(rewardId) {
+    const statuses = ['available', 'reserved', 'used', 'expired'];
+    const results = await Promise.all(
+        statuses.map(s =>
+            supabase
+                .from('redemption_codes')
+                .select('id', { count: 'exact', head: true })
+                .eq('reward_id', rewardId)
+                .eq('status', s)
+        )
+    );
+    const stats = { available: 0, reserved: 0, used: 0, expired: 0, total: 0 };
+    statuses.forEach((s, i) => {
+        if (results[i].error) throw results[i].error;
+        stats[s] = results[i].count ?? 0;
+        stats.total += stats[s];
+    });
+    return stats;
 }
 
 export async function fetchCodeStats(rewardId) {
