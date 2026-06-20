@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { X, Plus, Loader2, CheckCircle, AlertCircle, Users, KeyRound, Search } from 'lucide-react';
+import { X, Loader2, CheckCircle, AlertCircle, Users, KeyRound, Search, Send, Link as LinkIcon } from 'lucide-react';
 import { invokeFn } from '../lib/invokeFn';
 import { useToast } from '../lib/toast';
 
@@ -15,6 +15,8 @@ export default function BrandPortalAccess({ brands, onClose }) {
     const [creatingLink, setCreatingLink] = useState(false);
     const [removingId, setRemovingId] = useState(null);
     const [copiedId, setCopiedId] = useState(null);
+    const [inviteEmail, setInviteEmail] = useState('');
+    const [sendingEmail, setSendingEmail] = useState(false);
     const [search, setSearch] = useState('');
     const [dropdownOpen, setDropdownOpen] = useState(false);
     const searchRef = useRef(null);
@@ -64,6 +66,29 @@ export default function BrandPortalAccess({ brands, onClose }) {
             toast.error(err.message);
         } finally {
             setCreatingLink(false);
+        }
+    };
+
+    const handleEmailInvite = async () => {
+        const email = inviteEmail.trim();
+        if (!brandName || !email || sendingEmail) return;
+        setSendingEmail(true);
+        try {
+            const data = await invokeFn('manage-partner-user', { action: 'create_invite', brand_name: brandName, email });
+            if (!data?.ok) throw new Error(data?.error ?? 'Failed to send invite');
+            if (data.emailed) {
+                toast.success(`Invite emailed to ${email}`);
+            } else {
+                // Link was saved but the email didn't go out — copy it so it's not lost
+                await navigator.clipboard.writeText(setupUrl(data.token)).catch(() => {});
+                toast.error(data.email_error ?? 'Email failed — link copied instead');
+            }
+            setInviteEmail('');
+            fetchAccess(brandName);
+        } catch (err) {
+            toast.error(err.message);
+        } finally {
+            setSendingEmail(false);
         }
     };
 
@@ -120,8 +145,8 @@ export default function BrandPortalAccess({ brands, onClose }) {
 
                 <div className="p-8 space-y-6">
                     <p className="text-[11px] text-[#AAAAAA] font-black leading-relaxed">
-                        Give a reward brand a login for the self-service portal at /partner. Generate a setup
-                        link and send it over any channel — they choose their own email and password.
+                        Give a reward brand a login for the self-service portal at /partner. Email them an
+                        invite or copy a setup link to send yourself — they choose their own email and password.
                     </p>
 
                     {/* Brand selector with search */}
@@ -167,14 +192,44 @@ export default function BrandPortalAccess({ brands, onClose }) {
                         </div>
                     </div>
 
-                    {/* Generate setup link */}
+                    {/* Invite by email */}
+                    <div className="space-y-3">
+                        <span className="text-[9px] uppercase tracking-[0.4em] text-[#BBBBBB] font-black">Invite by email</span>
+                        <div className="flex gap-3">
+                            <input
+                                type="email"
+                                value={inviteEmail}
+                                onChange={e => setInviteEmail(e.target.value)}
+                                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleEmailInvite(); } }}
+                                placeholder="brand@email.com"
+                                disabled={!brandName}
+                                className="flex-1 min-w-0 h-14 px-5 bg-[#F4F4F1] border border-[#E6E6E1] rounded-2xl text-sm text-[#1A1A1A] font-bold outline-none placeholder-[#BBBBBB] focus:border-[#E8D200]/30 transition-colors disabled:opacity-50"
+                            />
+                            <button
+                                onClick={handleEmailInvite}
+                                disabled={sendingEmail || !brandName || !inviteEmail.trim()}
+                                className="flex items-center justify-center gap-2 h-14 px-6 bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.25em] rounded-2xl transition-all hover:translate-y-[-1px] shadow-md shadow-[#E8D200]/20 disabled:opacity-50 shrink-0"
+                            >
+                                {sendingEmail ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                                Send
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Or copy a setup link */}
+                    <div className="flex items-center gap-3">
+                        <div className="flex-1 h-px bg-[#E6E6E1]" />
+                        <span className="text-[9px] uppercase tracking-[0.3em] text-[#CCCCCC] font-black">or</span>
+                        <div className="flex-1 h-px bg-[#E6E6E1]" />
+                    </div>
+
                     <button
                         onClick={handleCreateLink}
                         disabled={creatingLink || !brandName}
-                        className="w-full flex items-center justify-center gap-3 h-14 bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.25em] rounded-2xl transition-all hover:translate-y-[-1px] shadow-md shadow-[#E8D200]/20 disabled:opacity-50"
+                        className="w-full flex items-center justify-center gap-3 h-12 bg-white border border-[#E6E6E1] text-[#666] text-[10px] font-black uppercase tracking-[0.25em] rounded-2xl transition-all hover:border-[#E8D200]/40 hover:text-[#8a7600] disabled:opacity-50"
                     >
-                        {creatingLink ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
-                        Generate Setup Link
+                        {creatingLink ? <Loader2 size={14} className="animate-spin" /> : <LinkIcon size={14} />}
+                        Copy a setup link instead
                     </button>
 
                     {loading ? (
@@ -192,7 +247,7 @@ export default function BrandPortalAccess({ brands, onClose }) {
                                             <div className="flex-1 min-w-0">
                                                 <div className="text-[10px] font-mono text-[#888] truncate">{setupUrl(inv.token)}</div>
                                                 <div className="text-[9px] uppercase tracking-[0.3em] text-[#BBB] font-black mt-1">
-                                                    Created {new Date(inv.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} · unused
+                                                    {inv.email ? `Emailed to ${inv.email}` : 'Created'} {new Date(inv.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} · unused
                                                 </div>
                                             </div>
                                             <button onClick={() => copyInvite(inv)} className="h-8 px-4 text-[9px] font-black uppercase tracking-[0.2em] bg-white border border-[#E6E6E1] rounded-full text-[#666] hover:text-[#8a7600] hover:border-[#E8D200]/40 transition-all shrink-0">

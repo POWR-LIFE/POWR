@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Award, Gift, Settings, LogOut, ChevronRight, Search, Eye, CalendarDays } from 'lucide-react';
+import { LayoutDashboard, Award, Gift, Settings, LogOut, ChevronRight, Search, Eye, CalendarDays, Ticket } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../App';
 
@@ -99,17 +99,19 @@ function AdminPartnerPicker({ onSelect }) {
 const NAV_ITEMS = [
     { label: 'Overview',    path: '/partner',             icon: LayoutDashboard },
     { label: 'My Rewards',  path: '/partner/rewards',     icon: Award           },
+    { label: 'Promo Codes', path: '/partner/promo-codes', icon: Ticket          },
     { label: "What's On",   path: '/partner/featured',    icon: CalendarDays    },
     { label: 'Redemptions', path: '/partner/redemptions', icon: Gift            },
     { label: 'Settings',    path: '/partner/settings',    icon: Settings        },
 ];
 
 const PATH_LABELS = {
-    partner:     'Overview',
-    rewards:     'My Rewards',
-    featured:    "What's On",
-    redemptions: 'Redemptions',
-    settings:    'Settings',
+    partner:       'Overview',
+    rewards:       'My Rewards',
+    'promo-codes': 'Promo Codes',
+    featured:      "What's On",
+    redemptions:   'Redemptions',
+    settings:      'Settings',
 };
 
 export function PartnerLayout({ children }) {
