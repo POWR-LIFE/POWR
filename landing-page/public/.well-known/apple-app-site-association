@@ -1,0 +1,13 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["CHJQ87VF2S.com.powr.life"],
+        "components": [
+          { "/": "/app", "comment": "Open the POWR app from email CTAs" },
+          { "/": "/app/*", "comment": "Open the POWR app at a deep-link target" }
+        ]
+      }
+    ]
+  }
+}

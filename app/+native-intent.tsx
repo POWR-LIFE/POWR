@@ -42,6 +42,31 @@ export const redirectSystemPath: NonNullable<NativeIntent['redirectSystemPath']>
     return `/${host}${rest}`;
   }
 
+  // Universal Link (iOS) / App Link (Android): https://powr.life/app[/...][?to=...]
+  // These open the app from email CTAs. Strip the scheme+host and the /app marker;
+  // a ?to= param or a /app/<route> tail selects a screen, otherwise land on home.
+  // (String-sliced, not new URL(): RN's URL is unreliable for our links.)
+  if (value.startsWith('https://') || value.startsWith('http://')) {
+    const afterScheme = value.slice(value.indexOf('://') + 3);
+    const firstSlash = afterScheme.indexOf('/');
+    const pathAndQuery = firstSlash >= 0 ? afterScheme.slice(firstSlash) : '/';
+    const qIdx = pathAndQuery.indexOf('?');
+    const pathname = qIdx >= 0 ? pathAndQuery.slice(0, qIdx) : pathAndQuery;
+    const query = qIdx >= 0 ? pathAndQuery.slice(qIdx) : '';
+
+    // ?to=<route> wins (matches the web smart-link's contract).
+    const toMatch = query.match(/[?&]to=([^&]+)/);
+    if (toMatch) {
+      const to = decodeURIComponent(toMatch[1]).replace(/^\/+/, '');
+      return to ? `/${to}` : '/';
+    }
+
+    // Drop the leading /app segment; whatever remains is the route (default home).
+    const route = pathname.replace(/^\/app(?=\/|$)/, '');
+    if (!route || route === '/') return '/';
+    return route.startsWith('/') ? route : `/${route}`;
+  }
+
   return value;
 };
 

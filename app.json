@@ -13,6 +13,7 @@
       "bundleIdentifier": "com.powr.life",
       "buildNumber": "9",
       "googleServicesFile": "./GoogleService-Info.plist",
+      "associatedDomains": ["applinks:powr.life"],
       "infoPlist": {
         "NSHealthShareUsageDescription": "POWR needs access to your sleep and workout data to reward you for healthy habits.",
         "NSHealthUpdateUsageDescription": "POWR needs access to log your habits.",
@@ -63,6 +64,14 @@
             { "scheme": "powr", "host": "auth-callback" },
             { "scheme": "powr", "host": "terra-callback" },
             { "scheme": "powr", "host": "samsung-health-callback" }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        },
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            { "scheme": "https", "host": "powr.life", "pathPrefix": "/app" }
           ],
           "category": ["BROWSABLE", "DEFAULT"]
         }
