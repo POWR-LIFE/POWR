@@ -186,30 +186,39 @@ export async function logManualSession(params: ManualSessionParams): Promise<boo
             );
         }
 
-        // 2. Don't shadow a higher-trust source: if a geofence/wearable/health
-        //    session of this type overlaps the same window, that's the same effort
-        //    tracked more reliably — refuse the manual duplicate.
-        const startMs = new Date(params.started_at).getTime();
-        const endMs = new Date(ended_at).getTime();
-        const { data: higherTrust } = await supabase
-            .from('activity_sessions')
-            .select('started_at, ended_at, duration_sec')
-            .eq('user_id', uid)
-            .eq('type', params.type)
-            .in('verification', ['geofence', 'wearable', 'health'])
-            .gte('started_at', new Date(startMs - 24 * 60 * 60 * 1000).toISOString())
-            .lte('started_at', new Date(endMs + 24 * 60 * 60 * 1000).toISOString());
-        const overlaps = (higherTrust ?? []).some(s => {
-            const sStart = new Date(s.started_at).getTime();
-            const sEnd = s.ended_at
-                ? new Date(s.ended_at).getTime()
-                : sStart + (s.duration_sec ?? 0) * 1000;
-            return startMs < sEnd && endMs > sStart;
-        });
-        if (overlaps) {
-            throw new Error(
-                `This ${params.type} session is already tracked automatically by your connected device.`,
-            );
+        // 2. Don't shadow a higher-trust source: if a geofence check-in, wearable,
+        //    or native-health session overlaps this window, it's the same time
+        //    tracked more reliably — refuse the manual log regardless of how each
+        //    side is typed. You can't be at a gym check-in and running outdoors at
+        //    once, and a wearable may classify the same gym visit as cycling/hiit/
+        //    yoga/etc — so this is type-agnostic, mirroring the geofenceSupersedes
+        //    rule applied server-side on claim (see _shared/sessionPriority.ts).
+        //    Only workout logs are guarded: `walking`/`sleep` are daily aggregates
+        //    whose windows span hours/days and would always "overlap", and they're
+        //    likewise excluded from the candidate set below.
+        if (params.type !== 'walking' && params.type !== 'sleep') {
+            const startMs = new Date(params.started_at).getTime();
+            const endMs = new Date(ended_at).getTime();
+            const { data: higherTrust } = await supabase
+                .from('activity_sessions')
+                .select('started_at, ended_at, duration_sec')
+                .eq('user_id', uid)
+                .not('type', 'in', '("walking","sleep")')
+                .in('verification', ['geofence', 'wearable', 'health'])
+                .gte('started_at', new Date(startMs - 24 * 60 * 60 * 1000).toISOString())
+                .lte('started_at', new Date(endMs + 24 * 60 * 60 * 1000).toISOString());
+            const overlaps = (higherTrust ?? []).some(s => {
+                const sStart = new Date(s.started_at).getTime();
+                const sEnd = s.ended_at
+                    ? new Date(s.ended_at).getTime()
+                    : sStart + (s.duration_sec ?? 0) * 1000;
+                return startMs < sEnd && endMs > sStart;
+            });
+            if (overlaps) {
+                throw new Error(
+                    'This time is already tracked automatically by a check-in or your connected device.',
+                );
+            }
         }
     }
 
