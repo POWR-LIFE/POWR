@@ -14,7 +14,7 @@ function OpeningHoursEditor({ value, onChange }) {
     const setDay = (key, dayHours) => onChange({ ...hours, [key]: dayHours });
 
     return (
-        <div className="space-y-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {DAY_KEYS.map(key => {
                 const dayHours = hours[key];
                 const isOpen = dayHours != null;
@@ -715,6 +715,11 @@ export default function PartnerManager() {
         return () => clearTimeout(searchTimerRef.current);
     }, [search, filterCat, filterStatus, viewMode]);
 
+    // Inline panel replaces the list in-page — scroll up so it's in view when opened.
+    useEffect(() => {
+        if (isModalOpen) window.scrollTo({ top: 0, behavior: 'smooth' });
+    }, [isModalOpen]);
+
     const fetchPartners = async () => {
         setLoading(true);
         let query = supabase
@@ -884,14 +889,17 @@ export default function PartnerManager() {
                         Authorized retail locations and geofence telemetry orchestration.
                     </p>
                 </div>
+                {!isModalOpen && (
                 <button
                     onClick={openCreate}
                     className="flex items-center gap-4 h-16 px-10 bg-[#E8D200] text-[#080808] text-[11px] font-black uppercase tracking-[0.3em] rounded-full transition-all hover:translate-y-[-4px] shadow-2xl shadow-[#E8D200]/20 shrink-0"
                 >
                     <Plus size={18} /> {viewMode === 'brands' ? 'Add Brand' : 'Initialize Node'}
                 </button>
+                )}
             </div>
 
+            {!isModalOpen && (<>
             {/* View mode tabs */}
             <div className="flex gap-2 mb-10 bg-white border border-[#E6E6E1] rounded-[2rem] p-2 w-fit">
                 {[
@@ -1051,11 +1059,12 @@ export default function PartnerManager() {
                     </div>
                 )}
             </div>
+            </>)}
 
-            {/* Modal */}
+            {/* Inline detail / edit panel */}
             {isModalOpen && (
-                <div className="fixed inset-0 z-[200] overflow-y-auto bg-black/95 backdrop-blur-xl animate-in fade-in duration-300 py-20 px-4">
-                    <div className="bg-[#F4F4F1] border border-[#E6E6E1] rounded-3xl w-full max-w-4xl mx-auto shadow-[0_0_100px_rgba(14,165,233,0.05)]">
+                <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <div className="bg-[#F4F4F1] border border-[#E6E6E1] rounded-3xl w-full">
                         <form onSubmit={handleSave} className="p-12">
                             <div className="flex items-center justify-between mb-16">
                                 <div>
@@ -1075,7 +1084,7 @@ export default function PartnerManager() {
 
                             {/* Location partner: two-column layout with LocationEditor on right */}
                             {formData.roles.includes('earning_location') ? (
-                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 mb-12">
+                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-12 mb-12 items-start">
                                     <div className="space-y-8">
                                         <div>
                                             <label className="block text-[10px] uppercase tracking-[0.4em] text-[#333333] font-black mb-4">Node Brand Name</label>
@@ -1108,13 +1117,15 @@ export default function PartnerManager() {
                                         </div>
                                     </div>
 
-                                    <div className="space-y-8">
+                                    <div className="lg:col-span-2 space-y-8">
                                         <LocationEditor
                                             locations={formData.locations}
                                             onChange={locs => setFormData(prev => ({ ...prev, locations: locs }))}
                                         />
-                                        <ImageUploadField label="Cover Image" value={formData.image1_url} uploading={image1Uploading} onFile={handleImage1Upload} />
-                                        <ImageUploadField label="Gallery Image" value={formData.image2_url} uploading={image2Uploading} onFile={handleImage2Upload} />
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                            <ImageUploadField label="Cover Image" value={formData.image1_url} uploading={image1Uploading} onFile={handleImage1Upload} />
+                                            <ImageUploadField label="Gallery Image" value={formData.image2_url} uploading={image2Uploading} onFile={handleImage2Upload} />
+                                        </div>
                                     </div>
                                 </div>
                             ) : (
