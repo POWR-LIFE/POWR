@@ -397,11 +397,13 @@ Deno.serve(async (req) => {
   // 8. Calculate points
   let base = calcBasePoints(session);
 
-  // ⚠️ DEV MODE: if DEV_MIN_DWELL_SEC is set, geofence-verified gym sessions meeting
-  // that lower threshold qualify for base points (mirrors client-side MIN_DWELL_MS override).
-  // Remove/unset DEV_MIN_DWELL_SEC before going to production.
+  // DEV-TEST-ONLY: when DEV_MIN_DWELL_SEC is set, a geofence gym session meeting
+  // that lower threshold qualifies for base points so we can test check-ins without
+  // a real 30-min dwell. Gated on isDevTestUser so it can NEVER award points to a
+  // real user even if the env var is left set in production — the env var alone is
+  // not enough. (Real prod requirement stays the 30-min calcBasePoints tier.)
   const devMinDwellSec = parseInt(Deno.env.get('DEV_MIN_DWELL_SEC') ?? '0', 10);
-  if (base === 0 && devMinDwellSec > 0 && session.verification === 'geofence' && session.type === 'gym') {
+  if (base === 0 && isDevTestUser && devMinDwellSec > 0 && session.verification === 'geofence' && session.type === 'gym') {
     if (session.duration_sec >= devMinDwellSec) {
       base = 15; // minimum qualifying gym tier
       console.log(`[DEV] Awarded base gym points for short session (${session.duration_sec}s >= ${devMinDwellSec}s dev threshold)`);
