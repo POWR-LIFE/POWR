@@ -113,6 +113,12 @@ export default function UserProfile() {
         return match;
     });
 
+    // Points earned per session, summed from the ledger (a session can have >1 row).
+    const sessionPoints = transactions.reduce((m, t) => {
+        if (t.session_id) m[t.session_id] = (m[t.session_id] || 0) + t.amount;
+        return m;
+    }, {});
+
     const handleTogglePro = async () => {
         if (proLoading) return;
         setProLoading(true);
@@ -858,9 +864,19 @@ export default function UserProfile() {
                                                 </span>
                                             </div>
                                         </div>
-                                        <div className="text-right">
-                                            <div className="text-2xl font-light tracking-tighter text-[#1A1A1A] mb-1">{(session.trust_score * 100).toFixed(0)}%</div>
-                                            <div className="text-[8px] uppercase tracking-[0.3em] text-[#666666] font-black">TRUST</div>
+                                        <div className="flex items-center gap-8 shrink-0">
+                                            <div className="text-right">
+                                                <div className="text-2xl font-light tracking-tighter text-[#8a7600] mb-1">
+                                                    {sessionPoints[session.id] != null
+                                                        ? `${sessionPoints[session.id] > 0 ? '+' : ''}${sessionPoints[session.id].toLocaleString()}`
+                                                        : '—'}
+                                                </div>
+                                                <div className="text-[8px] uppercase tracking-[0.3em] text-[#666666] font-black">POINTS</div>
+                                            </div>
+                                            <div className="text-right">
+                                                <div className="text-2xl font-light tracking-tighter text-[#1A1A1A] mb-1">{(session.trust_score * 100).toFixed(0)}%</div>
+                                                <div className="text-[8px] uppercase tracking-[0.3em] text-[#666666] font-black">TRUST</div>
+                                            </div>
                                         </div>
                                     </div>
                                 ))}

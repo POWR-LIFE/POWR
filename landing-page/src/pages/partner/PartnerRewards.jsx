@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Plus, ChevronLeft, Upload, Award, Clock, CheckCircle, XCircle, AlertCircle, Eye } from 'lucide-react';
+import { Plus, ChevronLeft, Upload, Award, Clock, CheckCircle, XCircle, AlertCircle, Eye, X, Mail } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { uploadPublicImage } from '../../lib/storage';
 import { useToast } from '../../lib/toast';
@@ -27,6 +27,12 @@ const STATUS_BADGE = {
 };
 
 const INPUT = "w-full h-14 px-5 bg-white border border-[#E6E6E1] rounded-2xl text-sm font-light text-[#1A1A1A] placeholder-[#BBBBBB] focus:border-[#E8D200]/50 outline-none transition-all font-['Outfit']";
+
+// Fallback cap on how many rewards a brand may have in flight (live + in
+// review) before they have to ask us for more. The real per-brand limit comes
+// from brand_reward_limits (admin-managed); this is just the default when a
+// brand has no row yet. Enforced server-side by the reward-submission trigger.
+const DEFAULT_REWARD_LIMIT = 2;
 
 function cleanPrefix(raw) {
     return String(raw ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
@@ -105,7 +111,7 @@ const previewFromSubmission = (s, partnerName) => ({
 
 export default function PartnerRewards() {
     const toast = useToast();
-    const { partnerData } = useAuth();
+    const { partnerData, user } = useAuth();
     const [rewards, setRewards] = useState([]);
     const [submissions, setSubmissions] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -118,9 +124,23 @@ export default function PartnerRewards() {
     const [uploadingLogo, setUploadingLogo] = useState(false);
     const [uploadingHero, setUploadingHero] = useState(false);
     const [selectedKey, setSelectedKey] = useState(null);
+    const [rewardLimit, setRewardLimit] = useState(DEFAULT_REWARD_LIMIT);
+    const [limitOpen, setLimitOpen] = useState(false);
+    const [contactNote, setContactNote] = useState('');
+    const [sendingContact, setSendingContact] = useState(false);
     const pageTopRef = useRef(null);
 
     const brand = partnerData?.brand_name;
+
+    // Count rewards toward the cap: live rewards + any brand-new submission
+    // still in review. Listing-update change requests (target_reward_id) and
+    // rejected submissions don't count; approved submissions are excluded too
+    // because they already exist as a live reward (would otherwise double-count).
+    const pendingNewCount = submissions.filter(
+        s => !s.target_reward_id && (s.status === 'pending' || s.status === 'invited')
+    ).length;
+    const rewardCount = rewards.length + pendingNewCount;
+    const atLimit = rewardCount >= rewardLimit;
 
     // The previewed item: while the form is open, the phone mirrors the form
     // live; otherwise it shows the clicked row in the active tab (or first row).
@@ -160,12 +180,14 @@ export default function PartnerRewards() {
 
     const fetchAll = async () => {
         setLoading(true);
-        const [r, s] = await Promise.all([
+        const [r, s, lim] = await Promise.all([
             supabase.from('rewards').select('*').ilike('brand_name', brand).order('created_at', { ascending: false }),
             supabase.from('reward_submissions').select('*').ilike('brand_name', brand).order('created_at', { ascending: false }),
+            supabase.from('brand_reward_limits').select('reward_limit').eq('brand_key', (brand ?? '').trim().toLowerCase()),
         ]);
         setRewards(r.data ?? []);
         setSubmissions(s.data ?? []);
+        setRewardLimit(lim.data?.[0]?.reward_limit ?? DEFAULT_REWARD_LIMIT);
         setLoading(false);
     };
 
@@ -183,10 +205,38 @@ export default function PartnerRewards() {
     };
 
     const openNew = () => {
+        if (atLimit) { setLimitOpen(true); return; }
         setEditingSubmission(null);
         setEditingListing(null);
         setForm({ ...BLANK_FORM, partner_blurb: partnerData?.name ?? '' });
         setFormOpen(true);
+    };
+
+    // Brand has hit the cap and wants more rewards → file a request into the
+    // admin support inbox so the team can follow up. Reuses support_tickets
+    // (RLS: insert allowed when user_id = auth.uid()).
+    const handleGetInTouch = async () => {
+        if (!user) { toast.error('Please sign in again'); return; }
+        setSendingContact(true);
+        const note = contactNote.trim();
+        const { error } = await supabase.from('support_tickets').insert({
+            user_id: user.id,
+            email: user.email ?? '',
+            category: 'brand_request',
+            subject: `More rewards request — ${brand ?? partnerData?.name ?? 'Brand'}`,
+            message:
+                `${brand ?? partnerData?.name ?? 'A brand'} has reached the ${rewardLimit}-reward limit `
+                + `(${rewardCount} live/in review) and would like to add more.`
+                + (note ? `\n\nNote from brand:\n${note}` : ''),
+        });
+        setSendingContact(false);
+        if (error) {
+            toast.error(error.message);
+        } else {
+            toast.success("Thanks — our team will be in touch shortly");
+            setLimitOpen(false);
+            setContactNote('');
+        }
     };
 
     // Edit a LIVE reward → prefill from the live listing; submit becomes a change request
@@ -491,12 +541,17 @@ export default function PartnerRewards() {
                         </button>
                     ))}
                 </div>
-                <button
-                    onClick={openNew}
-                    className="flex items-center gap-3 h-12 px-7 bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.2em] rounded-full transition-all hover:translate-y-[-2px] shadow-lg shadow-[#E8D200]/20"
-                >
-                    <Plus size={15} /> Submit Reward
-                </button>
+                <div className="flex items-center gap-4">
+                    <span className={`text-[10px] font-black uppercase tracking-[0.2em] ${atLimit ? 'text-[#8a7600]' : 'text-[#BBB]'}`}>
+                        {rewardCount}/{rewardLimit} rewards{atLimit ? ' · limit reached' : ''}
+                    </span>
+                    <button
+                        onClick={openNew}
+                        className="flex items-center gap-3 h-12 px-7 bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.2em] rounded-full transition-all hover:translate-y-[-2px] shadow-lg shadow-[#E8D200]/20"
+                    >
+                        {atLimit ? <><Mail size={15} /> Request More</> : <><Plus size={15} /> Submit Reward</>}
+                    </button>
+                </div>
             </div>
 
             {/* Content */}
@@ -656,6 +711,47 @@ export default function PartnerRewards() {
                 </div>
             </div>
             </div>
+
+            {/* ── Reward-limit / "get in touch" modal ── */}
+            {limitOpen && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] flex items-center justify-center p-8" onClick={() => !sendingContact && setLimitOpen(false)}>
+                    <div className="bg-white border border-[#E6E6E1] rounded-3xl w-full max-w-lg shadow-2xl" onClick={e => e.stopPropagation()}>
+                        <div className="flex items-center justify-between p-8 border-b border-[#E6E6E1]">
+                            <h2 className="text-2xl font-light tracking-tight text-[#1A1A1A]">Reward limit reached</h2>
+                            <button onClick={() => setLimitOpen(false)} disabled={sendingContact} className="w-10 h-10 rounded-full bg-[#EFEFEC] flex items-center justify-center text-[#999] hover:text-[#1A1A1A] transition-colors disabled:opacity-50"><X size={16} /></button>
+                        </div>
+                        <div className="p-8 space-y-6">
+                            <p className="text-sm text-[#666] font-light leading-relaxed">
+                                Brands can run up to <span className="font-bold text-[#1A1A1A]">{rewardLimit} rewards</span> live or in review at a time. Want to offer more? Tell us a little about what you want to add and our team will get in touch.
+                            </p>
+                            <div>
+                                <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">Anything we should know? (optional)</label>
+                                <textarea
+                                    value={contactNote}
+                                    onChange={e => setContactNote(e.target.value)}
+                                    rows={3}
+                                    placeholder="e.g. We'd like to add a seasonal offer and a members-only reward."
+                                    className={`${INPUT} h-auto py-4 resize-none`}
+                                />
+                            </div>
+                            <div className="flex justify-end gap-4 pt-2">
+                                <button type="button" onClick={() => setLimitOpen(false)} disabled={sendingContact} className="h-12 px-8 text-[10px] font-black uppercase tracking-[0.2em] text-[#666] hover:text-[#222] transition-colors disabled:opacity-50">Cancel</button>
+                                <button
+                                    type="button"
+                                    onClick={handleGetInTouch}
+                                    disabled={sendingContact}
+                                    className="flex items-center gap-3 h-12 px-10 bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.2em] rounded-full transition-all hover:translate-y-[-2px] shadow-lg shadow-[#E8D200]/20 disabled:opacity-50 disabled:translate-y-0"
+                                >
+                                    {sendingContact
+                                        ? <div className="w-4 h-4 border-2 border-[#080808]/30 border-t-[#080808] rounded-full animate-spin" />
+                                        : <Mail size={14} />}
+                                    {sendingContact ? 'Sending…' : 'Get in touch'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

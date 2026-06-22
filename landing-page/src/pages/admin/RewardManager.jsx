@@ -8,6 +8,7 @@ import * as XLSX from 'xlsx';
 import { parseCodes, uploadCodes, fetchCodeStats, fetchCodePool, fetchAllCodes, getCSVTemplate, buildScheme, isValidForScheme, getSchemeCSVTemplate, generateCodes, toggleCodeStatus } from '../../lib/promoCodes';
 import BrandPortalAccess from '../../components/BrandPortalAccess';
 import BrandAccessPanel from '../../components/BrandAccessPanel';
+import BrandRewardLimit from '../../components/BrandRewardLimit';
 import RewardAppPreview from '../../components/RewardAppPreview';
 
 const CATEGORIES = ['eat', 'move', 'mind', 'sleep'];
@@ -1416,6 +1417,9 @@ export default function RewardManager() {
                                             </div>
                                         </dl>
                                     </div>
+
+                                    {/* Per-brand reward cap */}
+                                    <BrandRewardLimit brandName={formData.brand_name?.trim() || ''} />
 
                                     {/* Portal logins / email management */}
                                     <BrandAccessPanel brandName={formData.brand_name?.trim() || ''} />
