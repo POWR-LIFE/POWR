@@ -80,9 +80,12 @@ Deno.serve(async (req) => {
   const actualMins = Math.floor(actualDurationSec / 60);
 
   if (actualMins < 40) {
-    // DEV override: if DEV_MIN_UPGRADE_SEC is set, allow upgrades at a lower threshold
+    // DEV-TEST-ONLY override: when DEV_MIN_UPGRADE_SEC is set, a dev-test account can
+    // upgrade to the 40-min tier at a lower threshold (test without a real 40-min
+    // dwell). Gated on isDevTestUser so a real user can NEVER upgrade early even if
+    // the env var is left set in production — the env var alone is not enough.
     const devMinUpgradeSec = parseInt(Deno.env.get('DEV_MIN_UPGRADE_SEC') ?? '0', 10);
-    if (devMinUpgradeSec <= 0 || actualDurationSec < devMinUpgradeSec) {
+    if (!isDevTestUser || devMinUpgradeSec <= 0 || actualDurationSec < devMinUpgradeSec) {
       return new Response(JSON.stringify({ error: 'Session has not reached the 40-min tier' }), { status: 422 });
     }
     console.log(`[DEV] Allowing tier upgrade for short session (${actualDurationSec}s >= ${devMinUpgradeSec}s dev threshold)`);
