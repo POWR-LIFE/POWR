@@ -837,8 +837,18 @@ export default function UserProfile() {
                             <div className="divide-y divide-[#E6E6E1]">
                                 {filteredSessions.length === 0 ? (
                                     <div className="p-20 text-center text-[#888888] text-[10px] uppercase tracking-[0.4em] font-black">No activity markers detected</div>
-                                ) : filteredSessions.slice(0, visibleSessions).map(session => (
-                                    <div key={session.id} className="p-10 flex items-center gap-10 group hover:bg-[#F4F4F1] transition-all">
+                                ) : filteredSessions.slice(0, visibleSessions).map(session => {
+                                    const geoPartnerId = session.verification === 'geofence'
+                                        ? (session.partner_id || session.raw_gps?.partnerId)
+                                        : null;
+                                    return (
+                                    <div
+                                        key={session.id}
+                                        onClick={geoPartnerId ? () => navigate(`/admin/performance/${geoPartnerId}`) : undefined}
+                                        role={geoPartnerId ? 'button' : undefined}
+                                        title={geoPartnerId ? 'View gym performance for this session' : undefined}
+                                        className={`p-10 flex items-center gap-10 group transition-all ${geoPartnerId ? 'cursor-pointer hover:bg-[#F4F4F1]' : 'hover:bg-[#F4F4F1]'}`}
+                                    >
                                         <div className="w-14 h-14 rounded-3xl bg-[#F4F4F1] border border-[#E6E6E1] flex items-center justify-center shrink-0">
                                             <Activity size={20} className="text-[#666666] group-hover:text-[#8a7600] transition-colors" />
                                         </div>
@@ -853,6 +863,12 @@ export default function UserProfile() {
                                                     <span>{session.raw_gps.partnerName}</span>
                                                     <span className="text-[#555555]">•</span>
                                                     <span>{formatSessionTime(session.started_at, session.duration_sec)}</span>
+                                                    {geoPartnerId && (
+                                                        <span className="flex items-center gap-1 text-[#8a7600] opacity-0 group-hover:opacity-100 transition-opacity">
+                                                            <span className="text-[9px] uppercase tracking-[0.2em] font-black">View location</span>
+                                                            <ArrowUpRight size={12} />
+                                                        </span>
+                                                    )}
                                                 </div>
                                             )}
                                             {(!session.raw_gps || session.verification !== 'geofence') && <div className="mb-2" />}
@@ -879,7 +895,8 @@ export default function UserProfile() {
                                             </div>
                                         </div>
                                     </div>
-                                ))}
+                                    );
+                                })}
                             </div>
                             {filteredSessions.length > visibleSessions && (
                                 <div className="p-6 border-t border-[#E6E6E1] text-center bg-[#F4F4F1] hover:bg-[#EFEFEC] transition-colors">
