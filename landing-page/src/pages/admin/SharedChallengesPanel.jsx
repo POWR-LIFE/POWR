@@ -34,11 +34,12 @@ const BONUS_DEFAULTS = { perHead: 5, maxBonus: 30 };
 // — this also seeds the real rule (kind/target) when the backend lands.
 const MEASURES = {
 	gym: [
-		{ id: 'checkins', label: 'Check-ins', unit: 'check-ins', step: 1, min: 1, max: 14, default: 3 },
+		{ id: 'checkins',      label: 'Check-ins',     unit: 'check-ins', step: 1, min: 1, max: 14, default: 3, window: true },
+		{ id: 'distinct_days', label: 'Different days', unit: 'days',     step: 1, min: 1, max: 7,  default: 5 },
 	],
 	walking: [
 		{ id: 'steps_week', label: 'Total steps', unit: 'steps', step: 5000, min: 10000, max: 200000, default: 35000 },
-		{ id: 'steps_day',  label: 'Steps / day', unit: 'steps', step: 1000, min: 3000, max: 30000, default: 10000, perDay: true },
+		{ id: 'steps_day',  label: 'Steps / day', unit: 'steps', step: 1000, min: 3000, max: 30000, default: 10000, perDay: true, window: true },
 	],
 	running: [
 		{ id: 'distance', label: 'Distance',        distance: true, step: 1, min: 1, max: 100, default: 5 },
@@ -54,24 +55,45 @@ const MEASURES = {
 	],
 };
 
+// Time windows usable by windowed measures (gym check-ins, walking steps/day).
+const WINDOWS = [
+	{ id: 'any',        label: 'Any time',  phrase: '' },
+	{ id: 'before_9am', label: 'Before 9am', phrase: 'before 9am' },
+	{ id: 'midday',     label: '12–2pm',     phrase: 'between 12–2pm' },
+	{ id: 'after_6pm',  label: 'After 6pm',  phrase: 'after 6pm' },
+];
+
 const measuresFor = (cat) => MEASURES[cat] ?? MEASURES.gym;
 const measureCfg = (cat, id) => measuresFor(cat).find((m) => m.id === id) ?? measuresFor(cat)[0];
 
-/** Structured defaults for a category+measure (target, unit, days). */
+/** Structured defaults for a category+measure (target, unit, days, window). */
 function measureDefaults(cat, measureId) {
 	const m = measureId ? measureCfg(cat, measureId) : measuresFor(cat)[0];
-	return { measure: m.id, target: m.default, unit: m.distance ? 'km' : null, days: m.perDay ? 4 : null };
+	return {
+		measure: m.id,
+		target: m.default,
+		unit: m.distance ? 'km' : null,
+		days: m.perDay ? 4 : null,
+		window: m.window ? 'any' : null,
+	};
 }
 
 /** Human goal string generated from the structured fields. */
 function goalText(d) {
 	const m = measureCfg(d.category, d.measure);
 	const v = d.target;
+	// Leading-space window phrase, e.g. " before 9am" (empty for "any" / unsupported).
+	const win = m.window && d.window && d.window !== 'any'
+		? ' ' + (WINDOWS.find((w) => w.id === d.window)?.phrase ?? '')
+		: '';
 	if (m.distance) return `${d.category === 'running' ? 'Run' : 'Cycle'} ${v}${d.unit} this week`;
 	switch (m.id) {
-		case 'checkins':   return `Check in ${v}× this week`;
-		case 'steps_week': return `${v.toLocaleString()} steps this week`;
-		case 'steps_day':  return `${v.toLocaleString()} steps a day, ${d.days} ${d.days === 1 ? 'day' : 'days'}`;
+		case 'checkins':      return `Check in ${v}×${win} this week`;
+		case 'distinct_days': return `Check in on ${v} different ${v === 1 ? 'day' : 'days'} this week`;
+		case 'steps_week':    return `${v.toLocaleString()} steps this week`;
+		case 'steps_day':     return win
+			? `${v.toLocaleString()} steps${win}, ${d.days} ${d.days === 1 ? 'day' : 'days'}`
+			: `${v.toLocaleString()} steps a day, ${d.days} ${d.days === 1 ? 'day' : 'days'}`;
 		case 'runs':       return `Log ${v} ${v === 1 ? 'run' : 'runs'} this week`;
 		case 'rides':      return `Log ${v} ${v === 1 ? 'ride' : 'rides'} this week`;
 		case 'sessions':   return `Log ${v} ${v === 1 ? 'session' : 'sessions'} this week`;
@@ -232,6 +254,29 @@ function TemplateEditor({ draft, setDraft, onSave, onClose }) {
 							<div className="flex items-center justify-between rounded-xl border border-[#E6E6E1] bg-[#F4F4F1] px-5 py-3">
 								<span className="text-sm text-[#666666]">For how many days</span>
 								<Stepper value={draft.days} onChange={(v) => set({ days: v })} step={1} min={1} max={7} suffix="days" minWidth={36} />
+							</div>
+						)}
+
+						{/* Time window for windowed measures */}
+						{m.window && (
+							<div className="flex flex-col gap-2 mt-1">
+								<span className="text-[10px] uppercase tracking-[0.3em] text-[#BBBBBB] font-black">Time window</span>
+								<div className="flex flex-wrap gap-2">
+									{WINDOWS.map((w) => {
+										const on = (draft.window ?? 'any') === w.id;
+										return (
+											<button
+												key={w.id}
+												onClick={() => set({ window: w.id })}
+												className={`rounded-full border px-4 py-1.5 text-xs font-medium transition-all ${
+													on ? 'border-[#E8D200] bg-[#E8D200] text-[#0a0a0a]' : 'border-[#E6E6E1] bg-[#F4F4F1] text-[#666666] hover:border-[#E8D200]/40'
+												}`}
+											>
+												{w.label}
+											</button>
+										);
+									})}
+								</div>
 							</div>
 						)}
 
