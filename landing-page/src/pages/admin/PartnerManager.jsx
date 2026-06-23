@@ -660,7 +660,6 @@ export default function PartnerManager() {
     const [logoUploading, setLogoUploading] = useState(false);
     const [image1Uploading, setImage1Uploading] = useState(false);
     const [image2Uploading, setImage2Uploading] = useState(false);
-    const [viewMode, setViewMode] = useState('locations'); // 'locations' | 'brands'
     const location = useLocation();
     const navigate = useNavigate();
     // When arriving from a gym request ("Add as Partner"), holds the request id so
@@ -713,7 +712,7 @@ export default function PartnerManager() {
         clearTimeout(searchTimerRef.current);
         searchTimerRef.current = setTimeout(() => fetchPartners(), search ? 350 : 0);
         return () => clearTimeout(searchTimerRef.current);
-    }, [search, filterCat, filterStatus, viewMode]);
+    }, [search, filterCat, filterStatus]);
 
     // Inline panel replaces the list in-page — scroll up so it's in view when opened.
     useEffect(() => {
@@ -736,8 +735,7 @@ export default function PartnerManager() {
         }
         if (filterStatus === 'active') query = query.eq('active', true);
         if (filterStatus === 'inactive') query = query.eq('active', false);
-        if (viewMode === 'locations') query = query.contains('roles', ['earning_location']);
-        if (viewMode === 'brands') query = query.contains('roles', ['reward_provider']);
+        query = query.contains('roles', ['earning_location']);
 
         query = query.limit(500);
 
@@ -761,9 +759,9 @@ export default function PartnerManager() {
         setEditingPartner(null);
         setFormData({
             ...EMPTY_FORM,
-            roles: viewMode === 'brands' ? ['reward_provider'] : ['earning_location'],
+            roles: ['earning_location'],
             locations: [],
-            opening_hours: viewMode === 'brands' ? null : { ...DEFAULT_HOURS },
+            opening_hours: { ...DEFAULT_HOURS },
         });
         setIsModalOpen(true);
     };
@@ -894,32 +892,12 @@ export default function PartnerManager() {
                     onClick={openCreate}
                     className="flex items-center gap-4 h-16 px-10 bg-[#E8D200] text-[#080808] text-[11px] font-black uppercase tracking-[0.3em] rounded-full transition-all hover:translate-y-[-4px] shadow-2xl shadow-[#E8D200]/20 shrink-0"
                 >
-                    <Plus size={18} /> {viewMode === 'brands' ? 'Add Brand' : 'Initialize Node'}
+                    <Plus size={18} /> Initialize Node
                 </button>
                 )}
             </div>
 
             {!isModalOpen && (<>
-            {/* View mode tabs */}
-            <div className="flex gap-2 mb-10 bg-white border border-[#E6E6E1] rounded-[2rem] p-2 w-fit">
-                {[
-                    { key: 'locations', label: 'Location Partners' },
-                    { key: 'brands', label: 'Reward Brands' },
-                ].map(tab => (
-                    <button
-                        key={tab.key}
-                        onClick={() => setViewMode(tab.key)}
-                        className={`h-12 px-8 rounded-[1.5rem] text-[10px] font-black uppercase tracking-[0.3em] transition-all ${
-                            viewMode === tab.key
-                                ? 'bg-[#0EA5E9] text-[#080808]'
-                                : 'text-[#555555] hover:text-[#222222]'
-                        }`}
-                    >
-                        {tab.label}
-                    </button>
-                ))}
-            </div>
-
             {/* Controls */}
             <div className="flex flex-col lg:flex-row gap-6 mb-12">
                 <div className="relative flex-1 group">
@@ -970,7 +948,7 @@ export default function PartnerManager() {
                         <table className="w-full text-left border-collapse">
                             <thead>
                                 <tr className="bg-[#F4F4F1] border-b border-[#E6E6E1]">
-                                    {['Node Identity', 'Sector', viewMode === 'brands' ? 'Type' : 'Points of Interest', 'Status', ''].map(h => (
+                                    {['Node Identity', 'Sector', 'Points of Interest', 'Status', ''].map(h => (
                                         <th key={h} className={`px-6 py-5 text-[10px] font-black uppercase tracking-[0.5em] text-[#888888] ${h === '' ? 'text-right' : ''}`}>{h}</th>
                                     ))}
                                 </tr>
@@ -1013,16 +991,10 @@ export default function PartnerManager() {
                                             </span>
                                         </td>
                                         <td className="px-6 py-5">
-                                            {(partner.roles || []).includes('earning_location') ? (
-                                                <div className="flex items-center gap-4 text-[#BBB] group-hover:text-[#1A1A1A] transition-colors font-black">
-                                                    <MapPin size={16} className="text-[#333333] group-hover:text-[#8a7600]" />
-                                                    <span className="text-[12px] uppercase tracking-[0.2em]">{partner.locations?.length || 0} NODES</span>
-                                                </div>
-                                            ) : (
-                                                <span className="px-4 py-1.5 bg-[#10B981]/5 border border-[#10B981]/20 rounded-full text-[9px] uppercase font-black tracking-[0.3em] text-[#10B981]">
-                                                    Reward Brand
-                                                </span>
-                                            )}
+                                            <div className="flex items-center gap-4 text-[#BBB] group-hover:text-[#1A1A1A] transition-colors font-black">
+                                                <MapPin size={16} className="text-[#333333] group-hover:text-[#8a7600]" />
+                                                <span className="text-[12px] uppercase tracking-[0.2em]">{partner.locations?.length || 0} NODES</span>
+                                            </div>
                                         </td>
                                         <td className="px-6 py-5 whitespace-nowrap">
                                             <button
@@ -1069,106 +1041,62 @@ export default function PartnerManager() {
                             <div className="flex items-center justify-between mb-16">
                                 <div>
                                     <h2 className="text-4xl font-light tracking-tighter text-[#1A1A1A] mb-3">
-                                        {editingPartner
-                                            ? ((editingPartner.roles || []).includes('reward_provider') && !(editingPartner.roles || []).includes('earning_location') ? 'Edit Reward Brand' : 'Edit Fleet Node')
-                                            : (formData.roles.includes('reward_provider') && !formData.roles.includes('earning_location') ? 'New Reward Brand' : 'Initialize Fleet Node')}
+                                        {editingPartner ? 'Edit Fleet Node' : 'Initialize Fleet Node'}
                                     </h2>
                                     <p className="text-[10px] uppercase tracking-[0.4em] text-[#333333] font-black">
-                                        {formData.roles.includes('reward_provider') && !formData.roles.includes('earning_location')
-                                            ? 'Configure Reward Brand Partner'
-                                            : 'Configure Retail Logistics & Geofencing'}
+                                        Configure Retail Logistics & Geofencing
                                     </p>
                                 </div>
                                 <button type="button" onClick={() => setIsModalOpen(false)} className="w-14 h-14 bg-white border border-[#E6E6E1] rounded-3xl flex items-center justify-center text-[#333333] hover:text-[#1A1A1A] hover:border-[#0EA5E9]/40 transition-all"><X size={20} /></button>
                             </div>
 
                             {/* Location partner: two-column layout with LocationEditor on right */}
-                            {formData.roles.includes('earning_location') ? (
-                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-12 mb-12 items-start">
-                                    <div className="space-y-8">
-                                        <div>
-                                            <label className="block text-[10px] uppercase tracking-[0.4em] text-[#333333] font-black mb-4">Node Brand Name</label>
-                                            <input type="text" required className="w-full h-16 px-8 bg-white border border-[#E6E6E1] rounded-3xl focus:border-[#E8D200]/40 outline-none transition-all text-base font-bold text-[#1A1A1A] placeholder-[#BBBBBB]" value={formData.name} onChange={e => setFormData(prev => ({ ...prev, name: e.target.value, partner_code: editingPartner ? prev.partner_code : toPartnerCode(e.target.value) }))} />
-                                        </div>
-                                        <div>
-                                            <label className="block text-[10px] uppercase tracking-[0.4em] text-[#333333] font-black mb-4">Partner Code <span className="text-[#999999]">/ auto-generated, editable</span></label>
-                                            <input type="text" required maxLength={6} placeholder="e.g. XTREME" className="w-full h-16 px-8 bg-white border border-[#E6E6E1] rounded-3xl focus:border-[#E8D200]/40 outline-none transition-all text-[14px] font-black tracking-[0.3em] text-[#8a7600] placeholder-[#BBBBBB] uppercase" value={formData.partner_code} onChange={e => setFormData(prev => ({ ...prev, partner_code: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6) }))} />
-                                        </div>
-                                        <div>
-                                            <label className="block text-[10px] uppercase tracking-[0.4em] text-[#333333] font-black mb-4">Corporate Address</label>
-                                            <input type="text" placeholder="MAIN HEADQUARTERS..." className="w-full h-16 px-8 bg-white border border-[#E6E6E1] rounded-3xl focus:border-[#E8D200]/40 outline-none transition-all text-[12px] font-bold text-[#222222] placeholder-[#BBBBBB]" value={formData.address} onChange={e => setFormData(prev => ({ ...prev, address: e.target.value }))} />
-                                        </div>
-                                        <div>
-                                            <label className="block text-[10px] uppercase tracking-[0.4em] text-[#333333] font-black mb-4">Operating Sector</label>
-                                            <select className="w-full h-16 px-8 bg-white border border-[#E6E6E1] rounded-3xl focus:border-[#E8D200]/40 outline-none transition-all appearance-none text-[12px] font-black text-[#222222] tracking-[0.1em] uppercase" value={formData.category} onChange={e => setFormData(prev => ({ ...prev, category: e.target.value }))}>
-                                                {CATEGORIES.map(c => <option key={c} value={c}>{c.toUpperCase()}</option>)}
-                                            </select>
-                                        </div>
-                                        <LogoUploadField value={formData.logo_url} logoBg={formData.logo_bg} onBgChange={bg => setFormData(prev => ({ ...prev, logo_bg: bg }))} uploading={logoUploading} onFile={handleLogoUpload} />
-                                        <div className="p-8 bg-white border border-[#E6E6E1] rounded-[2rem] flex items-center gap-6">
-                                            <button
-                                                type="button"
-                                                onClick={() => setFormData(prev => ({ ...prev, active: !prev.active }))}
-                                                className={`w-12 h-7 rounded-full transition-all relative shrink-0 ${formData.active ? 'bg-[#10B981]' : 'bg-[#EFEFEC]'}`}
-                                            >
-                                                <span className={`absolute top-1 w-5 h-5 rounded-full transition-all ${formData.active ? 'left-[24px] bg-white' : 'left-1 bg-white'}`} />
-                                            </button>
-                                            <span className="text-[10px] uppercase tracking-[0.4em] text-[#333333] font-black">Enable Real-time Discovery</span>
-                                        </div>
+                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-12 mb-12 items-start">
+                                <div className="space-y-8">
+                                    <div>
+                                        <label className="block text-[10px] uppercase tracking-[0.4em] text-[#333333] font-black mb-4">Node Brand Name</label>
+                                        <input type="text" required className="w-full h-16 px-8 bg-white border border-[#E6E6E1] rounded-3xl focus:border-[#E8D200]/40 outline-none transition-all text-base font-bold text-[#1A1A1A] placeholder-[#BBBBBB]" value={formData.name} onChange={e => setFormData(prev => ({ ...prev, name: e.target.value, partner_code: editingPartner ? prev.partner_code : toPartnerCode(e.target.value) }))} />
                                     </div>
-
-                                    <div className="lg:col-span-2 space-y-8">
-                                        <LocationEditor
-                                            locations={formData.locations}
-                                            onChange={locs => setFormData(prev => ({ ...prev, locations: locs }))}
-                                        />
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                                            <ImageUploadField label="Cover Image" value={formData.image1_url} uploading={image1Uploading} onFile={handleImage1Upload} />
-                                            <ImageUploadField label="Gallery Image" value={formData.image2_url} uploading={image2Uploading} onFile={handleImage2Upload} />
-                                        </div>
+                                    <div>
+                                        <label className="block text-[10px] uppercase tracking-[0.4em] text-[#333333] font-black mb-4">Partner Code <span className="text-[#999999]">/ auto-generated, editable</span></label>
+                                        <input type="text" required maxLength={6} placeholder="e.g. XTREME" className="w-full h-16 px-8 bg-white border border-[#E6E6E1] rounded-3xl focus:border-[#E8D200]/40 outline-none transition-all text-[14px] font-black tracking-[0.3em] text-[#8a7600] placeholder-[#BBBBBB] uppercase" value={formData.partner_code} onChange={e => setFormData(prev => ({ ...prev, partner_code: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6) }))} />
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] uppercase tracking-[0.4em] text-[#333333] font-black mb-4">Corporate Address</label>
+                                        <input type="text" placeholder="MAIN HEADQUARTERS..." className="w-full h-16 px-8 bg-white border border-[#E6E6E1] rounded-3xl focus:border-[#E8D200]/40 outline-none transition-all text-[12px] font-bold text-[#222222] placeholder-[#BBBBBB]" value={formData.address} onChange={e => setFormData(prev => ({ ...prev, address: e.target.value }))} />
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] uppercase tracking-[0.4em] text-[#333333] font-black mb-4">Operating Sector</label>
+                                        <select className="w-full h-16 px-8 bg-white border border-[#E6E6E1] rounded-3xl focus:border-[#E8D200]/40 outline-none transition-all appearance-none text-[12px] font-black text-[#222222] tracking-[0.1em] uppercase" value={formData.category} onChange={e => setFormData(prev => ({ ...prev, category: e.target.value }))}>
+                                            {CATEGORIES.map(c => <option key={c} value={c}>{c.toUpperCase()}</option>)}
+                                        </select>
+                                    </div>
+                                    <LogoUploadField value={formData.logo_url} logoBg={formData.logo_bg} onBgChange={bg => setFormData(prev => ({ ...prev, logo_bg: bg }))} uploading={logoUploading} onFile={handleLogoUpload} />
+                                    <div className="p-8 bg-white border border-[#E6E6E1] rounded-[2rem] flex items-center gap-6">
+                                        <button
+                                            type="button"
+                                            onClick={() => setFormData(prev => ({ ...prev, active: !prev.active }))}
+                                            className={`w-12 h-7 rounded-full transition-all relative shrink-0 ${formData.active ? 'bg-[#10B981]' : 'bg-[#EFEFEC]'}`}
+                                        >
+                                            <span className={`absolute top-1 w-5 h-5 rounded-full transition-all ${formData.active ? 'left-[24px] bg-white' : 'left-1 bg-white'}`} />
+                                        </button>
+                                        <span className="text-[10px] uppercase tracking-[0.4em] text-[#333333] font-black">Enable Real-time Discovery</span>
                                     </div>
                                 </div>
-                            ) : (
-                                /* Reward brand: single-column, no geofence fields */
-                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-12">
-                                    <div className="space-y-8">
-                                        <div>
-                                            <label className="block text-[10px] uppercase tracking-[0.4em] text-[#333333] font-black mb-4">Brand Name</label>
-                                            <input type="text" required className="w-full h-16 px-8 bg-white border border-[#E6E6E1] rounded-3xl focus:border-[#E8D200]/40 outline-none transition-all text-base font-bold text-[#1A1A1A] placeholder-[#BBBBBB]" value={formData.name} onChange={e => setFormData(prev => ({ ...prev, name: e.target.value, partner_code: editingPartner ? prev.partner_code : toPartnerCode(e.target.value) }))} />
-                                        </div>
-                                        <div>
-                                            <label className="block text-[10px] uppercase tracking-[0.4em] text-[#333333] font-black mb-4">Partner Code <span className="text-[#999999]">/ auto-generated, editable</span></label>
-                                            <input type="text" required maxLength={6} placeholder="e.g. TRIBE" className="w-full h-16 px-8 bg-white border border-[#E6E6E1] rounded-3xl focus:border-[#E8D200]/40 outline-none transition-all text-[14px] font-black tracking-[0.3em] text-[#8a7600] placeholder-[#BBBBBB] uppercase" value={formData.partner_code} onChange={e => setFormData(prev => ({ ...prev, partner_code: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6) }))} />
-                                        </div>
-                                        <div>
-                                            <label className="block text-[10px] uppercase tracking-[0.4em] text-[#333333] font-black mb-4">Sector</label>
-                                            <select className="w-full h-16 px-8 bg-white border border-[#E6E6E1] rounded-3xl focus:border-[#E8D200]/40 outline-none transition-all appearance-none text-[12px] font-black text-[#222222] tracking-[0.1em] uppercase" value={formData.category} onChange={e => setFormData(prev => ({ ...prev, category: e.target.value }))}>
-                                                {CATEGORIES.map(c => <option key={c} value={c}>{c.toUpperCase()}</option>)}
-                                            </select>
-                                        </div>
-                                        <div className="p-8 bg-white border border-[#E6E6E1] rounded-[2rem] flex items-center gap-6">
-                                            <button
-                                                type="button"
-                                                onClick={() => setFormData(prev => ({ ...prev, active: !prev.active }))}
-                                                className={`w-12 h-7 rounded-full transition-all relative shrink-0 ${formData.active ? 'bg-[#10B981]' : 'bg-[#EFEFEC]'}`}
-                                            >
-                                                <span className={`absolute top-1 w-5 h-5 rounded-full transition-all ${formData.active ? 'left-[24px] bg-white' : 'left-1 bg-white'}`} />
-                                            </button>
-                                            <span className="text-[10px] uppercase tracking-[0.4em] text-[#333333] font-black">Active</span>
-                                        </div>
-                                    </div>
-                                    <div className="space-y-8">
-                                        <LogoUploadField value={formData.logo_url} logoBg={formData.logo_bg} onBgChange={bg => setFormData(prev => ({ ...prev, logo_bg: bg }))} uploading={logoUploading} onFile={handleLogoUpload} />
-                                        <div className="p-8 bg-white border border-[#E6E6E1] rounded-[2rem]">
-                                            <p className="text-[10px] uppercase tracking-[0.4em] text-[#999999] font-black mb-2">No geofence required</p>
-                                            <p className="text-[11px] text-[#AAAAAA] font-black">Reward brands are linked to rewards directly — no location data needed.</p>
-                                        </div>
+
+                                <div className="lg:col-span-2 space-y-8">
+                                    <LocationEditor
+                                        locations={formData.locations}
+                                        onChange={locs => setFormData(prev => ({ ...prev, locations: locs }))}
+                                    />
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                        <ImageUploadField label="Cover Image" value={formData.image1_url} uploading={image1Uploading} onFile={handleImage1Upload} />
+                                        <ImageUploadField label="Gallery Image" value={formData.image2_url} uploading={image2Uploading} onFile={handleImage2Upload} />
                                     </div>
                                 </div>
-                            )}
+                            </div>
 
-                            {/* Opening Hours — location partners only */}
-                            {formData.roles.includes('earning_location') && (
+                            {/* Opening Hours */}
                             <div className="space-y-6">
                                 <div className="flex items-center justify-between">
                                     <label className="text-[10px] uppercase tracking-[0.4em] text-[#333333] font-black flex items-center gap-3">
@@ -1197,10 +1125,9 @@ export default function PartnerManager() {
                                     </button>
                                 )}
                             </div>
-                            )}
 
-                            {/* Trainers — only for existing location partners */}
-                            {editingPartner && formData.roles.includes('earning_location') && (
+                            {/* Trainers — only for existing partners */}
+                            {editingPartner && (
                                 <div className="space-y-6 mt-12">
                                     <TrainersEditor partnerId={editingPartner.id} toast={toast} />
                                 </div>
@@ -1209,7 +1136,7 @@ export default function PartnerManager() {
                             <div className="flex justify-end gap-6 pt-12 border-t border-[#E6E6E1]">
                                 <button type="button" onClick={() => setIsModalOpen(false)} className="h-16 px-12 text-[11px] uppercase tracking-[0.4em] font-black text-[#333333] hover:text-[#222222] transition-colors">Abort Mission</button>
                                 <button type="submit" disabled={saving} className="h-16 px-16 bg-[#E8D200] text-[#080808] text-[11px] font-black uppercase tracking-[0.4em] rounded-full transition-all hover:translate-y-[-4px] shadow-2xl shadow-[#E8D200]/20 disabled:opacity-50">
-                                {saving ? 'COMMITTING...' : (formData.roles.includes('reward_provider') && !formData.roles.includes('earning_location') ? (editingPartner ? 'UPDATE BRAND' : 'ADD BRAND') : 'INITIALIZE NODE')}
+                                    {saving ? 'COMMITTING...' : 'INITIALIZE NODE'}
                                 </button>
                             </div>
                         </form>
