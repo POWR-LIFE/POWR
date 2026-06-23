@@ -5,8 +5,9 @@ import { useToast } from '../../lib/toast';
 import { useAuth } from '../../App';
 import {
     ChevronLeft, MapPin, Globe, Mail, Phone, Upload, Save,
-    Activity, Award, Edit2, Trash2, Image, X, Calendar, Building2, Clock
+    Activity, Award, Edit2, Trash2, Image, X, Calendar, Building2, Clock, BarChart3
 } from 'lucide-react';
+import PartnerPerformancePanel from './PartnerPerformancePanel';
 
 const DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 const DAY_LABELS = { mon: 'Monday', tue: 'Tuesday', wed: 'Wednesday', thu: 'Thursday', fri: 'Friday', sat: 'Saturday', sun: 'Sunday' };
@@ -91,6 +92,7 @@ export default function PartnerProfile() {
     const [form, setForm] = useState({});
     const [saving, setSaving] = useState(false);
     const [uploading, setUploading] = useState(false);
+    const [activeTab, setActiveTab] = useState('profile'); // profile | performance
 
     useEffect(() => { if (partnerId) fetchData(); }, [partnerId]);
 
@@ -208,7 +210,7 @@ export default function PartnerProfile() {
             </Link>
 
             {/* Header */}
-            <header className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-12 mb-24">
+            <header className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-12 mb-12">
                 <div className="flex items-center gap-10">
                     {/* Logo with upload overlay */}
                     <div className="relative group/logo">
@@ -250,19 +252,39 @@ export default function PartnerProfile() {
                     </div>
                 </div>
 
-                <button
-                    onClick={() => editing ? handleSave() : setEditing(true)}
-                    disabled={saving}
-                    className={`h-14 px-8 rounded-full text-[10px] font-black uppercase tracking-[0.3em] transition-all shadow-lg flex items-center gap-3 shrink-0 ${
-                        editing 
-                            ? 'bg-[#10B981] text-[#080808] shadow-[#10B981]/10 hover:translate-y-[-2px]' 
-                            : 'bg-white border border-[#E6E6E1] text-[#555555] hover:text-[#8a7600] hover:border-[#E8D200]/40'
-                    }`}
-                >
-                    {editing ? <><Save size={16} /> {saving ? 'Saving...' : 'Save Changes'}</> : <><Edit2 size={16} /> Edit Partner</>}
-                </button>
+                {activeTab === 'profile' && (
+                    <button
+                        onClick={() => editing ? handleSave() : setEditing(true)}
+                        disabled={saving}
+                        className={`h-14 px-8 rounded-full text-[10px] font-black uppercase tracking-[0.3em] transition-all shadow-lg flex items-center gap-3 shrink-0 ${
+                            editing
+                                ? 'bg-[#10B981] text-[#080808] shadow-[#10B981]/10 hover:translate-y-[-2px]'
+                                : 'bg-white border border-[#E6E6E1] text-[#555555] hover:text-[#8a7600] hover:border-[#E8D200]/40'
+                        }`}
+                    >
+                        {editing ? <><Save size={16} /> {saving ? 'Saving...' : 'Save Changes'}</> : <><Edit2 size={16} /> Edit Partner</>}
+                    </button>
+                )}
             </header>
 
+            {/* Tabs */}
+            <div className="flex items-center gap-8 border-b border-[#E6E6E1] mb-16">
+                {[
+                    { key: 'profile', label: 'Profile', icon: Building2 },
+                    { key: 'performance', label: 'Performance', icon: BarChart3 },
+                ].map(t => (
+                    <button
+                        key={t.key}
+                        onClick={() => setActiveTab(t.key)}
+                        className={`pb-4 text-[11px] font-black uppercase tracking-[0.2em] transition-colors border-b-2 flex items-center gap-2 ${activeTab === t.key ? 'text-[#8a7600] border-[#E8D200]' : 'text-[#BBB] border-transparent hover:text-[#333333]'}`}
+                    >
+                        <t.icon size={14} />
+                        {t.label}
+                    </button>
+                ))}
+            </div>
+
+            {activeTab === 'profile' && (
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-16">
                 {/* Left: Contact & Details */}
                 <div className="lg:col-span-2 space-y-16">
@@ -502,6 +524,11 @@ export default function PartnerProfile() {
                     </section>
                 </div>
             </div>
+            )}
+
+            {activeTab === 'performance' && (
+                <PartnerPerformancePanel partner={partner} />
+            )}
         </div>
     );
 }
