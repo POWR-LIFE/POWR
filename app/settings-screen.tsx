@@ -103,6 +103,7 @@ export default function SettingsScreen() {
   const [notifFriends,    setNotifFriends]    = useState(meta.notif_friends ?? true);
   const [emailWeekly,     setEmailWeekly]     = useState(true);
   const [shareActivity,   setShareActivity]   = useState(meta.share_activity ?? true);
+  const [togetherEnabled, setTogetherEnabled] = useState(meta.together_enabled ?? true);
   useEffect(() => {
     if (!user?.id) return;
     getNotificationPreferences(user.id).then(prefs => {
@@ -471,6 +472,19 @@ export default function SettingsScreen() {
               setEmailWeekly(v);
               if (user?.id) updateNotificationPreferences(user.id, { email_weekly_summary: v });
             }}
+            isLast
+          />
+        </View>
+
+        {/* ── Social ────────────────────────────────────────── */}
+        <SectionLabel label="Social" />
+        <View style={styles.card}>
+          <RowToggle
+            icon="people-outline"
+            label="Together challenges"
+            sublabel="Take on challenges with friends from your home screen"
+            value={togetherEnabled}
+            onValueChange={(v) => { setTogetherEnabled(v); persistMeta('together_enabled', v); }}
             isLast
           />
         </View>

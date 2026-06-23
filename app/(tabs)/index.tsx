@@ -585,7 +585,7 @@ export default function HomeScreen() {
                     onShare={handleChallengeShare}
                 />
 
-                <TogetherSection />
+                {user?.user_metadata?.together_enabled !== false && <TogetherSection />}
 
                 {featuredReward && (() => {
                     const rewardUnlocked = balance >= featuredReward.powr_cost;
