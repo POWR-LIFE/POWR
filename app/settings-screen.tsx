@@ -517,6 +517,12 @@ export default function SettingsScreen() {
         <SectionLabel label="Support" />
         <View style={styles.card}>
           <RowLink
+            icon="options-outline"
+            label="Permissions & Setup"
+            sublabel="Fix location, notifications & health access"
+            onPress={() => router.push('/permissions-help')}
+          />
+          <RowLink
             icon="help-circle-outline"
             label="Help Centre"
             onPress={() => router.push('/help-centre')}
