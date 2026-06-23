@@ -13,7 +13,6 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
-import { SharedChallengesAdmin } from '@/components/admin/SharedChallengesAdmin';
 import {
   CATALOG,
   CATEGORY_META,
@@ -98,9 +97,6 @@ export default function AdminChallengesScreen() {
   // The full overrides map stored in system_config
   const [allOverrides, setAllOverrides] = useState<AllOverrides>({});
   const [configRowExists, setConfigRowExists] = useState(false);
-
-  // Top-level mode: weekly rotation vs shared ("together") challenge templates
-  const [mode, setMode] = useState<'weekly' | 'shared'>('weekly');
 
   // Which week tab is shown
   const thisWeek = currentISOWeek();
@@ -261,27 +257,6 @@ export default function AdminChallengesScreen() {
         <View style={{ width: 36 }} />
       </View>
 
-      {/* Mode segmented control: Weekly rotation vs Shared templates */}
-      <View style={styles.modeTabs}>
-        {(['weekly', 'shared'] as const).map((m) => (
-          <Pressable
-            key={m}
-            style={[styles.modeTab, mode === m && styles.modeTabActive]}
-            onPress={() => setMode(m)}
-            accessibilityRole="tab"
-            accessibilityState={{ selected: mode === m }}
-          >
-            <Text style={[styles.modeTabText, mode === m && styles.modeTabTextActive]}>
-              {m === 'weekly' ? 'Weekly' : 'Shared'}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
-
-      {mode === 'shared' ? (
-        <SharedChallengesAdmin />
-      ) : (
-      <>
       {/* Week tabs */}
       <View style={styles.weekTabs}>
         {[thisWeek, nextWeek].map((week) => (
@@ -441,8 +416,6 @@ export default function AdminChallengesScreen() {
           <Text style={styles.savingText}>Saving…</Text>
         </View>
       )}
-      </>
-      )}
 
       {/* ── Category picker modal ─────────────────────────────────────────── */}
       <Modal
@@ -537,16 +510,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.06)', alignItems: 'center', justifyContent: 'center',
   },
   headerTitle: { fontSize: 17, fontWeight: '600', color: TEXT, fontFamily: 'Outfit_600SemiBold' },
-
-  // Mode segmented control (Weekly | Shared)
-  modeTabs: {
-    flexDirection: 'row', gap: 6, padding: 4, margin: 16, marginBottom: 8,
-    backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 100,
-  },
-  modeTab: { flex: 1, paddingVertical: 9, alignItems: 'center', borderRadius: 100 },
-  modeTabActive: { backgroundColor: GOLD },
-  modeTabText: { fontSize: 13, color: MUTED, fontFamily: 'Outfit_600SemiBold' },
-  modeTabTextActive: { color: '#0a0a0a' },
 
   weekTabs: {
     flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: BORDER, paddingHorizontal: 16,
