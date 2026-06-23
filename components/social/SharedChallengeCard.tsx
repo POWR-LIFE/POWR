@@ -78,9 +78,7 @@ export function SharedChallengeCard({ challenge, onPress, onAccept, onDecline }:
 
       {/* Title + goal */}
       <View style={styles.titleRow}>
-        <View style={styles.catBubble}>
-          <CatIcon spec={template.icon} size={16} color={GOLD} />
-        </View>
+        <CatIcon spec={template.icon} size={22} color={GOLD} />
         <View style={{ flex: 1 }}>
           <Text style={styles.title}>{template.title}</Text>
           <Text style={styles.goal}>{template.goal}</Text>
@@ -169,12 +167,6 @@ const styles = StyleSheet.create({
   pointsLabel: { fontFamily: fontFamily.medium, fontSize: 8, letterSpacing: 2, color: FAINT, textTransform: 'uppercase', marginTop: 2 },
 
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  catBubble: {
-    width: 40, height: 40, borderRadius: 12,
-    backgroundColor: 'rgba(232,210,0,0.08)',
-    borderWidth: 1, borderColor: 'rgba(232,210,0,0.18)',
-    alignItems: 'center', justifyContent: 'center',
-  },
   title: { fontFamily: fontFamily.light, fontSize: 20, color: TEXT, letterSpacing: -0.3 },
   goal: { fontFamily: fontFamily.light, fontSize: 12, color: SECONDARY, marginTop: 2 },
 

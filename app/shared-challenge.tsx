@@ -138,9 +138,7 @@ export default function SharedChallengeDetail() {
       >
         {/* Hero */}
         <View style={styles.hero}>
-          <View style={styles.heroIcon}>
-            <CatIcon spec={template.icon} size={26} color={GOLD} />
-          </View>
+          <CatIcon spec={template.icon} size={34} color={GOLD} />
           <Text style={styles.heroTitle}>{template.title}</Text>
           <Text style={styles.heroGoal}>{template.goal}</Text>
           <View style={styles.heroTags}>
@@ -230,13 +228,8 @@ const styles = StyleSheet.create({
   sectionLabel: { fontFamily: fontFamily.medium, fontSize: 10, letterSpacing: 2, color: FAINT, textTransform: 'uppercase' },
 
   // hero
-  hero: { alignItems: 'center', gap: 8, paddingVertical: 8 },
-  heroIcon: {
-    width: 60, height: 60, borderRadius: 18,
-    backgroundColor: 'rgba(232,210,0,0.08)', borderWidth: 1, borderColor: 'rgba(232,210,0,0.18)',
-    alignItems: 'center', justifyContent: 'center', marginBottom: 4,
-  },
-  heroTitle: { fontFamily: fontFamily.light, fontSize: 30, color: TEXT, letterSpacing: -0.5, textAlign: 'center' },
+  hero: { alignItems: 'center', gap: 10, paddingVertical: 8 },
+  heroTitle: { fontFamily: fontFamily.light, fontSize: 30, color: TEXT, letterSpacing: -0.5, textAlign: 'center', marginTop: 2 },
   heroGoal: { fontFamily: fontFamily.light, fontSize: 14, color: SECONDARY, textAlign: 'center' },
   heroTags: { flexDirection: 'row', gap: 6, marginTop: 6 },
   tag: {

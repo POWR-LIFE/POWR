@@ -60,9 +60,7 @@ export function TogetherSection({ onOpenChallenge }: TogetherSectionProps) {
 
       {ordered.length === 0 ? (
         <Pressable style={styles.empty} onPress={() => setSheetVisible(true)}>
-          <View style={styles.emptyIcon}>
-            <Ionicons name="people-outline" size={22} color={GOLD} />
-          </View>
+          <Ionicons name="people-outline" size={28} color={GOLD} style={styles.emptyIcon} />
           <Text style={styles.emptyTitle}>Take on a challenge together</Text>
           <Text style={styles.emptyBody}>
             Invite friends and everyone earns a bonus that grows the more of you finish.
@@ -130,13 +128,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
-  emptyIcon: {
-    width: 44, height: 44, borderRadius: 22,
-    backgroundColor: 'rgba(232,210,0,0.08)',
-    borderWidth: 1, borderColor: 'rgba(232,210,0,0.18)',
-    alignItems: 'center', justifyContent: 'center',
-    marginBottom: 2,
-  },
+  emptyIcon: { marginBottom: 6 },
   emptyTitle: { fontFamily: fontFamily.regular, fontSize: 16, color: TEXT },
   emptyBody: { fontFamily: fontFamily.light, fontSize: 12, color: SECONDARY, textAlign: 'center', lineHeight: 18, maxWidth: 260 },
   emptyCta: {

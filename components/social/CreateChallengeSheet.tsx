@@ -147,9 +147,7 @@ export function CreateChallengeSheet({
                       onPress={() => setTemplateId(t.id)}
                       style={[styles.chip, active && styles.chipActive]}
                     >
-                      <View style={[styles.chipIcon, active && styles.chipIconActive]}>
-                        <CatIcon spec={t.icon} size={18} color={active ? '#0a0a0a' : GOLD} />
-                      </View>
+                      <CatIcon spec={t.icon} size={22} color={active ? '#0a0a0a' : GOLD} />
                       <Text style={[styles.chipTitle, active && styles.chipTitleActive]}>{t.title}</Text>
                       <Text style={[styles.chipGoal, active && styles.chipGoalActive]}>{t.goal}</Text>
                       <View style={styles.chipFooter}>
@@ -269,11 +267,6 @@ const styles = StyleSheet.create({
     backgroundColor: CARD_BG, borderWidth: 1, borderColor: BORDER, gap: 8,
   },
   chipActive: { backgroundColor: GOLD, borderColor: GOLD },
-  chipIcon: {
-    width: 36, height: 36, borderRadius: 10,
-    backgroundColor: 'rgba(232,210,0,0.10)', alignItems: 'center', justifyContent: 'center',
-  },
-  chipIconActive: { backgroundColor: 'rgba(0,0,0,0.12)' },
   chipTitle: { fontFamily: fontFamily.medium, fontSize: 14, color: TEXT },
   chipTitleActive: { color: '#0a0a0a' },
   chipGoal: { fontFamily: fontFamily.light, fontSize: 11, color: SECONDARY, lineHeight: 15, minHeight: 30 },
