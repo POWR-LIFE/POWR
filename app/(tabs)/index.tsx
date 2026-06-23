@@ -15,6 +15,7 @@ import ReAnimated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ChallengeCard } from '@/components/home/ChallengeCard';
+import { TogetherSection } from '@/components/home/TogetherSection';
 import { RewardCard } from '@/components/home/RewardCard';
 import { LevelProgressRow } from '@/components/home/LevelProgressRow';
 import { GeometricBackground } from '@/components/home/GeometricBackground';
@@ -583,6 +584,8 @@ export default function HomeScreen() {
                     celebrateId={newlyCompletedId}
                     onShare={handleChallengeShare}
                 />
+
+                <TogetherSection />
 
                 {featuredReward && (() => {
                     const rewardUnlocked = balance >= featuredReward.powr_cost;
