@@ -54,11 +54,19 @@ export const redirectSystemPath: NonNullable<NativeIntent['redirectSystemPath']>
     const pathname = qIdx >= 0 ? pathAndQuery.slice(0, qIdx) : pathAndQuery;
     const query = qIdx >= 0 ? pathAndQuery.slice(qIdx) : '';
 
-    // ?to=<route> wins (matches the web smart-link's contract).
+    // ?to=<route> wins (matches the web smart-link's contract). Any other
+    // params are forwarded onto the route — e.g. a recovery `code` on
+    // /app?to=reset-password&code=abc must reach /reset-password?code=abc.
     const toMatch = query.match(/[?&]to=([^&]+)/);
     if (toMatch) {
       const to = decodeURIComponent(toMatch[1]).replace(/^\/+/, '');
-      return to ? `/${to}` : '/';
+      if (!to) return '/';
+      const rest = query
+        .slice(1)
+        .split('&')
+        .filter((p) => p && !p.startsWith('to='))
+        .join('&');
+      return rest ? `/${to}?${rest}` : `/${to}`;
     }
 
     // Drop the leading /app segment; whatever remains is the route (default home).

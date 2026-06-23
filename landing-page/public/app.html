@@ -69,9 +69,14 @@
   var isAndroid = /android/i.test(ua);
 
   // Optional per-CTA target: /app?to=rewards -> powr://rewards
+  // Any params other than `to` are forwarded into the deep link, e.g.
+  // /app?to=reset-password&code=abc -> powr://reset-password?code=abc
   var params = new URLSearchParams(window.location.search);
   var target = (params.get('to') || '').replace(/^\/+/, '');
-  var deepLink = APP_SCHEME + target;
+  params.delete('to');
+  var forwarded = params.toString();
+  var query = forwarded ? '?' + forwarded : '';
+  var deepLink = APP_SCHEME + target + query;
 
   function showStore() {
     document.getElementById('spinner').style.display = 'none';
@@ -109,7 +114,7 @@
   if (isAndroid) {
     // Chrome intent:// is the most reliable launcher and bakes in the Play
     // Store fallback if the app can't handle the scheme.
-    var intent = 'intent://' + target +
+    var intent = 'intent://' + target + query +
       '#Intent;scheme=powr;package=' + ANDROID_PACKAGE +
       ';S.browser_fallback_url=' + encodeURIComponent(PLAY_URL) + ';end';
     window.location.replace(intent);
