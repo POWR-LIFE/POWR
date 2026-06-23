@@ -26,19 +26,72 @@ const CATEGORIES = [
 	{ id: 'multi', label: 'All' },
 ];
 
-// Seed presets (mock — swap for a shared_challenge_templates table later).
-const SEED = [
-	{ id: 'gym-back-again', category: 'gym',     title: 'Back Again', goal: 'Check in 3× this week',  tier: 'easy',   basePoints: 25, active: true },
-	{ id: 'walk-10k-days',  category: 'walking', title: '10K Days',   goal: '10,000 steps, 4 days',   tier: 'medium', basePoints: 40, active: true },
-	{ id: 'run-just-run',   category: 'running', title: 'Just Run',   goal: 'Log 1 run this week',    tier: 'easy',   basePoints: 15, active: true },
-	{ id: 'gym-4-from-7',   category: 'gym',     title: '4 From 7',   goal: 'Check in 4× this week',  tier: 'medium', basePoints: 40, active: true },
-	{ id: 'walk-35k-week',  category: 'walking', title: '35K Week',   goal: '35,000 steps this week', tier: 'medium', basePoints: 45, active: true },
-];
-
 const BONUS_DEFAULTS = { perHead: 5, maxBonus: 30 };
 
+// ── Per-category measures ─────────────────────────────────────────────────────
+// Each category exposes the ways its goal can be measured, with sensible step
+// sizes + units. The goal string is generated from {measure, target, unit, days}
+// — this also seeds the real rule (kind/target) when the backend lands.
+const MEASURES = {
+	gym: [
+		{ id: 'checkins', label: 'Check-ins', unit: 'check-ins', step: 1, min: 1, max: 14, default: 3 },
+	],
+	walking: [
+		{ id: 'steps_week', label: 'Total steps', unit: 'steps', step: 5000, min: 10000, max: 200000, default: 35000 },
+		{ id: 'steps_day',  label: 'Steps / day', unit: 'steps', step: 1000, min: 3000, max: 30000, default: 10000, perDay: true },
+	],
+	running: [
+		{ id: 'distance', label: 'Distance',        distance: true, step: 1, min: 1, max: 100, default: 5 },
+		{ id: 'runs',     label: 'Number of runs',  unit: 'runs',   step: 1, min: 1, max: 14,  default: 1 },
+	],
+	cycling: [
+		{ id: 'distance', label: 'Distance',        distance: true, step: 5, min: 5, max: 300, default: 20 },
+		{ id: 'rides',    label: 'Number of rides', unit: 'rides',  step: 1, min: 1, max: 14,  default: 1 },
+	],
+	multi: [
+		{ id: 'sessions',   label: 'Sessions',   unit: 'sessions',   step: 1, min: 1, max: 14, default: 3 },
+		{ id: 'categories', label: 'Categories', unit: 'categories', step: 1, min: 2, max: 5,  default: 4 },
+	],
+};
+
+const measuresFor = (cat) => MEASURES[cat] ?? MEASURES.gym;
+const measureCfg = (cat, id) => measuresFor(cat).find((m) => m.id === id) ?? measuresFor(cat)[0];
+
+/** Structured defaults for a category+measure (target, unit, days). */
+function measureDefaults(cat, measureId) {
+	const m = measureId ? measureCfg(cat, measureId) : measuresFor(cat)[0];
+	return { measure: m.id, target: m.default, unit: m.distance ? 'km' : null, days: m.perDay ? 4 : null };
+}
+
+/** Human goal string generated from the structured fields. */
+function goalText(d) {
+	const m = measureCfg(d.category, d.measure);
+	const v = d.target;
+	if (m.distance) return `${d.category === 'running' ? 'Run' : 'Cycle'} ${v}${d.unit} this week`;
+	switch (m.id) {
+		case 'checkins':   return `Check in ${v}× this week`;
+		case 'steps_week': return `${v.toLocaleString()} steps this week`;
+		case 'steps_day':  return `${v.toLocaleString()} steps a day, ${d.days} ${d.days === 1 ? 'day' : 'days'}`;
+		case 'runs':       return `Log ${v} ${v === 1 ? 'run' : 'runs'} this week`;
+		case 'rides':      return `Log ${v} ${v === 1 ? 'ride' : 'rides'} this week`;
+		case 'sessions':   return `Log ${v} ${v === 1 ? 'session' : 'sessions'} this week`;
+		case 'categories': return `Train in ${v} categories this week`;
+		default:           return `${v} ${m.unit}`;
+	}
+}
+
+// Seed presets (mock — swap for a shared_challenge_templates table later).
+const SEED = [
+	{ id: 'gym-back-again', category: 'gym',     title: 'Back Again', tier: 'easy',   basePoints: 25, measure: 'checkins',   target: 3,     unit: null, days: null },
+	{ id: 'walk-10k-days',  category: 'walking', title: '10K Days',   tier: 'medium', basePoints: 40, measure: 'steps_day',  target: 10000, unit: null, days: 4 },
+	{ id: 'run-just-run',   category: 'running', title: 'Just Run',   tier: 'easy',   basePoints: 15, measure: 'runs',       target: 1,     unit: null, days: null },
+	{ id: 'gym-4-from-7',   category: 'gym',     title: '4 From 7',   tier: 'medium', basePoints: 40, measure: 'checkins',   target: 4,     unit: null, days: null },
+	{ id: 'walk-35k-week',  category: 'walking', title: '35K Week',   tier: 'medium', basePoints: 45, measure: 'steps_week', target: 35000, unit: null, days: null },
+].map((t) => ({ ...t, goal: goalText(t) }));
+
 // ── Numeric stepper ───────────────────────────────────────────────────────────
-function Stepper({ value, onChange, step = 5, min = 0, max = 999, suffix }) {
+function Stepper({ value, onChange, step = 5, min = 0, max = 999, suffix, format, minWidth = 64 }) {
+	const shown = format ? format(value) : value;
 	return (
 		<div className="flex items-center gap-3">
 			<button
@@ -47,8 +100,8 @@ function Stepper({ value, onChange, step = 5, min = 0, max = 999, suffix }) {
 			>
 				<Minus size={15} />
 			</button>
-			<div className="min-w-[64px] text-center text-xl font-light text-[#1A1A1A] tabular-nums">
-				{value}{suffix && <span className="text-xs text-[#999999] ml-0.5">{suffix}</span>}
+			<div className="text-center text-xl font-light text-[#1A1A1A] tabular-nums" style={{ minWidth }}>
+				{shown}{suffix && <span className="text-xs text-[#999999] ml-1">{suffix}</span>}
 			</div>
 			<button
 				onClick={() => onChange(clamp(value + step, min, max))}
@@ -63,8 +116,11 @@ function Stepper({ value, onChange, step = 5, min = 0, max = 999, suffix }) {
 // ── Editor modal ──────────────────────────────────────────────────────────────
 function TemplateEditor({ draft, setDraft, onSave, onClose }) {
 	if (!draft) return null;
-	const canSave = draft.title.trim() && draft.goal.trim();
+	const canSave = draft.title.trim().length > 0;
 	const set = (patch) => setDraft({ ...draft, ...patch });
+	const measures = measuresFor(draft.category);
+	const m = measureCfg(draft.category, draft.measure);
+	const stepsLike = m.id === 'steps_week' || m.id === 'steps_day';
 
 	return (
 		<div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -90,25 +146,15 @@ function TemplateEditor({ draft, setDraft, onSave, onClose }) {
 						/>
 					</label>
 
-					<label className="flex flex-col gap-2">
-						<span className="text-[10px] uppercase tracking-[0.35em] text-[#BBBBBB] font-black">Goal</span>
-						<input
-							value={draft.goal}
-							onChange={(e) => set({ goal: e.target.value })}
-							placeholder="e.g. Check in 3× this week"
-							className="h-12 px-4 rounded-xl border border-[#E6E6E1] bg-[#F4F4F1] text-[#1A1A1A] text-[15px] outline-none focus:border-[#E8D200]/50"
-						/>
-					</label>
-
 					<div className="flex flex-col gap-2">
-						<span className="text-[10px] uppercase tracking-[0.35em] text-[#BBBBBB] font-black">Category</span>
+						<span className="text-[10px] uppercase tracking-[0.35em] text-[#BBBBBB] font-black">Activity</span>
 						<div className="flex flex-wrap gap-2">
 							{CATEGORIES.map((c) => {
 								const on = draft.category === c.id;
 								return (
 									<button
 										key={c.id}
-										onClick={() => set({ category: c.id })}
+										onClick={() => set({ category: c.id, ...measureDefaults(c.id) })}
 										className={`flex items-center gap-2 rounded-full border px-4 py-2 text-xs font-medium transition-all ${
 											on ? 'border-[#E8D200] bg-[#E8D200] text-[#0a0a0a]' : 'border-[#E6E6E1] bg-[#F4F4F1] text-[#666666] hover:border-[#E8D200]/40'
 										}`}
@@ -117,6 +163,82 @@ function TemplateEditor({ draft, setDraft, onSave, onClose }) {
 									</button>
 								);
 							})}
+						</div>
+					</div>
+
+					{/* Measure (only when the activity has more than one option) */}
+					{measures.length > 1 && (
+						<div className="flex flex-col gap-2">
+							<span className="text-[10px] uppercase tracking-[0.35em] text-[#BBBBBB] font-black">Measure by</span>
+							<div className="flex flex-wrap gap-2">
+								{measures.map((opt) => {
+									const on = m.id === opt.id;
+									return (
+										<button
+											key={opt.id}
+											onClick={() => set(measureDefaults(draft.category, opt.id))}
+											className={`rounded-full border px-4 py-2 text-xs font-medium transition-all ${
+												on ? 'border-[#E8D200] bg-[#E8D200] text-[#0a0a0a]' : 'border-[#E6E6E1] bg-[#F4F4F1] text-[#666666] hover:border-[#E8D200]/40'
+											}`}
+										>
+											{opt.label}
+										</button>
+									);
+								})}
+							</div>
+						</div>
+					)}
+
+					{/* Target — value control appropriate to the measure */}
+					<div className="flex flex-col gap-2">
+						<span className="text-[10px] uppercase tracking-[0.35em] text-[#BBBBBB] font-black">Target</span>
+
+						{/* Distance unit toggle (km / mi) */}
+						{m.distance && (
+							<div className="flex gap-2">
+								{['km', 'mi'].map((u) => {
+									const on = draft.unit === u;
+									return (
+										<button
+											key={u}
+											onClick={() => set({ unit: u })}
+											className={`rounded-full border px-4 py-1.5 text-[10px] font-black uppercase tracking-[0.2em] transition-all ${
+												on ? 'border-[#E8D200] bg-[#E8D200] text-[#0a0a0a]' : 'border-[#E6E6E1] bg-[#F4F4F1] text-[#999999] hover:border-[#E8D200]/40'
+											}`}
+										>
+											{u}
+										</button>
+									);
+								})}
+							</div>
+						)}
+
+						<div className="flex items-center justify-between rounded-xl border border-[#E6E6E1] bg-[#F4F4F1] px-5 py-3">
+							<span className="text-sm text-[#666666]">{m.distance ? 'Distance' : m.label}</span>
+							<Stepper
+								value={draft.target}
+								onChange={(v) => set({ target: v })}
+								step={m.step}
+								min={m.min}
+								max={m.max}
+								suffix={m.distance ? draft.unit : m.unit}
+								format={stepsLike ? (v) => v.toLocaleString() : undefined}
+								minWidth={stepsLike ? 90 : 56}
+							/>
+						</div>
+
+						{/* Days control for per-day measures */}
+						{m.perDay && (
+							<div className="flex items-center justify-between rounded-xl border border-[#E6E6E1] bg-[#F4F4F1] px-5 py-3">
+								<span className="text-sm text-[#666666]">For how many days</span>
+								<Stepper value={draft.days} onChange={(v) => set({ days: v })} step={1} min={1} max={7} suffix="days" minWidth={36} />
+							</div>
+						)}
+
+						{/* Generated goal preview */}
+						<div className="flex items-center gap-2 mt-1">
+							<span className="text-[10px] uppercase tracking-[0.3em] text-[#BBBBBB] font-black">Shows as</span>
+							<span className="text-sm text-[#1A1A1A]">“{goalText(draft)}”</span>
 						</div>
 					</div>
 
@@ -172,10 +294,11 @@ export default function SharedChallengesPanel() {
 	const sampleTotal = 30 + sampleBonus;
 
 	const openNew = () =>
-		setDraft({ id: '', category: 'gym', title: '', goal: '', tier: 'easy', basePoints: 25, active: true });
+		setDraft({ id: '', category: 'gym', title: '', tier: 'easy', basePoints: 25, active: true, ...measureDefaults('gym') });
 
 	const saveTemplate = (t) => {
-		setTemplates((prev) => (t.id ? prev.map((x) => (x.id === t.id ? t : x)) : [{ ...t, id: `tmpl-${Date.now()}` }, ...prev]));
+		const saved = { ...t, goal: goalText(t) };
+		setTemplates((prev) => (saved.id ? prev.map((x) => (x.id === saved.id ? saved : x)) : [{ ...saved, id: `tmpl-${Date.now()}` }, ...prev]));
 		setDraft(null);
 		toast.success(t.id ? 'Template updated' : 'Template added');
 	};
