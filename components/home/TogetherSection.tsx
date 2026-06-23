@@ -27,7 +27,7 @@ export interface TogetherSectionProps {
  */
 export function TogetherSection({ onOpenChallenge }: TogetherSectionProps) {
   const router = useRouter();
-  const { active, pendingInvites, friends, templates, createChallenge, acceptInvite, declineInvite } =
+  const { loading, active, pendingInvites, friends, templates, createChallenge, acceptInvite, declineInvite } =
     useSharedChallenges();
   const [sheetVisible, setSheetVisible] = useState(false);
 
@@ -48,7 +48,13 @@ export function TogetherSection({ onOpenChallenge }: TogetherSectionProps) {
       <View style={styles.sectionRow}>
         <Text style={styles.sectionLabel}>TOGETHER</Text>
         <View style={styles.headerActions}>
-          <Pressable hitSlop={8} style={styles.friendsBtn} onPress={() => router.push('/friends')}>
+          <Pressable
+            hitSlop={8}
+            style={styles.friendsBtn}
+            onPress={() => router.push('/friends')}
+            accessibilityRole="button"
+            accessibilityLabel="View friends"
+          >
             <Ionicons name="people" size={15} color={SECONDARY} />
           </Pressable>
           <Pressable hitSlop={8} style={styles.newBtn} onPress={() => setSheetVisible(true)}>
@@ -58,7 +64,16 @@ export function TogetherSection({ onOpenChallenge }: TogetherSectionProps) {
         </View>
       </View>
 
-      {ordered.length === 0 ? (
+      {loading && ordered.length === 0 ? (
+        <View style={styles.skeleton}>
+          <View style={styles.skelLineWide} />
+          <View style={styles.skelLine} />
+          <View style={styles.skelRow}>
+            <View style={styles.skelDots} />
+            <View style={styles.skelMeta} />
+          </View>
+        </View>
+      ) : ordered.length === 0 ? (
         <Pressable style={styles.empty} onPress={() => setSheetVisible(true)}>
           <Ionicons name="people-outline" size={28} color={GOLD} style={styles.emptyIcon} />
           <Text style={styles.emptyTitle}>Take on a challenge together</Text>
@@ -137,4 +152,15 @@ const styles = StyleSheet.create({
     backgroundColor: GOLD, borderRadius: 100, paddingHorizontal: 18, paddingVertical: 10, marginTop: 6,
   },
   emptyCtaText: { fontFamily: fontFamily.bold, fontSize: 12, color: '#0a0a0a', letterSpacing: 0.5 },
+
+  // loading skeleton
+  skeleton: {
+    backgroundColor: CARD_BG, borderRadius: 20, borderWidth: 1, borderColor: BORDER,
+    padding: 16, gap: 12,
+  },
+  skelLineWide: { height: 18, width: '55%', borderRadius: 6, backgroundColor: 'rgba(255,255,255,0.06)' },
+  skelLine: { height: 11, width: '38%', borderRadius: 6, backgroundColor: 'rgba(255,255,255,0.05)' },
+  skelRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 },
+  skelDots: { height: 28, width: 96, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.05)' },
+  skelMeta: { height: 11, width: 84, borderRadius: 6, backgroundColor: 'rgba(255,255,255,0.05)' },
 });

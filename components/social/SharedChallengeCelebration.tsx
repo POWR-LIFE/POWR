@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
@@ -117,6 +118,7 @@ export function SharedChallengeCelebration({
   const [count, setCount] = useState(0);
 
   useEffect(() => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     glow.value = withRepeat(withSequence(withTiming(0.2, { duration: 1000 }), withTiming(0.08, { duration: 1000 })), -1, false);
     trophyScale.value = withDelay(150, withSequence(
       withTiming(1.2, { duration: 360, easing: Easing.out(Easing.back(2)) }),

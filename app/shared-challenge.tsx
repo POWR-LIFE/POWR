@@ -1,4 +1,5 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useMemo, useState } from 'react';
 import { Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
@@ -130,11 +131,11 @@ export default function SharedChallengeDetail() {
       <GeometricBackground />
 
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} hitSlop={12} style={styles.headerBtn}>
+        <Pressable onPress={() => router.back()} hitSlop={12} style={styles.headerBtn} accessibilityRole="button" accessibilityLabel="Back">
           <Ionicons name="chevron-back" size={20} color={DIM} />
         </Pressable>
         <Text style={styles.headerTitle}>TOGETHER</Text>
-        <Pressable onPress={handleShare} hitSlop={12} style={styles.headerBtn}>
+        <Pressable onPress={handleShare} hitSlop={12} style={styles.headerBtn} accessibilityRole="button" accessibilityLabel="Share challenge">
           <Ionicons name="share-outline" size={18} color={DIM} />
         </Pressable>
       </View>
@@ -218,13 +219,17 @@ export default function SharedChallengeDetail() {
             </Text>
             <Pressable
               style={styles.acceptBtn}
-              onPress={() => { acceptInvite(challenge.id); router.back(); }}
+              onPress={() => {
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                acceptInvite(challenge.id);
+                router.back();
+              }}
             >
               <Text style={styles.acceptText}>Accept challenge</Text>
             </Pressable>
             <Pressable
               style={styles.leave}
-              onPress={() => { declineInvite(challenge.id); router.back(); }}
+              onPress={() => { Haptics.selectionAsync(); declineInvite(challenge.id); router.back(); }}
             >
               <Text style={styles.leaveText}>Decline</Text>
             </Pressable>

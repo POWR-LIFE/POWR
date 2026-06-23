@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
@@ -69,8 +70,19 @@ export default function FriendsScreen() {
   const results = search(query);
 
   const handleSend = (f: Friend) => {
+    Haptics.selectionAsync();
     sendRequest(f);
     setRequested((prev) => new Set(prev).add(f.id));
+  };
+
+  const handleAccept = (id: string) => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    acceptRequest(id);
+  };
+
+  const handleDecline = (id: string) => {
+    Haptics.selectionAsync();
+    declineRequest(id);
   };
 
   return (
@@ -78,7 +90,7 @@ export default function FriendsScreen() {
       <GeometricBackground />
 
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} hitSlop={12} style={styles.headerBtn}>
+        <Pressable onPress={() => router.back()} hitSlop={12} style={styles.headerBtn} accessibilityRole="button" accessibilityLabel="Back">
           <Ionicons name="chevron-back" size={20} color={DIM} />
         </Pressable>
         <Text style={styles.headerTitle}>FRIENDS</Text>
@@ -98,7 +110,7 @@ export default function FriendsScreen() {
           style={styles.searchInput}
         />
         {query.length > 0 && (
-          <Pressable hitSlop={8} onPress={() => setQuery('')}>
+          <Pressable hitSlop={8} onPress={() => setQuery('')} accessibilityRole="button" accessibilityLabel="Clear search">
             <Ionicons name="close-circle" size={16} color={MUTED} />
           </Pressable>
         )}
@@ -151,10 +163,10 @@ export default function FriendsScreen() {
                     subtitle={`@${f.username} · wants to connect`}
                     right={
                       <View style={styles.reqActions}>
-                        <Pressable style={styles.acceptBtn} onPress={() => acceptRequest(f.id)}>
+                        <Pressable style={styles.acceptBtn} onPress={() => handleAccept(f.id)} accessibilityRole="button" accessibilityLabel={`Accept ${f.displayName}`}>
                           <Ionicons name="checkmark" size={16} color="#0a0a0a" />
                         </Pressable>
-                        <Pressable style={styles.declineBtn} onPress={() => declineRequest(f.id)}>
+                        <Pressable style={styles.declineBtn} onPress={() => handleDecline(f.id)} accessibilityRole="button" accessibilityLabel={`Decline ${f.displayName}`}>
                           <Ionicons name="close" size={16} color={SECONDARY} />
                         </Pressable>
                       </View>

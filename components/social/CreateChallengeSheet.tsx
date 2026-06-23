@@ -1,4 +1,5 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import React, { useMemo, useState } from 'react';
 import {
   Modal,
@@ -69,6 +70,7 @@ export function CreateChallengeSheet({
   const atCap = selected.size >= MAX_GROUP - 1;
 
   const toggleFriend = (id: string) => {
+    Haptics.selectionAsync();
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
@@ -92,6 +94,7 @@ export function CreateChallengeSheet({
     setSubmitting(true);
     try {
       await onCreate({ templateId: template.id, friendIds: [...selected] });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       reset();
       onClose();
     } finally {
@@ -125,7 +128,7 @@ export function CreateChallengeSheet({
 
           <View style={styles.titleRow}>
             <Text style={styles.sheetTitle}>Challenge friends</Text>
-            <Pressable hitSlop={10} onPress={handleClose}>
+            <Pressable hitSlop={10} onPress={handleClose} accessibilityRole="button" accessibilityLabel="Close">
               <Ionicons name="close" size={22} color={MUTED} />
             </Pressable>
           </View>
@@ -144,7 +147,7 @@ export function CreateChallengeSheet({
                   return (
                     <Pressable
                       key={t.id}
-                      onPress={() => setTemplateId(t.id)}
+                      onPress={() => { Haptics.selectionAsync(); setTemplateId(t.id); }}
                       style={[styles.chip, active && styles.chipActive]}
                     >
                       <CatIcon spec={t.icon} size={22} color={active ? '#0a0a0a' : GOLD} />
@@ -171,6 +174,12 @@ export function CreateChallengeSheet({
                 </Text>
               </View>
 
+              {friends.length === 0 && (
+                <Text style={styles.noFriendsHint}>
+                  No friends yet — share a link to invite anyone to join.
+                </Text>
+              )}
+
               <View style={styles.friendGrid}>
                 {friends.map((f) => {
                   const isSel = selected.has(f.id);
@@ -181,6 +190,9 @@ export function CreateChallengeSheet({
                       onPress={() => toggleFriend(f.id)}
                       disabled={disabled}
                       style={[styles.friendCell, disabled && { opacity: 0.35 }]}
+                      accessibilityRole="checkbox"
+                      accessibilityState={{ checked: isSel, disabled }}
+                      accessibilityLabel={`Invite ${f.displayName}`}
                     >
                       <Avatar friend={f} size={52} selected={isSel} />
                       <Text style={styles.friendName} numberOfLines={1}>
@@ -191,7 +203,12 @@ export function CreateChallengeSheet({
                 })}
 
                 {/* Share-link recruitment — pull in someone not yet a friend */}
-                <Pressable style={styles.friendCell} onPress={handleShareLink}>
+                <Pressable
+                  style={styles.friendCell}
+                  onPress={handleShareLink}
+                  accessibilityRole="button"
+                  accessibilityLabel="Invite by share link"
+                >
                   <View style={styles.linkBubble}>
                     <Ionicons name="link" size={22} color={GOLD} />
                   </View>
@@ -276,6 +293,7 @@ const styles = StyleSheet.create({
   chipTier: { fontFamily: fontFamily.medium, fontSize: 9, letterSpacing: 1, textTransform: 'uppercase' },
 
   // friend grid
+  noFriendsHint: { fontFamily: fontFamily.light, fontSize: 12, color: SECONDARY, lineHeight: 17, marginBottom: 2 },
   friendGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 14 },
   friendCell: { width: 56, alignItems: 'center', gap: 6 },
   friendName: { fontFamily: fontFamily.regular, fontSize: 11, color: SECONDARY, maxWidth: 56 },

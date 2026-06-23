@@ -1,4 +1,5 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import React, { useEffect } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withDelay, withTiming } from 'react-native-reanimated';
@@ -106,10 +107,16 @@ export function SharedChallengeCard({ challenge, index = 0, onPress, onAccept, o
               <Text>.</Text>
             </Text>
             <View style={styles.inviteActions}>
-              <Pressable style={styles.acceptBtn} onPress={() => onAccept?.(challenge)}>
+              <Pressable
+                style={styles.acceptBtn}
+                onPress={() => { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); onAccept?.(challenge); }}
+              >
                 <Text style={styles.acceptText}>Accept</Text>
               </Pressable>
-              <Pressable style={styles.declineBtn} onPress={() => onDecline?.(challenge)}>
+              <Pressable
+                style={styles.declineBtn}
+                onPress={() => { Haptics.selectionAsync(); onDecline?.(challenge); }}
+              >
                 <Text style={styles.declineText}>Decline</Text>
               </Pressable>
             </View>
