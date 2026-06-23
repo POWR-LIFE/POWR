@@ -1,12 +1,14 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import GeometricBackground from '@/components/GeometricBackground';
 import { Avatar } from '@/components/social/Avatar';
+import { SharedChallengeCelebration } from '@/components/social/SharedChallengeCelebration';
 import { fontFamily } from '@/constants/tokens';
+import { useSharedChallenges } from '@/hooks/useSharedChallenges';
 import { earnedPoints, groupBonus, maxBonusForGroup } from '@/lib/social/bonus';
 import type { IconSpec, Participant, SharedChallenge } from '@/lib/social/types';
 
@@ -65,6 +67,8 @@ export default function SharedChallengeDetail() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const params = useLocalSearchParams<{ challenge?: string }>();
+  const { acceptInvite, declineInvite } = useSharedChallenges();
+  const [showCelebration, setShowCelebration] = useState(false);
 
   const challenge = useMemo<SharedChallenge | null>(() => {
     if (!params.challenge) return null;
@@ -108,6 +112,9 @@ export default function SharedChallengeDetail() {
   const order = (p: Participant) =>
     p.isSelf ? 0 : p.completed ? 1 : p.state === 'invited' ? 3 : 2;
   const sorted = [...participants].sort((a, b) => order(a) - order(b));
+
+  const isInvited = self?.state === 'invited';
+  const isCreator = challenge.creatorId === self?.friend.id;
 
   const handleShare = async () => {
     const url = `https://powr.life/app?challenge=${challenge.id}`;
@@ -199,19 +206,60 @@ export default function SharedChallengeDetail() {
           </View>
         </View>
 
-        {/* Invite more */}
-        <Pressable style={styles.inviteMore} onPress={handleShare}>
-          <Ionicons name="person-add-outline" size={16} color={GOLD} />
-          <Text style={styles.inviteMoreText}>Invite more friends</Text>
-        </Pressable>
+        {isInvited ? (
+          /* Pending-invite — Accept / Decline */
+          <>
+            <Text style={styles.invitePrompt}>
+              {challenge.pendingInviteFromName ?? 'A friend'} invited you. Finish together for{' '}
+              <Text style={{ color: GOLD, fontFamily: fontFamily.semiBold }}>
+                up to +{maxBonusForGroup(accepted.length)} bonus
+              </Text>
+              .
+            </Text>
+            <Pressable
+              style={styles.acceptBtn}
+              onPress={() => { acceptInvite(challenge.id); router.back(); }}
+            >
+              <Text style={styles.acceptText}>Accept challenge</Text>
+            </Pressable>
+            <Pressable
+              style={styles.leave}
+              onPress={() => { declineInvite(challenge.id); router.back(); }}
+            >
+              <Text style={styles.leaveText}>Decline</Text>
+            </Pressable>
+          </>
+        ) : (
+          <>
+            {/* Invite more */}
+            <Pressable style={styles.inviteMore} onPress={handleShare}>
+              <Ionicons name="person-add-outline" size={16} color={GOLD} />
+              <Text style={styles.inviteMoreText}>Invite more friends</Text>
+            </Pressable>
 
-        {/* Leave */}
-        <Pressable style={styles.leave} onPress={() => router.back()}>
-          <Text style={styles.leaveText}>
-            {challenge.creatorId === self?.friend.id ? 'Cancel challenge' : 'Leave challenge'}
-          </Text>
-        </Pressable>
+            {/* Leave / cancel */}
+            <Pressable style={styles.leave} onPress={() => router.back()}>
+              <Text style={styles.leaveText}>{isCreator ? 'Cancel challenge' : 'Leave challenge'}</Text>
+            </Pressable>
+          </>
+        )}
+
+        {/* Preview the completion celebration (mock-only; remove with backend). */}
+        {__DEV__ && (
+          <Pressable style={styles.devPreview} onPress={() => setShowCelebration(true)}>
+            <Ionicons name="play" size={12} color={MUTED} />
+            <Text style={styles.devPreviewText}>Preview celebration</Text>
+          </Pressable>
+        )}
       </ScrollView>
+
+      {showCelebration && (
+        <SharedChallengeCelebration
+          challenge={challenge}
+          onDone={() => setShowCelebration(false)}
+          onShare={handleShare}
+        />
+      )}
     </View>
   );
 }
@@ -267,4 +315,13 @@ const styles = StyleSheet.create({
   inviteMoreText: { fontFamily: fontFamily.medium, fontSize: 13, color: GOLD, letterSpacing: 0.3 },
   leave: { alignItems: 'center', paddingVertical: 8 },
   leaveText: { fontFamily: fontFamily.regular, fontSize: 13, color: MUTED },
+
+  // pending invite
+  invitePrompt: { fontFamily: fontFamily.light, fontSize: 14, color: SECONDARY, lineHeight: 20, textAlign: 'center', paddingHorizontal: 8 },
+  acceptBtn: { backgroundColor: GOLD, borderRadius: 100, paddingVertical: 15, alignItems: 'center' },
+  acceptText: { fontFamily: fontFamily.bold, fontSize: 13, color: '#0a0a0a', letterSpacing: 0.5 },
+
+  // dev-only preview
+  devPreview: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, marginTop: 4, opacity: 0.5 },
+  devPreviewText: { fontFamily: fontFamily.regular, fontSize: 11, color: MUTED, letterSpacing: 0.3 },
 });

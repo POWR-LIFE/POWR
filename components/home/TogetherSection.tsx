@@ -72,10 +72,11 @@ export function TogetherSection({ onOpenChallenge }: TogetherSectionProps) {
         </Pressable>
       ) : (
         <View style={{ gap: 10 }}>
-          {ordered.map((c) => (
+          {ordered.map((c, i) => (
             <SharedChallengeCard
               key={c.id}
               challenge={c}
+              index={i}
               onPress={openChallenge}
               onAccept={(ch) => acceptInvite(ch.id)}
               onDecline={(ch) => declineInvite(ch.id)}
