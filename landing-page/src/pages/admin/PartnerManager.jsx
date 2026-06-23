@@ -1,9 +1,10 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { supabase } from '../../lib/supabase';
-import { useToast } from '../../lib/toast';
-import { Plus, Edit2, Trash2, MapPin, Loader2, X, Search, Activity, ChevronRight, Globe, Satellite, Eye, Clock, User, Users, Upload, Image as ImageIcon, Gift, Target } from 'lucide-react';
+import { BarChart3, Clock, Edit2, Eye, Globe, Image as ImageIcon, Loader2, MapPin, Plus, Satellite, Search, Settings2, Trash2, Upload, User, Users, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { uploadPublicImage } from '../../lib/storage';
+import { supabase } from '../../lib/supabase';
+import { useToast } from '../../lib/toast';
+import PartnerPerformancePanel from './PartnerPerformancePanel';
 
 const DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 const DAY_LABELS = { mon: 'Mon', tue: 'Tue', wed: 'Wed', thu: 'Thu', fri: 'Fri', sat: 'Sat', sun: 'Sun' };
@@ -653,6 +654,7 @@ export default function PartnerManager() {
     const [totalCount, setTotalCount] = useState(0);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingPartner, setEditingPartner] = useState(null);
+    const [editTab, setEditTab] = useState('configure'); // configure | performance
     const [formData, setFormData] = useState(EMPTY_FORM);
     const [saving, setSaving] = useState(false);
     const [confirmDeleteId, setConfirmDeleteId] = useState(null);
@@ -763,6 +765,7 @@ export default function PartnerManager() {
             locations: [],
             opening_hours: { ...DEFAULT_HOURS },
         });
+        setEditTab('configure');
         setIsModalOpen(true);
     };
 
@@ -783,6 +786,7 @@ export default function PartnerManager() {
             locations: partner.locations || [],
             opening_hours: partner.opening_hours ?? null,
         });
+        setEditTab('configure');
         setIsModalOpen(true);
     };
 
@@ -802,6 +806,7 @@ export default function PartnerManager() {
             locations: [],
             opening_hours: { ...DEFAULT_HOURS },
         });
+        setEditTab('configure');
         setIsModalOpen(true);
         navigate(location.pathname, { replace: true, state: null });
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -884,7 +889,7 @@ export default function PartnerManager() {
                     </div>
                     <h1 className="text-6xl font-light tracking-tighter text-[#1A1A1A] mb-6">Partner Fleet</h1>
                     <p className="text-[#666666] text-[11px] max-w-xl font-black uppercase tracking-[0.4em] leading-relaxed">
-                        Authorized retail locations and geofence telemetry orchestration.
+                        Authorised retail locations and geofence telemetry orchestration.
                     </p>
                 </div>
                 {!isModalOpen && (
@@ -1050,6 +1055,27 @@ export default function PartnerManager() {
                                 <button type="button" onClick={() => setIsModalOpen(false)} className="w-14 h-14 bg-white border border-[#E6E6E1] rounded-3xl flex items-center justify-center text-[#333333] hover:text-[#1A1A1A] hover:border-[#0EA5E9]/40 transition-all"><X size={20} /></button>
                             </div>
 
+                            {/* Tabs — Performance is only available for existing nodes */}
+                            {editingPartner && (
+                                <div className="flex items-center gap-8 border-b border-[#E6E6E1] mb-12">
+                                    {[
+                                        { key: 'configure', label: 'Configure', icon: Settings2 },
+                                        { key: 'performance', label: 'Performance', icon: BarChart3 },
+                                    ].map(t => (
+                                        <button
+                                            key={t.key}
+                                            type="button"
+                                            onClick={() => setEditTab(t.key)}
+                                            className={`pb-4 text-[11px] font-black uppercase tracking-[0.2em] transition-colors border-b-2 flex items-center gap-2 ${editTab === t.key ? 'text-[#8a7600] border-[#E8D200]' : 'text-[#BBB] border-transparent hover:text-[#333333]'}`}
+                                        >
+                                            <t.icon size={14} />
+                                            {t.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+
+                            {(editTab === 'configure' || !editingPartner) && (<>
                             {/* Location partner: two-column layout with LocationEditor on right */}
                             <div className="grid grid-cols-1 lg:grid-cols-3 gap-12 mb-12 items-start">
                                 <div className="space-y-8">
@@ -1139,7 +1165,14 @@ export default function PartnerManager() {
                                     {saving ? 'COMMITTING...' : 'INITIALIZE NODE'}
                                 </button>
                             </div>
+                            </>)}
                         </form>
+
+                        {editTab === 'performance' && editingPartner && (
+                            <div className="px-12 pb-12 animate-in fade-in duration-300">
+                                <PartnerPerformancePanel partner={editingPartner} />
+                            </div>
+                        )}
                     </div>
                 </div>
             )}
