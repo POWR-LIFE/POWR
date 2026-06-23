@@ -1,9 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import GeometricBackground from '@/components/GeometricBackground';
 import { useAuth } from '@/context/AuthContext';
-import { supabase } from '@/lib/supabase';
+import { PASSWORD_RESET_REDIRECT, supabase } from '@/lib/supabase';
 import { useRouter } from 'expo-router';
-import * as Linking from 'expo-linking';
 import { useState } from 'react';
 import {
     ActivityIndicator,
@@ -93,7 +92,7 @@ export default function ChangePasswordScreen() {
         setResetLoading(true);
         try {
             const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
-                redirectTo: Linking.createURL('reset-password'),
+                redirectTo: PASSWORD_RESET_REDIRECT,
             });
             if (resetError) {
                 setError(resetError.message);

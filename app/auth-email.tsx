@@ -1,5 +1,6 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useAuth } from '@/context/AuthContext';
+import { PASSWORD_RESET_REDIRECT, supabase } from '@/lib/supabase';
 import GeometricBackground from '@/components/GeometricBackground';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -37,6 +38,8 @@ export default function AuthEmailScreen() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [confirmationSent, setConfirmationSent] = useState(false);
+    const [resetSent, setResetSent] = useState(false);
+    const [resetLoading, setResetLoading] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
     const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
@@ -70,6 +73,49 @@ export default function AuthEmailScreen() {
             setLoading(false);
         }
     };
+
+    const handleForgotPassword = async () => {
+        setError(null);
+        if (!email.trim()) {
+            setError('Enter your email above, then tap "Forgot password?" again.');
+            return;
+        }
+        setResetLoading(true);
+        try {
+            const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+                redirectTo: PASSWORD_RESET_REDIRECT,
+            });
+            if (error) { setError(error.message); return; }
+            setResetSent(true);
+        } finally {
+            setResetLoading(false);
+        }
+    };
+
+    if (resetSent) {
+        return (
+            <View style={[styles.container, { justifyContent: 'center', alignItems: 'center', paddingHorizontal: 32 }]}>
+                <View style={styles.confirmBox}>
+                    <Text style={styles.confirmIcon}>✉</Text>
+                    <Text style={styles.confirmTitle}>Check your inbox</Text>
+                    <Text style={styles.confirmBody}>
+                        If an account exists for{'\n'}
+                        <Text style={styles.confirmEmail}>{email.trim()}</Text>
+                        {'\n'}we sent a link to reset your password.
+                    </Text>
+                    <Text style={styles.confirmHint}>
+                        Open the link on this device to set a new password.
+                    </Text>
+                </View>
+                <Pressable
+                    onPress={() => { setResetSent(false); setMode('signin'); }}
+                    style={({ pressed }) => [styles.secondaryButton, pressed && { opacity: 0.7 }]}
+                >
+                    <Text style={styles.secondaryLabel}>Back to Log In</Text>
+                </Pressable>
+            </View>
+        );
+    }
 
     if (confirmationSent) {
         return (
@@ -204,6 +250,20 @@ export default function AuthEmailScreen() {
                             </Pressable>
                         </View>
                     </View>
+
+                    {mode === 'signin' && (
+                        <Pressable
+                            onPress={handleForgotPassword}
+                            disabled={resetLoading}
+                            style={styles.forgotRow}
+                            hitSlop={8}
+                        >
+                            {resetLoading
+                                ? <ActivityIndicator color={GOLD} size="small" />
+                                : <Text style={styles.forgotLink}>Forgot password?</Text>
+                            }
+                        </Pressable>
+                    )}
 
                     {mode === 'signup' && (
                         <View style={styles.fieldGroup}>
@@ -421,6 +481,16 @@ const styles = StyleSheet.create({
         fontSize: 12,
         fontWeight: '700',
         letterSpacing: 2,
+    },
+    forgotRow: {
+        alignSelf: 'flex-end',
+        marginTop: -6,
+        paddingVertical: 2,
+    },
+    forgotLink: {
+        color: GOLD,
+        fontSize: 13,
+        fontWeight: '500',
     },
     switchHint: {
         color: 'rgba(255,255,255,0.28)',

@@ -24,6 +24,14 @@ const secureStoreAdapter = {
     removeItem: (key: string) => SecureStore.deleteItemAsync(key),
 };
 
+/**
+ * Where password-recovery emails land. We route through the public smart-link
+ * page (https://powr.life/app) rather than a raw `powr://` scheme so the link is
+ * tappable in every mail client and falls back to the store if the app isn't
+ * installed. The page forwards the Supabase `?code=` into powr://reset-password.
+ */
+export const PASSWORD_RESET_REDIRECT = 'https://powr.life/app?to=reset-password';
+
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     auth: {
         storage: secureStoreAdapter,
