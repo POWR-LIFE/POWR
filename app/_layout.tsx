@@ -104,6 +104,8 @@ function RootLayoutNav() {
           <Stack.Screen name="reset-password" options={{ headerShown: false, contentStyle: { backgroundColor: 'transparent' } }} />
           <Stack.Screen name="email-change-confirmed" options={{ headerShown: false, contentStyle: { backgroundColor: 'transparent' } }} />
           <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal', contentStyle: { backgroundColor: 'transparent' } }} />
+          <Stack.Screen name="shared-challenge" options={{ headerShown: false, contentStyle: { backgroundColor: '#0d0d0d' } }} />
+          <Stack.Screen name="friends" options={{ headerShown: false, contentStyle: { backgroundColor: '#0d0d0d' } }} />
         </Stack>
         <StatusBar style="auto" />
       </ThemeProvider>
