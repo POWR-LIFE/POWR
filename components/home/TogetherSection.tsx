@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -25,9 +26,18 @@ export interface TogetherSectionProps {
  * for now). See docs/shared-challenges-scope.md.
  */
 export function TogetherSection({ onOpenChallenge }: TogetherSectionProps) {
+  const router = useRouter();
   const { active, pendingInvites, friends, templates, createChallenge, acceptInvite, declineInvite } =
     useSharedChallenges();
   const [sheetVisible, setSheetVisible] = useState(false);
+
+  const openChallenge = (challenge: SharedChallenge) => {
+    if (onOpenChallenge) return onOpenChallenge(challenge);
+    router.push({
+      pathname: '/shared-challenge',
+      params: { challenge: JSON.stringify(challenge) },
+    });
+  };
 
   // Pending invites first (they need a response), then the user's active ones.
   const inviteIds = new Set(pendingInvites.map((c) => c.id));
@@ -37,10 +47,15 @@ export function TogetherSection({ onOpenChallenge }: TogetherSectionProps) {
     <View>
       <View style={styles.sectionRow}>
         <Text style={styles.sectionLabel}>TOGETHER</Text>
-        <Pressable hitSlop={8} style={styles.newBtn} onPress={() => setSheetVisible(true)}>
-          <Ionicons name="add" size={14} color={GOLD} />
-          <Text style={styles.newBtnText}>Challenge friends</Text>
-        </Pressable>
+        <View style={styles.headerActions}>
+          <Pressable hitSlop={8} style={styles.friendsBtn} onPress={() => router.push('/friends')}>
+            <Ionicons name="people" size={15} color={SECONDARY} />
+          </Pressable>
+          <Pressable hitSlop={8} style={styles.newBtn} onPress={() => setSheetVisible(true)}>
+            <Ionicons name="add" size={14} color={GOLD} />
+            <Text style={styles.newBtnText}>Challenge friends</Text>
+          </Pressable>
+        </View>
       </View>
 
       {ordered.length === 0 ? (
@@ -63,7 +78,7 @@ export function TogetherSection({ onOpenChallenge }: TogetherSectionProps) {
             <SharedChallengeCard
               key={c.id}
               challenge={c}
-              onPress={onOpenChallenge}
+              onPress={openChallenge}
               onAccept={(ch) => acceptInvite(ch.id)}
               onDecline={(ch) => declineInvite(ch.id)}
             />
@@ -101,6 +116,8 @@ const styles = StyleSheet.create({
     color: TEXT,
     textTransform: 'uppercase',
   },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  friendsBtn: { flexDirection: 'row', alignItems: 'center' },
   newBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   newBtnText: { fontFamily: fontFamily.medium, fontSize: 11, color: GOLD, letterSpacing: 0.2 },
 
