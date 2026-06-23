@@ -8,6 +8,26 @@
 
 ---
 
+## 0. Decisions locked in (v1 direction)
+
+From the first scoping pass, the product direction is:
+
+- **Invite model:** a **friend / buddy graph** (not just one-off links). You build
+  a list of friends and pull them into challenges in a tap.
+- **Group size:** **small groups for v1 (3–6)**, but the architecture should scale
+  to a larger list (~20) so we can grow into bigger groups later.
+- **Points:** **bonus over solo** — and specifically, **the bonus scales with how
+  many friends actually complete the challenge with you.** Adding more people and
+  finishing together earns everyone more. This is the centrepiece mechanic, not a
+  side perk.
+
+> Net effect: shared challenges become a **social-growth loop**. More friends added
+> + more friends completing → more points for everyone → incentive to invite. That
+> raises the stakes on the friend graph (Section 4) and the points design
+> (Section 6a), and on anti-abuse (more points per head = more farming incentive).
+
+---
+
 ## 1. Where we are today (the starting point)
 
 Today's weekly challenges are **entirely individual**:
@@ -136,8 +156,29 @@ in one tap, see their challenge activity, etc.
 Invite by `@username` (usernames already exist & are unique).
 - Sits between 1 and 2; can layer onto either.
 
-**Recommendation:** ship **Option 1** first (fastest path to the social loop),
-then add **Option 2** in a later phase to make recurring partnerships frictionless.
+**Decision:** build **Option 2 (friend/buddy graph)** as the v1 backbone, because
+the points mechanic rewards completing with *more distinct friends*, which only
+pays off if friendships persist between challenges. Layer **Option 1 (share link)**
+on top as the **recruitment edge** — an invite link is how a non-user (or a
+not-yet-friend) gets pulled in: link → install/open → friend request auto-sent →
+once accepted they're addable to challenges. And **Option 3 (@username)** is the
+in-app "add friend" search. So all three coexist; the graph is the core.
+
+### Friend graph — minimum shape
+```sql
+create table friendships (
+  user_id     uuid not null references profiles(id) on delete cascade,
+  friend_id   uuid not null references profiles(id) on delete cascade,
+  status      text not null default 'pending', -- pending | accepted | blocked
+  requested_by uuid not null references profiles(id),
+  created_at  timestamptz not null default now(),
+  primary key (user_id, friend_id)
+);
+```
+Store one row per ordered pair (or a canonical low/high pair + a mutual flag) —
+decide during design. Needs: request / accept / decline / remove / block, a
+friends list, and a "find friends" surface (username search + share-link + maybe
+referral/contacts later). RLS: you can read a friendship row you're part of.
 
 ---
 
@@ -188,6 +229,50 @@ create table shared_challenge_participants (
 
 ---
 
+## 6a. Points — the group-size bonus (centrepiece mechanic)
+
+The agreed model: each participant who **individually completes their part** earns
+the challenge's base points **plus a "together bonus" that scales with the number
+of co-completers** (the other participants who also finished).
+
+**Recommended shape — flat-per-head, capped (legible: "+5 per friend, up to +X"):**
+
+```
+earned = base_points + min(maxBonus, perHead × coCompleters)
+```
+
+- `coCompleters` = participants (excluding you) who individually met their part.
+- Example: base 30, perHead 5, cap 30 → finish with 1 friend = 35; with 6 = 60.
+- A percentage variant (`base × (1 + min(maxPct, step × coCompleters))`) also works;
+  flat-per-head reads more clearly in the UI ("Invite 3 friends, earn +15").
+
+**Why "co-completers", not "people added":** points must follow *actual completion*,
+not list size — otherwise you add dormant accounts for free points. You only get
+the bonus for friends who genuinely showed up.
+
+**Optional "new faces" bonus (growth lever):** a one-time extra the first time you
+complete a shared challenge with a *particular* friend, to reward breadth and feed
+the friend-graph growth loop. Keep it small and one-shot per pair. Defer if it
+complicates v1.
+
+**Anti-abuse — this mechanic raises the farming incentive, so guardrails matter:**
+- Only **sensor-verified** sessions count toward completion (already enforced
+  today — do not loosen for shared).
+- Bonus is awarded **only to participants who individually met their part** — no
+  free-riding on the group.
+- **Hard cap** the bonus (the `min(maxBonus, …)` above) so a 20-person group can't
+  mint unbounded points.
+- **One bonus per group per challenge-week** — the same circle can't re-farm the
+  same challenge repeatedly in a window.
+- Keep the existing **point caps** (`enforce_point_award_caps`) as a backstop.
+- Friend-graph gating (must be accepted friends) raises the bar but isn't
+  sufficient alone — caps + sensor verification are the real defence.
+
+All bonus maths must live **server-side** in the completion edge function, computed
+from the authoritative per-participant evaluation — never trust a client total.
+
+---
+
 ## 6. The hard parts (call them out now)
 
 1. **Synchronized verification.** Gym is easy (timestamp + geofenced `partner_id`).
@@ -198,8 +283,8 @@ create table shared_challenge_participants (
 3. **No-show / one-sided completion.** Decide the rule: parallel → each is awarded
    on their own; synchronized → both must show or neither scores (maybe a
    consolation). **Product decision.**
-4. **Points design.** Bonus over solo? Same? Pooled reward? Affects motivation and
-   abuse surface.
+4. **Points design.** Decided: bonus scaling with co-completers — see **§6a**. The
+   open part is tuning (`perHead`, `maxBonus`, the new-faces bonus).
 5. **Anti-abuse (two accounts farming).** Existing sensor-backed verification +
    point caps already mitigate this; reuse them and don't loosen for shared.
 6. **Invites to non-users.** Link → App Store → must reattach the pending invite
@@ -209,22 +294,36 @@ create table shared_challenge_participants (
 
 ## 7. Recommended phasing
 
-- **Phase 1 — MVP: Parallel co-op via share link.** Type A + Option 1 invites.
-  Reuses per-user evaluation; the shared layer is invite + AND of completions.
-  Ships the social loop with the least risk.
+- **Phase 1 — Friend graph + parallel co-op group challenge with group-size bonus.**
+  Build the `friendships` table (request/accept/remove, username search, share-link
+  recruitment) + a **parallel co-op** challenge (type A) you invite 3–6 friends
+  into. Completion = each friend ANDs their own per-user evaluation; the **group
+  bonus (§6a)** scales points by how many actually finished. This ships the whole
+  social-growth loop with the simplest verification.
 - **Phase 2 — Synchronized appointment ("gym at 6pm together").** Type C: adds
   `scheduled_at`, window verification, same-venue option (gym), and the cron
-  evaluator. The headline, differentiated feature.
-- **Phase 3 — Pooled totals (type B), friend graph (Option 2), versus (type D).**
+  evaluator. The headline, differentiated feature — on top of the same friend graph
+  and bonus engine.
+- **Phase 3 — Pooled totals (type B), versus (type D), larger groups (~20),
+  "new faces" bonus, deferred deep-link invites for non-users.**
 
 ---
 
-## 8. Open questions (need product decisions before building)
+## 8. Open questions (remaining)
 
-1. **Invite mechanism for v1** — share link/code only, or build a friend graph now?
-2. **Group size** — 1:1 buddy only, or small groups (3–6)?
-3. **Points** — do shared challenges grant *bonus* points vs solo, the *same*, or a
-   *pooled* reward?
-4. **First challenge type to build** — parallel co-op (easiest) or jump straight to
-   the synchronized "6pm gym" appointment (most exciting, more work)?
-5. **No-show handling** for synchronized — strict (both or neither) or lenient?
+Resolved in §0: friend graph, small groups (3–6) scaling to ~20, bonus-over-solo
+scaling with co-completers, parallel co-op first.
+
+Still open:
+1. **Bonus tuning** — `perHead` and `maxBonus` values (§6a). Where does the cap sit
+   so big groups feel rewarding but not exploitable?
+2. **"New faces" bonus** — include the per-new-friend one-time bonus in v1, or defer?
+3. **Challenge authoring** — does a group challenge draw from the existing weekly
+   catalog/rotation, or can a creator pick *any* catalog challenge (or a custom
+   target) to set the group?
+4. **Window** — does a group challenge run on the same Mon–Sun ISO week as solo
+   challenges, or its own start→expiry from creation time?
+5. **Friendship privacy** — what can friends see of each other (challenge activity,
+   completion, streaks)? Needs a privacy pass before launch.
+6. **No-show handling** for synchronized (Phase 2) — strict (everyone in-window or
+   no bonus) or lenient (each scores their own)?
