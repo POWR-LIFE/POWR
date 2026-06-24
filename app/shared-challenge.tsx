@@ -68,18 +68,21 @@ function ParticipantRow({ p }: { p: Participant }) {
 export default function SharedChallengeDetail() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const params = useLocalSearchParams<{ challenge?: string }>();
-  const { acceptInvite, declineInvite } = useSharedChallenges();
+  const params = useLocalSearchParams<{ challenge?: string; id?: string }>();
+  const { acceptInvite, declineInvite, leaveChallenge, getById, bonusConfig, loading } = useSharedChallenges();
   const [showCelebration, setShowCelebration] = useState(false);
 
+  // Prefer the live hook record (by id — used by Home nav + notification deep
+  // links); fall back to a serialized challenge param for older nav paths.
   const challenge = useMemo<SharedChallenge | null>(() => {
+    if (params.id) return getById(params.id) ?? null;
     if (!params.challenge) return null;
     try {
       return JSON.parse(params.challenge) as SharedChallenge;
     } catch {
       return null;
     }
-  }, [params.challenge]);
+  }, [params.id, params.challenge, getById]);
 
   if (!challenge) {
     return (
@@ -93,7 +96,9 @@ export default function SharedChallengeDetail() {
           <View style={styles.headerBtn} />
         </View>
         <View style={styles.emptyWrap}>
-          <Text style={styles.emptyText}>Challenge not found.</Text>
+          <Text style={styles.emptyText}>
+            {params.id && loading ? 'Loading…' : 'Challenge not found.'}
+          </Text>
         </View>
       </View>
     );
@@ -107,8 +112,8 @@ export default function SharedChallengeDetail() {
 
   // What YOU'RE on track for: bonus scales with OTHER finishers (co-completers).
   const coCompleters = others.filter((p) => p.completed).length;
-  const current = earnedPoints(template.basePoints, coCompleters);
-  const potential = template.basePoints + maxBonusForGroup(accepted.length);
+  const current = earnedPoints(template.basePoints, coCompleters, bonusConfig);
+  const potential = template.basePoints + maxBonusForGroup(accepted.length, bonusConfig);
 
   // Sort: you first, then done, then in-progress, then invited.
   const order = (p: Participant) =>
@@ -222,7 +227,7 @@ export default function SharedChallengeDetail() {
             <Text style={styles.invitePrompt}>
               {challenge.pendingInviteFromName ?? 'A friend'} invited you. Finish together for{' '}
               <Text style={{ color: GOLD, fontFamily: fontFamily.semiBold }}>
-                up to +{maxBonusForGroup(accepted.length)} bonus
+                up to +{maxBonusForGroup(accepted.length, bonusConfig)} bonus
               </Text>
               .
             </Text>
@@ -252,7 +257,10 @@ export default function SharedChallengeDetail() {
             </Pressable>
 
             {/* Leave / cancel */}
-            <Pressable style={styles.leave} onPress={() => router.back()}>
+            <Pressable
+              style={styles.leave}
+              onPress={() => { Haptics.selectionAsync(); leaveChallenge(challenge.id); router.back(); }}
+            >
               <Text style={styles.leaveText}>{isCreator ? 'Cancel challenge' : 'Leave challenge'}</Text>
             </Pressable>
           </>

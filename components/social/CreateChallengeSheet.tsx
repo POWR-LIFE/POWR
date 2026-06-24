@@ -34,9 +34,9 @@ const TIER_COLOR: Record<string, string> = { easy: GREEN, medium: GOLD, hard: OR
 /** v1 group cap (scope §0: small groups 3–6). Architecture scales to ~20 later. */
 const MAX_GROUP = 6;
 
-/** Run length once the clock starts (it starts only after everyone accepts). */
-const DURATIONS: { label: string; hours: number }[] = [
-  { label: '48h', hours: 48 },
+/** Fallback run-length menu when config hasn't loaded (admin-configurable). */
+const FALLBACK_DURATIONS: { label: string; hours: number }[] = [
+  { label: '2 days', hours: 48 },
   { label: '3 days', hours: 72 },
   { label: '1 week', hours: 168 },
 ];
@@ -52,6 +52,10 @@ export interface CreateChallengeSheetProps {
   friends: Friend[];
   onClose: () => void;
   onCreate: (input: { templateId: string; friendIds: string[]; durationHours: number }) => void | Promise<unknown>;
+  /** Run-length menu (admin-configurable). Falls back to a sensible default set. */
+  durations?: { label: string; hours: number }[];
+  /** Group-bonus config (admin-configurable) for the live "+X each" preview. */
+  bonusConfig?: { perHead: number; maxBonus: number };
   /** Every concurrency slot is full — show the "finish or drop one" state instead. */
   plateFull?: boolean;
   /** Slots in use / total, for the full-plate copy. */
@@ -68,6 +72,8 @@ export function CreateChallengeSheet({
   friends,
   onClose,
   onCreate,
+  durations,
+  bonusConfig,
   plateFull = false,
   openCount = 0,
   cap = 0,
@@ -75,9 +81,11 @@ export function CreateChallengeSheet({
   onLeave,
 }: CreateChallengeSheetProps) {
   const insets = useSafeAreaInsets();
+  const DURATIONS = durations && durations.length ? durations : FALLBACK_DURATIONS;
+  const defaultHours = DURATIONS.some((d) => d.hours === 72) ? 72 : DURATIONS[0].hours;
   const [templateId, setTemplateId] = useState<string | null>(templates[0]?.id ?? null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [durationHours, setDurationHours] = useState(72);
+  const [durationHours, setDurationHours] = useState(defaultHours);
   const [submitting, setSubmitting] = useState(false);
 
   const template = useMemo(
@@ -87,7 +95,7 @@ export function CreateChallengeSheet({
 
   // Group = you + invited friends. Best-case bonus assumes everyone finishes.
   const groupSize = selected.size + 1;
-  const projectedBonus = groupBonus(selected.size); // co-completers = invited friends
+  const projectedBonus = groupBonus(selected.size, bonusConfig); // co-completers = invited friends
   const atGroupCap = selected.size >= MAX_GROUP - 1;
 
   const toggleFriend = (id: string) => {
@@ -103,7 +111,7 @@ export function CreateChallengeSheet({
   const reset = () => {
     setSelected(new Set());
     setTemplateId(templates[0]?.id ?? null);
-    setDurationHours(72);
+    setDurationHours(defaultHours);
   };
 
   const handleClose = () => {

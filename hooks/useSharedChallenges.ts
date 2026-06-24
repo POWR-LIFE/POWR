@@ -1,23 +1,24 @@
 /**
- * Data layer for shared ("together") challenges.
+ * Data layer for shared ("together") challenges — Supabase-backed.
  *
- * Currently backed by in-memory mocks (lib/social/mockData) so the whole UI is
- * interactive in Expo Go before the backend exists. This hook is the SEAM: when
- * the friendships + shared_challenges tables and the complete-shared-challenge
- * edge function land, only this file changes — the components keep the same API.
+ * Reads go through the get_my_shared_challenges RPC (challenges + participants in
+ * one call). Mutations go through the edge functions (create/respond/complete),
+ * then we refetch. This is the seam the mock used to fill — components keep the
+ * same API. Completion is checked opportunistically on load (like
+ * useWeeklyChallenge): when you open the app after doing the activity, your part
+ * is awarded; the cron backstop covers app-closed users + the end-of-challenge
+ * group-bonus settlement.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import {
-  MOCK_FRIENDS,
-  MOCK_SELF_ID,
-  MOCK_SHARED_CHALLENGES,
-  MOCK_TEMPLATES,
-} from '@/lib/social/mockData';
+import { useAuth } from '@/context/AuthContext';
+import { supabase } from '@/lib/supabase';
+import { useFriends } from '@/hooks/useFriends';
 import type {
   ChallengeTemplate,
   Friend,
+  IconSpec,
   Participant,
   SharedChallenge,
 } from '@/lib/social/types';
@@ -25,229 +26,265 @@ import type {
 export interface NewChallengeInput {
   templateId: string;
   friendIds: string[];
-  /** Chosen run length once the clock starts. Defaults to 72h. */
   durationHours?: number;
 }
 
-/** Invitees get this long to respond before a forming challenge resolves. */
-const ACCEPT_WINDOW_HOURS = 48;
-const DEFAULT_DURATION_HOURS = 72;
-const HOUR_MS = 3_600_000;
+export interface DurationOption {
+  label: string;
+  hours: number;
+}
 
-/**
- * Max challenges you can have OPEN at once (your part not yet done). Keeping this
- * tight stops a stale wall of half-finished challenges and turns the cap into a
- * completion driver: finishing your part frees a slot, so completion is how you
- * make room for the next one. Pending invites don't count (they're requests, not
- * commitments). Scope §8 — concurrency cap.
- */
-export const CHALLENGE_CAP = 3;
+const CATEGORY_LABEL: Record<string, string> = {
+  gym: 'Gym', walking: 'Walking', running: 'Running', cycling: 'Cycling', multi: 'All',
+};
+const CATEGORY_ICON: Record<string, IconSpec> = {
+  gym: { lib: 'ion', name: 'barbell' },
+  walking: { lib: 'ion', name: 'walk' },
+  running: { lib: 'mc', name: 'run' },
+  cycling: { lib: 'mc', name: 'bike' },
+  multi: { lib: 'ion', name: 'flame' },
+};
 
-/** A challenge that occupies one of your slots: committed + live + not yet done. */
+const FALLBACK_DURATIONS: DurationOption[] = [
+  { label: '2 days', hours: 48 },
+  { label: '3 days', hours: 72 },
+  { label: '1 week', hours: 168 },
+];
+
+function durationLabel(h: number): string {
+  if (h % 168 === 0) return `${h / 168} week${h / 168 === 1 ? '' : 's'}`;
+  if (h % 24 === 0) return `${h / 24} day${h / 24 === 1 ? '' : 's'}`;
+  return `${h}h`;
+}
+
+function humanizeRemaining(endsAt?: string | null): string {
+  if (!endsAt) return 'Not started';
+  const ms = Date.parse(endsAt) - Date.now();
+  if (ms <= 0) return 'Ended';
+  const mins = Math.round(ms / 60000);
+  if (mins < 60) return `${mins}m left`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `${hrs}h left`;
+  return `${Math.round(hrs / 24)}d left`;
+}
+
+function mapTemplateRow(row: any): ChallengeTemplate {
+  return {
+    id: row.id,
+    category: row.category,
+    categoryLabel: CATEGORY_LABEL[row.category] ?? 'Activity',
+    icon: CATEGORY_ICON[row.category] ?? CATEGORY_ICON.multi,
+    tier: row.tier,
+    title: row.title,
+    goal: row.goal,
+    basePoints: row.base_points,
+  };
+}
+
+function mapChallengeRow(row: any): SharedChallenge {
+  const participants: Participant[] = (row.participants ?? []).map((p: any) => ({
+    friend: {
+      id: p.user_id,
+      username: p.username ?? '',
+      displayName: p.display_name ?? p.username ?? '',
+      avatarUrl: p.avatar_url ?? null,
+      status: 'accepted',
+    },
+    state: p.state,
+    progress: Number(p.progress) || 0,
+    completed: !!p.completed,
+    isSelf: !!p.is_self,
+  }));
+  const self = participants.find((p) => p.isSelf);
+  const creator = participants.find((p) => p.friend.id === row.creator_id);
+  const tmpl = row.template ?? {};
+
+  return {
+    id: row.id,
+    template: {
+      id: tmpl.id ?? row.id,
+      category: row.category,
+      categoryLabel: CATEGORY_LABEL[row.category] ?? 'Activity',
+      icon: CATEGORY_ICON[row.category] ?? CATEGORY_ICON.multi,
+      tier: tmpl.tier ?? 'easy',
+      title: tmpl.title ?? 'Challenge',
+      goal: tmpl.goal ?? '',
+      basePoints: tmpl.base_points ?? row.base_points ?? 0,
+    },
+    kind: row.kind ?? 'parallel',
+    // The UI derives "forming" from a participant still being `invited`; DB
+    // 'forming' maps to the client's 'active' so the card renders either way.
+    status: row.status === 'completed' ? 'completed' : 'active',
+    creatorId: row.creator_id,
+    participants,
+    expiresIn: humanizeRemaining(row.ends_at),
+    endsAt: row.ends_at,
+    acceptBy: row.accept_by,
+    durationHours: row.duration_hours,
+    pendingInviteFromName:
+      self?.state === 'invited' ? creator?.friend.displayName ?? 'A friend' : undefined,
+  };
+}
+
+/** A challenge occupies a slot when you've committed (accepted), it's live, and you're not done. */
 function isOpenForSelf(c: SharedChallenge): boolean {
   const self = c.participants.find((p) => p.isSelf);
   if (!self) return false;
-  const committed = self.state === 'accepted';
-  const live = c.status === 'active' || c.status === 'open';
-  return committed && !self.completed && live;
+  return self.state === 'accepted' && !self.completed && c.status === 'active';
 }
 
 export interface UseSharedChallenges {
   loading: boolean;
-  /** Challenges the user is in or running. */
+  all: SharedChallenge[];
   active: SharedChallenge[];
-  /** Invites awaiting the user's response (subset surfaced for badges/CTAs). */
   pendingInvites: SharedChallenge[];
-  /** Challenges occupying a slot — your part isn't done yet. */
   openChallenges: SharedChallenge[];
-  /** How many of the cap's slots are in use. */
   openCount: number;
-  /** Max concurrent open challenges. */
   cap: number;
-  /** True when every slot is full — must finish or drop one to take on another. */
   atCap: boolean;
   friends: Friend[];
   templates: ChallengeTemplate[];
-  selfId: string;
-  createChallenge: (input: NewChallengeInput) => Promise<SharedChallenge>;
+  durations: DurationOption[];
+  defaultDurationHours: number;
+  bonusConfig: { perHead: number; maxBonus: number };
+  selfId: string | null;
+  getById: (id: string) => SharedChallenge | undefined;
+  createChallenge: (input: NewChallengeInput) => Promise<void>;
   acceptInvite: (challengeId: string) => Promise<void>;
   declineInvite: (challengeId: string) => Promise<void>;
-  /** Drop a challenge you're in — frees a slot. */
   leaveChallenge: (challengeId: string) => Promise<void>;
-  /** Mark your part done. Real path: a backend completion event calls this. */
   completeChallenge: (challengeId: string) => Promise<void>;
-  /** Id of a challenge you just completed — drives the celebration overlay. */
   newlyCompletedId: string | null;
-  /** Dismiss the celebration overlay. */
   clearCelebration: () => void;
   refresh: () => Promise<void>;
 }
 
-let idCounter = 0;
-const nextId = () => `sc-new-${++idCounter}`;
-
 export function useSharedChallenges(): UseSharedChallenges {
-  const [challenges, setChallenges] = useState<SharedChallenge[]>(MOCK_SHARED_CHALLENGES);
-  const [loading] = useState(false);
+  const { user } = useAuth();
+  const { friends } = useFriends();
+  const [all, setAll] = useState<SharedChallenge[]>([]);
+  const [templates, setTemplates] = useState<ChallengeTemplate[]>([]);
+  const [cap, setCap] = useState(3);
+  const [durations, setDurations] = useState<DurationOption[]>(FALLBACK_DURATIONS);
+  const [defaultDurationHours, setDefaultDurationHours] = useState(72);
+  const [bonusConfig, setBonusConfig] = useState({ perHead: 5, maxBonus: 30 });
+  const [loading, setLoading] = useState(true);
   const [newlyCompletedId, setNewlyCompletedId] = useState<string | null>(null);
+  const checkedRef = useRef<Set<string>>(new Set());
 
-  const active = useMemo(
-    () => challenges.filter((c) => c.status === 'active' || c.creatorId === MOCK_SELF_ID),
-    [challenges],
-  );
+  const utcOffsetMinutes = -new Date().getTimezoneOffset();
+
+  const loadConfig = useCallback(async () => {
+    const [{ data: cfg }, { data: tmpls }] = await Promise.all([
+      supabase.from('shared_challenge_config')
+        .select('per_head, max_bonus, duration_options, default_duration_hours, challenge_cap')
+        .eq('id', 1).maybeSingle(),
+      supabase.from('shared_challenge_templates')
+        .select('id, category, title, tier, base_points, goal, measure')
+        .eq('active', true).order('sort_order', { ascending: true }),
+    ]);
+    if (cfg) {
+      setCap(cfg.challenge_cap ?? 3);
+      setBonusConfig({ perHead: cfg.per_head ?? 5, maxBonus: cfg.max_bonus ?? 30 });
+      setDefaultDurationHours(cfg.default_duration_hours ?? 72);
+      const opts: number[] = Array.isArray(cfg.duration_options) ? cfg.duration_options : [];
+      if (opts.length) setDurations(opts.map((h) => ({ label: durationLabel(h), hours: h })));
+    }
+    if (tmpls) setTemplates(tmpls.map(mapTemplateRow));
+  }, []);
+
+  const load = useCallback(async () => {
+    if (!user) { setAll([]); setLoading(false); return; }
+    const { data, error } = await supabase.rpc('get_my_shared_challenges');
+    if (error) {
+      console.warn('[useSharedChallenges] load failed:', error.message);
+      setLoading(false);
+      return;
+    }
+    setAll((data ?? []).map(mapChallengeRow));
+    setLoading(false);
+  }, [user]);
+
+  useEffect(() => { loadConfig(); }, [loadConfig]);
+  useEffect(() => { load(); }, [load]);
 
   const pendingInvites = useMemo(
-    () =>
-      challenges.filter((c) =>
-        c.participants.some((p) => p.isSelf && p.state === 'invited'),
-      ),
-    [challenges],
+    () => all.filter((c) => c.participants.some((p) => p.isSelf && p.state === 'invited')),
+    [all],
   );
-
-  const openChallenges = useMemo(() => challenges.filter(isOpenForSelf), [challenges]);
+  const active = useMemo(
+    () => all.filter((c) => !c.participants.some((p) => p.isSelf && p.state === 'invited')),
+    [all],
+  );
+  const openChallenges = useMemo(() => all.filter(isOpenForSelf), [all]);
   const openCount = openChallenges.length;
-  const atCap = openCount >= CHALLENGE_CAP;
+  const atCap = openCount >= cap;
 
-  const createChallenge = useCallback(
-    async ({ templateId, friendIds, durationHours = DEFAULT_DURATION_HOURS }: NewChallengeInput) => {
-      if (openCount >= CHALLENGE_CAP) {
-        throw new Error('Challenge slots full — finish or drop one first.');
+  const getById = useCallback((id: string) => all.find((c) => c.id === id), [all]);
+
+  // Opportunistic completion: for live challenges you're in but haven't finished,
+  // ask the server to (re)evaluate your part. Checked once per id per mount so we
+  // don't spam; a newly-awarded completion triggers the celebration + a refetch.
+  const completeRaw = useCallback(async (id: string) => {
+    const { data } = await supabase.functions.invoke('complete-shared-challenge', {
+      body: { challenge_id: id, utc_offset_minutes: utcOffsetMinutes },
+    });
+    return data as { newly_completed?: boolean } | null;
+  }, [utcOffsetMinutes]);
+
+  useEffect(() => {
+    const candidates = all.filter((c) => {
+      const self = c.participants.find((p) => p.isSelf);
+      return c.status === 'active' && c.endsAt && self?.state === 'accepted'
+        && !self.completed && !checkedRef.current.has(c.id);
+    });
+    if (candidates.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      let any = false;
+      for (const c of candidates) {
+        checkedRef.current.add(c.id);
+        const res = await completeRaw(c.id);
+        if (res?.newly_completed) { any = true; if (!cancelled) setNewlyCompletedId(c.id); }
       }
-      const template = MOCK_TEMPLATES.find((t) => t.id === templateId) ?? MOCK_TEMPLATES[0];
-      const invited: Participant[] = friendIds
-        .map((fid) => MOCK_FRIENDS.find((f) => f.id === fid))
-        .filter((f): f is Friend => !!f)
-        .map((f) => ({ friend: f, state: 'invited' as const, progress: 0, completed: false }));
+      if (any && !cancelled) load();
+    })();
+    return () => { cancelled = true; };
+  }, [all, completeRaw, load]);
 
-      // Forming until invitees respond — clock is off (endsAt null), accept
-      // window running. The chosen duration is applied to endsAt once it starts.
-      const created: SharedChallenge = {
-        id: nextId(),
-        template,
-        kind: 'parallel',
-        status: 'active',
-        creatorId: MOCK_SELF_ID,
-        expiresIn: 'Not started',
-        endsAt: null,
-        acceptBy: new Date(Date.now() + ACCEPT_WINDOW_HOURS * HOUR_MS).toISOString(),
-        durationHours,
-        participants: [
-          {
-            friend: { id: MOCK_SELF_ID, username: 'you', displayName: 'You', status: 'accepted' },
-            state: 'accepted',
-            progress: 0,
-            completed: false,
-            isSelf: true,
-          },
-          ...invited,
-        ],
-      };
-      setChallenges((prev) => [created, ...prev]);
-      return created;
-    },
-    [openCount],
-  );
+  const createChallenge = useCallback(async ({ templateId, friendIds, durationHours }: NewChallengeInput) => {
+    const { error } = await supabase.functions.invoke('create-shared-challenge', {
+      body: { template_id: templateId, friend_ids: friendIds, duration_hours: durationHours ?? defaultDurationHours, utc_offset_minutes: utcOffsetMinutes },
+    });
+    if (error) console.warn('[useSharedChallenges] create failed:', error.message);
+    await load();
+  }, [defaultDurationHours, utcOffsetMinutes, load]);
 
-  const acceptInvite = useCallback(
-    async (challengeId: string) => {
-      // Accepting commits a slot — blocked at cap (UI offers "free a slot to join").
-      if (openCount >= CHALLENGE_CAP) return;
-      setChallenges((prev) =>
-        prev.map((c) => {
-          if (c.id !== challengeId) return c;
-          const participants = c.participants.map((p) =>
-            p.isSelf ? { ...p, state: 'accepted' as const } : p,
-          );
-          // Timer starts the moment the last invite is accepted (scope §8 #4),
-          // running for the duration chosen at creation.
-          const everyoneIn = participants.every((p) => p.state !== 'invited');
-          const started = everyoneIn && !c.endsAt;
-          const endsAt = started
-            ? new Date(Date.now() + (c.durationHours ?? DEFAULT_DURATION_HOURS) * HOUR_MS).toISOString()
-            : c.endsAt;
-          return { ...c, status: 'active', participants, endsAt, acceptBy: started ? null : c.acceptBy };
-        }),
-      );
-    },
-    [openCount],
-  );
+  const respond = useCallback(async (challengeId: string, action: 'accept' | 'decline' | 'leave') => {
+    const { error } = await supabase.functions.invoke('respond-shared-challenge', {
+      body: { challenge_id: challengeId, action },
+    });
+    if (error) console.warn(`[useSharedChallenges] ${action} failed:`, error.message);
+    await load();
+  }, [load]);
 
-  const declineInvite = useCallback(async (challengeId: string) => {
-    setChallenges((prev) => prev.filter((c) => c.id !== challengeId));
-  }, []);
+  const acceptInvite = useCallback((id: string) => respond(id, 'accept'), [respond]);
+  const declineInvite = useCallback((id: string) => respond(id, 'decline'), [respond]);
+  const leaveChallenge = useCallback((id: string) => respond(id, 'leave'), [respond]);
 
-  const leaveChallenge = useCallback(async (challengeId: string) => {
-    setChallenges((prev) => prev.filter((c) => c.id !== challengeId));
-  }, []);
-
-  const completeChallenge = useCallback(async (challengeId: string) => {
-    setChallenges((prev) =>
-      prev.map((c) =>
-        c.id === challengeId
-          ? {
-              ...c,
-              participants: c.participants.map((p) =>
-                p.isSelf ? { ...p, state: 'completed' as const, progress: 1, completed: true } : p,
-              ),
-            }
-          : c,
-      ),
-    );
-    setNewlyCompletedId(challengeId);
-  }, []);
+  const completeChallenge = useCallback(async (id: string) => {
+    const res = await completeRaw(id);
+    if (res?.newly_completed) setNewlyCompletedId(id);
+    await load();
+  }, [completeRaw, load]);
 
   const clearCelebration = useCallback(() => setNewlyCompletedId(null), []);
 
-  // When a forming challenge's accept window closes, it can't hang: it starts
-  // with whoever's in (≥2) or auto-cancels. (Server cron does this for real; this
-  // mirrors it client-side so the mock stays honest.)
-  useEffect(() => {
-    const resolveExpiredForming = () => {
-      setChallenges((prev) => {
-        let changed = false;
-        const next = prev.flatMap<SharedChallenge>((c) => {
-          const forming = c.participants.some((p) => p.state === 'invited');
-          if (!forming || !c.acceptBy || Date.parse(c.acceptBy) > Date.now()) return [c];
-          changed = true;
-          const remaining = c.participants.filter((p) => p.state !== 'invited');
-          const accepted = remaining.filter((p) => p.state === 'accepted' || p.completed).length;
-          if (accepted < 2) return []; // too few responders — cancel
-          return [{
-            ...c,
-            participants: remaining,
-            acceptBy: null,
-            endsAt: new Date(Date.now() + (c.durationHours ?? DEFAULT_DURATION_HOURS) * HOUR_MS).toISOString(),
-          }];
-        });
-        return changed ? next : prev;
-      });
-    };
-    const id = setInterval(resolveExpiredForming, 30_000);
-    return () => clearInterval(id);
-  }, []);
-
-  const refresh = useCallback(async () => {
-    /* no-op for mocks; real impl will refetch */
-  }, []);
-
   return {
-    loading,
-    active,
-    pendingInvites,
-    openChallenges,
-    openCount,
-    cap: CHALLENGE_CAP,
-    atCap,
-    friends: MOCK_FRIENDS.filter((f) => f.status === 'accepted'),
-    templates: MOCK_TEMPLATES,
-    selfId: MOCK_SELF_ID,
-    createChallenge,
-    acceptInvite,
-    declineInvite,
-    leaveChallenge,
-    completeChallenge,
-    newlyCompletedId,
-    clearCelebration,
-    refresh,
+    loading, all, active, pendingInvites, openChallenges, openCount, cap, atCap,
+    friends, templates, durations, defaultDurationHours, bonusConfig,
+    selfId: user?.id ?? null,
+    getById, createChallenge, acceptInvite, declineInvite, leaveChallenge, completeChallenge,
+    newlyCompletedId, clearCelebration, refresh: load,
   };
 }

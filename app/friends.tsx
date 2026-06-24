@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -67,7 +67,31 @@ export default function FriendsScreen() {
 
   const [query, setQuery] = useState('');
   const [requested, setRequested] = useState<Set<string>>(new Set());
-  const results = search(query);
+  const [results, setResults] = useState<Friend[]>([]);
+  const [searching, setSearching] = useState(false);
+
+  // Debounced username search (RPC). Cancels in-flight results on fast typing.
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length < 2) {
+      setResults([]);
+      setSearching(false);
+      return;
+    }
+    let cancelled = false;
+    setSearching(true);
+    const t = setTimeout(async () => {
+      const r = await search(q);
+      if (!cancelled) {
+        setResults(r);
+        setSearching(false);
+      }
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [query, search]);
 
   const handleSend = (f: Friend) => {
     Haptics.selectionAsync();
@@ -125,7 +149,11 @@ export default function FriendsScreen() {
         {query.trim().length > 0 && (
           <View style={styles.section}>
             <Text style={styles.sectionLabel}>SEARCH RESULTS</Text>
-            {results.length === 0 ? (
+            {query.trim().length < 2 ? (
+              <Text style={styles.emptyLine}>Type at least 2 characters to search.</Text>
+            ) : searching ? (
+              <Text style={styles.emptyLine}>Searching…</Text>
+            ) : results.length === 0 ? (
               <Text style={styles.emptyLine}>No one found for “{query.trim()}”.</Text>
             ) : (
               <View style={styles.card}>

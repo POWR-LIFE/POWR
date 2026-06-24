@@ -1,85 +1,106 @@
 /**
- * Friend-graph data layer (scope §4). Mock-backed for now so the Friends screen
- * is interactive in Expo Go; this hook is the seam to the `friendships` table +
- * RLS later. Only this file changes when the backend lands.
+ * Friend-graph data layer (scope §4), backed by Supabase.
+ *
+ * Reads go through the get_my_friendships RPC (one call → friends / incoming /
+ * outgoing, with the other person's profile joined). Discovery is the
+ * search_profiles_by_username RPC. All MUTATIONS go through the manage-friendship
+ * edge function (canonical-pair handling + push notifications live server-side),
+ * then we refetch. This is the seam the mock used to fill — components are
+ * unchanged except friends.tsx now awaits the async `search`.
  */
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
-import { MOCK_FRIENDS } from '@/lib/social/mockData';
+import { useAuth } from '@/context/AuthContext';
+import { supabase } from '@/lib/supabase';
 import type { Friend } from '@/lib/social/types';
 
-/** A directory of people you could discover by username search (not yet friends). */
-const DIRECTORY: Friend[] = [
-  { id: 'd-leo', username: 'leoruns', displayName: 'Leo Park', status: 'accepted' },
-  { id: 'd-mia', username: 'miafit', displayName: 'Mia Chen', status: 'accepted' },
-  { id: 'd-tom', username: 'tomlift', displayName: 'Tom Frost', status: 'accepted' },
-  { id: 'd-ade', username: 'adeola', displayName: 'Ade Okafor', status: 'accepted' },
-];
+type FriendAction = 'request' | 'accept' | 'decline' | 'remove' | 'block';
 
 export interface UseFriends {
+  loading: boolean;
   friends: Friend[];
   /** People who asked to be your friend — need accept/decline. */
   incoming: Friend[];
   /** Requests you sent, awaiting their response. */
   outgoing: Friend[];
-  /** Username search over people you're not yet connected to. */
-  search: (query: string) => Friend[];
+  /** Username search over people you're not yet connected to (async — RPC). */
+  search: (query: string) => Promise<Friend[]>;
   sendRequest: (friend: Friend) => void;
   acceptRequest: (id: string) => void;
   declineRequest: (id: string) => void;
   removeFriend: (id: string) => void;
+  refresh: () => Promise<void>;
+}
+
+function rowToFriend(r: any, status: Friend['status']): Friend {
+  return {
+    id: r.friend_user_id ?? r.id,
+    username: r.username ?? '',
+    displayName: r.display_name ?? r.username ?? '',
+    avatarUrl: r.avatar_url ?? null,
+    status,
+  };
 }
 
 export function useFriends(): UseFriends {
-  const [friends, setFriends] = useState<Friend[]>(MOCK_FRIENDS);
-  const [incoming, setIncoming] = useState<Friend[]>([
-    { id: 'r-zoe', username: 'zoek', displayName: 'Zoe Klein', status: 'pending' },
-    { id: 'r-ben', username: 'benh', displayName: 'Ben Hart', status: 'pending' },
-  ]);
-  const [outgoing, setOutgoing] = useState<Friend[]>([
-    { id: 'o-ade', username: 'adeola', displayName: 'Ade Okafor', status: 'pending' },
-  ]);
+  const { user } = useAuth();
+  const [friends, setFriends] = useState<Friend[]>([]);
+  const [incoming, setIncoming] = useState<Friend[]>([]);
+  const [outgoing, setOutgoing] = useState<Friend[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const knownIds = useMemo(
-    () => new Set([...friends, ...incoming, ...outgoing].map((f) => f.id)),
-    [friends, incoming, outgoing],
-  );
+  const load = useCallback(async () => {
+    if (!user) {
+      setFriends([]); setIncoming([]); setOutgoing([]); setLoading(false);
+      return;
+    }
+    const { data, error } = await supabase.rpc('get_my_friendships');
+    if (error) {
+      console.warn('[useFriends] load failed:', error.message);
+      setLoading(false);
+      return;
+    }
+    const f: Friend[] = [], inc: Friend[] = [], out: Friend[] = [];
+    for (const r of data ?? []) {
+      if (r.status === 'accepted') f.push(rowToFriend(r, 'accepted'));
+      else if (r.status === 'pending') {
+        (r.requested_by === user.id ? out : inc).push(rowToFriend(r, 'pending'));
+      }
+    }
+    setFriends(f); setIncoming(inc); setOutgoing(out); setLoading(false);
+  }, [user]);
 
-  const search = useCallback(
-    (query: string): Friend[] => {
-      const q = query.trim().toLowerCase();
-      if (!q) return [];
-      return DIRECTORY.filter(
-        (f) =>
-          !knownIds.has(f.id) &&
-          (f.username.toLowerCase().includes(q) || f.displayName.toLowerCase().includes(q)),
-      );
-    },
-    [knownIds],
-  );
+  useEffect(() => { load(); }, [load]);
 
-  const sendRequest = useCallback((friend: Friend) => {
-    setOutgoing((prev) =>
-      prev.some((f) => f.id === friend.id) ? prev : [...prev, { ...friend, status: 'pending' }],
-    );
+  const search = useCallback(async (query: string): Promise<Friend[]> => {
+    const q = query.trim();
+    if (q.length < 2) return [];
+    const { data, error } = await supabase.rpc('search_profiles_by_username', { q });
+    if (error) {
+      console.warn('[useFriends] search failed:', error.message);
+      return [];
+    }
+    return (data ?? []).map((p: any) => rowToFriend(p, 'accepted'));
   }, []);
 
-  const acceptRequest = useCallback((id: string) => {
-    setIncoming((prev) => {
-      const match = prev.find((f) => f.id === id);
-      if (match) setFriends((fs) => [{ ...match, status: 'accepted' }, ...fs]);
-      return prev.filter((f) => f.id !== id);
+  const mutate = useCallback(async (action: FriendAction, targetUserId: string) => {
+    const { error } = await supabase.functions.invoke('manage-friendship', {
+      body: { action, target_user_id: targetUserId },
     });
-  }, []);
+    if (error) console.warn(`[useFriends] ${action} failed:`, error.message);
+    await load();
+  }, [load]);
 
-  const declineRequest = useCallback((id: string) => {
-    setIncoming((prev) => prev.filter((f) => f.id !== id));
-  }, []);
+  // Fire-and-forget from the UI; the list refreshes when the mutation resolves.
+  const sendRequest = useCallback((friend: Friend) => { void mutate('request', friend.id); }, [mutate]);
+  const acceptRequest = useCallback((id: string) => { void mutate('accept', id); }, [mutate]);
+  const declineRequest = useCallback((id: string) => { void mutate('decline', id); }, [mutate]);
+  const removeFriend = useCallback((id: string) => { void mutate('remove', id); }, [mutate]);
 
-  const removeFriend = useCallback((id: string) => {
-    setFriends((prev) => prev.filter((f) => f.id !== id));
-  }, []);
-
-  return { friends, incoming, outgoing, search, sendRequest, acceptRequest, declineRequest, removeFriend };
+  return {
+    loading, friends, incoming, outgoing, search,
+    sendRequest, acceptRequest, declineRequest, removeFriend,
+    refresh: load,
+  };
 }

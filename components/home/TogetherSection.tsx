@@ -46,6 +46,8 @@ export function TogetherSection({ onOpenChallenge }: TogetherSectionProps) {
     atCap,
     friends,
     templates,
+    durations,
+    bonusConfig,
     createChallenge,
     acceptInvite,
     declineInvite,
@@ -68,10 +70,7 @@ export function TogetherSection({ onOpenChallenge }: TogetherSectionProps) {
 
   const openChallenge = (challenge: SharedChallenge) => {
     if (onOpenChallenge) return onOpenChallenge(challenge);
-    router.push({
-      pathname: '/shared-challenge',
-      params: { challenge: JSON.stringify(challenge) },
-    });
+    router.push({ pathname: '/shared-challenge', params: { id: challenge.id } });
   };
 
   // Pending invites first (they need a response), then the user's active ones.
@@ -180,6 +179,8 @@ export function TogetherSection({ onOpenChallenge }: TogetherSectionProps) {
         visible={sheetVisible}
         templates={templates}
         friends={friends}
+        durations={durations}
+        bonusConfig={bonusConfig}
         plateFull={atCap}
         openCount={openCount}
         cap={cap}

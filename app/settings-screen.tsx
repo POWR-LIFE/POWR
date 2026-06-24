@@ -110,6 +110,8 @@ export default function SettingsScreen() {
       setNotifWorkouts(prefs.check_in_reminder);
       setNotifRewards(prefs.reward_unlocked);
       setEmailWeekly(prefs.email_weekly_summary);
+      // The "Friend activity" switch fronts all the together push types.
+      setNotifFriends(prefs.challenge_invite);
     });
   }, [user?.id]);
 
@@ -454,8 +456,15 @@ export default function SettingsScreen() {
           <RowToggle
             icon="people-outline"
             label="Friend activity"
+            sublabel="Friend requests and shared-challenge updates"
             value={notifFriends}
-            onValueChange={(v) => { setNotifFriends(v); persistMeta('notif_friends', v); }}
+            onValueChange={(v) => {
+              setNotifFriends(v);
+              if (user?.id) updateNotificationPreferences(user.id, {
+                friend_request: v, friend_accepted: v, challenge_invite: v, challenge_started: v,
+                challenge_friend_finished: v, challenge_completed: v, challenge_expiring: v,
+              });
+            }}
             isLast
           />
         </View>
