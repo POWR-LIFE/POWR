@@ -1,6 +1,6 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Modal,
   Pressable,
@@ -52,6 +52,8 @@ export interface CreateChallengeSheetProps {
   friends: Friend[];
   onClose: () => void;
   onCreate: (input: { templateId: string; friendIds: string[]; durationHours: number }) => void | Promise<unknown>;
+  /** Preselect this template when the sheet opens (e.g. tapped from the browse carousel). */
+  initialTemplateId?: string | null;
   /** Run-length menu (admin-configurable). Falls back to a sensible default set. */
   durations?: { label: string; hours: number }[];
   /** Group-bonus config (admin-configurable) for the live "+X each" preview. */
@@ -72,6 +74,7 @@ export function CreateChallengeSheet({
   friends,
   onClose,
   onCreate,
+  initialTemplateId,
   durations,
   bonusConfig,
   plateFull = false,
@@ -83,10 +86,15 @@ export function CreateChallengeSheet({
   const insets = useSafeAreaInsets();
   const DURATIONS = durations && durations.length ? durations : FALLBACK_DURATIONS;
   const defaultHours = DURATIONS.some((d) => d.hours === 72) ? 72 : DURATIONS[0].hours;
-  const [templateId, setTemplateId] = useState<string | null>(templates[0]?.id ?? null);
+  const [templateId, setTemplateId] = useState<string | null>(initialTemplateId ?? templates[0]?.id ?? null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [durationHours, setDurationHours] = useState(defaultHours);
   const [submitting, setSubmitting] = useState(false);
+
+  // Honour the preselected template each time the sheet opens from a browse card.
+  useEffect(() => {
+    if (visible && initialTemplateId) setTemplateId(initialTemplateId);
+  }, [visible, initialTemplateId]);
 
   const template = useMemo(
     () => templates.find((t) => t.id === templateId) ?? templates[0],

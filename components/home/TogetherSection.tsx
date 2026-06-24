@@ -8,6 +8,7 @@ import { useSharedChallenges } from '@/hooks/useSharedChallenges';
 import { usePoints } from '@/hooks/usePoints';
 import type { SharedChallenge } from '@/lib/social/types';
 import { CreateChallengeSheet } from '@/components/social/CreateChallengeSheet';
+import { ChallengeTemplateCard } from '@/components/social/ChallengeTemplateCard';
 import { SharedChallengeCard } from '@/components/social/SharedChallengeCard';
 import { SharedChallengeCelebration } from '@/components/social/SharedChallengeCelebration';
 
@@ -57,6 +58,14 @@ export function TogetherSection({ onOpenChallenge }: TogetherSectionProps) {
   } = useSharedChallenges();
   const { balance } = usePoints();
   const [sheetVisible, setSheetVisible] = useState(false);
+  // Set when the create sheet is opened from a browse card, so it lands on that
+  // challenge; null when opened from the header (a blank pick).
+  const [presetTemplateId, setPresetTemplateId] = useState<string | null>(null);
+
+  const openCreate = (templateId: string | null = null) => {
+    setPresetTemplateId(templateId);
+    setSheetVisible(true);
+  };
 
   // Celebration fires when the user completes their part — driven by the hook so
   // the real trigger is a backend completion event setting `newlyCompletedId`.
@@ -107,7 +116,7 @@ export function TogetherSection({ onOpenChallenge }: TogetherSectionProps) {
           >
             <Ionicons name="people" size={15} color={SECONDARY} />
           </Pressable>
-          <Pressable hitSlop={8} style={styles.newBtn} onPress={() => setSheetVisible(true)}>
+          <Pressable hitSlop={8} style={styles.newBtn} onPress={() => openCreate()}>
             <Ionicons name="add" size={14} color={GOLD} />
             <Text style={styles.newBtnText}>Challenge friends</Text>
           </Pressable>
@@ -124,17 +133,47 @@ export function TogetherSection({ onOpenChallenge }: TogetherSectionProps) {
           </View>
         </View>
       ) : ordered.length === 0 ? (
-        /* Slim one-line invite — never dead space, never dominates the hero slot. */
-        <Pressable style={styles.emptySlim} onPress={() => setSheetVisible(true)}>
-          <View style={styles.emptySlimIcon}>
-            <Ionicons name="people" size={15} color={GOLD} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.emptySlimTitle}>Take on a challenge together</Text>
-            <Text style={styles.emptySlimBody}>Invite friends — everyone earns a growing bonus.</Text>
-          </View>
-          <Ionicons name="arrow-forward" size={16} color={SECONDARY} />
-        </Pressable>
+        templates.length === 0 ? (
+          /* Fallback while templates load: a slim one-line invite, never dead space. */
+          <Pressable style={styles.emptySlim} onPress={() => openCreate()}>
+            <View style={styles.emptySlimIcon}>
+              <Ionicons name="people" size={15} color={GOLD} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.emptySlimTitle}>Take on a challenge together</Text>
+              <Text style={styles.emptySlimBody}>Invite friends — everyone earns a growing bonus.</Text>
+            </View>
+            <Ionicons name="arrow-forward" size={16} color={SECONDARY} />
+          </Pressable>
+        ) : (
+          /* Browse carousel — flick through the challenges you could start. Tapping
+             one opens the create flow preselected to it. Same peek/snap sizing as
+             the active-challenges carousel below. */
+          <>
+            <Text style={styles.browseIntro}>
+              Take one on with friends — everyone earns a growing bonus.
+            </Text>
+            <View onLayout={(e) => setBandWidth(e.nativeEvent.layout.width)}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                decelerationRate="fast"
+                snapToInterval={snap}
+                snapToAlignment="start"
+                disableIntervalMomentum
+              >
+                {templates.map((t, i) => (
+                  <View
+                    key={t.id}
+                    style={{ width: cardWidth, marginRight: i === templates.length - 1 ? 0 : CAROUSEL_GAP }}
+                  >
+                    <ChallengeTemplateCard template={t} index={i} onPress={(tpl) => openCreate(tpl.id)} />
+                  </View>
+                ))}
+              </ScrollView>
+            </View>
+          </>
+        )
       ) : ordered.length === 1 ? (
         <SharedChallengeCard
           challenge={ordered[0]}
@@ -178,6 +217,7 @@ export function TogetherSection({ onOpenChallenge }: TogetherSectionProps) {
       <CreateChallengeSheet
         visible={sheetVisible}
         templates={templates}
+        initialTemplateId={presetTemplateId}
         friends={friends}
         durations={durations}
         bonusConfig={bonusConfig}
@@ -246,6 +286,12 @@ const styles = StyleSheet.create({
   },
   emptySlimTitle: { fontFamily: fontFamily.regular, fontSize: 14, color: TEXT },
   emptySlimBody: { fontFamily: fontFamily.light, fontSize: 11.5, color: SECONDARY, marginTop: 1 },
+
+  // browse-carousel lead-in (empty state)
+  browseIntro: {
+    fontFamily: fontFamily.light, fontSize: 12.5, color: SECONDARY,
+    paddingHorizontal: 2, marginBottom: 12, lineHeight: 17,
+  },
 
   // loading skeleton
   skeleton: {
