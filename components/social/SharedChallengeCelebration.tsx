@@ -108,8 +108,8 @@ export function SharedChallengeCelebration({
   const breakdown = earnedPoints(template.basePoints, coCompleters);
 
   const glow = useSharedValue(0.08);
-  const trophyScale = useSharedValue(0);
-  const trophyRot = useSharedValue(-20);
+  const emblemScale = useSharedValue(0);
+  const ringPulse = useSharedValue(0);
   const floatY = useSharedValue(0);
   const titleA = useSharedValue(0);
   const avatarsA = useSharedValue(0);
@@ -120,11 +120,11 @@ export function SharedChallengeCelebration({
   useEffect(() => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     glow.value = withRepeat(withSequence(withTiming(0.2, { duration: 1000 }), withTiming(0.08, { duration: 1000 })), -1, false);
-    trophyScale.value = withDelay(150, withSequence(
-      withTiming(1.2, { duration: 360, easing: Easing.out(Easing.back(2)) }),
-      withTiming(1, { duration: 240 }),
+    emblemScale.value = withDelay(150, withSequence(
+      withTiming(1.12, { duration: 420, easing: Easing.out(Easing.back(1.8)) }),
+      withTiming(1, { duration: 260 }),
     ));
-    trophyRot.value = withDelay(150, withTiming(0, { duration: 600, easing: Easing.out(Easing.back(1.5)) }));
+    ringPulse.value = withDelay(700, withRepeat(withTiming(1, { duration: 2200, easing: Easing.out(Easing.quad) }), -1, false));
     floatY.value = withDelay(800, withRepeat(withSequence(withTiming(-6, { duration: 1250 }), withTiming(0, { duration: 1250 })), -1, false));
     titleA.value = withDelay(450, withTiming(1, { duration: 400 }));
     avatarsA.value = withDelay(650, withTiming(1, { duration: 400 }));
@@ -141,13 +141,18 @@ export function SharedChallengeCelebration({
     };
     const startTimer = setTimeout(() => { raf = requestAnimationFrame(tick); }, 850);
     return () => {
-      cancelAnimation(glow); cancelAnimation(floatY);
+      cancelAnimation(glow); cancelAnimation(floatY); cancelAnimation(ringPulse);
       clearTimeout(startTimer); if (raf) cancelAnimationFrame(raf);
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const glowStyle = useAnimatedStyle(() => ({ opacity: glow.value }));
-  const trophyStyle = useAnimatedStyle(() => ({ transform: [{ scale: trophyScale.value }, { rotate: `${trophyRot.value}deg` }, { translateY: floatY.value }] }));
+  const emblemStyle = useAnimatedStyle(() => ({ transform: [{ scale: emblemScale.value }, { translateY: floatY.value }] }));
+  // A thin gold ring that expands and fades out of the emblem, on a loop.
+  const haloStyle = useAnimatedStyle(() => ({
+    opacity: (1 - ringPulse.value) * 0.5,
+    transform: [{ scale: 1 + ringPulse.value * 0.6 }],
+  }));
   const titleStyle = useAnimatedStyle(() => ({ opacity: titleA.value, transform: [{ translateY: (1 - titleA.value) * 12 }] }));
   const avatarsStyle = useAnimatedStyle(() => ({ opacity: avatarsA.value, transform: [{ translateY: (1 - avatarsA.value) * 12 }] }));
   const ptsStyle = useAnimatedStyle(() => ({ opacity: ptsA.value, transform: [{ translateY: (1 - ptsA.value) * 12 }] }));
@@ -167,7 +172,11 @@ export function SharedChallengeCelebration({
       <BurstRing delay={350} color={GOLD} opacity={0.3} />
       {Array.from({ length: 26 }).map((_, i) => <Particle key={i} />)}
 
-      <Animated.Text style={[styles.trophy, trophyStyle]}>🏆</Animated.Text>
+      {/* Premium emblem — thin gold ring + check, with a pulsing halo. No emoji. */}
+      <Animated.View style={[styles.emblem, emblemStyle]}>
+        <Animated.View style={[styles.halo, haloStyle]} />
+        <Ionicons name="checkmark-sharp" size={42} color={GOLD} />
+      </Animated.View>
       <Animated.Text style={[styles.title, titleStyle]}>{template.title} — done together.</Animated.Text>
       <Animated.Text style={[styles.subtitle, titleStyle]}>{subtitle}</Animated.Text>
 
@@ -230,8 +239,16 @@ const styles = StyleSheet.create({
   glow: { position: 'absolute', top: '20%', width: 280, height: 280, borderRadius: 140, backgroundColor: GOLD },
   ring: { position: 'absolute', top: '32%', left: '50%', width: 90, height: 90, borderRadius: 45, borderWidth: 2 },
 
-  trophy: { fontSize: 60, marginBottom: 6 },
-  title: { fontFamily: fontFamily.bold, fontSize: 26, color: TEXT, marginTop: 14, letterSpacing: -0.5, textAlign: 'center' },
+  emblem: {
+    width: 92, height: 92, borderRadius: 46,
+    borderWidth: 1.5, borderColor: 'rgba(232,210,0,0.55)',
+    alignItems: 'center', justifyContent: 'center', marginBottom: 6,
+  },
+  halo: {
+    position: 'absolute', width: 92, height: 92, borderRadius: 46,
+    borderWidth: 1, borderColor: GOLD,
+  },
+  title: { fontFamily: fontFamily.light, fontSize: 27, color: TEXT, marginTop: 16, letterSpacing: -0.5, textAlign: 'center' },
   subtitle: { fontFamily: fontFamily.light, fontSize: 13, color: SECONDARY, marginTop: 6, textAlign: 'center' },
 
   avatarRow: { flexDirection: 'row', alignItems: 'center', marginTop: 20 },

@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import GeometricBackground from '@/components/GeometricBackground';
 import { Avatar } from '@/components/social/Avatar';
+import { Countdown } from '@/components/social/Countdown';
 import { SharedChallengeCelebration } from '@/components/social/SharedChallengeCelebration';
 import { fontFamily } from '@/constants/tokens';
 import { useSharedChallenges } from '@/hooks/useSharedChallenges';
@@ -116,6 +117,8 @@ export default function SharedChallengeDetail() {
 
   const isInvited = self?.state === 'invited';
   const isCreator = challenge.creatorId === self?.friend.id;
+  // Forming until everyone's accepted — the clock (endsAt) only runs after that.
+  const forming = participants.some((p) => p.state === 'invited');
 
   const handleShare = async () => {
     const url = `https://powr.life/app?challenge=${challenge.id}`;
@@ -158,8 +161,14 @@ export default function SharedChallengeDetail() {
               <Text style={[styles.tagText, { color: TIER_COLOR[template.tier] }]}>{template.tier.toUpperCase()}</Text>
             </View>
             <View style={styles.tag}>
-              <Ionicons name="time-outline" size={11} color={SECONDARY} />
-              <Text style={styles.tagText}>{challenge.expiresIn}</Text>
+              <Ionicons name={forming ? 'hourglass-outline' : 'time-outline'} size={11} color={SECONDARY} />
+              {!forming && challenge.endsAt ? (
+                <Countdown endsAt={challenge.endsAt} style={[styles.tagText, { textTransform: 'none' }]} />
+              ) : forming && challenge.acceptBy ? (
+                <Countdown endsAt={challenge.acceptBy} suffix=" to accept" style={[styles.tagText, { textTransform: 'none' }]} />
+              ) : (
+                <Text style={styles.tagText}>{forming ? 'Not started' : challenge.expiresIn}</Text>
+              )}
             </View>
           </View>
         </View>

@@ -1,13 +1,15 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Dimensions, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { fontFamily } from '@/constants/tokens';
 import { useSharedChallenges } from '@/hooks/useSharedChallenges';
+import { usePoints } from '@/hooks/usePoints';
 import type { SharedChallenge } from '@/lib/social/types';
 import { CreateChallengeSheet } from '@/components/social/CreateChallengeSheet';
 import { SharedChallengeCard } from '@/components/social/SharedChallengeCard';
+import { SharedChallengeCelebration } from '@/components/social/SharedChallengeCelebration';
 
 const GOLD = '#E8D200';
 const TEXT = '#F2F2F2';
@@ -15,6 +17,13 @@ const SECONDARY = '#888888';
 const MUTED = '#555555';
 const BORDER = '#222222';
 const CARD_BG = '#111111';
+
+// Carousel sizing — card width leaves a GAP + a NEXT_PEEK sliver of the next card
+// visible, so the "swipe for more" affordance is obvious. Home content padding is
+// 10 each side; SCREEN_W − 20 is the fallback before onLayout measures the band.
+const SCREEN_W = Dimensions.get('window').width;
+const CAROUSEL_GAP = 12;
+const NEXT_PEEK = 22;
 
 export interface TogetherSectionProps {
   onOpenChallenge?: (challenge: SharedChallenge) => void;
@@ -27,9 +36,35 @@ export interface TogetherSectionProps {
  */
 export function TogetherSection({ onOpenChallenge }: TogetherSectionProps) {
   const router = useRouter();
-  const { loading, active, pendingInvites, friends, templates, createChallenge, acceptInvite, declineInvite } =
-    useSharedChallenges();
+  const {
+    loading,
+    active,
+    pendingInvites,
+    openChallenges,
+    openCount,
+    cap,
+    atCap,
+    friends,
+    templates,
+    createChallenge,
+    acceptInvite,
+    declineInvite,
+    leaveChallenge,
+    newlyCompletedId,
+    clearCelebration,
+  } = useSharedChallenges();
+  const { balance } = usePoints();
   const [sheetVisible, setSheetVisible] = useState(false);
+
+  // Celebration fires when the user completes their part — driven by the hook so
+  // the real trigger is a backend completion event setting `newlyCompletedId`.
+  const celebrated = newlyCompletedId
+    ? active.find((c) => c.id === newlyCompletedId) ?? null
+    : null;
+  const [bandWidth, setBandWidth] = useState(0);
+
+  const cardWidth = (bandWidth || SCREEN_W - 20) - CAROUSEL_GAP - NEXT_PEEK;
+  const snap = cardWidth + CAROUSEL_GAP;
 
   const openChallenge = (challenge: SharedChallenge) => {
     if (onOpenChallenge) return onOpenChallenge(challenge);
@@ -46,7 +81,23 @@ export function TogetherSection({ onOpenChallenge }: TogetherSectionProps) {
   return (
     <View>
       <View style={styles.sectionRow}>
-        <Text style={styles.sectionLabel}>TOGETHER</Text>
+        <View style={styles.sectionTitleRow}>
+          <Text style={styles.sectionLabel}>TOGETHER</Text>
+          {/* Cap is only worth flagging at the boundary — otherwise it's just noise. */}
+          {atCap && (
+            <View
+              style={styles.fullChip}
+              accessibilityLabel={`Challenge slots full, ${openCount} of ${cap}`}
+            >
+              <Text style={styles.fullChipText}>Full</Text>
+            </View>
+          )}
+          {pendingInvites.length > 0 && (
+            <View style={styles.newChip}>
+              <Text style={styles.newChipText}>{pendingInvites.length} new</Text>
+            </View>
+          )}
+        </View>
         <View style={styles.headerActions}>
           <Pressable
             hitSlop={8}
@@ -74,29 +125,54 @@ export function TogetherSection({ onOpenChallenge }: TogetherSectionProps) {
           </View>
         </View>
       ) : ordered.length === 0 ? (
-        <Pressable style={styles.empty} onPress={() => setSheetVisible(true)}>
-          <Ionicons name="people-outline" size={28} color={GOLD} style={styles.emptyIcon} />
-          <Text style={styles.emptyTitle}>Take on a challenge together</Text>
-          <Text style={styles.emptyBody}>
-            Invite friends and everyone earns a bonus that grows the more of you finish.
-          </Text>
-          <View style={styles.emptyCta}>
-            <Text style={styles.emptyCtaText}>Challenge friends</Text>
-            <Ionicons name="arrow-forward" size={14} color="#0a0a0a" />
+        /* Slim one-line invite — never dead space, never dominates the hero slot. */
+        <Pressable style={styles.emptySlim} onPress={() => setSheetVisible(true)}>
+          <View style={styles.emptySlimIcon}>
+            <Ionicons name="people" size={15} color={GOLD} />
           </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.emptySlimTitle}>Take on a challenge together</Text>
+            <Text style={styles.emptySlimBody}>Invite friends — everyone earns a growing bonus.</Text>
+          </View>
+          <Ionicons name="arrow-forward" size={16} color={SECONDARY} />
         </Pressable>
+      ) : ordered.length === 1 ? (
+        <SharedChallengeCard
+          challenge={ordered[0]}
+          index={0}
+          atCap={atCap}
+          onPress={openChallenge}
+          onAccept={(ch) => acceptInvite(ch.id)}
+          onDecline={(ch) => declineInvite(ch.id)}
+        />
       ) : (
-        <View style={{ gap: 10 }}>
-          {ordered.map((c, i) => (
-            <SharedChallengeCard
-              key={c.id}
-              challenge={c}
-              index={i}
-              onPress={openChallenge}
-              onAccept={(ch) => acceptInvite(ch.id)}
-              onDecline={(ch) => declineInvite(ch.id)}
-            />
-          ))}
+        /* Carousel — keeps the hero band one card tall however many you're in.
+           Invites are ordered first so the time-sensitive card is the default view. */
+        <View onLayout={(e) => setBandWidth(e.nativeEvent.layout.width)}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            decelerationRate="fast"
+            snapToInterval={snap}
+            snapToAlignment="start"
+            disableIntervalMomentum
+          >
+            {ordered.map((c, i) => (
+              <View
+                key={c.id}
+                style={{ width: cardWidth, marginRight: i === ordered.length - 1 ? 0 : CAROUSEL_GAP }}
+              >
+                <SharedChallengeCard
+                  challenge={c}
+                  index={i}
+                  atCap={atCap}
+                  onPress={openChallenge}
+                  onAccept={(ch) => acceptInvite(ch.id)}
+                  onDecline={(ch) => declineInvite(ch.id)}
+                />
+              </View>
+            ))}
+          </ScrollView>
         </View>
       )}
 
@@ -104,9 +180,25 @@ export function TogetherSection({ onOpenChallenge }: TogetherSectionProps) {
         visible={sheetVisible}
         templates={templates}
         friends={friends}
+        plateFull={atCap}
+        openCount={openCount}
+        cap={cap}
+        openChallenges={openChallenges}
+        onLeave={leaveChallenge}
         onClose={() => setSheetVisible(false)}
         onCreate={createChallenge}
       />
+
+      <Modal visible={!!celebrated} transparent animationType="fade" onRequestClose={clearCelebration}>
+        {celebrated && (
+          <SharedChallengeCelebration
+            challenge={celebrated}
+            totalBalance={balance}
+            onDone={clearCelebration}
+            onShare={() => router.push({ pathname: '/share-stats', params: { mode: 'streak' } })}
+          />
+        )}
+      </Modal>
     </View>
   );
 }
@@ -123,6 +215,7 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: 'rgba(255,255,255,0.07)',
   },
+  sectionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   sectionLabel: {
     fontFamily: fontFamily.medium,
     fontSize: 9,
@@ -130,28 +223,28 @@ const styles = StyleSheet.create({
     color: TEXT,
     textTransform: 'uppercase',
   },
+  // "Full" tag — neutral, shown only at the cap (informational, not a CTA)
+  fullChip: { backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 100, paddingHorizontal: 7, paddingVertical: 2 },
+  fullChipText: { fontFamily: fontFamily.semiBold, fontSize: 9, letterSpacing: 0.5, color: SECONDARY, textTransform: 'uppercase' },
+  // pending-invite chip — adds urgency without breaking the 9px eyebrow convention
+  newChip: { backgroundColor: GOLD, borderRadius: 100, paddingHorizontal: 7, paddingVertical: 2 },
+  newChipText: { fontFamily: fontFamily.semiBold, fontSize: 9, letterSpacing: 0.5, color: '#0a0a0a', textTransform: 'uppercase' },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 14 },
   friendsBtn: { flexDirection: 'row', alignItems: 'center' },
   newBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   newBtnText: { fontFamily: fontFamily.medium, fontSize: 11, color: GOLD, letterSpacing: 0.2 },
 
-  empty: {
-    backgroundColor: CARD_BG,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: BORDER,
-    padding: 20,
-    alignItems: 'center',
-    gap: 8,
+  emptySlim: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: CARD_BG, borderRadius: 16, borderWidth: 1, borderColor: BORDER,
+    paddingVertical: 13, paddingHorizontal: 14,
   },
-  emptyIcon: { marginBottom: 6 },
-  emptyTitle: { fontFamily: fontFamily.regular, fontSize: 16, color: TEXT },
-  emptyBody: { fontFamily: fontFamily.light, fontSize: 12, color: SECONDARY, textAlign: 'center', lineHeight: 18, maxWidth: 260 },
-  emptyCta: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: GOLD, borderRadius: 100, paddingHorizontal: 18, paddingVertical: 10, marginTop: 6,
+  emptySlimIcon: {
+    width: 32, height: 32, borderRadius: 16,
+    backgroundColor: 'rgba(232,210,0,0.10)', alignItems: 'center', justifyContent: 'center',
   },
-  emptyCtaText: { fontFamily: fontFamily.bold, fontSize: 12, color: '#0a0a0a', letterSpacing: 0.5 },
+  emptySlimTitle: { fontFamily: fontFamily.regular, fontSize: 14, color: TEXT },
+  emptySlimBody: { fontFamily: fontFamily.light, fontSize: 11.5, color: SECONDARY, marginTop: 1 },
 
   // loading skeleton
   skeleton: {

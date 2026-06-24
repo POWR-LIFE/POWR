@@ -58,8 +58,22 @@ export interface SharedChallenge {
   status: SharedChallengeStatus;
   creatorId: string;
   participants: Participant[];
-  /** Human-readable time left, e.g. "4d left". */
+  /** Human-readable time left, e.g. "4d left". Fallback for when `endsAt` is unset. */
   expiresIn: string;
+  /**
+   * ISO deadline. The clock only starts once EVERY participant has accepted, so
+   * this is null/undefined while the challenge is still "forming" (someone's
+   * invite is outstanding). Once set, the UI shows a live countdown to it.
+   */
+  endsAt?: string | null;
+  /**
+   * ISO accept deadline — how long invitees have to respond. Stops a forming
+   * challenge hanging forever: at this point it starts with whoever's accepted
+   * (≥2) or auto-cancels. Only meaningful while forming.
+   */
+  acceptBy?: string | null;
+  /** Chosen run length, applied to `endsAt` the moment the clock starts. */
+  durationHours?: number;
   /** Set when this is a pending invite the user hasn't answered yet. */
   pendingInviteFromName?: string;
 }

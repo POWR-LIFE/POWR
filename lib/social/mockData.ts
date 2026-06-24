@@ -41,7 +41,20 @@ export const MOCK_TEMPLATES: ChallengeTemplate[] = [
 const friend = (id: string): Friend =>
   MOCK_FRIENDS.find((f) => f.id === id) ?? self;
 
-/** One active challenge in flight + one pending invite, to show both states. */
+const iso = (ms: number) => new Date(Date.now() + ms).toISOString();
+const days = (n: number) => iso(n * 86_400_000);
+const hours = (n: number) => iso(n * 3_600_000);
+const mins = (n: number) => iso(n * 60_000);
+
+/**
+ * Seeded at the concurrency cap so every state is visible on load:
+ *   • sc-1, sc-3, sc-4 — open-for-you (your part not done) → fill all 3 slots
+ *   • sc-2            — a pending invite → shows "Free a slot to join" while full
+ *   • sc-5            — you've finished your part → does NOT consume a slot
+ * Timer rule: `endsAt` is only set once everyone's accepted. sc-4 is still
+ * forming (Max hasn't accepted) so it has no clock and no finishers yet. sc-3
+ * ends in ~50 min so you can watch the countdown tick.
+ */
 export const MOCK_SHARED_CHALLENGES: SharedChallenge[] = [
   {
     id: 'sc-1',
@@ -50,11 +63,11 @@ export const MOCK_SHARED_CHALLENGES: SharedChallenge[] = [
     status: 'active',
     creatorId: MOCK_SELF_ID,
     expiresIn: '4d left',
+    endsAt: days(4),
     participants: [
       { friend: self, state: 'accepted', progress: 0.66, completed: false, isSelf: true },
       { friend: friend('f-sam'), state: 'completed', progress: 1, completed: true },
       { friend: friend('f-alex'), state: 'accepted', progress: 0.33, completed: false },
-      { friend: friend('f-jo'), state: 'invited', progress: 0, completed: false },
     ],
   },
   {
@@ -69,6 +82,50 @@ export const MOCK_SHARED_CHALLENGES: SharedChallenge[] = [
       { friend: friend('f-priya'), state: 'accepted', progress: 0.5, completed: false },
       { friend: self, state: 'invited', progress: 0, completed: false, isSelf: true },
       { friend: friend('f-max'), state: 'accepted', progress: 0.25, completed: false },
+    ],
+  },
+  {
+    id: 'sc-3',
+    template: MOCK_TEMPLATES[2],
+    kind: 'parallel',
+    status: 'active',
+    creatorId: MOCK_SELF_ID,
+    expiresIn: '50m left',
+    endsAt: mins(50),
+    participants: [
+      { friend: self, state: 'accepted', progress: 0.4, completed: false, isSelf: true },
+      { friend: friend('f-nina'), state: 'accepted', progress: 0.8, completed: false },
+    ],
+  },
+  {
+    id: 'sc-4',
+    template: MOCK_TEMPLATES[3],
+    kind: 'parallel',
+    status: 'active',
+    creatorId: 'f-max',
+    expiresIn: 'Not started',
+    endsAt: null,
+    acceptBy: hours(28),
+    durationHours: 72,
+    participants: [
+      { friend: friend('f-max'), state: 'accepted', progress: 0, completed: false },
+      { friend: self, state: 'accepted', progress: 0, completed: false, isSelf: true },
+      { friend: friend('f-priya'), state: 'accepted', progress: 0, completed: false },
+      { friend: friend('f-alex'), state: 'invited', progress: 0, completed: false },
+    ],
+  },
+  {
+    id: 'sc-5',
+    template: MOCK_TEMPLATES[4],
+    kind: 'parallel',
+    status: 'active',
+    creatorId: MOCK_SELF_ID,
+    expiresIn: '3d left',
+    endsAt: days(3),
+    participants: [
+      { friend: self, state: 'completed', progress: 1, completed: true, isSelf: true },
+      { friend: friend('f-jo'), state: 'accepted', progress: 0.6, completed: false },
+      { friend: friend('f-sam'), state: 'completed', progress: 1, completed: true },
     ],
   },
 ];

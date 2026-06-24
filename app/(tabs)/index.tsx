@@ -577,6 +577,11 @@ export default function HomeScreen() {
                     onPress={() => router.push('/achievements')}
                 />
 
+                {/* Shared "together" challenges — the social hero band. Sits above
+                    the steady weekly grid; collapses to a slim CTA when empty so
+                    the weekly card reads as the hero for users with no friends yet. */}
+                {user?.user_metadata?.together_enabled !== false && <TogetherSection />}
+
                 <Text style={styles.sectionLabel}>CHALLENGE</Text>
                 <ChallengeCard
                     challenges={weeklyChallenges}
@@ -584,8 +589,6 @@ export default function HomeScreen() {
                     celebrateId={newlyCompletedId}
                     onShare={handleChallengeShare}
                 />
-
-                {user?.user_metadata?.together_enabled !== false && <TogetherSection />}
 
                 {featuredReward && (() => {
                     const rewardUnlocked = balance >= featuredReward.powr_cost;

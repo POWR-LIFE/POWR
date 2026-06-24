@@ -14,7 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { fontFamily } from '@/constants/tokens';
 import { groupBonus } from '@/lib/social/bonus';
-import type { ChallengeTemplate, Friend, IconSpec } from '@/lib/social/types';
+import type { ChallengeTemplate, Friend, IconSpec, SharedChallenge } from '@/lib/social/types';
 import { Avatar } from './Avatar';
 
 // ─── Palette ──────────────────────────────────────────────────────────────────
@@ -34,6 +34,13 @@ const TIER_COLOR: Record<string, string> = { easy: GREEN, medium: GOLD, hard: OR
 /** v1 group cap (scope §0: small groups 3–6). Architecture scales to ~20 later. */
 const MAX_GROUP = 6;
 
+/** Run length once the clock starts (it starts only after everyone accepts). */
+const DURATIONS: { label: string; hours: number }[] = [
+  { label: '48h', hours: 48 },
+  { label: '3 days', hours: 72 },
+  { label: '1 week', hours: 168 },
+];
+
 function CatIcon({ spec, size, color }: { spec: IconSpec; size: number; color: string }) {
   if (spec.lib === 'mc') return <MaterialCommunityIcons name={spec.name as any} size={size} color={color} />;
   return <Ionicons name={spec.name as any} size={size} color={color} />;
@@ -44,7 +51,15 @@ export interface CreateChallengeSheetProps {
   templates: ChallengeTemplate[];
   friends: Friend[];
   onClose: () => void;
-  onCreate: (input: { templateId: string; friendIds: string[] }) => void | Promise<unknown>;
+  onCreate: (input: { templateId: string; friendIds: string[]; durationHours: number }) => void | Promise<unknown>;
+  /** Every concurrency slot is full — show the "finish or drop one" state instead. */
+  plateFull?: boolean;
+  /** Slots in use / total, for the full-plate copy. */
+  openCount?: number;
+  cap?: number;
+  /** The challenges currently occupying slots — each offers a "Leave" to free one. */
+  openChallenges?: SharedChallenge[];
+  onLeave?: (challengeId: string) => void;
 }
 
 export function CreateChallengeSheet({
@@ -53,10 +68,16 @@ export function CreateChallengeSheet({
   friends,
   onClose,
   onCreate,
+  plateFull = false,
+  openCount = 0,
+  cap = 0,
+  openChallenges = [],
+  onLeave,
 }: CreateChallengeSheetProps) {
   const insets = useSafeAreaInsets();
   const [templateId, setTemplateId] = useState<string | null>(templates[0]?.id ?? null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [durationHours, setDurationHours] = useState(72);
   const [submitting, setSubmitting] = useState(false);
 
   const template = useMemo(
@@ -67,7 +88,7 @@ export function CreateChallengeSheet({
   // Group = you + invited friends. Best-case bonus assumes everyone finishes.
   const groupSize = selected.size + 1;
   const projectedBonus = groupBonus(selected.size); // co-completers = invited friends
-  const atCap = selected.size >= MAX_GROUP - 1;
+  const atGroupCap = selected.size >= MAX_GROUP - 1;
 
   const toggleFriend = (id: string) => {
     Haptics.selectionAsync();
@@ -82,6 +103,7 @@ export function CreateChallengeSheet({
   const reset = () => {
     setSelected(new Set());
     setTemplateId(templates[0]?.id ?? null);
+    setDurationHours(72);
   };
 
   const handleClose = () => {
@@ -93,7 +115,7 @@ export function CreateChallengeSheet({
     if (!template || selected.size === 0 || submitting) return;
     setSubmitting(true);
     try {
-      await onCreate({ templateId: template.id, friendIds: [...selected] });
+      await onCreate({ templateId: template.id, friendIds: [...selected], durationHours });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       reset();
       onClose();
@@ -133,6 +155,46 @@ export function CreateChallengeSheet({
             </Pressable>
           </View>
 
+          {plateFull ? (
+            <>
+              <View style={styles.plate}>
+                <View style={styles.plateIcon}>
+                  <Ionicons name="layers-outline" size={26} color={GOLD} />
+                </View>
+                <Text style={styles.plateTitle}>Your plate is full</Text>
+                <Text style={styles.plateBody}>
+                  You're in {openCount} of {cap} challenges. Finish your part — or drop one — to take on another.
+                </Text>
+              </View>
+
+              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingBottom: 4 }}>
+                {openChallenges.map((c) => (
+                  <View key={c.id} style={styles.plateRow}>
+                    <CatIcon spec={c.template.icon} size={20} color={GOLD} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.plateRowTitle} numberOfLines={1}>{c.template.title}</Text>
+                      <Text style={styles.plateRowMeta} numberOfLines={1}>{c.template.goal} · {c.expiresIn}</Text>
+                    </View>
+                    <Pressable
+                      style={styles.leaveBtn}
+                      onPress={() => { Haptics.selectionAsync(); onLeave?.(c.id); }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Leave ${c.template.title}`}
+                    >
+                      <Text style={styles.leaveText}>Leave</Text>
+                    </Pressable>
+                  </View>
+                ))}
+              </ScrollView>
+
+              <View style={styles.footer}>
+                <Pressable onPress={handleClose} style={styles.plateDoneBtn}>
+                  <Text style={styles.plateDoneText}>Got it</Text>
+                </Pressable>
+              </View>
+            </>
+          ) : (
+            <>
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 18 }}>
             {/* ── Pick a challenge ── */}
             <View style={styles.section}>
@@ -165,6 +227,30 @@ export function CreateChallengeSheet({
               </ScrollView>
             </View>
 
+            {/* ── How long ── */}
+            <View style={styles.section}>
+              <View style={styles.sectionHeaderRow}>
+                <Text style={styles.sectionLabel}>How long</Text>
+                <Text style={styles.capHint}>Starts when everyone’s in</Text>
+              </View>
+              <View style={styles.durRow}>
+                {DURATIONS.map((d) => {
+                  const active = d.hours === durationHours;
+                  return (
+                    <Pressable
+                      key={d.hours}
+                      onPress={() => { Haptics.selectionAsync(); setDurationHours(d.hours); }}
+                      style={[styles.durPill, active && styles.durPillActive]}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected: active }}
+                    >
+                      <Text style={[styles.durText, active && styles.durTextActive]}>{d.label}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+
             {/* ── Invite friends ── */}
             <View style={styles.section}>
               <View style={styles.sectionHeaderRow}>
@@ -183,7 +269,7 @@ export function CreateChallengeSheet({
               <View style={styles.friendGrid}>
                 {friends.map((f) => {
                   const isSel = selected.has(f.id);
-                  const disabled = !isSel && atCap;
+                  const disabled = !isSel && atGroupCap;
                   return (
                     <Pressable
                       key={f.id}
@@ -230,7 +316,7 @@ export function CreateChallengeSheet({
                 <View style={styles.bonusPill}>
                   <Ionicons name="flash" size={12} color={GOLD} />
                   <Text style={styles.bonusPillText}>
-                    +{projectedBonus} each if all finish{atCap ? ' (max)' : ''}
+                    +{projectedBonus} each if all finish{atGroupCap ? ' (max)' : ''}
                   </Text>
                 </View>
               )}
@@ -247,6 +333,8 @@ export function CreateChallengeSheet({
               {canSend && !submitting && <Ionicons name="arrow-forward" size={16} color="#0a0a0a" />}
             </Pressable>
           </View>
+            </>
+          )}
         </View>
       </View>
     </Modal>
@@ -292,6 +380,13 @@ const styles = StyleSheet.create({
   chipPts: { fontFamily: fontFamily.semiBold, fontSize: 13, color: GOLD },
   chipTier: { fontFamily: fontFamily.medium, fontSize: 9, letterSpacing: 1, textTransform: 'uppercase' },
 
+  // duration picker
+  durRow: { flexDirection: 'row', gap: 8 },
+  durPill: { flex: 1, paddingVertical: 11, borderRadius: 100, borderWidth: 1, borderColor: BORDER, alignItems: 'center' },
+  durPillActive: { backgroundColor: GOLD, borderColor: GOLD },
+  durText: { fontFamily: fontFamily.medium, fontSize: 13, color: SECONDARY },
+  durTextActive: { color: '#0a0a0a' },
+
   // friend grid
   noFriendsHint: { fontFamily: fontFamily.light, fontSize: 12, color: SECONDARY, lineHeight: 17, marginBottom: 2 },
   friendGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 14 },
@@ -321,4 +416,24 @@ const styles = StyleSheet.create({
   sendBtnDisabled: { backgroundColor: '#2A2A2A' },
   sendText: { fontFamily: fontFamily.bold, fontSize: 13, color: '#0a0a0a', letterSpacing: 0.5 },
   sendTextDisabled: { color: MUTED },
+
+  // full-plate state (concurrency cap reached)
+  plate: { alignItems: 'center', gap: 8, paddingTop: 4, paddingBottom: 6 },
+  plateIcon: {
+    width: 52, height: 52, borderRadius: 26,
+    backgroundColor: 'rgba(232,210,0,0.10)', alignItems: 'center', justifyContent: 'center', marginBottom: 2,
+  },
+  plateTitle: { fontFamily: fontFamily.light, fontSize: 22, color: TEXT, letterSpacing: -0.3 },
+  plateBody: { fontFamily: fontFamily.light, fontSize: 13, color: SECONDARY, textAlign: 'center', lineHeight: 19, maxWidth: 300 },
+  plateRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: CARD_BG, borderRadius: 14, borderWidth: 1, borderColor: BORDER,
+    paddingVertical: 12, paddingHorizontal: 14,
+  },
+  plateRowTitle: { fontFamily: fontFamily.medium, fontSize: 14, color: TEXT },
+  plateRowMeta: { fontFamily: fontFamily.light, fontSize: 11, color: MUTED, marginTop: 2 },
+  leaveBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 100, borderWidth: 1, borderColor: BORDER },
+  leaveText: { fontFamily: fontFamily.medium, fontSize: 12, color: SECONDARY },
+  plateDoneBtn: { backgroundColor: '#2A2A2A', borderRadius: 100, paddingVertical: 15, alignItems: 'center' },
+  plateDoneText: { fontFamily: fontFamily.semiBold, fontSize: 13, color: TEXT, letterSpacing: 0.3 },
 });
