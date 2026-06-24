@@ -12,7 +12,22 @@ type NotificationType =
   | 'points_milestone'
   | 'inactivity_nudge'
   | 'sleep_target_met'
-  | 'session_completed';
+  | 'session_completed'
+  // Shared ("together") challenges + friend graph (scope §4/§6a).
+  | 'friend_request'
+  | 'friend_accepted'
+  | 'challenge_invite'
+  | 'challenge_started'
+  | 'challenge_friend_finished'
+  | 'challenge_completed'
+  | 'challenge_expiring';
+
+// The together feature has a master opt-out (user_metadata.together_enabled).
+// These types are suppressed entirely when a user has turned it off.
+const TOGETHER_TYPES: NotificationType[] = [
+  'friend_request', 'friend_accepted', 'challenge_invite', 'challenge_started',
+  'challenge_friend_finished', 'challenge_completed', 'challenge_expiring',
+];
 
 interface RequestBody {
   target_user_id: string;
@@ -195,6 +210,96 @@ function buildMessage(
           priority: 'high',
         };
       }
+
+      // ── Friend graph ──────────────────────────────────────────────────────
+      case 'friend_request': {
+        const name = (payload.from_name as string) || 'Someone';
+        return {
+          title: 'New friend request 👋',
+          body: `${name} wants to team up on POWR.`,
+          data: { type, route: '/friends', from_user_id: payload.from_user_id },
+          sound: 'default',
+          channelId: 'powr_default_v2',
+          priority: 'high',
+        };
+      }
+
+      case 'friend_accepted': {
+        const name = (payload.from_name as string) || 'Your friend';
+        return {
+          title: "You're connected 🤝",
+          body: `${name} accepted your friend request. Take on a challenge together.`,
+          data: { type, route: '/friends', from_user_id: payload.from_user_id },
+          sound: 'default',
+          channelId: 'powr_default_v2',
+        };
+      }
+
+      // ── Shared challenges ─────────────────────────────────────────────────
+      case 'challenge_invite': {
+        const name = (payload.from_name as string) || 'A friend';
+        const title = (payload.title as string) || 'a challenge';
+        return {
+          title: `${name} invited you 🤜🤛`,
+          body: `Take on "${title}" together — tap to join.`,
+          data: { type, route: `/shared-challenge?id=${payload.challenge_id}`, challenge_id: payload.challenge_id },
+          sound: 'default',
+          channelId: 'powr_default_v2',
+          priority: 'high',
+        };
+      }
+
+      case 'challenge_started': {
+        const title = (payload.title as string) || 'Your challenge';
+        return {
+          title: 'Challenge on 🔥',
+          body: `"${title}" has started — everyone's in. Get your part done.`,
+          data: { type, route: `/shared-challenge?id=${payload.challenge_id}`, challenge_id: payload.challenge_id },
+          sound: 'default',
+          channelId: 'powr_default_v2',
+          priority: 'high',
+        };
+      }
+
+      case 'challenge_friend_finished': {
+        const name = (payload.from_name as string) || 'A friend';
+        const title = (payload.title as string) || 'your challenge';
+        return {
+          title: `${name} finished their part 💪`,
+          body: `They're done with "${title}". Finish yours to lock in the group bonus.`,
+          data: { type, route: `/shared-challenge?id=${payload.challenge_id}`, challenge_id: payload.challenge_id },
+          sound: 'default',
+          channelId: 'powr_default_v2',
+        };
+      }
+
+      case 'challenge_completed': {
+        const title = (payload.title as string) || 'Your challenge';
+        const total = Math.max(0, Math.round(Number(payload.total ?? payload.base ?? 0)));
+        const bonus = Math.max(0, Math.round(Number(payload.bonus ?? 0)));
+        const bonusText = bonus > 0 ? ` (incl. +${bonus} together bonus)` : '';
+        return {
+          title: 'Challenge complete 🎉',
+          body: `"${title}" done — +${total.toLocaleString()} POWR${bonusText}.`,
+          data: { type, route: `/shared-challenge?id=${payload.challenge_id}`, challenge_id: payload.challenge_id },
+          sound: 'default',
+          channelId: 'powr_rewards_v2',
+          priority: 'high',
+        };
+      }
+
+      case 'challenge_expiring': {
+        const title = (payload.title as string) || 'Your challenge';
+        const hours = Math.max(1, Math.round(Number(payload.hours_left ?? 6)));
+        return {
+          title: 'Challenge ending soon ⏰',
+          body: `"${title}" ends in ${hours}h — finish your part to earn the group bonus.`,
+          data: { type, route: `/shared-challenge?id=${payload.challenge_id}`, challenge_id: payload.challenge_id },
+          sound: 'default',
+          channelId: 'powr_default_v2',
+          priority: 'high',
+        };
+      }
     }
   })();
 
@@ -244,6 +349,18 @@ Deno.serve(async (req: Request) => {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       });
+    }
+
+    // Master opt-out: a user who turned the Together feature off in settings
+    // (user_metadata.together_enabled === false) receives none of its pushes.
+    if (TOGETHER_TYPES.includes(type)) {
+      const { data: u } = await supabase.auth.admin.getUserById(target_user_id);
+      if (u?.user?.user_metadata?.together_enabled === false) {
+        return new Response(JSON.stringify({ skipped: true, reason: 'together_disabled' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
     }
 
     // For streak_at_risk: compute the streak directly from sessions so the
