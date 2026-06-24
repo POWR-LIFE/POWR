@@ -112,3 +112,67 @@ export function templateRule(category: string, m: Measure): SharedRule {
       return { kind: 'session_count', category, target: target || 1 };
   }
 }
+
+// ── Pooled ("combined total") challenges (scope §3B) ─────────────────────────
+
+/** A pooled rule: contributions of `metric` SUM across the group toward `target`. */
+export type PoolRule = {
+  kind: 'pool_sum';
+  metric: 'steps' | 'distance_m' | 'sessions';
+  category?: string;
+  target: number;   // pool target, in the metric's base unit (steps / metres / count)
+  unit: string;     // display unit: 'steps' | 'km' | 'mi' | 'check-ins' | 'runs' | 'rides' | 'sessions'
+};
+
+/**
+ * Translate a template's structured measure into a POOL rule (combined target).
+ * Same authoring fields as templateRule, but the target is the GROUP goal and the
+ * metric is what we sum across participants.
+ */
+export function pooledRule(category: string, m: Measure): PoolRule {
+  const target = Math.max(0, Math.floor(Number(m.target) || 0));
+  switch (m.measure) {
+    case 'steps_week':
+    case 'steps_day':
+      return { kind: 'pool_sum', metric: 'steps', target, unit: 'steps' };
+    case 'distance': {
+      const metres = Math.round((Number(m.target) || 0) * (m.unit === 'mi' ? MILE_M : KM_M));
+      return { kind: 'pool_sum', metric: 'distance_m', category, target: metres, unit: m.unit === 'mi' ? 'mi' : 'km' };
+    }
+    case 'checkins':
+      return { kind: 'pool_sum', metric: 'sessions', category: 'gym', target, unit: 'check-ins' };
+    case 'runs':
+      return { kind: 'pool_sum', metric: 'sessions', category: 'running', target, unit: 'runs' };
+    case 'rides':
+      return { kind: 'pool_sum', metric: 'sessions', category: 'cycling', target, unit: 'rides' };
+    case 'sessions':
+    case 'distinct_days':
+    case 'categories':
+    default:
+      return { kind: 'pool_sum', metric: 'sessions', target, unit: 'sessions' };
+  }
+}
+
+/**
+ * One participant's raw contribution to a pool, from their normalised sessions.
+ * Pure (takes plain structures from buildContext) so it's unit-testable. Sensor
+ * verification + manual/sleep exclusion are already applied upstream.
+ */
+export function poolContribution(
+  rule: { metric: string; category?: string },
+  sessions: { category: string | null; distance_m: number; steps: number }[],
+  dailyStepsTotal: number,
+): number {
+  switch (rule.metric) {
+    case 'steps':
+      return dailyStepsTotal;
+    case 'distance_m':
+      return sessions
+        .filter((s) => !rule.category || s.category === rule.category)
+        .reduce((a, s) => a + (s.distance_m || 0), 0);
+    case 'sessions':
+      return sessions.filter((s) => !rule.category || s.category === rule.category).length;
+    default:
+      return 0;
+  }
+}

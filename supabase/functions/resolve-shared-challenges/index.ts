@@ -11,6 +11,7 @@
 //   4. Ending soon → one-shot "finish your part" nudge to those not done.
 import { createClient } from '@supabase/supabase-js';
 import { evaluateParticipant } from '../_shared/sharedChallengeEval.ts';
+import { evaluatePooledChallenge } from '../_shared/sharedChallengePooled.ts';
 import { tryStartForming } from '../_shared/sharedChallengeLifecycle.ts';
 import { groupBonus } from '../_shared/sharedChallenges.ts';
 import { notifyPush } from '../_shared/notify.ts';
@@ -47,6 +48,37 @@ Deno.serve(async (req) => {
     .eq('status', 'active');
 
   for (const ch of active ?? []) {
+    // ── Pooled challenges: one group evaluation (sum vs target). Completes
+    //    itself on reaching target; expires if the clock runs out first. ──────
+    if (ch.kind === 'pooled') {
+      const r = await evaluatePooledChallenge(supabase, ch);
+      if (r.newlyCompleted) stats.settled++;
+      const endedP = ch.ends_at && Date.parse(ch.ends_at) <= Date.now();
+      if (!r.completed && endedP && !ch.settled_at) {
+        await supabase.from('shared_challenges')
+          .update({ status: 'expired', settled_at: nowIso })
+          .eq('id', ch.id).is('settled_at', null);
+      } else if (!r.completed && !endedP && ch.ends_at && !ch.expiring_notified) {
+        const remaining = Date.parse(ch.ends_at) - Date.now();
+        if (remaining > 0 && remaining <= EXPIRING_THRESHOLD_MS) {
+          const { data: laggers } = await supabase
+            .from('shared_challenge_participants')
+            .select('user_id')
+            .eq('challenge_id', ch.id)
+            .not('state', 'in', '(declined,left)');
+          for (const p of laggers ?? []) {
+            await notifyPush(p.user_id, 'challenge_expiring', {
+              challenge_id: ch.id, title: ch.template?.title ?? 'your challenge',
+              hours_left: Math.max(1, Math.round(remaining / 3_600_000)),
+            });
+            stats.nudged++;
+          }
+          await supabase.from('shared_challenges').update({ expiring_notified: true }).eq('id', ch.id);
+        }
+      }
+      continue;
+    }
+
     // 2. Backstop evaluation for everyone still in but not yet finished.
     const { data: parts } = await supabase
       .from('shared_challenge_participants')

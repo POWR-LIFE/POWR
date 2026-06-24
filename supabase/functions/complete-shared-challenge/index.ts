@@ -8,6 +8,7 @@
 // All the maths lives in evaluateParticipant (shared with the cron backstop).
 import { createClient } from '@supabase/supabase-js';
 import { evaluateParticipant } from '../_shared/sharedChallengeEval.ts';
+import { evaluatePooledChallenge } from '../_shared/sharedChallengePooled.ts';
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -38,10 +39,25 @@ Deno.serve(async (req) => {
 
   const { data: challenge } = await supabase
     .from('shared_challenges')
-    .select('id, rule, template, base_points, status, starts_at, ends_at')
+    .select('id, kind, rule, template, base_points, status, starts_at, ends_at, utc_offset_minutes, bonus_per_head, bonus_max')
     .eq('id', challenge_id)
     .maybeSingle();
   if (!challenge) return json({ error: 'Challenge not found' }, 404);
+
+  // Pooled challenges complete as a GROUP (sum >= target), so the calling user
+  // just triggers a whole-pool re-evaluation; parallel evaluates this user only.
+  if (challenge.kind === 'pooled') {
+    const r = await evaluatePooledChallenge(supabase, challenge);
+    return json({
+      ok: true,
+      completed: r.completed,
+      newly_completed: r.newlyCompleted,
+      progress: r.target > 0 ? Math.min(1, r.poolTotal / r.target) : 0,
+      pool_total: r.poolTotal,
+      pool_target: r.target,
+      points_awarded: r.newlyCompleted ? challenge.base_points : 0,
+    });
+  }
 
   const result = await evaluateParticipant(supabase, challenge, user.id, utc_offset_minutes);
   return json({

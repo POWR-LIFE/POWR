@@ -11,6 +11,8 @@
 
 import {
   groupBonus,
+  poolContribution,
+  pooledRule,
   templateRule,
 } from '@/supabase/functions/_shared/sharedChallenges';
 import {
@@ -127,6 +129,42 @@ describe('templateRule — running / cycling / multi', () => {
   it('multi sessions → uncategorised session_count; categories → distinct_categories', () => {
     expect(templateRule('multi', { measure: 'sessions', target: 5 })).toEqual({ kind: 'session_count', target: 5 });
     expect(templateRule('multi', { measure: 'categories', target: 4 })).toEqual({ kind: 'distinct_categories', perCat: 1, target: 4 });
+  });
+});
+
+describe('pooledRule — combined-total translation', () => {
+  it('steps → pool_sum on steps', () => {
+    expect(pooledRule('walking', { measure: 'steps_week', target: 150000 })).toEqual({
+      kind: 'pool_sum', metric: 'steps', target: 150000, unit: 'steps',
+    });
+  });
+  it('distance km → metres pool with km display unit', () => {
+    expect(pooledRule('running', { measure: 'distance', target: 100, unit: 'km' })).toEqual({
+      kind: 'pool_sum', metric: 'distance_m', category: 'running', target: 100000, unit: 'km',
+    });
+  });
+  it('check-ins → sessions pool on the gym category', () => {
+    expect(pooledRule('gym', { measure: 'checkins', target: 20 })).toEqual({
+      kind: 'pool_sum', metric: 'sessions', category: 'gym', target: 20, unit: 'check-ins',
+    });
+  });
+});
+
+describe('poolContribution — per-person tally', () => {
+  const sessions = [
+    { category: 'running', distance_m: 5000, steps: 0 },
+    { category: 'running', distance_m: 3000, steps: 0 },
+    { category: 'gym', distance_m: 0, steps: 0 },
+  ];
+  it('steps uses the daily-steps total', () => {
+    expect(poolContribution({ metric: 'steps' }, sessions, 12000)).toBe(12000);
+  });
+  it('distance sums the category metres', () => {
+    expect(poolContribution({ metric: 'distance_m', category: 'running' }, sessions, 0)).toBe(8000);
+  });
+  it('sessions counts category sessions', () => {
+    expect(poolContribution({ metric: 'sessions', category: 'gym' }, sessions, 0)).toBe(1);
+    expect(poolContribution({ metric: 'sessions' }, sessions, 0)).toBe(3);
   });
 });
 

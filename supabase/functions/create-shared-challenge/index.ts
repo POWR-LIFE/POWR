@@ -6,7 +6,7 @@
 // respond-shared-challenge for the start. Template + derived rule + bonus config
 // are SNAPSHOTTED so later admin edits never mutate a live challenge.
 import { createClient } from '@supabase/supabase-js';
-import { templateRule } from '../_shared/sharedChallenges.ts';
+import { pooledRule, templateRule } from '../_shared/sharedChallenges.ts';
 import { notifyPush } from '../_shared/notify.ts';
 
 const json = (body: unknown, status = 200) =>
@@ -60,10 +60,11 @@ Deno.serve(async (req) => {
   // 2. Template → snapshot + derived rule.
   const { data: tmpl } = await supabase
     .from('shared_challenge_templates')
-    .select('id, category, title, tier, base_points, goal, measure, active')
+    .select('id, category, title, tier, base_points, goal, measure, mode, active')
     .eq('id', templateId).maybeSingle();
   if (!tmpl || tmpl.active === false) return json({ error: 'Unknown or inactive template' }, 404);
-  const rule = templateRule(tmpl.category, tmpl.measure || {});
+  const isPooled = tmpl.mode === 'pooled';
+  const rule = isPooled ? pooledRule(tmpl.category, tmpl.measure || {}) : templateRule(tmpl.category, tmpl.measure || {});
 
   // 3. Only ACCEPTED friends are invitable.
   const { data: edges } = await supabase
@@ -97,8 +98,12 @@ Deno.serve(async (req) => {
     .from('shared_challenges')
     .insert({
       creator_id: user.id,
-      kind: 'parallel',
-      template: { id: tmpl.id, category: tmpl.category, title: tmpl.title, tier: tmpl.tier, goal: tmpl.goal, base_points: tmpl.base_points, measure: tmpl.measure },
+      kind: isPooled ? 'pooled' : 'parallel',
+      template: {
+        id: tmpl.id, category: tmpl.category, title: tmpl.title, tier: tmpl.tier,
+        goal: tmpl.goal, base_points: tmpl.base_points, measure: tmpl.measure, mode: tmpl.mode,
+        ...(isPooled ? { pool: { target: rule.target, unit: (rule as any).unit } } : {}),
+      },
       rule,
       category: tmpl.category,
       base_points: tmpl.base_points,
