@@ -33,6 +33,22 @@ function CatIcon({ spec, size, color }: { spec: IconSpec; size: number; color: s
 
 const MAX_VISIBLE_AVATARS = 5;
 
+/** Compact number for pool readouts (12,300 → "12.3k"). */
+function fmtNum(n: number): string {
+  if (n >= 1000) return `${(n / 1000).toFixed(n % 1000 === 0 ? 0 : 1)}k`;
+  return String(Math.round(n));
+}
+
+/** "X / Y unit" for a pooled total, converting metres → km/mi for distance pools. */
+function poolText(pool: { target: number; total: number; unit: string }): string {
+  if (pool.unit === 'km' || pool.unit === 'mi') {
+    const div = pool.unit === 'mi' ? 1609.34 : 1000;
+    return `${(pool.total / div).toFixed(1)} / ${Math.round(pool.target / div)} ${pool.unit}`;
+  }
+  if (pool.unit === 'steps') return `${fmtNum(pool.total)} / ${fmtNum(pool.target)} steps`;
+  return `${Math.round(pool.total)} / ${Math.round(pool.target)} ${pool.unit}`;
+}
+
 export interface SharedChallengeCardProps {
   challenge: SharedChallenge;
   /** Stagger index for the mount entry animation. */
@@ -62,6 +78,9 @@ export function SharedChallengeCard({ challenge, index = 0, atCap = false, onPre
   const isPendingInvite = self?.state === 'invited';
   const selfPct = Math.round(Math.min(self?.progress ?? 0, 1) * 100);
   const selfDone = !!self?.completed;
+  // Pooled (type B): the bar shows the SHARED pool fraction (server sets every
+  // participant's progress to it), and the readout is the combined total.
+  const pooled = !!challenge.pool;
 
   // Timer rule: the clock only runs once EVERYONE has accepted. While anyone's
   // invite is outstanding the challenge is "forming" — no countdown yet.
@@ -153,11 +172,11 @@ export function SharedChallengeCard({ challenge, index = 0, atCap = false, onPre
             <View style={styles.progressBlock}>
               <View style={styles.progressMeta}>
                 <Text style={styles.progressLabel} numberOfLines={1}>
-                  {forming ? waitingLabel : selfDone ? 'You finished' : 'Your part'}
+                  {forming ? waitingLabel : pooled ? 'Group total' : selfDone ? 'You finished' : 'Your part'}
                 </Text>
                 {!forming && (
                   <Text style={[styles.progressPct, selfDone && { color: GREEN }]}>
-                    {selfDone ? '✓' : `${selfPct}%`}
+                    {pooled ? poolText(challenge.pool!) : selfDone ? '✓' : `${selfPct}%`}
                   </Text>
                 )}
               </View>

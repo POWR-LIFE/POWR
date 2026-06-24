@@ -39,10 +39,12 @@ export type ParticipantState = 'invited' | 'accepted' | 'declined' | 'completed'
 export interface Participant {
   friend: Friend;
   state: ParticipantState;
-  /** 0–1 progress toward their own part of the goal. */
+  /** 0–1 progress. For 'parallel' this is toward their own goal; for 'pooled' it mirrors the shared pool fraction. */
   progress: number;
   /** Did they individually finish? (drives the co-completer bonus). */
   completed: boolean;
+  /** Pooled (type B) only: this person's raw contribution toward the shared total. */
+  contribution?: number;
   /** True for the signed-in user's own row. */
   isSelf?: boolean;
 }
@@ -76,4 +78,10 @@ export interface SharedChallenge {
   durationHours?: number;
   /** Set when this is a pending invite the user hasn't answered yet. */
   pendingInviteFromName?: string;
+  /**
+   * Pooled (type B) challenges only: the shared combined goal. `total` is the sum
+   * of every participant's `contribution`; the group wins when `total >= target`.
+   * `unit` is the display unit ('steps' | 'km' | 'check-ins' | 'sessions' | …).
+   */
+  pool?: { target: number; total: number; unit: string };
 }

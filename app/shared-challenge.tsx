@@ -34,6 +34,18 @@ function CatIcon({ spec, size, color }: { spec: IconSpec; size: number; color: s
   return <Ionicons name={spec.name as any} size={size} color={color} />;
 }
 
+type Pool = NonNullable<SharedChallenge['pool']>;
+
+/** Compact value for pool readouts: steps "42k", distance "5.0 km", counts "3". */
+function fmtPoolValue(v: number, unit: string): string {
+  if (unit === 'km' || unit === 'mi') return `${(v / (unit === 'mi' ? 1609.34 : 1000)).toFixed(1)} ${unit}`;
+  if (unit === 'steps') return v >= 1000 ? `${(v / 1000).toFixed(1)}k` : `${Math.round(v)}`;
+  return `${Math.round(v)}`;
+}
+function poolHeadline(pool: Pool): string {
+  return `${fmtPoolValue(pool.total, pool.unit)} / ${fmtPoolValue(pool.target, pool.unit)}${pool.unit === 'steps' ? ' steps' : ''}`;
+}
+
 function StatePill({ p }: { p: Participant }) {
   if (p.completed) return <Text style={[styles.statePill, { color: GREEN }]}>Done</Text>;
   if (p.state === 'invited') return <Text style={[styles.statePill, { color: MUTED }]}>Invited</Text>;
@@ -41,7 +53,7 @@ function StatePill({ p }: { p: Participant }) {
   return <Text style={[styles.statePill, { color: GOLD }]}>{Math.round(p.progress * 100)}%</Text>;
 }
 
-function ParticipantRow({ p }: { p: Participant }) {
+function ParticipantRow({ p, pool }: { p: Participant; pool?: Pool }) {
   return (
     <View style={styles.pRow}>
       <Avatar friend={p.friend} size={40} completed={p.completed} pending={p.state === 'invited'} />
@@ -50,16 +62,24 @@ function ParticipantRow({ p }: { p: Participant }) {
           <Text style={styles.pName}>
             {p.isSelf ? 'You' : p.friend.displayName}
           </Text>
-          <StatePill p={p} />
+          {pool ? (
+            <Text style={[styles.statePill, { color: (p.contribution ?? 0) > 0 ? GOLD : MUTED }]}>
+              {p.state === 'invited' ? 'Invited' : fmtPoolValue(p.contribution ?? 0, pool.unit)}
+            </Text>
+          ) : (
+            <StatePill p={p} />
+          )}
         </View>
-        <View style={styles.track}>
-          <View
-            style={[
-              styles.fill,
-              { width: `${Math.round(Math.min(p.progress, 1) * 100)}%`, backgroundColor: p.completed ? GREEN : GOLD },
-            ]}
-          />
-        </View>
+        {!pool && (
+          <View style={styles.track}>
+            <View
+              style={[
+                styles.fill,
+                { width: `${Math.round(Math.min(p.progress, 1) * 100)}%`, backgroundColor: p.completed ? GREEN : GOLD },
+              ]}
+            />
+          </View>
+        )}
       </View>
     </View>
   );
@@ -105,6 +125,9 @@ export default function SharedChallengeDetail() {
   }
 
   const { template, participants } = challenge;
+  const pool = challenge.pool;
+  const pooled = !!pool;
+  const poolPct = pool && pool.target > 0 ? Math.min(1, pool.total / pool.target) : 0;
   const self = participants.find((p) => p.isSelf);
   const others = participants.filter((p) => !p.isSelf);
   const accepted = participants.filter((p) => p.state !== 'invited' && p.state !== 'declined');
@@ -178,7 +201,27 @@ export default function SharedChallengeDetail() {
           </View>
         </View>
 
-        {/* Bonus breakdown */}
+        {/* Pooled: shared combined-total progress (replaces the per-you bonus card) */}
+        {pooled && pool && (
+          <View style={styles.bonusCard}>
+            <View style={styles.pNameRow}>
+              <Text style={styles.sectionLabel}>GROUP TOTAL</Text>
+              <Text style={[styles.poolPctText, poolPct >= 1 && { color: GREEN }]}>{Math.round(poolPct * 100)}%</Text>
+            </View>
+            <Text style={styles.poolHeadline}>{poolHeadline(pool)}</Text>
+            <View style={styles.track}>
+              <View style={[styles.fill, { width: `${Math.round(poolPct * 100)}%` }, poolPct >= 1 && { backgroundColor: GREEN }]} />
+            </View>
+            <Text style={styles.bonusHint}>
+              {poolPct >= 1
+                ? `Target smashed — everyone who chipped in earns +${template.basePoints}${maxBonusForGroup(accepted.length, bonusConfig) > 0 ? ` plus up to +${maxBonusForGroup(accepted.length, bonusConfig)} bonus` : ''}.`
+                : `Add to the total to win. Everyone who contributes earns +${template.basePoints}, and the bonus grows with each friend who chips in — up to +${maxBonusForGroup(accepted.length, bonusConfig)}.`}
+            </Text>
+          </View>
+        )}
+
+        {/* Bonus breakdown (solo co-op only) */}
+        {!pooled && (
         <View style={styles.bonusCard}>
           <Text style={styles.sectionLabel}>YOUR POINTS</Text>
           <View style={styles.bonusMath}>
@@ -204,19 +247,26 @@ export default function SharedChallengeDetail() {
             {potential > current.total ? ` Up to ${potential} if everyone finishes.` : ''}
           </Text>
         </View>
+        )}
 
         {/* Participants */}
         <View style={styles.listCard}>
           <View style={styles.listHeader}>
-            <Text style={styles.sectionLabel}>PARTICIPANTS</Text>
+            <Text style={styles.sectionLabel}>{pooled ? 'CONTRIBUTORS' : 'PARTICIPANTS'}</Text>
             <Text style={styles.listCount}>
-              <Text style={{ color: GREEN, fontFamily: fontFamily.semiBold }}>{finished.length}</Text>
-              <Text> of {accepted.length} done</Text>
+              {pooled ? (
+                <Text>{accepted.length} in</Text>
+              ) : (
+                <>
+                  <Text style={{ color: GREEN, fontFamily: fontFamily.semiBold }}>{finished.length}</Text>
+                  <Text> of {accepted.length} done</Text>
+                </>
+              )}
             </Text>
           </View>
           <View style={{ gap: 14, marginTop: 12 }}>
             {sorted.map((p) => (
-              <ParticipantRow key={p.friend.id} p={p} />
+              <ParticipantRow key={p.friend.id} p={p} pool={pool} />
             ))}
           </View>
         </View>
@@ -317,6 +367,8 @@ const styles = StyleSheet.create({
   bonusColLabel: { fontFamily: fontFamily.medium, fontSize: 9, letterSpacing: 1.5, color: FAINT, textTransform: 'uppercase' },
   bonusPlus: { fontFamily: fontFamily.extraLight, fontSize: 22, color: MUTED, paddingHorizontal: 4 },
   bonusHint: { fontFamily: fontFamily.light, fontSize: 12, color: SECONDARY, lineHeight: 18, textAlign: 'center' },
+  poolHeadline: { fontFamily: fontFamily.extraLight, fontSize: 30, color: GOLD, letterSpacing: -0.5 },
+  poolPctText: { fontFamily: fontFamily.semiBold, fontSize: 13, color: GOLD },
 
   // participant list
   listCard: { backgroundColor: CARD_BG, borderRadius: 18, borderWidth: 1, borderColor: BORDER, padding: 18 },

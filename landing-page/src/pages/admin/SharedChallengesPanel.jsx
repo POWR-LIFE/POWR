@@ -20,13 +20,13 @@ const dbToDraft = (row) => {
     id: row.id, category: row.category, title: row.title, tier: row.tier,
     basePoints: row.base_points, measure: m.measure, target: m.target,
     unit: m.unit ?? null, days: m.days ?? null, window: m.window ?? null,
-    goal: row.goal, active: row.active, sort_order: row.sort_order,
+    mode: row.mode ?? 'solo', goal: row.goal, active: row.active, sort_order: row.sort_order,
   };
 };
 const draftToDb = (d, goal) => ({
   category: d.category, title: d.title.trim(), tier: d.tier, base_points: d.basePoints,
   goal, measure: { measure: d.measure, target: d.target, unit: d.unit ?? null, days: d.days ?? null, window: d.window ?? null },
-  active: d.active ?? true,
+  mode: d.mode ?? 'solo', active: d.active ?? true,
 });
 
 // ── Group-size bonus (mirror of app lib/social/bonus.ts §6a) ──────────────────
@@ -129,6 +129,24 @@ function goalText(d) {
 	}
 }
 
+// Pooled (combined-total) goal string — describes the GROUP target.
+function poolGoalText(d) {
+	const m = measureCfg(d.category, d.measure);
+	const v = d.target;
+	if (m.distance) return `Together: ${v}${d.unit || 'km'} ${d.category === 'running' ? 'running' : 'cycling'}`;
+	switch (m.id) {
+		case 'checkins':   return `Together: ${v} gym check-ins`;
+		case 'steps_week':
+		case 'steps_day':  return `Together: ${v.toLocaleString()} steps`;
+		case 'runs':       return `Together: ${v} runs`;
+		case 'rides':      return `Together: ${v} rides`;
+		case 'sessions':   return `Together: ${v} sessions`;
+		default:           return `Together: ${v} ${m.unit || ''}`.trim();
+	}
+}
+/** Goal string for either mode — solo (per-person) or pooled (combined). */
+const goalTextFor = (d) => (d.mode === 'pooled' ? poolGoalText(d) : goalText(d));
+
 // ── Numeric stepper ───────────────────────────────────────────────────────────
 function Stepper({ value, onChange, step = 5, min = 0, max = 999, suffix, format, minWidth = 64 }) {
 	const shown = format ? format(value) : value;
@@ -200,6 +218,31 @@ function TemplateEditor({ draft, setDraft, onSave, onClose }) {
 										}`}
 									>
 										<span className="text-sm leading-none">{CAT_ICON[c.id]}</span>{c.label}
+									</button>
+								);
+							})}
+						</div>
+					</div>
+
+					{/* Type — solo co-op (each hits the goal) vs pooled (combined total) */}
+					<div className="flex flex-col gap-2">
+						<span className="text-[10px] uppercase tracking-[0.35em] text-[#BBBBBB] font-black">Type</span>
+						<div className="flex gap-2">
+							{[
+								{ id: 'solo', label: 'Solo', sub: 'Each hits the goal' },
+								{ id: 'pooled', label: 'Pooled', sub: 'Combined total' },
+							].map((opt) => {
+								const on = (draft.mode ?? 'solo') === opt.id;
+								return (
+									<button
+										key={opt.id}
+										onClick={() => set({ mode: opt.id })}
+										className={`flex-1 rounded-xl border px-4 py-3 text-left transition-all ${
+											on ? 'border-[#E8D200] bg-[#E8D200] text-[#0a0a0a]' : 'border-[#E6E6E1] bg-[#F4F4F1] text-[#666666] hover:border-[#E8D200]/40'
+										}`}
+									>
+										<div className="text-sm font-medium">{opt.label}</div>
+										<div className={`text-[11px] ${on ? 'text-[#0a0a0a]/70' : 'text-[#AAAAAA]'}`}>{opt.sub}</div>
 									</button>
 								);
 							})}
@@ -301,7 +344,7 @@ function TemplateEditor({ draft, setDraft, onSave, onClose }) {
 						{/* Generated goal preview */}
 						<div className="flex items-center gap-2 mt-1">
 							<span className="text-[10px] uppercase tracking-[0.3em] text-[#BBBBBB] font-black">Shows as</span>
-							<span className="text-sm text-[#1A1A1A]">“{goalText(draft)}”</span>
+							<span className="text-sm text-[#1A1A1A]">“{goalTextFor(draft)}”</span>
 						</div>
 					</div>
 
@@ -404,10 +447,10 @@ export default function SharedChallengesPanel() {
 	};
 
 	const openNew = () =>
-		setDraft({ id: '', category: 'gym', title: '', tier: 'easy', basePoints: 25, active: true, ...measureDefaults('gym') });
+		setDraft({ id: '', category: 'gym', title: '', tier: 'easy', basePoints: 25, active: true, mode: 'solo', ...measureDefaults('gym') });
 
 	const saveTemplate = async (t) => {
-		const goal = goalText(t);
+		const goal = goalTextFor(t);
 		const row = draftToDb(t, goal);
 		if (t.id) {
 			const { error } = await supabase.from('shared_challenge_templates')
@@ -550,6 +593,9 @@ export default function SharedChallengesPanel() {
 							<div className="text-[13px] text-[#999999] truncate">{t.goal}</div>
 							<div className="flex items-center gap-3 mt-1.5">
 								<span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[9px] font-black uppercase tracking-[0.25em] ${TIER_BG[t.tier]}`}>{t.tier}</span>
+								{t.mode === 'pooled' && (
+									<span className="inline-flex items-center rounded-full border border-[#E8D200]/30 bg-[#E8D200]/10 px-2.5 py-0.5 text-[9px] font-black uppercase tracking-[0.25em] text-[#8a7600]">Pooled</span>
+								)}
 								<span className="text-[12px] text-[#8a7600]">+{t.basePoints} pts</span>
 							</div>
 						</div>

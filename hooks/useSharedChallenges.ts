@@ -93,11 +93,22 @@ function mapChallengeRow(row: any): SharedChallenge {
     state: p.state,
     progress: Number(p.progress) || 0,
     completed: !!p.completed,
+    contribution: Number(p.contribution) || 0,
     isSelf: !!p.is_self,
   }));
   const self = participants.find((p) => p.isSelf);
   const creator = participants.find((p) => p.friend.id === row.creator_id);
   const tmpl = row.template ?? {};
+
+  // Pooled (type B): contributions sum toward one shared target.
+  const isPooled = row.kind === 'pooled';
+  const pool = isPooled && tmpl.pool
+    ? {
+        target: Number(tmpl.pool.target) || 0,
+        total: participants.reduce((a, p) => a + (p.contribution ?? 0), 0),
+        unit: tmpl.pool.unit ?? '',
+      }
+    : undefined;
 
   return {
     id: row.id,
@@ -123,6 +134,7 @@ function mapChallengeRow(row: any): SharedChallenge {
     durationHours: row.duration_hours,
     pendingInviteFromName:
       self?.state === 'invited' ? creator?.friend.displayName ?? 'A friend' : undefined,
+    pool,
   };
 }
 
