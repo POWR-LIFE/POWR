@@ -1,6 +1,33 @@
-import React, { useState } from 'react';
-import { Flame, Minus, Pencil, Plus, Trash2, X, Zap } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Clock, Flame, Minus, Pencil, Plus, Trash2, X, Zap } from 'lucide-react';
 import { useToast } from '../../lib/toast';
+import { supabase } from '../../lib/supabase';
+
+// Run-length presets the admin can enable for the create sheet's "How long" menu.
+const DURATION_PRESETS = [
+  { label: '24h', hours: 24 },
+  { label: '48h', hours: 48 },
+  { label: '3 days', hours: 72 },
+  { label: '5 days', hours: 120 },
+  { label: '1 week', hours: 168 },
+  { label: '2 weeks', hours: 336 },
+];
+
+// DB row (snake_case + measure jsonb) ↔ the flat draft the editor works with.
+const dbToDraft = (row) => {
+  const m = row.measure ?? {};
+  return {
+    id: row.id, category: row.category, title: row.title, tier: row.tier,
+    basePoints: row.base_points, measure: m.measure, target: m.target,
+    unit: m.unit ?? null, days: m.days ?? null, window: m.window ?? null,
+    goal: row.goal, active: row.active, sort_order: row.sort_order,
+  };
+};
+const draftToDb = (d, goal) => ({
+  category: d.category, title: d.title.trim(), tier: d.tier, base_points: d.basePoints,
+  goal, measure: { measure: d.measure, target: d.target, unit: d.unit ?? null, days: d.days ?? null, window: d.window ?? null },
+  active: d.active ?? true,
+});
 
 // ── Group-size bonus (mirror of app lib/social/bonus.ts §6a) ──────────────────
 // base + min(maxBonus, perHead × co-completers). Keep in sync with the app +
@@ -101,15 +128,6 @@ function goalText(d) {
 		default:           return `${v} ${m.unit}`;
 	}
 }
-
-// Seed presets (mock — swap for a shared_challenge_templates table later).
-const SEED = [
-	{ id: 'gym-back-again', category: 'gym',     title: 'Back Again', tier: 'easy',   basePoints: 25, measure: 'checkins',   target: 3,     unit: null, days: null },
-	{ id: 'walk-10k-days',  category: 'walking', title: '10K Days',   tier: 'medium', basePoints: 40, measure: 'steps_day',  target: 10000, unit: null, days: 4 },
-	{ id: 'run-just-run',   category: 'running', title: 'Just Run',   tier: 'easy',   basePoints: 15, measure: 'runs',       target: 1,     unit: null, days: null },
-	{ id: 'gym-4-from-7',   category: 'gym',     title: '4 From 7',   tier: 'medium', basePoints: 40, measure: 'checkins',   target: 4,     unit: null, days: null },
-	{ id: 'walk-35k-week',  category: 'walking', title: '35K Week',   tier: 'medium', basePoints: 45, measure: 'steps_week', target: 35000, unit: null, days: null },
-].map((t) => ({ ...t, goal: goalText(t) }));
 
 // ── Numeric stepper ───────────────────────────────────────────────────────────
 function Stepper({ value, onChange, step = 5, min = 0, max = 999, suffix, format, minWidth = 64 }) {
@@ -331,24 +349,92 @@ function TemplateEditor({ draft, setDraft, onSave, onClose }) {
 export default function SharedChallengesPanel() {
 	const toast = useToast();
 	const [bonus, setBonus] = useState({ ...BONUS_DEFAULTS });
-	const [templates, setTemplates] = useState(SEED);
+	const [timer, setTimer] = useState({ durationOptions: [48, 72, 168], defaultDurationHours: 72, acceptWindowHours: 48, challengeCap: 3 });
+	const [templates, setTemplates] = useState([]);
 	const [draft, setDraft] = useState(null);
+	const [loading, setLoading] = useState(true);
 
 	const activeCount = templates.filter((t) => t.active).length;
 	const sampleBonus = groupBonus(6, bonus);
 	const sampleTotal = 30 + sampleBonus;
 
+	// ── Load config + templates ──
+	useEffect(() => { load(); }, []);
+	async function load() {
+		const [{ data: cfg }, { data: tmpls, error: tErr }] = await Promise.all([
+			supabase.from('shared_challenge_config').select('*').eq('id', 1).maybeSingle(),
+			supabase.from('shared_challenge_templates').select('*').order('sort_order', { ascending: true }),
+		]);
+		if (cfg) {
+			setBonus({ perHead: cfg.per_head, maxBonus: cfg.max_bonus });
+			setTimer({
+				durationOptions: Array.isArray(cfg.duration_options) ? cfg.duration_options : [48, 72, 168],
+				defaultDurationHours: cfg.default_duration_hours,
+				acceptWindowHours: cfg.accept_window_hours,
+				challengeCap: cfg.challenge_cap,
+			});
+		}
+		if (!tErr && tmpls) setTemplates(tmpls.map(dbToDraft));
+		setLoading(false);
+	}
+
+	// Write a partial config update (DB column names). Local state is updated by the caller.
+	async function patchConfig(partial) {
+		const { error } = await supabase
+			.from('shared_challenge_config')
+			.update({ ...partial, updated_at: new Date().toISOString() })
+			.eq('id', 1);
+		if (error) toast.error('Could not save config');
+	}
+
+	// ── Timer config helpers ──
+	const toggleDuration = (hours) => {
+		setTimer((t) => {
+			let opts = t.durationOptions.includes(hours)
+				? t.durationOptions.filter((h) => h !== hours)
+				: [...t.durationOptions, hours].sort((a, b) => a - b);
+			if (opts.length === 0) return t; // keep at least one
+			let def = opts.includes(t.defaultDurationHours) ? t.defaultDurationHours : opts[0];
+			patchConfig({ duration_options: opts, default_duration_hours: def });
+			return { ...t, durationOptions: opts, defaultDurationHours: def };
+		});
+	};
+	const setDefaultDuration = (hours) => {
+		setTimer((t) => { patchConfig({ default_duration_hours: hours }); return { ...t, defaultDurationHours: hours }; });
+	};
+
 	const openNew = () =>
 		setDraft({ id: '', category: 'gym', title: '', tier: 'easy', basePoints: 25, active: true, ...measureDefaults('gym') });
 
-	const saveTemplate = (t) => {
-		const saved = { ...t, goal: goalText(t) };
-		setTemplates((prev) => (saved.id ? prev.map((x) => (x.id === saved.id ? saved : x)) : [{ ...saved, id: `tmpl-${Date.now()}` }, ...prev]));
+	const saveTemplate = async (t) => {
+		const goal = goalText(t);
+		const row = draftToDb(t, goal);
+		if (t.id) {
+			const { error } = await supabase.from('shared_challenge_templates')
+				.update({ ...row, updated_at: new Date().toISOString() }).eq('id', t.id);
+			if (error) return toast.error('Update failed');
+		} else {
+			const sort_order = (templates.reduce((m, x) => Math.max(m, x.sort_order ?? 0), 0)) + 1;
+			const { error } = await supabase.from('shared_challenge_templates').insert({ ...row, sort_order });
+			if (error) return toast.error('Add failed');
+		}
 		setDraft(null);
 		toast.success(t.id ? 'Template updated' : 'Template added');
+		load();
 	};
-	const removeTemplate = (id) => { setTemplates((prev) => prev.filter((t) => t.id !== id)); toast.success('Template removed'); };
-	const toggleActive = (id) => setTemplates((prev) => prev.map((t) => (t.id === id ? { ...t, active: !t.active } : t)));
+	const removeTemplate = async (id) => {
+		const { error } = await supabase.from('shared_challenge_templates').delete().eq('id', id);
+		if (error) return toast.error('Remove failed');
+		setTemplates((prev) => prev.filter((t) => t.id !== id));
+		toast.success('Template removed');
+	};
+	const toggleActive = async (id) => {
+		const t = templates.find((x) => x.id === id);
+		if (!t) return;
+		setTemplates((prev) => prev.map((x) => (x.id === id ? { ...x, active: !x.active } : x)));
+		const { error } = await supabase.from('shared_challenge_templates').update({ active: !t.active }).eq('id', id);
+		if (error) { toast.error('Save failed'); load(); }
+	};
 
 	return (
 		<div>
@@ -366,14 +452,14 @@ export default function SharedChallengesPanel() {
 						<div className="text-base font-light text-[#1A1A1A]">Points per friend</div>
 						<div className="text-[11px] text-[#AAAAAA] mt-0.5">Added for each co-completer</div>
 					</div>
-					<Stepper value={bonus.perHead} onChange={(v) => setBonus((b) => ({ ...b, perHead: v }))} step={1} min={0} max={50} />
+					<Stepper value={bonus.perHead} onChange={(v) => { setBonus((b) => ({ ...b, perHead: v })); patchConfig({ per_head: v }); }} step={1} min={0} max={50} />
 				</div>
 				<div className="flex items-center justify-between px-8 py-6 border-t border-[#EFEFEC]">
 					<div>
 						<div className="text-base font-light text-[#1A1A1A]">Max bonus</div>
 						<div className="text-[11px] text-[#AAAAAA] mt-0.5">Hard cap on the total bonus</div>
 					</div>
-					<Stepper value={bonus.maxBonus} onChange={(v) => setBonus((b) => ({ ...b, maxBonus: v }))} step={5} min={0} max={200} />
+					<Stepper value={bonus.maxBonus} onChange={(v) => { setBonus((b) => ({ ...b, maxBonus: v })); patchConfig({ max_bonus: v }); }} step={5} min={0} max={200} />
 				</div>
 				<div className="flex items-center gap-2 px-8 py-5 bg-[#E8D200]/[0.06] border-t border-[#EFEFEC]">
 					<Zap size={14} className="text-[#8a7600]" />
@@ -381,6 +467,58 @@ export default function SharedChallengesPanel() {
 						Example: base 30 + finish with 6 friends = <strong className="text-[#8a7600] font-semibold">{sampleTotal} pts</strong>
 						<span className="text-[#BBBBBB]"> (+{sampleBonus} bonus)</span>
 					</span>
+				</div>
+			</div>
+
+			{/* ── Timer config ── */}
+			<div className="mb-6">
+				<span className="text-[10px] uppercase tracking-[0.5em] text-[#999999] font-black flex items-center gap-2">
+					<Clock size={12} /> Timer
+				</span>
+				<p className="text-[11px] text-[#AAAAAA] mt-2 max-w-2xl">
+					The clock starts once everyone accepts. Choose which run lengths members can pick, the default, the accept window, and how many challenges someone can run at once.
+				</p>
+			</div>
+
+			<div className="rounded-3xl border border-[#E6E6E1] bg-white overflow-hidden mb-12">
+				<div className="px-8 py-6">
+					<div className="text-base font-light text-[#1A1A1A] mb-1">Run-length options</div>
+					<div className="text-[11px] text-[#AAAAAA] mb-4">Tap a default below; toggle which are offered.</div>
+					<div className="flex flex-wrap gap-2">
+						{DURATION_PRESETS.map((d) => {
+							const on = timer.durationOptions.includes(d.hours);
+							const isDefault = timer.defaultDurationHours === d.hours;
+							return (
+								<button
+									key={d.hours}
+									onClick={() => (on ? setDefaultDuration(d.hours) : toggleDuration(d.hours))}
+									onDoubleClick={() => toggleDuration(d.hours)}
+									title={on ? 'Click: make default · Double-click: remove' : 'Click: enable'}
+									className={`rounded-full border px-4 py-2 text-xs font-medium transition-all ${
+										isDefault ? 'border-[#E8D200] bg-[#E8D200] text-[#0a0a0a]'
+										: on ? 'border-[#E8D200]/40 bg-[#E8D200]/10 text-[#8a7600]'
+										: 'border-[#E6E6E1] bg-[#F4F4F1] text-[#999999] hover:border-[#E8D200]/40'
+									}`}
+								>
+									{d.label}{isDefault ? ' · default' : ''}
+								</button>
+							);
+						})}
+					</div>
+				</div>
+				<div className="flex items-center justify-between px-8 py-6 border-t border-[#EFEFEC]">
+					<div>
+						<div className="text-base font-light text-[#1A1A1A]">Accept window</div>
+						<div className="text-[11px] text-[#AAAAAA] mt-0.5">How long invitees have to respond (hours)</div>
+					</div>
+					<Stepper value={timer.acceptWindowHours} onChange={(v) => { setTimer((t) => ({ ...t, acceptWindowHours: v })); patchConfig({ accept_window_hours: v }); }} step={12} min={12} max={168} suffix="h" />
+				</div>
+				<div className="flex items-center justify-between px-8 py-6 border-t border-[#EFEFEC]">
+					<div>
+						<div className="text-base font-light text-[#1A1A1A]">Concurrency cap</div>
+						<div className="text-[11px] text-[#AAAAAA] mt-0.5">Max challenges a member can run at once</div>
+					</div>
+					<Stepper value={timer.challengeCap} onChange={(v) => { setTimer((t) => ({ ...t, challengeCap: v })); patchConfig({ challenge_cap: v }); }} step={1} min={1} max={10} />
 				</div>
 			</div>
 
