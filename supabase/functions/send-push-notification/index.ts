@@ -17,16 +17,19 @@ type NotificationType =
   | 'friend_request'
   | 'friend_accepted'
   | 'challenge_invite'
+  | 'challenge_accepted'
   | 'challenge_started'
   | 'challenge_friend_finished'
+  | 'challenge_pool_milestone'
   | 'challenge_completed'
   | 'challenge_expiring';
 
 // The together feature has a master opt-out (user_metadata.together_enabled).
 // These types are suppressed entirely when a user has turned it off.
 const TOGETHER_TYPES: NotificationType[] = [
-  'friend_request', 'friend_accepted', 'challenge_invite', 'challenge_started',
-  'challenge_friend_finished', 'challenge_completed', 'challenge_expiring',
+  'friend_request', 'friend_accepted', 'challenge_invite', 'challenge_accepted',
+  'challenge_started', 'challenge_friend_finished', 'challenge_pool_milestone',
+  'challenge_completed', 'challenge_expiring',
 ];
 
 interface RequestBody {
@@ -249,6 +252,21 @@ function buildMessage(
         };
       }
 
+      case 'challenge_accepted': {
+        const name = (payload.from_name as string) || 'A friend';
+        const title = (payload.title as string) || 'your challenge';
+        const accepted = Math.max(0, Math.round(Number(payload.accepted_count ?? 0)));
+        const total = Math.max(0, Math.round(Number(payload.total_count ?? 0)));
+        const tail = accepted > 0 && total > 0 ? ` — ${accepted} of ${total} in so far.` : '';
+        return {
+          title: `${name} is in 🤜🤛`,
+          body: `${name} accepted "${title}".${tail}`,
+          data: { type, route: `/shared-challenge?id=${payload.challenge_id}`, challenge_id: payload.challenge_id },
+          sound: 'default',
+          channelId: 'powr_default_v2',
+        };
+      }
+
       case 'challenge_started': {
         const title = (payload.title as string) || 'Your challenge';
         return {
@@ -267,6 +285,24 @@ function buildMessage(
         return {
           title: `${name} finished their part 💪`,
           body: `They're done with "${title}". Finish yours to lock in the group bonus.`,
+          data: { type, route: `/shared-challenge?id=${payload.challenge_id}`, challenge_id: payload.challenge_id },
+          sound: 'default',
+          channelId: 'powr_default_v2',
+        };
+      }
+
+      case 'challenge_pool_milestone': {
+        const title = (payload.title as string) || 'your challenge';
+        const pct = Number(payload.pct ?? 50);
+        const remaining = Math.max(0, Number(payload.remaining ?? 0));
+        const unit = ((payload.unit as string) || '').trim();
+        const remainStr = `${remaining.toLocaleString()}${unit ? ` ${unit}` : ''}`.trim();
+        const nearlyThere = pct >= 80;
+        return {
+          title: nearlyThere ? 'Almost there 🔥' : 'Halfway there 🏁',
+          body: nearlyThere
+            ? `Your group's nearly cracked "${title}" — just ${remainStr} left in the pool.`
+            : `Your group's hit ${pct}% of "${title}" — ${remainStr} to go together.`,
           data: { type, route: `/shared-challenge?id=${payload.challenge_id}`, challenge_id: payload.challenge_id },
           sound: 'default',
           channelId: 'powr_default_v2',

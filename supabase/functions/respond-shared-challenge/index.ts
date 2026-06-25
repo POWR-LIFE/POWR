@@ -9,6 +9,7 @@
 //             challenge if it falls below 2 live members.
 import { createClient } from '@supabase/supabase-js';
 import { tryStartForming } from '../_shared/sharedChallengeLifecycle.ts';
+import { notifyPush } from '../_shared/notify.ts';
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -25,6 +26,39 @@ async function openCount(supabase: any, userId: string): Promise<number> {
     .eq('completed', false)
     .in('shared_challenges.status', ['forming', 'active']);
   return data?.length ?? 0;
+}
+
+/**
+ * Tell everyone already in (creator + accepted members) that a friend just
+ * accepted. Only called while the challenge is still FORMING — once it starts,
+ * challenge_started reaches all of them and would otherwise double up.
+ */
+async function notifyAccepted(supabase: any, challengeId: string, accepterId: string) {
+  const { data: ch } = await supabase
+    .from('shared_challenges').select('template').eq('id', challengeId).maybeSingle();
+  const title = ch?.template?.title ?? 'your challenge';
+
+  const { data: parts } = await supabase
+    .from('shared_challenge_participants')
+    .select('user_id, state')
+    .eq('challenge_id', challengeId);
+  const live = (parts ?? []).filter((p: any) => p.state !== 'declined' && p.state !== 'left');
+  const accepted = live.filter((p: any) => p.state === 'accepted' || p.state === 'completed');
+
+  const { data: prof } = await supabase
+    .from('profiles').select('username, display_name').eq('id', accepterId).maybeSingle();
+  const name = prof?.display_name || prof?.username || 'A friend';
+
+  for (const p of accepted) {
+    if (p.user_id === accepterId) continue; // don't ping the person who just accepted
+    await notifyPush(p.user_id, 'challenge_accepted', {
+      challenge_id: challengeId,
+      from_name: name,
+      title,
+      accepted_count: accepted.length,
+      total_count: live.length,
+    });
+  }
 }
 
 /** If a forming challenge dropped below 2 live members, cancel it. */
@@ -85,6 +119,10 @@ Deno.serve(async (req) => {
         .update({ state: 'accepted', joined_at: new Date().toISOString() })
         .eq('challenge_id', challenge_id).eq('user_id', user.id);
       const outcome = await tryStartForming(supabase, challenge_id);
+      // If it didn't start (still waiting on other invitees), let everyone
+      // already in know this person joined. When it DID start, the
+      // challenge_started push already reached them — don't double up.
+      if (outcome === 'waiting') await notifyAccepted(supabase, challenge_id, user.id);
       return json({ ok: true, state: 'accepted', challenge: outcome });
     }
 

@@ -63,6 +63,38 @@ export async function evaluatePooledChallenge(supabase: any, challenge: any): Pr
   }
 
   if (!(target > 0 && poolTotal >= target)) {
+    // Mid-pool milestone nudge to the WHOLE group (50% / 80%), at most once per
+    // threshold. Claimed via a conditional `< milestone` bump so a client trigger
+    // and a cron tick can't both fire the same milestone.
+    const pct = target > 0 ? Math.floor((poolTotal / target) * 100) : 0;
+    const milestone = pct >= 80 ? 80 : pct >= 50 ? 50 : 0;
+    const prev = Number(challenge.pool_milestone_notified ?? 0);
+    if (milestone > prev) {
+      const { data: claimed } = await supabase
+        .from('shared_challenges')
+        .update({ pool_milestone_notified: milestone })
+        .eq('id', challenge.id)
+        .lt('pool_milestone_notified', milestone)
+        .select('id')
+        .maybeSingle();
+      if (claimed) {
+        const remainingBase = Math.max(0, target - poolTotal);
+        const remaining = rule.metric === 'distance_m'
+          ? Math.round((remainingBase / (rule.unit === 'mi' ? 1609.34 : 1000)) * 10) / 10
+          : rule.metric === 'steps'
+            ? Math.round(remainingBase)
+            : Math.ceil(remainingBase);
+        for (const p of parts ?? []) {
+          await notifyPush(p.user_id, 'challenge_pool_milestone', {
+            challenge_id: challenge.id,
+            title: challenge.template?.title ?? 'your challenge',
+            pct: milestone,
+            remaining,
+            unit: rule.unit ?? '',
+          });
+        }
+      }
+    }
     return { completed: false, newlyCompleted: false, poolTotal, target };
   }
 

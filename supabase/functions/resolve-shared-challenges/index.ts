@@ -44,7 +44,7 @@ Deno.serve(async (req) => {
   // ── 2–4. Active challenges ─────────────────────────────────────────────────
   const { data: active } = await supabase
     .from('shared_challenges')
-    .select('id, kind, rule, template, base_points, status, starts_at, ends_at, settled_at, utc_offset_minutes, bonus_per_head, bonus_max, expiring_notified')
+    .select('id, kind, rule, template, base_points, status, starts_at, ends_at, settled_at, utc_offset_minutes, bonus_per_head, bonus_max, expiring_notified, pool_milestone_notified')
     .eq('status', 'active');
 
   for (const ch of active ?? []) {

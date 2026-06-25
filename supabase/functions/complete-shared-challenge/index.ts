@@ -39,7 +39,7 @@ Deno.serve(async (req) => {
 
   const { data: challenge } = await supabase
     .from('shared_challenges')
-    .select('id, kind, rule, template, base_points, status, starts_at, ends_at, utc_offset_minutes, bonus_per_head, bonus_max')
+    .select('id, kind, rule, template, base_points, status, starts_at, ends_at, utc_offset_minutes, bonus_per_head, bonus_max, pool_milestone_notified')
     .eq('id', challenge_id)
     .maybeSingle();
   if (!challenge) return json({ error: 'Challenge not found' }, 404);
