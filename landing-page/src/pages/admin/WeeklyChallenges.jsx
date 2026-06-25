@@ -3,6 +3,7 @@ import { Activity, Check, ChevronDown, ChevronUp, Flag, RefreshCw, X } from 'luc
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
 import { useAuth } from '../../App';
+import SharedChallengesPanel from './SharedChallengesPanel';
 import {
 	CATALOG,
 	CATEGORY_META,
@@ -233,6 +234,9 @@ export default function WeeklyChallenges() {
 	const nextWeek = useMemo(() => nextWeekISO(), []);
 	const [selectedWeek, setSelectedWeek] = useState(thisWeek);
 
+	// Top-level mode: weekly rotation vs shared ("together") challenge templates
+	const [mode, setMode] = useState('weekly');
+
 	// ── Load ────────────────────────────────────────────────────────────────
 
 	const loadOverrides = useCallback(async () => {
@@ -339,13 +343,36 @@ export default function WeeklyChallenges() {
 					<span className="text-[10px] uppercase tracking-[0.5em] text-[#8a7600] font-black">Subsystem / Challenges</span>
 				</div>
 				<div>
-					<h1 className="text-6xl font-light tracking-tighter text-[#1A1A1A] mb-5">Weekly Challenges</h1>
+					<h1 className="text-6xl font-light tracking-tighter text-[#1A1A1A] mb-5">
+						{mode === 'weekly' ? 'Weekly Challenges' : 'Shared Challenges'}
+					</h1>
 					<p className="text-[#666666] text-[11px] max-w-2xl font-black uppercase tracking-[0.4em] leading-relaxed">
-						{totalActive} challenges auto-rotate weekly across {CATEGORY_ORDER.length} categories. Pin a specific challenge for any week to override the rotation.
+						{mode === 'weekly'
+							? `${totalActive} challenges auto-rotate weekly across ${CATEGORY_ORDER.length} categories. Pin a specific challenge for any week to override the rotation.`
+							: 'Curate the presets members pick when they take on a challenge with friends, and tune the group-size bonus.'}
 					</p>
+				</div>
+
+				{/* Mode toggle: Weekly rotation vs Shared templates */}
+				<div className="inline-flex items-center gap-1 p-1 rounded-full border border-[#E6E6E1] bg-white w-fit">
+					{[['weekly', 'Weekly'], ['shared', 'Shared']].map(([m, label]) => (
+						<button
+							key={m}
+							onClick={() => setMode(m)}
+							className={`h-10 px-7 rounded-full text-[10px] font-black uppercase tracking-[0.3em] transition-all ${
+								mode === m ? 'bg-[#E8D200] text-[#0a0a0a]' : 'text-[#999999] hover:text-[#666666]'
+							}`}
+						>
+							{label}
+						</button>
+					))}
 				</div>
 			</div>
 
+			{mode === 'shared' && <SharedChallengesPanel />}
+
+			{mode === 'weekly' && (
+			<>
 			{/* ── Stats ───────────────────────────────────────────────────── */}
 			<div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 mb-12">
 				{stats.map((item) => (
@@ -508,6 +535,8 @@ export default function WeeklyChallenges() {
 						</div>
 					</div>
 				</div>
+			)}
+			</>
 			)}
 		</div>
 	);

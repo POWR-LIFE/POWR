@@ -89,6 +89,8 @@ export interface PointTransaction {
     id: string;
     amount: number;
     type: 'earn' | 'redeem' | 'bonus' | 'streak' | 'penalty' | 'adjustment';
+    /** Origin of the row, e.g. 'shared_challenge' | 'shared_challenge_bonus' | 'weekly_challenge'. */
+    source: string | null;
     description: string | null;
     created_at: string;
     session_id: string | null;
@@ -101,7 +103,7 @@ export async function fetchTransactionHistory(): Promise<PointTransaction[]> {
     if (!session) return [];
     const { data, error } = await supabase
         .from('point_transactions')
-        .select('id, amount, type, description, created_at, session_id, multiplier, activity_sessions(type)')
+        .select('id, amount, type, source, description, created_at, session_id, multiplier, activity_sessions(type)')
         .eq('user_id', session.user.id)
         .order('created_at', { ascending: false })
         .limit(500);

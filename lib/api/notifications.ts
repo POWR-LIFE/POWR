@@ -49,6 +49,16 @@ export interface NotificationPreferences {
   sleep_target_met: boolean;
   /** Email: Monday weekly summary recap. */
   email_weekly_summary: boolean;
+  // Together (shared challenges + friend graph).
+  friend_request: boolean;
+  friend_accepted: boolean;
+  challenge_invite: boolean;
+  challenge_accepted: boolean;
+  challenge_started: boolean;
+  challenge_friend_finished: boolean;
+  challenge_pool_milestone: boolean;
+  challenge_completed: boolean;
+  challenge_expiring: boolean;
 }
 
 export const DEFAULT_PREFERENCES: NotificationPreferences = {
@@ -60,6 +70,15 @@ export const DEFAULT_PREFERENCES: NotificationPreferences = {
   inactivity_nudge: true,
   sleep_target_met: true,
   email_weekly_summary: true,
+  friend_request: true,
+  friend_accepted: true,
+  challenge_invite: true,
+  challenge_accepted: true,
+  challenge_started: true,
+  challenge_friend_finished: true,
+  challenge_pool_milestone: true,
+  challenge_completed: true,
+  challenge_expiring: true,
 };
 
 export async function getNotificationPreferences(
@@ -83,6 +102,15 @@ export async function getNotificationPreferences(
     inactivity_nudge: data.inactivity_nudge ?? true,
     sleep_target_met: data.sleep_target_met ?? true,
     email_weekly_summary: data.email_weekly_summary ?? true,
+    friend_request: data.friend_request ?? true,
+    friend_accepted: data.friend_accepted ?? true,
+    challenge_invite: data.challenge_invite ?? true,
+    challenge_accepted: data.challenge_accepted ?? true,
+    challenge_started: data.challenge_started ?? true,
+    challenge_friend_finished: data.challenge_friend_finished ?? true,
+    challenge_pool_milestone: data.challenge_pool_milestone ?? true,
+    challenge_completed: data.challenge_completed ?? true,
+    challenge_expiring: data.challenge_expiring ?? true,
   };
 }
 

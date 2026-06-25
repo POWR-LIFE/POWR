@@ -103,12 +103,15 @@ export default function SettingsScreen() {
   const [notifFriends,    setNotifFriends]    = useState(meta.notif_friends ?? true);
   const [emailWeekly,     setEmailWeekly]     = useState(true);
   const [shareActivity,   setShareActivity]   = useState(meta.share_activity ?? true);
+  const [togetherEnabled, setTogetherEnabled] = useState(meta.together_enabled ?? true);
   useEffect(() => {
     if (!user?.id) return;
     getNotificationPreferences(user.id).then(prefs => {
       setNotifWorkouts(prefs.check_in_reminder);
       setNotifRewards(prefs.reward_unlocked);
       setEmailWeekly(prefs.email_weekly_summary);
+      // The "Friend activity" switch fronts all the together push types.
+      setNotifFriends(prefs.challenge_invite);
     });
   }, [user?.id]);
 
@@ -453,8 +456,16 @@ export default function SettingsScreen() {
           <RowToggle
             icon="people-outline"
             label="Friend activity"
+            sublabel="Friend requests and shared-challenge updates"
             value={notifFriends}
-            onValueChange={(v) => { setNotifFriends(v); persistMeta('notif_friends', v); }}
+            onValueChange={(v) => {
+              setNotifFriends(v);
+              if (user?.id) updateNotificationPreferences(user.id, {
+                friend_request: v, friend_accepted: v, challenge_invite: v, challenge_accepted: v,
+                challenge_started: v, challenge_friend_finished: v, challenge_pool_milestone: v,
+                challenge_completed: v, challenge_expiring: v,
+              });
+            }}
             isLast
           />
         </View>
@@ -471,6 +482,19 @@ export default function SettingsScreen() {
               setEmailWeekly(v);
               if (user?.id) updateNotificationPreferences(user.id, { email_weekly_summary: v });
             }}
+            isLast
+          />
+        </View>
+
+        {/* ── Social ────────────────────────────────────────── */}
+        <SectionLabel label="Social" />
+        <View style={styles.card}>
+          <RowToggle
+            icon="people-outline"
+            label="Together challenges"
+            sublabel="Take on challenges with friends from your home screen"
+            value={togetherEnabled}
+            onValueChange={(v) => { setTogetherEnabled(v); persistMeta('together_enabled', v); }}
             isLast
           />
         </View>

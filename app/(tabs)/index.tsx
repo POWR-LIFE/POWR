@@ -15,6 +15,7 @@ import ReAnimated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ChallengeCard } from '@/components/home/ChallengeCard';
+import { TogetherSection } from '@/components/home/TogetherSection';
 import { RewardCard } from '@/components/home/RewardCard';
 import { LevelProgressRow } from '@/components/home/LevelProgressRow';
 import { GeometricBackground } from '@/components/home/GeometricBackground';
@@ -575,6 +576,11 @@ export default function HomeScreen() {
                     totalEarned={totalEarned}
                     onPress={() => router.push('/achievements')}
                 />
+
+                {/* Shared "together" challenges — the social hero band. Sits above
+                    the steady weekly grid; collapses to a slim CTA when empty so
+                    the weekly card reads as the hero for users with no friends yet. */}
+                {user?.user_metadata?.together_enabled !== false && <TogetherSection />}
 
                 <Text style={styles.sectionLabel}>CHALLENGE</Text>
                 <ChallengeCard
