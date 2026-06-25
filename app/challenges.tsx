@@ -56,9 +56,9 @@ export default function ChallengesScreen() {
   const together = useMemo(() => templates.filter((t) => t.mode === 'pooled'), [templates]);
   const activeList = tab === 'solo' ? solo : together;
 
-  const TABS: { key: ChallengesTab; label: string; count: number; sub: string }[] = [
-    { key: 'solo', label: 'Solo', count: solo.length, sub: 'Each of you does your own part.' },
-    { key: 'together', label: 'Together', count: together.length, sub: 'Pool your effort toward one shared goal.' },
+  const TABS: { key: ChallengesTab; label: string; sub: string }[] = [
+    { key: 'solo', label: 'Solo', sub: 'Each of you does your own part.' },
+    { key: 'together', label: 'Together', sub: 'Pool your effort toward one shared goal.' },
   ];
   const activeSub = TABS.find((t) => t.key === tab)?.sub ?? '';
 
@@ -111,7 +111,7 @@ export default function ChallengesScreen() {
               accessibilityState={{ selected: isActive }}
             >
               <Text style={[styles.tabLabel, isActive && styles.tabLabelActive]}>
-                {t.label}{t.count ? `  ${t.count}` : ''}
+                {t.label}
               </Text>
             </Pressable>
           );
