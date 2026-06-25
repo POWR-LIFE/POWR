@@ -52,7 +52,8 @@
         "android.permission.POST_NOTIFICATIONS",
         "android.permission.RECEIVE_BOOT_COMPLETED",
         "android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS",
-        "android.permission.VIBRATE"
+        "android.permission.VIBRATE",
+        "android.permission.CAMERA"
       ],
       "package": "com.powr.life",
       "versionCode": 12,
@@ -115,6 +116,13 @@
       ],
       "expo-video",
       "expo-asset",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "POWR uses your camera to scan a friend's code so you can connect.",
+          "recordAudioAndroid": false
+        }
+      ],
       "react-native-health-connect",
       "./withHealthConnectMainActivity.js",
       "./withHealthConnectManifestQueries.js",

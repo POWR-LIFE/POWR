@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -63,7 +63,15 @@ export default function FriendsScreen() {
     acceptRequest,
     declineRequest,
     removeFriend,
+    refresh,
   } = useFriends();
+
+  // Re-pull on focus so a request sent from the scan/add-friend flow shows up.
+  useFocusEffect(
+    useCallback(() => {
+      refresh();
+    }, [refresh]),
+  );
 
   const [query, setQuery] = useState('');
   const [requested, setRequested] = useState<Set<string>>(new Set());
@@ -118,7 +126,14 @@ export default function FriendsScreen() {
           <Ionicons name="chevron-back" size={20} color={DIM} />
         </Pressable>
         <Text style={styles.headerTitle}>FRIENDS</Text>
-        <View style={styles.headerBtn} />
+        <View style={styles.headerActions}>
+          <Pressable onPress={() => router.push('/scan-friend')} hitSlop={10} style={styles.headerBtn} accessibilityRole="button" accessibilityLabel="Scan a friend's code">
+            <Ionicons name="scan-outline" size={20} color={TEXT} />
+          </Pressable>
+          <Pressable onPress={() => router.push('/my-qr')} hitSlop={10} style={styles.headerBtn} accessibilityRole="button" accessibilityLabel="Show my code">
+            <Ionicons name="qr-code-outline" size={19} color={TEXT} />
+          </Pressable>
+        </View>
       </View>
 
       {/* Search */}
@@ -251,6 +266,7 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: BG },
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12 },
   headerBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
+  headerActions: { flexDirection: 'row', alignItems: 'center' },
   headerTitle: { flex: 1, textAlign: 'center', fontFamily: fontFamily.semiBold, fontSize: 11, letterSpacing: 2.5, color: TEXT },
 
   searchWrap: {
