@@ -1,5 +1,4 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import React, { useEffect } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
@@ -7,7 +6,6 @@ import Animated, { Easing, useAnimatedStyle, useSharedValue, withDelay, withTimi
 
 import { fontFamily } from '@/constants/tokens';
 import type { ChallengeTemplate, IconSpec } from '@/lib/social/types';
-import { ChallengeBadge } from './ChallengeBadge';
 
 // ─── Palette (matches SharedChallengeCard) ───────────────────────────────────
 const GOLD = '#E8D200';
@@ -21,13 +19,9 @@ const BORDER = '#222222';
 
 const TIER_COLOR: Record<string, string> = { easy: GREEN, medium: GOLD, hard: ORANGE };
 const TIER_LABEL: Record<string, string> = { easy: 'Easy', medium: 'Medium', hard: 'Hard' };
-// Faint corner wash so a card isn't flat dark — keyed to tier, kept low-alpha so
-// text stays legible and it reads as a glow, not a colour block.
-const TIER_TINT: Record<string, string> = {
-  easy: 'rgba(0,204,102,0.10)',
-  medium: 'rgba(232,210,0,0.09)',
-  hard: 'rgba(255,92,0,0.10)',
-};
+// Soft grey-white for the oversized corner watermark — keeps the card a premium
+// dark surface instead of a tier-coloured block. Alpha lives in styles.watermark.
+const WATERMARK = '#FFFFFF';
 
 // Same height as SharedChallengeCard so the browse carousel reads as one band.
 const CARD_MIN_HEIGHT = 180;
@@ -61,7 +55,6 @@ export function ChallengeTemplateCard({ template, index = 0, onPress }: Challeng
   }));
 
   const tierColor = TIER_COLOR[template.tier] ?? GOLD;
-  const tierTint = TIER_TINT[template.tier] ?? TIER_TINT.medium;
 
   return (
     <Animated.View style={enterStyle}>
@@ -71,23 +64,17 @@ export function ChallengeTemplateCard({ template, index = 0, onPress }: Challeng
         accessibilityRole="button"
         accessibilityLabel={`Challenge friends to ${template.title}`}
       >
-        {/* Backdrop: a tier-tinted corner wash + an oversized, ghosted activity
-            icon bleeding off the bottom-right. Both sit behind the content and
-            are clipped to the card's rounded corners (overflow: hidden). */}
-        <LinearGradient
-          colors={['transparent', tierTint]}
-          start={{ x: 0.35, y: 0.1 }}
-          end={{ x: 1, y: 1 }}
-          style={StyleSheet.absoluteFill}
-          pointerEvents="none"
-        />
+        {/* Backdrop: an oversized, ghosted activity icon bleeding off the
+            bottom-right in a soft grey-white — adds depth without colour so the
+            card reads premium. Clipped to the rounded corners (overflow: hidden). */}
         <View style={styles.watermark} pointerEvents="none">
-          <CatIcon spec={template.icon} size={150} color={tierColor} />
+          <CatIcon spec={template.icon} size={150} color={WATERMARK} />
         </View>
 
-        {/* Badge + the reward — mirrors the active card's avatars/points header */}
+        {/* Icon + the reward — mirrors the active card's avatars/points header.
+            Bare white glyph (no bubble) to match the premium, colour-free look. */}
         <View style={styles.header}>
-          <ChallengeBadge icon={template.icon} tier={template.tier} size={46} />
+          <CatIcon spec={template.icon} size={26} color={TEXT} />
           <View style={styles.points}>
             <Text style={styles.pointsValue}>+{template.basePoints}</Text>
             <Text style={styles.pointsLabel}>pts</Text>
@@ -128,7 +115,7 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   // ghosted activity icon bleeding off the bottom-right corner
-  watermark: { position: 'absolute', right: -34, bottom: -38, opacity: 0.05, transform: [{ rotate: '-12deg' }] },
+  watermark: { position: 'absolute', right: -34, bottom: -38, opacity: 0.06, transform: [{ rotate: '-12deg' }] },
 
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   points: { flexDirection: 'row', alignItems: 'baseline', gap: 3 },

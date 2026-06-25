@@ -8,7 +8,7 @@ import { useSharedChallenges } from '@/hooks/useSharedChallenges';
 import { usePoints } from '@/hooks/usePoints';
 import type { SharedChallenge } from '@/lib/social/types';
 import { CreateChallengeSheet } from '@/components/social/CreateChallengeSheet';
-import { TogetherHeroCard } from '@/components/social/TogetherHeroCard';
+import { ChallengeTemplateCard } from '@/components/social/ChallengeTemplateCard';
 import { SharedChallengeCard } from '@/components/social/SharedChallengeCard';
 import { SharedChallengeCelebration } from '@/components/social/SharedChallengeCelebration';
 
@@ -85,13 +85,6 @@ export function TogetherSection({ onOpenChallenge }: TogetherSectionProps) {
   const inviteIds = new Set(pendingInvites.map((c) => c.id));
   const ordered = [...pendingInvites, ...active.filter((c) => !inviteIds.has(c.id))];
 
-  // The one challenge to feature in the empty state — prefer a medium solo one
-  // (a balanced first ask), else any solo, else whatever's first.
-  const featured =
-    templates.find((t) => t.tier === 'medium' && t.mode === 'solo') ??
-    templates.find((t) => t.mode === 'solo') ??
-    templates[0];
-
   return (
     <View>
       <View style={styles.sectionRow}>
@@ -152,24 +145,32 @@ export function TogetherSection({ onOpenChallenge }: TogetherSectionProps) {
             <Ionicons name="arrow-forward" size={16} color={SECONDARY} />
           </Pressable>
         ) : (
-          /* One featured hero — a confident single pick (badge, reward, bonus
-             hook, CTA) instead of a row of equal-weight cards. "See all" opens
-             the full categorised browse page for everything else. */
+          /* Browse carousel — flick through the challenges you could start. Tapping
+             one opens the create flow preselected to it. Same peek/snap sizing as
+             the active-challenges carousel below. */
           <>
-            <TogetherHeroCard
-              template={featured}
-              bonusConfig={bonusConfig}
-              onPress={(tpl) => openCreate(tpl.id)}
-            />
-            <Pressable
-              style={styles.seeAllLink}
-              onPress={goToChallenges}
-              accessibilityRole="button"
-              accessibilityLabel="See all challenges"
-            >
-              <Text style={styles.seeAllLinkText}>See all {templates.length} challenges</Text>
-              <Ionicons name="arrow-forward" size={14} color={SECONDARY} />
-            </Pressable>
+            <Text style={styles.browseIntro}>
+              Take one on with friends — everyone earns a growing bonus.
+            </Text>
+            <View onLayout={(e) => setBandWidth(e.nativeEvent.layout.width)}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                decelerationRate="fast"
+                snapToInterval={snap}
+                snapToAlignment="start"
+                disableIntervalMomentum
+              >
+                {templates.map((t, i) => (
+                  <View
+                    key={t.id}
+                    style={{ width: cardWidth, marginRight: i === templates.length - 1 ? 0 : CAROUSEL_GAP }}
+                  >
+                    <ChallengeTemplateCard template={t} index={i} onPress={(tpl) => openCreate(tpl.id)} />
+                  </View>
+                ))}
+              </ScrollView>
+            </View>
           </>
         )
       ) : ordered.length === 1 ? (
@@ -284,12 +285,11 @@ const styles = StyleSheet.create({
   emptySlimTitle: { fontFamily: fontFamily.regular, fontSize: 14, color: TEXT },
   emptySlimBody: { fontFamily: fontFamily.light, fontSize: 11.5, color: SECONDARY, marginTop: 1 },
 
-  // "see all" link under the hero → full /challenges browse page
-  seeAllLink: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    paddingVertical: 14, marginTop: 2,
+  // browse-carousel lead-in (empty state)
+  browseIntro: {
+    fontFamily: fontFamily.light, fontSize: 12.5, color: SECONDARY,
+    paddingHorizontal: 2, marginBottom: 12, lineHeight: 17,
   },
-  seeAllLinkText: { fontFamily: fontFamily.medium, fontSize: 12.5, color: SECONDARY, letterSpacing: 0.2 },
 
   // loading skeleton
   skeleton: {
