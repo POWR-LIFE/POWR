@@ -119,6 +119,11 @@ export default function MyQrScreen() {
                 <Text style={[styles.copyBtnText, copied && { color: GOLD }]}>{copied ? 'Copied' : 'Copy'}</Text>
               </Pressable>
             </View>
+
+            <Pressable style={styles.scanLink} onPress={() => router.push('/scan-friend')} accessibilityRole="button" accessibilityLabel="Scan a friend's code">
+              <Ionicons name="scan-outline" size={16} color={SECONDARY} />
+              <Text style={styles.scanLinkText}>Scan a friend’s code instead</Text>
+            </Pressable>
           </>
         )}
       </View>
@@ -153,4 +158,7 @@ const styles = StyleSheet.create({
     backgroundColor: CARD_BG, borderWidth: 1, borderColor: BORDER, borderRadius: 100, paddingHorizontal: 22, paddingVertical: 12,
   },
   copyBtnText: { fontFamily: fontFamily.medium, fontSize: 13, color: SECONDARY },
+
+  scanLink: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, paddingHorizontal: 12 },
+  scanLinkText: { fontFamily: fontFamily.medium, fontSize: 13, color: SECONDARY },
 });

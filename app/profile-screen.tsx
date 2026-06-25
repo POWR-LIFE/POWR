@@ -230,6 +230,17 @@ export default function ProfileScreen() {
               <Pressable style={s.cameraBadge} onPress={() => router.push('/edit-profile')}>
                 <Ionicons name="camera-outline" size={11} color={TEXT} />
               </Pressable>
+
+              {/* Your scannable code — sits just right of the avatar ring. */}
+              <Pressable
+                style={s.qrBadge}
+                onPress={() => router.push('/my-qr')}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Show my QR code"
+              >
+                <Ionicons name="qr-code-outline" size={19} color={GOLD} />
+              </Pressable>
             </View>
           </View>
 
@@ -416,26 +427,6 @@ export default function ProfileScreen() {
             <Text style={[s.copiedHint, !codeCopied && { opacity: 0 }]}>
               Code copied to clipboard
             </Text>
-            <View style={s.qrRow}>
-              <Pressable
-                onPress={() => router.push('/my-qr')}
-                style={({ pressed }) => [s.qrBtn, pressed && { opacity: 0.7 }]}
-                accessibilityRole="button"
-                accessibilityLabel="Show my QR code"
-              >
-                <Ionicons name="qr-code-outline" size={16} color={GOLD} />
-                <Text style={s.qrBtnText}>My QR code</Text>
-              </Pressable>
-              <Pressable
-                onPress={() => router.push('/scan-friend')}
-                style={({ pressed }) => [s.qrBtn, pressed && { opacity: 0.7 }]}
-                accessibilityRole="button"
-                accessibilityLabel="Scan a friend's code"
-              >
-                <Ionicons name="scan-outline" size={16} color={GOLD} />
-                <Text style={s.qrBtnText}>Scan</Text>
-              </Pressable>
-            </View>
           </View>
         )}
 
@@ -515,6 +506,12 @@ const s = StyleSheet.create({
     position: 'absolute', bottom: 4, right: 4,
     width: 26, height: 26, borderRadius: 13,
     backgroundColor: 'rgba(20,20,20,0.9)', borderWidth: 1.5, borderColor: BORDER,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  qrBadge: {
+    position: 'absolute', right: -46, top: RING_SIZE / 2 - 20,
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: 'rgba(20,20,20,0.9)', borderWidth: 1, borderColor: BORDER,
     alignItems: 'center', justifyContent: 'center',
   },
 
@@ -678,13 +675,6 @@ const s = StyleSheet.create({
   },
   inviteBtnText: { fontSize: 10, fontWeight: '700', letterSpacing: 1.5, color: '#0a0a0a' },
   copiedHint: { fontSize: 11, fontWeight: '300', color: GREEN, textAlign: 'center' },
-  qrRow: { flexDirection: 'row', gap: 10 },
-  qrBtn: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    borderWidth: 1, borderColor: BORDER, borderRadius: 12, paddingVertical: 12,
-    backgroundColor: 'rgba(255,255,255,0.04)',
-  },
-  qrBtnText: { fontSize: 13, fontWeight: '500', color: TEXT },
 
   // ── Cover photo ────────────────────────────────────────────────────────────
   coverPhoto: {
