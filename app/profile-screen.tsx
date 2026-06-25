@@ -230,6 +230,17 @@ export default function ProfileScreen() {
               <Pressable style={s.cameraBadge} onPress={() => router.push('/edit-profile')}>
                 <Ionicons name="camera-outline" size={11} color={TEXT} />
               </Pressable>
+
+              {/* Your scannable code — sits just right of the avatar ring. */}
+              <Pressable
+                style={s.qrBadge}
+                onPress={() => router.push('/my-qr')}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Show my QR code"
+              >
+                <Ionicons name="qr-code-outline" size={19} color={GOLD} />
+              </Pressable>
             </View>
           </View>
 
@@ -495,6 +506,12 @@ const s = StyleSheet.create({
     position: 'absolute', bottom: 4, right: 4,
     width: 26, height: 26, borderRadius: 13,
     backgroundColor: 'rgba(20,20,20,0.9)', borderWidth: 1.5, borderColor: BORDER,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  qrBadge: {
+    position: 'absolute', right: -46, top: RING_SIZE / 2 - 20,
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: 'rgba(20,20,20,0.9)', borderWidth: 1, borderColor: BORDER,
     alignItems: 'center', justifyContent: 'center',
   },
 

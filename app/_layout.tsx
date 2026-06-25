@@ -108,6 +108,9 @@ function RootLayoutNav() {
           <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal', contentStyle: { backgroundColor: 'transparent' } }} />
           <Stack.Screen name="shared-challenge" options={{ headerShown: false, contentStyle: { backgroundColor: '#0d0d0d' } }} />
           <Stack.Screen name="friends" options={{ headerShown: false, contentStyle: { backgroundColor: '#0d0d0d' } }} />
+          <Stack.Screen name="add-friend" options={{ headerShown: false, contentStyle: { backgroundColor: '#0d0d0d' } }} />
+          <Stack.Screen name="my-qr" options={{ presentation: 'modal', headerShown: false, contentStyle: { backgroundColor: '#0d0d0d' } }} />
+          <Stack.Screen name="scan-friend" options={{ presentation: 'modal', headerShown: false, contentStyle: { backgroundColor: '#0d0d0d' } }} />
         </Stack>
         <StatusBar style="auto" />
       </ThemeProvider>
