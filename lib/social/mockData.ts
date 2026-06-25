@@ -31,11 +31,11 @@ export const MOCK_FRIENDS: Friend[] = [
  * weekly rotation or the full catalog is scope §8 #3 (still open).
  */
 export const MOCK_TEMPLATES: ChallengeTemplate[] = [
-  { id: 'gym-back-again', category: 'gym', categoryLabel: 'Gym', icon: { lib: 'ion', name: 'barbell' }, tier: 'easy', title: 'Back Again', goal: 'Check in 3× this week', basePoints: 25 },
-  { id: 'walk-10k-days', category: 'walking', categoryLabel: 'Walking', icon: { lib: 'ion', name: 'walk' }, tier: 'medium', title: '10K Days', goal: '10,000 steps, 4 days', basePoints: 40 },
-  { id: 'run-just-run', category: 'running', categoryLabel: 'Running', icon: { lib: 'mc', name: 'run' }, tier: 'easy', title: 'Just Run', goal: 'Log 1 run this week', basePoints: 15 },
-  { id: 'gym-4-from-7', category: 'gym', categoryLabel: 'Gym', icon: { lib: 'ion', name: 'barbell' }, tier: 'medium', title: '4 From 7', goal: 'Check in 4× this week', basePoints: 40 },
-  { id: 'walk-35k-week', category: 'walking', categoryLabel: 'Walking', icon: { lib: 'ion', name: 'walk' }, tier: 'medium', title: '35K Week', goal: '35,000 steps this week', basePoints: 45 },
+  { id: 'gym-back-again', category: 'gym', categoryLabel: 'Gym', icon: { lib: 'ion', name: 'barbell' }, tier: 'easy', title: 'Back Again', goal: 'Check in 3× this week', basePoints: 25, mode: 'solo' },
+  { id: 'walk-10k-days', category: 'walking', categoryLabel: 'Walking', icon: { lib: 'ion', name: 'walk' }, tier: 'medium', title: '10K Days', goal: '10,000 steps, 4 days', basePoints: 40, mode: 'solo' },
+  { id: 'run-just-run', category: 'running', categoryLabel: 'Running', icon: { lib: 'mc', name: 'run' }, tier: 'easy', title: 'Just Run', goal: 'Log 1 run this week', basePoints: 15, mode: 'solo' },
+  { id: 'gym-4-from-7', category: 'gym', categoryLabel: 'Gym', icon: { lib: 'ion', name: 'barbell' }, tier: 'medium', title: '4 From 7', goal: 'Check in 4× this week', basePoints: 40, mode: 'solo' },
+  { id: 'walk-35k-week', category: 'walking', categoryLabel: 'Walking', icon: { lib: 'ion', name: 'walk' }, tier: 'medium', title: '35K Week', goal: '35,000 steps this week', basePoints: 45, mode: 'solo' },
 ];
 
 const friend = (id: string): Friend =>

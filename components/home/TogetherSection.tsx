@@ -8,14 +8,13 @@ import { useSharedChallenges } from '@/hooks/useSharedChallenges';
 import { usePoints } from '@/hooks/usePoints';
 import type { SharedChallenge } from '@/lib/social/types';
 import { CreateChallengeSheet } from '@/components/social/CreateChallengeSheet';
-import { ChallengeTemplateCard } from '@/components/social/ChallengeTemplateCard';
+import { TogetherHeroCard } from '@/components/social/TogetherHeroCard';
 import { SharedChallengeCard } from '@/components/social/SharedChallengeCard';
 import { SharedChallengeCelebration } from '@/components/social/SharedChallengeCelebration';
 
 const GOLD = '#E8D200';
 const TEXT = '#F2F2F2';
 const SECONDARY = '#888888';
-const MUTED = '#555555';
 const BORDER = '#222222';
 const CARD_BG = '#111111';
 
@@ -31,9 +30,9 @@ export interface TogetherSectionProps {
 }
 
 /**
- * Home "Together" section: pending invites + active shared challenges, plus the
- * entry point into the create flow. Reads from useSharedChallenges (mock-backed
- * for now). See docs/shared-challenges-scope.md.
+ * Home "Together" section: pending invites + active shared challenges, and a
+ * doorway into the /challenges browse page (which owns discovery + creation).
+ * Reads from useSharedChallenges. See docs/shared-challenges-scope.md.
  */
 export function TogetherSection({ onOpenChallenge }: TogetherSectionProps) {
   const router = useRouter();
@@ -47,7 +46,6 @@ export function TogetherSection({ onOpenChallenge }: TogetherSectionProps) {
     atCap,
     friends,
     templates,
-    durations,
     bonusConfig,
     createChallenge,
     acceptInvite,
@@ -57,15 +55,16 @@ export function TogetherSection({ onOpenChallenge }: TogetherSectionProps) {
     clearCelebration,
   } = useSharedChallenges();
   const { balance } = usePoints();
-  const [sheetVisible, setSheetVisible] = useState(false);
-  // Set when the create sheet is opened from a browse card, so it lands on that
-  // challenge; null when opened from the header (a blank pick).
-  const [presetTemplateId, setPresetTemplateId] = useState<string | null>(null);
 
-  const openCreate = (templateId: string | null = null) => {
+  // Tapping a carousel card opens the invite sheet here on Home (preselected) for
+  // the quick path; the header button opens the full /challenges browse page.
+  const [sheetVisible, setSheetVisible] = useState(false);
+  const [presetTemplateId, setPresetTemplateId] = useState<string | null>(null);
+  const openCreate = (templateId: string) => {
     setPresetTemplateId(templateId);
     setSheetVisible(true);
   };
+  const goToChallenges = () => router.push('/challenges');
 
   // Celebration fires when the user completes their part — driven by the hook so
   // the real trigger is a backend completion event setting `newlyCompletedId`.
@@ -85,6 +84,13 @@ export function TogetherSection({ onOpenChallenge }: TogetherSectionProps) {
   // Pending invites first (they need a response), then the user's active ones.
   const inviteIds = new Set(pendingInvites.map((c) => c.id));
   const ordered = [...pendingInvites, ...active.filter((c) => !inviteIds.has(c.id))];
+
+  // The one challenge to feature in the empty state — prefer a medium solo one
+  // (a balanced first ask), else any solo, else whatever's first.
+  const featured =
+    templates.find((t) => t.tier === 'medium' && t.mode === 'solo') ??
+    templates.find((t) => t.mode === 'solo') ??
+    templates[0];
 
   return (
     <View>
@@ -116,7 +122,7 @@ export function TogetherSection({ onOpenChallenge }: TogetherSectionProps) {
           >
             <Ionicons name="people" size={15} color={SECONDARY} />
           </Pressable>
-          <Pressable hitSlop={8} style={styles.newBtn} onPress={() => openCreate()}>
+          <Pressable hitSlop={8} style={styles.newBtn} onPress={goToChallenges}>
             <Ionicons name="add" size={14} color={GOLD} />
             <Text style={styles.newBtnText}>Challenge friends</Text>
           </Pressable>
@@ -134,44 +140,36 @@ export function TogetherSection({ onOpenChallenge }: TogetherSectionProps) {
         </View>
       ) : ordered.length === 0 ? (
         templates.length === 0 ? (
-          /* Fallback while templates load: a slim one-line invite, never dead space. */
-          <Pressable style={styles.emptySlim} onPress={() => openCreate()}>
+          /* Fallback while templates load: a slim doorway into the browse page. */
+          <Pressable style={styles.emptySlim} onPress={goToChallenges}>
             <View style={styles.emptySlimIcon}>
               <Ionicons name="people" size={15} color={GOLD} />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.emptySlimTitle}>Take on a challenge together</Text>
-              <Text style={styles.emptySlimBody}>Invite friends — everyone earns a growing bonus.</Text>
+              <Text style={styles.emptySlimBody}>Browse challenges — everyone earns a growing bonus.</Text>
             </View>
             <Ionicons name="arrow-forward" size={16} color={SECONDARY} />
           </Pressable>
         ) : (
-          /* Browse carousel — flick through the challenges you could start. Tapping
-             one opens the create flow preselected to it. Same peek/snap sizing as
-             the active-challenges carousel below. */
+          /* One featured hero — a confident single pick (badge, reward, bonus
+             hook, CTA) instead of a row of equal-weight cards. "See all" opens
+             the full categorised browse page for everything else. */
           <>
-            <Text style={styles.browseIntro}>
-              Take one on with friends — everyone earns a growing bonus.
-            </Text>
-            <View onLayout={(e) => setBandWidth(e.nativeEvent.layout.width)}>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                decelerationRate="fast"
-                snapToInterval={snap}
-                snapToAlignment="start"
-                disableIntervalMomentum
-              >
-                {templates.map((t, i) => (
-                  <View
-                    key={t.id}
-                    style={{ width: cardWidth, marginRight: i === templates.length - 1 ? 0 : CAROUSEL_GAP }}
-                  >
-                    <ChallengeTemplateCard template={t} index={i} onPress={(tpl) => openCreate(tpl.id)} />
-                  </View>
-                ))}
-              </ScrollView>
-            </View>
+            <TogetherHeroCard
+              template={featured}
+              bonusConfig={bonusConfig}
+              onPress={(tpl) => openCreate(tpl.id)}
+            />
+            <Pressable
+              style={styles.seeAllLink}
+              onPress={goToChallenges}
+              accessibilityRole="button"
+              accessibilityLabel="See all challenges"
+            >
+              <Text style={styles.seeAllLinkText}>See all {templates.length} challenges</Text>
+              <Ionicons name="arrow-forward" size={14} color={SECONDARY} />
+            </Pressable>
           </>
         )
       ) : ordered.length === 1 ? (
@@ -219,7 +217,6 @@ export function TogetherSection({ onOpenChallenge }: TogetherSectionProps) {
         templates={templates}
         initialTemplateId={presetTemplateId}
         friends={friends}
-        durations={durations}
         bonusConfig={bonusConfig}
         plateFull={atCap}
         openCount={openCount}
@@ -287,11 +284,12 @@ const styles = StyleSheet.create({
   emptySlimTitle: { fontFamily: fontFamily.regular, fontSize: 14, color: TEXT },
   emptySlimBody: { fontFamily: fontFamily.light, fontSize: 11.5, color: SECONDARY, marginTop: 1 },
 
-  // browse-carousel lead-in (empty state)
-  browseIntro: {
-    fontFamily: fontFamily.light, fontSize: 12.5, color: SECONDARY,
-    paddingHorizontal: 2, marginBottom: 12, lineHeight: 17,
+  // "see all" link under the hero → full /challenges browse page
+  seeAllLink: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    paddingVertical: 14, marginTop: 2,
   },
+  seeAllLinkText: { fontFamily: fontFamily.medium, fontSize: 12.5, color: SECONDARY, letterSpacing: 0.2 },
 
   // loading skeleton
   skeleton: {

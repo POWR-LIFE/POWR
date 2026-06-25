@@ -34,13 +34,6 @@ const TIER_COLOR: Record<string, string> = { easy: GREEN, medium: GOLD, hard: OR
 /** v1 group cap (scope §0: small groups 3–6). Architecture scales to ~20 later. */
 const MAX_GROUP = 6;
 
-/** Fallback run-length menu when config hasn't loaded (admin-configurable). */
-const FALLBACK_DURATIONS: { label: string; hours: number }[] = [
-  { label: '2 days', hours: 48 },
-  { label: '3 days', hours: 72 },
-  { label: '1 week', hours: 168 },
-];
-
 function CatIcon({ spec, size, color }: { spec: IconSpec; size: number; color: string }) {
   if (spec.lib === 'mc') return <MaterialCommunityIcons name={spec.name as any} size={size} color={color} />;
   return <Ionicons name={spec.name as any} size={size} color={color} />;
@@ -51,11 +44,9 @@ export interface CreateChallengeSheetProps {
   templates: ChallengeTemplate[];
   friends: Friend[];
   onClose: () => void;
-  onCreate: (input: { templateId: string; friendIds: string[]; durationHours: number }) => void | Promise<unknown>;
+  onCreate: (input: { templateId: string; friendIds: string[] }) => void | Promise<unknown>;
   /** Preselect this template when the sheet opens (e.g. tapped from the browse carousel). */
   initialTemplateId?: string | null;
-  /** Run-length menu (admin-configurable). Falls back to a sensible default set. */
-  durations?: { label: string; hours: number }[];
   /** Group-bonus config (admin-configurable) for the live "+X each" preview. */
   bonusConfig?: { perHead: number; maxBonus: number };
   /** Every concurrency slot is full — show the "finish or drop one" state instead. */
@@ -75,7 +66,6 @@ export function CreateChallengeSheet({
   onClose,
   onCreate,
   initialTemplateId,
-  durations,
   bonusConfig,
   plateFull = false,
   openCount = 0,
@@ -84,11 +74,8 @@ export function CreateChallengeSheet({
   onLeave,
 }: CreateChallengeSheetProps) {
   const insets = useSafeAreaInsets();
-  const DURATIONS = durations && durations.length ? durations : FALLBACK_DURATIONS;
-  const defaultHours = DURATIONS.some((d) => d.hours === 72) ? 72 : DURATIONS[0].hours;
   const [templateId, setTemplateId] = useState<string | null>(initialTemplateId ?? templates[0]?.id ?? null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [durationHours, setDurationHours] = useState(defaultHours);
   const [submitting, setSubmitting] = useState(false);
 
   // Honour the preselected template each time the sheet opens from a browse card.
@@ -119,7 +106,6 @@ export function CreateChallengeSheet({
   const reset = () => {
     setSelected(new Set());
     setTemplateId(templates[0]?.id ?? null);
-    setDurationHours(defaultHours);
   };
 
   const handleClose = () => {
@@ -131,7 +117,7 @@ export function CreateChallengeSheet({
     if (!template || selected.size === 0 || submitting) return;
     setSubmitting(true);
     try {
-      await onCreate({ templateId: template.id, friendIds: [...selected], durationHours });
+      await onCreate({ templateId: template.id, friendIds: [...selected] });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       reset();
       onClose();
@@ -212,60 +198,57 @@ export function CreateChallengeSheet({
           ) : (
             <>
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 18 }}>
-            {/* ── Pick a challenge ── */}
-            <View style={styles.section}>
-              <Text style={styles.sectionLabel}>Pick a challenge</Text>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.chipScroll}
-              >
-                {templates.map((t) => {
-                  const active = t.id === templateId;
-                  return (
-                    <Pressable
-                      key={t.id}
-                      onPress={() => { Haptics.selectionAsync(); setTemplateId(t.id); }}
-                      style={[styles.chip, active && styles.chipActive]}
-                    >
-                      <CatIcon spec={t.icon} size={22} color={active ? '#0a0a0a' : GOLD} />
-                      <Text style={[styles.chipTitle, active && styles.chipTitleActive]}>{t.title}</Text>
-                      <Text style={[styles.chipGoal, active && styles.chipGoalActive]}>{t.goal}</Text>
-                      <View style={styles.chipFooter}>
-                        <Text style={[styles.chipPts, active && { color: '#0a0a0a' }]}>+{t.basePoints}</Text>
-                        <Text style={[styles.chipTier, { color: TIER_COLOR[t.tier] }, active && { color: '#0a0a0a' }]}>
-                          {t.tier}
-                        </Text>
-                      </View>
-                    </Pressable>
-                  );
-                })}
-              </ScrollView>
-            </View>
-
-            {/* ── How long ── */}
-            <View style={styles.section}>
-              <View style={styles.sectionHeaderRow}>
-                <Text style={styles.sectionLabel}>How long</Text>
-                <Text style={styles.capHint}>Starts when everyone’s in</Text>
+            {/* ── The challenge ── */}
+            {initialTemplateId && template ? (
+              /* Came from a browse card: confirm the pick, don't re-ask — straight to inviting. */
+              <View style={styles.section}>
+                <Text style={styles.sectionLabel}>Challenge</Text>
+                <View style={styles.selectedCard}>
+                  <View style={styles.selectedIcon}>
+                    <CatIcon spec={template.icon} size={22} color={GOLD} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.selectedTitle} numberOfLines={1}>{template.title}</Text>
+                    <Text style={styles.selectedGoal} numberOfLines={1}>{template.goal}</Text>
+                  </View>
+                  <View style={styles.selectedPts}>
+                    <Text style={styles.selectedPtsValue}>+{template.basePoints}</Text>
+                    <Text style={styles.selectedPtsLabel}>pts</Text>
+                  </View>
+                </View>
               </View>
-              <View style={styles.durRow}>
-                {DURATIONS.map((d) => {
-                  const active = d.hours === durationHours;
-                  return (
-                    <Pressable
-                      key={d.hours}
-                      onPress={() => { Haptics.selectionAsync(); setDurationHours(d.hours); }}
-                      style={[styles.durPill, active && styles.durPillActive]}
-                      accessibilityRole="radio"
-                      accessibilityState={{ selected: active }}
-                    >
-                      <Text style={[styles.durText, active && styles.durTextActive]}>{d.label}</Text>
-                    </Pressable>
-                  );
-                })}
+            ) : (
+              /* Generic entry (header button): let them pick. */
+              <View style={styles.section}>
+                <Text style={styles.sectionLabel}>Pick a challenge</Text>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.chipScroll}
+                >
+                  {templates.map((t) => {
+                    const active = t.id === templateId;
+                    return (
+                      <Pressable
+                        key={t.id}
+                        onPress={() => { Haptics.selectionAsync(); setTemplateId(t.id); }}
+                        style={[styles.chip, active && styles.chipActive]}
+                      >
+                        <CatIcon spec={t.icon} size={22} color={active ? '#0a0a0a' : GOLD} />
+                        <Text style={[styles.chipTitle, active && styles.chipTitleActive]}>{t.title}</Text>
+                        <Text style={[styles.chipGoal, active && styles.chipGoalActive]}>{t.goal}</Text>
+                        <View style={styles.chipFooter}>
+                          <Text style={[styles.chipPts, active && { color: '#0a0a0a' }]}>+{t.basePoints}</Text>
+                          <Text style={[styles.chipTier, { color: TIER_COLOR[t.tier] }, active && { color: '#0a0a0a' }]}>
+                            {t.tier}
+                          </Text>
+                        </View>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
               </View>
-            </View>
+            )}
 
             {/* ── Invite friends ── */}
             <View style={styles.section}>
@@ -348,6 +331,9 @@ export function CreateChallengeSheet({
               </Text>
               {canSend && !submitting && <Ionicons name="arrow-forward" size={16} color="#0a0a0a" />}
             </Pressable>
+
+            {/* Timing is admin-set; the clock just starts once everyone's accepted. */}
+            <Text style={styles.timingNote}>The challenge starts when everyone joins.</Text>
           </View>
             </>
           )}
@@ -396,12 +382,21 @@ const styles = StyleSheet.create({
   chipPts: { fontFamily: fontFamily.semiBold, fontSize: 13, color: GOLD },
   chipTier: { fontFamily: fontFamily.medium, fontSize: 9, letterSpacing: 1, textTransform: 'uppercase' },
 
-  // duration picker
-  durRow: { flexDirection: 'row', gap: 8 },
-  durPill: { flex: 1, paddingVertical: 11, borderRadius: 100, borderWidth: 1, borderColor: BORDER, alignItems: 'center' },
-  durPillActive: { backgroundColor: GOLD, borderColor: GOLD },
-  durText: { fontFamily: fontFamily.medium, fontSize: 13, color: SECONDARY },
-  durTextActive: { color: '#0a0a0a' },
+  // selected-challenge confirmation (browse-card entry)
+  selectedCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: CARD_BG, borderRadius: 16, borderWidth: 1, borderColor: BORDER,
+    paddingVertical: 12, paddingHorizontal: 14,
+  },
+  selectedIcon: {
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: 'rgba(232,210,0,0.10)', alignItems: 'center', justifyContent: 'center',
+  },
+  selectedTitle: { fontFamily: fontFamily.medium, fontSize: 15, color: TEXT },
+  selectedGoal: { fontFamily: fontFamily.light, fontSize: 12, color: SECONDARY, marginTop: 2 },
+  selectedPts: { flexDirection: 'row', alignItems: 'baseline', gap: 3 },
+  selectedPtsValue: { fontFamily: fontFamily.extraLight, fontSize: 22, color: GOLD, lineHeight: 22 },
+  selectedPtsLabel: { fontFamily: fontFamily.medium, fontSize: 9, letterSpacing: 1, color: FAINT, textTransform: 'uppercase' },
 
   // friend grid
   noFriendsHint: { fontFamily: fontFamily.light, fontSize: 12, color: SECONDARY, lineHeight: 17, marginBottom: 2 },
@@ -432,6 +427,7 @@ const styles = StyleSheet.create({
   sendBtnDisabled: { backgroundColor: '#2A2A2A' },
   sendText: { fontFamily: fontFamily.bold, fontSize: 13, color: '#0a0a0a', letterSpacing: 0.5 },
   sendTextDisabled: { color: MUTED },
+  timingNote: { fontFamily: fontFamily.light, fontSize: 11, color: MUTED, textAlign: 'center' },
 
   // full-plate state (concurrency cap reached)
   plate: { alignItems: 'center', gap: 8, paddingTop: 4, paddingBottom: 6 },

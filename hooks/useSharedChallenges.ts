@@ -78,6 +78,7 @@ function mapTemplateRow(row: any): ChallengeTemplate {
     title: row.title,
     goal: row.goal,
     basePoints: row.base_points,
+    mode: row.mode === 'pooled' ? 'pooled' : 'solo',
   };
 }
 
@@ -121,6 +122,7 @@ function mapChallengeRow(row: any): SharedChallenge {
       title: tmpl.title ?? 'Challenge',
       goal: tmpl.goal ?? '',
       basePoints: tmpl.base_points ?? row.base_points ?? 0,
+      mode: row.kind === 'pooled' ? 'pooled' : 'solo',
     },
     kind: row.kind ?? 'parallel',
     // The UI derives "forming" from a participant still being `invited`; DB
@@ -192,7 +194,7 @@ export function useSharedChallenges(): UseSharedChallenges {
         .select('per_head, max_bonus, duration_options, default_duration_hours, challenge_cap')
         .eq('id', 1).maybeSingle(),
       supabase.from('shared_challenge_templates')
-        .select('id, category, title, tier, base_points, goal, measure')
+        .select('id, category, title, tier, base_points, goal, measure, mode')
         .eq('active', true).order('sort_order', { ascending: true }),
     ]);
     if (cfg) {

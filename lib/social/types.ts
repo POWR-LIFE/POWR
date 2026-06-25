@@ -31,6 +31,8 @@ export interface ChallengeTemplate {
   /** Short "what you each have to do" line. */
   goal: string;
   basePoints: number;
+  /** 'solo' = each does their own part; 'pooled' = effort sums toward one shared total. */
+  mode: 'solo' | 'pooled';
 }
 
 export type ParticipantState = 'invited' | 'accepted' | 'declined' | 'completed' | 'left';

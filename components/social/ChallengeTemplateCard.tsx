@@ -1,4 +1,5 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import React, { useEffect } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
@@ -6,6 +7,7 @@ import Animated, { Easing, useAnimatedStyle, useSharedValue, withDelay, withTimi
 
 import { fontFamily } from '@/constants/tokens';
 import type { ChallengeTemplate, IconSpec } from '@/lib/social/types';
+import { ChallengeBadge } from './ChallengeBadge';
 
 // ─── Palette (matches SharedChallengeCard) ───────────────────────────────────
 const GOLD = '#E8D200';
@@ -19,6 +21,13 @@ const BORDER = '#222222';
 
 const TIER_COLOR: Record<string, string> = { easy: GREEN, medium: GOLD, hard: ORANGE };
 const TIER_LABEL: Record<string, string> = { easy: 'Easy', medium: 'Medium', hard: 'Hard' };
+// Faint corner wash so a card isn't flat dark — keyed to tier, kept low-alpha so
+// text stays legible and it reads as a glow, not a colour block.
+const TIER_TINT: Record<string, string> = {
+  easy: 'rgba(0,204,102,0.10)',
+  medium: 'rgba(232,210,0,0.09)',
+  hard: 'rgba(255,92,0,0.10)',
+};
 
 // Same height as SharedChallengeCard so the browse carousel reads as one band.
 const CARD_MIN_HEIGHT = 180;
@@ -52,6 +61,7 @@ export function ChallengeTemplateCard({ template, index = 0, onPress }: Challeng
   }));
 
   const tierColor = TIER_COLOR[template.tier] ?? GOLD;
+  const tierTint = TIER_TINT[template.tier] ?? TIER_TINT.medium;
 
   return (
     <Animated.View style={enterStyle}>
@@ -61,11 +71,23 @@ export function ChallengeTemplateCard({ template, index = 0, onPress }: Challeng
         accessibilityRole="button"
         accessibilityLabel={`Challenge friends to ${template.title}`}
       >
-        {/* Icon + the reward — mirrors the active card's avatars/points header */}
+        {/* Backdrop: a tier-tinted corner wash + an oversized, ghosted activity
+            icon bleeding off the bottom-right. Both sit behind the content and
+            are clipped to the card's rounded corners (overflow: hidden). */}
+        <LinearGradient
+          colors={['transparent', tierTint]}
+          start={{ x: 0.35, y: 0.1 }}
+          end={{ x: 1, y: 1 }}
+          style={StyleSheet.absoluteFill}
+          pointerEvents="none"
+        />
+        <View style={styles.watermark} pointerEvents="none">
+          <CatIcon spec={template.icon} size={150} color={tierColor} />
+        </View>
+
+        {/* Badge + the reward — mirrors the active card's avatars/points header */}
         <View style={styles.header}>
-          <View style={styles.iconBubble}>
-            <CatIcon spec={template.icon} size={22} color={GOLD} />
-          </View>
+          <ChallengeBadge icon={template.icon} tier={template.tier} size={46} />
           <View style={styles.points}>
             <Text style={styles.pointsValue}>+{template.basePoints}</Text>
             <Text style={styles.pointsLabel}>pts</Text>
@@ -102,13 +124,13 @@ const styles = StyleSheet.create({
     padding: 16,
     minHeight: CARD_MIN_HEIGHT,
     justifyContent: 'space-between',
+    overflow: 'hidden',
+    position: 'relative',
   },
+  // ghosted activity icon bleeding off the bottom-right corner
+  watermark: { position: 'absolute', right: -34, bottom: -38, opacity: 0.05, transform: [{ rotate: '-12deg' }] },
 
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  iconBubble: {
-    width: 38, height: 38, borderRadius: 19,
-    backgroundColor: 'rgba(232,210,0,0.10)', alignItems: 'center', justifyContent: 'center',
-  },
   points: { flexDirection: 'row', alignItems: 'baseline', gap: 3 },
   pointsValue: { fontFamily: fontFamily.extraLight, fontSize: 24, color: GOLD, lineHeight: 24 },
   pointsLabel: { fontFamily: fontFamily.medium, fontSize: 9, letterSpacing: 1, color: FAINT, textTransform: 'uppercase' },
