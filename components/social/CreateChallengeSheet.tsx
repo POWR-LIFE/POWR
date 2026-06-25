@@ -268,20 +268,25 @@ export function CreateChallengeSheet({
               <View style={styles.friendGrid}>
                 {friends.map((f) => {
                   const isSel = selected.has(f.id);
-                  const disabled = !isSel && atGroupCap;
+                  // A friend who turned Together off can't be invited — they'd
+                  // never see it. Show them, but greyed out and unselectable.
+                  const optedOut = f.togetherEnabled === false;
+                  const disabled = optedOut || (!isSel && atGroupCap);
                   return (
                     <Pressable
                       key={f.id}
-                      onPress={() => toggleFriend(f.id)}
+                      onPress={() => { if (!optedOut) toggleFriend(f.id); }}
                       disabled={disabled}
                       style={[styles.friendCell, disabled && { opacity: 0.35 }]}
                       accessibilityRole="checkbox"
                       accessibilityState={{ checked: isSel, disabled }}
-                      accessibilityLabel={`Invite ${f.displayName}`}
+                      accessibilityLabel={
+                        optedOut ? `${f.displayName} isn't on Together` : `Invite ${f.displayName}`
+                      }
                     >
                       <Avatar friend={f} size={52} selected={isSel} />
                       <Text style={styles.friendName} numberOfLines={1}>
-                        {f.displayName.split(' ')[0]}
+                        {optedOut ? 'Off' : f.displayName.split(' ')[0]}
                       </Text>
                     </Pressable>
                   );

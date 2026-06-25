@@ -116,7 +116,19 @@ function SectionHeader({ title }: { title: string }) {
   );
 }
 
+/** Together (shared-challenge) base + bonus rows — surfaced distinctly. */
+function isTogether(tx: PointTransaction): boolean {
+  return tx.source === 'shared_challenge' || tx.source === 'shared_challenge_bonus';
+}
+
 function TxIcon({ tx }: { tx: PointTransaction }) {
+  if (isTogether(tx)) {
+    return (
+      <View style={[styles.txIcon, { backgroundColor: GOLD + '18' }]}>
+        <Ionicons name="people" size={16} color={GOLD} />
+      </View>
+    );
+  }
   const activityConfig = tx.activity_type ? ACTIVITIES[tx.activity_type as ActivityType] : null;
   if (activityConfig) {
     return (
@@ -143,6 +155,10 @@ function txLabel(tx: PointTransaction): string {
 
 function TxBadges({ tx }: { tx: PointTransaction }) {
   const badges: { label: string; color: string; bg: string }[] = [];
+
+  if (isTogether(tx)) {
+    badges.push({ label: 'TOGETHER', color: GOLD, bg: GOLD + '22' });
+  }
 
   if (tx.type === 'streak') {
     badges.push({ label: 'STREAK', color: ORANGE, bg: ORANGE + '22' });

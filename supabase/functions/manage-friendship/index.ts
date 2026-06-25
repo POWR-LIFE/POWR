@@ -11,10 +11,13 @@
 //   decline  B   : B drops A's pending request.
 //   remove       : either side removes an accepted friendship.
 //   block        : either side blocks the other (hides them, stops requests).
+//   unblock      : the blocker clears a block, fully resetting the pair so they
+//                  can be re-discovered + re-friended (otherwise block is a
+//                  permanent one-way door).
 import { createClient } from '@supabase/supabase-js';
 import { notifyPush } from '../_shared/notify.ts';
 
-type Action = 'request' | 'accept' | 'decline' | 'remove' | 'block';
+type Action = 'request' | 'accept' | 'decline' | 'remove' | 'block' | 'unblock';
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -127,6 +130,15 @@ Deno.serve(async (req) => {
         user_id: low, friend_id: high, status: 'blocked', requested_by: user.id, ...touch,
       });
       return json({ ok: true, status: 'blocked' });
+    }
+
+    case 'unblock': {
+      // Only the user who placed the block can lift it. Clearing the row fully
+      // resets the pair (they reappear in search and can be re-friended).
+      if (!existing || existing.status !== 'blocked') return json({ ok: true });
+      if (existing.requested_by !== user.id) return json({ error: 'Only the blocker can unblock' }, 403);
+      await supabase.from('friendships').delete().eq('user_id', low).eq('friend_id', high);
+      return json({ ok: true, status: 'unblocked' });
     }
 
     default:

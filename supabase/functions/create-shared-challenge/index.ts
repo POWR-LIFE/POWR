@@ -79,6 +79,16 @@ Deno.serve(async (req) => {
   const invalid = friendIds.filter((id) => !acceptedFriends.has(id));
   if (invalid.length) return json({ error: 'Some invitees are not your friends' }, 400);
 
+  // A friend who switched the Together feature off can't be invited — they'd
+  // never see the invite in-app and get no push, leaving the challenge stuck
+  // forming. The client already greys them out; this is the server backstop.
+  for (const fid of friendIds) {
+    const { data: u } = await supabase.auth.admin.getUserById(fid);
+    if (u?.user?.user_metadata?.together_enabled === false) {
+      return json({ error: 'A selected friend isn’t on Together', code: 'INVITEE_OPTED_OUT' }, 400);
+    }
+  }
+
   // 4. Concurrency cap — how many challenges already occupy a slot for the creator
   //    (accepted, not completed, live)?
   const { data: openRows } = await supabase

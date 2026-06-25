@@ -44,7 +44,7 @@ Deno.serve(async (req) => {
   // ── 2–4. Active challenges ─────────────────────────────────────────────────
   const { data: active } = await supabase
     .from('shared_challenges')
-    .select('id, rule, template, base_points, status, starts_at, ends_at, settled_at, utc_offset_minutes, bonus_per_head, bonus_max, expiring_notified')
+    .select('id, kind, rule, template, base_points, status, starts_at, ends_at, settled_at, utc_offset_minutes, bonus_per_head, bonus_max, expiring_notified')
     .eq('status', 'active');
 
   for (const ch of active ?? []) {
@@ -111,6 +111,14 @@ Deno.serve(async (req) => {
         .eq('challenge_id', ch.id)
         .eq('completed', true);
       const completerCount = finishers?.length ?? 0;
+
+      // Nobody finished their part → the challenge flopped. Mark it expired
+      // (not completed) so it reads correctly and skips the celebration window.
+      if (completerCount === 0) {
+        await supabase.from('shared_challenges').update({ status: 'expired' }).eq('id', ch.id);
+        stats.settled++;
+        continue;
+      }
 
       for (const f of finishers ?? []) {
         const coCompleters = completerCount - 1; // everyone else who finished

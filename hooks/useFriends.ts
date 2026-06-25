@@ -40,6 +40,7 @@ function rowToFriend(r: any, status: Friend['status']): Friend {
     displayName: r.display_name ?? r.username ?? '',
     avatarUrl: r.avatar_url ?? null,
     status,
+    togetherEnabled: r.together_enabled !== false, // default opted-in when unknown
   };
 }
 

@@ -18,6 +18,12 @@ export interface Friend {
   avatarUrl?: string | null;
   /** Friendship state; only `accepted` friends are invitable. */
   status: 'pending' | 'accepted' | 'blocked';
+  /**
+   * Whether this person has the "Together" feature switched on. `false` means
+   * they opted out in settings — they can't be invited (they'd never see it).
+   * Defaults to true when unknown.
+   */
+  togetherEnabled?: boolean;
 }
 
 /** A challenge template you can launch as a group challenge. */
