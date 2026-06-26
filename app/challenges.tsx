@@ -32,6 +32,8 @@ export default function ChallengesScreen() {
     loading,
     templates,
     friends,
+    search,
+    sendRequest,
     bonusConfig,
     openChallenges,
     openCount,
@@ -147,6 +149,8 @@ export default function ChallengesScreen() {
         templates={templates}
         initialTemplateId={presetTemplateId}
         friends={friends}
+        search={search}
+        sendRequest={sendRequest}
         bonusConfig={bonusConfig}
         plateFull={atCap}
         openCount={openCount}
