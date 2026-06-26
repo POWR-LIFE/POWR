@@ -22,7 +22,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import MapView, { Circle, Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import MapViewDirections from 'react-native-maps-directions';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ProfileButton } from '@/components/ProfileButton';
+import { HeaderActions } from '@/components/HeaderActions';
 import { useActiveGeofence } from '@/hooks/useActiveGeofence';
 import { useGeofenceContext, searchPartners, type Partner, type Trainer, type DayKey, type OpeningHours } from '@/context/GeofenceContext';
 import { createGymRequest } from '@/lib/api/gyms';
@@ -660,7 +660,7 @@ export default function DiscoverScreen() {
         </MapView>
 
         <View style={{ position: 'absolute', top: insets.top + 12, right: 16 }}>
-          <ProfileButton />
+          <HeaderActions />
         </View>
 
         {routePartner && (

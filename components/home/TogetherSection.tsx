@@ -6,6 +6,7 @@ import { Dimensions, Modal, Pressable, ScrollView, StyleSheet, Text, View } from
 import { fontFamily } from '@/constants/tokens';
 import { useSharedChallenges } from '@/hooks/useSharedChallenges';
 import { usePoints } from '@/hooks/usePoints';
+import { useNotifications } from '@/context/NotificationsContext';
 import type { SharedChallenge } from '@/lib/social/types';
 import { CreateChallengeSheet } from '@/components/social/CreateChallengeSheet';
 import { ChallengeTemplateCard } from '@/components/social/ChallengeTemplateCard';
@@ -57,6 +58,12 @@ export function TogetherSection({ onOpenChallenge }: TogetherSectionProps) {
     clearCelebration,
   } = useSharedChallenges();
   const { balance } = usePoints();
+  const { refreshPendingActions } = useNotifications();
+
+  // Responding to an invite here (on the home tab) won't fire a tab-focus event,
+  // so refresh the avatar badge directly once the mutation settles.
+  const handleAccept = (id: string) => { void acceptInvite(id).then(refreshPendingActions); };
+  const handleDecline = (id: string) => { void declineInvite(id).then(refreshPendingActions); };
 
   // Tapping a carousel card opens the invite sheet here on Home (preselected) for
   // the quick path; the header button opens the full /challenges browse page.
@@ -181,8 +188,8 @@ export function TogetherSection({ onOpenChallenge }: TogetherSectionProps) {
           index={0}
           atCap={atCap}
           onPress={openChallenge}
-          onAccept={(ch) => acceptInvite(ch.id)}
-          onDecline={(ch) => declineInvite(ch.id)}
+          onAccept={(ch) => handleAccept(ch.id)}
+          onDecline={(ch) => handleDecline(ch.id)}
         />
       ) : (
         /* Carousel — keeps the hero band one card tall however many you're in.
@@ -206,8 +213,8 @@ export function TogetherSection({ onOpenChallenge }: TogetherSectionProps) {
                   index={i}
                   atCap={atCap}
                   onPress={openChallenge}
-                  onAccept={(ch) => acceptInvite(ch.id)}
-                  onDecline={(ch) => declineInvite(ch.id)}
+                  onAccept={(ch) => handleAccept(ch.id)}
+                  onDecline={(ch) => handleDecline(ch.id)}
                 />
               </View>
             ))}

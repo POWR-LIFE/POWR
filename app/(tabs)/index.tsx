@@ -23,7 +23,7 @@ import { StickyActivityIndicators } from '@/components/home/StickyActivityIndica
 import { StreakCard } from '@/components/home/StreakCard';
 import { WeeklyActivityBars, type WeeklyRingData } from '@/components/home/WeeklyActivityRings';
 import { WeeklyActivityCircles } from '@/components/home/WeeklyActivityRings';
-import { ProfileButton } from '@/components/ProfileButton';
+import { HeaderActions } from '@/components/HeaderActions';
 import { HealthGapBanner } from '@/components/HealthGapBanner';
 import { ACTIVITIES, type ActivityType } from '@/constants/activities';
 import { useAuth } from '@/context/AuthContext';
@@ -460,7 +460,7 @@ export default function HomeScreen() {
                     <Text style={styles.greeting}>{balance.toLocaleString()}</Text>
                     <Text style={styles.pointsLabel}>pts</Text>
                 </View>
-                <ProfileButton />
+                <HeaderActions />
             </View>
 
 

@@ -1,6 +1,6 @@
 import { GeometricBackground } from '@/components/home/GeometricBackground';
 import MagicRings from '@/components/MagicRings';
-import { ProfileButton } from '@/components/ProfileButton';
+import { HeaderActions } from '@/components/HeaderActions';
 import { usePoints } from '@/hooks/usePoints';
 import { fetchMyRedemptionSummary, fetchRewards, fetchSmartFeaturedReward, type Reward as ApiReward } from '@/lib/api/rewards';
 import { Ionicons } from '@expo/vector-icons';
@@ -241,7 +241,7 @@ export default function SpendScreen() {
               </View>
             )}
           </Pressable>
-          <ProfileButton />
+          <HeaderActions />
         </View>
       </View>
 

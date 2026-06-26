@@ -145,3 +145,31 @@ export async function triggerServerNotification(
 
   if (error) throw error;
 }
+
+// ---------------------------------------------------------------------------
+// In-app "needs your attention" counts (avatar badge)
+// ---------------------------------------------------------------------------
+
+export interface PendingActionCounts {
+  friendRequests: number;
+  challengeInvites: number;
+  total: number;
+}
+
+/**
+ * One round trip for everything awaiting the user's response — incoming friend
+ * requests + unanswered shared-challenge invites. Backed by the
+ * get_pending_action_counts RPC (SECURITY DEFINER). Never throws; returns zeros
+ * on failure so a badge fetch can't break a screen.
+ */
+export async function fetchPendingActionCounts(): Promise<PendingActionCounts> {
+  const { data, error } = await supabase.rpc('get_pending_action_counts');
+  if (error) {
+    console.warn('[notifications] pending-action counts failed:', error.message);
+    return { friendRequests: 0, challengeInvites: 0, total: 0 };
+  }
+  const row = Array.isArray(data) ? data[0] : data;
+  const friendRequests = Number(row?.friend_requests ?? 0);
+  const challengeInvites = Number(row?.challenge_invites ?? 0);
+  return { friendRequests, challengeInvites, total: friendRequests + challengeInvites };
+}
