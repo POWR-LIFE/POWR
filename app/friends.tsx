@@ -3,6 +3,7 @@ import * as Haptics from 'expo-haptics';
 import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
+  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -115,6 +116,28 @@ export default function FriendsScreen() {
   const handleDecline = (id: string) => {
     Haptics.selectionAsync();
     declineRequest(id);
+  };
+
+  // Removing a friend is destructive and was a one-tap action — confirm first so
+  // a stray tap on the "⋯" doesn't silently delete someone (and explain that any
+  // shared challenges keep running, so it doesn't read as "this breaks things").
+  const confirmRemove = (f: Friend) => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    Alert.alert(
+      `Remove ${f.displayName}?`,
+      "They'll be taken off your friends list. Any challenges you're both in keep running, and you can add each other again anytime.",
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: () => {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            removeFriend(f.id);
+          },
+        },
+      ],
+    );
   };
 
   return (
@@ -233,7 +256,12 @@ export default function FriendsScreen() {
                   <PersonRow
                     friend={f}
                     right={
-                      <Pressable hitSlop={10} onPress={() => removeFriend(f.id)}>
+                      <Pressable
+                        hitSlop={10}
+                        onPress={() => confirmRemove(f)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Remove ${f.displayName}`}
+                      >
                         <Ionicons name="ellipsis-horizontal" size={18} color={MUTED} />
                       </Pressable>
                     }
