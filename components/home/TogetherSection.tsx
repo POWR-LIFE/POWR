@@ -45,6 +45,8 @@ export function TogetherSection({ onOpenChallenge }: TogetherSectionProps) {
     cap,
     atCap,
     friends,
+    search,
+    sendRequest,
     templates,
     bonusConfig,
     createChallenge,
@@ -218,6 +220,8 @@ export function TogetherSection({ onOpenChallenge }: TogetherSectionProps) {
         templates={templates}
         initialTemplateId={presetTemplateId}
         friends={friends}
+        search={search}
+        sendRequest={sendRequest}
         bonusConfig={bonusConfig}
         plateFull={atCap}
         openCount={openCount}

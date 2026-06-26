@@ -157,6 +157,10 @@ export interface UseSharedChallenges {
   cap: number;
   atCap: boolean;
   friends: Friend[];
+  /** Username search + friend-request, surfaced so the invite sheet can add new
+   *  friends inline without spinning up a second useFriends instance. */
+  search: (query: string) => Promise<Friend[]>;
+  sendRequest: (friend: Friend) => void;
   templates: ChallengeTemplate[];
   durations: DurationOption[];
   defaultDurationHours: number;
@@ -175,7 +179,7 @@ export interface UseSharedChallenges {
 
 export function useSharedChallenges(): UseSharedChallenges {
   const { user } = useAuth();
-  const { friends } = useFriends();
+  const { friends, search, sendRequest } = useFriends();
   const [all, setAll] = useState<SharedChallenge[]>([]);
   const [templates, setTemplates] = useState<ChallengeTemplate[]>([]);
   const [cap, setCap] = useState(3);
@@ -296,7 +300,7 @@ export function useSharedChallenges(): UseSharedChallenges {
 
   return {
     loading, all, active, pendingInvites, openChallenges, openCount, cap, atCap,
-    friends, templates, durations, defaultDurationHours, bonusConfig,
+    friends, search, sendRequest, templates, durations, defaultDurationHours, bonusConfig,
     selfId: user?.id ?? null,
     getById, createChallenge, acceptInvite, declineInvite, leaveChallenge, completeChallenge,
     newlyCompletedId, clearCelebration, refresh: load,

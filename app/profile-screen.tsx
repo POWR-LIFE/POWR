@@ -23,6 +23,7 @@ import { getLevelInfo, LEVELS } from '@/constants/levels';
 import { useAuth } from '@/context/AuthContext';
 import { useAchievements } from '@/hooks/useAchievements';
 import { useActivity } from '@/hooks/useActivity';
+import { useFriends } from '@/hooks/useFriends';
 import { usePoints } from '@/hooks/usePoints';
 import { useStreak } from '@/hooks/useStreak';
 import { fetchGallery, type GalleryPhoto } from '@/lib/api/pro-gallery';
@@ -82,6 +83,7 @@ export default function ProfileScreen() {
   const { currentStreak, longestStreak, multiplier } = useStreak();
   const { weekActiveDays, weeklyMetrics } = useActivity();
   const { earned: earnedAchievements, locked: lockedAchievements, earnedCount, totalCount } = useAchievements(totalEarned);
+  const { incoming } = useFriends();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [avatarError, setAvatarError] = useState(false);
   const [gallery, setGallery] = useState<GalleryPhoto[]>([]);
@@ -231,6 +233,22 @@ export default function ProfileScreen() {
                 <Ionicons name="camera-outline" size={11} color={TEXT} />
               </Pressable>
 
+              {/* Friends — mirrors the QR badge on the right for visual balance. */}
+              <Pressable
+                style={s.friendsAvatarBadge}
+                onPress={() => router.push('/friends')}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="View and add friends"
+              >
+                <Ionicons name="people" size={20} color="#FFFFFF" />
+                {incoming.length > 0 && (
+                  <View style={s.friendsCountBadge}>
+                    <Text style={s.friendsCountText}>{incoming.length}</Text>
+                  </View>
+                )}
+              </Pressable>
+
               {/* Your scannable code — sits just right of the avatar ring. */}
               <Pressable
                 style={s.qrBadge}
@@ -239,7 +257,7 @@ export default function ProfileScreen() {
                 accessibilityRole="button"
                 accessibilityLabel="Show my QR code"
               >
-                <Ionicons name="qr-code-outline" size={19} color={GOLD} />
+                <Ionicons name="qr-code-outline" size={20} color="#FFFFFF" />
               </Pressable>
             </View>
           </View>
@@ -510,8 +528,7 @@ const s = StyleSheet.create({
   },
   qrBadge: {
     position: 'absolute', right: -46, top: RING_SIZE / 2 - 20,
-    width: 40, height: 40, borderRadius: 20,
-    backgroundColor: 'rgba(20,20,20,0.9)', borderWidth: 1, borderColor: BORDER,
+    width: 40, height: 40,
     alignItems: 'center', justifyContent: 'center',
   },
 
@@ -653,6 +670,20 @@ const s = StyleSheet.create({
   },
   achieveCheckMark: { fontSize: 9, fontWeight: '700', color: '#0a0a0a', lineHeight: 11 },
   achieveName: { fontSize: 11, fontWeight: '300', color: TEXT, textAlign: 'center', lineHeight: 15 },
+
+  // ── Friends badge — left of avatar ring, mirrors qrBadge on the right ───────
+  friendsAvatarBadge: {
+    position: 'absolute', left: -46, top: RING_SIZE / 2 - 20,
+    width: 40, height: 40,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  friendsCountBadge: {
+    position: 'absolute', top: -3, right: -3,
+    minWidth: 16, height: 16, borderRadius: 8, paddingHorizontal: 4,
+    backgroundColor: GOLD, alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1.5, borderColor: '#0a0a0a',
+  },
+  friendsCountText: { fontSize: 9, fontWeight: '700', color: '#0a0a0a' },
 
   // ── Invite Card ────────────────────────────────────────────────────────────
   inviteCard: { gap: 14 },

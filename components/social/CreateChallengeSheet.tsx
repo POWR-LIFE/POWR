@@ -2,12 +2,14 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  Dimensions,
   Modal,
   Pressable,
   ScrollView,
   Share,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -34,6 +36,10 @@ const TIER_COLOR: Record<string, string> = { easy: GREEN, medium: GOLD, hard: OR
 /** v1 group cap (scope §0: small groups 3–6). Architecture scales to ~20 later. */
 const MAX_GROUP = 6;
 
+// Cap the friend-search results so they scroll inside the sheet rather than
+// pushing the sheet past the keyboard.
+const SCREEN_H = Dimensions.get('window').height;
+
 function CatIcon({ spec, size, color }: { spec: IconSpec; size: number; color: string }) {
   if (spec.lib === 'mc') return <MaterialCommunityIcons name={spec.name as any} size={size} color={color} />;
   return <Ionicons name={spec.name as any} size={size} color={color} />;
@@ -43,6 +49,10 @@ export interface CreateChallengeSheetProps {
   visible: boolean;
   templates: ChallengeTemplate[];
   friends: Friend[];
+  /** Username search over people you're not yet connected to (RPC-backed). */
+  search: (query: string) => Promise<Friend[]>;
+  /** Send a friend request to someone found via search. */
+  sendRequest: (friend: Friend) => void;
   onClose: () => void;
   onCreate: (input: { templateId: string; friendIds: string[] }) => void | Promise<unknown>;
   /** Preselect this template when the sheet opens (e.g. tapped from the browse carousel). */
@@ -63,6 +73,8 @@ export function CreateChallengeSheet({
   visible,
   templates,
   friends,
+  search,
+  sendRequest,
   onClose,
   onCreate,
   initialTemplateId,
@@ -78,10 +90,34 @@ export function CreateChallengeSheet({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [submitting, setSubmitting] = useState(false);
 
+  // ── Add-a-friend search (find someone not yet in your friends list) ──
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<Friend[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [requested, setRequested] = useState<Set<string>>(new Set());
+  // Friend-search gets its own focused view so results aren't buried below the
+  // invite grid + fixed footer (where the keyboard hides them).
+  const [searchMode, setSearchMode] = useState(false);
+
   // Honour the preselected template each time the sheet opens from a browse card.
   useEffect(() => {
     if (visible && initialTemplateId) setTemplateId(initialTemplateId);
   }, [visible, initialTemplateId]);
+
+  // Debounced username search. The RPC already excludes you and anyone you're
+  // already connected to, so every result is someone you can request. Mirrors
+  // app/friends.tsx; cancels in-flight results on fast typing.
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length < 2) { setResults([]); setSearching(false); return; }
+    let cancelled = false;
+    setSearching(true);
+    const t = setTimeout(async () => {
+      const r = await search(q);
+      if (!cancelled) { setResults(r); setSearching(false); }
+    }, 300);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [query, search]);
 
   const template = useMemo(
     () => templates.find((t) => t.id === templateId) ?? templates[0],
@@ -103,9 +139,29 @@ export function CreateChallengeSheet({
     });
   };
 
+  // A newly requested friend can't be invited yet (the backend only accepts
+  // confirmed friends) — they surface in the grid above once they accept. So we
+  // just fire the request and flip the row to "Requested".
+  const handleAddFriend = (f: Friend) => {
+    Haptics.selectionAsync();
+    sendRequest(f);
+    setRequested((prev) => new Set(prev).add(f.id));
+  };
+
+  // Back out of search without closing the whole sheet — return to the invite flow.
+  const exitSearch = () => {
+    setSearchMode(false);
+    setQuery('');
+    setResults([]);
+  };
+
   const reset = () => {
     setSelected(new Set());
     setTemplateId(templates[0]?.id ?? null);
+    setQuery('');
+    setResults([]);
+    setRequested(new Set());
+    setSearchMode(false);
   };
 
   const handleClose = () => {
@@ -150,12 +206,24 @@ export function CreateChallengeSheet({
         <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 16) + 8 }]}>
           <View style={styles.handle} />
 
-          <View style={styles.titleRow}>
-            <Text style={styles.sheetTitle}>Challenge friends</Text>
-            <Pressable hitSlop={10} onPress={handleClose} accessibilityRole="button" accessibilityLabel="Close">
-              <Ionicons name="close" size={22} color={MUTED} />
-            </Pressable>
-          </View>
+          {searchMode ? (
+            <View style={styles.titleRow}>
+              <Pressable hitSlop={10} onPress={exitSearch} accessibilityRole="button" accessibilityLabel="Back to invites" style={styles.backBtn}>
+                <Ionicons name="chevron-back" size={22} color={TEXT} />
+                <Text style={styles.backText}>Add a friend</Text>
+              </Pressable>
+              <Pressable hitSlop={10} onPress={handleClose} accessibilityRole="button" accessibilityLabel="Close">
+                <Ionicons name="close" size={22} color={MUTED} />
+              </Pressable>
+            </View>
+          ) : (
+            <View style={styles.titleRow}>
+              <Text style={styles.sheetTitle}>Challenge friends</Text>
+              <Pressable hitSlop={10} onPress={handleClose} accessibilityRole="button" accessibilityLabel="Close">
+                <Ionicons name="close" size={22} color={MUTED} />
+              </Pressable>
+            </View>
+          )}
 
           {plateFull ? (
             <>
@@ -195,9 +263,83 @@ export function CreateChallengeSheet({
                 </Pressable>
               </View>
             </>
+          ) : searchMode ? (
+            <View style={styles.searchPane}>
+              <View style={styles.searchWrap}>
+                <Ionicons name="search" size={16} color={MUTED} />
+                <TextInput
+                  autoFocus
+                  value={query}
+                  onChangeText={setQuery}
+                  placeholder="Search by username"
+                  placeholderTextColor={MUTED}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  returnKeyType="search"
+                  style={styles.searchInput}
+                />
+                {query.length > 0 && (
+                  <Pressable hitSlop={8} onPress={() => setQuery('')} accessibilityRole="button" accessibilityLabel="Clear search">
+                    <Ionicons name="close-circle" size={16} color={MUTED} />
+                  </Pressable>
+                )}
+              </View>
+
+              <ScrollView
+                style={styles.searchResults}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={{ gap: 12, paddingBottom: 8 }}
+              >
+                {query.trim().length === 0 ? (
+                  <Text style={styles.searchNote}>
+                    Find people by username and send a friend request. They join your invite list once they accept.
+                  </Text>
+                ) : query.trim().length < 2 ? (
+                  <Text style={styles.searchNote}>Type at least 2 characters to search.</Text>
+                ) : searching ? (
+                  <Text style={styles.searchNote}>Searching…</Text>
+                ) : results.length === 0 ? (
+                  <Text style={styles.searchNote}>No one found for “{query.trim()}”.</Text>
+                ) : (
+                  <View style={styles.resultsCard}>
+                    {results.map((f, i) => (
+                      <View key={f.id} style={i > 0 ? styles.resultDivider : undefined}>
+                        <View style={styles.resultRow}>
+                          <Avatar friend={f} size={36} />
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.resultName} numberOfLines={1}>{f.displayName}</Text>
+                            <Text style={styles.resultHandle} numberOfLines={1}>@{f.username}</Text>
+                          </View>
+                          {requested.has(f.id) ? (
+                            <Text style={styles.requestedText}>Requested</Text>
+                          ) : (
+                            <Pressable
+                              style={styles.addFriendBtn}
+                              onPress={() => handleAddFriend(f)}
+                              accessibilityRole="button"
+                              accessibilityLabel={`Add ${f.displayName}`}
+                            >
+                              <Ionicons name="person-add" size={13} color="#0a0a0a" />
+                              <Text style={styles.addFriendBtnText}>Add</Text>
+                            </Pressable>
+                          )}
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                {requested.size > 0 && (
+                  <Text style={styles.requestedNote}>
+                    Request sent — once they accept, they’ll appear in your invite list.
+                  </Text>
+                )}
+              </ScrollView>
+            </View>
           ) : (
             <>
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 18 }}>
+          <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 18 }}>
             {/* ── The challenge ── */}
             {initialTemplateId && template ? (
               /* Came from a browse card: confirm the pick, don't re-ask — straight to inviting. */
@@ -261,7 +403,7 @@ export function CreateChallengeSheet({
 
               {friends.length === 0 && (
                 <Text style={styles.noFriendsHint}>
-                  No friends yet — share a link to invite anyone to join.
+                  No friends yet — search below to add one, or share a link to invite anyone.
                 </Text>
               )}
 
@@ -305,6 +447,22 @@ export function CreateChallengeSheet({
                   <Text style={[styles.friendName, { color: GOLD }]}>Link</Text>
                 </Pressable>
               </View>
+
+              {/* Add-a-friend entry — opens the focused search view so results
+                 aren't buried under the grid + fixed footer. */}
+              <Pressable
+                style={styles.addBlock}
+                onPress={() => setSearchMode(true)}
+                accessibilityRole="button"
+                accessibilityLabel="Add a friend by username"
+              >
+                <Text style={styles.addBlockLabel}>Add a friend</Text>
+                <View style={styles.searchWrap} pointerEvents="none">
+                  <Ionicons name="search" size={16} color={MUTED} />
+                  <Text style={styles.searchFieldPlaceholder}>Search by username</Text>
+                  <Ionicons name="chevron-forward" size={16} color={MUTED} />
+                </View>
+              </Pressable>
             </View>
           </ScrollView>
 
@@ -413,6 +571,37 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: 'rgba(232,210,0,0.4)', borderStyle: 'dashed',
     alignItems: 'center', justifyContent: 'center',
   },
+
+  // back-header shown while in friend-search mode
+  backBtn: { flexDirection: 'row', alignItems: 'center', gap: 2, marginLeft: -4 },
+  backText: { fontFamily: fontFamily.light, fontSize: 19, color: TEXT, letterSpacing: -0.3 },
+
+  // add-a-friend search block (grow your friends list from inside the invite flow)
+  addBlock: { gap: 10, marginTop: 4, paddingTop: 14, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: BORDER },
+  addBlockLabel: { fontFamily: fontFamily.medium, fontSize: 10, letterSpacing: 2, color: FAINT, textTransform: 'uppercase' },
+  searchWrap: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: CARD_BG, borderWidth: 1, borderColor: BORDER, borderRadius: 12,
+    paddingHorizontal: 14, height: 46,
+  },
+  searchInput: { flex: 1, fontFamily: fontFamily.regular, fontSize: 14, color: TEXT, padding: 0 },
+  searchFieldPlaceholder: { flex: 1, fontFamily: fontFamily.regular, fontSize: 14, color: MUTED },
+  // focused search view: input + a capped, scrollable results area (no footer)
+  searchPane: { gap: 14, paddingTop: 2 },
+  searchResults: { maxHeight: SCREEN_H * 0.5 },
+  searchNote: { fontFamily: fontFamily.light, fontSize: 12.5, color: SECONDARY, lineHeight: 17, paddingHorizontal: 2 },
+  resultsCard: { backgroundColor: CARD_BG, borderRadius: 14, borderWidth: 1, borderColor: BORDER, paddingHorizontal: 12 },
+  resultDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: BORDER },
+  resultRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10 },
+  resultName: { fontFamily: fontFamily.regular, fontSize: 14, color: TEXT },
+  resultHandle: { fontFamily: fontFamily.light, fontSize: 12, color: SECONDARY, marginTop: 1 },
+  addFriendBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    backgroundColor: GOLD, borderRadius: 100, paddingHorizontal: 14, paddingVertical: 7,
+  },
+  addFriendBtnText: { fontFamily: fontFamily.bold, fontSize: 12, color: '#0a0a0a' },
+  requestedText: { fontFamily: fontFamily.medium, fontSize: 12, color: MUTED },
+  requestedNote: { fontFamily: fontFamily.light, fontSize: 11.5, color: SECONDARY, lineHeight: 16, paddingHorizontal: 2 },
 
   // footer
   footer: { gap: 12, borderTopWidth: 1, borderTopColor: BORDER, paddingTop: 14 },
