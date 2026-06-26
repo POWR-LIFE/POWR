@@ -149,8 +149,13 @@ export default function DiscoverScreen() {
 
   // Filter state
   const [openNowFilter, setOpenNowFilter] = useState(false);
+  const [visitedFilter, setVisitedFilter] = useState(false);
   const [sortMode, setSortMode] = useState<SortMode>('nearest');
   const [maxDistanceMi, setMaxDistanceMi] = useState<number | null>(null); // null = any
+
+  // Set of partner dbIds the user has previously checked in at (for the
+  // "Visited" filter + the gold badge on the map pins).
+  const [visitedIds, setVisitedIds] = useState<Set<string>>(new Set());
 
   // UI state
   const [search, setSearch] = useState('');
@@ -211,6 +216,22 @@ export default function DiscoverScreen() {
         .eq('id', user.id)
         .single();
       if (data) setPreferredGymId(data.preferred_gym_id ?? null);
+    })();
+  }, []);
+
+  // Load the set of partners the user has previously visited (any check-in)
+  useEffect(() => {
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data } = await supabase
+        .from('activity_sessions')
+        .select('partner_id')
+        .eq('user_id', user.id)
+        .not('partner_id', 'is', null);
+      if (data) {
+        setVisitedIds(new Set(data.map((r: { partner_id: string }) => r.partner_id)));
+      }
     })();
   }, []);
 
@@ -351,6 +372,9 @@ export default function DiscoverScreen() {
     if (openNowFilter) {
       list = list.filter(p => p.isOpenNow);
     }
+    if (visitedFilter) {
+      list = list.filter(p => visitedIds.has(p.dbId));
+    }
     if (maxDistanceMi !== null && userLoc && searchResults === null) {
       // Distance filter only applies to the local nearby list; skip for search results
       list = list.filter(p => (p as any)._distMi <= maxDistanceMi);
@@ -363,7 +387,7 @@ export default function DiscoverScreen() {
       );
     }
     return list;
-  }, [partners, searchResults, openNowFilter, maxDistanceMi, search, userLoc]);
+  }, [partners, searchResults, openNowFilter, visitedFilter, visitedIds, maxDistanceMi, search, userLoc]);
 
   // Map circles/markers must first mount already in final nearest-first order:
   // inserting them into a live MKMapView after the location re-sort can
@@ -378,7 +402,7 @@ export default function DiscoverScreen() {
 
   // Remount native overlays when the set identity changes (search/sort/filter
   // flips) rather than mutating a live set — same iOS attach issue as above.
-  const mapSetKey = `${searchResults !== null ? 's' : 'n'}-${sortMode}-${openNowFilter ? 1 : 0}-${maxDistanceMi ?? 'any'}`;
+  const mapSetKey = `${searchResults !== null ? 's' : 'n'}-${sortMode}-${openNowFilter ? 1 : 0}-${visitedFilter ? 1 : 0}-${maxDistanceMi ?? 'any'}`;
 
   const sortLabel = sortMode === 'nearest' ? 'Nearest' : sortMode === 'pts' ? 'Most Points' : 'A–Z';
 
@@ -606,6 +630,7 @@ export default function DiscoverScreen() {
               key={`${mapSetKey}-${partner.id}`}
               partner={partner}
               isActive={partner.dbId === activeGeofence?.partnerId}
+              isVisited={visitedIds.has(partner.dbId)}
             />
           ))}
 
@@ -683,12 +708,25 @@ export default function DiscoverScreen() {
         {/* ── Sticky header: filters + search + tabs ─────────── */}
         <View style={styles.listHeader}>
           {/* Filter chips */}
-          <View style={styles.filterRow}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.filterRow}
+            keyboardShouldPersistTaps="handled"
+          >
             <FilterChip
               label="Open Now"
               active={openNowFilter}
               onPress={() => setOpenNowFilter(v => !v)}
             />
+            {visitedIds.size > 0 && (
+              <FilterChip
+                label="Visited"
+                active={visitedFilter}
+                icon="checkmark-circle"
+                onPress={() => setVisitedFilter(v => !v)}
+              />
+            )}
             <Pressable
               style={({ pressed }) => [styles.filterChip, pressed && { opacity: 0.75 }]}
               onPress={() => setSortMenuVisible(true)}
@@ -703,7 +741,7 @@ export default function DiscoverScreen() {
               icon="options-outline"
               badge={activeFilterCount > 0 ? activeFilterCount : undefined}
             />
-          </View>
+          </ScrollView>
 
           {/* Search bar */}
           <View style={styles.searchBar}>
@@ -748,6 +786,7 @@ export default function DiscoverScreen() {
             <Text style={styles.emptyText}>No partners match your filters</Text>
             <Pressable onPress={() => {
               setOpenNowFilter(false);
+              setVisitedFilter(false);
               setMaxDistanceMi(null);
               setSearch('');
             }}>
@@ -762,6 +801,7 @@ export default function DiscoverScreen() {
             partner={partner}
             isActive={partner.dbId === activeGeofence?.partnerId}
             isPreferred={partner.dbId === preferredGymId}
+            isVisited={visitedIds.has(partner.dbId)}
             onStarPress={() => handleTogglePreferred(partner)}
             onPress={() => {
               setRoutePartner(null);
@@ -1326,7 +1366,7 @@ export default function DiscoverScreen() {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function MapMarker({ partner, isActive }: { partner: Partner; isActive: boolean }) {
+function MapMarker({ partner, isActive, isVisited }: { partner: Partner; isActive: boolean; isVisited?: boolean }) {
   const [imageReady, setImageReady] = useState(!partner.logoUrl);
 
   return (
@@ -1335,35 +1375,42 @@ function MapMarker({ partner, isActive }: { partner: Partner; isActive: boolean 
       title={partner.name}
       tracksViewChanges={!imageReady || isActive}
     >
-      <PartnerPin partner={partner} isActive={isActive} onImageLoad={() => setImageReady(true)} />
+      <PartnerPin partner={partner} isActive={isActive} isVisited={isVisited} onImageLoad={() => setImageReady(true)} />
     </Marker>
   );
 }
 
-function PartnerPin({ partner, isActive, onImageLoad }: { partner: Partner; isActive?: boolean; onImageLoad?: () => void }) {
+function PartnerPin({ partner, isActive, isVisited, onImageLoad }: { partner: Partner; isActive?: boolean; isVisited?: boolean; onImageLoad?: () => void }) {
   return (
-    <View style={[styles.pinCircle, isActive && styles.pinCircleActive, { backgroundColor: partner.logoBg === 'white' ? '#FFFFFF' : partner.logoBg === 'black' ? '#000000' : '#1a1a1a' }]}>
-      {partner.logoUrl ? (
-        <Image
-          source={{ uri: partner.logoUrl }}
-          style={styles.pinLogoImage}
-          contentFit="contain"
-          onLoad={onImageLoad}
-          onError={onImageLoad}
-        />
-      ) : (
-        <Text style={[styles.pinLogoFallback, partner.logoBg === 'white' && { color: '#000' }]} numberOfLines={1}>
-          {partner.logoText.split('\n')[0]}
-        </Text>
+    <View style={styles.pinWrap}>
+      <View style={[styles.pinCircle, isActive && styles.pinCircleActive, { backgroundColor: partner.logoBg === 'white' ? '#FFFFFF' : partner.logoBg === 'black' ? '#000000' : '#1a1a1a' }]}>
+        {partner.logoUrl ? (
+          <Image
+            source={{ uri: partner.logoUrl }}
+            style={styles.pinLogoImage}
+            contentFit="contain"
+            onLoad={onImageLoad}
+            onError={onImageLoad}
+          />
+        ) : (
+          <Text style={[styles.pinLogoFallback, partner.logoBg === 'white' && { color: '#000' }]} numberOfLines={1}>
+            {partner.logoText.split('\n')[0]}
+          </Text>
+        )}
+      </View>
+      {isVisited && (
+        <View style={styles.pinVisitedBadge}>
+          <Ionicons name="checkmark" size={9} color="#0a0a0a" />
+        </View>
       )}
     </View>
   );
 }
 
 function PartnerListRow({
-  partner, isActive, isPreferred, onPress, onStarPress,
+  partner, isActive, isPreferred, isVisited, onPress, onStarPress,
 }: {
-  partner: Partner; isActive?: boolean; isPreferred?: boolean; onPress?: () => void; onStarPress?: () => void;
+  partner: Partner; isActive?: boolean; isPreferred?: boolean; isVisited?: boolean; onPress?: () => void; onStarPress?: () => void;
 }) {
   return (
     <Pressable
@@ -1384,12 +1431,17 @@ function PartnerListRow({
         )}
       </View>
       <View style={styles.partnerInfo}>
-        <Text
-          style={[styles.partnerName, isActive && { color: GOLD }]}
-          numberOfLines={1}
-        >
-          {partner.name}
-        </Text>
+        <View style={styles.partnerNameRow}>
+          <Text
+            style={[styles.partnerName, isActive && { color: GOLD }, { flexShrink: 1 }]}
+            numberOfLines={1}
+          >
+            {partner.name}
+          </Text>
+          {isVisited && (
+            <Ionicons name="checkmark-circle" size={13} color={GOLD} style={{ marginLeft: 5, flexShrink: 0 }} />
+          )}
+        </View>
         <Text style={styles.partnerMeta} numberOfLines={1}>
           {isActive ? 'Session active' : partner.isOpenNow ? 'Open now' : 'Closed'} · {partner.area}
         </Text>
@@ -1725,6 +1777,13 @@ const styles = StyleSheet.create({
   },
   pinCircleLight: { backgroundColor: '#F2F2F2' },
   pinCircleActive: { borderColor: GOLD, borderWidth: 2.5 },
+  pinWrap: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  pinVisitedBadge: {
+    position: 'absolute', top: 0, right: 0,
+    width: 15, height: 15, borderRadius: 7.5,
+    backgroundColor: GOLD, alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1.5, borderColor: BG,
+  },
   pinLogoImage: { width: 26, height: 26 },
   pinLogoFallback: { fontSize: 8, fontWeight: '700', color: '#fff', textAlign: 'center' },
 
@@ -1793,6 +1852,7 @@ const styles = StyleSheet.create({
   logoText: { fontSize: 12, fontWeight: '700', color: DIM, textAlign: 'center' },
   logoTextDark: { color: '#1a1a1a' },
   partnerInfo: { flex: 1, gap: 3 },
+  partnerNameRow: { flexDirection: 'row', alignItems: 'center' },
   partnerName: { fontSize: 15, fontWeight: '400', color: TEXT, letterSpacing: -0.1 },
   partnerMeta: { fontSize: 11, fontWeight: '300', color: DIM },
   partnerValueInline: {
