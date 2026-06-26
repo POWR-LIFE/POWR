@@ -7,6 +7,7 @@ import {
     Inbox,
     LayoutDashboard,
     LogOut,
+    Megaphone,
     MessageSquare,
     ScrollText,
     Settings,
@@ -37,6 +38,7 @@ import PartnerSetup from './pages/partner/PartnerSetup';
 import Analytics from './pages/admin/Analytics';
 import AthleteApplications from './pages/admin/AthleteApplications';
 import AuditLog from './pages/admin/AuditLog';
+import Broadcast from './pages/admin/Broadcast';
 import FeaturedSchedule from './pages/admin/FeaturedSchedule';
 import GymDetail from './pages/admin/GymDetail';
 import GymRequests from './pages/admin/GymRequests';
@@ -819,6 +821,7 @@ const AdminLayout = ({ children }) => {
         { label: 'Redemptions', path: '/admin/redemptions', icon: Gift          },
         { label: 'Audit Log',   path: '/admin/audit',       icon: ScrollText    },
         { label: 'Support',     path: '/admin/support',     icon: MessageSquare },
+        { label: 'Broadcast',   path: '/admin/broadcast',   icon: Megaphone     },
         { label: 'Config',      path: '/admin/config',      icon: Settings      },
     ];
 
@@ -996,6 +999,7 @@ export default function App() {
                     <Route path="/admin/audit" element={<ProtectedRoute><AdminLayout><AuditLog /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/config" element={<ProtectedRoute><AdminLayout><SystemConfig /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/support" element={<ProtectedRoute><AdminLayout><SupportTickets /></AdminLayout></ProtectedRoute>} />
+                    <Route path="/admin/broadcast" element={<ProtectedRoute><AdminLayout><Broadcast /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/athletes" element={<ProtectedRoute><AdminLayout><AthleteApplications /></AdminLayout></ProtectedRoute>} />
                     <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>

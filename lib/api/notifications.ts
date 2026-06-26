@@ -47,6 +47,8 @@ export interface NotificationPreferences {
   points_milestone: boolean;
   inactivity_nudge: boolean;
   sleep_target_met: boolean;
+  /** Product announcements broadcast from the admin panel (App Store 4.5.4 opt-out). */
+  announcements: boolean;
   /** Email: Monday weekly summary recap. */
   email_weekly_summary: boolean;
   // Together (shared challenges + friend graph).
@@ -69,6 +71,7 @@ export const DEFAULT_PREFERENCES: NotificationPreferences = {
   points_milestone: true,
   inactivity_nudge: true,
   sleep_target_met: true,
+  announcements: true,
   email_weekly_summary: true,
   friend_request: true,
   friend_accepted: true,
@@ -101,6 +104,7 @@ export async function getNotificationPreferences(
     points_milestone: data.points_milestone ?? true,
     inactivity_nudge: data.inactivity_nudge ?? true,
     sleep_target_met: data.sleep_target_met ?? true,
+    announcements: data.announcements ?? true,
     email_weekly_summary: data.email_weekly_summary ?? true,
     friend_request: data.friend_request ?? true,
     friend_accepted: data.friend_accepted ?? true,
