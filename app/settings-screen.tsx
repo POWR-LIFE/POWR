@@ -101,6 +101,7 @@ export default function SettingsScreen() {
   const [notifWorkouts,   setNotifWorkouts]   = useState(true);
   const [notifRewards,    setNotifRewards]    = useState(true);
   const [notifFriends,    setNotifFriends]    = useState(meta.notif_friends ?? true);
+  const [notifNews,       setNotifNews]       = useState(true);
   const [emailWeekly,     setEmailWeekly]     = useState(true);
   const [shareActivity,   setShareActivity]   = useState(meta.share_activity ?? true);
   const [togetherEnabled, setTogetherEnabled] = useState(meta.together_enabled ?? true);
@@ -109,6 +110,7 @@ export default function SettingsScreen() {
     getNotificationPreferences(user.id).then(prefs => {
       setNotifWorkouts(prefs.check_in_reminder);
       setNotifRewards(prefs.reward_unlocked);
+      setNotifNews(prefs.announcements);
       setEmailWeekly(prefs.email_weekly_summary);
       // The "Friend activity" switch fronts all the together push types.
       setNotifFriends(prefs.challenge_invite);
@@ -465,6 +467,16 @@ export default function SettingsScreen() {
                 challenge_started: v, challenge_friend_finished: v, challenge_pool_milestone: v,
                 challenge_completed: v, challenge_expiring: v,
               });
+            }}
+          />
+          <RowToggle
+            icon="megaphone-outline"
+            label="Product news"
+            sublabel="Occasional announcements about new features and rewards"
+            value={notifNews}
+            onValueChange={(v) => {
+              setNotifNews(v);
+              if (user?.id) updateNotificationPreferences(user.id, { announcements: v });
             }}
             isLast
           />
