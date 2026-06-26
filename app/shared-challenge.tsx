@@ -2,12 +2,13 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useMemo, useState } from 'react';
-import { Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import GeometricBackground from '@/components/GeometricBackground';
 import { Avatar } from '@/components/social/Avatar';
 import { Countdown } from '@/components/social/Countdown';
+import { FriendSearchSheet } from '@/components/social/FriendSearchSheet';
 import { SharedChallengeCelebration } from '@/components/social/SharedChallengeCelebration';
 import { fontFamily } from '@/constants/tokens';
 import { useSharedChallenges } from '@/hooks/useSharedChallenges';
@@ -89,8 +90,10 @@ export default function SharedChallengeDetail() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const params = useLocalSearchParams<{ challenge?: string; id?: string }>();
-  const { acceptInvite, declineInvite, leaveChallenge, getById, bonusConfig, loading } = useSharedChallenges();
+  const { acceptInvite, declineInvite, leaveChallenge, getById, bonusConfig, loading, error, refresh, search, sendRequest } = useSharedChallenges();
   const [showCelebration, setShowCelebration] = useState(false);
+  const [showAddFriend, setShowAddFriend] = useState(false);
+  const [retrying, setRetrying] = useState(false);
 
   // Prefer the live hook record (by id — used by Home nav + notification deep
   // links); fall back to a serialized challenge param for older nav paths.
@@ -105,20 +108,59 @@ export default function SharedChallengeDetail() {
   }, [params.id, params.challenge, getById]);
 
   if (!challenge) {
+    // Three distinct states so we never dead-end on a blank screen:
+    //   loading  → first fetch in flight (or a manual retry)
+    //   error    → the fetch failed; the challenge may well still exist, so offer
+    //              a retry instead of wrongly declaring it gone
+    //   missing  → loaded cleanly but it's genuinely not in our list
+    const isLoading = retrying || (!!params.id && loading);
+    const isError = !isLoading && error;
+
+    const handleRetry = async () => {
+      if (retrying) return;
+      Haptics.selectionAsync();
+      setRetrying(true);
+      try {
+        await refresh();
+      } finally {
+        setRetrying(false);
+      }
+    };
+
     return (
       <View style={[styles.screen, { paddingTop: insets.top }]}>
         <GeometricBackground />
         <View style={styles.header}>
-          <Pressable onPress={() => router.back()} hitSlop={12} style={styles.headerBtn}>
+          <Pressable onPress={() => router.back()} hitSlop={12} style={styles.headerBtn} accessibilityRole="button" accessibilityLabel="Back">
             <Ionicons name="chevron-back" size={20} color={DIM} />
           </Pressable>
           <Text style={styles.headerTitle}>CHALLENGE</Text>
           <View style={styles.headerBtn} />
         </View>
         <View style={styles.emptyWrap}>
-          <Text style={styles.emptyText}>
-            {params.id && loading ? 'Loading…' : 'Challenge not found.'}
-          </Text>
+          {isLoading ? (
+            <Text style={styles.emptyText}>Loading…</Text>
+          ) : isError ? (
+            <>
+              <Ionicons name="cloud-offline-outline" size={28} color={MUTED} style={styles.emptyIcon} />
+              <Text style={styles.emptyTitle}>Couldn’t load this challenge</Text>
+              <Text style={styles.emptyText}>Check your connection and try again.</Text>
+              <Pressable style={styles.emptyBtn} onPress={handleRetry} accessibilityRole="button" accessibilityLabel="Try again">
+                <Ionicons name="refresh" size={15} color={GOLD} />
+                <Text style={styles.emptyBtnText}>Try again</Text>
+              </Pressable>
+            </>
+          ) : (
+            <>
+              <Ionicons name="people-outline" size={28} color={MUTED} style={styles.emptyIcon} />
+              <Text style={styles.emptyTitle}>Challenge not available</Text>
+              <Text style={styles.emptyText}>It may have ended or been cancelled.</Text>
+              <Pressable style={styles.emptyBtn} onPress={() => router.back()} accessibilityRole="button" accessibilityLabel="Go back">
+                <Ionicons name="chevron-back" size={15} color={GOLD} />
+                <Text style={styles.emptyBtnText}>Go back</Text>
+              </Pressable>
+            </>
+          )}
         </View>
       </View>
     );
@@ -147,6 +189,33 @@ export default function SharedChallengeDetail() {
   const isCreator = challenge.creatorId === self?.friend.id;
   // Forming until everyone's accepted — the clock (endsAt) only runs after that.
   const forming = participants.some((p) => p.state === 'invited');
+
+  // Leaving / cancelling was a one-tap action that, for a pair, ends the
+  // challenge for BOTH people (dropping below two live members cancels it).
+  // Confirm first, and make the consequence explicit. `willCancelForAll` is true
+  // when the creator cancels, or when leaving would drop the group under two.
+  const willCancelForAll = isCreator || participants.length <= 2;
+  const confirmLeave = () => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    const title = isCreator ? 'Cancel challenge?' : 'Leave challenge?';
+    const message = isCreator
+      ? `This ends “${template.title}” for everyone. This can’t be undone.`
+      : willCancelForAll
+        ? `You’ll drop out of “${template.title}”. With no one else left, it ends for everyone.`
+        : `You’ll drop out of “${template.title}”. The others keep going.`;
+    Alert.alert(title, message, [
+      { text: isCreator ? 'Keep challenge' : 'Stay in', style: 'cancel' },
+      {
+        text: isCreator ? 'Cancel challenge' : 'Leave',
+        style: 'destructive',
+        onPress: () => {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          leaveChallenge(challenge.id);
+          router.back();
+        },
+      },
+    ]);
+  };
 
   const handleShare = async () => {
     const url = `https://powr.life/app?challenge=${challenge.id}`;
@@ -300,16 +369,35 @@ export default function SharedChallengeDetail() {
           </>
         ) : (
           <>
-            {/* Invite more */}
-            <Pressable style={styles.inviteMore} onPress={handleShare}>
-              <Ionicons name="person-add-outline" size={16} color={GOLD} />
-              <Text style={styles.inviteMoreText}>Invite more friends</Text>
-            </Pressable>
+            {/* Grow the group — add new friends by username, or share a link to
+                invite anyone (friend or not) straight into this challenge. */}
+            <View style={styles.actionRow}>
+              <Pressable
+                style={[styles.actionBtn, styles.actionPrimary]}
+                onPress={() => { Haptics.selectionAsync(); setShowAddFriend(true); }}
+                accessibilityRole="button"
+                accessibilityLabel="Add friends by username"
+              >
+                <Ionicons name="person-add-outline" size={16} color={GOLD} />
+                <Text style={styles.actionPrimaryText}>Add friends</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.actionBtn, styles.actionGhost]}
+                onPress={handleShare}
+                accessibilityRole="button"
+                accessibilityLabel="Share challenge link"
+              >
+                <Ionicons name="share-outline" size={15} color={SECONDARY} />
+                <Text style={styles.actionGhostText}>Share link</Text>
+              </Pressable>
+            </View>
 
             {/* Leave / cancel */}
             <Pressable
               style={styles.leave}
-              onPress={() => { Haptics.selectionAsync(); leaveChallenge(challenge.id); router.back(); }}
+              onPress={confirmLeave}
+              accessibilityRole="button"
+              accessibilityLabel={isCreator ? 'Cancel challenge' : 'Leave challenge'}
             >
               <Text style={styles.leaveText}>{isCreator ? 'Cancel challenge' : 'Leave challenge'}</Text>
             </Pressable>
@@ -332,6 +420,13 @@ export default function SharedChallengeDetail() {
           onShare={handleShare}
         />
       )}
+
+      <FriendSearchSheet
+        visible={showAddFriend}
+        onClose={() => setShowAddFriend(false)}
+        search={search}
+        sendRequest={sendRequest}
+      />
     </View>
   );
 }
@@ -342,8 +437,16 @@ const styles = StyleSheet.create({
   headerBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
   headerTitle: { flex: 1, textAlign: 'center', fontFamily: fontFamily.semiBold, fontSize: 11, letterSpacing: 2.5, color: TEXT },
 
-  emptyWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  emptyText: { fontFamily: fontFamily.light, fontSize: 14, color: SECONDARY },
+  emptyWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, gap: 6 },
+  emptyIcon: { marginBottom: 4 },
+  emptyTitle: { fontFamily: fontFamily.regular, fontSize: 16, color: TEXT, textAlign: 'center' },
+  emptyText: { fontFamily: fontFamily.light, fontSize: 14, color: SECONDARY, textAlign: 'center' },
+  emptyBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 14,
+    borderWidth: 1, borderColor: 'rgba(232,210,0,0.3)', borderRadius: 100,
+    paddingHorizontal: 18, paddingVertical: 11,
+  },
+  emptyBtnText: { fontFamily: fontFamily.medium, fontSize: 13, color: GOLD, letterSpacing: 0.3 },
 
   sectionLabel: { fontFamily: fontFamily.medium, fontSize: 10, letterSpacing: 2, color: FAINT, textTransform: 'uppercase' },
 
@@ -382,11 +485,15 @@ const styles = StyleSheet.create({
   fill: { height: 4, borderRadius: 2 },
 
   // actions
-  inviteMore: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    borderWidth: 1, borderColor: 'rgba(232,210,0,0.3)', borderRadius: 100, paddingVertical: 14,
+  actionRow: { flexDirection: 'row', gap: 10 },
+  actionBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    borderWidth: 1, borderRadius: 100, paddingVertical: 14,
   },
-  inviteMoreText: { fontFamily: fontFamily.medium, fontSize: 13, color: GOLD, letterSpacing: 0.3 },
+  actionPrimary: { borderColor: 'rgba(232,210,0,0.3)' },
+  actionPrimaryText: { fontFamily: fontFamily.medium, fontSize: 13, color: GOLD, letterSpacing: 0.3 },
+  actionGhost: { borderColor: BORDER },
+  actionGhostText: { fontFamily: fontFamily.medium, fontSize: 13, color: SECONDARY, letterSpacing: 0.3 },
   leave: { alignItems: 'center', paddingVertical: 8 },
   leaveText: { fontFamily: fontFamily.regular, fontSize: 13, color: MUTED },
 

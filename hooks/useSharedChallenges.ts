@@ -149,6 +149,9 @@ function isOpenForSelf(c: SharedChallenge): boolean {
 
 export interface UseSharedChallenges {
   loading: boolean;
+  /** True when the last load() failed (RPC/network) — lets screens show a retry
+   *  instead of conflating a fetch error with a genuinely-missing challenge. */
+  error: boolean;
   all: SharedChallenge[];
   active: SharedChallenge[];
   pendingInvites: SharedChallenge[];
@@ -187,6 +190,7 @@ export function useSharedChallenges(): UseSharedChallenges {
   const [defaultDurationHours, setDefaultDurationHours] = useState(72);
   const [bonusConfig, setBonusConfig] = useState({ perHead: 5, maxBonus: 30 });
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const [newlyCompletedId, setNewlyCompletedId] = useState<string | null>(null);
   const checkedRef = useRef<Set<string>>(new Set());
 
@@ -212,14 +216,19 @@ export function useSharedChallenges(): UseSharedChallenges {
   }, []);
 
   const load = useCallback(async () => {
-    if (!user) { setAll([]); setLoading(false); return; }
-    const { data, error } = await supabase.rpc('get_my_shared_challenges');
-    if (error) {
-      console.warn('[useSharedChallenges] load failed:', error.message);
+    if (!user) { setAll([]); setError(false); setLoading(false); return; }
+    const { data, error: rpcError } = await supabase.rpc('get_my_shared_challenges');
+    if (rpcError) {
+      // Don't wipe `all` — keep whatever we had so a transient blip doesn't blank
+      // the UI — but flag the failure so detail screens can offer a retry rather
+      // than wrongly claiming the challenge no longer exists.
+      console.warn('[useSharedChallenges] load failed:', rpcError.message);
+      setError(true);
       setLoading(false);
       return;
     }
     setAll((data ?? []).map(mapChallengeRow));
+    setError(false);
     setLoading(false);
   }, [user]);
 
@@ -299,7 +308,7 @@ export function useSharedChallenges(): UseSharedChallenges {
   const clearCelebration = useCallback(() => setNewlyCompletedId(null), []);
 
   return {
-    loading, all, active, pendingInvites, openChallenges, openCount, cap, atCap,
+    loading, error, all, active, pendingInvites, openChallenges, openCount, cap, atCap,
     friends, search, sendRequest, templates, durations, defaultDurationHours, bonusConfig,
     selfId: user?.id ?? null,
     getById, createChallenge, acceptInvite, declineInvite, leaveChallenge, completeChallenge,
