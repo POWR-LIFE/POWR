@@ -14,7 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { GeometricBackground } from '@/components/home/GeometricBackground';
 import { RadialCarousel } from '@/components/home/RadialCarousel';
-import { ProfileButton } from '@/components/ProfileButton';
+import { HeaderActions } from '@/components/HeaderActions';
 import { MovementTab } from '@/components/progress/MovementTab';
 import { SleepTab } from '@/components/progress/SleepTab';
 import { WorkoutsTab } from '@/components/progress/WorkoutsTab';
@@ -280,7 +280,7 @@ export default function ProgressScreen() {
       <GeometricBackground />
       <View style={styles.header}>
         <Text style={styles.title}>Progress</Text>
-        <ProfileButton />
+        <HeaderActions />
       </View>
 
       <ScrollView

@@ -24,7 +24,7 @@ import Animated, {
 import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { ProfileButton } from '@/components/ProfileButton';
+import { HeaderActions } from '@/components/HeaderActions';
 import { ComingSoon } from '@/components/ComingSoon';
 import { ProBadge } from '@/components/ui/ProBadge';
 import { UserProfileSheet } from '@/components/UserProfileSheet';
@@ -133,7 +133,7 @@ export default function LeagueScreen() {
       {/* ── Screen header ─────────────────────────── */}
       <View style={styles.header}>
         <Text style={styles.title}>League</Text>
-        <ProfileButton />
+        <HeaderActions />
       </View>
 
       {!LEAGUE_LIVE ? (

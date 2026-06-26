@@ -31,7 +31,9 @@ import {
   removePushToken,
   getNotificationPreferences,
   updateNotificationPreferences,
+  fetchPendingActionCounts,
   type NotificationPreferences,
+  type PendingActionCounts,
   DEFAULT_PREFERENCES,
 } from '@/lib/api/notifications';
 
@@ -55,6 +57,10 @@ interface NotificationsContextValue {
   sendCheckInAvailable: (partnerName: string, locationId: string) => Promise<void>;
   sendPointsMilestone: (points: number, options?: PointsMilestoneOptions) => Promise<void>;
   sendInactivityNudge: (daysInactive: number) => Promise<void>;
+  /** Items awaiting the user's response — incoming friend requests + challenge invites. */
+  pendingActions: PendingActionCounts;
+  /** Re-fetch the pending-action counts (e.g. after acting on a request). */
+  refreshPendingActions: () => Promise<void>;
 }
 
 const NotificationsContext = createContext<NotificationsContextValue | null>(null);
@@ -75,6 +81,11 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   const [permissionGranted, setPermissionGranted] = useState(false);
   const [expoPushToken, setExpoPushToken] = useState<string | null>(null);
   const [preferences, setPreferences] = useState<NotificationPreferences>(DEFAULT_PREFERENCES);
+  const [pendingActions, setPendingActions] = useState<PendingActionCounts>({
+    friendRequests: 0,
+    challengeInvites: 0,
+    total: 0,
+  });
 
   const notificationListener = useRef<Notifications.EventSubscription | null>(null);
   const responseListener = useRef<Notifications.EventSubscription | null>(null);
@@ -182,13 +193,32 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   }, [user?.id, expoPushToken]);
 
   // -------------------------------------------------------------------------
+  // In-app pending-action badge (friend requests + challenge invites)
+  // -------------------------------------------------------------------------
+
+  const refreshPendingActions = useCallback(async () => {
+    if (!user?.id) {
+      setPendingActions({ friendRequests: 0, challengeInvites: 0, total: 0 });
+      return;
+    }
+    setPendingActions(await fetchPendingActionCounts());
+  }, [user?.id]);
+
+  // Pull once on sign-in (and zero out on sign-out). Foreground + per-screen
+  // focus refreshes are wired below / in ProfileButton.
+  useEffect(() => {
+    refreshPendingActions();
+  }, [refreshPendingActions]);
+
+  // -------------------------------------------------------------------------
   // Notification listeners
   // -------------------------------------------------------------------------
 
   useEffect(() => {
-    // Foreground notification received
+    // Foreground notification received — a friend request / challenge invite may
+    // have just landed, so re-pull the in-app counts that drive the avatar badge.
     notificationListener.current = Notifications.addNotificationReceivedListener(() => {
-      // Could increment an in-app badge counter here if needed
+      refreshPendingActions();
     });
 
     // User tapped a notification
@@ -198,10 +228,11 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
       },
     );
 
-    // Clear badge when app comes to foreground
+    // Clear the OS badge — and refresh in-app counts — when app comes to foreground
     const appStateSub = AppState.addEventListener('change', (nextState: AppStateStatus) => {
       if (appState.current.match(/inactive|background/) && nextState === 'active') {
         clearBadge();
+        refreshPendingActions();
       }
       appState.current = nextState;
     });
@@ -211,7 +242,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
       responseListener.current?.remove();
       appStateSub.remove();
     };
-  }, [handleNotificationResponse]);
+  }, [handleNotificationResponse, refreshPendingActions]);
 
   // Handle notification that launched the app from a killed state (cold start).
   // addNotificationResponseReceivedListener does not fire for cold starts on iOS;
@@ -308,6 +339,8 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     sendCheckInAvailable,
     sendPointsMilestone,
     sendInactivityNudge,
+    pendingActions,
+    refreshPendingActions,
   };
 
   return (
