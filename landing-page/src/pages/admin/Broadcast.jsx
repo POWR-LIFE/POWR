@@ -148,7 +148,11 @@ export default function Broadcast() {
         try {
             const r = await callBroadcast({ title: title.trim(), body: body.trim(), route: route || undefined, audience });
             if (r.error) throw new Error(r.error);
-            toast.success(`Sent to ${r.sent} of ${r.recipients} device${r.recipients === 1 ? '' : 's'}`);
+            const reached = (r.delivered ?? 0) + (r.pending ?? 0);
+            let msg = `Sent to ${reached} of ${r.recipients} device${r.recipients === 1 ? '' : 's'}`;
+            if (r.pruned) msg += ` · ${r.pruned} dead token${r.pruned === 1 ? '' : 's'} removed`;
+            if (r.failed) msg += ` · ${r.failed} failed`;
+            toast.success(msg);
             setTitle(''); setBody(''); setRoute('');
             loadHistory();
         } catch (e) {

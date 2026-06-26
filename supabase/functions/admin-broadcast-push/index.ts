@@ -11,6 +11,7 @@
 import { createClient } from '@supabase/supabase-js';
 
 const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
+const EXPO_RECEIPTS_URL = 'https://exp.host/--/api/v2/push/getReceipts';
 const BATCH = 100; // Expo accepts up to 100 messages per request.
 
 const corsHeaders = {
@@ -143,10 +144,14 @@ Deno.serve(async (req: Request) => {
   if (dryRun) return json({ dry_run: true, recipients: recipients.length });
 
   // ── Send in batches of 100. ─────────────────────────────────────────────
+  // Expo returns a "ticket" per message: status:ok means QUEUED, not delivered.
+  // Real delivery — and most DeviceNotRegistered errors — surface later in the
+  // RECEIPT, keyed by the ticket id. So we keep ticket id -> token and poll.
   const pushData = { type: 'admin_broadcast', ...(route ? { route } : {}) };
-  let ok = 0;
-  let errored = 0;
-  const deadTokens: string[] = [];
+  let queued = 0;
+  let failed = 0;
+  const deadTokens = new Set<string>();
+  const ticketToToken: Record<string, string> = {};
 
   for (const group of chunk(recipients, BATCH)) {
     const messages = group.map((t) => ({
@@ -171,32 +176,82 @@ Deno.serve(async (req: Request) => {
       });
       const result = await res.json();
       const tickets = (result?.data ?? []) as Array<{
+        id?: string;
         status?: string;
         details?: { error?: string };
       }>;
       tickets.forEach((ticket, i) => {
         if (ticket?.status === 'ok') {
-          ok++;
+          queued++;
+          if (ticket.id) ticketToToken[ticket.id] = group[i].expo_push_token;
           return;
         }
-        errored++;
-        // Permanently-unreachable token: the device uninstalled or token rotated.
+        failed++;
         if (ticket?.details?.error === 'DeviceNotRegistered') {
-          deadTokens.push(group[i].expo_push_token);
+          deadTokens.add(group[i].expo_push_token);
         }
       });
     } catch (err) {
-      errored += group.length;
+      failed += group.length;
       console.error('[admin-broadcast-push] batch failed', err);
     }
   }
 
-  // Prune dead tokens so they don't bloat future broadcasts.
-  if (deadTokens.length > 0) {
-    await admin.from('user_push_tokens').delete().in('expo_push_token', deadTokens);
+  // ── Poll receipts (bounded) to confirm delivery + catch dead tokens. ─────
+  // DeviceNotRegistered receipts arrive within seconds; some "ok" receipts may
+  // not be ready inside our short window — those stay "pending" and any dead
+  // ones get cleaned on a later broadcast. We never block long: ~3 attempts.
+  let delivered = 0;
+  const pending = new Set(Object.keys(ticketToToken));
+  for (let attempt = 0; attempt < 3 && pending.size > 0; attempt++) {
+    await new Promise((r) => setTimeout(r, 3000));
+    for (const idChunk of chunk([...pending], 1000)) {
+      try {
+        const rRes = await fetch(EXPO_RECEIPTS_URL, {
+          method: 'POST',
+          headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids: idChunk }),
+        });
+        const rJson = await rRes.json();
+        const receipts = (rJson?.data ?? {}) as Record<
+          string,
+          { status?: string; details?: { error?: string } }
+        >;
+        for (const id of Object.keys(receipts)) {
+          const rec = receipts[id];
+          if (rec?.status === 'ok') {
+            delivered++;
+          } else {
+            failed++;
+            if (rec?.details?.error === 'DeviceNotRegistered') {
+              deadTokens.add(ticketToToken[id]);
+            }
+          }
+          pending.delete(id);
+        }
+      } catch (err) {
+        console.error('[admin-broadcast-push] receipt poll failed', err);
+      }
+    }
   }
 
-  // Audit.
+  // Prune permanently-unreachable tokens so they don't bloat future sends.
+  const pruned = [...deadTokens];
+  if (pruned.length > 0) {
+    await admin.from('user_push_tokens').delete().in('expo_push_token', pruned);
+  }
+
+  const stats = {
+    recipients: recipients.length,
+    queued,
+    delivered,
+    failed,
+    pending: pending.size,
+    pruned: pruned.length,
+  };
+
+  // Audit. tickets_ok = reached-or-pending (everything minus confirmed failures)
+  // since "ok" receipts often aren't ready inside our poll window.
   await admin.from('broadcast_log').insert({
     admin_id: user.id,
     title,
@@ -204,21 +259,15 @@ Deno.serve(async (req: Request) => {
     route: route ?? null,
     audience,
     recipients: recipients.length,
-    tickets_ok: ok,
-    tickets_error: errored,
+    tickets_ok: delivered + pending.size,
+    tickets_error: failed,
   });
   await admin.from('admin_audit_log').insert({
     admin_id: user.id,
     action: 'broadcast_push',
     target_type: 'broadcast',
-    metadata: { title, audience, recipients: recipients.length, ok, errored, pruned: deadTokens.length },
+    metadata: { title, audience, ...stats },
   });
 
-  return json({
-    ok: true,
-    recipients: recipients.length,
-    sent: ok,
-    errored,
-    pruned: deadTokens.length,
-  });
+  return json({ ok: true, ...stats });
 });
