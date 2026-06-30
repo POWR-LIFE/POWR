@@ -18,6 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Path, Polyline, Stop } from 'react-native-svg';
 
 import { ProBadge } from '@/components/ui/ProBadge';
+import { ACHIEVEMENTS } from '@/constants/achievements';
 import { getLevelInfo } from '@/constants/levels';
 import { supabase } from '@/lib/supabase';
 import { fetchAchievements, type Achievement } from '@/lib/api/pro-achievements';
@@ -228,7 +229,7 @@ export function UserProfileSheet({ userId, myPoints, userPoints, relationship, o
                                 <View style={s.badgePillRow}>
                                     <Ionicons name="trophy" size={13} color="#E8D200" />
                                     <Text style={s.badgePillText}>
-                                        {earnedBadgeCount} / 66 achievements
+                                        {earnedBadgeCount} / {ACHIEVEMENTS.length} achievements
                                     </Text>
                                 </View>
                             )}
