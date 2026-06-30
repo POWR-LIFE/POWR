@@ -182,3 +182,70 @@ export async function fetchPendingActionCounts(): Promise<PendingActionCounts> {
   const challengeInvites = Number(row?.challenge_invites ?? 0);
   return { friendRequests, challengeInvites, total: friendRequests + challengeInvites };
 }
+
+// ---------------------------------------------------------------------------
+// In-app activity feed ("Recent" tab) — durable history of notification-worthy
+// moments (shared-challenge outcomes, friend-accepted, reward unlocks, points
+// milestones, recorded sessions, sleep goals, announcements). Written by the
+// service-role edge functions; read here via RLS (own rows only).
+// ---------------------------------------------------------------------------
+
+export type ActivityCategory = 'social' | 'rewards' | 'activity' | 'system';
+
+export interface ActivityItem {
+  id: string;
+  type: string;
+  category: ActivityCategory;
+  title: string;
+  body: string;
+  route: string | null;
+  data: Record<string, unknown>;
+  readAt: string | null;
+  createdAt: string;
+}
+
+/** Newest-first page of the signed-in user's activity feed. Never throws. */
+export async function fetchActivityFeed(limit = 50): Promise<ActivityItem[]> {
+  const { data, error } = await supabase
+    .from('user_activity')
+    .select('id, type, category, title, body, route, data, read_at, created_at')
+    .order('created_at', { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    console.warn('[notifications] activity feed failed:', error.message);
+    return [];
+  }
+
+  return (data ?? []).map((r): ActivityItem => ({
+    id: r.id,
+    type: r.type,
+    category: (r.category ?? 'system') as ActivityCategory,
+    title: r.title,
+    body: r.body,
+    route: r.route ?? null,
+    data: (r.data ?? {}) as Record<string, unknown>,
+    readAt: r.read_at ?? null,
+    createdAt: r.created_at,
+  }));
+}
+
+/** Unread-count for the header bell badge. Returns 0 on failure. */
+export async function fetchUnreadActivityCount(): Promise<number> {
+  const { data, error } = await supabase.rpc('get_unread_activity_count');
+  if (error) {
+    console.warn('[notifications] unread activity count failed:', error.message);
+    return 0;
+  }
+  return Number(data ?? 0);
+}
+
+/** Mark the whole feed read in one round trip. Returns rows flipped (0 on failure). */
+export async function markAllActivityRead(): Promise<number> {
+  const { data, error } = await supabase.rpc('mark_all_activity_read');
+  if (error) {
+    console.warn('[notifications] mark-all-read failed:', error.message);
+    return 0;
+  }
+  return Number(data ?? 0);
+}

@@ -32,6 +32,40 @@ const TOGETHER_TYPES: NotificationType[] = [
   'challenge_completed', 'challenge_expiring',
 ];
 
+// Types that should NOT land in the in-app "Recent" feed. The two live-actionable
+// types already have a home in the "Needs you" section (driven off their source
+// tables), and the rest are transient "do something now" nudges with no lasting
+// record value. Everything else is logged — new event types appear by default.
+const FEED_EXCLUDED: Set<NotificationType> = new Set([
+  'friend_request', 'challenge_invite',
+  'daily_reminder', 'inactivity_nudge', 'check_in_reminder',
+  'streak_at_risk', 'weekly_challenge_expiry',
+]);
+
+// Coarse bucket the client renders an icon/accent from.
+function categoryFor(type: NotificationType): 'social' | 'rewards' | 'activity' | 'system' {
+  switch (type) {
+    case 'friend_request':
+    case 'friend_accepted':
+    case 'challenge_invite':
+    case 'challenge_accepted':
+    case 'challenge_started':
+    case 'challenge_friend_finished':
+    case 'challenge_pool_milestone':
+    case 'challenge_completed':
+    case 'challenge_expiring':
+      return 'social';
+    case 'reward_unlocked':
+    case 'points_milestone':
+      return 'rewards';
+    case 'session_completed':
+    case 'sleep_target_met':
+      return 'activity';
+    default:
+      return 'system';
+  }
+}
+
 interface RequestBody {
   target_user_id: string;
   type: NotificationType;
@@ -530,6 +564,30 @@ Deno.serve(async (req: Request) => {
             payload = { ...payload, earned: txn.amount };
           }
         }
+      }
+    }
+
+    // Persist an in-app activity-feed row before touching push tokens, so the
+    // moment has a durable home even when no device push can land (permission
+    // denied / no registered token). Reuses the exact push copy so the feed item
+    // reads identically. Best-effort: a feed-write failure must never break the
+    // push path.
+    if (!FEED_EXCLUDED.has(type)) {
+      try {
+        const sample = buildMessage(type, payload, '');
+        const route =
+          typeof sample.data?.route === 'string' ? sample.data.route : null;
+        await supabase.from('user_activity').insert({
+          user_id: target_user_id,
+          type,
+          category: categoryFor(type),
+          title: sample.title,
+          body: sample.body,
+          route,
+          data: sample.data ?? {},
+        });
+      } catch (feedErr) {
+        console.warn('[send-push-notification] activity-feed write failed:', feedErr);
       }
     }
 
