@@ -397,9 +397,17 @@ async function recordDwellSession(activeGeofence: StoredGeofence): Promise<{ out
   const endedAtMs = activeGeofence.endedAtMs ?? Date.now();
   const dwellMs = endedAtMs - activeGeofence.entryTimestamp;
   try {
-    const { data: { session: authSession }, error: refreshError } = await supabase.auth.refreshSession();
-    if (refreshError || !authSession?.user) {
-      console.error('[Geofence] Token refresh failed — cannot record session:', refreshError?.message ?? 'no session');
+    // Use the cached session (getSession) — NOT refreshSession(). refreshSession()
+    // unconditionally ROTATES the refresh token; when this runs in the background
+    // TaskManager context (a separate GoTrue instance sharing the same SecureStore as
+    // the foreground app), the two clients race to rotate the same token and GoTrue's
+    // reuse-detection revokes the whole session family — silently logging the user out
+    // mid-gym and dropping the claim. getSession() returns the stored token and only
+    // refreshes (under the client's lock) when it's actually expired, so it can't
+    // trigger that race.
+    const { data: { session: authSession }, error: authError } = await supabase.auth.getSession();
+    if (authError || !authSession?.user) {
+      console.error('[Geofence] No valid session — cannot record session:', authError?.message ?? 'logged out');
       return { outcome: 'error' };
     }
     const user = authSession.user;
@@ -555,14 +563,21 @@ async function enqueuePendingClaim(entry: StoredGeofence): Promise<void> {
   try {
     const raw = await AsyncStorage.getItem(PENDING_CLAIMS_KEY);
     const queue: StoredGeofence[] = raw ? JSON.parse(raw) : [];
-    const dupe = queue.some(
+    const existing = queue.find(
       q => q.entryTimestamp === entry.entryTimestamp && q.partnerId === entry.partnerId,
     );
-    if (!dupe) {
+    if (existing) {
+      // Already queued — e.g. an in-gym auth failure queued it, and now the EXIT
+      // re-queues with the true exit time. Keep the LATEST endedAtMs so the eventual
+      // retry records the full session length, not the duration at first failure.
+      if ((entry.endedAtMs ?? 0) > (existing.endedAtMs ?? 0)) {
+        existing.endedAtMs = entry.endedAtMs;
+      }
+    } else {
       queue.push(entry);
-      await AsyncStorage.setItem(PENDING_CLAIMS_KEY, JSON.stringify(queue));
-      console.log('[Geofence] Queued failed claim for retry.');
     }
+    await AsyncStorage.setItem(PENDING_CLAIMS_KEY, JSON.stringify(queue));
+    console.log('[Geofence] Queued failed claim for retry.');
   } catch (err) {
     console.warn('[Geofence] enqueuePendingClaim failed:', err);
   }
@@ -646,10 +661,13 @@ async function resolveTodayGymSessionId(): Promise<string | undefined> {
 
 async function upgradeGymTier(sessionId: string): Promise<boolean> {
   try {
-    // Refresh token before calling — session may be 45+ min old
-    const { data: { session: authSession }, error: refreshError } = await supabase.auth.refreshSession();
-    if (refreshError || !authSession) {
-      console.warn('[Geofence] Tier upgrade: token refresh failed — will retry on next poll.', refreshError?.message);
+    // Use the cached session (getSession) rather than a forced refreshSession(): a
+    // forced rotation here races the background/foreground GoTrue instances and can
+    // revoke the session family. getSession() refreshes under the client's lock only
+    // if the token is actually expired.
+    const { data: { session: authSession }, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError || !authSession) {
+      console.warn('[Geofence] Tier upgrade: no valid session — will retry on next poll.', sessionError?.message);
       return false;
     }
     const { data: upgradeData, error: fnError } = await supabase.functions.invoke('upgrade-gym-tier', {
@@ -791,6 +809,9 @@ async function advanceActiveSession(active: StoredGeofence): Promise<void> {
       await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...active, pointsPending: false, sessionId }));
     } else {
       await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...active, pointsPending: true }));
+      // Durably queue (frozen at now) on a hard error so a logout/app-kill before the
+      // EXIT event can't lose the claim — flushPendingClaims retries it on re-login.
+      if (outcome === 'error') await enqueuePendingClaim({ ...active, endedAtMs: Date.now() });
     }
     return;
   }
@@ -813,6 +834,9 @@ async function advanceActiveSession(active: StoredGeofence): Promise<void> {
     await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...active, sessionRecorded: true, sessionId }));
   } else if (outcome === 'too_short' || outcome === 'error') {
     await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...active, sessionRecorded: true, pointsPending: true }));
+    // Durably queue on a hard error (e.g. logged out) so the claim survives an app
+    // kill before EXIT and is flushed on re-login. too_short retries in-gym only.
+    if (outcome === 'error') await enqueuePendingClaim({ ...active, endedAtMs: Date.now() });
   }
 }
 
@@ -1361,8 +1385,10 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
       const { outcome, sessionId } = await recordDwellSession(activeGeofence);
       if (outcome === 'too_short' || outcome === 'error') {
         // too_short: claim rejected because duration < eligibility minimum — retry at PROD_DWELL_MS.
-        // error:     transient failure (network, auth, rate-limit, etc.) — retry via the same path.
+        // error:     transient failure (network, auth, rate-limit, etc.) — retry via the same path,
+        //            and durably queue so a logout/app-kill before EXIT can't lose the claim.
         await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...activeGeofence, sessionRecorded: true, pointsPending: true }));
+        if (outcome === 'error') await enqueuePendingClaim({ ...activeGeofence, endedAtMs: Date.now() });
       } else if (outcome === 'claimed' && sessionId) {
         // claim-points already fired the session_completed push.
         await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...activeGeofence, sessionRecorded: true, sessionId }));
@@ -1382,8 +1408,10 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
       const { outcome, sessionId } = await recordDwellSession(gf);
       if (outcome === 'too_short' || outcome === 'error') {
         // too_short: claim rejected because duration < eligibility minimum — retry at PROD_DWELL_MS.
-        // error:     transient failure (network, auth, rate-limit, etc.) — retry via the same path.
+        // error:     transient failure (network, auth, rate-limit, etc.) — retry via the same path,
+        //            and durably queue so a logout/app-kill before EXIT can't lose the claim.
         await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...gf, sessionRecorded: true, pointsPending: true }));
+        if (outcome === 'error') await enqueuePendingClaim({ ...gf, endedAtMs: Date.now() });
       } else if (outcome === 'claimed' && sessionId) {
         // claim-points already fired the session_completed push.
         await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...gf, sessionRecorded: true, sessionId }));
