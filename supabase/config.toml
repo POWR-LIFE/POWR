@@ -395,6 +395,12 @@ verify_jwt = false
 # security rests on the PKCE code_verifier + one-time code from Samsung.
 verify_jwt = false
 
+[functions.dispatch-scheduled-broadcasts]
+# Invoked by pg_cron (no Supabase user JWT), so platform JWT verification is
+# off — security rests on the x-resolve-token check (verify_resolve_token)
+# inside the function, mirroring resolve-shared-challenges.
+verify_jwt = false
+
 [edge_runtime]
 enabled = true
 # Supported request policies: `oneshot`, `per_worker`.

@@ -23,6 +23,15 @@ export async function upsertPushToken(
   );
 
   if (error) throw error;
+
+  // Record the device's IANA timezone so scheduled broadcasts can deliver at
+  // the right local time per user. Best-effort — never block token registration.
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (tz) await supabase.from('profiles').update({ timezone: tz }).eq('id', userId);
+  } catch {
+    // Intl unavailable or update failed — falls back to the default zone bucket.
+  }
 }
 
 export async function removePushToken(userId: string, expoPushToken: string) {
