@@ -7,11 +7,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import GeometricBackground from '@/components/GeometricBackground';
 import { Avatar } from '@/components/social/Avatar';
+import { UserProfileSheet } from '@/components/UserProfileSheet';
 import { useNotifications } from '@/context/NotificationsContext';
 import { fontFamily } from '@/constants/tokens';
 import { useFriends } from '@/hooks/useFriends';
 import { useSharedChallenges } from '@/hooks/useSharedChallenges';
 import { fetchActivityFeed, type ActivityItem } from '@/lib/api/notifications';
+import type { FriendRelationship } from '@/lib/api/user';
 import type { Friend, IconSpec, SharedChallenge } from '@/lib/social/types';
 
 // ─── Palette ──────────────────────────────────────────────────────────────────
@@ -37,6 +39,7 @@ function ActionCard({
   primaryLabel,
   onAccept,
   onDecline,
+  onPress,
 }: {
   leading: React.ReactNode;
   title: string;
@@ -44,16 +47,24 @@ function ActionCard({
   primaryLabel: string;
   onAccept: () => void;
   onDecline: () => void;
+  /** Tap the person/identity area (e.g. to view their profile). */
+  onPress?: () => void;
 }) {
   return (
     <View style={styles.card}>
-      <View style={styles.row}>
+      <Pressable
+        style={styles.row}
+        onPress={onPress}
+        disabled={!onPress}
+        accessibilityRole={onPress ? 'button' : undefined}
+        accessibilityLabel={onPress ? `View ${title}'s profile` : undefined}
+      >
         {leading}
         <View style={{ flex: 1 }}>
           <Text style={styles.title} numberOfLines={1}>{title}</Text>
           <Text style={styles.subtitle} numberOfLines={2}>{subtitle}</Text>
         </View>
-      </View>
+      </Pressable>
       <View style={styles.actions}>
         <Pressable style={styles.ignoreBtn} onPress={onDecline} accessibilityRole="button" accessibilityLabel={`Ignore: ${title}`}>
           <Text style={styles.ignoreText}>Ignore</Text>
@@ -145,6 +156,14 @@ export default function NotificationsScreen() {
 
   const [feed, setFeed] = useState<ActivityItem[]>([]);
 
+  // Tap a friend-request card to view that person before deciding.
+  const [sheetUserId, setSheetUserId] = useState<string | null>(null);
+  const [sheetRel, setSheetRel] = useState<FriendRelationship | undefined>(undefined);
+  const openProfile = (userId: string, relationship?: FriendRelationship) => {
+    setSheetRel(relationship);
+    setSheetUserId(userId);
+  };
+
   // Re-pull every source on focus. The feed is loaded *before* marking it read so
   // this visit still shows what was new (unread dots), while the badge clears.
   useFocusEffect(
@@ -222,6 +241,7 @@ export default function NotificationsScreen() {
                     primaryLabel="Accept"
                     onAccept={() => acceptFriend(f)}
                     onDecline={() => declineFriend(f)}
+                    onPress={() => openProfile(f.id, 'pending_incoming')}
                   />
                 ))}
 
@@ -264,6 +284,13 @@ export default function NotificationsScreen() {
           </>
         )}
       </ScrollView>
+
+      <UserProfileSheet
+        userId={sheetUserId}
+        relationship={sheetRel}
+        onChanged={refreshFriends}
+        onClose={() => setSheetUserId(null)}
+      />
     </View>
   );
 }
