@@ -27,7 +27,7 @@ import { usePoints } from '@/hooks/usePoints';
 import { useWalkingProgress } from '@/hooks/useWalkingProgress';
 import { fetchWeeklySleepHours } from '@/lib/api/activity';
 import { fetchProfile } from '@/lib/api/user';
-import { ALL_PROVIDER_META, getProvider, type HealthProviderId } from '@/lib/health/providers';
+import { ALL_PROVIDER_META } from '@/lib/health/providers';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -78,66 +78,27 @@ export default function ProgressScreen() {
       setSleepHrs(hours);
       setSleepBedtimes(bedtimes);
 
-      const noDbData = hours.every(h => h === 0);
+      // Live on-device fallback is only possible for native providers (Apple
+      // Health / Health Connect). Terra-aggregated providers (Whoop, Oura,
+      // Garmin, ...) deliver sleep server-side via terra-webhook, so their chart
+      // is DB-first only — there's no on-device read to fall back to (their
+      // provider data methods throw HealthProviderNotImplementedError by design).
+      if (!isNativeProvider || !health.isAuthorized) return;
 
-      // For third-party providers, also check tokens directly to handle the race
-      // condition where activeId state hasn't updated yet after an OAuth reconnect
-      // (the tab stays mounted so useHealthProviders doesn't re-run on focus).
-      let thirdPartyId: HealthProviderId | null = (!isNativeProvider && activeId) ? activeId : null;
-      if (!thirdPartyId) {
-        try {
-          if (await getProvider('whoop').isConnected()) thirdPartyId = 'whoop';
-        } catch {}
-      }
-
-      const canFetchLive = (isNativeProvider && health.isAuthorized) || !!thirdPartyId;
-      if (!canFetchLive) return;
-
-      if (noDbData && thirdPartyId) {
-        // DB has no data yet (sync still running) — fetch the full week directly
-        // from the provider so the chart isn't blank on first connect.
-        try {
-          const provider = getProvider(thirdPartyId);
-          const weekHistory = await provider.getWeekHistory();
-          const liveHours: number[] = [0, 0, 0, 0, 0, 0, 0];
-          const liveBedtimes: (string | null)[] = [null, null, null, null, null, null, null];
-          for (const day of weekHistory) {
-            if (!day.sleep || day.sleep.durationHours < 1) continue;
-            const d = new Date(day.date);
-            const dow = d.getDay();
-            const idx = dow === 0 ? 6 : dow - 1;
-            liveHours[idx] = day.sleep.durationHours;
-            if (day.sleep.startedAt) liveBedtimes[idx] = day.sleep.startedAt;
-          }
-          if (liveHours.some(h => h > 0)) {
-            setSleepHrs(liveHours);
-            setSleepBedtimes(liveBedtimes);
-          }
-        } catch (err) {
-          console.error('[Progress] Live week sleep fetch failed:', err);
-        }
-      } else if (hours[TODAY_INDEX] === 0) {
-        // DB has past-week data but today is missing — try live last-night fetch.
-        let lastNight = null;
-        if (isNativeProvider) {
-          lastNight = await health.getLastNightSleep();
-        } else if (thirdPartyId) {
-          try {
-            const provider = getProvider(thirdPartyId);
-            lastNight = await provider.getLastNightSleep();
-          } catch {}
-        }
+      // DB has past-week data but today is missing — try a live last-night fetch.
+      if (hours[TODAY_INDEX] === 0) {
+        const lastNight = await health.getLastNightSleep();
         if (lastNight) {
-          setSleepHrs(prev => { const u = [...prev]; u[TODAY_INDEX] = lastNight!.durationHours; return u; });
+          setSleepHrs(prev => { const u = [...prev]; u[TODAY_INDEX] = lastNight.durationHours; return u; });
           if (lastNight.startedAt) {
-            setSleepBedtimes(prev => { const u = [...prev]; u[TODAY_INDEX] = lastNight!.startedAt; return u; });
+            setSleepBedtimes(prev => { const u = [...prev]; u[TODAY_INDEX] = lastNight.startedAt!; return u; });
           }
         }
       }
     } catch (err) {
       console.error('[Progress] Error fetching sleep data:', err);
     }
-  }, [user, health.isAuthorized, health.getLastNightSleep, activeId, isNativeProvider]);
+  }, [user, health.isAuthorized, health.getLastNightSleep, isNativeProvider]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
