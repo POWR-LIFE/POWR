@@ -2,6 +2,7 @@ import {
     Activity, Award,
     BarChart3,
     Building2,
+    CalendarDays,
     ChevronLeft, ChevronRight,
     Gift,
     Inbox,
@@ -39,6 +40,7 @@ import Analytics from './pages/admin/Analytics';
 import AthleteApplications from './pages/admin/AthleteApplications';
 import AuditLog from './pages/admin/AuditLog';
 import Broadcast from './pages/admin/Broadcast';
+import Campaigns from './pages/admin/Campaigns';
 import FeaturedSchedule from './pages/admin/FeaturedSchedule';
 import GymDetail from './pages/admin/GymDetail';
 import GymRequests from './pages/admin/GymRequests';
@@ -225,6 +227,8 @@ const PATH_LABELS = {
     redemptions: 'Redemptions',
     audit: 'Audit Log',
     support: 'Support Tickets',
+    broadcast: 'Broadcast',
+    campaigns: 'Campaigns',
     config: 'Config',
 };
 
@@ -822,6 +826,7 @@ const AdminLayout = ({ children }) => {
         { label: 'Audit Log',   path: '/admin/audit',       icon: ScrollText    },
         { label: 'Support',     path: '/admin/support',     icon: MessageSquare },
         { label: 'Broadcast',   path: '/admin/broadcast',   icon: Megaphone     },
+        { label: 'Campaigns',   path: '/admin/campaigns',   icon: CalendarDays  },
         { label: 'Config',      path: '/admin/config',      icon: Settings      },
     ];
 
@@ -1000,6 +1005,7 @@ export default function App() {
                     <Route path="/admin/config" element={<ProtectedRoute><AdminLayout><SystemConfig /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/support" element={<ProtectedRoute><AdminLayout><SupportTickets /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/broadcast" element={<ProtectedRoute><AdminLayout><Broadcast /></AdminLayout></ProtectedRoute>} />
+                    <Route path="/admin/campaigns" element={<ProtectedRoute><AdminLayout><Campaigns /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/athletes" element={<ProtectedRoute><AdminLayout><AthleteApplications /></AdminLayout></ProtectedRoute>} />
                     <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
