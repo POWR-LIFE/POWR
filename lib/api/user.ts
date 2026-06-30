@@ -22,6 +22,15 @@ export type PublicProfile = Pick<Profile,
     'id' | 'username' | 'display_name' | 'avatar_url' | 'cover_url' | 'bio' | 'level' | 'is_pro'
 >;
 
+/** Where the caller stands with another user — mirrors the QR flow's relationship. */
+export type FriendRelationship =
+    | 'self'
+    | 'none'
+    | 'pending_outgoing'
+    | 'pending_incoming'
+    | 'accepted'
+    | 'blocked';
+
 export async function fetchProfile(): Promise<Profile | null> {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return null;
@@ -43,6 +52,21 @@ export async function fetchPublicProfile(userId: string): Promise<PublicProfile 
         .single();
     if (error) return null;
     return data as PublicProfile;
+}
+
+/**
+ * Resolves the caller's friendship state with `userId` for the profile sheet's
+ * CTA (Add friend / Requested / Accept / Friends). Backed by the
+ * get_friend_relationship RPC. Callers that already hold the graph (the friends
+ * screen) can skip this and pass the relationship straight to the sheet.
+ */
+export async function fetchFriendRelationship(userId: string): Promise<FriendRelationship> {
+    const { data, error } = await supabase.rpc('get_friend_relationship', { p_user_id: userId });
+    if (error) {
+        console.warn('[fetchFriendRelationship]', error.message);
+        return 'none';
+    }
+    return (data ?? 'none') as FriendRelationship;
 }
 
 export async function updateProfile(

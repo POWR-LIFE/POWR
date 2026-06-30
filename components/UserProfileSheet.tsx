@@ -1,7 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import React, { useEffect, useRef, useState } from 'react';
 import {
+    ActivityIndicator,
+    Alert,
     Animated,
     Dimensions,
     Modal,
@@ -16,10 +19,11 @@ import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Path, Polyline,
 
 import { ProBadge } from '@/components/ui/ProBadge';
 import { getLevelInfo } from '@/constants/levels';
+import { supabase } from '@/lib/supabase';
 import { fetchAchievements, type Achievement } from '@/lib/api/pro-achievements';
 import { fetchEarnedAchievementCount } from '@/lib/api/achievement-stats';
 import { fetchGallery, type GalleryPhoto } from '@/lib/api/pro-gallery';
-import { fetchPublicProfile, type PublicProfile } from '@/lib/api/user';
+import { fetchFriendRelationship, fetchPublicProfile, type FriendRelationship, type PublicProfile } from '@/lib/api/user';
 import { fetchProfileStats, type ProfileStats } from '@/lib/api/user-stats';
 import { LEAGUE_TIERS } from '@/lib/journey';
 
@@ -38,10 +42,17 @@ interface UserProfileSheetProps {
     userId: string | null;
     myPoints?: number;
     userPoints?: number;
+    /**
+     * Friendship state with this user, if the caller already knows it (e.g. the
+     * friends screen, which holds the whole graph). Omit to resolve it via RPC.
+     */
+    relationship?: FriendRelationship;
+    /** Fired after a friend action succeeds, so parent lists can refresh. */
+    onChanged?: () => void;
     onClose: () => void;
 }
 
-export function UserProfileSheet({ userId, myPoints, userPoints, onClose }: UserProfileSheetProps) {
+export function UserProfileSheet({ userId, myPoints, userPoints, relationship, onChanged, onClose }: UserProfileSheetProps) {
     const insets = useSafeAreaInsets();
     const slideAnim = useRef(new Animated.Value(SCREEN_H)).current;
     const [profile, setProfile] = useState<PublicProfile | null>(null);
@@ -50,6 +61,8 @@ export function UserProfileSheet({ userId, myPoints, userPoints, onClose }: User
     const [stats, setStats] = useState<ProfileStats | null>(null);
     const [loading, setLoading] = useState(false);
     const [earnedBadgeCount, setEarnedBadgeCount] = useState<number | null>(null);
+    const [rel, setRel] = useState<FriendRelationship>('none');
+    const [acting, setActing] = useState(false);
 
     useEffect(() => {
         if (userId) {
@@ -59,6 +72,12 @@ export function UserProfileSheet({ userId, myPoints, userPoints, onClose }: User
             setAchievements([]);
             setStats(null);
             setEarnedBadgeCount(null);
+            setActing(false);
+            // Seed from the caller's known state for an instant CTA; otherwise resolve.
+            setRel(relationship ?? 'none');
+            if (relationship === undefined) {
+                fetchFriendRelationship(userId).then(setRel);
+            }
             fetchPublicProfile(userId).then(p => {
                 setProfile(p);
                 if (p?.is_pro) {
@@ -99,6 +118,38 @@ export function UserProfileSheet({ userId, myPoints, userPoints, onClose }: User
     const showComparison = userPoints !== undefined && myPoints !== undefined;
     const profileTotalPoints = stats?.totalPoints ?? userPoints ?? 0;
     const { current: computedLevel } = getLevelInfo(profileTotalPoints);
+
+    const runFriendAction = async (
+        action: 'request' | 'accept' | 'decline' | 'remove',
+        nextRel: FriendRelationship,
+    ) => {
+        if (!userId || acting) return;
+        setActing(true);
+        Haptics.selectionAsync();
+        const { error } = await supabase.functions.invoke('manage-friendship', {
+            body: { action, target_user_id: userId },
+        });
+        setActing(false);
+        if (error) {
+            Alert.alert('Something went wrong', "We couldn't update that just now — please try again.");
+            return;
+        }
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        setRel(nextRel);
+        onChanged?.();
+    };
+
+    const confirmRemove = () => {
+        const name = profile?.display_name ?? profile?.username ?? 'this person';
+        Alert.alert(
+            `Remove ${name}?`,
+            "They'll be taken off your friends list. Any challenges you're both in keep running, and you can add each other again anytime.",
+            [
+                { text: 'Cancel', style: 'cancel' },
+                { text: 'Remove', style: 'destructive', onPress: () => runFriendAction('remove', 'none') },
+            ],
+        );
+    };
 
     return (
         <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
@@ -154,6 +205,18 @@ export function UserProfileSheet({ userId, myPoints, userPoints, onClose }: User
                                     </View>
                                 </View>
                             </View>
+
+                            {/* Friend action — the social loop; hidden for yourself / blocked */}
+                            {rel !== 'self' && rel !== 'blocked' && (
+                                <FriendActionButton
+                                    rel={rel}
+                                    acting={acting}
+                                    onAdd={() => runFriendAction('request', 'pending_outgoing')}
+                                    onAccept={() => runFriendAction('accept', 'accepted')}
+                                    onDecline={() => runFriendAction('decline', 'none')}
+                                    onRemove={confirmRemove}
+                                />
+                            )}
 
                             {/* Stat strip: streak | 7-day sparkline | sessions */}
                             {stats && (
@@ -239,6 +302,77 @@ export function UserProfileSheet({ userId, myPoints, userPoints, onClose }: User
                 </Pressable>
             </Animated.View>
         </Modal>
+    );
+}
+
+// ─── FriendActionButton — Add / Requested / Accept+Decline / Friends ─────────
+
+function FriendActionButton({
+    rel,
+    acting,
+    onAdd,
+    onAccept,
+    onDecline,
+    onRemove,
+}: {
+    rel: FriendRelationship;
+    acting: boolean;
+    onAdd: () => void;
+    onAccept: () => void;
+    onDecline: () => void;
+    onRemove: () => void;
+}) {
+    if (rel === 'pending_outgoing') {
+        return (
+            <View style={s.friendPill}>
+                <Ionicons name="paper-plane-outline" size={14} color={DIM} />
+                <Text style={s.friendPillText}>Requested</Text>
+            </View>
+        );
+    }
+
+    if (rel === 'pending_incoming') {
+        return (
+            <View style={s.friendRow}>
+                <Pressable
+                    style={[s.friendPrimary, { flex: 1 }, acting && s.btnDisabled]}
+                    onPress={onAccept}
+                    disabled={acting}
+                >
+                    {acting ? <ActivityIndicator color="#0a0a0a" /> : (
+                        <>
+                            <Ionicons name="checkmark" size={16} color="#0a0a0a" />
+                            <Text style={s.friendPrimaryText}>Accept request</Text>
+                        </>
+                    )}
+                </Pressable>
+                <Pressable style={s.friendGhost} onPress={onDecline} disabled={acting} hitSlop={8} accessibilityLabel="Decline request">
+                    <Ionicons name="close" size={18} color={DIM} />
+                </Pressable>
+            </View>
+        );
+    }
+
+    if (rel === 'accepted') {
+        // Tapping a "Friends" chip offers to remove — matches the friends-list affordance.
+        return (
+            <Pressable style={s.friendChip} onPress={onRemove} disabled={acting} accessibilityLabel="Friends — tap to remove">
+                <Ionicons name="checkmark-circle" size={15} color={GREEN} />
+                <Text style={s.friendChipText}>Friends</Text>
+            </Pressable>
+        );
+    }
+
+    // 'none' — the default add CTA
+    return (
+        <Pressable style={[s.friendPrimary, acting && s.btnDisabled]} onPress={onAdd} disabled={acting}>
+            {acting ? <ActivityIndicator color="#0a0a0a" /> : (
+                <>
+                    <Ionicons name="person-add" size={15} color="#0a0a0a" />
+                    <Text style={s.friendPrimaryText}>Add friend</Text>
+                </>
+            )}
+        </Pressable>
     );
 }
 
@@ -568,6 +702,34 @@ const s = StyleSheet.create({
         fontSize: 9, fontWeight: '500',
         letterSpacing: 2, color: MUTED, textTransform: 'uppercase',
     },
+    // ── Friend action
+    friendRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+    friendPrimary: {
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
+        backgroundColor: GOLD, borderRadius: 100, paddingVertical: 11, paddingHorizontal: 16,
+    },
+    friendPrimaryText: { fontSize: 14, fontWeight: '700', color: '#0a0a0a', letterSpacing: 0.2 },
+    friendGhost: {
+        width: 44, height: 44, borderRadius: 22,
+        borderWidth: 1, borderColor: BORDER,
+        alignItems: 'center', justifyContent: 'center',
+    },
+    friendPill: {
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
+        borderRadius: 100, paddingVertical: 11,
+        borderWidth: 1, borderColor: BORDER,
+        backgroundColor: 'rgba(255,255,255,0.03)',
+    },
+    friendPillText: { fontSize: 13, fontWeight: '500', color: DIM, letterSpacing: 0.2 },
+    friendChip: {
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
+        borderRadius: 100, paddingVertical: 11,
+        borderWidth: 1, borderColor: 'rgba(74,222,128,0.3)',
+        backgroundColor: 'rgba(74,222,128,0.07)',
+    },
+    friendChipText: { fontSize: 13, fontWeight: '600', color: GREEN, letterSpacing: 0.2 },
+    btnDisabled: { opacity: 0.6 },
+
     gallerySection: { gap: 8 },
     galleryGrid: {
         flexDirection: 'row', flexWrap: 'wrap', gap: 4,
