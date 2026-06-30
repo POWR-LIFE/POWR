@@ -32,6 +32,8 @@ import {
   getNotificationPreferences,
   updateNotificationPreferences,
   fetchPendingActionCounts,
+  fetchUnreadActivityCount,
+  markAllActivityRead,
   type NotificationPreferences,
   type PendingActionCounts,
   DEFAULT_PREFERENCES,
@@ -61,6 +63,17 @@ interface NotificationsContextValue {
   pendingActions: PendingActionCounts;
   /** Re-fetch the pending-action counts (e.g. after acting on a request). */
   refreshPendingActions: () => Promise<void>;
+  /** Unread count for the in-app "Recent" activity feed. */
+  unreadActivity: number;
+  /** Re-fetch the unread activity count. */
+  refreshActivity: () => Promise<void>;
+  /** Mark the whole activity feed read and zero the unread count locally. */
+  markActivityRead: () => Promise<void>;
+  /**
+   * Combined header-bell badge count: items awaiting a response (friend requests
+   * + challenge invites) plus unread activity-feed items.
+   */
+  bellCount: number;
 }
 
 const NotificationsContext = createContext<NotificationsContextValue | null>(null);
@@ -86,6 +99,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     challengeInvites: 0,
     total: 0,
   });
+  const [unreadActivity, setUnreadActivity] = useState(0);
 
   const notificationListener = useRef<Notifications.EventSubscription | null>(null);
   const responseListener = useRef<Notifications.EventSubscription | null>(null);
@@ -204,21 +218,37 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     setPendingActions(await fetchPendingActionCounts());
   }, [user?.id]);
 
+  const refreshActivity = useCallback(async () => {
+    if (!user?.id) {
+      setUnreadActivity(0);
+      return;
+    }
+    setUnreadActivity(await fetchUnreadActivityCount());
+  }, [user?.id]);
+
+  const markActivityRead = useCallback(async () => {
+    setUnreadActivity(0); // optimistic — the screen opened, badge should clear now
+    if (!user?.id) return;
+    await markAllActivityRead();
+  }, [user?.id]);
+
   // Pull once on sign-in (and zero out on sign-out). Foreground + per-screen
   // focus refreshes are wired below / in ProfileButton.
   useEffect(() => {
     refreshPendingActions();
-  }, [refreshPendingActions]);
+    refreshActivity();
+  }, [refreshPendingActions, refreshActivity]);
 
   // -------------------------------------------------------------------------
   // Notification listeners
   // -------------------------------------------------------------------------
 
   useEffect(() => {
-    // Foreground notification received — a friend request / challenge invite may
-    // have just landed, so re-pull the in-app counts that drive the avatar badge.
+    // Foreground notification received — a friend request / challenge invite or a
+    // feed-worthy event may have just landed, so re-pull both badge sources.
     notificationListener.current = Notifications.addNotificationReceivedListener(() => {
       refreshPendingActions();
+      refreshActivity();
     });
 
     // User tapped a notification
@@ -233,6 +263,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
       if (appState.current.match(/inactive|background/) && nextState === 'active') {
         clearBadge();
         refreshPendingActions();
+        refreshActivity();
       }
       appState.current = nextState;
     });
@@ -242,7 +273,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
       responseListener.current?.remove();
       appStateSub.remove();
     };
-  }, [handleNotificationResponse, refreshPendingActions]);
+  }, [handleNotificationResponse, refreshPendingActions, refreshActivity]);
 
   // Handle notification that launched the app from a killed state (cold start).
   // addNotificationResponseReceivedListener does not fire for cold starts on iOS;
@@ -341,6 +372,10 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     sendInactivityNudge,
     pendingActions,
     refreshPendingActions,
+    unreadActivity,
+    refreshActivity,
+    markActivityRead,
+    bellCount: pendingActions.total + unreadActivity,
   };
 
   return (

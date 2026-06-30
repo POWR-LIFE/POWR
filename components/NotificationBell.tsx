@@ -6,21 +6,23 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useNotifications } from '@/context/NotificationsContext';
 
 /**
- * Header bell + "needs your attention" badge. Opens the Activity screen, where
- * friend requests and challenge invites are accepted/declined inline. Re-pulls
- * the count on focus so the badge clears once the user has dealt with things.
+ * Header bell + badge. Opens the Activity screen, where friend requests and
+ * challenge invites are accepted/declined inline ("Needs you") and past events
+ * are listed ("Recent"). The badge sums items awaiting a response and unread
+ * feed items; it's re-pulled on focus so it clears once dealt with.
  */
 export function NotificationBell() {
   const router = useRouter();
-  const { pendingActions, refreshPendingActions } = useNotifications();
+  const { bellCount, refreshPendingActions, refreshActivity } = useNotifications();
 
   useFocusEffect(
     useCallback(() => {
       refreshPendingActions();
-    }, [refreshPendingActions]),
+      refreshActivity();
+    }, [refreshPendingActions, refreshActivity]),
   );
 
-  const count = pendingActions.total;
+  const count = bellCount;
 
   return (
     <Pressable
@@ -29,7 +31,7 @@ export function NotificationBell() {
       onPress={() => router.push('/notifications')}
       accessibilityRole="button"
       accessibilityLabel={
-        count > 0 ? `Activity, ${count} item${count === 1 ? '' : 's'} need your attention` : 'Activity'
+        count > 0 ? `Activity, ${count} new item${count === 1 ? '' : 's'}` : 'Activity'
       }
     >
       <Ionicons name="notifications-outline" size={22} color="#FFFFFF" />
