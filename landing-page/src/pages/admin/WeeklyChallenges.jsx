@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
 import { useAuth } from '../../App';
 import SharedChallengesPanel from './SharedChallengesPanel';
+import ChallengeAnalyticsPanel from './ChallengeAnalyticsPanel';
 import {
 	CATALOG,
 	CATEGORY_META,
@@ -344,18 +345,20 @@ export default function WeeklyChallenges() {
 				</div>
 				<div>
 					<h1 className="text-6xl font-light tracking-tighter text-[#1A1A1A] mb-5">
-						{mode === 'weekly' ? 'Weekly Challenges' : 'Shared Challenges'}
+						{mode === 'weekly' ? 'Weekly Challenges' : mode === 'shared' ? 'Shared Challenges' : 'Challenge Insights'}
 					</h1>
 					<p className="text-[#666666] text-[11px] max-w-2xl font-black uppercase tracking-[0.4em] leading-relaxed">
 						{mode === 'weekly'
 							? `${totalActive} challenges auto-rotate weekly across ${CATEGORY_ORDER.length} categories. Pin a specific challenge for any week to override the rotation.`
-							: 'Curate the presets members pick when they take on a challenge with friends, and tune the group-size bonus.'}
+							: mode === 'shared'
+								? 'Curate the presets members pick when they take on a challenge with friends, and tune the group-size bonus.'
+								: 'Completion analytics across weekly rotation and shared challenges — what members finish, what is most popular, and how the together loop converts.'}
 					</p>
 				</div>
 
 				{/* Mode toggle: Weekly rotation vs Shared templates */}
 				<div className="inline-flex items-center gap-1 p-1 rounded-full border border-[#E6E6E1] bg-white w-fit">
-					{[['weekly', 'Weekly'], ['shared', 'Shared']].map(([m, label]) => (
+					{[['weekly', 'Weekly'], ['shared', 'Shared'], ['insights', 'Insights']].map(([m, label]) => (
 						<button
 							key={m}
 							onClick={() => setMode(m)}
@@ -370,6 +373,8 @@ export default function WeeklyChallenges() {
 			</div>
 
 			{mode === 'shared' && <SharedChallengesPanel />}
+
+			{mode === 'insights' && <ChallengeAnalyticsPanel />}
 
 			{mode === 'weekly' && (
 			<>
