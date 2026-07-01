@@ -129,6 +129,42 @@ const LOCATION_UPDATE_OPTIONS: Location.LocationTaskOptions = {
   },
 };
 
+// ─── Approach stream (instant-entry escalation) ─────────────────────────────
+// The native OS region is armed at a WIDER "approach" radius than the partner's
+// true check-in circle (see armNativeRegions). A 25 m region on iOS fires late
+// or not at all (Apple ties reliable region size to device accuracy) and, when
+// the app is force-quit, native region monitoring is the ONLY iOS detector — so
+// a tight native region trades away speed and reliability. Instead we arm the
+// region big enough to wake reliably/early, then, while the user is inside that
+// approach ring, run a short-lived HIGH-accuracy location stream so
+// evaluateLocationFix can catch the exact 25 m crossing within seconds. The
+// stream is the only thing that starts a session + fires "You're in", and it
+// only ever does so at the true radius — so a user 120 m out never gets a false
+// check-in. On EXIT of the approach ring the stream drops back to baseline.
+const APPROACH_RADIUS_M = 120;                 // native trigger radius (the wake ring)
+const APPROACH_STATE_KEY = '@powr/approach_state';
+
+// High-accuracy config used only inside an approach ring. 8 s / 10 m is tight
+// enough to catch a 25 m crossing at walking pace without the 5 s churn.
+const APPROACH_LOCATION_OPTIONS: Location.LocationTaskOptions = {
+  accuracy:                         Location.Accuracy.High,
+  timeInterval:                     8_000,
+  distanceInterval:                 10,
+  pausesUpdatesAutomatically:       false,
+  showsBackgroundLocationIndicator: false,
+  foregroundService: {
+    notificationTitle: 'POWR is checking you in',
+    notificationBody:  "You're near a partner gym — confirming your arrival.",
+    notificationColor: '#facc15',
+  },
+};
+
+// Baseline the location stream returns to once the approach ring is left. Android
+// keeps a passive always-on stream (primary closed-app detector); iOS has no
+// persistent stream and goes fully OFF, falling back to native region monitoring.
+type StreamMode = 'off' | 'passive' | 'approach';
+const BASELINE_STREAM_MODE: StreamMode = Platform.OS === 'android' ? 'passive' : 'off';
+
 // A device reboot kills the foreground service (and its banner), but TaskManager
 // still reports the location task as "started" across the reboot — so trusting
 // hasStartedLocationUpdatesAsync() would skip the restart and the banner would
@@ -326,7 +362,10 @@ async function armNativeRegions(
       identifier:    id,
       latitude:      e.lat!,
       longitude:     e.lng!,
-      radius:        e.radius ?? 100,
+      // Wake ring: arm at ≥120 m so the OS fires ENTER reliably and early. The
+      // true (25 m) check-in radius is confirmed in JS by the approach stream, so
+      // the wider native region never triggers a session by itself.
+      radius:        Math.max(e.radius ?? 100, APPROACH_RADIUS_M),
       notifyOnEnter: true,
       notifyOnExit:  true,
     }));
@@ -346,7 +385,10 @@ async function armNativeRegions(
       identifier:    id,
       latitude:      e.lat!,
       longitude:     e.lng!,
-      radius:        e.radius ?? 100,
+      // Wake ring: arm at ≥120 m so the OS fires ENTER reliably and early. The
+      // true (25 m) check-in radius is confirmed in JS by the approach stream, so
+      // the wider native region never triggers a session by itself.
+      radius:        Math.max(e.radius ?? 100, APPROACH_RADIUS_M),
       notifyOnEnter: true,
       notifyOnExit:  true,
     }));
@@ -367,6 +409,54 @@ async function armNativeRegions(
     console.log(`[Geofence] Armed ${regions.length} region(s)${fix ? ' around current fix' : ' (no fix — unsorted)'}.`);
   } catch (err) {
     console.warn('[Geofence] Failed to arm native regions:', err);
+  }
+}
+
+// ─── Approach-stream helpers ────────────────────────────────────────────────
+
+/** (Re)configures the persistent location stream to the given mode. 'approach'
+ *  = high accuracy to catch a 25 m crossing; 'passive' = the battery-friendly
+ *  always-on Android baseline; 'off' = fully stopped (iOS baseline). Restart is
+ *  how expo-location changes accuracy on a running task. Best-effort — a failure
+ *  leaves detection working (worst case: the stream stays at its prior mode). */
+async function setLocationStreamMode(mode: StreamMode): Promise<void> {
+  if (Platform.OS === 'web') return;
+  try {
+    const started = await Location.hasStartedLocationUpdatesAsync(LOCATION_TRACKING_TASK).catch(() => false);
+    if (mode === 'off') {
+      if (started) await Location.stopLocationUpdatesAsync(LOCATION_TRACKING_TASK).catch(() => {});
+      return;
+    }
+    const opts = mode === 'approach' ? APPROACH_LOCATION_OPTIONS : LOCATION_UPDATE_OPTIONS;
+    if (started) await Location.stopLocationUpdatesAsync(LOCATION_TRACKING_TASK).catch(() => {});
+    await Location.startLocationUpdatesAsync(LOCATION_TRACKING_TASK, opts);
+  } catch (err) {
+    console.warn('[Geofence] setLocationStreamMode failed:', mode, err);
+  }
+}
+
+/** Enters the approach ring for a gym: escalate to the high-accuracy stream so
+ *  evaluateLocationFix can catch the precise 25 m crossing. No session/notification
+ *  is started here — that's evaluateLocationFix's job, at the true radius. */
+async function enterApproach(regionId: string): Promise<void> {
+  try {
+    await AsyncStorage.setItem(APPROACH_STATE_KEY, JSON.stringify({ regionId, since: Date.now() }));
+  } catch { /* non-fatal */ }
+  await setLocationStreamMode('approach');
+  console.log(`[Geofence] Approach ring "${regionId}" — high-accuracy stream on.`);
+}
+
+/** Leaves the approach ring: clear the flag and return the stream to baseline
+ *  (Android passive / iOS off). No-op-cheap when we weren't escalated. */
+async function exitApproach(): Promise<void> {
+  let wasApproaching = false;
+  try {
+    wasApproaching = (await AsyncStorage.getItem(APPROACH_STATE_KEY)) != null;
+    if (wasApproaching) await AsyncStorage.removeItem(APPROACH_STATE_KEY);
+  } catch { /* non-fatal */ }
+  if (wasApproaching) {
+    await setLocationStreamMode(BASELINE_STREAM_MODE);
+    console.log('[Geofence] Left approach ring — location stream back to baseline.');
   }
 }
 
@@ -876,6 +966,7 @@ async function evaluateLocationFix(coords: Location.LocationObjectCoords): Promi
   const partnerMap = await readPartnerMap();
   if (!partnerMap) return;
 
+  let withinAnyApproach = false;
   for (const [regionId, entry] of Object.entries(partnerMap)) {
     if (entry.lat == null || entry.lng == null) continue;
     const dist = haversineMetres(coords.latitude, coords.longitude, entry.lat, entry.lng);
@@ -884,7 +975,14 @@ async function evaluateLocationFix(coords: Location.LocationObjectCoords): Promi
       await setActiveAndNotify(regionId, entry);
       return;
     }
+    if (dist <= APPROACH_RADIUS_M) withinAnyApproach = true;
   }
+
+  // Outside every approach ring — if the stream is still escalated (the native
+  // EXIT that normally de-escalates was missed, which can happen on iOS), drop it
+  // back to baseline so a high-accuracy stream can't run indefinitely. exitApproach
+  // is a cheap no-op when we weren't escalated.
+  if (!withinAnyApproach) await exitApproach();
 
   // Not near any partner. If this fix has drifted outside the armed sentinel
   // (user travelled with the app closed), re-target the native regions around
@@ -995,73 +1093,29 @@ TaskManager.defineTask(GEOFENCE_TASK_NAME, async ({ data, error }) => {
   }
 
   if (eventType === Location.GeofencingEventType.Enter) {
-    // Don't overwrite an already-active session
-    const existingRaw = await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY);
-    if (existingRaw) {
+    // Don't overwrite an already-active session.
+    if (await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY)) {
       console.log('[Geofence] Enter ignored — session already active.');
       return;
     }
 
-    const mapEntry = (await readPartnerMap())?.[regionId];
-    const partnerName = mapEntry?.name ?? regionId;
-    // Use the raw DB UUID — regionId is the composite "uuid-idx" UI key which is
-    // not a valid UUID. If the cache row is missing, recover the UUID by
-    // stripping the location-index suffix.
-    const dbPartnerId = mapEntry?.dbId ?? regionId.replace(/-\d+$/, '');
-
-    // Write entry state and fire the notification BEFORE any network I/O.
-    // iOS background tasks have a tight execution window; network calls can be killed
-    // before the notification is reached if they run first.
-    await AsyncStorage.setItem(
-      ACTIVE_GEOFENCE_KEY,
-      JSON.stringify({
-        partnerId:      dbPartnerId,
-        partnerName,
-        entryTimestamp: Date.now(),
-        latitude:       region.latitude,
-        longitude:      region.longitude,
-        radius:         region.radius,
-      })
-    );
-    console.log(`[Geofence] Entered "${partnerName}"`);
-
-    try {
-      const { notifyCheckInAvailable } = await import('@/lib/notifications');
-      await notifyCheckInAvailable(partnerName, regionId);
-    } catch (err) {
-      console.warn('[Geofence] Entry notification failed:', err);
-    }
-
-    // One gym session per day — check AFTER writing active state + firing notification.
-    // If already logged today, clean up the state we just set (best-effort: the
-    // entry notification may already have been delivered, which is acceptable).
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user && !DEV_TEST_EMAILS.has(user.email ?? '')) {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const { count } = await supabase
-          .from('activity_sessions')
-          .select('id', { count: 'exact', head: true })
-          .eq('user_id', user.id)
-          .eq('type', 'gym')
-          .eq('verification', 'geofence')
-          .gte('started_at', today.toISOString());
-        if ((count ?? 0) > 0) {
-          console.log('[Geofence] Gym session already logged today — clearing active state.');
-          await AsyncStorage.removeItem(ACTIVE_GEOFENCE_KEY);
-          return;
-        }
-      }
-    } catch {
-      // Non-fatal — active state already written, proceed
-    }
+    // The native region fires at the WIDER approach radius, so ENTER only means
+    // "near". Escalate to the high-accuracy stream and let evaluateLocationFix —
+    // the sole authority that starts a session + fires "You're in" — check the
+    // user in at the exact 25 m crossing (and dedup the once-per-day guard). A
+    // "You're in" therefore never fires from 120 m away. We deliberately do NOT
+    // block on a GPS fix here: iOS's region-wake window is tight, and starting
+    // the stream promptly matters more than confirming an (uncommon) already-inside.
+    await enterApproach(regionId);
 
   } else if (eventType === Location.GeofencingEventType.Exit) {
     const raw = await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY);
     const activeGeofence: StoredGeofence | null = raw ? JSON.parse(raw) : null;
 
     await AsyncStorage.removeItem(ACTIVE_GEOFENCE_KEY);
+    // Left the approach ring — return the stream to baseline whether or not a
+    // session was active (also covers "walked up but never checked in").
+    await exitApproach();
 
     if (!activeGeofence) return;
 

@@ -1,7 +1,6 @@
 // @ts-nocheck — Deno runtime, not Node. Types enforced at deploy time.
 import { createClient } from '@supabase/supabase-js';
-
-const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
+import { deliverExpoMessages } from '../_shared/expoPush.ts';
 
 type NotificationType =
   | 'daily_reminder'
@@ -81,7 +80,23 @@ interface ExpoMessage {
   badge?: number;
   channelId?: string;
   priority?: 'default' | 'normal' | 'high';
+  ttl?: number; // seconds — Expo maps to apns-expiration / FCM ttl
 }
+
+// Time-to-live (seconds) for types that become noise if delivered late. Expo
+// hands this to APNs (apns-expiration) / FCM (ttl), so the platform drops an
+// still-undelivered push past the window instead of buzzing hours later — a
+// "You're in. Every minute counts." that lands after the user has gone home is
+// worse than nothing. Durable, still-relevant types (session_completed,
+// reward_unlocked, points_milestone, and the social/challenge set) omit it so
+// they always arrive, however delayed.
+const TTL_SECONDS: Partial<Record<NotificationType, number>> = {
+  check_in_reminder:       15 * 60,      // only useful while still in the gym
+  streak_at_risk:          6 * 60 * 60,  // must land before midnight
+  weekly_challenge_expiry: 12 * 60 * 60,
+  daily_reminder:          6 * 60 * 60,
+  inactivity_nudge:        12 * 60 * 60,
+};
 
 function formatSessionCompletedBody(
   partnerName?: string | null,
@@ -373,7 +388,8 @@ function buildMessage(
     }
   })();
 
-  return { to: token, ...base };
+  const ttl = TTL_SECONDS[type];
+  return { to: token, ...base, ...(ttl != null ? { ttl } : {}) };
 }
 
 // ---------------------------------------------------------------------------
@@ -605,22 +621,17 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    // Build and send messages for every registered device
+    // Build and send messages for every registered device. deliverExpoMessages
+    // reads the Expo tickets and prunes any DeviceNotRegistered token inline, then
+    // confirms delivery via a background receipt poll (EdgeRuntime.waitUntil) so a
+    // reinstalled/upgraded device's dead token is cleaned up instead of silently
+    // swallowing every future push. Same single inline Expo round-trip as before —
+    // no added latency for callers that await this (e.g. claim-points).
     const messages: ExpoMessage[] = tokens.map(({ expo_push_token }) =>
       buildMessage(type, payload, expo_push_token),
     );
 
-    const expoResponse = await fetch(EXPO_PUSH_URL, {
-      method: 'POST',
-      headers: {
-        'Accept': 'application/json',
-        'Accept-Encoding': 'gzip, deflate',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(messages),
-    });
-
-    const result = await expoResponse.json();
+    const result = await deliverExpoMessages(supabase, messages);
 
     return new Response(JSON.stringify({ ok: true, result }), {
       status: 200,
