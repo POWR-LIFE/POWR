@@ -12,6 +12,7 @@ type NotificationType =
   | 'inactivity_nudge'
   | 'sleep_target_met'
   | 'session_completed'
+  | 'session_upgraded'
   // Shared ("together") challenges + friend graph (scope §4/§6a).
   | 'friend_request'
   | 'friend_accepted'
@@ -58,6 +59,7 @@ function categoryFor(type: NotificationType): 'social' | 'rewards' | 'activity' 
     case 'points_milestone':
       return 'rewards';
     case 'session_completed':
+    case 'session_upgraded':
     case 'sleep_target_met':
       return 'activity';
     default:
@@ -263,6 +265,36 @@ function buildMessage(
         };
       }
 
+      case 'session_upgraded': {
+        // The 40-min tier bonus, credited by upgrade-gym-tier AFTER the initial
+        // claim already pushed "Session recorded". `earned` is the delta (the
+        // extra points for staying to 40 min), carried explicitly because the
+        // session now has multiple 'earn' rows on the ledger.
+        const sessionId = (payload.session_id as string) ?? '';
+        const earned = Math.max(0, Math.round(Number(payload.earned ?? 0)));
+        const partnerName = (payload.partner_name as string | undefined)?.trim();
+
+        const parts: string[] = [];
+        if (partnerName) parts.push(partnerName);
+        if (earned > 0) parts.push(`+${earned.toLocaleString()} pts`);
+        parts.push('40-min bonus');
+
+        return {
+          title: 'Bonus unlocked 🔓',
+          body: parts.join(' · '),
+          data: {
+            type,
+            route: `/share-stats?mode=check-in&sessionId=${sessionId}`,
+            session_id: sessionId,
+            earned: earned > 0 ? earned : undefined,
+            partner_name: partnerName,
+          },
+          sound: 'default',
+          channelId: 'powr_rewards_v2',
+          priority: 'high',
+        };
+      }
+
       // ── Friend graph ──────────────────────────────────────────────────────
       case 'friend_request': {
         const name = (payload.from_name as string) || 'Someone';
@@ -392,6 +424,48 @@ function buildMessage(
   return { to: token, ...base, ...(ttl != null ? { ttl } : {}) };
 }
 
+// Consecutive distinct activity days ending today or yesterday, computed
+// straight from activity_sessions — the same basis the app's streak display
+// uses. We do NOT read user_streaks.current_streak: it's mutated by an
+// increment-based updater in claim-points that an out-of-order claim (e.g. a
+// backdated session) can transiently corrupt, and a push fires at claim time —
+// exactly when that value is most likely stale — so the number self-heals
+// seconds later but the notification already went out wrong. Recompute it.
+async function streakFromSessions(supabase: any, userId: string): Promise<number> {
+  const since = new Date();
+  since.setDate(since.getDate() - 90);
+
+  const { data: sessions } = await supabase
+    .from('activity_sessions')
+    .select('started_at')
+    .eq('user_id', userId)
+    .neq('verification', 'manual')
+    .gte('started_at', since.toISOString())
+    .order('started_at', { ascending: false });
+
+  const uniqueDays = [...new Set(
+    (sessions ?? []).map((s: { started_at: string }) => s.started_at.slice(0, 10)),
+  )].sort().reverse();
+
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const yd = new Date();
+  yd.setDate(yd.getDate() - 1);
+  const yesterdayStr = yd.toISOString().slice(0, 10);
+
+  if (uniqueDays.length === 0 || (uniqueDays[0] !== todayStr && uniqueDays[0] !== yesterdayStr)) {
+    return 0;
+  }
+
+  let streak = 1;
+  for (let i = 1; i < uniqueDays.length; i++) {
+    const a = new Date(uniqueDays[i - 1]).getTime();
+    const b = new Date(uniqueDays[i]).getTime();
+    if (a - b === 86400000) streak++;
+    else break;
+  }
+  return streak;
+}
+
 // ---------------------------------------------------------------------------
 // Handler
 // ---------------------------------------------------------------------------
@@ -423,14 +497,18 @@ Deno.serve(async (req: Request) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     );
 
-    // Check notification preferences
+    // Check notification preferences. session_upgraded (the 40-min tier bonus)
+    // has no toggle of its own — it rides the session_completed preference so a
+    // user who muted session pushes doesn't get the upgrade one either.
+    const prefColumn: NotificationType =
+      type === 'session_upgraded' ? 'session_completed' : type;
     const { data: prefs } = await supabase
       .from('notification_preferences')
-      .select(type)
+      .select(prefColumn)
       .eq('user_id', target_user_id)
       .maybeSingle();
 
-    if (prefs && prefs[type] === false) {
+    if (prefs && prefs[prefColumn] === false) {
       return new Response(JSON.stringify({ skipped: true, reason: 'user_preference' }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
@@ -453,39 +531,7 @@ Deno.serve(async (req: Request) => {
     // notification always reflects the same value the app shows, regardless of
     // whether user_streaks is stale.
     if (type === 'streak_at_risk') {
-      const since = new Date();
-      since.setDate(since.getDate() - 90);
-
-      const { data: sessions } = await supabase
-        .from('activity_sessions')
-        .select('started_at')
-        .eq('user_id', target_user_id)
-        .neq('verification', 'manual')
-        .gte('started_at', since.toISOString())
-        .order('started_at', { ascending: false });
-
-      const uniqueDays = [...new Set(
-        (sessions ?? []).map((s: { started_at: string }) => s.started_at.slice(0, 10)),
-      )].sort().reverse();
-
-      const todayStr = new Date().toISOString().slice(0, 10);
-      const yd = new Date();
-      yd.setDate(yd.getDate() - 1);
-      const yesterdayStr = yd.toISOString().slice(0, 10);
-
-      let computedStreak = 0;
-      if (uniqueDays.length > 0 && (uniqueDays[0] === todayStr || uniqueDays[0] === yesterdayStr)) {
-        computedStreak = 1;
-        for (let i = 1; i < uniqueDays.length; i++) {
-          const a = new Date(uniqueDays[i - 1]).getTime();
-          const b = new Date(uniqueDays[i]).getTime();
-          if (a - b === 86400000) {
-            computedStreak++;
-          } else {
-            break;
-          }
-        }
-      }
+      const computedStreak = await streakFromSessions(supabase, target_user_id);
 
       if (computedStreak === 0) {
         return new Response(JSON.stringify({ skipped: true, reason: 'no_active_streak' }), {
@@ -533,7 +579,7 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    if (type === 'session_completed') {
+    if (type === 'session_completed' || type === 'session_upgraded') {
       const sessionId = String(payload.session_id ?? '').trim();
 
       if (sessionId) {
@@ -558,26 +604,26 @@ Deno.serve(async (req: Request) => {
             }
           }
 
-          const { data: streak } = await supabase
-            .from('user_streaks')
-            .select('current_streak')
-            .eq('user_id', session.user_id)
-            .maybeSingle();
-
-          if (streak?.current_streak !== undefined && streak.current_streak !== null) {
-            payload = { ...payload, current_streak: streak.current_streak };
+          const computedStreak = await streakFromSessions(supabase, session.user_id);
+          if (computedStreak > 0) {
+            payload = { ...payload, current_streak: computedStreak };
           }
 
-          // Fetch actual points earned for this session from the ledger
-          const { data: txn } = await supabase
-            .from('point_transactions')
-            .select('amount')
-            .eq('session_id', sessionId)
-            .eq('type', 'earn')
-            .maybeSingle();
+          // Only session_completed re-derives `earned` from the ledger — it has a
+          // single 'earn' row at that point. session_upgraded carries its delta
+          // explicitly (the session already has 2+ 'earn' rows, so a single-row
+          // lookup here would be ambiguous).
+          if (type === 'session_completed') {
+            const { data: txn } = await supabase
+              .from('point_transactions')
+              .select('amount')
+              .eq('session_id', sessionId)
+              .eq('type', 'earn')
+              .maybeSingle();
 
-          if (txn?.amount !== undefined && txn.amount !== null) {
-            payload = { ...payload, earned: txn.amount };
+            if (txn?.amount !== undefined && txn.amount !== null) {
+              payload = { ...payload, earned: txn.amount };
+            }
           }
         }
       }

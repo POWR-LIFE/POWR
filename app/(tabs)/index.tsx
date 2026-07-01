@@ -246,7 +246,18 @@ export default function HomeScreen() {
     const DWELL_MS = 30 * 60 * 1000;
     const elapsedMs = activeGeofence ? Date.now() - activeGeofence.entryTimestamp : 0;
     const dwellProgress = Math.min(elapsedMs / DWELL_MS, 1);
-    const projectedPoints = elapsedMs >= 40 * 60 * 1000 ? 20 : 15;
+    // Projected gym points — streak-adjusted and capped at the per-day gym cap so
+    // the card matches what claim-points / upgrade-gym-tier actually award. The
+    // old flat 15/20 ignored the streak multiplier (e.g. a 10-day streak is 3×),
+    // so it under-showed. The cap assumes no gym points earned yet today (the
+    // common first-visit case); a repeat same-day visit is daily-capped server-side.
+    const GYM_DAILY_CAP = 30;
+    const proj30 = Math.min(Math.round(15 * multiplier), GYM_DAILY_CAP);
+    const proj40 = Math.min(Math.round(20 * multiplier), GYM_DAILY_CAP);
+    const atUpgradeTier = elapsedMs >= 40 * 60 * 1000;
+    const projectedPoints = atUpgradeTier ? proj40 : proj30;
+    const upgradeBonus = Math.max(0, proj40 - proj30); // extra unlocked by staying to 40 min
+    const sessionMaxTier = atUpgradeTier || upgradeBonus <= 0;
     const minsRemaining = Math.max(0, Math.ceil((DWELL_MS - elapsedMs) / 60000));
 
     const rotateAnim = useRef(new Animated.Value(0)).current;
@@ -559,6 +570,8 @@ export default function HomeScreen() {
                     sessionProgress={dwellProgress}
                     sessionDwellMet={dwellProgress >= 1}
                     sessionProjectedPts={projectedPoints}
+                    sessionUpgradeBonus={upgradeBonus}
+                    sessionMaxTier={sessionMaxTier}
                     onShare={() => router.push({ pathname: '/share-stats', params: { mode: 'streak' } })}
                 />
 
