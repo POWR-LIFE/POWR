@@ -207,6 +207,40 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   }, [user?.id, expoPushToken]);
 
   // -------------------------------------------------------------------------
+  // Keep the registered push token alive
+  // -------------------------------------------------------------------------
+  // Two failure modes leave a user with NO deliverable token — every server
+  // push (session_completed, session_upgraded, reward_unlocked, within-reach,
+  // broadcasts) then silently drops:
+  //   1. The OS rotates the APNs/FCM token (OS update, restore, reinstall,
+  //      periodic refresh) while the user stays signed in. The old Expo token
+  //      is pruned as DeviceNotRegistered on the next send, but nothing had
+  //      re-registered the new one — so the row is simply gone until a cold
+  //      start happens to re-run registration.
+  //   2. The initial sign-in registration failed (offline / transient) and,
+  //      because it only runs on user?.id change, never retried.
+  // addPushTokenListener closes (1): re-fetch the fresh Expo token and upsert it
+  // the instant the native token rotates. The foreground re-check closes (2):
+  // if we still have no token when the app comes forward, try again.
+  useEffect(() => {
+    if (!user?.id) return;
+    const uid = user.id;
+
+    const tokenSub = Notifications.addPushTokenListener(() => {
+      registerForPush(uid);
+    });
+
+    const appSub = AppState.addEventListener('change', (next: AppStateStatus) => {
+      if (next === 'active' && !expoPushToken) registerForPush(uid);
+    });
+
+    return () => {
+      tokenSub.remove();
+      appSub.remove();
+    };
+  }, [user?.id, expoPushToken, registerForPush]);
+
+  // -------------------------------------------------------------------------
   // In-app pending-action badge (friend requests + challenge invites)
   // -------------------------------------------------------------------------
 

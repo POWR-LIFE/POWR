@@ -540,11 +540,16 @@ Deno.serve(async (req) => {
     }
   }
 
-  // 12. Session completed push — server-side for reliability (fires regardless of app/background state)
+  // 12. Session completed push — server-side for reliability (fires regardless of app/background state).
+  //     We read the delivery outcome so the client can fire an on-device fallback
+  //     ONLY when the server genuinely couldn't land it (no live token / send
+  //     failed). push_delivered stays true when the user opted out, so the
+  //     fallback never overrides a mute or double-notifies.
+  let pushDelivered = true;
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
     const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-    await fetch(`${supabaseUrl}/functions/v1/send-push-notification`, {
+    const pushRes = await fetch(`${supabaseUrl}/functions/v1/send-push-notification`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -556,7 +561,18 @@ Deno.serve(async (req) => {
         payload: { session_id: session.id, earned: finalAmount },
       }),
     });
+    const pushBody = await pushRes.json().catch(() => null);
+    if (pushBody) {
+      // skipped:no_tokens → nothing landed (fire local); skipped:user_preference
+      // → intentionally suppressed (respect it, no local). Otherwise delivered iff
+      // Expo queued at least one ticket.
+      pushDelivered = pushBody.skipped
+        ? pushBody.reason !== 'no_tokens'
+        : Number(pushBody?.result?.queued ?? 0) > 0;
+    }
   } catch (notifErr) {
+    // Couldn't even reach send-push — the client should fire its local fallback.
+    pushDelivered = false;
     console.warn('[claim-points] session_completed notification failed:', notifErr);
   }
 
@@ -621,6 +637,7 @@ Deno.serve(async (req) => {
       base,
       transaction_id: tx.id,
       within_reach: withinReach,
+      push_delivered: pushDelivered,
     }),
     { status: 200, headers: { 'Content-Type': 'application/json' } },
   );
