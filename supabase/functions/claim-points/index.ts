@@ -159,34 +159,46 @@ function calcStreakBonus(type: ActivityType, streak: number, base: number): numb
   return 0;
 }
 
-function updateStreakDay(streak: UserStreak, sessionDate: string): Partial<UserStreak> {
-  const today = sessionDate.split('T')[0];
-  const last = streak.last_activity_date;
+// Consecutive distinct activity days ending today or yesterday, computed from
+// activity_sessions — the same basis the app displays and send-push-notification
+// uses. The session being claimed already exists in the table, so this INCLUDES
+// today. Replaces an increment-based updater (current_streak + 1 / reset to 1,
+// keyed on last_activity_date) whose stored value an out-of-order or backdated
+// claim could corrupt — which then fed both the bonus multiplier here and the
+// "Day N" copy in the push. Recomputing from source makes the streak self-correct.
+async function streakFromSessions(supabase: any, userId: string): Promise<number> {
+  const since = new Date();
+  since.setDate(since.getDate() - 90);
 
-  if (last === today) {
-    // Already counted today — no change
-    return {};
+  const { data: sessions } = await supabase
+    .from('activity_sessions')
+    .select('started_at')
+    .eq('user_id', userId)
+    .neq('verification', 'manual')
+    .gte('started_at', since.toISOString())
+    .order('started_at', { ascending: false });
+
+  const uniqueDays = [...new Set(
+    (sessions ?? []).map((s: { started_at: string }) => s.started_at.slice(0, 10)),
+  )].sort().reverse();
+
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const yd = new Date();
+  yd.setDate(yd.getDate() - 1);
+  const yesterdayStr = yd.toISOString().slice(0, 10);
+
+  if (uniqueDays.length === 0 || (uniqueDays[0] !== todayStr && uniqueDays[0] !== yesterdayStr)) {
+    return 0;
   }
 
-  const yesterday = new Date(today);
-  yesterday.setDate(yesterday.getDate() - 1);
-  const yStr = yesterday.toISOString().split('T')[0];
-
-  if (last === yStr) {
-    // Consecutive day
-    const newStreak = streak.current_streak + 1;
-    return {
-      current_streak: newStreak,
-      longest_streak: Math.max(newStreak, streak.longest_streak),
-      last_activity_date: today,
-    };
+  let streak = 1;
+  for (let i = 1; i < uniqueDays.length; i++) {
+    const a = new Date(uniqueDays[i - 1]).getTime();
+    const b = new Date(uniqueDays[i]).getTime();
+    if (a - b === 86400000) streak++;
+    else break;
   }
-
-  // Streak broken
-  return {
-    current_streak: 1,
-    last_activity_date: today,
-  };
+  return streak;
 }
 
 /**
@@ -420,16 +432,25 @@ Deno.serve(async (req) => {
     base = Math.floor(base * 0.8);
   }
 
-  // Fetch streak for multiplier
+  // Fetch the streak row (kept for longest_streak + freeze_tokens).
   const { data: streak } = await supabase
     .from('user_streaks')
     .select('*')
     .eq('user_id', user.id)
     .single<UserStreak>();
 
+  // True current streak, recomputed from activity_sessions (includes today's
+  // session, which already exists) rather than the stored/increment-based value
+  // that a backdated or out-of-order claim could leave wrong. This is the same
+  // basis the app's card + send-push use, so the multiplier awarded here matches
+  // the projected points the user was shown.
+  let currentStreak = streak?.current_streak ?? 0;
   let streakBonus = 0;
-  if (!isManual && streak) {
-    streakBonus = calcStreakBonus(session.type, streak.current_streak, base);
+  if (!isManual) {
+    currentStreak = await streakFromSessions(supabase, user.id);
+    if (streak) {
+      streakBonus = calcStreakBonus(session.type, currentStreak, base);
+    }
   }
 
   // Check daily cap
@@ -495,15 +516,16 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ error: 'Failed to record transaction' }), { status: 500 });
   }
 
-  // 11. Update streak (skip for manual logs)
+  // 11. Persist the recomputed streak (skip for manual logs)
   if (!isManual && streak) {
-    const streakUpdate = updateStreakDay(streak, session.started_at);
-    if (Object.keys(streakUpdate).length > 0) {
-      await supabase
-        .from('user_streaks')
-        .update(streakUpdate)
-        .eq('user_id', user.id);
-    }
+    await supabase
+      .from('user_streaks')
+      .update({
+        current_streak: currentStreak,
+        longest_streak: Math.max(currentStreak, streak.longest_streak ?? 0),
+        last_activity_date: sessionDay,
+      })
+      .eq('user_id', user.id);
 
     // Insert streak bonus transaction if applicable
     if (streakBonus > 0) {
@@ -512,7 +534,7 @@ Deno.serve(async (req) => {
         session_id: session.id,
         amount: Math.min(streakBonus, remaining - finalAmount),
         type: 'streak',
-        description: `${streak.current_streak}-day streak bonus`,
+        description: `${currentStreak}-day streak bonus`,
         multiplier: 1.0,
       });
     }
