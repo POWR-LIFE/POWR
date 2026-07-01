@@ -202,11 +202,11 @@ async function streakFromSessions(supabase: any, userId: string): Promise<number
 }
 
 /**
- * Source-of-truth priority is geofence (0.94) > wearable (0.85) > manual (0.55).
- * When a geofence gym check-in is claimed, it's the authoritative record for that
- * time at the gym — remove ANY overlapping lower-trust (wearable/manual) workout
- * and reverse its points so we never double-count or let a lower-trust entry stand
- * alongside the check-in. Type-agnostic on purpose: the same gym visit can be
+ * Source-of-truth priority is geofence (0.94) > wearable/health (0.85) > manual
+ * (0.55). When a geofence gym check-in is claimed, it's the authoritative record
+ * for that time at the gym — remove ANY overlapping lower-trust (wearable/health/
+ * manual) workout and reverse its points so we never double-count or let a
+ * lower-trust entry stand alongside the check-in. Type-agnostic on purpose: the same gym visit can be
  * logged by a wearable as cycling (stationary bike), hiit (a class), sports, yoga,
  * etc. — it's the same time at the gym, so it defers to the check-in regardless of
  * how the device classified it. This mirrors terra-webhook's overlapsGeofenceGym
@@ -230,7 +230,7 @@ async function supersedeLowerTrust(supabase, winner: ActivitySession): Promise<v
     .select('id, type, verification, trust_score, started_at, ended_at, duration_sec')
     .eq('user_id', winner.user_id)
     .not('type', 'in', '("walking","sleep")')
-    .in('verification', ['wearable', 'manual'])
+    .in('verification', ['wearable', 'health', 'manual'])
     .lt('trust_score', winner.trust_score)
     .gte('started_at', windowStart)
     .lte('started_at', windowEnd)
@@ -334,8 +334,8 @@ Deno.serve(async (req) => {
   }
 
   // 5b. Source-of-truth priority: a geofence check-in supersedes any overlapping
-  // lower-trust (wearable/manual) session of the same type — remove them + reverse
-  // their points before we score this one, so the check-in is the sole record.
+  // lower-trust (wearable/health/manual) session — remove them + reverse their
+  // points before we score this one, so the check-in is the sole record.
   if (session.verification === 'geofence') {
     await supersedeLowerTrust(supabase, session);
   }
