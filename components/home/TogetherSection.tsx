@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import React, { useCallback, useState } from 'react';
 import { Dimensions, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { fontFamily } from '@/constants/tokens';
@@ -56,9 +56,16 @@ export function TogetherSection({ onOpenChallenge }: TogetherSectionProps) {
     leaveChallenge,
     newlyCompletedId,
     clearCelebration,
+    refresh,
   } = useSharedChallenges();
   const { balance } = usePoints();
   const { refreshPendingActions } = useNotifications();
+
+  // Home keeps its own useSharedChallenges instance; with no shared store it can
+  // drift from the truth when progress changes elsewhere (the detail screen's own
+  // re-eval, or the cron backstop). Refetch whenever the home tab regains focus so
+  // the card never lingers on a stale value while detail shows the real one.
+  useFocusEffect(useCallback(() => { void refresh(); }, [refresh]));
 
   // Responding to an invite here (on the home tab) won't fire a tab-focus event,
   // so refresh the avatar badge directly once the mutation settles.

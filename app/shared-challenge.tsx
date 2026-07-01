@@ -48,14 +48,26 @@ function poolHeadline(pool: Pool): string {
   return `${fmtPoolValue(pool.total, pool.unit)} / ${fmtPoolValue(pool.target, pool.unit)}${pool.unit === 'steps' ? ' steps' : ''}`;
 }
 
-function StatePill({ p }: { p: Participant }) {
+/** "1 / 3" readout for parallel goals — the raw count from fraction × target,
+ *  compacting large targets (46k / 70k). Falls back to "%" when no target. */
+function countText(progress: number, target: number): string {
+  const current = Math.min(Math.round(progress * target), target);
+  const fmt = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(n % 1000 === 0 ? 0 : 1)}k` : String(n));
+  return `${fmt(current)} / ${fmt(target)}`;
+}
+
+function StatePill({ p, target }: { p: Participant; target?: number }) {
   if (p.completed) return <Text style={[styles.statePill, { color: GREEN }]}>Done</Text>;
   if (p.state === 'invited') return <Text style={[styles.statePill, { color: MUTED }]}>Invited</Text>;
   if (p.state === 'declined') return <Text style={[styles.statePill, { color: ORANGE }]}>Declined</Text>;
-  return <Text style={[styles.statePill, { color: GOLD }]}>{Math.round(p.progress * 100)}%</Text>;
+  return (
+    <Text style={[styles.statePill, { color: GOLD }]}>
+      {target ? countText(p.progress, target) : `${Math.round(p.progress * 100)}%`}
+    </Text>
+  );
 }
 
-function ParticipantRow({ p, pool, onPress }: { p: Participant; pool?: Pool; onPress?: () => void }) {
+function ParticipantRow({ p, pool, goalTarget, onPress }: { p: Participant; pool?: Pool; goalTarget?: number; onPress?: () => void }) {
   return (
     <Pressable
       style={styles.pRow}
@@ -75,7 +87,7 @@ function ParticipantRow({ p, pool, onPress }: { p: Participant; pool?: Pool; onP
               {p.state === 'invited' ? 'Invited' : fmtPoolValue(p.contribution ?? 0, pool.unit)}
             </Text>
           ) : (
-            <StatePill p={p} />
+            <StatePill p={p} target={goalTarget} />
           )}
         </View>
         {!pool && (
@@ -349,6 +361,7 @@ export default function SharedChallengeDetail() {
                 key={p.friend.id}
                 p={p}
                 pool={pool}
+                goalTarget={challenge.goalTarget}
                 onPress={p.isSelf ? undefined : () => setSheetUserId(p.friend.id)}
               />
             ))}

@@ -92,4 +92,11 @@ export interface SharedChallenge {
    * `unit` is the display unit ('steps' | 'km' | 'check-ins' | 'sessions' | …).
    */
   pool?: { target: number; total: number; unit: string };
+  /**
+   * Parallel (solo-goal) challenges: the goal's numeric target (from the eval
+   * `rule`, e.g. 3 for "3 gym check-ins"). Lets the card/detail show a concrete
+   * "1 / 3" readout instead of an abstract "33%". Undefined for goals with no
+   * clean integer target — those fall back to the percentage.
+   */
+  goalTarget?: number;
 }

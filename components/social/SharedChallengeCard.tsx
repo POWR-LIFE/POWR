@@ -39,6 +39,13 @@ function fmtNum(n: number): string {
   return String(Math.round(n));
 }
 
+/** "1 / 3" self-progress readout for parallel goals — reconstructs the raw count
+ *  from the 0–1 fraction × target, compacting large targets (46k / 70k). */
+function countText(progress: number, target: number): string {
+  const current = Math.min(Math.round(progress * target), target);
+  return `${fmtNum(current)} / ${fmtNum(target)}`;
+}
+
 /** "X / Y unit" for a pooled total, converting metres → km/mi for distance pools. */
 function poolText(pool: { target: number; total: number; unit: string }): string {
   if (pool.unit === 'km' || pool.unit === 'mi') {
@@ -78,6 +85,10 @@ export function SharedChallengeCard({ challenge, index = 0, atCap = false, onPre
   const isPendingInvite = self?.state === 'invited';
   const selfPct = Math.round(Math.min(self?.progress ?? 0, 1) * 100);
   const selfDone = !!self?.completed;
+  // Prefer a concrete "1 / 3" count (goal has a numeric target); fall back to "%".
+  const selfReadout = challenge.goalTarget
+    ? countText(self?.progress ?? 0, challenge.goalTarget)
+    : `${selfPct}%`;
   // Pooled (type B): the bar shows the SHARED pool fraction (server sets every
   // participant's progress to it), and the readout is the combined total.
   const pooled = !!challenge.pool;
@@ -176,7 +187,7 @@ export function SharedChallengeCard({ challenge, index = 0, atCap = false, onPre
                 </Text>
                 {!forming && (
                   <Text style={[styles.progressPct, selfDone && { color: GREEN }]}>
-                    {pooled ? poolText(challenge.pool!) : selfDone ? '✓' : `${selfPct}%`}
+                    {pooled ? poolText(challenge.pool!) : selfDone ? '✓' : selfReadout}
                   </Text>
                 )}
               </View>

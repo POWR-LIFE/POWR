@@ -111,6 +111,11 @@ function mapChallengeRow(row: any): SharedChallenge {
       }
     : undefined;
 
+  // Parallel (solo-goal): the eval rule's numeric target, so the card/detail can
+  // show "1 / 3" rather than "33%". Pooled uses its own pool total instead.
+  const rule = row.rule ?? {};
+  const goalTarget = !isPooled && Number(rule.target) > 0 ? Number(rule.target) : undefined;
+
   return {
     id: row.id,
     template: {
@@ -137,6 +142,7 @@ function mapChallengeRow(row: any): SharedChallenge {
     pendingInviteFromName:
       self?.state === 'invited' ? creator?.friend.displayName ?? 'A friend' : undefined,
     pool,
+    goalTarget,
   };
 }
 
