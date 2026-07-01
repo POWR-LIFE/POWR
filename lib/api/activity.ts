@@ -160,10 +160,41 @@ export async function logManualSession(params: ManualSessionParams): Promise<boo
     const trust_score = params.healthVerified ? 0.85 : 0.55;
     const device_id = await getDeviceId();
 
-    // Source-of-truth priority is geofence > wearable > manual. A manual log must
-    // never be created when a higher-trust source (geofence check-in, wearable, or
-    // native health sync) already covers the same activity. We guard manual logs
-    // two ways below; health-verified writes (wearable/native sync) skip both.
+    // Source-of-truth priority is geofence > wearable/health > manual. A geofence
+    // gym check-in is the authoritative record of that time at the gym, so a
+    // health-verified workout syncing AFTER the check-in was claimed must not be
+    // recorded alongside it (claim-points supersedes in the reverse arrival order,
+    // and terra-webhook applies the same suppression for Terra-delivered
+    // wearables). Type-agnostic for the same reason as the manual guard below;
+    // walking/sleep are daily aggregates and exempt. Skip silently — the check-in
+    // already counted this time.
+    if (params.healthVerified && params.type !== 'walking' && params.type !== 'sleep') {
+        const uid = (await getCurrentUserId()) ?? '';
+        const startMs = new Date(params.started_at).getTime();
+        const endMs = new Date(ended_at).getTime();
+        const { data: checkIns } = await supabase
+            .from('activity_sessions')
+            .select('started_at, ended_at, duration_sec')
+            .eq('user_id', uid)
+            .eq('verification', 'geofence')
+            .gte('started_at', new Date(startMs - 24 * 60 * 60 * 1000).toISOString())
+            .lte('started_at', new Date(endMs + 24 * 60 * 60 * 1000).toISOString());
+        const overlapsCheckIn = (checkIns ?? []).some(s => {
+            const sStart = new Date(s.started_at).getTime();
+            const sEnd = s.ended_at
+                ? new Date(s.ended_at).getTime()
+                : sStart + (s.duration_sec ?? 0) * 1000;
+            return startMs < sEnd && endMs > sStart;
+        });
+        if (overlapsCheckIn) {
+            console.log(`[activity] skipping health-synced ${params.type} ${params.started_at} — overlaps geofence check-in`);
+            return false;
+        }
+    }
+
+    // A manual log must never be created when a higher-trust source (geofence
+    // check-in, wearable, or native health sync) already covers the same activity.
+    // We guard manual logs two ways below.
     if (!params.healthVerified) {
         const uid = (await getCurrentUserId()) ?? '';
 

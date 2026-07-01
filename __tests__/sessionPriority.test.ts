@@ -54,6 +54,17 @@ describe('geofenceSupersedes — geofence always wins over wearable/manual', () 
     expect(geofenceSupersedes(geofenceGym, wearable('sports', checkInStart + 20 * 60 * 1000, 40))).toBe(true);
   });
 
+  it('supersedes an overlapping HEALTH session (native phone sync, e.g. iPhone-written HK workout)', () => {
+    // 'health' was split from 'wearable' in migration 20260601000002 — it ranks
+    // the same and must equally defer to the check-in.
+    const healthGym: PrioritySession = {
+      type: 'gym', verification: 'health', trust_score: 0.85,
+      started_at: iso(checkInStart + 2 * 60 * 1000),
+      ended_at: iso(checkInStart + 50 * 60 * 1000), duration_sec: 48 * 60,
+    };
+    expect(geofenceSupersedes(geofenceGym, healthGym)).toBe(true);
+  });
+
   it('supersedes an overlapping MANUAL session (lowest trust)', () => {
     const manual: PrioritySession = {
       type: 'gym', verification: 'manual', trust_score: 0.55,
