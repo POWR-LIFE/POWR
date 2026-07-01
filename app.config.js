@@ -11,7 +11,11 @@ module.exports = {
           'POWR reads your steps and workouts to verify your activity and award full points.',
         NSHealthUpdateUsageDescription:
           'POWR needs health access to verify your workouts.',
-        UIBackgroundModes: ['fetch', 'remote-notification'],
+        // 'location' is required for the gym-approach high-accuracy stream
+        // (startLocationUpdatesAsync) to keep delivering in the background — region
+        // monitoring alone doesn't need it, but the approach stream does. 'fetch'
+        // (boot re-arm) + 'remote-notification' (push) preserved.
+        UIBackgroundModes: ['location', 'fetch', 'remote-notification'],
       },
       entitlements: {
         ...expo.ios?.entitlements,
