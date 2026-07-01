@@ -424,6 +424,48 @@ function buildMessage(
   return { to: token, ...base, ...(ttl != null ? { ttl } : {}) };
 }
 
+// Consecutive distinct activity days ending today or yesterday, computed
+// straight from activity_sessions — the same basis the app's streak display
+// uses. We do NOT read user_streaks.current_streak: it's mutated by an
+// increment-based updater in claim-points that an out-of-order claim (e.g. a
+// backdated session) can transiently corrupt, and a push fires at claim time —
+// exactly when that value is most likely stale — so the number self-heals
+// seconds later but the notification already went out wrong. Recompute it.
+async function streakFromSessions(supabase: any, userId: string): Promise<number> {
+  const since = new Date();
+  since.setDate(since.getDate() - 90);
+
+  const { data: sessions } = await supabase
+    .from('activity_sessions')
+    .select('started_at')
+    .eq('user_id', userId)
+    .neq('verification', 'manual')
+    .gte('started_at', since.toISOString())
+    .order('started_at', { ascending: false });
+
+  const uniqueDays = [...new Set(
+    (sessions ?? []).map((s: { started_at: string }) => s.started_at.slice(0, 10)),
+  )].sort().reverse();
+
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const yd = new Date();
+  yd.setDate(yd.getDate() - 1);
+  const yesterdayStr = yd.toISOString().slice(0, 10);
+
+  if (uniqueDays.length === 0 || (uniqueDays[0] !== todayStr && uniqueDays[0] !== yesterdayStr)) {
+    return 0;
+  }
+
+  let streak = 1;
+  for (let i = 1; i < uniqueDays.length; i++) {
+    const a = new Date(uniqueDays[i - 1]).getTime();
+    const b = new Date(uniqueDays[i]).getTime();
+    if (a - b === 86400000) streak++;
+    else break;
+  }
+  return streak;
+}
+
 // ---------------------------------------------------------------------------
 // Handler
 // ---------------------------------------------------------------------------
@@ -489,39 +531,7 @@ Deno.serve(async (req: Request) => {
     // notification always reflects the same value the app shows, regardless of
     // whether user_streaks is stale.
     if (type === 'streak_at_risk') {
-      const since = new Date();
-      since.setDate(since.getDate() - 90);
-
-      const { data: sessions } = await supabase
-        .from('activity_sessions')
-        .select('started_at')
-        .eq('user_id', target_user_id)
-        .neq('verification', 'manual')
-        .gte('started_at', since.toISOString())
-        .order('started_at', { ascending: false });
-
-      const uniqueDays = [...new Set(
-        (sessions ?? []).map((s: { started_at: string }) => s.started_at.slice(0, 10)),
-      )].sort().reverse();
-
-      const todayStr = new Date().toISOString().slice(0, 10);
-      const yd = new Date();
-      yd.setDate(yd.getDate() - 1);
-      const yesterdayStr = yd.toISOString().slice(0, 10);
-
-      let computedStreak = 0;
-      if (uniqueDays.length > 0 && (uniqueDays[0] === todayStr || uniqueDays[0] === yesterdayStr)) {
-        computedStreak = 1;
-        for (let i = 1; i < uniqueDays.length; i++) {
-          const a = new Date(uniqueDays[i - 1]).getTime();
-          const b = new Date(uniqueDays[i]).getTime();
-          if (a - b === 86400000) {
-            computedStreak++;
-          } else {
-            break;
-          }
-        }
-      }
+      const computedStreak = await streakFromSessions(supabase, target_user_id);
 
       if (computedStreak === 0) {
         return new Response(JSON.stringify({ skipped: true, reason: 'no_active_streak' }), {
@@ -594,14 +604,9 @@ Deno.serve(async (req: Request) => {
             }
           }
 
-          const { data: streak } = await supabase
-            .from('user_streaks')
-            .select('current_streak')
-            .eq('user_id', session.user_id)
-            .maybeSingle();
-
-          if (streak?.current_streak !== undefined && streak.current_streak !== null) {
-            payload = { ...payload, current_streak: streak.current_streak };
+          const computedStreak = await streakFromSessions(supabase, session.user_id);
+          if (computedStreak > 0) {
+            payload = { ...payload, current_streak: computedStreak };
           }
 
           // Only session_completed re-derives `earned` from the ledger — it has a
