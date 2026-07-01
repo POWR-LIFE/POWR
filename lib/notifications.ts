@@ -358,6 +358,39 @@ export async function notifySessionCompleted(
   });
 }
 
+// On-device fallback for the 40-min tier bonus. Mirrors the server
+// `session_upgraded` copy exactly so it's indistinguishable from the push. Fired
+// by the geofence client only when the server reports it couldn't deliver.
+export async function notifySessionUpgraded(
+  partnerName: string,
+  sessionId: string,
+  earned?: number,
+) {
+  const name = partnerName.trim();
+  const pts = Math.max(0, Math.round(earned ?? 0));
+  const parts: string[] = [];
+  if (name) parts.push(name);
+  if (pts > 0) parts.push(`+${pts.toLocaleString()} pts`);
+  parts.push('40-min bonus');
+
+  await Notifications.scheduleNotificationAsync({
+    identifier: `powr-session_upgraded-${sessionId}`,
+    content: {
+      title: 'Bonus unlocked 🔓',
+      body: parts.join(' · '),
+      data: {
+        type: 'session_completed',
+        route: `/share-stats?mode=check-in&sessionId=${sessionId}`,
+        sessionId,
+        partnerName,
+      } satisfies NotificationPayload,
+      sound: 'default',
+      ...(Platform.OS === 'android' && { channelId: CHANNEL_REWARDS }),
+    },
+    trigger: null, // immediate
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Points milestone — sent server-side; this helper fires locally as fallback
 // ---------------------------------------------------------------------------

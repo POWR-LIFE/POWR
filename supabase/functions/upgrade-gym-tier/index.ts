@@ -180,12 +180,15 @@ Deno.serve(async (req) => {
 
   // Push the 40-min tier bonus. Until now this path was silent — only the
   // initial claim (claim-points) notified — so the "stay 40m to unlock +X"
-  // promise in the app was never confirmed. Fire-and-forget + best-effort: a
-  // notification failure must never fail an upgrade whose points are saved.
+  // promise in the app was never confirmed. Best-effort: a notification failure
+  // must never fail an upgrade whose points are saved. We read the delivery
+  // outcome so the client can fire an on-device fallback when the server
+  // genuinely couldn't land it (mirrors the claim-points contract).
+  let pushDelivered = true;
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
     const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-    await fetch(`${supabaseUrl}/functions/v1/send-push-notification`, {
+    const pushRes = await fetch(`${supabaseUrl}/functions/v1/send-push-notification`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -197,12 +200,19 @@ Deno.serve(async (req) => {
         payload: { session_id: session.id, earned: finalDelta },
       }),
     });
+    const pushBody = await pushRes.json().catch(() => null);
+    if (pushBody) {
+      pushDelivered = pushBody.skipped
+        ? pushBody.reason !== 'no_tokens'
+        : Number(pushBody?.result?.queued ?? 0) > 0;
+    }
   } catch (notifErr) {
+    pushDelivered = false;
     console.warn('[upgrade-gym-tier] session_upgraded notification failed:', notifErr);
   }
 
   return new Response(
-    JSON.stringify({ ok: true, delta: finalDelta, transaction_id: tx.id }),
+    JSON.stringify({ ok: true, delta: finalDelta, transaction_id: tx.id, earned: finalDelta, push_delivered: pushDelivered }),
     { status: 200, headers: { 'Content-Type': 'application/json' } },
   );
 });

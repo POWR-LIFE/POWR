@@ -629,6 +629,22 @@ async function recordDwellSession(activeGeofence: StoredGeofence): Promise<{ out
       currentStreak = streakRow?.current_streak ?? undefined;
     } catch { /* non-fatal */ }
 
+    // On-device fallback: claim-points reports push_delivered=false only when the
+    // server genuinely couldn't land the "Session recorded" push (no live token /
+    // send failed) — NOT when the user muted it. In that case fire the local
+    // notification here so the money moment still reaches the user. Absent field
+    // (older function) defaults to true → no fallback, so this can never double-buzz.
+    const pushDelivered = (claimData as { push_delivered?: boolean })?.push_delivered ?? true;
+    if (!pushDelivered) {
+      try {
+        const { notifySessionCompleted } = await import('@/lib/notifications');
+        await notifySessionCompleted(activeGeofence.partnerName, sessionId, earned, currentStreak);
+        console.log('[Geofence] Server push undeliverable — fired local session-completed fallback.');
+      } catch (err) {
+        console.warn('[Geofence] Local session-completed fallback failed:', err);
+      }
+    }
+
     console.log(`[Geofence] Points claimed after ${Math.round(dwellMs / 60000)}min dwell.`, claimData);
     return { outcome: 'claimed', sessionId, earned, currentStreak };
   } catch (err) {
@@ -749,7 +765,7 @@ async function resolveTodayGymSessionId(): Promise<string | undefined> {
   }
 }
 
-async function upgradeGymTier(sessionId: string): Promise<boolean> {
+async function upgradeGymTier(sessionId: string, partnerName?: string): Promise<boolean> {
   try {
     // Use the cached session (getSession) rather than a forced refreshSession(): a
     // forced rotation here races the background/foreground GoTrue instances and can
@@ -769,6 +785,23 @@ async function upgradeGymTier(sessionId: string): Promise<boolean> {
       return false;
     }
     console.log('[Geofence] Gym session upgraded to 40-min tier.', upgradeData);
+
+    // On-device fallback: fire the "Bonus unlocked" notification locally when the
+    // server reports it couldn't deliver the push (no live token / send failed) and
+    // there was an actual delta to award. Missing push_delivered (no-op upgrade or
+    // older function) defaults to true → no fallback, so this never double-buzzes.
+    const ud = upgradeData as { push_delivered?: boolean; earned?: number; delta?: number } | null;
+    const delta = ud?.earned ?? ud?.delta ?? 0;
+    if (ud?.push_delivered === false && delta > 0) {
+      try {
+        const { notifySessionUpgraded } = await import('@/lib/notifications');
+        await notifySessionUpgraded(partnerName ?? '', sessionId, delta);
+        console.log('[Geofence] Server push undeliverable — fired local session-upgraded fallback.');
+      } catch (err) {
+        console.warn('[Geofence] Local session-upgraded fallback failed:', err);
+      }
+    }
+
     _emitSessionCompleted();
     return true;
   } catch (err) {
@@ -846,7 +879,7 @@ async function recordExitAndClaim(activeGeofence: StoredGeofence): Promise<void>
       const sid = activeGeofence.sessionId ?? await resolveTodayGymSessionId();
       if (sid) {
         console.log('[Geofence] Exit: session crossed 40-min tier — upgrading.');
-        await upgradeGymTier(sid);
+        await upgradeGymTier(sid, activeGeofence.partnerName);
       } else {
         console.warn('[Geofence] Exit: 40-min tier reached but no sessionId resolvable — skipping upgrade.');
       }
@@ -909,7 +942,7 @@ async function advanceActiveSession(active: StoredGeofence): Promise<void> {
   // 2. Claimed at the 30-min tier — upgrade once the 40-min threshold is met.
   if (active.sessionRecorded && active.sessionId && !active.tierUpgraded) {
     if (elapsed < PROD_UPGRADE_MS) return;
-    const ok = await upgradeGymTier(active.sessionId);
+    const ok = await upgradeGymTier(active.sessionId, active.partnerName);
     if (ok) await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...active, tierUpgraded: true }));
     return;
   }
@@ -1404,7 +1437,7 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
       const remaining = UPGRADE_MS - elapsed;
       if (remaining <= 0) {
         console.log('[Geofence] Foreground: already past 40-min mark — upgrading tier now.');
-        const upgraded1 = await upgradeGymTier(activeGeofence.sessionId);
+        const upgraded1 = await upgradeGymTier(activeGeofence.sessionId, activeGeofence.partnerName);
         if (upgraded1) {
           await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...activeGeofence, tierUpgraded: true }));
         }
@@ -1417,7 +1450,7 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
           const gf: StoredGeofence = JSON.parse(raw2);
           if (gf.tierUpgraded || !gf.sessionId) return;
           console.log('[Geofence] Foreground: 40-min upgrade timer fired.');
-          const upgraded2 = await upgradeGymTier(gf.sessionId);
+          const upgraded2 = await upgradeGymTier(gf.sessionId, gf.partnerName);
           if (upgraded2) {
             await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...gf, tierUpgraded: true }));
           }
