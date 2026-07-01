@@ -178,6 +178,29 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ error: 'Failed to record upgrade' }), { status: 500 });
   }
 
+  // Push the 40-min tier bonus. Until now this path was silent — only the
+  // initial claim (claim-points) notified — so the "stay 40m to unlock +X"
+  // promise in the app was never confirmed. Fire-and-forget + best-effort: a
+  // notification failure must never fail an upgrade whose points are saved.
+  try {
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    await fetch(`${supabaseUrl}/functions/v1/send-push-notification`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${serviceKey}`,
+      },
+      body: JSON.stringify({
+        target_user_id: user.id,
+        type: 'session_upgraded',
+        payload: { session_id: session.id, earned: finalDelta },
+      }),
+    });
+  } catch (notifErr) {
+    console.warn('[upgrade-gym-tier] session_upgraded notification failed:', notifErr);
+  }
+
   return new Response(
     JSON.stringify({ ok: true, delta: finalDelta, transaction_id: tx.id }),
     { status: 200, headers: { 'Content-Type': 'application/json' } },

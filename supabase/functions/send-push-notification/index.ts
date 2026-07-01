@@ -12,6 +12,7 @@ type NotificationType =
   | 'inactivity_nudge'
   | 'sleep_target_met'
   | 'session_completed'
+  | 'session_upgraded'
   // Shared ("together") challenges + friend graph (scope §4/§6a).
   | 'friend_request'
   | 'friend_accepted'
@@ -58,6 +59,7 @@ function categoryFor(type: NotificationType): 'social' | 'rewards' | 'activity' 
     case 'points_milestone':
       return 'rewards';
     case 'session_completed':
+    case 'session_upgraded':
     case 'sleep_target_met':
       return 'activity';
     default:
@@ -263,6 +265,36 @@ function buildMessage(
         };
       }
 
+      case 'session_upgraded': {
+        // The 40-min tier bonus, credited by upgrade-gym-tier AFTER the initial
+        // claim already pushed "Session recorded". `earned` is the delta (the
+        // extra points for staying to 40 min), carried explicitly because the
+        // session now has multiple 'earn' rows on the ledger.
+        const sessionId = (payload.session_id as string) ?? '';
+        const earned = Math.max(0, Math.round(Number(payload.earned ?? 0)));
+        const partnerName = (payload.partner_name as string | undefined)?.trim();
+
+        const parts: string[] = [];
+        if (partnerName) parts.push(partnerName);
+        if (earned > 0) parts.push(`+${earned.toLocaleString()} pts`);
+        parts.push('40-min bonus');
+
+        return {
+          title: 'Bonus unlocked 🔓',
+          body: parts.join(' · '),
+          data: {
+            type,
+            route: `/share-stats?mode=check-in&sessionId=${sessionId}`,
+            session_id: sessionId,
+            earned: earned > 0 ? earned : undefined,
+            partner_name: partnerName,
+          },
+          sound: 'default',
+          channelId: 'powr_rewards_v2',
+          priority: 'high',
+        };
+      }
+
       // ── Friend graph ──────────────────────────────────────────────────────
       case 'friend_request': {
         const name = (payload.from_name as string) || 'Someone';
@@ -423,14 +455,18 @@ Deno.serve(async (req: Request) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     );
 
-    // Check notification preferences
+    // Check notification preferences. session_upgraded (the 40-min tier bonus)
+    // has no toggle of its own — it rides the session_completed preference so a
+    // user who muted session pushes doesn't get the upgrade one either.
+    const prefColumn: NotificationType =
+      type === 'session_upgraded' ? 'session_completed' : type;
     const { data: prefs } = await supabase
       .from('notification_preferences')
-      .select(type)
+      .select(prefColumn)
       .eq('user_id', target_user_id)
       .maybeSingle();
 
-    if (prefs && prefs[type] === false) {
+    if (prefs && prefs[prefColumn] === false) {
       return new Response(JSON.stringify({ skipped: true, reason: 'user_preference' }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
@@ -533,7 +569,7 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    if (type === 'session_completed') {
+    if (type === 'session_completed' || type === 'session_upgraded') {
       const sessionId = String(payload.session_id ?? '').trim();
 
       if (sessionId) {
@@ -568,16 +604,21 @@ Deno.serve(async (req: Request) => {
             payload = { ...payload, current_streak: streak.current_streak };
           }
 
-          // Fetch actual points earned for this session from the ledger
-          const { data: txn } = await supabase
-            .from('point_transactions')
-            .select('amount')
-            .eq('session_id', sessionId)
-            .eq('type', 'earn')
-            .maybeSingle();
+          // Only session_completed re-derives `earned` from the ledger — it has a
+          // single 'earn' row at that point. session_upgraded carries its delta
+          // explicitly (the session already has 2+ 'earn' rows, so a single-row
+          // lookup here would be ambiguous).
+          if (type === 'session_completed') {
+            const { data: txn } = await supabase
+              .from('point_transactions')
+              .select('amount')
+              .eq('session_id', sessionId)
+              .eq('type', 'earn')
+              .maybeSingle();
 
-          if (txn?.amount !== undefined && txn.amount !== null) {
-            payload = { ...payload, earned: txn.amount };
+            if (txn?.amount !== undefined && txn.amount !== null) {
+              payload = { ...payload, earned: txn.amount };
+            }
           }
         }
       }

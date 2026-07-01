@@ -92,6 +92,7 @@ function iconForActivity(item: ActivityItem): IconSpec {
     case 'reward_unlocked': return { lib: 'ion', name: 'gift' };
     case 'points_milestone': return { lib: 'ion', name: 'sparkles' };
     case 'session_completed': return { lib: 'ion', name: 'flame' };
+    case 'session_upgraded': return { lib: 'ion', name: 'lock-open' };
     case 'sleep_target_met': return { lib: 'ion', name: 'moon' };
     case 'announcement': return { lib: 'ion', name: 'megaphone' };
   }
