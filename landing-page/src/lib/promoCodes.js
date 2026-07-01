@@ -335,6 +335,37 @@ export async function toggleCodeStatus(codeId, currentStatus) {
     return newStatus;
 }
 
+// Update a single code's expiry date. `expiresAt` may be an ISO string or Date.
+// Returns the normalised ISO string that was stored.
+export async function updateCodeExpiry(codeId, expiresAt) {
+    if (!codeId) throw new Error('codeId required');
+    if (!expiresAt) throw new Error('expiresAt required');
+    const iso = new Date(expiresAt).toISOString();
+    const { error } = await supabase
+        .from('redemption_codes')
+        .update({ expires_at: iso })
+        .eq('id', codeId);
+    if (error) throw error;
+    return iso;
+}
+
+// Bulk-update the expiry date for every code of a reward that matches `status`
+// (pass 'all' to update the whole pool). Scoped by RLS (admins, or brand users
+// for their own rewards). Returns { updated, expiresAt }.
+export async function bulkUpdateExpiry({ rewardId, expiresAt, status = 'all' }) {
+    if (!rewardId) throw new Error('rewardId required');
+    if (!expiresAt) throw new Error('expiresAt required');
+    const iso = new Date(expiresAt).toISOString();
+    let query = supabase
+        .from('redemption_codes')
+        .update({ expires_at: iso })
+        .eq('reward_id', rewardId);
+    if (status !== 'all') query = query.eq('status', status);
+    const { data, error } = await query.select('id');
+    if (error) throw error;
+    return { updated: data?.length ?? 0, expiresAt: iso };
+}
+
 // Escape LIKE wildcards so a code search treats % and _ as literals.
 function escapeLike(term) {
     return term.replace(/[\\%_]/g, '\\$&');

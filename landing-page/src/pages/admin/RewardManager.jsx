@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
-import { Plus, Edit2, Trash2, Ticket, Loader2, X, Search, Award, Activity, ChevronLeft, ChevronRight, AlertTriangle, Upload, Image as ImageIcon, Tag, FileText, Download, GripVertical, Save, Pin, Send, KeyRound, Building2, Link2, Palette } from 'lucide-react';
+import { Plus, Edit2, Trash2, Ticket, Loader2, X, Search, Award, Activity, ChevronLeft, ChevronRight, AlertTriangle, Upload, Image as ImageIcon, Tag, FileText, Download, GripVertical, Save, Pin, Send, KeyRound, Building2, Link2, Palette, CalendarClock, Check } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { uploadPublicImage } from '../../lib/storage';
 import * as XLSX from 'xlsx';
-import { parseCodes, uploadCodes, fetchCodeStats, fetchCodePool, fetchAllCodes, getCSVTemplate, buildScheme, isValidForScheme, getSchemeCSVTemplate, generateCodes, toggleCodeStatus } from '../../lib/promoCodes';
+import { parseCodes, uploadCodes, fetchCodeStats, fetchCodePool, fetchAllCodes, getCSVTemplate, buildScheme, isValidForScheme, getSchemeCSVTemplate, generateCodes, toggleCodeStatus, updateCodeExpiry, bulkUpdateExpiry } from '../../lib/promoCodes';
 import BrandPortalAccess from '../../components/BrandPortalAccess';
 import BrandAccessPanel from '../../components/BrandAccessPanel';
 import BrandRewardLimit from '../../components/BrandRewardLimit';
@@ -145,6 +145,12 @@ export default function RewardManager() {
     const [generateCount, setGenerateCount] = useState(100);
     const [generatingCodes, setGeneratingCodes] = useState(false);
     const [togglingCodeId, setTogglingCodeId] = useState(null);
+    const [batchExpiry, setBatchExpiry] = useState('');        // YYYY-MM-DD for new generate/upload batches ('' = reward default)
+    const [bulkExpiry, setBulkExpiry] = useState('');          // YYYY-MM-DD for the bulk pool set
+    const [applyingBulkExpiry, setApplyingBulkExpiry] = useState(false);
+    const [editingExpiryId, setEditingExpiryId] = useState(null); // per-row inline editor
+    const [editingExpiryVal, setEditingExpiryVal] = useState('');
+    const [savingExpiryId, setSavingExpiryId] = useState(null);
     const [dragId, setDragId] = useState(null);
     const [dragOverId, setDragOverId] = useState(null);
     const [unsavedOrder, setUnsavedOrder] = useState(false);
@@ -163,6 +169,16 @@ export default function RewardManager() {
     })();
     const CODE_POOL_PAGE_SIZE = 20;
     const parsedScheme = schemeExample ? buildScheme(schemeExample) : null;
+
+    // A date input yields 'YYYY-MM-DD'. Store expiry at end of that local day so
+    // the code stays valid through the whole chosen date (claim checks expires_at > now()).
+    const expiryInputToISO = (dateStr) => (dateStr ? new Date(`${dateStr}T23:59:59`).toISOString() : null);
+    // Convert a stored timestamp back to the local 'YYYY-MM-DD' a date input expects.
+    const toDateInputValue = (d) => {
+        if (!d) return '';
+        const dt = new Date(d);
+        return new Date(dt.getTime() - dt.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+    };
 
     // Promo codes only exist for a saved digital reward that isn't an affiliate link,
     // so the Promo Codes tab is only offered for those. If it's selected but no longer
@@ -237,6 +253,9 @@ export default function RewardManager() {
         setCodeSearch('');
         setBulkCodesText('');
         setSingleCode('');
+        setBatchExpiry('');
+        setBulkExpiry('');
+        setEditingExpiryId(null);
         setEditorOpen(true);
         window.scrollTo({ top: 0 });
     };
@@ -270,6 +289,9 @@ export default function RewardManager() {
         setBulkCodesText('');
         setSingleCode('');
         setGenerateCount(100);
+        setBatchExpiry('');
+        setBulkExpiry('');
+        setEditingExpiryId(null);
         setCodePoolPage(0);
         setCodePoolStatus('all');
         setCodeSearch('');
@@ -310,7 +332,7 @@ export default function RewardManager() {
         if (codes.length === 0) { toast.error('No codes detected'); return; }
         setUploadingCodes(true);
         try {
-            const result = await uploadCodes({ rewardId: editingReward.id, codes, scheme: parsedScheme || undefined });
+            const result = await uploadCodes({ rewardId: editingReward.id, codes, scheme: parsedScheme || undefined, expiresAt: expiryInputToISO(batchExpiry) || undefined });
             const parts = [`${result.accepted} added`];
             if (result.alreadyInPool) parts.push(`${result.alreadyInPool} already in pool`);
             if (result.rejected.length) parts.push(`${result.rejected.length} rejected`);
@@ -347,7 +369,7 @@ export default function RewardManager() {
         if (!generateCount || generateCount < 1) return;
         setGeneratingCodes(true);
         try {
-            const result = await generateCodes({ rewardId: editingReward.id, count: generateCount, scheme: parsedScheme || undefined });
+            const result = await generateCodes({ rewardId: editingReward.id, count: generateCount, scheme: parsedScheme || undefined, expiresAt: expiryInputToISO(batchExpiry) || undefined });
             toast.success(`${result.generated} codes generated${result.duplicatesSkipped ? ` · ${result.duplicatesSkipped} skipped (duplicates)` : ''}`);
             await refreshCodeStats(editingReward.id);
             await refreshCodePool(editingReward.id, 0, codePoolStatus);
@@ -372,6 +394,50 @@ export default function RewardManager() {
             toast.error(err.message || 'Toggle failed');
         } finally {
             setTogglingCodeId(null);
+        }
+    };
+
+    // Apply one expiry date to every code matching the current ledger filter.
+    const handleBulkExpiry = async () => {
+        if (!editingReward) return;
+        if (!bulkExpiry) { toast.error('Pick a date first'); return; }
+        const scope = codePoolStatus === 'all' ? 'all codes' : `${codePoolStatus} codes`;
+        const pretty = new Date(`${bulkExpiry}T23:59:59`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+        if (!window.confirm(`Set expiry to ${pretty} for ${scope} in this pool?`)) return;
+        setApplyingBulkExpiry(true);
+        try {
+            const { updated } = await bulkUpdateExpiry({ rewardId: editingReward.id, expiresAt: expiryInputToISO(bulkExpiry), status: codePoolStatus });
+            toast.success(`Expiry updated on ${updated} code${updated === 1 ? '' : 's'}`);
+            setBulkExpiry('');
+            await refreshCodeStats(editingReward.id);
+            await refreshCodePool(editingReward.id, codePoolPage, codePoolStatus);
+        } catch (err) {
+            toast.error(err.message || 'Bulk update failed');
+        } finally {
+            setApplyingBulkExpiry(false);
+        }
+    };
+
+    const beginEditExpiry = (row) => {
+        setEditingExpiryId(row.id);
+        setEditingExpiryVal(toDateInputValue(row.expires_at));
+    };
+
+    const handleSaveExpiry = async (row) => {
+        if (!editingExpiryVal) { setEditingExpiryId(null); return; }
+        setSavingExpiryId(row.id);
+        try {
+            const iso = await updateCodeExpiry(row.id, expiryInputToISO(editingExpiryVal));
+            setCodePool(prev => ({
+                ...prev,
+                rows: prev.rows.map(r => r.id === row.id ? { ...r, expires_at: iso } : r),
+            }));
+            setEditingExpiryId(null);
+            toast.success('Expiry updated');
+        } catch (err) {
+            toast.error(err.message || 'Update failed');
+        } finally {
+            setSavingExpiryId(null);
         }
     };
 
@@ -424,7 +490,7 @@ export default function RewardManager() {
         if (!singleCode.trim()) return;
         setUploadingCodes(true);
         try {
-            const result = await uploadCodes({ rewardId: editingReward.id, codes: [singleCode], scheme: parsedScheme || undefined });
+            const result = await uploadCodes({ rewardId: editingReward.id, codes: [singleCode], scheme: parsedScheme || undefined, expiresAt: expiryInputToISO(batchExpiry) || undefined });
             if (result.accepted === 1) {
                 toast.success('Code added');
                 setSingleCode('');
@@ -1167,6 +1233,35 @@ export default function RewardManager() {
                                         )}
                                     </div>
 
+                                    {/* New-batch expiry — applies to codes added via generate / upload / single-add below */}
+                                    <div className="px-8 py-5 border-b border-[#E6E6E1]">
+                                        <div className="text-[9px] uppercase tracking-[0.4em] text-[#888888] font-black mb-3">New Codes Expire</div>
+                                        <div className="flex gap-3 items-center flex-wrap">
+                                            <div className="relative">
+                                                <CalendarClock size={13} className="absolute left-4 top-1/2 -translate-y-1/2 text-[#BBBBBB] pointer-events-none" />
+                                                <input
+                                                    type="date"
+                                                    value={batchExpiry}
+                                                    min={new Date().toISOString().slice(0, 10)}
+                                                    onChange={e => setBatchExpiry(e.target.value)}
+                                                    className="h-11 pl-10 pr-4 bg-[#F4F4F1] border border-[#E6E6E1] rounded-full text-[12px] text-[#222222] focus:border-[#E8D200]/40 outline-none"
+                                                />
+                                            </div>
+                                            {batchExpiry && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setBatchExpiry('')}
+                                                    className="h-11 w-11 flex items-center justify-center bg-[#F4F4F1] border border-[#E6E6E1] rounded-full text-[#999999] hover:text-[#666666] transition-colors"
+                                                >
+                                                    <X size={14} />
+                                                </button>
+                                            )}
+                                            <span className="text-[9px] uppercase tracking-[0.3em] text-[#AAAAAA] font-black">
+                                                {batchExpiry ? 'applied to new batches below' : 'blank = default 90-day expiry'}
+                                            </span>
+                                        </div>
+                                    </div>
+
                                     {/* Auto-generate row */}
                                     <div className="px-8 py-5 border-b border-[#E6E6E1]">
                                         <div className="text-[9px] uppercase tracking-[0.4em] text-[#888888] font-black mb-3">Auto-Generate</div>
@@ -1270,6 +1365,31 @@ export default function RewardManager() {
                                             </div>
                                         </div>
 
+                                        {/* Bulk expiry — sets one date across every code matching the current filter */}
+                                        {codePool.total > 0 && (
+                                            <div className="flex flex-wrap items-center gap-3 mb-4 px-4 py-3 bg-[#FBFBF8] border border-[#E6E6E1] rounded-2xl">
+                                                <CalendarClock size={14} className="text-[#8a7600]" />
+                                                <span className="text-[9px] uppercase tracking-[0.3em] text-[#888888] font-black">
+                                                    Set expiry for {codePoolStatus === 'all' ? 'all codes' : `${codePoolStatus} codes`}
+                                                </span>
+                                                <input
+                                                    type="date"
+                                                    value={bulkExpiry}
+                                                    min={new Date().toISOString().slice(0, 10)}
+                                                    onChange={e => setBulkExpiry(e.target.value)}
+                                                    className="h-9 px-4 bg-white border border-[#E6E6E1] rounded-full text-[12px] text-[#222222] focus:border-[#E8D200]/40 outline-none"
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={handleBulkExpiry}
+                                                    disabled={!bulkExpiry || applyingBulkExpiry}
+                                                    className="h-9 px-6 bg-[#E8D200] text-[#080808] text-[9px] font-black uppercase tracking-[0.3em] rounded-full transition-all hover:translate-y-[-1px] disabled:opacity-40"
+                                                >
+                                                    {applyingBulkExpiry ? 'Applying…' : 'Apply'}
+                                                </button>
+                                            </div>
+                                        )}
+
                                         {/* Code search */}
                                         <div className="relative mb-4">
                                             <Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-[#BBBBBB]" />
@@ -1326,7 +1446,47 @@ export default function RewardManager() {
                                                                         <td className="px-3 py-3 text-[11px] text-[#BBB]">{claimedBy}</td>
                                                                         <td className="px-3 py-3 text-[11px] text-[#888888]">{fmt(row.assigned_at)}</td>
                                                                         <td className="px-3 py-3 text-[11px] text-[#888888]">{fmt(row.used_at)}</td>
-                                                                        <td className="px-3 py-3 text-[11px] text-[#888888]">{fmt(row.expires_at)}</td>
+                                                                        <td className="px-3 py-3 text-[11px] text-[#888888] whitespace-nowrap">
+                                                                            {editingExpiryId === row.id ? (
+                                                                                <div className="flex items-center gap-1.5">
+                                                                                    <input
+                                                                                        type="date"
+                                                                                        autoFocus
+                                                                                        value={editingExpiryVal}
+                                                                                        onChange={e => setEditingExpiryVal(e.target.value)}
+                                                                                        onKeyDown={e => { if (e.key === 'Enter') handleSaveExpiry(row); if (e.key === 'Escape') setEditingExpiryId(null); }}
+                                                                                        className="h-7 px-2 bg-white border border-[#E8D200]/40 rounded-lg text-[11px] text-[#222222] outline-none"
+                                                                                    />
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        disabled={savingExpiryId === row.id}
+                                                                                        onClick={() => handleSaveExpiry(row)}
+                                                                                        title="Save expiry"
+                                                                                        className="h-7 w-7 flex items-center justify-center bg-[#E8D200] text-[#080808] rounded-lg disabled:opacity-40"
+                                                                                    >
+                                                                                        <Check size={13} />
+                                                                                    </button>
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        onClick={() => setEditingExpiryId(null)}
+                                                                                        title="Cancel"
+                                                                                        className="h-7 w-7 flex items-center justify-center bg-[#F4F4F1] border border-[#E6E6E1] text-[#999999] rounded-lg hover:text-[#666666]"
+                                                                                    >
+                                                                                        <X size={13} />
+                                                                                    </button>
+                                                                                </div>
+                                                                            ) : (
+                                                                                <button
+                                                                                    type="button"
+                                                                                    onClick={() => beginEditExpiry(row)}
+                                                                                    title="Edit expiry"
+                                                                                    className="group flex items-center gap-1.5 hover:text-[#8a7600] transition-colors"
+                                                                                >
+                                                                                    {fmt(row.expires_at)}
+                                                                                    <Edit2 size={10} className="opacity-0 group-hover:opacity-100 text-[#BBBBBB] transition-opacity" />
+                                                                                </button>
+                                                                            )}
+                                                                        </td>
                                                                         <td className="px-3 py-3 text-right">
                                                                             {(row.status === 'available' || row.status === 'expired') && (
                                                                                 <button
