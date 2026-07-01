@@ -150,7 +150,7 @@ export default function RewardManager() {
     const [unsavedOrder, setUnsavedOrder] = useState(false);
     const [savingOrder, setSavingOrder] = useState(false);
     const [portalAccessOpen, setPortalAccessOpen] = useState(false);
-    const [editorTab, setEditorTab] = useState('details'); // 'details' | 'partner'
+    const [editorTab, setEditorTab] = useState('details'); // 'details' | 'codes' | 'partner'
 
     // Distinct reward brands (case-insensitive) for the Portal Access modal
     const portalBrands = (() => {
@@ -163,6 +163,12 @@ export default function RewardManager() {
     })();
     const CODE_POOL_PAGE_SIZE = 20;
     const parsedScheme = schemeExample ? buildScheme(schemeExample) : null;
+
+    // Promo codes only exist for a saved digital reward that isn't an affiliate link,
+    // so the Promo Codes tab is only offered for those. If it's selected but no longer
+    // applies (e.g. the reward kind was changed), fall back to Reward Details.
+    const codesEligible = !!editingReward && formData.reward_kind === 'digital' && formData.integration_type !== 'AFFILIATE';
+    const activeTab = editorTab === 'codes' && !codesEligible ? 'details' : editorTab;
 
     useEffect(() => { fetchData(); }, []);
 
@@ -828,13 +834,14 @@ export default function RewardManager() {
                                 <button type="button" onClick={() => setEditorOpen(false)} className="w-14 h-14 shrink-0 bg-white border border-[#E6E6E1] rounded-3xl flex items-center justify-center text-[#666666] hover:text-[#1A1A1A] hover:border-[#E8D200]/40 transition-all"><X size={20} /></button>
                             </div>
 
-                            {/* Editor tabs — reward details vs. partner brand & portal access */}
-                            <div className="flex bg-white border border-[#E6E6E1] rounded-3xl p-2 gap-2 mb-12 max-w-md">
+                            {/* Editor tabs — reward details · promo codes · partner brand & portal access */}
+                            <div className="flex bg-white border border-[#E6E6E1] rounded-3xl p-2 gap-2 mb-12 max-w-2xl">
                                 {[
                                     ['details', 'Reward Details', Award],
+                                    ...(codesEligible ? [['codes', 'Promo Codes', Ticket]] : []),
                                     ['partner', 'Partner & Access', Building2],
                                 ].map(([val, label, Icon]) => {
-                                    const active = editorTab === val;
+                                    const active = activeTab === val;
                                     return (
                                         <button
                                             key={val}
@@ -848,7 +855,7 @@ export default function RewardManager() {
                                 })}
                             </div>
 
-                            <div className={editorTab === 'details' ? 'grid 2xl:grid-cols-[minmax(0,1fr)_360px] gap-x-16 gap-y-12 items-start' : 'hidden'}>
+                            <div className={activeTab === 'details' ? 'grid 2xl:grid-cols-[minmax(0,1fr)_360px] gap-x-16 gap-y-12 items-start' : 'hidden'}>
                             {/* Form fields — two columns when there's no phone beside them,
                                 back to a single column once the live preview claims the right rail. */}
                             <div className="grid lg:grid-cols-2 2xl:grid-cols-1 gap-x-12 gap-y-0 min-w-0">
@@ -1076,8 +1083,8 @@ export default function RewardManager() {
                             </div>
                             </div>
 
-                            {/* Code pool — upload + ledger */}
-                            {editorTab === 'details' && editingReward && formData.reward_kind === 'digital' && formData.integration_type !== 'AFFILIATE' && (
+                            {/* Promo Codes tab — code pool: format builder, generate/upload, ledger */}
+                            {activeTab === 'codes' && codesEligible && (
                                 <div className="mb-8 bg-white border border-[#E6E6E1] rounded-[2rem] overflow-hidden">
 
                                     {/* Header row with stats */}
@@ -1369,7 +1376,7 @@ export default function RewardManager() {
                             )}
 
                             {/* Partner & Access tab — brand identity summary + portal logins */}
-                            {editorTab === 'partner' && (
+                            {activeTab === 'partner' && (
                                 <div className="mb-8 space-y-8">
                                     {/* Brand identity card */}
                                     <div className="bg-white border border-[#E6E6E1] rounded-[2rem] p-8">
