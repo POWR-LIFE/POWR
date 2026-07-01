@@ -10,6 +10,7 @@ import { Avatar } from '@/components/social/Avatar';
 import { Countdown } from '@/components/social/Countdown';
 import { FriendSearchSheet } from '@/components/social/FriendSearchSheet';
 import { SharedChallengeCelebration } from '@/components/social/SharedChallengeCelebration';
+import { UserProfileSheet } from '@/components/UserProfileSheet';
 import { fontFamily } from '@/constants/tokens';
 import { useSharedChallenges } from '@/hooks/useSharedChallenges';
 import { earnedPoints, groupBonus, maxBonusForGroup } from '@/lib/social/bonus';
@@ -54,9 +55,15 @@ function StatePill({ p }: { p: Participant }) {
   return <Text style={[styles.statePill, { color: GOLD }]}>{Math.round(p.progress * 100)}%</Text>;
 }
 
-function ParticipantRow({ p, pool }: { p: Participant; pool?: Pool }) {
+function ParticipantRow({ p, pool, onPress }: { p: Participant; pool?: Pool; onPress?: () => void }) {
   return (
-    <View style={styles.pRow}>
+    <Pressable
+      style={styles.pRow}
+      onPress={onPress}
+      disabled={!onPress}
+      accessibilityRole={onPress ? 'button' : undefined}
+      accessibilityLabel={onPress ? `View ${p.friend.displayName}'s profile` : undefined}
+    >
       <Avatar friend={p.friend} size={40} completed={p.completed} pending={p.state === 'invited'} />
       <View style={{ flex: 1, gap: 6 }}>
         <View style={styles.pNameRow}>
@@ -82,7 +89,7 @@ function ParticipantRow({ p, pool }: { p: Participant; pool?: Pool }) {
           </View>
         )}
       </View>
-    </View>
+    </Pressable>
   );
 }
 
@@ -94,6 +101,9 @@ export default function SharedChallengeDetail() {
   const [showCelebration, setShowCelebration] = useState(false);
   const [showAddFriend, setShowAddFriend] = useState(false);
   const [retrying, setRetrying] = useState(false);
+  // Tap a participant to view their profile / add them. Relationship is unknown
+  // here, so the sheet resolves it via RPC.
+  const [sheetUserId, setSheetUserId] = useState<string | null>(null);
 
   // Prefer the live hook record (by id — used by Home nav + notification deep
   // links); fall back to a serialized challenge param for older nav paths.
@@ -335,7 +345,12 @@ export default function SharedChallengeDetail() {
           </View>
           <View style={{ gap: 14, marginTop: 12 }}>
             {sorted.map((p) => (
-              <ParticipantRow key={p.friend.id} p={p} pool={pool} />
+              <ParticipantRow
+                key={p.friend.id}
+                p={p}
+                pool={pool}
+                onPress={p.isSelf ? undefined : () => setSheetUserId(p.friend.id)}
+              />
             ))}
           </View>
         </View>
@@ -426,6 +441,12 @@ export default function SharedChallengeDetail() {
         onClose={() => setShowAddFriend(false)}
         search={search}
         sendRequest={sendRequest}
+      />
+
+      <UserProfileSheet
+        userId={sheetUserId}
+        onChanged={refresh}
+        onClose={() => setSheetUserId(null)}
       />
     </View>
   );

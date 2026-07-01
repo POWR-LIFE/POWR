@@ -299,7 +299,7 @@ const styles = StyleSheet.create({
   // browse-carousel lead-in (empty state)
   browseIntro: {
     fontFamily: fontFamily.light, fontSize: 12.5, color: SECONDARY,
-    paddingHorizontal: 2, marginBottom: 12, lineHeight: 17,
+    paddingHorizontal: 14, marginBottom: 12, lineHeight: 17,
   },
 
   // loading skeleton

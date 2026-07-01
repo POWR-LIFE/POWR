@@ -16,11 +16,22 @@ export type Profile = {
     activity_preferences: string[];
     referral_code: string | null;
     preferred_gym_id: string | null;
+    created_at: string | null;
 };
 
 export type PublicProfile = Pick<Profile,
     'id' | 'username' | 'display_name' | 'avatar_url' | 'cover_url' | 'bio' | 'level' | 'is_pro'
+    | 'preferred_gym_id' | 'activity_preferences' | 'created_at'
 >;
+
+/** Where the caller stands with another user — mirrors the QR flow's relationship. */
+export type FriendRelationship =
+    | 'self'
+    | 'none'
+    | 'pending_outgoing'
+    | 'pending_incoming'
+    | 'accepted'
+    | 'blocked';
 
 export async function fetchProfile(): Promise<Profile | null> {
     const { data: { user } } = await supabase.auth.getUser();
@@ -38,11 +49,85 @@ export async function fetchProfile(): Promise<Profile | null> {
 export async function fetchPublicProfile(userId: string): Promise<PublicProfile | null> {
     const { data, error } = await supabase
         .from('profiles')
-        .select('id, username, display_name, avatar_url, cover_url, bio, level, is_pro')
+        .select('id, username, display_name, avatar_url, cover_url, bio, level, is_pro, preferred_gym_id, activity_preferences, created_at')
         .eq('id', userId)
         .single();
     if (error) return null;
     return data as PublicProfile;
+}
+
+/** Display name + locality for a user's home gym (profiles.preferred_gym_id). */
+export async function fetchGymName(
+    gymId: string,
+): Promise<{ name: string; address: string | null } | null> {
+    const { data, error } = await supabase
+        .from('partners')
+        .select('name, address')
+        .eq('id', gymId)
+        .maybeSingle();
+    if (error || !data) return null;
+    return { name: data.name, address: (data as any).address ?? null };
+}
+
+export type MutualFriend = {
+    id: string;
+    display_name: string | null;
+    username: string | null;
+    avatar_url: string | null;
+};
+
+export type ProfileSocial = {
+    friendCount: number;
+    mutualCount: number;
+    mutualPreview: MutualFriend[];
+    /** When you two connected — non-null only if you're already friends. */
+    friendsSince: string | null;
+    challengesTogether: number;
+};
+
+const EMPTY_SOCIAL: ProfileSocial = {
+    friendCount: 0,
+    mutualCount: 0,
+    mutualPreview: [],
+    friendsSince: null,
+    challengesTogether: 0,
+};
+
+/**
+ * Social connective tissue for the profile sheet: their friend count, friends
+ * you share, when you connected, and challenges you've done together. Backed by
+ * the get_profile_social RPC. Degrades to zeros so it can never break the sheet.
+ */
+export async function fetchProfileSocial(userId: string): Promise<ProfileSocial> {
+    const { data, error } = await supabase.rpc('get_profile_social', { p_user_id: userId });
+    if (error) {
+        console.warn('[fetchProfileSocial]', error.message);
+        return EMPTY_SOCIAL;
+    }
+    const row = Array.isArray(data) ? data[0] : data;
+    if (!row) return EMPTY_SOCIAL;
+    return {
+        friendCount: row.friend_count ?? 0,
+        mutualCount: row.mutual_count ?? 0,
+        mutualPreview: (row.mutual_preview ?? []) as MutualFriend[],
+        friendsSince: row.friends_since ?? null,
+        challengesTogether: row.challenges_together ?? 0,
+    };
+}
+
+/**
+ * Resolves the caller's friendship state with `userId` for the profile sheet's
+ * CTA (Add friend / Requested / Accept / Friends). Backed by the
+ * get_friend_relationship RPC. Callers that already hold the graph (the friends
+ * screen) can skip this and pass the relationship straight to the sheet.
+ */
+export async function fetchFriendRelationship(userId: string): Promise<FriendRelationship> {
+    const { data, error } = await supabase.rpc('get_friend_relationship', { p_user_id: userId });
+    if (error) {
+        console.warn('[fetchFriendRelationship]', error.message);
+        return 'none';
+    }
+    return (data ?? 'none') as FriendRelationship;
 }
 
 export async function updateProfile(

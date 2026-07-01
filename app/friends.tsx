@@ -15,8 +15,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import GeometricBackground from '@/components/GeometricBackground';
 import { Avatar } from '@/components/social/Avatar';
+import { UserProfileSheet } from '@/components/UserProfileSheet';
 import { fontFamily } from '@/constants/tokens';
 import { useFriends } from '@/hooks/useFriends';
+import type { FriendRelationship } from '@/lib/api/user';
 import type { Friend } from '@/lib/social/types';
 
 // ─── Palette ──────────────────────────────────────────────────────────────────
@@ -35,18 +37,28 @@ function PersonRow({
   friend,
   subtitle,
   right,
+  onPress,
 }: {
   friend: Friend;
   subtitle?: string;
   right?: React.ReactNode;
+  onPress?: () => void;
 }) {
   return (
     <View style={styles.row}>
-      <Avatar friend={friend} size={42} />
-      <View style={{ flex: 1 }}>
-        <Text style={styles.name}>{friend.displayName}</Text>
-        <Text style={styles.handle}>{subtitle ?? `@${friend.username}`}</Text>
-      </View>
+      <Pressable
+        style={styles.rowMain}
+        onPress={onPress}
+        disabled={!onPress}
+        accessibilityRole={onPress ? 'button' : undefined}
+        accessibilityLabel={onPress ? `View ${friend.displayName}'s profile` : undefined}
+      >
+        <Avatar friend={friend} size={42} />
+        <View style={{ flex: 1 }}>
+          <Text style={styles.name}>{friend.displayName}</Text>
+          <Text style={styles.handle}>{subtitle ?? `@${friend.username}`}</Text>
+        </View>
+      </Pressable>
       {right}
     </View>
   );
@@ -78,6 +90,15 @@ export default function FriendsScreen() {
   const [requested, setRequested] = useState<Set<string>>(new Set());
   const [results, setResults] = useState<Friend[]>([]);
   const [searching, setSearching] = useState(false);
+
+  // Profile sheet — tap anyone to view them. We pass the relationship we already
+  // know from the graph; search results are unknown, so the sheet resolves them.
+  const [sheetUserId, setSheetUserId] = useState<string | null>(null);
+  const [sheetRel, setSheetRel] = useState<FriendRelationship | undefined>(undefined);
+  const openProfile = (userId: string, relationship?: FriendRelationship) => {
+    setSheetRel(relationship);
+    setSheetUserId(userId);
+  };
 
   // Debounced username search (RPC). Cancels in-flight results on fast typing.
   useEffect(() => {
@@ -199,6 +220,7 @@ export default function FriendsScreen() {
                   <View key={f.id} style={[i > 0 && styles.divider]}>
                     <PersonRow
                       friend={f}
+                      onPress={() => openProfile(f.id)}
                       right={
                         requested.has(f.id) ? (
                           <Text style={styles.requestedText}>Requested</Text>
@@ -227,6 +249,7 @@ export default function FriendsScreen() {
                   <PersonRow
                     friend={f}
                     subtitle={`@${f.username} · wants to connect`}
+                    onPress={() => openProfile(f.id, 'pending_incoming')}
                     right={
                       <View style={styles.reqActions}>
                         <Pressable style={styles.acceptBtn} onPress={() => handleAccept(f.id)} accessibilityRole="button" accessibilityLabel={`Accept ${f.displayName}`}>
@@ -255,6 +278,7 @@ export default function FriendsScreen() {
                 <View key={f.id} style={[i > 0 && styles.divider]}>
                   <PersonRow
                     friend={f}
+                    onPress={() => openProfile(f.id, 'accepted')}
                     right={
                       <Pressable
                         hitSlop={10}
@@ -279,13 +303,20 @@ export default function FriendsScreen() {
             <View style={styles.card}>
               {outgoing.map((f, i) => (
                 <View key={f.id} style={[i > 0 && styles.divider]}>
-                  <PersonRow friend={f} subtitle={`@${f.username}`} right={<Text style={styles.requestedText}>Sent</Text>} />
+                  <PersonRow friend={f} subtitle={`@${f.username}`} onPress={() => openProfile(f.id, 'pending_outgoing')} right={<Text style={styles.requestedText}>Sent</Text>} />
                 </View>
               ))}
             </View>
           </View>
         )}
       </ScrollView>
+
+      <UserProfileSheet
+        userId={sheetUserId}
+        relationship={sheetRel}
+        onChanged={refresh}
+        onClose={() => setSheetUserId(null)}
+      />
     </View>
   );
 }
@@ -312,6 +343,7 @@ const styles = StyleSheet.create({
   card: { backgroundColor: CARD_BG, borderRadius: 16, borderWidth: 1, borderColor: BORDER, paddingHorizontal: 14 },
   divider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: BORDER },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 },
+  rowMain: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12 },
   name: { fontFamily: fontFamily.regular, fontSize: 14, color: TEXT },
   handle: { fontFamily: fontFamily.light, fontSize: 12, color: SECONDARY, marginTop: 1 },
 

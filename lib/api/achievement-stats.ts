@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase';
-import type { AchievementStats } from '@/constants/achievements';
+import { computeEarnedIds, type AchievementStats } from '@/constants/achievements';
+import { getLevelInfo } from '@/constants/levels';
 
 /**
  * Fetches all lifetime stats needed to evaluate which achievements are earned.
@@ -86,6 +87,43 @@ export async function fetchAchievementStats(level: number): Promise<AchievementS
     totalSteps,
     maxSingleDaySteps,
   };
+}
+
+/**
+ * Earned-achievement count for ANY user — backs the profile sheet's badge pill.
+ * Served by the get_profile_stats SECURITY DEFINER RPC (the raw counters live in
+ * RLS-locked tables, so a direct client read returns zeros for anyone but
+ * yourself); level is derived from total points, then evaluated in TS via
+ * computeEarnedIds. Wrapped so it can NEVER throw into render.
+ */
+export async function fetchEarnedAchievementCount(userId: string): Promise<number> {
+  try {
+    const { data, error } = await supabase.rpc('get_profile_stats', { p_user_id: userId });
+    if (error || !data) return 0;
+    const row = Array.isArray(data) ? data[0] : data;
+    if (!row) return 0;
+
+    const totalPoints = row.total_points ?? 0;
+    const { current } = getLevelInfo(totalPoints);
+
+    const stats: AchievementStats = {
+      totalPoints,
+      currentStreak: row.current_streak ?? 0,
+      longestStreak: row.longest_streak ?? 0,
+      level: current.level,
+      totalSessions: row.total_sessions ?? 0,
+      sessionsPerType: (row.sessions_per_type ?? {}) as Record<string, number>,
+      totalRunDistanceKm: Number(row.total_run_distance_km ?? 0),
+      maxSingleRunKm: Number(row.max_single_run_km ?? 0),
+      totalSteps: Number(row.total_steps ?? 0),
+      maxSingleDaySteps: Number(row.max_single_day_steps ?? 0),
+    };
+
+    return computeEarnedIds(stats).size;
+  } catch (e) {
+    console.warn('[fetchEarnedAchievementCount]', e);
+    return 0;
+  }
 }
 
 function emptyStats(level: number): AchievementStats {

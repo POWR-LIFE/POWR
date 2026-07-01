@@ -1,7 +1,10 @@
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import React, { useEffect, useRef, useState } from 'react';
 import {
+    ActivityIndicator,
+    Alert,
     Animated,
     Dimensions,
     Modal,
@@ -15,11 +18,23 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Path, Polyline, Stop } from 'react-native-svg';
 
 import { ProBadge } from '@/components/ui/ProBadge';
+import { ACHIEVEMENTS } from '@/constants/achievements';
+import { ACTIVITIES, ACTIVITY_ORDER, type ActivityType } from '@/constants/activities';
 import { getLevelInfo } from '@/constants/levels';
+import { supabase } from '@/lib/supabase';
 import { fetchAchievements, type Achievement } from '@/lib/api/pro-achievements';
 import { fetchEarnedAchievementCount } from '@/lib/api/achievement-stats';
 import { fetchGallery, type GalleryPhoto } from '@/lib/api/pro-gallery';
-import { fetchPublicProfile, type PublicProfile } from '@/lib/api/user';
+import {
+    fetchFriendRelationship,
+    fetchGymName,
+    fetchProfileSocial,
+    fetchPublicProfile,
+    type FriendRelationship,
+    type MutualFriend,
+    type ProfileSocial,
+    type PublicProfile,
+} from '@/lib/api/user';
 import { fetchProfileStats, type ProfileStats } from '@/lib/api/user-stats';
 import { LEAGUE_TIERS } from '@/lib/journey';
 
@@ -38,10 +53,17 @@ interface UserProfileSheetProps {
     userId: string | null;
     myPoints?: number;
     userPoints?: number;
+    /**
+     * Friendship state with this user, if the caller already knows it (e.g. the
+     * friends screen, which holds the whole graph). Omit to resolve it via RPC.
+     */
+    relationship?: FriendRelationship;
+    /** Fired after a friend action succeeds, so parent lists can refresh. */
+    onChanged?: () => void;
     onClose: () => void;
 }
 
-export function UserProfileSheet({ userId, myPoints, userPoints, onClose }: UserProfileSheetProps) {
+export function UserProfileSheet({ userId, myPoints, userPoints, relationship, onChanged, onClose }: UserProfileSheetProps) {
     const insets = useSafeAreaInsets();
     const slideAnim = useRef(new Animated.Value(SCREEN_H)).current;
     const [profile, setProfile] = useState<PublicProfile | null>(null);
@@ -50,6 +72,10 @@ export function UserProfileSheet({ userId, myPoints, userPoints, onClose }: User
     const [stats, setStats] = useState<ProfileStats | null>(null);
     const [loading, setLoading] = useState(false);
     const [earnedBadgeCount, setEarnedBadgeCount] = useState<number | null>(null);
+    const [rel, setRel] = useState<FriendRelationship>('none');
+    const [acting, setActing] = useState(false);
+    const [gym, setGym] = useState<{ name: string; address: string | null } | null>(null);
+    const [social, setSocial] = useState<ProfileSocial | null>(null);
 
     useEffect(() => {
         if (userId) {
@@ -59,16 +85,28 @@ export function UserProfileSheet({ userId, myPoints, userPoints, onClose }: User
             setAchievements([]);
             setStats(null);
             setEarnedBadgeCount(null);
+            setActing(false);
+            setGym(null);
+            setSocial(null);
+            // Seed from the caller's known state for an instant CTA; otherwise resolve.
+            setRel(relationship ?? 'none');
+            if (relationship === undefined) {
+                fetchFriendRelationship(userId).then(setRel);
+            }
             fetchPublicProfile(userId).then(p => {
                 setProfile(p);
                 if (p?.is_pro) {
                     fetchGallery(userId).then(setGallery);
                     fetchAchievements(userId).then(setAchievements);
                 }
+                if (p?.preferred_gym_id) {
+                    fetchGymName(p.preferred_gym_id).then(setGym);
+                }
                 setLoading(false);
             });
             fetchProfileStats(userId).then(setStats);
             fetchEarnedAchievementCount(userId).then(setEarnedBadgeCount);
+            fetchProfileSocial(userId).then(setSocial);
             Animated.spring(slideAnim, {
                 toValue: 0,
                 useNativeDriver: true,
@@ -99,6 +137,38 @@ export function UserProfileSheet({ userId, myPoints, userPoints, onClose }: User
     const showComparison = userPoints !== undefined && myPoints !== undefined;
     const profileTotalPoints = stats?.totalPoints ?? userPoints ?? 0;
     const { current: computedLevel } = getLevelInfo(profileTotalPoints);
+
+    const runFriendAction = async (
+        action: 'request' | 'accept' | 'decline' | 'remove',
+        nextRel: FriendRelationship,
+    ) => {
+        if (!userId || acting) return;
+        setActing(true);
+        Haptics.selectionAsync();
+        const { error } = await supabase.functions.invoke('manage-friendship', {
+            body: { action, target_user_id: userId },
+        });
+        setActing(false);
+        if (error) {
+            Alert.alert('Something went wrong', "We couldn't update that just now — please try again.");
+            return;
+        }
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        setRel(nextRel);
+        onChanged?.();
+    };
+
+    const confirmRemove = () => {
+        const name = profile?.display_name ?? profile?.username ?? 'this person';
+        Alert.alert(
+            `Remove ${name}?`,
+            "They'll be taken off your friends list. Any challenges you're both in keep running, and you can add each other again anytime.",
+            [
+                { text: 'Cancel', style: 'cancel' },
+                { text: 'Remove', style: 'destructive', onPress: () => runFriendAction('remove', 'none') },
+            ],
+        );
+    };
 
     return (
         <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
@@ -155,6 +225,34 @@ export function UserProfileSheet({ userId, myPoints, userPoints, onClose }: User
                                 </View>
                             </View>
 
+                            {/* Home gym · member since */}
+                            <ProfileMetaRow gym={gym} memberSince={profile.created_at} />
+
+                            {/* Sports they train */}
+                            <SportChips prefs={profile.activity_preferences} />
+
+                            {/* Friend action — the social loop; hidden for yourself / blocked */}
+                            {rel !== 'self' && rel !== 'blocked' && (
+                                <FriendActionButton
+                                    rel={rel}
+                                    acting={acting}
+                                    onAdd={() => runFriendAction('request', 'pending_outgoing')}
+                                    onAccept={() => runFriendAction('accept', 'accepted')}
+                                    onDecline={() => runFriendAction('decline', 'none')}
+                                    onRemove={confirmRemove}
+                                />
+                            )}
+
+                            {/* Social proof — mutual friends + their friend count */}
+                            {social && (social.mutualCount > 0 || social.friendCount > 0) && (
+                                <MutualFriendsRow social={social} />
+                            )}
+
+                            {/* Relationship depth — only once you're connected */}
+                            {rel === 'accepted' && social && (social.friendsSince || social.challengesTogether > 0) && (
+                                <RelationshipDepth social={social} />
+                            )}
+
                             {/* Stat strip: streak | 7-day sparkline | sessions */}
                             {stats && (
                                 <StatStrip stats={stats} />
@@ -165,7 +263,7 @@ export function UserProfileSheet({ userId, myPoints, userPoints, onClose }: User
                                 <View style={s.badgePillRow}>
                                     <Ionicons name="trophy" size={13} color="#E8D200" />
                                     <Text style={s.badgePillText}>
-                                        {earnedBadgeCount} / 66 achievements
+                                        {earnedBadgeCount} / {ACHIEVEMENTS.length} achievements
                                     </Text>
                                 </View>
                             )}
@@ -239,6 +337,223 @@ export function UserProfileSheet({ userId, myPoints, userPoints, onClose }: User
                 </Pressable>
             </Animated.View>
         </Modal>
+    );
+}
+
+// ─── FriendActionButton — Add / Requested / Accept+Decline / Friends ─────────
+
+function FriendActionButton({
+    rel,
+    acting,
+    onAdd,
+    onAccept,
+    onDecline,
+    onRemove,
+}: {
+    rel: FriendRelationship;
+    acting: boolean;
+    onAdd: () => void;
+    onAccept: () => void;
+    onDecline: () => void;
+    onRemove: () => void;
+}) {
+    if (rel === 'pending_outgoing') {
+        return (
+            <View style={s.friendPill}>
+                <Ionicons name="paper-plane-outline" size={14} color={DIM} />
+                <Text style={s.friendPillText}>Requested</Text>
+            </View>
+        );
+    }
+
+    if (rel === 'pending_incoming') {
+        return (
+            <View style={s.friendRow}>
+                <Pressable
+                    style={[s.friendPrimary, { flex: 1 }, acting && s.btnDisabled]}
+                    onPress={onAccept}
+                    disabled={acting}
+                >
+                    {acting ? <ActivityIndicator color="#0a0a0a" /> : (
+                        <>
+                            <Ionicons name="checkmark" size={16} color="#0a0a0a" />
+                            <Text style={s.friendPrimaryText}>Accept request</Text>
+                        </>
+                    )}
+                </Pressable>
+                <Pressable style={s.friendGhost} onPress={onDecline} disabled={acting} hitSlop={8} accessibilityLabel="Decline request">
+                    <Ionicons name="close" size={18} color={DIM} />
+                </Pressable>
+            </View>
+        );
+    }
+
+    if (rel === 'accepted') {
+        // Tapping a "Friends" chip offers to remove — matches the friends-list affordance.
+        return (
+            <Pressable style={s.friendChip} onPress={onRemove} disabled={acting} accessibilityLabel="Friends — tap to remove">
+                <Ionicons name="checkmark-circle" size={15} color={GREEN} />
+                <Text style={s.friendChipText}>Friends</Text>
+            </Pressable>
+        );
+    }
+
+    // 'none' — the default add CTA
+    return (
+        <Pressable style={[s.friendPrimary, acting && s.btnDisabled]} onPress={onAdd} disabled={acting}>
+            {acting ? <ActivityIndicator color="#0a0a0a" /> : (
+                <>
+                    <Ionicons name="person-add" size={15} color="#0a0a0a" />
+                    <Text style={s.friendPrimaryText}>Add friend</Text>
+                </>
+            )}
+        </Pressable>
+    );
+}
+
+// ─── ProfileMetaRow — home gym · member since ────────────────────────────────
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function monthYear(iso: string | null): string | null {
+    if (!iso) return null;
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return null;
+    return `${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+}
+
+function ProfileMetaRow({
+    gym,
+    memberSince,
+}: {
+    gym: { name: string; address: string | null } | null;
+    memberSince: string | null;
+}) {
+    const since = monthYear(memberSince);
+    if (!gym && !since) return null;
+    return (
+        <View style={s.metaRow}>
+            {gym && (
+                <View style={s.metaItem}>
+                    <Ionicons name="location" size={13} color={DIM} />
+                    <Text style={s.metaText} numberOfLines={1}>{gym.name}</Text>
+                </View>
+            )}
+            {gym && since && <View style={s.metaDot} />}
+            {since && (
+                <View style={s.metaItem}>
+                    <Ionicons name="calendar-outline" size={12} color={DIM} />
+                    <Text style={s.metaText}>Joined {since}</Text>
+                </View>
+            )}
+        </View>
+    );
+}
+
+// ─── SportChips — the activities they train ──────────────────────────────────
+
+function SportChips({ prefs }: { prefs: string[] | null }) {
+    const set = new Set(prefs ?? []);
+    const types = ACTIVITY_ORDER.filter(
+        (t): t is ActivityType => t !== 'sleep' && set.has(t) && !!ACTIVITIES[t],
+    );
+    if (types.length === 0) return null;
+    return (
+        <View style={s.chipsRow}>
+            {types.map(t => {
+                const cfg = ACTIVITIES[t];
+                const Icon = cfg.iconLib === 'material-community' ? MaterialCommunityIcons : Ionicons;
+                return (
+                    <View
+                        key={t}
+                        style={[s.chip, { borderColor: `${cfg.colour}40`, backgroundColor: `${cfg.colour}14` }]}
+                    >
+                        <Icon name={cfg.icon as any} size={12} color={cfg.colour} />
+                        <Text style={[s.chipText, { color: cfg.colour }]}>{cfg.labelShort}</Text>
+                    </View>
+                );
+            })}
+        </View>
+    );
+}
+
+// ─── MutualFriendsRow — social proof: friends in common + their friend count ──
+
+function miniInitials(name: string | null): string {
+    return (name || '?').split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
+}
+
+function MiniAvatar({ url, name, index }: { url: string | null; name: string | null; index: number }) {
+    return (
+        <View style={[s.miniAvatar, index > 0 && { marginLeft: -8 }]}>
+            {url ? (
+                <Image source={{ uri: url }} style={{ flex: 1 }} contentFit="cover" />
+            ) : (
+                <View style={s.miniFallback}>
+                    <Text style={s.miniLetter}>{miniInitials(name)}</Text>
+                </View>
+            )}
+        </View>
+    );
+}
+
+function mutualLabel(preview: MutualFriend[], total: number): string {
+    const names = preview
+        .map(m => m.display_name ?? (m.username ? `@${m.username}` : 'Someone'))
+        .slice(0, 2);
+    const remaining = total - names.length;
+    const tail = remaining > 0 ? ` +${remaining}` : '';
+    return `You both know ${names.join(', ')}${tail}`;
+}
+
+function MutualFriendsRow({ social }: { social: ProfileSocial }) {
+    const { mutualPreview, mutualCount, friendCount } = social;
+    const hasMutuals = mutualCount > 0;
+    return (
+        <View style={s.socialCard}>
+            {hasMutuals && mutualPreview.length > 0 ? (
+                <View style={s.avatarStack}>
+                    {mutualPreview.map((m, i) => (
+                        <MiniAvatar key={m.id} url={m.avatar_url} name={m.display_name ?? m.username} index={i} />
+                    ))}
+                </View>
+            ) : (
+                <Ionicons name="people" size={16} color={DIM} />
+            )}
+            <View style={{ flex: 1 }}>
+                {hasMutuals && (
+                    <Text style={s.socialTitle} numberOfLines={2}>{mutualLabel(mutualPreview, mutualCount)}</Text>
+                )}
+                <Text style={[s.socialSub, !hasMutuals && { color: TEXT }]}>
+                    {friendCount} {friendCount === 1 ? 'friend' : 'friends'}
+                </Text>
+            </View>
+        </View>
+    );
+}
+
+// ─── RelationshipDepth — friends-only: how connected you two are ──────────────
+
+function RelationshipDepth({ social }: { social: ProfileSocial }) {
+    const since = monthYear(social.friendsSince);
+    const items: { icon: keyof typeof Ionicons.glyphMap; color: string; text: string }[] = [];
+    if (since) items.push({ icon: 'heart', color: '#f472b6', text: `Friends since ${since}` });
+    if (social.challengesTogether > 0) {
+        items.push({
+            icon: 'trophy',
+            color: GOLD,
+            text: `${social.challengesTogether} ${social.challengesTogether === 1 ? 'challenge' : 'challenges'} together`,
+        });
+    }
+    if (items.length === 0) return null;
+    return (
+        <View style={s.depthRow}>
+            {items.map((it, i) => (
+                <View key={i} style={s.depthItem}>
+                    <Ionicons name={it.icon} size={12} color={it.color} />
+                    <Text style={s.depthText}>{it.text}</Text>
+                </View>
+            ))}
+        </View>
     );
 }
 
@@ -382,6 +697,9 @@ function StatStrip({ stats }: { stats: ProfileStats }) {
                     <Text style={s.statNum}>{stats.currentStreak}</Text>
                 </View>
                 <Text style={s.statLabel}>DAY STREAK</Text>
+                {stats.longestStreak > stats.currentStreak && (
+                    <Text style={s.statSub}>{stats.longestStreak} best</Text>
+                )}
             </View>
             <View style={s.statDivider} />
             <View style={[s.statCell, { flex: 1.4 }]}>
@@ -568,6 +886,78 @@ const s = StyleSheet.create({
         fontSize: 9, fontWeight: '500',
         letterSpacing: 2, color: MUTED, textTransform: 'uppercase',
     },
+    // ── Friend action
+    friendRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+    friendPrimary: {
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
+        backgroundColor: GOLD, borderRadius: 100, paddingVertical: 11, paddingHorizontal: 16,
+    },
+    friendPrimaryText: { fontSize: 14, fontWeight: '700', color: '#0a0a0a', letterSpacing: 0.2 },
+    friendGhost: {
+        width: 44, height: 44, borderRadius: 22,
+        borderWidth: 1, borderColor: BORDER,
+        alignItems: 'center', justifyContent: 'center',
+    },
+    friendPill: {
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
+        borderRadius: 100, paddingVertical: 11,
+        borderWidth: 1, borderColor: BORDER,
+        backgroundColor: 'rgba(255,255,255,0.03)',
+    },
+    friendPillText: { fontSize: 13, fontWeight: '500', color: DIM, letterSpacing: 0.2 },
+    friendChip: {
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
+        borderRadius: 100, paddingVertical: 11,
+        borderWidth: 1, borderColor: 'rgba(74,222,128,0.3)',
+        backgroundColor: 'rgba(74,222,128,0.07)',
+    },
+    friendChipText: { fontSize: 13, fontWeight: '600', color: GREEN, letterSpacing: 0.2 },
+    btnDisabled: { opacity: 0.6 },
+
+    // ── Meta row (gym · joined)
+    metaRow: {
+        flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8,
+        marginTop: -4,
+    },
+    metaItem: { flexDirection: 'row', alignItems: 'center', gap: 5, flexShrink: 1 },
+    metaText: { fontSize: 12, fontWeight: '400', color: DIM, flexShrink: 1 },
+    metaDot: { width: 3, height: 3, borderRadius: 2, backgroundColor: MUTED },
+
+    // ── Sport chips
+    chipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: -2 },
+    chip: {
+        flexDirection: 'row', alignItems: 'center', gap: 5,
+        paddingHorizontal: 9, paddingVertical: 4,
+        borderRadius: 20, borderWidth: 1,
+    },
+    chipText: { fontSize: 11, fontWeight: '600', letterSpacing: 0.2 },
+
+    // ── Mutual friends / friend count
+    socialCard: {
+        flexDirection: 'row', alignItems: 'center', gap: 10,
+        paddingVertical: 10, paddingHorizontal: 12,
+        borderRadius: 12,
+        borderWidth: 1, borderColor: BORDER,
+        backgroundColor: 'rgba(255,255,255,0.03)',
+    },
+    avatarStack: { flexDirection: 'row', alignItems: 'center' },
+    miniAvatar: {
+        width: 24, height: 24, borderRadius: 12,
+        overflow: 'hidden', borderWidth: 1.5, borderColor: '#111',
+    },
+    miniFallback: { flex: 1, backgroundColor: GOLD, alignItems: 'center', justifyContent: 'center' },
+    miniLetter: { fontSize: 9, fontWeight: '700', color: '#0a0a0a' },
+    socialTitle: { fontSize: 13, fontWeight: '400', color: TEXT, letterSpacing: -0.2 },
+    socialSub: { fontSize: 11, fontWeight: '400', color: DIM, marginTop: 1 },
+
+    // ── Relationship depth (friends-only)
+    depthRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 14 },
+    depthItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+    depthText: { fontSize: 12, fontWeight: '400', color: DIM },
+
+    // ── Longest streak sub-label
+    statSub: { fontSize: 9, fontWeight: '500', color: '#fb923c', letterSpacing: 0.3 },
+
     gallerySection: { gap: 8 },
     galleryGrid: {
         flexDirection: 'row', flexWrap: 'wrap', gap: 4,
