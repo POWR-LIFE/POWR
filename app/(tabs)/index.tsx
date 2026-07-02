@@ -35,6 +35,7 @@ import { usePoints } from '@/hooks/usePoints';
 import { useStreak } from '@/hooks/useStreak';
 import { fetchSmartFeaturedReward, type Reward } from '@/lib/api/rewards';
 import { fetchProfile } from '@/lib/api/user';
+import { applyDetectedActivitySwap, WEEKLY_SESSION_TARGET, WEEKLY_STEPS_TARGET } from '@/lib/weeklyActivities';
 import { useWeeklyChallenges, type ChallengeCardData } from '@/hooks/useWeeklyChallenge';
 
 const GOLD = '#E8D200';
@@ -345,9 +346,6 @@ export default function HomeScreen() {
     const firstName = displayName.split(' ')[0];
 
     // Build weekly activity rings from user's preferences
-    const WEEKLY_SESSION_TARGET = 3;
-    const WEEKLY_STEPS_TARGET = 50000;
-
     function buildWeeklyRing(type: ActivityType): WeeklyRingData {
         const config = ACTIVITIES[type] ?? ACTIVITIES.walking;
         if (type === 'walking') {
@@ -394,16 +392,12 @@ export default function HomeScreen() {
     // If health data detected an activity outside the user's 3 preferences, smart-
     // swap it into the ring with the least progress so we always show exactly 3.
     // The weakest preferred ring is displaced — points for it are still earned.
-    const detectedBonus = (Object.keys(weeklyMetrics.perType) as ActivityType[])
-        .filter(type => !activePrefs.includes(type) && (weeklyMetrics.perType[type] ?? 0) > 0)
-        .map(type => ({ ...buildWeeklyRing(type), isBonus: true }))
-        .sort((a, b) => b.pct - a.pct)[0] ?? null;
-
-    const displayRings: WeeklyRingData[] = detectedBonus
-        ? (() => {
-            const weakest = [...weeklyRings].sort((a, b) => a.pct - b.pct)[0];
-            return weeklyRings.map(r => r.type === weakest.type ? detectedBonus : r);
-          })()
+    // Shared with the progress screen so both surfaces show the same 3 activities.
+    const { bonusType, displacedType } = applyDetectedActivitySwap(activePrefs, weeklyMetrics);
+    const displayRings: WeeklyRingData[] = bonusType
+        ? weeklyRings.map(r => r.type === displacedType
+            ? { ...buildWeeklyRing(bonusType), isBonus: true }
+            : r)
         : weeklyRings;
 
     // ── Scroll-based sticky indicators ──
