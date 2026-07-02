@@ -1,8 +1,10 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useFocusEffect, useRouter } from 'expo-router';
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import ReanimatedSwipeable, { type SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import GeometricBackground from '@/components/GeometricBackground';
@@ -12,7 +14,7 @@ import { useNotifications } from '@/context/NotificationsContext';
 import { fontFamily } from '@/constants/tokens';
 import { useFriends } from '@/hooks/useFriends';
 import { useSharedChallenges } from '@/hooks/useSharedChallenges';
-import { fetchActivityFeed, type ActivityItem } from '@/lib/api/notifications';
+import { deleteActivityItem, fetchActivityFeed, type ActivityItem } from '@/lib/api/notifications';
 import type { FriendRelationship } from '@/lib/api/user';
 import type { Friend, IconSpec, SharedChallenge } from '@/lib/social/types';
 
@@ -119,31 +121,69 @@ function timeAgo(iso: string): string {
   return `${Math.floor(days / 30)}mo`;
 }
 
-function FeedItem({ item, onPress }: { item: ActivityItem; onPress: () => void }) {
+/** Swipe left on a feed row to reveal this — tap to permanently remove it. */
+function RemoveAction({ label, onRemove }: { label: string; onRemove: () => void }) {
+  return (
+    <Pressable
+      style={({ pressed }) => [styles.removeAction, pressed && { opacity: 0.85 }]}
+      onPress={onRemove}
+      accessibilityRole="button"
+      accessibilityLabel={`Remove: ${label}`}
+    >
+      <Ionicons name="trash-outline" size={18} color="#fff" />
+      <Text style={styles.removeActionText}>Remove</Text>
+    </Pressable>
+  );
+}
+
+function FeedItem({ item, onPress, onRemove }: { item: ActivityItem; onPress: () => void; onRemove: () => void }) {
   const unread = item.readAt === null;
   const icon = iconForActivity(item);
   const tappable = !!item.route;
+  const swipeRef = useRef<SwipeableMethods>(null);
+
+  const renderRightActions = useCallback(
+    () => (
+      <RemoveAction
+        label={item.title}
+        onRemove={() => {
+          swipeRef.current?.close();
+          onRemove();
+        }}
+      />
+    ),
+    [item.title, onRemove],
+  );
 
   return (
-    <Pressable
-      onPress={tappable ? onPress : undefined}
-      disabled={!tappable}
-      style={({ pressed }) => [styles.feedRow, pressed && tappable && { opacity: 0.6 }]}
-      accessibilityRole={tappable ? 'button' : 'text'}
-      accessibilityLabel={`${item.title}. ${item.body}`}
+    <ReanimatedSwipeable
+      ref={swipeRef}
+      friction={2}
+      rightThreshold={40}
+      overshootRight={false}
+      renderRightActions={renderRightActions}
+      onSwipeableWillOpen={() => Haptics.selectionAsync()}
     >
-      <View style={styles.feedIcon}>
-        <CatIcon spec={icon} size={20} color={GOLD} />
-      </View>
-      <View style={{ flex: 1 }}>
-        <Text style={styles.feedTitle} numberOfLines={1}>{item.title}</Text>
-        <Text style={styles.feedBody} numberOfLines={2}>{item.body}</Text>
-      </View>
-      <View style={styles.feedMeta}>
-        <Text style={styles.feedTime}>{timeAgo(item.createdAt)}</Text>
-        {unread && <View style={styles.unreadDot} />}
-      </View>
-    </Pressable>
+      <Pressable
+        onPress={tappable ? onPress : undefined}
+        disabled={!tappable}
+        style={({ pressed }) => [styles.feedRow, pressed && tappable && { opacity: 0.6 }]}
+        accessibilityRole={tappable ? 'button' : 'text'}
+        accessibilityLabel={`${item.title}. ${item.body}`}
+      >
+        <View style={styles.feedIcon}>
+          <CatIcon spec={icon} size={20} color={GOLD} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.feedTitle} numberOfLines={1}>{item.title}</Text>
+          <Text style={styles.feedBody} numberOfLines={2}>{item.body}</Text>
+        </View>
+        <View style={styles.feedMeta}>
+          <Text style={styles.feedTime}>{timeAgo(item.createdAt)}</Text>
+          {unread && <View style={styles.unreadDot} />}
+        </View>
+      </Pressable>
+    </ReanimatedSwipeable>
   );
 }
 
@@ -153,9 +193,28 @@ export default function NotificationsScreen() {
 
   const { incoming, acceptRequest, declineRequest, refresh: refreshFriends } = useFriends();
   const { pendingInvites, acceptInvite, declineInvite, refresh: refreshChallenges } = useSharedChallenges();
-  const { refreshPendingActions, markActivityRead } = useNotifications();
+  const { refreshPendingActions, markActivityRead, refreshActivity } = useNotifications();
 
   const [feed, setFeed] = useState<ActivityItem[]>([]);
+
+  // Swipe-to-remove a "Recent" row: drop it optimistically, then delete server-
+  // side. On failure, re-insert it in newest-first order (matching the fetch) so
+  // the list never silently loses an item the DB still has.
+  const removeFeedItem = useCallback(async (item: ActivityItem) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setFeed((prev) => prev.filter((x) => x.id !== item.id));
+    const ok = await deleteActivityItem(item.id);
+    if (ok) {
+      refreshActivity();
+      return;
+    }
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    setFeed((prev) =>
+      prev.some((x) => x.id === item.id)
+        ? prev
+        : [...prev, item].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)),
+    );
+  }, [refreshActivity]);
 
   // Tap a friend-request card to view that person before deciding.
   const [sheetUserId, setSheetUserId] = useState<string | null>(null);
@@ -205,7 +264,7 @@ export default function NotificationsScreen() {
   const isEmpty = !hasNeedsYou && !hasRecent;
 
   return (
-    <View style={[styles.screen, { paddingTop: insets.top }]}>
+    <GestureHandlerRootView style={[styles.screen, { paddingTop: insets.top }]}>
       <GeometricBackground />
 
       <View style={styles.header}>
@@ -276,6 +335,7 @@ export default function NotificationsScreen() {
                         onPress={() => {
                           if (item.route) router.push(item.route as Parameters<typeof router.push>[0]);
                         }}
+                        onRemove={() => removeFeedItem(item)}
                       />
                     </View>
                   ))}
@@ -292,7 +352,7 @@ export default function NotificationsScreen() {
         onChanged={refreshFriends}
         onClose={() => setSheetUserId(null)}
       />
-    </View>
+    </GestureHandlerRootView>
   );
 }
 
@@ -328,7 +388,12 @@ const styles = StyleSheet.create({
   // Recent feed — one card, hairline-divided rows.
   feedCard: { backgroundColor: CARD_BG, borderRadius: 16, borderWidth: 1, borderColor: BORDER, overflow: 'hidden' },
   feedDivider: { height: 1, backgroundColor: BORDER, marginLeft: 62 },
-  feedRow: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14 },
+  // Opaque so the sliding row fully hides the Remove action beneath it until swiped.
+  feedRow: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, backgroundColor: CARD_BG },
+  // Revealed behind a row on left-swipe. Fixed width sets the open position; it
+  // stretches to the row's height via the flex cross-axis.
+  removeAction: { width: 88, alignItems: 'center', justifyContent: 'center', gap: 3, backgroundColor: '#ef4444' },
+  removeActionText: { fontFamily: fontFamily.medium, fontSize: 11, color: '#fff', letterSpacing: 0.2 },
   feedIcon: {
     width: 36, height: 36, borderRadius: 18,
     backgroundColor: 'rgba(232,210,0,0.10)', alignItems: 'center', justifyContent: 'center',
