@@ -249,3 +249,23 @@ export async function markAllActivityRead(): Promise<number> {
   }
   return Number(data ?? 0);
 }
+
+/**
+ * Remove one of the caller's activity rows (swipe-to-delete on the "Recent"
+ * tab). Chained `.select()` so we can tell an actual delete from an RLS no-op
+ * (returns false, not a throw, if nothing was removed) — lets the caller roll
+ * back its optimistic UI. Never throws.
+ */
+export async function deleteActivityItem(id: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('user_activity')
+    .delete()
+    .eq('id', id)
+    .select('id');
+
+  if (error) {
+    console.warn('[notifications] delete activity item failed:', error.message);
+    return false;
+  }
+  return (data?.length ?? 0) > 0;
+}
