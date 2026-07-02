@@ -3,6 +3,11 @@ import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
 import { Gift, Users, TrendingUp, Clock, Award, Package } from 'lucide-react';
 
+// Nothing transitions redemptions.status to 'expired' server-side — the app
+// derives it from expires_at — so mirror that here or "Active" overstates.
+const displayStatus = (r) =>
+    r.status === 'active' && r.expires_at && new Date(r.expires_at) < new Date() ? 'expired' : r.status;
+
 export default function RedemptionTracker() {
     const toast = useToast();
     const [loading, setLoading] = useState(true);
@@ -24,9 +29,9 @@ export default function RedemptionTracker() {
             setRedemptions(list);
             setStats({
                 total: list.length,
-                active: list.filter(r => r.status === 'active').length,
-                used: list.filter(r => r.status === 'used').length,
-                expired: list.filter(r => r.status === 'expired').length,
+                active: list.filter(r => displayStatus(r) === 'active').length,
+                used: list.filter(r => displayStatus(r) === 'used').length,
+                expired: list.filter(r => displayStatus(r) === 'expired').length,
             });
         } catch (e) {
             toast.error('Failed to load redemptions');
@@ -104,14 +109,18 @@ export default function RedemptionTracker() {
                                             <span className="font-mono text-xs text-[#8a7600] bg-white px-3 py-1 rounded-lg border border-[#E6E6E1] uppercase tracking-[0.2em]">{r.code}</span>
                                         </td>
                                         <td className="px-6 py-5">
-                                            <span className="text-sm font-bold text-[#BBB]">{r.rewards?.powr_cost || 0} pts</span>
+                                            <span className="text-sm font-bold text-[#BBB]">{r.powr_spent ?? r.rewards?.powr_cost ?? 0} pts</span>
                                         </td>
                                         <td className="px-6 py-5">
-                                            <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-[0.2em] ${
-                                                r.status === 'active' ? 'bg-[#10B981]/10 text-[#10B981] border border-[#10B981]/20' :
-                                                r.status === 'used' ? 'bg-[#0EA5E9]/10 text-[#0EA5E9] border border-[#0EA5E9]/20' :
-                                                'bg-[#F43F5E]/10 text-[#F43F5E] border border-[#F43F5E]/20'
-                                            }`}>{r.status}</span>
+                                            {(() => {
+                                                const s = displayStatus(r);
+                                                const cls =
+                                                    s === 'active' ? 'bg-[#10B981]/10 text-[#10B981] border border-[#10B981]/20' :
+                                                    s === 'used' ? 'bg-[#0EA5E9]/10 text-[#0EA5E9] border border-[#0EA5E9]/20' :
+                                                    s === 'refunded' ? 'bg-[#F4F4F1] text-[#888888] border border-[#E6E6E1]' :
+                                                    'bg-[#F43F5E]/10 text-[#F43F5E] border border-[#F43F5E]/20';
+                                                return <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-[0.2em] ${cls}`}>{s}</span>;
+                                            })()}
                                         </td>
                                         <td className="px-6 py-5 text-[11px] text-[#BBB]">
                                             {new Date(r.redeemed_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}

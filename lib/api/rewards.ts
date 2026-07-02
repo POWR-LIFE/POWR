@@ -30,7 +30,6 @@ export interface Reward {
   partner_blurb: string | null;
   value_label: string | null;
   image_url: string | null;
-  promo_code: string | null;
   discount_type: 'percentage' | 'fixed_amount' | null;
   discount_value: number | null;
   brand_name: string | null;
@@ -70,7 +69,7 @@ export class RedemptionError extends Error {
 export async function fetchRewards(): Promise<Reward[]> {
   const { data, error } = await supabase
     .from('rewards')
-    .select('id, partner_id, title, description, powr_cost, category, integration_type, code_expiry_days, active, offer, hero_image_url, brand_color, url, partner_blurb, value_label, image_url, promo_code, discount_type, discount_value, brand_name, max_redemptions_per_user, partners(id, name, partner_code, logo_url, category, checkout_url_template)')
+    .select('id, partner_id, title, description, powr_cost, category, integration_type, code_expiry_days, active, offer, hero_image_url, brand_color, url, partner_blurb, value_label, image_url, discount_type, discount_value, brand_name, max_redemptions_per_user, partners(id, name, partner_code, logo_url, category, checkout_url_template)')
     .eq('active', true)
     .order('sort_order', { ascending: true })
     .order('powr_cost', { ascending: true });
@@ -204,24 +203,28 @@ export async function fetchWalletHistory(
 /**
  * Per-reward redemption counts for the current user, used by the rewards list to
  * surface "N in wallet" and to grey out rewards that have hit their admin cap.
- * `nonRefunded` mirrors the cap counting in the redeem-reward edge function.
+ * `active` only counts codes still usable (not past expiry) so badges agree with
+ * the wallet's Active tab; `nonRefunded` mirrors the cap counting in the
+ * redeem-reward edge function, which ignores expiry.
  */
 export async function fetchMyRedemptionSummary(): Promise<Record<string, { active: number; nonRefunded: number }>> {
   const { data, error } = await supabase
     .from('redemptions')
-    .select('reward_id, status');
+    .select('reward_id, status, expires_at');
   if (error) throw error;
+  const now = Date.now();
   const out: Record<string, { active: number; nonRefunded: number }> = {};
-  for (const r of (data ?? []) as { reward_id: string; status: string }[]) {
+  for (const r of (data ?? []) as { reward_id: string; status: string; expires_at: string | null }[]) {
     const e = out[r.reward_id] ?? { active: 0, nonRefunded: 0 };
-    if (r.status === 'active') e.active += 1;
+    const lapsed = r.expires_at != null && new Date(r.expires_at).getTime() < now;
+    if (r.status === 'active' && !lapsed) e.active += 1;
     if (r.status !== 'refunded') e.nonRefunded += 1;
     out[r.reward_id] = e;
   }
   return out;
 }
 
-const REWARD_FIELDS = 'id, partner_id, title, description, powr_cost, category, integration_type, code_expiry_days, active, featured_on_home, offer, hero_image_url, brand_color, url, partner_blurb, value_label, image_url, promo_code, discount_type, discount_value, brand_name, max_redemptions_per_user, partners(id, name, partner_code, logo_url, category, checkout_url_template)';
+const REWARD_FIELDS = 'id, partner_id, title, description, powr_cost, category, integration_type, code_expiry_days, active, featured_on_home, offer, hero_image_url, brand_color, url, partner_blurb, value_label, image_url, discount_type, discount_value, brand_name, max_redemptions_per_user, partners(id, name, partner_code, logo_url, category, checkout_url_template)';
 
 export async function fetchFeaturedScheduledReward(): Promise<Reward | null> {
   const now = new Date().toISOString();

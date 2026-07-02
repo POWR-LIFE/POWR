@@ -409,30 +409,39 @@ export async function fetchAllCodes({ rewardId, status = 'all', search = '' }) {
 }
 
 // Brand-portal stats. get_code_stats is admin-gated, so brand users count
-// directly via four head-only count queries (no rows transferred, RLS-scoped
-// to the brand's own rewards).
+// directly via head-only count queries (no rows transferred, RLS-scoped
+// to the brand's own rewards). "Available" means claimable right now:
+// status available AND not past the batch expiry — date-lapsed codes are
+// bucketed as expired, matching what claim_pool_code will actually serve.
 export async function fetchCodeStatsDirect(rewardId) {
-    const statuses = ['available', 'reserved', 'used', 'expired'];
-    const results = await Promise.all(
-        statuses.map(s =>
-            supabase
-                .from('redemption_codes')
-                .select('id', { count: 'exact', head: true })
-                .eq('reward_id', rewardId)
-                .eq('status', s)
-        )
-    );
-    const stats = { available: 0, reserved: 0, used: 0, expired: 0, total: 0 };
-    statuses.forEach((s, i) => {
-        if (results[i].error) throw results[i].error;
-        stats[s] = results[i].count ?? 0;
-        stats.total += stats[s];
-    });
+    const nowIso = new Date().toISOString();
+    const base = () => supabase
+        .from('redemption_codes')
+        .select('id', { count: 'exact', head: true })
+        .eq('reward_id', rewardId);
+    const [avail, lapsed, reserved, used, expired] = await Promise.all([
+        base().eq('status', 'available').gt('expires_at', nowIso),
+        base().eq('status', 'available').lte('expires_at', nowIso),
+        base().eq('status', 'reserved'),
+        base().eq('status', 'used'),
+        base().eq('status', 'expired'),
+    ]);
+    for (const r of [avail, lapsed, reserved, used, expired]) {
+        if (r.error) throw r.error;
+    }
+    const stats = {
+        available: avail.count ?? 0,
+        reserved: reserved.count ?? 0,
+        used: used.count ?? 0,
+        expired: (expired.count ?? 0) + (lapsed.count ?? 0),
+    };
+    stats.total = stats.available + stats.reserved + stats.used + stats.expired;
     return stats;
 }
 
 export async function fetchCodeStats(rewardId) {
-    // Prefer the lightweight GROUP BY RPC; fall back to client-side count
+    // Prefer the lightweight GROUP BY RPC (expiry-aware server-side); fall
+    // back to a client-side count with the same date-lapsed bucketing.
     const { data, error } = await supabase.rpc('get_code_stats', { p_reward_id: rewardId });
     if (!error && data) {
         const stats = { available: 0, reserved: 0, used: 0, expired: 0, total: 0 };
@@ -441,10 +450,49 @@ export async function fetchCodeStats(rewardId) {
     }
     const { data: rows, error: err2 } = await supabase
         .from('redemption_codes')
-        .select('status')
+        .select('status, expires_at')
         .eq('reward_id', rewardId);
     if (err2) throw err2;
+    const now = Date.now();
     const stats = { available: 0, reserved: 0, used: 0, expired: 0, total: (rows ?? []).length };
-    for (const row of rows ?? []) stats[row.status] = (stats[row.status] ?? 0) + 1;
+    for (const row of rows ?? []) {
+        const s = row.status === 'available' && row.expires_at && new Date(row.expires_at).getTime() <= now
+            ? 'expired'
+            : row.status;
+        stats[s] = (stats[s] ?? 0) + 1;
+    }
     return stats;
+}
+
+// How close the available pool is to its batch expiry: count of claimable
+// codes lapsing within `days`, plus the soonest expiry date. Drives the
+// "codes expiring soon" warning in the admin + partner pool headers.
+export async function fetchExpiryOutlook(rewardId, days = 14) {
+    const nowIso = new Date().toISOString();
+    const horizonIso = new Date(Date.now() + days * 86400_000).toISOString();
+    const [{ count, error }, soonestRes] = await Promise.all([
+        supabase
+            .from('redemption_codes')
+            .select('id', { count: 'exact', head: true })
+            .eq('reward_id', rewardId)
+            .eq('status', 'available')
+            .gt('expires_at', nowIso)
+            .lte('expires_at', horizonIso),
+        supabase
+            .from('redemption_codes')
+            .select('expires_at')
+            .eq('reward_id', rewardId)
+            .eq('status', 'available')
+            .gt('expires_at', nowIso)
+            .order('expires_at', { ascending: true })
+            .limit(1)
+            .maybeSingle(),
+    ]);
+    if (error) throw error;
+    if (soonestRes.error) throw soonestRes.error;
+    return {
+        expiringSoon: count ?? 0,
+        soonestExpiry: soonestRes.data?.expires_at ?? null,
+        horizonDays: days,
+    };
 }

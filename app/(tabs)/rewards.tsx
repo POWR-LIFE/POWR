@@ -10,6 +10,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Image,
   LayoutAnimation,
   Linking,
@@ -48,6 +49,7 @@ interface Reward {
   id: string;
   category: Exclude<Category, 'ALL'>;
   logoText: string;
+  brandName: string;
   logoLight: boolean;
   logoImage?: any;
   heroImage?: any;
@@ -59,20 +61,8 @@ interface Reward {
   offer?: string;
   partnerBlurb?: string;
   url?: string;
-  promoCode?: string;
   maxPerUser?: number | null;
 }
-
-const REWARDS: Reward[] = [
-  { id: '1', category: 'MOVE', logoText: 'TS',     logoLight: false, title: 'Free gym class',          subtitle: 'Third Space · Any location',  pts: 800,  value: '£20 value' },
-  { id: '2', category: 'EAT',  logoText: 'NOTTO',  logoLight: true,  title: '25% off your bill',       subtitle: 'Notto Pasta · Any branch',    pts: 500,  value: 'Up to £15 off' },
-  { id: '3', category: 'EAT',  logoText: 'bulk',   logoLight: false, title: '30% off protein powder',  subtitle: 'bulk® · Any product',         pts: 400,  value: 'Up to £20 off' },
-  { id: '4', category: 'MIND', logoText: 'calm',   logoLight: false, title: '3 months free',           subtitle: 'Calm · Premium subscription', pts: 600,  value: '£45 value' },
-  { id: '5', category: 'SLEEP',logoText: 'eight',  logoLight: false, title: '£50 off mattress',        subtitle: 'Eight Sleep · Any model',     pts: 1200, value: '£50 off' },
-  { id: '6', category: 'EAT',  logoText: 'WH',     logoLight: true,  title: '20% off supplements',     subtitle: 'Whole Health · Any order',    pts: 350,  value: '20% off' },
-  { id: '7', category: 'MOVE', logoText: 'barry',  logoLight: true,  title: 'Single class pass',       subtitle: "Barry's · Any studio",        pts: 650,  value: '£22 value' },
-  { id: '8', category: 'MIND', logoText: 'head',   logoLight: false, title: '1 month free',            subtitle: 'Headspace · Plus plan',       pts: 300,  value: '£12 value' },
-];
 
 // ─── Affordability helpers ─────────────────────────────────────────────────────
 
@@ -124,6 +114,7 @@ function apiRewardToUI(r: ApiReward): Reward {
     id: r.id,
     category: DB_TO_UI_CATEGORY[r.category] ?? 'SLEEP',
     logoText,
+    brandName: displayName ?? r.title,
     logoLight: false,
     logoImage: r.image_url ? { uri: r.image_url } : r.partner?.logo_url ? { uri: r.partner.logo_url } : undefined,
     heroImage: r.hero_image_url ? { uri: r.hero_image_url } : undefined,
@@ -135,7 +126,6 @@ function apiRewardToUI(r: ApiReward): Reward {
     offer: r.offer ?? undefined,
     partnerBlurb: r.partner_blurb ?? undefined,
     url: r.url ?? undefined,
-    promoCode: r.promo_code ?? undefined,
     maxPerUser: r.max_redemptions_per_user,
   };
 }
@@ -162,7 +152,9 @@ export default function SpendScreen() {
   };
 
   const [featuredReward, setFeaturedReward] = useState<ApiReward | null>(null);
-  const [rewards, setRewards] = useState<Reward[]>(REWARDS);
+  const [rewards, setRewards] = useState<Reward[]>([]);
+  const [catalogueLoaded, setCatalogueLoaded] = useState(false);
+  const [catalogueError, setCatalogueError] = useState(false);
   const [redemptionInfo, setRedemptionInfo] = useState<Record<string, { active: number; nonRefunded: number }>>({});
 
   const loadRewards = useCallback(async () => {
@@ -172,11 +164,15 @@ export default function SpendScreen() {
         fetchSmartFeaturedReward(balance),
         fetchMyRedemptionSummary().catch(() => ({})),
       ]);
-      if (data.length > 0) setRewards(data.map(apiRewardToUI));
+      setRewards(data.map(apiRewardToUI));
       setFeaturedReward(featured);
       setRedemptionInfo(summary);
+      setCatalogueLoaded(true);
+      setCatalogueError(false);
     } catch {
-      // keep mock fallback
+      // Keep whatever loaded previously; only surface the error state when
+      // there's nothing to show at all.
+      setCatalogueError(true);
     }
   }, [balance]);
   useEffect(() => { loadRewards(); }, [loadRewards]);
@@ -208,7 +204,6 @@ export default function SpendScreen() {
 
   const featuredAfford = featuredReward ? affordability(balance, featuredReward.powr_cost) : 'locked';
   const walletCount = Object.values(redemptionInfo).reduce((sum, e) => sum + e.active, 0);
-  const showKeepMovingUnlock = activeCategory === 'MIND' || activeCategory === 'SLEEP';
   const revealFeaturedInList = useCallback((id: string) => {
     Haptics.selectionAsync();
     setActiveCategory('ALL');
@@ -297,9 +292,26 @@ export default function SpendScreen() {
           />
         }
       >
-        {showKeepMovingUnlock ? (
+        {!catalogueLoaded && !catalogueError ? (
           <View style={styles.keepMovingCenterWrap}>
-            <KeepMovingUnlockCard />
+            <ActivityIndicator color={GOLD} />
+          </View>
+        ) : !catalogueLoaded && catalogueError ? (
+          <View style={styles.keepMovingCenterWrap}>
+            <Ionicons name="cloud-offline-outline" size={26} color={MUTED} />
+            <Text style={styles.catalogueStatusText}>Couldn&apos;t load rewards.</Text>
+            <Pressable style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.8 }]} onPress={loadRewards}>
+              <Text style={styles.retryBtnText}>Try again</Text>
+            </Pressable>
+          </View>
+        ) : sorted.length === 0 ? (
+          // Empty category — MIND/SLEEP style teaser until rewards land there.
+          <View style={styles.keepMovingCenterWrap}>
+            {activeCategory === 'ALL' ? (
+              <Text style={styles.catalogueStatusText}>New rewards coming soon.</Text>
+            ) : (
+              <KeepMovingUnlockCard />
+            )}
           </View>
         ) : (
           <View style={styles.rewardsList}>
@@ -582,7 +594,7 @@ function RewardCard({ reward, afford, balance, expanded, activeCount, capReached
 
               {reward.partnerBlurb && (
                 <View style={styles.aboutBlock}>
-                  <Text style={styles.expandedLabel}>About {reward.logoText.toUpperCase()}</Text>
+                  <Text style={styles.expandedLabel}>About {reward.brandName.toUpperCase()}</Text>
                   <Text style={styles.expandedBlurb}>{reward.partnerBlurb}</Text>
                 </View>
               )}
@@ -1446,6 +1458,26 @@ const styles = StyleSheet.create({
     minHeight: 420,
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 14,
+  },
+  catalogueStatusText: {
+    fontSize: 14,
+    fontWeight: '300',
+    color: MUTED,
+  },
+  retryBtn: {
+    borderWidth: 1,
+    borderColor: BORDER,
+    borderRadius: 20,
+    paddingVertical: 11,
+    paddingHorizontal: 22,
+  },
+  retryBtnText: {
+    fontSize: 12,
+    fontWeight: '500',
+    letterSpacing: 0.5,
+    color: TEXT,
+    textTransform: 'uppercase',
   },
   keepMovingRingWrap: {
     width: 88,
