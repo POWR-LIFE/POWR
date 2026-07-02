@@ -12,7 +12,7 @@ import { FriendSearchSheet } from '@/components/social/FriendSearchSheet';
 import { SharedChallengeCelebration } from '@/components/social/SharedChallengeCelebration';
 import { UserProfileSheet } from '@/components/UserProfileSheet';
 import { fontFamily } from '@/constants/tokens';
-import { useSharedChallenges } from '@/hooks/useSharedChallenges';
+import { durationLabel, useSharedChallenges } from '@/hooks/useSharedChallenges';
 import { earnedPoints, groupBonus, maxBonusForGroup } from '@/lib/social/bonus';
 import type { IconSpec, Participant, SharedChallenge } from '@/lib/social/types';
 
@@ -242,7 +242,8 @@ export default function SharedChallengeDetail() {
   const handleShare = async () => {
     const url = `https://powr.life/app?challenge=${challenge.id}`;
     try {
-      await Share.share({ message: `Join my POWR challenge "${template.title}" — ${template.goal}. ${url}`, url });
+      const runLength = challenge.durationHours ? ` in ${durationLabel(challenge.durationHours)}` : '';
+      await Share.share({ message: `Join my POWR challenge "${template.title}" — ${template.goal}${runLength}. ${url}`, url });
     } catch {
       /* dismissed */
     }
@@ -279,6 +280,14 @@ export default function SharedChallengeDetail() {
             <View style={styles.tag}>
               <Text style={[styles.tagText, { color: TIER_COLOR[template.tier] }]}>{template.tier.toUpperCase()}</Text>
             </View>
+            {/* While forming, the accept countdown says nothing about how long the
+                game will run — surface the chosen run length until the clock starts. */}
+            {forming && challenge.durationHours ? (
+              <View style={styles.tag}>
+                <Ionicons name="timer-outline" size={11} color={SECONDARY} />
+                <Text style={[styles.tagText, { textTransform: 'none' }]}>{durationLabel(challenge.durationHours)}</Text>
+              </View>
+            ) : null}
             <View style={styles.tag}>
               <Ionicons name={forming ? 'hourglass-outline' : 'time-outline'} size={11} color={SECONDARY} />
               {!forming && challenge.endsAt ? (

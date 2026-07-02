@@ -54,7 +54,7 @@ Deno.serve(async (req) => {
   const durationOptions: number[] = Array.isArray(cfg?.duration_options) ? cfg!.duration_options : [48, 72, 168];
   const defaultDuration = cfg?.default_duration_hours ?? 72;
   const challengeCap = cfg?.challenge_cap ?? 3;
-  const durationHours = durationOptions.includes(Number(body.duration_hours))
+  let durationHours = durationOptions.includes(Number(body.duration_hours))
     ? Number(body.duration_hours) : defaultDuration;
 
   // 2. Template → snapshot + derived rule.
@@ -65,6 +65,20 @@ Deno.serve(async (req) => {
   if (!tmpl || tmpl.active === false) return json({ error: 'Unknown or inactive template' }, 404);
   const isPooled = tmpl.mode === 'pooled';
   const rule = isPooled ? pooledRule(tmpl.category, tmpl.measure || {}) : templateRule(tmpl.category, tmpl.measure || {});
+
+  // A day-based goal ("10,000 steps a day, 4 days", "check in on 7 different
+  // days") can't fit a shorter run — that challenge would be unwinnable. The
+  // client hides too-short options; this backstop covers old clients (which
+  // send no duration at all) by stretching to the shortest option that fits.
+  const measure = tmpl.measure || {};
+  const goalDays = Math.max(
+    Number(measure.days) || 0,
+    measure.measure === 'distinct_days' ? Number(measure.target) || 0 : 0,
+  );
+  const minHours = goalDays * 24;
+  if (durationHours < minHours) {
+    durationHours = durationOptions.filter((h: number) => h >= minHours).sort((a: number, b: number) => a - b)[0] ?? minHours;
+  }
 
   // 3. Only ACCEPTED friends are invitable.
   const { data: edges } = await supabase

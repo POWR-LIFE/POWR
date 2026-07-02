@@ -34,11 +34,17 @@ export interface ChallengeTemplate {
   icon: IconSpec;
   tier: 'easy' | 'medium' | 'hard';
   title: string;
-  /** Short "what you each have to do" line. */
+  /** Short "what you each have to do" line — never names a timeframe (the chosen duration is the single source of timing). */
   goal: string;
   basePoints: number;
   /** 'solo' = each does their own part; 'pooled' = effort sums toward one shared total. */
   mode: 'solo' | 'pooled';
+  /**
+   * Shortest run (hours) this goal can physically fit in — e.g. "check in on 7
+   * different days" needs ≥168h. Duration options below this are hidden when
+   * creating. Unset = any duration works.
+   */
+  minHours?: number;
 }
 
 export type ParticipantState = 'invited' | 'accepted' | 'declined' | 'completed' | 'left';
