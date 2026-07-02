@@ -106,6 +106,12 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   const appState = useRef<AppStateStatus>(AppState.currentState);
   const coldStartHandled = useRef(false);
   const handledResponseIds = useRef<Set<string>>(new Set());
+  const registeringPush = useRef(false);
+  const lastRegistration = useRef<{
+    userId: string;
+    expoPushToken: string;
+    deviceToken: string | null;
+  } | null>(null);
 
   // -------------------------------------------------------------------------
   // Shared notification-tap handler (foreground listener + cold start)
@@ -153,6 +159,12 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   // -------------------------------------------------------------------------
 
   const registerForPush = useCallback(async (userId: string) => {
+    // Fetching the token below fires addPushTokenListener on Android (it emits
+    // on every fetch, not just rotations), whose handler calls back into this
+    // function — without the guard that's an infinite upsert loop hammering
+    // the API several times a second.
+    if (registeringPush.current) return;
+    registeringPush.current = true;
     try {
       const registration = await requestPermissionsAndGetToken();
       if (!registration) {
@@ -163,14 +175,31 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
       setPermissionGranted(true);
       setExpoPushToken(registration.expoPushToken);
 
+      const prev = lastRegistration.current;
+      if (
+        prev &&
+        prev.userId === userId &&
+        prev.expoPushToken === registration.expoPushToken &&
+        prev.deviceToken === registration.deviceToken
+      ) {
+        return; // already registered exactly this — skip the redundant writes
+      }
+
       await upsertPushToken(
         userId,
         registration.expoPushToken,
         registration.deviceToken,
         registration.platform,
       );
+      lastRegistration.current = {
+        userId,
+        expoPushToken: registration.expoPushToken,
+        deviceToken: registration.deviceToken,
+      };
     } catch (err) {
       console.warn('[Notifications] Failed to register push token:', err);
+    } finally {
+      registeringPush.current = false;
     }
   }, []);
 
@@ -226,7 +255,13 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     if (!user?.id) return;
     const uid = user.id;
 
-    const tokenSub = Notifications.addPushTokenListener(() => {
+    const tokenSub = Notifications.addPushTokenListener((token) => {
+      // Fires for every native token *fetch* (including our own inside
+      // registerForPush), not only real rotations. Only re-register when the
+      // token actually differs from the one we last stored.
+      const data = typeof token?.data === 'string' ? token.data : null;
+      if (registeringPush.current) return;
+      if (data && data === lastRegistration.current?.deviceToken) return;
       registerForPush(uid);
     });
 
