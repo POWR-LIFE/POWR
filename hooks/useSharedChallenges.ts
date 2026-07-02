@@ -26,12 +26,6 @@ import type {
 export interface NewChallengeInput {
   templateId: string;
   friendIds: string[];
-  durationHours?: number;
-}
-
-export interface DurationOption {
-  label: string;
-  hours: number;
 }
 
 const CATEGORY_LABEL: Record<string, string> = {
@@ -45,28 +39,10 @@ const CATEGORY_ICON: Record<string, IconSpec> = {
   multi: { lib: 'ion', name: 'flame' },
 };
 
-const FALLBACK_DURATIONS: DurationOption[] = [
-  { label: '2 days', hours: 48 },
-  { label: '3 days', hours: 72 },
-  { label: '1 week', hours: 168 },
-];
-
 export function durationLabel(h: number): string {
   if (h % 168 === 0) return `${h / 168} week${h / 168 === 1 ? '' : 's'}`;
   if (h % 24 === 0) return `${h / 24} day${h / 24 === 1 ? '' : 's'}`;
   return `${h}h`;
-}
-
-/** Shortest run a goal can fit in: day-based goals ("10,000 steps a day, 4
- *  days", "check in on 7 different days") need at least that many days on the
- *  clock — offering a shorter run would create an unwinnable challenge. */
-function templateMinHours(measure: any): number | undefined {
-  if (!measure) return undefined;
-  const days = Math.max(
-    Number(measure.days) || 0,
-    measure.measure === 'distinct_days' ? Number(measure.target) || 0 : 0,
-  );
-  return days > 0 ? days * 24 : undefined;
 }
 
 function humanizeRemaining(endsAt?: string | null): string {
@@ -91,7 +67,7 @@ function mapTemplateRow(row: any): ChallengeTemplate {
     goal: row.goal,
     basePoints: row.base_points,
     mode: row.mode === 'pooled' ? 'pooled' : 'solo',
-    minHours: templateMinHours(row.measure),
+    durationHours: Number(row.duration_hours) || undefined,
   };
 }
 
@@ -141,6 +117,7 @@ function mapChallengeRow(row: any): SharedChallenge {
       goal: tmpl.goal ?? '',
       basePoints: tmpl.base_points ?? row.base_points ?? 0,
       mode: row.kind === 'pooled' ? 'pooled' : 'solo',
+      durationHours: Number(row.duration_hours) || undefined,
     },
     kind: row.kind ?? 'parallel',
     // The UI derives "forming" from a participant still being `invited`; DB
@@ -184,8 +161,6 @@ export interface UseSharedChallenges {
   search: (query: string) => Promise<Friend[]>;
   sendRequest: (friend: Friend) => void;
   templates: ChallengeTemplate[];
-  durations: DurationOption[];
-  defaultDurationHours: number;
   bonusConfig: { perHead: number; maxBonus: number };
   selfId: string | null;
   getById: (id: string) => SharedChallenge | undefined;
@@ -205,8 +180,6 @@ export function useSharedChallenges(): UseSharedChallenges {
   const [all, setAll] = useState<SharedChallenge[]>([]);
   const [templates, setTemplates] = useState<ChallengeTemplate[]>([]);
   const [cap, setCap] = useState(3);
-  const [durations, setDurations] = useState<DurationOption[]>(FALLBACK_DURATIONS);
-  const [defaultDurationHours, setDefaultDurationHours] = useState(72);
   const [bonusConfig, setBonusConfig] = useState({ perHead: 5, maxBonus: 30 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -218,18 +191,15 @@ export function useSharedChallenges(): UseSharedChallenges {
   const loadConfig = useCallback(async () => {
     const [{ data: cfg }, { data: tmpls }] = await Promise.all([
       supabase.from('shared_challenge_config')
-        .select('per_head, max_bonus, duration_options, default_duration_hours, challenge_cap')
+        .select('per_head, max_bonus, challenge_cap')
         .eq('id', 1).maybeSingle(),
       supabase.from('shared_challenge_templates')
-        .select('id, category, title, tier, base_points, goal, measure, mode')
+        .select('id, category, title, tier, base_points, goal, measure, mode, duration_hours')
         .eq('active', true).order('sort_order', { ascending: true }),
     ]);
     if (cfg) {
       setCap(cfg.challenge_cap ?? 3);
       setBonusConfig({ perHead: cfg.per_head ?? 5, maxBonus: cfg.max_bonus ?? 30 });
-      setDefaultDurationHours(cfg.default_duration_hours ?? 72);
-      const opts: number[] = Array.isArray(cfg.duration_options) ? cfg.duration_options : [];
-      if (opts.length) setDurations(opts.map((h) => ({ label: durationLabel(h), hours: h })));
     }
     if (tmpls) setTemplates(tmpls.map(mapTemplateRow));
   }, []);
@@ -298,13 +268,14 @@ export function useSharedChallenges(): UseSharedChallenges {
     return () => { cancelled = true; };
   }, [all, completeRaw, load]);
 
-  const createChallenge = useCallback(async ({ templateId, friendIds, durationHours }: NewChallengeInput) => {
+  const createChallenge = useCallback(async ({ templateId, friendIds }: NewChallengeInput) => {
+    // No duration: the run length is the template's (server reads it there).
     const { error } = await supabase.functions.invoke('create-shared-challenge', {
-      body: { template_id: templateId, friend_ids: friendIds, duration_hours: durationHours ?? defaultDurationHours, utc_offset_minutes: utcOffsetMinutes },
+      body: { template_id: templateId, friend_ids: friendIds, utc_offset_minutes: utcOffsetMinutes },
     });
     if (error) console.warn('[useSharedChallenges] create failed:', error.message);
     await load();
-  }, [defaultDurationHours, utcOffsetMinutes, load]);
+  }, [utcOffsetMinutes, load]);
 
   const respond = useCallback(async (challengeId: string, action: 'accept' | 'decline' | 'leave') => {
     const { error } = await supabase.functions.invoke('respond-shared-challenge', {
@@ -328,7 +299,7 @@ export function useSharedChallenges(): UseSharedChallenges {
 
   return {
     loading, error, all, active, pendingInvites, openChallenges, openCount, cap, atCap,
-    friends, search, sendRequest, templates, durations, defaultDurationHours, bonusConfig,
+    friends, search, sendRequest, templates, bonusConfig,
     selfId: user?.id ?? null,
     getById, createChallenge, acceptInvite, declineInvite, leaveChallenge, completeChallenge,
     newlyCompletedId, clearCelebration, refresh: load,
