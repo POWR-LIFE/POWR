@@ -5,6 +5,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withDelay, withTiming } from 'react-native-reanimated';
 
 import { fontFamily } from '@/constants/tokens';
+import { durationLabel } from '@/hooks/useSharedChallenges';
 import type { ChallengeTemplate, IconSpec } from '@/lib/social/types';
 
 // ─── Palette (matches SharedChallengeCard) ───────────────────────────────────
@@ -87,10 +88,18 @@ export function ChallengeTemplateCard({ template, index = 0, onPress }: Challeng
           <Text style={styles.goal} numberOfLines={2}>{template.goal}</Text>
         </View>
 
-        {/* Tier + the call to action */}
+        {/* Tier + run length + the call to action */}
         <View style={styles.footer}>
-          <View style={[styles.tierChip, { borderColor: tierColor }]}>
-            <Text style={[styles.tierText, { color: tierColor }]}>{TIER_LABEL[template.tier] ?? template.tier}</Text>
+          <View style={styles.metaRow}>
+            <View style={[styles.tierChip, { borderColor: tierColor }]}>
+              <Text style={[styles.tierText, { color: tierColor }]}>{TIER_LABEL[template.tier] ?? template.tier}</Text>
+            </View>
+            {template.durationHours ? (
+              <View style={styles.durationChip}>
+                <Ionicons name="time-outline" size={10} color={SECONDARY} />
+                <Text style={styles.durationText}>{durationLabel(template.durationHours)}</Text>
+              </View>
+            ) : null}
           </View>
           <View style={styles.cta}>
             <Text style={styles.ctaText}>Challenge friends</Text>
@@ -127,8 +136,15 @@ const styles = StyleSheet.create({
   goal: { fontFamily: fontFamily.light, fontSize: 12, color: SECONDARY, lineHeight: 17 },
 
   footer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   tierChip: { borderWidth: 1, borderRadius: 100, paddingHorizontal: 9, paddingVertical: 3 },
   tierText: { fontFamily: fontFamily.semiBold, fontSize: 9, letterSpacing: 1, textTransform: 'uppercase' },
+  durationChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    borderWidth: 1, borderColor: BORDER, borderRadius: 100,
+    paddingHorizontal: 9, paddingVertical: 3,
+  },
+  durationText: { fontFamily: fontFamily.medium, fontSize: 9, letterSpacing: 0.5, color: SECONDARY },
   cta: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   ctaText: { fontFamily: fontFamily.medium, fontSize: 12, color: GOLD, letterSpacing: 0.2 },
 });

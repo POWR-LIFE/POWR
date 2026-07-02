@@ -40,11 +40,12 @@ export interface ChallengeTemplate {
   /** 'solo' = each does their own part; 'pooled' = effort sums toward one shared total. */
   mode: 'solo' | 'pooled';
   /**
-   * Shortest run (hours) this goal can physically fit in — e.g. "check in on 7
-   * different days" needs ≥168h. Duration options below this are hidden when
-   * creating. Unset = any duration works.
+   * Authored run length (hours) — part of the template's design, next to
+   * target/tier/points. Every challenge from this template runs exactly this
+   * long once everyone's in; members make no timing choice. Optional only
+   * because in-flight challenge snapshots predating the column lack it.
    */
-  minHours?: number;
+  durationHours?: number;
 }
 
 export type ParticipantState = 'invited' | 'accepted' | 'declined' | 'completed' | 'left';

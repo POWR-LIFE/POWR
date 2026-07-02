@@ -3,7 +3,10 @@ import { Clock, Flame, Minus, Pencil, Plus, Trash2, X, Zap } from 'lucide-react'
 import { useToast } from '../../lib/toast';
 import { supabase } from '../../lib/supabase';
 
-// Run-length presets the admin can enable for the create sheet's "How long" menu.
+// Run lengths a template can be authored at. The duration is part of the
+// challenge's design — the same goal is a different game (difficulty, fair
+// points) over 24h vs 2 weeks — so it lives HERE, next to target/tier/points,
+// not on a global menu. Members make no timing choice in the app.
 const DURATION_PRESETS = [
   { label: '24h', hours: 24 },
   { label: '48h', hours: 48 },
@@ -12,6 +15,8 @@ const DURATION_PRESETS = [
   { label: '1 week', hours: 168 },
   { label: '2 weeks', hours: 336 },
 ];
+const durationPresetLabel = (h) =>
+  DURATION_PRESETS.find((d) => d.hours === h)?.label ?? (h % 24 === 0 ? `${h / 24} days` : `${h}h`);
 
 // DB row (snake_case + measure jsonb) ↔ the flat draft the editor works with.
 const dbToDraft = (row) => {
@@ -20,14 +25,23 @@ const dbToDraft = (row) => {
     id: row.id, category: row.category, title: row.title, tier: row.tier,
     basePoints: row.base_points, measure: m.measure, target: m.target,
     unit: m.unit ?? null, days: m.days ?? null, window: m.window ?? null,
-    mode: row.mode ?? 'solo', goal: row.goal, active: row.active, sort_order: row.sort_order,
+    mode: row.mode ?? 'solo', durationHours: row.duration_hours ?? 168,
+    goal: row.goal, active: row.active, sort_order: row.sort_order,
   };
 };
 const draftToDb = (d, goal) => ({
   category: d.category, title: d.title.trim(), tier: d.tier, base_points: d.basePoints,
   goal, measure: { measure: d.measure, target: d.target, unit: d.unit ?? null, days: d.days ?? null, window: d.window ?? null },
-  mode: d.mode ?? 'solo', active: d.active ?? true,
+  mode: d.mode ?? 'solo', duration_hours: d.durationHours ?? 168, active: d.active ?? true,
 });
+
+// Day-based goals ("N different days", "X steps a day for N days") physically
+// need at least that many days on the clock — shorter runs are unwinnable.
+const minHoursFor = (d) => {
+  const m = measureCfg(d.category, d.measure);
+  const days = m.id === 'distinct_days' ? (d.target || 0) : (m.perDay ? (d.days || 0) : 0);
+  return days * 24;
+};
 
 // ── Group-size bonus (mirror of app lib/social/bonus.ts §6a) ──────────────────
 // base + min(maxBonus, perHead × co-completers). Keep in sync with the app +
@@ -59,10 +73,13 @@ const BONUS_DEFAULTS = { perHead: 5, maxBonus: 30 };
 // Each category exposes the ways its goal can be measured, with sensible step
 // sizes + units. The goal string is generated from {measure, target, unit, days}
 // — this also seeds the real rule (kind/target) when the backend lands.
+// `noPool: true` — the pool engine sums a metric across the group (steps, km,
+// sessions); "different days" and "categories" aren't summable, so offering
+// them pooled would silently create a challenge that plays as something else.
 const MEASURES = {
 	gym: [
 		{ id: 'checkins',      label: 'Check-ins',     unit: 'check-ins', step: 1, min: 1, max: 14, default: 3, window: true },
-		{ id: 'distinct_days', label: 'Different days', unit: 'days',     step: 1, min: 1, max: 7,  default: 5 },
+		{ id: 'distinct_days', label: 'Different days', unit: 'days',     step: 1, min: 1, max: 7,  default: 5, noPool: true },
 	],
 	walking: [
 		{ id: 'steps_week', label: 'Total steps', unit: 'steps', step: 5000, min: 10000, max: 200000, default: 35000 },
@@ -78,7 +95,7 @@ const MEASURES = {
 	],
 	multi: [
 		{ id: 'sessions',   label: 'Sessions',   unit: 'sessions',   step: 1, min: 1, max: 14, default: 3 },
-		{ id: 'categories', label: 'Categories', unit: 'categories', step: 1, min: 2, max: 5,  default: 4 },
+		{ id: 'categories', label: 'Categories', unit: 'categories', step: 1, min: 2, max: 5,  default: 4, noPool: true },
 	],
 };
 
@@ -90,8 +107,13 @@ const WINDOWS = [
 	{ id: 'after_6pm',  label: 'After 6pm',  phrase: 'after 6pm' },
 ];
 
-const measuresFor = (cat) => MEASURES[cat] ?? MEASURES.gym;
-const measureCfg = (cat, id) => measuresFor(cat).find((m) => m.id === id) ?? measuresFor(cat)[0];
+const measuresFor = (cat, mode) => {
+	const all = MEASURES[cat] ?? MEASURES.gym;
+	return mode === 'pooled' ? all.filter((m) => !m.noPool) : all;
+};
+// Unfiltered lookup — goal text must resolve even for rows saved before the
+// pooled exclusions existed.
+const measureCfg = (cat, id) => (MEASURES[cat] ?? MEASURES.gym).find((m) => m.id === id) ?? (MEASURES[cat] ?? MEASURES.gym)[0];
 
 /** Structured defaults for a category+measure (target, unit, days, window). */
 function measureDefaults(cat, measureId) {
@@ -105,7 +127,10 @@ function measureDefaults(cat, measureId) {
 	};
 }
 
-/** Human goal string generated from the structured fields. */
+/** Human goal string generated from the structured fields. NEVER names a
+ *  timeframe — the template's run length is the single source of timing (shown
+ *  as a countdown in the app); "in total" marks cumulative goals so a bare
+ *  number isn't read as a single effort. */
 function goalText(d) {
 	const m = measureCfg(d.category, d.measure);
 	const v = d.target;
@@ -113,18 +138,18 @@ function goalText(d) {
 	const win = m.window && d.window && d.window !== 'any'
 		? ' ' + (WINDOWS.find((w) => w.id === d.window)?.phrase ?? '')
 		: '';
-	if (m.distance) return `${d.category === 'running' ? 'Run' : 'Cycle'} ${v}${d.unit} this week`;
+	if (m.distance) return `${d.category === 'running' ? 'Run' : 'Cycle'} ${v}${d.unit} in total`;
 	switch (m.id) {
-		case 'checkins':      return `Check in ${v}×${win} this week`;
-		case 'distinct_days': return `Check in on ${v} different ${v === 1 ? 'day' : 'days'} this week`;
-		case 'steps_week':    return `${v.toLocaleString()} steps this week`;
+		case 'checkins':      return `Check in ${v}×${win}`;
+		case 'distinct_days': return `Check in on ${v} different ${v === 1 ? 'day' : 'days'}`;
+		case 'steps_week':    return `${v.toLocaleString()} steps in total`;
 		case 'steps_day':     return win
 			? `${v.toLocaleString()} steps${win}, ${d.days} ${d.days === 1 ? 'day' : 'days'}`
 			: `${v.toLocaleString()} steps a day, ${d.days} ${d.days === 1 ? 'day' : 'days'}`;
-		case 'runs':       return `Log ${v} ${v === 1 ? 'run' : 'runs'} this week`;
-		case 'rides':      return `Log ${v} ${v === 1 ? 'ride' : 'rides'} this week`;
-		case 'sessions':   return `Log ${v} ${v === 1 ? 'session' : 'sessions'} this week`;
-		case 'categories': return `Train in ${v} categories this week`;
+		case 'runs':       return `Log ${v} ${v === 1 ? 'run' : 'runs'}`;
+		case 'rides':      return `Log ${v} ${v === 1 ? 'ride' : 'rides'}`;
+		case 'sessions':   return `Log ${v} ${v === 1 ? 'session' : 'sessions'}`;
+		case 'categories': return `Try ${v} different activities`;
 		default:           return `${v} ${m.unit}`;
 	}
 }
@@ -175,10 +200,20 @@ function Stepper({ value, onChange, step = 5, min = 0, max = 999, suffix, format
 function TemplateEditor({ draft, setDraft, onSave, onClose }) {
 	if (!draft) return null;
 	const canSave = draft.title.trim().length > 0;
-	const set = (patch) => setDraft({ ...draft, ...patch });
-	const measures = measuresFor(draft.category);
+	// Every change re-fits the run length: a goal needing N days can't sit on a
+	// shorter clock, so bumping the target auto-bumps an infeasible duration.
+	const set = (patch) => {
+		const next = { ...draft, ...patch };
+		const minH = minHoursFor(next);
+		if ((next.durationHours ?? 168) < minH) {
+			next.durationHours = DURATION_PRESETS.find((p) => p.hours >= minH)?.hours ?? minH;
+		}
+		setDraft(next);
+	};
+	const measures = measuresFor(draft.category, draft.mode);
 	const m = measureCfg(draft.category, draft.measure);
 	const stepsLike = m.id === 'steps_week' || m.id === 'steps_day';
+	const minHours = minHoursFor(draft);
 
 	return (
 		<div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -236,7 +271,14 @@ function TemplateEditor({ draft, setDraft, onSave, onClose }) {
 								return (
 									<button
 										key={opt.id}
-										onClick={() => set({ mode: opt.id })}
+										onClick={() => set({
+											mode: opt.id,
+											// A measure that can't pool (different days, categories)
+											// falls back to the first poolable one for this category.
+											...(opt.id === 'pooled' && m.noPool
+												? measureDefaults(draft.category, measuresFor(draft.category, 'pooled')[0]?.id)
+												: {}),
+										})}
 										className={`flex-1 rounded-xl border px-4 py-3 text-left transition-all ${
 											on ? 'border-[#E8D200] bg-[#E8D200] text-[#0a0a0a]' : 'border-[#E6E6E1] bg-[#F4F4F1] text-[#666666] hover:border-[#E8D200]/40'
 										}`}
@@ -344,8 +386,41 @@ function TemplateEditor({ draft, setDraft, onSave, onClose }) {
 						{/* Generated goal preview */}
 						<div className="flex items-center gap-2 mt-1">
 							<span className="text-[10px] uppercase tracking-[0.3em] text-[#BBBBBB] font-black">Shows as</span>
-							<span className="text-sm text-[#1A1A1A]">“{goalTextFor(draft)}”</span>
+							<span className="text-sm text-[#1A1A1A]">
+								“{goalTextFor(draft)}” <span className="text-[#999999]">· {durationPresetLabel(draft.durationHours ?? 168)}</span>
+							</span>
 						</div>
+					</div>
+
+					{/* Run length — part of the design: price the tier/points against THIS
+					    window. Chips too short for a day-based goal are disabled. */}
+					<div className="flex flex-col gap-2">
+						<span className="text-[10px] uppercase tracking-[0.35em] text-[#BBBBBB] font-black">Run length</span>
+						<div className="flex flex-wrap gap-2">
+							{DURATION_PRESETS.map((p) => {
+								const on = (draft.durationHours ?? 168) === p.hours;
+								const tooShort = p.hours < minHours;
+								return (
+									<button
+										key={p.hours}
+										disabled={tooShort}
+										onClick={() => set({ durationHours: p.hours })}
+										className={`rounded-full border px-4 py-2 text-xs font-medium transition-all ${
+											on ? 'border-[#E8D200] bg-[#E8D200] text-[#0a0a0a]'
+											: tooShort ? 'border-[#EFEFEC] bg-[#FAFAF8] text-[#D5D5D0] cursor-not-allowed line-through'
+											: 'border-[#E6E6E1] bg-[#F4F4F1] text-[#666666] hover:border-[#E8D200]/40'
+										}`}
+									>
+										{p.label}
+									</button>
+								);
+							})}
+						</div>
+						{minHours > 0 && (
+							<span className="text-[11px] text-[#AAAAAA]">
+								This goal spans {minHours / 24} days, so it needs a run of at least {durationPresetLabel(DURATION_PRESETS.find((p) => p.hours >= minHours)?.hours ?? minHours)}.
+							</span>
+						)}
 					</div>
 
 					<div className="flex flex-col gap-2">
@@ -392,7 +467,7 @@ function TemplateEditor({ draft, setDraft, onSave, onClose }) {
 export default function SharedChallengesPanel() {
 	const toast = useToast();
 	const [bonus, setBonus] = useState({ ...BONUS_DEFAULTS });
-	const [timer, setTimer] = useState({ durationOptions: [48, 72, 168], defaultDurationHours: 72, acceptWindowHours: 48, challengeCap: 3 });
+	const [timer, setTimer] = useState({ acceptWindowHours: 48, challengeCap: 3 });
 	const [templates, setTemplates] = useState([]);
 	const [draft, setDraft] = useState(null);
 	const [loading, setLoading] = useState(true);
@@ -410,12 +485,7 @@ export default function SharedChallengesPanel() {
 		]);
 		if (cfg) {
 			setBonus({ perHead: cfg.per_head, maxBonus: cfg.max_bonus });
-			setTimer({
-				durationOptions: Array.isArray(cfg.duration_options) ? cfg.duration_options : [48, 72, 168],
-				defaultDurationHours: cfg.default_duration_hours,
-				acceptWindowHours: cfg.accept_window_hours,
-				challengeCap: cfg.challenge_cap,
-			});
+			setTimer({ acceptWindowHours: cfg.accept_window_hours, challengeCap: cfg.challenge_cap });
 		}
 		if (!tErr && tmpls) setTemplates(tmpls.map(dbToDraft));
 		setLoading(false);
@@ -430,24 +500,8 @@ export default function SharedChallengesPanel() {
 		if (error) toast.error('Could not save config');
 	}
 
-	// ── Timer config helpers ──
-	const toggleDuration = (hours) => {
-		setTimer((t) => {
-			let opts = t.durationOptions.includes(hours)
-				? t.durationOptions.filter((h) => h !== hours)
-				: [...t.durationOptions, hours].sort((a, b) => a - b);
-			if (opts.length === 0) return t; // keep at least one
-			let def = opts.includes(t.defaultDurationHours) ? t.defaultDurationHours : opts[0];
-			patchConfig({ duration_options: opts, default_duration_hours: def });
-			return { ...t, durationOptions: opts, defaultDurationHours: def };
-		});
-	};
-	const setDefaultDuration = (hours) => {
-		setTimer((t) => { patchConfig({ default_duration_hours: hours }); return { ...t, defaultDurationHours: hours }; });
-	};
-
 	const openNew = () =>
-		setDraft({ id: '', category: 'gym', title: '', tier: 'easy', basePoints: 25, active: true, mode: 'solo', ...measureDefaults('gym') });
+		setDraft({ id: '', category: 'gym', title: '', tier: 'easy', basePoints: 25, active: true, mode: 'solo', durationHours: 72, ...measureDefaults('gym') });
 
 	const saveTemplate = async (t) => {
 		const goal = goalTextFor(t);
@@ -519,37 +573,12 @@ export default function SharedChallengesPanel() {
 					<Clock size={12} /> Timer
 				</span>
 				<p className="text-[11px] text-[#AAAAAA] mt-2 max-w-2xl">
-					The clock starts once everyone accepts. Choose which run lengths members can pick, the default, the accept window, and how many challenges someone can run at once.
+					The clock starts once everyone accepts. Each template sets its own run length (edit it on the template) — here you configure the accept window and how many challenges someone can run at once.
 				</p>
 			</div>
 
 			<div className="rounded-3xl border border-[#E6E6E1] bg-white overflow-hidden mb-12">
-				<div className="px-8 py-6">
-					<div className="text-base font-light text-[#1A1A1A] mb-1">Run-length options</div>
-					<div className="text-[11px] text-[#AAAAAA] mb-4">Tap a default below; toggle which are offered.</div>
-					<div className="flex flex-wrap gap-2">
-						{DURATION_PRESETS.map((d) => {
-							const on = timer.durationOptions.includes(d.hours);
-							const isDefault = timer.defaultDurationHours === d.hours;
-							return (
-								<button
-									key={d.hours}
-									onClick={() => (on ? setDefaultDuration(d.hours) : toggleDuration(d.hours))}
-									onDoubleClick={() => toggleDuration(d.hours)}
-									title={on ? 'Click: make default · Double-click: remove' : 'Click: enable'}
-									className={`rounded-full border px-4 py-2 text-xs font-medium transition-all ${
-										isDefault ? 'border-[#E8D200] bg-[#E8D200] text-[#0a0a0a]'
-										: on ? 'border-[#E8D200]/40 bg-[#E8D200]/10 text-[#8a7600]'
-										: 'border-[#E6E6E1] bg-[#F4F4F1] text-[#999999] hover:border-[#E8D200]/40'
-									}`}
-								>
-									{d.label}{isDefault ? ' · default' : ''}
-								</button>
-							);
-						})}
-					</div>
-				</div>
-				<div className="flex items-center justify-between px-8 py-6 border-t border-[#EFEFEC]">
+				<div className="flex items-center justify-between px-8 py-6">
 					<div>
 						<div className="text-base font-light text-[#1A1A1A]">Accept window</div>
 						<div className="text-[11px] text-[#AAAAAA] mt-0.5">How long invitees have to respond (hours)</div>
@@ -596,6 +625,9 @@ export default function SharedChallengesPanel() {
 								{t.mode === 'pooled' && (
 									<span className="inline-flex items-center rounded-full border border-[#E8D200]/30 bg-[#E8D200]/10 px-2.5 py-0.5 text-[9px] font-black uppercase tracking-[0.25em] text-[#8a7600]">Pooled</span>
 								)}
+								<span className="inline-flex items-center gap-1 text-[11px] text-[#999999]">
+									<Clock size={11} /> {durationPresetLabel(t.durationHours ?? 168)}
+								</span>
 								<span className="text-[12px] text-[#8a7600]">+{t.basePoints} pts</span>
 							</div>
 						</div>
