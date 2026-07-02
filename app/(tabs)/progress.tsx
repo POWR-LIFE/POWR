@@ -28,6 +28,7 @@ import { useWalkingProgress } from '@/hooks/useWalkingProgress';
 import { fetchWeeklySleepHours } from '@/lib/api/activity';
 import { fetchProfile } from '@/lib/api/user';
 import { ALL_PROVIDER_META } from '@/lib/health/providers';
+import { applyDetectedActivitySwap } from '@/lib/weeklyActivities';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -153,8 +154,13 @@ export default function ProgressScreen() {
     if (tab) setActiveTab(tab);
   }, [tab]);
   
+  // Mirror the home screen: if health data detected an activity outside the
+  // user's 3 preferences, swap it in for the weakest preference so both
+  // surfaces show the same 3 activities.
+  const { types: displayTypes } = applyDetectedActivitySwap(activePrefs, weeklyMetrics);
+
   // Build dynamic radial data
-  const radialData = activePrefs.map((type, idx) => {
+  const radialData = displayTypes.map((type) => {
     const config = ACTIVITIES[type];
     if (type === 'walking') {
       return {
