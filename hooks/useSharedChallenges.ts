@@ -51,10 +51,22 @@ const FALLBACK_DURATIONS: DurationOption[] = [
   { label: '1 week', hours: 168 },
 ];
 
-function durationLabel(h: number): string {
+export function durationLabel(h: number): string {
   if (h % 168 === 0) return `${h / 168} week${h / 168 === 1 ? '' : 's'}`;
   if (h % 24 === 0) return `${h / 24} day${h / 24 === 1 ? '' : 's'}`;
   return `${h}h`;
+}
+
+/** Shortest run a goal can fit in: day-based goals ("10,000 steps a day, 4
+ *  days", "check in on 7 different days") need at least that many days on the
+ *  clock — offering a shorter run would create an unwinnable challenge. */
+function templateMinHours(measure: any): number | undefined {
+  if (!measure) return undefined;
+  const days = Math.max(
+    Number(measure.days) || 0,
+    measure.measure === 'distinct_days' ? Number(measure.target) || 0 : 0,
+  );
+  return days > 0 ? days * 24 : undefined;
 }
 
 function humanizeRemaining(endsAt?: string | null): string {
@@ -79,6 +91,7 @@ function mapTemplateRow(row: any): ChallengeTemplate {
     goal: row.goal,
     basePoints: row.base_points,
     mode: row.mode === 'pooled' ? 'pooled' : 'solo',
+    minHours: templateMinHours(row.measure),
   };
 }
 

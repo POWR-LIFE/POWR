@@ -35,6 +35,8 @@ export default function ChallengesScreen() {
     search,
     sendRequest,
     bonusConfig,
+    durations,
+    defaultDurationHours,
     openChallenges,
     openCount,
     cap,
@@ -152,6 +154,8 @@ export default function ChallengesScreen() {
         search={search}
         sendRequest={sendRequest}
         bonusConfig={bonusConfig}
+        durations={durations}
+        defaultDurationHours={defaultDurationHours}
         plateFull={atCap}
         openCount={openCount}
         cap={cap}

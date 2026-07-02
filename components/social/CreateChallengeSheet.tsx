@@ -54,9 +54,13 @@ export interface CreateChallengeSheetProps {
   /** Send a friend request to someone found via search. */
   sendRequest: (friend: Friend) => void;
   onClose: () => void;
-  onCreate: (input: { templateId: string; friendIds: string[] }) => void | Promise<unknown>;
+  onCreate: (input: { templateId: string; friendIds: string[]; durationHours?: number }) => void | Promise<unknown>;
   /** Preselect this template when the sheet opens (e.g. tapped from the browse carousel). */
   initialTemplateId?: string | null;
+  /** Run-length menu (admin-configurable), ascending. Options too short for the
+   *  selected goal (template.minHours) are hidden — you can't pick an unwinnable clock. */
+  durations?: { label: string; hours: number }[];
+  defaultDurationHours?: number;
   /** Group-bonus config (admin-configurable) for the live "+X each" preview. */
   bonusConfig?: { perHead: number; maxBonus: number };
   /** Every concurrency slot is full — show the "finish or drop one" state instead. */
@@ -78,6 +82,8 @@ export function CreateChallengeSheet({
   onClose,
   onCreate,
   initialTemplateId,
+  durations = [],
+  defaultDurationHours = 72,
   bonusConfig,
   plateFull = false,
   openCount = 0,
@@ -124,6 +130,19 @@ export function CreateChallengeSheet({
     [templateId, templates],
   );
 
+  // ── Run length ── one visible choice, one source of timing truth. Options
+  // that can't fit the goal are hidden; if the picked one becomes infeasible
+  // after a template switch, fall forward to the shortest that fits.
+  const [durationHours, setDurationHours] = useState<number | null>(null);
+  const feasibleDurations = useMemo(
+    () => durations.filter((d) => d.hours >= (template?.minHours ?? 0)),
+    [durations, template],
+  );
+  const selectedDuration =
+    feasibleDurations.find((d) => d.hours === durationHours) ??
+    feasibleDurations.find((d) => d.hours >= defaultDurationHours) ??
+    feasibleDurations[0];
+
   // Group = you + invited friends. Best-case bonus assumes everyone finishes.
   const groupSize = selected.size + 1;
   const projectedBonus = groupBonus(selected.size, bonusConfig); // co-completers = invited friends
@@ -158,6 +177,7 @@ export function CreateChallengeSheet({
   const reset = () => {
     setSelected(new Set());
     setTemplateId(templates[0]?.id ?? null);
+    setDurationHours(null);
     setQuery('');
     setResults([]);
     setRequested(new Set());
@@ -173,7 +193,7 @@ export function CreateChallengeSheet({
     if (!template || selected.size === 0 || submitting) return;
     setSubmitting(true);
     try {
-      await onCreate({ templateId: template.id, friendIds: [...selected] });
+      await onCreate({ templateId: template.id, friendIds: [...selected], durationHours: selectedDuration?.hours });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       reset();
       onClose();
@@ -189,7 +209,7 @@ export function CreateChallengeSheet({
     const url = `https://powr.life/app?challenge=${template.id}`;
     try {
       await Share.share({
-        message: `Join me on POWR: "${template.title}" — ${template.goal}. ${url}`,
+        message: `Join me on POWR: "${template.title}" — ${template.goal}${selectedDuration ? ` in ${selectedDuration.label}` : ''}. ${url}`,
         url,
       });
     } catch {
@@ -392,6 +412,33 @@ export function CreateChallengeSheet({
               </View>
             )}
 
+            {/* ── How long ── the ONLY place timing is chosen; goals never name a
+                timeframe, so this row + the live countdown are the whole story. */}
+            {feasibleDurations.length > 0 && (
+              <View style={styles.section}>
+                <View style={styles.sectionHeaderRow}>
+                  <Text style={styles.sectionLabel}>How long</Text>
+                  <Text style={styles.capHint}>Clock starts when everyone’s in</Text>
+                </View>
+                <View style={styles.durationRow}>
+                  {feasibleDurations.map((d) => {
+                    const active = d.hours === selectedDuration?.hours;
+                    return (
+                      <Pressable
+                        key={d.hours}
+                        onPress={() => { Haptics.selectionAsync(); setDurationHours(d.hours); }}
+                        style={[styles.durationChip, active && styles.durationChipActive]}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: active }}
+                      >
+                        <Text style={[styles.durationText, active && styles.durationTextActive]}>{d.label}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
+            )}
+
             {/* ── Invite friends ── */}
             <View style={styles.section}>
               <View style={styles.sectionHeaderRow}>
@@ -544,6 +591,16 @@ const styles = StyleSheet.create({
   chipFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   chipPts: { fontFamily: fontFamily.semiBold, fontSize: 13, color: GOLD },
   chipTier: { fontFamily: fontFamily.medium, fontSize: 9, letterSpacing: 1, textTransform: 'uppercase' },
+
+  // run-length chips
+  durationRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  durationChip: {
+    paddingVertical: 8, paddingHorizontal: 14, borderRadius: 100,
+    backgroundColor: CARD_BG, borderWidth: 1, borderColor: BORDER,
+  },
+  durationChipActive: { backgroundColor: GOLD, borderColor: GOLD },
+  durationText: { fontFamily: fontFamily.medium, fontSize: 12.5, color: TEXT },
+  durationTextActive: { color: '#0a0a0a' },
 
   // selected-challenge confirmation (browse-card entry)
   selectedCard: {
