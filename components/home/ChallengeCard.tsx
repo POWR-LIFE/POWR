@@ -228,23 +228,23 @@ function Celebration({
   onDone: () => void;
   onShare?: () => void;
 }) {
-  const trophyScale = useSharedValue(0);
-  const trophyRot = useSharedValue(-20);
+  const emblemScale = useSharedValue(0);
+  const emblemRot = useSharedValue(-15);
+  const ringPulse = useSharedValue(0);
   const floatY = useSharedValue(0);
   const titleA = useSharedValue(0);
   const subA = useSharedValue(0);
   const ptsA = useSharedValue(0);
   const actionsA = useSharedValue(0);
-  const glowOpacity = useSharedValue(0.07);
   const [count, setCount] = useState(0);
 
   useEffect(() => {
-    glowOpacity.value = withRepeat(withSequence(withTiming(0.18, { duration: 1000 }), withTiming(0.07, { duration: 1000 })), -1, false);
-    trophyScale.value = withDelay(150, withSequence(
-      withTiming(1.2, { duration: 360, easing: Easing.out(Easing.back(2)) }),
-      withTiming(1, { duration: 240 })
+    emblemScale.value = withDelay(150, withSequence(
+      withTiming(1.12, { duration: 420, easing: Easing.out(Easing.back(1.8)) }),
+      withTiming(1, { duration: 260 }),
     ));
-    trophyRot.value = withDelay(150, withTiming(0, { duration: 600, easing: Easing.out(Easing.back(1.5)) }));
+    emblemRot.value = withDelay(150, withTiming(0, { duration: 600, easing: Easing.out(Easing.back(1.5)) }));
+    ringPulse.value = withDelay(700, withRepeat(withTiming(1, { duration: 2200, easing: Easing.out(Easing.quad) }), -1, false));
     floatY.value = withDelay(800, withRepeat(withSequence(withTiming(-6, { duration: 1250 }), withTiming(0, { duration: 1250 })), -1, false));
     titleA.value = withDelay(450, withTiming(1, { duration: 400 }));
     subA.value = withDelay(550, withTiming(1, { duration: 400 }));
@@ -261,13 +261,16 @@ function Celebration({
     };
     const startTimer = setTimeout(() => { raf = requestAnimationFrame(tick); }, 700);
     return () => {
-      cancelAnimation(glowOpacity); cancelAnimation(floatY);
+      cancelAnimation(floatY); cancelAnimation(ringPulse);
       clearTimeout(startTimer); if (raf) cancelAnimationFrame(raf);
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const glowStyle = useAnimatedStyle(() => ({ opacity: glowOpacity.value }));
-  const trophyStyle = useAnimatedStyle(() => ({ transform: [{ scale: trophyScale.value }, { rotate: `${trophyRot.value}deg` }, { translateY: floatY.value }] }));
+  const emblemStyle = useAnimatedStyle(() => ({ transform: [{ scale: emblemScale.value }, { rotate: `${emblemRot.value}deg` }, { translateY: floatY.value }] }));
+  const haloStyle = useAnimatedStyle(() => ({
+    opacity: (1 - ringPulse.value) * 0.5,
+    transform: [{ scale: 1 + ringPulse.value * 0.6 }],
+  }));
   const titleStyle = useAnimatedStyle(() => ({ opacity: titleA.value, transform: [{ translateY: (1 - titleA.value) * 12 }] }));
   const subStyle = useAnimatedStyle(() => ({ opacity: subA.value, transform: [{ translateY: (1 - subA.value) * 12 }] }));
   const ptsStyle = useAnimatedStyle(() => ({ opacity: ptsA.value, transform: [{ translateY: (1 - ptsA.value) * 12 }] }));
@@ -275,21 +278,26 @@ function Celebration({
 
   return (
     <View style={styles.cel}>
-      <Animated.View style={[styles.celGlow, glowStyle]} />
       <BurstRing delay={50} color={GOLD} opacity={1} />
       <BurstRing delay={200} color={ORANGE} opacity={0.6} />
       <BurstRing delay={350} color={GOLD} opacity={0.3} />
       <ParticleBurst />
 
-      <Animated.Text style={[styles.celTrophy, trophyStyle]}>🏆</Animated.Text>
+      <Animated.View style={[styles.celEmblem, emblemStyle]}>
+        <Animated.View style={[styles.celHalo, haloStyle]} />
+        <Ionicons name="trophy" size={36} color={GOLD} />
+      </Animated.View>
       <Animated.Text style={[styles.celTitle, titleStyle]}>{challenge.title} complete.</Animated.Text>
       <Animated.Text style={[styles.celSub, subStyle]}>{challenge.completeSubtitle}</Animated.Text>
 
-      <Animated.View style={[styles.celPtsWrap, ptsStyle]}>
-        <Text style={styles.celPts}>{count.toLocaleString()}</Text>
-        <Text style={styles.celPtsUnit}>pts</Text>
+      <Animated.View style={[styles.celPtsSection, ptsStyle]}>
+        <View style={styles.celPtsAccent} />
+        <View style={styles.celPtsWrap}>
+          <Text style={styles.celPts}>{count.toLocaleString()}</Text>
+          <Text style={styles.celPtsUnit}>pts</Text>
+        </View>
+        <Text style={styles.celPtsLabel}>POWR points earned</Text>
       </Animated.View>
-      <Animated.Text style={[styles.celPtsLabel, ptsStyle]}>POWR points earned</Animated.Text>
 
       <Animated.View style={[styles.celDivider, actionsStyle]} />
       <Animated.Text style={[styles.celTotal, actionsStyle]}>
@@ -301,7 +309,7 @@ function Celebration({
           <Text style={styles.celBtnDoneText}>Done</Text>
         </Pressable>
         <Pressable style={styles.celBtnShare} onPress={onShare}>
-          <Ionicons name="share-outline" size={13} color={MUTED} />
+          <Ionicons name="share-outline" size={13} color={SECONDARY} />
           <Text style={styles.celBtnShareText}>Share</Text>
         </Pressable>
       </Animated.View>
@@ -346,6 +354,7 @@ export function ChallengeCard({ challenges, totalBalance = 0, onShare, celebrate
   const active = challenges[Math.min(activeIdx, challenges.length - 1)];
   const tier = TIER_STYLE[active.tier] ?? TIER_STYLE.medium;
   const complete = active.completed || active.fraction >= 1;
+  const celebrating = celebratingId === active.id;
 
   return (
     <View>
@@ -356,66 +365,69 @@ export function ChallengeCard({ challenges, totalBalance = 0, onShare, celebrate
         ))}
       </ScrollView>
 
-      {/* Card */}
-      <Animated.View style={[styles.card, cardStyle]}>
-        <DayDashes streak={active.overallStreak} />
-
-        {/* Badge row + points */}
-        <View style={styles.header}>
-          <View style={styles.tags}>
-            <View style={styles.tag}>
-              <Text style={styles.tagText}>WEEKLY</Text>
-            </View>
-            <View style={[styles.tag, { borderColor: tier.border, backgroundColor: tier.bg }]}>
-              <Text style={[styles.tagText, { color: tier.color }]}>{active.tier.toUpperCase()}</Text>
-            </View>
-          </View>
-          <View style={styles.points}>
-            <Text style={styles.pointsValue}>+{active.points}</Text>
-            <Text style={styles.pointsLabel}>pts</Text>
-          </View>
-        </View>
-
-        {/* Title + description */}
-        <View style={styles.titleWrap}>
-          <Text style={styles.chTitle}>{active.title}</Text>
-          <Text style={styles.chDesc}>{active.description}</Text>
-        </View>
-
-        {/* Progress */}
-        <View style={styles.progSection}>
-          <View style={styles.progMeta}>
-            <Text style={styles.progLabel}>{active.unit}</Text>
-            <Text style={styles.progValue}>
-              {active.displayValue.toLocaleString()} / {active.displayGoal.toLocaleString()}
-            </Text>
-          </View>
-          <ProgressBar fraction={active.fraction} complete={complete} />
-        </View>
-
-        {/* Weekly streak */}
-        <DayDots streak={active.streak} todayIndex={active.todayIndex} />
-
-        {/* Time remaining */}
-        <View style={styles.timeRow}>
-          <Text style={styles.timeLeft}>{active.expiresIn}</Text>
-        </View>
-
-        {/* Share — only once the challenge is complete and there's a card to share */}
-        {complete && (
-          <Pressable style={styles.btnShare} onPress={() => onShare?.(active)}>
-            <Ionicons name="share-social-outline" size={13} color={SECONDARY} />
-            <Text style={styles.btnShareText}>Share challenge</Text>
-          </Pressable>
-        )}
-
-        {celebratingId === active.id && (
+      {/* Card — the celebration replaces the content in flow (not an absolute
+          overlay) so the card grows to fit it instead of clipping. */}
+      <Animated.View style={[styles.card, celebrating && styles.cardCelebrating, cardStyle]}>
+        {celebrating ? (
           <Celebration
             challenge={active}
             totalBalance={totalBalance}
             onShare={() => onShare?.(active)}
             onDone={() => { dismissed.current.add(active.id); setCelebratingId(null); }}
           />
+        ) : (
+          <>
+            <DayDashes streak={active.overallStreak} />
+
+            {/* Badge row + points */}
+            <View style={styles.header}>
+              <View style={styles.tags}>
+                <View style={styles.tag}>
+                  <Text style={styles.tagText}>WEEKLY</Text>
+                </View>
+                <View style={[styles.tag, { borderColor: tier.border, backgroundColor: tier.bg }]}>
+                  <Text style={[styles.tagText, { color: tier.color }]}>{active.tier.toUpperCase()}</Text>
+                </View>
+              </View>
+              <View style={styles.points}>
+                <Text style={styles.pointsValue}>+{active.points}</Text>
+                <Text style={styles.pointsLabel}>pts</Text>
+              </View>
+            </View>
+
+            {/* Title + description */}
+            <View style={styles.titleWrap}>
+              <Text style={styles.chTitle}>{active.title}</Text>
+              <Text style={styles.chDesc}>{active.description}</Text>
+            </View>
+
+            {/* Progress */}
+            <View style={styles.progSection}>
+              <View style={styles.progMeta}>
+                <Text style={styles.progLabel}>{active.unit}</Text>
+                <Text style={styles.progValue}>
+                  {active.displayValue.toLocaleString()} / {active.displayGoal.toLocaleString()}
+                </Text>
+              </View>
+              <ProgressBar fraction={active.fraction} complete={complete} />
+            </View>
+
+            {/* Weekly streak */}
+            <DayDots streak={active.streak} todayIndex={active.todayIndex} />
+
+            {/* Time remaining */}
+            <View style={styles.timeRow}>
+              <Text style={styles.timeLeft}>{active.expiresIn}</Text>
+            </View>
+
+            {/* Share — only once the challenge is complete and there's a card to share */}
+            {complete && (
+              <Pressable style={styles.btnShare} onPress={() => onShare?.(active)}>
+                <Ionicons name="share-social-outline" size={13} color={SECONDARY} />
+                <Text style={styles.btnShareText}>Share challenge</Text>
+              </Pressable>
+            )}
+          </>
         )}
       </Animated.View>
     </View>
@@ -434,6 +446,7 @@ const styles = StyleSheet.create({
   pillTextOn: { color: CARD_BG },
 
   card: { backgroundColor: CARD_BG, borderRadius: 22, borderWidth: 1, borderColor: BORDER, padding: 20, overflow: 'hidden', position: 'relative' },
+  cardCelebrating: { padding: 0, backgroundColor: '#080808' },
 
   // day dashes (overall weekly activity, Mon–Sun)
   dashes: { flexDirection: 'row', gap: 6, alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
@@ -489,22 +502,24 @@ const styles = StyleSheet.create({
   btnShareText: { fontFamily: fontFamily.medium, fontSize: 12, letterSpacing: 1.5, color: SECONDARY, textTransform: 'uppercase' },
 
   // celebration
-  cel: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: 22, backgroundColor: '#080808', zIndex: 10, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24, paddingVertical: 28, overflow: 'hidden' },
-  celGlow: { position: 'absolute', top: '22%', width: 240, height: 240, borderRadius: 120, backgroundColor: GOLD },
-  celRing: { position: 'absolute', top: '38%', left: '50%', width: 90, height: 90, borderRadius: 45, borderWidth: 2 },
-  celTrophy: { fontSize: 56, marginBottom: 4 },
-  celTitle: { fontFamily: fontFamily.bold, fontSize: 24, color: TEXT, marginTop: 14, letterSpacing: -0.5, textAlign: 'center' },
-  celSub: { fontFamily: fontFamily.light, fontSize: 12, color: SECONDARY, marginTop: 5, textAlign: 'center', lineHeight: 18 },
-  celPtsWrap: { flexDirection: 'row', alignItems: 'flex-end', gap: 6, marginTop: 18 },
-  celPts: { fontFamily: fontFamily.extraLight, fontSize: 56, color: GOLD, letterSpacing: -2, lineHeight: 58 },
-  celPtsUnit: { fontFamily: fontFamily.semiBold, fontSize: 16, color: GOLD, opacity: 0.7, marginBottom: 6 },
-  celPtsLabel: { fontFamily: fontFamily.medium, fontSize: 10, color: MUTED, letterSpacing: 2, textTransform: 'uppercase', marginTop: 4 },
+  cel: { alignSelf: 'stretch', borderRadius: 22, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24, paddingVertical: 32, overflow: 'hidden' },
+  celRing: { position: 'absolute', top: '26%', left: '50%', width: 90, height: 90, borderRadius: 45, borderWidth: 2 },
+  celEmblem: { width: 88, height: 88, borderRadius: 44, borderWidth: 1.5, borderColor: 'rgba(232,210,0,0.55)', alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
+  celHalo: { position: 'absolute', width: 88, height: 88, borderRadius: 44, borderWidth: 1, borderColor: GOLD },
+  celTitle: { fontFamily: fontFamily.light, fontSize: 26, color: TEXT, marginTop: 18, letterSpacing: -0.5, textAlign: 'center' },
+  celSub: { fontFamily: fontFamily.light, fontSize: 12, color: SECONDARY, marginTop: 6, textAlign: 'center', lineHeight: 18 },
+  celPtsSection: { alignItems: 'center', marginTop: 24 },
+  celPtsAccent: { width: 28, height: 1, backgroundColor: 'rgba(232,210,0,0.4)', marginBottom: 10 },
+  celPtsWrap: { flexDirection: 'row', alignItems: 'flex-end', gap: 6 },
+  celPts: { fontFamily: fontFamily.extraLight, fontSize: 60, color: GOLD, letterSpacing: -2, lineHeight: 62 },
+  celPtsUnit: { fontFamily: fontFamily.semiBold, fontSize: 16, color: GOLD, opacity: 0.7, marginBottom: 8 },
+  celPtsLabel: { fontFamily: fontFamily.regular, fontSize: 9, color: SECONDARY, letterSpacing: 2.5, textTransform: 'uppercase', marginTop: 6 },
   celDivider: { width: 40, height: 1, backgroundColor: BORDER, marginVertical: 18 },
   celTotal: { fontFamily: fontFamily.regular, fontSize: 13, color: MUTED },
   celTotalNum: { color: SECONDARY, fontFamily: fontFamily.semiBold },
-  celActions: { flexDirection: 'row', gap: 8, marginTop: 20, alignSelf: 'stretch' },
-  celBtnDone: { flex: 1, paddingVertical: 13, backgroundColor: GOLD, borderRadius: 12, alignItems: 'center' },
-  celBtnDoneText: { fontFamily: fontFamily.bold, fontSize: 12, color: CARD_BG, letterSpacing: 0.5 },
-  celBtnShare: { paddingVertical: 13, paddingHorizontal: 16, borderWidth: 1, borderColor: BORDER, borderRadius: 12, flexDirection: 'row', alignItems: 'center', gap: 5 },
-  celBtnShareText: { fontFamily: fontFamily.regular, fontSize: 12, color: MUTED },
+  celActions: { flexDirection: 'row', gap: 8, marginTop: 22, alignSelf: 'stretch' },
+  celBtnDone: { flex: 1, paddingVertical: 14, backgroundColor: GOLD, borderRadius: 12, alignItems: 'center' },
+  celBtnDoneText: { fontFamily: fontFamily.bold, fontSize: 13, color: CARD_BG, letterSpacing: 0.5 },
+  celBtnShare: { paddingVertical: 14, paddingHorizontal: 18, borderWidth: 1, borderColor: BORDER, borderRadius: 12, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  celBtnShareText: { fontFamily: fontFamily.regular, fontSize: 13, color: SECONDARY },
 });
