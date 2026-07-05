@@ -8,6 +8,10 @@ const logAction = async (adminId, action, targetType, targetId, metadata = {}) =
     await supabase.from('admin_audit_log').insert({ admin_id: adminId, action, target_type: targetType, target_id: targetId, metadata });
 };
 
+// A config is a boolean flag when its stored value is exactly 'true'/'false' —
+// those render as a toggle switch instead of a free-text box.
+const isBool = (v) => { const s = String(v).trim().toLowerCase(); return s === 'true' || s === 'false'; };
+
 export default function SystemConfig() {
     const toast = useToast();
     const { user } = useAuth();
@@ -32,9 +36,7 @@ export default function SystemConfig() {
         }
     };
 
-    const handleSave = async (key) => {
-        const newValue = editing[key];
-        if (newValue === undefined) return;
+    const persist = async (key, newValue) => {
         setSaving(key);
         const oldConfig = configs.find(c => c.key === key);
         const { error } = await supabase
@@ -48,6 +50,15 @@ export default function SystemConfig() {
         setSaving(null);
         fetchConfigs();
     };
+
+    const handleSave = (key) => {
+        const newValue = editing[key];
+        if (newValue === undefined) return;
+        persist(key, newValue);
+    };
+
+    // Boolean flags flip + save in a single tap (no edit/confirm step).
+    const handleToggle = (key, nextValue) => persist(key, nextValue);
 
     const handleReset = (key) => {
         setEditing(prev => { const next = { ...prev }; delete next[key]; return next; });
@@ -82,6 +93,8 @@ export default function SystemConfig() {
                         {configs.map(c => {
                             const isEdited = editing[c.key] !== undefined;
                             const currentValue = isEdited ? editing[c.key] : c.value;
+                            const bool = isBool(c.value);
+                            const on = String(currentValue).trim().toLowerCase() === 'true';
                             return (
                                 <div key={c.key} className="flex items-center gap-10 p-10 group hover:bg-[#F4F4F1] transition-all">
                                     <div className="w-14 h-14 rounded-2xl bg-[#F4F4F1] border border-[#E6E6E1] flex items-center justify-center shrink-0">
@@ -92,27 +105,45 @@ export default function SystemConfig() {
                                         <div className="text-[10px] text-[#666666] font-black uppercase tracking-[0.3em]">{c.description || 'No description'}</div>
                                     </div>
                                     <div className="flex items-center gap-4 shrink-0">
-                                        <input
-                                            type="text"
-                                            value={currentValue}
-                                            onChange={e => setEditing(prev => ({ ...prev, [c.key]: e.target.value }))}
-                                            className={`w-32 h-12 px-4 bg-[#F4F4F1] border rounded-xl text-center font-mono text-sm text-[#1A1A1A] outline-none transition-all ${isEdited ? 'border-[#E8D200]/40' : 'border-[#E6E6E1]'}`}
-                                        />
-                                        {isEdited && (
+                                        {bool ? (
                                             <>
+                                                <span className={`text-[10px] font-black uppercase tracking-[0.3em] w-8 text-right ${on ? 'text-[#10B981]' : 'text-[#BBBBBB]'}`}>{on ? 'On' : 'Off'}</span>
                                                 <button
-                                                    onClick={() => handleSave(c.key)}
+                                                    type="button"
+                                                    role="switch"
+                                                    aria-checked={on}
                                                     disabled={saving === c.key}
-                                                    className="w-12 h-12 rounded-xl bg-[#10B981]/10 border border-[#10B981]/20 flex items-center justify-center text-[#10B981] hover:bg-[#10B981]/20 transition-all disabled:opacity-50"
+                                                    onClick={() => handleToggle(c.key, on ? 'false' : 'true')}
+                                                    className={`relative w-14 h-8 rounded-full transition-colors disabled:opacity-50 ${on ? 'bg-[#10B981]' : 'bg-[#D8D8D2]'}`}
                                                 >
-                                                    <Save size={16} />
+                                                    <span className={`absolute top-1 left-1 w-6 h-6 rounded-full bg-white shadow transition-transform ${on ? 'translate-x-6' : ''}`} />
                                                 </button>
-                                                <button
-                                                    onClick={() => handleReset(c.key)}
-                                                    className="w-12 h-12 rounded-xl bg-[#F4F4F1] border border-[#E6E6E1] flex items-center justify-center text-[#666666] hover:text-[#1A1A1A] transition-all"
-                                                >
-                                                    <RotateCcw size={16} />
-                                                </button>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <input
+                                                    type="text"
+                                                    value={currentValue}
+                                                    onChange={e => setEditing(prev => ({ ...prev, [c.key]: e.target.value }))}
+                                                    className={`w-32 h-12 px-4 bg-[#F4F4F1] border rounded-xl text-center font-mono text-sm text-[#1A1A1A] outline-none transition-all ${isEdited ? 'border-[#E8D200]/40' : 'border-[#E6E6E1]'}`}
+                                                />
+                                                {isEdited && (
+                                                    <>
+                                                        <button
+                                                            onClick={() => handleSave(c.key)}
+                                                            disabled={saving === c.key}
+                                                            className="w-12 h-12 rounded-xl bg-[#10B981]/10 border border-[#10B981]/20 flex items-center justify-center text-[#10B981] hover:bg-[#10B981]/20 transition-all disabled:opacity-50"
+                                                        >
+                                                            <Save size={16} />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleReset(c.key)}
+                                                            className="w-12 h-12 rounded-xl bg-[#F4F4F1] border border-[#E6E6E1] flex items-center justify-center text-[#666666] hover:text-[#1A1A1A] transition-all"
+                                                        >
+                                                            <RotateCcw size={16} />
+                                                        </button>
+                                                    </>
+                                                )}
                                             </>
                                         )}
                                     </div>

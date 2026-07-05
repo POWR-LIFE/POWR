@@ -18,7 +18,8 @@ export type NotificationType =
   | 'points_milestone'
   | 'inactivity_nudge'
   | 'session_completed'
-  | 'sleep_target_met';
+  | 'sleep_target_met'
+  | 'nearby_offer';
 
 export interface PointsMilestoneOptions {
   pointsToUnlock?: number;
@@ -317,6 +318,71 @@ export async function notifyCheckInAvailable(partnerName: string, locationId: st
     },
     trigger: null, // immediate
   });
+}
+
+// ---------------------------------------------------------------------------
+// Nearby offer — fired from the placement background task when a location
+// reward applies where the user physically is. Independent of the gym
+// check-in reminder above and of the 25 m points geofence.
+// ---------------------------------------------------------------------------
+
+const NEARBY_OFFER_PREF_KEY = '@powr/pref_nearby_offer';
+// Don't re-notify about the same placement within this window (a wake happens
+// ~every 15 min; without this the user would be pinged repeatedly in one visit).
+const NEARBY_OFFER_COOLDOWN_MS = 6 * 60 * 60 * 1000;
+const NEARBY_OFFER_LAST_FIRED_PREFIX = '@powr/nearby_offer_last_fired/';
+
+export async function cacheNearbyOfferPreference(enabled: boolean) {
+  await AsyncStorage.setItem(NEARBY_OFFER_PREF_KEY, enabled ? '1' : '0');
+}
+
+export async function isNearbyOfferEnabled(): Promise<boolean> {
+  try {
+    return (await AsyncStorage.getItem(NEARBY_OFFER_PREF_KEY)) !== '0';
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * Present a "reward nearby" notification. Returns true if it actually fired
+ * (so the caller can log the 'notified' funnel event only when shown). No-ops
+ * when the pref is off or the placement is still within its cooldown.
+ */
+export async function notifyNearbyOffer(opts: {
+  placementId: string;
+  rewardName: string;
+  brandName?: string | null;
+}): Promise<boolean> {
+  if (!(await isNearbyOfferEnabled())) return false;
+
+  const cooldownKey = `${NEARBY_OFFER_LAST_FIRED_PREFIX}${opts.placementId}`;
+  try {
+    const lastFiredRaw = await AsyncStorage.getItem(cooldownKey);
+    if (lastFiredRaw) {
+      const lastFired = parseInt(lastFiredRaw, 10);
+      if (Number.isFinite(lastFired) && Date.now() - lastFired < NEARBY_OFFER_COOLDOWN_MS) return false;
+    }
+    await AsyncStorage.setItem(cooldownKey, String(Date.now()));
+  } catch { /* non-fatal — fall through and notify */ }
+
+  const title = opts.brandName ? `${opts.brandName} is nearby` : 'A reward is nearby';
+  await Notifications.scheduleNotificationAsync({
+    identifier: `powr-nearby_offer-${opts.placementId}`,
+    content: {
+      title,
+      body: `${opts.rewardName} is boosted where you are right now — open to redeem.`,
+      data: {
+        type: 'nearby_offer',
+        route: '/(tabs)/rewards',
+        placementId: opts.placementId,
+      } satisfies NotificationPayload,
+      sound: 'default',
+      ...(Platform.OS === 'android' && { channelId: CHANNEL_DEFAULT }),
+    },
+    trigger: null, // immediate
+  });
+  return true;
 }
 
 export async function notifySessionCompleted(

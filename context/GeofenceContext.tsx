@@ -5,6 +5,7 @@ import * as TaskManager from 'expo-task-manager';
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { AppState, AppStateStatus, Platform } from 'react-native';
 import { supabase } from '@/lib/supabase';
+import { registerPlacementNotifyTask } from '@/lib/placementNotifyTask';
 
 // ─── Session-completed event bus ─────────────────────────────────────────────
 // Fires synchronously in the JS thread when a foreground claim succeeds.
@@ -1626,6 +1627,10 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
 
       // Register the boot re-arm task so monitoring resumes after a device restart.
       registerGeofenceBootRearm().catch(() => { /* non-fatal */ });
+
+      // Register the placement zone-entry notifier (independent of the points
+      // geofence — coarse location only, never feeds claim/points).
+      registerPlacementNotifyTask().catch(() => { /* non-fatal */ });
 
       // If the user is already inside a circle when monitoring starts, record it.
       // Scans the nationwide cache so this works wherever the user opens the app.

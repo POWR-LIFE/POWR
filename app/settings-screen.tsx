@@ -27,6 +27,7 @@ import { HealthProviderNotImplementedError } from '@/lib/health/providers';
 import { ACTIVITIES, type ActivityType } from '@/constants/activities';
 import { supabase } from '@/lib/supabase';
 import { getNotificationPreferences, updateNotificationPreferences } from '@/lib/api/notifications';
+import { cacheNearbyOfferPreference, isNearbyOfferEnabled } from '@/lib/notifications';
 import { requestBatteryOptimizationExemption } from '@/lib/batteryOptimization';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
@@ -102,6 +103,7 @@ export default function SettingsScreen() {
   const [notifRewards,    setNotifRewards]    = useState(true);
   const [notifFriends,    setNotifFriends]    = useState(meta.notif_friends ?? true);
   const [notifNews,       setNotifNews]       = useState(true);
+  const [notifNearby,     setNotifNearby]     = useState(true);
   const [emailWeekly,     setEmailWeekly]     = useState(true);
   const [shareActivity,   setShareActivity]   = useState(meta.share_activity ?? true);
   const [togetherEnabled, setTogetherEnabled] = useState(meta.together_enabled ?? true);
@@ -116,6 +118,8 @@ export default function SettingsScreen() {
       setNotifFriends(prefs.challenge_invite);
     });
   }, [user?.id]);
+  // Nearby-rewards push is stored locally (the background task reads it offline).
+  useEffect(() => { isNearbyOfferEnabled().then(setNotifNearby); }, []);
 
   // Persist a single metadata key when a toggle changes
   const persistMeta = async (key: string, value: boolean) => {
@@ -454,6 +458,13 @@ export default function SettingsScreen() {
               setNotifRewards(v);
               if (user?.id) updateNotificationPreferences(user.id, { reward_unlocked: v, points_milestone: v });
             }}
+          />
+          <RowToggle
+            icon="location-outline"
+            label="Nearby rewards"
+            sublabel="A nudge when a reward is boosted where you are"
+            value={notifNearby}
+            onValueChange={(v) => { setNotifNearby(v); cacheNearbyOfferPreference(v); }}
           />
           <RowToggle
             icon="people-outline"
