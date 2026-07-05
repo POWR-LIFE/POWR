@@ -503,7 +503,7 @@ function ImagePicker({ preview, uploading, onClick, aspect, label, isVideo }) {
         <div className="w-7 h-7 border-2 border-[#E8D200]/30 border-t-[#E8D200] rounded-full animate-spin" />
       ) : preview ? (
         isVideo
-          ? <video src={preview} className="w-full h-full object-cover" muted loop autoPlay playsInline />
+          ? <video src={preview} className="w-full h-full object-cover" muted loop autoPlay playsInline preload="auto" />
           : <img src={preview} alt="" className="w-full h-full object-contain" />
       ) : (
         <div className="flex flex-col items-center gap-3">

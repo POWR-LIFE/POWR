@@ -1099,7 +1099,7 @@ export default function RewardManager() {
                                 <div className="flex gap-6 items-center bg-white border border-[#E6E6E1] rounded-[2rem] p-6">
                                     <div className="w-32 h-20 rounded-2xl bg-[#F4F4F1] border border-[#E6E6E1] flex items-center justify-center overflow-hidden shrink-0">
                                         {formData.hero_video_url ? (
-                                            <video src={formData.hero_video_url} className="w-full h-full object-cover" muted loop autoPlay playsInline />
+                                            <video src={formData.hero_video_url} className="w-full h-full object-cover" muted loop autoPlay playsInline preload="auto" />
                                         ) : (
                                             <VideoIcon size={28} className="text-[#666666]" />
                                         )}

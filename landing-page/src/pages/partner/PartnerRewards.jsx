@@ -55,7 +55,7 @@ function ImagePicker({ label, preview, uploading, onFile, aspect = 'aspect-video
                     <div className="w-6 h-6 border-2 border-[#E8D200]/20 border-t-[#E8D200] rounded-full animate-spin" />
                 ) : preview ? (
                     isVideo
-                        ? <video src={preview} className="w-full h-full object-cover" muted loop autoPlay playsInline />
+                        ? <video src={preview} className="w-full h-full object-cover" muted loop autoPlay playsInline preload="auto" />
                         : <img src={preview} alt="" className="w-full h-full object-contain" />
                 ) : (
                     <div className="flex flex-col items-center gap-2">

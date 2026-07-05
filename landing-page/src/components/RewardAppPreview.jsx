@@ -329,7 +329,7 @@ function LogoBox({ logoUrl, fallback, size = 56 }) {
 
 // Hero media — video-first (plays the loop) with the still image as the fallback/poster.
 function HeroMedia({ videoUrl, imageUrl, style }) {
-  if (videoUrl) return <video src={videoUrl} muted loop autoPlay playsInline style={style} />;
+  if (videoUrl) return <video src={videoUrl} muted loop autoPlay playsInline preload="auto" style={style} />;
   if (imageUrl) return <img src={imageUrl} alt="" style={style} />;
   return null;
 }
