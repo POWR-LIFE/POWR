@@ -424,6 +424,20 @@ function buildMessage(
   return { to: token, ...base, ...(ttl != null ? { ttl } : {}) };
 }
 
+// Apply admin-level copy overrides (from notification_config) to a built message.
+// Overrides are static strings — dynamic payload values are not injected.
+function applyNotifOverrides(
+  msg: ExpoMessage,
+  config: { title_override?: string | null; body_override?: string | null } | null,
+): ExpoMessage {
+  if (!config) return msg;
+  return {
+    ...msg,
+    ...(config.title_override ? { title: config.title_override } : {}),
+    ...(config.body_override  ? { body:  config.body_override  } : {}),
+  };
+}
+
 // Consecutive distinct activity days ending today or yesterday, computed
 // straight from activity_sessions — the same basis the app's streak display
 // uses. We do NOT read user_streaks.current_streak: it's mutated by an
@@ -496,6 +510,21 @@ Deno.serve(async (req: Request) => {
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     );
+
+    // Check admin-level notification config (global kill-switch + copy overrides).
+    // Fetched once here; overrides are applied to every message built below.
+    const { data: notifConfig } = await supabase
+      .from('notification_config')
+      .select('enabled, title_override, body_override')
+      .eq('type', type)
+      .maybeSingle();
+
+    if (notifConfig?.enabled === false) {
+      return new Response(JSON.stringify({ skipped: true, reason: 'admin_disabled' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
 
     // Check notification preferences. session_upgraded (the 40-min tier bonus)
     // has no toggle of its own — it rides the session_completed preference so a
@@ -636,7 +665,8 @@ Deno.serve(async (req: Request) => {
     // push path.
     if (!FEED_EXCLUDED.has(type)) {
       try {
-        const sample = buildMessage(type, payload, '');
+        const rawSample = buildMessage(type, payload, '');
+        const sample = applyNotifOverrides(rawSample, notifConfig);
         const route =
           typeof sample.data?.route === 'string' ? sample.data.route : null;
         await supabase.from('user_activity').insert({
@@ -674,7 +704,7 @@ Deno.serve(async (req: Request) => {
     // swallowing every future push. Same single inline Expo round-trip as before —
     // no added latency for callers that await this (e.g. claim-points).
     const messages: ExpoMessage[] = tokens.map(({ expo_push_token }) =>
-      buildMessage(type, payload, expo_push_token),
+      applyNotifOverrides(buildMessage(type, payload, expo_push_token), notifConfig),
     );
 
     const result = await deliverExpoMessages(supabase, messages);
