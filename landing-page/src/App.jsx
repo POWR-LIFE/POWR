@@ -1,6 +1,7 @@
 import {
     Activity, Award,
     BarChart3,
+    Bell,
     Building2,
     CalendarDays,
     ChevronLeft, ChevronRight,
@@ -59,6 +60,7 @@ import SystemConfig from './pages/admin/SystemConfig';
 import UserManager from './pages/admin/UserManager';
 import UserProfile from './pages/admin/UserProfile';
 import WeeklyChallenges from './pages/admin/WeeklyChallenges';
+import NotificationManager from './pages/admin/NotificationManager';
 import AthleteSignup from './pages/AthleteSignup';
 import CookiePolicy from './pages/CookiePolicy';
 import DeleteAccount from './pages/DeleteAccount';
@@ -254,6 +256,7 @@ const PATH_LABELS = {
     support: 'Support Tickets',
     broadcast: 'Broadcast',
     campaigns: 'Campaigns',
+    notifications: 'Notifications',
     config: 'Config',
 };
 
@@ -851,9 +854,10 @@ const AdminLayout = ({ children }) => {
         { label: 'Redemptions', path: '/admin/redemptions', icon: Gift          },
         { label: 'Audit Log',   path: '/admin/audit',       icon: ScrollText    },
         { label: 'Support',     path: '/admin/support',     icon: MessageSquare },
-        { label: 'Broadcast',   path: '/admin/broadcast',   icon: Megaphone     },
-        { label: 'Campaigns',   path: '/admin/campaigns',   icon: CalendarDays  },
-        { label: 'Config',      path: '/admin/config',      icon: Settings      },
+        { label: 'Broadcast',      path: '/admin/broadcast',      icon: Megaphone  },
+        { label: 'Campaigns',      path: '/admin/campaigns',      icon: CalendarDays },
+        { label: 'Notifications',  path: '/admin/notifications',  icon: Bell         },
+        { label: 'Config',         path: '/admin/config',         icon: Settings     },
     ];
 
     const segment = location.pathname.split('/')[2] || 'admin';
@@ -1034,6 +1038,7 @@ export default function App() {
                     <Route path="/admin/support" element={<ProtectedRoute><AdminLayout><SupportTickets /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/broadcast" element={<ProtectedRoute><AdminLayout><Broadcast /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/campaigns" element={<ProtectedRoute><AdminLayout><Campaigns /></AdminLayout></ProtectedRoute>} />
+                    <Route path="/admin/notifications" element={<ProtectedRoute><AdminLayout><NotificationManager /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/athletes" element={<ProtectedRoute><AdminLayout><AthleteApplications /></AdminLayout></ProtectedRoute>} />
                     <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
