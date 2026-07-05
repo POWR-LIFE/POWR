@@ -39,7 +39,7 @@ function cleanPrefix(raw) {
 }
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
-const MAX_VIDEO_BYTES = 20 * 1024 * 1024;
+const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
 
 function ImagePicker({ label, preview, uploading, onFile, aspect = 'aspect-video', accept = 'image/*', isVideo = false }) {
     const ref = useRef(null);
@@ -294,7 +294,7 @@ export default function PartnerRewards() {
     };
 
     const uploadVideo = async (file) => {
-        if (file.size > MAX_VIDEO_BYTES) { toast.error('Video must be under 20 MB — use a short, compressed loop'); return null; }
+        if (file.size > MAX_VIDEO_BYTES) { toast.error('Video must be under 50 MB — use a short, compressed loop'); return null; }
         setUploadingHeroVideo(true);
         try {
             return await uploadPublicImage('reward-submissions', file, 'hero-videos');
@@ -521,7 +521,7 @@ export default function PartnerRewards() {
                                 />
                                 <div className="col-span-2">
                                     <ImagePicker
-                                        label="Hero video (optional) — plays instead of the image; MP4, ≤20 MB. Image stays as the still fallback."
+                                        label="Hero video (optional) — plays instead of the image; MP4, ≤50 MB. Image stays as the still fallback."
                                         preview={form.hero_video_url}
                                         uploading={uploadingHeroVideo}
                                         aspect="aspect-video"

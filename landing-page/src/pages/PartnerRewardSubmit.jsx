@@ -20,7 +20,7 @@ const DISCOUNT_OPTIONS = [
 ];
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
-const MAX_VIDEO_BYTES = 20 * 1024 * 1024;
+const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
 const INPUT_BASE = "w-full h-14 rounded-2xl text-sm font-light px-6 outline-none transition-colors border font-['Outfit']";
 
 function cleanPrefix(raw) {
@@ -160,7 +160,7 @@ export default function PartnerRewardSubmit() {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
-    if (file.size > MAX_VIDEO_BYTES) { setError('Video must be under 20 MB — use a short, compressed loop.'); return; }
+    if (file.size > MAX_VIDEO_BYTES) { setError('Video must be under 50 MB — use a short, compressed loop.'); return; }
     setError('');
     setUploadingHeroVideo(true);
     try {
@@ -423,7 +423,7 @@ export default function PartnerRewardSubmit() {
                 {/* Hero video (optional) */}
                 <div className="md:col-span-2">
                   <p className={`text-[10px] uppercase tracking-[0.3em] font-black mb-2 ${t.label}`}>Hero / banner video <span className={t.specText}>— optional</span></p>
-                  <p className={`text-[11px] font-light mb-3 leading-relaxed ${t.specText}`}>A short, looping clip that plays <span className={t.specStrong}>instead of the hero image</span>. Landscape 16:9, MP4, muted. Max 20 MB. The hero image is still used as the still fallback.</p>
+                  <p className={`text-[11px] font-light mb-3 leading-relaxed ${t.specText}`}>A short, looping clip that plays <span className={t.specStrong}>instead of the hero image</span>. Landscape 16:9, MP4, muted. Max 50 MB. The hero image is still used as the still fallback.</p>
                   <ImagePicker preview={heroVideoUrl} uploading={uploadingHeroVideo} onClick={() => heroVideoRef.current?.click()} aspect="aspect-video" label="Add video" isVideo />
                   <input ref={heroVideoRef} type="file" accept="video/mp4,video/quicktime,video/webm" className="hidden" onChange={handleHeroVideo} />
                 </div>

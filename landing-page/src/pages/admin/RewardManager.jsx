@@ -1110,7 +1110,7 @@ export default function RewardManager() {
                                             <input type="file" accept="video/mp4,video/quicktime,video/webm" className="hidden" disabled={heroVideoUploading} onChange={async (e) => {
                                                 const file = e.target.files?.[0];
                                                 if (!file) return;
-                                                const MAX_MB = 20;
+                                                const MAX_MB = 50;
                                                 if (file.size > MAX_MB * 1024 * 1024) {
                                                     toast.error(`Video is too large (max ${MAX_MB}MB). Compress it to a short, looping clip.`);
                                                     e.target.value = '';
