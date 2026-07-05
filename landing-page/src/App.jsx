@@ -8,6 +8,7 @@ import {
     Inbox,
     LayoutDashboard,
     LogOut,
+    MapPin,
     Megaphone,
     MessageSquare,
     ScrollText,
@@ -33,6 +34,7 @@ import PartnerPortalPromoCodes from './pages/partner/PartnerPromoCodes';
 import PartnerPortalRedemptions from './pages/partner/PartnerRedemptions';
 import PartnerPortalRewards from './pages/partner/PartnerRewards';
 import PartnerPortalFeatured from './pages/partner/PartnerFeatured';
+import PartnerPortalPlacements from './pages/partner/PartnerPlacements';
 import PartnerPortalSettings from './pages/partner/PartnerSettings';
 import PartnerSetup from './pages/partner/PartnerSetup';
 
@@ -49,6 +51,7 @@ import PartnerPerformance from './pages/admin/PartnerPerformance';
 import PartnerProfile from './pages/admin/PartnerProfile';
 import RedemptionTracker from './pages/admin/RedemptionTracker';
 import RewardManager from './pages/admin/RewardManager';
+import RewardPlacements from './pages/admin/RewardPlacements';
 import RewardSubmissions from './pages/admin/RewardSubmissions';
 import SessionReview from './pages/admin/SessionReview';
 import SupportTickets from './pages/admin/SupportTickets';
@@ -65,7 +68,7 @@ import SupportPage from './pages/SupportPage';
 import TermsOfService from './pages/TermsOfService';
 
 // --- Auth Context ---
-const AuthContext = createContext({ user: null, isAdmin: false, isPartner: false, partnerData: null, loading: true });
+const AuthContext = createContext({ user: null, isAdmin: false, isPartner: false, partnerData: null, placementsEnabled: false, loading: true });
 
 const ACTING_BRAND_KEY = 'powr_acting_brand';
 
@@ -93,6 +96,7 @@ export const AuthProvider = ({ children }) => {
     const [isPartner, setIsPartner] = useState(false);
     const [partnerData, setPartnerData] = useState(null);
     const [actingPartner, setActingPartnerState] = useState(null);
+    const [placementsEnabled, setPlacementsEnabled] = useState(false);
     const [loading, setLoading] = useState(true);
 
     // Admin-only: preview the portal as any reward brand
@@ -135,6 +139,22 @@ export const AuthProvider = ({ children }) => {
         }
     };
 
+    // Self-serve reward placements are gated behind this flag (default off).
+    // system_config SELECT is admin-only except this one key (see migration
+    // 20260704000006). Fails safe to disabled; admins see the page regardless.
+    const fetchPlacementsFlag = async () => {
+        try {
+            const { data } = await supabase
+                .from('system_config')
+                .select('value')
+                .eq('key', 'partner_placements_enabled')
+                .maybeSingle();
+            return data?.value === 'true';
+        } catch {
+            return false;
+        }
+    };
+
     useEffect(() => {
         let mounted = true;
         let lastUserId = null;
@@ -145,9 +165,10 @@ export const AuthProvider = ({ children }) => {
                 if (session.user.id === lastUserId) return;
                 lastUserId = session.user.id;
                 setUser(session.user);
-                const [adminStatus, partnerResult] = await Promise.all([
+                const [adminStatus, partnerResult, flagOn] = await Promise.all([
                     checkAdmin(session.user.id),
                     checkPartner(session.user.id),
+                    fetchPlacementsFlag(),
                 ]);
                 // Restore admin preview selection (admins with no brand link)
                 let restoredActing = null;
@@ -160,6 +181,7 @@ export const AuthProvider = ({ children }) => {
                     setIsPartner(!!partnerResult);
                     setPartnerData(partnerResult);
                     setActingPartnerState(restoredActing);
+                    setPlacementsEnabled(flagOn);
                     setLoading(false);
                 }
             } else {
@@ -169,6 +191,7 @@ export const AuthProvider = ({ children }) => {
                 setIsPartner(false);
                 setPartnerData(null);
                 setActingPartnerState(null);
+                setPlacementsEnabled(false);
                 if (mounted) setLoading(false);
             }
         };
@@ -191,6 +214,7 @@ export const AuthProvider = ({ children }) => {
             partnerData: partnerData ?? actingPartner,
             isActingPartner: !partnerData && !!actingPartner,
             setActingPartner,
+            placementsEnabled,
             loading,
         }}>
             {children}
@@ -217,6 +241,7 @@ const PATH_LABELS = {
     rewards: 'Rewards',
     'reward-submissions': 'Submissions',
     'gym-requests': 'Gym Requests',
+    placements: 'Placements',
     challenges: 'Challenges',
     users: 'Users',
     athletes: 'Athletes',
@@ -813,6 +838,7 @@ const AdminLayout = ({ children }) => {
         { label: 'Rewards',     path: '/admin/rewards',            icon: Award           },
         { label: 'Submissions', path: '/admin/reward-submissions', icon: Inbox,          badge: pendingSubmissions },
         { label: 'Featured',    path: '/admin/featured',           icon: Star            },
+        { label: 'Placements',  path: '/admin/placements',         icon: MapPin          },
         { label: 'Challenges',  path: '/admin/challenges',         icon: Target          },
         { label: 'Users',       path: '/admin/users',              icon: Users           },
         { label: 'Athletes',    path: '/admin/athletes',           icon: Star,           badge: pendingAthletes },
@@ -983,6 +1009,7 @@ export default function App() {
                     <Route path="/partner/rewards" element={<PartnerProtectedRoute><PartnerLayout><PartnerPortalRewards /></PartnerLayout></PartnerProtectedRoute>} />
                     <Route path="/partner/promo-codes" element={<PartnerProtectedRoute><PartnerLayout><PartnerPortalPromoCodes /></PartnerLayout></PartnerProtectedRoute>} />
                     <Route path="/partner/featured" element={<PartnerProtectedRoute><PartnerLayout><PartnerPortalFeatured /></PartnerLayout></PartnerProtectedRoute>} />
+                    <Route path="/partner/placements" element={<PartnerProtectedRoute><PartnerLayout><PartnerPortalPlacements /></PartnerLayout></PartnerProtectedRoute>} />
                     <Route path="/partner/redemptions" element={<PartnerProtectedRoute><PartnerLayout><PartnerPortalRedemptions /></PartnerLayout></PartnerProtectedRoute>} />
                     <Route path="/partner/settings" element={<PartnerProtectedRoute><PartnerLayout><PartnerPortalSettings /></PartnerLayout></PartnerProtectedRoute>} />
                     <Route path="/admin/login" element={<AdminLogin />} />
@@ -992,6 +1019,7 @@ export default function App() {
                     <Route path="/admin/rewards" element={<ProtectedRoute><AdminLayout><RewardManager /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/reward-submissions" element={<ProtectedRoute><AdminLayout><RewardSubmissions /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/featured" element={<ProtectedRoute><AdminLayout><FeaturedSchedule /></AdminLayout></ProtectedRoute>} />
+                    <Route path="/admin/placements" element={<ProtectedRoute><AdminLayout><RewardPlacements /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/challenges" element={<ProtectedRoute><AdminLayout><WeeklyChallenges /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/users" element={<ProtectedRoute><AdminLayout><UserManager /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/users/:userId" element={<ProtectedRoute><AdminLayout><UserProfile /></AdminLayout></ProtectedRoute>} />

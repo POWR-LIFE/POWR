@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Award, Gift, Settings, LogOut, ChevronRight, Search, Eye, CalendarDays, Ticket } from 'lucide-react';
+import { LayoutDashboard, Award, Gift, Settings, LogOut, ChevronRight, Search, Eye, CalendarDays, Ticket, MapPin } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../App';
 
@@ -101,6 +101,7 @@ const NAV_ITEMS = [
     { label: 'My Rewards',  path: '/partner/rewards',     icon: Award           },
     { label: 'Promo Codes', path: '/partner/promo-codes', icon: Ticket          },
     { label: "What's On",   path: '/partner/featured',    icon: CalendarDays    },
+    { label: 'Placements',  path: '/partner/placements',  icon: MapPin, gated: true },
     { label: 'Redemptions', path: '/partner/redemptions', icon: Gift            },
     { label: 'Settings',    path: '/partner/settings',    icon: Settings        },
 ];
@@ -110,6 +111,7 @@ const PATH_LABELS = {
     rewards:       'My Rewards',
     'promo-codes': 'Promo Codes',
     featured:      "What's On",
+    placements:    'Placements',
     redemptions:   'Redemptions',
     settings:      'Settings',
 };
@@ -117,10 +119,14 @@ const PATH_LABELS = {
 export function PartnerLayout({ children }) {
     const location = useLocation();
     const navigate = useNavigate();
-    const { user, partnerData, isAdmin, isActingPartner, setActingPartner } = useAuth();
+    const { user, partnerData, isAdmin, isActingPartner, setActingPartner, placementsEnabled } = useAuth();
 
     const segment = location.pathname.split('/')[2] || 'partner';
     const currentLabel = PATH_LABELS[segment] || segment;
+
+    // Placements is gated: hidden for brands until the feature flag is on,
+    // but always shown to admins (incl. admin-preview) for testing.
+    const navItems = NAV_ITEMS.filter((item) => !item.gated || isAdmin || placementsEnabled);
 
     const handleSignOut = async () => {
         await supabase.auth.signOut();
@@ -169,7 +175,7 @@ export function PartnerLayout({ children }) {
                         <div className="text-[10px] uppercase tracking-[0.5em] text-[#BBBBBB] font-black mb-2">Partner Portal</div>
                         <div className="h-[2px] w-10 bg-[#E8D200]/60"></div>
                     </div>
-                    {NAV_ITEMS.map(item => {
+                    {navItems.map(item => {
                         const active = location.pathname === item.path;
                         return (
                             <Link
