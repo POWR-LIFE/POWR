@@ -123,6 +123,7 @@ Deno.serve(async (req) => {
       url:            trim(p.url),
       image_url:      trim(p.image_url),
       hero_image_url: trim(p.hero_image_url),
+      hero_video_url: trim(p.hero_video_url),
       brand_color:    trim(p.brand_color),
       code_prefix:    prefix || null,
       status:         'pending',

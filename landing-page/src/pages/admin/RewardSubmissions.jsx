@@ -148,6 +148,7 @@ export default function RewardSubmissions() {
         url: selected.url || null,
         image_url: selected.image_url || null,
         hero_image_url: selected.hero_image_url || null,
+        hero_video_url: selected.hero_video_url || null,
       };
       if (hasCost) updatePayload.powr_cost = cost;
 
@@ -174,6 +175,7 @@ export default function RewardSubmissions() {
         url: selected.url || null,
         image_url: selected.image_url || null,
         hero_image_url: selected.hero_image_url || null,
+        hero_video_url: selected.hero_video_url || null,
         brand_color: selected.brand_color || null,
         active: false,
         featured_on_home: false,
@@ -516,6 +518,7 @@ export default function RewardSubmissions() {
                   pts={selected.status === 'pending' ? (powrCost || null) : null}
                   logoUrl={selected.image_url || selected.partners?.logo_url || null}
                   heroUrl={selected.hero_image_url || null}
+                  heroVideoUrl={selected.hero_video_url || null}
                   codePrefix={selected.code_prefix || ''}
                   category={selected.category || ''}
                   pageTheme="light"

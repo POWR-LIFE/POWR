@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
-import { Plus, Edit2, Trash2, Ticket, Loader2, X, Search, Award, Activity, ChevronLeft, ChevronRight, AlertTriangle, Upload, Image as ImageIcon, Tag, FileText, Download, GripVertical, Save, Pin, Send, KeyRound, Building2, Link2, Palette, CalendarClock, Check } from 'lucide-react';
+import { Plus, Edit2, Trash2, Ticket, Loader2, X, Search, Award, Activity, ChevronLeft, ChevronRight, AlertTriangle, Upload, Image as ImageIcon, Video as VideoIcon, Tag, FileText, Download, GripVertical, Save, Pin, Send, KeyRound, Building2, Link2, Palette, CalendarClock, Check } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { uploadPublicImage } from '../../lib/storage';
 import * as XLSX from 'xlsx';
@@ -90,6 +90,7 @@ const previewFromForm = (form, schemeExample) => ({
     pts: form.powr_cost,
     logoUrl: form.image_url || null,
     heroUrl: form.hero_image_url || null,
+    heroVideoUrl: form.hero_video_url || null,
     codePrefix: prefixFromScheme(schemeExample, form.brand_name),
 });
 
@@ -111,6 +112,7 @@ const EMPTY_FORM = {
     image_url: '',
     offer: '',
     hero_image_url: '',
+    hero_video_url: '',
     brand_color: '',
     url: '',
     partner_blurb: '',
@@ -132,6 +134,7 @@ export default function RewardManager() {
     const [confirmDeleteId, setConfirmDeleteId] = useState(null);
     const [togglingId, setTogglingId] = useState(null);
     const [imageUploading, setImageUploading] = useState(false);
+    const [heroVideoUploading, setHeroVideoUploading] = useState(false);
     const [codeStats, setCodeStats] = useState(null);
     const [bulkCodesText, setBulkCodesText] = useState('');
     const [uploadingCodes, setUploadingCodes] = useState(false);
@@ -281,6 +284,7 @@ export default function RewardManager() {
             image_url: reward.image_url || '',
             offer: reward.offer || '',
             hero_image_url: reward.hero_image_url || '',
+            hero_video_url: reward.hero_video_url || '',
             brand_color: reward.brand_color || '',
             url: reward.url || '',
             partner_blurb: reward.partner_blurb || '',
@@ -1084,6 +1088,49 @@ export default function RewardManager() {
                                         </label>
                                         {formData.hero_image_url && (
                                             <button type="button" onClick={() => setFormData({ ...formData, hero_image_url: '' })} className="text-[10px] uppercase tracking-[0.3em] text-[#555555] hover:text-red-500 transition-colors font-black">Remove</button>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Hero video upload — plays in place of the hero image when set */}
+                            <div className="mb-8">
+                                <label className="block text-[10px] uppercase tracking-[0.4em] text-[#666666] font-black mb-4">Hero Banner Video <span className="text-[#333333] normal-case font-black ml-2">— optional loop; plays instead of the image (image stays as the still fallback)</span></label>
+                                <div className="flex gap-6 items-center bg-white border border-[#E6E6E1] rounded-[2rem] p-6">
+                                    <div className="w-32 h-20 rounded-2xl bg-[#F4F4F1] border border-[#E6E6E1] flex items-center justify-center overflow-hidden shrink-0">
+                                        {formData.hero_video_url ? (
+                                            <video src={formData.hero_video_url} className="w-full h-full object-cover" muted loop autoPlay playsInline />
+                                        ) : (
+                                            <VideoIcon size={28} className="text-[#666666]" />
+                                        )}
+                                    </div>
+                                    <div className="flex-1 flex items-center gap-4">
+                                        <label className={`flex items-center gap-3 h-12 px-8 bg-[#F4F4F1] border border-[#E6E6E1] rounded-full text-[10px] uppercase tracking-[0.3em] text-[#333333] hover:text-[#8a7600] hover:border-[#E8D200]/40 transition-all font-black cursor-pointer ${heroVideoUploading ? 'opacity-40 pointer-events-none' : ''}`}>
+                                            <Upload size={14} /> {heroVideoUploading ? 'Uploading...' : (formData.hero_video_url ? 'Replace' : 'Upload')}
+                                            <input type="file" accept="video/mp4,video/quicktime,video/webm" className="hidden" disabled={heroVideoUploading} onChange={async (e) => {
+                                                const file = e.target.files?.[0];
+                                                if (!file) return;
+                                                const MAX_MB = 20;
+                                                if (file.size > MAX_MB * 1024 * 1024) {
+                                                    toast.error(`Video is too large (max ${MAX_MB}MB). Compress it to a short, looping clip.`);
+                                                    e.target.value = '';
+                                                    return;
+                                                }
+                                                setHeroVideoUploading(true);
+                                                try {
+                                                    const url = await uploadPublicImage('reward-images', file, 'hero-videos');
+                                                    setFormData(prev => ({ ...prev, hero_video_url: url }));
+                                                    toast.success('Hero video uploaded');
+                                                } catch (err) {
+                                                    toast.error(err.message || 'Upload failed');
+                                                } finally {
+                                                    setHeroVideoUploading(false);
+                                                    e.target.value = '';
+                                                }
+                                            }} />
+                                        </label>
+                                        {formData.hero_video_url && (
+                                            <button type="button" onClick={() => setFormData({ ...formData, hero_video_url: '' })} className="text-[10px] uppercase tracking-[0.3em] text-[#555555] hover:text-red-500 transition-colors font-black">Remove</button>
                                         )}
                                     </div>
                                 </div>

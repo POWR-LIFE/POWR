@@ -1,4 +1,5 @@
 import GeometricBackground from '@/components/GeometricBackground';
+import { RewardHeroMedia } from '@/components/rewards/RewardHeroMedia';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { Image as ExpoImage } from 'expo-image';
@@ -41,6 +42,7 @@ interface UIReward {
   logoText: string;
   logoUrl: string | null;
   heroUrl: string | null;
+  heroVideoUrl: string | null;
   url: string | null;
   integrationType: IntegrationType;
 }
@@ -64,6 +66,7 @@ function toUIReward(r: Reward): UIReward {
     logoText: (r.partner?.name ?? r.brand_name ?? '??').slice(0, 4).toUpperCase(),
     logoUrl: r.image_url ?? r.partner?.logo_url ?? null,
     heroUrl: r.hero_image_url ?? null,
+    heroVideoUrl: r.hero_video_url ?? null,
     url: r.url || null,
     integrationType: r.integration_type,
   };
@@ -94,7 +97,7 @@ export default function RedeemModal() {
       const [rewardRes, redemptionRes] = await Promise.all([
         supabase
           .from('rewards')
-          .select('id, partner_id, title, description, powr_cost, category, integration_type, code_expiry_days, active, offer, hero_image_url, image_url, url, value_label, discount_type, discount_value, brand_name, partners(id, name, partner_code, logo_url, category, checkout_url_template)')
+          .select('id, partner_id, title, description, powr_cost, category, integration_type, code_expiry_days, active, offer, hero_image_url, hero_video_url, image_url, url, value_label, discount_type, discount_value, brand_name, partners(id, name, partner_code, logo_url, category, checkout_url_template)')
           .eq('id', id)
           .single(),
         supabase
@@ -239,10 +242,16 @@ interface ConfirmProps {
 function ConfirmView({ reward, balance, canAfford, remaining, submitting, error, existingActiveCount, onConfirm, onCancel, onViewWallet }: ConfirmProps) {
   return (
     <View style={styles.sheet}>
-      {/* Hero image */}
-      {reward.heroUrl && (
+      {/* Hero — video-first, still image as poster/fallback */}
+      {(reward.heroVideoUrl || reward.heroUrl) && (
         <View style={styles.heroWrap}>
-          <ExpoImage source={{ uri: reward.heroUrl }} style={styles.heroImg} contentFit="cover" contentPosition="top" />
+          <RewardHeroMedia
+            videoUrl={reward.heroVideoUrl}
+            imageUrl={reward.heroUrl}
+            style={styles.heroImg}
+            contentFit="cover"
+            contentPosition="top"
+          />
           <LinearGradient
             colors={['rgba(13,13,13,0)', 'rgba(13,13,13,0.6)', '#0d0d0d']}
             locations={[0.3, 0.7, 1]}

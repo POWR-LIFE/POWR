@@ -1,6 +1,7 @@
 import { GeometricBackground } from '@/components/home/GeometricBackground';
 import MagicRings from '@/components/MagicRings';
 import { HeaderActions } from '@/components/HeaderActions';
+import { RewardHeroMedia } from '@/components/rewards/RewardHeroMedia';
 import { usePoints } from '@/hooks/usePoints';
 import { fetchMyRedemptionSummary, fetchRewards, fetchSmartFeaturedReward, type Reward as ApiReward } from '@/lib/api/rewards';
 import { resolveContextualPlacements, logPlacementEvent, pickHeroPlacement, placementRank, type ResolvedPlacement } from '@/lib/api/placements';
@@ -53,6 +54,8 @@ interface Reward {
   logoLight: boolean;
   logoImage?: any;
   heroImage?: any;
+  heroImageUrl?: string;
+  heroVideoUrl?: string;
   brandColor?: string;
   title: string;
   subtitle: string;
@@ -129,6 +132,8 @@ function apiRewardToUI(r: ApiReward): Reward {
     logoLight: false,
     logoImage: r.image_url ? { uri: r.image_url } : r.partner?.logo_url ? { uri: r.partner.logo_url } : undefined,
     heroImage: r.hero_image_url ? { uri: r.hero_image_url } : undefined,
+    heroImageUrl: r.hero_image_url ?? undefined,
+    heroVideoUrl: r.hero_video_url ?? undefined,
     brandColor: undefined,
     title: r.title,
     subtitle: r.description ?? displayName ?? '',
@@ -512,14 +517,16 @@ function FeaturedCard({ featured, afford, balance, placement, onRedeem }: Featur
     : featured.partner?.logo_url
     ? { uri: featured.partner.logo_url }
     : null;
-  const heroSrc = featured.hero_image_url ? { uri: featured.hero_image_url } : null;
-
   return (
     <View style={styles.featuredCard}>
       <View style={styles.featuredHero}>
-        {heroSrc && (
-          <ExpoImage source={heroSrc} style={styles.featuredHeroImg} contentFit="cover" contentPosition="top" />
-        )}
+        <RewardHeroMedia
+          videoUrl={featured.hero_video_url}
+          imageUrl={featured.hero_image_url}
+          style={styles.featuredHeroImg}
+          contentFit="cover"
+          contentPosition="top"
+        />
         <LinearGradient
           colors={['rgba(10,10,10,0)', 'rgba(10,10,10,0.45)', 'rgba(10,10,10,0.85)']}
           locations={[0.3, 0.65, 1]}
@@ -617,12 +624,13 @@ function RewardCard({ reward, placement, afford, balance, expanded, activeCount,
         pressed && !isLocked && { opacity: 0.92 },
       ]}
     >
-      {expanded && reward.heroImage && (
+      {expanded && (reward.heroVideoUrl || reward.heroImageUrl) && (
         <View style={styles.heroBanner} collapsable={false}>
-          <Image
-            source={reward.heroImage}
+          <RewardHeroMedia
+            videoUrl={reward.heroVideoUrl}
+            imageUrl={reward.heroImageUrl}
             style={styles.heroImage}
-            resizeMode="cover"
+            contentFit="cover"
           />
           <LinearGradient
             colors={['rgba(0,0,0,0)', 'rgba(30,30,30,0.95)']}

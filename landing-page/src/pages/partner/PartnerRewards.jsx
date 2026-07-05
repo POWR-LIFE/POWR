@@ -39,13 +39,14 @@ function cleanPrefix(raw) {
 }
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+const MAX_VIDEO_BYTES = 20 * 1024 * 1024;
 
-function ImagePicker({ label, preview, uploading, onFile, aspect = 'aspect-video' }) {
+function ImagePicker({ label, preview, uploading, onFile, aspect = 'aspect-video', accept = 'image/*', isVideo = false }) {
     const ref = useRef(null);
     return (
         <div>
             <p className="text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-3">{label}</p>
-            <input ref={ref} type="file" accept="image/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) onFile(f); }} />
+            <input ref={ref} type="file" accept={accept} className="hidden" onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) onFile(f); }} />
             <div
                 onClick={() => !uploading && ref.current?.click()}
                 className={`${aspect} rounded-2xl border-2 border-dashed flex items-center justify-center cursor-pointer overflow-hidden transition-colors ${uploading ? 'border-[#E8D200]/40 opacity-60 cursor-not-allowed' : preview ? 'border-[#E6E6E1] hover:border-[#E8D200]/40' : 'border-[#E6E6E1] bg-[#FAFAFA] hover:border-[#E8D200]/40'}`}
@@ -53,7 +54,9 @@ function ImagePicker({ label, preview, uploading, onFile, aspect = 'aspect-video
                 {uploading ? (
                     <div className="w-6 h-6 border-2 border-[#E8D200]/20 border-t-[#E8D200] rounded-full animate-spin" />
                 ) : preview ? (
-                    <img src={preview} alt="" className="w-full h-full object-contain" />
+                    isVideo
+                        ? <video src={preview} className="w-full h-full object-cover" muted loop autoPlay playsInline />
+                        : <img src={preview} alt="" className="w-full h-full object-contain" />
                 ) : (
                     <div className="flex flex-col items-center gap-2">
                         <Upload size={20} className="text-[#BBBBBB]" />
@@ -69,7 +72,7 @@ const BLANK_FORM = {
     title: '', description: '', category: 'gym', reward_kind: 'digital',
     discount_type: '', discount_value: '', value_label: '',
     offer: '', partner_blurb: '', terms: '', url: '', code_prefix: '',
-    logo_url: null, hero_image_url: null,
+    logo_url: null, hero_image_url: null, hero_video_url: null,
 };
 
 // Extract the brand segment from a stored promo code: 'POWR-TRIBE' / 'POWR-TRIBE-XXXXXX' / 'TRIBE' → 'TRIBE'
@@ -91,6 +94,7 @@ const previewFromReward = (r, partnerName) => ({
     pts: r.powr_cost,
     logoUrl: r.image_url,
     heroUrl: r.hero_image_url,
+    heroVideoUrl: r.hero_video_url,
     codePrefix: prefixFromPromo(r.promo_code, r.brand_name || partnerName),
 });
 
@@ -106,6 +110,7 @@ const previewFromSubmission = (s, partnerName) => ({
     pts: null, // points price is set by POWR on approval
     logoUrl: s.image_url,
     heroUrl: s.hero_image_url,
+    heroVideoUrl: s.hero_video_url,
     codePrefix: cleanPrefix(s.code_prefix ?? ''),
 });
 
@@ -123,6 +128,7 @@ export default function PartnerRewards() {
     const [saving, setSaving] = useState(false);
     const [uploadingLogo, setUploadingLogo] = useState(false);
     const [uploadingHero, setUploadingHero] = useState(false);
+    const [uploadingHeroVideo, setUploadingHeroVideo] = useState(false);
     const [selectedKey, setSelectedKey] = useState(null);
     const [rewardLimit, setRewardLimit] = useState(DEFAULT_REWARD_LIMIT);
     const [limitOpen, setLimitOpen] = useState(false);
@@ -159,6 +165,7 @@ export default function PartnerRewards() {
             pts: editingListing?.powr_cost ?? null,
             logoUrl: form.logo_url,
             heroUrl: form.hero_image_url,
+            heroVideoUrl: form.hero_video_url,
             codePrefix: form.code_prefix,
         }
         : selectedItem
@@ -258,6 +265,7 @@ export default function PartnerRewards() {
             code_prefix: prefixFromPromo(r.promo_code, r.brand_name || partnerData?.name),
             logo_url: r.image_url ?? null,
             hero_image_url: r.hero_image_url ?? null,
+            hero_video_url: r.hero_video_url ?? null,
         });
         setFormOpen(true);
     };
@@ -280,8 +288,22 @@ export default function PartnerRewards() {
             code_prefix: sub.code_prefix ?? '',
             logo_url: sub.image_url ?? null,
             hero_image_url: sub.hero_image_url ?? null,
+            hero_video_url: sub.hero_video_url ?? null,
         });
         setFormOpen(true);
+    };
+
+    const uploadVideo = async (file) => {
+        if (file.size > MAX_VIDEO_BYTES) { toast.error('Video must be under 20 MB — use a short, compressed loop'); return null; }
+        setUploadingHeroVideo(true);
+        try {
+            return await uploadPublicImage('reward-submissions', file, 'hero-videos');
+        } catch (err) {
+            toast.error(err.message || 'Upload failed');
+            return null;
+        } finally {
+            setUploadingHeroVideo(false);
+        }
     };
 
     const uploadImage = async (file, kind) => {
@@ -339,6 +361,7 @@ export default function PartnerRewards() {
             code_prefix: cleanPrefix(form.code_prefix),
             image_url: form.logo_url,
             hero_image_url: form.hero_image_url,
+            hero_video_url: form.hero_video_url,
             submitted_at: new Date().toISOString(),
         };
 
@@ -496,6 +519,20 @@ export default function PartnerRewards() {
                                     aspect="aspect-video"
                                     onFile={async (file) => { const url = await uploadImage(file, 'hero'); if (url) setForm(p => ({ ...p, hero_image_url: url })); }}
                                 />
+                                <div className="col-span-2">
+                                    <ImagePicker
+                                        label="Hero video (optional) — plays instead of the image; MP4, ≤20 MB. Image stays as the still fallback."
+                                        preview={form.hero_video_url}
+                                        uploading={uploadingHeroVideo}
+                                        aspect="aspect-video"
+                                        accept="video/mp4,video/quicktime,video/webm"
+                                        isVideo
+                                        onFile={async (file) => { const url = await uploadVideo(file); if (url) setForm(p => ({ ...p, hero_video_url: url })); }}
+                                    />
+                                    {form.hero_video_url && (
+                                        <button type="button" onClick={() => setForm(p => ({ ...p, hero_video_url: null }))} className="mt-2 text-[10px] uppercase tracking-[0.2em] text-[#999] hover:text-red-500 transition-colors font-black">Remove video</button>
+                                    )}
+                                </div>
                             </div>
                         </section>
 
@@ -508,7 +545,7 @@ export default function PartnerRewards() {
                             </p>
                             <div className="flex gap-4 shrink-0">
                                 <button type="button" onClick={closeForm} className="h-12 px-8 text-[10px] font-black uppercase tracking-[0.2em] text-[#666] hover:text-[#222] transition-colors">Cancel</button>
-                                <button type="submit" disabled={saving || uploadingLogo || uploadingHero} className="h-12 px-10 bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.2em] rounded-full transition-all hover:translate-y-[-2px] shadow-lg shadow-[#E8D200]/20 disabled:opacity-50">
+                                <button type="submit" disabled={saving || uploadingLogo || uploadingHero || uploadingHeroVideo} className="h-12 px-10 bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.2em] rounded-full transition-all hover:translate-y-[-2px] shadow-lg shadow-[#E8D200]/20 disabled:opacity-50">
                                     {saving ? 'Submitting...' : editingListing ? 'Submit Changes' : editingSubmission ? 'Update Submission' : 'Submit for Review'}
                                 </button>
                             </div>

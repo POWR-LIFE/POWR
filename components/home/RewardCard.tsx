@@ -2,8 +2,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image as ExpoImage } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import React from 'react';
-import { Image, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
+import { RewardHeroMedia } from '@/components/rewards/RewardHeroMedia';
 import type { Reward } from '@/lib/api/rewards';
 
 const GOLD = '#E8D200';
@@ -40,14 +41,13 @@ export function RewardCard({ reward, balance, challengeTitle }: RewardCardProps)
   return (
     <View style={styles.card}>
       <View style={styles.heroContainer}>
-        {imageUri && (
-          <Image
-            source={{ uri: imageUri }}
-            style={styles.heroImage}
-            resizeMode="cover"
-          />
-        )}
-        
+        <RewardHeroMedia
+          videoUrl={reward.hero_video_url}
+          imageUrl={imageUri}
+          style={styles.heroImage}
+          contentFit="cover"
+        />
+
         {/* Bottom-only gradient */}
         <LinearGradient
           colors={['rgba(10,10,10,0)', 'rgba(10,10,10,0.45)', 'rgba(10,10,10,0.85)']}
