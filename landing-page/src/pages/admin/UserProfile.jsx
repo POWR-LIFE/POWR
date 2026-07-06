@@ -58,6 +58,8 @@ export default function UserProfile() {
     const [usernameSaving, setUsernameSaving] = useState(false);
     const [deleteConfirm, setDeleteConfirm] = useState(false);
     const [deleteLoading, setDeleteLoading] = useState(false);
+    const [deviceBindings, setDeviceBindings] = useState([]);
+    const [deviceReleasing, setDeviceReleasing] = useState(false);
     const [activeTab, setActiveTab] = useState('activity');
     const [visibleSessions, setVisibleSessions] = useState(10);
     const [visibleTransactions, setVisibleTransactions] = useState(10);
@@ -189,6 +191,16 @@ export default function UserProfile() {
         if (result.error) { toast.error(result.error); return; }
         toast.success('User deleted');
         navigate('/admin/users');
+    };
+
+    const handleReleaseDevices = async () => {
+        setDeviceReleasing(true);
+        const { data, error } = await supabase.rpc('admin_release_user_devices', { p_user_id: userId });
+        setDeviceReleasing(false);
+        if (error) { toast.error(error.message); return; }
+        await logAction(adminUser.id, 'release_device_lock', 'user', userId, { released: data ?? 0 });
+        setDeviceBindings([]);
+        toast.success(data > 0 ? `Released ${data} device${data === 1 ? '' : 's'}` : 'No device was locked');
     };
 
     const handlePointAdjust = async () => {
@@ -483,6 +495,10 @@ export default function UserProfile() {
             const { data: emailData } = await supabase.rpc('admin_get_user_email', { p_user_id: userId });
             setUserEmail(emailData || null);
 
+            // Device lock: which physical device(s) are bound to this account.
+            const { data: devData } = await supabase.rpc('admin_get_user_devices', { p_user_id: userId });
+            setDeviceBindings(devData || []);
+
             // Load preferred gym name if set
             if (p.data.preferred_gym_id) {
                 const { data: gymData } = await supabase
@@ -534,6 +550,33 @@ export default function UserProfile() {
                     <Trash2 size={13} /> Delete User
                 </button>
             </div>
+
+            {/* Device lock — one account per device. Shown only when a device is bound. */}
+            {deviceBindings.length > 0 && (
+                <div className="mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4 px-5 py-4 rounded-2xl bg-white border border-[#E6E6E1]">
+                    <div className="flex items-center gap-3 min-w-0">
+                        <Shield size={15} className="text-[#8a7600] shrink-0" />
+                        <div className="min-w-0">
+                            <div className="text-[10px] uppercase tracking-[0.3em] font-black text-[#999999]">Device Lock</div>
+                            <div className="text-[13px] text-[#1A1A1A] truncate">
+                                {deviceBindings.length === 1
+                                    ? `Locked to 1 device · ${deviceBindings[0].platform || 'unknown'}`
+                                    : `Locked to ${deviceBindings.length} devices`}
+                                {deviceBindings[0]?.last_seen_at && (
+                                    <span className="text-[#999999]"> · last seen {new Date(deviceBindings[0].last_seen_at).toLocaleDateString()}</span>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                    <button
+                        onClick={handleReleaseDevices}
+                        disabled={deviceReleasing}
+                        className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-white border border-[#E6E6E1] text-[#999999] hover:text-[#1A1A1A] hover:border-[#E8D200]/40 transition-all text-[10px] font-black uppercase tracking-widest disabled:opacity-50 shrink-0"
+                    >
+                        <X size={13} /> {deviceReleasing ? 'Releasing…' : 'Release Lock'}
+                    </button>
+                </div>
+            )}
 
             {/* Header / Identity */}
             <header className="mb-16">
