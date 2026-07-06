@@ -22,6 +22,7 @@ import { NotificationsProvider } from '@/context/NotificationsContext';
 import { ThemeProvider as AppThemeProvider, useAppTheme } from '@/context/ThemeContext';
 import { registerWalkingSync } from '@/lib/health/walkingSync';
 import { ensureAndroidChannels } from '@/lib/notifications';
+import { registerPlacementNotifyTask } from '@/lib/placementNotifyTask';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -61,6 +62,14 @@ function RootLayoutNav() {
     ensureAndroidChannels().catch((err) =>
       console.warn('[Notifications] Failed to create Android channels:', err),
     );
+  }, []);
+
+  // Register the placement zone-entry notifier at launch. Deliberately NOT in
+  // GeofenceContext's startup path: that requires a home gym + "Always"
+  // location, while this task needs neither (foreground permission + a cached
+  // coarse fix) — placements must reach users the points geofence never will.
+  useEffect(() => {
+    registerPlacementNotifyTask().catch(() => { /* non-fatal */ });
   }, []);
 
   if (!fontsLoaded) {

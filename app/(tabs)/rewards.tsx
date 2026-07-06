@@ -4,7 +4,7 @@ import { HeaderActions } from '@/components/HeaderActions';
 import { RewardHeroMedia } from '@/components/rewards/RewardHeroMedia';
 import { usePoints } from '@/hooks/usePoints';
 import { fetchMyRedemptionSummary, fetchRewards, fetchSmartFeaturedReward, type Reward as ApiReward } from '@/lib/api/rewards';
-import { resolveContextualPlacements, logPlacementEvent, pickHeroPlacement, placementRank, type ResolvedPlacement } from '@/lib/api/placements';
+import { resolveContextualPlacements, logPlacementEvent, pickHeroPlacement, comparePlacements, type ResolvedPlacement } from '@/lib/api/placements';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as Location from 'expo-location';
@@ -312,7 +312,7 @@ export default function SpendScreen() {
     ? filtered
     : [
         ...filtered.filter((r) => placementMap.has(r.id)).sort(
-          (a, b) => placementRank(placementMap.get(a.id)!) - placementRank(placementMap.get(b.id)!),
+          (a, b) => comparePlacements(placementMap.get(a.id)!, placementMap.get(b.id)!),
         ),
         ...filtered.filter((r) => !placementMap.has(r.id)),
       ];

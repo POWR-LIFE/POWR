@@ -71,12 +71,16 @@ export async function logPlacementEvent(
 }
 
 /**
- * Sort key for a placement — lower sorts first: paid beats unpaid, then
- * higher priority, then nearer. The single source of truth for ordering,
- * shared by the vault list boost AND the hero-card takeover.
+ * Ordering for placements — paid beats unpaid, then higher priority, then
+ * nearer. Strict lexicographic, mirroring the resolver's ORDER BY exactly
+ * (a weighted scalar breaks paid-first once priority deltas grow large).
+ * The single source of truth for ordering, shared by the vault list boost
+ * AND the hero-card takeover.
  */
-export function placementRank(p: ResolvedPlacement): number {
-  return (p.paid ? 0 : 1_000_000) + (100_000 - p.priority) * 1_000 + Math.min(p.distance_m, 999);
+export function comparePlacements(a: ResolvedPlacement, b: ResolvedPlacement): number {
+  if (a.paid !== b.paid) return a.paid ? -1 : 1;
+  if (a.priority !== b.priority) return b.priority - a.priority;
+  return a.distance_m - b.distance_m;
 }
 
 /**
@@ -92,7 +96,7 @@ export function pickHeroPlacement(
   let best: ResolvedPlacement | null = null;
   for (const p of placements) {
     if (!rewardIds.has(p.reward_id)) continue;
-    if (best === null || placementRank(p) < placementRank(best)) best = p;
+    if (best === null || comparePlacements(p, best) < 0) best = p;
   }
   return best;
 }
@@ -123,15 +127,12 @@ export function applyPlacements(
     if (!placementByRewardId.has(p.reward_id)) placementByRewardId.set(p.reward_id, p);
   }
 
-  const rank = (r: Reward): number => {
-    const p = placementByRewardId.get(r.id);
-    return p ? placementRank(p) : Number.POSITIVE_INFINITY;
-  };
-
   const boosted: Reward[] = [];
   const rest: Reward[] = [];
   for (const r of rewards) (placementByRewardId.has(r.id) ? boosted : rest).push(r);
-  boosted.sort((a, b) => rank(a) - rank(b));
+  boosted.sort((a, b) =>
+    comparePlacements(placementByRewardId.get(a.id)!, placementByRewardId.get(b.id)!),
+  );
 
   return { rewards: [...boosted, ...rest], placementByRewardId };
 }
