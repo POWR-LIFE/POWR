@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
-import { Plus, Trash2, MapPin, ChevronLeft, Grid3x3, Sparkles, Eye, Footprints, Gift } from 'lucide-react';
+import { Plus, Trash2, MapPin, ChevronLeft, Grid3x3, Sparkles, Eye, Footprints, Gift, Bell } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
 import { useAuth } from '../../App';
@@ -152,25 +152,46 @@ export default function PartnerPlacements() {
             updated_at: new Date().toISOString(),
         };
 
+        const flat = [];
+        for (const key of form.cells) { const { z, x, y } = parseKey(key); flat.push(z, x, y); }
+        const cellFail = (err) => {
+            if (/CELL_CONFLICT/.test(err.message)) toast.error('Some squares are already booked for these times (shown in red). Erase them and try again.');
+            else toast.error(err.message);
+        };
+
         let placementId = form.id;
         if (placementId) {
+            // Cells + schedule go through the atomic RPC FIRST: the conflict check
+            // runs against the NEW schedule and a conflict writes nothing, so the
+            // row can never be left with a widened schedule that double-books its
+            // old cells.
+            const { error: cellErr } = await supabase.rpc('set_placement_cells', {
+                p_placement_id: placementId,
+                p_cells: flat,
+                p_schedule: {
+                    starts_at: payload.starts_at,
+                    ends_at: payload.ends_at,
+                    week_mask: payload.week_mask,
+                    active_days: payload.active_days,
+                    active_hour_start: payload.active_hour_start,
+                    active_hour_end: payload.active_hour_end,
+                },
+            });
+            if (cellErr) { setSaving(false); cellFail(cellErr); return; }
             const { error } = await supabase.from('reward_placements').update(payload).eq('id', placementId);
-            if (error) { setSaving(false); toast.error(error.message); return; }
+            setSaving(false);
+            if (error) { toast.error(error.message); return; }
         } else {
+            // Create: the row is inserted with its final schedule, so the RPC's
+            // stored-schedule conflict check already sees the right one. A conflict
+            // leaves a cell-less row (which never resolves) and the form keeps the
+            // id, so a retry becomes a clean update.
             const { data, error } = await supabase.from('reward_placements').insert([payload]).select('id').single();
             if (error) { setSaving(false); toast.error(error.message); return; }
             placementId = data.id;
-        }
-
-        const flat = [];
-        for (const key of form.cells) { const { z, x, y } = parseKey(key); flat.push(z, x, y); }
-        const { error: cellErr } = await supabase.rpc('set_placement_cells', { p_placement_id: placementId, p_cells: flat });
-        setSaving(false);
-        if (cellErr) {
-            if (/CELL_CONFLICT/.test(cellErr.message)) toast.error('Some squares are already booked for these times (shown in red). Erase them and try again.');
-            else toast.error(cellErr.message);
-            setForm((f) => f && ({ ...f, id: placementId }));
-            return;
+            const { error: cellErr } = await supabase.rpc('set_placement_cells', { p_placement_id: placementId, p_cells: flat });
+            setSaving(false);
+            if (cellErr) { cellFail(cellErr); setForm((f) => f && ({ ...f, id: placementId })); return; }
         }
         toast.success(form.id ? 'Placement updated' : 'Placement is live');
         setForm(null);
@@ -380,10 +401,11 @@ export default function PartnerPlacements() {
                                         {p.target_activities?.length ? ` · ${p.target_activities.join(', ')}` : ''}
                                     </div>
                                 </div>
-                                {stats[p.id] && (stats[p.id].surfaced > 0 || stats[p.id].redeemed > 0) && (
-                                    <div className="hidden md:flex items-center gap-4 text-[10px] font-black uppercase tracking-[0.1em] text-[#AAA] mr-1 shrink-0" title="Seen · Visited · Redeemed">
+                                {stats[p.id] && (stats[p.id].surfaced > 0 || stats[p.id].notified > 0 || stats[p.id].redeemed > 0) && (
+                                    <div className="hidden md:flex items-center gap-4 text-[10px] font-black uppercase tracking-[0.1em] text-[#AAA] mr-1 shrink-0" title="Seen · Visited · Pushed · Redeemed">
                                         <span className="flex items-center gap-1.5"><Eye size={13} /> {stats[p.id].surfaced}</span>
                                         <span className="flex items-center gap-1.5"><Footprints size={13} /> {stats[p.id].presence}</span>
+                                        {stats[p.id].notified > 0 && <span className="flex items-center gap-1.5"><Bell size={13} /> {stats[p.id].notified}</span>}
                                         <span className="flex items-center gap-1.5 text-[#8a7600]"><Gift size={13} /> {stats[p.id].redeemed}</span>
                                     </div>
                                 )}

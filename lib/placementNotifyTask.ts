@@ -71,7 +71,9 @@ async function runPlacementCheck(): Promise<boolean> {
   if (fired) {
     // 'notified' is its own funnel step — it does NOT feed the resolver's
     // 'surfaced' daily cap, so a push never suppresses the in-app hero swap.
-    logPlacementEvent(top.placement_id, 'notified', { lat: latitude, lng: longitude });
+    // Awaited: the OS may suspend us the moment the task resolves, and a
+    // fire-and-forget insert would be lost with it.
+    await logPlacementEvent(top.placement_id, 'notified', { lat: latitude, lng: longitude });
   }
   return fired;
 }

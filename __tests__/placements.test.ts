@@ -41,6 +41,17 @@ describe('applyPlacements', () => {
     expect(out.rewards.map((r) => r.id)).toEqual(['paid', 'unpaid']);
   });
 
+  it('paid always beats unpaid, even against extreme priority values', () => {
+    // Regression: a weighted scalar rank let an unpaid placement with a
+    // priority ~1000 above a paid one leapfrog it. Ordering is lexicographic.
+    const rewards = [reward('unpaid'), reward('paid')];
+    const out = applyPlacements(rewards, [
+      placement('unpaid', { paid: false, priority: 5_000_000, distance_m: 0 }),
+      placement('paid', { paid: true, priority: -10, distance_m: 900 }),
+    ]);
+    expect(out.rewards.map((r) => r.id)).toEqual(['paid', 'unpaid']);
+  });
+
   it('breaks ties by priority then distance', () => {
     const rewards = [reward('far'), reward('near'), reward('hi')];
     const out = applyPlacements(rewards, [

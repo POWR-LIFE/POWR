@@ -356,6 +356,13 @@ export async function notifyNearbyOffer(opts: {
 }): Promise<boolean> {
   if (!(await isNearbyOfferEnabled())) return false;
 
+  // OS-level permission: without it the schedule call shows nothing, and the
+  // caller would log a 'notified' funnel event for a push nobody ever saw.
+  const perms = await Notifications.getPermissionsAsync().catch(() => null);
+  const allowed = perms?.granted
+    || perms?.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL;
+  if (!allowed) return false;
+
   const cooldownKey = `${NEARBY_OFFER_LAST_FIRED_PREFIX}${opts.placementId}`;
   try {
     const lastFiredRaw = await AsyncStorage.getItem(cooldownKey);
@@ -363,7 +370,6 @@ export async function notifyNearbyOffer(opts: {
       const lastFired = parseInt(lastFiredRaw, 10);
       if (Number.isFinite(lastFired) && Date.now() - lastFired < NEARBY_OFFER_COOLDOWN_MS) return false;
     }
-    await AsyncStorage.setItem(cooldownKey, String(Date.now()));
   } catch { /* non-fatal — fall through and notify */ }
 
   const title = opts.brandName ? `${opts.brandName} is nearby` : 'A reward is nearby';
@@ -382,6 +388,9 @@ export async function notifyNearbyOffer(opts: {
     },
     trigger: null, // immediate
   });
+  // Stamp the cooldown only after a successful schedule so a failed attempt
+  // doesn't mute the placement for 6 h without any push having been shown.
+  await AsyncStorage.setItem(cooldownKey, String(Date.now())).catch(() => {});
   return true;
 }
 
