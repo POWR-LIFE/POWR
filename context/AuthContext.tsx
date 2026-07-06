@@ -8,6 +8,7 @@ import { Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { supabase } from '@/lib/supabase';
+import { claimDevice } from '@/lib/deviceLock';
 
 type AuthContextType = {
     session: Session | null;
@@ -47,6 +48,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const currentSessionIdRef = useRef<string | null>(null);
     const registeringRef = useRef(false); // prevents concurrent registerAndWatchSession calls
     const forcedSignOutRef = useRef(false); // set when another device kicked us, so we can explain why
+    const deviceLockedRef = useRef(false); // set when this device is already bound to a different account
+    const deviceCheckedSessionRef = useRef<string | null>(null); // session we've already run the device-lock check for
 
     /**
      * Upserts this device's session_id into user_active_sessions, overwriting any
@@ -106,6 +109,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         registeringRef.current = false;
     };
 
+    /**
+     * One-account-per-device. Bind this physical device to the signed-in user;
+     * if it's already locked to a DIFFERENT account, sign this session straight
+     * back out (the SIGNED_OUT branch shows the explanation). Runs once per
+     * distinct session — not on every token refresh — and fails open, so a
+     * transient RPC/network error can never lock a user out of their own account.
+     */
+    const enforceDeviceLock = async (activeSession: Session) => {
+        const sessionKey = getJwtSessionId(activeSession.access_token) ?? activeSession.access_token;
+        if (deviceCheckedSessionRef.current === sessionKey) return;
+        deviceCheckedSessionRef.current = sessionKey;
+
+        const res = await claimDevice();
+        if (res.status === 'locked') {
+            deviceLockedRef.current = true;
+            await supabase.auth.signOut();
+        }
+    };
+
     const cleanupSessionWatch = () => {
         currentSessionIdRef.current = null;
         if (sessionChannelRef.current) {
@@ -126,6 +148,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             if (session && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION')) {
                 registerAndWatchSession(session);
             }
+            // Device-lock check on a fresh session only (a token refresh keeps the
+            // same binding, so re-checking every hour would be wasted work).
+            if (session && (event === 'SIGNED_IN' || event === 'INITIAL_SESSION')) {
+                enforceDeviceLock(session);
+            }
             if (!session) {
                 cleanupSessionWatch();
             }
@@ -136,9 +163,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             // screen, and if another device kicked them out, say so.
             if (event === 'SIGNED_OUT') {
                 const wasForced = forcedSignOutRef.current;
+                const wasDeviceLocked = deviceLockedRef.current;
                 forcedSignOutRef.current = false;
+                deviceLockedRef.current = false;
+                deviceCheckedSessionRef.current = null;
                 router.replace('/onboarding');
-                if (wasForced) {
+                if (wasDeviceLocked) {
+                    Alert.alert(
+                        'This device is linked to another account',
+                        'This phone is already tied to a different POWR account. Sign in with that account to continue. If you need to move this device to a new account, contact support.',
+                    );
+                } else if (wasForced) {
                     Alert.alert(
                         'Signed out',
                         'You signed in on another device. POWR allows one device at a time, so you were signed out here. Sign in again to keep using this device.',
@@ -162,9 +197,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             return m ? decodeURIComponent(m[1]) : null;
         };
 
+        // Guard against handling the same OAuth code twice — on Android both
+        // getInitialURL() and the 'url' listener can deliver the launch URL, and a
+        // cold-start deep link can re-deliver it. Re-exchanging would needlessly
+        // re-run signOut(scope:others) and kick this user's other devices again,
+        // which is a big contributor to the "logged out for no reason" reports.
+        const handledCodes = new Set<string>();
         const tryExchangeCode = async (url: string) => {
             const code = extractCode(url);
-            if (!code) return;
+            if (!code || handledCodes.has(code)) return;
+            handledCodes.add(code);
             const { error } = await supabase.auth.exchangeCodeForSession(code);
             if (!error) await supabase.auth.signOut({ scope: 'others' });
         };
