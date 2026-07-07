@@ -1,7 +1,8 @@
+import { useEventListener } from 'expo';
 import { Image as ExpoImage } from 'expo-image';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import React, { useEffect, useState } from 'react';
-import { AccessibilityInfo, StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
+import { AccessibilityInfo, AppState, StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
 
 type Fit = 'cover' | 'contain';
 type Position = 'top' | 'center' | 'bottom';
@@ -56,11 +57,44 @@ export function RewardHeroMedia({
 
 /** Isolated so the expo-video player is only instantiated when a video actually plays. */
 function HeroVideo({ uri, contentFit }: { uri: string; contentFit: Fit }) {
-  const player = useVideoPlayer(uri, (p) => {
+  // useCaching: after the first pass the loop replays from disk, so a slow or
+  // flaky connection can't stall playback mid-loop on later iterations.
+  const player = useVideoPlayer({ uri, useCaching: true }, (p) => {
     p.loop = true;
     p.muted = true;
+    // Decorative background video must never claim audio focus: holding it
+    // pauses the user's music, and losing it silently pauses the video.
+    p.audioMixingMode = 'mixWithOthers';
     p.play();
   });
+
+  // The OS pauses the player on app background, screen lock, and audio-session
+  // interruptions (calls, Siri), and expo-video never resumes it by itself —
+  // the card then sits frozen on one frame. Nudge it whenever it can play but
+  // isn't. The guards swallow calls that race the player's native release.
+  useEventListener(player, 'statusChange', ({ status }) => {
+    try {
+      if (status === 'readyToPlay' && !player.playing) player.play();
+    } catch {}
+  });
+
+  // Backstop for the known expo-video stall at the loop point: if the native
+  // loop didn't restart playback after the clip ended, restart it ourselves.
+  useEventListener(player, 'playToEnd', () => {
+    try {
+      if (!player.playing) player.replay();
+    } catch {}
+  });
+
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state !== 'active') return;
+      try {
+        if (!player.playing) player.play();
+      } catch {}
+    });
+    return () => sub.remove();
+  }, [player]);
 
   return (
     <VideoView
