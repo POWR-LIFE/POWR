@@ -29,6 +29,7 @@ import { supabase } from '@/lib/supabase';
 import { getNotificationPreferences, updateNotificationPreferences } from '@/lib/api/notifications';
 import { cacheNearbyOfferPreference, isNearbyOfferEnabled } from '@/lib/notifications';
 import { requestBatteryOptimizationExemption } from '@/lib/batteryOptimization';
+import { getAppVersion } from '@/lib/device';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 
@@ -40,6 +41,13 @@ const TEXT    = '#F2F2F2';
 const MUTED   = 'rgba(255,255,255,0.25)';
 const DIM     = 'rgba(255,255,255,0.5)';
 const RED     = '#ef4444';
+
+// Real version + build + OTA update id (short), so support conversations match
+// what the admin panel shows. Module-level: it can only change via a reload.
+const { appVersion, appBuild, otaUpdateId } = getAppVersion();
+const appVersionLabel = `POWR · v${appVersion ?? '?'}${appBuild ? ` (${appBuild})` : ''}${
+  otaUpdateId ? ` · ${otaUpdateId.slice(0, 8)}` : ''
+}`;
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
@@ -589,7 +597,7 @@ export default function SettingsScreen() {
 
         {/* ── App info ──────────────────────────────────────── */}
         <View style={styles.appInfo}>
-          <Text style={styles.appVersion}>POWR · Version 1.0.0</Text>
+          <Text style={styles.appVersion}>{appVersionLabel}</Text>
         </View>
 
         {/* ── Danger zone ───────────────────────────────────── */}

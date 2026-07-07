@@ -93,7 +93,7 @@ export function checkIsOpenNow(openingHours?: OpeningHours): boolean {
 const GEOFENCE_TASK_NAME     = 'GEOFENCE_CHECK_IN';
 const LOCATION_TRACKING_TASK = 'POWR_LOCATION_TRACKING';   // foreground-service location stream
 const GEOFENCE_REARM_TASK    = 'POWR_GEOFENCE_BOOT_REARM'; // re-arms monitoring after reboot
-const ACTIVE_GEOFENCE_KEY    = '@powr/active_geofence';
+export const ACTIVE_GEOFENCE_KEY = '@powr/active_geofence'; // also read by lib/otaUpdates.ts to defer restarts mid-visit
 const PARTNER_MAP_KEY        = '@powr/partner_map';
 const PARTNER_MAP_META_KEY   = '@powr/partner_map_meta';   // { fetchedAt } — bump invalidates the in-context parse memo
 const ARM_META_KEY           = '@powr/geofence_arm_meta';  // centre + sentinel radius of the currently armed region set

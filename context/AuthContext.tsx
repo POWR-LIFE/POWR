@@ -4,11 +4,12 @@ import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
 import { router } from 'expo-router';
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
-import { Alert } from 'react-native';
+import { Alert, AppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { supabase } from '@/lib/supabase';
 import { claimDevice } from '@/lib/deviceLock';
+import { reportLocationPermission } from '@/lib/locationPermission';
 
 type AuthContextType = {
     session: Session | null;
@@ -50,6 +51,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const forcedSignOutRef = useRef(false); // set when another device kicked us, so we can explain why
     const deviceLockedRef = useRef(false); // set when this device is already bound to a different account
     const deviceCheckedSessionRef = useRef<string | null>(null); // session we've already run the device-lock check for
+    const sessionUserRef = useRef<string | null>(null); // current user id for listeners that outlive the auth closure
 
     /**
      * Upserts this device's session_id into user_active_sessions, overwriting any
@@ -145,6 +147,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
             setSession(session);
+            sessionUserRef.current = session?.user?.id ?? null;
             if (session && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION')) {
                 registerAndWatchSession(session);
             }
@@ -152,6 +155,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             // same binding, so re-checking every hour would be wasted work).
             if (session && (event === 'SIGNED_IN' || event === 'INITIAL_SESSION')) {
                 enforceDeviceLock(session);
+                reportLocationPermission(session.user.id);
             }
             if (!session) {
                 cleanupSessionWatch();
@@ -227,9 +231,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             await tryExchangeCode(url);
         });
 
+        // Location permission changes happen in system Settings, so re-snapshot
+        // when the app returns to the foreground — the report itself dedupes.
+        const appStateSubscription = AppState.addEventListener('change', (state) => {
+            if (state === 'active' && sessionUserRef.current) {
+                reportLocationPermission(sessionUserRef.current);
+            }
+        });
+
         return () => {
             subscription.unsubscribe();
             linkingSubscription.remove();
+            appStateSubscription.remove();
             cleanupSessionWatch();
         };
     }, []);

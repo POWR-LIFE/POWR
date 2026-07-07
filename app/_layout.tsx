@@ -22,6 +22,7 @@ import { NotificationsProvider } from '@/context/NotificationsContext';
 import { ThemeProvider as AppThemeProvider, useAppTheme } from '@/context/ThemeContext';
 import { registerWalkingSync } from '@/lib/health/walkingSync';
 import { ensureAndroidChannels } from '@/lib/notifications';
+import { useOtaUpdatePrompt } from '@/lib/otaUpdates';
 import { registerPlacementNotifyTask } from '@/lib/placementNotifyTask';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -71,6 +72,9 @@ function RootLayoutNav() {
   useEffect(() => {
     registerPlacementNotifyTask().catch(() => { /* non-fatal */ });
   }, []);
+
+  // Offer a restart when an OTA update is ready (launch + foreground checks).
+  useOtaUpdatePrompt();
 
   if (!fontsLoaded) {
     return null;

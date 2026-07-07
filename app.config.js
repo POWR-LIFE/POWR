@@ -38,6 +38,15 @@ module.exports = {
         projectId: '7f4fe661-8919-4790-bd66-209373f958de',
       },
     },
+    updates: {
+      url: 'https://u.expo.dev/7f4fe661-8919-4790-bd66-209373f958de',
+    },
+    // Fingerprint = hash of the native project: JS-only changes share a runtime
+    // (deliverable OTA), anything touching native modules fences itself off to
+    // new binaries automatically. Never publish OTA across a native change.
+    runtimeVersion: {
+      policy: 'fingerprint',
+    },
     plugins: [
       './withFirebaseMessagingManifestFix.js',
       ...expo.plugins,
