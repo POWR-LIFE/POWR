@@ -12,9 +12,11 @@ export const ONBOARDING_STEPS = [
     '/onboarding-account',
     '/onboarding-profile',
     '/onboarding-permission',
+    '/onboarding-permission-background',
     '/onboarding-gym',
     '/onboarding-health',
     '/onboarding-activities',
+    '/onboarding-notifications',
     '/onboarding-achievement',
 ] as const;
 

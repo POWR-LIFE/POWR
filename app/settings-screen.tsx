@@ -71,6 +71,9 @@ export default function SettingsScreen() {
   // Background ("Always" / "Allow all the time") location + OS notification permission.
   // Closed-app gym detection silently fails without background location, so we surface it.
   const [bgLocationGranted, setBgLocationGranted] = useState<boolean | null>(null);
+  // Android 12+ "Approximate" grants can't verify 25 m gym geofences — surfaced
+  // as their own broken state. null = unknown / iOS (no API to detect there).
+  const [preciseGranted, setPreciseGranted] = useState<boolean | null>(null);
   const [notifGranted, setNotifGranted] = useState<boolean | null>(null);
 
   React.useEffect(() => {
@@ -91,7 +94,10 @@ export default function SettingsScreen() {
   // updates after the user returns from the system settings app.
   const refreshPermissionStatuses = useCallback(async () => {
     const fg = await Location.getForegroundPermissionsAsync().catch(() => null);
-    if (fg) setLocationStatus(fg.status === 'granted' ? 'granted' : fg.status === 'denied' ? 'denied' : 'undetermined');
+    if (fg) {
+      setLocationStatus(fg.status === 'granted' ? 'granted' : fg.status === 'denied' ? 'denied' : 'undetermined');
+      setPreciseGranted(fg.android ? fg.android.accuracy === 'fine' : null);
+    }
     const bg = await Location.getBackgroundPermissionsAsync().catch(() => null);
     if (bg) setBgLocationGranted(bg.status === 'granted');
     const notif = await Notifications.getPermissionsAsync().catch(() => null);
@@ -362,16 +368,18 @@ export default function SettingsScreen() {
             icon="location-outline"
             label="Location Services"
             value={
-              locationStatus === 'granted' && bgLocationGranted === false
-                ? 'Limited'
-                : locationStatus === 'granted'
-                  ? 'Enabled'
-                  : locationStatus === 'denied'
-                    ? 'Denied'
-                    : 'Not set up'
+              locationStatus === 'granted' && preciseGranted === false
+                ? 'Approximate'
+                : locationStatus === 'granted' && bgLocationGranted === false
+                  ? 'Limited'
+                  : locationStatus === 'granted'
+                    ? 'Enabled'
+                    : locationStatus === 'denied'
+                      ? 'Denied'
+                      : 'Not set up'
             }
             valueColor={
-              locationStatus === 'granted' && bgLocationGranted === false
+              locationStatus === 'granted' && (bgLocationGranted === false || preciseGranted === false)
                 ? RED
                 : locationStatus === 'granted'
                   ? '#4ade80'
@@ -380,7 +388,16 @@ export default function SettingsScreen() {
                     : undefined
             }
             onPress={async () => {
-              if (locationStatus === 'granted' && bgLocationGranted === false) {
+              if (locationStatus === 'granted' && preciseGranted === false) {
+                Alert.alert(
+                  'Turn on Precise location',
+                  'POWR verifies you\'re really at the gym — approximate location can\'t do that, so sessions won\'t count. In settings, turn on "Use precise location" for POWR.',
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    { text: 'Open Settings', onPress: () => Linking.openSettings() },
+                  ],
+                );
+              } else if (locationStatus === 'granted' && bgLocationGranted === false) {
                 Alert.alert(
                   Platform.OS === 'ios' ? 'Enable "Always" Location' : 'Enable "Allow all the time"',
                   Platform.OS === 'ios'

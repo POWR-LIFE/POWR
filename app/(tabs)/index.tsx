@@ -25,6 +25,7 @@ import { WeeklyActivityBars, type WeeklyRingData } from '@/components/home/Weekl
 import { WeeklyActivityCircles } from '@/components/home/WeeklyActivityRings';
 import { HeaderActions } from '@/components/HeaderActions';
 import { HealthGapBanner } from '@/components/HealthGapBanner';
+import NotificationPrimeSheet from '@/components/NotificationPrimeSheet';
 import { ACTIVITIES, type ActivityType } from '@/constants/activities';
 import { useAuth } from '@/context/AuthContext';
 import { useGeofenceContext } from '@/context/GeofenceContext';
@@ -722,6 +723,10 @@ export default function HomeScreen() {
                     </View>
                 </View>
             </Modal>
+
+            {/* Primed notification re-ask — self-gating (permission off + ≥1
+                session banked + pacing), so mounting is unconditional. */}
+            <NotificationPrimeSheet />
         </View>
     );
 }
