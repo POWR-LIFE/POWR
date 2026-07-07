@@ -113,6 +113,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     deviceToken: string | null;
   } | null>(null);
 
+
   // -------------------------------------------------------------------------
   // Shared notification-tap handler (foreground listener + cold start)
   // -------------------------------------------------------------------------
@@ -158,50 +159,62 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   // Register device for push when user signs in
   // -------------------------------------------------------------------------
 
-  const registerForPush = useCallback(async (userId: string) => {
-    // Fetching the token below fires addPushTokenListener on Android (it emits
-    // on every fetch, not just rotations), whose handler calls back into this
-    // function — without the guard that's an infinite upsert loop hammering
-    // the API several times a second.
-    if (registeringPush.current) return;
-    registeringPush.current = true;
-    try {
-      const registration = await requestPermissionsAndGetToken();
-      if (!registration) {
-        setPermissionGranted(false);
-        return;
+  const registerForPush = useCallback(
+    async (userId: string, opts?: { promptIfNeeded?: boolean }): Promise<boolean> => {
+      // Fetching the token below fires addPushTokenListener on Android (it emits
+      // on every fetch, not just rotations), whose handler calls back into this
+      // function — without the guard that's an infinite upsert loop hammering
+      // the API several times a second.
+      if (registeringPush.current) return false;
+      registeringPush.current = true;
+      try {
+        // Automatic callers (sign-in effect, token-rotation listener, foreground
+        // re-check) NEVER show the OS dialog — iOS grants exactly one shot at it,
+        // so it must only fire from a primed surface the user deliberately tapped
+        // (onboarding notifications page, NotificationPrimeSheet, settings).
+        // Automatic calls silently refresh tokens for already-granted users.
+        const registration = await requestPermissionsAndGetToken({
+          promptIfNeeded: opts?.promptIfNeeded ?? false,
+        });
+        if (!registration) {
+          setPermissionGranted(false);
+          return false;
+        }
+
+        setPermissionGranted(true);
+        setExpoPushToken(registration.expoPushToken);
+
+        const prev = lastRegistration.current;
+        if (
+          prev &&
+          prev.userId === userId &&
+          prev.expoPushToken === registration.expoPushToken &&
+          prev.deviceToken === registration.deviceToken
+        ) {
+          return true; // already registered exactly this — skip the redundant writes
+        }
+
+        await upsertPushToken(
+          userId,
+          registration.expoPushToken,
+          registration.deviceToken,
+          registration.platform,
+        );
+        lastRegistration.current = {
+          userId,
+          expoPushToken: registration.expoPushToken,
+          deviceToken: registration.deviceToken,
+        };
+        return true;
+      } catch (err) {
+        console.warn('[Notifications] Failed to register push token:', err);
+        return false;
+      } finally {
+        registeringPush.current = false;
       }
-
-      setPermissionGranted(true);
-      setExpoPushToken(registration.expoPushToken);
-
-      const prev = lastRegistration.current;
-      if (
-        prev &&
-        prev.userId === userId &&
-        prev.expoPushToken === registration.expoPushToken &&
-        prev.deviceToken === registration.deviceToken
-      ) {
-        return; // already registered exactly this — skip the redundant writes
-      }
-
-      await upsertPushToken(
-        userId,
-        registration.expoPushToken,
-        registration.deviceToken,
-        registration.platform,
-      );
-      lastRegistration.current = {
-        userId,
-        expoPushToken: registration.expoPushToken,
-        deviceToken: registration.deviceToken,
-      };
-    } catch (err) {
-      console.warn('[Notifications] Failed to register push token:', err);
-    } finally {
-      registeringPush.current = false;
-    }
-  }, []);
+    },
+    [],
+  );
 
   // -------------------------------------------------------------------------
   // Load preferences
@@ -363,9 +376,10 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
 
   const requestPermissions = useCallback(async (): Promise<boolean> => {
     if (!user?.id) return false;
-    await registerForPush(user.id);
-    return permissionGranted;
-  }, [user?.id, registerForPush, permissionGranted]);
+    // Deliberate user action (onboarding screen / settings) — always allowed to
+    // show the OS dialog. Returns the fresh result, not the pre-request state.
+    return registerForPush(user.id, { promptIfNeeded: true });
+  }, [user?.id, registerForPush]);
 
   const updatePreferences = useCallback(
     async (partial: Partial<NotificationPreferences>) => {

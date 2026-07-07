@@ -99,7 +99,11 @@ export interface PushRegistration {
   platform: 'ios' | 'android';
 }
 
-export async function requestPermissionsAndGetToken(): Promise<PushRegistration | null> {
+export async function requestPermissionsAndGetToken(
+  opts: { promptIfNeeded?: boolean } = {},
+): Promise<PushRegistration | null> {
+  const { promptIfNeeded = true } = opts;
+
   if (!Device.isDevice) {
     // Simulators cannot receive push notifications
     return null;
@@ -111,6 +115,12 @@ export async function requestPermissionsAndGetToken(): Promise<PushRegistration 
   let finalStatus = existing;
 
   if (existing !== 'granted') {
+    // Callers that only want to refresh an existing registration (e.g. the
+    // automatic sign-in path while the user is still mid-onboarding) must not
+    // ambush the user with the OS dialog — that ask belongs to the primed
+    // onboarding-notifications screen.
+    if (!promptIfNeeded) return null;
+
     const { status } = await Notifications.requestPermissionsAsync({
       ios: {
         allowAlert: true,

@@ -1566,12 +1566,24 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
     fingerprintRef.current = fingerprint;
 
     async function startGeofencing() {
-      const { status: fg } = await Location.requestForegroundPermissionsAsync();
-      if (fg !== 'granted') return;
+      // Check-only, never request: this runs at app launch (partners load on
+      // mount), and a root provider firing the OS permission dialogs here
+      // ambushes the user before the primed onboarding pages get their shot —
+      // on Android 11+ the background request even bounces them into system
+      // settings from nowhere. The dialogs are owned by the primed surfaces
+      // (onboarding, settings, discover). Clearing the fingerprint lets the
+      // next partner refresh (foreground return / 5-min interval) re-attempt,
+      // so geofencing comes up in the same session once permissions land.
+      const { status: fg } = await Location.getForegroundPermissionsAsync();
+      if (fg !== 'granted') {
+        fingerprintRef.current = '';
+        return;
+      }
 
-      const { status: bg } = await Location.requestBackgroundPermissionsAsync();
+      const { status: bg } = await Location.getBackgroundPermissionsAsync();
       if (bg !== 'granted') {
-        console.warn('[Geofence] Background location permission denied — geofencing inactive.');
+        fingerprintRef.current = '';
+        console.warn('[Geofence] Background location permission not granted — geofencing inactive.');
         return;
       }
 

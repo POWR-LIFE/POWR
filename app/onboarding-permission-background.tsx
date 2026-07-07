@@ -7,7 +7,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import GeometricBackground from '@/components/GeometricBackground';
 import PermissionPrimeScene from '@/components/onboarding/PermissionPrimeScene';
 import { ONBOARDING_DOT_COUNT, dotIndexFor } from '@/lib/onboarding/flow';
-import { awardBonus } from '@/lib/api/points';
+import {
+    hasPromptedBatteryOptimization,
+    markBatteryOptimizationPrompted,
+    requestBatteryOptimizationExemption,
+} from '@/lib/batteryOptimization';
 
 const GOLD = '#E8D200';
 const BG = '#0d0d0d';
@@ -53,12 +57,9 @@ const dotStyles = StyleSheet.create({
     },
 });
 
-// On grant we continue to the background-location priming page; skipping
-// location entirely makes that page pointless, so skip jumps straight to gym.
-const NEXT_SCREEN = '/onboarding-permission-background';
-const SKIP_SCREEN = '/onboarding-gym';
+const NEXT_SCREEN = '/onboarding-gym';
 
-export default function OnboardingPermissionScreen() {
+export default function OnboardingPermissionBackgroundScreen() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
     const [requesting, setRequesting] = useState(false);
@@ -67,92 +68,86 @@ export default function OnboardingPermissionScreen() {
     const buttonsFade = useRef(new Animated.Value(0)).current;
 
     useEffect(() => {
-        // Check if permission is already granted (e.g. reinstall or granted elsewhere)
         (async () => {
-            // Award the one-time signup bonus (idempotent — server deduplicates per user)
-            awardBonus('signup').catch(() => {});
-
-            const { status } = await Location.getForegroundPermissionsAsync();
+            // Already granted (reinstall, resumed onboarding) — nothing to ask.
+            const { status } = await Location.getBackgroundPermissionsAsync();
             if (status === 'granted') {
-                // Award bonus idempotently (server deduplicates) and advance —
-                // straight past the background page if that's already granted too.
-                awardBonus('location_permission').catch(() => {});
-                const { status: bg } = await Location.getBackgroundPermissionsAsync();
-                router.replace(bg === 'granted' ? SKIP_SCREEN : NEXT_SCREEN);
+                router.replace(NEXT_SCREEN);
                 return;
             }
-            // Permission not yet granted — show the screen
             Animated.sequence([
-                Animated.delay(800),
+                Animated.delay(400),
                 Animated.timing(contentFade, { toValue: 1, duration: 500, useNativeDriver: true }),
                 Animated.timing(buttonsFade, { toValue: 1, duration: 400, useNativeDriver: true }),
             ]).start();
         })();
     }, []);
 
-    // Award the bonus (fire-and-forget; idempotent on server) and move to the
-    // background-location priming page.
-    const finishGrant = () => {
-        awardBonus('location_permission').catch((e) =>
-            console.warn('Failed to award location bonus', e)
-        );
+    // Android: ask the user to exempt POWR from battery optimization so arrival
+    // detection keeps working when the app is fully closed. One-time, gated
+    // behind our own explainer. Navigation continues either way.
+    const continueViaBatteryPrompt = async () => {
+        if (Platform.OS === 'android' && !(await hasPromptedBatteryOptimization())) {
+            await markBatteryOptimizationPrompted();
+            Alert.alert(
+                'Keep earning when POWR is closed',
+                'To detect when you arrive at a gym while the app is closed, allow POWR to run without battery restrictions on the next screen.',
+                [
+                    { text: 'Not now', style: 'cancel', onPress: () => router.push(NEXT_SCREEN) },
+                    {
+                        text: 'Allow',
+                        onPress: async () => {
+                            await requestBatteryOptimizationExemption();
+                            router.push(NEXT_SCREEN);
+                        },
+                    },
+                ],
+            );
+            return;
+        }
         router.push(NEXT_SCREEN);
     };
 
-    const handleAllowLocation = async () => {
+    const handleAllowBackground = async () => {
         if (requesting) return;
         setRequesting(true);
 
         try {
-            // This triggers the native OS permission dialog — the same one the
-            // mock above the button has been showing the user all along.
-            const res = await Location.requestForegroundPermissionsAsync();
-
-            if (res.status !== 'granted') {
-                Alert.alert(
-                    'Location Required',
-                    'To earn while you move, POWR needs location access. You can also skip for now.',
-                    [
-                        { text: 'Cancel', style: 'cancel', onPress: () => setRequesting(false) },
-                        { text: 'Skip', onPress: () => router.push(SKIP_SCREEN) }
-                    ]
-                );
-                return;
+            // Android 11+ sends the user to the app's location settings page —
+            // the exact screen the mock above is coaching them through.
+            let bgGranted = false;
+            try {
+                const { status } = await Location.requestBackgroundPermissionsAsync();
+                bgGranted = status === 'granted';
+            } catch (e) {
+                console.warn('Background permission request failed', e);
             }
 
-            // Android 12+ lets users pick "Approximate" — useless against 25 m
-            // gym geofences, so sessions would never verify. One nudge to fix it
-            // before moving on.
-            if (res.android?.accuracy === 'coarse') {
+            // iOS: if "Always" wasn't granted, guide the user to fix it in Settings.
+            // Without "Always", iOS won't wake the app for geofence events when it's
+            // killed — the "You're in" notification will never fire.
+            if (Platform.OS === 'ios' && !bgGranted) {
                 Alert.alert(
-                    'Turn on Precise location',
-                    'POWR verifies you’re really at the gym — approximate location can’t do that. Choose “Precise” so your sessions count.',
+                    'Enable "Always" for gym check-ins',
+                    'To detect gym arrivals when POWR is closed, set location to "Always" in Settings › Privacy & Security › Location Services › POWR.',
                     [
+                        { text: 'Later', onPress: () => router.push(NEXT_SCREEN) },
                         {
-                            text: 'Fix it',
-                            onPress: async () => {
-                                if (res.canAskAgain) {
-                                    // Android re-shows the dialog with the
-                                    // Precise/Approximate selector.
-                                    await Location.requestForegroundPermissionsAsync().catch(() => {});
-                                    finishGrant();
-                                } else {
-                                    // Stay on this page — CONTINUE re-checks
-                                    // once they're back from settings.
-                                    Linking.openSettings();
-                                }
+                            text: 'Open Settings',
+                            onPress: () => {
+                                Linking.openSettings();
+                                router.push(NEXT_SCREEN);
                             },
                         },
-                        { text: 'Later', onPress: finishGrant },
                     ],
                 );
                 return;
             }
 
-            finishGrant();
+            await continueViaBatteryPrompt();
         } catch (error) {
-            console.error('Error requesting location permission:', error);
-            router.push(SKIP_SCREEN);
+            console.error('Error requesting background location:', error);
+            router.push(NEXT_SCREEN);
         } finally {
             setRequesting(false);
         }
@@ -169,7 +164,7 @@ export default function OnboardingPermissionScreen() {
                     if (router.canGoBack()) {
                         router.back();
                     } else {
-                        router.replace('/onboarding-account');
+                        router.replace('/onboarding-permission');
                     }
                 }}
                 hitSlop={24}
@@ -180,43 +175,46 @@ export default function OnboardingPermissionScreen() {
             {/* Center content */}
             <View style={[styles.center, { paddingTop: insets.top + 60 }]}>
                 <Animated.View style={[styles.textBlock, { opacity: contentFade }]}>
-                    <Text style={styles.eyebrow}>LOCATION</Text>
+                    <Text style={styles.eyebrow}>PASSIVE TRACKING</Text>
                     <Text style={styles.headline}>
-                        Unlock the{'\n'}
-                        <Text style={styles.headlineGold}>map.</Text>
+                        Earn while{'\n'}you{' '}
+                        <Text style={styles.headlineGold}>move.</Text>
                     </Text>
                     <Text style={styles.body}>
-                        Partner gyms, hidden rewards, automatic check-ins — it all starts with where you are.
+                        No pressing start. POWR checks you in from your pocket — even when the app is closed. That only works on{' '}
+                        <Text style={styles.bodyStrong}>
+                            {Platform.OS === 'ios' ? '“Always”' : '“Allow all the time”'}
+                        </Text>
+                        .
                     </Text>
 
                     <View style={styles.mock}>
-                        <PermissionPrimeScene kind="location-foreground" />
+                        <PermissionPrimeScene kind="location-background" />
                     </View>
                 </Animated.View>
             </View>
 
             {/* Bottom */}
             <Animated.View style={[styles.bottom, { paddingBottom: insets.bottom + 32, opacity: buttonsFade }]}>
-                <StepDots current={dotIndexFor('/onboarding-permission')} />
+                <StepDots current={dotIndexFor('/onboarding-permission-background')} />
 
                 <Pressable
                     style={[styles.primaryButton, requesting && { opacity: 0.7 }]}
-                    onPress={handleAllowLocation}
+                    onPress={handleAllowBackground}
                     disabled={requesting}
                 >
                     <Text style={styles.primaryLabel}>
-                        {requesting ? 'REQUESTING...' : Platform.OS === 'ios' ? 'ALLOW WHILE USING' : 'ALLOW LOCATION'}
+                        {requesting
+                            ? 'REQUESTING...'
+                            : Platform.OS === 'ios'
+                              ? 'SET TO ALWAYS'
+                              : 'ALLOW ALL THE TIME'}
                     </Text>
-                    {!requesting && (
-                        <View style={styles.bonusBadge}>
-                            <Text style={styles.bonusLabel}>+20 POWR</Text>
-                        </View>
-                    )}
                 </Pressable>
 
                 <Pressable
                     style={styles.skipButton}
-                    onPress={() => router.push(SKIP_SCREEN)}
+                    onPress={() => router.push(NEXT_SCREEN)}
                 >
                     <Text style={styles.skipLabel}>Skip for now</Text>
                 </Pressable>
@@ -280,6 +278,11 @@ const styles = StyleSheet.create({
         marginBottom: 26,
         paddingHorizontal: 8,
     },
+    bodyStrong: {
+        color: 'rgba(255,255,255,0.75)',
+        fontFamily: FONT_MEDIUM,
+        fontWeight: '500',
+    },
     mock: {
         alignSelf: 'stretch',
     },
@@ -302,19 +305,6 @@ const styles = StyleSheet.create({
         fontFamily: FONT_BOLD,
         fontWeight: '700',
         letterSpacing: 1.5,
-    },
-    bonusBadge: {
-        backgroundColor: 'rgba(0,0,0,0.18)',
-        borderRadius: 10,
-        paddingHorizontal: 8,
-        paddingVertical: 3,
-    },
-    bonusLabel: {
-        color: '#0a0a0a',
-        fontSize: 9,
-        fontFamily: FONT_BOLD,
-        fontWeight: '700',
-        letterSpacing: 0.5,
     },
     skipButton: {
         alignItems: 'center',
