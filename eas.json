@@ -5,6 +5,7 @@
   "build": {
     "preview": {
       "distribution": "internal",
+      "channel": "preview",
       "env": {
         "EXPO_PUBLIC_SUPABASE_URL": "https://wjvvujnicwkruaeibttt.supabase.co",
         "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_kh2lOAPJRrdykLLOR1QVxA_jj3H4CAL"
@@ -14,6 +15,7 @@
       }
     },
     "production": {
+      "channel": "production",
       "env": {
         "EXPO_PUBLIC_SUPABASE_URL": "https://wjvvujnicwkruaeibttt.supabase.co",
         "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_kh2lOAPJRrdykLLOR1QVxA_jj3H4CAL",

@@ -8,7 +8,8 @@ import {
     ChevronLeft, TrendingUp, Zap, Shield, AlertCircle,
     ArrowUpRight, ArrowDownRight, Gift, Plus, X,
     Heart, Moon, Flame, Footprints, Star, Trash2,
-    Camera, ImagePlus, Trophy, Check, Link2, RefreshCw, Pencil
+    Camera, ImagePlus, Trophy, Check, Link2, RefreshCw, Pencil,
+    Smartphone
 } from 'lucide-react';
 
 const MIN_USERNAME = 3;
@@ -17,6 +18,17 @@ const normalizeUsername = (raw) => raw.toLowerCase().replace(/[^a-z0-9_]/g, '').
 
 const logAction = async (adminId, action, targetType, targetId, metadata = {}) => {
     await supabase.from('admin_audit_log').insert({ admin_id: adminId, action, target_type: targetType, target_id: targetId, metadata });
+};
+
+// Live location-permission snapshot (profiles.location_permission, reported by
+// newer clients on every launch/foreground). NULL = build predates the
+// telemetry — fall back to the legacy write-once onboarding-bonus flag
+// (location_granted), which can't see later grants/revokes.
+const LOCATION_STATES = {
+    always:       { chip: 'Location Always',      detail: 'Always',           cls: 'bg-[#10B981]/10 border border-[#10B981]/20 text-[#10B981]' },
+    while_using:  { chip: 'Location While Using', detail: 'While Using only', cls: 'bg-[#F59E0B]/10 border border-[#F59E0B]/25 text-[#B45309]' },
+    denied:       { chip: 'Location Off',         detail: 'Denied',           cls: 'bg-red-500/10 border border-red-500/20 text-red-500' },
+    undetermined: { chip: 'Location Not Asked',   detail: 'Never asked',      cls: 'bg-[#EFEFEC] text-[#999999]' },
 };
 
 const timeAgo = (dateStr) => {
@@ -60,6 +72,7 @@ export default function UserProfile() {
     const [deleteLoading, setDeleteLoading] = useState(false);
     const [deviceBindings, setDeviceBindings] = useState([]);
     const [deviceReleasing, setDeviceReleasing] = useState(false);
+    const [pushTokens, setPushTokens] = useState([]);
     const [activeTab, setActiveTab] = useState('activity');
     const [visibleSessions, setVisibleSessions] = useState(10);
     const [visibleTransactions, setVisibleTransactions] = useState(10);
@@ -499,6 +512,15 @@ export default function UserProfile() {
             const { data: devData } = await supabase.rpc('admin_get_user_devices', { p_user_id: userId });
             setDeviceBindings(devData || []);
 
+            // App version per device, reported with the push-token upsert on
+            // every launch. NULL app_version = a build predating the telemetry.
+            const { data: tokenData } = await supabase
+                .from('user_push_tokens')
+                .select('platform, app_version, app_build, ota_update_id, ota_channel, updated_at')
+                .eq('user_id', userId)
+                .order('updated_at', { ascending: false });
+            setPushTokens(tokenData || []);
+
             // Load preferred gym name if set
             if (p.data.preferred_gym_id) {
                 const { data: gymData } = await supabase
@@ -534,6 +556,16 @@ export default function UserProfile() {
     );
 
     const totalPoints = transactions.reduce((acc, t) => acc + t.amount, 0);
+
+    // Most recently seen token per platform (tokens are sorted updated_at desc).
+    const latestTokenByPlatform = pushTokens.filter(
+        (t, i) => pushTokens.findIndex(x => x.platform === t.platform) === i
+    );
+
+    const locationState = LOCATION_STATES[profile.location_permission] ?? null;
+    const locationCheckedAt = profile.location_permission_checked_at
+        ? new Date(profile.location_permission_checked_at).toLocaleDateString()
+        : null;
 
     return (
         <div className="px-4 lg:px-0 py-20 animate-in fade-in slide-in-from-bottom-8 duration-1000">
@@ -659,13 +691,33 @@ export default function UserProfile() {
                         </div>
                         <div className="flex items-center flex-wrap gap-3">
                             <span className="px-3 py-1 rounded-full bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.2em]">LVL {profile.level || 1}</span>
-                            {profile.location_granted ? (
-                                <span className="px-3 py-1 rounded-full bg-[#10B981]/10 border border-[#10B981]/20 text-[#10B981] text-[10px] font-black uppercase tracking-[0.2em] flex items-center gap-1.5">
+                            {locationState ? (
+                                <span
+                                    title={`Live permission snapshot${locationCheckedAt ? ` · reported ${locationCheckedAt}` : ''}`}
+                                    className={`px-3 py-1 rounded-full ${locationState.cls} text-[10px] font-black uppercase tracking-[0.2em] flex items-center gap-1.5`}
+                                >
+                                    <MapPin size={11} /> {locationState.chip}
+                                </span>
+                            ) : profile.location_granted ? (
+                                <span title="Legacy onboarding-bonus flag — this build doesn't report live permission state" className="px-3 py-1 rounded-full bg-[#10B981]/10 border border-[#10B981]/20 text-[#10B981] text-[10px] font-black uppercase tracking-[0.2em] flex items-center gap-1.5">
                                     <MapPin size={11} /> Location
                                 </span>
                             ) : (
-                                <span className="px-3 py-1 rounded-full bg-[#EFEFEC] text-[#999999] text-[10px] font-black uppercase tracking-[0.2em]">No Location</span>
+                                <span title="Legacy onboarding-bonus flag — this build doesn't report live permission state" className="px-3 py-1 rounded-full bg-[#EFEFEC] text-[#999999] text-[10px] font-black uppercase tracking-[0.2em]">No Location</span>
                             )}
+                            {latestTokenByPlatform.map(t => (
+                                <span
+                                    key={t.platform}
+                                    title={`Reported with push registration · last seen ${new Date(t.updated_at).toLocaleDateString()}${t.ota_channel ? ` · channel ${t.ota_channel}` : ''}${t.ota_update_id ? ` · OTA update ${t.ota_update_id}` : t.ota_channel ? ' · embedded bundle' : ''}`}
+                                    className="px-3 py-1 rounded-full bg-[#EFEFEC] text-[#666666] text-[10px] font-black uppercase tracking-[0.2em] flex items-center gap-1.5"
+                                >
+                                    <Smartphone size={11} />
+                                    {t.platform}
+                                    {t.app_version
+                                        ? ` v${t.app_version}${t.app_build ? ` (${t.app_build})` : ''}${t.ota_update_id ? ` · ${t.ota_update_id.slice(0, 8)}` : ''}`
+                                        : ' · older build'}
+                                </span>
+                            ))}
                             <button
                                 onClick={handleTogglePro}
                                 disabled={proLoading}
@@ -1584,7 +1636,14 @@ export default function UserProfile() {
                         <h3 className="text-base font-black uppercase tracking-[0.3em] text-[#555555] mb-10">Diagnostic Data</h3>
                         <div className="space-y-6">
                             {[
-                                { label: 'Location Access', value: profile.location_granted ? 'Granted' : 'Denied', icon: MapPin, highlight: profile.location_granted },
+                                {
+                                    label: 'Location Access',
+                                    value: locationState
+                                        ? `${locationState.detail}${locationCheckedAt ? ` · as of ${locationCheckedAt}` : ''}`
+                                        : (profile.location_granted ? 'Granted (legacy flag)' : 'Unknown (legacy flag)'),
+                                    icon: MapPin,
+                                    highlight: profile.location_permission === 'always' || (!profile.location_permission && profile.location_granted),
+                                },
                                 { label: 'Node Uptime', value: '182 Days', icon: Clock },
                                 { label: 'Sync Status', value: 'Verified', icon: Shield },
                                 { label: 'Risk Factor', value: 'Low (0.02)', icon: AlertCircle },
