@@ -54,6 +54,7 @@ export function TogetherSection({ onOpenChallenge }: TogetherSectionProps) {
     acceptInvite,
     declineInvite,
     leaveChallenge,
+    dismissChallenge,
     newlyCompletedId,
     clearCelebration,
     refresh,
@@ -197,6 +198,7 @@ export function TogetherSection({ onOpenChallenge }: TogetherSectionProps) {
           onPress={openChallenge}
           onAccept={(ch) => handleAccept(ch.id)}
           onDecline={(ch) => handleDecline(ch.id)}
+          onDismiss={(ch) => void dismissChallenge(ch.id)}
         />
       ) : (
         /* Carousel — keeps the hero band one card tall however many you're in.
@@ -222,6 +224,7 @@ export function TogetherSection({ onOpenChallenge }: TogetherSectionProps) {
                   onPress={openChallenge}
                   onAccept={(ch) => handleAccept(ch.id)}
                   onDecline={(ch) => handleDecline(ch.id)}
+                  onDismiss={(ch) => void dismissChallenge(ch.id)}
                 />
               </View>
             ))}

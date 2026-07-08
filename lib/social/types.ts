@@ -106,4 +106,10 @@ export interface SharedChallenge {
    * clean integer target — those fall back to the percentage.
    */
   goalTarget?: number;
+  /**
+   * When the signed-in user dismissed this (settled) challenge from their Home
+   * via the card's (X). Per-user display flag only — the challenge and everyone
+   * else's view are untouched; Home just stops showing the card.
+   */
+  dismissedAt?: string | null;
 }

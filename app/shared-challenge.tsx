@@ -1,14 +1,14 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import GeometricBackground from '@/components/GeometricBackground';
 import { Avatar } from '@/components/social/Avatar';
 import { Countdown } from '@/components/social/Countdown';
-import { FriendSearchSheet } from '@/components/social/FriendSearchSheet';
+import { InvitePeopleSheet } from '@/components/social/InvitePeopleSheet';
 import { SharedChallengeCelebration } from '@/components/social/SharedChallengeCelebration';
 import { UserProfileSheet } from '@/components/UserProfileSheet';
 import { fontFamily } from '@/constants/tokens';
@@ -109,25 +109,43 @@ export default function SharedChallengeDetail() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const params = useLocalSearchParams<{ challenge?: string; id?: string }>();
-  const { acceptInvite, declineInvite, leaveChallenge, getById, bonusConfig, loading, error, refresh, search, sendRequest } = useSharedChallenges();
+  const { acceptInvite, declineInvite, leaveChallenge, inviteToChallenge, fetchById, getById, bonusConfig, loading, error, refresh, friends, search, sendRequest } = useSharedChallenges();
   const [showCelebration, setShowCelebration] = useState(false);
-  const [showAddFriend, setShowAddFriend] = useState(false);
+  const [showInvite, setShowInvite] = useState(false);
   const [retrying, setRetrying] = useState(false);
   // Tap a participant to view their profile / add them. Relationship is unknown
   // here, so the sheet resolves it via RPC.
   const [sheetUserId, setSheetUserId] = useState<string | null>(null);
+  // Historical fallback: the list RPC drops challenges 3 days after settlement,
+  // but notification links live forever — resolve those by id instead of
+  // dead-ending on "not available".
+  const [fetched, setFetched] = useState<SharedChallenge | null>(null);
+  const [fetchingById, setFetchingById] = useState(false);
 
   // Prefer the live hook record (by id — used by Home nav + notification deep
   // links); fall back to a serialized challenge param for older nav paths.
   const challenge = useMemo<SharedChallenge | null>(() => {
-    if (params.id) return getById(params.id) ?? null;
+    if (params.id) return getById(params.id) ?? fetched;
     if (!params.challenge) return null;
     try {
       return JSON.parse(params.challenge) as SharedChallenge;
     } catch {
       return null;
     }
-  }, [params.id, params.challenge, getById]);
+  }, [params.id, params.challenge, getById, fetched]);
+
+  // Once the list has loaded and still doesn't know this id, try the durable
+  // by-id lookup (works for completed >3d / expired / cancelled challenges).
+  useEffect(() => {
+    if (!params.id || loading || fetched) return;
+    if (getById(params.id)) return;
+    let cancelled = false;
+    setFetchingById(true);
+    fetchById(params.id)
+      .then((c) => { if (!cancelled && c) setFetched(c); })
+      .finally(() => { if (!cancelled) setFetchingById(false); });
+    return () => { cancelled = true; };
+  }, [params.id, loading, fetched, getById, fetchById]);
 
   if (!challenge) {
     // Three distinct states so we never dead-end on a blank screen:
@@ -135,7 +153,7 @@ export default function SharedChallengeDetail() {
     //   error    → the fetch failed; the challenge may well still exist, so offer
     //              a retry instead of wrongly declaring it gone
     //   missing  → loaded cleanly but it's genuinely not in our list
-    const isLoading = retrying || (!!params.id && loading);
+    const isLoading = retrying || fetchingById || (!!params.id && loading);
     const isError = !isLoading && error;
 
     const handleRetry = async () => {
@@ -196,6 +214,14 @@ export default function SharedChallengeDetail() {
   const others = participants.filter((p) => !p.isSelf);
   const accepted = participants.filter((p) => p.state !== 'invited' && p.state !== 'declined');
   const finished = participants.filter((p) => p.completed);
+  // Anyone still in the challenge (invited or committed) can't be re-invited.
+  // `state` from the RPC only ever surfaces live rows, but guard declined/left
+  // explicitly so a re-invite path stays open for them. Plain derivation — no
+  // hook — because we're below the `!challenge` early return (hooks up there
+  // would violate the rules of hooks) and it's a handful of rows at most.
+  const alreadyInIds = new Set(
+    participants.filter((p) => p.state !== 'declined' && p.state !== 'left').map((p) => p.friend.id),
+  );
 
   // What YOU'RE on track for: bonus scales with OTHER finishers (co-completers).
   const coCompleters = others.filter((p) => p.completed).length;
@@ -209,6 +235,11 @@ export default function SharedChallengeDetail() {
 
   const isInvited = self?.state === 'invited';
   const isCreator = challenge.creatorId === self?.friend.id;
+  // Terminal statuses — reachable via the 3-day linger and the by-id fallback
+  // (old notification links). The game's over: no accept/invite/leave, just the
+  // outcome and its share.
+  const challengeOver =
+    challenge.status === 'completed' || challenge.status === 'expired' || challenge.status === 'cancelled';
   // Forming until everyone's accepted — the clock (endsAt) only runs after that.
   const forming = participants.some((p) => p.state === 'invited');
 
@@ -377,7 +408,7 @@ export default function SharedChallengeDetail() {
           </View>
         </View>
 
-        {isInvited ? (
+        {isInvited && !challengeOver ? (
           /* Pending-invite — Accept / Decline */
           <>
             <Text style={styles.invitePrompt}>
@@ -387,6 +418,14 @@ export default function SharedChallengeDetail() {
               </Text>
               .
             </Text>
+            {/* Joining an already-running challenge: be honest about the clock —
+                they inherit the time that's left, not a fresh run. */}
+            {!forming && challenge.endsAt ? (
+              <Text style={styles.inviteSub}>
+                This one’s already underway — you’d be joining with{' '}
+                <Countdown endsAt={challenge.endsAt} suffix="" style={styles.inviteSubStrong} /> left.
+              </Text>
+            ) : null}
             <Pressable
               style={styles.acceptBtn}
               onPress={() => {
@@ -404,20 +443,36 @@ export default function SharedChallengeDetail() {
               <Text style={styles.leaveText}>Decline</Text>
             </Pressable>
           </>
+        ) : challengeOver ? (
+          /* Finished (completed/expired/cancelled) — outcome is read-only; the
+             only live action is sharing the result. */
+          <View style={styles.actionRow}>
+            <Pressable
+              style={[styles.actionBtn, styles.actionGhost]}
+              onPress={handleShare}
+              accessibilityRole="button"
+              accessibilityLabel="Share challenge result"
+            >
+              <Ionicons name="share-outline" size={15} color={SECONDARY} />
+              <Text style={styles.actionGhostText}>Share result</Text>
+            </Pressable>
+          </View>
         ) : (
           <>
-            {/* Grow the group — add new friends by username, or share a link to
-                invite anyone (friend or not) straight into this challenge. */}
+            {/* Grow the group. Only the creator can invite people straight into
+                the challenge; everyone else can still share a link. */}
             <View style={styles.actionRow}>
-              <Pressable
-                style={[styles.actionBtn, styles.actionPrimary]}
-                onPress={() => { Haptics.selectionAsync(); setShowAddFriend(true); }}
-                accessibilityRole="button"
-                accessibilityLabel="Add friends by username"
-              >
-                <Ionicons name="person-add-outline" size={16} color={GOLD} />
-                <Text style={styles.actionPrimaryText}>Add friends</Text>
-              </Pressable>
+              {isCreator && (
+                <Pressable
+                  style={[styles.actionBtn, styles.actionPrimary]}
+                  onPress={() => { Haptics.selectionAsync(); setShowInvite(true); }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Invite people to this challenge"
+                >
+                  <Ionicons name="person-add-outline" size={16} color={GOLD} />
+                  <Text style={styles.actionPrimaryText}>Invite people</Text>
+                </Pressable>
+              )}
               <Pressable
                 style={[styles.actionBtn, styles.actionGhost]}
                 onPress={handleShare}
@@ -458,9 +513,12 @@ export default function SharedChallengeDetail() {
         />
       )}
 
-      <FriendSearchSheet
-        visible={showAddFriend}
-        onClose={() => setShowAddFriend(false)}
+      <InvitePeopleSheet
+        visible={showInvite}
+        onClose={() => setShowInvite(false)}
+        friends={friends}
+        alreadyInIds={alreadyInIds}
+        onInvite={(ids) => inviteToChallenge(challenge.id, ids)}
         search={search}
         sendRequest={sendRequest}
       />
@@ -542,6 +600,8 @@ const styles = StyleSheet.create({
 
   // pending invite
   invitePrompt: { fontFamily: fontFamily.light, fontSize: 14, color: SECONDARY, lineHeight: 20, textAlign: 'center', paddingHorizontal: 8 },
+  inviteSub: { fontFamily: fontFamily.light, fontSize: 12.5, color: MUTED, lineHeight: 18, textAlign: 'center', paddingHorizontal: 8, marginTop: -4 },
+  inviteSubStrong: { fontFamily: fontFamily.medium, fontSize: 12.5, color: SECONDARY },
   acceptBtn: { backgroundColor: GOLD, borderRadius: 100, paddingVertical: 15, alignItems: 'center' },
   acceptText: { fontFamily: fontFamily.bold, fontSize: 13, color: '#0a0a0a', letterSpacing: 0.5 },
 

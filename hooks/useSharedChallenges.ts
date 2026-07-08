@@ -122,7 +122,11 @@ function mapChallengeRow(row: any): SharedChallenge {
     kind: row.kind ?? 'parallel',
     // The UI derives "forming" from a participant still being `invited`; DB
     // 'forming' maps to the client's 'active' so the card renders either way.
-    status: row.status === 'completed' ? 'completed' : 'active',
+    // Terminal statuses map through truthfully — the list RPC never returns
+    // expired/cancelled, but the by-id fallback (old notification links) can.
+    status: row.status === 'completed' || row.status === 'expired' || row.status === 'cancelled'
+      ? row.status
+      : 'active',
     creatorId: row.creator_id,
     participants,
     expiresIn: humanizeRemaining(row.ends_at),
@@ -133,6 +137,7 @@ function mapChallengeRow(row: any): SharedChallenge {
       self?.state === 'invited' ? creator?.friend.displayName ?? 'A friend' : undefined,
     pool,
     goalTarget,
+    dismissedAt: row.dismissed_at ?? null,
   };
 }
 
@@ -168,6 +173,13 @@ export interface UseSharedChallenges {
   acceptInvite: (challengeId: string) => Promise<void>;
   declineInvite: (challengeId: string) => Promise<void>;
   leaveChallenge: (challengeId: string) => Promise<void>;
+  /** Creator-only: pull more friends into a forming/active challenge. Returns
+   *  the count actually (re)invited, or throws on a rejected request. */
+  inviteToChallenge: (challengeId: string, userIds: string[]) => Promise<number>;
+  /** Hide a settled challenge card from YOUR Home (per-user display flag). */
+  dismissChallenge: (challengeId: string) => Promise<void>;
+  /** Durable single-challenge fetch (no 3-day cutoff) — old notification links. */
+  fetchById: (id: string) => Promise<SharedChallenge | null>;
   completeChallenge: (challengeId: string) => Promise<void>;
   newlyCompletedId: string | null;
   clearCelebration: () => void;
@@ -228,8 +240,14 @@ export function useSharedChallenges(): UseSharedChallenges {
     () => all.filter((c) => c.participants.some((p) => p.isSelf && p.state === 'invited')),
     [all],
   );
+  // Home surface: everything you're committed to, minus settled cards you've
+  // dismissed. `all` (and so getById / the detail screen) keeps them — dismissal
+  // is a display preference, not data removal.
   const active = useMemo(
-    () => all.filter((c) => !c.participants.some((p) => p.isSelf && p.state === 'invited')),
+    () => all.filter(
+      (c) => !c.participants.some((p) => p.isSelf && p.state === 'invited')
+        && !(c.status === 'completed' && c.dismissedAt),
+    ),
     [all],
   );
   const openChallenges = useMemo(() => all.filter(isOpenForSelf), [all]);
@@ -277,7 +295,7 @@ export function useSharedChallenges(): UseSharedChallenges {
     await load();
   }, [utcOffsetMinutes, load]);
 
-  const respond = useCallback(async (challengeId: string, action: 'accept' | 'decline' | 'leave') => {
+  const respond = useCallback(async (challengeId: string, action: 'accept' | 'decline' | 'leave' | 'dismiss') => {
     const { error } = await supabase.functions.invoke('respond-shared-challenge', {
       body: { challenge_id: challengeId, action },
     });
@@ -288,6 +306,33 @@ export function useSharedChallenges(): UseSharedChallenges {
   const acceptInvite = useCallback((id: string) => respond(id, 'accept'), [respond]);
   const declineInvite = useCallback((id: string) => respond(id, 'decline'), [respond]);
   const leaveChallenge = useCallback((id: string) => respond(id, 'leave'), [respond]);
+  const dismissChallenge = useCallback((id: string) => respond(id, 'dismiss'), [respond]);
+
+  // Durable by-id lookup for challenges the list RPC no longer returns
+  // (completed >3 days ago, expired, cancelled) — old notification deep links
+  // resolve through this. Not merged into `all` so history never re-enters the
+  // Home surface.
+  const fetchById = useCallback(async (id: string): Promise<SharedChallenge | null> => {
+    const { data, error } = await supabase.rpc('get_shared_challenge', { p_id: id });
+    if (error) {
+      console.warn('[useSharedChallenges] fetchById failed:', error.message);
+      return null;
+    }
+    const row = Array.isArray(data) ? data[0] : data;
+    return row ? mapChallengeRow(row) : null;
+  }, []);
+
+  const inviteToChallenge = useCallback(async (challengeId: string, userIds: string[]): Promise<number> => {
+    const { data, error } = await supabase.functions.invoke('respond-shared-challenge', {
+      body: { challenge_id: challengeId, action: 'invite', target_user_ids: userIds },
+    });
+    if (error) {
+      console.warn('[useSharedChallenges] invite failed:', error.message);
+      throw error;
+    }
+    await load();
+    return Number((data as { invited?: number } | null)?.invited ?? 0);
+  }, [load]);
 
   const completeChallenge = useCallback(async (id: string) => {
     const res = await completeRaw(id);
@@ -301,7 +346,8 @@ export function useSharedChallenges(): UseSharedChallenges {
     loading, error, all, active, pendingInvites, openChallenges, openCount, cap, atCap,
     friends, search, sendRequest, templates, bonusConfig,
     selfId: user?.id ?? null,
-    getById, createChallenge, acceptInvite, declineInvite, leaveChallenge, completeChallenge,
+    getById, createChallenge, acceptInvite, declineInvite, leaveChallenge, inviteToChallenge,
+    dismissChallenge, fetchById, completeChallenge,
     newlyCompletedId, clearCelebration, refresh: load,
   };
 }
