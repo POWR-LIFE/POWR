@@ -1,8 +1,16 @@
 import { useEventListener } from 'expo';
+import Constants, { ExecutionEnvironment } from 'expo-constants';
 import { Image as ExpoImage } from 'expo-image';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import React, { useEffect, useState } from 'react';
 import { AccessibilityInfo, AppState, StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
+
+// Video caching is a dev-build / production feature — it silently fails to
+// initialize the source in Expo Go, leaving the card frozen on the poster with
+// a stalled play glyph. Fall back to uncached playback there so the video runs
+// while iterating in Expo Go; real builds still get the disk-cached loop.
+const CAN_USE_VIDEO_CACHE =
+  Constants.executionEnvironment !== ExecutionEnvironment.StoreClient;
 
 type Fit = 'cover' | 'contain';
 type Position = 'top' | 'center' | 'bottom';
@@ -57,14 +65,18 @@ export function RewardHeroMedia({
 
 /** Isolated so the expo-video player is only instantiated when a video actually plays. */
 function HeroVideo({ uri, contentFit }: { uri: string; contentFit: Fit }) {
-  // useCaching: after the first pass the loop replays from disk, so a slow or
-  // flaky connection can't stall playback mid-loop on later iterations.
-  const player = useVideoPlayer({ uri, useCaching: true }, (p) => {
+  // useCaching (real builds only): after the first pass the loop replays from
+  // disk, so a slow or flaky connection can't stall playback mid-loop on later
+  // iterations. Disabled in Expo Go, where the cache breaks source init.
+  const player = useVideoPlayer({ uri, useCaching: CAN_USE_VIDEO_CACHE }, (p) => {
     p.loop = true;
     p.muted = true;
     // Decorative background video must never claim audio focus: holding it
     // pauses the user's music, and losing it silently pauses the video.
     p.audioMixingMode = 'mixWithOthers';
+    // Drive the loop watchdog below. iOS only fires this ~every interval, which
+    // is plenty to catch a stall within a second of the clip ending.
+    p.timeUpdateEventInterval = 0.5;
     p.play();
   });
 
@@ -83,6 +95,22 @@ function HeroVideo({ uri, contentFit }: { uri: string; contentFit: Fit }) {
   useEventListener(player, 'playToEnd', () => {
     try {
       if (!player.playing) player.replay();
+    } catch {}
+  });
+
+  // Primary loop guard on iOS. The native loop hangs on
+  // AVPlayerItemDidPlayToEndTime, which AVFoundation does not reliably post when
+  // the item stalls a hair before its last frame — so neither the native
+  // seek-to-zero nor the `playToEnd` listener above ever runs, and the card
+  // freezes on the final frame (no status *change*, so `statusChange` is silent
+  // too). This ticks independently: if the player has effectively reached the
+  // end but stopped, restart it.
+  useEventListener(player, 'timeUpdate', ({ currentTime }) => {
+    try {
+      if (player.playing) return;
+      const duration = player.duration;
+      // duration is 0 until metadata loads; only act once we know the tail.
+      if (duration > 0 && currentTime >= duration - 0.5) player.replay();
     } catch {}
   });
 
