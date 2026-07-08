@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabase';
+import { useQuery } from '@tanstack/react-query';
+import { getSessionUser, supabase } from '@/lib/supabase';
 
 type StreakState = {
     currentStreak: number;
@@ -77,8 +77,7 @@ async function computeStreakFromSessions(): Promise<{ current: number; longest: 
 
     // Sync computed streak back to user_streaks so notifications always read accurate data
     try {
-        const { data: authData } = await supabase.auth.getUser();
-        const userId = authData?.user?.id;
+        const userId = (await getSessionUser())?.id;
         if (userId) {
             const { data: existing } = await supabase
                 .from('user_streaks')
@@ -118,25 +117,18 @@ function longestRun(days: string[]): number {
 }
 
 export function useStreak(): StreakState {
-    const [currentStreak, setCurrentStreak] = useState(0);
-    const [longestStreak, setLongestStreak] = useState(0);
-    const [loading, setLoading] = useState(true);
+    const { data, isPending, refetch } = useQuery({
+        queryKey: ['streak'],
+        queryFn: computeStreakFromSessions,
+    });
 
-    const load = useCallback(async () => {
-        setLoading(true);
-        const { current, longest } = await computeStreakFromSessions();
-        setCurrentStreak(current);
-        setLongestStreak(longest);
-        setLoading(false);
-    }, []);
-
-    useEffect(() => { load(); }, [load]);
-
+    const currentStreak = data?.current ?? 0;
     return {
         currentStreak,
-        longestStreak,
+        longestStreak: data?.longest ?? 0,
         multiplier: streakMultiplier(currentStreak),
-        loading,
-        refresh: load,
+        loading: isPending,
+        // Returns the refetch promise so pull-to-refresh can await completion.
+        refresh: () => refetch(),
     };
 }

@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase';
+import { getSessionUser, supabase } from '@/lib/supabase';
 import { buildGymRequestPayload, type GymRequestInput } from '@/lib/onboarding/gym';
 
 /**
@@ -7,7 +7,7 @@ import { buildGymRequestPayload, type GymRequestInput } from '@/lib/onboarding/g
  * is intentionally lightweight — just enough to find and add the gym.
  */
 export async function createGymRequest(input: GymRequestInput): Promise<{ error: string | null }> {
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getSessionUser();
     if (!user) return { error: 'Not authenticated' };
 
     const built = buildGymRequestPayload(input, user.id);

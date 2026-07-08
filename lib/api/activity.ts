@@ -1,6 +1,6 @@
 import { type ActivityType } from '@/constants/activities';
 import { getDeviceId } from '@/lib/device';
-import { supabase } from '@/lib/supabase';
+import { getSessionUser, supabase } from '@/lib/supabase';
 
 // ── Walking step-tier helpers (shared by manual-log + health sync) ─────────────
 
@@ -36,7 +36,7 @@ export type ActivitySession = {
 };
 
 async function getCurrentUserId(): Promise<string | null> {
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getSessionUser();
     return user?.id ?? null;
 }
 
@@ -448,7 +448,7 @@ export async function updateHealthWalkingSession(
 
 /** Marks today as an active streak day. Idempotent — safe to call repeatedly. */
 export async function updateStreakForToday(): Promise<void> {
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getSessionUser();
     if (!user) return;
 
     const { data: streak } = await supabase
@@ -488,7 +488,7 @@ export async function updateStreakForToday(): Promise<void> {
 export async function buildStreakFromDates(activeDates: string[]): Promise<number> {
     if (activeDates.length === 0) return 0;
 
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getSessionUser();
     if (!user) return 0;
 
     // Deduplicate and sort ascending

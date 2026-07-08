@@ -16,8 +16,7 @@ import GeometricBackground from '@/components/GeometricBackground';
 import { ACTIVITIES, type ActivityType } from '@/constants/activities';
 import { typography } from '@/constants/tokens';
 import {
-  fetchBalance,
-  fetchTotalEarned,
+  fetchPointsSummary,
   fetchTransactionHistory,
   type PointTransaction,
 } from '@/lib/api/points';
@@ -245,14 +244,13 @@ export default function PointsLedgerScreen() {
   useEffect(() => {
     (async () => {
       try {
-        const [txs, bal, earned] = await Promise.all([
+        const [txs, summary] = await Promise.all([
           fetchTransactionHistory(),
-          fetchBalance(),
-          fetchTotalEarned(),
+          fetchPointsSummary(),
         ]);
         setTransactions(txs);
-        setBalance(bal);
-        setTotalEarned(earned);
+        setBalance(summary.balance);
+        setTotalEarned(summary.totalEarned);
       } catch {
         setError('Could not load history.');
       } finally {

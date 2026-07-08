@@ -6,7 +6,7 @@ import * as SecureStore from 'expo-secure-store';
 
 import { isTerraProvider } from '@/lib/health/providers';
 import type { HealthProviderId } from '@/lib/health/providers';
-import { supabase } from '@/lib/supabase';
+import { getSessionUser, supabase } from '@/lib/supabase';
 import { awardBonus } from '@/lib/api/points';
 
 /**
@@ -54,7 +54,7 @@ export default function TerraCallback() {
             // Optimistically record the connection on the profile (webhook reconciles).
             try {
                 const providerId = (resource ?? '').toLowerCase();
-                const { data: { user } } = await supabase.auth.getUser();
+                const user = await getSessionUser();
                 if (user && providerId) {
                     const { data: prof } = await supabase
                         .from('profiles')

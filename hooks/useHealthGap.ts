@@ -13,7 +13,7 @@ import {
     type HealthGapKind,
     type HealthGapCopy,
 } from '@/lib/health/healthGaps';
-import { supabase } from '@/lib/supabase';
+import { getSessionUser, supabase } from '@/lib/supabase';
 
 /** A worn-device source wrote data today? (vs phone-only) */
 async function wearablePresentToday(): Promise<boolean> {
@@ -28,7 +28,7 @@ async function wearablePresentToday(): Promise<boolean> {
 /** Did we already capture a workout/exercise session (incl. inferred cardio) today? */
 async function hadCapturedWorkoutToday(): Promise<boolean> {
     try {
-        const { data: { user } } = await supabase.auth.getUser();
+        const user = await getSessionUser();
         if (!user) return false;
         const start = new Date();
         start.setHours(0, 0, 0, 0);

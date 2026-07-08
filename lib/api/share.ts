@@ -1,5 +1,5 @@
 import type { ActivityType } from '@/constants/activities';
-import { supabase } from '@/lib/supabase';
+import { getSessionUser, supabase } from '@/lib/supabase';
 
 export interface ShareVenue {
   name: string;
@@ -72,7 +72,7 @@ export type ShareSummary = CheckInSummary | StatsSummary | ChallengeShareSummary
 // ─── Check-in summary (per-session) ────────────────────────────────────────
 
 export async function fetchCheckInSummary(sessionId: string): Promise<CheckInSummary> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getSessionUser();
   if (!user) throw new Error('Not authenticated');
 
   const { data: session, error: sErr } = await supabase
@@ -144,7 +144,7 @@ export async function fetchCheckInSummary(sessionId: string): Promise<CheckInSum
 // ─── Stats summary (no specific session — for streak/profile shares) ────────
 
 export async function fetchStatsSummary(): Promise<StatsSummary> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getSessionUser();
   if (!user) throw new Error('Not authenticated');
 
   // Lifetime count = all activity sessions; monthCount likewise
@@ -177,7 +177,7 @@ export async function fetchStatsSummary(): Promise<StatsSummary> {
 export async function fetchChallengeSummary(
   challenge: ChallengeShareInput,
 ): Promise<ChallengeShareSummary> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getSessionUser();
   if (!user) throw new Error('Not authenticated');
 
   const aggregates = await fetchAggregates(user.id, /* type */ null);
@@ -192,7 +192,7 @@ export async function fetchChallengeSummary(
 // ─── Auto-select: geofence check-in if recent, else streak ──────────────────
 
 export async function fetchAutoSummary(): Promise<ShareSummary> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getSessionUser();
   if (!user) throw new Error('Not authenticated');
 
   const windowStart = new Date();
@@ -265,11 +265,11 @@ async function fetchAggregates(
     supabase
       .from('point_transactions')
       .select('amount'),
-    supabase.auth.getUser(),
+    getSessionUser(),
   ]);
 
   const profile = profileRes.data;
-  const metaAvatarUrl = (authRes.data.user?.user_metadata?.avatar_url as string | undefined) ?? null;
+  const metaAvatarUrl = (authRes?.user_metadata?.avatar_url as string | undefined) ?? null;
   const weekActiveDays = [false, false, false, false, false, false, false];
   for (const s of (weekRes.data ?? []) as Array<{ started_at: string }>) {
     const d = new Date(s.started_at).getDay();

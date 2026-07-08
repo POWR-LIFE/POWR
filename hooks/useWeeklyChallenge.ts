@@ -122,6 +122,7 @@ export function useWeeklyChallenges(): WeeklyChallengesState {
   });
   const awarding = useRef<Set<string>>(new Set());
   const sweptPrevWeek = useRef(false);
+  const lastLoadedAt = useRef(0);
 
   const load = useCallback(async () => {
     const utcOffsetMinutes = -new Date().getTimezoneOffset();
@@ -318,6 +319,10 @@ export function useWeeklyChallenges(): WeeklyChallengesState {
 
   useFocusEffect(
     useCallback(() => {
+      // Focus fires on every tab switch; re-running the full evaluation each
+      // time made returning to Home feel slow. Fresh-enough data is reused.
+      if (Date.now() - lastLoadedAt.current < 60_000) return;
+      lastLoadedAt.current = Date.now();
       load();
     }, [load])
   );

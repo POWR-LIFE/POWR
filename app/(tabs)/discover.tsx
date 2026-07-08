@@ -26,7 +26,7 @@ import { HeaderActions } from '@/components/HeaderActions';
 import { useActiveGeofence } from '@/hooks/useActiveGeofence';
 import { useGeofenceContext, searchPartners, type Partner, type Trainer, type DayKey, type OpeningHours } from '@/context/GeofenceContext';
 import { createGymRequest } from '@/lib/api/gyms';
-import { supabase } from '@/lib/supabase';
+import { getSessionUser, supabase } from '@/lib/supabase';
 import { GeometricBackground } from '@/components/home/GeometricBackground';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
@@ -208,7 +208,7 @@ export default function DiscoverScreen() {
   // Load user's preferred gym
   useEffect(() => {
     (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) return;
       const { data } = await supabase
         .from('profiles')
@@ -222,7 +222,7 @@ export default function DiscoverScreen() {
   // Load the set of partners the user has previously visited (any check-in)
   useEffect(() => {
     (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) return;
       const { data } = await supabase
         .from('activity_sessions')
@@ -237,7 +237,7 @@ export default function DiscoverScreen() {
 
   const handleTogglePreferred = useCallback(async (partner: Partner) => {
     if (savingPreferred) return;
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getSessionUser();
     if (!user) return;
     const newValue = preferredGymId === partner.dbId ? null : partner.dbId;
     setSavingPreferred(true);

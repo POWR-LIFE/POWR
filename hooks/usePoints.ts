@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
-import { fetchBalance, fetchTodayEarned, fetchTotalEarned, fetchWeeklyEarned } from '@/lib/api/points';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect } from 'react';
+import { fetchPointsSummary } from '@/lib/api/points';
 import { onSessionCompleted } from '@/context/GeofenceContext';
 
 type PointsState = {
@@ -12,39 +13,34 @@ type PointsState = {
     refresh: () => void;
 };
 
+/**
+ * Points aggregates, shared app-wide through the query cache: every consumer
+ * reads the same entry, so mounting a new screen renders instantly from cache
+ * and only refetches once the data is stale.
+ */
 export function usePoints(): PointsState {
-    const [balance, setBalance] = useState(0);
-    const [todayEarned, setTodayEarned] = useState(0);
-    const [totalEarned, setTotalEarned] = useState(0);
-    const [weeklyEarned, setWeeklyEarned] = useState(0);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
-
-    const load = useCallback(async () => {
-        setLoading(true);
-        setError(null);
-        try {
-            const [bal, today, total, weekly] = await Promise.all([
-                fetchBalance(),
-                fetchTodayEarned(),
-                fetchTotalEarned(),
-                fetchWeeklyEarned(),
-            ]);
-            setBalance(bal);
-            setTodayEarned(today);
-            setTotalEarned(total);
-            setWeeklyEarned(weekly);
-        } catch (e) {
-            setError(e instanceof Error ? e.message : 'Failed to load points');
-        } finally {
-            setLoading(false);
-        }
-    }, []);
-
-    useEffect(() => { load(); }, [load]);
+    const queryClient = useQueryClient();
+    const { data, isPending, error, refetch } = useQuery({
+        queryKey: ['points', 'summary'],
+        queryFn: fetchPointsSummary,
+    });
 
     // Refresh whenever a foreground geofence session is claimed
-    useEffect(() => onSessionCompleted(load), [load]);
+    useEffect(
+        () => onSessionCompleted(() => {
+            queryClient.invalidateQueries({ queryKey: ['points'] });
+        }),
+        [queryClient],
+    );
 
-    return { balance, todayEarned, totalEarned, weeklyEarned, loading, error, refresh: load };
+    return {
+        balance: data?.balance ?? 0,
+        todayEarned: data?.todayEarned ?? 0,
+        totalEarned: data?.totalEarned ?? 0,
+        weeklyEarned: data?.weeklyEarned ?? 0,
+        loading: isPending,
+        error: error ? (error instanceof Error ? error.message : 'Failed to load points') : null,
+        // Returns the refetch promise so pull-to-refresh can await completion.
+        refresh: () => refetch(),
+    };
 }

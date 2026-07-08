@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase';
+import { getSessionUser, supabase } from '@/lib/supabase';
 import { computeEarnedIds, type AchievementStats } from '@/constants/achievements';
 import { getLevelInfo } from '@/constants/levels';
 
@@ -7,8 +7,7 @@ import { getLevelInfo } from '@/constants/levels';
  * Single query per data type, all run in parallel.
  */
 export async function fetchAchievementStats(level: number): Promise<AchievementStats> {
-  const { data: authData } = await supabase.auth.getUser();
-  const userId = authData?.user?.id;
+  const userId = (await getSessionUser())?.id;
   if (!userId) {
     return emptyStats(level);
   }

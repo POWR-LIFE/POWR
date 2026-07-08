@@ -1,6 +1,6 @@
 import * as WebBrowser from 'expo-web-browser';
 
-import { supabase } from '@/lib/supabase';
+import { getSessionUser, supabase } from '@/lib/supabase';
 import type {
     CalorieSummary,
     DayHealthSummary,
@@ -30,7 +30,7 @@ export function createTerraProvider(meta: HealthProviderMeta): HealthProvider {
     const resource = meta.id.toUpperCase(); // Terra resource slug: WHOOP, OURA, ...
 
     async function loadConnection(): Promise<{ terra_user_id?: string } | null> {
-        const { data: { user } } = await supabase.auth.getUser();
+        const user = await getSessionUser();
         if (!user) return null;
         const { data } = await supabase
             .from('profiles')

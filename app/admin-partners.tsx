@@ -17,7 +17,7 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { supabase } from '@/lib/supabase';
+import { getSessionUser, supabase } from '@/lib/supabase';
 import type { DayKey, DayHours, OpeningHours, Trainer } from '@/context/GeofenceContext';
 
 // ─── Design tokens ─────────────────────────────────────────────────────────────
@@ -146,7 +146,7 @@ export default function AdminPartnersScreen() {
   // Check admin flag
   useEffect(() => {
     (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) { setIsAdmin(false); setLoading(false); return; }
       const { data } = await supabase
         .from('profiles')

@@ -5,7 +5,7 @@ import * as WebBrowser from 'expo-web-browser';
 import * as SecureStore from 'expo-secure-store';
 
 import { completeSamsungHealthAuth } from '@/lib/health/providers/samsungHealthProvider';
-import { supabase } from '@/lib/supabase';
+import { getSessionUser, supabase } from '@/lib/supabase';
 
 export default function SamsungHealthCallback() {
     const router = useRouter();
@@ -48,7 +48,7 @@ export default function SamsungHealthCallback() {
 
             // Mark provider as connected on the profile.
             try {
-                const { data: { user } } = await supabase.auth.getUser();
+                const user = await getSessionUser();
                 if (user) {
                     const { data: prof } = await supabase
                         .from('profiles')
