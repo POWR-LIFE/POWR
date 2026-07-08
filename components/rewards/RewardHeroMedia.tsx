@@ -1,16 +1,8 @@
 import { useEventListener } from 'expo';
-import Constants, { ExecutionEnvironment } from 'expo-constants';
 import { Image as ExpoImage } from 'expo-image';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import React, { useEffect, useState } from 'react';
 import { AccessibilityInfo, AppState, StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
-
-// Video caching is a dev-build / production feature — it silently fails to
-// initialize the source in Expo Go, leaving the card frozen on the poster with
-// a stalled play glyph. Fall back to uncached playback there so the video runs
-// while iterating in Expo Go; real builds still get the disk-cached loop.
-const CAN_USE_VIDEO_CACHE =
-  Constants.executionEnvironment !== ExecutionEnvironment.StoreClient;
 
 type Fit = 'cover' | 'contain';
 type Position = 'top' | 'center' | 'bottom';
@@ -65,10 +57,13 @@ export function RewardHeroMedia({
 
 /** Isolated so the expo-video player is only instantiated when a video actually plays. */
 function HeroVideo({ uri, contentFit }: { uri: string; contentFit: Fit }) {
-  // useCaching (real builds only): after the first pass the loop replays from
-  // disk, so a slow or flaky connection can't stall playback mid-loop on later
-  // iterations. Disabled in Expo Go, where the cache breaks source init.
-  const player = useVideoPlayer({ uri, useCaching: CAN_USE_VIDEO_CACHE }, (p) => {
+  // Deliberately NO `useCaching`: on iOS it swaps in a custom
+  // AVAssetResourceLoader that must answer AVFoundation's content-info queries
+  // itself, and against our storage host the item never reaches readyToPlay —
+  // release builds showed only the poster with the "unplayable" glyph
+  // (TestFlight 1.4.9, 2026-07-08). Plain progressive playback is the path
+  // proven to work; AVPlayer's own buffer handles the loop replay.
+  const player = useVideoPlayer({ uri }, (p) => {
     p.loop = true;
     p.muted = true;
     // Decorative background video must never claim audio focus: holding it
