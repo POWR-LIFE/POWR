@@ -74,9 +74,6 @@ function HeroVideo({ uri, contentFit }: { uri: string; contentFit: Fit }) {
     // Decorative background video must never claim audio focus: holding it
     // pauses the user's music, and losing it silently pauses the video.
     p.audioMixingMode = 'mixWithOthers';
-    // Drive the loop watchdog below. iOS only fires this ~every interval, which
-    // is plenty to catch a stall within a second of the clip ending.
-    p.timeUpdateEventInterval = 0.5;
     p.play();
   });
 
@@ -98,21 +95,30 @@ function HeroVideo({ uri, contentFit }: { uri: string; contentFit: Fit }) {
     } catch {}
   });
 
-  // Primary loop guard on iOS. The native loop hangs on
-  // AVPlayerItemDidPlayToEndTime, which AVFoundation does not reliably post when
-  // the item stalls a hair before its last frame — so neither the native
-  // seek-to-zero nor the `playToEnd` listener above ever runs, and the card
-  // freezes on the final frame (no status *change*, so `statusChange` is silent
-  // too). This ticks independently: if the player has effectively reached the
-  // end but stopped, restart it.
-  useEventListener(player, 'timeUpdate', ({ currentTime }) => {
-    try {
-      if (player.playing) return;
-      const duration = player.duration;
-      // duration is 0 until metadata loads; only act once we know the tail.
-      if (duration > 0 && currentTime >= duration - 0.5) player.replay();
-    } catch {}
-  });
+  // Primary loop/stall guard on iOS. Two failure modes leave the card frozen on
+  // a still frame with no player event to react to:
+  //  1) Loop stall — the native loop hangs on AVPlayerItemDidPlayToEndTime,
+  //     which AVFoundation does not reliably post when the item stalls a hair
+  //     before its last frame, so neither the native seek-to-zero nor the
+  //     `playToEnd` listener runs.
+  //  2) Mid-clip buffer underrun on the progressive download — playback stops
+  //     partway through and expo-video does not auto-resume.
+  // In both cases `statusChange` stays silent (status stays readyToPlay) AND
+  // `timeUpdate` stops firing (it's driven by playback progress), so nothing
+  // event-based catches it. This independent interval polls the player: if it
+  // is stopped but ready, restart the loop from the tail or resume mid-clip.
+  useEffect(() => {
+    const id = setInterval(() => {
+      try {
+        if (player.playing || player.status !== 'readyToPlay') return;
+        const { duration, currentTime } = player;
+        // duration is 0 until metadata loads; only judge the tail once known.
+        if (duration > 0 && currentTime >= duration - 0.5) player.replay();
+        else player.play();
+      } catch {}
+    }, 1000);
+    return () => clearInterval(id);
+  }, [player]);
 
   useEffect(() => {
     const sub = AppState.addEventListener('change', (state) => {
