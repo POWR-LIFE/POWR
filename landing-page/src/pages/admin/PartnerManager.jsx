@@ -58,8 +58,13 @@ function OpeningHoursEditor({ value, onChange }) {
 }
 
 // --- Location row editor ---
+// Default check-in radius for a NEW partner location. 25 m is POWR's deliberate
+// precision standard (10k+ live locations use it) — the tight radius IS the moat.
+// New gyms must start here, not the old 100 m placeholder (4× too wide).
+const DEFAULT_LOCATION_RADIUS_M = 25;
+
 const LocationEditor = ({ locations, onChange }) => {
-    const add = () => onChange([...locations, { name: '', address: '', lat: '', lng: '', radius: 100 }]);
+    const add = () => onChange([...locations, { name: '', address: '', lat: '', lng: '', radius: DEFAULT_LOCATION_RADIUS_M }]);
     const remove = (i) => onChange(locations.filter((_, idx) => idx !== i));
     const update = (i, field, val) => {
         onChange(locations.map((loc, idx) => (idx === i ? { ...loc, [field]: val } : loc)));
@@ -824,7 +829,7 @@ export default function PartnerManager() {
                 address: loc.address || '',
                 lat: parseFloat(loc.lat) || 0,
                 lng: parseFloat(loc.lng) || 0,
-                radius: parseFloat(loc.radius) || 100,
+                radius: parseFloat(loc.radius) || DEFAULT_LOCATION_RADIUS_M,
             })),
         };
         const { error } = editingPartner

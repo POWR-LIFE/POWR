@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
 import { useAuth } from '../../App';
-import { Settings, Save, RotateCcw } from 'lucide-react';
+import { Settings, Save, RotateCcw, Minus, Plus } from 'lucide-react';
 
 const logAction = async (adminId, action, targetType, targetId, metadata = {}) => {
     await supabase.from('admin_audit_log').insert({ admin_id: adminId, action, target_type: targetType, target_id: targetId, metadata });
@@ -11,6 +11,17 @@ const logAction = async (adminId, action, targetType, targetId, metadata = {}) =
 // A config is a boolean flag when its stored value is exactly 'true'/'false' —
 // those render as a toggle switch instead of a free-text box.
 const isBool = (v) => { const s = String(v).trim().toLowerCase(); return s === 'true' || s === 'false'; };
+
+// Numeric keys that render as a clamped +/- stepper instead of a free-text box.
+// Keyed by config key → { step, min, max, unit }. Value is stored as a plain
+// integer string. A stepper flips + saves in a single tap (no edit/confirm step).
+const STEPPERS = {
+    min_gym_dwell_minutes: { step: 5, min: 5, max: 60, unit: 'min' },
+};
+const clampStep = (n, { step, min, max }) => {
+    const snapped = Math.round(n / step) * step;
+    return Math.min(max, Math.max(min, snapped));
+};
 
 export default function SystemConfig() {
     const toast = useToast();
@@ -95,6 +106,8 @@ export default function SystemConfig() {
                             const currentValue = isEdited ? editing[c.key] : c.value;
                             const bool = isBool(c.value);
                             const on = String(currentValue).trim().toLowerCase() === 'true';
+                            const stepCfg = STEPPERS[c.key];
+                            const stepVal = stepCfg ? clampStep(parseInt(c.value, 10) || stepCfg.min, stepCfg) : null;
                             return (
                                 <div key={c.key} className="flex items-center gap-10 p-10 group hover:bg-[#F4F4F1] transition-all">
                                     <div className="w-14 h-14 rounded-2xl bg-[#F4F4F1] border border-[#E6E6E1] flex items-center justify-center shrink-0">
@@ -105,7 +118,32 @@ export default function SystemConfig() {
                                         <div className="text-[10px] text-[#666666] font-black uppercase tracking-[0.3em]">{c.description || 'No description'}</div>
                                     </div>
                                     <div className="flex items-center gap-4 shrink-0">
-                                        {bool ? (
+                                        {stepCfg ? (
+                                            <>
+                                                <button
+                                                    type="button"
+                                                    aria-label={`Decrease ${c.key}`}
+                                                    disabled={saving === c.key || stepVal <= stepCfg.min}
+                                                    onClick={() => handleToggle(c.key, String(clampStep(stepVal - stepCfg.step, stepCfg)))}
+                                                    className="w-12 h-12 rounded-xl bg-[#F4F4F1] border border-[#E6E6E1] flex items-center justify-center text-[#666666] hover:text-[#1A1A1A] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                                                >
+                                                    <Minus size={16} />
+                                                </button>
+                                                <div className="w-24 text-center">
+                                                    <span className="font-mono text-lg font-bold text-[#1A1A1A]">{stepVal}</span>
+                                                    <span className="text-[10px] text-[#888888] font-black uppercase tracking-[0.2em] ml-1">{stepCfg.unit}</span>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    aria-label={`Increase ${c.key}`}
+                                                    disabled={saving === c.key || stepVal >= stepCfg.max}
+                                                    onClick={() => handleToggle(c.key, String(clampStep(stepVal + stepCfg.step, stepCfg)))}
+                                                    className="w-12 h-12 rounded-xl bg-[#F4F4F1] border border-[#E6E6E1] flex items-center justify-center text-[#666666] hover:text-[#1A1A1A] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                                                >
+                                                    <Plus size={16} />
+                                                </button>
+                                            </>
+                                        ) : bool ? (
                                             <>
                                                 <span className={`text-[10px] font-black uppercase tracking-[0.3em] w-8 text-right ${on ? 'text-[#10B981]' : 'text-[#BBBBBB]'}`}>{on ? 'On' : 'Off'}</span>
                                                 <button

@@ -29,6 +29,7 @@ import NotificationPrimeSheet from '@/components/NotificationPrimeSheet';
 import { ACTIVITIES, type ActivityType } from '@/constants/activities';
 import { useAuth } from '@/context/AuthContext';
 import { useGeofenceContext } from '@/context/GeofenceContext';
+import { getGymDwellMs } from '@/lib/gymDwellConfig';
 import { useActiveGeofence } from '@/hooks/useActiveGeofence';
 import { useActivity } from '@/hooks/useActivity';
 import { useHealthData } from '@/hooks/useHealthData';
@@ -244,8 +245,10 @@ export default function HomeScreen() {
     // New user detection: no points earned and no recent activity
     const isNewUser = totalEarned === 0 && recentItems.length === 0;
 
-    // Derived session state — re-computed every second via elapsedStr re-renders
-    const DWELL_MS = 30 * 60 * 1000;
+    // Derived session state — re-computed every second via elapsedStr re-renders.
+    // Dwell threshold is admin-tunable (system_config → min_gym_dwell_minutes),
+    // cached at launch by refreshGymDwellMinutes; falls back to 30 min.
+    const DWELL_MS = getGymDwellMs();
     const elapsedMs = activeGeofence ? Date.now() - activeGeofence.entryTimestamp : 0;
     const dwellProgress = Math.min(elapsedMs / DWELL_MS, 1);
     // Projected gym points — streak-adjusted and capped at the per-day gym cap so

@@ -26,6 +26,7 @@ import { registerWalkingSync } from '@/lib/health/walkingSync';
 import { ensureAndroidChannels } from '@/lib/notifications';
 import { useOtaUpdatePrompt } from '@/lib/otaUpdates';
 import { registerPlacementNotifyTask } from '@/lib/placementNotifyTask';
+import { refreshGymDwellMinutes } from '@/lib/gymDwellConfig';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -73,6 +74,13 @@ function RootLayoutNav() {
   // coarse fix) — placements must reach users the points geofence never will.
   useEffect(() => {
     registerPlacementNotifyTask().catch(() => { /* non-fatal */ });
+  }, []);
+
+  // Pull the admin-tunable gym dwell threshold (system_config →
+  // min_gym_dwell_minutes) and cache it so the geofence dwell timer + home
+  // progress ring match what claim-points actually rewards. Falls back to 30.
+  useEffect(() => {
+    refreshGymDwellMinutes().catch(() => { /* keeps default */ });
   }, []);
 
   // Offer a restart when an OTA update is ready (launch + foreground checks).

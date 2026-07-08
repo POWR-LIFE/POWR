@@ -53,7 +53,10 @@ const DAILY_CAPS: Record<ActivityType, number> = {
   sleep:    5,
 };
 
-function calcBasePoints(session: ActivitySession): number {
+// gymDwellMin is the admin-tunable minutes required to lock in a base gym
+// check-in point (system_config → min_gym_dwell_minutes, default 30). Only the
+// entry tier is tunable; the 40-min upgrade tier stays fixed.
+function calcBasePoints(session: ActivitySession, gymDwellMin = 30): number {
   const mins = Math.floor(session.duration_sec / 60);
   const dist = session.distance_m ?? 0;
   const steps = session.steps ?? 0;
@@ -88,8 +91,10 @@ function calcBasePoints(session: ActivitySession): number {
       return 0;
 
     case 'gym':
-      if (mins >= 40) return 20;
-      if (mins >= 30) return 15;
+      // 40-min upgrade tier only applies once the (tunable) entry gate is met,
+      // so raising the threshold above 40 can't be bypassed by the upgrade tier.
+      if (mins >= 40 && mins >= gymDwellMin) return 20;
+      if (mins >= gymDwellMin) return 15;
       return 0;
 
     case 'hiit':
@@ -407,7 +412,20 @@ Deno.serve(async (req) => {
   }
 
   // 8. Calculate points
-  let base = calcBasePoints(session);
+  // Admin-tunable gym dwell threshold (system_config → min_gym_dwell_minutes).
+  // Read via the service client (bypasses RLS); this is the authoritative gate.
+  // Falls back to the historical 30 on any read/parse failure.
+  let gymDwellMin = 30;
+  {
+    const { data: cfg } = await supabase
+      .from('system_config')
+      .select('value')
+      .eq('key', 'min_gym_dwell_minutes')
+      .maybeSingle();
+    const parsed = parseInt(cfg?.value ?? '', 10);
+    if (Number.isFinite(parsed) && parsed > 0) gymDwellMin = parsed;
+  }
+  let base = calcBasePoints(session, gymDwellMin);
 
   // DEV-TEST-ONLY: when DEV_MIN_DWELL_SEC is set, a geofence gym session meeting
   // that lower threshold qualifies for base points so we can test check-ins without
