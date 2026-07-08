@@ -14,22 +14,30 @@ module.exports = function withHealthConnectMainActivity(config) {
       );
     }
 
-    // 2. Inject the initialization inside onCreate
+    // 2. Inject the initialization inside onCreate.
+    //
+    // IMPORTANT: setPermissionDelegate() calls activity.registerForActivityResult(),
+    // which androidx.activity only allows once the activity has passed through
+    // ComponentActivity.onCreate() (i.e. it must run AFTER super.onCreate(), not
+    // before). Registering too early throws IllegalStateException ("attempting to
+    // register while current state is INITIALIZED") / leaves the launcher as an
+    // uninitialized lateinit, so the Health Connect permission dialog never appears
+    // and requestPermission() resolves empty. So we insert AFTER super.onCreate(...).
     const delegateStatement = `HealthConnectPermissionDelegate.setPermissionDelegate(this)`;
 
     if (!mainActivity.includes(delegateStatement)) {
       if (mainActivity.includes('super.onCreate(')) {
-        // Find super.onCreate(...) and put the delegate statement right before it.
+        // Find super.onCreate(...) and put the delegate statement right after it.
         mainActivity = mainActivity.replace(
           /(super\.onCreate\(.*?\))/,
-          `${delegateStatement}\n    $1`
+          `$1\n    ${delegateStatement}`
         );
       } else {
         // Fallback if onCreate doesn't exist (unlikely in Expo)
         const onCreateStatement = `
   override fun onCreate(savedInstanceState: Bundle?) {
-    ${delegateStatement}
     super.onCreate(savedInstanceState)
+    ${delegateStatement}
   }
 `;
         mainActivity = mainActivity.replace(
