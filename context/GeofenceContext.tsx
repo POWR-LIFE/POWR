@@ -5,6 +5,7 @@ import * as TaskManager from 'expo-task-manager';
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { AppState, AppStateStatus, Platform } from 'react-native';
 import { supabase } from '@/lib/supabase';
+import { getGymDwellMinutes, primeGymDwellMinutes } from '@/lib/gymDwellConfig';
 
 // ─── Session-completed event bus ─────────────────────────────────────────────
 // Fires synchronously in the JS thread when a foreground claim succeeds.
@@ -190,11 +191,16 @@ const DEV_TEST_EMAILS = new Set(['jamiemasonwright@gmail.com']);
 const MAX_FIX_ACCURACY_M = 100;
 
 // ⚠️ DEV OVERRIDES — restore before release
-const MIN_DWELL_MS    = __DEV__ ? 30 * 1000 : 30 * 60 * 1000;
 const UPGRADE_MS      = __DEV__ ? 60 * 1000 : 40 * 60 * 1000; // 1 min in dev, 40 min in prod
-// Production eligibility minimum — used for pointsPending retry regardless of MIN_DWELL_MS
-const PROD_DWELL_MS   = 30 * 60 * 1000;
 const PROD_UPGRADE_MS = 40 * 60 * 1000;
+
+// The base gym dwell threshold is admin-tunable (system_config →
+// min_gym_dwell_minutes, read via lib/gymDwellConfig). These are functions, not
+// consts, because the value can change between app launches; each returns the
+// last-known cached minutes (default 30). The dev short-circuit (30 s) is kept.
+const minDwellMs = () => (__DEV__ ? 30 * 1000 : getGymDwellMinutes() * 60 * 1000);
+// Production eligibility minimum — used for pointsPending retry regardless of dev override.
+const prodDwellMs = () => getGymDwellMinutes() * 60 * 1000;
 // Sanity backstop on a recorded gym dwell — a LOOSE guardrail, not the accuracy
 // mechanism. It only bounds the runaway wall-clock a missed/late EXIT used to
 // produce (observed up to 31 h); the true length is corrected after the fact,
@@ -896,7 +902,7 @@ async function recordExitAndClaim(activeGeofence: StoredGeofence): Promise<void>
   }
 
   const dwellMs = exitMs - activeGeofence.entryTimestamp;
-  if (dwellMs < MIN_DWELL_MS) {
+  if (dwellMs < minDwellMs()) {
     console.log(`[Geofence] Dwell ${Math.round(dwellMs / 60000)}min < threshold — no points.`);
     return;
   }
@@ -910,7 +916,7 @@ async function recordExitAndClaim(activeGeofence: StoredGeofence): Promise<void>
     await enqueuePendingClaim(claimEntry);
   }
   // 'claimed' → claim-points fires the single "Session recorded" push (source of
-  // truth). 'too_short' cannot normally occur here (dwell >= MIN_DWELL_MS).
+  // truth). 'too_short' cannot normally occur here (dwell >= minDwellMs()).
 }
 
 /** Immediate (timer-free) dwell state machine driven by the background-location
@@ -925,7 +931,7 @@ async function advanceActiveSession(active: StoredGeofence): Promise<void> {
 
   // 1. Prior claim was too short / failed — retry once the prod threshold is met.
   if (active.sessionRecorded && active.pointsPending) {
-    if (elapsed < PROD_DWELL_MS) return;
+    if (elapsed < prodDwellMs()) return;
     await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...active, pointsPending: false }));
     const { outcome, sessionId } = await recordDwellSession(active);
     if (outcome === 'claimed' && sessionId) {
@@ -950,7 +956,7 @@ async function advanceActiveSession(active: StoredGeofence): Promise<void> {
   if (active.sessionRecorded) return;
 
   // 3. Initial claim once the dwell threshold is met.
-  if (elapsed < MIN_DWELL_MS) return;
+  if (elapsed < minDwellMs()) return;
   await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...active, sessionRecorded: true }));
   const { outcome, sessionId } = await recordDwellSession(active);
   if (outcome === 'claimed' && sessionId) {
@@ -1078,6 +1084,9 @@ TaskManager.defineTask(LOCATION_TRACKING_TASK, async ({ data, error }) => {
   const { locations } = (data ?? {}) as { locations?: Location.LocationObject[] };
   if (!locations || locations.length === 0) return;
   try {
+    // Headless context: load the last-persisted admin dwell threshold from
+    // storage before any dwell decision (foreground refreshes it on launch).
+    await primeGymDwellMinutes();
     await evaluateLocationFix(locations[locations.length - 1].coords);
   } catch (err) {
     console.warn('[Geofence] evaluateLocationFix failed:', err);
@@ -1100,6 +1109,10 @@ TaskManager.defineTask(GEOFENCE_TASK_NAME, async ({ data, error }) => {
     console.error('[Geofence] Task error:', error);
     return;
   }
+
+  // Headless context: load the last-persisted admin dwell threshold from storage
+  // so exit-time dwell checks use the current value.
+  await primeGymDwellMinutes();
 
   const { eventType, region } = data as {
     eventType: Location.GeofencingEventType;
@@ -1395,7 +1408,7 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
     // as the production eligibility threshold is met — don't wait for exit.
     if (activeGeofence.sessionRecorded && activeGeofence.pointsPending) {
       const elapsed    = Date.now() - activeGeofence.entryTimestamp;
-      const remaining  = PROD_DWELL_MS - elapsed;
+      const remaining  = prodDwellMs() - elapsed;
       if (remaining <= 0) {
         console.log('[Geofence] Foreground: retrying pending claim now (production threshold met).');
         await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...activeGeofence, pointsPending: false }));
@@ -1464,7 +1477,7 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
     const elapsed   = Date.now() - activeGeofence.entryTimestamp;
     // Add a 5 s grace buffer so JS timer imprecision never produces a sub-threshold
     // duration_sec that gets rejected by claim-points as "does not meet eligibility minimum".
-    const remaining = (MIN_DWELL_MS + 5_000) - elapsed;
+    const remaining = (minDwellMs() + 5_000) - elapsed;
 
     if (remaining <= 0) {
       console.log('[Geofence] Foreground: dwell already met — recording session now.');

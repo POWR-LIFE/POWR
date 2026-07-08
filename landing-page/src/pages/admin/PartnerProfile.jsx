@@ -12,6 +12,11 @@ import PartnerPerformancePanel from './PartnerPerformancePanel';
 const DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 const DAY_LABELS = { mon: 'Monday', tue: 'Tuesday', wed: 'Wednesday', thu: 'Thursday', fri: 'Friday', sat: 'Saturday', sun: 'Sunday' };
 
+// Fallback check-in radius when a location row has no radius set. 25 m is POWR's
+// deliberate precision standard (the tight radius is the moat) — not the old
+// 100 m placeholder. Keep in sync with PartnerManager's LocationEditor default.
+const DEFAULT_LOCATION_RADIUS_M = 25;
+
 const DEFAULT_HOURS = { mon: { open: '06:00', close: '22:00' }, tue: { open: '06:00', close: '22:00' }, wed: { open: '06:00', close: '22:00' }, thu: { open: '06:00', close: '22:00' }, fri: { open: '06:00', close: '22:00' }, sat: { open: '08:00', close: '20:00' }, sun: { open: '09:00', close: '18:00' } };
 
 const formatDiscountValue = (value) => {
@@ -173,7 +178,7 @@ export default function PartnerProfile() {
             opening_hours: form.opening_hours || null,
             locations: (form.locations || []).map(loc => ({
                 name: loc.name, lat: parseFloat(loc.lat) || 0,
-                lng: parseFloat(loc.lng) || 0, radius: parseFloat(loc.radius) || 100,
+                lng: parseFloat(loc.lng) || 0, radius: parseFloat(loc.radius) || DEFAULT_LOCATION_RADIUS_M,
             })),
         };
         const { error } = await supabase.from('partners').update(payload).eq('id', partnerId);
