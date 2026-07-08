@@ -1,8 +1,8 @@
+import { fontFamily } from '@/constants/tokens';
 import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, Text, View } from 'react-native';
 import PermissionPrimeMock, { PermissionMockKind } from './PermissionPrimeMock';
 import PowrPushBanner from './PowrPushBanner';
-import { fontFamily } from '@/constants/tokens';
 
 const GOLD = '#E8D200';
 
@@ -49,7 +49,7 @@ function MapHero() {
 
             {/* The push this permission unlocks */}
             <View style={styles.banner}>
-                <PowrPushBanner title="New reward nearby" body="A drop just unlocked 200 m from you." />
+                <PowrPushBanner title="Detecting Partners nearby" body="Automatic check-ins enabled." />
             </View>
         </View>
     );

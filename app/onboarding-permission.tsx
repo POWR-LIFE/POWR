@@ -1,13 +1,13 @@
-import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import * as Location from 'expo-location';
-import { useEffect, useRef, useState } from 'react';
-import { Animated, Linking, Platform, Pressable, StyleSheet, Text, View, Alert } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import GeometricBackground from '@/components/GeometricBackground';
 import PermissionPrimeScene from '@/components/onboarding/PermissionPrimeScene';
-import { ONBOARDING_DOT_COUNT, dotIndexFor } from '@/lib/onboarding/flow';
 import { awardBonus } from '@/lib/api/points';
+import { ONBOARDING_DOT_COUNT, dotIndexFor } from '@/lib/onboarding/flow';
+import { Ionicons } from '@expo/vector-icons';
+import * as Location from 'expo-location';
+import { useRouter } from 'expo-router';
+import { useEffect, useRef, useState } from 'react';
+import { Alert, Animated, Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const GOLD = '#E8D200';
 const BG = '#0d0d0d';
@@ -186,7 +186,7 @@ export default function OnboardingPermissionScreen() {
                         <Text style={styles.headlineGold}>map.</Text>
                     </Text>
                     <Text style={styles.body}>
-                        Partner gyms, hidden rewards, automatic check-ins — it all starts with where you are.
+                        Partner gyms and automatic check-ins — it all starts with where you are.
                     </Text>
 
                     <View style={styles.mock}>
