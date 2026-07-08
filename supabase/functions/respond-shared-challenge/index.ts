@@ -7,6 +7,12 @@
 //             with whoever's left, or cancel).
 //   leave   — drop a challenge you'd accepted; frees a slot. Cancels the
 //             challenge if it falls below 2 live members.
+//   invite  — CREATOR-ONLY: pull more of the creator's friends into an existing
+//             challenge (forming OR active). Late joiners inherit the running
+//             clock as-is — no personal extension. The clock is untouched.
+//   dismiss — clear a FINISHED challenge off your own Home surface (per-user
+//             display flag; the challenge itself is untouched). Live challenges
+//             can't be dismissed — leave/cancel covers wanting out of those.
 import { createClient } from '@supabase/supabase-js';
 import { tryStartForming } from '../_shared/sharedChallengeLifecycle.ts';
 import { notifyPush } from '../_shared/notify.ts';
@@ -14,7 +20,9 @@ import { notifyPush } from '../_shared/notify.ts';
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 
-type Action = 'accept' | 'decline' | 'leave';
+const MAX_GROUP = 6; // creator + up to 5 others (mirrors create-shared-challenge)
+
+type Action = 'accept' | 'decline' | 'leave' | 'invite' | 'dismiss';
 
 /** How many live, unfinished challenges already occupy a slot for this user. */
 async function openCount(supabase: any, userId: string): Promise<number> {
@@ -26,6 +34,20 @@ async function openCount(supabase: any, userId: string): Promise<number> {
     .eq('completed', false)
     .in('shared_challenges.status', ['forming', 'active']);
   return data?.length ?? 0;
+}
+
+/** The set of a user's accepted-friend ids (lowercased), for invite validation. */
+async function acceptedFriendIds(supabase: any, userId: string): Promise<Set<string>> {
+  const { data: edges } = await supabase
+    .from('friendships')
+    .select('user_id, friend_id')
+    .eq('status', 'accepted')
+    .or(`user_id.eq.${userId},friend_id.eq.${userId}`);
+  const set = new Set<string>();
+  for (const e of edges ?? []) {
+    set.add((e.user_id === userId ? e.friend_id : e.user_id).toLowerCase());
+  }
+  return set;
 }
 
 /**
@@ -87,7 +109,7 @@ Deno.serve(async (req) => {
   const { data: { user }, error: authError } = await userClient.auth.getUser();
   if (authError || !user) return json({ error: 'Unauthorized' }, 401);
 
-  let body: { challenge_id: string; action: Action };
+  let body: { challenge_id: string; action: Action; target_user_ids?: string[] };
   try {
     body = await req.json();
   } catch {
@@ -97,7 +119,7 @@ Deno.serve(async (req) => {
   if (!challenge_id || !action) return json({ error: 'Missing challenge_id or action' }, 400);
 
   const { data: challenge } = await supabase
-    .from('shared_challenges').select('id, status').eq('id', challenge_id).maybeSingle();
+    .from('shared_challenges').select('id, status, creator_id, template').eq('id', challenge_id).maybeSingle();
   if (!challenge) return json({ error: 'Challenge not found' }, 404);
 
   const { data: me } = await supabase
@@ -147,6 +169,116 @@ Deno.serve(async (req) => {
         await cancelIfTooThin(supabase, challenge_id);
       }
       return json({ ok: true, state: 'left' });
+    }
+
+    case 'dismiss': {
+      // Per-user display flag: hides the settled card from YOUR Home. Only
+      // finished challenges — a live one is either still yours to do (leave
+      // covers exiting) or still settling.
+      if (challenge.status === 'forming' || challenge.status === 'active') {
+        return json({ error: 'You can only dismiss a finished challenge', code: 'STILL_LIVE' }, 409);
+      }
+      await supabase.from('shared_challenge_participants')
+        .update({ dismissed_at: new Date().toISOString() })
+        .eq('challenge_id', challenge_id).eq('user_id', user.id);
+      return json({ ok: true, state: me.state, dismissed: true });
+    }
+
+    case 'invite': {
+      // Creator-only: only the person who started it can grow the group.
+      if (challenge.creator_id !== user.id) {
+        return json({ error: 'Only the challenge creator can invite people', code: 'NOT_CREATOR' }, 403);
+      }
+      // Can't grow a finished/cancelled challenge; forming + active are fair game.
+      if (challenge.status !== 'forming' && challenge.status !== 'active') {
+        return json({ error: 'This challenge is no longer open to new people', code: 'NOT_OPEN' }, 409);
+      }
+
+      const targets = [...new Set((body.target_user_ids || []).map((s) => String(s).toLowerCase()))]
+        .filter((id) => id && id !== user.id.toLowerCase());
+      if (targets.length === 0) return json({ error: 'No one to invite' }, 400);
+
+      // Only the creator's accepted friends are invitable.
+      const friends = await acceptedFriendIds(supabase, user.id);
+      const notFriends = targets.filter((id) => !friends.has(id));
+      if (notFriends.length) return json({ error: 'Some invitees are not your friends' }, 400);
+
+      // A friend who's turned Together off can't be invited — they'd never see
+      // it. The client greys them out; this is the server backstop.
+      for (const fid of targets) {
+        const { data: u } = await supabase.auth.admin.getUserById(fid);
+        if (u?.user?.user_metadata?.together_enabled === false) {
+          return json({ error: 'A selected friend isn’t on Together', code: 'INVITEE_OPTED_OUT' }, 400);
+        }
+      }
+
+      // Current roster. Live members (invited/accepted/completed) can't be
+      // re-invited; a declined/left row is flipped back to 'invited' instead of
+      // inserting a duplicate (the (challenge_id, user_id) pair is unique).
+      const { data: existing } = await supabase
+        .from('shared_challenge_participants')
+        .select('user_id, state')
+        .eq('challenge_id', challenge_id);
+      const stateByUser = new Map<string, string>();
+      for (const p of existing ?? []) stateByUser.set(String(p.user_id).toLowerCase(), p.state);
+      const liveCount = (existing ?? []).filter(
+        (p: any) => p.state !== 'declined' && p.state !== 'left',
+      ).length;
+
+      const toReinvite = targets.filter((id) => {
+        const s = stateByUser.get(id);
+        return s === 'declined' || s === 'left';
+      });
+      const toInsert = targets.filter((id) => !stateByUser.has(id));
+      const alreadyIn = targets.filter((id) => {
+        const s = stateByUser.get(id);
+        return s === 'invited' || s === 'accepted' || s === 'completed';
+      });
+
+      const newlyInvited = [...toReinvite, ...toInsert];
+      if (newlyInvited.length === 0) {
+        // Everyone requested is already in — treat as a no-op success.
+        return json({ ok: true, invited: 0, already_in: alreadyIn.length });
+      }
+
+      // Group-size cap: live roster + the people we're about to (re)invite.
+      if (liveCount + newlyInvited.length > MAX_GROUP) {
+        return json({ error: `Groups are capped at ${MAX_GROUP}`, code: 'GROUP_FULL' }, 409);
+      }
+
+      if (toReinvite.length) {
+        // Reset to a clean invite — clear any award/progress state left over from
+        // a prior stint so a re-joiner starts fresh (matches a first-time invite).
+        await supabase.from('shared_challenge_participants')
+          .update({
+            state: 'invited', invited_by: user.id, joined_at: null,
+            completed: false, completed_at: null, progress: 0,
+            base_awarded: false, bonus_awarded: 0,
+          })
+          .eq('challenge_id', challenge_id)
+          .in('user_id', toReinvite);
+      }
+      if (toInsert.length) {
+        const rows = toInsert.map((fid) => ({
+          challenge_id, user_id: fid, state: 'invited', invited_by: user.id,
+        }));
+        const { error: insErr } = await supabase.from('shared_challenge_participants').insert(rows);
+        if (insErr) {
+          console.error('[respond-shared-challenge] invite insert failed:', insErr);
+          return json({ error: 'Failed to add invitees' }, 500);
+        }
+      }
+
+      // Invite pushes. Same payload shape as create-shared-challenge.
+      const { data: prof } = await supabase
+        .from('profiles').select('username, display_name').eq('id', user.id).maybeSingle();
+      const fromName = prof?.display_name || prof?.username || 'A friend';
+      const title = challenge.template?.title ?? 'a challenge';
+      for (const fid of newlyInvited) {
+        await notifyPush(fid, 'challenge_invite', { challenge_id, from_name: fromName, title });
+      }
+
+      return json({ ok: true, invited: newlyInvited.length, already_in: alreadyIn.length });
     }
 
     default:

@@ -65,6 +65,9 @@ export interface SharedChallengeCardProps {
   onPress?: (challenge: SharedChallenge) => void;
   onAccept?: (challenge: SharedChallenge) => void;
   onDecline?: (challenge: SharedChallenge) => void;
+  /** Clear a settled card off Home (per-user). Renders the (X) only on
+   *  completed challenges — live ones use leave/cancel on the detail screen. */
+  onDismiss?: (challenge: SharedChallenge) => void;
 }
 
 /**
@@ -72,8 +75,11 @@ export interface SharedChallengeCardProps {
  * The full picture (everyone's progress, the bonus maths, tier) lives on the
  * detail screen (app/shared-challenge.tsx), one tap away.
  */
-export function SharedChallengeCard({ challenge, index = 0, atCap = false, onPress, onAccept, onDecline }: SharedChallengeCardProps) {
+export function SharedChallengeCard({ challenge, index = 0, atCap = false, onPress, onAccept, onDecline, onDismiss }: SharedChallengeCardProps) {
   const { template, participants } = challenge;
+  // The settled card's job (show the outcome, share it) is done once you've
+  // seen it — the (X) lets you clear it before the 3-day auto-expiry.
+  const dismissible = challenge.status === 'completed' && !!onDismiss;
 
   const self = participants.find((p) => p.isSelf);
   const others = participants.filter((p) => !p.isSelf);
@@ -133,9 +139,22 @@ export function SharedChallengeCard({ challenge, index = 0, atCap = false, onPre
               </View>
             )}
           </View>
-          <View style={styles.points}>
-            <Text style={styles.pointsValue}>+{template.basePoints}</Text>
-            <Text style={styles.pointsLabel}>pts</Text>
+          <View style={styles.headerRight}>
+            <View style={styles.points}>
+              <Text style={styles.pointsValue}>+{template.basePoints}</Text>
+              <Text style={styles.pointsLabel}>pts</Text>
+            </View>
+            {dismissible && (
+              <Pressable
+                hitSlop={10}
+                style={styles.dismissBtn}
+                onPress={() => { Haptics.selectionAsync(); onDismiss?.(challenge); }}
+                accessibilityRole="button"
+                accessibilityLabel={`Clear ${template.title} from home`}
+              >
+                <Ionicons name="close" size={14} color={MUTED} />
+              </Pressable>
+            )}
           </View>
         </View>
 
@@ -252,7 +271,13 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   moreText: { fontFamily: fontFamily.semiBold, fontSize: 10, color: SECONDARY },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   points: { flexDirection: 'row', alignItems: 'baseline', gap: 3 },
+  dismissBtn: {
+    width: 26, height: 26, borderRadius: 13,
+    borderWidth: 1, borderColor: BORDER,
+    alignItems: 'center', justifyContent: 'center',
+  },
   pointsValue: { fontFamily: fontFamily.extraLight, fontSize: 24, color: GOLD, lineHeight: 24 },
   pointsLabel: { fontFamily: fontFamily.medium, fontSize: 9, letterSpacing: 1, color: FAINT, textTransform: 'uppercase' },
 
