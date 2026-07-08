@@ -2,7 +2,7 @@ import { useEventListener } from 'expo';
 import { Image as ExpoImage } from 'expo-image';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import React, { useEffect, useState } from 'react';
-import { AccessibilityInfo, AppState, StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
+import { AccessibilityInfo, AppState, StyleProp, StyleSheet, Text, View, ViewStyle } from 'react-native';
 
 type Fit = 'cover' | 'contain';
 type Position = 'top' | 'center' | 'bottom';
@@ -72,12 +72,24 @@ function HeroVideo({ uri, contentFit }: { uri: string; contentFit: Fit }) {
     p.play();
   });
 
+  // If the source fails outright, name the failure instead of swallowing it —
+  // a wedged player with silent guards is undiagnosable (that blindness cost
+  // several build cycles in the 2026-07 iOS incident) — and drop the video
+  // layer so the card shows the clean poster, not a broken-player glyph.
+  const [videoError, setVideoError] = useState<string | null>(null);
+
   // The OS pauses the player on app background, screen lock, and audio-session
   // interruptions (calls, Siri), and expo-video never resumes it by itself —
   // the card then sits frozen on one frame. Nudge it whenever it can play but
   // isn't. The guards swallow calls that race the player's native release.
-  useEventListener(player, 'statusChange', ({ status }) => {
+  useEventListener(player, 'statusChange', ({ status, error }) => {
     try {
+      if (status === 'error') {
+        const message = error?.message ?? 'unknown video error';
+        console.warn(`[RewardHeroMedia] video failed: ${message} (${uri})`);
+        setVideoError(message);
+        return;
+      }
       if (status === 'readyToPlay' && !player.playing) player.play();
     } catch {}
   });
@@ -125,6 +137,17 @@ function HeroVideo({ uri, contentFit }: { uri: string; contentFit: Fit }) {
     return () => sub.remove();
   }, [player]);
 
+  if (videoError) {
+    // Poster-only fallback; in dev builds also print the failure on the card
+    // so an Xcode Debug run on a device names the error without log digging.
+    if (!__DEV__) return null;
+    return (
+      <View style={[StyleSheet.absoluteFill, devErrorStyles.box]} pointerEvents="none">
+        <Text style={devErrorStyles.text}>video error: {videoError}</Text>
+      </View>
+    );
+  }
+
   return (
     <VideoView
       player={player}
@@ -137,6 +160,17 @@ function HeroVideo({ uri, contentFit }: { uri: string; contentFit: Fit }) {
     />
   );
 }
+
+const devErrorStyles = StyleSheet.create({
+  box: { justifyContent: 'flex-end', padding: 8 },
+  text: {
+    color: '#ff6b6b',
+    fontSize: 10,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    padding: 4,
+    borderRadius: 4,
+  },
+});
 
 function useReducedMotion(): boolean {
   const [reduce, setReduce] = useState(false);
