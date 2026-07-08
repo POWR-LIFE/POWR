@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase';
+import { getSessionUser, supabase } from '@/lib/supabase';
 import type { Reward } from './rewards';
 
 // =============================================================
@@ -55,8 +55,7 @@ export async function logPlacementEvent(
   coords?: { lat: number; lng: number },
 ): Promise<void> {
   try {
-    const { data } = await supabase.auth.getUser();
-    const userId = data.user?.id;
+    const userId = (await getSessionUser())?.id;
     if (!userId) return;
     await supabase.from('reward_placement_events').insert({
       placement_id: placementId,

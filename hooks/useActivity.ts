@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import {
     fetchDailyMetrics,
     fetchRecentSessions,
@@ -54,35 +54,32 @@ const DEFAULT_METRICS: WeeklyMetrics = { gymVisits: 0, runs: 0, totalSteps: 0, s
 const DEFAULT_DAILY: DailyMetrics = { perType: {}, stepsToday: 0 };
 
 export function useActivity(): ActivityState {
-    const [recentItems, setRecentItems] = useState<ActivityFeedItem[]>([]);
-    const [weekActiveDays, setWeekActiveDays] = useState<boolean[]>([false, false, false, false, false, false, false]);
-    const [weeklyMetrics, setWeeklyMetrics] = useState<WeeklyMetrics>(DEFAULT_METRICS);
-    const [dailyMetrics, setDailyMetrics] = useState<DailyMetrics>(DEFAULT_DAILY);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
-
-    const load = useCallback(async () => {
-        setLoading(true);
-        setError(null);
-        try {
+    const { data, isPending, error, refetch } = useQuery({
+        queryKey: ['activity', 'overview'],
+        queryFn: async () => {
             const [sessions, activeDays, metrics, daily] = await Promise.all([
                 fetchRecentSessions(5),
                 fetchWeekActiveDays(),
                 fetchWeeklyMetrics(),
                 fetchDailyMetrics(),
             ]);
-            setRecentItems(sessions.map(sessionToFeedItem).filter(Boolean) as ActivityFeedItem[]);
-            setWeekActiveDays(activeDays);
-            setWeeklyMetrics(metrics);
-            setDailyMetrics(daily);
-        } catch (e) {
-            setError(e instanceof Error ? e.message : 'Failed to load activity');
-        } finally {
-            setLoading(false);
-        }
-    }, []);
+            return {
+                recentItems: sessions.map(sessionToFeedItem).filter(Boolean) as ActivityFeedItem[],
+                weekActiveDays: activeDays,
+                weeklyMetrics: metrics,
+                dailyMetrics: daily,
+            };
+        },
+    });
 
-    useEffect(() => { load(); }, [load]);
-
-    return { recentItems, weekActiveDays, weeklyMetrics, dailyMetrics, loading, error, refresh: load };
+    return {
+        recentItems: data?.recentItems ?? [],
+        weekActiveDays: data?.weekActiveDays ?? [false, false, false, false, false, false, false],
+        weeklyMetrics: data?.weeklyMetrics ?? DEFAULT_METRICS,
+        dailyMetrics: data?.dailyMetrics ?? DEFAULT_DAILY,
+        loading: isPending,
+        error: error ? (error instanceof Error ? error.message : 'Failed to load activity') : null,
+        // Returns the refetch promise so pull-to-refresh can await completion.
+        refresh: () => refetch(),
+    };
 }

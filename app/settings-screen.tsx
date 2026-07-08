@@ -25,7 +25,7 @@ import { androidOpenHealthConnectSettings, useHealthData } from '@/hooks/useHeal
 import { useHealthProviders } from '@/hooks/useHealthProviders';
 import { HealthProviderNotImplementedError } from '@/lib/health/providers';
 import { ACTIVITIES, type ActivityType } from '@/constants/activities';
-import { supabase } from '@/lib/supabase';
+import { getSessionUser, supabase } from '@/lib/supabase';
 import { getNotificationPreferences, updateNotificationPreferences } from '@/lib/api/notifications';
 import { cacheNearbyOfferPreference, isNearbyOfferEnabled } from '@/lib/notifications';
 import { requestBatteryOptimizationExemption } from '@/lib/batteryOptimization';
@@ -78,8 +78,8 @@ export default function SettingsScreen() {
 
   React.useEffect(() => {
     (async () => {
-      const { supabase } = await import('@/lib/supabase');
-      const { data: { user } } = await supabase.auth.getUser();
+      const { supabase, getSessionUser } = await import('@/lib/supabase');
+      const user = await getSessionUser();
       if (!user) return;
       const { data } = await supabase
         .from('profiles')

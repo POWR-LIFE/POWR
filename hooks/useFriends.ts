@@ -9,7 +9,8 @@
  * unchanged except friends.tsx now awaits the async `search`.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { useCallback, useMemo } from 'react';
 
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabase';
@@ -46,33 +47,33 @@ function rowToFriend(r: any, status: Friend['status']): Friend {
 
 export function useFriends(): UseFriends {
   const { user } = useAuth();
-  const [friends, setFriends] = useState<Friend[]>([]);
-  const [incoming, setIncoming] = useState<Friend[]>([]);
-  const [outgoing, setOutgoing] = useState<Friend[]>([]);
-  const [loading, setLoading] = useState(true);
 
-  const load = useCallback(async () => {
-    if (!user) {
-      setFriends([]); setIncoming([]); setOutgoing([]); setLoading(false);
-      return;
-    }
-    const { data, error } = await supabase.rpc('get_my_friendships');
-    if (error) {
-      console.warn('[useFriends] load failed:', error.message);
-      setLoading(false);
-      return;
-    }
-    const f: Friend[] = [], inc: Friend[] = [], out: Friend[] = [];
-    for (const r of data ?? []) {
-      if (r.status === 'accepted') f.push(rowToFriend(r, 'accepted'));
-      else if (r.status === 'pending') {
-        (r.requested_by === user.id ? out : inc).push(rowToFriend(r, 'pending'));
+  const { data, isPending, refetch } = useQuery({
+    queryKey: ['friends', user?.id ?? 'anon'],
+    enabled: !!user,
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('get_my_friendships');
+      if (error) {
+        console.warn('[useFriends] load failed:', error.message);
+        throw error;
       }
-    }
-    setFriends(f); setIncoming(inc); setOutgoing(out); setLoading(false);
-  }, [user]);
+      const f: Friend[] = [], inc: Friend[] = [], out: Friend[] = [];
+      for (const r of data ?? []) {
+        if (r.status === 'accepted') f.push(rowToFriend(r, 'accepted'));
+        else if (r.status === 'pending') {
+          (r.requested_by === user!.id ? out : inc).push(rowToFriend(r, 'pending'));
+        }
+      }
+      return { friends: f, incoming: inc, outgoing: out };
+    },
+  });
 
-  useEffect(() => { load(); }, [load]);
+  const { friends, incoming, outgoing } = useMemo(
+    () => data ?? { friends: [], incoming: [], outgoing: [] },
+    [data],
+  );
+
+  const load = useCallback(async () => { await refetch(); }, [refetch]);
 
   const search = useCallback(async (query: string): Promise<Friend[]> => {
     const q = query.trim();
@@ -100,7 +101,8 @@ export function useFriends(): UseFriends {
   const removeFriend = useCallback((id: string) => { void mutate('remove', id); }, [mutate]);
 
   return {
-    loading, friends, incoming, outgoing, search,
+    loading: !!user && isPending,
+    friends, incoming, outgoing, search,
     sendRequest, acceptRequest, declineRequest, removeFriend,
     refresh: load,
   };

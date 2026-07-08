@@ -16,10 +16,12 @@ import { useEffect } from 'react';
 import { View } from 'react-native';
 import 'react-native-reanimated';
 import '../global.css';
+import { QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from '@/context/AuthContext';
 import { GeofenceProvider } from '@/context/GeofenceContext';
 import { NotificationsProvider } from '@/context/NotificationsContext';
 import { ThemeProvider as AppThemeProvider, useAppTheme } from '@/context/ThemeContext';
+import { queryClient } from '@/lib/queryClient';
 import { registerWalkingSync } from '@/lib/health/walkingSync';
 import { ensureAndroidChannels } from '@/lib/notifications';
 import { useOtaUpdatePrompt } from '@/lib/otaUpdates';
@@ -139,14 +141,16 @@ registerWalkingSync();
 
 export default function RootLayout() {
   return (
-    <AuthProvider>
-      <GeofenceProvider>
-        <AppThemeProvider>
-          <NotificationsProvider>
-            <RootLayoutNav />
-          </NotificationsProvider>
-        </AppThemeProvider>
-      </GeofenceProvider>
-    </AuthProvider>
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider>
+        <GeofenceProvider>
+          <AppThemeProvider>
+            <NotificationsProvider>
+              <RootLayoutNav />
+            </NotificationsProvider>
+          </AppThemeProvider>
+        </GeofenceProvider>
+      </AuthProvider>
+    </QueryClientProvider>
   );
 }

@@ -1,6 +1,6 @@
 import * as FileSystem from 'expo-file-system/legacy';
 
-import { supabase } from '@/lib/supabase';
+import { getSessionUser, supabase } from '@/lib/supabase';
 
 export type GalleryPhoto = {
     id: string;
@@ -23,7 +23,7 @@ export async function fetchGallery(userId: string): Promise<GalleryPhoto[]> {
 export async function uploadGalleryPhoto(
     localUri: string
 ): Promise<{ photo: GalleryPhoto | null; error: string | null }> {
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getSessionUser();
     if (!user) return { photo: null, error: 'Not authenticated' };
 
     const ext = localUri.split('.').pop()?.toLowerCase() ?? 'jpg';
@@ -69,7 +69,7 @@ export async function deleteGalleryPhoto(
     photoId: string,
     url: string
 ): Promise<{ error: string | null }> {
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getSessionUser();
     if (!user) return { error: 'Not authenticated' };
 
     // Derive storage path from URL (everything after /gallery/)
@@ -90,7 +90,7 @@ export async function reorderGalleryPhoto(
     photoId: string,
     displayOrder: number
 ): Promise<{ error: string | null }> {
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getSessionUser();
     if (!user) return { error: 'Not authenticated' };
     const { error } = await supabase
         .from('pro_gallery_photos')

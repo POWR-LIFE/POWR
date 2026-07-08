@@ -11,7 +11,7 @@ import {
     type HealthProviderMeta,
 } from '@/lib/health/providers';
 import type { ConnectResult } from '@/lib/health/providers/types';
-import { supabase } from '@/lib/supabase';
+import { getSessionUser, supabase } from '@/lib/supabase';
 import { awardBonus } from '@/lib/api/points';
 
 export type ProviderConnection = {
@@ -65,7 +65,7 @@ export function useHealthProviders() {
     const refresh = useCallback(async () => {
         setLoading(true);
         try {
-            const { data: { user } } = await supabase.auth.getUser();
+            const user = await getSessionUser();
             if (!user) return;
             const { data } = await supabase
                 .from('profiles')
@@ -114,7 +114,7 @@ export function useHealthProviders() {
                 const isNowGranted = await provider.isConnected();
                 if (!isNowGranted) return;
                 // Re-read DB to avoid stale closure — only write if not already there.
-                const { data: { user } } = await supabase.auth.getUser();
+                const user = await getSessionUser();
                 if (!user) return;
                 const { data } = await supabase
                     .from('profiles')
@@ -135,7 +135,7 @@ export function useHealthProviders() {
     }, [refresh]);
 
     const writeProfile = useCallback(async (patch: Partial<ProfileRow>) => {
-        const { data: { user } } = await supabase.auth.getUser();
+        const user = await getSessionUser();
         if (!user) return;
         await supabase.from('profiles').update(patch).eq('id', user.id);
     }, []);

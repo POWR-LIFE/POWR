@@ -1,5 +1,5 @@
 import * as SecureStore from 'expo-secure-store';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type User } from '@supabase/supabase-js';
 import { AppState } from 'react-native';
 import 'react-native-url-polyfill/auto';
 
@@ -41,6 +41,20 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
         flowType: 'pkce',
     },
 });
+
+/**
+ * The signed-in user from the locally cached session — no network round-trip.
+ *
+ * Use this instead of `supabase.auth.getUser()` whenever you only need the
+ * user's id (or to know someone is signed in): getUser() re-validates the JWT
+ * against the auth server on every call, which added a serial HTTP hop in
+ * front of nearly every data fetch in the app. Keep getUser() only where a
+ * server-fresh user object matters (e.g. re-reading email after a change).
+ */
+export async function getSessionUser(): Promise<User | null> {
+    const { data: { session } } = await supabase.auth.getSession();
+    return session?.user ?? null;
+}
 
 // Tells Supabase Auth to continuously refresh the session automatically if
 // the app is in the foreground. When this is added, you will continue to receive
