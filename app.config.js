@@ -5,6 +5,10 @@ module.exports = {
     ...expo,
     ios: {
       ...expo.ios,
+      // Local path is gitignored; EAS builders get it via the
+      // GOOGLE_SERVICE_INFO_PLIST file env var (resolves to a builder path).
+      googleServicesFile:
+        process.env.GOOGLE_SERVICE_INFO_PLIST ?? './GoogleService-Info.plist',
       infoPlist: {
         ...expo.ios?.infoPlist,
         NSHealthShareUsageDescription:
@@ -40,6 +44,12 @@ module.exports = {
     },
     updates: {
       url: 'https://u.expo.dev/7f4fe661-8919-4790-bd66-209373f958de',
+      // Channel for builds made outside EAS (local Xcode iOS builds); EAS
+      // builds override this with the profile's channel at build time.
+      // For an App Store archive: POWR_IOS_CHANNEL=production npx expo prebuild -p ios --clean
+      requestHeaders: {
+        'expo-channel-name': process.env.POWR_IOS_CHANNEL ?? 'preview',
+      },
     },
     // Fingerprint = hash of the native project: JS-only changes share a runtime
     // (deliverable OTA), anything touching native modules fences itself off to
