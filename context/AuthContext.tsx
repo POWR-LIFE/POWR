@@ -99,11 +99,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 },
                 (payload) => {
                     const incomingId = (payload.new as { session_id?: string })?.session_id;
-                    // A different session_id means another device signed in — kick this one out now
+                    // A different session_id means another device signed in — kick this one out now.
+                    // Local scope only: the default 'global' would revoke EVERY session for the
+                    // user — including the new device that just signed in — so the device the
+                    // user is actively using would silently log out at its next token refresh.
+                    // Server-side revocation of old sessions is enforceOneSession's job.
                     if (incomingId && incomingId !== currentSessionIdRef.current) {
                         currentSessionIdRef.current = null;
                         forcedSignOutRef.current = true;
-                        supabase.auth.signOut();
+                        supabase.auth.signOut({ scope: 'local' });
                     }
                 },
             )
@@ -126,7 +130,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const res = await claimDevice();
         if (res.status === 'locked') {
             deviceLockedRef.current = true;
-            await supabase.auth.signOut();
+            // Local scope: only this device is refused — signing in on a locked phone
+            // must not revoke the user's legitimate sessions on their own devices.
+            await supabase.auth.signOut({ scope: 'local' });
         }
     };
 
