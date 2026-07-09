@@ -21,6 +21,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import * as SecureStore from 'expo-secure-store';
 import { useAuth } from '@/context/AuthContext';
+import { useNotifications } from '@/context/NotificationsContext';
 import { androidOpenHealthConnectSettings, useHealthData } from '@/hooks/useHealthData';
 import { useHealthProviders } from '@/hooks/useHealthProviders';
 import { HealthProviderNotImplementedError } from '@/lib/health/providers';
@@ -55,6 +56,7 @@ export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { signOut, user, updateUserMetadata } = useAuth();
+  const { requestPermissions } = useNotifications();
 
   const [isAdmin, setIsAdmin] = React.useState(false);
   const health = useHealthData();
@@ -74,7 +76,12 @@ export default function SettingsScreen() {
   // Android 12+ "Approximate" grants can't verify 25 m gym geofences — surfaced
   // as their own broken state. null = unknown / iOS (no API to detect there).
   const [preciseGranted, setPreciseGranted] = useState<boolean | null>(null);
-  const [notifGranted, setNotifGranted] = useState<boolean | null>(null);
+  // OS notification permission. 'undetermined' = never asked (the app hasn't even
+  // registered, so iOS shows no Notifications row in its settings — tapping the
+  // banner must fire the OS dialog, not deep-link to a page with nothing to fix).
+  // 'denied' = user said no earlier → deep-link to Settings. null = still loading.
+  const [notifStatus, setNotifStatus] = useState<'granted' | 'denied' | 'undetermined' | null>(null);
+  const notifGranted = notifStatus === null ? null : notifStatus === 'granted';
 
   React.useEffect(() => {
     (async () => {
@@ -101,12 +108,45 @@ export default function SettingsScreen() {
     const bg = await Location.getBackgroundPermissionsAsync().catch(() => null);
     if (bg) setBgLocationGranted(bg.status === 'granted');
     const notif = await Notifications.getPermissionsAsync().catch(() => null);
-    if (notif) setNotifGranted(notif.status === 'granted');
+    if (notif) {
+      setNotifStatus(
+        notif.status === 'granted' ? 'granted'
+          : notif.status === 'denied' ? 'denied'
+            : 'undetermined',
+      );
+    }
   }, []);
 
   useFocusEffect(
     useCallback(() => { refreshPermissionStatuses(); }, [refreshPermissionStatuses]),
   );
+
+  // Banner tap when notifications are off. If we've never asked ('undetermined')
+  // the app hasn't registered — fire the OS dialog (which also registers the push
+  // token, so a Notifications row finally appears in iOS settings). If the user
+  // already denied it, the OS won't show the dialog again, so send them to
+  // Settings with an explanation rather than a page that has nothing to toggle.
+  const handleEnableNotifications = useCallback(async () => {
+    if (notifStatus === 'undetermined') {
+      const granted = await requestPermissions();
+      if (!granted) {
+        // They dismissed/denied the dialog — the permission is now 'denied', so
+        // the only remaining path is the system settings app.
+        Alert.alert(
+          'Notifications off',
+          'To get gym check-ins and reward alerts, turn on Notifications for POWR in Settings.',
+          [
+            { text: 'Not now', style: 'cancel' },
+            { text: 'Open Settings', onPress: () => Linking.openSettings() },
+          ],
+        );
+      }
+      refreshPermissionStatuses();
+    } else {
+      // 'denied' — iOS won't re-prompt, so Settings is the only lever.
+      Linking.openSettings();
+    }
+  }, [notifStatus, requestPermissions, refreshPermissionStatuses]);
 
   // Activity preferences (saved in user_metadata, edited on dedicated screen)
   const savedPrefs: ActivityType[] = user?.user_metadata?.activity_preferences ?? ['gym', 'running', 'walking'];
@@ -459,13 +499,20 @@ export default function SettingsScreen() {
         {/* ── Notifications ─────────────────────────────────── */}
         <SectionLabel label="Notifications" />
         {notifGranted === false && (
-          <Pressable onPress={() => Linking.openSettings()}>
-            <Text style={[styles.sectionHint, { color: RED }]}>
-              ⚠️ Notifications are turned off, so you won’t get gym check-ins or reward alerts. Tap to open settings.
-            </Text>
+          <Pressable onPress={handleEnableNotifications} style={styles.notifWarnBanner}>
+            <Ionicons name="notifications-off-outline" size={18} color={RED} style={{ marginTop: 1 }} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.notifWarnText}>
+                Notifications are off, so gym check-ins and reward alerts won’t reach you. The
+                switches below have no effect until you turn them on.
+              </Text>
+              <Text style={styles.notifWarnCta}>
+                {notifStatus === 'undetermined' ? 'Turn on notifications' : 'Open Settings'} ›
+              </Text>
+            </View>
           </Pressable>
         )}
-        <View style={styles.card}>
+        <View style={[styles.card, notifGranted === false && styles.cardDisabled]} pointerEvents={notifGranted === false ? 'none' : 'auto'}>
           <RowToggle
             icon="barbell-outline"
             label="Workout reminders"
@@ -1086,6 +1133,37 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     paddingHorizontal: 14,
     overflow: 'hidden',
+  },
+  // When the OS notification gate is shut, the toggles are inert — dim the whole
+  // card so it reads as disabled rather than a live control that does nothing.
+  cardDisabled: {
+    opacity: 0.4,
+  },
+
+  // Notifications-off warning banner (tappable)
+  notifWarnBanner: {
+    flexDirection: 'row',
+    gap: 10,
+    alignItems: 'flex-start',
+    backgroundColor: 'rgba(239,68,68,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(239,68,68,0.25)',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 10,
+  },
+  notifWarnText: {
+    fontSize: 12,
+    fontWeight: '400',
+    lineHeight: 17,
+    color: RED,
+  },
+  notifWarnCta: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: RED,
+    marginTop: 6,
   },
 
   // Row shared

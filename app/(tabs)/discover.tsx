@@ -591,8 +591,8 @@ export default function DiscoverScreen() {
         <MapView
           ref={mapRef}
           style={StyleSheet.absoluteFillObject}
-          provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
-          customMapStyle={Platform.OS === 'android' ? DARK_MAP_STYLE : undefined}
+          provider={PROVIDER_GOOGLE}
+          customMapStyle={DARK_MAP_STYLE}
           userInterfaceStyle="dark"
           initialRegion={DEFAULT_REGION}
           showsUserLocation={locationGranted}
@@ -1044,8 +1044,8 @@ export default function DiscoverScreen() {
           <MapView
             ref={navMapRef}
             style={StyleSheet.absoluteFillObject}
-            provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
-            customMapStyle={Platform.OS === 'android' ? DARK_MAP_STYLE : undefined}
+            provider={PROVIDER_GOOGLE}
+            customMapStyle={DARK_MAP_STYLE}
             userInterfaceStyle="dark"
             initialRegion={DEFAULT_REGION}
             showsUserLocation
