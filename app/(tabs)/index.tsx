@@ -26,6 +26,7 @@ import { WeeklyActivityCircles } from '@/components/home/WeeklyActivityRings';
 import { HeaderActions } from '@/components/HeaderActions';
 import { HealthGapBanner } from '@/components/HealthGapBanner';
 import NotificationPrimeSheet from '@/components/NotificationPrimeSheet';
+import LocationPrimeSheet from '@/components/LocationPrimeSheet';
 import { ACTIVITIES, type ActivityType } from '@/constants/activities';
 import { useAuth } from '@/context/AuthContext';
 import { useGeofenceContext } from '@/context/GeofenceContext';
@@ -730,6 +731,11 @@ export default function HomeScreen() {
             {/* Primed notification re-ask — self-gating (permission off + ≥1
                 session banked + pacing), so mounting is unconditional. */}
             <NotificationPrimeSheet />
+
+            {/* Primed background-location re-ask — self-gating (on "While Using"
+                + ≥1 session banked + pacing), and yields to the notification
+                sheet so the two never stack. Fixes silent no-earning in pocket. */}
+            <LocationPrimeSheet />
         </View>
     );
 }

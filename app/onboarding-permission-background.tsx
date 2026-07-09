@@ -12,6 +12,7 @@ import {
     markBatteryOptimizationPrompted,
     requestBatteryOptimizationExemption,
 } from '@/lib/batteryOptimization';
+import { recordLocationOnboardingDeclined } from '@/lib/locationPrompt';
 
 const GOLD = '#E8D200';
 const BG = '#0d0d0d';
@@ -131,7 +132,13 @@ export default function OnboardingPermissionBackgroundScreen() {
                     'Enable "Always" for gym check-ins',
                     'To detect gym arrivals when POWR is closed, set location to "Always" in Settings › Privacy & Security › Location Services › POWR.',
                     [
-                        { text: 'Later', onPress: () => router.push(NEXT_SCREEN) },
+                        {
+                            text: 'Later',
+                            onPress: () => {
+                                recordLocationOnboardingDeclined().catch(() => {});
+                                router.push(NEXT_SCREEN);
+                            },
+                        },
                         {
                             text: 'Open Settings',
                             onPress: () => {
@@ -214,7 +221,10 @@ export default function OnboardingPermissionBackgroundScreen() {
 
                 <Pressable
                     style={styles.skipButton}
-                    onPress={() => router.push(NEXT_SCREEN)}
+                    onPress={() => {
+                        recordLocationOnboardingDeclined().catch(() => {});
+                        router.push(NEXT_SCREEN);
+                    }}
                 >
                     <Text style={styles.skipLabel}>Skip for now</Text>
                 </Pressable>
