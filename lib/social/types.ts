@@ -56,6 +56,14 @@ export interface Participant {
   state: ParticipantState;
   /** 0–1 progress. For 'parallel' this is toward their own goal; for 'pooled' it mirrors the shared pool fraction. */
   progress: number;
+  /**
+   * "So far today" momentum for goals with a partial-in-progress notion (e.g.
+   * "10k steps, 4 days" → today's 2,567 / 10,000). Null when the goal has no
+   * partial (distinct_days / count-of-sessions) or the day already counted.
+   * Surfaced as a small secondary line under the day-count so a day-in-progress
+   * doesn't read as zero effort.
+   */
+  momentum?: { current: number; target: number; unit: string } | null;
   /** Did they individually finish? (drives the co-completer bonus). */
   completed: boolean;
   /** Pooled (type B) only: this person's raw contribution toward the shared total. */
