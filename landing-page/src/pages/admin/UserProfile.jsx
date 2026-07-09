@@ -71,6 +71,7 @@ export default function UserProfile() {
     const [deleteConfirm, setDeleteConfirm] = useState(false);
     const [deleteLoading, setDeleteLoading] = useState(false);
     const [deviceBindings, setDeviceBindings] = useState([]);
+    const [deviceTransfers, setDeviceTransfers] = useState([]);
     const [deviceReleasing, setDeviceReleasing] = useState(false);
     const [pushTokens, setPushTokens] = useState([]);
     const [activeTab, setActiveTab] = useState('activity');
@@ -512,6 +513,11 @@ export default function UserProfile() {
             const { data: devData } = await supabase.rpc('admin_get_user_devices', { p_user_id: userId });
             setDeviceBindings(devData || []);
 
+            // Recent self-serve device transfers — spot abuse of the auto/confirm
+            // transfer path (many moves = possible rotating-device farm).
+            const { data: xferData } = await supabase.rpc('admin_get_user_device_transfers', { p_user_id: userId, p_limit: 10 });
+            setDeviceTransfers(xferData || []);
+
             // App version per device, reported with the push-token upsert on
             // every launch. NULL app_version = a build predating the telemetry.
             const { data: tokenData } = await supabase
@@ -607,6 +613,28 @@ export default function UserProfile() {
                     >
                         <X size={13} /> {deviceReleasing ? 'Releasing…' : 'Release Lock'}
                     </button>
+                </div>
+            )}
+
+            {/* Recent self-serve device transfers — a burst here can mean alt-farming
+                via the auto/confirm move path. 'auto' = silent stale-device migration,
+                'confirmed' = user tapped "Move to this device". */}
+            {deviceTransfers.length > 0 && (
+                <div className="mb-8 px-5 py-4 rounded-2xl bg-white border border-[#E6E6E1]">
+                    <div className="text-[10px] uppercase tracking-[0.3em] font-black text-[#999999] mb-2">
+                        Recent Device Transfers · {deviceTransfers.length}
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                        {deviceTransfers.map((t) => (
+                            <div key={t.id} className="flex items-center gap-2 text-[12px] text-[#1A1A1A]">
+                                <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest ${t.kind === 'confirmed' ? 'bg-[#E8D200]/20 text-[#8a7600]' : 'bg-[#F0F0EC] text-[#999999]'}`}>
+                                    {t.kind === 'confirmed' ? 'Confirmed' : 'Auto'}
+                                </span>
+                                <span className="text-[#666666]">{t.platform || 'unknown'}</span>
+                                <span className="text-[#999999]">· {new Date(t.created_at).toLocaleString()}</span>
+                            </div>
+                        ))}
+                    </div>
                 </div>
             )}
 
