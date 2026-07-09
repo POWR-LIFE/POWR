@@ -9,6 +9,13 @@ module.exports = {
       // GOOGLE_SERVICE_INFO_PLIST file env var (resolves to a builder path).
       googleServicesFile:
         process.env.GOOGLE_SERVICE_INFO_PLIST ?? './GoogleService-Info.plist',
+      // iOS now renders Google Maps too (matches Android for visual
+      // consistency). Reuses the same key as Android — requires the
+      // "Maps SDK for iOS" API to be enabled on it in GCP.
+      config: {
+        ...expo.ios?.config,
+        googleMapsApiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ?? '',
+      },
       infoPlist: {
         ...expo.ios?.infoPlist,
         NSHealthShareUsageDescription:

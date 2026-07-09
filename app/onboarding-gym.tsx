@@ -248,8 +248,8 @@ export default function OnboardingGymScreen() {
                     <MapView
                         ref={mapRef}
                         style={StyleSheet.absoluteFill}
-                        provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
-                        customMapStyle={Platform.OS === 'android' ? DARK_MAP_STYLE : undefined}
+                        provider={PROVIDER_GOOGLE}
+                        customMapStyle={DARK_MAP_STYLE}
                         initialRegion={DEFAULT_REGION}
                         showsUserLocation
                         showsMyLocationButton={false}
