@@ -12,7 +12,7 @@
 // flip of base_awarded (false → true) so a client + cron race can't both award.
 // The group BONUS is NOT awarded here — it's settled once at challenge end from
 // the final co-completer count (see resolve-shared-challenges).
-import { buildContext, evaluateChallenge } from './challenges.ts';
+import { buildContext, evaluateChallenge, evaluateMomentum } from './challenges.ts';
 import { notifyPush } from './notify.ts';
 
 export interface ParticipantEvalResult {
@@ -68,18 +68,23 @@ export async function evaluateParticipant(
   const ctx = buildContext(sessions ?? [], utcOffsetMinutes, stepWindows);
   const { progress, target, met } = evaluateChallenge(challenge.rule, ctx);
   const frac = target > 0 ? Math.max(0, Math.min(1, progress / target)) : met ? 1 : 0;
+  // "So far today" figure (e.g. 2,567 / 10,000 steps) for goals where a day is
+  // partially in progress — surfaced on the card so momentum is visible before a
+  // day counts. null for goals with no partial notion (distinct_days, count_*).
+  const momentum = evaluateMomentum(challenge.rule, ctx, utcOffsetMinutes);
 
-  // Already credited — keep the progress bar fresh and return (idempotent).
+  // Already credited — keep the progress bar fresh and return (idempotent). The
+  // goal's met, so there's no "today" momentum left to show → clear it.
   if (part.completed || part.base_awarded) {
     await supabase.from('shared_challenge_participants')
-      .update({ progress: frac })
+      .update({ progress: frac, momentum: null })
       .eq('challenge_id', challenge.id).eq('user_id', userId);
     return { met: true, progress: frac, newlyCompleted: false };
   }
 
   if (!met) {
     await supabase.from('shared_challenge_participants')
-      .update({ progress: frac })
+      .update({ progress: frac, momentum })
       .eq('challenge_id', challenge.id).eq('user_id', userId);
     return { met: false, progress: frac, newlyCompleted: false };
   }
@@ -93,6 +98,7 @@ export async function evaluateParticipant(
       completed: true,
       base_awarded: true,
       progress: 1,
+      momentum: null,
       completed_at: new Date().toISOString(),
     })
     .eq('challenge_id', challenge.id)

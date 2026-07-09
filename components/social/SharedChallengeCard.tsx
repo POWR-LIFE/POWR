@@ -46,6 +46,16 @@ function countText(progress: number, target: number): string {
   return `${fmtNum(current)} / ${fmtNum(target)}`;
 }
 
+/** "2,567 / 10,000" today-so-far readout for goals with a partial day in play,
+ *  converting metres → km for distance goals. Steps get thousands separators. */
+function momentumText(m: { current: number; target: number; unit: string }): string {
+  if (m.unit === 'distance_m') {
+    return `${(m.current / 1000).toFixed(1)} / ${(m.target / 1000).toFixed(1)} km`;
+  }
+  const sep = (n: number) => Math.round(n).toLocaleString('en-US');
+  return `${sep(m.current)} / ${sep(m.target)}`;
+}
+
 /** "X / Y unit" for a pooled total, converting metres → km/mi for distance pools. */
 function poolText(pool: { target: number; total: number; unit: string }): string {
   if (pool.unit === 'km' || pool.unit === 'mi') {
@@ -98,6 +108,12 @@ export function SharedChallengeCard({ challenge, index = 0, atCap = false, onPre
   // Pooled (type B): the bar shows the SHARED pool fraction (server sets every
   // participant's progress to it), and the readout is the combined total.
   const pooled = !!challenge.pool;
+  // "So far today" momentum — only worth a line while you're mid-goal and have
+  // actually moved (>0). Hidden when done/pooled/forming, or when today's a
+  // zero (a bare "0 / 10,000" reads as dead as the day-count already does).
+  const mom = self?.momentum;
+  const showMomentum =
+    !pooled && !selfDone && !!mom && mom.current > 0 && mom.current < mom.target;
 
   // Timer rule: the clock only runs once EVERYONE has accepted. While anyone's
   // invite is outstanding the challenge is "forming" — no countdown yet.
@@ -213,6 +229,12 @@ export function SharedChallengeCard({ challenge, index = 0, atCap = false, onPre
               <View style={styles.track}>
                 <View style={[styles.fill, { width: `${selfPct}%` }, selfDone && { backgroundColor: GREEN }]} />
               </View>
+              {!forming && showMomentum && (
+                <Text style={styles.momentumLine} numberOfLines={1}>
+                  <Text style={styles.momentumLabel}>Today </Text>
+                  {momentumText(mom!)}
+                </Text>
+              )}
             </View>
 
             {/* Bonus + the timer (live countdown once running, else "waiting on N") */}
@@ -291,6 +313,8 @@ const styles = StyleSheet.create({
   progressMeta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   progressLabel: { fontFamily: fontFamily.medium, fontSize: 10, letterSpacing: 1.5, color: FAINT, textTransform: 'uppercase' },
   progressPct: { fontFamily: fontFamily.semiBold, fontSize: 12, color: GOLD },
+  momentumLine: { fontFamily: fontFamily.regular, fontSize: 11, color: SECONDARY },
+  momentumLabel: { fontFamily: fontFamily.medium, color: FAINT, textTransform: 'uppercase', letterSpacing: 1, fontSize: 9 },
   track: { height: 4, backgroundColor: BORDER, borderRadius: 2, overflow: 'hidden' },
   fill: { height: 4, borderRadius: 2, backgroundColor: GOLD },
 

@@ -56,6 +56,14 @@ function countText(progress: number, target: number): string {
   return `${fmt(current)} / ${fmt(target)}`;
 }
 
+/** "2,567 / 10,000" today-so-far readout — mirrors the card. Only shown for a
+ *  day in progress (current > 0, not yet at the bar). */
+function momentumText(m: { current: number; target: number; unit: string }): string {
+  if (m.unit === 'distance_m') return `${(m.current / 1000).toFixed(1)} / ${(m.target / 1000).toFixed(1)} km`;
+  const sep = (n: number) => Math.round(n).toLocaleString('en-US');
+  return `${sep(m.current)} / ${sep(m.target)}`;
+}
+
 function StatePill({ p, target }: { p: Participant; target?: number }) {
   if (p.completed) return <Text style={[styles.statePill, { color: GREEN }]}>Done</Text>;
   if (p.state === 'invited') return <Text style={[styles.statePill, { color: MUTED }]}>Invited</Text>;
@@ -99,6 +107,11 @@ function ParticipantRow({ p, pool, goalTarget, onPress }: { p: Participant; pool
               ]}
             />
           </View>
+        )}
+        {!pool && !p.completed && p.momentum && p.momentum.current > 0 && p.momentum.current < p.momentum.target && (
+          <Text style={styles.pMomentum} numberOfLines={1}>
+            Today · {momentumText(p.momentum)}
+          </Text>
         )}
       </View>
     </Pressable>
@@ -582,6 +595,7 @@ const styles = StyleSheet.create({
   pNameRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   pName: { fontFamily: fontFamily.regular, fontSize: 14, color: TEXT },
   statePill: { fontFamily: fontFamily.medium, fontSize: 11, letterSpacing: 0.3 },
+  pMomentum: { fontFamily: fontFamily.regular, fontSize: 11, color: SECONDARY },
   track: { height: 4, backgroundColor: BORDER, borderRadius: 2, overflow: 'hidden' },
   fill: { height: 4, borderRadius: 2 },
 

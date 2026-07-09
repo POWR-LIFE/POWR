@@ -82,6 +82,13 @@ function mapChallengeRow(row: any): SharedChallenge {
     },
     state: p.state,
     progress: Number(p.progress) || 0,
+    momentum: p.momentum && Number(p.momentum.target) > 0
+      ? {
+          current: Number(p.momentum.current) || 0,
+          target: Number(p.momentum.target) || 0,
+          unit: p.momentum.unit ?? '',
+        }
+      : null,
     completed: !!p.completed,
     contribution: Number(p.contribution) || 0,
     isSelf: !!p.is_self,
