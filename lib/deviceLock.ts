@@ -56,17 +56,35 @@ export async function getDeviceId(): Promise<string> {
   return id;
 }
 
-export type DeviceClaimStatus = 'ok' | 'locked' | 'unauthenticated';
+// 'transfer_available' — this device is free and the account already owns another
+//   RECENTLY-used device, so a silent move would be presumptuous; the app offers
+//   a "Move to this device?" confirmation (confirmDeviceTransfer).
+// 'rate_limited' — a transfer is warranted but the account is over its 30-day
+//   self-transfer cap; route the user to support (an admin release).
+export type DeviceClaimStatus =
+  | 'ok'
+  | 'locked'
+  | 'transfer_available'
+  | 'rate_limited'
+  | 'unauthenticated';
+
 export interface DeviceClaim {
   status: DeviceClaimStatus;
   bound?: boolean;
   reason?: string;
+  /** For 'transfer_available': the platform of the account's other device. */
+  from_platform?: string | null;
+  /** For 'transfer_available': when that other device was last seen (ISO). */
+  from_last_seen?: string | null;
 }
 
 /**
- * Bind this device to the signed-in user, or learn that it's already locked to a
- * different account. Fails OPEN (returns 'ok') on any transient error so a
- * network blip or RPC failure can never lock a user out of their own account.
+ * Bind this device to the signed-in user, or learn how it needs to move.
+ * Possible outcomes: 'ok' (bound, incl. a silent stale-device migration),
+ * 'locked' (owned by a different account), 'transfer_available' (offer the
+ * user a one-tap move), 'rate_limited' (too many recent moves → support).
+ * Fails OPEN (returns 'ok') on any transient error so a network blip or RPC
+ * failure can never lock a user out of their own account.
  */
 export async function claimDevice(): Promise<DeviceClaim> {
   try {
@@ -82,6 +100,31 @@ export async function claimDevice(): Promise<DeviceClaim> {
     return (data ?? { status: 'ok' }) as DeviceClaim;
   } catch (err) {
     console.warn('[deviceLock] claim_device threw:', err);
+    return { status: 'ok', bound: false, reason: 'threw' };
+  }
+}
+
+/**
+ * The user confirmed "Move POWR to this device". Releases their own prior
+ * binding(s) and binds this device. Returns the resulting claim so the caller
+ * can keep the session on 'ok', or handle 'locked' / 'rate_limited'. Fails OPEN
+ * (returns 'ok') on transient errors — a failed transfer must not strand the
+ * user, they can retry on the next sign-in.
+ */
+export async function confirmDeviceTransfer(): Promise<DeviceClaim> {
+  try {
+    const deviceId = await getDeviceId();
+    const { data, error } = await supabase.rpc('confirm_device_transfer', {
+      p_device_id: deviceId,
+      p_platform: Platform.OS,
+    });
+    if (error) {
+      console.warn('[deviceLock] confirm_device_transfer failed:', error.message);
+      return { status: 'ok', bound: false, reason: 'rpc_error' };
+    }
+    return (data ?? { status: 'ok' }) as DeviceClaim;
+  } catch (err) {
+    console.warn('[deviceLock] confirm_device_transfer threw:', err);
     return { status: 'ok', bound: false, reason: 'threw' };
   }
 }

@@ -8,8 +8,9 @@ import { Alert, AppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { supabase } from '@/lib/supabase';
-import { claimDevice } from '@/lib/deviceLock';
+import { claimDevice, confirmDeviceTransfer } from '@/lib/deviceLock';
 import { reportLocationPermission } from '@/lib/locationPermission';
+import TransferDeviceSheet from '@/components/TransferDeviceSheet';
 
 type AuthContextType = {
     session: Session | null;
@@ -43,6 +44,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [session, setSession] = useState<Session | null>(null);
     const [loading, setLoading] = useState(true);
 
+    // Device-transfer confirmation sheet: shown when claim_device reports
+    // 'transfer_available' (account is on another recently-seen device). Null =
+    // hidden. The pending session is held signed-in behind the sheet until the
+    // user chooses; "Not now" then signs it out locally.
+    const [transferPrompt, setTransferPrompt] = useState<
+        { fromPlatform?: string | null; fromLastSeen?: string | null } | null
+    >(null);
+    const [transferBusy, setTransferBusy] = useState(false);
+
     // Refs for the Realtime channel and the session_id this device owns.
     // Using refs (not state) avoids re-renders and stale-closure issues.
     const sessionChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
@@ -50,6 +60,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const registeringRef = useRef(false); // prevents concurrent registerAndWatchSession calls
     const forcedSignOutRef = useRef(false); // set when another device kicked us, so we can explain why
     const deviceLockedRef = useRef(false); // set when this device is already bound to a different account
+    const deviceLockReasonRef = useRef<'locked' | 'rate_limited'>('locked'); // why we blocked, for the SIGNED_OUT copy
     const deviceCheckedSessionRef = useRef<string | null>(null); // session we've already run the device-lock check for
     const sessionUserRef = useRef<string | null>(null); // current user id for listeners that outlive the auth closure
 
@@ -128,12 +139,58 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         deviceCheckedSessionRef.current = sessionKey;
 
         const res = await claimDevice();
-        if (res.status === 'locked') {
+
+        // 'transfer_available' — the account is on another recently-used device.
+        // Don't sign out; hold the session and let the user confirm the move.
+        if (res.status === 'transfer_available') {
+            setTransferPrompt({ fromPlatform: res.from_platform, fromLastSeen: res.from_last_seen });
+            return;
+        }
+
+        // 'rate_limited' — a transfer is warranted but the account is over its
+        // self-transfer cap. Treat like locked (sign out + support message).
+        if (res.status === 'locked' || res.status === 'rate_limited') {
             deviceLockedRef.current = true;
+            deviceLockReasonRef.current = res.status;
             // Local scope: only this device is refused — signing in on a locked phone
             // must not revoke the user's legitimate sessions on their own devices.
             await supabase.auth.signOut({ scope: 'local' });
         }
+    };
+
+    /**
+     * The user tapped "Move to this device" on the transfer sheet. Migrate the
+     * binding to this device (server signs the old one out) and keep the session.
+     * On a non-'ok' result (raced into 'locked', or over the cap) fall back to the
+     * sign-out + explanation path.
+     */
+    const handleConfirmTransfer = async () => {
+        if (transferBusy) return;
+        setTransferBusy(true);
+        try {
+            const res = await confirmDeviceTransfer();
+            if (res.status === 'ok') {
+                setTransferPrompt(null);
+                // Server revoked the old device's sessions; this one wins. Re-stamp
+                // single-device ownership so our watcher tracks the right row.
+                if (session) await enforceOneSession();
+                return;
+            }
+            // Couldn't take the device — explain and sign this session out.
+            deviceLockedRef.current = true;
+            deviceLockReasonRef.current = res.status === 'rate_limited' ? 'rate_limited' : 'locked';
+            setTransferPrompt(null);
+            await supabase.auth.signOut({ scope: 'local' });
+        } finally {
+            setTransferBusy(false);
+        }
+    };
+
+    /** "Not now" on the transfer sheet — back out to the login screen. */
+    const handleCancelTransfer = async () => {
+        setTransferPrompt(null);
+        forcedSignOutRef.current = false; // this is a user choice, not a kick — no alert
+        await supabase.auth.signOut({ scope: 'local' });
     };
 
     const cleanupSessionWatch = () => {
@@ -174,11 +231,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             if (event === 'SIGNED_OUT') {
                 const wasForced = forcedSignOutRef.current;
                 const wasDeviceLocked = deviceLockedRef.current;
+                const lockReason = deviceLockReasonRef.current;
                 forcedSignOutRef.current = false;
                 deviceLockedRef.current = false;
+                deviceLockReasonRef.current = 'locked';
                 deviceCheckedSessionRef.current = null;
                 router.replace('/onboarding');
-                if (wasDeviceLocked) {
+                if (wasDeviceLocked && lockReason === 'rate_limited') {
+                    Alert.alert(
+                        'Too many device changes',
+                        'You’ve moved your POWR account between devices several times recently. To move it again, contact support and we’ll help you switch.',
+                    );
+                } else if (wasDeviceLocked) {
                     Alert.alert(
                         'This device is linked to another account',
                         'This phone is already tied to a different POWR account. Sign in with that account to continue. If you need to move this device to a new account, contact support.',
@@ -363,6 +427,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             updateUserMetadata,
         }}>
             {children}
+            <TransferDeviceSheet
+                visible={transferPrompt !== null}
+                fromPlatform={transferPrompt?.fromPlatform}
+                fromLastSeen={transferPrompt?.fromLastSeen}
+                busy={transferBusy}
+                onConfirm={handleConfirmTransfer}
+                onCancel={handleCancelTransfer}
+            />
         </AuthContext.Provider>
     );
 }
