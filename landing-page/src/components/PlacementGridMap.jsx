@@ -1,10 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Crosshair, AlertTriangle, Search } from 'lucide-react';
+import { Crosshair, AlertTriangle, Search, Layers } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useToast } from '../lib/toast';
 import { loadGoogleMaps } from '../lib/googleMaps';
 import {
-    GOLD, RED, CELL_CAP,
+    GOLD, RED, CELL_CAP, Z_MAX,
     nAt, lngLatToTile, tileNW, tileBounds, cellKey, parseKey,
     tilesOverlap, clampZoom, buildWeekMask, startOfDayISO, endOfDayISO,
 } from '../lib/placementGrid';
@@ -24,11 +24,15 @@ export default function PlacementGridMap({ form, toggleCell, onPaint, onEraseAre
     const takenRef = useRef([]);          // [{z,x,y}] occupied by other placements for this slice
     const selectedRef = useRef(form.cells);
     const modeRef = useRef('pan');
+    const mapTypeRef = useRef('roadmap');
     const startRef = useRef(null);
     const lastRef = useRef(null);
     const previewRef = useRef(null);
+    const pathRef = useRef([]);          // lasso: collected {lat,lng} while dragging
+    const lassoRef = useRef(null);       // lasso: live google.maps.Polyline
     const finalizeRef = useRef(() => {});
     const [mode, setMode] = useState('pan');
+    const [mapType, setMapType] = useState('roadmap');   // roadmap | hybrid (satellite + labels)
     const [error, setError] = useState(null);
     const [tooWide, setTooWide] = useState(false);
     const [ready, setReady] = useState(false);
@@ -36,6 +40,7 @@ export default function PlacementGridMap({ form, toggleCell, onPaint, onEraseAre
 
     selectedRef.current = form.cells;
     modeRef.current = mode;
+    mapTypeRef.current = mapType;
     const mask = buildWeekMask(form.active_days, form.active_hour_start, form.active_hour_end);
     // Flight window — the occupancy preview should only flag squares taken by
     // placements whose DATE range also overlaps the one being edited.
@@ -50,6 +55,37 @@ export default function PlacementGridMap({ form, toggleCell, onPaint, onEraseAre
         const list = [];
         for (let y = Math.min(nw.y, se.y); y <= Math.max(nw.y, se.y); y++)
             for (let x = Math.min(nw.x, se.x); x <= Math.max(nw.x, se.x); x++) list.push({ z, x, y });
+        return list;
+    };
+
+    // Ray-casting point-in-polygon on lng/lat (ring = [{lat,lng}, …]).
+    const pointInRing = (lat, lng, ring) => {
+        let inside = false;
+        for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+            const yi = ring[i].lat, xi = ring[i].lng, yj = ring[j].lat, xj = ring[j].lng;
+            if (((yi > lat) !== (yj > lat)) && (lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi)) inside = !inside;
+        }
+        return inside;
+    };
+
+    // Freehand lasso → every tile at zoom `z` whose CENTER falls inside the drawn
+    // ring. Bounded to the ring's bbox so we only test the tiles that could match.
+    const cellsInPolygon = (ring, z) => {
+        if (ring.length < 3) return [];
+        let north = -90, south = 90, east = -180, west = 180;
+        for (const p of ring) {
+            north = Math.max(north, p.lat); south = Math.min(south, p.lat);
+            east = Math.max(east, p.lng); west = Math.min(west, p.lng);
+        }
+        const nw = lngLatToTile(north, west, z);
+        const se = lngLatToTile(south, east, z);
+        const list = [];
+        for (let y = Math.min(nw.y, se.y); y <= Math.max(nw.y, se.y); y++)
+            for (let x = Math.min(nw.x, se.x); x <= Math.max(nw.x, se.x); x++) {
+                // Tile center = NW corner of this tile averaged with its SE corner.
+                const a = tileNW(z, x, y), b = tileNW(z, x + 1, y + 1);
+                if (pointInRing((a.lat + b.lat) / 2, (a.lng + b.lng) / 2, ring)) list.push({ z, x, y });
+            }
         return list;
     };
     const isTaken = (cell) => takenRef.current.some((t) => tilesOverlap(cell, t));
@@ -102,7 +138,19 @@ export default function PlacementGridMap({ form, toggleCell, onPaint, onEraseAre
     };
 
     const clearPreview = () => { if (previewRef.current) { previewRef.current.setMap(null); previewRef.current = null; } };
+    const clearLasso = () => { if (lassoRef.current) { lassoRef.current.setMap(null); lassoRef.current = null; } pathRef.current = []; };
     const finalizeDrag = () => {
+        if (modeRef.current === 'lasso') {
+            const ring = pathRef.current;
+            clearLasso();
+            if (ring.length < 3) return;
+            const list = cellsInPolygon(ring, curZoom());
+            if (list.length > CELL_CAP) { toast.error('Area too large — zoom in a little and try again'); return; }
+            const paintable = list.filter((c) => !isTaken(c));
+            if (!paintable.length) { toast.error('Draw a larger loop, or zoom in for finer squares'); return; }
+            onPaint(paintable);
+            return;
+        }
         const start = startRef.current, last = lastRef.current;
         startRef.current = null; lastRef.current = null;
         clearPreview();
@@ -128,6 +176,8 @@ export default function PlacementGridMap({ form, toggleCell, onPaint, onEraseAre
                 const map = new maps.Map(elRef.current, {
                     center: { lat: form.center_lat, lng: form.center_lng },
                     zoom: 13,
+                    maxZoom: Z_MAX,   // let users reach the finest (~19 m) paintable cells
+                    mapTypeId: mapTypeRef.current,
                     mapTypeControl: false, streetViewControl: false, fullscreenControl: false,
                     clickableIcons: false, gestureHandling: 'greedy',
                 });
@@ -139,6 +189,16 @@ export default function PlacementGridMap({ form, toggleCell, onPaint, onEraseAre
                 });
                 map.addListener('mousedown', (e) => {
                     if (modeRef.current === 'pan') return;
+                    if (modeRef.current === 'lasso') {
+                        clearLasso();
+                        pathRef.current = [{ lat: e.latLng.lat(), lng: e.latLng.lng() }];
+                        lassoRef.current = new maps.Polyline({
+                            map, clickable: false, geodesic: false,
+                            strokeColor: GOLD, strokeOpacity: 0.95, strokeWeight: 2,
+                            path: [e.latLng],
+                        });
+                        return;
+                    }
                     startRef.current = e.latLng; lastRef.current = e.latLng;
                     clearPreview();
                     const c = modeRef.current === 'erase' ? RED : GOLD;
@@ -148,6 +208,12 @@ export default function PlacementGridMap({ form, toggleCell, onPaint, onEraseAre
                     });
                 });
                 map.addListener('mousemove', (e) => {
+                    if (modeRef.current === 'lasso') {
+                        if (!lassoRef.current) return;
+                        pathRef.current.push({ lat: e.latLng.lat(), lng: e.latLng.lng() });
+                        lassoRef.current.getPath().push(e.latLng);
+                        return;
+                    }
                     if (!startRef.current) return;
                     lastRef.current = e.latLng;
                     const s = startRef.current;
@@ -184,7 +250,10 @@ export default function PlacementGridMap({ form, toggleCell, onPaint, onEraseAre
 
     useEffect(() => {
         if (mapRef.current) mapRef.current.setOptions({ draggable: mode === 'pan', draggableCursor: mode === 'pan' ? null : 'crosshair' });
+        if (mode !== 'lasso') clearLasso();   // drop a half-drawn loop when leaving Draw
     }, [mode, ready]);
+
+    useEffect(() => { if (mapRef.current) mapRef.current.setMapTypeId(mapType); }, [mapType, ready]);
 
     useEffect(() => { if (ready) fetchTakenAndRedraw(); }, [ready, idleTick, mask, startISO, endISO, excludeId]);
     useEffect(() => { if (ready) redraw(); }, [form.cells]);
@@ -217,8 +286,14 @@ export default function PlacementGridMap({ form, toggleCell, onPaint, onEraseAre
             <div className="absolute top-3 left-3 flex rounded-lg overflow-hidden shadow border border-[#E6E6E1]">
                 {modeBtn('pan', 'Pan')}
                 {modeBtn('paint', 'Paint')}
+                {modeBtn('lasso', 'Draw')}
                 {modeBtn('erase', 'Erase')}
             </div>
+            {mode === 'lasso' && (
+                <div className="absolute top-12 left-3 bg-black/70 text-white text-[11px] font-medium px-2.5 py-1 rounded-md pointer-events-none">
+                    Drag to draw an area — squares inside fill in
+                </div>
+            )}
             <div className="absolute top-3 left-1/2 -translate-x-1/2 w-[min(300px,55%)]">
                 <div className="flex items-center gap-2 bg-white/95 backdrop-blur px-3 h-9 rounded-lg shadow border border-[#E6E6E1]">
                     <Search size={14} className="text-[#999] shrink-0" />
@@ -227,10 +302,16 @@ export default function PlacementGridMap({ form, toggleCell, onPaint, onEraseAre
                         className="w-full bg-transparent text-[13px] text-[#1A1A1A] placeholder:text-[#AAA] outline-none" />
                 </div>
             </div>
-            <button type="button" onClick={locateMe}
-                className="absolute top-3 right-3 flex items-center gap-1.5 bg-white/95 backdrop-blur px-3 py-1.5 rounded-lg shadow text-[12px] font-semibold text-[#8a7600] hover:bg-white">
-                <Crosshair size={13} /> My location
-            </button>
+            <div className="absolute top-3 right-3 flex items-center gap-2">
+                <button type="button" onClick={() => setMapType((t) => (t === 'roadmap' ? 'hybrid' : 'roadmap'))}
+                    className="flex items-center gap-1.5 bg-white/95 backdrop-blur px-3 py-1.5 rounded-lg shadow text-[12px] font-semibold text-[#444] hover:bg-white">
+                    <Layers size={13} /> {mapType === 'roadmap' ? 'Satellite' : 'Map'}
+                </button>
+                <button type="button" onClick={locateMe}
+                    className="flex items-center gap-1.5 bg-white/95 backdrop-blur px-3 py-1.5 rounded-lg shadow text-[12px] font-semibold text-[#8a7600] hover:bg-white">
+                    <Crosshair size={13} /> My location
+                </button>
+            </div>
             {tooWide && (
                 <div className="absolute inset-x-0 bottom-3 flex justify-center pointer-events-none">
                     <div className="bg-black/70 text-white text-[12px] font-medium px-3 py-1.5 rounded-lg">Zoom in to select squares</div>
