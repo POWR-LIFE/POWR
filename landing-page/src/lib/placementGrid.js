@@ -13,9 +13,11 @@ export const GOLD = '#E8D200';
 export const RED = '#ef4444';
 
 // Adaptive grid: cell zoom follows the map zoom (clamped). Big cells when
-// zoomed out (cover a city), 190 m cells when zoomed in (a venue).
+// zoomed out (cover a city), down to ~19 m cells when zoomed all the way in
+// (a single building entrance / corner of a lot). z stays a smallint and the
+// resolver's `1 << z` math is safe well past this (2^21 « integer range).
 export const Z_MIN = 10;
-export const Z_MAX = 18;
+export const Z_MAX = 21;
 export const CELL_CAP = 1500;
 
 // ── Tile math (Web-Mercator slippy tiles) ────────────────────────────────────
