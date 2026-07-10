@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { uploadPublicImage } from '../lib/storage';
+import { validateHeroVideoUrl } from '../lib/heroVideoUrl';
 import RewardAppPreview from '../components/RewardAppPreview';
 
 // ─── Category options (app sectors) ─────────────────────────────────────────
@@ -426,6 +427,23 @@ export default function PartnerRewardSubmit() {
                   <p className={`text-[11px] font-light mb-3 leading-relaxed ${t.specText}`}>A short, looping clip that plays <span className={t.specStrong}>instead of the hero image</span>. Landscape 16:9, MP4, muted. Max 50 MB. The hero image is still used as the still fallback.</p>
                   <ImagePicker preview={heroVideoUrl} uploading={uploadingHeroVideo} onClick={() => heroVideoRef.current?.click()} aspect="aspect-video" label="Add video" isVideo />
                   <input ref={heroVideoRef} type="file" accept="video/mp4,video/quicktime,video/webm" className="hidden" onChange={handleHeroVideo} />
+                  {/* Or paste a direct video-file URL instead of uploading (own CDN /
+                      Cloudflare Stream). Validated on blur so streaming-site links are
+                      rejected; this form surfaces feedback through the shared error banner. */}
+                  <input
+                    type="url"
+                    placeholder="Or paste a direct link — https://…/clip.mp4"
+                    className={`mt-3 ${INPUT_BASE} ${t.input}`}
+                    value={heroVideoUrl || ''}
+                    onChange={e => setHeroVideoUrl(e.target.value)}
+                    onBlur={e => {
+                      const res = validateHeroVideoUrl(e.target.value);
+                      if (res.error) { setError(res.error); setHeroVideoUrl(null); return; }
+                      setHeroVideoUrl(res.value || null);
+                      setError('');
+                    }}
+                  />
+                  <p className={`mt-2 text-[10px] font-light ${t.specText}`}>Direct .mp4 / .m3u8 / .webm or Cloudflare Stream. YouTube &amp; Vimeo links won't play as a background.</p>
                 </div>
               </div>
             </FormSection>
