@@ -114,7 +114,10 @@
   if (isAndroid) {
     // Chrome intent:// is the most reliable launcher and bakes in the Play
     // Store fallback if the app can't handle the scheme.
-    var intent = 'intent://' + target + query +
+    // A host segment is required — 'open' is a synthetic fallback used when
+    // there is no specific target route (e.g. share-card links only carry ?ref=).
+    var intentHost = target || 'open';
+    var intent = 'intent://' + intentHost + (query || '') +
       '#Intent;scheme=powr;package=' + ANDROID_PACKAGE +
       ';S.browser_fallback_url=' + encodeURIComponent(PLAY_URL) + ';end';
     window.location.replace(intent);

@@ -32,8 +32,12 @@ export const redirectSystemPath: NonNullable<NativeIntent['redirectSystemPath']>
     const host = withoutScheme.slice(0, hostEnd);
     const rest = withoutScheme.slice(hostEnd); // '' | '?...' | '/path?...'
 
-    // Empty host = bare powr:// scheme → root
-    if (!host) return '/';
+    // Empty host = bare powr:// scheme → root (preserve query params, e.g. ?ref= for attribution)
+    if (!host) return rest.startsWith('?') ? `/${rest}` : '/';
+
+    // 'open' is used as a synthetic host when no specific route is targeted
+    // (e.g. share-card links that carry ?ref= but no ?to= route)
+    if (host === 'open') return rest.startsWith('?') ? `/${rest}` : '/';
 
     // auth-callback carries the Google OAuth code — let Linking listener handle it, don't navigate.
     if (host === 'auth-callback') return '/';
@@ -71,8 +75,8 @@ export const redirectSystemPath: NonNullable<NativeIntent['redirectSystemPath']>
 
     // Drop the leading /app segment; whatever remains is the route (default home).
     const route = pathname.replace(/^\/app(?=\/|$)/, '');
-    if (!route || route === '/') return '/';
-    return route.startsWith('/') ? route : `/${route}`;
+    if (!route || route === '/') return query ? `/${query}` : '/';
+    return route.startsWith('/') ? `${route}${query}` : `/${route}${query}`;
   }
 
   return value;
