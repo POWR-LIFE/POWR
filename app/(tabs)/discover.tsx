@@ -19,13 +19,14 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import MapView, { Circle, Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
+import MapView, { Circle, Marker, Polyline } from 'react-native-maps';
 import MapViewDirections from 'react-native-maps-directions';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { HeaderActions } from '@/components/HeaderActions';
 import { useActiveGeofence } from '@/hooks/useActiveGeofence';
 import { useGeofenceContext, searchPartners, type Partner, type Trainer, type DayKey, type OpeningHours } from '@/context/GeofenceContext';
 import { createGymRequest } from '@/lib/api/gyms';
+import { MAP_PROVIDER } from '@/lib/mapProvider';
 import { getSessionUser, supabase } from '@/lib/supabase';
 import { GeometricBackground } from '@/components/home/GeometricBackground';
 
@@ -591,7 +592,7 @@ export default function DiscoverScreen() {
         <MapView
           ref={mapRef}
           style={StyleSheet.absoluteFillObject}
-          provider={PROVIDER_GOOGLE}
+          provider={MAP_PROVIDER}
           customMapStyle={DARK_MAP_STYLE}
           userInterfaceStyle="dark"
           initialRegion={DEFAULT_REGION}
@@ -1044,7 +1045,7 @@ export default function DiscoverScreen() {
           <MapView
             ref={navMapRef}
             style={StyleSheet.absoluteFillObject}
-            provider={PROVIDER_GOOGLE}
+            provider={MAP_PROVIDER}
             customMapStyle={DARK_MAP_STYLE}
             userInterfaceStyle="dark"
             initialRegion={DEFAULT_REGION}

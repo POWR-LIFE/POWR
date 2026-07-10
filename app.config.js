@@ -1,5 +1,13 @@
 const { expo } = require('./app.json');
 
+// Public client-side Maps key (the same value already ships in eas.json and in
+// every built app). NEVER default to '' here: an empty key makes `expo prebuild`
+// silently skip the iOS GMSServices init + google-maps pod, which produced the
+// Discover-map crash in TestFlight 1.4.10 (13).
+const GOOGLE_MAPS_API_KEY =
+  process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ??
+  'AIzaSyBlWjadfjwrtx62Rmb_b5aAPMM-l2pSgww';
+
 module.exports = {
   expo: {
     ...expo,
@@ -14,7 +22,7 @@ module.exports = {
       // "Maps SDK for iOS" API to be enabled on it in GCP.
       config: {
         ...expo.ios?.config,
-        googleMapsApiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ?? '',
+        googleMapsApiKey: GOOGLE_MAPS_API_KEY,
       },
       infoPlist: {
         ...expo.ios?.infoPlist,
@@ -39,7 +47,7 @@ module.exports = {
       googleServicesFile: './google-services.json',
       config: {
         googleMaps: {
-          apiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ?? '',
+          apiKey: GOOGLE_MAPS_API_KEY,
         },
       },
     },
