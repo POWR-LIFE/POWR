@@ -72,6 +72,12 @@ function page(opts: {
 }
 
 Deno.serve(async (req: Request) => {
+  // Known link-preview scrapers. They must receive the full HTML page so they
+  // can read the og:* tags. Real browsers get a plain HTTP redirect instead —
+  // this is more reliable than meta-refresh or JS across all WebView variants.
+  const CRAWLER_RE =
+    /WhatsApp|facebookexternalhit|Facebot|Twitterbot|TelegramBot|Slackbot|Discordbot|LinkedInBot|Googlebot|bingbot|Applebot|iMessage/i;
+
   const id = new URL(req.url).searchParams.get("id");
 
   // A bad or expired id still has to land somewhere useful rather than 404 —
@@ -91,6 +97,14 @@ Deno.serve(async (req: Request) => {
     ? `${SITE}/app?ref=${encodeURIComponent(card.referral_code)}`
     : `${SITE}/app`;
 
+  const ua = req.headers.get("user-agent") ?? "";
+
+  // Real browsers: redirect immediately at HTTP level — no HTML parsing needed.
+  if (!CRAWLER_RE.test(ua)) {
+    return Response.redirect(appLink, 302);
+  }
+
+  // Crawlers: serve the full OG page so they can scrape the preview tags.
   return new Response(
     page({
       title: card.title,
