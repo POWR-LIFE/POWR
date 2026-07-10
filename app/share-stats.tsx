@@ -191,17 +191,7 @@ export default function ShareStatsScreen() {
         result: 'tmpfile',
       });
       const shareUrl = await publishShareCard(summary, uri);
-      const message = buildShareMessage(summary, shareUrl);
-
-      if (Platform.OS === 'ios') {
-        // iOS: url=file URI + message text — sheet includes all image-capable apps
-        // (TikTok, Instagram, WhatsApp, X, Threads, Facebook, etc.)
-        await Share.share({ url: uri, message });
-      } else {
-        // Android: Share.share is text/plain only and excludes image apps.
-        // Sharing.shareAsync triggers the image-capable share sheet.
-        await Sharing.shareAsync(uri, { mimeType: 'image/jpeg', UTI: 'public.jpeg', dialogTitle: 'Share your workout' });
-      }
+      await Share.share({ message: buildShareMessage(summary, shareUrl) });
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : 'Could not publish your card.');
     } finally {
@@ -209,21 +199,11 @@ export default function ShareStatsScreen() {
     }
   }
 
-  /**
-   * Saves the full-resolution card to the camera roll. Instagram and TikTok
-   * Stories are posted from a saved photo, not a link — so this is the Stories
-   * path, deliberately separate from Share.
-   */
   async function handleSave() {
     if (!cardRef.current || busy) return;
     setBusy('save');
     setNotice(null);
     try {
-      const perm = await MediaLibrary.requestPermissionsAsync(true);
-      if (!perm.granted) {
-        setLoadError('Photo access is needed to save your card.');
-        return;
-      }
       const uri = await captureRef(cardRef, {
         format: 'png',
         quality: 1,
@@ -231,10 +211,9 @@ export default function ShareStatsScreen() {
         height: 1920,
         result: 'tmpfile',
       });
-      await MediaLibrary.saveToLibraryAsync(uri);
-      setNotice('Saved to your photos — post it to your story.');
+      await Sharing.shareAsync(uri, { mimeType: 'image/png', UTI: 'public.png', dialogTitle: 'Post your workout' });
     } catch (e) {
-      setLoadError(e instanceof Error ? e.message : 'Could not save your card.');
+      setLoadError(e instanceof Error ? e.message : 'Could not share your card.');
     } finally {
       setBusy(null);
     }
@@ -302,8 +281,8 @@ export default function ShareStatsScreen() {
         </View>
       )}
 
-      {/* Actions — Share opens the OS "send to" sheet on a link; Save writes the
-          card to the camera roll for Stories. */}
+      {/* Actions — Share sends a link preview (WhatsApp, iMessage, etc.);
+          Post opens the image share sheet (TikTok, Instagram, X, Threads, etc.) */}
       {summary && (
         <View style={styles.footer}>
           <View style={styles.actionRow}>
@@ -316,15 +295,15 @@ export default function ShareStatsScreen() {
               primary
             />
             <ActionButton
-              icon="download-outline"
-              label="Save"
+              icon="share-social-outline"
+              label="Post"
               onPress={handleSave}
               loading={busy === 'save'}
               disabled={busy !== null}
             />
           </View>
           <Text style={styles.helperText}>
-            {notice ?? 'Share posts a tappable card that opens POWR. Save it to post to your Instagram or TikTok story.'}
+            {notice ?? 'Share sends a tappable link preview. Post shares the image to TikTok, Instagram, X, Threads and more.'}
           </Text>
         </View>
       )}
