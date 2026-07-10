@@ -60,6 +60,7 @@ function page(opts: {
 <meta name="twitter:title" content="${esc(title)}">
 <meta name="twitter:description" content="${esc(description)}">
 <meta name="twitter:image" content="${esc(image)}">
+<meta http-equiv="refresh" content="0; url=${esc(appLink)}">
 </head>
 <body style="margin:0;background:#080808">
 <!-- Humans get bounced to the smart-link, which opens the app or the store.
