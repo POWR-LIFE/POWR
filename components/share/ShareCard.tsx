@@ -163,6 +163,12 @@ export const ShareCard = forwardRef<View, ShareCardProps>(({ summary, width, bac
           <View style={[styles.statDivider, { height: 100 * s }]} />
           <StatCol scale={s} {...stats[2]} />
         </View>
+
+        {/* Instagram/TikTok strip share-sheet text, so the image itself must
+            carry where to find us. */}
+        <Text style={[styles.footerUrl, { fontSize: 24 * s, letterSpacing: 7 * s, marginTop: 52 * s }]}>
+          POWR.LIFE
+        </Text>
       </View>
     </View>
   );
@@ -378,6 +384,11 @@ const styles = StyleSheet.create({
   statsRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
+  },
+  footerUrl: {
+    fontFamily: fontFamily.light,
+    color: MUTED,
+    textAlign: 'center',
   },
   statCol: {
     flex: 1,

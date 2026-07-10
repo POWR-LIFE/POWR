@@ -35,7 +35,7 @@ function summary(totalEarned: number): ShareSummary {
         currentStreak: 4,
         weekActiveDays: [true, false, true, false, false, false, false],
         reward: null,
-        profile: { displayName: 'Jamie', username: 'jamie', avatarUrl: null, coverUrl: null },
+        profile: { displayName: 'Jamie', username: 'jamie', avatarUrl: null, coverUrl: null, referralCode: null },
     };
 }
 
