@@ -79,6 +79,14 @@ module.exports = {
           cameraPermission: 'POWR needs access to your camera so you can take a profile photo.',
         },
       ],
+      [
+        'expo-media-library',
+        {
+          photosPermission: 'POWR needs access to your photos to save your share card.',
+          savePhotosPermission: 'POWR needs permission to save your share card to your photos.',
+          isAccessMediaLocationEnabled: false,
+        },
+      ],
     ],
   },
 };

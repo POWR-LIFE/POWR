@@ -1,13 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
-import * as Sharing from 'expo-sharing';
+import * as MediaLibrary from 'expo-media-library';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import * as Clipboard from 'expo-clipboard';
 import {
   ActivityIndicator,
-  Platform,
   Pressable,
   Share,
   StyleSheet,
@@ -20,13 +18,23 @@ import { captureRef } from 'react-native-view-shot';
 
 import { ShareCard } from '@/components/share/ShareCard';
 import { LEVEL_IMAGE, getLevelInfo } from '@/constants/levels';
-import { buildShareMessage, fetchAutoSummary, fetchChallengeSummary, fetchCheckInSummary, type ShareSummary } from '@/lib/api/share';
+import { buildShareMessage, fetchAutoSummary, fetchChallengeSummary, fetchCheckInSummary, publishShareCard, type ShareSummary } from '@/lib/api/share';
 
 const GOLD  = '#E8D200';
 const BG    = '#0d0d0d';
 const TEXT  = '#F2F2F2';
 const DIM   = 'rgba(255,255,255,0.5)';
 const MUTED = 'rgba(255,255,255,0.25)';
+
+/**
+ * The og:image is captured smaller than the shareable PNG on purpose: link
+ * crawlers cap the image they will fetch to build a thumbnail (WhatsApp's is
+ * well under a megabyte), and a preview with no picture is worse than no
+ * preview. Must stay in step with the og:image:width/height the share-card-og
+ * function declares.
+ */
+const OG_IMAGE_WIDTH  = 720;
+const OG_IMAGE_HEIGHT = 1280;
 
 type Mode   = 'check-in' | 'streak' | 'challenge';
 type BgMode = 'cover' | 'level' | 'gallery';
@@ -37,18 +45,31 @@ const BG_OPTIONS: { key: BgMode; icon: React.ComponentProps<typeof Ionicons>['na
   { key: 'gallery', icon: 'images-outline',        label: 'Gallery'   },
 ];
 
-/**
- * react-native-share bundles image + caption text in one Android intent, but it
- * is a native module that only exists in EAS builds — resolve it lazily so this
- * screen still works in Expo Go and older builds.
- */
-function getNativeShare(): { open: (options: object) => Promise<unknown> } | null {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    return require('react-native-share').default;
-  } catch {
-    return null;
-  }
+/** A circular icon button with a label beneath, à la the TikTok "send to" row. */
+function ActionButton({ icon, label, onPress, loading, disabled, primary }: {
+  icon: React.ComponentProps<typeof Ionicons>['name'];
+  label: string;
+  onPress: () => void;
+  loading: boolean;
+  disabled: boolean;
+  primary?: boolean;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      style={({ pressed }) => [styles.action, pressed && !disabled && { opacity: 0.7 }]}
+    >
+      <View style={[styles.actionCircle, primary ? styles.actionCirclePrimary : styles.actionCircleGhost]}>
+        {loading ? (
+          <ActivityIndicator color={primary ? '#0a0a0a' : TEXT} />
+        ) : (
+          <Ionicons name={icon} size={24} color={primary ? '#0a0a0a' : TEXT} />
+        )}
+      </View>
+      <Text style={styles.actionLabel}>{label}</Text>
+    </Pressable>
+  );
 }
 
 export default function ShareStatsScreen() {
@@ -62,7 +83,7 @@ export default function ShareStatsScreen() {
   const [summary, setSummary]     = useState<ShareSummary | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [notice, setNotice]       = useState<string | null>(null);
-  const [sharing, setSharing]     = useState(false);
+  const [busy, setBusy]           = useState<'share' | 'save' | null>(null);
   const [bgMode, setBgMode]       = useState<BgMode>('cover');
   const [galleryUri, setGalleryUri] = useState<string | null>(null);
 
@@ -143,10 +164,54 @@ export default function ShareStatsScreen() {
   const maxWidthFromHeight = maxCardHeight * (9 / 16);
   const previewWidth = Math.min(windowWidth - 48, 360, maxWidthFromHeight);
 
+  /**
+   * Publishes the card and opens the OS share sheet on a link to it — the sheet
+   * itself is the "send to" menu of WhatsApp / Messenger / Instagram / SMS.
+   *
+   * The link, not the image, is what goes out: chat apps only draw a tappable
+   * preview for a URL they can scrape. An attached image is the whole message,
+   * and any text alongside it is dropped.
+   *
+   * The upload is a JPEG, not the 1080×1920 PNG the Save button writes — link
+   * crawlers cap the image they will fetch for a thumbnail, and a multi-megabyte
+   * PNG buys a preview with no picture in it.
+   */
   async function handleShare() {
-    if (!cardRef.current || sharing) return;
-    setSharing(true);
+    if (!cardRef.current || !summary || busy) return;
+    setBusy('share');
+    setNotice(null);
     try {
+      const uri = await captureRef(cardRef, {
+        format: 'jpg',
+        quality: 0.8,
+        width: OG_IMAGE_WIDTH,
+        height: OG_IMAGE_HEIGHT,
+        result: 'tmpfile',
+      });
+      const shareUrl = await publishShareCard(summary, uri);
+      await Share.share({ message: buildShareMessage(summary, shareUrl) });
+    } catch (e) {
+      setLoadError(e instanceof Error ? e.message : 'Could not publish your card.');
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /**
+   * Saves the full-resolution card to the camera roll. Instagram and TikTok
+   * Stories are posted from a saved photo, not a link — so this is the Stories
+   * path, deliberately separate from Share.
+   */
+  async function handleSave() {
+    if (!cardRef.current || busy) return;
+    setBusy('save');
+    setNotice(null);
+    try {
+      const perm = await MediaLibrary.requestPermissionsAsync(true);
+      if (!perm.granted) {
+        setLoadError('Photo access is needed to save your card.');
+        return;
+      }
       const uri = await captureRef(cardRef, {
         format: 'png',
         quality: 1,
@@ -154,36 +219,12 @@ export default function ShareStatsScreen() {
         height: 1920,
         result: 'tmpfile',
       });
-      const message = summary ? buildShareMessage(summary) : null;
-      const nativeShare = Platform.OS === 'android' ? getNativeShare() : null;
-      if (Platform.OS === 'ios' && message) {
-        // iOS share sheet carries the image and the copyable text together.
-        await Share.share({ url: uri, message });
-      } else if (nativeShare && message) {
-        // Image with the message as its caption, in one intent.
-        await nativeShare.open({ url: uri, type: 'image/png', message, failOnCancel: false });
-      } else if (await Sharing.isAvailableAsync()) {
-        // Builds without react-native-share can't bundle text with the image —
-        // put the message on the clipboard so it can be pasted as the caption.
-        if (message) {
-          await Clipboard.setStringAsync(message);
-          setNotice('Caption with your link copied — paste it into your post.');
-        }
-        await Sharing.shareAsync(uri, {
-          mimeType: 'image/png',
-          dialogTitle:
-            mode === 'check-in' ? 'Share your check-in'
-            : mode === 'challenge' ? 'Share your challenge'
-            : 'Share your streak',
-          UTI: 'public.png',
-        });
-      } else {
-        setLoadError('Sharing is not available on this device.');
-      }
+      await MediaLibrary.saveToLibraryAsync(uri);
+      setNotice('Saved to your photos — post it to your story.');
     } catch (e) {
-      setLoadError(e instanceof Error ? e.message : 'Could not share image.');
+      setLoadError(e instanceof Error ? e.message : 'Could not save your card.');
     } finally {
-      setSharing(false);
+      setBusy(null);
     }
   }
 
@@ -249,25 +290,29 @@ export default function ShareStatsScreen() {
         </View>
       )}
 
-      {/* Share button */}
+      {/* Actions — Share opens the OS "send to" sheet on a link; Save writes the
+          card to the camera roll for Stories. */}
       {summary && (
         <View style={styles.footer}>
-          <Pressable
-            style={({ pressed }) => [styles.shareBtn, (pressed || sharing) && { opacity: 0.85 }]}
-            onPress={handleShare}
-            disabled={sharing}
-          >
-            {sharing ? (
-              <ActivityIndicator color="#0a0a0a" />
-            ) : (
-              <>
-                <Ionicons name="share-outline" size={18} color="#0a0a0a" />
-                <Text style={styles.shareBtnText}>Share to Socials</Text>
-              </>
-            )}
-          </Pressable>
+          <View style={styles.actionRow}>
+            <ActionButton
+              icon="paper-plane"
+              label="Share"
+              onPress={handleShare}
+              loading={busy === 'share'}
+              disabled={busy !== null}
+              primary
+            />
+            <ActionButton
+              icon="download-outline"
+              label="Save"
+              onPress={handleSave}
+              loading={busy === 'save'}
+              disabled={busy !== null}
+            />
+          </View>
           <Text style={styles.helperText}>
-            {notice ?? 'Shares the card with a caption and your invite link — works for Instagram, Facebook, TikTok and X.'}
+            {notice ?? 'Share posts a tappable card that opens POWR. Save it to post to your Instagram or TikTok story.'}
           </Text>
         </View>
       )}
@@ -342,24 +387,38 @@ const styles = StyleSheet.create({
   },
   footer: {
     paddingHorizontal: 24,
-    paddingTop: 4,
-    gap: 12,
+    paddingTop: 8,
+    gap: 14,
   },
-  shareBtn: {
+  actionRow: {
     flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 40,
+  },
+  action: {
+    alignItems: 'center',
+    gap: 8,
+  },
+  actionCircle: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
-    backgroundColor: GOLD,
-    borderRadius: 20,
-    paddingVertical: 14,
   },
-  shareBtnText: {
-    fontSize: 13,
-    fontWeight: '700',
-    letterSpacing: 1.2,
-    color: '#0a0a0a',
-    textTransform: 'uppercase',
+  actionCirclePrimary: {
+    backgroundColor: GOLD,
+  },
+  actionCircleGhost: {
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.18)',
+  },
+  actionLabel: {
+    fontSize: 12,
+    fontWeight: '400',
+    letterSpacing: 0.3,
+    color: DIM,
   },
   helperText: {
     fontSize: 11,
