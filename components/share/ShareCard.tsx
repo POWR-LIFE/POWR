@@ -9,6 +9,14 @@ import { LEVEL_IMAGE, getLevelInfo } from '@/constants/levels';
 import { fontFamily } from '@/constants/tokens';
 import type { ShareSummary } from '@/lib/api/share';
 
+/**
+ * Chat clients centre-crop a 9:16 image down to roughly 3:4 in the message
+ * bubble, taking ~12.5% off the top and bottom. Anything the reader must see
+ * without opening the image — the wordmark, the stats, the URL — lives inside
+ * that band. Stories still show the full frame; the padding just reads as air.
+ */
+const CROP_SAFE_Y = 250;
+
 const GOLD   = '#E8D200';
 const ORANGE = '#FF9944';
 const GREEN  = '#00CC66';
@@ -79,14 +87,14 @@ export const ShareCard = forwardRef<View, ShareCardProps>(({ summary, width, bac
       {showLevel && (
         <View style={[StyleSheet.absoluteFillObject, styles.centreSlot]} pointerEvents="none">
           <View style={[styles.levelTile, {
-            width: 520 * s,
-            height: 520 * s,
-            borderRadius: 130 * s,
+            width: 440 * s,
+            height: 440 * s,
+            borderRadius: 110 * s,
             borderWidth: 3 * s,
           }]}>
             <LevelIcon
               level={level.level}
-              size={LEVEL_IMAGE[level.level] ? 520 * s : 300 * s}
+              size={LEVEL_IMAGE[level.level] ? 440 * s : 260 * s}
               color={GOLD}
               strokeWidth={1.7}
             />
@@ -94,7 +102,7 @@ export const ShareCard = forwardRef<View, ShareCardProps>(({ summary, width, bac
           <Text style={[styles.levelEyebrow, { fontSize: 26 * s, letterSpacing: 5 * s, marginTop: 44 * s }]}>
             {`LEVEL ${level.level}`}
           </Text>
-          <Text style={[styles.levelName, { color: level.textColor, fontSize: 52 * s, letterSpacing: 2 * s, marginTop: 16 * s }]}>
+          <Text style={[styles.levelName, { color: level.textColor, fontSize: 46 * s, letterSpacing: 2 * s, marginTop: 16 * s }]}>
             {level.name.toUpperCase()}
           </Text>
         </View>
@@ -119,7 +127,7 @@ export const ShareCard = forwardRef<View, ShareCardProps>(({ summary, width, bac
       ) : null}
 
       {/* ── Header ─────────────────────────────────────────────── */}
-      <View style={[styles.header, { paddingHorizontal: 60 * s, paddingTop: 60 * s }]}>
+      <View style={[styles.header, { paddingHorizontal: 60 * s, paddingTop: CROP_SAFE_Y * s }]}>
         <Image
           source={require('@/assets/images/powrlogotext.png')}
           style={{ width: 400 * s, height: 120 * s, marginLeft: -50 * s }}
@@ -141,9 +149,10 @@ export const ShareCard = forwardRef<View, ShareCardProps>(({ summary, width, bac
       </View>
 
       {/* ── Body (pinned to bottom) ─────────────────────────────── */}
-      <View style={[styles.body, { paddingHorizontal: 60 * s, paddingBottom: 72 * s }]}>
-        {/* Venue / name */}
-        <Text style={[styles.heroTitle, { fontSize: 80 * s, letterSpacing: 2 * s, lineHeight: 88 * s }]} numberOfLines={2}>
+      <View style={[styles.body, { paddingHorizontal: 60 * s, paddingBottom: CROP_SAFE_Y * s }]}>
+        {/* Venue / name. Capped to one line under the level mark: a second line
+            grows the bottom block upward into the mark's caption. */}
+        <Text style={[styles.heroTitle, { fontSize: 80 * s, letterSpacing: 2 * s, lineHeight: 88 * s }]} numberOfLines={showLevel ? 1 : 2}>
           {heroTitle.toUpperCase()}
         </Text>
         {heroSubtitle ? (
@@ -330,7 +339,9 @@ const styles = StyleSheet.create({
   centreSlot: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingBottom: '30%', // shift up slightly from true centre
+    // Lifts the mark off true centre so it clears the bottom block even when the
+    // hero title wraps to two lines, while staying below the header.
+    paddingBottom: '18%',
     zIndex: 2,
   },
   levelTile: {

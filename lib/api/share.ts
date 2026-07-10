@@ -1,4 +1,7 @@
+import * as FileSystem from 'expo-file-system/legacy';
+
 import type { ActivityType } from '@/constants/activities';
+import { getLevelInfo } from '@/constants/levels';
 import { getSessionUser, supabase } from '@/lib/supabase';
 
 export interface ShareVenue {
@@ -301,37 +304,89 @@ async function fetchAggregates(
   };
 }
 
-// ─── Share caption ──────────────────────────────────────────────────────────
+// ─── Publishing a card as a link ────────────────────────────────────────────
 
-/**
- * Caption text shared alongside the card image. Instagram/TikTok drop it, but
- * WhatsApp/Messages/X carry it — and it's what makes the post tappable: the
- * referral link attributes sign-ups to the member, the /app smart-link
- * (powr:// + store fallback) covers members without a code.
- */
-export function buildShareMessage(summary: ShareSummary): string {
-  const link = summary.profile.referralCode
-    ? `https://powr.life/?ref=${summary.profile.referralCode}`
-    : 'https://powr.life/app';
+const SITE = 'https://powr.life';
 
-  let headline: string;
+/** The sentence a member sends with the link. */
+export function buildShareHeadline(summary: ShareSummary): string {
   if (summary.mode === 'check-in') {
     const where = summary.venue ? ` at ${summary.venue.name}` : '';
     const detail = [
       summary.durationMin > 0 ? `${summary.durationMin} min` : null,
       summary.sessionPoints > 0 ? `+${summary.sessionPoints} pts` : null,
     ].filter(Boolean).join(', ');
-    headline = `Checked in${where} on POWR${detail ? ` — ${detail}` : ''}.`;
-    if (summary.currentStreak > 1) headline += ` Day ${summary.currentStreak} of my streak.`;
-  } else if (summary.mode === 'challenge') {
-    headline = `Challenge complete on POWR: ${summary.challengeTitle} (+${summary.points} pts).`;
-  } else {
-    headline = summary.currentStreak > 0
-      ? `${summary.currentStreak}-day streak on POWR — ${summary.monthCount} sessions this month.`
-      : `${summary.monthCount} sessions this month on POWR.`;
+    let line = `Checked in${where} on POWR${detail ? ` — ${detail}` : ''}.`;
+    if (summary.currentStreak > 1) line += ` Day ${summary.currentStreak} of my streak.`;
+    return line;
   }
+  if (summary.mode === 'challenge') {
+    return `Challenge complete on POWR: ${summary.challengeTitle} (+${summary.points} pts).`;
+  }
+  return summary.currentStreak > 0
+    ? `${summary.currentStreak}-day streak on POWR — ${summary.monthCount} sessions this month.`
+    : `${summary.monthCount} sessions this month on POWR.`;
+}
 
-  return `${headline}\nJoin me: ${link}`;
+/** Bold line of the link preview — the member's level, which the card shows. */
+export function buildShareTitle(summary: ShareSummary): string {
+  const { current } = getLevelInfo(summary.totalEarned);
+  const who = summary.profile.displayName ?? summary.profile.username ?? 'A POWR member';
+  return `${who} — Level ${current.level}, ${current.name}`;
+}
+
+/** Grey line beneath it. */
+export function buildShareSubtitle(summary: ShareSummary): string {
+  return `${buildShareHeadline(summary)} Tap to get POWR and earn rewards for every workout.`;
+}
+
+/**
+ * Uploads the captured card and records the row that https://powr.life/s/<id>
+ * renders its Open Graph tags from, returning that URL.
+ *
+ * An attached image *is* the message — WhatsApp, iMessage and X only draw a
+ * tappable preview when they are handed a URL they can scrape. So the card gets
+ * published, and the member shares a link to it rather than the file itself.
+ */
+export async function publishShareCard(summary: ShareSummary, imageUri: string): Promise<string> {
+  const user = await getSessionUser();
+  if (!user) throw new Error('Not authenticated');
+
+  // Owner's folder satisfies the storage policy; the random suffix is what keeps
+  // a card unguessable in a public bucket.
+  const path = `${user.id}/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.jpg`;
+
+  const base64 = await FileSystem.readAsStringAsync(imageUri, {
+    encoding: FileSystem.EncodingType.Base64,
+  });
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+
+  const { error: uploadError } = await supabase.storage
+    .from('share-cards')
+    .upload(path, bytes, { contentType: 'image/jpeg' });
+  if (uploadError) throw new Error(uploadError.message);
+
+  const { data, error } = await supabase
+    .from('share_cards')
+    .insert({
+      user_id: user.id,
+      image_path: path,
+      title: buildShareTitle(summary),
+      subtitle: buildShareSubtitle(summary),
+      referral_code: summary.profile.referralCode,
+    })
+    .select('id')
+    .single();
+  if (error) throw new Error(error.message);
+
+  return `${SITE}/s/${data.id}`;
+}
+
+/** Caption + link. The link is what makes the post tappable and attributable. */
+export function buildShareMessage(summary: ShareSummary, shareUrl: string): string {
+  return `${buildShareHeadline(summary)}\n${shareUrl}`;
 }
 
 async function fetchUnlockedReward(preBalance: number, balance: number): Promise<ShareReward | null> {

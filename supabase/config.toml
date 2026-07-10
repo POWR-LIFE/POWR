@@ -401,6 +401,12 @@ verify_jwt = false
 # inside the function, mirroring resolve-shared-challenges.
 verify_jwt = false
 
+[functions.share-card-og]
+# Fetched by WhatsApp/iMessage/X link crawlers, which carry no JWT. It only ever
+# serves a title, a subtitle and a public image URL for one unguessable uuid —
+# there is nothing to authorise.
+verify_jwt = false
+
 [edge_runtime]
 enabled = true
 # Supported request policies: `oneshot`, `per_worker`.
