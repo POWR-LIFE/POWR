@@ -12,7 +12,6 @@
   ],
   "rewrites": [
     { "source": "/app", "destination": "/app.html" },
-    { "source": "/s/:id", "destination": "https://wjvvujnicwkruaeibttt.supabase.co/functions/v1/share-card-og?id=:id" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
