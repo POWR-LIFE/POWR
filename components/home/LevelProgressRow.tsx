@@ -2,9 +2,19 @@ import { LinearGradient } from 'expo-linear-gradient';
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { getLevelInfo } from '@/constants/levels';
+import { LevelIcon } from '@/components/LevelIcon';
+import { LEVEL_IMAGE, getLevelInfo } from '@/constants/levels';
 
 const GOLD = '#E8D200';
+const TILE = 56;
+/** The artwork's glow bleeds to the left and right edges of its canvas, so it must
+ *  render at full tile size — any overscale clips the mark's corners. It is
+ *  letterboxed top and bottom, and those bands disappear against the black tile.
+ *  Generated SVG glyphs are drawn smaller; they carry their own breathing room. */
+const GLYPH_SIZE = 34;
+/** Level-number chip, overhanging the tile's bottom-right corner. */
+const CHIP = 22;
+const CHIP_HANG = 6;
 
 interface Props {
   totalEarned: number;
@@ -29,10 +39,23 @@ export function LevelProgressRow({ totalEarned, onPress }: Props) {
         pointerEvents="none"
       />
 
-      {/* Badge tile */}
+      {/* Badge: level artwork, with the level number on the bottom-right corner.
+          The chip is a sibling of the tile, not a child — the tile clips its own
+          overflow to round the artwork, which would cut the overhang off. */}
       <View style={styles.badge}>
-        <Text style={styles.badgeMeta}>LVL</Text>
-        <Text style={styles.badgeNumber}>{current.level}</Text>
+        {/* The artwork sits on its own black plate, so the tile is black too —
+            otherwise the plate reads as a dark rectangle pasted on the row. */}
+        <View style={styles.logoTile}>
+          <LevelIcon
+            level={current.level}
+            size={LEVEL_IMAGE[current.level] ? TILE : GLYPH_SIZE}
+            color={GOLD}
+            strokeWidth={1.7}
+          />
+        </View>
+        <View style={styles.levelChip}>
+          <Text style={styles.levelChipNumber}>{current.level}</Text>
+        </View>
       </View>
 
       {/* Right: name + bar + pts */}
@@ -60,7 +83,7 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
+    gap: 16,
     paddingHorizontal: 14,
     paddingVertical: 14,
     borderRadius: 18,
@@ -76,22 +99,46 @@ const styles = StyleSheet.create({
   },
 
   badge: {
-    width: 58,
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: TILE,
+    height: TILE,
     flexShrink: 0,
   },
-  badgeMeta: {
-    fontSize: 8,
-    fontWeight: '600',
-    letterSpacing: 2,
-    color: 'rgba(255,255,255,0.3)',
+  logoTile: {
+    width: TILE,
+    height: TILE,
+    borderRadius: 14,
+    backgroundColor: '#000',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
   },
-  badgeNumber: {
-    fontSize: 28,
-    fontWeight: '200',
-    letterSpacing: -1,
-    lineHeight: 30,
+  levelChip: {
+    position: 'absolute',
+    right: -CHIP_HANG,
+    bottom: -CHIP_HANG,
+    width: CHIP,
+    height: CHIP,
+    borderRadius: CHIP / 2,
+    backgroundColor: '#121212',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    // Lift the chip clear of the artwork it overlaps, and keep it above the tile
+    // on Android, where paint order follows elevation rather than tree order.
+    zIndex: 2,
+    elevation: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.6,
+    shadowRadius: 3,
+  },
+  levelChipNumber: {
+    fontSize: 11,
+    fontWeight: '600',
+    letterSpacing: -0.2,
     color: '#F2F2F2',
   },
 
