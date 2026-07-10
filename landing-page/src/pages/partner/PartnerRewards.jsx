@@ -3,6 +3,7 @@ import { Plus, ChevronLeft, Upload, Award, Clock, CheckCircle, XCircle, AlertCir
 import { supabase } from '../../lib/supabase';
 import { uploadPublicImage } from '../../lib/storage';
 import { useToast } from '../../lib/toast';
+import { validateHeroVideoUrl } from '../../lib/heroVideoUrl';
 import { useAuth } from '../../App';
 import RewardAppPreview, { previewValueLabel } from '../../components/RewardAppPreview';
 
@@ -630,6 +631,23 @@ export default function PartnerRewards() {
                                     {form.hero_video_url && (
                                         <button type="button" onClick={() => setForm(p => ({ ...p, hero_video_url: null }))} className="mt-2 text-[10px] uppercase tracking-[0.2em] text-[#999] hover:text-red-500 transition-colors font-black">Remove video</button>
                                     )}
+                                    {/* Or paste a direct video-file URL instead of uploading (own CDN /
+                                        Cloudflare Stream). Bound to hero_video_url so it also live-previews;
+                                        validated on blur so streaming-site links are rejected. */}
+                                    <input
+                                        type="url"
+                                        placeholder="Or paste a direct link — https://…/clip.mp4"
+                                        className="mt-3 w-full h-11 px-5 bg-white border border-[#E6E6E1] rounded-full focus:border-[#E8D200] outline-none transition-all text-[11px] font-bold text-[#1A1A1A] placeholder-[#BBB] tracking-[0.05em]"
+                                        value={form.hero_video_url || ''}
+                                        onChange={e => setForm(p => ({ ...p, hero_video_url: e.target.value }))}
+                                        onBlur={e => {
+                                            const res = validateHeroVideoUrl(e.target.value);
+                                            if (res.error) { toast.error(res.error); setForm(p => ({ ...p, hero_video_url: null })); return; }
+                                            setForm(p => ({ ...p, hero_video_url: res.value || null }));
+                                            if (res.warn) toast.info(res.warn);
+                                        }}
+                                    />
+                                    <p className="mt-2 text-[9px] uppercase tracking-[0.2em] text-[#AAA] font-black">Direct .mp4 / .m3u8 / .webm or Cloudflare Stream · YouTube &amp; Vimeo links won't play</p>
                                 </div>
                             </div>
                         </section>

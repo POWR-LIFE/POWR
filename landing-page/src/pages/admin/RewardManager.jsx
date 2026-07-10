@@ -4,6 +4,7 @@ import { useToast } from '../../lib/toast';
 import { Plus, Edit2, Trash2, Ticket, Loader2, X, Search, Award, Activity, ChevronLeft, ChevronRight, AlertTriangle, Upload, Image as ImageIcon, Video as VideoIcon, Tag, FileText, Download, GripVertical, Save, Pin, Send, KeyRound, Building2, Link2, Palette, CalendarClock, Check } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { uploadPublicImage } from '../../lib/storage';
+import { validateHeroVideoUrl } from '../../lib/heroVideoUrl';
 import * as XLSX from 'xlsx';
 import { parseCodes, uploadCodes, fetchCodeStats, fetchCodePool, fetchAllCodes, getCSVTemplate, buildScheme, isValidForScheme, getSchemeCSVTemplate, generateCodes, toggleCodeStatus, updateCodeExpiry, bulkUpdateExpiry } from '../../lib/promoCodes';
 import BrandPortalAccess from '../../components/BrandPortalAccess';
@@ -1169,34 +1170,59 @@ export default function RewardManager() {
                                             <VideoIcon size={28} className="text-[#666666]" />
                                         )}
                                     </div>
-                                    <div className="flex-1 flex items-center gap-4">
-                                        <label className={`flex items-center gap-3 h-12 px-8 bg-[#F4F4F1] border border-[#E6E6E1] rounded-full text-[10px] uppercase tracking-[0.3em] text-[#333333] hover:text-[#8a7600] hover:border-[#E8D200]/40 transition-all font-black cursor-pointer ${heroVideoUploading ? 'opacity-40 pointer-events-none' : ''}`}>
-                                            <Upload size={14} /> {heroVideoUploading ? 'Uploading...' : (formData.hero_video_url ? 'Replace' : 'Upload')}
-                                            <input type="file" accept="video/mp4,video/quicktime,video/webm" className="hidden" disabled={heroVideoUploading} onChange={async (e) => {
-                                                const file = e.target.files?.[0];
-                                                if (!file) return;
-                                                const MAX_MB = 50;
-                                                if (file.size > MAX_MB * 1024 * 1024) {
-                                                    toast.error(`Video is too large (max ${MAX_MB}MB). Compress it to a short, looping clip.`);
-                                                    e.target.value = '';
-                                                    return;
-                                                }
-                                                setHeroVideoUploading(true);
-                                                try {
-                                                    const url = await uploadPublicImage('reward-images', file, 'hero-videos');
-                                                    setFormData(prev => ({ ...prev, hero_video_url: url }));
-                                                    toast.success('Hero video uploaded');
-                                                } catch (err) {
-                                                    toast.error(err.message || 'Upload failed');
-                                                } finally {
-                                                    setHeroVideoUploading(false);
-                                                    e.target.value = '';
-                                                }
-                                            }} />
-                                        </label>
-                                        {formData.hero_video_url && (
-                                            <button type="button" onClick={() => setFormData({ ...formData, hero_video_url: '' })} className="text-[10px] uppercase tracking-[0.3em] text-[#555555] hover:text-red-500 transition-colors font-black">Remove</button>
-                                        )}
+                                    <div className="flex-1 flex flex-col gap-4">
+                                        <div className="flex items-center gap-4">
+                                            <label className={`flex items-center gap-3 h-12 px-8 bg-[#F4F4F1] border border-[#E6E6E1] rounded-full text-[10px] uppercase tracking-[0.3em] text-[#333333] hover:text-[#8a7600] hover:border-[#E8D200]/40 transition-all font-black cursor-pointer ${heroVideoUploading ? 'opacity-40 pointer-events-none' : ''}`}>
+                                                <Upload size={14} /> {heroVideoUploading ? 'Uploading...' : (formData.hero_video_url ? 'Replace' : 'Upload')}
+                                                <input type="file" accept="video/mp4,video/quicktime,video/webm" className="hidden" disabled={heroVideoUploading} onChange={async (e) => {
+                                                    const file = e.target.files?.[0];
+                                                    if (!file) return;
+                                                    const MAX_MB = 50;
+                                                    if (file.size > MAX_MB * 1024 * 1024) {
+                                                        toast.error(`Video is too large (max ${MAX_MB}MB). Compress it to a short, looping clip.`);
+                                                        e.target.value = '';
+                                                        return;
+                                                    }
+                                                    setHeroVideoUploading(true);
+                                                    try {
+                                                        const url = await uploadPublicImage('reward-images', file, 'hero-videos');
+                                                        setFormData(prev => ({ ...prev, hero_video_url: url }));
+                                                        toast.success('Hero video uploaded');
+                                                    } catch (err) {
+                                                        toast.error(err.message || 'Upload failed');
+                                                    } finally {
+                                                        setHeroVideoUploading(false);
+                                                        e.target.value = '';
+                                                    }
+                                                }} />
+                                            </label>
+                                            {formData.hero_video_url && (
+                                                <button type="button" onClick={() => setFormData({ ...formData, hero_video_url: '' })} className="text-[10px] uppercase tracking-[0.3em] text-[#555555] hover:text-red-500 transition-colors font-black">Remove</button>
+                                            )}
+                                        </div>
+                                        {/* Or paste a direct video-file URL — brands hosting on their own CDN or
+                                            Cloudflare Stream skip the upload. Bound to hero_video_url so it also
+                                            live-previews; validated on blur so streaming-site links are rejected. */}
+                                        <div>
+                                            <input
+                                                type="url"
+                                                placeholder="Or paste a direct link — https://…/clip.mp4"
+                                                className="w-full h-11 px-5 bg-[#F4F4F1] border border-[#E6E6E1] rounded-full focus:border-[#E8D200]/40 outline-none transition-all text-[11px] font-bold text-[#1A1A1A] placeholder-[#BBBBBB] tracking-[0.05em]"
+                                                value={formData.hero_video_url}
+                                                onChange={e => setFormData(prev => ({ ...prev, hero_video_url: e.target.value }))}
+                                                onBlur={e => {
+                                                    const res = validateHeroVideoUrl(e.target.value);
+                                                    if (res.error) {
+                                                        toast.error(res.error);
+                                                        setFormData(prev => ({ ...prev, hero_video_url: '' }));
+                                                        return;
+                                                    }
+                                                    if (res.value !== e.target.value) setFormData(prev => ({ ...prev, hero_video_url: res.value }));
+                                                    if (res.warn) toast.info(res.warn);
+                                                }}
+                                            />
+                                            <p className="text-[9px] uppercase tracking-[0.2em] text-[#999999] font-black mt-2 ml-1">Direct .mp4 / .m3u8 / .webm or Cloudflare Stream · YouTube &amp; Vimeo links won't play</p>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
