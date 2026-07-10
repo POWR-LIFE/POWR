@@ -3,7 +3,9 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { forwardRef } from 'react';
 import { StyleSheet, Text, View, type ViewProps } from 'react-native';
 
+import { LevelIcon } from '@/components/LevelIcon';
 import { ACTIVITIES } from '@/constants/activities';
+import { LEVEL_IMAGE, getLevelInfo } from '@/constants/levels';
 import { fontFamily } from '@/constants/tokens';
 import type { ShareSummary } from '@/lib/api/share';
 
@@ -25,19 +27,16 @@ interface ShareCardProps extends ViewProps {
   backgroundSource?: string | number | null;
   /** When provided, renders a circular avatar in the upper half of the card. */
   avatarUri?: string | null;
-  /**
-   * When provided, renders a brand/logo image centred in the upper half of the card.
-   * Pass a URI string or local require() result.
-   */
-  topImage?: string | number | null;
-  /** Hide the POWR logo in the header. */
-  hideLogo?: boolean;
+  /** Renders the member's current level mark centred in the upper half of the card. */
+  showLevel?: boolean;
 }
 
-export const ShareCard = forwardRef<View, ShareCardProps>(({ summary, width, backgroundSource, avatarUri, topImage, hideLogo, style, ...rest }, ref) => {
+export const ShareCard = forwardRef<View, ShareCardProps>(({ summary, width, backgroundSource, avatarUri, showLevel, style, ...rest }, ref) => {
   const height = (width * 16) / 9;
   // Scale tokens proportionally to width — base sizes designed for ~1080dp.
   const s = width / 1080;
+
+  const { current: level } = getLevelInfo(summary.totalEarned);
 
   // backgroundSource prop takes priority; undefined → fall back to cover_url only; null → gradient
   const resolvedBgSource: string | number | null =
@@ -74,21 +73,36 @@ export const ShareCard = forwardRef<View, ShareCardProps>(({ summary, width, bac
         style={StyleSheet.absoluteFillObject}
       />
 
-      {/* POWR / brand logo — centred in upper half */}
-      {topImage != null && (
-        <View style={[StyleSheet.absoluteFillObject, styles.topImageSlot]} pointerEvents="none">
-          <Image
-            source={typeof topImage === 'string' ? { uri: topImage } : topImage}
-            style={{ width: width * 0.95, height: height * 0.50 }}
-            contentFit="contain"
-            transition={0}
-          />
+      {/* Level mark — centred in upper half. The artwork is painted onto its own
+          opaque black plate, so it sits on a black tile; on any other backing the
+          plate would read as a dark square pasted over the card. */}
+      {showLevel && (
+        <View style={[StyleSheet.absoluteFillObject, styles.centreSlot]} pointerEvents="none">
+          <View style={[styles.levelTile, {
+            width: 520 * s,
+            height: 520 * s,
+            borderRadius: 130 * s,
+            borderWidth: 3 * s,
+          }]}>
+            <LevelIcon
+              level={level.level}
+              size={LEVEL_IMAGE[level.level] ? 520 * s : 300 * s}
+              color={GOLD}
+              strokeWidth={1.7}
+            />
+          </View>
+          <Text style={[styles.levelEyebrow, { fontSize: 26 * s, letterSpacing: 5 * s, marginTop: 44 * s }]}>
+            {`LEVEL ${level.level}`}
+          </Text>
+          <Text style={[styles.levelName, { color: level.textColor, fontSize: 52 * s, letterSpacing: 2 * s, marginTop: 16 * s }]}>
+            {level.name.toUpperCase()}
+          </Text>
         </View>
       )}
 
       {/* Circular avatar — My Photo mode */}
       {avatarUri ? (
-        <View style={[StyleSheet.absoluteFillObject, styles.topImageSlot]} pointerEvents="none">
+        <View style={[StyleSheet.absoluteFillObject, styles.centreSlot]} pointerEvents="none">
           <Image
             source={{ uri: avatarUri }}
             style={{
@@ -106,16 +120,12 @@ export const ShareCard = forwardRef<View, ShareCardProps>(({ summary, width, bac
 
       {/* ── Header ─────────────────────────────────────────────── */}
       <View style={[styles.header, { paddingHorizontal: 60 * s, paddingTop: 60 * s }]}>
-        {!hideLogo ? (
-          <Image
-            source={require('@/assets/images/powrlogotext.png')}
-            style={{ width: 400 * s, height: 120 * s, marginLeft: -50 * s }}
-            contentFit="contain"
-            transition={0}
-          />
-        ) : (
-          <View style={{ width: 110 * s }} />
-        )}
+        <Image
+          source={require('@/assets/images/powrlogotext.png')}
+          style={{ width: 400 * s, height: 120 * s, marginLeft: -50 * s }}
+          contentFit="contain"
+          transition={0}
+        />
         <View style={{ flex: 1 }} />
         <View style={styles.statusPill}>
           <View style={[styles.statusDot, {
@@ -311,11 +321,25 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     position: 'relative',
   },
-  topImageSlot: {
+  centreSlot: {
     alignItems: 'center',
     justifyContent: 'center',
     paddingBottom: '30%', // shift up slightly from true centre
     zIndex: 2,
+  },
+  levelTile: {
+    backgroundColor: '#000',
+    borderColor: 'rgba(255,255,255,0.10)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  levelEyebrow: {
+    fontFamily: fontFamily.medium,
+    color: DIM,
+  },
+  levelName: {
+    fontFamily: fontFamily.regular,
   },
   header: {
     position: 'absolute',

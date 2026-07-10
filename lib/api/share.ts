@@ -22,10 +22,13 @@ export interface ShareProfile {
   username: string | null;
   avatarUrl: string | null;
   coverUrl: string | null;
+  referralCode: string | null;
 }
 
 interface BaseShareSummary {
   pointsBalance: number;
+  /** Lifetime points earned — the XP the level ladder is keyed on. */
+  totalEarned: number;
   lifetimeCount: number;
   monthCount: number;
   currentStreak: number;
@@ -246,7 +249,7 @@ async function fetchAggregates(
   const [profileRes, lifetimeRes, monthRes, streakRes, weekRes, balanceRes, authRes] = await Promise.all([
     supabase
       .from('profiles')
-      .select('display_name, username, avatar_url, cover_url')
+      .select('display_name, username, avatar_url, cover_url, referral_code')
       .eq('id', userId)
       .maybeSingle(),
     lifetimeQ,
@@ -276,8 +279,13 @@ async function fetchAggregates(
     weekActiveDays[d === 0 ? 6 : d - 1] = true;
   }
 
+  // Credits only, to match get_my_points_summary.total_earned — spends must not
+  // pull a member back down the level ladder.
+  const transactions = balanceRes.data ?? [];
+
   return {
-    pointsBalance: (balanceRes.data ?? []).reduce((sum, t) => sum + t.amount, 0),
+    pointsBalance: transactions.reduce((sum, t) => sum + t.amount, 0),
+    totalEarned: transactions.reduce((sum, t) => sum + Math.max(t.amount, 0), 0),
     lifetimeCount: lifetimeRes.count ?? 0,
     monthCount: monthRes.count ?? 0,
     currentStreak: streakRes.data?.current_streak ?? 0,
@@ -288,8 +296,42 @@ async function fetchAggregates(
       username: (profile as any)?.username ?? null,
       avatarUrl: profile?.avatar_url ?? metaAvatarUrl ?? null,
       coverUrl: (profile as any)?.cover_url ?? null,
+      referralCode: (profile as any)?.referral_code ?? null,
     },
   };
+}
+
+// ─── Share caption ──────────────────────────────────────────────────────────
+
+/**
+ * Caption text shared alongside the card image. Instagram/TikTok drop it, but
+ * WhatsApp/Messages/X carry it — and it's what makes the post tappable: the
+ * referral link attributes sign-ups to the member, the /app smart-link
+ * (powr:// + store fallback) covers members without a code.
+ */
+export function buildShareMessage(summary: ShareSummary): string {
+  const link = summary.profile.referralCode
+    ? `https://powr.life/?ref=${summary.profile.referralCode}`
+    : 'https://powr.life/app';
+
+  let headline: string;
+  if (summary.mode === 'check-in') {
+    const where = summary.venue ? ` at ${summary.venue.name}` : '';
+    const detail = [
+      summary.durationMin > 0 ? `${summary.durationMin} min` : null,
+      summary.sessionPoints > 0 ? `+${summary.sessionPoints} pts` : null,
+    ].filter(Boolean).join(', ');
+    headline = `Checked in${where} on POWR${detail ? ` — ${detail}` : ''}.`;
+    if (summary.currentStreak > 1) headline += ` Day ${summary.currentStreak} of my streak.`;
+  } else if (summary.mode === 'challenge') {
+    headline = `Challenge complete on POWR: ${summary.challengeTitle} (+${summary.points} pts).`;
+  } else {
+    headline = summary.currentStreak > 0
+      ? `${summary.currentStreak}-day streak on POWR — ${summary.monthCount} sessions this month.`
+      : `${summary.monthCount} sessions this month on POWR.`;
+  }
+
+  return `${headline}\nJoin me: ${link}`;
 }
 
 async function fetchUnlockedReward(preBalance: number, balance: number): Promise<ShareReward | null> {

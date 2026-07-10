@@ -1,11 +1,15 @@
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import * as Sharing from 'expo-sharing';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
+import * as Clipboard from 'expo-clipboard';
 import {
   ActivityIndicator,
+  Platform,
   Pressable,
+  Share,
   StyleSheet,
   Text,
   useWindowDimensions,
@@ -15,7 +19,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { captureRef } from 'react-native-view-shot';
 
 import { ShareCard } from '@/components/share/ShareCard';
-import { fetchAutoSummary, fetchChallengeSummary, fetchCheckInSummary, type ShareSummary } from '@/lib/api/share';
+import { LEVEL_IMAGE, getLevelInfo } from '@/constants/levels';
+import { buildShareMessage, fetchAutoSummary, fetchChallengeSummary, fetchCheckInSummary, type ShareSummary } from '@/lib/api/share';
 
 const GOLD  = '#E8D200';
 const BG    = '#0d0d0d';
@@ -23,16 +28,28 @@ const TEXT  = '#F2F2F2';
 const DIM   = 'rgba(255,255,255,0.5)';
 const MUTED = 'rgba(255,255,255,0.25)';
 
-const POWR_LOGO_URI = 'https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/landing-page-assets/powrlogotext.png';
-
 type Mode   = 'check-in' | 'streak' | 'challenge';
-type BgMode = 'cover' | 'powr' | 'gallery';
+type BgMode = 'cover' | 'level' | 'gallery';
 
 const BG_OPTIONS: { key: BgMode; icon: React.ComponentProps<typeof Ionicons>['name']; label: string }[] = [
   { key: 'cover',   icon: 'person-circle-outline', label: 'My Photo'  },
-  { key: 'powr',    icon: 'flash',                 label: 'POWR'      },
+  { key: 'level',   icon: 'ribbon-outline',        label: 'My Level'  },
   { key: 'gallery', icon: 'images-outline',        label: 'Gallery'   },
 ];
+
+/**
+ * react-native-share bundles image + caption text in one Android intent, but it
+ * is a native module that only exists in EAS builds — resolve it lazily so this
+ * screen still works in Expo Go and older builds.
+ */
+function getNativeShare(): { open: (options: object) => Promise<unknown> } | null {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    return require('react-native-share').default;
+  } catch {
+    return null;
+  }
+}
 
 export default function ShareStatsScreen() {
   const insets = useSafeAreaInsets();
@@ -44,6 +61,7 @@ export default function ShareStatsScreen() {
   const cardRef = useRef<View>(null);
   const [summary, setSummary]     = useState<ShareSummary | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [notice, setNotice]       = useState<string | null>(null);
   const [sharing, setSharing]     = useState(false);
   const [bgMode, setBgMode]       = useState<BgMode>('cover');
   const [galleryUri, setGalleryUri] = useState<string | null>(null);
@@ -73,6 +91,14 @@ export default function ShareStatsScreen() {
     }
   }, [mode, params.sessionId, params.challenge]);
 
+  // Warm the level artwork before the user can pick it — captureRef would
+  // otherwise snapshot an empty tile if they tap Share while it's still loading.
+  useEffect(() => {
+    if (!summary) return;
+    const uri = LEVEL_IMAGE[getLevelInfo(summary.totalEarned).current.level];
+    if (uri) Image.prefetch(uri);
+  }, [summary]);
+
   async function pickFromGallery() {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
@@ -101,17 +127,12 @@ export default function ShareStatsScreen() {
 
   function effectiveBgSource(): string | number | null | undefined {
     if (bgMode === 'gallery') return galleryUri ?? undefined;
-    if (bgMode === 'powr')    return null;   // solid dark
+    if (bgMode === 'level')   return null;   // solid dark
     return null;                             // cover → solid dark + circular avatar overlay
   }
 
   function effectiveAvatarUri(): string | null {
     if (bgMode === 'cover') return summary?.profile.avatarUrl ?? null;
-    return null;
-  }
-
-  function effectiveTopImage(): string | null {
-    if (bgMode === 'powr') return POWR_LOGO_URI;
     return null;
   }
 
@@ -133,16 +154,32 @@ export default function ShareStatsScreen() {
         height: 1920,
         result: 'tmpfile',
       });
-      const available = await Sharing.isAvailableAsync();
-      if (!available) { setLoadError('Sharing is not available on this device.'); return; }
-      await Sharing.shareAsync(uri, {
-        mimeType: 'image/png',
-        dialogTitle:
-          mode === 'check-in' ? 'Share your check-in'
-          : mode === 'challenge' ? 'Share your challenge'
-          : 'Share your streak',
-        UTI: 'public.png',
-      });
+      const message = summary ? buildShareMessage(summary) : null;
+      const nativeShare = Platform.OS === 'android' ? getNativeShare() : null;
+      if (Platform.OS === 'ios' && message) {
+        // iOS share sheet carries the image and the copyable text together.
+        await Share.share({ url: uri, message });
+      } else if (nativeShare && message) {
+        // Image with the message as its caption, in one intent.
+        await nativeShare.open({ url: uri, type: 'image/png', message, failOnCancel: false });
+      } else if (await Sharing.isAvailableAsync()) {
+        // Builds without react-native-share can't bundle text with the image —
+        // put the message on the clipboard so it can be pasted as the caption.
+        if (message) {
+          await Clipboard.setStringAsync(message);
+          setNotice('Caption with your link copied — paste it into your post.');
+        }
+        await Sharing.shareAsync(uri, {
+          mimeType: 'image/png',
+          dialogTitle:
+            mode === 'check-in' ? 'Share your check-in'
+            : mode === 'challenge' ? 'Share your challenge'
+            : 'Share your streak',
+          UTI: 'public.png',
+        });
+      } else {
+        setLoadError('Sharing is not available on this device.');
+      }
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : 'Could not share image.');
     } finally {
@@ -177,8 +214,7 @@ export default function ShareStatsScreen() {
             width={previewWidth}
             backgroundSource={effectiveBgSource()}
             avatarUri={effectiveAvatarUri()}
-            topImage={effectiveTopImage()}
-            hideLogo={bgMode === 'powr'}
+            showLevel={bgMode === 'level'}
           />
         )}
       </View>
@@ -231,7 +267,7 @@ export default function ShareStatsScreen() {
             )}
           </Pressable>
           <Text style={styles.helperText}>
-            Posts as a 1080×1920 image — works for Instagram, Facebook, TikTok and X.
+            {notice ?? 'Shares the card with a caption and your invite link — works for Instagram, Facebook, TikTok and X.'}
           </Text>
         </View>
       )}
