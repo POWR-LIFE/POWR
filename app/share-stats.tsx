@@ -4,8 +4,10 @@ import * as ImagePicker from 'expo-image-picker';
 import * as MediaLibrary from 'expo-media-library';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
+import * as Sharing from 'expo-sharing';
 import {
   ActivityIndicator,
+  Platform,
   Pressable,
   Share,
   StyleSheet,
@@ -189,7 +191,17 @@ export default function ShareStatsScreen() {
         result: 'tmpfile',
       });
       const shareUrl = await publishShareCard(summary, uri);
-      await Share.share({ message: buildShareMessage(summary, shareUrl) });
+      const message = buildShareMessage(summary, shareUrl);
+
+      if (Platform.OS === 'ios') {
+        // iOS: url=file URI + message text — sheet includes all image-capable apps
+        // (TikTok, Instagram, WhatsApp, X, Threads, Facebook, etc.)
+        await Share.share({ url: uri, message });
+      } else {
+        // Android: Share.share is text/plain only and excludes image apps.
+        // Sharing.shareAsync triggers the image-capable share sheet.
+        await Sharing.shareAsync(uri, { mimeType: 'image/jpeg', UTI: 'public.jpeg', dialogTitle: 'Share your workout' });
+      }
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : 'Could not publish your card.');
     } finally {
