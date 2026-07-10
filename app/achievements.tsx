@@ -304,7 +304,7 @@ function LevelCard({ levelDef, isUnlocked, isCurrent, isNext, totalEarned }: {
   isNext: boolean;
   totalEarned: number;
 }) {
-  // Four states: locked (concealed mystery card), next (locked + XP-to-unlock
+  // Four states: locked (named, artwork concealed), next (locked + XP-to-unlock
   // counter), earned (tier-accent premium), current (gold hero).
   const accent = isCurrent ? GOLD : TIER_ACCENT[levelDef.tier];
   const iconColor = isUnlocked ? accent : 'rgba(255,255,255,0.18)';
@@ -332,10 +332,10 @@ function LevelCard({ levelDef, isUnlocked, isCurrent, isNext, totalEarned }: {
     },
   ];
 
-  // ── Locked variant (concealed "mystery" card) ───────────────────────────────
-  // Locked levels never reveal their artwork or name — you only learn what a
-  // level is once you unlock it. The next level to unlock still shows how much
-  // XP remains, but its name stays hidden until earned.
+  // ── Locked variant ───────────────────────────────────────────────────────────
+  // Locked levels show their name but keep the artwork concealed — you can see
+  // what's coming, but not what it looks like. The next level to unlock also
+  // shows how much XP remains.
   if (!isUnlocked) {
     return (
       <View style={[cardShell, styles.levelCardLocked, isNext && styles.levelCardNext]}>
@@ -345,17 +345,19 @@ function LevelCard({ levelDef, isUnlocked, isCurrent, isNext, totalEarned }: {
 
         <Text style={[styles.levelNum, styles.levelNumLocked]}>LVL {levelDef.level}</Text>
 
-        {/* Concealed icon — a large lock stands in for the artwork */}
+        {/* Concealed artwork — a faded POWR mark stands in for it, the same
+            placeholder the onboarding avatar uses before a photo is picked. */}
         <View style={styles.levelLockIconWrap}>
-          <Ionicons
-            name="lock-closed"
-            size={34}
-            color={isNext ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.16)'}
+          <Image
+            source={require('@/assets/images/powr_transparent.png')}
+            style={[styles.levelLockLogo, { opacity: isNext ? 0.5 : 0.18 }]}
+            contentFit="contain"
           />
         </View>
 
-        {/* Name concealed until unlocked */}
-        <Text style={[styles.levelName, styles.levelNameHidden]}>LOCKED</Text>
+        <Text style={[styles.levelName, styles.levelNameLocked]}>
+          {levelDef.name.toUpperCase()}
+        </Text>
 
         {isNext ? (
           <NextLevelCounter
@@ -667,14 +669,20 @@ const styles = StyleSheet.create({
     position: 'relative',
     overflow: 'hidden',
   },
-  // Locked "mystery" card: same fixed height as the artwork cards so grid rows
-  // stay even, with contents centred around the concealed lock.
+  // Locked card: same fixed height as the artwork cards so grid rows stay
+  // even, with contents centred around the placeholder mark.
   levelCardLocked: {
     height: Math.round(CARD_W * 1.2),
     justifyContent: 'center',
   },
   levelLockIconWrap: {
     marginVertical: 8,
+  },
+  // The mark is landscape (roughly 1.43:1), so the box is sized to give it the
+  // same visual height the lock glyph had.
+  levelLockLogo: {
+    width: 46,
+    height: 34,
   },
   // Level number pinned top-left on the locked card (matches the artwork cards).
   levelNumLocked: {
@@ -684,7 +692,7 @@ const styles = StyleSheet.create({
     marginLeft: 0,
   },
   // The next level to unlock: a faint gold hint so it stands out from the
-  // plain locked cards without revealing what it is.
+  // plain locked cards.
   levelCardNext: {
     borderColor: withAlpha(GOLD, 0.35),
     backgroundColor: 'rgba(30,28,18,0.92)',
@@ -773,10 +781,8 @@ const styles = StyleSheet.create({
     color: TEXT,
     textAlign: 'center',
   },
-  levelNameHidden: {
-    color: 'rgba(255,255,255,0.32)',
-    letterSpacing: 2.5,
-    fontWeight: '600',
+  levelNameLocked: {
+    color: 'rgba(255,255,255,0.45)',
   },
   levelXp: {
     fontSize: 9,
