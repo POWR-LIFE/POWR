@@ -53,6 +53,29 @@ const DISCOUNT_TYPES = [
     { value: 'fixed_amount', label: '£ Off' },
 ];
 
+// ── Reward Details sub-steps ─────────────────────────────────────────────────
+// The Details tab is filled a section at a time rather than as one long scroll.
+// Steps stay freely clickable (soft gating); a step reports "complete" when its
+// required fields (DETAIL_STEP_REQUIRED) are filled. Codes and Partner keep
+// their own tabs — only Details is stepped.
+const DETAIL_STEPS = [
+    { key: 'identity', label: 'Identity', hint: 'Brand, title & logo' },
+    { key: 'offer',    label: 'Offer',    hint: 'Value, type & copy' },
+    { key: 'media',    label: 'Media',    hint: 'Hero image & video' },
+    { key: 'pricing',  label: 'Pricing',  hint: 'Cost, stock & caps' },
+];
+
+// Required fields per Details sub-step (for the completion tick / gating).
+// Only brand+title (identity) and a positive cost (pricing) are truly required
+// — everything on Offer and Media is optional, so those steps are always
+// "complete" and never block Next.
+const DETAIL_STEP_REQUIRED = {
+    identity: (f) => !!f.brand_name?.trim() && !!f.title?.trim(),
+    offer:    () => true,
+    media:    () => true,
+    pricing:  (f) => Number(f.powr_cost) > 0,
+};
+
 const formatDiscountValue = (value) => {
     const numeric = Number(value);
     if (!Number.isFinite(numeric)) return '';
@@ -160,6 +183,7 @@ export default function RewardManager() {
     const [savingOrder, setSavingOrder] = useState(false);
     const [portalAccessOpen, setPortalAccessOpen] = useState(false);
     const [editorTab, setEditorTab] = useState('details'); // 'details' | 'codes' | 'partner'
+    const [detailStep, setDetailStep] = useState(0);       // sub-step within the Details tab
 
     // Distinct reward brands (case-insensitive) for the Portal Access modal
     const portalBrands = (() => {
@@ -188,6 +212,11 @@ export default function RewardManager() {
     // applies (e.g. the reward kind was changed), fall back to Reward Details.
     const codesEligible = !!editingReward && formData.reward_kind === 'digital' && formData.integration_type !== 'AFFILIATE';
     const activeTab = editorTab === 'codes' && !codesEligible ? 'details' : editorTab;
+
+    // Details sub-step state — which section of the Details tab is showing, and
+    // whether each step's required fields are filled (for the completion tick).
+    const detailStepKey = DETAIL_STEPS[detailStep].key;
+    const detailStepDone = (key) => DETAIL_STEP_REQUIRED[key](formData);
 
     useEffect(() => { fetchData(); }, []);
 
@@ -248,6 +277,7 @@ export default function RewardManager() {
     const openCreate = () => {
         setEditingReward(null);
         setEditorTab('details');
+        setDetailStep(0);
         setFormData({ ...EMPTY_FORM });
         setCodeStats(null);
         setCodePool({ rows: [], total: 0 });
@@ -266,6 +296,7 @@ export default function RewardManager() {
     const openEdit = async (reward) => {
         setEditingReward(reward);
         setEditorTab('details');
+        setDetailStep(0);
         setFormData({
             partner_id: reward.partner_id ?? '',
             brand_name: reward.brand_name || '',
@@ -926,11 +957,40 @@ export default function RewardManager() {
                             </div>
 
                             <div className={activeTab === 'details' ? 'grid 2xl:grid-cols-[minmax(0,1fr)_360px] gap-x-16 gap-y-12 items-start' : 'hidden'}>
-                            {/* Form fields — two columns when there's no phone beside them,
-                                back to a single column once the live preview claims the right rail. */}
-                            <div className="grid lg:grid-cols-2 2xl:grid-cols-1 gap-x-12 gap-y-0 min-w-0">
-                            {/* Left column — identity & copy */}
-                            <div>
+                            {/* Form fields — stepped one section at a time; the live
+                                preview claims the right rail on wide screens. */}
+                            <div className="min-w-0">
+
+                            {/* Details sub-step rail — Identity · Offer · Media · Pricing.
+                                Freely clickable (soft gating); a tick marks a done step. */}
+                            <div className="flex items-stretch gap-2 mb-4 overflow-x-auto pb-1">
+                                {DETAIL_STEPS.map((s, i) => {
+                                    const active = i === detailStep;
+                                    const done = detailStepDone(s.key) && i !== detailStep;
+                                    return (
+                                        <button
+                                            key={s.key}
+                                            type="button"
+                                            onClick={() => setDetailStep(i)}
+                                            className={`flex-1 min-w-[8.5rem] text-left px-4 py-3 rounded-2xl border transition-all ${active ? 'border-[#E8D200] bg-[#E8D200]/10' : 'border-[#E6E6E1] bg-white hover:border-[#DDD]'}`}
+                                        >
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <span className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-black shrink-0 ${active ? 'bg-[#E8D200] text-[#080808]' : done ? 'bg-[#10B981] text-white' : 'bg-[#F0F0EC] text-[#AAA]'}`}>
+                                                    {done ? <Check size={12} /> : i + 1}
+                                                </span>
+                                                <span className={`text-[10px] uppercase tracking-[0.2em] font-black truncate ${active ? 'text-[#8a7600]' : 'text-[#888]'}`}>{s.label}</span>
+                                            </div>
+                                            <p className="text-[9px] uppercase tracking-[0.2em] font-black text-[#BBB] truncate pl-7">{s.hint}</p>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                            <div className="h-1 w-full bg-[#F0F0EC] rounded-full overflow-hidden mb-10">
+                                <div className="h-full bg-[#E8D200] transition-all duration-500" style={{ width: `${((detailStep + 1) / DETAIL_STEPS.length) * 100}%` }} />
+                            </div>
+
+                            {/* ── Identity — brand, sector, title, logo ── */}
+                            <div className={detailStepKey === 'identity' ? 'animate-in fade-in slide-in-from-right-2 duration-300' : 'hidden'}>
                             <div className="mb-8">
                                 <label className="block text-[10px] uppercase tracking-[0.4em] text-[#666666] font-black mb-4">Brand Name <span className="text-[#999999] normal-case font-black ml-2">— shown on the reward card</span></label>
                                 <input
@@ -977,7 +1037,11 @@ export default function RewardManager() {
                                     </div>
                                 </div>
                             </div>
+                            </div>
+                            {/* end Identity step */}
 
+                            {/* ── Offer — type, value, discount & all copy ── */}
+                            <div className={detailStepKey === 'offer' ? 'animate-in fade-in slide-in-from-right-2 duration-300' : 'hidden'}>
                             <div className="mb-8">
                                 <label className="block text-[10px] uppercase tracking-[0.4em] text-[#666666] font-black mb-4">Intelligence Description</label>
                                 <textarea rows={2} className="w-full p-8 bg-white border border-[#E6E6E1] rounded-[2rem] focus:border-[#E8D200]/40 outline-none transition-all text-sm text-[#222222] leading-relaxed resize-none" value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} />
@@ -1000,10 +1064,7 @@ export default function RewardManager() {
                                 <label className="block text-[10px] uppercase tracking-[0.4em] text-[#666666] font-black mb-4">Terms &amp; Conditions</label>
                                 <textarea rows={3} placeholder="E.G. SINGLE USE. VALID 90 DAYS. NOT COMBINABLE WITH OTHER OFFERS." className="w-full p-6 bg-white border border-[#E6E6E1] rounded-[2rem] focus:border-[#E8D200]/40 outline-none transition-all text-xs text-[#222222] leading-relaxed resize-none" value={formData.terms} onChange={e => setFormData({ ...formData, terms: e.target.value })} />
                             </div>
-                            </div>
 
-                            {/* Right column — pricing, media & config */}
-                            <div>
                             {/* Kind + code source */}
                             <div className="mb-8">
                                 <label className="block text-[10px] uppercase tracking-[0.4em] text-[#666666] font-black mb-4">Reward Type</label>
@@ -1057,7 +1118,11 @@ export default function RewardManager() {
                                     </div>
                                 </div>
                             )}
+                            </div>
+                            {/* end Offer step */}
 
+                            {/* ── Media — hero image, hero video, brand colour, URL ── */}
+                            <div className={detailStepKey === 'media' ? 'animate-in fade-in slide-in-from-right-2 duration-300' : 'hidden'}>
                             {/* Hero image upload */}
                             <div className="mb-8">
                                 <label className="block text-[10px] uppercase tracking-[0.4em] text-[#666666] font-black mb-4">Hero Banner Image <span className="text-[#333333] normal-case font-black ml-2">— large image shown on expanded card</span></label>
@@ -1150,7 +1215,11 @@ export default function RewardManager() {
                                     <input type="url" placeholder="HTTPS://..." className="w-full h-16 px-8 bg-white border border-[#E6E6E1] rounded-3xl focus:border-[#E8D200]/40 outline-none transition-all text-[12px] font-bold text-[#1A1A1A] placeholder-[#BBBBBB] tracking-[0.1em]" value={formData.url} onChange={e => setFormData({ ...formData, url: e.target.value })} />
                                 </div>
                             </div>
+                            </div>
+                            {/* end Media step */}
 
+                            {/* ── Pricing — cost, stock & per-user cap ── */}
+                            <div className={detailStepKey === 'pricing' ? 'animate-in fade-in slide-in-from-right-2 duration-300' : 'hidden'}>
                             <div className="grid grid-cols-2 gap-8 mb-12">
                                 <div>
                                     <label className="block text-[10px] uppercase tracking-[0.4em] text-[#666666] font-black mb-4">POWR Value Cost</label>
@@ -1181,8 +1250,36 @@ export default function RewardManager() {
                                 </p>
                             </div>
                             </div>
+                            {/* end Pricing step */}
+
+                            {/* Step nav — page Back/Next through the Details sub-steps.
+                                The form's Save button (below the tabs) submits from any step. */}
+                            <div className="flex items-center justify-between gap-6 pt-8 mt-4 border-t border-[#E6E6E1]">
+                                <button
+                                    type="button"
+                                    onClick={() => setDetailStep(Math.max(0, detailStep - 1))}
+                                    disabled={detailStep === 0}
+                                    className="h-12 px-8 text-[10px] font-black uppercase tracking-[0.2em] text-[#666] hover:text-[#1A1A1A] transition-colors disabled:opacity-30 disabled:pointer-events-none"
+                                >
+                                    ← Back
+                                </button>
+                                <span className="text-[10px] uppercase tracking-[0.3em] text-[#BBB] font-black">
+                                    Step {detailStep + 1} / {DETAIL_STEPS.length}
+                                </span>
+                                {detailStep < DETAIL_STEPS.length - 1 ? (
+                                    <button
+                                        type="button"
+                                        onClick={() => setDetailStep(detailStep + 1)}
+                                        className="h-12 px-10 bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.2em] rounded-full transition-all hover:translate-y-[-2px] shadow-lg shadow-[#E8D200]/20"
+                                    >
+                                        Next →
+                                    </button>
+                                ) : (
+                                    <span className="text-[10px] uppercase tracking-[0.3em] text-[#8a7600] font-black">Commit below ↓</span>
+                                )}
                             </div>
-                            {/* end two-column form fields */}
+                            </div>
+                            {/* end stepped form fields */}
 
                             {/* Live app preview — mirrors the form, identical to the partner portal */}
                             <div className="hidden 2xl:block">

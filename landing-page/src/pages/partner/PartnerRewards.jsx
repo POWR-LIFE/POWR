@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabase';
 import { uploadPublicImage } from '../../lib/storage';
 import { useToast } from '../../lib/toast';
 import { useAuth } from '../../App';
-import RewardAppPreview from '../../components/RewardAppPreview';
+import RewardAppPreview, { previewValueLabel } from '../../components/RewardAppPreview';
 
 const CATEGORY_OPTIONS = [
     { value: 'food',    label: 'Eat' },
@@ -75,6 +75,51 @@ const BLANK_FORM = {
     logo_url: null, hero_image_url: null, hero_video_url: null,
 };
 
+// ── Submission wizard ────────────────────────────────────────────────────────
+// The form is split into ordered steps so brands fill it out a section at a
+// time instead of facing one long scroll. Each step validates its own required
+// fields (see fieldErrors); the "Next" button is blocked and errors surface
+// inline until the current step is complete. Steps stay freely clickable — this
+// is soft gating, not a locked sequence.
+const WIZARD_STEPS = [
+    { key: 'offer',   label: 'The Offer',  hint: 'What members get' },
+    { key: 'details', label: 'Details',    hint: 'Copy & terms' },
+    { key: 'code',    label: 'Promo Code', hint: 'Your code segment' },
+    { key: 'imagery', label: 'Imagery',    hint: 'Logo & hero' },
+    { key: 'review',  label: 'Review',     hint: 'Check & submit' },
+];
+
+// Which required fields live on each step, and the message shown when missing.
+// Keyed by field so the input can highlight itself and the step can tell
+// whether it's complete. Kept in one place so validation and the review
+// summary never drift apart.
+function fieldErrors(form) {
+    const e = {};
+    if (!form.title.trim()) e.title = 'Reward title is required';
+    if (!form.description.trim()) e.description = 'Short description is required';
+    if (form.discount_type) {
+        if (!(Number(form.discount_value) > 0)) e.discount_value = 'Enter a value greater than 0';
+    } else if (!form.value_label.trim()) {
+        e.value_label = 'Add a value label (e.g. £20 value)';
+    }
+    if (!form.offer.trim()) e.offer = 'Offer detail is required';
+    if (!form.partner_blurb.trim()) e.partner_blurb = 'A line about your brand is required';
+    if (!form.terms.trim()) e.terms = 'Terms & conditions are required';
+    if (cleanPrefix(form.code_prefix).length < 2) e.code_prefix = 'Code name needs at least 2 characters';
+    if (!form.logo_url) e.logo_url = 'Upload a logo';
+    if (!form.hero_image_url) e.hero_image_url = 'Upload a hero image';
+    return e;
+}
+
+// Required-field keys per step, in order, so a step reports complete/incomplete.
+const STEP_FIELDS = {
+    offer:   ['title', 'description', 'discount_value', 'value_label'],
+    details: ['offer', 'partner_blurb', 'terms'],
+    code:    ['code_prefix'],
+    imagery: ['logo_url', 'hero_image_url'],
+    review:  [],
+};
+
 // Extract the brand segment from a stored promo code: 'POWR-TRIBE' / 'POWR-TRIBE-XXXXXX' / 'TRIBE' → 'TRIBE'
 function prefixFromPromo(promo, fallbackName) {
     const parts = String(promo ?? '').toUpperCase().split('-').filter(Boolean);
@@ -134,9 +179,19 @@ export default function PartnerRewards() {
     const [limitOpen, setLimitOpen] = useState(false);
     const [contactNote, setContactNote] = useState('');
     const [sendingContact, setSendingContact] = useState(false);
+    const [stepIndex, setStepIndex] = useState(0);   // active wizard step
+    const [showErrors, setShowErrors] = useState(false); // reveal inline errors after a blocked Next/Submit
     const pageTopRef = useRef(null);
 
     const brand = partnerData?.brand_name;
+
+    // Live validation for the open form. errors is keyed by field; a step is
+    // "complete" when none of its required fields have an error.
+    const errors = fieldErrors(form);
+    const step = WIZARD_STEPS[stepIndex];
+    const stepComplete = (key) => STEP_FIELDS[key].every(f => !errors[f]);
+    const currentStepComplete = stepComplete(step.key);
+    const err = (field) => (showErrors && errors[field] ? errors[field] : null);
 
     // Count rewards toward the cap: live rewards + any brand-new submission
     // still in review. Listing-update change requests (target_reward_id) and
@@ -180,9 +235,12 @@ export default function PartnerRewards() {
     }, [brand]);
 
     // The portal scrolls inside the layout's container, so bring the page top
-    // back into view when switching between list and form.
+    // back into view when switching between list and form. Opening the form
+    // (new, edit listing, or edit submission) always starts on step one with a
+    // clean error slate.
     useEffect(() => {
         pageTopRef.current?.scrollIntoView({ block: 'start' });
+        if (formOpen) { setStepIndex(0); setShowErrors(false); }
     }, [formOpen]);
 
     const fetchAll = async () => {
@@ -323,23 +381,14 @@ export default function PartnerRewards() {
 
     const handleSave = async (e) => {
         e.preventDefault();
-        const missing = [];
-        if (!form.title.trim()) missing.push('Reward title');
-        if (!form.description.trim()) missing.push('Short description');
-        if (form.discount_type) {
-            if (!(Number(form.discount_value) > 0)) missing.push('Discount value');
-        } else if (!form.value_label.trim()) {
-            missing.push('Value label');
-        }
-        if (!form.offer.trim()) missing.push('Offer detail');
-        if (!form.partner_blurb.trim()) missing.push('About your brand');
-        if (!form.terms.trim()) missing.push('Terms & conditions');
-        if (cleanPrefix(form.code_prefix).length < 2) missing.push('Promo code name (min 2 characters)');
-        if (!form.logo_url) missing.push('Logo image');
-        if (!form.hero_image_url) missing.push('Hero image');
-
-        if (missing.length) {
-            toast.error(`Still needed: ${missing.join(', ')}`);
+        // Final guard: if anything's still missing, reveal inline errors and
+        // jump to the first step that has a gap rather than a vague toast.
+        const problems = fieldErrors(form);
+        if (Object.keys(problems).length) {
+            setShowErrors(true);
+            const firstBad = WIZARD_STEPS.findIndex(s => !STEP_FIELDS[s.key].every(f => !problems[f]));
+            if (firstBad >= 0) setStepIndex(firstBad);
+            toast.error('A few fields still need attention');
             return;
         }
 
@@ -420,17 +469,47 @@ export default function PartnerRewards() {
                         </p>
                     </div>
 
-                    <form onSubmit={handleSave} className="bg-white border border-[#E6E6E1] rounded-3xl p-10 space-y-10">
-                        {/* The Offer */}
-                        <section className="space-y-5">
-                            <h3 className="text-[10px] uppercase tracking-[0.5em] text-[#BBBBBB] font-black">The Offer</h3>
+                    <form onSubmit={handleSave} className="bg-white border border-[#E6E6E1] rounded-3xl p-10">
+                        {/* Step rail — one section at a time. Steps stay clickable
+                            (soft gating); a green tick marks a completed step. */}
+                        <div className="flex items-stretch gap-2 mb-4 overflow-x-auto pb-1">
+                            {WIZARD_STEPS.map((s, i) => {
+                                const active = i === stepIndex;
+                                const done = stepComplete(s.key) && i !== stepIndex;
+                                return (
+                                    <button
+                                        key={s.key}
+                                        type="button"
+                                        onClick={() => setStepIndex(i)}
+                                        className={`group flex-1 min-w-[8.5rem] text-left px-4 py-3 rounded-2xl border transition-all ${active ? 'border-[#E8D200] bg-[#E8D200]/10' : 'border-[#EDEDEA] bg-white hover:border-[#DDD]'}`}
+                                    >
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <span className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-black shrink-0 ${active ? 'bg-[#E8D200] text-[#080808]' : done ? 'bg-[#10B981] text-white' : 'bg-[#F0F0EC] text-[#AAA]'}`}>
+                                                {done ? <CheckCircle size={12} /> : i + 1}
+                                            </span>
+                                            <span className={`text-[10px] uppercase tracking-[0.2em] font-black truncate ${active ? 'text-[#8a7600]' : 'text-[#888]'}`}>{s.label}</span>
+                                        </div>
+                                        <p className="text-[9px] uppercase tracking-[0.2em] font-black text-[#BBB] truncate pl-7">{s.hint}</p>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                        <div className="h-1 w-full bg-[#F0F0EC] rounded-full overflow-hidden mb-10">
+                            <div className="h-full bg-[#E8D200] transition-all duration-500" style={{ width: `${((stepIndex + 1) / WIZARD_STEPS.length) * 100}%` }} />
+                        </div>
+
+                        {/* ── Step 1 · The Offer ── */}
+                        {step.key === 'offer' && (
+                        <section className="space-y-5 animate-in fade-in slide-in-from-right-2 duration-300">
                             <div>
                                 <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">Reward Title *</label>
-                                <input value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))} placeholder="e.g. 30% off your first order" maxLength={60} className={INPUT} />
+                                <input value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))} placeholder="e.g. 30% off your first order" maxLength={60} className={`${INPUT} ${err('title') ? 'border-red-400' : ''}`} />
+                                {err('title') && <p className="mt-2 text-[10px] font-black text-red-500 tracking-[0.1em]">{err('title')}</p>}
                             </div>
                             <div>
                                 <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">Short Description *</label>
-                                <input value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} placeholder="e.g. Your Brand · Any product" maxLength={80} className={INPUT} />
+                                <input value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} placeholder="e.g. Your Brand · Any product" maxLength={80} className={`${INPUT} ${err('description') ? 'border-red-400' : ''}`} />
+                                {err('description') && <p className="mt-2 text-[10px] font-black text-red-500 tracking-[0.1em]">{err('description')}</p>}
                             </div>
                             <div className="grid grid-cols-3 gap-4">
                                 <div>
@@ -442,12 +521,12 @@ export default function PartnerRewards() {
                                 {form.discount_type ? (
                                     <div>
                                         <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">{form.discount_type === 'percentage' ? 'Percent off *' : 'Amount off £ *'}</label>
-                                        <input type="number" min="0" value={form.discount_value} onChange={e => setForm(p => ({ ...p, discount_value: e.target.value }))} placeholder={form.discount_type === 'percentage' ? '30' : '20'} className={INPUT} />
+                                        <input type="number" min="0" value={form.discount_value} onChange={e => setForm(p => ({ ...p, discount_value: e.target.value }))} placeholder={form.discount_type === 'percentage' ? '30' : '20'} className={`${INPUT} ${err('discount_value') ? 'border-red-400' : ''}`} />
                                     </div>
                                 ) : (
                                     <div>
                                         <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">Value label *</label>
-                                        <input value={form.value_label} onChange={e => setForm(p => ({ ...p, value_label: e.target.value }))} placeholder="e.g. £20 value" className={INPUT} />
+                                        <input value={form.value_label} onChange={e => setForm(p => ({ ...p, value_label: e.target.value }))} placeholder="e.g. £20 value" className={`${INPUT} ${err('value_label') ? 'border-red-400' : ''}`} />
                                     </div>
                                 )}
                                 <div>
@@ -457,6 +536,7 @@ export default function PartnerRewards() {
                                     </select>
                                 </div>
                             </div>
+                            {(err('discount_value') || err('value_label')) && <p className="text-[10px] font-black text-red-500 tracking-[0.1em]">{err('discount_value') || err('value_label')}</p>}
                             <div>
                                 <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">Reward type *</label>
                                 <div className="flex gap-3">
@@ -468,30 +548,41 @@ export default function PartnerRewards() {
                                     ))}
                                 </div>
                             </div>
+                        </section>
+                        )}
+
+                        {/* ── Step 2 · Details & Terms ── */}
+                        {step.key === 'details' && (
+                        <section className="space-y-5 animate-in fade-in slide-in-from-right-2 duration-300">
                             <div>
                                 <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">Offer detail * (expanded view)</label>
-                                <textarea value={form.offer} onChange={e => setForm(p => ({ ...p, offer: e.target.value }))} rows={2} placeholder="e.g. Get 30% off any single order. New customers only." className={`${INPUT} h-auto py-4 resize-none`} />
+                                <textarea value={form.offer} onChange={e => setForm(p => ({ ...p, offer: e.target.value }))} rows={2} placeholder="e.g. Get 30% off any single order. New customers only." className={`${INPUT} h-auto py-4 resize-none ${err('offer') ? 'border-red-400' : ''}`} />
+                                {err('offer') && <p className="mt-2 text-[10px] font-black text-red-500 tracking-[0.1em]">{err('offer')}</p>}
                             </div>
                             <div>
                                 <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">About your brand *</label>
-                                <textarea value={form.partner_blurb} onChange={e => setForm(p => ({ ...p, partner_blurb: e.target.value }))} rows={2} placeholder="A short line about who you are." className={`${INPUT} h-auto py-4 resize-none`} />
+                                <textarea value={form.partner_blurb} onChange={e => setForm(p => ({ ...p, partner_blurb: e.target.value }))} rows={2} placeholder="A short line about who you are." className={`${INPUT} h-auto py-4 resize-none ${err('partner_blurb') ? 'border-red-400' : ''}`} />
+                                {err('partner_blurb') && <p className="mt-2 text-[10px] font-black text-red-500 tracking-[0.1em]">{err('partner_blurb')}</p>}
                             </div>
                             <div>
                                 <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">Terms & conditions *</label>
-                                <textarea value={form.terms} onChange={e => setForm(p => ({ ...p, terms: e.target.value }))} rows={2} placeholder="e.g. One use per member. Cannot be combined with other offers." className={`${INPUT} h-auto py-4 resize-none`} />
+                                <textarea value={form.terms} onChange={e => setForm(p => ({ ...p, terms: e.target.value }))} rows={2} placeholder="e.g. One use per member. Cannot be combined with other offers." className={`${INPUT} h-auto py-4 resize-none ${err('terms') ? 'border-red-400' : ''}`} />
+                                {err('terms') && <p className="mt-2 text-[10px] font-black text-red-500 tracking-[0.1em]">{err('terms')}</p>}
                             </div>
                             <div>
-                                <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">Website URL</label>
+                                <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">Website URL <span className="text-[#BBB] normal-case tracking-normal ml-1">— optional</span></label>
                                 <input value={form.url} onChange={e => setForm(p => ({ ...p, url: e.target.value }))} placeholder="https://yourbrand.com" className={INPUT} />
                             </div>
                         </section>
+                        )}
 
-                        {/* Promo code */}
-                        <section className="space-y-4">
-                            <h3 className="text-[10px] uppercase tracking-[0.5em] text-[#BBBBBB] font-black">Promo Code</h3>
+                        {/* ── Step 3 · Promo Code ── */}
+                        {step.key === 'code' && (
+                        <section className="space-y-4 animate-in fade-in slide-in-from-right-2 duration-300">
                             <div>
                                 <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">Code name * (your brand segment)</label>
-                                <input value={form.code_prefix} onChange={e => setForm(p => ({ ...p, code_prefix: cleanPrefix(e.target.value) }))} placeholder="e.g. TRIBE" maxLength={8} className={`${INPUT} uppercase tracking-[0.2em]`} />
+                                <input value={form.code_prefix} onChange={e => setForm(p => ({ ...p, code_prefix: cleanPrefix(e.target.value) }))} placeholder="e.g. TRIBE" maxLength={8} className={`${INPUT} uppercase tracking-[0.2em] ${err('code_prefix') ? 'border-red-400' : ''}`} />
+                                {err('code_prefix') && <p className="mt-2 text-[10px] font-black text-red-500 tracking-[0.1em]">{err('code_prefix')}</p>}
                             </div>
                             <div className="p-5 rounded-2xl border border-[#E8D200]/40 bg-[#E8D200]/5">
                                 <p className="text-[9px] uppercase tracking-[0.3em] font-black text-[#777] mb-2">Members receive</p>
@@ -500,25 +591,32 @@ export default function PartnerRewards() {
                                 </div>
                             </div>
                         </section>
+                        )}
 
-                        {/* Imagery */}
-                        <section className="space-y-4">
-                            <h3 className="text-[10px] uppercase tracking-[0.5em] text-[#BBBBBB] font-black">Imagery</h3>
+                        {/* ── Step 4 · Imagery ── */}
+                        {step.key === 'imagery' && (
+                        <section className="space-y-4 animate-in fade-in slide-in-from-right-2 duration-300">
                             <div className="grid grid-cols-2 gap-5">
-                                <ImagePicker
-                                    label="Logo / brand mark * (square, min 512×512px)"
-                                    preview={form.logo_url}
-                                    uploading={uploadingLogo}
-                                    aspect="aspect-square"
-                                    onFile={async (file) => { const url = await uploadImage(file, 'logo'); if (url) setForm(p => ({ ...p, logo_url: url })); }}
-                                />
-                                <ImagePicker
-                                    label="Hero / banner * (landscape 16:9, min 1200×675px)"
-                                    preview={form.hero_image_url}
-                                    uploading={uploadingHero}
-                                    aspect="aspect-video"
-                                    onFile={async (file) => { const url = await uploadImage(file, 'hero'); if (url) setForm(p => ({ ...p, hero_image_url: url })); }}
-                                />
+                                <div>
+                                    <ImagePicker
+                                        label="Logo / brand mark * (square, min 512×512px)"
+                                        preview={form.logo_url}
+                                        uploading={uploadingLogo}
+                                        aspect="aspect-square"
+                                        onFile={async (file) => { const url = await uploadImage(file, 'logo'); if (url) setForm(p => ({ ...p, logo_url: url })); }}
+                                    />
+                                    {err('logo_url') && <p className="mt-2 text-[10px] font-black text-red-500 tracking-[0.1em]">{err('logo_url')}</p>}
+                                </div>
+                                <div>
+                                    <ImagePicker
+                                        label="Hero / banner * (landscape 16:9, min 1200×675px)"
+                                        preview={form.hero_image_url}
+                                        uploading={uploadingHero}
+                                        aspect="aspect-video"
+                                        onFile={async (file) => { const url = await uploadImage(file, 'hero'); if (url) setForm(p => ({ ...p, hero_image_url: url })); }}
+                                    />
+                                    {err('hero_image_url') && <p className="mt-2 text-[10px] font-black text-red-500 tracking-[0.1em]">{err('hero_image_url')}</p>}
+                                </div>
                                 <div className="col-span-2">
                                     <ImagePicker
                                         label="Hero video (optional) — plays instead of the image; MP4, ≤50 MB. Image stays as the still fallback."
@@ -535,20 +633,66 @@ export default function PartnerRewards() {
                                 </div>
                             </div>
                         </section>
+                        )}
 
-                        {/* Footer */}
-                        <div className="flex items-center justify-between gap-6 pt-8 border-t border-[#E6E6E1]">
-                            <p className="text-[10px] text-[#BBB] font-black max-w-sm leading-relaxed">
+                        {/* ── Step 5 · Review ── */}
+                        {step.key === 'review' && (
+                        <section className="space-y-4 animate-in fade-in slide-in-from-right-2 duration-300">
+                            <p className="text-[10px] uppercase tracking-[0.3em] text-[#BBB] font-black">Check everything below, then submit. Tap any step above to edit.</p>
+                            <div className="rounded-2xl border border-[#EDEDEA] divide-y divide-[#F0F0EC]">
+                                {[
+                                    ['Title', form.title],
+                                    ['Description', form.description],
+                                    ['Value', previewValueLabel({ valueLabel: form.value_label, discountType: form.discount_type, discountValue: form.discount_value }) || '—'],
+                                    ['Sector', CATEGORY_OPTIONS.find(o => o.value === form.category)?.label ?? form.category],
+                                    ['Reward type', form.reward_kind === 'physical' ? 'Physical item' : 'Digital code'],
+                                    ['Offer detail', form.offer],
+                                    ['About brand', form.partner_blurb],
+                                    ['Terms', form.terms],
+                                    ['Website', form.url || '—'],
+                                    ['Promo code', `POWR-${cleanPrefix(form.code_prefix) || 'BRAND'}-A1B2C3`],
+                                    ['Imagery', [form.logo_url && 'Logo', form.hero_image_url && 'Hero', form.hero_video_url && 'Video'].filter(Boolean).join(' · ') || '—'],
+                                ].map(([k, v]) => (
+                                    <div key={k} className="flex gap-4 px-5 py-3">
+                                        <span className="w-32 shrink-0 text-[9px] uppercase tracking-[0.25em] font-black text-[#AAA] pt-0.5">{k}</span>
+                                        <span className="text-sm text-[#1A1A1A] font-light break-words min-w-0">{v}</span>
+                                    </div>
+                                ))}
+                            </div>
+                            <p className="text-[10px] text-[#BBB] font-black leading-relaxed">
                                 {editingListing
                                     ? 'POWR will review your changes and apply them to the live listing.'
                                     : 'Our team will set the points price and review before it goes live.'}
                             </p>
-                            <div className="flex gap-4 shrink-0">
-                                <button type="button" onClick={closeForm} className="h-12 px-8 text-[10px] font-black uppercase tracking-[0.2em] text-[#666] hover:text-[#222] transition-colors">Cancel</button>
+                        </section>
+                        )}
+
+                        {/* Footer nav — Back / Next through the steps, Submit on the last. */}
+                        <div className="flex items-center justify-between gap-6 pt-8 mt-10 border-t border-[#E6E6E1]">
+                            <button
+                                type="button"
+                                onClick={() => (stepIndex === 0 ? closeForm() : setStepIndex(stepIndex - 1))}
+                                className="h-12 px-8 text-[10px] font-black uppercase tracking-[0.2em] text-[#666] hover:text-[#222] transition-colors"
+                            >
+                                {stepIndex === 0 ? 'Cancel' : '← Back'}
+                            </button>
+                            {step.key === 'review' ? (
                                 <button type="submit" disabled={saving || uploadingLogo || uploadingHero || uploadingHeroVideo} className="h-12 px-10 bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.2em] rounded-full transition-all hover:translate-y-[-2px] shadow-lg shadow-[#E8D200]/20 disabled:opacity-50">
                                     {saving ? 'Submitting...' : editingListing ? 'Submit Changes' : editingSubmission ? 'Update Submission' : 'Submit for Review'}
                                 </button>
-                            </div>
+                            ) : (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        if (!currentStepComplete) { setShowErrors(true); return; }
+                                        setShowErrors(false);
+                                        setStepIndex(stepIndex + 1);
+                                    }}
+                                    className="h-12 px-10 bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.2em] rounded-full transition-all hover:translate-y-[-2px] shadow-lg shadow-[#E8D200]/20"
+                                >
+                                    Next →
+                                </button>
+                            )}
                         </div>
                     </form>
                 </div>
