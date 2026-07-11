@@ -11,9 +11,10 @@ import { StoreBadges, ChapterBreak } from './stages/shared';
 /**
  * /v2 — scroll-driven app showcase, on the live landing page's canvas:
  * #080808, film grain, video hero. Five acts joined by film-style chapter
- * cards: Move (the map), Earn (horizontal track), Redeem (mirrored track +
- * card flip), Together (podium assembly), Become (the level ascent, legend
- * tier classified). Live page at / is untouched.
+ * cards: Move (the map), Earn (the day thread + streak ignition), Redeem
+ * (poster vault + the spend), Together (a shared challenge, invite →
+ * race → group bonus), Become (the level ascent, legend tier classified).
+ * Live page at / is untouched.
  */
 export default function LandingV2() {
   return (

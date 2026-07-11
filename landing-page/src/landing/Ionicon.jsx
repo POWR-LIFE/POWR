@@ -31,6 +31,7 @@ const GLYPHS = {
   'watch': 0xf62b, 'watch-outline': 0xf62c,
   'lock-closed': 0xf3c7, 'lock-closed-outline': 0xf3c8,
   'copy-outline': 0xf290,
+  'time-outline': 0xf5de, 'hourglass-outline': 0xf386,
   'sparkles': 0xf58c,
   'close': 0xf24a,
 };
