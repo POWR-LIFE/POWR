@@ -974,12 +974,28 @@ async function advanceActiveSession(active: StoredGeofence): Promise<void> {
  *  headless (separate JS context) when the app is closed, so it reads everything
  *  from AsyncStorage and never touches React. */
 async function evaluateLocationFix(coords: Location.LocationObjectCoords): Promise<void> {
-  // Reject coarse fixes — a low-accuracy position can't be trusted against a tight
-  // radius and would otherwise fire a false "You're in" from far away.
-  if (coords.accuracy != null && coords.accuracy > MAX_FIX_ACCURACY_M) return;
+  // A coarse fix can't be trusted against a tight radius — it must never fire a
+  // false "You're in" from far away (ENTER) or flap a real session out early
+  // (EXIT). But dwell progression (advanceActiveSession) is purely TIME-based and
+  // needs no position at all. Rejecting coarse fixes wholesale starved it for
+  // entire in-gym dwells (indoor GPS is routinely >100 m), so the 30-min claim
+  // only ran at app-open — 2026-07-03 + 2026-07-11 field sessions. A coarse fix
+  // now still ticks an active session; only the geometric decisions demand
+  // accuracy.
+  const isCoarse = coords.accuracy != null && coords.accuracy > MAX_FIX_ACCURACY_M;
 
   const raw = await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY);
   const active: StoredGeofence | null = raw ? JSON.parse(raw) : null;
+
+  if (active && isCoarse) {
+    // Position untrusted: skip the EXIT geometry (assume still inside — the same
+    // effective outcome as the old early-return) but keep the time-based dwell
+    // state machine alive so background claims fire without an app-open.
+    await advanceActiveSession(active);
+    return;
+  }
+
+  if (isCoarse) return; // ENTER detection needs a trusted position.
 
   if (active) {
     // Still inside the active circle? If geometry is missing (older active state),

@@ -1,7 +1,8 @@
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Platform, NativeModules } from 'react-native';
+import { Platform } from 'react-native';
+import { getGymUpgradeMinutes } from '@/lib/gymDwellConfig';
 const CHANNEL_DEFAULT = 'powr_default_v2';
 const CHANNEL_STREAK = 'powr_streak_v2';
 const CHANNEL_REWARDS = 'powr_rewards_v2';
@@ -33,18 +34,14 @@ export interface NotificationPayload {
   [key: string]: unknown;
 }
 
-// ---------------------------------------------------------------------------
-// Firebase background message handler
-// Must be registered outside of any React component (module-level)
-// ---------------------------------------------------------------------------
-
-if ((Platform.OS === 'android' || Platform.OS === 'ios') && NativeModules.RNFBAppModule) {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const messaging = require('@react-native-firebase/messaging').default;
-  messaging().setBackgroundMessageHandler(async (_remoteMessage: unknown) => {
-    // Background FCM messages are handled silently by the system.
-  });
-}
+// NOTE: Do NOT install @react-native-firebase/messaging alongside
+// expo-notifications. Both register a com.google.firebase.MESSAGING_EVENT
+// service on Android and only one receives each message; RNFB's won, handed
+// every Expo push (data-only FCM) to a no-op background handler, and silently
+// dropped it — remote pushes never displayed on standalone builds from
+// 2026-05-05 (926596c) until its removal on 2026-07-11. Expo pushes need
+// expo-notifications' own service to display. See
+// project_session_notification_incident_20260707.
 
 // ---------------------------------------------------------------------------
 // Foreground display handler — show banner even when app is open
@@ -137,27 +134,12 @@ export async function requestPermissionsAndGetToken(
     // projectId is read from app.json automatically via Constants.expoConfig
   });
 
-  // Get the raw FCM token via Firebase Messaging (Android) or fallback
-  let deviceToken: string | null = null;
-  if (Platform.OS === 'android' && NativeModules.RNFBAppModule) {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const messaging = require('@react-native-firebase/messaging').default;
-      await messaging().registerDeviceForRemoteMessages();
-      deviceToken = await messaging().getToken();
-    } catch {
-      // Fallback: try expo's device push token
-      deviceToken = await Notifications.getDevicePushTokenAsync().then(
-        (t) => t.data as string,
-        () => null,
-      );
-    }
-  } else {
-    deviceToken = await Notifications.getDevicePushTokenAsync().then(
-      (t) => t.data as string,
-      () => null,
-    );
-  }
+  // Raw native token (FCM on Android, APNs on iOS) for the direct-delivery
+  // fallback path. expo-notifications reads it natively — no Firebase SDK.
+  const deviceToken: string | null = await Notifications.getDevicePushTokenAsync().then(
+    (t) => t.data as string,
+    () => null,
+  );
 
   return {
     expoPushToken: tokenData.data,
@@ -443,9 +425,10 @@ export async function notifySessionCompleted(
   });
 }
 
-// On-device fallback for the 40-min tier bonus. Mirrors the server
+// On-device fallback for the upgrade-tier bonus. Mirrors the server
 // `session_upgraded` copy exactly so it's indistinguishable from the push. Fired
 // by the geofence client only when the server reports it couldn't deliver.
+// The threshold is admin-tunable (system_config → gym_upgrade_minutes).
 export async function notifySessionUpgraded(
   partnerName: string,
   sessionId: string,
@@ -456,7 +439,7 @@ export async function notifySessionUpgraded(
   const parts: string[] = [];
   if (name) parts.push(name);
   if (pts > 0) parts.push(`+${pts.toLocaleString()} pts`);
-  parts.push('40-min bonus');
+  parts.push(`${getGymUpgradeMinutes()}-min bonus`);
 
   await Notifications.scheduleNotificationAsync({
     identifier: `powr-session_upgraded-${sessionId}`,
