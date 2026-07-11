@@ -62,6 +62,7 @@ import UserProfile from './pages/admin/UserProfile';
 import WeeklyChallenges from './pages/admin/WeeklyChallenges';
 import NotificationManager from './pages/admin/NotificationManager';
 import AthleteSignup from './pages/AthleteSignup';
+import LandingV2 from './landing/LandingV2';
 import CookiePolicy from './pages/CookiePolicy';
 import DeleteAccount from './pages/DeleteAccount';
 import PartnerRewardSubmit from './pages/PartnerRewardSubmit';
@@ -1000,6 +1001,7 @@ export default function App() {
             <AuthProvider>
                 <Routes>
                     <Route path="/" element={<LandingPage />} />
+                    <Route path="/v2" element={<LandingV2 />} />
                     <Route path="/privacy" element={<PrivacyPolicy />} />
                     <Route path="/terms" element={<TermsOfService />} />
                     <Route path="/cookies" element={<CookiePolicy />} />
