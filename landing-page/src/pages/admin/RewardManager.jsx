@@ -129,6 +129,7 @@ const EMPTY_FORM = {
     active: true,
     reward_kind: 'digital',
     integration_type: 'POOL',
+    promo_code: '',
     value_label: '',
     discount_type: '',
     discount_value: '',
@@ -211,7 +212,7 @@ export default function RewardManager() {
     // Promo codes only exist for a saved digital reward that isn't an affiliate link,
     // so the Promo Codes tab is only offered for those. If it's selected but no longer
     // applies (e.g. the reward kind was changed), fall back to Reward Details.
-    const codesEligible = !!editingReward && formData.reward_kind === 'digital' && formData.integration_type !== 'AFFILIATE';
+    const codesEligible = !!editingReward && formData.reward_kind === 'digital' && formData.integration_type !== 'AFFILIATE' && !formData.promo_code?.trim();
     const activeTab = editorTab === 'codes' && !codesEligible ? 'details' : editorTab;
 
     // Details sub-step state — which section of the Details tab is showing, and
@@ -309,6 +310,7 @@ export default function RewardManager() {
             active: reward.active,
             reward_kind: reward.reward_kind || 'digital',
             integration_type: reward.integration_type || 'POOL',
+            promo_code: reward.promo_code || '',
             value_label: reward.value_label || '',
             discount_type: reward.discount_type || '',
             discount_value: reward.discount_value ?? '',
@@ -556,6 +558,7 @@ export default function RewardManager() {
             discount_type: formData.discount_type || null,
             discount_value: formData.discount_type && formData.discount_value !== '' ? Number(formData.discount_value) : null,
             integration_type: formData.integration_type || 'POOL',
+            promo_code: formData.integration_type === 'POOL' ? formData.promo_code.trim().toUpperCase() || null : null,
             max_redemptions_per_user: formData.max_redemptions_per_user !== '' && formData.max_redemptions_per_user !== null
                 ? parseInt(formData.max_redemptions_per_user, 10)
                 : null,
@@ -1081,7 +1084,7 @@ export default function RewardManager() {
 
                             <div className="mb-8">
                                 <label className="block text-[10px] uppercase tracking-[0.4em] text-[#666666] font-black mb-1">Code Source</label>
-                                <p className="text-[9px] uppercase tracking-[0.3em] text-[#999999] font-black mb-3">Pool = upload codes · Auto = generate per user · Affiliate = shared link, no code</p>
+                                <p className="text-[9px] uppercase tracking-[0.3em] text-[#999999] font-black mb-3">Pool = one code per claim · Auto = generated per member · Affiliate = shared link, no code</p>
                                 <div className="flex bg-white border border-[#E6E6E1] rounded-3xl p-2 gap-2">
                                     {[['POOL', 'Pool'], ['API_VALIDATED', 'Auto'], ['AFFILIATE', 'Affiliate']].map(([val, label]) => {
                                         const active = formData.integration_type === val;
@@ -1091,6 +1094,20 @@ export default function RewardManager() {
                                     })}
                                 </div>
                             </div>
+
+                            {formData.integration_type === 'POOL' && (
+                                <div className="mb-8">
+                                    <label className="block text-[10px] uppercase tracking-[0.4em] text-[#666666] font-black mb-2">Shared Promo Code <span className="text-[#333333] normal-case font-black ml-2">— optional; the same code is saved to each member's wallet</span></label>
+                                    <input
+                                        type="text"
+                                        placeholder="e.g. POWR-TRIBE-SITE35"
+                                        className="w-full h-16 px-8 bg-white border border-[#E6E6E1] rounded-3xl focus:border-[#E8D200]/40 outline-none transition-all text-[12px] font-mono font-bold text-[#1A1A1A] placeholder-[#BBBBBB] uppercase tracking-[0.1em]"
+                                        value={formData.promo_code}
+                                        onChange={e => setFormData({ ...formData, promo_code: e.target.value.toUpperCase() })}
+                                    />
+                                    <p className="text-[9px] uppercase tracking-[0.2em] text-[#999999] font-black mt-2 ml-1">Leave blank to manage a one-time code pool in the Promo Codes tab.</p>
+                                </div>
+                            )}
 
                             {/* Value label */}
                             <div className="mb-8">
