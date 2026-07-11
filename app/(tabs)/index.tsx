@@ -30,7 +30,7 @@ import LocationPrimeSheet from '@/components/LocationPrimeSheet';
 import { ACTIVITIES, type ActivityType } from '@/constants/activities';
 import { useAuth } from '@/context/AuthContext';
 import { useGeofenceContext } from '@/context/GeofenceContext';
-import { getGymDwellMs } from '@/lib/gymDwellConfig';
+import { getGymDwellMs, getGymUpgradeMinutes, getGymUpgradeMs } from '@/lib/gymDwellConfig';
 import { useActiveGeofence } from '@/hooks/useActiveGeofence';
 import { useActivity } from '@/hooks/useActivity';
 import { useHealthData } from '@/hooks/useHealthData';
@@ -247,9 +247,12 @@ export default function HomeScreen() {
     const isNewUser = totalEarned === 0 && recentItems.length === 0;
 
     // Derived session state — re-computed every second via elapsedStr re-renders.
-    // Dwell threshold is admin-tunable (system_config → min_gym_dwell_minutes),
-    // cached at launch by refreshGymDwellMinutes; falls back to 30 min.
+    // Both gym timers are admin-tunable (system_config → min_gym_dwell_minutes /
+    // gym_upgrade_minutes), cached at launch by refreshGymDwellMinutes; fall back
+    // to 30 / 40 min.
     const DWELL_MS = getGymDwellMs();
+    const UPGRADE_TIER_MS = getGymUpgradeMs();
+    const upgradeTierMins = getGymUpgradeMinutes();
     const elapsedMs = activeGeofence ? Date.now() - activeGeofence.entryTimestamp : 0;
     const dwellProgress = Math.min(elapsedMs / DWELL_MS, 1);
     // Projected gym points — streak-adjusted and capped at the per-day gym cap so
@@ -258,11 +261,11 @@ export default function HomeScreen() {
     // so it under-showed. The cap assumes no gym points earned yet today (the
     // common first-visit case); a repeat same-day visit is daily-capped server-side.
     const GYM_DAILY_CAP = 30;
-    const proj30 = Math.min(Math.round(15 * multiplier), GYM_DAILY_CAP);
-    const proj40 = Math.min(Math.round(20 * multiplier), GYM_DAILY_CAP);
-    const atUpgradeTier = elapsedMs >= 40 * 60 * 1000;
-    const projectedPoints = atUpgradeTier ? proj40 : proj30;
-    const upgradeBonus = Math.max(0, proj40 - proj30); // extra unlocked by staying to 40 min
+    const projBase = Math.min(Math.round(15 * multiplier), GYM_DAILY_CAP);
+    const projUpgrade = Math.min(Math.round(20 * multiplier), GYM_DAILY_CAP);
+    const atUpgradeTier = elapsedMs >= UPGRADE_TIER_MS;
+    const projectedPoints = atUpgradeTier ? projUpgrade : projBase;
+    const upgradeBonus = Math.max(0, projUpgrade - projBase); // extra unlocked by staying to the upgrade tier
     const sessionMaxTier = atUpgradeTier || upgradeBonus <= 0;
     const minsRemaining = Math.max(0, Math.ceil((DWELL_MS - elapsedMs) / 60000));
 
@@ -570,6 +573,7 @@ export default function HomeScreen() {
                     sessionDwellMet={dwellProgress >= 1}
                     sessionProjectedPts={projectedPoints}
                     sessionUpgradeBonus={upgradeBonus}
+                    sessionUpgradeMinutes={upgradeTierMins}
                     sessionMaxTier={sessionMaxTier}
                     onShare={() => router.push({ pathname: '/share-stats', params: { mode: 'streak' } })}
                 />

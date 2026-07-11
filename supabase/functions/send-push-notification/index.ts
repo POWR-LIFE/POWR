@@ -266,18 +266,20 @@ function buildMessage(
       }
 
       case 'session_upgraded': {
-        // The 40-min tier bonus, credited by upgrade-gym-tier AFTER the initial
+        // The upgrade-tier bonus, credited by upgrade-gym-tier AFTER the initial
         // claim already pushed "Session recorded". `earned` is the delta (the
-        // extra points for staying to 40 min), carried explicitly because the
-        // session now has multiple 'earn' rows on the ledger.
+        // extra points for staying to the upgrade tier), carried explicitly
+        // because the session now has multiple 'earn' rows on the ledger.
+        // `upgrade_minutes` carries the admin-tunable threshold (default 40).
         const sessionId = (payload.session_id as string) ?? '';
         const earned = Math.max(0, Math.round(Number(payload.earned ?? 0)));
         const partnerName = (payload.partner_name as string | undefined)?.trim();
+        const upgradeMins = Math.round(Number(payload.upgrade_minutes ?? 40)) || 40;
 
         const parts: string[] = [];
         if (partnerName) parts.push(partnerName);
         if (earned > 0) parts.push(`+${earned.toLocaleString()} pts`);
-        parts.push('40-min bonus');
+        parts.push(`${upgradeMins}-min bonus`);
 
         return {
           title: 'Bonus unlocked 🔓',

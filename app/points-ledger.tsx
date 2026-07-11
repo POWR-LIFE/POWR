@@ -166,7 +166,10 @@ function TxBadges({ tx }: { tx: PointTransaction }) {
   } else if (tx.type === 'earn') {
     const isUpgrade = tx.description?.toLowerCase().includes('upgrade');
     if (isUpgrade) {
-      badges.push({ label: '+40 MIN', color: '#6EC6FF', bg: '#6EC6FF22' });
+      // upgrade-gym-tier writes "gym session upgrade (Xmin)" where X is the
+      // admin-tunable threshold; fall back to the historical 40.
+      const mins = tx.description?.match(/\((\d+)\s*min\)/i)?.[1] ?? '40';
+      badges.push({ label: `+${mins} MIN`, color: '#6EC6FF', bg: '#6EC6FF22' });
     } else if (tx.multiplier > 1) {
       const label = `×${tx.multiplier % 1 === 0 ? tx.multiplier.toFixed(0) : tx.multiplier.toFixed(1)}`;
       badges.push({ label, color: ORANGE, bg: ORANGE + '22' });

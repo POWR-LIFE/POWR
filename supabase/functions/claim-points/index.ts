@@ -54,9 +54,10 @@ const DAILY_CAPS: Record<ActivityType, number> = {
 };
 
 // gymDwellMin is the admin-tunable minutes required to lock in a base gym
-// check-in point (system_config → min_gym_dwell_minutes, default 30). Only the
-// entry tier is tunable; the 40-min upgrade tier stays fixed.
-function calcBasePoints(session: ActivitySession, gymDwellMin = 30): number {
+// check-in point (system_config → min_gym_dwell_minutes, default 30).
+// gymUpgradeMin is the admin-tunable upgrade-tier threshold (system_config →
+// gym_upgrade_minutes, default 40) — keep in sync with upgrade-gym-tier.
+function calcBasePoints(session: ActivitySession, gymDwellMin = 30, gymUpgradeMin = 40): number {
   const mins = Math.floor(session.duration_sec / 60);
   const dist = session.distance_m ?? 0;
   const steps = session.steps ?? 0;
@@ -91,9 +92,9 @@ function calcBasePoints(session: ActivitySession, gymDwellMin = 30): number {
       return 0;
 
     case 'gym':
-      // 40-min upgrade tier only applies once the (tunable) entry gate is met,
-      // so raising the threshold above 40 can't be bypassed by the upgrade tier.
-      if (mins >= 40 && mins >= gymDwellMin) return 20;
+      // Upgrade tier only applies once the (tunable) entry gate is met, so
+      // raising the dwell threshold above it can't be bypassed by the upgrade tier.
+      if (mins >= gymUpgradeMin && mins >= gymDwellMin) return 20;
       if (mins >= gymDwellMin) return 15;
       return 0;
 
@@ -412,20 +413,24 @@ Deno.serve(async (req) => {
   }
 
   // 8. Calculate points
-  // Admin-tunable gym dwell threshold (system_config → min_gym_dwell_minutes).
-  // Read via the service client (bypasses RLS); this is the authoritative gate.
-  // Falls back to the historical 30 on any read/parse failure.
+  // Admin-tunable gym thresholds (system_config → min_gym_dwell_minutes /
+  // gym_upgrade_minutes). Read via the service client (bypasses RLS); these are
+  // the authoritative gates. Fall back to the historical 30/40 on any failure.
   let gymDwellMin = 30;
+  let gymUpgradeMin = 40;
   {
     const { data: cfg } = await supabase
       .from('system_config')
-      .select('value')
-      .eq('key', 'min_gym_dwell_minutes')
-      .maybeSingle();
-    const parsed = parseInt(cfg?.value ?? '', 10);
-    if (Number.isFinite(parsed) && parsed > 0) gymDwellMin = parsed;
+      .select('key, value')
+      .in('key', ['min_gym_dwell_minutes', 'gym_upgrade_minutes']);
+    for (const row of cfg ?? []) {
+      const parsed = parseInt(row.value ?? '', 10);
+      if (!Number.isFinite(parsed) || parsed <= 0) continue;
+      if (row.key === 'min_gym_dwell_minutes') gymDwellMin = parsed;
+      if (row.key === 'gym_upgrade_minutes') gymUpgradeMin = parsed;
+    }
   }
-  let base = calcBasePoints(session, gymDwellMin);
+  let base = calcBasePoints(session, gymDwellMin, gymUpgradeMin);
 
   // DEV-TEST-ONLY: when DEV_MIN_DWELL_SEC is set, a geofence gym session meeting
   // that lower threshold qualifies for base points so we can test check-ins without
@@ -545,12 +550,18 @@ Deno.serve(async (req) => {
       })
       .eq('user_id', user.id);
 
-    // Insert streak bonus transaction if applicable
-    if (streakBonus > 0) {
+    // Insert streak bonus transaction if applicable. Clamp to the cap headroom
+    // LEFT AFTER the base earn row and guard on the clamped amount — the base
+    // row already carries min(base + streakBonus, cap), so when the streak
+    // multiplier alone fills the daily cap this would otherwise write a 0-pt
+    // (or, for cap-exempt dev users, negative) STREAK row that renders red in
+    // the ledger.
+    const streakAmount = Math.min(streakBonus, Math.max(0, remaining - finalAmount));
+    if (streakAmount > 0) {
       await supabase.from('point_transactions').insert({
         user_id: user.id,
         session_id: session.id,
-        amount: Math.min(streakBonus, remaining - finalAmount),
+        amount: streakAmount,
         type: 'streak',
         description: `${currentStreak}-day streak bonus`,
         multiplier: 1.0,

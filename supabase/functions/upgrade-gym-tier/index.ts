@@ -79,14 +79,28 @@ Deno.serve(async (req) => {
   );
   const actualMins = Math.floor(actualDurationSec / 60);
 
-  if (actualMins < 40) {
+  // Admin-tunable upgrade-tier threshold (system_config → gym_upgrade_minutes,
+  // default 40). Keep in sync with claim-points calcBasePoints — this is the
+  // authoritative gate; the client timer/copy read the same row.
+  let upgradeMin = 40;
+  {
+    const { data: cfg } = await supabase
+      .from('system_config')
+      .select('value')
+      .eq('key', 'gym_upgrade_minutes')
+      .maybeSingle();
+    const parsed = parseInt(cfg?.value ?? '', 10);
+    if (Number.isFinite(parsed) && parsed > 0) upgradeMin = parsed;
+  }
+
+  if (actualMins < upgradeMin) {
     // DEV-TEST-ONLY override: when DEV_MIN_UPGRADE_SEC is set, a dev-test account can
-    // upgrade to the 40-min tier at a lower threshold (test without a real 40-min
+    // upgrade to the upgrade tier at a lower threshold (test without a real full
     // dwell). Gated on isDevTestUser so a real user can NEVER upgrade early even if
     // the env var is left set in production — the env var alone is not enough.
     const devMinUpgradeSec = parseInt(Deno.env.get('DEV_MIN_UPGRADE_SEC') ?? '0', 10);
     if (!isDevTestUser || devMinUpgradeSec <= 0 || actualDurationSec < devMinUpgradeSec) {
-      return new Response(JSON.stringify({ error: 'Session has not reached the 40-min tier' }), { status: 422 });
+      return new Response(JSON.stringify({ error: `Session has not reached the ${upgradeMin}-min tier` }), { status: 422 });
     }
     console.log(`[DEV] Allowing tier upgrade for short session (${actualDurationSec}s >= ${devMinUpgradeSec}s dev threshold)`);
   }
@@ -99,7 +113,7 @@ Deno.serve(async (req) => {
     .update({ ended_at: endedAt.toISOString(), duration_sec: actualDurationSec })
     .eq('id', session.id);
 
-  // Calculate target earnings at 40-min tier including streak multiplier
+  // Calculate target earnings at the upgrade tier including streak multiplier
   const targetBase = 20;
   const { data: streak } = await supabase
     .from('user_streaks')
@@ -160,7 +174,10 @@ Deno.serve(async (req) => {
       session_id: session.id,
       amount: finalDelta,
       type: 'earn',
-      description: 'gym session upgrade (40min)',
+      // The "(Xmin)" suffix is parsed by the ledger's "+X MIN" badge, and the
+      // (session_id, description) unique index dedupes concurrent upgrades —
+      // the threshold rarely changes mid-session, so the string stays stable.
+      description: `gym session upgrade (${upgradeMin}min)`,
       multiplier: 1.0,
     })
     .select()
@@ -168,7 +185,7 @@ Deno.serve(async (req) => {
 
   if (txError) {
     // 23505 = unique violation on (session_id, description) — a concurrent upgrade
-    // already inserted the 'gym session upgrade (40min)' row. The delta check above
+    // already inserted the 'gym session upgrade (Xmin)' row. The delta check above
     // is not atomic, so two simultaneous calls can both compute a positive delta;
     // the DB index is the backstop. Treat the loser as a no-op success.
     if ((txError as { code?: string }).code === '23505') {
@@ -197,7 +214,7 @@ Deno.serve(async (req) => {
       body: JSON.stringify({
         target_user_id: user.id,
         type: 'session_upgraded',
-        payload: { session_id: session.id, earned: finalDelta },
+        payload: { session_id: session.id, earned: finalDelta, upgrade_minutes: upgradeMin },
       }),
     });
     const pushBody = await pushRes.json().catch(() => null);
