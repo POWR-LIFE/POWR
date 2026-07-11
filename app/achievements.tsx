@@ -5,6 +5,7 @@ import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
   Dimensions,
+  Image as NativeImage,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -322,8 +323,6 @@ function LevelCard({ levelDef, isUnlocked, isCurrent, isNext, totalEarned }: {
     styles.levelCard,
     { width: CARD_W },
     isUnlocked && {
-      borderColor: withAlpha(accent, isCurrent ? 0.9 : 0.4),
-      borderWidth: isCurrent ? 1.4 : 1,
       shadowColor: accent,
       shadowOffset: { width: 0, height: 0 },
       shadowOpacity: isCurrent ? 0.5 : 0.28,
@@ -381,19 +380,10 @@ function LevelCard({ levelDef, isUnlocked, isCurrent, isNext, totalEarned }: {
   if (imageUri) {
     return (
       <View style={[cardShell, styles.levelCardImage]}>
-        <Image
+        <NativeImage
           source={{ uri: imageUri }}
-          style={StyleSheet.absoluteFill}
-          contentFit="cover"
-          transition={200}
-        />
-
-        {/* Bottom scrim for text legibility */}
-        <LinearGradient
-          pointerEvents="none"
-          colors={['transparent', 'rgba(0,0,0,0.15)', 'rgba(0,0,0,0.82)']}
-          locations={[0, 0.5, 1]}
-          style={StyleSheet.absoluteFill}
+          style={[StyleSheet.absoluteFill, { backgroundColor: 'transparent' }]}
+          resizeMode="cover"
         />
 
         {/* Earned seal */}
@@ -403,7 +393,7 @@ function LevelCard({ levelDef, isUnlocked, isCurrent, isNext, totalEarned }: {
 
         <Text style={[styles.levelNum, styles.levelNumOverlay]}>LVL {levelDef.level}</Text>
 
-        {/* Name + XP pinned to the bottom, over the scrim */}
+        {/* Name + XP pinned to the bottom */}
         <View style={styles.levelImageFooter}>
           <Text style={[styles.levelName, styles.levelNameOverlay, { color: levelDef.textColor }]}>
             {levelDef.name.toUpperCase()}
@@ -658,9 +648,6 @@ const styles = StyleSheet.create({
   },
   levelCard: {
     borderRadius: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    backgroundColor: 'rgba(22,22,22,0.92)',
     paddingTop: 14,
     paddingBottom: 16,
     paddingHorizontal: 12,
@@ -694,8 +681,6 @@ const styles = StyleSheet.create({
   // The next level to unlock: a faint gold hint so it stands out from the
   // plain locked cards.
   levelCardNext: {
-    borderColor: withAlpha(GOLD, 0.35),
-    backgroundColor: 'rgba(30,28,18,0.92)',
   },
   // Full-bleed image variant: fixed portrait height, no padding, text overlaid.
   levelCardImage: {
@@ -706,7 +691,7 @@ const styles = StyleSheet.create({
     gap: 0,
     justifyContent: 'flex-end',
     alignItems: 'stretch',
-    backgroundColor: '#000000',
+    backgroundColor: 'transparent',
   },
   levelNumOverlay: {
     position: 'absolute',

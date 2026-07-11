@@ -81,16 +81,12 @@ export const ShareCard = forwardRef<View, ShareCardProps>(({ summary, width, bac
         style={StyleSheet.absoluteFillObject}
       />
 
-      {/* Level mark — centred in upper half. The artwork is painted onto its own
-          opaque black plate, so it sits on a black tile; on any other backing the
-          plate would read as a dark square pasted over the card. */}
+      {/* Level mark — centred in the upper half. */}
       {showLevel && (
         <View style={[StyleSheet.absoluteFillObject, styles.centreSlot]} pointerEvents="none">
           <View style={[styles.levelTile, {
             width: 440 * s,
             height: 440 * s,
-            borderRadius: 110 * s,
-            borderWidth: 3 * s,
           }]}>
             <LevelIcon
               level={level.level}
@@ -345,11 +341,8 @@ const styles = StyleSheet.create({
     zIndex: 2,
   },
   levelTile: {
-    backgroundColor: '#000',
-    borderColor: 'rgba(255,255,255,0.10)',
     alignItems: 'center',
     justifyContent: 'center',
-    overflow: 'hidden',
   },
   levelEyebrow: {
     fontFamily: fontFamily.medium,
