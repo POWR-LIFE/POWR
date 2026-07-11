@@ -5,12 +5,14 @@ import Ion from '../Ionicon';
 import { SectionTag, GhostWord, useCompact } from './shared';
 
 /**
- * Act V — Become. The 20-level identity system as a cinematic ascent: the
- * real level artwork (Supabase powr-level-logo bucket — 3D POWR marks in
- * holo chrome, neon, glass, cloud, gold) climbs through a centre spotlight
- * one level at a time, name + tier + threshold landing beside each. The
- * LEGEND tier stays classified — silhouettes against their own glow — so
- * the top of the ladder is something you earn, not something we show you.
+ * Act V — Become. The 20-level identity system as a cinematic procession:
+ * the real level artwork (Supabase powr-level-logo bucket — 3D POWR marks
+ * in holo chrome, neon, glass, cloud, gold) travels HORIZONTALLY through a
+ * centre spotlight one level at a time — in from the right, seated, out to
+ * the left, matching the film's travel motif — name + tier + threshold
+ * landing under each. The LEGEND tier stays classified — silhouettes
+ * against their own glow — so the top of the ladder is something you earn,
+ * not something we show you.
  *
  * Levels mirror constants/levels.ts (names, tiers, xpMin, textColor) — do
  * not drift.
@@ -54,7 +56,7 @@ export default function AscendStage() {
   const compact = useCompact();
 
   return (
-    <section ref={ref} style={{ position: 'relative', height: '640vh' }}>
+    <section ref={ref} data-act="become" style={{ position: 'relative', height: '640vh' }}>
       <div
         style={{
           position: 'sticky', top: 0, height: '100vh', overflow: 'hidden',
@@ -104,9 +106,10 @@ function LevelBeat({ beat, window: [start, end], progress, compact }) {
   // The final beat parks in the spotlight instead of exiting
   const holdIn = beat.final ? start + span * 0.34 : mid;
 
-  const travel = compact ? [300, -300] : [360, -360];
+  // In from the right, out to the left — the film's horizontal travel
+  const travel = compact ? [320, -320] : [440, -440];
   const fin = beat.final;
-  const y = useTransform(
+  const x = useTransform(
     progress,
     fin ? [start, holdIn] : [start, mid, end],
     fin ? [travel[0], 0] : [travel[0], 0, travel[1]],
@@ -142,8 +145,8 @@ function LevelBeat({ beat, window: [start, end], progress, compact }) {
     fin ? [0, 1] : [0, 1, 0],
   );
 
-  // Ghost level number drifts against the badge — depth
-  const ghostY = useTransform(progress, [start, end], fin ? [140, -30] : [170, -170]);
+  // Ghost level number counter-drifts against the badge — depth
+  const ghostX = useTransform(progress, [start, end], fin ? [-160, 30] : [-200, 200]);
   const ghostOpacity = useTransform(
     progress,
     fin ? [start, mid] : [start + span * 0.1, mid, end - span * 0.1],
@@ -165,7 +168,7 @@ function LevelBeat({ beat, window: [start, end], progress, compact }) {
       <motion.div
         aria-hidden
         style={{
-          position: 'absolute', y: ghostY, opacity: ghostOpacity, zIndex: 2, pointerEvents: 'none',
+          position: 'absolute', x: ghostX, opacity: ghostOpacity, zIndex: 2, pointerEvents: 'none',
           fontSize: compact ? 'clamp(200px, 58vw, 300px)' : 'clamp(280px, 30vw, 460px)',
           fontWeight: w.extraLight, lineHeight: 1, userSelect: 'none',
           color: 'transparent', WebkitTextStroke: '1px rgba(255,255,255,0.05)',
@@ -174,10 +177,10 @@ function LevelBeat({ beat, window: [start, end], progress, compact }) {
         {String(beat.level).padStart(2, '0')}
       </motion.div>
 
-      {/* The badge in its spotlight — flex-centred by the stage, y offsets from there */}
+      {/* The badge in its spotlight — flex-centred by the stage, x offsets from there */}
       <motion.div
         style={{
-          position: 'absolute', y, opacity, scale, zIndex: 8,
+          position: 'absolute', x, opacity, scale, zIndex: 8,
           display: 'flex', flexDirection: 'column', alignItems: 'center',
         }}
       >
@@ -261,25 +264,20 @@ function TierRail({ progress, compact }) {
   return (
     <motion.div
       style={{
-        position: 'absolute', right: compact ? 12 : '4.5%', top: '50%', translateY: '-50%',
-        zIndex: 12, display: 'flex', flexDirection: 'column', gap: compact ? 12 : 18,
+        position: 'absolute', bottom: compact ? 18 : '5.5%', left: '50%', translateX: '-50%',
+        zIndex: 12, display: 'flex', alignItems: 'flex-end', gap: compact ? 14 : 26,
         opacity: railOpacity, pointerEvents: 'none',
       }}
     >
       {TIERS.map((tier) => (
-        <div key={tier.label} style={{ display: 'flex', alignItems: 'center', gap: 10, flexDirection: 'row-reverse' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: compact ? 5 : 7 }}>
+        <div key={tier.label} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 9 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: compact ? 5 : 8 }}>
             {Array.from({ length: 5 }, (_, j) => (
-              <RailTick key={j} level={tier.from + j} progress={progress} />
+              <RailTick key={j} level={tier.from + j} progress={progress} compact={compact} />
             ))}
           </div>
           {!compact && (
-            <span
-              style={{
-                fontSize: 9, fontWeight: w.semiBold, letterSpacing: 2, color: pg.textMuted,
-                writingMode: 'vertical-rl', transform: 'rotate(180deg)', textAlign: 'center',
-              }}
-            >
+            <span style={{ fontSize: 9, fontWeight: w.semiBold, letterSpacing: 2, color: pg.textMuted }}>
               {tier.label}
             </span>
           )}
@@ -289,7 +287,7 @@ function TierRail({ progress, compact }) {
   );
 }
 
-function RailTick({ level, progress }) {
+function RailTick({ level, progress, compact }) {
   // A tick lights once the climb has passed its level; classified ticks never fully light
   const litAt = levelToProgress(level);
   const lit = useTransform(progress, [litAt - 0.015, litAt], [0, 1]);
@@ -299,8 +297,8 @@ function RailTick({ level, progress }) {
     const alpha = 0.14 + v * (classified ? 0.55 : 0.7);
     return `rgba(${base},${alpha})`;
   });
-  const scaleX = useTransform(lit, [0, 1], [1, 1.8]);
-  return <motion.div style={{ width: 14, height: 2, borderRadius: 1, background: bg, scaleX, transformOrigin: '100% 50%' }} />;
+  const scaleY = useTransform(lit, [0, 1], [1, 1.8]);
+  return <motion.div style={{ width: 2, height: compact ? 10 : 14, borderRadius: 1, background: bg, scaleY, transformOrigin: '50% 100%' }} />;
 }
 
 /* Map a level number onto the act's scroll progress via the featured beats */
