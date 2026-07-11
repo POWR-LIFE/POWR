@@ -6,11 +6,10 @@ import { LevelIcon } from '@/components/LevelIcon';
 import { LEVEL_IMAGE, getLevelInfo } from '@/constants/levels';
 
 const GOLD = '#E8D200';
-const TILE = 56;
+const TILE = 64;
 /** The artwork's glow bleeds to the left and right edges of its canvas, so it must
- *  render at full tile size — any overscale clips the mark's corners. It is
- *  letterboxed top and bottom, and those bands disappear against the black tile.
- *  Generated SVG glyphs are drawn smaller; they carry their own breathing room. */
+ *  render at full tile size — any overscale clips the mark's corners. Generated
+ *  SVG glyphs are drawn smaller; they carry their own breathing room. */
 const GLYPH_SIZE = 34;
 /** Level-number chip, overhanging the tile's bottom-right corner. */
 const CHIP = 22;
@@ -43,8 +42,6 @@ export function LevelProgressRow({ totalEarned, onPress }: Props) {
           The chip is a sibling of the tile, not a child — the tile clips its own
           overflow to round the artwork, which would cut the overhang off. */}
       <View style={styles.badge}>
-        {/* The artwork sits on its own black plate, so the tile is black too —
-            otherwise the plate reads as a dark rectangle pasted on the row. */}
         <View style={styles.logoTile}>
           <LevelIcon
             level={current.level}
@@ -70,7 +67,7 @@ export function LevelProgressRow({ totalEarned, onPress }: Props) {
             {' pts to next level'}
           </Text>
         ) : (
-          <Text style={styles.ptsText}>You've reached the top</Text>
+          <Text style={styles.ptsText}>You&apos;ve reached the top</Text>
         )}
       </View>
 
@@ -107,9 +104,6 @@ const styles = StyleSheet.create({
     width: TILE,
     height: TILE,
     borderRadius: 14,
-    backgroundColor: '#000',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.08)',
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',

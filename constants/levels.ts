@@ -67,6 +67,9 @@ export const LEVELS: LevelDef[] = [
  */
 const LEVEL_IMAGE_BASE =
   'https://auth.powr.life/storage/v1/object/public/powr-level-logo/';
+// Bump this whenever an existing storage object is replaced so Expo Image does
+// not keep showing its disk-cached predecessor.
+const LEVEL_IMAGE_CACHE_VERSION = '20260711';
 
 const LEVEL_IMAGE_FILE: Partial<Record<number, string>> = {
   1: 'touching-grass-1.png',
@@ -95,10 +98,11 @@ export const LEVEL_IMAGE: Partial<Record<number, string>> = Object.fromEntries(
   Object.entries(LEVEL_IMAGE_FILE)
     .filter(([, file]) => !!file)
     // Accept either a bare filename or a full URL pasted in.
-    .map(([level, file]) => [
-      level,
-      /^https?:\/\//.test(file!) ? file! : LEVEL_IMAGE_BASE + file,
-    ]),
+    .map(([level, file]) => {
+      const imageUrl = /^https?:\/\//.test(file!) ? file! : LEVEL_IMAGE_BASE + file;
+      const separator = imageUrl.includes('?') ? '&' : '?';
+      return [level, `${imageUrl}${separator}v=${LEVEL_IMAGE_CACHE_VERSION}`];
+    }),
 );
 
 export interface LevelInfo {
