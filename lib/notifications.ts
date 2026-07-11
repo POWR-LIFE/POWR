@@ -284,6 +284,11 @@ const CHECK_IN_LAST_FIRED_PREFIX = '@powr/check_in_last_fired/';
 export async function notifyCheckInAvailable(partnerName: string, locationId: string) {
   if (!(await isCheckInReminderEnabled())) return;
 
+  const permissions = await Notifications.getPermissionsAsync().catch(() => null);
+  const allowed = permissions?.granted
+    || permissions?.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL;
+  if (!allowed) return;
+
   const cooldownKey = `${CHECK_IN_LAST_FIRED_PREFIX}${locationId}`;
   try {
     const lastFiredRaw = await AsyncStorage.getItem(cooldownKey);
@@ -291,7 +296,6 @@ export async function notifyCheckInAvailable(partnerName: string, locationId: st
       const lastFired = parseInt(lastFiredRaw, 10);
       if (Number.isFinite(lastFired) && Date.now() - lastFired < CHECK_IN_COOLDOWN_MS) return;
     }
-    await AsyncStorage.setItem(cooldownKey, String(Date.now()));
   } catch { /* non-fatal — fall through and notify */ }
 
   await Notifications.scheduleNotificationAsync({
@@ -310,6 +314,9 @@ export async function notifyCheckInAvailable(partnerName: string, locationId: st
     },
     trigger: null, // immediate
   });
+  // Stamp only after scheduling succeeds; otherwise a transient local-notification
+  // failure would suppress the next legitimate entry alert for 30 minutes.
+  await AsyncStorage.setItem(cooldownKey, String(Date.now())).catch(() => {});
 }
 
 // ---------------------------------------------------------------------------

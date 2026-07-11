@@ -232,6 +232,7 @@ interface PartnerMapEntry {
 interface StoredGeofence {
   partnerId:        string;
   partnerName:      string;
+  regionId?:        string;  // composite native-region identifier; correlates EXIT events
   entryTimestamp:   number;
   latitude?:        number;
   longitude?:       number;
@@ -457,10 +458,13 @@ async function enterApproach(regionId: string): Promise<void> {
 
 /** Leaves the approach ring: clear the flag and return the stream to baseline
  *  (Android passive / iOS off). No-op-cheap when we weren't escalated. */
-async function exitApproach(): Promise<void> {
+async function exitApproach(expectedRegionId?: string): Promise<void> {
   let wasApproaching = false;
   try {
-    wasApproaching = (await AsyncStorage.getItem(APPROACH_STATE_KEY)) != null;
+    const raw = await AsyncStorage.getItem(APPROACH_STATE_KEY);
+    const approach = raw ? JSON.parse(raw) as { regionId?: string } : null;
+    if (expectedRegionId && approach?.regionId && approach.regionId !== expectedRegionId) return;
+    wasApproaching = approach != null;
     if (wasApproaching) await AsyncStorage.removeItem(APPROACH_STATE_KEY);
   } catch { /* non-fatal */ }
   if (wasApproaching) {
@@ -674,7 +678,7 @@ async function recordDwellSession(activeGeofence: StoredGeofence): Promise<{ out
 
 const PENDING_CLAIM_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
-async function enqueuePendingClaim(entry: StoredGeofence): Promise<void> {
+async function enqueuePendingClaim(entry: StoredGeofence): Promise<boolean> {
   try {
     const raw = await AsyncStorage.getItem(PENDING_CLAIMS_KEY);
     const queue: StoredGeofence[] = raw ? JSON.parse(raw) : [];
@@ -693,8 +697,28 @@ async function enqueuePendingClaim(entry: StoredGeofence): Promise<void> {
     }
     await AsyncStorage.setItem(PENDING_CLAIMS_KEY, JSON.stringify(queue));
     console.log('[Geofence] Queued failed claim for retry.');
+    return true;
   } catch (err) {
     console.warn('[Geofence] enqueuePendingClaim failed:', err);
+    return false;
+  }
+}
+
+async function removePendingClaim(entry: StoredGeofence): Promise<void> {
+  try {
+    const raw = await AsyncStorage.getItem(PENDING_CLAIMS_KEY);
+    if (!raw) return;
+    const queue: StoredGeofence[] = JSON.parse(raw);
+    const remaining = queue.filter(
+      candidate => candidate.entryTimestamp !== entry.entryTimestamp || candidate.partnerId !== entry.partnerId,
+    );
+    if (remaining.length) {
+      await AsyncStorage.setItem(PENDING_CLAIMS_KEY, JSON.stringify(remaining));
+    } else {
+      await AsyncStorage.removeItem(PENDING_CLAIMS_KEY);
+    }
+  } catch (err) {
+    console.warn('[Geofence] removePendingClaim failed:', err);
   }
 }
 
@@ -857,6 +881,7 @@ async function setActiveAndNotify(regionId: string, entry: PartnerMapEntry): Pro
     JSON.stringify({
       partnerId:      entry.dbId,
       partnerName:    entry.name,
+      regionId,
       entryTimestamp: Date.now(),
       latitude:       entry.lat,
       longitude:      entry.lng,
@@ -870,13 +895,12 @@ async function setActiveAndNotify(regionId: string, entry: PartnerMapEntry): Pro
   } catch { /* non-fatal */ }
 }
 
-/** Runs the exit claim/upgrade path for a session that has just ended. The caller
- *  must clear ACTIVE_GEOFENCE_KEY first. Shared by the native geofence EXIT and
- *  the location-task EXIT. The exit time is frozen so a retry that runs later
- *  still records the true session length rather than an ever-growing one. */
-async function recordExitAndClaim(activeGeofence: StoredGeofence): Promise<void> {
-  const exitMs = Date.now();
-  const claimEntry: StoredGeofence = { ...activeGeofence, endedAtMs: exitMs };
+/** Runs the exit claim/upgrade path after finalizeActiveGeofence has persisted
+ * an eligible exit to the durable queue. The frozen exit time ensures a later
+ * retry records the real session length rather than entry-to-retry time. */
+async function recordExitAndClaim(claimEntry: StoredGeofence): Promise<'resolved' | 'retry'> {
+  const exitMs = claimEntry.endedAtMs ?? Date.now();
+  const activeGeofence = claimEntry;
 
   // Session already recorded AND claimed (e.g. by the foreground/location dwell path).
   if (activeGeofence.sessionRecorded && !activeGeofence.pointsPending) {
@@ -901,25 +925,79 @@ async function recordExitAndClaim(activeGeofence: StoredGeofence): Promise<void>
       const { outcome } = await recordDwellSession(claimEntry);
       if (outcome === 'error') await enqueuePendingClaim(claimEntry);
     }
-    return;
+    return 'resolved';
   }
 
   const dwellMs = exitMs - activeGeofence.entryTimestamp;
   if (dwellMs < minDwellMs()) {
     console.log(`[Geofence] Dwell ${Math.round(dwellMs / 60000)}min < threshold — no points.`);
-    return;
+    return 'resolved';
   }
 
   const { outcome: exitOutcome } = await recordDwellSession(claimEntry);
-  if (exitOutcome === 'error') {
-    // Transient failure (offline, token refresh) — queue for retry so a
-    // genuinely-earned session is never silently lost. The retry eventually
-    // claims and the server-side session_completed push delivers then.
-    console.log('[Geofence] Exit claim failed — queued for retry.');
-    await enqueuePendingClaim(claimEntry);
+  if (exitOutcome === 'error' || exitOutcome === 'in_flight') {
+    // The durable exit record stays queued until a transient failure or a
+    // concurrent claim has conclusively resolved, so neither can lose a valid
+    // session between separate foreground/headless JS contexts.
+    console.log('[Geofence] Exit claim unresolved — retained for retry.');
+    return 'retry';
   }
   // 'claimed' → claim-points fires the single "Session recorded" push (source of
   // truth). 'too_short' cannot normally occur here (dwell >= minDwellMs()).
+  return 'resolved';
+}
+
+/** Finalizes the active visit exactly once. Eligible exits are first written to
+ * the durable retry queue, then the active key is removed. This ordering keeps
+ * a headless task interruption from losing both the live session and its claim.
+ * A native EXIT may only end its matching active region. */
+export async function finalizeActiveGeofence(expectedRegionId?: string): Promise<boolean> {
+  let raw: string | null;
+  try {
+    raw = await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY);
+  } catch {
+    return false;
+  }
+  if (!raw) return true;
+
+  let active: StoredGeofence;
+  try {
+    active = JSON.parse(raw) as StoredGeofence;
+  } catch {
+    console.warn('[Geofence] Invalid active session state — preserving it for recovery.');
+    return false;
+  }
+
+  if (expectedRegionId && active.regionId && active.regionId !== expectedRegionId) {
+    console.log(`[Geofence] Exit for "${expectedRegionId}" ignored — active session is "${active.regionId}".`);
+    return false;
+  }
+
+  const endedAtMs = Date.now();
+  const claimEntry: StoredGeofence = { ...active, endedAtMs };
+  const needsClaim = (!active.sessionRecorded || active.pointsPending)
+    && endedAtMs - active.entryTimestamp >= minDwellMs();
+
+  if (needsClaim && !(await enqueuePendingClaim(claimEntry))) {
+    // Do not clear the only recovery record when AsyncStorage cannot durably
+    // write the exit outbox entry.
+    return false;
+  }
+
+  try {
+    await AsyncStorage.removeItem(ACTIVE_GEOFENCE_KEY);
+  } catch {
+    return false;
+  }
+
+  if (!needsClaim) {
+    console.log(`[Geofence] Dwell ${Math.round((endedAtMs - active.entryTimestamp) / 60000)}min < threshold — no points.`);
+    return true;
+  }
+
+  const outcome = await recordExitAndClaim(claimEntry);
+  if (outcome === 'resolved') await removePendingClaim(claimEntry);
+  return true;
 }
 
 /** Immediate (timer-free) dwell state machine driven by the background-location
@@ -1014,8 +1092,7 @@ async function evaluateLocationFix(coords: Location.LocationObjectCoords): Promi
       await advanceActiveSession(active);
     } else {
       // Location-detected EXIT — the native exit event may never arrive when closed.
-      await AsyncStorage.removeItem(ACTIVE_GEOFENCE_KEY);
-      await recordExitAndClaim(active);
+      await finalizeActiveGeofence();
     }
     return;
   }
@@ -1106,6 +1183,7 @@ TaskManager.defineTask(LOCATION_TRACKING_TASK, async ({ data, error }) => {
     // Headless context: load the last-persisted admin dwell threshold from
     // storage before any dwell decision (foreground refreshes it on launch).
     await primeGymDwellMinutes();
+    await flushPendingClaims();
     await evaluateLocationFix(locations[locations.length - 1].coords);
   } catch (err) {
     console.warn('[Geofence] evaluateLocationFix failed:', err);
@@ -1115,6 +1193,7 @@ TaskManager.defineTask(LOCATION_TRACKING_TASK, async ({ data, error }) => {
 // Boot re-arm: re-issues monitoring from cached circles after a device restart.
 TaskManager.defineTask(GEOFENCE_REARM_TASK, async () => {
   try {
+    await flushPendingClaims();
     await rearmGeofencingFromCache();
     return BackgroundFetch.BackgroundFetchResult.NewData;
   } catch {
@@ -1132,6 +1211,7 @@ TaskManager.defineTask(GEOFENCE_TASK_NAME, async ({ data, error }) => {
   // Headless context: load the last-persisted admin dwell threshold from storage
   // so exit-time dwell checks use the current value.
   await primeGymDwellMinutes();
+  await flushPendingClaims();
 
   const { eventType, region } = data as {
     eventType: Location.GeofencingEventType;
@@ -1174,18 +1254,11 @@ TaskManager.defineTask(GEOFENCE_TASK_NAME, async ({ data, error }) => {
     await enterApproach(regionId);
 
   } else if (eventType === Location.GeofencingEventType.Exit) {
-    const raw = await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY);
-    const activeGeofence: StoredGeofence | null = raw ? JSON.parse(raw) : null;
-
-    await AsyncStorage.removeItem(ACTIVE_GEOFENCE_KEY);
     // Left the approach ring — return the stream to baseline whether or not a
-    // session was active (also covers "walked up but never checked in").
-    await exitApproach();
-
-    if (!activeGeofence) return;
-
-    // All exit claim/upgrade logic is shared with the location-task EXIT path.
-    await recordExitAndClaim(activeGeofence);
+    // session was active (also covers "walked up but never checked in"). A
+    // neighboring approach-ring exit must not stop tracking an active gym.
+    await exitApproach(regionId);
+    await finalizeActiveGeofence(regionId);
   }
 });
 
