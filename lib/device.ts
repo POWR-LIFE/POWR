@@ -6,6 +6,11 @@ import { Platform } from 'react-native';
 
 const DEVICE_ID_KEY = 'powr_device_id';
 
+/** Whether the JavaScript bundle is running inside the Expo Go store client. */
+export function isExpoGoClient(): boolean {
+    return Constants.executionEnvironment === 'storeClient';
+}
+
 /**
  * Returns a stable device identifier that persists across app launches.
  *
@@ -63,7 +68,7 @@ export function getAppVersion(): {
         otaUpdateId: runningOta ? Updates.updateId : null,
         otaChannel: Updates.isEnabled ? Updates.channel : null,
     };
-    if (Constants.executionEnvironment === 'storeClient') {
+    if (isExpoGoClient()) {
         return {
             appVersion: `${Constants.expoConfig?.version ?? 'unknown'} (Expo Go)`,
             appBuild: null,

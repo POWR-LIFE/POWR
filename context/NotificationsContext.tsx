@@ -11,6 +11,7 @@ import * as Notifications from 'expo-notifications';
 import { useRouter } from 'expo-router';
 import { AppState, AppStateStatus } from 'react-native';
 import { useAuth } from '@/context/AuthContext';
+import { isExpoGoClient } from '@/lib/device';
 import {
   requestPermissionsAndGetToken,
   scheduleStreakAtRiskWarning,
@@ -173,6 +174,16 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
         // so it must only fire from a primed surface the user deliberately tapped
         // (onboarding notifications page, NotificationPrimeSheet, settings).
         // Automatic calls silently refresh tokens for already-granted users.
+        // Expo Go is only a development client. Remove its own prior token so
+        // test sessions never receive production pushes alongside the installed app.
+        if (isExpoGoClient()) {
+          const registration = await requestPermissionsAndGetToken({ promptIfNeeded: false });
+          if (registration) await removePushToken(userId, registration.expoPushToken);
+          setExpoPushToken(null);
+          setPermissionGranted(false);
+          return false;
+        }
+
         const registration = await requestPermissionsAndGetToken({
           promptIfNeeded: opts?.promptIfNeeded ?? false,
         });
