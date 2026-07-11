@@ -56,7 +56,7 @@
         "android.permission.CAMERA"
       ],
       "package": "com.powr.life",
-      "versionCode": 13,
+      "versionCode": 14,
       "intentFilters": [
         {
           "action": "VIEW",
