@@ -97,7 +97,7 @@ export default function RedeemModal() {
       const [rewardRes, redemptionRes] = await Promise.all([
         supabase
           .from('rewards')
-          .select('id, partner_id, title, description, powr_cost, category, integration_type, code_expiry_days, active, offer, hero_image_url, hero_video_url, image_url, url, value_label, discount_type, discount_value, brand_name, partners(id, name, partner_code, logo_url, category, checkout_url_template)')
+          .select('id, partner_id, title, description, powr_cost, category, integration_type, code_expiry_days, active, offer, hero_image_url, hero_video_url, image_url, url, promo_code, value_label, discount_type, discount_value, brand_name, partners(id, name, partner_code, logo_url, category, checkout_url_template)')
           .eq('id', id)
           .single(),
         supabase
@@ -115,14 +115,12 @@ export default function RedeemModal() {
       const active = redemptionRes.data ?? [];
       setExistingActiveCount(active.length);
 
-      // AFFILIATE rewards have no per-redemption code — redeeming again just
-      // re-charges points for the identical discount link, so show the existing
-      // one rather than allowing a wasted spend. Code-based rewards (POOL /
-      // API_VALIDATED) stay on the confirm screen so the user can redeem again.
-      if (full.integration_type === 'AFFILIATE' && active[0]?.code) {
+      // Affiliate links and configured shared promo codes are reusable receipts.
+      // Showing the active receipt avoids charging points again for the same offer.
+      if ((full.integration_type === 'AFFILIATE' || full.promo_code?.trim()) && active[0]?.code) {
         setCode(active[0].code);
         setExpiresAt(active[0].expires_at ?? null);
-        setCheckoutUrl(active[0].checkout_url ?? full.url ?? null);
+        setCheckoutUrl(active[0].checkout_url ?? full.url ?? full.partner?.checkout_url_template ?? null);
         setAlreadyRedeemed(true);
         setStage('success');
       }

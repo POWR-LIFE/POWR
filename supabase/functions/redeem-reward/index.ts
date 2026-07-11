@@ -48,7 +48,7 @@ Deno.serve(async (req) => {
   // 1. Load reward + partner
   const { data: reward, error: rErr } = await admin
     .from('rewards')
-    .select('id, partner_id, title, powr_cost, active, integration_type, code_expiry_days, max_redemptions_per_user, url, image_url, hero_image_url, brand_name, partners(partner_code, checkout_url_template, name, logo_url)')
+    .select('id, partner_id, title, powr_cost, active, integration_type, code_expiry_days, max_redemptions_per_user, url, promo_code, image_url, hero_image_url, brand_name, partners(partner_code, checkout_url_template, name, logo_url)')
     .eq('id', body.reward_id)
     .single();
 
@@ -69,6 +69,31 @@ Deno.serve(async (req) => {
   // API_VALIDATED rewards need a partner_code to mint codes; POOL rewards use pre-loaded codes
   if (reward.integration_type === 'API_VALIDATED' && !partner?.partner_code) {
     return json({ error: 'PARTNER_MISCONFIGURED' }, 500);
+  }
+
+  // Affiliate links and explicitly shared promo codes are reusable offers, so
+  // return an existing active receipt instead of charging points a second time.
+  if (reward.integration_type === 'AFFILIATE' || reward.promo_code?.trim()) {
+    const { data: existing } = await admin
+      .from('redemptions')
+      .select('id, code, checkout_url, expires_at, integration_type')
+      .eq('user_id', user.id)
+      .eq('reward_id', reward.id)
+      .eq('status', 'active')
+      .gte('expires_at', new Date().toISOString())
+      .order('redeemed_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (existing) {
+      return json({
+        ok: true,
+        code: existing.code,
+        checkout_url: existing.checkout_url,
+        expires_at: existing.expires_at,
+        redemption_id: existing.id,
+        integration_type: existing.integration_type,
+      });
+    }
   }
 
   // 2a. Check per-user redemption limit
@@ -97,8 +122,10 @@ Deno.serve(async (req) => {
   // 3. Acquire a code based on integration type
   const expiresAt = new Date(Date.now() + reward.code_expiry_days * 86400_000).toISOString();
 
-  // AFFILIATE: no unique code — just deduct points and return the reward URL
+  // AFFILIATE: no unique code — just deduct points and return the shared URL.
   if (reward.integration_type === 'AFFILIATE') {
+    const checkoutUrl = reward.url || partner?.checkout_url_template || null;
+    if (!checkoutUrl) return json({ error: 'PARTNER_MISCONFIGURED' }, 500);
     const receiptId = `POWR-AFF-${generateToken(8)}`;
     const { error: spendErr } = await admin.rpc('spend_points', {
       p_user_id: user.id,
@@ -116,16 +143,52 @@ Deno.serve(async (req) => {
       powr_spent: reward.powr_cost,
       status: 'active',
       expires_at: expiresAt,
-      checkout_url: reward.url ?? null,
+      checkout_url: checkoutUrl,
       ...receiptFields,
     }).select('id').single();
     return json({
       ok: true,
       code: receiptId,
-      checkout_url: reward.url,
+      checkout_url: checkoutUrl,
       expires_at: expiresAt,
       redemption_id: redemption?.id ?? null,
       integration_type: 'AFFILIATE',
+    });
+  }
+
+  // A configured promo_code is intentionally shared by every member. It is a
+  // wallet receipt, not a code-pool entry, so it must bypass pool depletion.
+  const sharedCode = reward.promo_code?.trim();
+  if (sharedCode) {
+    const checkoutUrl = partner?.checkout_url_template
+      ? partner.checkout_url_template.replace('{code}', sharedCode)
+      : (reward.url || null);
+    const { error: spendErr } = await admin.rpc('spend_points', {
+      p_user_id: user.id,
+      p_amount: reward.powr_cost,
+      p_description: `Redeemed: ${reward.title}`,
+    });
+    if (spendErr) {
+      return json({ error: String(spendErr.message).includes('INSUFFICIENT_POINTS') ? 'INSUFFICIENT_POINTS' : 'TX_FAILED' }, 422);
+    }
+    const { data: redemption } = await admin.from('redemptions').insert({
+      user_id: user.id,
+      reward_id: reward.id,
+      code: sharedCode,
+      integration_type: reward.integration_type,
+      powr_spent: reward.powr_cost,
+      status: 'active',
+      expires_at: expiresAt,
+      checkout_url: checkoutUrl,
+      ...receiptFields,
+    }).select('id').single();
+    return json({
+      ok: true,
+      code: sharedCode,
+      checkout_url: checkoutUrl,
+      expires_at: expiresAt,
+      redemption_id: redemption?.id ?? null,
+      integration_type: reward.integration_type,
     });
   }
 
