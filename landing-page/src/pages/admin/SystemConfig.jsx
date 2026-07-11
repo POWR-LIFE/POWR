@@ -17,6 +17,10 @@ const isBool = (v) => { const s = String(v).trim().toLowerCase(); return s === '
 // integer string. A stepper flips + saves in a single tap (no edit/confirm step).
 const STEPPERS = {
     min_gym_dwell_minutes: { step: 5, min: 5, max: 60, unit: 'min' },
+    // Upgrade tier threshold. Setting it at/below the dwell threshold is allowed
+    // and simply collapses the tiers (any qualifying session earns the upgrade
+    // tier immediately) — the server stays coherent either way.
+    gym_upgrade_minutes: { step: 5, min: 10, max: 120, unit: 'min' },
 };
 const clampStep = (n, { step, min, max }) => {
     const snapped = Math.round(n / step) * step;

@@ -5,7 +5,7 @@ import * as TaskManager from 'expo-task-manager';
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { AppState, AppStateStatus, Platform } from 'react-native';
 import { supabase } from '@/lib/supabase';
-import { getGymDwellMinutes, primeGymDwellMinutes } from '@/lib/gymDwellConfig';
+import { getGymDwellMinutes, getGymUpgradeMinutes, primeGymDwellMinutes } from '@/lib/gymDwellConfig';
 
 // ─── Session-completed event bus ─────────────────────────────────────────────
 // Fires synchronously in the JS thread when a foreground claim succeeds.
@@ -191,8 +191,11 @@ const DEV_TEST_EMAILS = new Set(['jamiemasonwright@gmail.com']);
 const MAX_FIX_ACCURACY_M = 100;
 
 // ⚠️ DEV OVERRIDES — restore before release
-const UPGRADE_MS      = __DEV__ ? 60 * 1000 : 40 * 60 * 1000; // 1 min in dev, 40 min in prod
-const PROD_UPGRADE_MS = 40 * 60 * 1000;
+// The upgrade tier threshold is admin-tunable (system_config →
+// gym_upgrade_minutes, read via lib/gymDwellConfig, default 40). Functions, not
+// consts, for the same reason as minDwellMs below. Dev short-circuit (1 min) kept.
+const upgradeMs     = () => (__DEV__ ? 60 * 1000 : getGymUpgradeMinutes() * 60 * 1000);
+const prodUpgradeMs = () => getGymUpgradeMinutes() * 60 * 1000;
 
 // The base gym dwell threshold is admin-tunable (system_config →
 // min_gym_dwell_minutes, read via lib/gymDwellConfig). These are functions, not
@@ -878,7 +881,7 @@ async function recordExitAndClaim(activeGeofence: StoredGeofence): Promise<void>
   // Session already recorded AND claimed (e.g. by the foreground/location dwell path).
   if (activeGeofence.sessionRecorded && !activeGeofence.pointsPending) {
     const dwellMs = exitMs - activeGeofence.entryTimestamp;
-    if (dwellMs >= PROD_UPGRADE_MS && !activeGeofence.tierUpgraded) {
+    if (dwellMs >= prodUpgradeMs() && !activeGeofence.tierUpgraded) {
       // Crossed the 40-min tier. Use the stored sessionId, or recover it from the
       // DB if it was lost — the upgrade is the user's bonus and must not depend on
       // fragile local state. upgradeGymTier is idempotent, so re-calling is safe.
@@ -947,7 +950,7 @@ async function advanceActiveSession(active: StoredGeofence): Promise<void> {
 
   // 2. Claimed at the 30-min tier — upgrade once the 40-min threshold is met.
   if (active.sessionRecorded && active.sessionId && !active.tierUpgraded) {
-    if (elapsed < PROD_UPGRADE_MS) return;
+    if (elapsed < prodUpgradeMs()) return;
     const ok = await upgradeGymTier(active.sessionId, active.partnerName);
     if (ok) await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...active, tierUpgraded: true }));
     return;
@@ -974,12 +977,28 @@ async function advanceActiveSession(active: StoredGeofence): Promise<void> {
  *  headless (separate JS context) when the app is closed, so it reads everything
  *  from AsyncStorage and never touches React. */
 async function evaluateLocationFix(coords: Location.LocationObjectCoords): Promise<void> {
-  // Reject coarse fixes — a low-accuracy position can't be trusted against a tight
-  // radius and would otherwise fire a false "You're in" from far away.
-  if (coords.accuracy != null && coords.accuracy > MAX_FIX_ACCURACY_M) return;
+  // A coarse fix can't be trusted against a tight radius — it must never fire a
+  // false "You're in" from far away (ENTER) or flap a real session out early
+  // (EXIT). But dwell progression (advanceActiveSession) is purely TIME-based and
+  // needs no position at all. Rejecting coarse fixes wholesale starved it for
+  // entire in-gym dwells (indoor GPS is routinely >100 m), so the 30-min claim
+  // only ran at app-open — 2026-07-03 + 2026-07-11 field sessions. A coarse fix
+  // now still ticks an active session; only the geometric decisions demand
+  // accuracy.
+  const isCoarse = coords.accuracy != null && coords.accuracy > MAX_FIX_ACCURACY_M;
 
   const raw = await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY);
   const active: StoredGeofence | null = raw ? JSON.parse(raw) : null;
+
+  if (active && isCoarse) {
+    // Position untrusted: skip the EXIT geometry (assume still inside — the same
+    // effective outcome as the old early-return) but keep the time-based dwell
+    // state machine alive so background claims fire without an app-open.
+    await advanceActiveSession(active);
+    return;
+  }
+
+  if (isCoarse) return; // ENTER detection needs a trusted position.
 
   if (active) {
     // Still inside the active circle? If geometry is missing (older active state),
@@ -1447,7 +1466,7 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
     // Tier upgrade path: session already claimed at 30-min tier, schedule/trigger 40-min upgrade
     if (activeGeofence.sessionRecorded && !activeGeofence.pointsPending && activeGeofence.sessionId && !activeGeofence.tierUpgraded) {
       const elapsed   = Date.now() - activeGeofence.entryTimestamp;
-      const remaining = UPGRADE_MS - elapsed;
+      const remaining = upgradeMs() - elapsed;
       if (remaining <= 0) {
         console.log('[Geofence] Foreground: already past 40-min mark — upgrading tier now.');
         const upgraded1 = await upgradeGymTier(activeGeofence.sessionId, activeGeofence.partnerName);

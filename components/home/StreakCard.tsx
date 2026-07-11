@@ -26,7 +26,8 @@ interface StreakCardProps {
   sessionProgress?: number;  // 0–1
   sessionDwellMet?: boolean; // true once the 30-min threshold is hit
   sessionProjectedPts?: number; // streak-adjusted pts for the current tier
-  sessionUpgradeBonus?: number; // extra pts unlocked by staying to the 40-min tier
+  sessionUpgradeBonus?: number; // extra pts unlocked by staying to the upgrade tier
+  sessionUpgradeMinutes?: number; // admin-tunable upgrade-tier threshold (default 40)
   sessionMaxTier?: boolean;     // true once at the top tier (or daily cap reached)
   /** When provided, shows a share icon in the header */
   onShare?: () => void;
@@ -58,6 +59,7 @@ export function StreakCard({
   sessionDwellMet = false,
   sessionProjectedPts = 10,
   sessionUpgradeBonus = 0,
+  sessionUpgradeMinutes = 40,
   sessionMaxTier = false,
   onShare,
 }: StreakCardProps) {
@@ -249,7 +251,7 @@ export function StreakCard({
               <Text style={styles.sessionHint}>
                 {sessionMaxTier
                   ? `+${sessionProjectedPts} pts · max tier`
-                  : `+${sessionProjectedPts} pts · stay 40m to unlock +${sessionUpgradeBonus}`}
+                  : `+${sessionProjectedPts} pts · stay ${sessionUpgradeMinutes}m to unlock +${sessionUpgradeBonus}`}
               </Text>
             )}
           </View>
