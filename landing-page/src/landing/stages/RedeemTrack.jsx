@@ -18,22 +18,32 @@ import { SectionTag, CopyPanel, GhostWord, MobileCopyDock, useCompact } from './
  *     a live code that lands in the wallet.
  */
 const FALLBACK = [
-  { id: 'f1', brand: 'HUEL',   name: 'HUEL',   item: 'Member reward',    pts: 185, logo: null, heroImage: null, heroVideo: null, initial: 'H', tint: '#A6C34C' },
-  { id: 'f2', brand: 'MAJIC',  name: 'MAJIC',  item: '25% off desserts', pts: 180, logo: null, heroImage: null, heroVideo: null, initial: 'M', tint: '#9000fe' },
-  { id: 'f3', brand: 'FRANk',  name: 'FRANk',  item: 'Member reward',    pts: 200, logo: null, heroImage: null, heroVideo: null, initial: 'F', tint: '#E8734A' },
-  { id: 'f4', brand: 'REP',    name: 'REP',    item: 'Member reward',    pts: 200, logo: null, heroImage: null, heroVideo: null, initial: 'R', tint: '#006AFB' },
-  { id: 'f5', brand: 'SWT',    name: 'SWT',    item: 'Member reward',    pts: 150, logo: null, heroImage: null, heroVideo: null, initial: 'S', tint: '#E8D200' },
-  { id: 'f6', brand: 'TRIBE',  name: 'TRIBE',  item: '35% OFF',          pts: 220, logo: null, heroImage: null, heroVideo: null, initial: 'T', tint: '#1877C7' },
-  { id: 'f7', brand: 'OMNITY', name: 'OMNITY', item: '20% off',          pts: 210, logo: null, heroImage: null, heroVideo: null, initial: 'O', tint: '#E8D200' },
-  { id: 'f8', brand: 'MATHAN', name: 'MATHAN', item: '£15 off',          pts: 300, logo: null, heroImage: null, heroVideo: null, initial: 'M', tint: '#0e2bff' },
+  { id: 'f1', brand: 'HUEL',   name: 'HUEL',   flash: '£10 OFF', item: '£10 OFF',          pts: 185, logo: null, heroImage: null, heroVideo: null, initial: 'H', tint: '#A6C34C' },
+  { id: 'f2', brand: 'MAJIC',  name: 'MAJIC',  flash: '15% OFF', item: '15% off desserts', pts: 180, logo: null, heroImage: null, heroVideo: null, initial: 'M', tint: '#9000fe' },
+  { id: 'f3', brand: 'FRANk',  name: 'FRANk',  flash: '20% OFF', item: '20% OFF',          pts: 200, logo: null, heroImage: null, heroVideo: null, initial: 'F', tint: '#E8734A' },
+  { id: 'f4', brand: 'REP',    name: 'REP',    flash: '20% OFF', item: '20% OFF',          pts: 200, logo: null, heroImage: null, heroVideo: null, initial: 'R', tint: '#006AFB' },
+  { id: 'f5', brand: 'SWT',    name: 'SWT',    flash: '15% OFF', item: '15% OFF',          pts: 150, logo: null, heroImage: null, heroVideo: null, initial: 'S', tint: '#E8D200' },
+  { id: 'f6', brand: 'TRIBE',  name: 'TRIBE',  flash: '35% OFF', item: '35% OFF',          pts: 220, logo: null, heroImage: null, heroVideo: null, initial: 'T', tint: '#1877C7' },
+  { id: 'f7', brand: 'OMNITY', name: 'OMNITY', flash: '20% OFF', item: '20% off',          pts: 210, logo: null, heroImage: null, heroVideo: null, initial: 'O', tint: '#E8D200' },
+  { id: 'f8', brand: 'MATHAN', name: 'MATHAN', flash: '£15 OFF', item: '£15 off',          pts: 300, logo: null, heroImage: null, heroVideo: null, initial: 'M', tint: '#0e2bff' },
 ];
 
 /* The WHOLE live catalogue, one reward per brand. Duplicate brand rows are
    merged rather than dropped so the richest copy/colour wins. */
+/* "15% OFF" / "£10 OFF" from the reward's structured discount columns */
+function discountLabel(type, value) {
+  const v = parseFloat(value);
+  if (!v) return '';
+  const n = Number.isInteger(v) ? v : v.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+  if (type === 'percentage') return `${n}% OFF`;
+  if (type === 'fixed_amount') return `£${n} OFF`;
+  return '';
+}
+
 async function fetchLiveRewards() {
   const { data, error } = await supabase
     .from('rewards')
-    .select('id, title, brand_name, powr_cost, value_label, image_url, hero_image_url, hero_video_url, brand_color, partners(logo_url)')
+    .select('id, title, brand_name, powr_cost, value_label, offer, discount_type, discount_value, image_url, hero_image_url, hero_video_url, brand_color, partners(logo_url)')
     .eq('active', true)
     .order('sort_order', { ascending: true })
     .order('powr_cost', { ascending: true })
@@ -45,13 +55,13 @@ async function fetchLiveRewards() {
     if (!brand) continue;
     const key = brand.toLowerCase();
     const partner = Array.isArray(r.partners) ? r.partners[0] : r.partners;
-    const item = r.value_label?.trim()
-      || (r.title && r.title.trim().toLowerCase() !== key ? r.title.trim() : '')
-      || 'Member reward';
+    const flash = discountLabel(r.discount_type, r.discount_value)
+      || offerFlash(r.value_label?.trim() || r.offer?.trim() || '');
+    const item = r.value_label?.trim() || r.offer?.trim() || flash || 'Member reward';
     const tint = r.brand_color?.trim() || '';
     const existing = byBrand.get(key);
     if (existing) {
-      if (existing.item === 'Member reward' && item !== 'Member reward') existing.item = item;
+      if (!existing.flash && flash) { existing.flash = flash; existing.item = item; }
       if (existing.tint === t.accent && tint) existing.tint = tint;
       continue;
     }
@@ -59,6 +69,7 @@ async function fetchLiveRewards() {
       id: r.id,
       brand,
       name: brand,
+      flash,
       item,
       pts: r.powr_cost,
       logo: r.image_url || partner?.logo_url || null,
@@ -324,7 +335,7 @@ function PosterCard({ reward, width, height, imgX }) {
         }}
       />
       {/* Offer flash — the discount only, badge-clean */}
-      {reward.item !== 'Member reward' && (
+      {reward.flash && (
         <div style={{ position: 'absolute', top: 14, left: 14, right: 58, display: 'flex' }}>
           <div
             style={{
@@ -334,7 +345,7 @@ function PosterCard({ reward, width, height, imgX }) {
               fontSize: 10, fontWeight: w.bold, letterSpacing: 1.2, color: t.accent, textTransform: 'uppercase',
             }}
           >
-            {offerFlash(reward.item)}
+            {reward.flash}
           </div>
         </div>
       )}
