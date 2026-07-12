@@ -22,9 +22,10 @@ const DISCOUNT_OPTIONS = [
 
 const STATUS_BADGE = {
     invited:  { label: 'Draft',    color: 'bg-[#F4F4F1] text-[#666]',          icon: Clock        },
+    draft:    { label: 'Draft',    color: 'bg-[#F4F4F1] text-[#666]',          icon: Clock        },
     pending:  { label: 'Review',   color: 'bg-[#E8D200]/10 text-[#8a7600]',    icon: AlertCircle  },
     approved: { label: 'Approved', color: 'bg-[#10B981]/10 text-[#10B981]',    icon: CheckCircle  },
-    rejected: { label: 'Rejected', color: 'bg-red-500/10 text-red-500',        icon: XCircle      },
+    rejected: { label: 'Needs changes', color: 'bg-red-500/10 text-red-500',   icon: XCircle      },
 };
 
 const INPUT = "w-full h-14 px-5 bg-white border border-[#E6E6E1] rounded-2xl text-sm font-light text-[#1A1A1A] placeholder-[#BBBBBB] focus:border-[#E8D200]/50 outline-none transition-all font-['Outfit']";
@@ -73,6 +74,7 @@ const BLANK_FORM = {
     title: '', description: '', category: 'gym', reward_kind: 'digital',
     discount_type: '', discount_value: '', value_label: '',
     offer: '', partner_blurb: '', terms: '', url: '', code_prefix: '',
+    delivery_method: 'code_pool', fulfilment_notes: '', stock: '', max_redemptions_per_user: '',
     logo_url: null, hero_image_url: null, hero_video_url: null,
 };
 
@@ -85,7 +87,7 @@ const BLANK_FORM = {
 const WIZARD_STEPS = [
     { key: 'offer',   label: 'The Offer',  hint: 'What members get' },
     { key: 'details', label: 'Details',    hint: 'Copy & terms' },
-    { key: 'code',    label: 'Promo Code', hint: 'Your code segment' },
+    { key: 'delivery', label: 'Delivery',  hint: 'How members redeem' },
     { key: 'imagery', label: 'Imagery',    hint: 'Logo & hero' },
     { key: 'review',  label: 'Review',     hint: 'Check & submit' },
 ];
@@ -106,7 +108,9 @@ function fieldErrors(form) {
     if (!form.offer.trim()) e.offer = 'Offer detail is required';
     if (!form.partner_blurb.trim()) e.partner_blurb = 'A line about your brand is required';
     if (!form.terms.trim()) e.terms = 'Terms & conditions are required';
-    if (cleanPrefix(form.code_prefix).length < 2) e.code_prefix = 'Code name needs at least 2 characters';
+    if (form.delivery_method === 'code_pool' && cleanPrefix(form.code_prefix).length < 2) e.code_prefix = 'Code name needs at least 2 characters';
+    if (form.delivery_method === 'affiliate' && !form.url.trim()) e.url = 'An affiliate destination URL is required';
+    if (form.delivery_method === 'manual_fulfilment' && !form.fulfilment_notes.trim()) e.fulfilment_notes = 'Explain how your team will fulfil this reward';
     if (!form.logo_url) e.logo_url = 'Upload a logo';
     if (!form.hero_image_url) e.hero_image_url = 'Upload a hero image';
     return e;
@@ -116,7 +120,7 @@ function fieldErrors(form) {
 const STEP_FIELDS = {
     offer:   ['title', 'description', 'discount_value', 'value_label'],
     details: ['offer', 'partner_blurb', 'terms'],
-    code:    ['code_prefix'],
+    delivery: ['code_prefix', 'url', 'fulfilment_notes'],
     imagery: ['logo_url', 'hero_image_url'],
     review:  [],
 };
@@ -182,6 +186,7 @@ export default function PartnerRewards() {
     const [sendingContact, setSendingContact] = useState(false);
     const [stepIndex, setStepIndex] = useState(0);   // active wizard step
     const [showErrors, setShowErrors] = useState(false); // reveal inline errors after a blocked Next/Submit
+    const [lastSavedAt, setLastSavedAt] = useState(null);
     const pageTopRef = useRef(null);
 
     const brand = partnerData?.brand_name;
@@ -241,7 +246,7 @@ export default function PartnerRewards() {
     // clean error slate.
     useEffect(() => {
         pageTopRef.current?.scrollIntoView({ block: 'start' });
-        if (formOpen) { setStepIndex(0); setShowErrors(false); }
+        if (formOpen) { setStepIndex(0); setShowErrors(false); setLastSavedAt(null); }
     }, [formOpen]);
 
     const fetchAll = async () => {
@@ -322,6 +327,10 @@ export default function PartnerRewards() {
             terms: r.terms ?? '',
             url: r.url ?? '',
             code_prefix: prefixFromPromo(r.promo_code, r.brand_name || partnerData?.name),
+            delivery_method: r.reward_kind === 'physical' ? 'manual_fulfilment' : r.integration_type === 'AFFILIATE' ? 'affiliate' : 'code_pool',
+            fulfilment_notes: '',
+            stock: r.stock ?? '',
+            max_redemptions_per_user: r.max_redemptions_per_user ?? '',
             logo_url: r.image_url ?? null,
             hero_image_url: r.hero_image_url ?? null,
             hero_video_url: r.hero_video_url ?? null,
@@ -345,6 +354,10 @@ export default function PartnerRewards() {
             terms: sub.terms ?? '',
             url: sub.url ?? '',
             code_prefix: sub.code_prefix ?? '',
+            delivery_method: sub.delivery_method ?? (sub.reward_kind === 'physical' ? 'manual_fulfilment' : 'code_pool'),
+            fulfilment_notes: sub.fulfilment_notes ?? '',
+            stock: sub.stock ?? '',
+            max_redemptions_per_user: sub.max_redemptions_per_user ?? '',
             logo_url: sub.image_url ?? null,
             hero_image_url: sub.hero_image_url ?? null,
             hero_video_url: sub.hero_video_url ?? null,
@@ -380,6 +393,67 @@ export default function PartnerRewards() {
         }
     };
 
+    const submissionPayload = (status) => ({
+        brand_name: brand ?? '',
+        status,
+        title: form.title.trim() || null,
+        description: form.description.trim() || null,
+        category: form.category,
+        reward_kind: form.reward_kind,
+        discount_type: form.discount_type || null,
+        discount_value: form.discount_value ? Number(form.discount_value) : null,
+        value_label: form.value_label.trim() || null,
+        offer: form.offer.trim() || null,
+        partner_blurb: form.partner_blurb.trim() || null,
+        terms: form.terms.trim() || null,
+        url: form.url.trim() || null,
+        code_prefix: cleanPrefix(form.code_prefix) || null,
+        delivery_method: form.delivery_method,
+        fulfilment_notes: form.fulfilment_notes.trim() || null,
+        stock: form.stock === '' ? null : Number(form.stock),
+        max_redemptions_per_user: form.max_redemptions_per_user === '' ? null : Number(form.max_redemptions_per_user),
+        image_url: form.logo_url,
+        hero_image_url: form.hero_image_url,
+        hero_video_url: form.hero_video_url,
+        updated_at: new Date().toISOString(),
+        ...(status === 'pending' ? { submitted_at: new Date().toISOString() } : {}),
+    });
+
+    const saveDraft = async () => {
+        if (!brand) { toast.error('Your brand profile is still loading'); return false; }
+        setSaving(true);
+        // Keep an already-submitted reward in review when its owner saves an
+        // edit. Drafts and revision requests remain editable work in progress.
+        const status = editingSubmission?.status === 'pending' ? 'pending' : 'draft';
+        const payload = submissionPayload(status);
+        let data;
+        let error;
+        if (editingSubmission) {
+            ({ data, error } = await supabase.from('reward_submissions').update(payload).eq('id', editingSubmission.id).select().single());
+        } else {
+            ({ data, error } = await supabase.from('reward_submissions').insert({
+                ...payload,
+                invite_token: crypto.randomUUID(),
+                target_reward_id: editingListing?.id ?? null,
+            }).select().single());
+        }
+        setSaving(false);
+        if (error) { toast.error(error.message); return false; }
+        setEditingSubmission(data);
+        setLastSavedAt(new Date());
+        toast.success(status === 'pending' ? 'Changes saved' : 'Draft saved');
+        fetchAll();
+        return true;
+    };
+
+    const saveAndContinue = async () => {
+        if (!currentStepComplete) { setShowErrors(true); return; }
+        const saved = await saveDraft();
+        if (!saved) return;
+        setShowErrors(false);
+        setStepIndex(current => Math.min(WIZARD_STEPS.length - 1, current + 1));
+    };
+
     const handleSave = async (e) => {
         e.preventDefault();
         // Final guard: if anything's still missing, reveal inline errors and
@@ -394,26 +468,7 @@ export default function PartnerRewards() {
         }
 
         setSaving(true);
-        const payload = {
-            brand_name: brand ?? '',
-            status: 'pending',
-            title: form.title.trim(),
-            description: form.description.trim(),
-            category: form.category,
-            reward_kind: form.reward_kind,
-            discount_type: form.discount_type || null,
-            discount_value: form.discount_value ? Number(form.discount_value) : null,
-            value_label: form.value_label.trim() || null,
-            offer: form.offer.trim(),
-            partner_blurb: form.partner_blurb.trim(),
-            terms: form.terms.trim(),
-            url: form.url.trim() || null,
-            code_prefix: cleanPrefix(form.code_prefix),
-            image_url: form.logo_url,
-            hero_image_url: form.hero_image_url,
-            hero_video_url: form.hero_video_url,
-            submitted_at: new Date().toISOString(),
-        };
+        const payload = submissionPayload('pending');
 
         let error;
         if (editingSubmission) {
@@ -463,11 +518,12 @@ export default function PartnerRewards() {
                         <h1 className="text-5xl font-light tracking-tighter text-[#1A1A1A] mb-3">
                             {editingListing ? 'Edit Listing' : editingSubmission ? 'Edit Submission' : 'Submit a Reward'}
                         </h1>
-                        <p className="text-[10px] uppercase tracking-[0.4em] text-[#BBBBBB] font-black">
+                                <p className="text-[10px] uppercase tracking-[0.4em] text-[#BBBBBB] font-black">
                             {editingListing
                                 ? 'Your live listing stays unchanged until POWR approves these changes'
-                                : 'Our team reviews all submissions before going live'}
+                                : 'Build a draft in stages, then send it to POWR for review'}
                         </p>
+                            {lastSavedAt && <p className="mt-3 text-[10px] uppercase tracking-[0.25em] text-[#10B981] font-black">Saved {lastSavedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>}
                     </div>
 
                     <form onSubmit={handleSave} className="bg-white border border-[#E6E6E1] rounded-3xl p-10">
@@ -542,7 +598,7 @@ export default function PartnerRewards() {
                                 <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">Reward type *</label>
                                 <div className="flex gap-3">
                                     {[['digital', 'Digital code'], ['physical', 'Physical item']].map(([val, lbl]) => (
-                                        <button key={val} type="button" onClick={() => setForm(p => ({ ...p, reward_kind: val }))}
+                                        <button key={val} type="button" onClick={() => setForm(p => ({ ...p, reward_kind: val, delivery_method: val === 'physical' ? 'manual_fulfilment' : (p.delivery_method === 'manual_fulfilment' ? 'code_pool' : p.delivery_method) }))}
                                             className={`flex-1 h-12 rounded-2xl text-[11px] font-black uppercase tracking-[0.15em] border transition-all ${form.reward_kind === val ? 'border-[#E8D200]/60 bg-[#E8D200]/10 text-[#8a7600]' : 'border-[#DDD] bg-white text-[#888] hover:text-[#444]'}`}>
                                             {lbl}
                                         </button>
@@ -577,18 +633,58 @@ export default function PartnerRewards() {
                         </section>
                         )}
 
-                        {/* ── Step 3 · Promo Code ── */}
-                        {step.key === 'code' && (
+                        {/* ── Step 3 · Delivery ── */}
+                        {step.key === 'delivery' && (
                         <section className="space-y-4 animate-in fade-in slide-in-from-right-2 duration-300">
-                            <div>
-                                <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">Code name * (your brand segment)</label>
-                                <input value={form.code_prefix} onChange={e => setForm(p => ({ ...p, code_prefix: cleanPrefix(e.target.value) }))} placeholder="e.g. TRIBE" maxLength={8} className={`${INPUT} uppercase tracking-[0.2em] ${err('code_prefix') ? 'border-red-400' : ''}`} />
-                                {err('code_prefix') && <p className="mt-2 text-[10px] font-black text-red-500 tracking-[0.1em]">{err('code_prefix')}</p>}
-                            </div>
-                            <div className="p-5 rounded-2xl border border-[#E8D200]/40 bg-[#E8D200]/5">
-                                <p className="text-[9px] uppercase tracking-[0.3em] font-black text-[#777] mb-2">Members receive</p>
-                                <div className="font-mono text-lg tracking-[0.12em] text-[#1A1A1A]">
-                                    POWR-<span className="text-[#8a7600]">{form.code_prefix || 'BRAND'}</span>-<span className="text-[#AAA]">A1B2C3</span>
+                            {form.reward_kind === 'digital' ? (
+                                <>
+                                    <div>
+                                        <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">Member redemption *</label>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            {[
+                                                ['code_pool', 'Unique code', 'POWR issues one of your codes per claim'],
+                                                ['affiliate', 'Shared link', 'Members redeem through your destination'],
+                                            ].map(([value, label, detail]) => (
+                                                <button key={value} type="button" onClick={() => setForm(p => ({ ...p, delivery_method: value }))} className={`text-left p-4 rounded-2xl border transition-all ${form.delivery_method === value ? 'border-[#E8D200] bg-[#E8D200]/10' : 'border-[#E6E6E1] bg-white hover:border-[#DDD]'}`}>
+                                                    <span className={`block text-[10px] font-black uppercase tracking-[0.2em] ${form.delivery_method === value ? 'text-[#8a7600]' : 'text-[#666]'}`}>{label}</span>
+                                                    <span className="block text-[10px] text-[#999] mt-2 leading-relaxed">{detail}</span>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    {form.delivery_method === 'code_pool' ? <>
+                                        <div>
+                                            <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">Code name * (your brand segment)</label>
+                                            <input value={form.code_prefix} onChange={e => setForm(p => ({ ...p, code_prefix: cleanPrefix(e.target.value) }))} placeholder="e.g. TRIBE" maxLength={8} className={`${INPUT} uppercase tracking-[0.2em] ${err('code_prefix') ? 'border-red-400' : ''}`} />
+                                            {err('code_prefix') && <p className="mt-2 text-[10px] font-black text-red-500 tracking-[0.1em]">{err('code_prefix')}</p>}
+                                        </div>
+                                        <div className="p-5 rounded-2xl border border-[#E8D200]/40 bg-[#E8D200]/5">
+                                            <p className="text-[9px] uppercase tracking-[0.3em] font-black text-[#777] mb-2">Members receive</p>
+                                            <div className="font-mono text-lg tracking-[0.12em] text-[#1A1A1A]">POWR-<span className="text-[#8a7600]">{form.code_prefix || 'BRAND'}</span>-<span className="text-[#AAA]">A1B2C3</span></div>
+                                        </div>
+                                    </> : (
+                                        <div>
+                                            <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">Affiliate destination URL *</label>
+                                            <input type="url" value={form.url} onChange={e => setForm(p => ({ ...p, url: e.target.value }))} placeholder="https://yourbrand.com/powr" className={`${INPUT} ${err('url') ? 'border-red-400' : ''}`} />
+                                            {err('url') && <p className="mt-2 text-[10px] font-black text-red-500 tracking-[0.1em]">{err('url')}</p>}
+                                        </div>
+                                    )}
+                                </>
+                            ) : (
+                                <div>
+                                    <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">Fulfilment plan *</label>
+                                    <textarea value={form.fulfilment_notes} onChange={e => setForm(p => ({ ...p, fulfilment_notes: e.target.value }))} rows={3} placeholder="Explain what happens after a member claims, including delivery timing and any details your team needs." className={`${INPUT} h-auto py-4 resize-none ${err('fulfilment_notes') ? 'border-red-400' : ''}`} />
+                                    {err('fulfilment_notes') && <p className="mt-2 text-[10px] font-black text-red-500 tracking-[0.1em]">{err('fulfilment_notes')}</p>}
+                                </div>
+                            )}
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">Inventory limit <span className="normal-case tracking-normal text-[#BBB]">optional</span></label>
+                                    <input type="number" min="0" value={form.stock} onChange={e => setForm(p => ({ ...p, stock: e.target.value }))} placeholder="Unlimited" className={INPUT} />
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">Claims per member <span className="normal-case tracking-normal text-[#BBB]">optional</span></label>
+                                    <input type="number" min="1" value={form.max_redemptions_per_user} onChange={e => setForm(p => ({ ...p, max_redemptions_per_user: e.target.value }))} placeholder="Unlimited" className={INPUT} />
                                 </div>
                             </div>
                         </section>
@@ -668,7 +764,8 @@ export default function PartnerRewards() {
                                     ['About brand', form.partner_blurb],
                                     ['Terms', form.terms],
                                     ['Website', form.url || '—'],
-                                    ['Promo code', `POWR-${cleanPrefix(form.code_prefix) || 'BRAND'}-A1B2C3`],
+                                    ['Delivery', form.delivery_method === 'code_pool' ? `Unique code · POWR-${cleanPrefix(form.code_prefix) || 'BRAND'}-A1B2C3` : form.delivery_method === 'affiliate' ? 'Shared affiliate link' : 'Manual fulfilment'],
+                                    ...(form.fulfilment_notes ? [['Fulfilment', form.fulfilment_notes]] : []),
                                     ['Imagery', [form.logo_url && 'Logo', form.hero_image_url && 'Hero', form.hero_video_url && 'Video'].filter(Boolean).join(' · ') || '—'],
                                 ].map(([k, v]) => (
                                     <div key={k} className="flex gap-4 px-5 py-3">
@@ -695,21 +792,24 @@ export default function PartnerRewards() {
                                 {stepIndex === 0 ? 'Cancel' : '← Back'}
                             </button>
                             {step.key === 'review' ? (
-                                <button type="submit" disabled={saving || uploadingLogo || uploadingHero || uploadingHeroVideo} className="h-12 px-10 bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.2em] rounded-full transition-all hover:translate-y-[-2px] shadow-lg shadow-[#E8D200]/20 disabled:opacity-50">
-                                    {saving ? 'Submitting...' : editingListing ? 'Submit Changes' : editingSubmission ? 'Update Submission' : 'Submit for Review'}
-                                </button>
+                                <div className="flex items-center gap-2">
+                                    <button type="button" onClick={saveDraft} disabled={saving || uploadingLogo || uploadingHero || uploadingHeroVideo} className="h-12 px-6 text-[10px] font-black uppercase tracking-[0.2em] text-[#666] hover:text-[#222] transition-colors disabled:opacity-50">Save draft</button>
+                                    <button type="submit" disabled={saving || uploadingLogo || uploadingHero || uploadingHeroVideo} className="h-12 px-10 bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.2em] rounded-full transition-all hover:translate-y-[-2px] shadow-lg shadow-[#E8D200]/20 disabled:opacity-50">
+                                        {saving ? 'Submitting...' : editingListing ? 'Submit Changes' : editingSubmission?.status === 'rejected' ? 'Resubmit for Review' : editingSubmission ? 'Update Submission' : 'Submit for Review'}
+                                    </button>
+                                </div>
                             ) : (
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        if (!currentStepComplete) { setShowErrors(true); return; }
-                                        setShowErrors(false);
-                                        setStepIndex(stepIndex + 1);
-                                    }}
-                                    className="h-12 px-10 bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.2em] rounded-full transition-all hover:translate-y-[-2px] shadow-lg shadow-[#E8D200]/20"
-                                >
-                                    Next →
-                                </button>
+                                <div className="flex items-center gap-2">
+                                    <button type="button" onClick={saveDraft} disabled={saving || uploadingLogo || uploadingHero || uploadingHeroVideo} className="h-12 px-6 text-[10px] font-black uppercase tracking-[0.2em] text-[#666] hover:text-[#222] transition-colors disabled:opacity-50">Save draft</button>
+                                    <button
+                                        type="button"
+                                        onClick={saveAndContinue}
+                                        disabled={saving || uploadingLogo || uploadingHero || uploadingHeroVideo}
+                                        className="h-12 px-10 bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.2em] rounded-full transition-all hover:translate-y-[-2px] shadow-lg shadow-[#E8D200]/20 disabled:opacity-50"
+                                    >
+                                        {saving ? 'Saving...' : 'Save & continue →'}
+                                    </button>
+                                </div>
                             )}
                         </div>
                     </form>
@@ -847,7 +947,7 @@ export default function PartnerRewards() {
                                 {submissions.map(s => {
                                     const badge = STATUS_BADGE[s.status] ?? STATUS_BADGE.pending;
                                     const BadgeIcon = badge.icon;
-                                    const canEdit = s.status === 'pending' || s.status === 'invited';
+                                    const canEdit = s.status === 'draft' || s.status === 'pending' || s.status === 'invited' || s.status === 'rejected';
                                     return (
                                         <tr
                                             key={s.id}
@@ -868,8 +968,8 @@ export default function PartnerRewards() {
                                                     <BadgeIcon size={10} />
                                                     {badge.label}
                                                 </span>
-                                                {s.reviewer_notes && (
-                                                    <p className="text-[10px] text-[#999] mt-2 max-w-xs leading-relaxed">{s.reviewer_notes}</p>
+                                                {s.partner_feedback && (
+                                                    <p className="text-[10px] text-red-500 mt-2 max-w-xs leading-relaxed">Feedback: {s.partner_feedback}</p>
                                                 )}
                                             </td>
                                             <td className="px-6 py-5 text-[11px] text-[#BBB] font-black">
@@ -878,7 +978,7 @@ export default function PartnerRewards() {
                                             <td className="px-6 py-5 text-right">
                                                 {canEdit && (
                                                     <button onClick={(e) => { e.stopPropagation(); openEdit(s); }} className="h-9 px-5 text-[9px] font-black uppercase tracking-[0.2em] bg-[#F4F4F1] border border-[#E6E6E1] rounded-full text-[#666] hover:border-[#E8D200]/30 hover:text-[#8a7600] transition-all">
-                                                        Edit
+                                                        {s.status === 'rejected' ? 'Revise' : s.status === 'draft' ? 'Continue' : 'Edit'}
                                                     </button>
                                                 )}
                                             </td>

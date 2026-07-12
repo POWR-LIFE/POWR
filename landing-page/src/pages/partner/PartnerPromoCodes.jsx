@@ -1,11 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Ticket, Upload, FileText, Download, X, ChevronDown, Check, Search } from 'lucide-react';
+import { Ticket, Upload, FileText, Download, X, ChevronDown, Check, Search, RefreshCw } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
 import { useAuth } from '../../App';
 import {
     parseCodes,
+    parseReconciliationCodes,
     uploadCodes,
     generateCodes,
     toggleCodeStatus,
@@ -42,12 +43,15 @@ export default function PartnerPromoCodes() {
 
     // Code-pool state for the selected reward
     const [codeStats, setCodeStats] = useState(null);
+    const [codeWorkspaceMode, setCodeWorkspaceMode] = useState('manage');
     const [schemeExample, setSchemeExample] = useState('');
     const [generateCount, setGenerateCount] = useState(100);
     const [generatingCodes, setGeneratingCodes] = useState(false);
     const [singleCode, setSingleCode] = useState('');
     const [bulkCodesText, setBulkCodesText] = useState('');
     const [uploadingCodes, setUploadingCodes] = useState(false);
+    const [reconciliationText, setReconciliationText] = useState('');
+    const [reconciling, setReconciling] = useState(false);
     const [codePool, setCodePool] = useState({ rows: [], total: 0 });
     const [codePoolPage, setCodePoolPage] = useState(0);
     const [codePoolStatus, setCodePoolStatus] = useState('all');
@@ -142,11 +146,13 @@ export default function PartnerPromoCodes() {
     const selectReward = (reward) => {
         setSelectedId(reward.id);
         setBulkCodesText('');
+        setReconciliationText('');
         setSingleCode('');
         setGenerateCount(100);
         setCodePoolPage(0);
         setCodePoolStatus('all');
         setCodeSearch('');
+        setCodeWorkspaceMode('manage');
         // Reuse the scheme hint shared with the admin manager.
         const savedScheme = localStorage.getItem(`powr_scheme_${reward.id}`);
         setSchemeExample(savedScheme || '');
@@ -211,6 +217,48 @@ export default function PartnerPromoCodes() {
             toast.error('Could not read file');
         } finally {
             e.target.value = '';
+        }
+    };
+
+    const handleReconciliationFile = async (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        try {
+            const text = await file.text();
+            setReconciliationText(text);
+            toast.success(`Loaded ${file.name}`);
+        } catch {
+            toast.error('Could not read file');
+        } finally {
+            e.target.value = '';
+        }
+    };
+
+    const handleReconcile = async () => {
+        if (!selectedReward) return;
+        const codes = parseReconciliationCodes(reconciliationText);
+        if (!codes.length) { toast.error('No codes detected'); return; }
+        if (!window.confirm(`Reconcile ${codes.length} store redemption${codes.length === 1 ? '' : 's'}? Only codes already assigned by POWR can be marked used.`)) return;
+        setReconciling(true);
+        try {
+            const { data, error } = await supabase.rpc('reconcile_partner_redemption_codes', {
+                p_reward_id: selectedReward.id,
+                p_codes: codes,
+            });
+            if (error) throw error;
+            const result = data?.[0] ?? {};
+            const parts = [`${result.marked_used_count ?? 0} marked used`];
+            if (result.already_used_count) parts.push(`${result.already_used_count} already reconciled`);
+            if (result.unavailable_count) parts.push(`${result.unavailable_count} not assigned`);
+            if ((result.submitted_count ?? 0) > (result.matched_count ?? 0)) parts.push(`${result.submitted_count - result.matched_count} not in this pool`);
+            toast.success(parts.join(' · '));
+            setReconciliationText('');
+            await refreshCodeStats(selectedReward.id);
+            await refreshCodePool(selectedReward.id, 0, codePoolStatus);
+        } catch (err) {
+            toast.error(err.message || 'Reconciliation failed');
+        } finally {
+            setReconciling(false);
         }
     };
 
@@ -396,17 +444,16 @@ export default function PartnerPromoCodes() {
                                             </div>
                                         )}
                                     </div>
-                                    <button
-                                        type="button"
-                                        onClick={handleDownloadTemplate}
-                                        className="flex items-center gap-2 h-9 px-5 bg-[#F4F4F1] border border-[#E8D200]/20 rounded-full text-[9px] uppercase tracking-[0.3em] text-[#8a7600] hover:bg-[#E8D200]/5 transition-all font-black"
-                                    >
-                                        <FileText size={11} /> Template
-                                    </button>
+                                    <div className="flex items-center gap-3">
+                                        {codeWorkspaceMode === 'add' && <button type="button" onClick={handleDownloadTemplate} className="flex items-center gap-2 h-9 px-5 bg-[#F4F4F1] border border-[#E8D200]/20 rounded-full text-[9px] uppercase tracking-[0.3em] text-[#8a7600] hover:bg-[#E8D200]/5 transition-all font-black"><FileText size={11} /> Template</button>}
+                                        <div className="flex bg-[#F4F4F1] border border-[#E6E6E1] rounded-2xl p-1 gap-1">
+                                            {[['add', 'Add codes'], ['reconcile', 'Reconcile'], ['manage', 'Manage pool']].map(([mode, label]) => <button key={mode} type="button" onClick={() => setCodeWorkspaceMode(mode)} className={`h-8 px-3 rounded-xl text-[9px] uppercase tracking-[0.18em] font-black transition-all ${codeWorkspaceMode === mode ? 'bg-[#E8D200] text-[#080808]' : 'text-[#888] hover:text-[#333]'}`}>{label}</button>)}
+                                        </div>
+                                    </div>
                                 </div>
 
                                 {/* Code format builder */}
-                                <div className="px-8 py-5 border-b border-[#E6E6E1]">
+                                <div className={codeWorkspaceMode === 'add' ? 'px-8 py-5 border-b border-[#E6E6E1]' : 'hidden'}>
                                     <div className="text-[9px] uppercase tracking-[0.4em] text-[#888888] font-black mb-3">Code Format</div>
                                     <div className="flex gap-3 items-center">
                                         <input
@@ -453,7 +500,7 @@ export default function PartnerPromoCodes() {
                                 </div>
 
                                 {/* Auto-generate */}
-                                <div className="px-8 py-5 border-b border-[#E6E6E1]">
+                                <div className={codeWorkspaceMode === 'add' ? 'px-8 py-5 border-b border-[#E6E6E1]' : 'hidden'}>
                                     <div className="text-[9px] uppercase tracking-[0.4em] text-[#888888] font-black mb-3">Auto-Generate</div>
                                     <div className="flex flex-wrap gap-3 items-center">
                                         <input
@@ -480,7 +527,7 @@ export default function PartnerPromoCodes() {
                                 </div>
 
                                 {/* Upload */}
-                                <div className="px-8 pb-6 pt-5 border-b border-[#E6E6E1]">
+                                <div className={codeWorkspaceMode === 'add' ? 'px-8 pb-6 pt-5 border-b border-[#E6E6E1]' : 'hidden'}>
                                     <div className="text-[9px] uppercase tracking-[0.4em] text-[#888888] font-black mb-3">Upload Your Codes</div>
                                     <div className="flex flex-wrap gap-3 mb-3">
                                         <input
@@ -513,8 +560,41 @@ export default function PartnerPromoCodes() {
                                     </div>
                                 </div>
 
+                                {/* Reconcile store-side redemptions */}
+                                <div className={codeWorkspaceMode === 'reconcile' ? 'px-8 pb-6 pt-5 border-b border-[#E6E6E1] bg-[#E8D200]/[0.025]' : 'hidden'}>
+                                    <div className="flex items-start justify-between gap-4 mb-3">
+                                        <div>
+                                            <div className="flex items-center gap-2 text-[9px] uppercase tracking-[0.4em] text-[#8a7600] font-black">
+                                                <RefreshCw size={12} /> Reconcile store redemptions
+                                            </div>
+                                            <p className="text-[11px] text-[#888] mt-2 max-w-2xl leading-relaxed">
+                                                Paste or upload the codes your store reports as redeemed. POWR marks only codes already assigned to a member as used; unassigned, expired, and unknown codes stay unchanged.
+                                            </p>
+                                        </div>
+                                        <label className="flex items-center gap-2 h-10 px-5 bg-white border border-[#E6E6E1] rounded-full text-[9px] uppercase tracking-[0.25em] text-[#555] hover:text-[#8a7600] hover:border-[#E8D200]/40 transition-all font-black cursor-pointer whitespace-nowrap">
+                                            <Upload size={11} /> Import CSV
+                                            <input type="file" accept=".csv,text/csv" className="hidden" onChange={handleReconciliationFile} />
+                                        </label>
+                                    </div>
+                                    <textarea
+                                        rows={3}
+                                        placeholder="Paste a code list or a CSV with a Code column"
+                                        className="w-full p-4 bg-white border border-[#E6E6E1] rounded-2xl focus:border-[#E8D200]/40 outline-none transition-all text-xs font-mono text-[#222] placeholder-[#BBB] resize-none"
+                                        value={reconciliationText}
+                                        onChange={e => setReconciliationText(e.target.value)}
+                                    />
+                                    <div className="flex justify-between items-center mt-3 gap-4">
+                                        <span className="text-[10px] uppercase tracking-[0.3em] text-[#999] font-black">
+                                            {parseReconciliationCodes(reconciliationText).length} codes detected
+                                        </span>
+                                        <button type="button" onClick={handleReconcile} disabled={reconciling || !reconciliationText.trim()} className="flex items-center gap-2 h-11 px-7 bg-[#1A1A1A] text-white text-[10px] uppercase tracking-[0.25em] rounded-full transition-all hover:bg-[#333] disabled:opacity-40 font-black">
+                                            <RefreshCw size={13} className={reconciling ? 'animate-spin' : ''} /> {reconciling ? 'Reconciling...' : 'Reconcile Used Codes'}
+                                        </button>
+                                    </div>
+                                </div>
+
                                 {/* Ledger */}
-                                <div className="px-6 py-5">
+                                <div className={codeWorkspaceMode === 'manage' ? 'px-6 py-5' : 'hidden'}>
                                     <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
                                         <div className="flex items-center gap-4">
                                             <span className="text-[10px] uppercase tracking-[0.4em] text-[#888888] font-black whitespace-nowrap">
