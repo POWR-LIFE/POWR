@@ -120,10 +120,6 @@ export default function RedeemTrack() {
   const trackOpacity = useTransform(scrollYProgress, [0.52, 0.60], [1, 0.04]);
   const trackScale = useTransform(scrollYProgress, [0.52, 0.60], [1, 0.94]);
 
-  // Depth layer — a dim, defocused rank drifting slower behind
-  const backX = useTransform(scrollYProgress, [0.05, 0.56], ['-12%', '6%']);
-  const backOpacity = useTransform(scrollYProgress, [0.06, 0.14, 0.50, 0.58], [0, 0.26, 0.26, 0]);
-
   // Ghost word + rail bow out before the spend takes the stage
   const ghostOpacity = useTransform(scrollYProgress, [0.50, 0.58], [1, 0]);
   const railOpacity = useTransform(scrollYProgress, [0.07, 0.13, 0.50, 0.57], [0, 1, 1, 0]);
@@ -132,8 +128,6 @@ export default function RedeemTrack() {
   // focus (0..1, peaks at the spotlight) and signed offset (for parallax).
   const focusMVs = useMemo(() => gallery.map(() => motionValue(0)), [gallery]);
   const driftMVs = useMemo(() => gallery.map(() => motionValue(1.4)), [gallery]);
-
-  const backRow = [...gallery.slice(3), ...gallery.slice(0, 3)];
 
   return (
     <section ref={ref} data-act="redeem" style={{ position: 'relative', height: '560vh' }}>
@@ -181,24 +175,6 @@ export default function RedeemTrack() {
               background: `linear-gradient(270deg, ${pg.bg} 60%, rgba(8,8,8,0.96) 80%, transparent 100%)`,
             }}
           />
-        )}
-
-        {/* Depth rank — defocused prizes drifting behind the gallery */}
-        {!compact && (
-          <motion.div
-            aria-hidden
-            style={{
-              position: 'absolute', top: '40%', y: '-50%', left: 0, zIndex: 6,
-              display: 'flex', alignItems: 'center', gap: 48, x: backX, opacity: backOpacity,
-              pointerEvents: 'none', willChange: 'transform', filter: 'blur(3px) saturate(0.8)',
-            }}
-          >
-            {backRow.map((r, i) => (
-              <div key={`b-${r.id}`} style={{ transform: `translateY(${[42, -28, 48, -20, 34, -32, 40, -24][i % 8]}px)`, flexShrink: 0 }}>
-                <PosterCard reward={r} width={198} height={272} muted />
-              </div>
-            ))}
-          </motion.div>
         )}
 
         {/* Movement 1 — the gallery. flex-start ALWAYS (a flex-end here
@@ -304,7 +280,7 @@ function SpotlitPoster({ reward, width, height, focus, drift }) {
 
 /* ── The vault poster — a prize on a gallery wall, not a list row ──── */
 
-function PosterCard({ reward, width, height, muted = false, imgX }) {
+function PosterCard({ reward, width, height, imgX }) {
   const hasHero = !!reward.heroImage;
   return (
     <div
@@ -314,7 +290,7 @@ function PosterCard({ reward, width, height, muted = false, imgX }) {
           ? '#101010'
           : `radial-gradient(120% 90% at 50% 0%, ${hexA(reward.tint, 0.22)}, transparent 60%), ${CARD_BG}`,
         border: hasHero ? 'none' : `1px solid ${CARD_BORDER}`,
-        boxShadow: muted ? '0 24px 50px -30px rgba(0,0,0,0.9)' : '0 46px 90px -34px rgba(0,0,0,0.94)',
+        boxShadow: '0 46px 90px -34px rgba(0,0,0,0.94)',
       }}
     >
       {hasHero && (
@@ -325,7 +301,9 @@ function PosterCard({ reward, width, height, muted = false, imgX }) {
           style={{
             // Bleed must outrun the parallax: |x| peaks at 4.5% * 1.4 clamp
             // * 1.16 own-width ≈ 7.3% of card width, so 8% overhang each side.
-            position: 'absolute', top: 0, bottom: 0, left: '-8%', width: '116%', height: '100%',
+            // maxWidth:none defeats the site-wide `img { max-width: 100% }`,
+            // which otherwise clamps the bleed and bares a strip on one edge.
+            position: 'absolute', top: 0, bottom: 0, left: '-8%', width: '116%', maxWidth: 'none', height: '100%',
             objectFit: 'cover', x: imgX,
           }}
           loading="lazy"
@@ -339,7 +317,7 @@ function PosterCard({ reward, width, height, muted = false, imgX }) {
         }}
       />
       {/* Offer flash — one line, clipped clear of the brand chip */}
-      {reward.item !== 'Member reward' && !muted && (
+      {reward.item !== 'Member reward' && (
         <div style={{ position: 'absolute', top: 14, left: 14, right: 58, display: 'flex' }}>
           <div
             style={{
@@ -354,7 +332,7 @@ function PosterCard({ reward, width, height, muted = false, imgX }) {
         </div>
       )}
       {/* Brand chip — proof, kept out of the identity block's way */}
-      {!muted && <div style={{ position: 'absolute', top: 12, right: 12 }}><LogoBox reward={reward} size={38} radius={10} /></div>}
+      <div style={{ position: 'absolute', top: 12, right: 12 }}><LogoBox reward={reward} size={38} radius={10} /></div>
       {/* Fallback initial when there's no art */}
       {!hasHero && (
         <div
@@ -367,18 +345,18 @@ function PosterCard({ reward, width, height, muted = false, imgX }) {
         </div>
       )}
       {/* Identity — editorial: hairline, wordmark, price */}
-      <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, padding: muted ? 14 : 18 }}>
-        <div style={{ width: 26, height: 1, background: 'rgba(232,210,0,0.75)', marginBottom: muted ? 8 : 10 }} />
+      <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, padding: 18 }}>
+        <div style={{ width: 26, height: 1, background: 'rgba(232,210,0,0.75)', marginBottom: 10 }} />
         <div
           style={{
-            fontSize: muted ? 10 : 11.5, fontWeight: w.semiBold, letterSpacing: 2.6, textTransform: 'uppercase',
+            fontSize: 11.5, fontWeight: w.semiBold, letterSpacing: 2.6, textTransform: 'uppercase',
             color: 'rgba(255,255,255,0.88)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
           }}
         >
           {reward.name}
         </div>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, marginTop: muted ? 2 : 4 }}>
-          <span style={{ fontSize: muted ? 20 : 27, fontWeight: w.extraLight, color: t.gold, letterSpacing: -0.5 }}>{reward.pts}</span>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, marginTop: 4 }}>
+          <span style={{ fontSize: 27, fontWeight: w.extraLight, color: t.gold, letterSpacing: -0.5 }}>{reward.pts}</span>
           <span style={{ fontSize: 9, fontWeight: w.semiBold, color: t.gold, opacity: 0.7, letterSpacing: 1 }}>PTS</span>
         </div>
       </div>
