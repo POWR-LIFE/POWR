@@ -182,7 +182,7 @@ function GlobalStyles() {
     <style>{`
       @font-face {
         font-family: 'Ionicons';
-        src: url('/fonts/Ionicons.ttf') format('truetype');
+        src: url('/fonts/Ionicons.subset.woff2') format('woff2');
         font-display: block;
       }
       @keyframes powrPulse { 0% { transform: scale(1); opacity: 0.7; } 100% { transform: scale(1.6); opacity: 0; } }
