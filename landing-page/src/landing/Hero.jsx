@@ -2,6 +2,7 @@ import { useRef } from 'react';
 import { motion, useScroll, useTransform } from 'framer-motion';
 import { pg, w } from './theme';
 import { StoreBadges } from './stages/shared';
+import { LOGO_SRC } from './LogoMorph';
 
 /**
  * The live landing page's video hero, made cinematic:
@@ -10,7 +11,6 @@ import { StoreBadges } from './stages/shared';
  *    so the hero hands off to the Move act instead of just ending.
  */
 const VIDEO_SRC = 'https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/landing-page-assets/landing_hero.mp4';
-const LOGO_SRC = 'https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/landing-page-assets/powrlogotext.png?v=1.1';
 
 const EASE = [0.16, 1, 0.3, 1];
 
@@ -112,7 +112,15 @@ export default function Hero() {
           Live now
         </motion.div>
 
-        <motion.img variants={rise} src={LOGO_SRC} alt="POWR" style={{ height: 'clamp(72px, 14vw, 120px)', width: 'auto', display: 'block', marginBottom: 28 }} />
+        {/* Layout slot only — the visible logo is LogoMorph's fixed img,
+            which starts here and docks into the nav on scroll */}
+        <img
+          id="powr-hero-logo-slot"
+          src={LOGO_SRC}
+          alt=""
+          aria-hidden
+          style={{ height: 'clamp(72px, 14vw, 120px)', width: 'auto', display: 'block', marginBottom: 28, visibility: 'hidden' }}
+        />
 
         <h1 style={{ fontSize: 'clamp(40px, 5.5vw, 64px)', fontWeight: w.extraLight, letterSpacing: -1.5, lineHeight: 1.06, color: pg.text, margin: 0 }}>
           <Words text="Your last workout" />

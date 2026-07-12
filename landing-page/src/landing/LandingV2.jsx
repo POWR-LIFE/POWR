@@ -1,6 +1,7 @@
 import { motion, useScroll, useSpring } from 'framer-motion';
 import { pg, w } from './theme';
 import Hero from './Hero';
+import LogoMorph, { NavBrand } from './LogoMorph';
 import MoveStage from './stages/MoveStage';
 import EarnTrack from './stages/EarnTrack';
 import RedeemTrack from './stages/RedeemTrack';
@@ -45,9 +46,7 @@ export default function LandingV2() {
           background: 'linear-gradient(180deg, rgba(8,8,8,0.85), rgba(8,8,8,0))', backdropFilter: 'blur(4px)',
         }}
       >
-        <span style={{ fontWeight: w.bold, fontSize: 20, letterSpacing: 1 }}>
-          POWR<span style={{ color: pg.accent }}>.</span>
-        </span>
+        <NavBrand />
         <a
           href="#download"
           style={{
@@ -59,6 +58,7 @@ export default function LandingV2() {
         </a>
       </nav>
 
+      <LogoMorph />
       <Hero />
       <MoveStage />
       <ChapterBreak n="02" word="EARN" kicker="Every move counts — not just the gym." />
