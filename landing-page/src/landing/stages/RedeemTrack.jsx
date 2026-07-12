@@ -323,7 +323,9 @@ function PosterCard({ reward, width, height, muted = false, imgX }) {
           alt=""
           aria-hidden="true"
           style={{
-            position: 'absolute', top: 0, bottom: 0, left: '-6%', width: '112%', height: '100%',
+            // Bleed must outrun the parallax: |x| peaks at 4.5% * 1.4 clamp
+            // * 1.16 own-width ≈ 7.3% of card width, so 8% overhang each side.
+            position: 'absolute', top: 0, bottom: 0, left: '-8%', width: '116%', height: '100%',
             objectFit: 'cover', x: imgX,
           }}
           loading="lazy"
