@@ -74,6 +74,13 @@ async function fetchLiveRewards() {
 const CARD_BG = '#151515';
 const CARD_BORDER = 'rgba(255,255,255,0.07)';
 
+/* The vault pill shows just the discount — "25% OFF", not the full offer
+   sentence (long labels like MAJIC's would truncate). */
+function offerFlash(item) {
+  const m = /(£\s?\d+(?:\.\d+)?|\d+\s?%)\s*off/i.exec(item || '');
+  return m ? `${m[1].replace(/\s/g, '')} OFF` : item;
+}
+
 /* The balance Earn just banked — Act II ends on 1,345 */
 const BAL_START = 1345;
 
@@ -316,7 +323,7 @@ function PosterCard({ reward, width, height, imgX }) {
           background: 'linear-gradient(to bottom, rgba(0,0,0,0.10) 40%, rgba(0,0,0,0.58) 72%, rgba(0,0,0,0.92) 100%)',
         }}
       />
-      {/* Offer flash — one line, clipped clear of the brand chip */}
+      {/* Offer flash — the discount only, badge-clean */}
       {reward.item !== 'Member reward' && (
         <div style={{ position: 'absolute', top: 14, left: 14, right: 58, display: 'flex' }}>
           <div
@@ -327,7 +334,7 @@ function PosterCard({ reward, width, height, imgX }) {
               fontSize: 10, fontWeight: w.bold, letterSpacing: 1.2, color: t.accent, textTransform: 'uppercase',
             }}
           >
-            {reward.item}
+            {offerFlash(reward.item)}
           </div>
         </div>
       )}
