@@ -21,7 +21,7 @@ import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import { Platform } from 'react-native';
 import { supabase } from '@/lib/supabase';
-import { resolveContextualPlacements, logPlacementEvent } from '@/lib/api/placements';
+import { resolveContextualPlacements, recordPlacementNotification } from '@/lib/api/placements';
 import { notifyNearbyOffer } from '@/lib/notifications';
 
 export const PLACEMENT_NOTIFY_TASK = 'POWR_PLACEMENT_NOTIFY';
@@ -73,7 +73,7 @@ async function runPlacementCheck(): Promise<boolean> {
     // 'surfaced' daily cap, so a push never suppresses the in-app hero swap.
     // Awaited: the OS may suspend us the moment the task resolves, and a
     // fire-and-forget insert would be lost with it.
-    await logPlacementEvent(top.placement_id, 'notified', { lat: latitude, lng: longitude });
+    await recordPlacementNotification(top.placement_id, { lat: latitude, lng: longitude });
   }
   return fired;
 }

@@ -4,7 +4,7 @@ import { HeaderActions } from '@/components/HeaderActions';
 import { RewardHeroMedia } from '@/components/rewards/RewardHeroMedia';
 import { usePoints } from '@/hooks/usePoints';
 import { fetchMyRedemptionSummary, fetchRewards, fetchSmartFeaturedReward, type Reward as ApiReward } from '@/lib/api/rewards';
-import { resolveContextualPlacements, logPlacementEvent, pickHeroPlacement, comparePlacements, type ResolvedPlacement } from '@/lib/api/placements';
+import { resolveContextualPlacements, pickHeroPlacement, comparePlacements, type ResolvedPlacement } from '@/lib/api/placements';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as Location from 'expo-location';
@@ -176,21 +176,14 @@ export default function SpendScreen() {
   const [redemptionInfo, setRedemptionInfo] = useState<Record<string, { active: number; nonRefunded: number }>>({});
   // Location-targeted placements, keyed by reward_id. Empty = normal vault.
   const [placementMap, setPlacementMap] = useState<Map<string, ResolvedPlacement>>(new Map());
-  const surfacedLogged = useRef<Set<string>>(new Set());
-  const presenceLogged = useRef<Set<string>>(new Set());
-  // Last coarse fix + whether it was a fresh read (vs a cached last-known).
-  const lastFix = useRef<{ lat: number; lng: number; fresh: boolean } | null>(null);
-
-  // Resolve which placements apply at the user's coarse location. Fully
-  // fail-safe: no location permission (no new prompt), no fix, or an error
-  // just leaves the vault untouched. Surfacing/attribution logging happens in
-  // a separate effect once we know which placed rewards are actually visible.
-  // Resolve at a specific coarse fix and update the placement map. `fresh`
-  // marks a live GPS read (vs a cached last-known) — only fresh reads earn a
-  // 'presence_confirmed' footfall event.
+  // Resolve at a specific coarse fix and update the placement map. The API
+  // records bounded in-app impressions server-side; a fresh read additionally
+  // records a bounded presence signal after resolver validation.
   const applyResolvedAt = useCallback(async (lat: number, lng: number, fresh: boolean) => {
-    lastFix.current = { lat, lng, fresh };
-    const placements = await resolveContextualPlacements(lat, lng);
+    const placements = await resolveContextualPlacements(lat, lng, {
+      recordSurface: true,
+      confirmPresence: fresh,
+    });
     const map = new Map<string, ResolvedPlacement>();
     for (const p of placements) if (!map.has(p.reward_id)) map.set(p.reward_id, p);
     setPlacementMap(map);
@@ -278,30 +271,6 @@ export default function SpendScreen() {
       setRefreshing(false);
     }
   }, [refreshPoints, loadRewards, loadPlacements]);
-
-  // Log 'surfaced' (+ 'presence_confirmed' on a fresh fix) once per session,
-  // but ONLY for placed rewards actually present in the vault — a placement
-  // for a reward the user can't see is not an impression. Runs when either the
-  // resolved placements or the loaded rewards change so it never races them.
-  useEffect(() => {
-    if (placementMap.size === 0) return;
-    const present = new Set(rewards.map((r) => r.id));
-    const fix = lastFix.current;
-    const coords = fix ? { lat: fix.lat, lng: fix.lng } : undefined;
-    for (const p of placementMap.values()) {
-      if (!present.has(p.reward_id)) continue;
-      if (!surfacedLogged.current.has(p.placement_id)) {
-        surfacedLogged.current.add(p.placement_id);
-        logPlacementEvent(p.placement_id, 'surfaced', coords);
-      }
-      // Verified footfall: only when we have a fresh, accurate read (not a
-      // cached last-known) — this is the signal we can actually stand behind.
-      if (fix?.fresh && coords && !presenceLogged.current.has(p.placement_id)) {
-        presenceLogged.current.add(p.placement_id);
-        logPlacementEvent(p.placement_id, 'presence_confirmed', coords);
-      }
-    }
-  }, [placementMap, rewards]);
 
   const filtered = activeCategory === 'ALL'
     ? rewards

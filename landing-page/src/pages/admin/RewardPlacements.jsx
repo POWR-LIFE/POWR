@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Plus, Trash2, MapPin, ArrowLeft, Grid3x3, Eye, Footprints, Gift, Bell } from 'lucide-react';
+import { Plus, Trash2, MapPin, ArrowLeft, Grid3x3, Eye, Footprints, Gift, Bell, Check, X } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
 import PlacementGridMap from '../../components/PlacementGridMap';
@@ -35,6 +35,13 @@ const blankForm = () => ({
     active: true,
 });
 
+const EDITOR_SECTIONS = [
+    { id: 'setup', label: 'Setup' },
+    { id: 'audience', label: 'Audience' },
+    { id: 'delivery', label: 'Delivery' },
+    { id: 'commercial', label: 'Commercial' },
+];
+
 export default function RewardPlacements() {
     const toast = useToast();
     const [loading, setLoading] = useState(true);
@@ -44,13 +51,14 @@ export default function RewardPlacements() {
     const [stats, setStats] = useState({});
     const [rewards, setRewards] = useState([]);
     const [form, setForm] = useState(null);
+    const [editorSection, setEditorSection] = useState('setup');
 
     const fetchData = async () => {
         setLoading(true);
         const [pl, rew, cells] = await Promise.all([
             supabase
                 .from('reward_placements')
-                .select('id, reward_id, geo_mode, paid, billing_status, visibility, priority, starts_at, ends_at, active_days, active_hour_start, active_hour_end, target_activities, affordability, activity_recency, activity_window_hours, audience_history, max_impressions_per_user_per_day, cooldown_hours, max_impressions_per_user_total, active, created_at, rewards(title, brand_name)')
+                .select('id, campaign_name, status, review_note, reward_id, geo_mode, paid, billing_status, visibility, priority, starts_at, ends_at, active_days, active_hour_start, active_hour_end, target_activities, affordability, activity_recency, activity_window_hours, audience_history, max_impressions_per_user_per_day, cooldown_hours, max_impressions_per_user_total, active, created_at, rewards(title, brand_name)')
                 .order('created_at', { ascending: false }),
             supabase.from('rewards').select('id, title, brand_name').eq('active', true).order('title'),
             supabase.from('reward_placement_cells').select('placement_id'),
@@ -91,7 +99,7 @@ export default function RewardPlacements() {
 
     useEffect(() => { fetchData(); }, []);
 
-    const openCreate = () => setForm(blankForm());
+    const openCreate = () => { setEditorSection('setup'); setForm(blankForm()); };
     const openEdit = async (p) => {
         const { data } = await supabase.from('reward_placement_cells').select('z, x, y').eq('placement_id', p.id);
         const cells = new Set((data ?? []).map((c) => cellKey(c.z, c.x, c.y)));
@@ -100,6 +108,7 @@ export default function RewardPlacements() {
         setForm({
             id: p.id,
             reward_id: p.reward_id,
+            status: p.status ?? (p.active ? 'live' : 'paused'),
             center_lat: center.lat,
             center_lng: center.lng,
             cells,
@@ -122,6 +131,7 @@ export default function RewardPlacements() {
             max_impressions_per_user_total: p.max_impressions_per_user_total ?? null,
             active: p.active,
         });
+        setEditorSection('setup');
     };
 
     const setField = (patch) => setForm((f) => f && ({ ...f, ...patch }));
@@ -227,6 +237,21 @@ export default function RewardPlacements() {
         fetchData();
     };
 
+    const review = async (id, decision) => {
+        const note = decision === 'reject'
+            ? window.prompt('Tell the partner what needs to change (optional):')
+            : null;
+        if (decision === 'reject' && note === null) return;
+        const { error } = await supabase.rpc('review_reward_placement', {
+            p_placement_id: id,
+            p_decision: decision,
+            p_note: note,
+        });
+        if (error) { toast.error(error.message); return; }
+        toast.success(decision === 'approve' ? 'Campaign approved and live' : 'Changes requested');
+        fetchData();
+    };
+
     const rewardLabel = (r) => `${r.title}${r.brand_name ? ` · ${r.brand_name}` : ''}`;
     const hoursOn = form && form.active_hour_start != null;
 
@@ -256,6 +281,15 @@ export default function RewardPlacements() {
                     </div>
                 </div>
 
+                <div className="flex items-center gap-1 overflow-x-auto border-b border-[#E6E6E1] mb-6">
+                    {EDITOR_SECTIONS.map((section) => (
+                        <button key={section.id} type="button" onClick={() => setEditorSection(section.id)}
+                            className={`h-10 px-4 text-[11px] uppercase tracking-[0.18em] font-bold border-b-2 transition whitespace-nowrap ${editorSection === section.id ? 'border-[#E8D200] text-[#1A1A1A]' : 'border-transparent text-[#999999] hover:text-[#555555]'}`}>
+                            {section.label}
+                        </button>
+                    ))}
+                </div>
+
                 <div className="grid grid-cols-1 lg:grid-cols-[1.7fr_1fr] gap-6">
                     <div className="space-y-3">
                         <div className="flex items-center justify-between">
@@ -275,6 +309,7 @@ export default function RewardPlacements() {
                     </div>
 
                     <div className="space-y-6 bg-white border border-[#E6E6E1] rounded-2xl p-5">
+                        {editorSection === 'setup' && <>
                         <div>
                             <label className={labelCls}>Reward</label>
                             <select value={form.reward_id} onChange={(e) => setField({ reward_id: e.target.value })}
@@ -323,7 +358,9 @@ export default function RewardPlacements() {
                             )}
                             <p className="text-[11px] text-[#AAAAAA] mt-2">Two placements can share a square at non-overlapping days/hours.</p>
                         </div>
+                        </>}
 
+                        {editorSection === 'audience' && <>
                         <div>
                             <label className={labelCls}>Audience <span className="text-[#CCCCCC] normal-case tracking-normal">(none = everyone)</span></label>
                             <div className="flex gap-2 flex-wrap">
@@ -382,7 +419,9 @@ export default function RewardPlacements() {
                                         : 'No brand-history filter.'}
                             </p>
                         </div>
+                                </>}
 
+                                {editorSection === 'delivery' && <>
                         <div className="grid grid-cols-2 gap-4">
                             <div>
                                 <label className={labelCls}>Daily cap / user <span className="text-[#CCCCCC] normal-case tracking-normal">(∞)</span></label>
@@ -414,22 +453,25 @@ export default function RewardPlacements() {
 
                         <div>
                             <label className={labelCls}>Visibility</label>
-                            <div className="flex gap-2">
-                                {['boost', 'exclusive'].map((v) => (
-                                    <button key={v} type="button" onClick={() => setField({ visibility: v })} className={chip(form.visibility === v) + ' capitalize px-4 py-2 rounded-xl'}>{v}</button>
-                                ))}
-                            </div>
+                            <div className={chip(true) + ' inline-flex px-4 py-2 rounded-xl'}>Boost</div>
+                            <p className="text-[11px] text-[#AAAAAA] mt-2">Moves an eligible reward ahead of the normal vault order without hiding other rewards.</p>
                         </div>
+                        </>}
 
+                        {editorSection === 'commercial' && <>
                         <div className="flex items-center gap-6 pt-1">
                             <label className="flex items-center gap-2 text-[13px] text-[#444444] font-medium">
                                 <input type="checkbox" checked={form.paid} onChange={(e) => setField({ paid: e.target.checked })} className="accent-[#E8D200] w-4 h-4" />
                                 Paid <span className="text-[#AAAAAA]">(Sponsored)</span>
                             </label>
-                            <label className="flex items-center gap-2 text-[13px] text-[#444444] font-medium">
-                                <input type="checkbox" checked={form.active} onChange={(e) => setField({ active: e.target.checked })} className="accent-[#E8D200] w-4 h-4" />
-                                Active
-                            </label>
+                            {['draft', 'pending_review', 'rejected'].includes(form.status) ? (
+                                <span className="text-[12px] text-[#999999]">Activation is controlled by campaign review.</span>
+                            ) : (
+                                <label className="flex items-center gap-2 text-[13px] text-[#444444] font-medium">
+                                    <input type="checkbox" checked={form.active} onChange={(e) => setField({ active: e.target.checked })} className="accent-[#E8D200] w-4 h-4" />
+                                    Active
+                                </label>
+                            )}
                         </div>
 
                         {form.paid && (
@@ -443,6 +485,7 @@ export default function RewardPlacements() {
                                 <p className="text-[11px] text-[#AAAAAA] mt-2">Brand self-serve placements stay “Beta (free)” until payments go live.</p>
                             </div>
                         )}
+                        </>}
                     </div>
                 </div>
             </form>
@@ -477,19 +520,27 @@ export default function RewardPlacements() {
                             </div>
                             <div className="flex-1 min-w-0">
                                 <div className="text-[14px] font-semibold text-[#1A1A1A] truncate">
-                                    {p.rewards?.title || 'Reward'}
+                                    {p.campaign_name || p.rewards?.title || 'Reward'}
                                     {p.rewards?.brand_name ? <span className="text-[#AAAAAA] font-normal"> · {p.rewards.brand_name}</span> : null}
                                 </div>
                                 <div className="text-[12px] text-[#999999] mt-0.5">
+                                    {p.campaign_name && <>{p.rewards?.title || 'Reward'} · </>}
                                     {p.geo_mode === 'grid' ? `${cellCounts[p.id] ?? 0} squares` : `${p.geo_mode}`} · {p.active_days?.length ? p.active_days.map((d) => DOW[d]).join(' ') : 'any day'}
                                     {p.active_hour_start != null ? ` · ${p.active_hour_start}:00–${p.active_hour_end}:00` : ''}
                                     {(p.starts_at || p.ends_at) ? ` · ${isoToDateInput(p.starts_at) || '…'}→${isoToDateInput(p.ends_at) || '…'}` : ''}
                                     {p.target_activities?.length ? ` · ${p.target_activities.join(', ')}` : ''}
                                 </div>
+                                {p.status === 'rejected' && p.review_note && <div className="text-[11px] text-red-500 mt-1 truncate">Feedback: {p.review_note}</div>}
                             </div>
                             <StatLine id={p.id} />
+                            <span className={`text-[9px] font-black uppercase tracking-[0.18em] px-2 py-1 rounded-md ${p.status === 'live' ? 'bg-emerald-50 text-emerald-600' : p.status === 'pending_review' ? 'bg-[#E8D200]/20 text-[#8a7600]' : p.status === 'rejected' ? 'bg-red-50 text-red-500' : 'bg-[#F4F4F1] text-[#888]'}`}>
+                                {(p.status || (p.active ? 'live' : 'paused')).replace('_', ' ')}
+                            </span>
                             {p.paid && <span className="text-[9px] font-black uppercase tracking-[0.2em] bg-[#E8D200] text-[#080808] px-2 py-1 rounded-md">Paid</span>}
-                            <span className={`h-2.5 w-2.5 rounded-full ${p.active ? 'bg-emerald-500' : 'bg-red-400'}`} title={p.active ? 'Active' : 'Inactive'} />
+                            {p.status === 'pending_review' && <>
+                                <button onClick={() => review(p.id, 'approve')} className="flex items-center gap-1 text-[10px] uppercase tracking-[0.15em] font-semibold text-emerald-600 hover:text-emerald-700"><Check size={14} /> Approve</button>
+                                <button onClick={() => review(p.id, 'reject')} className="flex items-center gap-1 text-[10px] uppercase tracking-[0.15em] font-semibold text-red-400 hover:text-red-500"><X size={14} /> Changes</button>
+                            </>}
                             <button onClick={() => openEdit(p)} className="text-[11px] uppercase tracking-[0.2em] font-semibold text-[#8a7600] hover:underline">Edit</button>
                             <button onClick={() => remove(p.id)} className="text-[#CCCCCC] hover:text-red-500 transition"><Trash2 size={16} /></button>
                         </div>

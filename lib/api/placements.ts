@@ -1,4 +1,4 @@
-import { getSessionUser, supabase } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase';
 import type { Reward } from './rewards';
 
 // =============================================================
@@ -12,7 +12,6 @@ import type { Reward } from './rewards';
 // =============================================================
 
 export type PlacementVisibility = 'boost' | 'exclusive';
-export type PlacementEventType = 'surfaced' | 'presence_confirmed' | 'redeemed' | 'notified';
 
 export interface ResolvedPlacement {
   placement_id: string;
@@ -29,43 +28,52 @@ export interface ResolvedPlacement {
  * Day/hour are sent from the DEVICE clock so time-targeting matches the
  * user's actual local time (mirrors per-user-local broadcast delivery).
  */
+export interface PlacementResolutionOptions {
+  /** Record a bounded in-app impression for placements currently resolved. */
+  recordSurface?: boolean;
+  /** Record a bounded fresh-location footfall signal alongside the impression. */
+  confirmPresence?: boolean;
+}
+
 export async function resolveContextualPlacements(
   lat: number,
   lng: number,
+  options: PlacementResolutionOptions = {},
 ): Promise<ResolvedPlacement[]> {
   const now = new Date();
-  const { data, error } = await supabase.rpc('resolve_reward_placements', {
+  const { data, error } = await supabase.rpc('resolve_reward_placements_and_record', {
     p_lat: lat,
     p_lng: lng,
     p_local_dow: now.getDay(),   // 0 = Sunday … 6 = Saturday
     p_local_hour: now.getHours(),
+    p_record_surface: options.recordSurface ?? false,
+    p_confirm_presence: options.confirmPresence ?? false,
   });
   if (error) throw error;
   return (data ?? []) as ResolvedPlacement[];
 }
 
 /**
- * Record a funnel moment. Fire 'surfaced' when a placed reward is shown,
- * 'redeemed' when it's redeemed. This log powers frequency caps, billing,
- * and the attribution dashboard. Best-effort: never throws into the UI.
+ * Record a notification only after the OS has shown it. The backend confirms
+ * that the placement resolves for the caller's location before accepting the
+ * event, so a client cannot attribute an arbitrary placement ID.
  */
-export async function logPlacementEvent(
+export async function recordPlacementNotification(
   placementId: string,
-  eventType: PlacementEventType,
-  coords?: { lat: number; lng: number },
-): Promise<void> {
+  coords: { lat: number; lng: number },
+): Promise<boolean> {
   try {
-    const userId = (await getSessionUser())?.id;
-    if (!userId) return;
-    await supabase.from('reward_placement_events').insert({
-      placement_id: placementId,
-      user_id: userId,
-      event_type: eventType,
-      lat: coords?.lat ?? null,
-      lng: coords?.lng ?? null,
+    const now = new Date();
+    const { data, error } = await supabase.rpc('record_placement_notification', {
+      p_placement_id: placementId,
+      p_lat: coords.lat,
+      p_lng: coords.lng,
+      p_local_dow: now.getDay(),
+      p_local_hour: now.getHours(),
     });
+    return !error && data === true;
   } catch {
-    // Non-critical telemetry — swallow so it never disrupts the reward flow.
+    return false;
   }
 }
 
