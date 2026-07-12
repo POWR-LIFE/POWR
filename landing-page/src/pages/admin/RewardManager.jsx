@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
-import { Plus, Edit2, Trash2, Ticket, Loader2, X, Search, Award, Activity, ChevronLeft, ChevronRight, AlertTriangle, Upload, Image as ImageIcon, Video as VideoIcon, Tag, FileText, Download, GripVertical, Save, Pin, Send, KeyRound, Building2, Link2, Palette, CalendarClock, Check } from 'lucide-react';
+import { Plus, Edit2, Trash2, Ticket, Loader2, X, Search, Award, Activity, ChevronLeft, ChevronRight, AlertTriangle, Upload, Image as ImageIcon, Video as VideoIcon, Tag, FileText, Download, GripVertical, Save, Pin, Send, KeyRound, Building2, Link2, Palette, CalendarClock, Check, RefreshCw } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { uploadPublicImage } from '../../lib/storage';
 import { validateHeroVideoUrl } from '../../lib/heroVideoUrl';
 import * as XLSX from 'xlsx';
-import { parseCodes, uploadCodes, fetchCodeStats, fetchCodePool, fetchAllCodes, getCSVTemplate, buildScheme, isValidForScheme, getSchemeCSVTemplate, generateCodes, toggleCodeStatus, updateCodeExpiry, bulkUpdateExpiry } from '../../lib/promoCodes';
+import { parseCodes, parseReconciliationCodes, uploadCodes, fetchCodeStats, fetchCodePool, fetchAllCodes, getCSVTemplate, buildScheme, isValidForScheme, getSchemeCSVTemplate, generateCodes, toggleCodeStatus, updateCodeExpiry, bulkUpdateExpiry } from '../../lib/promoCodes';
 import BrandPortalAccess from '../../components/BrandPortalAccess';
 import BrandAccessPanel from '../../components/BrandAccessPanel';
 import BrandRewardLimit from '../../components/BrandRewardLimit';
@@ -126,7 +126,7 @@ const EMPTY_FORM = {
     powr_cost: 100,
     category: 'move',
     stock: null,
-    active: true,
+    active: false,
     reward_kind: 'digital',
     integration_type: 'POOL',
     promo_code: '',
@@ -161,8 +161,12 @@ export default function RewardManager() {
     const [imageUploading, setImageUploading] = useState(false);
     const [heroVideoUploading, setHeroVideoUploading] = useState(false);
     const [codeStats, setCodeStats] = useState(null);
+    const [codeWorkspaceMode, setCodeWorkspaceMode] = useState('manage');
+    const [availableCodeCounts, setAvailableCodeCounts] = useState({});
     const [bulkCodesText, setBulkCodesText] = useState('');
     const [uploadingCodes, setUploadingCodes] = useState(false);
+    const [reconciliationText, setReconciliationText] = useState('');
+    const [reconcilingCodes, setReconcilingCodes] = useState(false);
     const [singleCode, setSingleCode] = useState('');
     const [codePool, setCodePool] = useState({ rows: [], total: 0 });
     const [codePoolPage, setCodePoolPage] = useState(0);
@@ -235,6 +239,16 @@ export default function RewardManager() {
                 category: normalizeRewardCategory(reward.category),
             }));
             setRewards(normalized);
+            const pools = normalized.filter(reward => reward.reward_kind === 'digital' && reward.integration_type === 'POOL' && !reward.promo_code?.trim());
+            const counts = await Promise.all(pools.map(async reward => {
+                const { count } = await supabase
+                    .from('redemption_codes')
+                    .select('id', { count: 'exact', head: true })
+                    .eq('reward_id', reward.id)
+                    .eq('status', 'available');
+                return [reward.id, count ?? 0];
+            }));
+            setAvailableCodeCounts(Object.fromEntries(counts));
         }
         if (part.data) setPartners(part.data);
         setLoading(false);
@@ -276,6 +290,17 @@ export default function RewardManager() {
             return r.partner_id === filterPartner;
         });
 
+    const getVaultReadiness = (reward) => {
+        if (reward.active) return { label: 'Live', tone: 'text-[#10B981]' };
+        if (!reward.title?.trim() || !reward.description?.trim() || !reward.terms?.trim() || !Number(reward.powr_cost)) return { label: 'Needs listing details', tone: 'text-[#8a7600]' };
+        if (reward.integration_type === 'AFFILIATE' && !reward.url?.trim()) return { label: 'Needs destination URL', tone: 'text-[#8a7600]' };
+        if (reward.reward_kind === 'digital' && reward.integration_type === 'POOL' && !reward.promo_code?.trim()) {
+            if (availableCodeCounts[reward.id] === undefined) return { label: 'Checking code supply', tone: 'text-[#999]' };
+            if (!availableCodeCounts[reward.id]) return { label: 'Needs code supply', tone: 'text-red-500' };
+        }
+        return { label: 'Ready to launch', tone: 'text-[#10B981]' };
+    };
+
     const openCreate = () => {
         setEditingReward(null);
         setEditorTab('details');
@@ -287,6 +312,8 @@ export default function RewardManager() {
         setCodePoolStatus('all');
         setCodeSearch('');
         setBulkCodesText('');
+        setReconciliationText('');
+        setCodeWorkspaceMode('manage');
         setSingleCode('');
         setBatchExpiry('');
         setBulkExpiry('');
@@ -325,6 +352,8 @@ export default function RewardManager() {
             max_redemptions_per_user: reward.max_redemptions_per_user ?? null,
         });
         setBulkCodesText('');
+        setReconciliationText('');
+        setCodeWorkspaceMode('manage');
         setSingleCode('');
         setGenerateCount(100);
         setBatchExpiry('');
@@ -399,6 +428,47 @@ export default function RewardManager() {
             toast.error('Could not read file');
         } finally {
             e.target.value = '';
+        }
+    };
+
+    const handleReconciliationFile = async (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        try {
+            setReconciliationText(await file.text());
+            toast.success(`Loaded ${file.name}`);
+        } catch {
+            toast.error('Could not read file');
+        } finally {
+            e.target.value = '';
+        }
+    };
+
+    const handleReconcileCodes = async () => {
+        if (!editingReward) return;
+        const codes = parseReconciliationCodes(reconciliationText);
+        if (!codes.length) { toast.error('No codes detected'); return; }
+        if (!window.confirm(`Reconcile ${codes.length} store redemption${codes.length === 1 ? '' : 's'}? Only codes POWR previously assigned to a member can be marked used.`)) return;
+        setReconcilingCodes(true);
+        try {
+            const { data, error } = await supabase.rpc('reconcile_partner_redemption_codes', {
+                p_reward_id: editingReward.id,
+                p_codes: codes,
+            });
+            if (error) throw error;
+            const result = data?.[0] ?? {};
+            const parts = [`${result.marked_used_count ?? 0} marked used`];
+            if (result.already_used_count) parts.push(`${result.already_used_count} already reconciled`);
+            if (result.unavailable_count) parts.push(`${result.unavailable_count} not assigned`);
+            if ((result.submitted_count ?? 0) > (result.matched_count ?? 0)) parts.push(`${result.submitted_count - result.matched_count} not in this pool`);
+            toast.success(parts.join(' · '));
+            setReconciliationText('');
+            await refreshCodeStats(editingReward.id);
+            await refreshCodePool(editingReward.id, 0, codePoolStatus);
+        } catch (err) {
+            toast.error(err.message || 'Reconciliation failed');
+        } finally {
+            setReconcilingCodes(false);
         }
     };
 
@@ -547,9 +617,39 @@ export default function RewardManager() {
         }
     };
 
+    const getLaunchBlocker = async (reward) => {
+        if (!reward.title?.trim() || !reward.description?.trim() || !reward.terms?.trim()) {
+            return 'Add the reward title, description, and terms before taking it live';
+        }
+        if (!Number.isInteger(Number(reward.powr_cost)) || Number(reward.powr_cost) < 1) {
+            return 'Set a valid POWR points cost before taking this reward live';
+        }
+        if (reward.integration_type === 'AFFILIATE' && !reward.url?.trim()) {
+            return 'Add the affiliate destination URL before taking this reward live';
+        }
+        if (reward.reward_kind === 'digital' && reward.integration_type === 'POOL' && !reward.promo_code?.trim()) {
+            if (!reward.id) return 'Save this reward, then add a shared code or upload a code pool before taking it live';
+            const { count, error } = await supabase
+                .from('redemption_codes')
+                .select('id', { count: 'exact', head: true })
+                .eq('reward_id', reward.id)
+                .eq('status', 'available');
+            if (error || !count) return 'Add a shared code or at least one available code before taking this reward live';
+        }
+        return null;
+    };
+
     const handleSave = async (e) => {
         e.preventDefault();
         setSaving(true);
+        if (formData.active) {
+            const blocker = await getLaunchBlocker(formData);
+            if (blocker) {
+                setSaving(false);
+                toast.error(blocker);
+                return;
+            }
+        }
         const payload = {
             ...formData,
             category: toLegacyRewardCategory(formData.category),
@@ -580,6 +680,14 @@ export default function RewardManager() {
         if (togglingId === reward.id) return;
         setTogglingId(reward.id);
         const newActive = !reward.active;
+        if (newActive) {
+            const blocker = await getLaunchBlocker(reward);
+            if (blocker) {
+                setTogglingId(null);
+                toast.error(blocker);
+                return;
+            }
+        }
         const { error } = await supabase.from('rewards').update({ active: newActive }).eq('id', reward.id);
         if (error) {
             toast.error('Sync failed');
@@ -869,6 +977,9 @@ export default function RewardManager() {
                                             )}
                                         </td>
                                         <td className="px-6 py-5 whitespace-nowrap">
+                                            {(() => {
+                                                const readiness = getVaultReadiness(reward);
+                                                return <div>
                                             <button
                                                 onClick={() => handleToggleActive(reward)}
                                                 disabled={togglingId === reward.id}
@@ -881,6 +992,9 @@ export default function RewardManager() {
                                                 <div className={`h-1.5 w-1.5 rounded-full ${reward.active ? 'bg-[#10B981] animate-pulse' : 'bg-[#EFEFEC]'}`} />
                                                 {reward.active ? 'Network Live' : 'Offline'}
                                             </button>
+                                                <div className={`mt-2 text-[9px] uppercase tracking-[0.2em] font-black ${readiness.tone}`}>{readiness.label}</div>
+                                                </div>;
+                                            })()}
                                         </td>
                                         <td className="px-6 py-5 text-right">
                                             {confirmDeleteId === reward.id ? (
@@ -960,7 +1074,7 @@ export default function RewardManager() {
                                 })}
                             </div>
 
-                            <div className={activeTab === 'details' ? 'grid 2xl:grid-cols-[minmax(0,1fr)_360px] gap-x-16 gap-y-12 items-start' : 'hidden'}>
+                            <div className={activeTab === 'details' ? 'grid xl:grid-cols-[minmax(0,1fr)_320px] gap-x-12 gap-y-12 items-start' : 'hidden'}>
                             {/* Form fields — stepped one section at a time; the live
                                 preview claims the right rail on wide screens. */}
                             <div className="min-w-0">
@@ -1325,7 +1439,7 @@ export default function RewardManager() {
                             {/* end stepped form fields */}
 
                             {/* Live app preview — mirrors the form, identical to the partner portal */}
-                            <div className="hidden 2xl:block">
+                            <div className="hidden xl:block">
                                 <div className="sticky top-8">
                                     <div className="flex items-center gap-3 mb-6 justify-center">
                                         <div className="h-[1px] w-8 bg-[#E8D200]" />
@@ -1354,17 +1468,16 @@ export default function RewardManager() {
                                                 </div>
                                             )}
                                         </div>
-                                        <button
-                                            type="button"
-                                            onClick={handleDownloadTemplate}
-                                            className="flex items-center gap-2 h-9 px-5 bg-[#F4F4F1] border border-[#E8D200]/20 rounded-full text-[9px] uppercase tracking-[0.3em] text-[#8a7600] hover:bg-[#E8D200]/5 transition-all font-black"
-                                        >
-                                            <FileText size={11} /> Template
-                                        </button>
+                                        <div className="flex items-center gap-3">
+                                            {codeWorkspaceMode === 'add' && <button type="button" onClick={handleDownloadTemplate} className="flex items-center gap-2 h-9 px-5 bg-[#F4F4F1] border border-[#E8D200]/20 rounded-full text-[9px] uppercase tracking-[0.3em] text-[#8a7600] hover:bg-[#E8D200]/5 transition-all font-black"><FileText size={11} /> Template</button>}
+                                            <div className="flex bg-[#F4F4F1] border border-[#E6E6E1] rounded-2xl p-1 gap-1">
+                                                {[['add', 'Add codes'], ['reconcile', 'Reconcile'], ['manage', 'Manage pool']].map(([mode, label]) => <button key={mode} type="button" onClick={() => setCodeWorkspaceMode(mode)} className={`h-8 px-3 rounded-xl text-[9px] uppercase tracking-[0.18em] font-black transition-all ${codeWorkspaceMode === mode ? 'bg-[#E8D200] text-[#080808]' : 'text-[#888] hover:text-[#333]'}`}>{label}</button>)}
+                                            </div>
+                                        </div>
                                     </div>
 
                                     {/* Code Format Builder */}
-                                    <div className="px-8 py-5 border-b border-[#E6E6E1]">
+                                    <div className={codeWorkspaceMode === 'add' ? 'px-8 py-5 border-b border-[#E6E6E1]' : 'hidden'}>
                                         <div className="text-[9px] uppercase tracking-[0.4em] text-[#888888] font-black mb-3">Code Format</div>
                                         <div className="flex gap-3 items-center">
                                             <input
@@ -1421,7 +1534,7 @@ export default function RewardManager() {
                                     </div>
 
                                     {/* New-batch expiry — applies to codes added via generate / upload / single-add below */}
-                                    <div className="px-8 py-5 border-b border-[#E6E6E1]">
+                                    <div className={codeWorkspaceMode === 'add' ? 'px-8 py-5 border-b border-[#E6E6E1]' : 'hidden'}>
                                         <div className="text-[9px] uppercase tracking-[0.4em] text-[#888888] font-black mb-3">New Codes Expire</div>
                                         <div className="flex gap-3 items-center flex-wrap">
                                             <div className="relative">
@@ -1450,7 +1563,7 @@ export default function RewardManager() {
                                     </div>
 
                                     {/* Auto-generate row */}
-                                    <div className="px-8 py-5 border-b border-[#E6E6E1]">
+                                    <div className={codeWorkspaceMode === 'add' ? 'px-8 py-5 border-b border-[#E6E6E1]' : 'hidden'}>
                                         <div className="text-[9px] uppercase tracking-[0.4em] text-[#888888] font-black mb-3">Auto-Generate</div>
                                         <div className="flex gap-3 items-center">
                                             <input
@@ -1477,7 +1590,7 @@ export default function RewardManager() {
                                     </div>
 
                                     {/* Upload row */}
-                                    <div className="px-8 pb-6 border-b border-[#E6E6E1]">
+                                    <div className={codeWorkspaceMode === 'add' ? 'px-8 pb-6 border-b border-[#E6E6E1]' : 'hidden'}>
                                         <div className="flex items-center justify-between mb-3 px-4 py-2 bg-[#F4F4F1] border border-[#E6E6E1] rounded-2xl">
                                             <span className="text-[9px] uppercase tracking-[0.3em] text-[#999999] font-black">Send template to partner → they fill it in → upload here</span>
                                         </div>
@@ -1512,8 +1625,39 @@ export default function RewardManager() {
                                         </div>
                                     </div>
 
+                                    {/* Store-side reconciliation uses the same guarded RPC as the partner portal. */}
+                                    <div className={codeWorkspaceMode === 'reconcile' ? 'px-8 py-6 border-b border-[#E6E6E1] bg-[#E8D200]/[0.025]' : 'hidden'}>
+                                        <div className="flex items-start justify-between gap-4 mb-3">
+                                            <div>
+                                                <div className="flex items-center gap-2 text-[9px] uppercase tracking-[0.4em] text-[#8a7600] font-black">
+                                                    <RefreshCw size={12} /> Reconcile store redemptions
+                                                </div>
+                                                <p className="text-[11px] text-[#888] mt-2 max-w-2xl leading-relaxed">
+                                                    Import the partner's redeemed-code export when operations need to reconcile on their behalf. Only member-assigned codes can move to used.
+                                                </p>
+                                            </div>
+                                            <label className="flex items-center gap-2 h-10 px-5 bg-white border border-[#E6E6E1] rounded-full text-[9px] uppercase tracking-[0.25em] text-[#555] hover:text-[#8a7600] hover:border-[#E8D200]/40 transition-all font-black cursor-pointer whitespace-nowrap">
+                                                <Upload size={11} /> Import CSV
+                                                <input type="file" accept=".csv,text/csv" className="hidden" onChange={handleReconciliationFile} />
+                                            </label>
+                                        </div>
+                                        <textarea
+                                            rows={3}
+                                            placeholder="Paste a code list or a CSV with a Code column"
+                                            className="w-full p-4 bg-white border border-[#E6E6E1] rounded-2xl focus:border-[#E8D200]/40 outline-none transition-all text-xs font-mono text-[#222] placeholder-[#BBB] resize-none"
+                                            value={reconciliationText}
+                                            onChange={e => setReconciliationText(e.target.value)}
+                                        />
+                                        <div className="flex justify-between items-center mt-3 gap-4">
+                                            <span className="text-[10px] uppercase tracking-[0.3em] text-[#999] font-black">{parseReconciliationCodes(reconciliationText).length} codes detected</span>
+                                            <button type="button" onClick={handleReconcileCodes} disabled={reconcilingCodes || !reconciliationText.trim()} className="flex items-center gap-2 h-11 px-7 bg-[#1A1A1A] text-white text-[10px] uppercase tracking-[0.25em] rounded-full transition-all hover:bg-[#333] disabled:opacity-40 font-black">
+                                                <RefreshCw size={13} className={reconcilingCodes ? 'animate-spin' : ''} /> {reconcilingCodes ? 'Reconciling...' : 'Reconcile Used Codes'}
+                                            </button>
+                                        </div>
+                                    </div>
+
                                     {/* Ledger */}
-                                    <div className="px-6 py-5">
+                                    <div className={codeWorkspaceMode === 'manage' ? 'px-6 py-5' : 'hidden'}>
                                         <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
                                             <div className="flex items-center gap-4">
                                                 <span className="text-[10px] uppercase tracking-[0.4em] text-[#888888] font-black whitespace-nowrap">

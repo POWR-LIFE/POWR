@@ -8,6 +8,7 @@ import RewardAppPreview from '../../components/RewardAppPreview';
 // ─── Status config ────────────────────────────────────────────────────────────
 const STATUS = {
   invited:  { label: 'Invited',  color: '#6366f1', bg: 'rgba(99,102,241,0.08)', border: 'rgba(99,102,241,0.25)' },
+  draft:    { label: 'Draft',    color: '#64748b', bg: 'rgba(100,116,139,0.08)', border: 'rgba(100,116,139,0.25)' },
   pending:  { label: 'Pending',  color: '#f97316', bg: 'rgba(249,115,22,0.08)', border: 'rgba(249,115,22,0.25)' },
   approved: { label: 'Approved', color: '#4ade80', bg: 'rgba(74,222,128,0.08)', border: 'rgba(74,222,128,0.25)' },
   rejected: { label: 'Rejected', color: '#ef4444', bg: 'rgba(239,68,68,0.08)',  border: 'rgba(239,68,68,0.25)'  },
@@ -35,11 +36,12 @@ export default function RewardSubmissions() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('pending');
   const [selected, setSelected] = useState(null);
-  const [reviewNotes, setReviewNotes] = useState('');
+  const [partnerFeedback, setPartnerFeedback] = useState('');
+  const [internalNotes, setInternalNotes] = useState('');
   const [powrCost, setPowrCost] = useState('');
   const [saving, setSaving] = useState(false);
   const [copiedId, setCopiedId] = useState(null);
-  const [allStats, setAllStats] = useState({ total: 0, invited: 0, pending: 0, approved: 0 });
+  const [allStats, setAllStats] = useState({ total: 0, invited: 0, draft: 0, pending: 0, approved: 0 });
 
   // Invite modal
   const [inviteOpen, setInviteOpen] = useState(false);
@@ -75,6 +77,7 @@ export default function RewardSubmissions() {
       setAllStats({
         total: data.length,
         invited: data.filter(s => s.status === 'invited').length,
+        draft: data.filter(s => s.status === 'draft').length,
         pending: data.filter(s => s.status === 'pending').length,
         approved: data.filter(s => s.status === 'approved').length,
       });
@@ -83,7 +86,8 @@ export default function RewardSubmissions() {
 
   function openDetail(sub) {
     setSelected(sub);
-    setReviewNotes(sub.reviewer_notes ?? '');
+    setPartnerFeedback(sub.partner_feedback ?? sub.reviewer_notes ?? '');
+    setInternalNotes(sub.internal_notes ?? '');
     setPowrCost('');
   }
 
@@ -132,6 +136,8 @@ export default function RewardSubmissions() {
     setSaving(true);
     const { data: { user } } = await supabase.auth.getUser();
 
+    const deliveryMethod = selected.delivery_method ?? (selected.reward_kind === 'physical' ? 'manual_fulfilment' : 'code_pool');
+    const integrationType = deliveryMethod === 'affiliate' ? 'AFFILIATE' : deliveryMethod === 'code_pool' ? 'POOL' : 'API_VALIDATED';
     let rewardId;
     if (isEdit) {
       const updatePayload = {
@@ -149,6 +155,9 @@ export default function RewardSubmissions() {
         image_url: selected.image_url || null,
         hero_image_url: selected.hero_image_url || null,
         hero_video_url: selected.hero_video_url || null,
+        integration_type: integrationType,
+        stock: selected.stock ?? null,
+        max_redemptions_per_user: selected.max_redemptions_per_user ?? null,
       };
       if (hasCost) updatePayload.powr_cost = cost;
 
@@ -165,7 +174,7 @@ export default function RewardSubmissions() {
         powr_cost: cost,
         category: selected.category || 'gym',
         reward_kind: selected.reward_kind || 'digital',
-        integration_type: 'API_VALIDATED',
+        integration_type: integrationType,
         value_label: selected.value_label || null,
         discount_type: selected.discount_type || null,
         discount_value: selected.discount_value ?? null,
@@ -177,6 +186,8 @@ export default function RewardSubmissions() {
         hero_image_url: selected.hero_image_url || null,
         hero_video_url: selected.hero_video_url || null,
         brand_color: selected.brand_color || null,
+        stock: selected.stock ?? null,
+        max_redemptions_per_user: selected.max_redemptions_per_user ?? null,
         active: false,
         featured_on_home: false,
       };
@@ -187,7 +198,7 @@ export default function RewardSubmissions() {
       rewardId = created.id;
 
       // Pre-seed the promo-code scheme so RewardManager opens with it ready to generate.
-      if (selected.code_prefix) {
+      if (deliveryMethod === 'code_pool' && selected.code_prefix) {
         try { localStorage.setItem(`powr_scheme_${rewardId}`, `POWR-${selected.code_prefix.toUpperCase()}-A1B2C3`); } catch { /* ignore */ }
       }
     }
@@ -195,24 +206,29 @@ export default function RewardSubmissions() {
     const { error: updErr } = await supabase.from('reward_submissions').update({
       status: 'approved',
       created_reward_id: rewardId,
-      reviewer_notes: reviewNotes.trim() || null,
+      partner_feedback: partnerFeedback.trim() || null,
+      internal_notes: internalNotes.trim() || null,
+      reviewer_notes: partnerFeedback.trim() || null,
       reviewed_by: user?.id,
       reviewed_at: new Date().toISOString(),
     }).eq('id', selected.id);
     setSaving(false);
     if (updErr) { toast.error(updErr.message); return; }
-    toast.success(isEdit ? 'Listing updated — changes are live' : 'Reward created in the Vault — finalize & generate codes there');
+    toast.success(isEdit ? 'Listing updated — changes are live' : 'Reward created in the Vault — complete the launch checklist there');
     setSelected(null);
     fetchSubs();
   }
 
   async function handleReject() {
     if (!selected) return;
+    if (!partnerFeedback.trim()) { toast.error('Add partner feedback before requesting changes'); return; }
     setSaving(true);
     const { data: { user } } = await supabase.auth.getUser();
     const { error } = await supabase.from('reward_submissions').update({
       status: 'rejected',
-      reviewer_notes: reviewNotes.trim() || null,
+      partner_feedback: partnerFeedback.trim(),
+      internal_notes: internalNotes.trim() || null,
+      reviewer_notes: partnerFeedback.trim(),
       reviewed_by: user?.id,
       reviewed_at: new Date().toISOString(),
     }).eq('id', selected.id);
@@ -233,7 +249,7 @@ export default function RewardSubmissions() {
     fetchSubs();
   }
 
-  const FILTERS = ['pending', 'invited', 'approved', 'rejected', 'all'];
+  const FILTERS = ['pending', 'draft', 'invited', 'approved', 'rejected', 'all'];
 
   return (
     <div className="px-4 lg:px-0 py-20 animate-in fade-in slide-in-from-bottom-8 duration-1000">
@@ -444,16 +460,22 @@ export default function RewardSubmissions() {
                     <Detail label="Brand">{selected.partners?.name || selected.brand_name || '—'}</Detail>
                     <Detail label="Contact">{[selected.contact_name, selected.contact_email].filter(Boolean).join(' · ') || '—'}</Detail>
                     <Detail label="Description">{selected.description || '—'}</Detail>
-                    <Detail label="Promo code">POWR-{(selected.code_prefix || 'BRAND').toUpperCase()}-XXXXXX</Detail>
+                    <Detail label="Delivery">{selected.delivery_method === 'affiliate' ? 'Shared affiliate link' : selected.delivery_method === 'manual_fulfilment' ? 'Manual fulfilment' : `Unique code · POWR-${(selected.code_prefix || 'BRAND').toUpperCase()}-XXXXXX`}</Detail>
+                    {selected.fulfilment_notes && <Detail label="Fulfilment plan">{selected.fulfilment_notes}</Detail>}
+                    {selected.stock != null && <Detail label="Inventory">{selected.stock} units</Detail>}
                     {selected.offer && <Detail label="Offer detail">{selected.offer}</Detail>}
                     {selected.partner_blurb && <Detail label="About brand">{selected.partner_blurb}</Detail>}
                     {selected.terms && <Detail label="Terms">{selected.terms}</Detail>}
                     {selected.url && <Detail label="URL">{selected.url}</Detail>}
 
-                    {/* Reviewer notes */}
                     <div className="space-y-3">
-                      <span className="text-[9px] font-black uppercase tracking-[0.4em] text-[#BBBBBB]">Reviewer notes</span>
-                      <textarea value={reviewNotes} onChange={e => setReviewNotes(e.target.value)} rows={2} disabled={saving} placeholder="Optional internal notes…"
+                      <span className="text-[9px] font-black uppercase tracking-[0.4em] text-[#BBBBBB]">Partner feedback</span>
+                      <textarea value={partnerFeedback} onChange={e => setPartnerFeedback(e.target.value)} rows={2} disabled={saving} placeholder="Visible to the partner. Required when requesting changes."
+                        className="w-full px-6 py-4 bg-[#F4F4F1] border border-[#E6E6E1] rounded-2xl text-sm text-[#666666] font-light outline-none focus:border-[#E8D200]/30 transition-colors resize-none placeholder-[#BBBBBB]" />
+                    </div>
+                    <div className="space-y-3">
+                      <span className="text-[9px] font-black uppercase tracking-[0.4em] text-[#BBBBBB]">Internal notes</span>
+                      <textarea value={internalNotes} onChange={e => setInternalNotes(e.target.value)} rows={2} disabled={saving} placeholder="Visible only to the POWR team."
                         className="w-full px-6 py-4 bg-[#F4F4F1] border border-[#E6E6E1] rounded-2xl text-sm text-[#666666] font-light outline-none focus:border-[#E8D200]/30 transition-colors resize-none placeholder-[#BBBBBB]" />
                     </div>
 
@@ -481,7 +503,7 @@ export default function RewardSubmissions() {
                         <p className="text-[11px] text-[#AAAAAA] font-light leading-relaxed">
                           {selected.target_reward_id
                             ? <>Approving applies these changes <span className="text-[#888888]">directly to the live reward</span>. Rejecting leaves the listing untouched.</>
-                            : <>Approving creates an <span className="text-[#888888]">inactive</span> reward in the Vault with the promo-code scheme pre-loaded. Finalize and toggle it live there.</>}
+                            : <>Approving creates an <span className="text-[#888888]">inactive</span> reward in the Vault with its delivery method, inventory, and claim cap. Complete the launch checklist before taking it live.</>}
                         </p>
                       </div>
                     )}
@@ -493,7 +515,7 @@ export default function RewardSubmissions() {
                           <div className="text-sm font-medium" style={{ color: STATUS[selected.status].color }}>
                             {STATUS[selected.status].label}{selected.reviewed_at ? ` · ${formatDate(selected.reviewed_at)}` : ''}
                           </div>
-                          {selected.reviewer_notes && <div className="text-xs text-[#999999] mt-1 font-light">{selected.reviewer_notes}</div>}
+                          {selected.partner_feedback && <div className="text-xs text-[#999999] mt-1 font-light">Partner feedback: {selected.partner_feedback}</div>}
                         </div>
                         {selected.created_reward_id && (
                           <Link to="/admin/rewards" className="text-[9px] font-black uppercase tracking-[0.3em] text-[#8a7600] hover:underline shrink-0">Open in Vault ›</Link>

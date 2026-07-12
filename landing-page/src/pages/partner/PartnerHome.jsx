@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Award, Gift, Inbox, ChevronRight, TrendingUp } from 'lucide-react';
+import { Award, Gift, Inbox, ChevronRight, TrendingUp, FilePenLine, CircleAlert, Ticket } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../App';
 
@@ -20,6 +20,7 @@ export default function PartnerHome() {
     const { partnerData } = useAuth();
     const [stats, setStats] = useState({ activeRewards: 0, monthRedemptions: 0, pendingSubmissions: 0 });
     const [recentRedemptions, setRecentRedemptions] = useState([]);
+    const [actions, setActions] = useState([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
@@ -35,17 +36,16 @@ export default function PartnerHome() {
                 // Reward ids first — supabase-js .in() needs a concrete array
                 const { data: rewardRows } = await supabase
                     .from('rewards')
-                    .select('id, active')
+                    .select('id, title, active, reward_kind, integration_type, promo_code')
                     .ilike('brand_name', brand);
                 const rewardIds = (rewardRows ?? []).map(r => r.id);
                 const activeCount = (rewardRows ?? []).filter(r => r.active).length;
 
-                const [pendingSub, monthRedem, recent] = await Promise.all([
+                const [submissions, monthRedem, recent] = await Promise.all([
                     supabase
                         .from('reward_submissions')
-                        .select('id', { count: 'exact', head: true })
-                        .ilike('brand_name', brand)
-                        .in('status', ['pending', 'invited']),
+                        .select('id, title, status, partner_feedback, updated_at')
+                        .ilike('brand_name', brand),
                     rewardIds.length
                         ? supabase
                             .from('redemptions')
@@ -63,12 +63,43 @@ export default function PartnerHome() {
                         : Promise.resolve({ data: [] }),
                 ]);
 
+                const poolRewards = (rewardRows ?? []).filter(r =>
+                    r.active && r.reward_kind === 'digital' && r.integration_type === 'POOL' && !r.promo_code?.trim()
+                );
+                const poolCounts = await Promise.all(poolRewards.map(async reward => {
+                    const { count } = await supabase
+                        .from('redemption_codes')
+                        .select('id', { count: 'exact', head: true })
+                        .eq('reward_id', reward.id)
+                        .eq('status', 'available');
+                    return { reward, count: count ?? 0 };
+                }));
+
+                const nextActions = [
+                    ...(submissions.data ?? []).filter(s => s.status === 'draft').map(s => ({
+                        title: `Finish ${s.title || 'reward draft'}`,
+                        detail: 'Your draft is saved and ready to continue.',
+                        to: '/partner/rewards', icon: FilePenLine, tone: 'text-[#8a7600] bg-[#E8D200]/10',
+                    })),
+                    ...(submissions.data ?? []).filter(s => s.status === 'rejected').map(s => ({
+                        title: `Revise ${s.title || 'reward request'}`,
+                        detail: s.partner_feedback || 'POWR has requested changes before review can continue.',
+                        to: '/partner/rewards', icon: CircleAlert, tone: 'text-red-500 bg-red-500/10',
+                    })),
+                    ...poolCounts.filter(({ count }) => count === 0).map(({ reward }) => ({
+                        title: `Add code supply for ${reward.title || 'reward'}`,
+                        detail: 'This live reward has no available unique codes.',
+                        to: '/partner/promo-codes', icon: Ticket, tone: 'text-[#8a7600] bg-[#E8D200]/10',
+                    })),
+                ].slice(0, 4);
+
                 setStats({
                     activeRewards: activeCount,
-                    pendingSubmissions: pendingSub.count ?? 0,
+                    pendingSubmissions: (submissions.data ?? []).filter(s => s.status === 'pending').length,
                     monthRedemptions: monthRedem.count ?? 0,
                 });
                 setRecentRedemptions(recent.data ?? []);
+                setActions(nextActions);
             } catch (e) {
                 console.error('[PartnerHome]', e);
             } finally {
@@ -118,6 +149,31 @@ export default function PartnerHome() {
                     </Link>
                 ))}
             </div>
+
+            {actions.length > 0 && (
+                <section className="mb-16 bg-white border border-[#E6E6E1] rounded-3xl overflow-hidden">
+                    <div className="flex items-center justify-between px-10 py-7 border-b border-[#E6E6E1]">
+                        <div>
+                            <h2 className="text-xl font-light tracking-tighter text-[#1A1A1A]">Needs attention</h2>
+                            <p className="text-[9px] uppercase tracking-[0.4em] text-[#BBBBBB] font-black mt-1">The next operational tasks for your rewards</p>
+                        </div>
+                        <span className="text-[10px] uppercase tracking-[0.3em] text-[#8a7600] font-black">{actions.length} open</span>
+                    </div>
+                    <div className="divide-y divide-[#F4F4F1]">
+                        {actions.map((action, index) => {
+                            const Icon = action.icon;
+                            return <Link key={`${action.title}-${index}`} to={action.to} className="flex items-center gap-5 px-10 py-5 hover:bg-[#FAFAFA] transition-colors group">
+                                <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${action.tone}`}><Icon size={17} /></div>
+                                <div className="flex-1 min-w-0">
+                                    <div className="text-[13px] font-bold text-[#222] truncate">{action.title}</div>
+                                    <div className="text-[10px] text-[#999] mt-1 truncate">{action.detail}</div>
+                                </div>
+                                <ChevronRight size={16} className="text-[#CCC] group-hover:text-[#8a7600] transition-colors shrink-0" />
+                            </Link>;
+                        })}
+                    </div>
+                </section>
+            )}
 
             {/* Recent redemptions */}
             <div className="bg-white border border-[#E6E6E1] rounded-3xl overflow-hidden">
