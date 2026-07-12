@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { motion, useScroll, useTransform } from 'framer-motion';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { motion, motionValue, useAnimationFrame, useScroll, useTransform } from 'framer-motion';
 import { supabase } from '../../lib/supabase';
 import { pg, t, w } from '../theme';
 import Ion from '../Ionicon';
@@ -8,21 +8,28 @@ import { SectionTag, CopyPanel, GhostWord, MobileCopyDock, useCompact } from './
 /**
  * Act III — Redeem. The payoff act: this is what the points are FOR.
  * Two movements:
- *  1. The vault: full-bleed brand posters (live catalogue) glide past in
- *     two depth layers — a hall of prizes, mirrored against Earn's travel.
- *  2. The spend: the featured reward takes centre stage, the REDEEM button
- *     fills as you scroll, the balance banked in Earn visibly drains, and
- *     the card flips into a live code that lands in the wallet.
+ *  1. The vault: the FULL live partner catalogue as an editorial gallery —
+ *     mixed-scale posters glide past a fixed spotlight; whichever prize
+ *     crosses the stage centre ignites (brightness, scale, gold hairline)
+ *     while the partner index rail along the bottom lights its name.
+ *  2. The spend: HUEL takes centre stage — gold-framed, a light sheen
+ *     sweeps the card as it seats, the REDEEM button fills under your
+ *     scroll, the balance banked in Earn drains, and the card flips into
+ *     a live code that lands in the wallet.
  */
 const FALLBACK = [
-  { id: 'f1', name: 'TRIBE', item: '35% off protein',  pts: 220, logo: null, heroImage: null, heroVideo: null, initial: 'T', tint: '#1877C7' },
-  { id: 'f2', name: 'HUEL',  item: 'Member reward',    pts: 185, logo: null, heroImage: null, heroVideo: null, initial: 'H', tint: '#A6C34C' },
-  { id: 'f3', name: 'Frank', item: 'Coffee bundle',    pts: 200, logo: null, heroImage: null, heroVideo: null, initial: 'F', tint: '#E8734A' },
-  { id: 'f4', name: 'MAJIC', item: '25% off desserts', pts: 180, logo: null, heroImage: null, heroVideo: null, initial: 'M', tint: '#9000fe' },
-  { id: 'f5', name: 'REP',   item: 'Member reward',    pts: 150, logo: null, heroImage: null, heroVideo: null, initial: 'R', tint: '#E84040' },
+  { id: 'f1', brand: 'HUEL',   name: 'HUEL',   item: 'Member reward',    pts: 185, logo: null, heroImage: null, heroVideo: null, initial: 'H', tint: '#A6C34C' },
+  { id: 'f2', brand: 'MAJIC',  name: 'MAJIC',  item: '25% off desserts', pts: 180, logo: null, heroImage: null, heroVideo: null, initial: 'M', tint: '#9000fe' },
+  { id: 'f3', brand: 'FRANk',  name: 'FRANk',  item: 'Member reward',    pts: 200, logo: null, heroImage: null, heroVideo: null, initial: 'F', tint: '#E8734A' },
+  { id: 'f4', brand: 'REP',    name: 'REP',    item: 'Member reward',    pts: 200, logo: null, heroImage: null, heroVideo: null, initial: 'R', tint: '#006AFB' },
+  { id: 'f5', brand: 'SWT',    name: 'SWT',    item: 'Member reward',    pts: 150, logo: null, heroImage: null, heroVideo: null, initial: 'S', tint: '#E8D200' },
+  { id: 'f6', brand: 'TRIBE',  name: 'TRIBE',  item: '35% OFF',          pts: 220, logo: null, heroImage: null, heroVideo: null, initial: 'T', tint: '#1877C7' },
+  { id: 'f7', brand: 'OMNITY', name: 'OMNITY', item: '20% off',          pts: 210, logo: null, heroImage: null, heroVideo: null, initial: 'O', tint: '#E8D200' },
+  { id: 'f8', brand: 'MATHAN', name: 'MATHAN', item: '£15 off',          pts: 300, logo: null, heroImage: null, heroVideo: null, initial: 'M', tint: '#0e2bff' },
 ];
 
-/* One live reward per brand, in the app's own catalogue order */
+/* The WHOLE live catalogue, one reward per brand. Duplicate brand rows are
+   merged rather than dropped so the richest copy/colour wins. */
 async function fetchLiveRewards() {
   const { data, error } = await supabase
     .from('rewards')
@@ -32,28 +39,36 @@ async function fetchLiveRewards() {
     .order('powr_cost', { ascending: true })
     .limit(24);
   if (error) throw error;
-  const seen = new Set();
-  const out = [];
+  const byBrand = new Map();
   for (const r of data ?? []) {
     const brand = (r.brand_name || r.title || '').trim();
+    if (!brand) continue;
     const key = brand.toLowerCase();
-    if (!brand || seen.has(key)) continue;
-    seen.add(key);
     const partner = Array.isArray(r.partners) ? r.partners[0] : r.partners;
-    out.push({
+    const item = r.value_label?.trim()
+      || (r.title && r.title.trim().toLowerCase() !== key ? r.title.trim() : '')
+      || 'Member reward';
+    const tint = r.brand_color?.trim() || '';
+    const existing = byBrand.get(key);
+    if (existing) {
+      if (existing.item === 'Member reward' && item !== 'Member reward') existing.item = item;
+      if (existing.tint === t.accent && tint) existing.tint = tint;
+      continue;
+    }
+    byBrand.set(key, {
       id: r.id,
-      name: r.title || brand,
-      item: r.value_label?.trim() || 'Member reward',
+      brand,
+      name: brand,
+      item,
       pts: r.powr_cost,
       logo: r.image_url || partner?.logo_url || null,
       heroImage: r.hero_image_url || null,
       heroVideo: r.hero_video_url || null,
       initial: brand[0].toUpperCase(),
-      tint: r.brand_color?.trim() || t.accent,
+      tint: tint || t.accent,
     });
-    if (out.length >= 5) break;
   }
-  return out;
+  return [...byBrand.values()];
 }
 
 const CARD_BG = '#151515';
@@ -62,14 +77,21 @@ const CARD_BORDER = 'rgba(255,255,255,0.07)';
 /* The balance Earn just banked — Act II ends on 1,345 */
 const BAL_START = 1345;
 
+/* The showcase piece. Falls back to the first reward if HUEL ever lapses. */
+const FEATURED_BRAND = 'HUEL';
+
 const PANELS = [
   { range: [0.04, 0.09, 0.24, 0.30], title: 'This is what the sweat buys.',
-    body: 'A vault of real rewards from brands you actually want — stocked live from the app, priced in points.' },
+    body: 'The whole partner vault — every brand in the app, stocked live and priced in points.' },
   { range: [0.33, 0.39, 0.50, 0.56], title: 'Your points are money here.',
     body: 'Every session, street and sleep you banked — spendable at the checkout, like cash.' },
   { range: [0.60, 0.66, 0.90, 0.97], title: 'Tap once. It’s yours.',
     body: 'A real code, in your wallet, seconds after you redeem. Show it at the till or paste it online.' },
 ];
+
+/* Where the gallery spotlight sits: centre of the OPEN stage, not the
+   viewport — desktop cedes the right 42% to the copy column. */
+const focusX = (compact) => window.innerWidth * (compact ? 0.5 : 0.3);
 
 export default function RedeemTrack() {
   const ref = useRef(null);
@@ -83,22 +105,35 @@ export default function RedeemTrack() {
       .catch(() => { /* keep fallback */ });
   }, []);
 
+  // The featured piece leads the DOM so it rests stage-left as the vault
+  // settles — right where the spend moment rises. A match cut, not a jump.
+  const gallery = useMemo(() => {
+    const hero = rewards.find((r) => r.brand.toUpperCase() === FEATURED_BRAND);
+    return hero ? [hero, ...rewards.filter((r) => r !== hero)] : rewards;
+  }, [rewards]);
+  const featured = gallery[0];
+
   const infoOpacity = useTransform(scrollYProgress, [0.03, 0.09], [0, 1]);
 
   // Movement 1 — the vault glides through, then falls back for the spend
-  const trackX = useTransform(scrollYProgress, [0.05, 0.52], compact ? ['-88%', '6%'] : ['-40%', '14%']);
+  const trackX = useTransform(scrollYProgress, [0.05, 0.52], compact ? ['-90%', '4%'] : ['-56%', '9%']);
   const trackOpacity = useTransform(scrollYProgress, [0.52, 0.60], [1, 0.04]);
   const trackScale = useTransform(scrollYProgress, [0.52, 0.60], [1, 0.94]);
 
-  // Depth layer — a dimmer rank of posters drifting slower behind
+  // Depth layer — a dim, defocused rank drifting slower behind
   const backX = useTransform(scrollYProgress, [0.05, 0.56], ['-12%', '6%']);
-  const backOpacity = useTransform(scrollYProgress, [0.06, 0.14, 0.50, 0.58], [0, 0.30, 0.30, 0]);
+  const backOpacity = useTransform(scrollYProgress, [0.06, 0.14, 0.50, 0.58], [0, 0.26, 0.26, 0]);
 
-  // Ghost word bows out before the spend takes its side of the stage
+  // Ghost word + rail bow out before the spend takes the stage
   const ghostOpacity = useTransform(scrollYProgress, [0.50, 0.58], [1, 0]);
+  const railOpacity = useTransform(scrollYProgress, [0.07, 0.13, 0.50, 0.57], [0, 1, 1, 0]);
 
-  const featured = rewards[0];
-  const backRow = [...rewards.slice(2), ...rewards.slice(0, 2)];
+  // One motion value pair per poster, written by a single rAF measurer:
+  // focus (0..1, peaks at the spotlight) and signed offset (for parallax).
+  const focusMVs = useMemo(() => gallery.map(() => motionValue(0)), [gallery]);
+  const driftMVs = useMemo(() => gallery.map(() => motionValue(1.4)), [gallery]);
+
+  const backRow = [...gallery.slice(3), ...gallery.slice(0, 3)];
 
   return (
     <section ref={ref} data-act="redeem" style={{ position: 'relative', height: '560vh' }}>
@@ -148,42 +183,38 @@ export default function RedeemTrack() {
           />
         )}
 
-        {/* Depth rank — the hall of prizes behind the front row */}
+        {/* Depth rank — defocused prizes drifting behind the gallery */}
         {!compact && (
           <motion.div
             aria-hidden
             style={{
-              position: 'absolute', top: '42%', y: '-50%', left: 0, zIndex: 6,
-              display: 'flex', alignItems: 'center', gap: 44, x: backX, opacity: backOpacity,
-              pointerEvents: 'none', willChange: 'transform',
+              position: 'absolute', top: '40%', y: '-50%', left: 0, zIndex: 6,
+              display: 'flex', alignItems: 'center', gap: 48, x: backX, opacity: backOpacity,
+              pointerEvents: 'none', willChange: 'transform', filter: 'blur(3px) saturate(0.8)',
             }}
           >
             {backRow.map((r, i) => (
-              <div key={`b-${r.id}`} style={{ transform: `translateY(${[38, -26, 44, -18, 30][i % 5]}px)`, flexShrink: 0 }}>
-                <PosterCard reward={r} width={206} height={284} muted />
+              <div key={`b-${r.id}`} style={{ transform: `translateY(${[42, -28, 48, -20, 34, -32, 40, -24][i % 8]}px)`, flexShrink: 0 }}>
+                <PosterCard reward={r} width={198} height={272} muted />
               </div>
             ))}
           </motion.div>
         )}
 
-        {/* Movement 1 — the vault's front row */}
-        <motion.div
-          style={{
-            display: 'flex', alignItems: 'center', gap: compact ? 20 : 34, x: trackX, opacity: trackOpacity, scale: trackScale,
-            paddingRight: compact ? '14%' : '42%', zIndex: 10, willChange: 'transform',
-            marginTop: compact ? '-9vh' : 0,
-          }}
-        >
-          {rewards.map((r, i) => (
-            <div key={r.id} style={{ transform: `translateY(${[24, -30, 32, -22, 26][i % 5]}px)`, flexShrink: 0 }}>
-              <PosterCard
-                reward={r}
-                width={compact ? 224 : 296}
-                height={compact ? 312 : 404}
-              />
-            </div>
-          ))}
-        </motion.div>
+        {/* Movement 1 — the gallery. flex-start ALWAYS (a flex-end here
+            silently shifts the track's natural x and breaks the travel). */}
+        <VaultGallery
+          gallery={gallery}
+          compact={compact}
+          trackX={trackX}
+          trackOpacity={trackOpacity}
+          trackScale={trackScale}
+          focusMVs={focusMVs}
+          driftMVs={driftMVs}
+        />
+
+        {/* Partner index — every brand in the vault, lighting as it passes */}
+        {!compact && <PartnerRail gallery={gallery} focusMVs={focusMVs} opacity={railOpacity} />}
 
         {/* Movement 2 — the spend */}
         <RedeemMoment progress={scrollYProgress} reward={featured} compact={compact} />
@@ -192,9 +223,88 @@ export default function RedeemTrack() {
   );
 }
 
-/* ── The vault poster — a reward as a prize, not a list row ────────── */
+/* ── The gallery track: one rAF loop feeds every poster's spotlight ── */
 
-function PosterCard({ reward, width, height, muted = false }) {
+function VaultGallery({ gallery, compact, trackX, trackOpacity, trackScale, focusMVs, driftMVs }) {
+  const trackRef = useRef(null);
+  const cardRefs = useRef([]);
+
+  useAnimationFrame(() => {
+    const track = trackRef.current;
+    if (!track) return;
+    const vw = window.innerWidth;
+    const box = track.getBoundingClientRect();
+    if (box.right < 0 || box.left > vw) return;
+    const cx = focusX(compact);
+    for (let i = 0; i < gallery.length; i++) {
+      const el = cardRefs.current[i];
+      if (!el) continue;
+      const r = el.getBoundingClientRect();
+      const d = (r.left + r.width / 2 - cx) / (vw / 2);
+      driftMVs[i]?.set(Math.max(-1.4, Math.min(1.4, d)));
+      focusMVs[i]?.set(Math.max(0, 1 - Math.abs(d) * 1.15));
+    }
+  });
+
+  return (
+    <motion.div
+      ref={trackRef}
+      style={{
+        display: 'flex', alignItems: 'center', gap: compact ? 18 : 28,
+        x: trackX, opacity: trackOpacity, scale: trackScale,
+        paddingRight: compact ? '16%' : '44%', zIndex: 10, willChange: 'transform',
+        marginTop: compact ? '-9vh' : 0,
+      }}
+    >
+      {gallery.map((r, i) => {
+        const big = i % 2 === 0;
+        return (
+          <div
+            key={r.id}
+            ref={(el) => { cardRefs.current[i] = el; }}
+            style={{ transform: `translateY(${[18, -34, 30, -24, 24, -30, 34, -20][i % 8]}px)`, flexShrink: 0 }}
+          >
+            <SpotlitPoster
+              reward={r}
+              width={compact ? (big ? 208 : 172) : (big ? 304 : 246)}
+              height={compact ? (big ? 292 : 242) : (big ? 424 : 344)}
+              focus={focusMVs[i]}
+              drift={driftMVs[i]}
+            />
+          </div>
+        );
+      })}
+    </motion.div>
+  );
+}
+
+/* A poster under the gallery spotlight: ignites as it crosses the stage
+   centre — brightness, a breath of scale, a gold hairline — while its
+   hero art drifts against the travel for depth. */
+function SpotlitPoster({ reward, width, height, focus, drift }) {
+  const filter = useTransform(focus, (f) => `brightness(${(0.48 + 0.57 * f).toFixed(3)}) saturate(${(0.82 + 0.18 * f).toFixed(3)})`);
+  const scale = useTransform(focus, (f) => 0.96 + 0.05 * f);
+  const frameOpacity = useTransform(focus, (f) => Math.max(0, f - 0.35) * 1.3);
+  const imgX = useTransform(drift, (d) => `${(-d * 4.5).toFixed(2)}%`);
+  return (
+    <motion.div style={{ position: 'relative', filter, scale, willChange: 'transform, filter' }}>
+      <PosterCard reward={reward} width={width} height={height} imgX={imgX} />
+      {/* Spotlight hairline */}
+      <motion.div
+        aria-hidden
+        style={{
+          position: 'absolute', inset: 0, borderRadius: 24, pointerEvents: 'none',
+          border: '1px solid rgba(232,210,0,0.55)', opacity: frameOpacity,
+          boxShadow: '0 0 44px -10px rgba(232,210,0,0.25)',
+        }}
+      />
+    </motion.div>
+  );
+}
+
+/* ── The vault poster — a prize on a gallery wall, not a list row ──── */
+
+function PosterCard({ reward, width, height, muted = false, imgX }) {
   const hasHero = !!reward.heroImage;
   return (
     <div
@@ -204,38 +314,45 @@ function PosterCard({ reward, width, height, muted = false }) {
           ? '#101010'
           : `radial-gradient(120% 90% at 50% 0%, ${hexA(reward.tint, 0.22)}, transparent 60%), ${CARD_BG}`,
         border: hasHero ? 'none' : `1px solid ${CARD_BORDER}`,
-        boxShadow: muted ? '0 24px 50px -30px rgba(0,0,0,0.9)' : '0 40px 80px -34px rgba(0,0,0,0.9)',
+        boxShadow: muted ? '0 24px 50px -30px rgba(0,0,0,0.9)' : '0 46px 90px -34px rgba(0,0,0,0.94)',
       }}
     >
       {hasHero && (
-        <img
+        <motion.img
           src={reward.heroImage}
           alt=""
           aria-hidden="true"
-          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+          style={{
+            position: 'absolute', top: 0, bottom: 0, left: '-6%', width: '112%', height: '100%',
+            objectFit: 'cover', x: imgX,
+          }}
           loading="lazy"
         />
       )}
-      {/* Scrim so the price row pops */}
+      {/* Scrim so the identity block pops */}
       <div
         style={{
           position: 'absolute', inset: 0,
-          background: 'linear-gradient(to bottom, rgba(0,0,0,0.08) 38%, rgba(0,0,0,0.62) 74%, rgba(0,0,0,0.9) 100%)',
+          background: 'linear-gradient(to bottom, rgba(0,0,0,0.10) 40%, rgba(0,0,0,0.58) 72%, rgba(0,0,0,0.92) 100%)',
         }}
       />
-      {/* Offer flash */}
+      {/* Offer flash — one line, clipped clear of the brand chip */}
       {reward.item !== 'Member reward' && !muted && (
-        <div
-          style={{
-            position: 'absolute', top: 14, left: 14,
-            padding: '5px 11px', borderRadius: 100,
-            background: 'rgba(8,8,8,0.55)', border: '1px solid rgba(232,210,0,0.4)', backdropFilter: 'blur(8px)',
-            fontSize: 10, fontWeight: w.bold, letterSpacing: 1.2, color: t.accent, textTransform: 'uppercase',
-          }}
-        >
-          {reward.item}
+        <div style={{ position: 'absolute', top: 14, left: 14, right: 58, display: 'flex' }}>
+          <div
+            style={{
+              maxWidth: '100%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+              padding: '5px 11px', borderRadius: 100,
+              background: 'rgba(8,8,8,0.55)', border: '1px solid rgba(232,210,0,0.4)', backdropFilter: 'blur(8px)',
+              fontSize: 10, fontWeight: w.bold, letterSpacing: 1.2, color: t.accent, textTransform: 'uppercase',
+            }}
+          >
+            {reward.item}
+          </div>
         </div>
       )}
+      {/* Brand chip — proof, kept out of the identity block's way */}
+      {!muted && <div style={{ position: 'absolute', top: 12, right: 12 }}><LogoBox reward={reward} size={38} radius={10} /></div>}
       {/* Fallback initial when there's no art */}
       {!hasHero && (
         <div
@@ -247,19 +364,20 @@ function PosterCard({ reward, width, height, muted = false }) {
           {reward.initial}
         </div>
       )}
-      {/* Identity + price */}
+      {/* Identity — editorial: hairline, wordmark, price */}
       <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, padding: muted ? 14 : 18 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
-          <LogoBox reward={reward} size={muted ? 34 : 42} radius={muted ? 9 : 11} />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: muted ? 12.5 : 15, fontWeight: w.medium, color: '#F2F2F2', letterSpacing: -0.1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {reward.name}
-            </div>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 3, marginTop: 2 }}>
-              <span style={{ fontSize: muted ? 17 : 22, fontWeight: w.extraLight, color: t.gold, letterSpacing: -0.5 }}>{reward.pts}</span>
-              <span style={{ fontSize: 9, fontWeight: w.medium, color: t.gold, opacity: 0.7 }}>pts</span>
-            </div>
-          </div>
+        <div style={{ width: 26, height: 1, background: 'rgba(232,210,0,0.75)', marginBottom: muted ? 8 : 10 }} />
+        <div
+          style={{
+            fontSize: muted ? 10 : 11.5, fontWeight: w.semiBold, letterSpacing: 2.6, textTransform: 'uppercase',
+            color: 'rgba(255,255,255,0.88)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+          }}
+        >
+          {reward.name}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, marginTop: muted ? 2 : 4 }}>
+          <span style={{ fontSize: muted ? 20 : 27, fontWeight: w.extraLight, color: t.gold, letterSpacing: -0.5 }}>{reward.pts}</span>
+          <span style={{ fontSize: 9, fontWeight: w.semiBold, color: t.gold, opacity: 0.7, letterSpacing: 1 }}>PTS</span>
         </div>
       </div>
     </div>
@@ -288,6 +406,43 @@ function LogoBox({ reward, size, radius }) {
   );
 }
 
+/* ── Partner index rail — the whole roster, in lights ──────────────── */
+
+function PartnerRail({ gallery, focusMVs, opacity }) {
+  return (
+    <motion.div
+      style={{
+        position: 'absolute', left: '4.5%', bottom: '6%', zIndex: 12, opacity,
+        display: 'flex', alignItems: 'center', gap: 18, pointerEvents: 'none',
+        maxWidth: '52%', flexWrap: 'wrap', rowGap: 10,
+      }}
+    >
+      <span style={{ fontSize: 9.5, fontWeight: w.semiBold, letterSpacing: 2.4, color: t.accent, whiteSpace: 'nowrap' }}>
+        THE VAULT · {gallery.length} PARTNERS
+      </span>
+      <span style={{ width: 26, height: 1, background: 'rgba(232,210,0,0.45)' }} />
+      {gallery.map((r, i) => (
+        <RailName key={r.id} name={r.brand} focus={focusMVs[i]} />
+      ))}
+    </motion.div>
+  );
+}
+
+function RailName({ name, focus }) {
+  const nameOpacity = useTransform(focus, (f) => 0.28 + 0.72 * f);
+  const color = useTransform(focus, (f) => (f > 0.72 ? t.accent : '#F2F2F2'));
+  return (
+    <motion.span
+      style={{
+        fontSize: 10.5, fontWeight: w.medium, letterSpacing: 2.6, textTransform: 'uppercase',
+        opacity: nameOpacity, color, whiteSpace: 'nowrap',
+      }}
+    >
+      {name}
+    </motion.span>
+  );
+}
+
 function hexA(hex, a) {
   const m = /^#?([0-9a-f]{6})$/i.exec(hex || '');
   if (!m) return `rgba(232,210,0,${a})`;
@@ -295,10 +450,10 @@ function hexA(hex, a) {
   return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
 }
 
-/* ── Movement 2: the spend — focus, fill, drain, flip, bank ────────── */
+/* ── Movement 2: the spend — focus, sheen, fill, drain, flip, bank ─── */
 
-const CARD_W = 400;
-const CARD_H = 512;
+const CARD_W = 420;
+const CARD_H = 540;
 const MONO = "'SF Mono', ui-monospace, 'Cascadia Mono', Menlo, monospace";
 
 function redeemCode(reward) {
@@ -311,6 +466,10 @@ function RedeemMoment({ progress, reward, compact }) {
   const opacity = useTransform(progress, [0.54, 0.60], [0, 1]);
   const y = useTransform(progress, [0.54, 0.62], [80, 0]);
   const scale = useTransform(progress, [0.54, 0.62], [0.84, 1]);
+
+  // A light sheen sweeps the card as it seats — the product-shot moment
+  const sheenX = useTransform(progress, [0.595, 0.685], ['-140%', '150%']);
+  const sheenOpacity = useTransform(progress, [0.595, 0.62, 0.665, 0.685], [0, 1, 1, 0]);
 
   // The REDEEM button fills gold under your scroll — the "tap"
   const fillX = useTransform(progress, [0.585, 0.645], [0, 1]);
@@ -347,6 +506,15 @@ function RedeemMoment({ progress, reward, compact }) {
       }}
     >
       <motion.div style={{ y, scale, position: 'relative' }}>
+        {/* Spotlight cone from above — the stage light finds the prize */}
+        <motion.div
+          aria-hidden
+          style={{
+            position: 'absolute', left: '50%', top: compact ? -220 : -320, transform: 'translateX(-50%)',
+            width: compact ? 480 : 760, height: compact ? 560 : 860, opacity: glowOpacity, pointerEvents: 'none',
+            background: 'radial-gradient(48% 58% at 50% 32%, rgba(232,210,0,0.10), transparent 70%)',
+          }}
+        />
         {/* Payoff glow */}
         <motion.div
           aria-hidden
@@ -361,7 +529,7 @@ function RedeemMoment({ progress, reward, compact }) {
           aria-hidden
           style={{
             position: 'absolute', left: '50%', top: '50%', x: '-50%', y: '-50%',
-            width: compact ? 380 : 560, height: compact ? 380 : 560, borderRadius: '50%',
+            width: compact ? 380 : 580, height: compact ? 380 : 580, borderRadius: '50%',
             border: '1px solid rgba(232,210,0,0.5)', scale: ringScale, opacity: ringOpacity, pointerEvents: 'none',
           }}
         />
@@ -401,7 +569,7 @@ function RedeemMoment({ progress, reward, compact }) {
               transformStyle: 'preserve-3d', rotateY,
             }}
           >
-            <FeaturedFace reward={reward} fillX={fillX} labelColor={labelColor} />
+            <FeaturedFace reward={reward} fillX={fillX} labelColor={labelColor} sheenX={sheenX} sheenOpacity={sheenOpacity} />
             <CodeFace reward={reward} />
           </motion.div>
         </div>
@@ -432,7 +600,7 @@ function RedeemMoment({ progress, reward, compact }) {
 }
 
 /* Front face — the prize at full size, with the scroll-driven redeem */
-function FeaturedFace({ reward, fillX, labelColor }) {
+function FeaturedFace({ reward, fillX, labelColor, sheenX, sheenOpacity }) {
   const hasHero = !!reward.heroImage;
   return (
     <div
@@ -465,11 +633,29 @@ function FeaturedFace({ reward, fillX, labelColor }) {
           background: 'linear-gradient(to bottom, rgba(0,0,0,0.05) 30%, rgba(0,0,0,0.72) 78%, rgba(0,0,0,0.9) 100%)',
         }}
       />
-      <div style={{ position: 'relative', padding: 22 }}>
+      {/* Sheen sweep — one pass of light as the card seats */}
+      <motion.div
+        aria-hidden
+        style={{
+          position: 'absolute', top: '-12%', bottom: '-12%', left: 0, width: '55%',
+          x: sheenX, opacity: sheenOpacity, pointerEvents: 'none',
+          background: 'linear-gradient(105deg, transparent 8%, rgba(255,255,255,0.13) 50%, transparent 92%)',
+          transform: 'skewX(-12deg)',
+        }}
+      />
+      {/* Gold hairline frame — the showcase piece, framed */}
+      <div
+        aria-hidden
+        style={{
+          position: 'absolute', inset: 10, borderRadius: 20, pointerEvents: 'none',
+          border: '1px solid rgba(232,210,0,0.32)',
+        }}
+      />
+      <div style={{ position: 'relative', padding: 24 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 13 }}>
           <LogoBox reward={reward} size={54} radius={14} />
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 18, fontWeight: w.medium, color: '#F2F2F2', letterSpacing: -0.2 }}>{reward.name}</div>
+            <div style={{ fontSize: 19, fontWeight: w.medium, color: '#F2F2F2', letterSpacing: -0.2 }}>{reward.name}</div>
             <div style={{ fontSize: 12.5, fontWeight: w.light, color: 'rgba(255,255,255,0.65)', marginTop: 2 }}>{reward.item}</div>
           </div>
         </div>
