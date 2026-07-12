@@ -143,7 +143,7 @@ export function ChapterBreak({ n, word, kicker }) {
  * different rate to the foreground so the black void reads as deep space,
  * not an empty page. Stroke-only so it never competes with real content.
  */
-export function GhostWord({ progress, children, top, left, right, bottom, drift = [40, -40], size = 'clamp(150px, 20vw, 300px)', gold = false }) {
+export function GhostWord({ progress, children, top, left, right, bottom, drift = [40, -40], size = 'clamp(64px, 20vw, 300px)', gold = false }) {
   const y = useTransform(progress, [0, 1], drift);
   return (
     <motion.div

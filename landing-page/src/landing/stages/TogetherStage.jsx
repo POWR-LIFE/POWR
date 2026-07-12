@@ -61,7 +61,7 @@ export default function TogetherStage() {
       >
         {/* Ghost act word — deep background */}
         <motion.div style={{ opacity: ghostOpacity }}>
-          <GhostWord progress={scrollYProgress} bottom="5%" left="-1%" drift={[60, -60]} size="clamp(110px, 13vw, 200px)" gold>
+          <GhostWord progress={scrollYProgress} bottom="5%" left="-1%" drift={[60, -60]} size="clamp(44px, 13vw, 200px)" gold>
             TOGETHER
           </GhostWord>
         </motion.div>

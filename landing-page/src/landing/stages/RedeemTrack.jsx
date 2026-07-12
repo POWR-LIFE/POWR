@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, motionValue, useAnimationFrame, useScroll, useTransform } from 'framer-motion';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../../lib/supabase';
-import { pg, t, w } from '../theme';
 import Ion from '../Ionicon';
-import { SectionTag, CopyPanel, GhostWord, MobileCopyDock, useCompact } from './shared';
+import { pg, t, w } from '../theme';
+import { CopyPanel, GhostWord, MobileCopyDock, SectionTag, useCompact } from './shared';
 
 /**
  * Act III — Redeem. The payoff act: this is what the points are FOR.
@@ -100,7 +100,7 @@ const FEATURED_BRAND = 'HUEL';
 
 const PANELS = [
   { range: [0.04, 0.09, 0.24, 0.30], title: 'This is what the sweat buys.',
-    body: 'The whole partner vault — every brand in the app, stocked live and priced in points.' },
+    body: 'The partner vault — every brand in the app, stocked live and priced in points.' },
   { range: [0.33, 0.39, 0.50, 0.56], title: 'Your points are money here.',
     body: 'Every session, street and sleep you banked — spendable at the checkout, like cash.' },
   { range: [0.60, 0.66, 0.90, 0.97], title: 'Tap once. It’s yours.',
