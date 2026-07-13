@@ -127,7 +127,7 @@ jest.mock('@/lib/supabase', () => ({
       }),
     },
     from: (table: string) => mockQueryBuilder(table),
-    functions: { invoke: (...a: unknown[]) => mockInvoke(...a) },
+    functions: { invoke: (...a: any[]) => (mockInvoke as jest.Mock)(...a) },
   },
 }));
 

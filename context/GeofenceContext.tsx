@@ -130,6 +130,36 @@ const LOCATION_UPDATE_OPTIONS: Location.LocationTaskOptions = {
   },
 };
 
+// In-session ("dwell") stream — Android only.
+//
+// The dwell state machine (advanceActiveSession) is purely TIME-based, but it is
+// only ever invoked from a location callback. Both the baseline and approach
+// streams set `distanceInterval` (50 m / 10 m), which Android hands to
+// FusedLocation as setSmallestDisplacement: it suppresses callbacks entirely
+// until the device MOVES that far. A user who checks in and then stands still —
+// i.e. every real gym session — therefore receives NO fixes at all, the dwell
+// machine never ticks, and the 30-min claim never fires in the background. That
+// is the 2026-07-03 / 2026-07-11 / 2026-07-13 field failures: the foreground
+// service was alive the whole time, it simply had nothing to deliver, and the
+// claim only landed when the app was next opened (t+33, t+36 min).
+//
+// `distanceInterval: 0` removes the displacement filter so timeInterval alone
+// drives delivery — a fix every 60 s regardless of movement. deferredUpdatesInterval
+// is deliberately omitted: batching would defer exactly the ticks we need. Cost is
+// bounded to the length of a visit; the foreground service is already running.
+export const DWELL_LOCATION_OPTIONS: Location.LocationTaskOptions = {
+  accuracy:                         Location.Accuracy.Balanced,
+  timeInterval:                     60_000,
+  distanceInterval:                 0,   // ← time-driven: MUST stay 0, see above
+  pausesUpdatesAutomatically:       false,
+  showsBackgroundLocationIndicator: false,
+  foregroundService: {
+    notificationTitle: 'POWR is tracking your workouts',
+    notificationBody:  "You're checked in — your session is being timed.",
+    notificationColor: '#facc15',
+  },
+};
+
 // ─── Approach stream (instant-entry escalation) ─────────────────────────────
 // The native OS region is armed at a WIDER "approach" radius than the partner's
 // true check-in circle (see armNativeRegions). A 25 m region on iOS fires late
@@ -163,8 +193,26 @@ const APPROACH_LOCATION_OPTIONS: Location.LocationTaskOptions = {
 // Baseline the location stream returns to once the approach ring is left. Android
 // keeps a passive always-on stream (primary closed-app detector); iOS has no
 // persistent stream and goes fully OFF, falling back to native region monitoring.
-type StreamMode = 'off' | 'passive' | 'approach';
+export type StreamMode = 'off' | 'passive' | 'approach' | 'dwell';
 const BASELINE_STREAM_MODE: StreamMode = Platform.OS === 'android' ? 'passive' : 'off';
+
+/** The stream mode a given platform should run for the current visit state.
+ *
+ * 'dwell' (time-driven, see DWELL_LOCATION_OPTIONS) is **Android only**: on iOS
+ * `distanceInterval: 0` is kCLDistanceFilterNone — a continuous firehose — and iOS
+ * ignores timeInterval, so the same options would hammer the battery. iOS keeps its
+ * existing behaviour: the approach stream runs while inside the ring, and the claim
+ * lands on the region EXIT.
+ *
+ * Pure so the platform rules are testable without a Platform mock. */
+export function visitStreamMode(
+  os: string,
+  state: { sessionActive: boolean; approaching: boolean },
+): StreamMode {
+  if (os === 'android' && state.sessionActive) return 'dwell';
+  if (state.approaching) return 'approach';
+  return os === 'android' ? 'passive' : 'off';
+}
 
 // A device reboot kills the foreground service (and its banner), but TaskManager
 // still reports the location task as "started" across the reboot — so trusting
@@ -437,7 +485,9 @@ async function setLocationStreamMode(mode: StreamMode): Promise<void> {
       if (started) await Location.stopLocationUpdatesAsync(LOCATION_TRACKING_TASK).catch(() => {});
       return;
     }
-    const opts = mode === 'approach' ? APPROACH_LOCATION_OPTIONS : LOCATION_UPDATE_OPTIONS;
+    const opts = mode === 'approach' ? APPROACH_LOCATION_OPTIONS
+      : mode === 'dwell'             ? DWELL_LOCATION_OPTIONS
+      :                                LOCATION_UPDATE_OPTIONS;
     if (started) await Location.stopLocationUpdatesAsync(LOCATION_TRACKING_TASK).catch(() => {});
     await Location.startLocationUpdatesAsync(LOCATION_TRACKING_TASK, opts);
   } catch (err) {
@@ -457,7 +507,10 @@ async function enterApproach(regionId: string): Promise<void> {
 }
 
 /** Leaves the approach ring: clear the flag and return the stream to baseline
- *  (Android passive / iOS off). No-op-cheap when we weren't escalated. */
+ *  (Android passive / iOS off). No-op-cheap when we weren't escalated. An approach
+ *  EXIT can arrive while a session is still ACTIVE (GPS jitter on the 120 m ring),
+ *  so a live visit keeps the time-driven dwell stream rather than dropping to the
+ *  displacement-gated baseline, which would starve the dwell machine. */
 async function exitApproach(expectedRegionId?: string): Promise<void> {
   let wasApproaching = false;
   try {
@@ -468,8 +521,10 @@ async function exitApproach(expectedRegionId?: string): Promise<void> {
     if (wasApproaching) await AsyncStorage.removeItem(APPROACH_STATE_KEY);
   } catch { /* non-fatal */ }
   if (wasApproaching) {
-    await setLocationStreamMode(BASELINE_STREAM_MODE);
-    console.log('[Geofence] Left approach ring — location stream back to baseline.');
+    const sessionActive = (await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY).catch(() => null)) != null;
+    const next = visitStreamMode(Platform.OS, { sessionActive, approaching: false });
+    await setLocationStreamMode(next);
+    console.log(`[Geofence] Left approach ring — location stream → ${next}.`);
   }
 }
 
@@ -889,6 +944,18 @@ async function setActiveAndNotify(regionId: string, entry: PartnerMapEntry): Pro
     }),
   );
   console.log(`[Geofence] Location task: entered "${entry.name}".`);
+
+  // Android: switch to time-driven ticks for the visit. Without this the
+  // displacement filter (50 m baseline / 10 m approach) delivers NO fixes to a
+  // stationary user, so the dwell machine never advances and the 30-min claim
+  // never fires in the background. See DWELL_LOCATION_OPTIONS.
+  //
+  // iOS is deliberately left ALONE here: it has no dwell mode, and re-issuing its
+  // baseline ('off') would tear down the approach stream that detects the 25 m
+  // exit. iOS keeps claiming on the region EXIT, exactly as before.
+  const checkedInMode = visitStreamMode(Platform.OS, { sessionActive: true, approaching: true });
+  if (checkedInMode === 'dwell') await setLocationStreamMode('dwell');
+
   try {
     const { notifyCheckInAvailable } = await import('@/lib/notifications');
     await notifyCheckInAvailable(entry.name, regionId);
@@ -989,6 +1056,15 @@ export async function finalizeActiveGeofence(expectedRegionId?: string): Promise
   } catch {
     return false;
   }
+
+  // Visit over — stand the dwell stream down (Android). Still inside the approach
+  // ring (a location-detected EXIT can land before the native ring fires) → keep
+  // the approach stream; otherwise back to the battery-friendly baseline. Leaving
+  // the time-driven stream running would burn battery for the rest of the day.
+  try {
+    const approaching = (await AsyncStorage.getItem(APPROACH_STATE_KEY)) != null;
+    await setLocationStreamMode(visitStreamMode(Platform.OS, { sessionActive: false, approaching }));
+  } catch { /* non-fatal — worst case the stream stays in its prior mode */ }
 
   if (!needsClaim) {
     console.log(`[Geofence] Dwell ${Math.round((endedAtMs - active.entryTimestamp) / 60000)}min < threshold — no points.`);
