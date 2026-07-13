@@ -265,7 +265,7 @@ export function useSharedChallenges(): UseSharedChallenges {
 
   // Opportunistic completion: for live challenges you're in but haven't finished,
   // ask the server to (re)evaluate your part. Checked once per id per mount so we
-  // don't spam; a newly-awarded completion triggers the celebration + a refetch.
+  // don't spam; evaluation also updates pooled contributions, so reload afterward.
   const completeRaw = useCallback(async (id: string) => {
     const { data } = await supabase.functions.invoke('complete-shared-challenge', {
       body: { challenge_id: id, utc_offset_minutes: utcOffsetMinutes },
@@ -282,13 +282,14 @@ export function useSharedChallenges(): UseSharedChallenges {
     if (candidates.length === 0) return;
     let cancelled = false;
     (async () => {
-      let any = false;
       for (const c of candidates) {
         checkedRef.current.add(c.id);
         const res = await completeRaw(c.id);
-        if (res?.newly_completed) { any = true; if (!cancelled) setNewlyCompletedId(c.id); }
+        if (res?.newly_completed) {
+          if (!cancelled) setNewlyCompletedId(c.id);
+        }
       }
-      if (any && !cancelled) load();
+      if (!cancelled) load();
     })();
     return () => { cancelled = true; };
   }, [all, completeRaw, load]);
