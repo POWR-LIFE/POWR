@@ -100,6 +100,11 @@ const PARTNER_MAP_META_KEY   = '@powr/partner_map_meta';   // { fetchedAt } — 
 const ARM_META_KEY           = '@powr/geofence_arm_meta';  // centre + sentinel radius of the currently armed region set
 const SESSION_COMPLETED_KEY  = '@powr/session_completed';
 const PENDING_CLAIMS_KEY     = '@powr/pending_claims';
+const VISIT_TICK_KEY         = '@powr/last_visit_tick';   // throttle for the stream heartbeat
+
+// The in-gym stream heartbeat is a checkpoint, not a firehose: the stream ticks
+// every 60 s, but we only need enough resolution to answer "is it alive at all?"
+const VISIT_TICK_INTERVAL_MS = 5 * 60 * 1000;
 
 // iOS hard-limits an app to 20 monitored regions; Android allows 100 (we use 50).
 // One slot is reserved for the travel sentinel; the rest hold the nearest partners.
@@ -1250,6 +1255,26 @@ async function advanceActiveSession(active: StoredGeofence): Promise<void> {
  *  dwell, and EXIT against the cached partner circles + active-session state. Runs
  *  headless (separate JS context) when the app is closed, so it reads everything
  *  from AsyncStorage and never touches React. */
+/** Tells the server the location stream is actually delivering fixes while checked
+ *  in. Fires on EVERY tick — coarse ones included — because the question it answers
+ *  ("is the background stream alive?") is independent of whether the fix is accurate
+ *  enough to prove presence. Presence is confirmGymVisit's job and stays untouched.
+ *  Throttled + best-effort: it must never delay or break the dwell machine. */
+async function heartbeatVisitStream(active: StoredGeofence, coords: Location.LocationObjectCoords): Promise<void> {
+  if (!active.visitId) return;
+  try {
+    const last = Number((await AsyncStorage.getItem(VISIT_TICK_KEY)) ?? 0);
+    if (Date.now() - last < VISIT_TICK_INTERVAL_MS) return;
+    await AsyncStorage.setItem(VISIT_TICK_KEY, String(Date.now()));
+
+    const { logGymVisitTick } = await import('@/lib/gymVisits');
+    await logGymVisitTick(active.visitId, {
+      accuracy_m:  coords.accuracy != null ? Math.round(coords.accuracy) : null,
+      elapsed_min: Math.round((Date.now() - active.entryTimestamp) / 60000),
+    });
+  } catch { /* diagnostic only — never let it affect the claim */ }
+}
+
 async function evaluateLocationFix(coords: Location.LocationObjectCoords): Promise<void> {
   // A coarse fix can't be trusted against a tight radius — it must never fire a
   // false "You're in" from far away (ENTER) or flap a real session out early
@@ -1268,6 +1293,7 @@ async function evaluateLocationFix(coords: Location.LocationObjectCoords): Promi
     // Position untrusted: skip the EXIT geometry (assume still inside — the same
     // effective outcome as the old early-return) but keep the time-based dwell
     // state machine alive so background claims fire without an app-open.
+    await heartbeatVisitStream(active, coords);
     await advanceActiveSession(active);
     return;
   }
@@ -1285,6 +1311,7 @@ async function evaluateLocationFix(coords: Location.LocationObjectCoords): Promi
       stillInside = dist <= active.radius + LOCATION_EXIT_HYSTERESIS_M;
     }
     if (stillInside) {
+      await heartbeatVisitStream(active, coords);
       await advanceActiveSession(active);
     } else {
       // Location-detected EXIT — the native exit event may never arrive when closed.

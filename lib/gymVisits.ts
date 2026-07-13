@@ -54,6 +54,26 @@ export async function confirmGymVisit(
   }
 }
 
+/** Heartbeat: the in-gym location stream delivered a fix to JS. Deliberately NOT
+ *  confirmGymVisit — that means location-PROVEN presence and bounds a late exit,
+ *  and an indoor fix is usually too coarse to prove anything. This records only
+ *  that the stream is alive, which is the one thing the server cannot otherwise
+ *  see and the question behind every background-claim failure. */
+export async function logGymVisitTick(
+  visitId: string,
+  detail: Record<string, unknown> = {},
+): Promise<void> {
+  try {
+    const { error } = await supabase.rpc('log_gym_visit_tick', {
+      p_visit_id: visitId,
+      p_detail:   detail,
+    });
+    if (error) throw error;
+  } catch (err) {
+    console.warn('[GymVisit] logGymVisitTick failed:', err);
+  }
+}
+
 /** Records that a claim/upgrade actually landed. Called AFTER claim-points or
  *  upgrade-gym-tier succeeded — this cannot award anything itself. */
 export async function markGymVisitProgress(
