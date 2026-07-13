@@ -1261,7 +1261,10 @@ async function advanceActiveSession(active: StoredGeofence): Promise<void> {
  *  enough to prove presence. Presence is confirmGymVisit's job and stays untouched.
  *  Throttled + best-effort: it must never delay or break the dwell machine. */
 async function heartbeatVisitStream(active: StoredGeofence, coords: Location.LocationObjectCoords): Promise<void> {
-  if (!active.visitId) return;
+  if (!active.visitId) {
+    console.log('[Geofence] Heartbeat skipped: active session has no visitId.');
+    return;
+  }
   try {
     const last = Number((await AsyncStorage.getItem(VISIT_TICK_KEY)) ?? 0);
     if (Date.now() - last < VISIT_TICK_INTERVAL_MS) return;
@@ -1401,6 +1404,7 @@ TaskManager.defineTask(LOCATION_TRACKING_TASK, async ({ data, error }) => {
     return;
   }
   const { locations } = (data ?? {}) as { locations?: Location.LocationObject[] };
+  console.log(`[Geofence] Location task fired: ${locations?.length ?? 0} fix(es).`);
   if (!locations || locations.length === 0) return;
   try {
     // Headless context: load the last-persisted admin dwell threshold from
