@@ -77,19 +77,17 @@ module.exports = {
       'expo-apple-authentication',
       ['react-native-health-connect'],
       'expo-secure-store',
+      // Picks a profile/share-card image and nothing else. On Android 13+ this
+      // goes through the system photo picker and requests NO permission, which
+      // is what Google Play's Photo and Video Permissions policy requires.
+      // NEVER add expo-media-library back: its plugin injects READ_MEDIA_IMAGES
+      // /_VIDEO /_AUDIO, which got the app rejected (we only ever *share* the
+      // card via the OS share sheet — we never read or write the gallery).
       [
         'expo-image-picker',
         {
           photosPermission: 'POWR needs access to your photo library so you can set a profile picture.',
           cameraPermission: 'POWR needs access to your camera so you can take a profile photo.',
-        },
-      ],
-      [
-        'expo-media-library',
-        {
-          photosPermission: 'POWR needs access to your photos to save your share card.',
-          savePhotosPermission: 'POWR needs permission to save your share card to your photos.',
-          isAccessMediaLocationEnabled: false,
         },
       ],
     ],
