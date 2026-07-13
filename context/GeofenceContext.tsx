@@ -1955,8 +1955,24 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
             await Location.stopLocationUpdatesAsync(LOCATION_TRACKING_TASK).catch(() => {});
           }
           if (!_locationStreamEnsuredThisProcess || !alreadyStreaming) {
-            await Location.startLocationUpdatesAsync(LOCATION_TRACKING_TASK, LOCATION_UPDATE_OPTIONS);
-            console.log('[Geofence] Foreground-service location stream started.');
+            // Resume the mode the CURRENT visit state calls for — never a hard-coded
+            // baseline. A JS process that restarts mid-visit (Android reclaiming a
+            // backgrounded process, an OTA restart, a headless task boot) used to come
+            // back on the 50 m-displacement baseline, which delivers NO fixes to a
+            // stationary user: the dwell machine stopped ticking and the 30-min claim
+            // never fired. That silently un-did the whole point of the dwell stream,
+            // mid-session, with the banner the only visible tell.
+            const resumeRaw = await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY);
+            const resumeApproach = await AsyncStorage.getItem(APPROACH_STATE_KEY);
+            const resumeMode = visitStreamMode(Platform.OS, {
+              sessionActive: resumeRaw != null,
+              approaching:   resumeApproach != null,
+            });
+            const resumeOpts = resumeMode === 'dwell'    ? DWELL_LOCATION_OPTIONS
+              :                resumeMode === 'approach' ? APPROACH_LOCATION_OPTIONS
+              :                                            LOCATION_UPDATE_OPTIONS;
+            await Location.startLocationUpdatesAsync(LOCATION_TRACKING_TASK, resumeOpts);
+            console.log(`[Geofence] Foreground-service location stream started (${resumeMode}).`);
           }
           _locationStreamEnsuredThisProcess = true;
         } catch (err) {
