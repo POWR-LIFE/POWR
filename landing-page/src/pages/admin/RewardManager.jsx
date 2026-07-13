@@ -643,7 +643,7 @@ export default function RewardManager() {
         e.preventDefault();
         setSaving(true);
         if (formData.active) {
-            const blocker = await getLaunchBlocker(formData);
+            const blocker = await getLaunchBlocker({ ...formData, id: editingReward?.id });
             if (blocker) {
                 setSaving(false);
                 toast.error(blocker);
