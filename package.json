@@ -85,6 +85,7 @@
     "@testing-library/react-native": "^13.3.3",
     "@types/react": "~19.1.0",
     "@types/three": "^0.183.1",
+    "babel-plugin-dynamic-import-node": "^2.3.3",
     "eslint": "^9.25.0",
     "eslint-config-expo": "~10.0.0",
     "expo-module-scripts": "^55.0.2",
