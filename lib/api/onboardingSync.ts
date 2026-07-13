@@ -130,6 +130,7 @@ export async function syncHistoricalHealthData(
                     hr_avg: day.heartRate?.avg ?? null,
                     verification: 'health',
                     trust_score: 0.85,
+                    raw_activity_name: (activity.rawName ?? activity.type)?.trim().slice(0, 80) || null,
                 });
             if (sessErr) {
                 console.warn(`[OnboardingSync] Failed to insert ${mappedType}:`, sessErr.message);

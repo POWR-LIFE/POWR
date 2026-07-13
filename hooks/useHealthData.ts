@@ -23,6 +23,8 @@ export type HealthActivity = {
     calories?: number;
     /** Which app/device wrote this sample — used to classify wearable vs phone. */
     source?: HealthDataProvenance;
+    /** Provider-reported activity name before bucketing (e.g. "Strength Training"). */
+    rawName?: string;
 };
 
 export type SleepSession = {
@@ -218,6 +220,61 @@ const HK_WORKOUT_TYPE_MAP: Record<number, string> = {
     79: 'sports',          // pickleball (iOS 16+)
 };
 
+// Human-readable names for the same HKWorkoutActivityType ints, preserved on
+// each activity as `rawName` so the bucketing above stays lossless downstream
+// (stored in activity_sessions.raw_activity_name, shown as a feed subtitle).
+const HK_WORKOUT_NAME_MAP: Record<number, string> = {
+    6:  'Basketball',
+    8:  'Boxing',
+    9:  'Climbing',
+    11: 'Cross Training',
+    13: 'Cycling',
+    14: 'Dance',
+    16: 'Elliptical',
+    18: 'Fencing',
+    20: 'Functional Strength Training',
+    22: 'Gymnastics',
+    23: 'Handball',
+    24: 'Hiking',
+    28: 'Martial Arts',
+    29: 'Mind & Body',
+    30: 'Mixed Metabolic Cardio',
+    34: 'Racquetball',
+    35: 'Rowing',
+    37: 'Running',
+    39: 'Skating',
+    41: 'Soccer',
+    43: 'Squash',
+    44: 'Stair Climbing',
+    45: 'Surfing',
+    46: 'Swimming',
+    47: 'Table Tennis',
+    48: 'Tennis',
+    49: 'Track & Field',
+    50: 'Strength Training',
+    51: 'Volleyball',
+    52: 'Walking',
+    53: 'Water Fitness',
+    57: 'Yoga',
+    58: 'Barre',
+    59: 'Core Training',
+    60: 'Cross Country Skiing',
+    61: 'Downhill Skiing',
+    63: 'HIIT',
+    64: 'Jump Rope',
+    65: 'Kickboxing',
+    66: 'Pilates',
+    67: 'Snowboarding',
+    68: 'Stairs',
+    69: 'Step Training',
+    72: 'Tai Chi',
+    73: 'Mixed Cardio',
+    74: 'Hand Cycling',
+    77: 'Cardio Dance',
+    78: 'Social Dance',
+    79: 'Pickleball',
+};
+
 async function iosGetActivitiesToday(): Promise<HealthActivity[]> {
     try {
         const HK = getHK();
@@ -233,6 +290,7 @@ async function iosGetActivitiesToday(): Promise<HealthActivity[]> {
             durationMin: Math.round(w.duration.quantity / 60),
             distanceM: w.totalDistance ? Math.round(w.totalDistance.quantity) : undefined,
             source: iosProvenance(w),
+            rawName: HK_WORKOUT_NAME_MAP[w.workoutActivityType as number],
         }));
     } catch (e) {
         console.warn('Failed to read Apple HealthKit workouts:', e);
@@ -573,6 +631,7 @@ async function androidGetActivitiesToday(): Promise<HealthActivity[]> {
                 (new Date(r.endTime).getTime() - new Date(r.startTime).getTime()) / 60000,
             ),
             source: androidProvenance(r),
+            rawName: HC_EXERCISE_TYPE[r.exerciseType],
         }));
     } catch {
         return [];
@@ -772,6 +831,7 @@ async function iosGetWeekHistory(): Promise<DayHealthSummary[]> {
                 durationMin: Math.round(w.duration.quantity / 60),
                 distanceM: w.totalDistance ? Math.round(w.totalDistance.quantity) : undefined,
                 source: iosProvenance(w),
+                rawName: HK_WORKOUT_NAME_MAP[w.workoutActivityType as number],
             }));
         } catch { /* ignore */ }
 
@@ -886,6 +946,7 @@ async function androidGetWeekHistory(): Promise<DayHealthSummary[]> {
                 startedAt: r.startTime,
                 durationMin: Math.round((new Date(r.endTime).getTime() - new Date(r.startTime).getTime()) / 60000),
                 source: androidProvenance(r),
+                rawName: HC_EXERCISE_TYPE[r.exerciseType],
             }));
         } catch { /* ignore */ }
 

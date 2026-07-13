@@ -10,6 +10,7 @@ import {
 } from '@/lib/api/activity';
 import { type ActivityFeedItem } from '@/components/home/ActivityFeed';
 import { ACTIVITIES } from '@/constants/activities';
+import { formatRawActivityName } from '@/lib/rawActivityName';
 
 function formatDetail(session: ActivitySession): string {
     if (session.distance_m && session.distance_m > 0) {
@@ -37,6 +38,7 @@ function sessionToFeedItem(session: ActivitySession): ActivityFeedItem | null {
         detail,
         timestamp: session.started_at,
         verified: session.verification !== 'manual',
+        rawName: formatRawActivityName(session.raw_activity_name, session.type) ?? undefined,
     };
 }
 
@@ -50,7 +52,7 @@ type ActivityState = {
     refresh: () => void;
 };
 
-const DEFAULT_METRICS: WeeklyMetrics = { gymVisits: 0, runs: 0, totalSteps: 0, sessionCount: 0, perType: {}, activeDaysPerType: {} };
+const DEFAULT_METRICS: WeeklyMetrics = { gymVisits: 0, runs: 0, totalSteps: 0, sessionCount: 0, perType: {}, activeDaysPerType: {}, pointsPerType: {} };
 const DEFAULT_DAILY: DailyMetrics = { perType: {}, stepsToday: 0 };
 
 export function useActivity(): ActivityState {

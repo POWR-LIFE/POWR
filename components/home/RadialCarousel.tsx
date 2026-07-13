@@ -82,6 +82,8 @@ export function RadialCarousel({ data, activeIndex, onChange }: RadialCarouselPr
     flatListRef.current = node;
   }, []);
 
+  const activePoints = data[activeIndex]?.pointsValue ?? 0;
+
   const renderItem = ({ item, index }: { item: RadialData; index: number }) => {
     return (
       <View style={styles.itemContainer}>
@@ -112,11 +114,15 @@ export function RadialCarousel({ data, activeIndex, onChange }: RadialCarouselPr
         keyExtractor={(item) => item.id}
       />
 
-      {/* Static POWR earned panel — always visible, left of centre */}
-      <View style={styles.pointsPanel} pointerEvents="none">
-        <Text style={styles.pointsNum} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5}>{data[activeIndex]?.pointsValue ?? 0}</Text>
-        <Text style={styles.pointsLbl}>{`POWR\nEARNED`}</Text>
-      </View>
+      {/* POWR earned panel, left of centre. Hidden when the active activity has
+          earned nothing — a bare 0 next to a filled ring reads as a broken screen.
+          The panel is absolutely positioned, so dropping it leaves the radial centred. */}
+      {activePoints > 0 && (
+        <View style={styles.pointsPanel} pointerEvents="none">
+          <Text style={styles.pointsNum} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5}>{activePoints}</Text>
+          <Text style={styles.pointsLbl}>{`POWR\nEARNED`}</Text>
+        </View>
+      )}
 
       {/* Static icon panel — always visible, right of centre */}
       <View style={styles.iconPanel} pointerEvents="none">

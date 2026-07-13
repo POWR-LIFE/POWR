@@ -172,7 +172,7 @@ export default function ProgressScreen() {
         gradientColors: [GREEN, '#10b981'],
         iconName: config.iconActive,
         iconLib: config.iconLib,
-        pointsValue: weeklyEarned,
+        pointsValue: weeklyMetrics.pointsPerType['walking'] ?? 0,
         ticks: DAY_LABELS.map((label, i) => ({
           label: label.slice(0, 2),
           active: weekActiveDays[i],
@@ -192,7 +192,7 @@ export default function ProgressScreen() {
       gradientColors: [config.colour, ORANGE],
       iconName: config.iconActive,
       iconLib: config.iconLib,
-      pointsValue: weeklyEarned,
+      pointsValue: weeklyMetrics.pointsPerType[type] ?? 0,
       ticks: DAY_LABELS.map((label, i) => ({
         label: label.slice(0, 2),
         active: typeDays[i] ?? false,
@@ -216,7 +216,7 @@ export default function ProgressScreen() {
       gradientColors: [INDIGO, '#6366f1'],
       iconName: 'moon',
       iconLib: 'ionicons',
-      pointsValue: weeklyEarned,
+      pointsValue: weeklyMetrics.pointsPerType['sleep'] ?? 0,
       ticks: DAY_LABELS.map((label, i) => ({
         label: label.slice(0, 2),
         active: sleepHrs[i] > 0,

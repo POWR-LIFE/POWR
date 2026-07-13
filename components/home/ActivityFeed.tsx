@@ -19,6 +19,8 @@ export interface ActivityFeedItem {
   detail?: string;
   timestamp: string;
   verified: boolean;
+  /** Display-ready provider activity name (e.g. "Strength Training"), when it adds info. */
+  rawName?: string;
 }
 
 interface ActivityFeedProps {
@@ -74,6 +76,7 @@ export function ActivityFeed({ items, isNewUser }: ActivityFeedProps & { isNewUs
           detail={item.detail}
           timestamp={item.timestamp}
           verified={item.verified}
+          rawName={item.rawName}
           cardHeight={CARD_HEIGHT}
         />
       ))}
