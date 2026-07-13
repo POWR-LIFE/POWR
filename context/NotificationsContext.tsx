@@ -11,6 +11,13 @@ import * as Notifications from 'expo-notifications';
 import { useRouter } from 'expo-router';
 import { AppState, AppStateStatus } from 'react-native';
 import { useAuth } from '@/context/AuthContext';
+// STATIC, side-effecting import — do NOT make this lazy. The module's top-level
+// TaskManager.defineTask() is what gives the wake-up push somewhere to land, and
+// TaskManager resolves a task by name against whatever the BUNDLE defined at load.
+// Behind a dynamic import inside the effect below, it was only ever defined in a
+// mounted, logged-in app — so a background/headless bundle load had no handler and
+// FCM dropped every silent wake (Sony/Android 12 field capture, 2026-07-13).
+import { registerBackgroundNotificationTask } from '@/lib/backgroundNotificationTask';
 import { isExpoGoClient } from '@/lib/device';
 import {
   requestPermissionsAndGetToken,
@@ -238,8 +245,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
 
     // Lets the gym-visit beacon's SILENT push wake us while backgrounded/closed —
     // a stationary phone gets no location callbacks, so the server has to knock.
-    import('@/lib/backgroundNotificationTask')
-      .then(({ registerBackgroundNotificationTask }) => registerBackgroundNotificationTask())
+    registerBackgroundNotificationTask()
       .catch((err) => console.warn('[Notifications] Background task registration failed:', err));
 
     getNotificationPreferences(user.id)
