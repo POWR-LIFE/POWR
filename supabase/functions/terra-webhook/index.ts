@@ -290,6 +290,7 @@ async function handleActivity(supabase, payload): Promise<void> {
       verification: 'wearable',
       trust_score: 0.85,
       device_id: null,
+      raw_activity_name: (meta.name ?? '').trim().slice(0, 80) || null,
     }, points);
 
     if (inserted) {

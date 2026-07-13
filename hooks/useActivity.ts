@@ -10,6 +10,7 @@ import {
 } from '@/lib/api/activity';
 import { type ActivityFeedItem } from '@/components/home/ActivityFeed';
 import { ACTIVITIES } from '@/constants/activities';
+import { formatRawActivityName } from '@/lib/rawActivityName';
 
 function formatDetail(session: ActivitySession): string {
     if (session.distance_m && session.distance_m > 0) {
@@ -37,6 +38,7 @@ function sessionToFeedItem(session: ActivitySession): ActivityFeedItem | null {
         detail,
         timestamp: session.started_at,
         verified: session.verification !== 'manual',
+        rawName: formatRawActivityName(session.raw_activity_name, session.type) ?? undefined,
     };
 }
 

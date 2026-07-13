@@ -32,6 +32,7 @@ export type ActivitySession = {
     steps: number | null;
     verification: string;
     trust_score: number;
+    raw_activity_name: string | null;
     point_transactions: { amount: number }[];
 };
 
@@ -54,7 +55,7 @@ export async function fetchRecentSessions(limit = 5): Promise<ActivitySession[]>
     if (!uid) return [];
     const { data, error } = await supabase
         .from('activity_sessions')
-        .select('id, type, started_at, ended_at, duration_sec, distance_m, steps, verification, trust_score, point_transactions(amount)')
+        .select('id, type, started_at, ended_at, duration_sec, distance_m, steps, verification, trust_score, raw_activity_name, point_transactions(amount)')
         .eq('user_id', uid)
         .order('ended_at', { ascending: false, nullsFirst: false })
         .limit(limit);
@@ -151,6 +152,8 @@ export type ManualSessionParams = {
      * true wearable. See `verificationForProvider`.
      */
     healthSource?: 'wearable' | 'health';
+    /** Provider-reported activity name before bucketing (e.g. "Strength Training"). */
+    rawActivityName?: string;
 };
 
 /** Max unverified manual logs allowed per calendar day (across all types). */
@@ -273,6 +276,7 @@ export async function logManualSession(params: ManualSessionParams): Promise<boo
             verification,
             trust_score,
             device_id,
+            raw_activity_name: params.rawActivityName?.trim().slice(0, 80) || null,
         })
         .select('id')
         .single();
