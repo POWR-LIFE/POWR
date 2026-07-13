@@ -98,6 +98,13 @@ export type WeeklyMetrics = {
     perType: Record<string, number>;
     /** Mon–Sun active-day booleans keyed by activity type */
     activeDaysPerType: Record<string, boolean[]>;
+    /**
+     * Points earned from this week's sessions, keyed by activity type. Only
+     * covers session-linked transactions, so these will not sum to the weekly
+     * total from get_my_points_summary (challenge rewards, referrals and other
+     * standalone bonuses have no session to attribute them to).
+     */
+    pointsPerType: Record<string, number>;
 };
 
 export type DailyMetrics = {
@@ -300,7 +307,7 @@ export async function logManualSession(params: ManualSessionParams): Promise<boo
 
 export async function fetchWeeklyMetrics(): Promise<WeeklyMetrics> {
     const uid = await getCurrentUserId();
-    if (!uid) return { gymVisits: 0, runs: 0, totalSteps: 0, sessionCount: 0, perType: {}, activeDaysPerType: {} };
+    if (!uid) return { gymVisits: 0, runs: 0, totalSteps: 0, sessionCount: 0, perType: {}, activeDaysPerType: {}, pointsPerType: {} };
     const now = new Date();
     const dayOfWeek = now.getDay();
     const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
@@ -310,14 +317,20 @@ export async function fetchWeeklyMetrics(): Promise<WeeklyMetrics> {
 
     const { data, error } = await supabase
         .from('activity_sessions')
-        .select('type, steps, started_at')
+        .select('type, steps, started_at, point_transactions(amount)')
         .eq('user_id', uid)
         .gte('started_at', monday.toISOString());
     if (error) throw error;
 
-    const sessions = data ?? [];
+    const sessions = (data ?? []) as unknown as {
+        type: string;
+        steps: number | null;
+        started_at: string;
+        point_transactions: { amount: number }[] | null;
+    }[];
     const perType: Record<string, number> = {};
     const activeDaysPerType: Record<string, boolean[]> = {};
+    const pointsPerType: Record<string, number> = {};
     for (const s of sessions) {
         perType[s.type] = (perType[s.type] ?? 0) + 1;
         if (!activeDaysPerType[s.type]) {
@@ -325,6 +338,10 @@ export async function fetchWeeklyMetrics(): Promise<WeeklyMetrics> {
         }
         const d = new Date(s.started_at).getDay();
         activeDaysPerType[s.type][d === 0 ? 6 : d - 1] = true;
+        // Any transaction written against the session counts towards its type —
+        // that includes streak bonuses awarded on the back of the session.
+        const sessionPoints = (s.point_transactions ?? []).reduce((sum, t) => sum + t.amount, 0);
+        pointsPerType[s.type] = (pointsPerType[s.type] ?? 0) + sessionPoints;
     }
     return {
         gymVisits: perType['gym'] ?? 0,
@@ -333,6 +350,7 @@ export async function fetchWeeklyMetrics(): Promise<WeeklyMetrics> {
         sessionCount: sessions.length,
         perType,
         activeDaysPerType,
+        pointsPerType,
     };
 }
 

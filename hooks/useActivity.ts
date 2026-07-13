@@ -50,7 +50,7 @@ type ActivityState = {
     refresh: () => void;
 };
 
-const DEFAULT_METRICS: WeeklyMetrics = { gymVisits: 0, runs: 0, totalSteps: 0, sessionCount: 0, perType: {}, activeDaysPerType: {} };
+const DEFAULT_METRICS: WeeklyMetrics = { gymVisits: 0, runs: 0, totalSteps: 0, sessionCount: 0, perType: {}, activeDaysPerType: {}, pointsPerType: {} };
 const DEFAULT_DAILY: DailyMetrics = { perType: {}, stepsToday: 0 };
 
 export function useActivity(): ActivityState {
