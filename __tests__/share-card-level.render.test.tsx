@@ -43,7 +43,8 @@ test('renders the level for lifetime earned points', () => {
     render(<ShareCard summary={summary(10_000)} width={1080} showLevel />);
     expect(screen.getByText('LEVEL 7')).toBeTruthy();
     expect(screen.getByText('IRON LUNGS')).toBeTruthy();
-    expect(screen.getByText(/iron-lungs\.png$/)).toBeTruthy();
+    // Logo URLs carry a ?v= cache-buster, so match the filename, not the end of string.
+    expect(screen.getByText(/iron-lungs\.png(\?|$)/)).toBeTruthy();
 });
 
 test('a spent-down balance does not demote the level', () => {
