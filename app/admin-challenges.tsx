@@ -150,7 +150,9 @@ export default function AdminChallengesScreen() {
   // ── Auto rotation for selected week ───────────────────────────────────────
 
   const autoForWeek = useMemo(
-    () => getActiveChallengesForWeek(selectedWeek, CATALOG as CatalogEntry[]) as CatalogEntry[],
+    // CATALOG is this function's own default argument — passing it back in (cast to
+    // the local CatalogEntry shape) is what tripped the type, so let the default stand.
+    () => getActiveChallengesForWeek(selectedWeek) as CatalogEntry[],
     [selectedWeek],
   );
 
