@@ -9,7 +9,7 @@ import {
     ArrowUpRight, ArrowDownRight, Gift, Plus, X,
     Heart, Moon, Flame, Footprints, Star, Trash2,
     Camera, ImagePlus, Trophy, Check, Link2, RefreshCw, Pencil,
-    Smartphone
+    Smartphone, Bell
 } from 'lucide-react';
 
 const MIN_USERNAME = 3;
@@ -29,6 +29,18 @@ const LOCATION_STATES = {
     while_using:  { chip: 'Location While Using', detail: 'While Using only', cls: 'bg-[#F59E0B]/10 border border-[#F59E0B]/25 text-[#B45309]' },
     denied:       { chip: 'Location Off',         detail: 'Denied',           cls: 'bg-red-500/10 border border-red-500/20 text-red-500' },
     undetermined: { chip: 'Location Not Asked',   detail: 'Never asked',      cls: 'bg-[#EFEFEC] text-[#999999]' },
+};
+
+// push_send_log status → chip styling + what it actually proves. 'accepted'
+// deliberately reads "Accepted by APNs/FCM", not "delivered": the platform
+// taking the push is where server-side visibility ends (a device can still
+// fail to display it — that gap is the open iOS incident).
+const PUSH_STATES = {
+    accepted: { label: 'Accepted',  cls: 'border-[#10B981]/20 text-[#10B981]' },
+    queued:   { label: 'Queued',    cls: 'border-[#F59E0B]/25 text-[#B45309]' },
+    rejected: { label: 'Rejected',  cls: 'border-red-500/20 text-red-500' },
+    failed:   { label: 'Failed',    cls: 'border-red-500/20 text-red-500' },
+    skipped:  { label: 'Skipped',   cls: 'border-[#E6E6E1] text-[#999999]' },
 };
 
 const timeAgo = (dateStr) => {
@@ -74,6 +86,8 @@ export default function UserProfile() {
     const [deviceTransfers, setDeviceTransfers] = useState([]);
     const [deviceReleasing, setDeviceReleasing] = useState(false);
     const [pushTokens, setPushTokens] = useState([]);
+    const [pushLog, setPushLog] = useState([]);
+    const [visiblePushLog, setVisiblePushLog] = useState(15);
     const [activeTab, setActiveTab] = useState('activity');
     const [visibleSessions, setVisibleSessions] = useState(10);
     const [visibleTransactions, setVisibleTransactions] = useState(10);
@@ -527,6 +541,16 @@ export default function UserProfile() {
                 .order('updated_at', { ascending: false });
             setPushTokens(tokenData || []);
 
+            // Push delivery log: every send attempt for this user (ticket +
+            // receipt outcome, or the gate that skipped it). 30-day retention.
+            const { data: pushLogData } = await supabase
+                .from('push_send_log')
+                .select('id, type, title, body, status, skip_reason, error, receipt_checked_at, created_at')
+                .eq('user_id', userId)
+                .order('created_at', { ascending: false })
+                .limit(100);
+            setPushLog(pushLogData || []);
+
             // Load preferred gym name if set
             if (p.data.preferred_gym_id) {
                 const { data: gymData } = await supabase
@@ -885,6 +909,12 @@ export default function UserProfile() {
                         >
                             <Heart size={14} /> Health Data
                         </button>
+                        <button
+                            onClick={() => setActiveTab('notifications')}
+                            className={`pb-4 text-[11px] font-black uppercase tracking-[0.2em] transition-colors border-b-2 flex items-center gap-2 ${activeTab === 'notifications' ? 'text-[#8a7600] border-[#E8D200]' : 'text-[#BBB] border-transparent hover:text-[#333333]'}`}
+                        >
+                            <Bell size={14} /> Notifications
+                        </button>
                         {profile.is_pro && (
                             <button
                                 onClick={() => setActiveTab('pro')}
@@ -1028,6 +1058,64 @@ export default function UserProfile() {
                                         className="text-[10px] text-[#8a7600] font-black uppercase tracking-[0.3em] transition-colors py-2 px-6"
                                     >
                                         Load More Activity
+                                    </button>
+                                </div>
+                            )}
+                        </section>
+                    )}
+
+                    {/* Push delivery log */}
+                    {activeTab === 'notifications' && (
+                        <section className="bg-white border border-[#E6E6E1] rounded-[2rem] overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
+                            <div className="p-10 border-b border-[#E6E6E1] flex items-center justify-between">
+                                <div>
+                                    <h3 className="text-xl font-light tracking-tighter text-[#1A1A1A]">Push Delivery Log</h3>
+                                    <p className="text-[9px] uppercase tracking-[0.4em] text-[#666666] font-black mt-2">Every send attempt · last 30 days</p>
+                                </div>
+                                <span className="text-[10px] font-black text-[#555555] uppercase tracking-[0.3em]">{pushLog.length} RECORDED</span>
+                            </div>
+                            <div className="px-10 py-4 bg-[#F4F4F1] border-b border-[#E6E6E1] text-[11px] text-[#666666] leading-relaxed">
+                                <span className="font-bold text-[#333333]">Accepted</span> means APNs/FCM took the push — it does not guarantee the device displayed it.
+                                <span className="font-bold text-[#333333]"> Skipped</span> means a server gate stopped the send (reason shown).
+                                <span className="font-bold text-[#333333]"> Rejected/Failed</span> carry the exact Expo error. Entries older than this log (pre 13 Jul 2026) were never recorded.
+                            </div>
+                            <div className="divide-y divide-[#E6E6E1]">
+                                {pushLog.length === 0 ? (
+                                    <div className="p-20 text-center text-[#888888] text-[10px] uppercase tracking-[0.4em] font-black">No push attempts logged yet</div>
+                                ) : pushLog.slice(0, visiblePushLog).map(entry => {
+                                    const state = PUSH_STATES[entry.status] ?? { label: entry.status, cls: 'border-[#E6E6E1] text-[#666666]' };
+                                    return (
+                                        <div key={entry.id} className="px-10 py-6 flex items-start gap-6 hover:bg-[#F4F4F1] transition-all">
+                                            <div className="w-11 h-11 rounded-2xl bg-[#F4F4F1] border border-[#E6E6E1] flex items-center justify-center shrink-0">
+                                                <Bell size={16} className="text-[#666666]" />
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex justify-between items-center gap-4 mb-1">
+                                                    <span className="text-[13px] font-bold text-[#222222] truncate">{entry.title || entry.type}</span>
+                                                    <span className="text-[10px] text-[#666666] font-black uppercase tracking-[0.3em] shrink-0">{timeAgo(entry.created_at)}</span>
+                                                </div>
+                                                {entry.body && <div className="text-[12px] text-[#555555] truncate mb-2">{entry.body}</div>}
+                                                <div className="flex flex-wrap items-center gap-3 text-[9px] font-black uppercase tracking-[0.2em]">
+                                                    <span className="text-[#999999]">{entry.type}</span>
+                                                    <span className={`px-3 py-1 rounded-full border ${state.cls}`}>{state.label}</span>
+                                                    {entry.skip_reason && <span className="text-[#B45309] normal-case tracking-normal font-medium">{entry.skip_reason}</span>}
+                                                    {entry.error && <span className="text-red-500 normal-case tracking-normal font-medium">{entry.error}</span>}
+                                                    {entry.status === 'queued' && !entry.receipt_checked_at && (
+                                                        <span className="text-[#999999] normal-case tracking-normal font-medium">receipt never confirmed</span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                            {pushLog.length > visiblePushLog && (
+                                <div className="p-6 border-t border-[#E6E6E1] text-center bg-[#F4F4F1] hover:bg-[#EFEFEC] transition-colors">
+                                    <button
+                                        onClick={() => setVisiblePushLog(prev => prev + 15)}
+                                        className="text-[10px] text-[#8a7600] font-black uppercase tracking-[0.3em] transition-colors py-2 px-6"
+                                    >
+                                        Load More
                                     </button>
                                 </div>
                             )}

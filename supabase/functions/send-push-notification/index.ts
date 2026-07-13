@@ -482,6 +482,19 @@ async function streakFromSessions(supabase: any, userId: string): Promise<number
   return streak;
 }
 
+// Record a gated (never-attempted) send in push_send_log so the admin panel can
+// show WHY a user got no push, not just that nothing arrived. Best-effort.
+async function logSkip(supabase: any, userId: string, type: string, reason: string): Promise<void> {
+  try {
+    const { error } = await supabase
+      .from('push_send_log')
+      .insert({ user_id: userId, type, status: 'skipped', skip_reason: reason });
+    if (error) console.warn('[send-push-notification] skip log failed:', error);
+  } catch (err) {
+    console.warn('[send-push-notification] skip log failed:', err);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Handler
 // ---------------------------------------------------------------------------
@@ -522,6 +535,7 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
 
     if (notifConfig?.enabled === false) {
+      await logSkip(supabase, target_user_id, type, 'admin_disabled');
       return new Response(JSON.stringify({ skipped: true, reason: 'admin_disabled' }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
@@ -540,6 +554,7 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
 
     if (prefs && prefs[prefColumn] === false) {
+      await logSkip(supabase, target_user_id, type, 'user_preference');
       return new Response(JSON.stringify({ skipped: true, reason: 'user_preference' }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
@@ -551,6 +566,7 @@ Deno.serve(async (req: Request) => {
     if (TOGETHER_TYPES.includes(type)) {
       const { data: u } = await supabase.auth.admin.getUserById(target_user_id);
       if (u?.user?.user_metadata?.together_enabled === false) {
+        await logSkip(supabase, target_user_id, type, 'together_disabled');
         return new Response(JSON.stringify({ skipped: true, reason: 'together_disabled' }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
@@ -565,6 +581,7 @@ Deno.serve(async (req: Request) => {
       const computedStreak = await streakFromSessions(supabase, target_user_id);
 
       if (computedStreak === 0) {
+        await logSkip(supabase, target_user_id, type, 'no_active_streak');
         return new Response(JSON.stringify({ skipped: true, reason: 'no_active_streak' }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
@@ -693,6 +710,7 @@ Deno.serve(async (req: Request) => {
 
     if (tokenError) throw tokenError;
     if (!tokens || tokens.length === 0) {
+      await logSkip(supabase, target_user_id, type, 'no_tokens');
       return new Response(JSON.stringify({ skipped: true, reason: 'no_tokens' }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
@@ -709,7 +727,7 @@ Deno.serve(async (req: Request) => {
       applyNotifOverrides(buildMessage(type, payload, expo_push_token), notifConfig),
     );
 
-    const result = await deliverExpoMessages(supabase, messages);
+    const result = await deliverExpoMessages(supabase, messages, { userId: target_user_id, type });
 
     return new Response(JSON.stringify({ ok: true, result }), {
       status: 200,
