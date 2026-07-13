@@ -236,6 +236,12 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
 
     registerForPush(user.id);
 
+    // Lets the gym-visit beacon's SILENT push wake us while backgrounded/closed —
+    // a stationary phone gets no location callbacks, so the server has to knock.
+    import('@/lib/backgroundNotificationTask')
+      .then(({ registerBackgroundNotificationTask }) => registerBackgroundNotificationTask())
+      .catch((err) => console.warn('[Notifications] Background task registration failed:', err));
+
     getNotificationPreferences(user.id)
       .then((prefs) => {
         setPreferences(prefs);
@@ -243,6 +249,26 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
       })
       .catch((err) => console.warn('[Notifications] Failed to load preferences:', err));
   }, [user?.id, registerForPush]);
+
+  // The background task does NOT run when the app is in the foreground — the
+  // received-listener gets the push instead. Handle the beacon's presence check
+  // here too, or an open app would silently ignore it.
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const sub = Notifications.addNotificationReceivedListener((notification) => {
+      const data = notification?.request?.content?.data as
+        { type?: string; stage?: 'dwell' | 'upgrade' } | undefined;
+      if (data?.type !== 'gym_visit_check') return;
+
+      const stage = data.stage === 'upgrade' ? 'upgrade' : 'dwell';
+      import('@/context/GeofenceContext')
+        .then(({ runVisitCheck }) => runVisitCheck(stage))
+        .catch((err) => console.warn('[Notifications] Foreground visit check failed:', err));
+    });
+
+    return () => sub.remove();
+  }, [user?.id]);
 
   // -------------------------------------------------------------------------
   // Clean up token on sign-out

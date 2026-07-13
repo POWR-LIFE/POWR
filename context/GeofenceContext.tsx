@@ -291,6 +291,8 @@ interface StoredGeofence {
   tierUpgraded?:    boolean; // true once the 40-min upgrade has been attempted
   endedAtMs?:       number;  // frozen exit time — used by post-exit retry claims so
                              // the recorded duration stays the true session length
+  visitId?:         string;  // server-side beacon record; lets the server wake this
+                             // device at the dwell/upgrade thresholds (see lib/gymVisits)
 }
 
 // ─── Partner geometry cache (nationwide) ─────────────────────────────────────
@@ -713,6 +715,16 @@ async function recordDwellSession(activeGeofence: StoredGeofence): Promise<{ out
       }
     }
 
+    // Tell the beacon the claim landed, so the server stops nudging for the dwell
+    // stage and starts timing the upgrade one. Records the outcome only — it cannot
+    // award anything.
+    if (activeGeofence.visitId) {
+      try {
+        const { markGymVisitProgress } = await import('@/lib/gymVisits');
+        await markGymVisitProgress(activeGeofence.visitId, 'claimed', sessionId);
+      } catch { /* non-fatal */ }
+    }
+
     console.log(`[Geofence] Points claimed after ${Math.round(dwellMs / 60000)}min dwell.`, claimData);
     return { outcome: 'claimed', sessionId, earned, currentStreak };
   } catch (err) {
@@ -853,7 +865,7 @@ async function resolveTodayGymSessionId(): Promise<string | undefined> {
   }
 }
 
-async function upgradeGymTier(sessionId: string, partnerName?: string): Promise<boolean> {
+async function upgradeGymTier(sessionId: string, partnerName?: string, visitId?: string): Promise<boolean> {
   try {
     // Use the cached session (getSession) rather than a forced refreshSession(): a
     // forced rotation here races the background/foreground GoTrue instances and can
@@ -873,6 +885,15 @@ async function upgradeGymTier(sessionId: string, partnerName?: string): Promise<
       return false;
     }
     console.log('[Geofence] Gym session upgraded to 40-min tier.', upgradeData);
+
+    // The upgrade landed — stop the beacon nudging for it. Like the claim, this is
+    // recorded only after the points actually moved.
+    if (visitId) {
+      try {
+        const { markGymVisitProgress } = await import('@/lib/gymVisits');
+        await markGymVisitProgress(visitId, 'upgraded', sessionId);
+      } catch { /* non-fatal */ }
+    }
 
     // On-device fallback: fire the "Bonus unlocked" notification locally when the
     // server reports it couldn't deliver the push (no live token / send failed) and
@@ -931,13 +952,14 @@ async function gymAlreadyLoggedToday(): Promise<boolean> {
 async function setActiveAndNotify(regionId: string, entry: PartnerMapEntry): Promise<void> {
   if (await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY)) return;
   if (await gymAlreadyLoggedToday()) return;
+  const entryTimestamp = Date.now();
   await AsyncStorage.setItem(
     ACTIVE_GEOFENCE_KEY,
     JSON.stringify({
       partnerId:      entry.dbId,
       partnerName:    entry.name,
       regionId,
-      entryTimestamp: Date.now(),
+      entryTimestamp,
       latitude:       entry.lat,
       longitude:      entry.lng,
       radius:         entry.radius,
@@ -955,6 +977,27 @@ async function setActiveAndNotify(regionId: string, entry: PartnerMapEntry): Pro
   // exit. iOS keeps claiming on the region EXIT, exactly as before.
   const checkedInMode = visitStreamMode(Platform.OS, { sessionActive: true, approaching: true });
   if (checkedInMode === 'dwell') await setLocationStreamMode('dwell');
+
+  // Open the server-side beacon. We are provably awake right now (we just fired
+  // "You're in"), which is exactly why the check-in is the one moment we can be
+  // sure of. From here the SERVER holds the dwell/upgrade timers and wakes us with
+  // a silent push — because a stationary phone gets no location callbacks and
+  // therefore cannot wake itself. Best-effort: no beacon just means no nudges, and
+  // the exit path still claims.
+  try {
+    const { openGymVisit } = await import('@/lib/gymVisits');
+    const visitId = await openGymVisit(entry.dbId, regionId, entryTimestamp);
+    if (visitId) {
+      const raw = await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY);
+      const active = raw ? JSON.parse(raw) as StoredGeofence : null;
+      // Only stamp the visit onto the session we just opened — never a later one.
+      if (active && active.entryTimestamp === entryTimestamp) {
+        await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...active, visitId }));
+      }
+    }
+  } catch (err) {
+    console.warn('[Geofence] Visit beacon failed to open:', err);
+  }
 
   try {
     const { notifyCheckInAvailable } = await import('@/lib/notifications');
@@ -979,7 +1022,7 @@ async function recordExitAndClaim(claimEntry: StoredGeofence): Promise<'resolved
       const sid = activeGeofence.sessionId ?? await resolveTodayGymSessionId();
       if (sid) {
         console.log('[Geofence] Exit: session crossed 40-min tier — upgrading.');
-        await upgradeGymTier(sid, activeGeofence.partnerName);
+        await upgradeGymTier(sid, activeGeofence.partnerName, activeGeofence.visitId);
       } else {
         console.warn('[Geofence] Exit: 40-min tier reached but no sessionId resolvable — skipping upgrade.');
       }
@@ -1066,6 +1109,14 @@ export async function finalizeActiveGeofence(expectedRegionId?: string): Promise
     await setLocationStreamMode(visitStreamMode(Platform.OS, { sessionActive: false, approaching }));
   } catch { /* non-fatal — worst case the stream stays in its prior mode */ }
 
+  // Close the beacon so the server stops waking a device that has already left.
+  if (active.visitId) {
+    try {
+      const { closeGymVisit } = await import('@/lib/gymVisits');
+      await closeGymVisit(active.visitId, endedAtMs);
+    } catch { /* non-fatal */ }
+  }
+
   if (!needsClaim) {
     console.log(`[Geofence] Dwell ${Math.round((endedAtMs - active.entryTimestamp) / 60000)}min < threshold — no points.`);
     return true;
@@ -1074,6 +1125,75 @@ export async function finalizeActiveGeofence(expectedRegionId?: string): Promise
   const outcome = await recordExitAndClaim(claimEntry);
   if (outcome === 'resolved') await removePendingClaim(claimEntry);
   return true;
+}
+
+/** Handles a beacon wake-up: the server has told us a threshold has passed and is
+ *  asking whether this device is still at the gym.
+ *
+ *  THIS is where the location gate lives, and it is the only thing that can unlock a
+ *  credit. We take a FRESH fix and check it against the same radius that checked the
+ *  user in. Inside → run the normal dwell machine (which claims at the dwell
+ *  threshold and upgrades at the 40-min one, both via the usual server functions, so
+ *  every existing eligibility rule and idempotency guard still applies). Outside →
+ *  the user has left and we simply finalize the visit with the true duration.
+ *
+ *  The server cannot award anything on its own: if this never runs (device offline,
+ *  iOS app force-quit — Apple does not deliver background pushes to a user-terminated
+ *  app), nothing is credited here and the existing EXIT path claims later, exactly as
+ *  it does today. No fix, no credit. */
+export async function runVisitCheck(stage: 'dwell' | 'upgrade'): Promise<void> {
+  await primeGymDwellMinutes();
+
+  const raw = await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY);
+  const active: StoredGeofence | null = raw ? JSON.parse(raw) : null;
+  if (!active) {
+    console.log('[Geofence] Visit check: no active session — ignoring.');
+    return;
+  }
+
+  let coords: Location.LocationObjectCoords | null = null;
+  try {
+    const fix = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+    coords = fix?.coords ?? null;
+  } catch (err) {
+    console.warn('[Geofence] Visit check: could not get a fix:', err);
+  }
+
+  // No fix = no proof = no credit. Leave the visit open; the server will nudge
+  // again, and failing that the exit path still resolves it.
+  if (!coords) {
+    if (active.visitId) {
+      const { confirmGymVisit } = await import('@/lib/gymVisits');
+      await confirmGymVisit(active.visitId, false, { stage, reason: 'no_fix' });
+    }
+    return;
+  }
+
+  // Geometry unknown (older active state) → assume inside rather than drop a real
+  // session; the dwell machine's own thresholds still gate the claim.
+  let inside = true;
+  let distance: number | null = null;
+  if (active.latitude != null && active.longitude != null && active.radius != null) {
+    distance = haversineMetres(coords.latitude, coords.longitude, active.latitude, active.longitude);
+    inside = distance <= active.radius + LOCATION_EXIT_HYSTERESIS_M;
+  }
+
+  if (active.visitId) {
+    const { confirmGymVisit } = await import('@/lib/gymVisits');
+    await confirmGymVisit(active.visitId, inside, {
+      stage,
+      distance_m: distance != null ? Math.round(distance) : null,
+      accuracy_m: coords.accuracy != null ? Math.round(coords.accuracy) : null,
+    });
+  }
+
+  if (inside) {
+    console.log(`[Geofence] Visit check (${stage}): still inside — advancing dwell.`);
+    await advanceActiveSession(active);
+  } else {
+    console.log(`[Geofence] Visit check (${stage}): left the gym — finalizing.`);
+    await finalizeActiveGeofence();
+  }
 }
 
 /** Immediate (timer-free) dwell state machine driven by the background-location
@@ -1105,7 +1225,7 @@ async function advanceActiveSession(active: StoredGeofence): Promise<void> {
   // 2. Claimed at the 30-min tier — upgrade once the 40-min threshold is met.
   if (active.sessionRecorded && active.sessionId && !active.tierUpgraded) {
     if (elapsed < prodUpgradeMs()) return;
-    const ok = await upgradeGymTier(active.sessionId, active.partnerName);
+    const ok = await upgradeGymTier(active.sessionId, active.partnerName, active.visitId);
     if (ok) await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...active, tierUpgraded: true }));
     return;
   }
@@ -1618,7 +1738,7 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
       const remaining = upgradeMs() - elapsed;
       if (remaining <= 0) {
         console.log('[Geofence] Foreground: already past 40-min mark — upgrading tier now.');
-        const upgraded1 = await upgradeGymTier(activeGeofence.sessionId, activeGeofence.partnerName);
+        const upgraded1 = await upgradeGymTier(activeGeofence.sessionId, activeGeofence.partnerName, activeGeofence.visitId);
         if (upgraded1) {
           await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...activeGeofence, tierUpgraded: true }));
         }
@@ -1631,7 +1751,7 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
           const gf: StoredGeofence = JSON.parse(raw2);
           if (gf.tierUpgraded || !gf.sessionId) return;
           console.log('[Geofence] Foreground: 40-min upgrade timer fired.');
-          const upgraded2 = await upgradeGymTier(gf.sessionId, gf.partnerName);
+          const upgraded2 = await upgradeGymTier(gf.sessionId, gf.partnerName, gf.visitId);
           if (upgraded2) {
             await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...gf, tierUpgraded: true }));
           }

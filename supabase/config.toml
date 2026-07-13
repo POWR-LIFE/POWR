@@ -401,6 +401,12 @@ verify_jwt = false
 # inside the function, mirroring resolve-shared-challenges.
 verify_jwt = false
 
+[functions.gym-visit-beacon]
+# Invoked by pg_cron every minute (no Supabase user JWT) — same x-resolve-token
+# gate as the other cron functions. It only ever sends a SILENT wake push; it
+# cannot award points, so the blast radius of the open endpoint is a wasted push.
+verify_jwt = false
+
 [functions.share-card-og]
 # Fetched by WhatsApp/iMessage/X link crawlers, which carry no JWT. It only ever
 # serves a title, a subtitle and a public image URL for one unguessable uuid —

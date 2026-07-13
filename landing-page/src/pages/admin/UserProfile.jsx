@@ -43,6 +43,32 @@ const PUSH_STATES = {
     skipped:  { label: 'Skipped',   cls: 'border-[#E6E6E1] text-[#999999]' },
 };
 
+// gym_visit_events → how a visit actually unfolded on the device. 'confirmed_inside'
+// is the device proving, with a real GPS fix, that it was still at the gym — the only
+// thing that unlocks a claim. The server never credits on a timer.
+const VISIT_EVENT_STYLES = {
+    check_in:          { label: 'Checked in',        cls: 'text-[#10B981]' },
+    nudge_sent:        { label: 'Server woke device', cls: 'text-[#8a7600]' },
+    confirmed_inside:  { label: 'Confirmed inside',   cls: 'text-[#10B981]' },
+    confirmed_outside: { label: 'Confirmed outside',  cls: 'text-[#B45309]' },
+    claimed:           { label: 'Points claimed',     cls: 'text-[#10B981]' },
+    upgraded:          { label: 'Bonus upgraded',     cls: 'text-[#10B981]' },
+    exit:              { label: 'Exit',               cls: 'text-[#666666]' },
+    nudge_failed:      { label: 'Wake failed',        cls: 'text-red-500' },
+    abandoned:         { label: 'Abandoned',          cls: 'text-red-500' },
+};
+
+const VISIT_STATUS_CLS = {
+    open:      'border-[#F59E0B]/25 text-[#B45309]',
+    claimed:   'border-[#10B981]/20 text-[#10B981]',
+    upgraded:  'border-[#10B981]/20 text-[#10B981]',
+    closed:    'border-[#E6E6E1] text-[#666666]',
+    abandoned: 'border-red-500/20 text-red-500',
+};
+
+const clockTime = (dateStr) =>
+    new Date(dateStr).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
 const timeAgo = (dateStr) => {
     const diff = Date.now() - new Date(dateStr).getTime();
     const m = Math.floor(diff / 60000);
@@ -88,6 +114,8 @@ export default function UserProfile() {
     const [pushTokens, setPushTokens] = useState([]);
     const [pushLog, setPushLog] = useState([]);
     const [visiblePushLog, setVisiblePushLog] = useState(15);
+    const [gymVisits, setGymVisits] = useState([]);
+    const [visitEvents, setVisitEvents] = useState([]);
     const [activeTab, setActiveTab] = useState('activity');
     const [visibleSessions, setVisibleSessions] = useState(10);
     const [visibleTransactions, setVisibleTransactions] = useState(10);
@@ -550,6 +578,29 @@ export default function UserProfile() {
                 .order('created_at', { ascending: false })
                 .limit(100);
             setPushLog(pushLogData || []);
+
+            // Gym visit beacons + their lifecycle events. This is how we see what a
+            // device actually did during a visit (check-in → nudge → confirmed
+            // inside/outside → claim → exit) instead of inferring it from user reports.
+            const { data: visitData } = await supabase
+                .from('gym_visits')
+                .select('id, partner_id, platform, started_at, last_confirmed_at, claimed_at, upgraded_at, ended_at, status, nudge_count')
+                .eq('user_id', userId)
+                .order('started_at', { ascending: false })
+                .limit(20);
+            setGymVisits(visitData || []);
+
+            const visitIds = (visitData || []).map(v => v.id);
+            if (visitIds.length) {
+                const { data: eventData } = await supabase
+                    .from('gym_visit_events')
+                    .select('id, visit_id, event, detail, created_at')
+                    .in('visit_id', visitIds)
+                    .order('created_at', { ascending: true });
+                setVisitEvents(eventData || []);
+            } else {
+                setVisitEvents([]);
+            }
 
             // Load preferred gym name if set
             if (p.data.preferred_gym_id) {
@@ -1061,6 +1112,69 @@ export default function UserProfile() {
                                     </button>
                                 </div>
                             )}
+                        </section>
+                    )}
+
+                    {/* Gym visit beacons — what the device actually did during a visit */}
+                    {activeTab === 'notifications' && (
+                        <section className="bg-white border border-[#E6E6E1] rounded-[2rem] overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500 mb-8">
+                            <div className="p-10 border-b border-[#E6E6E1] flex items-center justify-between">
+                                <div>
+                                    <h3 className="text-xl font-light tracking-tighter text-[#1A1A1A]">Gym Visits</h3>
+                                    <p className="text-[9px] uppercase tracking-[0.4em] text-[#666666] font-black mt-2">Check-in → wake → confirm → claim</p>
+                                </div>
+                                <span className="text-[10px] font-black text-[#555555] uppercase tracking-[0.3em]">{gymVisits.length} RECORDED</span>
+                            </div>
+                            <div className="px-10 py-4 bg-[#F4F4F1] border-b border-[#E6E6E1] text-[11px] text-[#666666] leading-relaxed">
+                                A stationary phone receives no GPS callbacks, so the device can't wake itself to claim. The server holds the timers and sends a <span className="font-bold text-[#333333]">silent push</span> at each threshold; the device then takes a fresh fix and decides. <span className="font-bold text-[#333333]">Confirmed inside</span> is a real location proof — and nothing is ever credited without one.
+                            </div>
+                            <div className="divide-y divide-[#E6E6E1]">
+                                {gymVisits.length === 0 ? (
+                                    <div className="p-20 text-center text-[#888888] text-[10px] uppercase tracking-[0.4em] font-black">No gym visits recorded yet</div>
+                                ) : gymVisits.map(visit => {
+                                    const events = visitEvents.filter(e => e.visit_id === visit.id);
+                                    const statusCls = VISIT_STATUS_CLS[visit.status] ?? 'border-[#E6E6E1] text-[#666666]';
+                                    const mins = visit.ended_at
+                                        ? Math.round((new Date(visit.ended_at) - new Date(visit.started_at)) / 60000)
+                                        : Math.round((Date.now() - new Date(visit.started_at)) / 60000);
+                                    return (
+                                        <div key={visit.id} className="px-10 py-6 hover:bg-[#F4F4F1] transition-all">
+                                            <div className="flex items-center justify-between gap-4 mb-3">
+                                                <div className="flex items-center gap-3 min-w-0">
+                                                    <MapPin size={14} className="text-[#8a7600] shrink-0" />
+                                                    <span className="text-[13px] font-bold text-[#222222]">
+                                                        {new Date(visit.started_at).toLocaleDateString()} · {clockTime(visit.started_at)}
+                                                    </span>
+                                                    <span className="text-[11px] text-[#666666]">{mins}m{visit.ended_at ? '' : ' (open)'}</span>
+                                                    {visit.platform && <span className="text-[9px] uppercase tracking-[0.2em] font-black text-[#999999]">{visit.platform}</span>}
+                                                </div>
+                                                <div className="flex items-center gap-3 shrink-0">
+                                                    {visit.nudge_count > 0 && (
+                                                        <span className="text-[9px] uppercase tracking-[0.2em] font-black text-[#999999]">{visit.nudge_count} wake{visit.nudge_count === 1 ? '' : 's'}</span>
+                                                    )}
+                                                    <span className={`px-3 py-1 rounded-full border text-[9px] font-black uppercase tracking-[0.2em] ${statusCls}`}>{visit.status}</span>
+                                                </div>
+                                            </div>
+                                            <div className="flex flex-wrap gap-x-6 gap-y-1 pl-7">
+                                                {events.length === 0 ? (
+                                                    <span className="text-[11px] text-[#999999]">No events recorded</span>
+                                                ) : events.map(ev => {
+                                                    const style = VISIT_EVENT_STYLES[ev.event] ?? { label: ev.event, cls: 'text-[#666666]' };
+                                                    const dist = ev.detail?.distance_m;
+                                                    return (
+                                                        <span key={ev.id} className="text-[11px] flex items-center gap-1.5">
+                                                            <span className="text-[#999999] tabular-nums">{clockTime(ev.created_at)}</span>
+                                                            <span className={`font-medium ${style.cls}`}>{style.label}</span>
+                                                            {dist != null && <span className="text-[#999999]">({dist}m)</span>}
+                                                            {ev.detail?.reason && <span className="text-[#B45309]">{ev.detail.reason}</span>}
+                                                        </span>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
                         </section>
                     )}
 
