@@ -11,6 +11,7 @@
 // pending-claim queue remain the backstop.
 
 import { Platform } from 'react-native';
+import { withNetworkTimeout } from '@/lib/networkTimeout';
 import { supabase } from '@/lib/supabase';
 
 /** Opens (or re-uses) the server-side visit record. Returns the visit id to store
@@ -21,12 +22,12 @@ export async function openGymVisit(
   startedAtMs: number,
 ): Promise<string | null> {
   try {
-    const { data, error } = await supabase.rpc('open_gym_visit', {
+    const { data, error } = await withNetworkTimeout(supabase.rpc('open_gym_visit', {
       p_partner_id: partnerId,
       p_region_id:  regionId ?? null,
       p_started_at: new Date(startedAtMs).toISOString(),
       p_platform:   Platform.OS,
-    });
+    }), 'open_gym_visit');
     if (error) throw error;
     return (data as string) ?? null;
   } catch (err) {
@@ -43,11 +44,11 @@ export async function confirmGymVisit(
   detail: Record<string, unknown> = {},
 ): Promise<void> {
   try {
-    const { error } = await supabase.rpc('confirm_gym_visit', {
+    const { error } = await withNetworkTimeout(supabase.rpc('confirm_gym_visit', {
       p_visit_id: visitId,
       p_inside:   inside,
       p_detail:   detail,
-    });
+    }), 'confirm_gym_visit');
     if (error) throw error;
   } catch (err) {
     console.warn('[GymVisit] confirmGymVisit failed:', err);
@@ -64,10 +65,10 @@ export async function logGymVisitTick(
   detail: Record<string, unknown> = {},
 ): Promise<void> {
   try {
-    const { error } = await supabase.rpc('log_gym_visit_tick', {
+    const { error } = await withNetworkTimeout(supabase.rpc('log_gym_visit_tick', {
       p_visit_id: visitId,
       p_detail:   detail,
-    });
+    }), 'log_gym_visit_tick');
     if (error) throw error;
   } catch (err) {
     console.warn('[GymVisit] logGymVisitTick failed:', err);
@@ -82,11 +83,11 @@ export async function markGymVisitProgress(
   sessionId?: string,
 ): Promise<void> {
   try {
-    const { error } = await supabase.rpc('mark_gym_visit_progress', {
+    const { error } = await withNetworkTimeout(supabase.rpc('mark_gym_visit_progress', {
       p_visit_id:   visitId,
       p_stage:      stage,
       p_session_id: sessionId ?? null,
-    });
+    }), 'mark_gym_visit_progress');
     if (error) throw error;
   } catch (err) {
     console.warn('[GymVisit] markGymVisitProgress failed:', err);
@@ -96,10 +97,10 @@ export async function markGymVisitProgress(
 /** Closes the visit so the server stops nudging a device that has left. */
 export async function closeGymVisit(visitId: string, endedAtMs?: number): Promise<void> {
   try {
-    const { error } = await supabase.rpc('close_gym_visit', {
+    const { error } = await withNetworkTimeout(supabase.rpc('close_gym_visit', {
       p_visit_id: visitId,
       p_ended_at: endedAtMs ? new Date(endedAtMs).toISOString() : null,
-    });
+    }), 'close_gym_visit');
     if (error) throw error;
   } catch (err) {
     console.warn('[GymVisit] closeGymVisit failed:', err);
