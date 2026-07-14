@@ -1320,14 +1320,30 @@ async function advanceActiveSession(active: StoredGeofence): Promise<void> {
  *  enough to prove presence. Presence is confirmGymVisit's job and stays untouched.
  *  Throttled + best-effort: it must never delay or break the dwell machine. */
 async function heartbeatVisitStream(active: StoredGeofence, coords: Location.LocationObjectCoords): Promise<void> {
-  if (!active.visitId) {
-    console.log('[Geofence] Heartbeat skipped: active session has no visitId.');
-    return;
-  }
   try {
     const last = Number((await AsyncStorage.getItem(VISIT_TICK_KEY)) ?? 0);
     if (Date.now() - last < VISIT_TICK_INTERVAL_MS) return;
     await AsyncStorage.setItem(VISIT_TICK_KEY, String(Date.now()));
+
+    if (!active.visitId) {
+      // Late-open. openGymVisit fires exactly once, at check-in — but check-in can
+      // RACE auth (fresh install: the entry fix landed 240 ms into login and the RPC
+      // failed P0001 'not authenticated', field-caught 2026-07-14). Without a retry
+      // the visit has no beacon for its entire life: no server timers, no wakes.
+      // Passing the original entryTimestamp backdates started_at, so the server's
+      // dwell/upgrade timers are unaffected by how late the open happens; the RPC
+      // re-uses an already-open visit, so a racing double-open is a no-op.
+      const { openGymVisit } = await import('@/lib/gymVisits');
+      const visitId = await openGymVisit(active.partnerId, active.regionId, active.entryTimestamp);
+      if (!visitId) return; // still unauthenticated/offline — next interval retries
+      const raw = await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY);
+      const current = raw ? JSON.parse(raw) as StoredGeofence : null;
+      // Only stamp the visit onto the session it belongs to — never a later one.
+      if (!current || current.entryTimestamp !== active.entryTimestamp) return;
+      await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...current, visitId }));
+      active.visitId = visitId; // in-place so this tick's claim path sees it too
+      console.log('[Geofence] Visit beacon opened late — check-in had raced auth.');
+    }
 
     const { logGymVisitTick } = await import('@/lib/gymVisits');
     await logGymVisitTick(active.visitId, {
