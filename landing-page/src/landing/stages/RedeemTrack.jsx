@@ -104,8 +104,8 @@ function offerFlash(item) {
   return m ? `${m[1].replace(/\s/g, '')} OFF` : item;
 }
 
-/* The balance Earn just banked — Act II ends on 1,345 */
-const BAL_START = 1345;
+/* The balance Earn just banked — Act II ends on 1,297 */
+const BAL_START = 1297;
 
 /* The showcase piece. Falls back to the first reward if HUEL ever lapses. */
 const FEATURED_BRAND = 'HUEL';
