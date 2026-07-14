@@ -4,26 +4,42 @@ import { supabase } from '../../lib/supabase';
  * Live data for the Move stage's deconstructed Discover page.
  *
  * Same source of truth as app/(tabs)/discover.tsx: the `partners` table
- * (anon-readable), central-London bounds around the app's DEFAULT_REGION,
- * real logos + logo_bg, area = location address/name, open-now from
- * opening_hours, distance via the app's own miles formula. Real lat/lng are
- * projected linearly onto the stylised map canvas.
+ * (anon-readable), real logos + logo_bg, open-now from opening_hours,
+ * distance via the app's own miles formula. The stage showcases a curated
+ * trio of partners (see SHOWCASE) rather than a raw nearest query; their
+ * real lat/lng are projected linearly onto the stylised map canvas.
  */
 
 // app/(tabs)/discover.tsx DEFAULT_REGION
 const CENTER = { lat: 51.5074, lng: -0.1278 };
-const BOUNDS = { latMin: 51.45, latMax: 51.56, lngMin: -0.25, lngMax: 0.05 };
 
-// Real central-London partners (2026-07-03 snapshot) — used when the live
-// fetch fails. logo:null renders the app's letter-fallback pin.
+/**
+ * The partners the stage features (Jamie's picks, 2026-07-14). Rows are
+ * matched by name against the live table; a brand with several sites keeps
+ * the one nearest the canvas centre (Stars Gym: Battersea over Deptford).
+ * POWR is the check-in target — the session card, push toast and active
+ * pin are its story. Its real gym is in Stratford-upon-Avon, ~80 mi off
+ * this central-London canvas, so it borrows a stand-in position that seats
+ * its pin where the composition wants the target; the list row keeps the
+ * honest address.
+ */
+// Composition note: a 3-point projection pins each extreme to a canvas
+// edge, and the map's lower-left is covered by the partner-list float —
+// ONE LDN's real Imperial Wharf longitude lands its pin exactly under
+// that card, so it borrows an eastward nudge (real latitude kept) to sit
+// clear at the bottom-right instead.
+const SHOWCASE = [
+  { pattern: /^powr$/i, area: 'Meon Vale, Stratford-upon-Avon', target: true, standIn: { lat: 51.478, lng: -0.1788 } },
+  { pattern: /^one\s*ldn$/i, area: 'Imperial Wharf, London', standIn: { lat: 51.4738, lng: -0.162 } },
+  { pattern: /^stars\s*gym$/i, area: 'Battersea, London' },
+];
+
+// The same trio, from a 2026-07-14 snapshot — used when the live fetch
+// fails. logo:null renders the app's letter-fallback pin.
 const FALLBACK_PARTNERS = [
-  { name: 'PureGym London Tottenham Court Road', lat: 51.5242, lng: -0.1373, logo: null, logoBg: 'white', area: '145 Tottenham Ct Rd, London W1T 7NE, UK', openNow: true },
-  { name: 'PureGym London Kentish Town', lat: 51.5475, lng: -0.1417, logo: null, logoBg: 'white', area: '217-223 Kentish Town Rd, London NW5 2JU, UK', openNow: true },
-  { name: 'PureGym London Holloway Road', lat: 51.5597, lng: -0.1235, logo: null, logoBg: 'white', area: 'Mercers Rd, London N19 4PJ, UK', openNow: true },
-  { name: 'PureGym London Swiss Cottage', lat: 51.5457, lng: -0.1786, logo: null, logoBg: 'white', area: '177 Finchley Rd, London NW3 6LB, UK', openNow: true },
+  { name: 'POWR', lat: 51.478, lng: -0.1788, logo: null, logoBg: 'dark', area: 'Meon Vale, Stratford-upon-Avon', openNow: true, isTarget: true },
+  { name: 'ONE LDN', lat: 51.4738, lng: -0.162, logo: null, logoBg: 'dark', area: 'Imperial Wharf, London', openNow: true },
   { name: 'Stars Gym', lat: 51.4804, lng: -0.1689, logo: null, logoBg: 'dark', area: 'Battersea, London', openNow: true },
-  { name: 'ONE LDN', lat: 51.4738, lng: -0.1825, logo: null, logoBg: 'dark', area: 'Imperial Wharf, 3 The Blvd, London', openNow: true },
-  { name: 'Stars Gym', lat: 51.4644, lng: -0.0125, logo: null, logoBg: 'dark', area: 'Deptford, London', openNow: true },
 ];
 const FALLBACK_COUNT = 7993; // active partners at snapshot time
 
@@ -55,7 +71,11 @@ function isOpenNow(oh) {
   return now >= open && now < close;
 }
 
-/* Project the partner set's real lat/lng box onto map-canvas percentages */
+/* Project the partner set's real lat/lng box onto map-canvas percentages.
+   The window keeps every pin clear of the docked floats on both layouts —
+   the compact header spans the panel's top third full-width, the desktop
+   partner list owns the bottom-left — and leaves the 170px target ring
+   room to bloom inside the narrowest (335px) compact panel. */
 function project(partners) {
   const lats = partners.map((p) => p.lat);
   const lngs = partners.map((p) => p.lng);
@@ -64,8 +84,8 @@ function project(partners) {
   const span = (v, lo, hi, a, b) => (hi === lo ? (a + b) / 2 : a + ((v - lo) / (hi - lo)) * (b - a));
   return partners.map((p) => ({
     ...p,
-    x: span(p.lng, lngMin, lngMax, 15, 85),
-    y: span(p.lat, latMin, latMax, 78, 16), // north up
+    x: span(p.lng, lngMin, lngMax, 26, 80),
+    y: span(p.lat, latMin, latMax, 76, 36), // north up
   }));
 }
 
@@ -79,7 +99,8 @@ function finalise(partners, count) {
   const projected = project(withDist);
   return {
     partners: projected,
-    target: projected[0], // nearest — same as the app's default sort
+    // The flagged showcase partner; nearest otherwise (the app's default sort)
+    target: projected.find((p) => p.isTarget) ?? projected[0],
     count,
   };
 }
@@ -93,38 +114,38 @@ export async function fetchDiscover() {
   const [{ data, error }, countRes] = await Promise.all([
     supabase
       .from('partners')
-      .select('id, name, logo_url, logo_bg, address, locations, opening_hours')
+      .select('id, name, logo_url, logo_bg, locations, opening_hours')
       .eq('active', true)
       .not('logo_url', 'is', null)
-      .filter('locations->0->lat', 'gte', BOUNDS.latMin)
-      .filter('locations->0->lat', 'lte', BOUNDS.latMax)
-      .filter('locations->0->lng', 'gte', BOUNDS.lngMin)
-      .filter('locations->0->lng', 'lte', BOUNDS.lngMax)
-      .limit(24),
+      .or('name.ilike.powr,name.ilike.one*ldn,name.ilike.stars*gym'),
     supabase.from('partners').select('id', { count: 'exact', head: true }).eq('active', true),
   ]);
   if (error) throw error;
 
-  const seen = new Set();
   const partners = [];
-  for (const row of data ?? []) {
-    const loc = row.locations?.[0];
-    if (!loc) continue;
-    const key = `${row.name}|${loc.lat.toFixed(3)}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
+  for (const spec of SHOWCASE) {
+    // A brand can hold several rows and locations — keep its nearest site
+    let best = null;
+    for (const row of data ?? []) {
+      if (!spec.pattern.test(row.name?.trim() ?? '')) continue;
+      for (const loc of row.locations ?? []) {
+        if (typeof loc?.lat !== 'number' || typeof loc?.lng !== 'number') continue;
+        const mi = getDistanceMiles(CENTER.lat, CENTER.lng, loc.lat, loc.lng);
+        if (!best || mi < best.mi) best = { row, loc, mi };
+      }
+    }
+    if (!best) continue;
     partners.push({
-      name: row.name,
-      lat: loc.lat,
-      lng: loc.lng,
-      logo: row.logo_url,
-      logoBg: row.logo_bg,
-      // GeofenceContext: area = loc.address || loc.name || 'Local'
-      area: loc.address?.trim() || loc.name?.trim() || row.address?.trim() || 'Local',
-      openNow: isOpenNow(row.opening_hours),
+      name: best.row.name,
+      lat: spec.standIn?.lat ?? best.loc.lat,
+      lng: spec.standIn?.lng ?? best.loc.lng,
+      logo: best.row.logo_url,
+      logoBg: best.row.logo_bg,
+      area: spec.area,
+      openNow: isOpenNow(best.row.opening_hours),
+      isTarget: !!spec.target,
     });
-    if (partners.length >= 7) break;
   }
-  if (!partners.length) throw new Error('no partners in bounds');
+  if (partners.length < SHOWCASE.length) throw new Error('showcase partners missing');
   return finalise(partners, countRes.count ?? FALLBACK_COUNT);
 }
