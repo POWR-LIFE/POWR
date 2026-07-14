@@ -11,7 +11,7 @@ import { SectionTag, CopyPanel, GhostWord, MobileCopyDock, useCompact } from './
  *     Each card ignites as it crosses the scan line and its points fire;
  *     behind, a slow parallax rail of the wearable brands POWR plugs into.
  *  2. The ignition: the track falls back, the streak medallion lights its
- *     twelve day-ticks, and the day's 70 points roll to a gold 105 before
+ *     twelve day-ticks, and the day's 41 points roll to a gold 57 before
  *     landing in the balance.
  */
 
@@ -25,7 +25,7 @@ const PANELS = [
   { range: [0.35, 0.41, 0.52, 0.58], title: 'Plugs into what you already wear.',
     body: 'Apple Health, WHOOP, Garmin, Oura, Strava and 15 more. Connect once — it earns on autopilot.' },
   { range: [0.63, 0.69, 0.88, 0.95], title: 'Show up daily. It multiplies.',
-    body: 'A 12-day streak turns today’s 70 points into 105. The flame does the maths.' },
+    body: 'A 12-day streak turns today’s 41 points into 57. The flame does the maths.' },
 ];
 
 /* Where each card crosses the scan line, in section progress */
@@ -61,7 +61,7 @@ export default function EarnTrack() {
   const tally = useTransform(
     scrollYProgress,
     [0, 0.145, 0.175, 0.235, 0.265, 0.325, 0.355, 0.415, 0.445, 0.505, 0.535],
-    [0, 0, 5, 5, 20, 20, 30, 30, 60, 60, 70],
+    [0, 0, 4, 4, 10, 10, 15, 15, 35, 35, 41],
   );
   const tallyText = useTransform(tally, (v) => `+${Math.round(v)}`);
   const tallyOpacity = useTransform(scrollYProgress, [0.10, 0.16, 0.56, 0.61], [0, 1, 1, 0]);
@@ -360,7 +360,7 @@ function LogoChip({ src, name, wordH, glyphH }) {
 /* Overnight — you earned before you woke up */
 function SleepCard({ progress }) {
   return (
-    <EventCard progress={progress} at={AT.sleep} width={286} pts={5}>
+    <EventCard progress={progress} at={AT.sleep} width={286} pts={4}>
       <Header label="OVERNIGHT" chip={<SourceChip src="/wearables/oura.png" wordH={9} />} />
       <div style={{ display: 'flex', gap: 13, alignItems: 'center', marginTop: 13 }}>
         <div style={{ width: 46, height: 46, borderRadius: 13, background: 'rgba(99,102,241,0.14)', border: '1px solid rgba(99,102,241,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -385,7 +385,7 @@ function SleepCard({ progress }) {
 function RunCard({ progress }) {
   const draw = useTransform(progress, [AT.run - 0.09, AT.run + 0.02], [190, 0]);
   return (
-    <EventCard progress={progress} at={AT.run} width={296} pts={15}>
+    <EventCard progress={progress} at={AT.run} width={296} pts={6}>
       <Header label="MORNING RUN" chip={<SourceChip src="/wearables/whoop.png" glyphH={13} name="WHOOP" />} />
       <div style={{ marginTop: 12, position: 'relative' }}>
         <svg width="100%" height="56" viewBox="0 0 250 56" fill="none" style={{ display: 'block' }}>
@@ -398,8 +398,8 @@ function RunCard({ progress }) {
         </svg>
       </div>
       <div style={{ display: 'flex', gap: 14, marginTop: 10, fontSize: 11.5, color: pg.textSec, fontWeight: w.light }}>
-        <span style={{ color: pg.text, fontWeight: w.regular }}>5.2 km</span>
-        <span>27:40</span>
+        <span style={{ color: pg.text, fontWeight: w.regular }}>4.2 km</span>
+        <span>24:38</span>
         <span>148 bpm</span>
       </div>
     </EventCard>
@@ -415,7 +415,7 @@ function StepsCard({ progress }) {
   const count = useTransform(progress, [AT.steps - 0.09, AT.steps + 0.02], [6540, 10000]);
   const countText = useTransform(count, (v) => Math.round(v).toLocaleString());
   return (
-    <EventCard progress={progress} at={AT.steps} width={272} pts={10}>
+    <EventCard progress={progress} at={AT.steps} width={272} pts={5}>
       <Header label="STEPS" chip={<SourceChip src="/wearables/apple-health.png" glyphH={12} name="Apple Health" />} />
       <div style={{ display: 'flex', gap: 15, alignItems: 'center', marginTop: 11 }}>
         <div style={{ position: 'relative', width: RING_SIZE, height: RING_SIZE, flexShrink: 0 }}>
@@ -446,7 +446,7 @@ function StepsCard({ progress }) {
 /* The gym session — POWR's own verification, the crown of the day */
 function GymCard({ progress }) {
   return (
-    <EventCard progress={progress} at={AT.gym} width={330} gold pts={30}>
+    <EventCard progress={progress} at={AT.gym} width={330} gold pts={20}>
       <Header
         label="GYM SESSION"
         chip={(
@@ -480,7 +480,7 @@ function GymCard({ progress }) {
 /* Evening ride */
 function RideCard({ progress }) {
   return (
-    <EventCard progress={progress} at={AT.ride} width={280} pts={10}>
+    <EventCard progress={progress} at={AT.ride} width={280} pts={6}>
       <Header label="EVENING RIDE" chip={<SourceChip src="/wearables/garmin.png" wordH={10} />} />
       <div style={{ display: 'flex', gap: 13, alignItems: 'center', marginTop: 13 }}>
         <div style={{ width: 46, height: 46, borderRadius: 13, background: 'rgba(14,165,233,0.13)', border: '1px solid rgba(14,165,233,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -514,15 +514,15 @@ function StreakIgnition({ progress, compact }) {
   const scale = useTransform(progress, [0.60, 0.68], [0.9, 1]);
   const glowOpacity = useTransform(progress, [0.66, 0.76], [0, 1]);
 
-  // The day's 70 rolls to 105 and turns gold
-  const total = useTransform(progress, [0.76, 0.85], [70, 105]);
+  // The day's 41 rolls to 57 and turns gold
+  const total = useTransform(progress, [0.76, 0.85], [41, 57]);
   const totalText = useTransform(total, (v) => `+${Math.round(v)}`);
   const totalColor = useTransform(progress, [0.76, 0.85], ['#F2F2F2', '#E8D200']);
 
   // Balance card lands underneath
   const balY = useTransform(progress, [0.84, 0.90], [26, 0]);
   const balOpacity = useTransform(progress, [0.84, 0.89], [0, 1]);
-  const balance = useTransform(progress, [0.85, 0.93], [1240, 1345]);
+  const balance = useTransform(progress, [0.85, 0.93], [1240, 1297]);
   const balanceText = useTransform(balance, (v) => Math.round(v).toLocaleString());
   const pillOpacity = useTransform(progress, [0.88, 0.92], [0, 1]);
 
@@ -563,7 +563,7 @@ function StreakIgnition({ progress, compact }) {
           </div>
         </div>
 
-        {/* 70 → 105 */}
+        {/* 41 → 57 */}
         <div style={{ marginTop: compact ? 16 : 24, textAlign: 'center' }}>
           <motion.div
             style={{
@@ -603,7 +603,7 @@ function StreakIgnition({ progress, compact }) {
               borderRadius: 100, padding: '4px 11px', fontSize: 11, fontWeight: w.semiBold,
             }}
           >
-            +105 today
+            +57 today
           </motion.div>
         </motion.div>
       </motion.div>
