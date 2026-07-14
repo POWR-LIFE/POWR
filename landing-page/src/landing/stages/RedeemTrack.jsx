@@ -116,7 +116,7 @@ const PANELS = [
   { range: [0.33, 0.39, 0.50, 0.56], title: 'Your points are money here.',
     body: 'Every session, street and sleep you banked — spendable at the checkout, like cash.' },
   { range: [0.60, 0.66, 0.90, 0.97], title: 'Tap once. It’s yours.',
-    body: 'A real code, in your wallet, seconds after you redeem. Show it at the till or paste it online.' },
+    body: 'A real code, in your wallet, seconds after you redeem.' },
 ];
 
 /* Where the gallery spotlight sits: centre of the OPEN stage, not the
