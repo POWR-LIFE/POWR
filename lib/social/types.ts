@@ -50,6 +50,14 @@ export interface ChallengeTemplate {
 
 export type ParticipantState = 'invited' | 'accepted' | 'declined' | 'completed' | 'left';
 
+export interface ChallengeGoalRule {
+  kind: string;
+  category?: string;
+  metric?: 'steps' | 'distance_m';
+  threshold?: number;
+  window?: 'morning' | 'midday' | 'evening';
+}
+
 /** One participant's row within a shared challenge instance. */
 export interface Participant {
   friend: Friend;
@@ -114,6 +122,7 @@ export interface SharedChallenge {
    * clean integer target — those fall back to the percentage.
    */
   goalTarget?: number;
+  goalRule?: ChallengeGoalRule;
   /**
    * When the signed-in user dismissed this (settled) challenge from their Home
    * via the card's (X). Per-user display flag only — the challenge and everyone
