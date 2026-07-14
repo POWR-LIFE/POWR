@@ -30,12 +30,14 @@ const word = {
 function Words({ text, style }) {
   const parts = text.split(' ');
   return parts.map((part, i) => (
-    // Trailing spaces collapse inside the overflow-hidden mask, so word
-    // separation comes from a margin instead
+    // Trailing spaces collapse inside the rise mask, so word separation
+    // comes from a margin instead. The mask clips only the bottom edge —
+    // the word rises from below — because italic overhangs (the terminal
+    // "d" in "earned") extend past the box sides and must not be cut
     <span
       key={i}
       style={{
-        display: 'inline-block', overflow: 'hidden', verticalAlign: 'bottom',
+        display: 'inline-block', clipPath: 'inset(-0.3em -0.35em 0)', verticalAlign: 'bottom',
         marginRight: i < parts.length - 1 ? '0.26em' : 0,
       }}
     >
