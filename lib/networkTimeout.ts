@@ -10,6 +10,13 @@
 // The abandoned request is NOT cancelled and may still land later. Every caller
 // on this path is idempotent server-side (unique indexes, already-claimed
 // checks, owner-locked no-op RPCs), so a late duplicate resolution is harmless.
+//
+// ⚠️ LIMIT: RN dispatches setTimeout off the UI frame clock, so this race can
+// itself FREEZE while the app is backgrounded/screen off (field-caught
+// 2026-07-14: a 30 s timeout still pending 16 minutes later). Treat this helper
+// as the foreground/best-case bound only — background recovery must be driven
+// by the location tick (see the claim lock lease in GeofenceContext), never by
+// a timer.
 export const NETWORK_TIMEOUT_MS = 30_000;
 
 export function withNetworkTimeout<T>(work: PromiseLike<T>, label: string): Promise<T> {

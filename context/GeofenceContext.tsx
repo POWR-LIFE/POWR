@@ -555,16 +555,31 @@ async function exitApproach(expectedRegionId?: string): Promise<void> {
 // (non-atomic) server-side "already claimed" check and the user is awarded twice,
 // and a stale write can clobber the stored sessionId so the 40-min upgrade never
 // schedules. The DB unique index is the cross-context backstop (the background
-// task runs in a separate JS context and can't share this Set).
-const _recordingInFlight = new Set<string>();
+// task runs in a separate JS context and can't share this map).
+//
+// The lock is a LEASE, not a permanent claim. RN drives setTimeout off the UI
+// frame clock, so with the app backgrounded/screen off the withNetworkTimeout
+// race can simply never fire — a hung request then holds this lock forever and
+// every tick's retry bounces off it: the claim livelocks until the next app-open
+// (field-caught 2026-07-14, visit 329f4a72). A holder older than the lease is
+// therefore presumed dead and the lock is stolen; the loser's write is fenced by
+// the stamp check in the finally below, and a zombie request that eventually
+// lands is absorbed by the sessions unique index / claim-points idempotency.
+const _recordingInFlight = new Map<string, number>();
+const STALE_CLAIM_LOCK_MS = 2 * 60 * 1000;
 
 async function recordDwellSession(activeGeofence: StoredGeofence): Promise<{ outcome: 'claimed' | 'too_short' | 'error' | 'in_flight'; sessionId?: string; earned?: number; currentStreak?: number }> {
   const lockKey = `${activeGeofence.partnerId}:${activeGeofence.entryTimestamp}`;
-  if (_recordingInFlight.has(lockKey)) {
+  const heldSinceMs = _recordingInFlight.get(lockKey);
+  if (heldSinceMs != null && Date.now() - heldSinceMs < STALE_CLAIM_LOCK_MS) {
     console.log('[Geofence] recordDwellSession already in flight for this session — skipping duplicate.');
     return { outcome: 'in_flight' };
   }
-  _recordingInFlight.add(lockKey);
+  if (heldSinceMs != null) {
+    console.warn('[Geofence] In-flight claim lock is stale — presuming the attempt dead and taking over.');
+  }
+  const myLockStamp = Date.now();
+  _recordingInFlight.set(lockKey, myLockStamp);
 
   // Use the frozen exit time when present (post-exit retry) so a claim that runs
   // minutes/hours later still records the real session length — not entry→now,
@@ -751,7 +766,11 @@ async function recordDwellSession(activeGeofence: StoredGeofence): Promise<{ out
     console.error('[Geofence] recordDwellSession failed:', err);
     return { outcome: 'error' };
   } finally {
-    _recordingInFlight.delete(lockKey);
+    // Fenced release: only the current lease holder may free the lock. A zombie
+    // attempt whose lock was stolen must not release the thief's lease.
+    if (_recordingInFlight.get(lockKey) === myLockStamp) {
+      _recordingInFlight.delete(lockKey);
+    }
   }
 }
 

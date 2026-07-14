@@ -176,6 +176,33 @@ describe('claim attempt left no outcome — the lease heals it', () => {
   });
 });
 
+describe('a hung attempt cannot hold the claim lock forever', () => {
+  // RN dispatches setTimeout off the UI frame clock, so with the app backgrounded
+  // the withNetworkTimeout race may never fire: a hung attempt then holds the
+  // in-flight lock and every tick's retry bounces off it (the 2026-07-14
+  // livelock, visit 329f4a72). jest.setSystemTime advances the CLOCK without
+  // running timers — exactly the frozen-timer world — so this pins the lease
+  // steal, not the timeout.
+  it('steals a stale lock after the lease expires and completes the claim', async () => {
+    jest.useFakeTimers();
+    await seedVisit();
+    mockInvoke.mockImplementationOnce(() => new Promise(() => { /* hung; timers frozen */ }));
+
+    const hung = runVisitCheck('dwell');            // persists sessionRecorded, hangs at the invoke
+    await jest.advanceTimersByTimeAsync(0);         // reach the invoke without firing any timer
+
+    jest.setSystemTime(Date.now() + 3 * 60 * 1000); // clock moves, timers stay frozen
+
+    await runVisitCheck('dwell');                   // heal: stale claimAttemptAt → pointsPending
+    await runVisitCheck('dwell');                   // retry: lease expired → steals lock → claims
+
+    const state = await readState();
+    expect(state.sessionId).toBe('session-abc');
+    expect(mockInvoke.mock.calls.filter(c => c[0] === 'claim-points').length).toBe(2);
+    void hung; // zombie stays pending; its fenced release cannot free the thief's lock
+  });
+});
+
 describe('a hung claim-points call cannot strand the session', () => {
   it('times out into the ordinary retry path instead of a silent dead-end', async () => {
     jest.useFakeTimers();
