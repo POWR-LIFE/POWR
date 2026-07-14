@@ -14,6 +14,7 @@
  * bypassed and the flow can be replayed on demand during a real field test.
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { AppState } from 'react-native';
 import { ACTIVE_GEOFENCE_KEY } from '@/context/GeofenceContext';
 
 const GEOFENCE_TASK_NAME = 'GEOFENCE_CHECK_IN';
@@ -87,6 +88,14 @@ let mockClaimResponse: { data: unknown; error: unknown } = {
 };
 const mockInvoke = jest.fn(async () => mockClaimResponse);
 
+// The REST relay's replies, keyed by RPC name. Background claims/upgrades ride
+// relay_gym_claim / relay_gym_upgrade (a functions.invoke never arrives from a
+// backgrounded Android app — 2026-07-14); every other RPC (visit confirms,
+// heartbeats, progress marks) is best-effort and no-ops here.
+let mockRelayReplies: Record<string, unknown> = {};
+const mockRpc = jest.fn(async (fn: string) =>
+  fn in mockRelayReplies ? { data: mockRelayReplies[fn], error: null } : { data: null, error: null });
+
 // Minimal PostgREST-style builder: chainable, and thenable so a query that ends
 // without .single()/.maybeSingle() still resolves.
 function mockQueryBuilder(table: string) {
@@ -127,6 +136,7 @@ jest.mock('@/lib/supabase', () => ({
       }),
     },
     from: (table: string) => mockQueryBuilder(table),
+    rpc: (...a: any[]) => (mockRpc as jest.Mock)(...a),
     functions: { invoke: (...a: any[]) => (mockInvoke as jest.Mock)(...a) },
   },
 }));
@@ -162,11 +172,18 @@ beforeEach(async () => {
   // Production dwell thresholds (30/40 min). Under __DEV__ the check-in claim
   // drops to 30 s, which would not exercise the real timings.
   (globalThis as any).__DEV__ = false;
+  // These tests drive the REAL background task callbacks, so the app is
+  // backgrounded unless a test says otherwise — claims ride the REST relay there.
+  (AppState as any).currentState = 'background';
+  mockRelayReplies = { relay_gym_claim: { status: 'accepted' } };
   await AsyncStorage.setItem(PARTNER_MAP_KEY, JSON.stringify({ [REGION_ID]: GYM }));
   await AsyncStorage.setItem(PARTNER_MAP_META_KEY, JSON.stringify({ fetchedAt: Date.now() }));
 });
 
-afterEach(() => { (globalThis as any).__DEV__ = true; });
+afterEach(() => {
+  (globalThis as any).__DEV__ = true;
+  (AppState as any).currentState = 'active';
+});
 
 describe('geofence → notification flow', () => {
   it('checks the user in with a LOCAL notification only once a fix reaches the true radius', async () => {
@@ -192,15 +209,28 @@ describe('geofence → notification flow', () => {
       table: 'activity_sessions',
       payload: { type: 'gym', verification: 'geofence', partner_id: GYM.dbId },
     });
-    expect(mockInvoke).toHaveBeenCalledWith('claim-points', { body: { session_id: SESSION_ID } });
+    // Backgrounded → the claim rides the REST relay; the doomed direct invoke is
+    // never attempted. The server completes the claim and sends the push.
+    expect(mockRpc).toHaveBeenCalledWith('relay_gym_claim', { p_session_id: SESSION_ID, p_visit_id: null });
+    expect(mockInvoke).not.toHaveBeenCalled();
 
     // claim-points fires the single "Session recorded" push server-side. Firing a
     // local one here too would double-buzz the user.
     expect(mockNotifySessionCompleted).not.toHaveBeenCalled();
+
+    // 'accepted' is not proof — the claim stays pending until the next tick's
+    // relay answers 'already_claimed', which finalizes the session id.
+    expect(await readActive()).toMatchObject({ sessionRecorded: true, pointsPending: true });
+    mockRelayReplies = { relay_gym_claim: { status: 'already_claimed' } };
+    await driveLocationFix(fixInside);
     expect(await readActive()).toMatchObject({ sessionRecorded: true, sessionId: SESSION_ID });
   });
 
   it('fires the local fallback when the server reports the push could not be delivered', async () => {
+    // The fallback contract lives on the FOREGROUND claim path (the direct invoke
+    // returns push_delivered) — relayed background claims leave the push entirely
+    // to the server.
+    (AppState as any).currentState = 'active';
     mockClaimResponse = { data: { earned: 30, push_delivered: false, within_reach: null }, error: null };
 
     await driveLocationFix(fixInside);
@@ -211,15 +241,19 @@ describe('geofence → notification flow', () => {
   });
 
   it('closes the visit on native EXIT without re-claiming an already-claimed session', async () => {
+    (AppState as any).currentState = 'active'; // claim completes directly, sessionId lands
     await driveLocationFix(fixInside);
     await simulateDwell(35);
     await driveLocationFix(fixInside);
     mockInvoke.mockClear();
+    mockRpc.mockClear();
+    (AppState as any).currentState = 'background';
 
     await driveNativeGeofence(2);
 
     expect(await readActive()).toBeNull();
     expect(mockInvoke).not.toHaveBeenCalled(); // no duplicate claim, no duplicate push
+    expect(mockRpc).not.toHaveBeenCalledWith('relay_gym_claim', expect.anything());
     expect(await AsyncStorage.getItem('@powr/pending_claims')).toBeNull();
   });
 
@@ -228,12 +262,16 @@ describe('geofence → notification flow', () => {
     await simulateDwell(35);
 
     // No in-gym fix ever landed (the closed-app starvation case) — the EXIT is the
-    // first chance to claim, and it must still produce the session + server push.
+    // first chance to claim, and it must still produce the session + a claim
+    // trigger. Backgrounded, that trigger is the REST relay.
     await driveNativeGeofence(2);
 
-    expect(mockInvoke).toHaveBeenCalledWith('claim-points', { body: { session_id: SESSION_ID } });
+    expect(mockRpc).toHaveBeenCalledWith('relay_gym_claim', { p_session_id: SESSION_ID, p_visit_id: null });
+    expect(mockInvoke).not.toHaveBeenCalled();
     expect(await readActive()).toBeNull();
-    expect(await AsyncStorage.getItem('@powr/pending_claims')).toBeNull(); // resolved → dequeued
+    // 'accepted' is not proof: the durable entry is RETAINED until a later flush's
+    // relay answers 'already_claimed' — a lost pg_net request must not lose points.
+    expect(await AsyncStorage.getItem('@powr/pending_claims')).not.toBeNull();
   });
 
   it('leaving before the threshold claims nothing and notifies nothing', async () => {

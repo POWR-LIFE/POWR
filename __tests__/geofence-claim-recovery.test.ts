@@ -16,6 +16,7 @@
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
+import { AppState } from 'react-native';
 import { runVisitCheck, ACTIVE_GEOFENCE_KEY } from '@/context/GeofenceContext';
 
 jest.mock('expo-task-manager', () => {
@@ -121,6 +122,9 @@ beforeEach(async () => {
   jest.clearAllMocks();
   await AsyncStorage.clear();
   (globalThis as any).__DEV__ = false;
+  // These tests pin the FOREGROUND claim path (direct claim-points invoke) —
+  // backgrounded claims ride the REST relay instead (geofence-claim-relay.test.ts).
+  (AppState as any).currentState = 'active';
   getFix.mockResolvedValue({ coords: { latitude: GYM.lat, longitude: GYM.lng, accuracy: 10 } });
   mockInvoke.mockResolvedValue({ data: { earned: 30, push_delivered: true }, error: null });
   mockRpc.mockResolvedValue({ data: null, error: null });

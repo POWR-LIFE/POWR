@@ -12,6 +12,7 @@
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
+import { AppState } from 'react-native';
 import { runVisitCheck, ACTIVE_GEOFENCE_KEY } from '@/context/GeofenceContext';
 
 jest.mock('expo-task-manager', () => {
@@ -109,18 +110,26 @@ async function seedActiveVisit() {
   }));
 }
 
-const claimed = () => mockInvoke.mock.calls.some(c => c[0] === 'claim-points');
+// A wake runs with the app backgrounded, where claims ride the REST relay
+// (relay_gym_claim → pg_net → claim-points server-to-server) — a direct
+// functions.invoke never arrives from a backgrounded Android app (2026-07-14).
+const claimed = () => mockRpc.mock.calls.some(c => c[0] === 'relay_gym_claim');
 const rpcCalls = (name: string) => mockRpc.mock.calls.filter(c => c[0] === name);
 
 beforeEach(async () => {
   jest.clearAllMocks();
   await AsyncStorage.clear();
   (globalThis as any).__DEV__ = false;
+  (AppState as any).currentState = 'background'; // a beacon wake = backgrounded app
   mockInvoke.mockResolvedValue({ data: { earned: 30, push_delivered: true }, error: null });
-  mockRpc.mockResolvedValue({ data: null, error: null });
+  mockRpc.mockImplementation((fn: string) =>
+    Promise.resolve(fn === 'relay_gym_claim' ? { data: { status: 'accepted' }, error: null } : { data: null, error: null }));
 });
 
-afterEach(() => { (globalThis as any).__DEV__ = true; });
+afterEach(() => {
+  (globalThis as any).__DEV__ = true;
+  (AppState as any).currentState = 'active';
+});
 
 describe('runVisitCheck — the server wakes us, the device decides', () => {
   it('claims when a fresh fix proves the user is still inside the gym', async () => {

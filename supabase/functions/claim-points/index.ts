@@ -271,33 +271,13 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405 });
   }
 
-  // 1. Validate JWT
-  const authHeader = req.headers.get('Authorization');
-  if (!authHeader) {
-    return new Response(JSON.stringify({ error: 'Missing authorization' }), { status: 401 });
-  }
-
   const supabase = createClient(
     Deno.env.get('SUPABASE_URL')!,
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
   );
 
-  // Verify the user's JWT
-  const userClient = createClient(
-    Deno.env.get('SUPABASE_URL')!,
-    Deno.env.get('SUPABASE_ANON_KEY')!
-  );
-  
-  const jwt = authHeader.replace(/^Bearer\s+/i, '');
-  const { data: { user }, error: authError } = await userClient.auth.getUser(jwt);
-  
-  if (authError || !user) {
-    console.error('Auth error:', authError);
-    return new Response(JSON.stringify({ error: 'Unauthorized', details: authError?.message }), { status: 401 });
-  }
-
-  // 2. Parse request body
-  let body: ClaimRequest;
+  // 1. Parse request body (before auth — the relay leg carries user_id in it)
+  let body: ClaimRequest & { user_id?: string; visit_id?: string };
   try {
     body = await req.json();
   } catch {
@@ -305,6 +285,47 @@ Deno.serve(async (req) => {
   }
   if (!body.session_id) {
     return new Response(JSON.stringify({ error: 'session_id required' }), { status: 400 });
+  }
+
+  // 2. Authenticate — two legs:
+  //    (a) the app calls with the user's JWT (verified in-code);
+  //    (b) relay_gym_claim (SECURITY DEFINER RPC → pg_net) calls with the shared
+  //        resolve token + an explicit user_id — the background path. A client
+  //        functions.invoke never arrives from a backgrounded Android app while
+  //        its REST calls do (six field captures 2026-07-14), so the claim rides
+  //        the REST path to the RPC and pg_net brings it here server-to-server.
+  //        The RPC has already verified the session belongs to that user; the
+  //        session ownership check below re-verifies against the same user_id.
+  const relayToken = req.headers.get('x-resolve-token');
+  const viaRelay = relayToken != null;
+  let user: { id: string; email?: string };
+  if (viaRelay) {
+    const { data: valid } = await supabase.rpc('verify_resolve_token', { p_token: relayToken });
+    if (valid !== true || !body.user_id) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
+    }
+    const { data: got, error: adminError } = await supabase.auth.admin.getUserById(body.user_id);
+    if (adminError || !got?.user) {
+      console.error('Relay auth error:', adminError);
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
+    }
+    user = got.user;
+  } else {
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(JSON.stringify({ error: 'Missing authorization' }), { status: 401 });
+    }
+    const userClient = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_ANON_KEY')!
+    );
+    const jwt = authHeader.replace(/^Bearer\s+/i, '');
+    const { data: { user: jwtUser }, error: authError } = await userClient.auth.getUser(jwt);
+    if (authError || !jwtUser) {
+      console.error('Auth error:', authError);
+      return new Response(JSON.stringify({ error: 'Unauthorized', details: authError?.message }), { status: 401 });
+    }
+    user = jwtUser;
   }
 
   // 3. Fetch the session — must belong to this user
@@ -566,6 +587,32 @@ Deno.serve(async (req) => {
         description: `${currentStreak}-day streak bonus`,
         multiplier: 1.0,
       });
+    }
+  }
+
+  // 11b. A relayed claim can't rely on the client to mark the visit (the device
+  // may be frozen in Doze until it next wakes) — record claim progress on the
+  // beacon here so dwell nudges stop and the upgrade timer starts on time.
+  // Mirrors mark_gym_visit_progress; the status='open' guard keeps it idempotent
+  // against the client's own later mark.
+  if (viaRelay && body.visit_id) {
+    try {
+      const nowIso = new Date().toISOString();
+      const { data: marked } = await supabase
+        .from('gym_visits')
+        .update({ status: 'claimed', claimed_session_id: session.id, claimed_at: nowIso, last_confirmed_at: nowIso })
+        .eq('id', body.visit_id)
+        .eq('user_id', user.id)
+        .eq('status', 'open')
+        .select('id');
+      if ((marked ?? []).length > 0) {
+        await supabase.from('gym_visit_events').insert({
+          visit_id: body.visit_id, user_id: user.id, event: 'claimed',
+          detail: { session_id: session.id, via: 'relay' },
+        });
+      }
+    } catch (visitErr) {
+      console.warn('[claim-points] relay visit mark failed:', visitErr);
     }
   }
 

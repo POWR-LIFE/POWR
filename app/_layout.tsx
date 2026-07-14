@@ -27,6 +27,7 @@ import { ensureAndroidChannels } from '@/lib/notifications';
 import { useOtaUpdatePrompt } from '@/lib/otaUpdates';
 import { registerPlacementNotifyTask } from '@/lib/placementNotifyTask';
 import { refreshGymDwellMinutes } from '@/lib/gymDwellConfig';
+import { supabase } from '@/lib/supabase';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -79,8 +80,19 @@ function RootLayoutNav() {
   // Pull the admin-tunable gym dwell threshold (system_config →
   // min_gym_dwell_minutes) and cache it so the geofence dwell timer + home
   // progress ring match what claim-points actually rewards. Falls back to 30.
+  //
+  // system_config is authenticated-read only, so the launch fetch reads nothing
+  // on a first-ever launch (fresh install, no session yet) and the process kept
+  // the 30/40 defaults for its whole life (field 2026-07-14). Re-fetch whenever
+  // a session becomes available so the first-ever gym visit uses real values.
   useEffect(() => {
     refreshGymDwellMinutes().catch(() => { /* keeps default */ });
+    const { data: sub } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
+        refreshGymDwellMinutes().catch(() => { /* keeps default */ });
+      }
+    });
+    return () => sub.subscription.unsubscribe();
   }, []);
 
   // Offer a restart when an OTA update is ready (launch + foreground checks).
