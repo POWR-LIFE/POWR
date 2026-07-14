@@ -25,7 +25,6 @@ import {
 } from 'lucide-react';
 import { createContext, useContext, useEffect, useState } from 'react';
 import { Link, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
-import { initLandingPage } from '../main.js';
 import { supabase } from './lib/supabase';
 import { ToastProvider } from './lib/toast';
 
@@ -259,17 +258,6 @@ const PATH_LABELS = {
     campaigns: 'Campaigns',
     notifications: 'Notifications',
     config: 'Config',
-};
-
-// --- Landing Page ---
-const LandingPage = () => {
-    useEffect(() => {
-        const landing = document.getElementById('landing-content');
-        if (landing) landing.style.display = 'block';
-        initLandingPage();
-        return () => { if (landing) landing.style.display = 'none'; };
-    }, []);
-    return null;
 };
 
 // --- Partner Login ---
@@ -989,19 +977,13 @@ const AdminLayout = ({ children }) => {
 
 // --- App Root ---
 export default function App() {
-    const location = useLocation();
-
-    useEffect(() => {
-        const landing = document.getElementById('landing-content');
-        if (landing) landing.style.display = location.pathname === '/' ? 'block' : 'none';
-    }, [location]);
-
     return (
         <ToastProvider>
             <AuthProvider>
                 <Routes>
-                    <Route path="/" element={<LandingPage />} />
-                    <Route path="/v2" element={<LandingV2 />} />
+                    <Route path="/" element={<LandingV2 />} />
+                    {/* The showcase shipped at /v2 before it became the homepage — keep old links working */}
+                    <Route path="/v2" element={<Navigate to="/" replace />} />
                     <Route path="/privacy" element={<PrivacyPolicy />} />
                     <Route path="/terms" element={<TermsOfService />} />
                     <Route path="/cookies" element={<CookiePolicy />} />
