@@ -40,6 +40,17 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
         detectSessionInUrl: false,
         flowType: 'pkce',
     },
+    global: {
+        // Pin every sub-client (functions, postgrest, auth, storage) to RN's
+        // native-backed global fetch. Left unset, each supabase-js sub-client
+        // resolves a fetch on its own; the functions client's pick was the
+        // prime suspect when claim-points invokes from the BACKGROUND never
+        // left the device while REST calls on this same client landed fine
+        // (three field captures, 2026-07-14).
+        // (supabase's Fetch type also admits URL inputs; RN's fetch handles
+        // them at runtime but types them out — hence the cast.)
+        fetch: (input, init) => fetch(input as RequestInfo, init),
+    },
 });
 
 /**
