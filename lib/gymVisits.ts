@@ -42,14 +42,25 @@ export async function confirmGymVisit(
   visitId: string,
   inside: boolean,
   detail: Record<string, unknown> = {},
+  requestCredit = false,
 ): Promise<void> {
   try {
-    const { error } = await withNetworkTimeout(supabase.rpc('confirm_gym_visit', {
-      p_visit_id: visitId,
-      p_inside:   inside,
-      p_detail:   detail,
+    // v2 lets this single round-trip ALSO ask the server to credit the visit
+    // (claim or upgrade, decided server-side from visit status + elapsed +
+    // system_config). The FCM wake window fits ~one round-trip, and this is it —
+    // the local claim chain behind it starved every time (field 2026-07-14).
+    // Credit only ever follows p_inside=true, so "no fix, no credit" holds.
+    const { data, error } = await withNetworkTimeout(supabase.rpc('confirm_gym_visit_v2', {
+      p_visit_id:       visitId,
+      p_inside:         inside,
+      p_detail:         detail,
+      p_request_credit: requestCredit,
     }), 'confirm_gym_visit');
     if (error) throw error;
+    const triggered = (data as { triggered?: string | null } | null)?.triggered;
+    if (triggered) {
+      console.log(`[GymVisit] Server credit trigger fired from confirm: ${triggered}.`);
+    }
   } catch (err) {
     console.warn('[GymVisit] confirmGymVisit failed:', err);
   }

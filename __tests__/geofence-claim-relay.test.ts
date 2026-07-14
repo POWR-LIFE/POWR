@@ -141,6 +141,7 @@ beforeEach(async () => {
 afterEach(() => {
   (globalThis as any).__DEV__ = true;
   (AppState as any).currentState = 'active';
+  jest.useRealTimers();
 });
 
 describe('backgrounded claim rides the relay, never the invoke', () => {
@@ -201,6 +202,37 @@ describe('backgrounded upgrade rides the relay', () => {
     armRpc({ relay_gym_upgrade: { status: 'already_done' } });
     await runVisitCheck('upgrade');
     expect((await readState()).tierUpgraded).toBe(true);
+  });
+});
+
+describe('a wake window is never wasted on a pre-window zombie', () => {
+  // Field capture 2026-07-14 evening: cron wakes (:01) and stream ticks (:32)
+  // are permanently out of phase — every wake found a <2-min-old hung attempt
+  // from the previous tick, honoured its lease/grace, and left empty-handed;
+  // the retry it queued then ran on the next tick, outside any radio window.
+  // Wakes #2–#4 were all lost this way. Inside a wake window the lease AND the
+  // no-outcome grace shrink to seconds, and the heal retries immediately.
+  it('heals a 30s-old no-outcome attempt and relays inside the SAME wake', async () => {
+    jest.useFakeTimers();
+    await seedVisit();
+    // Wake 1: the relay call hangs forever (radio died mid-request) — leaving
+    // sessionRecorded, a fresh claimAttemptAt, and a held lock.
+    mockRpc.mockImplementation((fn: string) =>
+      fn === 'relay_gym_claim'
+        ? new Promise(() => { /* hung; timers frozen while backgrounded */ })
+        : Promise.resolve({ data: null, error: null }));
+    const hung = runVisitCheck('dwell');
+    await jest.advanceTimersByTimeAsync(0);
+
+    // 30 s later the next wake arrives (clock moves, timers stay frozen).
+    jest.setSystemTime(Date.now() + 30_000);
+    armRpc({ relay_gym_claim: { status: 'accepted' } });
+    await runVisitCheck('dwell');
+
+    // Under the old 2-min lease/grace this wake would have skipped entirely.
+    expect(relayCalls('relay_gym_claim').length).toBe(2);
+    expect((await readState()).pointsPending).toBe(true); // resolved by a later relay
+    void hung; // zombie stays pending; its fenced release cannot free the thief's lock
   });
 });
 

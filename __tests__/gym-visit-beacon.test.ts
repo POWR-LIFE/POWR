@@ -140,7 +140,9 @@ describe('runVisitCheck — the server wakes us, the device decides', () => {
 
     expect(claimed()).toBe(true);
     // The device reports what it saw; the server only records it.
-    expect(rpcCalls('confirm_gym_visit')[0][1]).toMatchObject({ p_visit_id: 'visit-1', p_inside: true });
+    // The single confirm round-trip also asks the server to credit the visit —
+    // the wake window fits ~one round-trip, and this is it (2026-07-14).
+    expect(rpcCalls('confirm_gym_visit_v2')[0][1]).toMatchObject({ p_visit_id: 'visit-1', p_inside: true, p_request_credit: true });
   });
 
   it('does NOT claim when the fix shows the user has left — it closes the visit', async () => {
@@ -150,7 +152,8 @@ describe('runVisitCheck — the server wakes us, the device decides', () => {
 
     await runVisitCheck('dwell');
 
-    expect(rpcCalls('confirm_gym_visit')[0][1]).toMatchObject({ p_inside: false });
+    // No credit request on an outside confirm — no fix inside, no credit.
+    expect(rpcCalls('confirm_gym_visit_v2')[0][1]).toMatchObject({ p_inside: false, p_request_credit: false });
     // Left the gym → the visit is finalized rather than credited on a timer.
     expect(await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY)).toBeNull();
   });
@@ -162,7 +165,7 @@ describe('runVisitCheck — the server wakes us, the device decides', () => {
     await runVisitCheck('dwell');
 
     expect(claimed()).toBe(false);
-    expect(rpcCalls('confirm_gym_visit')[0][1]).toMatchObject({ p_inside: false, p_detail: { reason: 'no_fix' } });
+    expect(rpcCalls('confirm_gym_visit_v2')[0][1]).toMatchObject({ p_inside: false, p_detail: { reason: 'no_fix' }, p_request_credit: false });
     // Visit stays open: the next nudge or the exit path still resolves it.
     expect(await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY)).not.toBeNull();
   });

@@ -136,14 +136,16 @@ afterEach(() => {
 });
 
 describe('claim attempt left no outcome — the lease heals it', () => {
-  it('re-queues an orphaned attempt (stale lease, no sessionId, no pointsPending)', async () => {
+  it('heals an orphaned attempt and retries within the SAME wake', async () => {
     await seedVisit({ sessionRecorded: true, claimAttemptAt: Date.now() - 3 * 60 * 1000 });
 
     await runVisitCheck('dwell');
 
-    // Not claimed on THIS tick — handed to the pointsPending retry path.
-    expect(claimed()).toBe(false);
-    expect((await readState()).pointsPending).toBe(true);
+    // A wake window is the one moment the radio is provably up — the heal
+    // retries immediately instead of waiting for the next (out-of-phase) tick,
+    // which lost wakes #2–#4 on 2026-07-14.
+    expect(claimed()).toBe(true);
+    expect((await readState()).sessionId).toBe('session-abc');
   });
 
   it('the re-queued claim then lands on the next tick', async () => {

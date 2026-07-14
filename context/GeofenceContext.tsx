@@ -567,6 +567,10 @@ async function exitApproach(expectedRegionId?: string): Promise<void> {
 // lands is absorbed by the sessions unique index / claim-points idempotency.
 const _recordingInFlight = new Map<string, number>();
 const STALE_CLAIM_LOCK_MS = 2 * 60 * 1000;
+// Inside an FCM wake window the lease shrinks: any attempt started before the
+// wake is doomed (its radio window is gone), and the wake's own ~10 s window
+// must not be wasted honouring it. See runVisitCheck.
+const WAKE_STALE_CLAIM_LOCK_MS = 15 * 1000;
 
 // Minimum spacing between foreground tier-upgrade attempts. The upgrade branch
 // re-runs on the 10 s scheduleDwellTimer poll, and a server-side rejection
@@ -575,10 +579,10 @@ const STALE_CLAIM_LOCK_MS = 2 * 60 * 1000;
 let _lastUpgradeAttemptAt = 0;
 const UPGRADE_ATTEMPT_BACKOFF_MS = 60 * 1000;
 
-async function recordDwellSession(activeGeofence: StoredGeofence): Promise<{ outcome: 'claimed' | 'too_short' | 'error' | 'in_flight' | 'relayed'; sessionId?: string; earned?: number; currentStreak?: number }> {
+async function recordDwellSession(activeGeofence: StoredGeofence, staleLockMs: number = STALE_CLAIM_LOCK_MS): Promise<{ outcome: 'claimed' | 'too_short' | 'error' | 'in_flight' | 'relayed'; sessionId?: string; earned?: number; currentStreak?: number }> {
   const lockKey = `${activeGeofence.partnerId}:${activeGeofence.entryTimestamp}`;
   const heldSinceMs = _recordingInFlight.get(lockKey);
-  if (heldSinceMs != null && Date.now() - heldSinceMs < STALE_CLAIM_LOCK_MS) {
+  if (heldSinceMs != null && Date.now() - heldSinceMs < staleLockMs) {
     console.log('[Geofence] recordDwellSession already in flight for this session — skipping duplicate.');
     return { outcome: 'in_flight' };
   }
@@ -1318,16 +1322,25 @@ export async function runVisitCheck(stage: 'dwell' | 'upgrade'): Promise<void> {
 
   if (active.visitId) {
     const { confirmGymVisit } = await import('@/lib/gymVisits');
+    // requestCredit on an inside confirm: this one round-trip both proves
+    // presence AND has the server relay the claim/upgrade (confirm_gym_visit_v2)
+    // — the wake window fits ~one round-trip and the local chain below starves.
     await confirmGymVisit(active.visitId, inside, {
       stage,
       distance_m: distance != null ? Math.round(distance) : null,
       accuracy_m: coords.accuracy != null ? Math.round(coords.accuracy) : null,
-    });
+    }, inside);
   }
 
   if (inside) {
     console.log(`[Geofence] Visit check (${stage}): still inside — advancing dwell.`);
-    await advanceActiveSession(active);
+    // Wake-scoped lease: cron wakes (:01) and stream ticks (:32) are permanently
+    // out of phase, so a tick-started zombie attempt is almost always <2 min old
+    // when a wake arrives — under the normal lease the wake would skip and waste
+    // its window (three consecutive wakes lost this way, field 2026-07-14).
+    // Inside a wake window any pre-window attempt is presumed dead; idempotency
+    // (23505 + already-claimed + relay pre-checks) absorbs a zombie that lands.
+    await advanceActiveSession(active, WAKE_STALE_CLAIM_LOCK_MS);
   } else {
     console.log(`[Geofence] Visit check (${stage}): left the gym — finalizing.`);
     await finalizeActiveGeofence();
@@ -1341,7 +1354,7 @@ export async function runVisitCheck(stage: 'dwell' | 'upgrade'): Promise<void> {
  *  without depending on the EXIT event ever firing. Claims are idempotent (the
  *  in-flight lock, sessionRecorded flag, and DB unique index dedup against the
  *  foreground path). */
-async function advanceActiveSession(active: StoredGeofence): Promise<void> {
+async function advanceActiveSession(active: StoredGeofence, staleLockMs?: number): Promise<void> {
   const elapsed = Date.now() - active.entryTimestamp;
 
   // 1. Prior claim was too short / failed — retry once the prod threshold is met.
@@ -1351,7 +1364,7 @@ async function advanceActiveSession(active: StoredGeofence): Promise<void> {
       ACTIVE_GEOFENCE_KEY,
       JSON.stringify({ ...active, pointsPending: false, claimAttemptAt: Date.now() }),
     );
-    const { outcome, sessionId } = await recordDwellSession(active);
+    const { outcome, sessionId } = await recordDwellSession(active, staleLockMs);
     if (outcome === 'claimed' && sessionId) {
       await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...active, pointsPending: false, sessionId }));
     } else {
@@ -1380,10 +1393,21 @@ async function advanceActiveSession(active: StoredGeofence): Promise<void> {
     // (field-caught 2026-07-14). After a grace window, hand it back to the
     // pointsPending retry path above; claim-points and the sessions unique index
     // make a duplicate retry a no-op.
+    //
+    // In a WAKE window both the grace and the retry timing shrink: cron wakes
+    // (:01) and stream ticks (:32) are permanently out of phase, so under the
+    // normal 2-min grace a wake almost always found a sub-grace zombie from the
+    // previous tick and left empty-handed — then the retry it queued ran on the
+    // NEXT tick, outside any window (wakes #2–#4 all lost this way, field
+    // 2026-07-14 evening). A pre-window attempt is dead by definition; heal it
+    // and retry NOW, while the radio is up.
+    const resultGraceMs = staleLockMs ?? CLAIM_RESULT_GRACE_MS;
     if (!active.sessionId && !active.pointsPending
-        && Date.now() - (active.claimAttemptAt ?? 0) > CLAIM_RESULT_GRACE_MS) {
+        && Date.now() - (active.claimAttemptAt ?? 0) > resultGraceMs) {
       console.warn('[Geofence] Claim attempt left no outcome — queueing retry.');
-      await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...active, pointsPending: true }));
+      const queued = { ...active, pointsPending: true };
+      await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify(queued));
+      if (staleLockMs != null) await advanceActiveSession(queued, staleLockMs);
     }
     return;
   }
@@ -1394,7 +1418,7 @@ async function advanceActiveSession(active: StoredGeofence): Promise<void> {
     ACTIVE_GEOFENCE_KEY,
     JSON.stringify({ ...active, sessionRecorded: true, claimAttemptAt: Date.now() }),
   );
-  const { outcome, sessionId } = await recordDwellSession(active);
+  const { outcome, sessionId } = await recordDwellSession(active, staleLockMs);
   if (outcome === 'claimed' && sessionId) {
     await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...active, sessionRecorded: true, sessionId }));
   } else if (outcome === 'too_short' || outcome === 'error' || outcome === 'relayed') {
