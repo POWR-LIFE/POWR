@@ -64,6 +64,14 @@ function momentumText(m: { current: number; target: number; unit: string }): str
   return `${sep(m.current)} / ${sep(m.target)}`;
 }
 
+/** Hero-sized readout for the "left to do" card: full number + display unit.
+ *  Distance values arrive in metres ('distance_m' from momentum, 'km'/'mi' pools). */
+function fmtBig(v: number, unit?: string): { num: string; unitLabel: string } {
+  if (unit === 'distance_m' || unit === 'km') return { num: (v / 1000).toFixed(1), unitLabel: 'km' };
+  if (unit === 'mi') return { num: (v / 1609.34).toFixed(1), unitLabel: 'mi' };
+  return { num: Math.round(v).toLocaleString('en-US'), unitLabel: unit ?? '' };
+}
+
 function StatePill({ p, target }: { p: Participant; target?: number }) {
   if (p.completed) return <Text style={[styles.statePill, { color: GREEN }]}>Done</Text>;
   if (p.state === 'invited') return <Text style={[styles.statePill, { color: MUTED }]}>Invited</Text>;
@@ -84,8 +92,8 @@ function ParticipantRow({ p, pool, goalTarget, onPress }: { p: Participant; pool
       accessibilityRole={onPress ? 'button' : undefined}
       accessibilityLabel={onPress ? `View ${p.friend.displayName}'s profile` : undefined}
     >
-      <Avatar friend={p.friend} size={40} completed={p.completed} pending={p.state === 'invited'} />
-      <View style={{ flex: 1, gap: 6 }}>
+      <Avatar friend={p.friend} size={32} completed={p.completed} pending={p.state === 'invited'} />
+      <View style={{ flex: 1, gap: 5 }}>
         <View style={styles.pNameRow}>
           <Text style={styles.pName}>
             {p.isSelf ? 'You' : p.friend.displayName}
@@ -256,6 +264,37 @@ export default function SharedChallengeDetail() {
   // Forming until everyone's accepted — the clock (endsAt) only runs after that.
   const forming = participants.some((p) => p.state === 'invited');
 
+  // The flip side of the progress the cards above show: what's STILL to be
+  // done. Pooled = the group's gap to the shared target; parallel = YOUR gap
+  // to your own goal (mirrors countText's rounding so the two never disagree).
+  const selfProgress = self?.progress ?? 0;
+  const remaining =
+    pooled && pool
+      ? Math.max(0, pool.target - pool.total)
+      : challenge.goalTarget
+        ? challenge.goalTarget - Math.min(Math.round(selfProgress * challenge.goalTarget), challenge.goalTarget)
+        : null;
+  const remainingDone = pooled ? poolPct >= 1 : !!self?.completed;
+  const remainingUnit = pooled && pool ? pool.unit : self?.momentum?.unit;
+  const remainParts =
+    remaining !== null
+      ? fmtBig(remaining, remainingUnit)
+      : { num: `${Math.max(0, Math.round((1 - selfProgress) * 100))}%`, unitLabel: '' };
+
+  // With a day or more on the clock, break the gap into a daily chunk — a
+  // concrete "do this today" beats a big scary total.
+  let paceHint: string | null = null;
+  if (!remainingDone && remaining !== null && remaining > 0 && !forming && challenge.endsAt) {
+    const daysLeft = (new Date(challenge.endsAt).getTime() - Date.now()) / 86_400_000;
+    if (daysLeft >= 1) {
+      const perDayRaw = remaining / daysLeft;
+      // Steps read better rounded up to the nearest hundred; small counts stay exact.
+      const perDay = fmtBig(perDayRaw >= 1000 ? Math.ceil(perDayRaw / 100) * 100 : Math.ceil(perDayRaw), remainingUnit);
+      const unitWord = perDay.num === '1' && perDay.unitLabel.endsWith('s') ? perDay.unitLabel.slice(0, -1) : perDay.unitLabel;
+      paceHint = `About ${perDay.num}${unitWord ? ` ${unitWord}` : ''} a day${pooled ? ' between you' : ''} gets it done.`;
+    }
+  }
+
   // Leaving / cancelling was a one-tap action that, for a pair, ends the
   // challenge for BOTH people (dropping below two live members cancels it).
   // Confirm first, and make the consequence explicit. `willCancelForAll` is true
@@ -347,7 +386,7 @@ export default function SharedChallengeDetail() {
 
         {/* Pooled: shared combined-total progress (replaces the per-you bonus card) */}
         {pooled && pool && (
-          <View style={styles.bonusCard}>
+          <View style={[styles.bonusCard, styles.compactCard]}>
             <View style={styles.pNameRow}>
               <Text style={styles.sectionLabel}>GROUP TOTAL</Text>
               <Text style={[styles.poolPctText, poolPct >= 1 && { color: GREEN }]}>{Math.round(poolPct * 100)}%</Text>
@@ -364,27 +403,23 @@ export default function SharedChallengeDetail() {
           </View>
         )}
 
-        {/* Bonus breakdown (solo co-op only) */}
+        {/* Bonus breakdown (solo co-op only) — one compact line; the "left to
+            do" card below carries the visual weight now. */}
         {!pooled && (
-        <View style={styles.bonusCard}>
-          <Text style={styles.sectionLabel}>YOUR POINTS</Text>
-          <View style={styles.bonusMath}>
-            <View style={styles.bonusCol}>
-              <Text style={styles.bonusNum}>{current.base}</Text>
-              <Text style={styles.bonusColLabel}>base</Text>
-            </View>
-            <Text style={styles.bonusPlus}>+</Text>
-            <View style={styles.bonusCol}>
-              <Text style={[styles.bonusNum, { color: current.bonus > 0 ? GOLD : MUTED }]}>{current.bonus}</Text>
-              <Text style={styles.bonusColLabel}>group bonus</Text>
-            </View>
-            <Text style={styles.bonusPlus}>=</Text>
-            <View style={styles.bonusCol}>
-              <Text style={[styles.bonusNum, styles.bonusTotal]}>{current.total}</Text>
-              <Text style={styles.bonusColLabel}>so far</Text>
-            </View>
+        <View style={[styles.bonusCard, styles.compactCard]}>
+          <View style={styles.pNameRow}>
+            <Text style={styles.sectionLabel}>YOUR POINTS</Text>
+            <Text style={styles.bonusInline}>
+              {current.base}
+              <Text style={styles.bonusInlineLabel}> base</Text>
+              <Text style={styles.bonusInlineOp}>{'  +  '}</Text>
+              <Text style={current.bonus > 0 ? { color: GOLD } : { color: MUTED }}>{current.bonus}</Text>
+              <Text style={styles.bonusInlineLabel}> bonus</Text>
+              <Text style={styles.bonusInlineOp}>{'  =  '}</Text>
+              <Text style={{ color: GOLD }}>{current.total}</Text>
+            </Text>
           </View>
-          <Text style={styles.bonusHint}>
+          <Text style={[styles.bonusHint, styles.bonusHintCompact]}>
             {coCompleters > 0
               ? `${coCompleters} ${coCompleters === 1 ? 'friend has' : 'friends have'} finished — your bonus grows with each one.`
               : 'Your bonus grows each time a friend finishes.'}
@@ -394,7 +429,7 @@ export default function SharedChallengeDetail() {
         )}
 
         {/* Participants */}
-        <View style={styles.listCard}>
+        <View style={[styles.listCard, styles.compactCard]}>
           <View style={styles.listHeader}>
             <Text style={styles.sectionLabel}>{pooled ? 'CONTRIBUTORS' : 'PARTICIPANTS'}</Text>
             <Text style={styles.listCount}>
@@ -408,7 +443,7 @@ export default function SharedChallengeDetail() {
               )}
             </Text>
           </View>
-          <View style={{ gap: 14, marginTop: 12 }}>
+          <View style={{ gap: 10, marginTop: 10 }}>
             {sorted.map((p) => (
               <ParticipantRow
                 key={p.friend.id}
@@ -420,6 +455,44 @@ export default function SharedChallengeDetail() {
             ))}
           </View>
         </View>
+
+        {/* Left to do — the headline act while the game's live: the gap to the
+            goal next to the clock, plus a daily pace that would close it. */}
+        {!challengeOver && (
+          <View style={styles.remainCard}>
+            <Text style={[styles.sectionLabel, { textAlign: 'center' }]}>LEFT TO DO</Text>
+            <View style={styles.remainRow}>
+              <View style={styles.remainCol}>
+                {remainingDone ? (
+                  <Text style={[styles.remainNum, { color: GREEN }]}>Done</Text>
+                ) : (
+                  <Text style={styles.remainNum}>{remainParts.num}</Text>
+                )}
+                <Text style={styles.remainColLabel}>
+                  {remainingDone
+                    ? pooled ? 'target hit' : 'your goal is in'
+                    : `${remainParts.unitLabel ? `${remainParts.unitLabel} ` : ''}to go`}
+                </Text>
+              </View>
+              <View style={styles.remainDivider} />
+              <View style={styles.remainCol}>
+                {!forming && challenge.endsAt ? (
+                  <Countdown endsAt={challenge.endsAt} suffix="" style={styles.remainTime} />
+                ) : (
+                  <Text style={[styles.remainTime, { color: MUTED }]}>—</Text>
+                )}
+                <Text style={styles.remainColLabel}>
+                  {!forming && challenge.endsAt ? 'time left' : 'starts when everyone’s in'}
+                </Text>
+              </View>
+            </View>
+            {paceHint ? (
+              <Text style={styles.bonusHint}>{paceHint}</Text>
+            ) : remainingDone && !pooled ? (
+              <Text style={styles.bonusHint}>You’re done — your bonus still grows as the others finish.</Text>
+            ) : null}
+          </View>
+        )}
 
         {isInvited && !challengeOver ? (
           /* Pending-invite — Accept / Decline */
@@ -577,15 +650,25 @@ const styles = StyleSheet.create({
 
   // bonus card
   bonusCard: { backgroundColor: CARD_BG, borderRadius: 18, borderWidth: 1, borderColor: BORDER, padding: 18, gap: 14 },
-  bonusMath: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  bonusCol: { alignItems: 'center', gap: 4, flex: 1 },
-  bonusNum: { fontFamily: fontFamily.extraLight, fontSize: 34, color: TEXT, lineHeight: 36 },
-  bonusTotal: { color: GOLD },
-  bonusColLabel: { fontFamily: fontFamily.medium, fontSize: 9, letterSpacing: 1.5, color: FAINT, textTransform: 'uppercase' },
-  bonusPlus: { fontFamily: fontFamily.extraLight, fontSize: 22, color: MUTED, paddingHorizontal: 4 },
   bonusHint: { fontFamily: fontFamily.light, fontSize: 12, color: SECONDARY, lineHeight: 18, textAlign: 'center' },
-  poolHeadline: { fontFamily: fontFamily.extraLight, fontSize: 30, color: GOLD, letterSpacing: -0.5 },
+  poolHeadline: { fontFamily: fontFamily.extraLight, fontSize: 24, color: GOLD, letterSpacing: -0.5 },
   poolPctText: { fontFamily: fontFamily.semiBold, fontSize: 13, color: GOLD },
+
+  // compact variants — the summary cards cede the stage to the remain card
+  compactCard: { padding: 14, gap: 8 },
+  bonusInline: { fontFamily: fontFamily.light, fontSize: 16, color: TEXT },
+  bonusInlineLabel: { fontFamily: fontFamily.medium, fontSize: 9, letterSpacing: 0.5, color: FAINT, textTransform: 'uppercase' },
+  bonusInlineOp: { fontFamily: fontFamily.extraLight, fontSize: 14, color: MUTED },
+  bonusHintCompact: { fontSize: 11.5, lineHeight: 16, textAlign: 'left' },
+
+  // "left to do" card
+  remainCard: { backgroundColor: CARD_BG, borderRadius: 18, borderWidth: 1, borderColor: BORDER, padding: 18, gap: 14 },
+  remainRow: { flexDirection: 'row', alignItems: 'center' },
+  remainCol: { flex: 1, alignItems: 'center', gap: 6 },
+  remainDivider: { width: StyleSheet.hairlineWidth, alignSelf: 'stretch', backgroundColor: BORDER },
+  remainNum: { fontFamily: fontFamily.extraLight, fontSize: 38, lineHeight: 42, color: GOLD, letterSpacing: -1 },
+  remainTime: { fontFamily: fontFamily.extraLight, fontSize: 38, lineHeight: 42, color: TEXT, letterSpacing: -1 },
+  remainColLabel: { fontFamily: fontFamily.medium, fontSize: 9, letterSpacing: 1.5, color: FAINT, textTransform: 'uppercase' },
 
   // participant list
   listCard: { backgroundColor: CARD_BG, borderRadius: 18, borderWidth: 1, borderColor: BORDER, padding: 18 },
