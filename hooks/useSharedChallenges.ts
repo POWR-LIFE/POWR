@@ -111,6 +111,15 @@ function mapChallengeRow(row: any): SharedChallenge {
   // show "1 / 3" rather than "33%". Pooled uses its own pool total instead.
   const rule = row.rule ?? {};
   const goalTarget = !isPooled && Number(rule.target) > 0 ? Number(rule.target) : undefined;
+  const goalRule = !isPooled && rule.kind
+    ? {
+        kind: String(rule.kind),
+        category: typeof rule.category === 'string' ? rule.category : undefined,
+        metric: rule.metric === 'steps' || rule.metric === 'distance_m' ? rule.metric : undefined,
+        threshold: Number(rule.threshold) > 0 ? Number(rule.threshold) : undefined,
+        window: rule.window === 'morning' || rule.window === 'midday' || rule.window === 'evening' ? rule.window : undefined,
+      }
+    : undefined;
 
   return {
     id: row.id,
@@ -144,6 +153,7 @@ function mapChallengeRow(row: any): SharedChallenge {
       self?.state === 'invited' ? creator?.friend.displayName ?? 'A friend' : undefined,
     pool,
     goalTarget,
+    goalRule,
     dismissedAt: row.dismissed_at ?? null,
   };
 }
