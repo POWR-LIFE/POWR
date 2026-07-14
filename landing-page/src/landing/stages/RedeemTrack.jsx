@@ -1,5 +1,6 @@
 import { motion, motionValue, useAnimationFrame, useScroll, useTransform } from 'framer-motion';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { storageImage } from '../../lib/storage';
 import { supabase } from '../../lib/supabase';
 import Ion from '../Ionicon';
 import { pg, t, w } from '../theme';
@@ -30,6 +31,17 @@ const FALLBACK = [
 
 /* The WHOLE live catalogue, one reward per brand. Duplicate brand rows are
    merged rather than dropped so the richest copy/colour wins. */
+
+/* Card-scale copies of the brand art. The vault paints eight posters at once
+   while the stage is scrolling, so the originals — press-resolution, ~19MB and
+   150MB+ of decoded bitmap between them — land as multi-second decode stalls
+   exactly as you scroll in. Bounds the longest side; the posters keep their
+   own aspect ratios so object-fit crops them exactly as it does at full res.
+   One hero size serves both the poster and the featured card, so the showcase
+   piece reuses the poster's decode instead of fetching its own. */
+const HERO_MAX = 1280; // featured card is 420x540 CSS — covers it at ~2x DPR
+const LOGO_MAX = 128; //  largest chip is 54px CSS — covers it at ~2x DPR
+
 /* "15% OFF" / "£10 OFF" from the reward's structured discount columns */
 function discountLabel(type, value) {
   const v = parseFloat(value);
@@ -72,8 +84,8 @@ async function fetchLiveRewards() {
       flash,
       item,
       pts: r.powr_cost,
-      logo: r.image_url || partner?.logo_url || null,
-      heroImage: r.hero_image_url || null,
+      logo: storageImage(r.image_url || partner?.logo_url || null, LOGO_MAX),
+      heroImage: storageImage(r.hero_image_url || null, HERO_MAX),
       heroVideo: r.hero_video_url || null,
       initial: brand[0].toUpperCase(),
       tint: tint || t.accent,
@@ -325,6 +337,7 @@ function PosterCard({ reward, width, height, imgX }) {
             objectFit: 'cover', x: imgX,
           }}
           loading="lazy"
+          decoding="async"
         />
       )}
       {/* Scrim so the identity block pops */}
@@ -396,7 +409,7 @@ function LogoBox({ reward, size, radius }) {
       }}
     >
       {reward.logo ? (
-        <img src={reward.logo} alt={reward.name} style={{ width: '100%', height: '100%', objectFit: 'contain' }} loading="lazy" />
+        <img src={reward.logo} alt={reward.name} style={{ width: '100%', height: '100%', objectFit: 'contain' }} loading="lazy" decoding="async" />
       ) : (
         reward.initial
       )}
@@ -623,6 +636,7 @@ function FeaturedFace({ reward, fillX, labelColor, sheenX, sheenOpacity }) {
         <img
           src={reward.heroImage} alt="" aria-hidden="true"
           style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+          decoding="async"
         />
       )}
       <div
