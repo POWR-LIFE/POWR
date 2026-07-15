@@ -37,12 +37,28 @@ const ACTIONS = REVEAL + 700;
 const EMBLEM = 148;
 const BAR_W = 168;
 
+/**
+ * How hard the moment should hit, derived from the jump itself:
+ * - standard — an ordinary level within the same tier: the badge dissolves
+ *   through, few particles, no overshoot. Frequent, so it stays calm.
+ * - tier — first level of a new tier (6 / 11 / 16): the full explosion.
+ * - apex — level 20. Everything, in gold.
+ */
+export type Graduation = 'standard' | 'tier' | 'apex';
+
+export function levelUpGraduation(fromLevel: number, toLevel: number): Graduation {
+  const from = LEVELS.find(l => l.level === fromLevel) ?? LEVELS[0];
+  const to = LEVELS.find(l => l.level === toLevel) ?? LEVELS[LEVELS.length - 1];
+  if (to.level >= LEVELS[LEVELS.length - 1].level) return 'apex';
+  return to.tier !== from.tier ? 'tier' : 'standard';
+}
+
 // ─── Particles — fired at the flash, tinted to the new level ─────────────────
-function Particle({ colors }: { colors: string[] }) {
+function Particle({ colors, spread }: { colors: string[]; spread: number }) {
   const progress = useSharedValue(0);
   const { tx, ty, color, size, round, delay, dur } = useMemo(() => {
     const angle = Math.random() * 360;
-    const dist = 70 + Math.random() * 140;
+    const dist = (70 + Math.random() * 140) * spread;
     return {
       tx: Math.cos((angle * Math.PI) / 180) * dist,
       ty: Math.sin((angle * Math.PI) / 180) * dist - 40,
@@ -52,7 +68,7 @@ function Particle({ colors }: { colors: string[] }) {
       delay: FLASH + Math.random() * 200,
       dur: 650 + Math.random() * 550,
     };
-  }, [colors]);
+  }, [colors, spread]);
 
   useEffect(() => {
     progress.value = withDelay(delay, withTiming(1, { duration: dur, easing: Easing.out(Easing.quad) }));
@@ -115,6 +131,8 @@ export interface LevelUpCelebrationProps {
   toLevel: number;
   /** Lifetime XP the user was last seen at — sets the charge bar's start. */
   fromXp: number;
+  /** Current lifetime XP — shows how far into the next level the user already is. */
+  totalEarned?: number;
   onDone: () => void;
   onShare?: () => void;
 }
@@ -125,11 +143,29 @@ export interface LevelUpCelebrationProps {
  * name and tier. One-shot — mount it when useLevelUp reports a pending
  * level-up, unmount via onDone.
  */
-export function LevelUpCelebration({ fromLevel, toLevel, fromXp, onDone, onShare }: LevelUpCelebrationProps) {
+export function LevelUpCelebration({ fromLevel, toLevel, fromXp, totalEarned, onDone, onShare }: LevelUpCelebrationProps) {
   const fromDef: LevelDef = LEVELS.find(l => l.level === fromLevel) ?? LEVELS[0];
   const toDef: LevelDef = LEVELS.find(l => l.level === toLevel) ?? LEVELS[LEVELS.length - 1];
   const accent = toDef.textColor === '#FFFFFF' ? GOLD : toDef.textColor;
   const tier = TIER_META[toDef.tier];
+
+  const graduation = levelUpGraduation(fromLevel, toLevel);
+  const explosive = graduation !== 'standard';
+  const kickerText =
+    graduation === 'apex' ? 'MAX LEVEL'
+    : graduation === 'tier' ? `NEW TIER — ${tier.label}`
+    : 'LEVEL UP';
+  const particleCount = graduation === 'apex' ? 44 : graduation === 'tier' ? 30 : 12;
+  const particleSpread = explosive ? 1 : 0.6;
+
+  // Where the user already stands inside the fresh level — the "keep going" line.
+  const nextDef = LEVELS.find(l => l.level === toLevel + 1);
+  const ptsToNext = nextDef && typeof totalEarned === 'number'
+    ? Math.max(0, nextDef.xpMin - totalEarned)
+    : null;
+  const nextPct = nextDef && typeof totalEarned === 'number'
+    ? Math.min(1, Math.max(0, (totalEarned - toDef.xpMin) / Math.max(1, nextDef.xpMin - toDef.xpMin)))
+    : 0;
 
   // Charge from the user's real position in the old level to its boundary.
   const gateXp = (LEVELS.find(l => l.level === fromLevel + 1) ?? toDef).xpMin;
@@ -165,14 +201,22 @@ export function LevelUpCelebration({ fromLevel, toLevel, fromXp, onDone, onShare
     ), -1, false);
 
     // Charge: ease in — the bar accelerates into the boundary.
+    const flashImpact = explosive ? Haptics.ImpactFeedbackStyle.Heavy : Haptics.ImpactFeedbackStyle.Medium;
     bar.value = withDelay(CHARGE_START, withTiming(1, { duration: CHARGE_MS, easing: Easing.in(Easing.cubic) }, (finished) => {
-      if (finished) runOnJS(Haptics.impactAsync)(Haptics.ImpactFeedbackStyle.Heavy);
+      if (finished) runOnJS(Haptics.impactAsync)(flashImpact);
     }));
     sweep.value = withDelay(CHARGE_START, withRepeat(withTiming(1, { duration: 520, easing: Easing.inOut(Easing.quad) }), -1, false));
 
-    // Flash: charge chrome dissolves, artwork swaps with an overshoot landing.
+    // Flash: charge chrome dissolves, then the artwork changes hands.
+    // Tier/apex jumps land with a back-eased overshoot; ordinary levels
+    // dissolve through — same beat, half the drama.
     chargeBlock.value = withDelay(FLASH, withTiming(0, { duration: 260 }));
-    swap.value = withDelay(FLASH + 120, withTiming(1, { duration: 620, easing: Easing.out(Easing.back(1.7)) }));
+    swap.value = withDelay(
+      FLASH + 120,
+      explosive
+        ? withTiming(1, { duration: 620, easing: Easing.out(Easing.back(1.7)) })
+        : withTiming(1, { duration: 680, easing: Easing.inOut(Easing.cubic) }),
+    );
 
     // Reveal cascade.
     kickerA.value = withDelay(REVEAL, withTiming(1, { duration: 420 }));
@@ -206,14 +250,17 @@ export function LevelUpCelebration({ fromLevel, toLevel, fromXp, onDone, onShare
     // swap overshoots past 1 (back easing), so clamp the fade-out floor
     opacity: (0.4 + oldLogo.value * 0.6) * Math.max(0, 1 - swap.value),
     transform: [
-      { scale: (0.92 + oldLogo.value * 0.08) * (1 + swap.value * 0.25) },
+      // Explosive: the old badge blows outward. Standard: it recedes.
+      { scale: (0.92 + oldLogo.value * 0.08) * (explosive ? 1 + swap.value * 0.25 : 1 - swap.value * 0.06) },
       { translateY: float.value },
     ],
   }));
   const newLogoStyle = useAnimatedStyle(() => ({
-    opacity: Math.min(1, swap.value * 1.6),
+    opacity: Math.min(1, swap.value * (explosive ? 1.6 : 1.4)),
     transform: [
-      { scale: 0.3 + swap.value * 0.7 },
+      // Explosive: grows in from small with overshoot. Standard: settles down
+      // from slightly large, like a breath.
+      { scale: explosive ? 0.3 + swap.value * 0.7 : 1.06 - swap.value * 0.06 },
       { translateY: float.value },
     ],
   }));
@@ -249,13 +296,18 @@ export function LevelUpCelebration({ fromLevel, toLevel, fromXp, onDone, onShare
           <View style={[styles.glowDisc, { width: 210, height: 210, borderRadius: 105, opacity: 0.38, backgroundColor: accent }]} />
         </Animated.View>
 
-        <BurstRing delay={0} color={GOLD} opacity={0.9} />
-        <BurstRing delay={140} color={accent} opacity={0.55} />
-        <BurstRing delay={300} color={GOLD} opacity={0.3} />
-        {Array.from({ length: 30 }).map((_, i) => <Particle key={i} colors={particleColors} />)}
+        <BurstRing delay={0} color={GOLD} opacity={explosive ? 0.9 : 0.4} />
+        {explosive && <BurstRing delay={140} color={accent} opacity={0.55} />}
+        {explosive && <BurstRing delay={300} color={GOLD} opacity={0.3} />}
+        {graduation === 'apex' && <BurstRing delay={460} color={GOLD} opacity={0.25} />}
+        {Array.from({ length: particleCount }).map((_, i) => (
+          <Particle key={i} colors={particleColors} spread={particleSpread} />
+        ))}
 
         {/* Kicker sits above the emblem, appearing only after the flash */}
-        <Animated.Text style={[styles.kicker, kickerStyle]}>LEVEL UP</Animated.Text>
+        <Animated.Text style={[styles.kicker, explosive && { color: accent }, kickerStyle]}>
+          {kickerText}
+        </Animated.Text>
 
         {/* Emblem: old artwork charges, new artwork lands over it */}
         <View style={styles.emblem}>
@@ -296,6 +348,23 @@ export function LevelUpCelebration({ fromLevel, toLevel, fromXp, onDone, onShare
           <Animated.View style={[styles.tierPill, { borderColor: toDef.pill.border, backgroundColor: toDef.pill.bg }, pillStyle]}>
             <Text style={[styles.tierPillText, { color: toDef.pill.text }]}>{tier.label}</Text>
           </Animated.View>
+
+          {/* The road ahead — where this level's journey to the next begins */}
+          {nextDef && ptsToNext !== null ? (
+            <Animated.View style={[styles.nextBlock, actionsStyle]}>
+              <View style={styles.nextTrack}>
+                <View style={[styles.nextFill, { width: `${Math.max(2, Math.round(nextPct * 100))}%`, backgroundColor: accent }]} />
+              </View>
+              <Text style={styles.nextText}>
+                <Text style={[styles.nextPts, { color: accent }]}>{ptsToNext.toLocaleString()}</Text>
+                {` pts to ${nextDef.name}`}
+              </Text>
+            </Animated.View>
+          ) : graduation === 'apex' ? (
+            <Animated.Text style={[styles.nextText, styles.apexText, actionsStyle]}>
+              Top of the mountain. Nothing left to unlock.
+            </Animated.Text>
+          ) : null}
         </View>
 
         <Animated.View style={[styles.actions, actionsStyle]}>
@@ -446,6 +515,34 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.medium,
     fontSize: 10,
     letterSpacing: 2,
+  },
+  nextBlock: {
+    alignItems: 'center',
+    marginTop: 22,
+    gap: 8,
+  },
+  nextTrack: {
+    width: 130,
+    height: 3,
+    borderRadius: 1.5,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    overflow: 'hidden',
+  },
+  nextFill: {
+    height: '100%',
+    borderRadius: 1.5,
+  },
+  nextText: {
+    fontFamily: fontFamily.light,
+    fontSize: 12,
+    color: SECONDARY,
+    letterSpacing: 0.3,
+  },
+  nextPts: {
+    fontFamily: fontFamily.medium,
+  },
+  apexText: {
+    marginTop: 22,
   },
 
   actions: {

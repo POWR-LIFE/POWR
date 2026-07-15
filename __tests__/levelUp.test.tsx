@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 
+import { levelUpGraduation } from '@/components/LevelUpCelebration';
 import { useLevelUp } from '@/hooks/useLevelUp';
 
 const mockUser: { id: string; email: string } = { id: 'me', email: 'someone@example.com' };
@@ -73,6 +74,17 @@ describe('useLevelUp', () => {
       expect(JSON.parse((await AsyncStorage.getItem(KEY))!)).toEqual({ level: 1, totalEarned: 480 });
     });
     expect(result.current.pending).toBeNull();
+  });
+
+  it('grades the celebration by the significance of the jump', () => {
+    expect(levelUpGraduation(1, 2)).toBe('standard');   // within recruit
+    expect(levelUpGraduation(6, 7)).toBe('standard');   // within athlete
+    expect(levelUpGraduation(5, 6)).toBe('tier');       // recruit → athlete
+    expect(levelUpGraduation(10, 11)).toBe('tier');     // athlete → elite
+    expect(levelUpGraduation(15, 16)).toBe('tier');     // elite → legend
+    expect(levelUpGraduation(4, 8)).toBe('tier');       // multi-level jump across a tier line
+    expect(levelUpGraduation(19, 20)).toBe('apex');     // Goggins
+    expect(levelUpGraduation(14, 20)).toBe('apex');     // apex wins over tier
   });
 
   it('preview only works for the dev test account', async () => {

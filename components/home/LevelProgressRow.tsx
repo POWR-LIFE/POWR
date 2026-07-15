@@ -120,9 +120,9 @@ export function LevelProgressRow({ totalEarned, onPress, onLongPress }: Props) {
           )}
         </View>
         {next ? (
-          <Text style={styles.ptsText}>
+          <Text style={styles.ptsText} numberOfLines={1}>
             <Text style={styles.ptsNum}>{ptsToNext.toLocaleString()}</Text>
-            {' pts to next level'}
+            {nearLevel ? ` pts to ${next.name} — almost there` : ' pts to next level'}
           </Text>
         ) : (
           <Text style={styles.ptsText}>You&apos;ve reached the top</Text>

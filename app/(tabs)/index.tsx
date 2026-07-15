@@ -752,6 +752,7 @@ export default function HomeScreen() {
                     fromLevel={pendingLevelUp.fromLevel}
                     toLevel={pendingLevelUp.toLevel}
                     fromXp={pendingLevelUp.fromXp}
+                    totalEarned={totalEarned}
                     onDone={ackLevelUp}
                     onShare={() => {
                         ackLevelUp();
