@@ -6,6 +6,7 @@
 import type { ActivityType } from '@/constants/activities';
 import {
   applyDetectedActivitySwap,
+  orderedProgressActivities,
   WEEKLY_SESSION_TARGET,
   WEEKLY_STEPS_TARGET,
   weeklyRingPct,
@@ -73,5 +74,31 @@ describe('applyDetectedActivitySwap', () => {
     const res = applyDetectedActivitySwap([], metrics({ swimming: 1 }));
     expect(res.types).toEqual([]);
     expect(res.bonusType).toBeNull();
+  });
+});
+
+describe('orderedProgressActivities', () => {
+  it('returns just the prefs, in pref order, when nothing else was detected', () => {
+    expect(orderedProgressActivities(PREFS, metrics({}))).toEqual(['gym', 'running', 'walking']);
+  });
+
+  it('appends every detected activity after the prefs — nothing capped or folded', () => {
+    expect(orderedProgressActivities(PREFS, metrics({ swimming: 3, hiit: 1, dance: 2 })))
+      .toEqual(['gym', 'running', 'walking', 'swimming', 'dance', 'hiit']);
+  });
+
+  it('ranks detected extras by weekly progress (strongest first)', () => {
+    expect(orderedProgressActivities(PREFS, metrics({ hiit: 1, swimming: 4 })))
+      .toEqual(['gym', 'running', 'walking', 'swimming', 'hiit']);
+  });
+
+  it('never surfaces sleep or unknown session types as an activity', () => {
+    expect(orderedProgressActivities(PREFS, metrics({ sleep: 5, bogus: 3 } as any)))
+      .toEqual(['gym', 'running', 'walking']);
+  });
+
+  it('dedups a detected type already in the prefs', () => {
+    expect(orderedProgressActivities(PREFS, metrics({ gym: 2, swimming: 1 })))
+      .toEqual(['gym', 'running', 'walking', 'swimming']);
   });
 });

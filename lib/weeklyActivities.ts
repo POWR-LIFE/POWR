@@ -22,6 +22,34 @@ export function weeklyRingPct(type: ActivityType, metrics: WeeklyMetricsLike): n
   return Math.min((metrics.perType[type] ?? 0) / WEEKLY_SESSION_TARGET, 2);
 }
 
+/**
+ * Ordered activity list for the Progress screen: the user's preferences lead
+ * (always shown, even at zero — they opted to track them), then every other
+ * activity detected with sessions this week, ranked by weekly progress. Every
+ * entry gets its own radial + breakdown page; the Progress tab bar scrolls
+ * when there are more than fit on screen, so nothing is capped or folded.
+ */
+export function orderedProgressActivities(
+  prefs: ActivityType[],
+  metrics: WeeklyMetricsLike,
+): ActivityType[] {
+  const seen = new Set<ActivityType>();
+  const ordered: ActivityType[] = [];
+  for (const p of prefs) {
+    if (ACTIVITIES[p] && !seen.has(p)) { seen.add(p); ordered.push(p); }
+  }
+  const extras = (Object.keys(metrics.perType) as ActivityType[])
+    .filter(type =>
+      !seen.has(type) &&
+      (metrics.perType[type] ?? 0) > 0 &&
+      // Sessions can carry types with no ring UI (e.g. sleep, which has its
+      // own dedicated surface) — never give those an activity tab.
+      !!ACTIVITIES[type] && !ACTIVITIES[type].hideFromPicker,
+    )
+    .sort((a, b) => weeklyRingPct(b, metrics) - weeklyRingPct(a, metrics));
+  return [...ordered, ...extras];
+}
+
 export function applyDetectedActivitySwap(
   prefs: ActivityType[],
   metrics: WeeklyMetricsLike,

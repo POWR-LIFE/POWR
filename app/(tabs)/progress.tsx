@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -27,8 +28,7 @@ import { usePoints } from '@/hooks/usePoints';
 import { useWalkingProgress } from '@/hooks/useWalkingProgress';
 import { fetchWeeklySleepHours } from '@/lib/api/activity';
 import { fetchProfile } from '@/lib/api/user';
-import { ALL_PROVIDER_META } from '@/lib/health/providers';
-import { applyDetectedActivitySwap } from '@/lib/weeklyActivities';
+import { orderedProgressActivities } from '@/lib/weeklyActivities';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -41,6 +41,8 @@ const MUTED   = 'rgba(255,255,255,0.25)';
 
 const DAY_LABELS  = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const TODAY_INDEX = new Date().getDay() === 0 ? 6 : new Date().getDay() - 1;
+/** Max breakdown tab labels visible at once — more tabs and the bar scrolls. */
+const VISIBLE_TABS = 4;
 type Period = 'D' | 'W' | 'M';
 
 // Fallback when no real sleep data is available yet
@@ -63,13 +65,15 @@ export default function ProgressScreen() {
   const health = useHealthData();
   const { activeId, rows, refresh: refreshProviders } = useHealthProviders();
   const isNativeProvider = !activeId || activeId === 'apple-health' || activeId === 'health-connect';
-  // Sleep is wearable-only: require the user to have explicitly connected a native health
-  // platform (apple-health / health-connect) or a third-party provider with sleep support.
-  // A null activeId means no wearable has been set up, so sleep should not be shown.
+  // Sleep needs a wearable that actually tracks it — a bare phone doesn't, so
+  // for native providers (apple-health / health-connect, whose meta lists the
+  // 'sleep' capability regardless) the proof is real sleep data this week
+  // (only a watch/ring writing to the store produces it). Cloud wearables with
+  // sleep support count as soon as they're connected, before data arrives.
+  const hasSleepData = sleepHrs.some(h => h > 0);
   const hasSleepTrackingConnected =
-    ((activeId === 'apple-health' || activeId === 'health-connect') && health.isAuthorized) ||
-    rows.some((row) => !!row.connection && row.meta.capabilities.includes('sleep')) ||
-    (!!activeId && ALL_PROVIDER_META.some((meta) => meta.id === activeId && meta.capabilities.includes('sleep')));
+    hasSleepData ||
+    rows.some((row) => !!row.connection && !row.meta.native && row.meta.capabilities.includes('sleep'));
 
   // Fetch real sleep data from synced activity sessions
   const loadSleep = useCallback(async () => {
@@ -154,10 +158,10 @@ export default function ProgressScreen() {
     if (tab) setActiveTab(tab);
   }, [tab]);
   
-  // Mirror the home screen: if health data detected an activity outside the
-  // user's 3 preferences, swap it in for the weakest preference so both
-  // surfaces show the same 3 activities.
-  const { types: displayTypes } = applyDetectedActivitySwap(activePrefs, weeklyMetrics);
+  // Show the user's preferences plus any activity they actually did this week
+  // — each gets its own radial and breakdown page. The tab bar scrolls (4
+  // labels visible at a time) so multi-sport users lose nothing.
+  const displayTypes = orderedProgressActivities(activePrefs, weeklyMetrics);
 
   // Build dynamic radial data
   const radialData = displayTypes.map((type) => {
@@ -323,6 +327,27 @@ function BreakdownSection({
   const currentIndexRef = useRef(0);
   const isSyncingRef = useRef(false);
 
+  // Tab bar shows at most 4 labels at once; with more tabs it scrolls and
+  // follows the active tab so the selection is always in view. Edge chevrons
+  // appear only on the side(s) with more tabs off-screen.
+  const tabBarRef = useRef<ScrollView>(null);
+  const [barWidth, setBarWidth] = useState(0);
+  const [tabScrollX, setTabScrollX] = useState(0);
+  const tabsScroll = tabs.length > VISIBLE_TABS;
+  const tabWidth = tabsScroll && barWidth ? barWidth / VISIBLE_TABS : undefined;
+  const tabContentW = (tabWidth ?? 0) * tabs.length;
+  const canScrollLeft  = tabsScroll && tabScrollX > 2;
+  const canScrollRight = tabsScroll && barWidth > 0 && tabScrollX < tabContentW - barWidth - 2;
+
+  useEffect(() => {
+    if (!tabsScroll || !barWidth) return;
+    const w = barWidth / VISIBLE_TABS;
+    const maxX = tabs.length * w - barWidth;
+    // Centre the active tab where possible, clamped to the strip's ends.
+    const x = Math.max(0, Math.min(activeIndex * w - (barWidth - w) / 2, maxX));
+    tabBarRef.current?.scrollTo({ x, animated: true });
+  }, [activeIndex, barWidth, tabsScroll, tabs.length]);
+
   useEffect(() => {
     if (!pageWidth) return;
     const index = Math.max(0, Math.min(tabs.length - 1, activeIndex));
@@ -346,17 +371,43 @@ function BreakdownSection({
 
   return (
     <View style={styles.breakdownCard}>
-      <View style={styles.tabBar}>
-        {tabs.map(({ key, label }) => {
-          const isActive = activeTab === key;
-          const index = tabs.findIndex(tab => tab.key === key);
-          return (
-            <Pressable key={key} style={styles.tabItem} onPress={() => onIndexChange(index)}>
-              <Text style={[styles.tabLabel, isActive && styles.tabLabelActive]}>{label}</Text>
-              {isActive && <View style={styles.tabIndicator} />}
-            </Pressable>
-          );
-        })}
+      <View style={styles.tabBarWrap}>
+        <ScrollView
+          ref={tabBarRef}
+          horizontal
+          scrollEnabled={tabsScroll}
+          showsHorizontalScrollIndicator={false}
+          style={styles.tabBar}
+          contentContainerStyle={styles.tabBarContent}
+          onLayout={(e) => setBarWidth(e.nativeEvent.layout.width)}
+          onScroll={(e) => setTabScrollX(e.nativeEvent.contentOffset.x)}
+          scrollEventThrottle={32}
+        >
+          {tabs.map(({ key, label }) => {
+            const isActive = activeTab === key;
+            const index = tabs.findIndex(tab => tab.key === key);
+            return (
+              <Pressable
+                key={key}
+                style={[styles.tabItem, tabWidth ? { width: tabWidth } : styles.tabItemFlex]}
+                onPress={() => onIndexChange(index)}
+              >
+                <Text style={[styles.tabLabel, isActive && styles.tabLabelActive]}>{label}</Text>
+                {isActive && <View style={styles.tabIndicator} />}
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+        {canScrollLeft && (
+          <View style={[styles.tabArrow, styles.tabArrowLeft]} pointerEvents="none">
+            <Ionicons name="chevron-back" size={11} color="rgba(255,255,255,0.45)" />
+          </View>
+        )}
+        {canScrollRight && (
+          <View style={[styles.tabArrow, styles.tabArrowRight]} pointerEvents="none">
+            <Ionicons name="chevron-forward" size={11} color="rgba(255,255,255,0.45)" />
+          </View>
+        )}
       </View>
 
       <View
@@ -420,13 +471,25 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
 
+  tabBarWrap: { position: 'relative' },
   tabBar: {
-    flexDirection: 'row',
+    flexGrow: 0,
     borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.07)',
   },
-  tabItem: {
-    flex: 1, alignItems: 'center', paddingVertical: 13, position: 'relative',
+  // Scroll-affordance chevrons — shown only on the side(s) with hidden tabs.
+  tabArrow: {
+    position: 'absolute', top: 0, bottom: 1,
+    justifyContent: 'center', paddingHorizontal: 3,
   },
+  tabArrowLeft:  { left: 0 },
+  tabArrowRight: { right: 0 },
+  // Lets ≤4 tabs spread across the full bar via tabItemFlex; with more tabs
+  // each item takes a fixed quarter-width and the bar scrolls.
+  tabBarContent: { flexGrow: 1 },
+  tabItem: {
+    alignItems: 'center', paddingVertical: 13, position: 'relative',
+  },
+  tabItemFlex: { flex: 1 },
   tabLabel: {
     fontSize: 9, fontWeight: '500', letterSpacing: 1.5, color: MUTED,
   },
