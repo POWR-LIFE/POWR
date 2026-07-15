@@ -194,6 +194,9 @@ function renderStatus(summary: ShareSummary): { label: string; dotColor: string 
   if (summary.mode === 'challenge') {
     return { label: 'Challenge Complete', dotColor: GREEN };
   }
+  if (summary.mode === 'level-up') {
+    return { label: 'Level Up', dotColor: GOLD };
+  }
   return getStreakStatus(summary.currentStreak);
 }
 
@@ -226,12 +229,37 @@ function renderStatsRow(summary: ShareSummary): StatColProps[] {
     return [
       { label: 'SESSION', value: summary.durationMin.toString(), unit: 'min' },
       { label: 'TOTAL', value: summary.lifetimeCount.toString(), unit: 'visits' },
-      {
-        label: 'STREAK',
-        value: summary.currentStreak.toString(),
-        unit: 'days',
-        valueColor: summary.currentStreak > 0 ? GOLD : TEXT,
-      },
+      // Throwbacks can't reconstruct "streak as of then", so they flex the
+      // session's own points instead.
+      summary.historical
+        ? {
+            label: 'EARNED',
+            value: `+${summary.sessionPoints.toLocaleString()}`,
+            unit: 'pts',
+            valueColor: GOLD,
+          }
+        : {
+            label: 'STREAK',
+            value: summary.currentStreak.toString(),
+            unit: 'days',
+            valueColor: summary.currentStreak > 0 ? GOLD : TEXT,
+          },
+    ];
+  }
+  if (summary.mode === 'level-up') {
+    const { current } = getLevelInfo(summary.totalEarned);
+    return [
+      { label: 'LEVEL', value: current.level.toString(), valueColor: GOLD },
+      { label: 'LIFETIME', value: summary.totalEarned.toLocaleString(), unit: 'pts' },
+      // Streak history isn't stored, so throwbacks show sessions-to-date instead.
+      summary.historical
+        ? { label: 'TOTAL', value: summary.lifetimeCount.toString(), unit: 'sessions' }
+        : {
+            label: 'STREAK',
+            value: summary.currentStreak.toString(),
+            unit: 'days',
+            valueColor: summary.currentStreak > 0 ? GOLD : TEXT,
+          },
     ];
   }
   if (summary.mode === 'challenge') {

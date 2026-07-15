@@ -15,6 +15,7 @@ import { fontFamily } from '@/constants/tokens';
 import { durationLabel, useSharedChallenges } from '@/hooks/useSharedChallenges';
 import { earnedPoints, maxBonusForGroup } from '@/lib/social/bonus';
 import { dailyMilestoneHint, progressUnit } from '@/lib/social/challengeProgress';
+import { buildSharedChallengeShareInput } from '@/lib/social/share';
 import type { IconSpec, Participant, SharedChallenge } from '@/lib/social/types';
 
 // ─── Palette ──────────────────────────────────────────────────────────────────
@@ -597,7 +598,18 @@ export default function SharedChallengeDetail() {
         <SharedChallengeCelebration
           challenge={challenge}
           onDone={() => setShowCelebration(false)}
-          onShare={handleShare}
+          // The completion brag is a share CARD; the header share stays the
+          // plain-text "join me" invite.
+          onShare={() => {
+            setShowCelebration(false);
+            router.push({
+              pathname: '/share-stats',
+              params: {
+                mode: 'challenge',
+                challenge: JSON.stringify(buildSharedChallengeShareInput(challenge)),
+              },
+            });
+          }}
         />
       )}
 

@@ -19,7 +19,7 @@ import { captureRef } from 'react-native-view-shot';
 
 import { ShareCard } from '@/components/share/ShareCard';
 import { LEVEL_IMAGE, getLevelInfo } from '@/constants/levels';
-import { buildShareMessage, fetchAutoSummary, fetchChallengeSummary, fetchCheckInSummary, publishShareCard, type ShareSummary } from '@/lib/api/share';
+import { buildShareMessage, fetchAutoSummary, fetchChallengeSummary, fetchCheckInSummary, fetchLevelUpSummary, publishShareCard, type ShareSummary } from '@/lib/api/share';
 
 const GOLD  = '#E8D200';
 const BG    = '#0d0d0d';
@@ -37,7 +37,7 @@ const MUTED = 'rgba(255,255,255,0.25)';
 const OG_IMAGE_WIDTH  = 720;
 const OG_IMAGE_HEIGHT = 1280;
 
-type Mode   = 'check-in' | 'streak' | 'challenge';
+type Mode   = 'check-in' | 'streak' | 'challenge' | 'level-up';
 type BgMode = 'cover' | 'level' | 'gallery';
 
 const BG_OPTIONS: { key: BgMode; icon: React.ComponentProps<typeof Ionicons>['name']; label: string }[] = [
@@ -76,24 +76,34 @@ function ActionButton({ icon, label, onPress, loading, disabled, primary }: {
 export default function ShareStatsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const params = useLocalSearchParams<{ mode?: string; sessionId?: string; challenge?: string }>();
+  const params = useLocalSearchParams<{ mode?: string; sessionId?: string; challenge?: string; historical?: string; asOf?: string }>();
   const mode: Mode =
-    params.mode === 'check-in' ? 'check-in' : params.mode === 'challenge' ? 'challenge' : 'streak';
+    params.mode === 'check-in' ? 'check-in'
+    : params.mode === 'challenge' ? 'challenge'
+    : params.mode === 'level-up' ? 'level-up'
+    : 'streak';
 
   const cardRef = useRef<View>(null);
   const [summary, setSummary]     = useState<ShareSummary | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [notice, setNotice]       = useState<string | null>(null);
   const [busy, setBusy]           = useState<'share' | 'save' | null>(null);
-  const [bgMode, setBgMode]       = useState<BgMode>('cover');
+  // A level-up share is about the new mark — lead with it.
+  const [bgMode, setBgMode]       = useState<BgMode>(mode === 'level-up' ? 'level' : 'cover');
   const [galleryUri, setGalleryUri] = useState<string | null>(null);
 
   useEffect(() => {
     if (mode === 'check-in') {
       if (!params.sessionId) { setLoadError('No session specified.'); return; }
-      fetchCheckInSummary(params.sessionId)
+      fetchCheckInSummary(params.sessionId, { historical: params.historical === '1' })
         .then(setSummary)
         .catch((e: unknown) => setLoadError(e instanceof Error ? e.message : 'Could not load this check-in.'));
+    } else if (mode === 'level-up') {
+      // asOf = a past level-up from the points-history row; absent = the live one
+      const asOf = params.asOf ? new Date(params.asOf) : undefined;
+      fetchLevelUpSummary(asOf && Number.isFinite(asOf.getTime()) ? { asOf } : undefined)
+        .then(setSummary)
+        .catch((e: unknown) => setLoadError(e instanceof Error ? e.message : 'Could not load your level.'));
     } else if (mode === 'challenge') {
       if (!params.challenge) { setLoadError('No challenge specified.'); return; }
       let challenge;
@@ -111,7 +121,7 @@ export default function ShareStatsScreen() {
         .then(setSummary)
         .catch((e: unknown) => setLoadError(e instanceof Error ? e.message : 'Could not load your stats.'));
     }
-  }, [mode, params.sessionId, params.challenge]);
+  }, [mode, params.sessionId, params.challenge, params.historical, params.asOf]);
 
   // Warm the level artwork before the user can pick it — captureRef would
   // otherwise snapshot an empty tile if they tap Share while it's still loading.
@@ -219,8 +229,9 @@ export default function ShareStatsScreen() {
   }
 
   const headerTitle =
-    mode === 'check-in' ? 'Share check-in'
+    mode === 'check-in' ? (params.historical === '1' ? 'Share session' : 'Share check-in')
     : mode === 'challenge' ? 'Share challenge'
+    : mode === 'level-up' ? 'Share your level'
     : 'Share your streak';
 
   return (

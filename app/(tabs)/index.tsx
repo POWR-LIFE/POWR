@@ -756,7 +756,7 @@ export default function HomeScreen() {
                     onDone={ackLevelUp}
                     onShare={() => {
                         ackLevelUp();
-                        router.push('/share-stats');
+                        router.push({ pathname: '/share-stats', params: { mode: 'level-up' } });
                     }}
                 />
             )}
