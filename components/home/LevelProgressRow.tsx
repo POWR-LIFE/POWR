@@ -1,6 +1,17 @@
 import { LinearGradient } from 'expo-linear-gradient';
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import Animated, {
+  Easing,
+  cancelAnimation,
+  interpolate,
+  useAnimatedStyle,
+  useSharedValue,
+  withDelay,
+  withRepeat,
+  withSequence,
+  withTiming,
+} from 'react-native-reanimated';
 
 import { LevelIcon } from '@/components/LevelIcon';
 import { LEVEL_IMAGE, getLevelInfo } from '@/constants/levels';
@@ -15,19 +26,53 @@ const GLYPH_SIZE = 34;
 const CHIP = 22;
 const CHIP_HANG = 6;
 
+/** Fraction of the level at which the bar starts hinting the level-up. */
+const NEAR_LEVEL_PCT = 0.92;
+
 interface Props {
   totalEarned: number;
   onPress: () => void;
+  onLongPress?: () => void;
 }
 
-export function LevelProgressRow({ totalEarned, onPress }: Props) {
+export function LevelProgressRow({ totalEarned, onPress, onLongPress }: Props) {
   const { current, next, xpIntoLevel, xpForLevel } = getLevelInfo(totalEarned);
   const pct = xpForLevel > 0 ? Math.min(xpIntoLevel / xpForLevel, 1) : 1;
   const ptsToNext = xpForLevel - xpIntoLevel;
 
+  // "Almost there" anticipation: once the bar is nearly full, a soft highlight
+  // sweeps along it every few seconds — quiet foreshadowing of the level-up.
+  const nearLevel = !!next && pct >= NEAR_LEVEL_PCT;
+  const [trackW, setTrackW] = useState(0);
+  const sweep = useSharedValue(0);
+
+  useEffect(() => {
+    if (nearLevel && trackW > 0) {
+      sweep.value = 0;
+      sweep.value = withRepeat(
+        withSequence(
+          withDelay(2400, withTiming(1, { duration: 1000, easing: Easing.inOut(Easing.quad) })),
+          withTiming(0, { duration: 0 }),
+        ),
+        -1,
+        false,
+      );
+    } else {
+      cancelAnimation(sweep);
+      sweep.value = 0;
+    }
+    return () => cancelAnimation(sweep);
+  }, [nearLevel, trackW, sweep]);
+
+  const sweepStyle = useAnimatedStyle(() => ({
+    opacity: sweep.value === 0 || sweep.value === 1 ? 0 : 1,
+    transform: [{ translateX: interpolate(sweep.value, [0, 1], [-36, trackW]) }],
+  }));
+
   return (
     <Pressable
       onPress={onPress}
+      onLongPress={onLongPress}
       style={({ pressed }) => [styles.row, pressed && { opacity: 0.8, transform: [{ scale: 0.99 }] }]}
     >
       <LinearGradient
@@ -58,8 +103,21 @@ export function LevelProgressRow({ totalEarned, onPress }: Props) {
       {/* Right: name + bar + pts */}
       <View style={styles.right}>
         <Text style={styles.levelName}>{current.name}</Text>
-        <View style={styles.barTrack}>
+        <View
+          style={styles.barTrack}
+          onLayout={(e) => setTrackW(e.nativeEvent.layout.width)}
+        >
           <View style={[styles.barFill, { width: `${Math.round(pct * 100)}%` }]} />
+          {nearLevel && (
+            <Animated.View pointerEvents="none" style={[styles.barSweep, sweepStyle]}>
+              <LinearGradient
+                colors={['rgba(255,255,255,0)', 'rgba(255,255,255,0.45)', 'rgba(255,255,255,0)']}
+                start={{ x: 0, y: 0.5 }}
+                end={{ x: 1, y: 0.5 }}
+                style={StyleSheet.absoluteFillObject}
+              />
+            </Animated.View>
+          )}
         </View>
         {next ? (
           <Text style={styles.ptsText}>
@@ -157,6 +215,12 @@ const styles = StyleSheet.create({
     height: '100%',
     borderRadius: 2,
     backgroundColor: GOLD,
+  },
+  barSweep: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    width: 36,
   },
   ptsText: {
     fontSize: 11,

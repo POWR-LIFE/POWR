@@ -18,6 +18,7 @@ import { ChallengeCard } from '@/components/home/ChallengeCard';
 import { TogetherSection } from '@/components/home/TogetherSection';
 import { RewardCard } from '@/components/home/RewardCard';
 import { LevelProgressRow } from '@/components/home/LevelProgressRow';
+import { LevelUpCelebration } from '@/components/LevelUpCelebration';
 import { GeometricBackground } from '@/components/home/GeometricBackground';
 import { StickyActivityIndicators } from '@/components/home/StickyActivityIndicators';
 import { StreakCard } from '@/components/home/StreakCard';
@@ -34,6 +35,7 @@ import { getGymDwellMs, getGymUpgradeMinutes, getGymUpgradeMs } from '@/lib/gymD
 import { useActiveGeofence } from '@/hooks/useActiveGeofence';
 import { useActivity } from '@/hooks/useActivity';
 import { useHealthData } from '@/hooks/useHealthData';
+import { useLevelUp } from '@/hooks/useLevelUp';
 import { usePoints } from '@/hooks/usePoints';
 import { useStreak } from '@/hooks/useStreak';
 import { fetchSmartFeaturedReward, type Reward } from '@/lib/api/rewards';
@@ -109,6 +111,7 @@ export default function HomeScreen() {
     const { recentItems, weekActiveDays, weeklyMetrics, dailyMetrics, refresh: refreshActivity } = useActivity();
     const { balance, totalEarned, weeklyEarned, refresh: refreshPoints } = usePoints();
     const { activeGeofence, sessionCompleted, clearSessionCompleted } = useActiveGeofence();
+    const { pending: pendingLevelUp, ack: ackLevelUp, preview: previewLevelUp } = useLevelUp();
     const { partners } = useGeofenceContext();
     const [devMsg, setDevMsg] = useState<string | null>(null);
 
@@ -591,6 +594,7 @@ export default function HomeScreen() {
                 <LevelProgressRow
                     totalEarned={totalEarned}
                     onPress={() => router.push('/achievements')}
+                    onLongPress={previewLevelUp}
                 />
 
                 {/* Shared "together" challenges — the social hero band. Sits above
@@ -740,6 +744,21 @@ export default function HomeScreen() {
                 + ≥1 session banked + pacing), and yields to the notification
                 sheet so the two never stack. Fixes silent no-earning in pocket. */}
             <LocationPrimeSheet />
+
+            {/* Level-up moment — one-shot, surfaces when lifetime points cross
+                a level boundary (useLevelUp persists the last celebrated level). */}
+            {pendingLevelUp && (
+                <LevelUpCelebration
+                    fromLevel={pendingLevelUp.fromLevel}
+                    toLevel={pendingLevelUp.toLevel}
+                    fromXp={pendingLevelUp.fromXp}
+                    onDone={ackLevelUp}
+                    onShare={() => {
+                        ackLevelUp();
+                        router.push('/share-stats');
+                    }}
+                />
+            )}
         </View>
     );
 }

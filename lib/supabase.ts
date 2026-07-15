@@ -1,6 +1,6 @@
 import * as SecureStore from 'expo-secure-store';
 import { createClient, type User } from '@supabase/supabase-js';
-import { AppState } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import 'react-native-url-polyfill/auto';
 
 const FALLBACK_SUPABASE_URL = 'https://wjvvujnicwkruaeibttt.supabase.co';
@@ -25,6 +25,17 @@ const secureStoreAdapter = {
 };
 
 /**
+ * expo-secure-store has no web implementation, so `expo start --web` (used for
+ * quick UI passes in a browser) crashed on the first session read. localStorage
+ * is the supabase-js default on web; the keychain adapter stays for devices.
+ */
+const webStorageAdapter = {
+    getItem: (key: string) => Promise.resolve(globalThis.localStorage?.getItem(key) ?? null),
+    setItem: (key: string, value: string) => { globalThis.localStorage?.setItem(key, value); return Promise.resolve(); },
+    removeItem: (key: string) => { globalThis.localStorage?.removeItem(key); return Promise.resolve(); },
+};
+
+/**
  * Where password-recovery emails land. We route through the public smart-link
  * page (https://powr.life/app) rather than a raw `powr://` scheme so the link is
  * tappable in every mail client and falls back to the store if the app isn't
@@ -34,7 +45,7 @@ export const PASSWORD_RESET_REDIRECT = 'https://powr.life/app?to=reset-password'
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     auth: {
-        storage: secureStoreAdapter,
+        storage: Platform.OS === 'web' ? webStorageAdapter : secureStoreAdapter,
         autoRefreshToken: true,
         persistSession: true,
         detectSessionInUrl: false,

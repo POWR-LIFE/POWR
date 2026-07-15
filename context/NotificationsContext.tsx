@@ -9,7 +9,7 @@ import React, {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
 import { useRouter } from 'expo-router';
-import { AppState, AppStateStatus } from 'react-native';
+import { AppState, AppStateStatus, Platform } from 'react-native';
 import { useAuth } from '@/context/AuthContext';
 // STATIC, side-effecting import — do NOT make this lazy. The module's top-level
 // TaskManager.defineTask() is what gives the wake-up push somewhere to land, and
@@ -404,6 +404,9 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   // addNotificationResponseReceivedListener does not fire for cold starts on iOS;
   // getLastNotificationResponseAsync is the only way to get that response.
   useEffect(() => {
+    // Not implemented on web (expo start --web) — calling it throws and takes
+    // the whole tree down; there is no push cold-start on web anyway.
+    if (Platform.OS === 'web') return;
     if (authLoading || !user?.id || coldStartHandled.current) return;
     coldStartHandled.current = true;
 
