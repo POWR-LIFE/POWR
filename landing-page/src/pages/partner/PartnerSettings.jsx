@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
 import { useAuth } from '../../App';
 import { Key } from 'lucide-react';
+import BrandAccessPanel from '../../components/BrandAccessPanel';
 
 const INPUT = "w-full h-14 px-5 bg-white border border-[#E6E6E1] rounded-2xl text-sm text-[#1A1A1A] placeholder-[#BBBBBB] focus:border-[#E8D200]/50 outline-none transition-all font-['Outfit']";
 
@@ -71,6 +72,11 @@ export default function PartnerSettings() {
                         Your logo and imagery live on each reward listing — edit them from My Rewards via "Edit Listing".
                     </p>
                 </div>
+            </div>
+
+            {/* Team — invite/remove portal logins for this brand */}
+            <div className="mb-6">
+                <BrandAccessPanel brandName={partnerData.brand_name} partnerView selfUserId={user?.id} />
             </div>
 
             {/* Account / password */}

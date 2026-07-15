@@ -8,7 +8,11 @@ import { useToast } from '../lib/toast';
 // logins for a single reward brand (rewards.brand_name — no link to the
 // partners/gyms table): mint single-use setup links, list users, revoke access.
 // This is the non-modal sibling of BrandPortalAccess.jsx.
-export default function BrandAccessPanel({ brandName }) {
+//
+// Also rendered partner-side in /partner/settings: pass partnerView for
+// team-voice copy and selfUserId to mark the signed-in user (who can't remove
+// their own access — the edge fn enforces that too).
+export default function BrandAccessPanel({ brandName, partnerView = false, selfUserId = null }) {
     const toast = useToast();
     const [users, setUsers] = useState([]);
     const [invites, setInvites] = useState([]);
@@ -132,17 +136,17 @@ export default function BrandAccessPanel({ brandName }) {
             {/* Header */}
             <div className="flex items-center justify-between px-8 pt-8 pb-4">
                 <div className="flex items-center gap-4">
-                    <KeyRound size={16} className="text-[#8a7600]" />
-                    <span className="text-[10px] uppercase tracking-[0.4em] text-[#333333] font-black">Portal Logins</span>
-                    <span className="text-[9px] uppercase tracking-[0.3em] text-[#AAAAAA] font-black ml-1">— {brandName}</span>
+                    {partnerView ? <Users size={16} className="text-[#8a7600]" /> : <KeyRound size={16} className="text-[#8a7600]" />}
+                    <span className="text-[10px] uppercase tracking-[0.4em] text-[#333333] font-black">{partnerView ? 'Team' : 'Portal Logins'}</span>
+                    {!partnerView && <span className="text-[9px] uppercase tracking-[0.3em] text-[#AAAAAA] font-black ml-1">— {brandName}</span>}
                 </div>
             </div>
 
             <div className="px-8 pb-8 space-y-6">
                 <p className="text-[11px] text-[#AAAAAA] font-black leading-relaxed">
-                    Give this brand logins for the self-service portal at /partner. Email them an invite
-                    or copy a setup link to send yourself — either way they choose their own email and
-                    password. Add as many as you like; each gets its own login.
+                    {partnerView
+                        ? `Invite teammates to manage ${brandName} with you. Email them an invite or copy a setup link to share — either way they choose their own email and password.`
+                        : 'Give this brand logins for the self-service portal at /partner. Email them an invite or copy a setup link to send yourself — either way they choose their own email and password. Add as many as you like; each gets its own login.'}
                 </p>
 
                 {/* Invite by email */}
@@ -218,7 +222,7 @@ export default function BrandAccessPanel({ brandName }) {
                         {/* Users */}
                         <div className="space-y-3">
                             <span className="text-[9px] uppercase tracking-[0.4em] text-[#BBBBBB] font-black flex items-center gap-2">
-                                <Users size={11} /> Portal Users
+                                <Users size={11} /> {partnerView ? 'Team Members' : 'Portal Users'}
                             </span>
                             {users.length === 0 ? (
                                 <div className="py-6 text-center border border-dashed border-[#E6E6E1] rounded-2xl">
@@ -230,19 +234,26 @@ export default function BrandAccessPanel({ brandName }) {
                                         {u.confirmed ? <CheckCircle size={16} className="text-[#10B981]" /> : <AlertCircle size={16} className="text-[#E8D200]" />}
                                     </div>
                                     <div className="flex-1 min-w-0">
-                                        <div className="text-[12px] font-bold text-[#222] truncate">{u.email}</div>
+                                        <div className="flex items-center gap-2 min-w-0">
+                                            <div className="text-[12px] font-bold text-[#222] truncate">{u.email}</div>
+                                            {u.user_id === selfUserId && (
+                                                <span className="px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.3em] bg-[#1A1A1A] text-white rounded-full shrink-0">You</span>
+                                            )}
+                                        </div>
                                         <div className="text-[9px] uppercase tracking-[0.3em] text-[#BBB] font-black mt-0.5">
                                             {u.confirmed ? `Last login: ${timeAgo(u.last_sign_in)}` : 'Invite pending'}
                                         </div>
                                     </div>
-                                    <button
-                                        type="button"
-                                        onClick={() => handleRemove(u.user_id)}
-                                        disabled={removingId === u.user_id}
-                                        className="opacity-0 group-hover:opacity-100 h-8 px-4 text-[9px] font-black uppercase tracking-[0.2em] text-red-500/60 hover:text-red-500 border border-transparent hover:border-red-500/20 rounded-full transition-all"
-                                    >
-                                        {removingId === u.user_id ? '...' : 'Revoke'}
-                                    </button>
+                                    {u.user_id !== selfUserId && (
+                                        <button
+                                            type="button"
+                                            onClick={() => handleRemove(u.user_id)}
+                                            disabled={removingId === u.user_id}
+                                            className="opacity-0 group-hover:opacity-100 h-8 px-4 text-[9px] font-black uppercase tracking-[0.2em] text-red-500/60 hover:text-red-500 border border-transparent hover:border-red-500/20 rounded-full transition-all"
+                                        >
+                                            {removingId === u.user_id ? '...' : 'Revoke'}
+                                        </button>
+                                    )}
                                 </div>
                             ))}
                         </div>
