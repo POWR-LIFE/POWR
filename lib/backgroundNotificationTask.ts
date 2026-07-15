@@ -71,11 +71,16 @@ TaskManager.defineTask(BACKGROUND_NOTIFICATION_TASK, async ({ data, error }) => 
 });
 
 /** Registers the task so data-only pushes are delivered while backgrounded/closed.
- *  Safe to call repeatedly. */
+ *  Registration is UNCONDITIONAL on purpose — never guard it behind
+ *  isTaskRegisteredAsync. Task registration persists natively, so after an OTA
+ *  restart-prompt reload (Updates.reloadAsync — new JS context, same process)
+ *  the guard reported "already registered" and skipped the call, leaving the
+ *  delivery binding wired to the DEAD context: FCM accepted the wakes but the
+ *  task never ran until the next cold start (field-caught 2026-07-15, ~05:44Z —
+ *  a gym session straight after an accepted update prompt got zero wakes).
+ *  registerTaskAsync is idempotent, so re-registering on every boot is free. */
 export async function registerBackgroundNotificationTask(): Promise<void> {
   try {
-    const already = await TaskManager.isTaskRegisteredAsync(BACKGROUND_NOTIFICATION_TASK).catch(() => false);
-    if (already) return;
     await Notifications.registerTaskAsync(BACKGROUND_NOTIFICATION_TASK);
     console.log('[BackgroundNotification] task registered.');
   } catch (err) {
