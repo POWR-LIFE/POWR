@@ -2,15 +2,19 @@ import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { TimeStepper } from '@/components/progress/TimeStepper';
 import { ACTIVITIES, type ActivityType } from '@/constants/activities';
 import {
     fetchMonthlyActivityData,
     fetchRecentWorkoutHistory,
     fetchTodayActivityDetail,
+    fetchWeekActivityData,
     type DailyWorkoutHistory,
     type MonthlyActivityData,
     type TodayActivityDetail,
+    type WeekActivityData,
 } from '@/lib/api/activity';
+import { dayAnchor, monthAnchorEnd, weekAnchorMonday } from '@/lib/progressLookback';
 
 // ─── Design tokens (match progress.tsx) ──────────────────────────────────────
 
@@ -65,13 +69,14 @@ function formatDuration(mins: number): string {
 
 // ─── Day View ────────────────────────────────────────────────────────────────
 
-function WorkoutDayView({ type, data }: { type: ActivityType; data: TodayActivityDetail | null }) {
+function WorkoutDayView({ type, data, offset }: { type: ActivityType; data: TodayActivityDetail | null; offset: number }) {
   const config = ACTIVITIES[type];
+  const isToday = offset === 0;
   const [history, setHistory] = useState<DailyWorkoutHistory[]>([]);
 
   useEffect(() => {
-    fetchRecentWorkoutHistory(type, 5).then(setHistory).catch(() => {});
-  }, [type]);
+    fetchRecentWorkoutHistory(type, 5, offset === 0 ? undefined : dayAnchor(offset)).then(setHistory).catch(() => {});
+  }, [type, offset]);
 
   const hasToday = data && data.sessionCount > 0;
   const hasHistory = history.some(d => d.sessions > 0);
@@ -81,14 +86,16 @@ function WorkoutDayView({ type, data }: { type: ActivityType; data: TodayActivit
       {!hasToday ? (
         <View style={styles.emptyState}>
           <Ionicons name={config.icon as any} size={28} color={MUTED} />
-          <Text style={styles.emptyText}>No {config.label.toLowerCase()} session today.</Text>
-          <Text style={styles.emptySubtext}>Complete a session to see your daily stats.</Text>
+          <Text style={styles.emptyText}>No {config.label.toLowerCase()} session {isToday ? 'today' : 'on this day'}.</Text>
+          <Text style={styles.emptySubtext}>
+            {isToday ? 'Complete a session to see your daily stats.' : 'Nothing was logged on this date.'}
+          </Text>
         </View>
       ) : (
         <>
           <View style={styles.bigMetricRow}>
             <View style={styles.bigMetric}>
-              <Text style={styles.bigMetricSup}>TODAY'S {config.labelShort.toUpperCase()}</Text>
+              <Text style={styles.bigMetricSup}>{isToday ? "TODAY'S " : ''}{config.labelShort.toUpperCase()}</Text>
               <Text style={[styles.bigMetricVal, { color: config.colour }]}>
                 {data!.sessionCount}
               </Text>
@@ -105,7 +112,7 @@ function WorkoutDayView({ type, data }: { type: ActivityType; data: TodayActivit
               <Text style={[styles.bigMetricVal, { color: GOLD }]}>
                 {data!.totalPoints > 0 ? data!.totalPoints : '—'}
               </Text>
-              <Text style={styles.bigMetricMax}>today</Text>
+              <Text style={styles.bigMetricMax}>{isToday ? 'today' : 'this day'}</Text>
             </View>
           </View>
 
@@ -113,8 +120,10 @@ function WorkoutDayView({ type, data }: { type: ActivityType; data: TodayActivit
             <Ionicons name={config.iconActive as any} size={12} color={config.colour} />
             <Text style={[styles.insightText, { color: DIM }]}>
               {data!.totalDurationMin >= 45
-                ? `Great ${config.label.toLowerCase()} session today.`
-                : `${config.label} session logged — keep the momentum going.`}
+                ? `Great ${config.label.toLowerCase()} session${isToday ? ' today' : ''}.`
+                : isToday
+                ? `${config.label} session logged — keep the momentum going.`
+                : `${config.label} session logged.`}
             </Text>
           </View>
         </>
@@ -123,7 +132,7 @@ function WorkoutDayView({ type, data }: { type: ActivityType; data: TodayActivit
       {hasHistory && (
         <>
           <View style={styles.tabSep} />
-          <Text style={styles.tabSubLabel}>RECENT DAYS</Text>
+          <Text style={styles.tabSubLabel}>{isToday ? 'RECENT DAYS' : 'PREVIOUS DAYS'}</Text>
           {history.map((day) => {
             const d = new Date(day.date + 'T00:00:00');
             const dayName = d.toLocaleDateString('en-GB', { weekday: 'short' });
@@ -153,22 +162,26 @@ function WorkoutDayView({ type, data }: { type: ActivityType; data: TodayActivit
 // ─── Week View ───────────────────────────────────────────────────────────────
 
 function WorkoutWeekView({
-  type, count, weekActiveDays, weeklyEarned,
+  type, count, weekActiveDays, weeklyEarned, isCurrentWeek,
 }: {
   type: ActivityType;
   count: number;
   weekActiveDays: boolean[];
   weeklyEarned: number;
+  isCurrentWeek: boolean;
 }) {
   const config = ACTIVITIES[type];
   const sessionPct = Math.min(count / 5, 1);
   const capPct = config.dailyCap > 0 ? Math.min(weeklyEarned / (config.dailyCap * 5), 1) : sessionPct;
 
-  // Compute current streak (consecutive active days ending at today)
+  // Compute current streak (consecutive active days ending at today) — only
+  // meaningful when looking at the current week.
   let streak = 0;
-  for (let i = TODAY_INDEX; i >= 0; i--) {
-    if (weekActiveDays[i]) streak++;
-    else break;
+  if (isCurrentWeek) {
+    for (let i = TODAY_INDEX; i >= 0; i--) {
+      if (weekActiveDays[i]) streak++;
+      else break;
+    }
   }
   const activeDays = weekActiveDays.filter(Boolean).length;
 
@@ -187,7 +200,7 @@ function WorkoutWeekView({
         <View style={styles.bigMetric}>
           <Text style={styles.bigMetricSup}>POWR EARNED</Text>
           <Text style={[styles.bigMetricVal, { color: GOLD }]}>{weeklyEarned > 0 ? weeklyEarned : '—'}</Text>
-          <Text style={styles.bigMetricMax}>from this week</Text>
+          <Text style={styles.bigMetricMax}>from {isCurrentWeek ? 'this' : 'that'} week</Text>
           <View style={styles.metricBar}>
             <View style={[styles.metricBarFill, { width: `${Math.round(capPct * 100)}%` as any, backgroundColor: GOLD }]} />
           </View>
@@ -196,12 +209,12 @@ function WorkoutWeekView({
 
       <View style={styles.tabSep} />
 
-      <Text style={styles.tabSubLabel}>THIS WEEK</Text>
+      <Text style={styles.tabSubLabel}>{isCurrentWeek ? 'THIS WEEK' : 'DAY BY DAY'}</Text>
       <View style={styles.weekBarChart}>
         {DAY_LABELS.map((day, i) => {
           const active   = weekActiveDays[i];
-          const isToday  = i === TODAY_INDEX;
-          const isFuture = i > TODAY_INDEX;
+          const isToday  = isCurrentWeek && i === TODAY_INDEX;
+          const isFuture = isCurrentWeek && i > TODAY_INDEX;
           const barColor = isToday ? config.colour : `${config.colour}80`;
           return (
             <View key={i} style={styles.weekBarCol}>
@@ -228,7 +241,7 @@ function WorkoutWeekView({
       {activeDays > 0 && streak < 2 && (
         <View style={styles.insightRow}>
           <Ionicons name={config.iconActive as any} size={12} color={config.colour} />
-          <Text style={styles.insightText}>{activeDays} day{activeDays !== 1 ? 's' : ''} active this week.</Text>
+          <Text style={styles.insightText}>{activeDays} day{activeDays !== 1 ? 's' : ''} active {isCurrentWeek ? 'this' : 'that'} week.</Text>
         </View>
       )}
 
@@ -242,8 +255,10 @@ function WorkoutWeekView({
           {count >= 4
             ? `Outstanding ${config.label.toLowerCase()} week.`
             : count >= 3
-            ? 'Solid effort — keep going to hit your goal.'
-            : `${5 - count} more sessions to hit your target.`}
+            ? isCurrentWeek ? 'Solid effort — keep going to hit your goal.' : 'Solid week of training.'
+            : isCurrentWeek
+            ? `${5 - count} more sessions to hit your target.`
+            : `${count} of 5 sessions that week.`}
         </Text>
       </View>
     </View>
@@ -288,9 +303,6 @@ function WorkoutMonthView({ type, data }: { type: ActivityType; data: MonthlyAct
   const gridStart = new Date(firstDate);
   gridStart.setDate(gridStart.getDate() + mondayOffset);
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
   const lookup = new Map<string, number>();
   for (const e of data.entries) lookup.set(e.date, e.sessionCount);
 
@@ -298,7 +310,7 @@ function WorkoutMonthView({ type, data }: { type: ActivityType; data: MonthlyAct
   let cursor = new Date(gridStart);
   const lastEntry = new Date(data.entries[data.entries.length - 1].date + 'T00:00:00');
 
-  while (cursor <= lastEntry || cursor <= today) {
+  while (cursor <= lastEntry) {
     const row: { date: string; count: number; inRange: boolean }[] = [];
     for (let col = 0; col < 7; col++) {
       const dateKey = cursor.toISOString().split('T')[0];
@@ -376,6 +388,8 @@ export function WorkoutsTab({
   weeklyEarned,
   period,
   onPeriodChange,
+  offset,
+  onOffsetChange,
 }: {
   type: ActivityType;
   count: number;
@@ -383,20 +397,27 @@ export function WorkoutsTab({
   weeklyEarned: number;
   period: Period;
   onPeriodChange: (p: Period) => void;
+  offset: number;
+  onOffsetChange: (offset: number) => void;
 }) {
   const config = ACTIVITIES[type];
+  const isCurrent = offset === 0;
   const [dayData, setDayData] = useState<TodayActivityDetail | null>(null);
+  const [weekData, setWeekData] = useState<WeekActivityData | null>(null);
   const [monthData, setMonthData] = useState<MonthlyActivityData | null>(null);
   const [dayLoaded, setDayLoaded] = useState(false);
+  const [weekLoaded, setWeekLoaded] = useState(false);
   const [monthLoaded, setMonthLoaded] = useState(false);
 
-  // Reset loaded state when type changes
+  // Reset loaded state when type or lookback offset changes
   useEffect(() => {
     setDayLoaded(false);
+    setWeekLoaded(false);
     setMonthLoaded(false);
     setDayData(null);
+    setWeekData(null);
     setMonthData(null);
-  }, [type]);
+  }, [type, offset]);
 
   // Load day data reactively
   useEffect(() => {
@@ -405,7 +426,7 @@ export function WorkoutsTab({
 
     (async () => {
       try {
-        const result = await fetchTodayActivityDetail(type);
+        const result = await fetchTodayActivityDetail(type, offset === 0 ? undefined : dayAnchor(offset));
         if (!cancelled) {
           setDayData(result);
           setDayLoaded(true);
@@ -420,7 +441,31 @@ export function WorkoutsTab({
     })();
 
     return () => { cancelled = true; };
-  }, [period, dayLoaded, type]);
+  }, [period, dayLoaded, type, offset]);
+
+  // Load past-week data reactively (the current week comes from live hooks)
+  useEffect(() => {
+    if (period !== 'W' || offset === 0 || weekLoaded) return;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const result = await fetchWeekActivityData(type, weekAnchorMonday(offset));
+        if (!cancelled) {
+          setWeekData(result);
+          setWeekLoaded(true);
+        }
+      } catch (err) {
+        console.error('[WorkoutsTab] Error loading week data:', err);
+        if (!cancelled) {
+          setWeekData(null);
+          setWeekLoaded(true);
+        }
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [period, weekLoaded, type, offset]);
 
   // Load month data reactively
   useEffect(() => {
@@ -429,7 +474,7 @@ export function WorkoutsTab({
 
     (async () => {
       try {
-        const result = await fetchMonthlyActivityData(type);
+        const result = await fetchMonthlyActivityData(type, offset === 0 ? undefined : monthAnchorEnd(offset));
         if (!cancelled) {
           setMonthData(result);
           setMonthLoaded(true);
@@ -444,21 +489,23 @@ export function WorkoutsTab({
     })();
 
     return () => { cancelled = true; };
-  }, [period, monthLoaded, type]);
+  }, [period, monthLoaded, type, offset]);
 
   return (
     <View style={styles.tabPanel}>
       <PillToggle value={period} onChange={onPeriodChange} colour={config.colour} />
+      <TimeStepper period={period} offset={offset} onOffsetChange={onOffsetChange} />
 
       {period === 'D' && (
-        <WorkoutDayView type={type} data={dayData} />
+        <WorkoutDayView type={type} data={dayData} offset={offset} />
       )}
       {period === 'W' && (
         <WorkoutWeekView
           type={type}
-          count={count}
-          weekActiveDays={weekActiveDays}
-          weeklyEarned={weeklyEarned}
+          count={isCurrent ? count : weekData?.sessionCount ?? 0}
+          weekActiveDays={isCurrent ? weekActiveDays : weekData?.activeDays ?? [false, false, false, false, false, false, false]}
+          weeklyEarned={isCurrent ? weeklyEarned : weekData?.points ?? 0}
+          isCurrentWeek={isCurrent}
         />
       )}
       {period === 'M' && (

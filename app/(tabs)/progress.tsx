@@ -152,6 +152,13 @@ export default function ProgressScreen() {
 
   const [activeTab, setActiveTab] = useState<string>(tab || '');
   const [period, setPeriod] = useState<Period>('M');
+  // Lookback offset for the breakdown views: 0 = current day/week/month,
+  // -1 = previous, … Resets when the period granularity changes.
+  const [lookback, setLookback] = useState(0);
+  const handlePeriodChange = useCallback((p: Period) => {
+    setPeriod(p);
+    setLookback(0);
+  }, []);
 
   // Sync activeTab when navigating back with a different tab param
   useEffect(() => {
@@ -277,13 +284,15 @@ export default function ProgressScreen() {
         />
 
         {/* ── Breakdown Tabs ─────────────────────────────── */}
-        <Text style={styles.sectionLabel}>THIS WEEK</Text>
+        <Text style={styles.sectionLabel}>BREAKDOWN</Text>
         <BreakdownSection
           activeTab={activeTab}
           activeIndex={activeIndex >= 0 ? activeIndex : 0}
           onIndexChange={handleIndexChange}
           period={period}
-          onPeriodChange={setPeriod}
+          onPeriodChange={handlePeriodChange}
+          lookback={lookback}
+          onLookbackChange={setLookback}
           tabs={radialData.map(d => ({ key: d.id, label: ACTIVITIES[d.id as ActivityType]?.labelShort.toUpperCase() || d.id.toUpperCase() }))}
           walking={walking}
           weeklyMetrics={weeklyMetrics}
@@ -306,13 +315,15 @@ export default function ProgressScreen() {
 type BreakdownTabItem = { key: string; label: string };
 
 function BreakdownSection({
-  activeTab, activeIndex, onIndexChange, period, onPeriodChange, tabs, walking, weeklyMetrics, stepsF, weekActiveDays, weeklyEarned, sleepHrs, sleepBedtimes,
+  activeTab, activeIndex, onIndexChange, period, onPeriodChange, lookback, onLookbackChange, tabs, walking, weeklyMetrics, stepsF, weekActiveDays, weeklyEarned, sleepHrs, sleepBedtimes,
 }: {
   activeTab: string;
   activeIndex: number;
   onIndexChange: (index: number) => void;
   period: Period;
   onPeriodChange: (period: Period) => void;
+  lookback: number;
+  onLookbackChange: (offset: number) => void;
   tabs: BreakdownTabItem[];
   walking: ReturnType<typeof useWalkingProgress>;
   weeklyMetrics: any;
@@ -433,6 +444,8 @@ function BreakdownSection({
                   weekActiveDays={weekActiveDays}
                   period={period}
                   onPeriodChange={onPeriodChange}
+                  offset={lookback}
+                  onOffsetChange={onLookbackChange}
                 />
               )}
               {key !== 'walking' && key !== 'sleep' && (
@@ -443,6 +456,8 @@ function BreakdownSection({
                   weeklyEarned={weeklyEarned}
                   period={period}
                   onPeriodChange={onPeriodChange}
+                  offset={lookback}
+                  onOffsetChange={onLookbackChange}
                 />
               )}
               {key === 'sleep' && <SleepTab sleepHrs={sleepHrs} sleepBedtimes={sleepBedtimes} />}
