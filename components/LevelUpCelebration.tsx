@@ -2,7 +2,7 @@ import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useEffect, useMemo } from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import Animated, {
   Easing,
   cancelAnimation,
@@ -51,6 +51,113 @@ export function levelUpGraduation(fromLevel: number, toLevel: number): Graduatio
   const to = LEVELS.find(l => l.level === toLevel) ?? LEVELS[LEVELS.length - 1];
   if (to.level >= LEVELS[LEVELS.length - 1].level) return 'apex';
   return to.tier !== from.tier ? 'tier' : 'standard';
+}
+
+// ─── Shatter — the old badge breaks apart and the debris stays down ──────────
+// The artwork is sliced into a GRID×GRID board of clipped tiles that together
+// render the intact logo until the flash. Then each tile flies on its own
+// precomputed ballistic arc — out, down, one damped bounce — and rests on the
+// "floor" near the bottom of the screen until the overlay is dismissed.
+const SHATTER_GRID = 5;
+const SHATTER_TOTAL_S = 2.6;
+const GRAVITY = 2400; // px/s²
+
+interface ShardSpec {
+  left: number; top: number;      // tile origin inside the emblem
+  delay: number;
+  // Horizontal motion is drag-limited: x(t) = xMax·(1 − e^(−k·t)), so every
+  // piece bursts out fast but decelerates and stays on screen.
+  xMax: number; k: number;
+  tLand: number; rotLand: number;
+  tBounce: number; vLand: number; e: number;
+  rotRest: number;
+  vy: number; rotSpeed: number;
+  floorDist: number;
+}
+
+function buildShards(emblem: number, floorBase: number, windowW: number): ShardSpec[] {
+  const cell = emblem / SHATTER_GRID;
+  const specs: ShardSpec[] = [];
+  // Furthest a piece may drift sideways and still rest on screen.
+  const xBound = Math.max(60, windowW / 2 - 70);
+  for (let row = 0; row < SHATTER_GRID; row++) {
+    for (let col = 0; col < SHATTER_GRID; col++) {
+      // Direction: away from the emblem centre, with an upward pop so pieces
+      // arc before they drop.
+      const cx = (col + 0.5) * cell - emblem / 2;
+      const cy = (row + 0.5) * cell - emblem / 2;
+      const norm = Math.max(1, Math.hypot(cx, cy));
+      const xDir = cx === 0 ? (Math.random() < 0.5 ? -1 : 1) : Math.sign(cx);
+      const xMax = xDir * Math.min(xBound, (24 + Math.random() * 150) * (0.5 + Math.abs(cx) / (emblem / 2)));
+      const burstSpeed = 300 + Math.random() * 500;      // initial |dx/dt|
+      const k = burstSpeed / Math.max(24, Math.abs(xMax));
+      const vy = (cy / norm) * 260 - (240 + Math.random() * 360); // up-bias
+      // Fall distance is measured from each tile's own origin, so subtract the
+      // row offset — otherwise lower rows land a full emblem-height deeper.
+      const floorDist = floorBase - row * cell + Math.random() * 46;
+      // Ballistics, solved up-front so the UI-thread worklet only branches.
+      const tLand = (-vy + Math.sqrt(vy * vy + 2 * GRAVITY * floorDist)) / GRAVITY;
+      const vLand = vy + GRAVITY * tLand;
+      const e = 0.16 + Math.random() * 0.14; // restitution of the single bounce
+      const tBounce = (2 * e * vLand) / GRAVITY;
+      const rotSpeed = (Math.random() < 0.5 ? -1 : 1) * (90 + Math.random() * 280);
+      const rotLand = rotSpeed * tLand;
+      specs.push({
+        left: col * cell, top: row * cell,
+        delay: Math.random() * 90,
+        xMax, k, vy, rotSpeed, floorDist,
+        tLand, rotLand, vLand, e, tBounce,
+        rotRest: rotLand + rotSpeed * 0.25 * tBounce,
+      });
+    }
+  }
+  return specs;
+}
+
+function Shard({ spec, level, cell }: { spec: ShardSpec; level: number; cell: number }) {
+  const p = useSharedValue(0);
+  useEffect(() => {
+    p.value = withDelay(FLASH + spec.delay, withTiming(1, { duration: SHATTER_TOTAL_S * 1000, easing: Easing.linear }));
+  }, [p, spec.delay]);
+
+  const style = useAnimatedStyle(() => {
+    const t = p.value * SHATTER_TOTAL_S;
+    // Drag-limited horizontal drift runs through every phase; its motion after
+    // landing is asymptotically tiny, so no freeze is needed.
+    const x = t <= 0 ? 0 : spec.xMax * (1 - Math.exp(-spec.k * t));
+    let y: number, rot: number;
+    if (t <= 0) {
+      y = 0; rot = 0;
+    } else if (t <= spec.tLand) {
+      y = spec.vy * t + 0.5 * GRAVITY * t * t;
+      rot = spec.rotSpeed * t;
+    } else if (t <= spec.tLand + spec.tBounce) {
+      const tau = t - spec.tLand;
+      y = spec.floorDist - (spec.e * spec.vLand * tau - 0.5 * GRAVITY * tau * tau);
+      rot = spec.rotLand + spec.rotSpeed * 0.25 * tau;
+    } else {
+      y = spec.floorDist; rot = spec.rotRest;
+    }
+    return {
+      opacity: t > spec.tLand + spec.tBounce ? 0.85 : 1,
+      transform: [{ translateX: x }, { translateY: y }, { rotate: `${rot}deg` }],
+    };
+  });
+
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[
+        { position: 'absolute', left: spec.left, top: spec.top, width: cell, height: cell, overflow: 'hidden' },
+        style,
+      ]}
+    >
+      {/* Offset the full-size artwork so this tile shows only its own slice */}
+      <View style={{ marginLeft: -spec.left, marginTop: -spec.top }}>
+        <LevelIcon level={level} size={SHATTER_GRID * cell} color={GOLD} />
+      </View>
+    </Animated.View>
+  );
 }
 
 // ─── Particles — fired at the flash, tinted to the new level ─────────────────
@@ -174,6 +281,15 @@ export function LevelUpCelebration({ fromLevel, toLevel, fromXp, totalEarned, on
 
   const particleColors = useMemo(() => [GOLD, accent, '#F2F2F2'], [accent]);
 
+  // Shatter debris (tier/apex only): the floor sits near the bottom edge of
+  // the screen. The emblem centre lands around 34% of screen height, so this
+  // distance drops the pieces into the bottom ~5%.
+  const { height: windowH, width: windowW } = useWindowDimensions();
+  const shards = useMemo(
+    () => (explosive ? buildShards(EMBLEM, windowH * 0.58, windowW) : []),
+    [explosive, windowH, windowW],
+  );
+
   const bar = useSharedValue(fromPct);
   const chargeBlock = useSharedValue(1);   // bar + old name, fades at flash
   const sweep = useSharedValue(0);         // shimmer crossing the charging bar
@@ -250,10 +366,15 @@ export function LevelUpCelebration({ fromLevel, toLevel, fromXp, totalEarned, on
     // swap overshoots past 1 (back easing), so clamp the fade-out floor
     opacity: (0.4 + oldLogo.value * 0.6) * Math.max(0, 1 - swap.value),
     transform: [
-      // Explosive: the old badge blows outward. Standard: it recedes.
-      { scale: (0.92 + oldLogo.value * 0.08) * (explosive ? 1 + swap.value * 0.25 : 1 - swap.value * 0.06) },
+      { scale: (0.92 + oldLogo.value * 0.08) * (1 - swap.value * 0.06) },
       { translateY: float.value },
     ],
+  }));
+  // Shard board: carries the entrance only — the pieces themselves fly, and
+  // the board must NOT fade at the swap or the debris would vanish with it.
+  const shardBoardStyle = useAnimatedStyle(() => ({
+    opacity: 0.4 + oldLogo.value * 0.6,
+    transform: [{ scale: 0.92 + oldLogo.value * 0.08 }],
   }));
   const newLogoStyle = useAnimatedStyle(() => ({
     opacity: Math.min(1, swap.value * (explosive ? 1.6 : 1.4)),
@@ -309,12 +430,22 @@ export function LevelUpCelebration({ fromLevel, toLevel, fromXp, totalEarned, on
           {kickerText}
         </Animated.Text>
 
-        {/* Emblem: old artwork charges, new artwork lands over it */}
+        {/* Emblem: old artwork charges, new artwork lands over it. On
+            explosive grades the old badge is a shard board that blows apart
+            at the flash and leaves its pieces on the floor. */}
         <View style={styles.emblem}>
           <Animated.View style={[styles.halo, { borderColor: accent }, haloStyle]} />
-          <Animated.View style={[StyleSheet.absoluteFillObject, styles.emblemCenter, oldLogoStyle]}>
-            <LevelIcon level={fromLevel} size={LEVEL_IMAGE[fromLevel] ? EMBLEM : EMBLEM * 0.56} color={GOLD} />
-          </Animated.View>
+          {explosive ? (
+            <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFillObject, shardBoardStyle]}>
+              {shards.map((spec, i) => (
+                <Shard key={i} spec={spec} level={fromLevel} cell={EMBLEM / SHATTER_GRID} />
+              ))}
+            </Animated.View>
+          ) : (
+            <Animated.View style={[StyleSheet.absoluteFillObject, styles.emblemCenter, oldLogoStyle]}>
+              <LevelIcon level={fromLevel} size={LEVEL_IMAGE[fromLevel] ? EMBLEM : EMBLEM * 0.56} color={GOLD} />
+            </Animated.View>
+          )}
           <Animated.View style={[StyleSheet.absoluteFillObject, styles.emblemCenter, newLogoStyle]}>
             <LevelIcon level={toLevel} size={LEVEL_IMAGE[toLevel] ? EMBLEM : EMBLEM * 0.56} color={GOLD} />
           </Animated.View>
