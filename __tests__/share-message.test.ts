@@ -49,3 +49,35 @@ test('the shared message is the headline followed by the link, and nothing else'
 test('subtitle appends the get-the-app nudge for the link preview', () => {
     expect(buildShareSubtitle(base())).toMatch(/Tap to get POWR/);
 });
+
+function checkIn(overrides: Partial<ShareSummary> = {}): ShareSummary {
+    return base({
+        mode: 'check-in',
+        sessionId: 's1',
+        type: 'gym',
+        startedAt: '2026-06-20T18:30:00Z',
+        durationMin: 45,
+        sessionPoints: 12,
+        venue: { name: 'PureGym', locationLabel: null, category: 'gym' },
+        historical: false,
+        ...overrides,
+    } as Partial<ShareSummary>);
+}
+
+test('live check-in headline carries venue, detail and the streak', () => {
+    expect(buildShareHeadline(checkIn()))
+        .toBe('Checked in at PureGym on POWR — 45 min, +12 pts. Day 5 of my streak.');
+});
+
+test('historical check-in headline dates the session and drops the streak', () => {
+    // fetchCheckInSummary zeroes currentStreak on throwbacks; mirror that here.
+    // The date is device-locale formatted ("20 Jun" / "Jun 20"), so match loosely.
+    const headline = buildShareHeadline(checkIn({ historical: true, currentStreak: 0 }));
+    expect(headline).toMatch(/^Checked in at PureGym on POWR — (20 Jun|Jun 20), 45 min, \+12 pts\.$/);
+    expect(headline).not.toMatch(/streak/i);
+});
+
+test('level-up headline announces the new level by name', () => {
+    expect(buildShareHeadline(base({ mode: 'level-up' })))
+        .toBe('Just hit Level 7 — Iron Lungs — on POWR.');
+});

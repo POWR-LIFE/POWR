@@ -192,24 +192,38 @@ function TxBadges({ tx }: { tx: PointTransaction }) {
   );
 }
 
+/**
+ * A row a member can re-share as a session card: it must trace back to an
+ * actual session and represent points won, not spends, penalties, adjustments
+ * or the 0-pt capped streak rows.
+ */
+function isShareable(tx: PointTransaction): boolean {
+  return tx.session_id !== null && tx.amount > 0 && (tx.type === 'earn' || tx.type === 'bonus');
+}
+
 function TransactionRow({
   tx,
   isFirst,
   isLast,
+  onShare,
 }: {
   tx: PointTransaction;
   isFirst: boolean;
   isLast: boolean;
+  onShare?: () => void;
 }) {
   const isPositive = tx.amount > 0;
 
   return (
-    <View
-      style={[
+    <Pressable
+      onPress={onShare}
+      disabled={!onShare}
+      style={({ pressed }) => [
         styles.txRow,
         isFirst && styles.txRowFirst,
         isLast && styles.txRowLast,
         !isLast && styles.txRowBorder,
+        pressed && onShare && { opacity: 0.6 },
       ]}
     >
       <TxIcon tx={tx} />
@@ -228,7 +242,10 @@ function TransactionRow({
         </Text>
         <Text style={styles.txUnit}>POWR</Text>
       </View>
-    </View>
+      {onShare && (
+        <Ionicons name="share-social-outline" size={14} color={MUTED} style={styles.txShareHint} />
+      )}
+    </Pressable>
   );
 }
 
@@ -295,6 +312,15 @@ export default function PointsLedgerScreen() {
               tx={item}
               isFirst={index === 0}
               isLast={index === section.data.length - 1}
+              onShare={
+                isShareable(item)
+                  ? () =>
+                      router.push({
+                        pathname: '/share-stats',
+                        params: { mode: 'check-in', sessionId: item.session_id!, historical: '1' },
+                      })
+                  : undefined
+              }
             />
           )}
           ListHeaderComponent={
@@ -453,6 +479,9 @@ const styles = StyleSheet.create({
   txRight: {
     alignItems: 'flex-end',
     gap: 1,
+  },
+  txShareHint: {
+    marginLeft: 2,
   },
   txAmount: {
     fontFamily: typography.stat.fontFamily,
