@@ -76,7 +76,7 @@ function ActionButton({ icon, label, onPress, loading, disabled, primary }: {
 export default function ShareStatsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const params = useLocalSearchParams<{ mode?: string; sessionId?: string; challenge?: string; historical?: string }>();
+  const params = useLocalSearchParams<{ mode?: string; sessionId?: string; challenge?: string; historical?: string; asOf?: string }>();
   const mode: Mode =
     params.mode === 'check-in' ? 'check-in'
     : params.mode === 'challenge' ? 'challenge'
@@ -99,7 +99,9 @@ export default function ShareStatsScreen() {
         .then(setSummary)
         .catch((e: unknown) => setLoadError(e instanceof Error ? e.message : 'Could not load this check-in.'));
     } else if (mode === 'level-up') {
-      fetchLevelUpSummary()
+      // asOf = a past level-up from the points-history row; absent = the live one
+      const asOf = params.asOf ? new Date(params.asOf) : undefined;
+      fetchLevelUpSummary(asOf && Number.isFinite(asOf.getTime()) ? { asOf } : undefined)
         .then(setSummary)
         .catch((e: unknown) => setLoadError(e instanceof Error ? e.message : 'Could not load your level.'));
     } else if (mode === 'challenge') {
@@ -119,7 +121,7 @@ export default function ShareStatsScreen() {
         .then(setSummary)
         .catch((e: unknown) => setLoadError(e instanceof Error ? e.message : 'Could not load your stats.'));
     }
-  }, [mode, params.sessionId, params.challenge, params.historical]);
+  }, [mode, params.sessionId, params.challenge, params.historical, params.asOf]);
 
   // Warm the level artwork before the user can pick it — captureRef would
   // otherwise snapshot an empty tile if they tap Share while it's still loading.

@@ -82,6 +82,13 @@ export interface ChallengeShareSummary extends BaseShareSummary, ChallengeShareI
 
 export interface LevelUpSummary extends BaseShareSummary {
   mode: 'level-up';
+  /**
+   * A throwback share of a past level-up (from the points-history row).
+   * Aggregates are anchored to the crossing moment, so the card shows the
+   * level — and the numbers — as they stood right then. Same suppression
+   * rules as historical check-ins: no live streak, no reward lookup.
+   */
+  historical: boolean;
 }
 
 export type ShareSummary = CheckInSummary | StatsSummary | ChallengeShareSummary | LevelUpSummary;
@@ -225,17 +232,22 @@ export async function fetchChallengeSummary(
 
 // ─── Level-up summary (the moment a level boundary is crossed) ──────────────
 // The card derives the level itself from totalEarned via getLevelInfo, which
-// at share time already reflects the freshly crossed boundary.
+// at share time already reflects the freshly crossed boundary. For throwbacks,
+// `asOf` is the crossing transaction's timestamp (inclusive), so the as-of
+// totalEarned lands exactly on the level that was reached.
 
-export async function fetchLevelUpSummary(): Promise<LevelUpSummary> {
+export async function fetchLevelUpSummary(opts?: { asOf?: Date }): Promise<LevelUpSummary> {
   const user = await getSessionUser();
   if (!user) throw new Error('Not authenticated');
 
-  const aggregates = await fetchAggregates(user.id, /* type */ null);
+  const historical = opts?.asOf !== undefined;
+  const aggregates = await fetchAggregates(user.id, /* type */ null, opts?.asOf);
 
   return {
     mode: 'level-up',
+    historical,
     ...aggregates,
+    ...(historical ? { currentStreak: 0 } : null),
   };
 }
 
@@ -396,7 +408,9 @@ export function buildShareHeadline(summary: ShareSummary): string {
   }
   if (summary.mode === 'level-up') {
     const { current } = getLevelInfo(summary.totalEarned);
-    return `Just hit Level ${current.level} — ${current.name} — on POWR.`;
+    return summary.historical
+      ? `Hit Level ${current.level} — ${current.name} — on POWR.`
+      : `Just hit Level ${current.level} — ${current.name} — on POWR.`;
   }
   return summary.currentStreak > 0
     ? `${summary.currentStreak}-day streak on POWR — ${summary.monthCount} sessions this month.`

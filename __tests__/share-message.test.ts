@@ -78,6 +78,11 @@ test('historical check-in headline dates the session and drops the streak', () =
 });
 
 test('level-up headline announces the new level by name', () => {
-    expect(buildShareHeadline(base({ mode: 'level-up' })))
+    expect(buildShareHeadline(base({ mode: 'level-up', historical: false })))
         .toBe('Just hit Level 7 — Iron Lungs — on POWR.');
+});
+
+test('a throwback level-up drops the "just"', () => {
+    expect(buildShareHeadline(base({ mode: 'level-up', historical: true })))
+        .toBe('Hit Level 7 — Iron Lungs — on POWR.');
 });

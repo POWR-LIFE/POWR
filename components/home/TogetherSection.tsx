@@ -7,6 +7,7 @@ import { fontFamily } from '@/constants/tokens';
 import { useSharedChallenges } from '@/hooks/useSharedChallenges';
 import { usePoints } from '@/hooks/usePoints';
 import { useNotifications } from '@/context/NotificationsContext';
+import { buildSharedChallengeShareInput } from '@/lib/social/share';
 import type { SharedChallenge } from '@/lib/social/types';
 import { CreateChallengeSheet } from '@/components/social/CreateChallengeSheet';
 import { ChallengeTemplateCard } from '@/components/social/ChallengeTemplateCard';
@@ -255,7 +256,15 @@ export function TogetherSection({ onOpenChallenge }: TogetherSectionProps) {
             challenge={celebrated}
             totalBalance={balance}
             onDone={clearCelebration}
-            onShare={() => router.push({ pathname: '/share-stats', params: { mode: 'streak' } })}
+            onShare={() => {
+              // Snapshot before clearing — clearCelebration nulls `celebrated`.
+              const input = buildSharedChallengeShareInput(celebrated);
+              clearCelebration(); // the Modal would otherwise cover the pushed screen
+              router.push({
+                pathname: '/share-stats',
+                params: { mode: 'challenge', challenge: JSON.stringify(input) },
+              });
+            }}
           />
         )}
       </Modal>
