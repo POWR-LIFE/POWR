@@ -12,6 +12,7 @@
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
+import { AppState } from 'react-native';
 import { runVisitCheck, ACTIVE_GEOFENCE_KEY } from '@/context/GeofenceContext';
 
 jest.mock('expo-task-manager', () => {
@@ -109,18 +110,26 @@ async function seedActiveVisit() {
   }));
 }
 
-const claimed = () => mockInvoke.mock.calls.some(c => c[0] === 'claim-points');
+// A wake runs with the app backgrounded, where claims ride the REST relay
+// (relay_gym_claim → pg_net → claim-points server-to-server) — a direct
+// functions.invoke never arrives from a backgrounded Android app (2026-07-14).
+const claimed = () => mockRpc.mock.calls.some(c => c[0] === 'relay_gym_claim');
 const rpcCalls = (name: string) => mockRpc.mock.calls.filter(c => c[0] === name);
 
 beforeEach(async () => {
   jest.clearAllMocks();
   await AsyncStorage.clear();
   (globalThis as any).__DEV__ = false;
+  (AppState as any).currentState = 'background'; // a beacon wake = backgrounded app
   mockInvoke.mockResolvedValue({ data: { earned: 30, push_delivered: true }, error: null });
-  mockRpc.mockResolvedValue({ data: null, error: null });
+  mockRpc.mockImplementation((fn: string) =>
+    Promise.resolve(fn === 'relay_gym_claim' ? { data: { status: 'accepted' }, error: null } : { data: null, error: null }));
 });
 
-afterEach(() => { (globalThis as any).__DEV__ = true; });
+afterEach(() => {
+  (globalThis as any).__DEV__ = true;
+  (AppState as any).currentState = 'active';
+});
 
 describe('runVisitCheck — the server wakes us, the device decides', () => {
   it('claims when a fresh fix proves the user is still inside the gym', async () => {
@@ -131,7 +140,9 @@ describe('runVisitCheck — the server wakes us, the device decides', () => {
 
     expect(claimed()).toBe(true);
     // The device reports what it saw; the server only records it.
-    expect(rpcCalls('confirm_gym_visit')[0][1]).toMatchObject({ p_visit_id: 'visit-1', p_inside: true });
+    // The single confirm round-trip also asks the server to credit the visit —
+    // the wake window fits ~one round-trip, and this is it (2026-07-14).
+    expect(rpcCalls('confirm_gym_visit_v2')[0][1]).toMatchObject({ p_visit_id: 'visit-1', p_inside: true, p_request_credit: true });
   });
 
   it('does NOT claim when the fix shows the user has left — it closes the visit', async () => {
@@ -141,7 +152,8 @@ describe('runVisitCheck — the server wakes us, the device decides', () => {
 
     await runVisitCheck('dwell');
 
-    expect(rpcCalls('confirm_gym_visit')[0][1]).toMatchObject({ p_inside: false });
+    // No credit request on an outside confirm — no fix inside, no credit.
+    expect(rpcCalls('confirm_gym_visit_v2')[0][1]).toMatchObject({ p_inside: false, p_request_credit: false });
     // Left the gym → the visit is finalized rather than credited on a timer.
     expect(await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY)).toBeNull();
   });
@@ -153,7 +165,7 @@ describe('runVisitCheck — the server wakes us, the device decides', () => {
     await runVisitCheck('dwell');
 
     expect(claimed()).toBe(false);
-    expect(rpcCalls('confirm_gym_visit')[0][1]).toMatchObject({ p_inside: false, p_detail: { reason: 'no_fix' } });
+    expect(rpcCalls('confirm_gym_visit_v2')[0][1]).toMatchObject({ p_inside: false, p_detail: { reason: 'no_fix' }, p_request_credit: false });
     // Visit stays open: the next nudge or the exit path still resolves it.
     expect(await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY)).not.toBeNull();
   });

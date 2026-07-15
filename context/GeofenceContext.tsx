@@ -567,11 +567,22 @@ async function exitApproach(expectedRegionId?: string): Promise<void> {
 // lands is absorbed by the sessions unique index / claim-points idempotency.
 const _recordingInFlight = new Map<string, number>();
 const STALE_CLAIM_LOCK_MS = 2 * 60 * 1000;
+// Inside an FCM wake window the lease shrinks: any attempt started before the
+// wake is doomed (its radio window is gone), and the wake's own ~10 s window
+// must not be wasted honouring it. See runVisitCheck.
+const WAKE_STALE_CLAIM_LOCK_MS = 15 * 1000;
 
-async function recordDwellSession(activeGeofence: StoredGeofence): Promise<{ outcome: 'claimed' | 'too_short' | 'error' | 'in_flight'; sessionId?: string; earned?: number; currentStreak?: number }> {
+// Minimum spacing between foreground tier-upgrade attempts. The upgrade branch
+// re-runs on the 10 s scheduleDwellTimer poll, and a server-side rejection
+// (threshold not reached yet) is permanent until time passes — retrying faster
+// than this is pure hammering.
+let _lastUpgradeAttemptAt = 0;
+const UPGRADE_ATTEMPT_BACKOFF_MS = 60 * 1000;
+
+async function recordDwellSession(activeGeofence: StoredGeofence, staleLockMs: number = STALE_CLAIM_LOCK_MS): Promise<{ outcome: 'claimed' | 'too_short' | 'error' | 'in_flight' | 'relayed'; sessionId?: string; earned?: number; currentStreak?: number }> {
   const lockKey = `${activeGeofence.partnerId}:${activeGeofence.entryTimestamp}`;
   const heldSinceMs = _recordingInFlight.get(lockKey);
-  if (heldSinceMs != null && Date.now() - heldSinceMs < STALE_CLAIM_LOCK_MS) {
+  if (heldSinceMs != null && Date.now() - heldSinceMs < staleLockMs) {
     console.log('[Geofence] recordDwellSession already in flight for this session — skipping duplicate.');
     return { outcome: 'in_flight' };
   }
@@ -672,6 +683,49 @@ async function recordDwellSession(activeGeofence: StoredGeofence): Promise<{ out
       sessionId = session.id;
     }
 
+    // BACKGROUND: a client call to /functions/v1/* never arrives from a
+    // backgrounded Android app, even though REST requests sent the same second
+    // land (six field captures 2026-07-14). Relay the claim through a SECURITY
+    // DEFINER RPC on that proven REST path instead — pg_net invokes claim-points
+    // server-to-server, immune to Doze. The relay returns before the claim
+    // completes, so the caller keeps pointsPending; the next tick's relay answers
+    // 'already_claimed' and resolves it. The server marks the visit and sends the
+    // "Session recorded" push itself.
+    if (AppState.currentState !== 'active') {
+      const { data: relay, error: relayError } = await withNetworkTimeout(
+        supabase.rpc('relay_gym_claim', { p_session_id: sessionId, p_visit_id: activeGeofence.visitId ?? null }),
+        'relay_gym_claim rpc',
+      );
+      if (relayError) {
+        console.error('[Geofence] Claim relay failed:', relayError.message);
+        return { outcome: 'error' };
+      }
+      const relayStatus = (relay as { status?: string } | null)?.status;
+      if (relayStatus === 'already_claimed') {
+        console.log('[Geofence] Relayed claim already landed — surfacing completion to UI.');
+        await AsyncStorage.setItem(
+          SESSION_COMPLETED_KEY,
+          JSON.stringify({ partnerName: activeGeofence.partnerName, durationSec, timestamp: Date.now() }),
+        );
+        _emitSessionCompleted();
+        if (activeGeofence.visitId) {
+          try {
+            const { markGymVisitProgress } = await import('@/lib/gymVisits');
+            await markGymVisitProgress(activeGeofence.visitId, 'claimed', sessionId);
+          } catch { /* non-fatal — the server marks relayed claims itself */ }
+        }
+        return { outcome: 'claimed', sessionId };
+      }
+      if (relayStatus === 'accepted') {
+        console.log('[Geofence] Claim relayed — server is completing it; a later tick verifies.');
+        return { outcome: 'relayed', sessionId };
+      }
+      console.error('[Geofence] Claim relay rejected:', relayStatus ?? 'unknown');
+      return { outcome: 'error' };
+    }
+
+    // FOREGROUND: call claim-points directly — the rich response drives the
+    // within-reach nudge and the local push fallback below.
     // The one call that must NEVER hang: sessionRecorded is already persisted, and
     // until an outcome comes back the state machine can't write pointsPending — a
     // hang here (RN fetch = no timeout) was a silently dropped claim until exit.
@@ -916,6 +970,39 @@ async function upgradeGymTier(sessionId: string, partnerName?: string, visitId?:
       console.warn('[Geofence] Tier upgrade: no valid session — will retry on next poll.', sessionError?.message);
       return false;
     }
+
+    // BACKGROUND: same as the claim — a functions.invoke never arrives from a
+    // backgrounded Android app, so relay via the REST path and let pg_net call
+    // upgrade-gym-tier server-to-server. 'accepted' returns false on purpose:
+    // the next tick's relay answers 'already_done' and finalizes the state.
+    if (AppState.currentState !== 'active') {
+      const { data: relay, error: relayError } = await withNetworkTimeout(
+        supabase.rpc('relay_gym_upgrade', { p_session_id: sessionId, p_visit_id: visitId ?? null }),
+        'relay_gym_upgrade rpc',
+      );
+      if (relayError) {
+        console.warn('[Geofence] Upgrade relay failed:', relayError.message);
+        return false;
+      }
+      const relayStatus = (relay as { status?: string } | null)?.status;
+      if (relayStatus === 'already_done') {
+        if (visitId) {
+          try {
+            const { markGymVisitProgress } = await import('@/lib/gymVisits');
+            await markGymVisitProgress(visitId, 'upgraded', sessionId);
+          } catch { /* non-fatal — the server marks relayed upgrades itself */ }
+        }
+        _emitSessionCompleted();
+        return true;
+      }
+      if (relayStatus === 'accepted') {
+        console.log('[Geofence] Upgrade relayed — server is completing it; a later tick verifies.');
+        return false;
+      }
+      console.warn('[Geofence] Upgrade relay rejected:', relayStatus ?? 'unknown');
+      return false;
+    }
+
     const { data: upgradeData, error: fnError } = await withNetworkTimeout(
       supabase.functions.invoke('upgrade-gym-tier', {
         body: { session_id: sessionId },
@@ -1073,10 +1160,12 @@ async function recordExitAndClaim(claimEntry: StoredGeofence): Promise<'resolved
       console.log('[Geofence] Exit: session already recorded — skipping.');
     } else {
       // sessionRecorded but no sessionId: a claim succeeded without persisting the id.
-      // Retry on exit; if it still fails, queue it so it's never lost.
+      // Retry on exit; if it still fails, queue it so it's never lost. A relayed
+      // outcome is queued too: the server is completing it, and the flush's next
+      // relay answers 'already_claimed' and dequeues — never trust an unproven claim.
       console.log('[Geofence] Exit: recorded session has no sessionId — retrying on exit.');
       const { outcome } = await recordDwellSession(claimEntry);
-      if (outcome === 'error') await enqueuePendingClaim(claimEntry);
+      if (outcome === 'error' || outcome === 'relayed') await enqueuePendingClaim(claimEntry);
     }
     return 'resolved';
   }
@@ -1088,10 +1177,12 @@ async function recordExitAndClaim(claimEntry: StoredGeofence): Promise<'resolved
   }
 
   const { outcome: exitOutcome } = await recordDwellSession(claimEntry);
-  if (exitOutcome === 'error' || exitOutcome === 'in_flight') {
-    // The durable exit record stays queued until a transient failure or a
-    // concurrent claim has conclusively resolved, so neither can lose a valid
-    // session between separate foreground/headless JS contexts.
+  if (exitOutcome === 'error' || exitOutcome === 'in_flight' || exitOutcome === 'relayed') {
+    // The durable exit record stays queued until a transient failure, a
+    // concurrent claim, or a server-side relayed claim has conclusively
+    // resolved, so none of them can lose a valid session between separate
+    // foreground/headless JS contexts. For 'relayed' the next flush's relay
+    // answers 'already_claimed' and dequeues.
     console.log('[Geofence] Exit claim unresolved — retained for retry.');
     return 'retry';
   }
@@ -1196,7 +1287,15 @@ export async function runVisitCheck(stage: 'dwell' | 'upgrade'): Promise<void> {
 
   let coords: Location.LocationObjectCoords | null = null;
   try {
-    const fix = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+    // Cached-first: the dwell stream delivers a fix roughly every 60 s while
+    // checked in, so a ≤60 s-old fix is normally available and is as real a
+    // presence proof as a fresh acquisition. Acquiring GPS from scratch takes
+    // ~20 s indoors — longer than the ~10 s execution window a high-priority FCM
+    // wake grants mid-Doze, which starved the claim chain that follows (field
+    // 2026-07-14: the one wake whose confirm reused a fresh stream fix answered
+    // in <1 s; the fresh-GPS ones took 20 s+). "No fix, no credit" is unchanged.
+    const cached = await Location.getLastKnownPositionAsync({ maxAge: 60_000 }).catch(() => null);
+    const fix = cached ?? await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
     coords = fix?.coords ?? null;
   } catch (err) {
     console.warn('[Geofence] Visit check: could not get a fix:', err);
@@ -1223,16 +1322,25 @@ export async function runVisitCheck(stage: 'dwell' | 'upgrade'): Promise<void> {
 
   if (active.visitId) {
     const { confirmGymVisit } = await import('@/lib/gymVisits');
+    // requestCredit on an inside confirm: this one round-trip both proves
+    // presence AND has the server relay the claim/upgrade (confirm_gym_visit_v2)
+    // — the wake window fits ~one round-trip and the local chain below starves.
     await confirmGymVisit(active.visitId, inside, {
       stage,
       distance_m: distance != null ? Math.round(distance) : null,
       accuracy_m: coords.accuracy != null ? Math.round(coords.accuracy) : null,
-    });
+    }, inside);
   }
 
   if (inside) {
     console.log(`[Geofence] Visit check (${stage}): still inside — advancing dwell.`);
-    await advanceActiveSession(active);
+    // Wake-scoped lease: cron wakes (:01) and stream ticks (:32) are permanently
+    // out of phase, so a tick-started zombie attempt is almost always <2 min old
+    // when a wake arrives — under the normal lease the wake would skip and waste
+    // its window (three consecutive wakes lost this way, field 2026-07-14).
+    // Inside a wake window any pre-window attempt is presumed dead; idempotency
+    // (23505 + already-claimed + relay pre-checks) absorbs a zombie that lands.
+    await advanceActiveSession(active, WAKE_STALE_CLAIM_LOCK_MS);
   } else {
     console.log(`[Geofence] Visit check (${stage}): left the gym — finalizing.`);
     await finalizeActiveGeofence();
@@ -1246,7 +1354,7 @@ export async function runVisitCheck(stage: 'dwell' | 'upgrade'): Promise<void> {
  *  without depending on the EXIT event ever firing. Claims are idempotent (the
  *  in-flight lock, sessionRecorded flag, and DB unique index dedup against the
  *  foreground path). */
-async function advanceActiveSession(active: StoredGeofence): Promise<void> {
+async function advanceActiveSession(active: StoredGeofence, staleLockMs?: number): Promise<void> {
   const elapsed = Date.now() - active.entryTimestamp;
 
   // 1. Prior claim was too short / failed — retry once the prod threshold is met.
@@ -1256,7 +1364,7 @@ async function advanceActiveSession(active: StoredGeofence): Promise<void> {
       ACTIVE_GEOFENCE_KEY,
       JSON.stringify({ ...active, pointsPending: false, claimAttemptAt: Date.now() }),
     );
-    const { outcome, sessionId } = await recordDwellSession(active);
+    const { outcome, sessionId } = await recordDwellSession(active, staleLockMs);
     if (outcome === 'claimed' && sessionId) {
       await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...active, pointsPending: false, sessionId }));
     } else {
@@ -1285,10 +1393,21 @@ async function advanceActiveSession(active: StoredGeofence): Promise<void> {
     // (field-caught 2026-07-14). After a grace window, hand it back to the
     // pointsPending retry path above; claim-points and the sessions unique index
     // make a duplicate retry a no-op.
+    //
+    // In a WAKE window both the grace and the retry timing shrink: cron wakes
+    // (:01) and stream ticks (:32) are permanently out of phase, so under the
+    // normal 2-min grace a wake almost always found a sub-grace zombie from the
+    // previous tick and left empty-handed — then the retry it queued ran on the
+    // NEXT tick, outside any window (wakes #2–#4 all lost this way, field
+    // 2026-07-14 evening). A pre-window attempt is dead by definition; heal it
+    // and retry NOW, while the radio is up.
+    const resultGraceMs = staleLockMs ?? CLAIM_RESULT_GRACE_MS;
     if (!active.sessionId && !active.pointsPending
-        && Date.now() - (active.claimAttemptAt ?? 0) > CLAIM_RESULT_GRACE_MS) {
+        && Date.now() - (active.claimAttemptAt ?? 0) > resultGraceMs) {
       console.warn('[Geofence] Claim attempt left no outcome — queueing retry.');
-      await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...active, pointsPending: true }));
+      const queued = { ...active, pointsPending: true };
+      await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify(queued));
+      if (staleLockMs != null) await advanceActiveSession(queued, staleLockMs);
     }
     return;
   }
@@ -1299,10 +1418,13 @@ async function advanceActiveSession(active: StoredGeofence): Promise<void> {
     ACTIVE_GEOFENCE_KEY,
     JSON.stringify({ ...active, sessionRecorded: true, claimAttemptAt: Date.now() }),
   );
-  const { outcome, sessionId } = await recordDwellSession(active);
+  const { outcome, sessionId } = await recordDwellSession(active, staleLockMs);
   if (outcome === 'claimed' && sessionId) {
     await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...active, sessionRecorded: true, sessionId }));
-  } else if (outcome === 'too_short' || outcome === 'error') {
+  } else if (outcome === 'too_short' || outcome === 'error' || outcome === 'relayed') {
+    // relayed: the server is completing the claim — keep pointsPending so the
+    // next tick re-enters recordDwellSession, whose relay answers
+    // 'already_claimed' and finalizes. Not a failure, so no durable queue.
     await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...active, sessionRecorded: true, pointsPending: true }));
     // Durably queue on a hard error (e.g. logged out) so the claim survives an app
     // kill before EXIT and is flushed on re-login. too_short retries in-gym only.
@@ -1843,7 +1965,14 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
       const elapsed   = Date.now() - activeGeofence.entryTimestamp;
       const remaining = upgradeMs() - elapsed;
       if (remaining <= 0) {
-        console.log('[Geofence] Foreground: already past 40-min mark — upgrading tier now.');
+        // Backoff between attempts: a rejected upgrade (e.g. the server's
+        // threshold is ahead of the client's — config drift, field 2026-07-14)
+        // stays rejected until time passes, and this branch re-runs on the 10 s
+        // scheduleDwellTimer poll — without the backoff it hammered
+        // upgrade-gym-tier 6×/min for 9 minutes straight.
+        if (Date.now() - _lastUpgradeAttemptAt < UPGRADE_ATTEMPT_BACKOFF_MS) return;
+        _lastUpgradeAttemptAt = Date.now();
+        console.log('[Geofence] Foreground: upgrade threshold met — upgrading tier now.');
         const upgraded1 = await upgradeGymTier(activeGeofence.sessionId, activeGeofence.partnerName, activeGeofence.visitId);
         if (upgraded1) {
           await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...activeGeofence, tierUpgraded: true }));
@@ -1877,10 +2006,11 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
       console.log('[Geofence] Foreground: dwell already met — recording session now.');
       await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...activeGeofence, sessionRecorded: true, claimAttemptAt: Date.now() }));
       const { outcome, sessionId } = await recordDwellSession(activeGeofence);
-      if (outcome === 'too_short' || outcome === 'error') {
+      if (outcome === 'too_short' || outcome === 'error' || outcome === 'relayed') {
         // too_short: claim rejected because duration < eligibility minimum — retry at PROD_DWELL_MS.
         // error:     transient failure (network, auth, rate-limit, etc.) — retry via the same path,
         //            and durably queue so a logout/app-kill before EXIT can't lose the claim.
+        // relayed:   server is completing the claim — the retry's relay resolves it.
         await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...activeGeofence, sessionRecorded: true, pointsPending: true }));
         if (outcome === 'error') await enqueuePendingClaim({ ...activeGeofence, endedAtMs: Date.now() });
       } else if (outcome === 'claimed' && sessionId) {
@@ -1900,10 +2030,11 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
       console.log('[Geofence] Foreground: dwell timer fired — recording session.');
       await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...gf, sessionRecorded: true, claimAttemptAt: Date.now() }));
       const { outcome, sessionId } = await recordDwellSession(gf);
-      if (outcome === 'too_short' || outcome === 'error') {
+      if (outcome === 'too_short' || outcome === 'error' || outcome === 'relayed') {
         // too_short: claim rejected because duration < eligibility minimum — retry at PROD_DWELL_MS.
         // error:     transient failure (network, auth, rate-limit, etc.) — retry via the same path,
         //            and durably queue so a logout/app-kill before EXIT can't lose the claim.
+        // relayed:   server is completing the claim — the retry's relay resolves it.
         await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...gf, sessionRecorded: true, pointsPending: true }));
         if (outcome === 'error') await enqueuePendingClaim({ ...gf, endedAtMs: Date.now() });
       } else if (outcome === 'claimed' && sessionId) {

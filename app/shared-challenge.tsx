@@ -13,7 +13,8 @@ import { SharedChallengeCelebration } from '@/components/social/SharedChallengeC
 import { UserProfileSheet } from '@/components/UserProfileSheet';
 import { fontFamily } from '@/constants/tokens';
 import { durationLabel, useSharedChallenges } from '@/hooks/useSharedChallenges';
-import { earnedPoints, groupBonus, maxBonusForGroup } from '@/lib/social/bonus';
+import { earnedPoints, maxBonusForGroup } from '@/lib/social/bonus';
+import { dailyMilestoneHint, progressUnit } from '@/lib/social/challengeProgress';
 import type { IconSpec, Participant, SharedChallenge } from '@/lib/social/types';
 
 // ─── Palette ──────────────────────────────────────────────────────────────────
@@ -275,16 +276,17 @@ export default function SharedChallengeDetail() {
         ? challenge.goalTarget - Math.min(Math.round(selfProgress * challenge.goalTarget), challenge.goalTarget)
         : null;
   const remainingDone = pooled ? poolPct >= 1 : !!self?.completed;
-  const remainingUnit = pooled && pool ? pool.unit : self?.momentum?.unit;
+  const remainingUnit = pooled && pool ? pool.unit : progressUnit(challenge.goalRule) ?? self?.momentum?.unit;
   const remainParts =
     remaining !== null
       ? fmtBig(remaining, remainingUnit)
       : { num: `${Math.max(0, Math.round((1 - selfProgress) * 100))}%`, unitLabel: '' };
+  const milestoneHint = remainingDone ? null : dailyMilestoneHint(challenge.goalRule, challenge.goalTarget);
 
   // With a day or more on the clock, break the gap into a daily chunk — a
   // concrete "do this today" beats a big scary total.
   let paceHint: string | null = null;
-  if (!remainingDone && remaining !== null && remaining > 0 && !forming && challenge.endsAt) {
+  if (!milestoneHint && !remainingDone && remaining !== null && remaining > 0 && !forming && challenge.endsAt) {
     const daysLeft = (new Date(challenge.endsAt).getTime() - Date.now()) / 86_400_000;
     if (daysLeft >= 1) {
       const perDayRaw = remaining / daysLeft;
@@ -383,6 +385,44 @@ export default function SharedChallengeDetail() {
             </View>
           </View>
         </View>
+
+        {!challengeOver && (
+          <View style={styles.remainCard}>
+            <Text style={[styles.sectionLabel, { textAlign: 'center' }]}>LEFT TO DO</Text>
+            <View style={styles.remainRow}>
+              <View style={styles.remainCol}>
+                {remainingDone ? (
+                  <Text style={[styles.remainNum, { color: GREEN }]}>Done</Text>
+                ) : (
+                  <Text style={styles.remainNum}>{remainParts.num}</Text>
+                )}
+                <Text style={styles.remainColLabel}>
+                  {remainingDone
+                    ? pooled ? 'target hit' : 'your goal is in'
+                    : `${remainParts.unitLabel ? `${remainParts.unitLabel} ` : ''}to go`}
+                </Text>
+              </View>
+              <View style={styles.remainDivider} />
+              <View style={styles.remainCol}>
+                {!forming && challenge.endsAt ? (
+                  <Countdown endsAt={challenge.endsAt} suffix="" style={styles.remainTime} />
+                ) : (
+                  <Text style={[styles.remainTime, { color: MUTED }]}>—</Text>
+                )}
+                <Text style={styles.remainColLabel}>
+                  {!forming && challenge.endsAt ? 'time left' : 'starts when everyone’s in'}
+                </Text>
+              </View>
+            </View>
+            {milestoneHint ? (
+              <Text style={styles.bonusHint}>{milestoneHint}</Text>
+            ) : paceHint ? (
+              <Text style={styles.bonusHint}>{paceHint}</Text>
+            ) : remainingDone && !pooled ? (
+              <Text style={styles.bonusHint}>You’re done — your bonus still grows as the others finish.</Text>
+            ) : null}
+          </View>
+        )}
 
         {/* Pooled: shared combined-total progress (replaces the per-you bonus card) */}
         {pooled && pool && (

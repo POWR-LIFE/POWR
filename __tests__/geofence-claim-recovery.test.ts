@@ -16,6 +16,7 @@
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
+import { AppState } from 'react-native';
 import { runVisitCheck, ACTIVE_GEOFENCE_KEY } from '@/context/GeofenceContext';
 
 jest.mock('expo-task-manager', () => {
@@ -121,6 +122,9 @@ beforeEach(async () => {
   jest.clearAllMocks();
   await AsyncStorage.clear();
   (globalThis as any).__DEV__ = false;
+  // These tests pin the FOREGROUND claim path (direct claim-points invoke) —
+  // backgrounded claims ride the REST relay instead (geofence-claim-relay.test.ts).
+  (AppState as any).currentState = 'active';
   getFix.mockResolvedValue({ coords: { latitude: GYM.lat, longitude: GYM.lng, accuracy: 10 } });
   mockInvoke.mockResolvedValue({ data: { earned: 30, push_delivered: true }, error: null });
   mockRpc.mockResolvedValue({ data: null, error: null });
@@ -132,14 +136,16 @@ afterEach(() => {
 });
 
 describe('claim attempt left no outcome — the lease heals it', () => {
-  it('re-queues an orphaned attempt (stale lease, no sessionId, no pointsPending)', async () => {
+  it('heals an orphaned attempt and retries within the SAME wake', async () => {
     await seedVisit({ sessionRecorded: true, claimAttemptAt: Date.now() - 3 * 60 * 1000 });
 
     await runVisitCheck('dwell');
 
-    // Not claimed on THIS tick — handed to the pointsPending retry path.
-    expect(claimed()).toBe(false);
-    expect((await readState()).pointsPending).toBe(true);
+    // A wake window is the one moment the radio is provably up — the heal
+    // retries immediately instead of waiting for the next (out-of-phase) tick,
+    // which lost wakes #2–#4 on 2026-07-14.
+    expect(claimed()).toBe(true);
+    expect((await readState()).sessionId).toBe('session-abc');
   });
 
   it('the re-queued claim then lands on the next tick', async () => {
