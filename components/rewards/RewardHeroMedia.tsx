@@ -1,7 +1,8 @@
+import { useIsFocused } from '@react-navigation/native';
 import { useEventListener } from 'expo';
 import { Image as ExpoImage } from 'expo-image';
 import { useVideoPlayer, VideoView } from 'expo-video';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { AccessibilityInfo, AppState, StyleProp, StyleSheet, Text, View, ViewStyle } from 'react-native';
 
 type Fit = 'cover' | 'contain';
@@ -57,6 +58,15 @@ export function RewardHeroMedia({
 
 /** Isolated so the expo-video player is only instantiated when a video actually plays. */
 function HeroVideo({ uri, contentFit }: { uri: string; contentFit: Fit }) {
+  // Pause whenever this player's screen isn't on top. The redeem modal is a
+  // transparent 'modal' route, so the rewards screen (and its expanded card's
+  // hero video) stays mounted and decoding underneath while the modal mounts a
+  // SECOND player on the same clip. Two hardware H.264 decoders starve the
+  // device codec (Android CCodecBufferChannel buffer exhaustion) and can take
+  // the app down natively on the Redeem tap. Focus-gating keeps exactly one
+  // hero player decoding at a time.
+  const isFocused = useIsFocused();
+
   // Deliberately NO `useCaching`: on iOS it swaps in a custom
   // AVAssetResourceLoader that must answer AVFoundation's content-info queries
   // itself, and against our storage host the item never reaches readyToPlay —
@@ -71,6 +81,18 @@ function HeroVideo({ uri, contentFit }: { uri: string; contentFit: Fit }) {
     p.audioMixingMode = 'mixWithOthers';
     p.play();
   });
+
+  // Release/reclaim the decoder as focus changes: pause when a screen (e.g. the
+  // redeem modal) covers this one, resume when we're back on top. The ref lets
+  // the stall/resume guards below read live focus without re-subscribing.
+  const focusedRef = useRef(isFocused);
+  focusedRef.current = isFocused;
+  useEffect(() => {
+    try {
+      if (isFocused) player.play();
+      else player.pause();
+    } catch {}
+  }, [isFocused, player]);
 
   // If the source fails outright, name the failure instead of swallowing it —
   // a wedged player with silent guards is undiagnosable (that blindness cost
@@ -90,7 +112,7 @@ function HeroVideo({ uri, contentFit }: { uri: string; contentFit: Fit }) {
         setVideoError(message);
         return;
       }
-      if (status === 'readyToPlay' && !player.playing) player.play();
+      if (status === 'readyToPlay' && !player.playing && focusedRef.current) player.play();
     } catch {}
   });
 
@@ -98,7 +120,7 @@ function HeroVideo({ uri, contentFit }: { uri: string; contentFit: Fit }) {
   // loop didn't restart playback after the clip ended, restart it ourselves.
   useEventListener(player, 'playToEnd', () => {
     try {
-      if (!player.playing) player.replay();
+      if (!player.playing && focusedRef.current) player.replay();
     } catch {}
   });
 
@@ -117,6 +139,7 @@ function HeroVideo({ uri, contentFit }: { uri: string; contentFit: Fit }) {
   useEffect(() => {
     const id = setInterval(() => {
       try {
+        if (!focusedRef.current) return;
         if (player.playing || player.status !== 'readyToPlay') return;
         const { duration, currentTime } = player;
         // duration is 0 until metadata loads; only judge the tail once known.
@@ -131,7 +154,7 @@ function HeroVideo({ uri, contentFit }: { uri: string; contentFit: Fit }) {
     const sub = AppState.addEventListener('change', (state) => {
       if (state !== 'active') return;
       try {
-        if (!player.playing) player.play();
+        if (!player.playing && focusedRef.current) player.play();
       } catch {}
     });
     return () => sub.remove();
