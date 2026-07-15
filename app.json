@@ -2,7 +2,7 @@
   "expo": {
     "name": "POWR",
     "slug": "POWR",
-    "version": "1.4.11",
+    "version": "1.4.12",
     "orientation": "portrait",
     "icon": "./assets/images/ios_icon_black.png",
     "scheme": "powr",
@@ -11,7 +11,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.powr.life",
-      "buildNumber": "12",
+      "buildNumber": "13",
       "googleServicesFile": "./GoogleService-Info.plist",
       "associatedDomains": ["applinks:powr.life"],
       "infoPlist": {
@@ -62,7 +62,7 @@
         "android.permission.READ_MEDIA_VISUAL_USER_SELECTED"
       ],
       "package": "com.powr.life",
-      "versionCode": 15,
+      "versionCode": 16,
       "intentFilters": [
         {
           "action": "VIEW",
