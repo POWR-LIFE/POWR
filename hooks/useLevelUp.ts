@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { LEVELS, getLevelInfo } from '@/constants/levels';
 import { useAuth } from '@/context/AuthContext';
@@ -79,12 +79,23 @@ export function useLevelUp() {
     }
   }, [user, totalEarned]);
 
-  /** Dev-account-only: replay the celebration into the current level. */
+  /**
+   * Dev-account-only: replay the celebration. Successive presses cycle the
+   * three graduation grades — your real level (standard for most levels),
+   * then a tier cross (5→6), then the apex (19→20) — so every treatment can
+   * be felt on-device without touching real points.
+   */
+  const previewCycle = useRef(0);
   const preview = useCallback(() => {
     if (!user || !DEV_TEST_EMAILS.has(user.email ?? '')) return;
     const { current } = getLevelInfo(totalEarned);
-    const fromLevel = Math.max(1, current.level - 1);
-    const toLevel = Math.max(current.level, fromLevel + 1);
+    const demos: { fromLevel: number; toLevel: number }[] = [
+      { fromLevel: Math.max(1, current.level - 1), toLevel: Math.max(current.level, 2) },
+      { fromLevel: 5, toLevel: 6 },
+      { fromLevel: 19, toLevel: 20 },
+    ];
+    const { fromLevel, toLevel } = demos[previewCycle.current % demos.length];
+    previewCycle.current += 1;
     const fromDef = LEVELS.find(l => l.level === fromLevel) ?? LEVELS[0];
     const toDef = LEVELS.find(l => l.level === toLevel) ?? LEVELS[LEVELS.length - 1];
     setPending({
