@@ -7,6 +7,8 @@ import { Animated, Easing, LayoutChangeEvent, Modal, Pressable, RefreshControl, 
 import ReAnimated, {
     Extrapolate,
     interpolate,
+    runOnJS,
+    useAnimatedReaction,
     useAnimatedScrollHandler,
     useAnimatedStyle,
     useSharedValue,
@@ -417,6 +419,12 @@ export default function HomeScreen() {
     const barsHeight = useSharedValue(0);
     const HEADER_HEIGHT = 56;
 
+    // Mirror the sticky state onto JS so we can drop the overlay's touch
+    // capture while it's hidden. When not sticky the bar is translated up
+    // (-82) over the header, and an opacity:0 Pressable still swallows taps —
+    // that invisible ring was eating the profile-avatar press. (index bug)
+    const [stickyActive, setStickyActive] = useState(false);
+
     const onReanimatedScroll = useAnimatedScrollHandler((event) => {
       scrollY.value = event.contentOffset.y;
     });
@@ -429,6 +437,13 @@ export default function HomeScreen() {
     };
 
     const STICKY_BAR_HEIGHT = 82; // circle (48) + gap (4) + icon (14) + padding (16)
+
+    useAnimatedReaction(
+      () => barsOffsetY.value > 0 && scrollY.value > barsOffsetY.value - HEADER_HEIGHT,
+      (isSticky, prev) => {
+        if (isSticky !== prev) runOnJS(setStickyActive)(isSticky);
+      }
+    );
 
     const stickyAnimatedStyle = useAnimatedStyle(() => {
       const threshold = barsOffsetY.value - HEADER_HEIGHT;
@@ -492,7 +507,7 @@ export default function HomeScreen() {
                     paddingBottom: 8,
                     paddingHorizontal: 16,
                 }, stickyAnimatedStyle]}
-                pointerEvents="box-none"
+                pointerEvents={stickyActive ? 'box-none' : 'none'}
             >
                 <StickyActivityIndicators
                     rings={displayRings}
