@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Award, Gift, Inbox, ChevronRight, TrendingUp, FilePenLine, CircleAlert, Ticket } from 'lucide-react';
+import { Award, Gift, Inbox, ChevronRight, TrendingUp, FilePenLine, CircleAlert, Ticket, CheckCircle2, Send, Zap, X } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../App';
 
@@ -21,7 +21,18 @@ export default function PartnerHome() {
     const [stats, setStats] = useState({ activeRewards: 0, monthRedemptions: 0, pendingSubmissions: 0 });
     const [recentRedemptions, setRecentRedemptions] = useState([]);
     const [actions, setActions] = useState([]);
+    const [journey, setJourney] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [introDismissed, setIntroDismissed] = useState(true);
+
+    // Per-brand so an admin previewing another brand doesn't inherit the dismissal
+    const introKey = partnerData?.brand_name
+        ? `powr-partner-intro-dismissed:${partnerData.brand_name.trim().toLowerCase()}`
+        : null;
+
+    useEffect(() => {
+        if (introKey) setIntroDismissed(localStorage.getItem(introKey) === '1');
+    }, [introKey]);
 
     useEffect(() => {
         if (!partnerData?.brand_name) return;
@@ -100,6 +111,17 @@ export default function PartnerHome() {
                 });
                 setRecentRedemptions(recent.data ?? []);
                 setActions(nextActions);
+
+                // 'invited' rows are POWR-created submission links the partner
+                // hasn't touched yet — they don't count as partner activity.
+                const authored = (submissions.data ?? []).filter(s => s.status !== 'invited');
+                setJourney({
+                    hasReward: rewardIds.length > 0,
+                    hasDraft: authored.length > 0,
+                    hasSubmitted: rewardIds.length > 0 || authored.some(s => s.status !== 'draft'),
+                    hasLive: activeCount > 0,
+                    hasRedemption: (recent.data ?? []).length > 0,
+                });
             } catch (e) {
                 console.error('[PartnerHome]', e);
             } finally {
@@ -115,6 +137,29 @@ export default function PartnerHome() {
         { label: 'Pending Review', value: stats.pendingSubmissions, icon: Inbox, color: '#F43F5E', to: '/partner/rewards', sub: 'Submissions' },
     ];
 
+    // First run = nothing created yet; the checklist stays until a reward exists
+    const firstRun = journey && !journey.hasReward && !journey.hasDraft;
+    const showChecklist = journey && !journey.hasReward;
+    const showIntro = journey && !journey.hasRedemption && !introDismissed;
+
+    const dismissIntro = () => {
+        if (introKey) localStorage.setItem(introKey, '1');
+        setIntroDismissed(true);
+    };
+
+    const introBeats = [
+        { icon: FilePenLine, title: 'Submit', detail: 'Create a reward and send it to POWR for review.' },
+        { icon: Inbox, title: 'Review', detail: 'The POWR team checks the details and approves it.' },
+        { icon: Zap, title: 'Live', detail: 'Members redeem it in the app — you track everything here.' },
+    ];
+
+    const journeySteps = [
+        { title: 'Create your first reward', detail: 'Set up your offer, imagery and value in My Rewards.', icon: FilePenLine, done: !!journey?.hasDraft },
+        { title: 'Submit it for review', detail: 'POWR checks every reward before it goes live — usually quick.', icon: Send, done: !!journey?.hasSubmitted },
+        { title: 'Go live and track redemptions', detail: 'Approved rewards appear in the app; member claims show up right here.', icon: Zap, done: !!journey?.hasLive },
+    ];
+    const journeyDone = journeySteps.filter(s => s.done).length;
+
     return (
         <div className="py-16 animate-in fade-in slide-in-from-bottom-6 duration-700">
             {/* Header */}
@@ -124,15 +169,79 @@ export default function PartnerHome() {
                     <span className="text-[10px] uppercase tracking-[0.5em] text-[#8a7600] font-black">Partner Dashboard</span>
                 </div>
                 <h1 className="text-5xl font-light tracking-tighter text-[#1A1A1A] mb-4">
-                    Welcome back{partnerData?.name ? `, ${partnerData.name}` : ''}.
+                    {firstRun ? 'Welcome' : 'Welcome back'}{partnerData?.name ? `, ${partnerData.name}` : ''}.
                 </h1>
                 <p className="text-[#AAAAAA] text-[11px] font-black uppercase tracking-[0.35em]">
-                    Manage your rewards and track performance.
+                    {firstRun ? "Let's get your first reward live." : 'Manage your rewards and track performance.'}
                 </p>
             </header>
 
+            {/* How POWR works — orientation for partners without a redemption yet */}
+            {showIntro && (
+                <section className="relative mb-16 bg-[#E8D200]/5 border border-[#E8D200]/20 rounded-3xl px-10 py-8">
+                    <button
+                        onClick={dismissIntro}
+                        aria-label="Dismiss"
+                        className="absolute top-5 right-5 w-8 h-8 rounded-full flex items-center justify-center text-[#BBBBBB] hover:text-[#666] hover:bg-black/5 transition-colors"
+                    >
+                        <X size={15} />
+                    </button>
+                    <div className="text-[9px] uppercase tracking-[0.5em] text-[#8a7600] font-black mb-7">How POWR works for partners</div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                        {introBeats.map((beat, index) => (
+                            <div key={beat.title} className="flex items-start gap-4">
+                                <div className="w-10 h-10 rounded-2xl bg-[#E8D200]/10 flex items-center justify-center shrink-0">
+                                    <beat.icon size={17} className="text-[#8a7600]" />
+                                </div>
+                                <div>
+                                    <div className="text-[13px] font-bold text-[#222]">
+                                        <span className="text-[#8a7600] mr-2">{index + 1}</span>{beat.title}
+                                    </div>
+                                    <div className="text-[11px] text-[#999] mt-1 leading-relaxed">{beat.detail}</div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </section>
+            )}
+
+            {/* Getting started — replaces the zero-stat dashboard until the first reward exists */}
+            {showChecklist && (
+                <section className="mb-16 bg-white border border-[#E6E6E1] rounded-3xl overflow-hidden">
+                    <div className="flex items-center justify-between px-10 py-7 border-b border-[#E6E6E1]">
+                        <div>
+                            <h2 className="text-xl font-light tracking-tighter text-[#1A1A1A]">Getting started</h2>
+                            <p className="text-[9px] uppercase tracking-[0.4em] text-[#BBBBBB] font-black mt-1">Three steps to your first live reward</p>
+                        </div>
+                        <span className="text-[10px] uppercase tracking-[0.3em] text-[#8a7600] font-black">{journeyDone} of {journeySteps.length} done</span>
+                    </div>
+                    <div className="divide-y divide-[#F4F4F1]">
+                        {journeySteps.map(step => {
+                            const Icon = step.icon;
+                            const inner = (
+                                <>
+                                    <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${step.done ? 'bg-[#10B981]/10 text-[#10B981]' : 'bg-[#F4F4F1] text-[#8a7600]'}`}>
+                                        {step.done ? <CheckCircle2 size={17} /> : <Icon size={17} />}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <div className={`text-[13px] font-bold ${step.done ? 'text-[#999]' : 'text-[#222]'}`}>{step.title}</div>
+                                        <div className="text-[10px] text-[#999] mt-1">{step.detail}</div>
+                                    </div>
+                                    {!step.done && <ChevronRight size={16} className="text-[#CCC] group-hover:text-[#8a7600] transition-colors shrink-0" />}
+                                </>
+                            );
+                            return step.done ? (
+                                <div key={step.title} className="flex items-center gap-5 px-10 py-5">{inner}</div>
+                            ) : (
+                                <Link key={step.title} to="/partner/rewards" className="flex items-center gap-5 px-10 py-5 hover:bg-[#FAFAFA] transition-colors group">{inner}</Link>
+                            );
+                        })}
+                    </div>
+                </section>
+            )}
+
             {/* Stat cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-16">
+            {!showChecklist && <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-16">
                 {cards.map(c => (
                     <Link key={c.label} to={c.to} className="group bg-white border border-[#E6E6E1] p-10 rounded-3xl hover:border-[#E8D200]/30 transition-all hover:shadow-lg">
                         <div className="flex items-start justify-between mb-8">
@@ -148,7 +257,7 @@ export default function PartnerHome() {
                         <div className="text-[11px] font-black text-[#888] mt-1">{c.label}</div>
                     </Link>
                 ))}
-            </div>
+            </div>}
 
             {actions.length > 0 && (
                 <section className="mb-16 bg-white border border-[#E6E6E1] rounded-3xl overflow-hidden">
@@ -176,7 +285,7 @@ export default function PartnerHome() {
             )}
 
             {/* Recent redemptions */}
-            <div className="bg-white border border-[#E6E6E1] rounded-3xl overflow-hidden">
+            {!showChecklist && <div className="bg-white border border-[#E6E6E1] rounded-3xl overflow-hidden">
                 <div className="flex items-center justify-between px-10 py-8 border-b border-[#E6E6E1]">
                     <div>
                         <h3 className="text-xl font-light tracking-tighter text-[#1A1A1A]">Recent Redemptions</h3>
@@ -213,7 +322,7 @@ export default function PartnerHome() {
                         ))}
                     </div>
                 )}
-            </div>
+            </div>}
         </div>
     );
 }
