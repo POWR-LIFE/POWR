@@ -413,6 +413,19 @@ verify_jwt = false
 # there is nothing to authorise.
 verify_jwt = false
 
+[functions.claim-points]
+# Called by the app with a user JWT (validated in-code), AND by relay_gym_claim
+# via pg_net with x-resolve-token + an explicit user id — the background claim
+# path (a client functions.invoke never arrives from a backgrounded Android app
+# while its REST calls do, 2026-07-14). Platform JWT verification must be off so
+# the token-gated relay leg reaches the in-code auth; every award gate is inside.
+verify_jwt = false
+
+[functions.upgrade-gym-tier]
+# Same dual auth as claim-points — user JWT in-code, or relay_gym_upgrade's
+# x-resolve-token leg for background upgrades.
+verify_jwt = false
+
 [edge_runtime]
 enabled = true
 # Supported request policies: `oneshot`, `per_worker`.

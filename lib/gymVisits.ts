@@ -11,6 +11,7 @@
 // pending-claim queue remain the backstop.
 
 import { Platform } from 'react-native';
+import { withNetworkTimeout } from '@/lib/networkTimeout';
 import { supabase } from '@/lib/supabase';
 
 /** Opens (or re-uses) the server-side visit record. Returns the visit id to store
@@ -21,12 +22,12 @@ export async function openGymVisit(
   startedAtMs: number,
 ): Promise<string | null> {
   try {
-    const { data, error } = await supabase.rpc('open_gym_visit', {
+    const { data, error } = await withNetworkTimeout(supabase.rpc('open_gym_visit', {
       p_partner_id: partnerId,
       p_region_id:  regionId ?? null,
       p_started_at: new Date(startedAtMs).toISOString(),
       p_platform:   Platform.OS,
-    });
+    }), 'open_gym_visit');
     if (error) throw error;
     return (data as string) ?? null;
   } catch (err) {
@@ -41,16 +42,47 @@ export async function confirmGymVisit(
   visitId: string,
   inside: boolean,
   detail: Record<string, unknown> = {},
+  requestCredit = false,
 ): Promise<void> {
   try {
-    const { error } = await supabase.rpc('confirm_gym_visit', {
-      p_visit_id: visitId,
-      p_inside:   inside,
-      p_detail:   detail,
-    });
+    // v2 lets this single round-trip ALSO ask the server to credit the visit
+    // (claim or upgrade, decided server-side from visit status + elapsed +
+    // system_config). The FCM wake window fits ~one round-trip, and this is it —
+    // the local claim chain behind it starved every time (field 2026-07-14).
+    // Credit only ever follows p_inside=true, so "no fix, no credit" holds.
+    const { data, error } = await withNetworkTimeout(supabase.rpc('confirm_gym_visit_v2', {
+      p_visit_id:       visitId,
+      p_inside:         inside,
+      p_detail:         detail,
+      p_request_credit: requestCredit,
+    }), 'confirm_gym_visit');
     if (error) throw error;
+    const triggered = (data as { triggered?: string | null } | null)?.triggered;
+    if (triggered) {
+      console.log(`[GymVisit] Server credit trigger fired from confirm: ${triggered}.`);
+    }
   } catch (err) {
     console.warn('[GymVisit] confirmGymVisit failed:', err);
+  }
+}
+
+/** Heartbeat: the in-gym location stream delivered a fix to JS. Deliberately NOT
+ *  confirmGymVisit — that means location-PROVEN presence and bounds a late exit,
+ *  and an indoor fix is usually too coarse to prove anything. This records only
+ *  that the stream is alive, which is the one thing the server cannot otherwise
+ *  see and the question behind every background-claim failure. */
+export async function logGymVisitTick(
+  visitId: string,
+  detail: Record<string, unknown> = {},
+): Promise<void> {
+  try {
+    const { error } = await withNetworkTimeout(supabase.rpc('log_gym_visit_tick', {
+      p_visit_id: visitId,
+      p_detail:   detail,
+    }), 'log_gym_visit_tick');
+    if (error) throw error;
+  } catch (err) {
+    console.warn('[GymVisit] logGymVisitTick failed:', err);
   }
 }
 
@@ -62,11 +94,11 @@ export async function markGymVisitProgress(
   sessionId?: string,
 ): Promise<void> {
   try {
-    const { error } = await supabase.rpc('mark_gym_visit_progress', {
+    const { error } = await withNetworkTimeout(supabase.rpc('mark_gym_visit_progress', {
       p_visit_id:   visitId,
       p_stage:      stage,
       p_session_id: sessionId ?? null,
-    });
+    }), 'mark_gym_visit_progress');
     if (error) throw error;
   } catch (err) {
     console.warn('[GymVisit] markGymVisitProgress failed:', err);
@@ -76,10 +108,10 @@ export async function markGymVisitProgress(
 /** Closes the visit so the server stops nudging a device that has left. */
 export async function closeGymVisit(visitId: string, endedAtMs?: number): Promise<void> {
   try {
-    const { error } = await supabase.rpc('close_gym_visit', {
+    const { error } = await withNetworkTimeout(supabase.rpc('close_gym_visit', {
       p_visit_id: visitId,
       p_ended_at: endedAtMs ? new Date(endedAtMs).toISOString() : null,
-    });
+    }), 'close_gym_visit');
     if (error) throw error;
   } catch (err) {
     console.warn('[GymVisit] closeGymVisit failed:', err);

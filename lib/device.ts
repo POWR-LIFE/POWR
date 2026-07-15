@@ -22,17 +22,38 @@ export function isExpoGoClient(): boolean {
  * Falls back to a cached UUID in SecureStore if native IDs are unavailable.
  * This is a soft signal for fraud detection, NOT a hard gate.
  */
+let _deviceIdMemo: string | null = null;
+
 export async function getDeviceId(): Promise<string> {
-    // Try the cached value first (fastest path)
+    if (_deviceIdMemo) return _deviceIdMemo;
+
+    // Android first, and SYNCHRONOUSLY: getAndroidId() needs no storage and no
+    // keystore. This path must never await SecureStore — Android Keystore ops
+    // from a backgrounded process can block indefinitely, and this function is
+    // on the background claim chain (field-caught 2026-07-14: claim attempts
+    // hung at the SecureStore read below while the network was healthy).
+    // ANDROID_ID is what the SecureStore cache historically held, so the value
+    // is unchanged for existing installs.
+    if (Platform.OS === 'android') {
+        const androidId = Application.getAndroidId();
+        if (androidId) {
+            _deviceIdMemo = androidId;
+            return androidId;
+        }
+    }
+
+    // iOS (and the rare Android-without-ANDROID_ID): SecureStore survives app
+    // reinstalls (iOS keychain), which is exactly why the IDFV is cached there.
     const cached = await SecureStore.getItemAsync(DEVICE_ID_KEY);
-    if (cached) return cached;
+    if (cached) {
+        _deviceIdMemo = cached;
+        return cached;
+    }
 
     let deviceId: string | null = null;
 
     if (Platform.OS === 'ios') {
         deviceId = await Application.getIosIdForVendorAsync();
-    } else if (Platform.OS === 'android') {
-        deviceId = Application.getAndroidId();
     }
 
     // Fallback: generate a random ID and persist it
@@ -41,6 +62,7 @@ export async function getDeviceId(): Promise<string> {
     }
 
     await SecureStore.setItemAsync(DEVICE_ID_KEY, deviceId);
+    _deviceIdMemo = deviceId;
     return deviceId;
 }
 

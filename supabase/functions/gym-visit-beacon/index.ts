@@ -22,6 +22,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { deliverExpoMessages } from '../_shared/expoPush.ts';
+import { sendFcmDataMessage } from '../_shared/fcmV1.ts';
 
 const MAX_NUDGES = 4;                    // per stage — then leave it to the exit path
 const NUDGE_BACKOFF_MS = 5 * 60 * 1000;  // don't re-wake a silent device more than every 5 min
@@ -90,7 +91,7 @@ Deno.serve(async (req: Request) => {
     for (const visit of visits) {
       const { data: tokens } = await admin
         .from('user_push_tokens')
-        .select('expo_push_token')
+        .select('expo_push_token, device_token, platform')
         .eq('user_id', visit.user_id);
 
       if (!tokens || tokens.length === 0) {
@@ -103,24 +104,72 @@ Deno.serve(async (req: Request) => {
         continue;
       }
 
-      // SILENT / data-only: no title, no body — nothing is displayed. _contentAvailable
-      // is what makes iOS wake a backgrounded app; priority high does the same on
-      // Android FCM. The visible "Session recorded" push is fired later by
-      // claim-points, only if the device confirms and the claim actually lands.
-      const messages = tokens.map(({ expo_push_token }) => ({
-        to: expo_push_token,
-        data: { type: 'gym_visit_check', visit_id: visit.id, stage },
-        priority: 'high',
-        _contentAvailable: true,
-        // Pointless to deliver a presence check long after the fact.
-        ttl: 10 * 60,
-      }));
+      // ANDROID goes DIRECT via FCM v1: Expo-routed data-only pushes are never
+      // delivered to a backgrounded Android app (field matrix 2026-07-13/14 —
+      // visible pushes fine, silent wakes never), while a direct HIGH-priority
+      // FCM data message reaches the background task in ~1 s AND grants the app
+      // the execution window the woken claim chain needs. iOS stays on Expo:
+      // _contentAvailable wakes proved end-to-end same day (claim 3 s after the
+      // t+30 wake). If FCM credentials are missing/broken the Android rows fall
+      // back to Expo — unsetting the secret is the rollback switch.
+      const payload = { type: 'gym_visit_check', visit_id: visit.id, stage };
+      const TTL_SEC = 10 * 60; // pointless to deliver a presence check long after the fact
+      let sentDirect = 0;
+      let failedDirect = 0;
+      const viaExpo = [];
 
-      const result = await deliverExpoMessages(admin, messages, {
-        userId: visit.user_id,
-        type: `gym_visit_check_${stage}`,
-      });
-      stats.sent += result.queued;
+      for (const t of tokens) {
+        if (t.platform !== 'android' || !t.device_token) {
+          viaExpo.push(t);
+          continue;
+        }
+        const outcome = await sendFcmDataMessage(t.device_token, {
+          ...payload,
+          // Expo's envelope nests the payload under `body`; mirroring it keeps
+          // the client task's extractData working whichever shape it receives.
+          body: JSON.stringify(payload),
+        }, TTL_SEC);
+
+        if (outcome.unavailable) {
+          viaExpo.push(t); // no FCM credentials — old path, unchanged behaviour
+          continue;
+        }
+        if (outcome.ok) sentDirect++; else failedDirect++;
+        if (outcome.unregistered) {
+          // Token is dead at the platform — prune, mirroring the Expo receipts path.
+          await admin.from('user_push_tokens').delete().eq('device_token', t.device_token);
+        }
+        // Same per-user forensics the Expo path gets, one row per send. FCM 200
+        // = accepted by the platform (stronger than an Expo ticket).
+        await admin.from('push_send_log').insert({
+          user_id: visit.user_id,
+          type: `gym_visit_check_${stage}`,
+          expo_push_token: t.device_token,
+          status: outcome.ok ? 'accepted' : 'rejected',
+          ticket_id: outcome.messageName ?? null,
+          error: outcome.ok ? null : outcome.error,
+        }).then(({ error }) => { if (error) console.error('[gym-visit-beacon] fcm log insert failed', error); });
+      }
+
+      let result = { queued: 0, failed: 0 };
+      if (viaExpo.length > 0) {
+        // SILENT / data-only: no title, no body — nothing is displayed.
+        // _contentAvailable is what makes iOS wake a backgrounded app. The visible
+        // "Session recorded" push is fired later by claim-points, only if the
+        // device confirms and the claim actually lands.
+        const messages = viaExpo.map(({ expo_push_token }) => ({
+          to: expo_push_token,
+          data: payload,
+          priority: 'high',
+          _contentAvailable: true,
+          ttl: TTL_SEC,
+        }));
+        result = await deliverExpoMessages(admin, messages, {
+          userId: visit.user_id,
+          type: `gym_visit_check_${stage}`,
+        });
+      }
+      stats.sent += result.queued + sentDirect;
 
       await admin
         .from('gym_visits')
@@ -130,7 +179,13 @@ Deno.serve(async (req: Request) => {
       await admin.from('gym_visit_events').insert({
         visit_id: visit.id, user_id: visit.user_id,
         event: 'nudge_sent',
-        detail: { stage, queued: result.queued, failed: result.failed, attempt: (visit.nudge_count ?? 0) + 1 },
+        detail: {
+          stage,
+          queued: result.queued,
+          failed: result.failed + failedDirect,
+          fcm_direct: sentDirect,
+          attempt: (visit.nudge_count ?? 0) + 1,
+        },
       });
     }
   }
