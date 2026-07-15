@@ -8,15 +8,20 @@
 //                                                      → creates the auth user + reward_brand_users
 //                                                        row and burns the token
 //
-// ADMIN actions (caller must be in admin_roles):
+// AUTHENTICATED actions — admins act on any brand; a brand's own portal users
+// can also call these, server-forced to THEIR brand (so partners can manage
+// their own team from /partner/settings):
 //   create_invite { brand_name, email? }  → mints a tokenized setup link. With an
 //                                            email, also sends the brand that link
 //                                            via Mailgun; without one it's copy-link
 //                                            only. The link is identical either way.
 //   revoke_invite { invite_id }           → revokes an unused setup link
-//   invite        { brand_name, email }   → email invite via Supabase (needs SMTP configured)
 //   list          { brand_name }          → portal users + open setup invites for a brand
-//   remove        { user_id }             → removes portal access (keeps auth user)
+//   remove        { user_id }             → removes portal access (keeps auth user);
+//                                            partners cannot remove themselves
+//
+// ADMIN-only:
+//   invite        { brand_name, email }   → email invite via Supabase (needs SMTP configured)
 
 import { createClient } from '@supabase/supabase-js';
 import { sendEmail } from '../_shared/mailgun.ts';
@@ -136,7 +141,8 @@ Deno.serve(async (req) => {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // ADMIN: everything below requires a logged-in admin
+  // AUTHENTICATED: everything below requires a logged-in admin, or a brand
+  // portal user acting on their own brand
   // ══════════════════════════════════════════════════════════════════════════
 
   const authHeader = req.headers.get('Authorization');
@@ -156,7 +162,23 @@ Deno.serve(async (req) => {
     .select('user_id')
     .eq('user_id', user.id)
     .single();
-  if (!adminRow) return json({ error: 'Forbidden' }, 403);
+  const isAdmin = !!adminRow;
+
+  // Non-admins must be a portal user of some brand; every action below is then
+  // forced to that brand regardless of what the request body claims.
+  let callerBrand = null;
+  if (!isAdmin) {
+    const { data: brandRow } = await adminClient
+      .from('reward_brand_users')
+      .select('brand_name')
+      .eq('user_id', user.id)
+      .single();
+    callerBrand = brandRow?.brand_name ?? null;
+    if (!callerBrand) return json({ error: 'Forbidden' }, 403);
+  }
+
+  const sameBrand = (a, b) =>
+    String(a ?? '').trim().toLowerCase() === String(b ?? '').trim().toLowerCase();
 
   const siteUrl = Deno.env.get('SITE_URL') ?? 'https://powr.life';
 
@@ -164,7 +186,7 @@ Deno.serve(async (req) => {
   // The link (/partner/setup/{token}) is the credential. Pass an `email` to send
   // the brand that same link via Mailgun; omit it for copy-link-only.
   if (body.action === 'create_invite') {
-    const brandName = String(body.brand_name ?? '').trim();
+    const brandName = isAdmin ? String(body.brand_name ?? '').trim() : callerBrand;
     if (!brandName) return json({ error: 'brand_name is required' }, 400);
 
     const email = String(body.email ?? '').toLowerCase().trim();
@@ -195,13 +217,15 @@ Deno.serve(async (req) => {
       }
     }
 
-    await adminClient.from('admin_audit_log').insert({
-      admin_id: user.id,
-      action: emailed ? 'email_brand_setup_link' : 'create_brand_setup_link',
-      target_type: 'reward_brand',
-      target_id: null,
-      metadata: { brand_name: brandName, email: email || null, emailed },
-    });
+    if (isAdmin) {
+      await adminClient.from('admin_audit_log').insert({
+        admin_id: user.id,
+        action: emailed ? 'email_brand_setup_link' : 'create_brand_setup_link',
+        target_type: 'reward_brand',
+        target_id: null,
+        metadata: { brand_name: brandName, email: email || null, emailed },
+      });
+    }
 
     return json({ ok: true, token, url: setupLink, emailed });
   }
@@ -210,6 +234,15 @@ Deno.serve(async (req) => {
   if (body.action === 'revoke_invite') {
     const { invite_id } = body;
     if (!invite_id) return json({ error: 'invite_id is required' }, 400);
+
+    if (!isAdmin) {
+      const { data: inv } = await adminClient
+        .from('reward_brand_invites')
+        .select('brand_name')
+        .eq('id', invite_id)
+        .single();
+      if (!inv || !sameBrand(inv.brand_name, callerBrand)) return json({ error: 'Forbidden' }, 403);
+    }
 
     const { error: revErr } = await adminClient
       .from('reward_brand_invites')
@@ -223,6 +256,7 @@ Deno.serve(async (req) => {
 
   // ── invite: email invite via Supabase (requires working SMTP) ──────────────
   if (body.action === 'invite') {
+    if (!isAdmin) return json({ error: 'Forbidden' }, 403);
     const brandName = String(body.brand_name ?? '').trim();
     const { email } = body;
     if (!brandName || !email) return json({ error: 'brand_name and email are required' }, 400);
@@ -256,7 +290,7 @@ Deno.serve(async (req) => {
 
   // ── list: portal users + open setup invites for a brand ────────────────────
   if (body.action === 'list') {
-    const brandName = String(body.brand_name ?? '').trim();
+    const brandName = isAdmin ? String(body.brand_name ?? '').trim() : callerBrand;
     if (!brandName) return json({ error: 'brand_name is required' }, 400);
 
     const [{ data: rows, error: listErr }, { data: invites }] = await Promise.all([
@@ -304,19 +338,32 @@ Deno.serve(async (req) => {
     const { user_id } = body;
     if (!user_id) return json({ error: 'user_id is required' }, 400);
 
+    if (!isAdmin) {
+      // A partner can't remove themselves — the brand always keeps ≥1 login
+      if (user_id === user.id) return json({ error: "You can't remove your own access" }, 400);
+      const { data: target } = await adminClient
+        .from('reward_brand_users')
+        .select('brand_name')
+        .eq('user_id', user_id)
+        .single();
+      if (!target || !sameBrand(target.brand_name, callerBrand)) return json({ error: 'Forbidden' }, 403);
+    }
+
     const { error: removeErr } = await adminClient
       .from('reward_brand_users')
       .delete()
       .eq('user_id', user_id);
     if (removeErr) return json({ error: removeErr.message }, 400);
 
-    await adminClient.from('admin_audit_log').insert({
-      admin_id: user.id,
-      action: 'remove_brand_user',
-      target_type: 'reward_brand',
-      target_id: null,
-      metadata: { user_id },
-    });
+    if (isAdmin) {
+      await adminClient.from('admin_audit_log').insert({
+        admin_id: user.id,
+        action: 'remove_brand_user',
+        target_type: 'reward_brand',
+        target_id: null,
+        metadata: { user_id },
+      });
+    }
 
     return json({ ok: true });
   }
