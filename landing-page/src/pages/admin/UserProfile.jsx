@@ -647,6 +647,16 @@ export default function UserProfile() {
     const locationCheckedAt = profile.location_permission_checked_at
         ? new Date(profile.location_permission_checked_at).toLocaleDateString()
         : null;
+    // Sampled fix accuracy (m) reported with the snapshot. A granted permission
+    // with a large radius means reduced accuracy (iOS Precise Location off /
+    // Android coarse-only) — geofencing is silently dead despite the grant.
+    const locationGranted = profile.location_permission === 'always' || profile.location_permission === 'while_using';
+    const reducedAccuracy = locationGranted && profile.location_accuracy_m > 500;
+    const accuracyLabel = profile.location_accuracy_m != null
+        ? (profile.location_accuracy_m >= 1000
+            ? `~${(profile.location_accuracy_m / 1000).toFixed(1)} km`
+            : `~${profile.location_accuracy_m} m`)
+        : null;
 
     return (
         <div className="px-4 lg:px-0 py-20 animate-in fade-in slide-in-from-bottom-8 duration-1000">
@@ -796,10 +806,10 @@ export default function UserProfile() {
                             <span className="px-3 py-1 rounded-full bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.2em]">LVL {profile.level || 1}</span>
                             {locationState ? (
                                 <span
-                                    title={`Live permission snapshot${locationCheckedAt ? ` · reported ${locationCheckedAt}` : ''}`}
-                                    className={`px-3 py-1 rounded-full ${locationState.cls} text-[10px] font-black uppercase tracking-[0.2em] flex items-center gap-1.5`}
+                                    title={`Live permission snapshot${locationCheckedAt ? ` · reported ${locationCheckedAt}` : ''}${accuracyLabel ? ` · fix accuracy ${accuracyLabel}` : ''}${reducedAccuracy ? ' · reduced accuracy: iOS Precise Location off / Android coarse-only — geofence check-ins cannot fire' : ''}`}
+                                    className={`px-3 py-1 rounded-full ${reducedAccuracy ? 'bg-red-500/10 border border-red-500/20 text-red-500' : locationState.cls} text-[10px] font-black uppercase tracking-[0.2em] flex items-center gap-1.5`}
                                 >
-                                    <MapPin size={11} /> {locationState.chip}
+                                    <MapPin size={11} /> {locationState.chip}{reducedAccuracy ? ' · Precise Off' : ''}
                                 </span>
                             ) : profile.location_granted ? (
                                 <span title="Legacy onboarding-bonus flag — this build doesn't report live permission state" className="px-3 py-1 rounded-full bg-[#10B981]/10 border border-[#10B981]/20 text-[#10B981] text-[10px] font-black uppercase tracking-[0.2em] flex items-center gap-1.5">
@@ -1869,10 +1879,11 @@ export default function UserProfile() {
                                 {
                                     label: 'Location Access',
                                     value: locationState
-                                        ? `${locationState.detail}${locationCheckedAt ? ` · as of ${locationCheckedAt}` : ''}`
+                                        ? `${locationState.detail}${reducedAccuracy ? ' · PRECISE OFF' : ''}${accuracyLabel ? ` · fix ${accuracyLabel}` : ''}${locationCheckedAt ? ` · as of ${locationCheckedAt}` : ''}`
                                         : (profile.location_granted ? 'Granted (legacy flag)' : 'Unknown (legacy flag)'),
                                     icon: MapPin,
-                                    highlight: profile.location_permission === 'always' || (!profile.location_permission && profile.location_granted),
+                                    // Reduced accuracy breaks geofencing even on 'always' — never show it green.
+                                    highlight: !reducedAccuracy && (profile.location_permission === 'always' || (!profile.location_permission && profile.location_granted)),
                                 },
                                 { label: 'Node Uptime', value: '182 Days', icon: Clock },
                                 { label: 'Sync Status', value: 'Verified', icon: Shield },
