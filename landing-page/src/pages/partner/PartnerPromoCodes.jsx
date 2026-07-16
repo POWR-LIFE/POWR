@@ -4,6 +4,7 @@ import * as XLSX from 'xlsx';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
 import { useAuth } from '../../App';
+import { ChangeMethodLink } from './integrationShared';
 import {
     parseCodes,
     parseReconciliationCodes,
@@ -33,7 +34,7 @@ const fmtDate = (d) =>
 
 export default function PartnerPromoCodes() {
     const toast = useToast();
-    const { partnerData } = useAuth();
+    const { partnerData, deliveryMethod } = useAuth();
     const brand = partnerData?.brand_name;
 
     const [rewards, setRewards] = useState([]);
@@ -352,10 +353,19 @@ export default function PartnerPromoCodes() {
                     <div className="h-[1px] w-10 bg-[#E8D200]"></div>
                     <span className="text-[10px] uppercase tracking-[0.5em] text-[#8a7600] font-black">Code Management</span>
                 </div>
-                <h1 className="text-5xl font-light tracking-tighter text-[#1A1A1A]">Promo Codes</h1>
+                <div className="flex items-end justify-between gap-6 flex-wrap">
+                    <h1 className="text-5xl font-light tracking-tighter text-[#1A1A1A]">Promo Codes</h1>
+                    <ChangeMethodLink />
+                </div>
                 <p className="text-[12px] text-[#AAAAAA] font-black mt-3 max-w-xl">
                     Upload the discount codes from your store, or let POWR mint them. Members draw one from the pool when they redeem.
                 </p>
+                {deliveryMethod && deliveryMethod !== 'manual' && (
+                    <div className="mt-5 p-4 bg-[#E8D200]/5 border border-[#E8D200]/20 rounded-2xl text-[11px] text-[#8a7600] font-bold max-w-xl leading-relaxed">
+                        You deliver codes via {deliveryMethod === 'api' ? 'the API' : 'Shopify'} — codes loaded
+                        here act as a fallback buffer if your integration is ever unavailable at redemption time.
+                    </div>
+                )}
             </div>
 
             {rewards.length === 0 ? (

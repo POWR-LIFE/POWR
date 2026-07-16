@@ -1,15 +1,17 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
 import { useAuth } from '../../App';
-import { Key } from 'lucide-react';
+import { ChevronRight, Key } from 'lucide-react';
 import BrandAccessPanel from '../../components/BrandAccessPanel';
+import { methodMeta } from './integrationShared';
 
 const INPUT = "w-full h-14 px-5 bg-white border border-[#E6E6E1] rounded-2xl text-sm text-[#1A1A1A] placeholder-[#BBBBBB] focus:border-[#E8D200]/50 outline-none transition-all font-['Outfit']";
 
 export default function PartnerSettings() {
     const toast = useToast();
-    const { partnerData, user } = useAuth();
+    const { partnerData, user, deliveryMethod } = useAuth();
 
     // Password change
     const [currentPassword, setCurrentPassword] = useState('');
@@ -73,6 +75,19 @@ export default function PartnerSettings() {
                     </p>
                 </div>
             </div>
+
+            {/* Delivery method — managed on the integration hub */}
+            <Link to="/partner/integration"
+                className="flex items-center justify-between gap-6 bg-white border border-[#E6E6E1] rounded-3xl p-8 mb-6 hover:border-[#E8D200]/40 transition-all group">
+                <div>
+                    <h2 className="text-[10px] uppercase tracking-[0.5em] font-black text-[#BBBBBB] mb-3">Delivery Method</h2>
+                    <div className="text-sm font-bold text-[#1A1A1A]">
+                        {methodMeta(deliveryMethod)?.label ?? 'Not chosen yet'}
+                    </div>
+                    <p className="text-[10px] text-[#BBB] mt-1.5">How codes reach members when they redeem — view status or switch method.</p>
+                </div>
+                <ChevronRight size={16} className="text-[#CCC] group-hover:text-[#8a7600] transition-colors shrink-0" />
+            </Link>
 
             {/* Team — invite/remove portal logins for this brand */}
             <div className="mb-6">

@@ -23,7 +23,7 @@ const API_VERSION = '2026-07';
 const SCOPES = 'write_discounts,read_orders';
 const CALLBACK_URL = 'https://wjvvujnicwkruaeibttt.supabase.co/functions/v1/shopify-connect/callback';
 const WEBHOOK_URL = 'https://wjvvujnicwkruaeibttt.supabase.co/functions/v1/shopify-webhook';
-const PORTAL_URL = 'https://powr.life/partner/developers';
+const PORTAL_URL = 'https://powr.life/partner/integration/shopify';
 const MINT_URL = 'https://wjvvujnicwkruaeibttt.supabase.co/functions/v1/shopify-connect/mint';
 
 const json = (body, status = 200) =>

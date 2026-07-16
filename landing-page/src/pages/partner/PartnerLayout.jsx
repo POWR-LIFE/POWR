@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Award, Gift, Settings, LogOut, ChevronRight, Search, Eye, CalendarDays, Ticket, MapPin, Code2 } from 'lucide-react';
+import { LayoutDashboard, Award, Gift, Settings, LogOut, ChevronRight, Search, Eye, CalendarDays, Ticket, MapPin, Code2, Store, Plug } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../App';
+import { methodLaterKey } from './PartnerIntegrationHub';
 
 // --- Admin-only: pick which reward brand to preview the portal as ---
 // Brands come from rewards.brand_name — partners (gyms) are unrelated.
@@ -96,14 +97,23 @@ function AdminPartnerPicker({ onSelect }) {
     );
 }
 
-const NAV_ITEMS = [
+// The integration slot adapts to the brand's chosen delivery method — one
+// nav item, labelled by the method; Promo Codes only surfaces for manual
+// brands (it stays routable for the others as their fallback pool).
+const INTEGRATION_NAV = {
+    api:     { label: 'API',         path: '/partner/integration/api',     icon: Code2,  match: '/partner/integration' },
+    shopify: { label: 'Shopify',     path: '/partner/integration/shopify', icon: Store,  match: '/partner/integration' },
+    manual:  { label: 'Promo Codes', path: '/partner/promo-codes',         icon: Ticket, match: '/partner/integration' },
+};
+const INTEGRATION_NAV_DEFAULT = { label: 'Integration', path: '/partner/integration', icon: Plug, match: '/partner/integration' };
+
+const navItemsFor = (deliveryMethod) => [
     { label: 'Overview',    path: '/partner',             icon: LayoutDashboard },
     { label: 'My Rewards',  path: '/partner/rewards',     icon: Award           },
-    { label: 'Promo Codes', path: '/partner/promo-codes', icon: Ticket          },
+    INTEGRATION_NAV[deliveryMethod] ?? INTEGRATION_NAV_DEFAULT,
     { label: "What's On",   path: '/partner/featured',    icon: CalendarDays    },
     { label: 'Placements',  path: '/partner/placements',  icon: MapPin, gated: true },
     { label: 'Redemptions', path: '/partner/redemptions', icon: Gift            },
-    { label: 'Developers',  path: '/partner/developers',  icon: Code2           },
     { label: 'Settings',    path: '/partner/settings',    icon: Settings        },
 ];
 
@@ -114,21 +124,39 @@ const PATH_LABELS = {
     featured:      "What's On",
     placements:    'Placements',
     redemptions:   'Redemptions',
-    developers:    'Developers',
+    integration:   'Integration',
     settings:      'Settings',
 };
+
+const INTEGRATION_SUB_LABELS = { api: 'API', shopify: 'Shopify' };
 
 export function PartnerLayout({ children }) {
     const location = useLocation();
     const navigate = useNavigate();
-    const { user, partnerData, isAdmin, isActingPartner, setActingPartner, placementsEnabled } = useAuth();
+    const { user, partnerData, isAdmin, isActingPartner, setActingPartner, placementsEnabled, deliveryMethod } = useAuth();
 
     const segment = location.pathname.split('/')[2] || 'partner';
-    const currentLabel = PATH_LABELS[segment] || segment;
+    const currentLabel = segment === 'integration'
+        ? (INTEGRATION_SUB_LABELS[location.pathname.split('/')[3]] ?? 'Integration')
+        : (PATH_LABELS[segment] || segment);
 
     // Placements is gated: hidden for brands until the feature flag is on,
     // but always shown to admins (incl. admin-preview) for testing.
-    const navItems = NAV_ITEMS.filter((item) => !item.gated || isAdmin || placementsEnabled);
+    const navItems = navItemsFor(deliveryMethod).filter((item) => !item.gated || isAdmin || placementsEnabled);
+
+    // First-run: a brand with no delivery method chosen (and none inferable)
+    // gets sent to the chooser — once per session, with a permanent
+    // "decide later" opt-out set by the hub.
+    const brandKey = partnerData?.brand_name?.trim().toLowerCase();
+    useEffect(() => {
+        if (!brandKey || deliveryMethod !== null) return;
+        if (location.pathname.startsWith('/partner/integration')) return;
+        if (localStorage.getItem(methodLaterKey(brandKey)) === '1') return;
+        const promptedKey = `powr-partner-method-prompted:${brandKey}`;
+        if (sessionStorage.getItem(promptedKey) === '1') return;
+        sessionStorage.setItem(promptedKey, '1');
+        navigate('/partner/integration');
+    }, [brandKey, deliveryMethod, location.pathname, navigate]);
 
     const handleSignOut = async () => {
         await supabase.auth.signOut();
@@ -178,7 +206,8 @@ export function PartnerLayout({ children }) {
                         <div className="h-[2px] w-10 bg-[#E8D200]/60"></div>
                     </div>
                     {navItems.map(item => {
-                        const active = location.pathname === item.path;
+                        const active = location.pathname === item.path
+                            || (item.match && location.pathname.startsWith(item.match));
                         return (
                             <Link
                                 key={item.path}
