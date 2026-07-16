@@ -141,15 +141,18 @@ async function ensureFreshToken(admin, shopRow, clientId, clientSecret) {
   if (!exp || exp > Date.now()) return shopRow; // legacy token, or still fresh
   if (!shopRow.refresh_token) return shopRow;
 
+  // Unlike the code exchange (which accepts JSON), the refresh grant REQUIRES
+  // form-urlencoding — JSON gets 401 invalid_request. Reuse within ~1h of a
+  // refresh returns the same pair, so concurrent refreshes are harmless.
   const res = await fetch(`https://${shopRow.shop_domain}/admin/oauth/access_token`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Accept': 'application/json' },
+    body: new URLSearchParams({
       client_id: clientId,
       client_secret: clientSecret,
       grant_type: 'refresh_token',
       refresh_token: shopRow.refresh_token,
-    }),
+    }).toString(),
   });
   const body = await res.json().catch(() => ({}));
 
