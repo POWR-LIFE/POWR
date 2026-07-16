@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Activity, BookOpen, Check, Copy, Eye, EyeOff, KeyRound, Minus, Plus, RefreshCw, Send, Trash2, TriangleAlert, Webhook, Zap } from 'lucide-react';
+import { Activity, BookOpen, Check, Copy, Eye, EyeOff, KeyRound, Minus, Plus, RefreshCw, Send, Store, Trash2, TriangleAlert, Webhook, Zap } from 'lucide-react';
+import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
 import { useAuth } from '../../App';
 import {
     API_BASE_URL, DOCS_PATH, WEBHOOK_EVENTS,
-    callPartnerApi, fetchDeliveries, fetchEndpoints, fetchIntegration,
+    callPartnerApi, callShopify, fetchDeliveries, fetchEndpoints, fetchIntegration,
 } from '../../lib/partnerApi';
 
 const INPUT = "w-full h-14 px-5 bg-white border border-[#E6E6E1] rounded-2xl text-sm text-[#1A1A1A] placeholder-[#BBBBBB] focus:border-[#E8D200]/50 outline-none transition-all font-['Outfit']";
@@ -116,6 +117,14 @@ export default function PartnerDevelopers() {
     const [mintTest, setMintTest] = useState(null);
     const [testingMint, setTestingMint] = useState(false);
 
+    // Shopify
+    const [shopify, setShopify] = useState(null);
+    const [shopDomain, setShopDomain] = useState('');
+    const [connectingShopify, setConnectingShopify] = useState(false);
+    const [discounts, setDiscounts] = useState(null);
+    const [brandRewards, setBrandRewards] = useState([]);
+    const [mappingBusy, setMappingBusy] = useState(null);
+
     const refresh = useCallback(async () => {
         if (!brand) return;
         // allSettled so one transient failure can't blank the whole page —
@@ -142,7 +151,81 @@ export default function PartnerDevelopers() {
 
     useEffect(() => { refresh(); }, [refresh]);
 
+    // Shopify connection state + the brand's rewards (for discount mapping).
+    const refreshShopify = useCallback(async () => {
+        if (!brand) return;
+        try {
+            const [status, { data: rewards }] = await Promise.all([
+                callShopify('status', brand),
+                supabase.from('rewards')
+                    .select('id, title, active, integration_type')
+                    .ilike('brand_name', brand)
+                    .order('created_at', { ascending: false }),
+            ]);
+            setShopify(status);
+            setBrandRewards(rewards ?? []);
+            if (status?.connected) {
+                const d = await callShopify('list_discounts', brand);
+                setDiscounts(d.discounts ?? []);
+            }
+        } catch (err) {
+            setShopify((prev) => prev ?? { connected: false });
+            console.error('shopify status failed', err);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [brand]);
+
+    useEffect(() => { refreshShopify(); }, [refreshShopify]);
+
+    // Returning from the Shopify OAuth screen (?shopify=connected|error).
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        const outcome = params.get('shopify');
+        if (!outcome) return;
+        if (outcome === 'connected') toast.success('Shopify connected — pick which discount each reward mints from');
+        else toast.error(`Shopify connection failed (${params.get('reason') ?? 'unknown'}) — try again`);
+        window.history.replaceState({}, '', window.location.pathname);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
     if (!partnerData) return null;
+
+    const handleConnectShopify = async () => {
+        if (!shopDomain.trim()) { toast.error('Enter your store domain (your-store.myshopify.com)'); return; }
+        setConnectingShopify(true);
+        try {
+            const res = await callShopify('start', brand, { shop_domain: shopDomain.trim() });
+            window.location.href = res.authorize_url;
+        } catch (err) {
+            toast.error(err.message);
+            setConnectingShopify(false);
+        }
+    };
+
+    const handleMapReward = async (rewardId, discountGid) => {
+        setMappingBusy(rewardId);
+        try {
+            if (discountGid) {
+                await callShopify('map_reward', brand, { reward_id: rewardId, discount_gid: discountGid });
+                toast.success('Reward now mints from that discount');
+            } else {
+                await callShopify('unmap_reward', brand, { reward_id: rewardId });
+                toast.success('Mapping removed');
+            }
+            await refreshShopify();
+        } catch (err) { toast.error(err.message); }
+        setMappingBusy(null);
+    };
+
+    const handleDisconnectShopify = async () => {
+        if (!window.confirm('Disconnect Shopify? Minting stops immediately; mapped rewards fall back to any buffer pool codes.')) return;
+        try {
+            await callShopify('disconnect', brand);
+            toast.success('Shopify disconnected');
+            setDiscounts(null);
+            await refreshShopify();
+        } catch (err) { toast.error(err.message); }
+    };
 
     const handleCreateKey = async () => {
         setCreatingKey(true);
@@ -307,6 +390,13 @@ export default function PartnerDevelopers() {
                 return (
                     <SectionCard icon={Activity} title="Connection Health">
                         <HealthItem
+                            state={shopify?.connected ? 'ok' : shopify?.status === 'uninstalled' ? 'warn' : 'off'}
+                            label="Shopify"
+                            detail={shopify?.connected ? `Connected to ${shopify.shop_domain} — ${(shopify.mappings ?? []).length} reward${(shopify.mappings ?? []).length === 1 ? '' : 's'} minting.`
+                                : shopify?.status === 'uninstalled' ? 'The app was uninstalled from your store — reconnect below to resume minting.'
+                                : 'Not connected — the no-code option if your store runs on Shopify.'}
+                        />
+                        <HealthItem
                             state={activeKeys.length === 0 ? 'off' : keyUsed ? 'ok' : 'warn'}
                             label="API key"
                             detail={activeKeys.length === 0 ? 'No key yet — create one below.'
@@ -354,6 +444,79 @@ export default function PartnerDevelopers() {
             </aside>
 
             <div className="flex-1 min-w-0 max-w-3xl xl:order-1">
+            {/* ── Shopify ──────────────────────────────────────────────── */}
+            <SectionCard
+                icon={Store} title="Shopify"
+                aside={shopify?.connected && (
+                    <button type="button" onClick={handleDisconnectShopify}
+                        className="h-9 px-4 text-[9px] font-black uppercase tracking-[0.2em] rounded-full text-red-500/60 hover:text-red-500 hover:bg-red-500/5 border border-transparent hover:border-red-500/10 transition-all">
+                        Disconnect
+                    </button>
+                )}
+            >
+                {!shopify?.connected ? (
+                    <>
+                        <p className="text-[12px] text-[#999] leading-relaxed mb-6 max-w-xl">
+                            The zero-effort integration: connect your store and POWR creates a fresh single-use
+                            discount code in Shopify every time a member redeems — and marks it used the moment
+                            it's spent at your checkout. No CSVs, no API work, nothing to host.
+                        </p>
+                        <div className="flex gap-3">
+                            <input type="text" placeholder="your-store.myshopify.com" value={shopDomain}
+                                onChange={e => setShopDomain(e.target.value)} className={INPUT + ' flex-1'} />
+                            <button type="button" onClick={handleConnectShopify} disabled={connectingShopify}
+                                className={BTN_DARK + ' h-14 shrink-0'}>
+                                {connectingShopify ? 'Redirecting…' : 'Connect Shopify'}
+                            </button>
+                        </div>
+                    </>
+                ) : (
+                    <>
+                        <div className="flex items-center gap-3 mb-6">
+                            <span className="h-2 w-2 rounded-full bg-emerald-500 shrink-0" />
+                            <code className="text-[12px] font-mono text-[#1A1A1A]">{shopify.shop_domain}</code>
+                            <span className="text-[9px] uppercase tracking-[0.2em] font-black text-emerald-600 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-3 py-1">Connected</span>
+                        </div>
+                        <div className="text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-3">Which discount should each reward mint from?</div>
+                        {brandRewards.filter(r => r.active).length === 0 ? (
+                            <p className="text-[12px] text-[#AAA]">No active rewards yet — once a reward is live it appears here.</p>
+                        ) : (
+                            <div className="space-y-3">
+                                {brandRewards.filter(r => r.active).map((r) => {
+                                    const mapping = (shopify.mappings ?? []).find(m => m.reward_id === r.id);
+                                    return (
+                                        <div key={r.id} className="flex items-center gap-4 p-4 bg-[#F4F4F1] border border-[#E6E6E1] rounded-2xl">
+                                            <div className="flex-1 min-w-0">
+                                                <div className="text-[12px] font-bold text-[#222] truncate">{r.title}</div>
+                                                <div className="text-[10px] text-[#999] mt-0.5">
+                                                    {mapping ? `Mints from “${mapping.discount_title}”` : 'Not minting yet — pick a discount'}
+                                                </div>
+                                            </div>
+                                            <select
+                                                value={mapping?.discount_gid ?? ''}
+                                                disabled={mappingBusy === r.id || discounts === null}
+                                                onChange={e => handleMapReward(r.id, e.target.value || null)}
+                                                className="h-11 px-4 bg-white border border-[#E6E6E1] rounded-xl text-[12px] text-[#1A1A1A] outline-none focus:border-[#E8D200]/50 max-w-[240px]"
+                                            >
+                                                <option value="">No minting</option>
+                                                {(discounts ?? []).filter(d => d.cloneable).map(d => (
+                                                    <option key={d.gid} value={d.gid}>{d.title}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                        <p className="text-[10px] text-[#BBB] mt-4 leading-relaxed">
+                            Create the template discount in Shopify (percentage or fixed amount) — POWR clones it
+                            into a single-use code per redemption. Codes confirm as used automatically when spent
+                            at your checkout.
+                        </p>
+                    </>
+                )}
+            </SectionCard>
+
             {/* ── API keys ─────────────────────────────────────────────── */}
             <SectionCard icon={KeyRound} title="API Keys">
                 {freshKey && (

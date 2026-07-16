@@ -438,6 +438,18 @@ verify_jwt = false
 # x-resolve-token gate as the other cron functions.
 verify_jwt = false
 
+[functions.shopify-connect]
+# Mixed auth by route: /callback is Shopify's OAuth redirect (state + HMAC
+# are the credential), /mint is signed with the brand's mint_secret, and the
+# portal actions verify the user JWT in-code — so platform verification is off.
+verify_jwt = false
+
+[functions.shopify-webhook]
+# Shopify posts order/uninstall events here; it is not a Supabase user.
+# Security rests on the X-Shopify-Hmac-Sha256 check inside the function,
+# mirroring terra-webhook.
+verify_jwt = false
+
 [edge_runtime]
 enabled = true
 # Supported request policies: `oneshot`, `per_worker`.
