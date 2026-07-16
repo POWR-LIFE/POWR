@@ -64,20 +64,23 @@ const STATUS_CHIP = {
     skipped: 'bg-[#F4F4F1] text-[#999] border-[#E6E6E1]',
 };
 
-// state: 'ok' | 'warn' | 'off'
+// state: 'ok' | 'warn' | 'off' — stacked layout so it reads well in the
+// narrow sticky rail.
 function HealthItem({ state, label, detail }) {
     const icon = state === 'ok' ? <Check size={13} className="text-emerald-600" />
         : state === 'warn' ? <TriangleAlert size={13} className="text-amber-500" />
         : <Minus size={13} className="text-[#CCC]" />;
     return (
-        <div className="flex items-center gap-3 py-2.5 border-b border-[#EFEFEC] last:border-0">
-            <span className={`h-7 w-7 rounded-full flex items-center justify-center border shrink-0 ${
-                state === 'ok' ? 'bg-emerald-500/10 border-emerald-500/20'
-                : state === 'warn' ? 'bg-amber-500/10 border-amber-500/20'
-                : 'bg-[#F4F4F1] border-[#E6E6E1]'
-            }`}>{icon}</span>
-            <span className="text-[12px] font-bold text-[#333] w-52 shrink-0">{label}</span>
-            <span className="text-[11px] text-[#999] leading-relaxed">{detail}</span>
+        <div className="py-3 border-b border-[#EFEFEC] last:border-0">
+            <div className="flex items-center gap-3">
+                <span className={`h-7 w-7 rounded-full flex items-center justify-center border shrink-0 ${
+                    state === 'ok' ? 'bg-emerald-500/10 border-emerald-500/20'
+                    : state === 'warn' ? 'bg-amber-500/10 border-amber-500/20'
+                    : 'bg-[#F4F4F1] border-[#E6E6E1]'
+                }`}>{icon}</span>
+                <span className="text-[12px] font-bold text-[#333]">{label}</span>
+            </div>
+            <p className="text-[11px] text-[#999] leading-relaxed mt-1.5 pl-10">{detail}</p>
         </div>
     );
 }
@@ -264,7 +267,7 @@ export default function PartnerDevelopers() {
     };
 
     return (
-        <div className="py-16 animate-in fade-in slide-in-from-bottom-6 duration-700 max-w-3xl">
+        <div className="py-16 animate-in fade-in slide-in-from-bottom-6 duration-700 max-w-[1160px]">
             {/* Header */}
             <div className="mb-12">
                 <div className="flex items-center gap-3 mb-5">
@@ -288,7 +291,11 @@ export default function PartnerDevelopers() {
                 </div>
             </div>
 
-            {/* ── Connection health ────────────────────────────────────── */}
+            <div className="flex flex-col xl:flex-row xl:items-start xl:gap-10">
+            {/* ── Connection health — sticky rail on wide screens, stacked on
+                   top otherwise. Sticky works because PartnerLayout's main is
+                   the scroll container (same trick as the Rewards preview). */}
+            <aside className="xl:order-2 xl:w-[340px] xl:shrink-0 xl:sticky xl:top-6">
             {!loading && (() => {
                 const activeKeys = keys.filter(k => !k.revoked_at);
                 const keyUsed = activeKeys.some(k => k.last_used_at);
@@ -298,15 +305,7 @@ export default function PartnerDevelopers() {
                 const lastDelivered = deliveries.find(d => d.status === 'delivered');
                 const circuitOpen = integration?.mint_disabled_until && new Date(integration.mint_disabled_until) > new Date();
                 return (
-                    <SectionCard
-                        icon={Activity} title="Connection Health"
-                        aside={
-                            <button type="button" disabled={connTest?.running} onClick={handleRunConnectionTest}
-                                className="flex items-center gap-2 h-10 px-6 bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.2em] rounded-full hover:brightness-95 transition-all disabled:opacity-50">
-                                <Zap size={13} /> {connTest?.running ? 'Testing…' : 'Run connection test'}
-                            </button>
-                        }
-                    >
+                    <SectionCard icon={Activity} title="Connection Health">
                         <HealthItem
                             state={activeKeys.length === 0 ? 'off' : keyUsed ? 'ok' : 'warn'}
                             label="API key"
@@ -335,18 +334,26 @@ export default function PartnerDevelopers() {
                             <div className="mt-5 p-4 bg-[#F4F4F1] border border-[#E6E6E1] rounded-2xl">
                                 <div className="text-[9px] uppercase tracking-[0.4em] font-black text-[#BBB] mb-2">Live test results</div>
                                 {connTest.items.map((it, i) => (
-                                    <div key={i} className="flex items-center gap-2.5 py-1.5">
-                                        {it.ok ? <Check size={13} className="text-emerald-600 shrink-0" /> : <TriangleAlert size={13} className="text-red-500 shrink-0" />}
-                                        <span className="text-[11.5px] font-bold text-[#333] shrink-0">{it.label}</span>
-                                        <span className={`text-[11px] ${it.ok ? 'text-[#999]' : 'text-red-500'}`}>{it.detail}</span>
+                                    <div key={i} className="flex items-start gap-2.5 py-1.5">
+                                        {it.ok ? <Check size={13} className="text-emerald-600 shrink-0 mt-0.5" /> : <TriangleAlert size={13} className="text-red-500 shrink-0 mt-0.5" />}
+                                        <div className="min-w-0">
+                                            <div className="text-[11.5px] font-bold text-[#333]">{it.label}</div>
+                                            <div className={`text-[11px] leading-relaxed ${it.ok ? 'text-[#999]' : 'text-red-500'}`}>{it.detail}</div>
+                                        </div>
                                     </div>
                                 ))}
                             </div>
                         )}
+                        <button type="button" disabled={connTest?.running} onClick={handleRunConnectionTest}
+                            className="mt-6 w-full flex items-center justify-center gap-2 h-12 bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.2em] rounded-full hover:brightness-95 transition-all disabled:opacity-50">
+                            <Zap size={13} /> {connTest?.running ? 'Testing…' : 'Run connection test'}
+                        </button>
                     </SectionCard>
                 );
             })()}
+            </aside>
 
+            <div className="flex-1 min-w-0 max-w-3xl xl:order-1">
             {/* ── API keys ─────────────────────────────────────────────── */}
             <SectionCard icon={KeyRound} title="API Keys">
                 {freshKey && (
@@ -585,6 +592,8 @@ export default function PartnerDevelopers() {
                     </div>
                 </div>
             </SectionCard>
+            </div>
+            </div>
         </div>
     );
 }
