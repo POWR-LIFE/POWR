@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Activity, BookOpen, Check, Eye, EyeOff, KeyRound, Plus, RefreshCw, Send, Trash2, TriangleAlert, Webhook, Zap } from 'lucide-react';
+import { Activity, BookOpen, Check, Eye, EyeOff, Plus, RefreshCw, Send, Trash2, TriangleAlert, Zap } from 'lucide-react';
 import { useToast } from '../../lib/toast';
 import { useAuth } from '../../App';
 import {
@@ -8,7 +8,7 @@ import {
 } from '../../lib/partnerApi';
 import {
     BTN_DARK, BTN_GHOST, ChangeMethodLink, CopyButton, FallbackPoolCard,
-    HealthItem, INPUT, SectionCard, timeAgo, WrongMethodNotice,
+    HealthItem, INPUT, SectionCard, SetupFlow, timeAgo, WrongMethodNotice,
 } from './integrationShared';
 
 const STATUS_CHIP = {
@@ -199,101 +199,20 @@ export default function PartnerIntegrationApi() {
         setSavingIntegration(false);
     };
 
-    return (
-        <div className="py-16 animate-in fade-in slide-in-from-bottom-6 duration-700 max-w-[1160px]">
-            {/* Header */}
-            <div className="mb-12">
-                <div className="flex items-center gap-3 mb-5">
-                    <div className="h-[1px] w-10 bg-[#8a7600]"></div>
-                    <span className="text-[10px] uppercase tracking-[0.5em] text-[#8a7600] font-black">Integration · API</span>
-                </div>
-                <div className="flex items-end justify-between gap-6 flex-wrap">
-                    <h1 className="text-5xl font-light tracking-tighter text-[#1A1A1A]">API</h1>
-                    <div className="flex items-center gap-3">
-                        <ChangeMethodLink />
-                        <a href={DOCS_PATH} target="_blank" rel="noreferrer"
-                            className="flex items-center gap-2 h-11 px-6 bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.2em] rounded-full hover:brightness-95 transition-all">
-                            <BookOpen size={14} /> API Docs
-                        </a>
-                    </div>
-                </div>
-                <p className="text-[12px] text-[#999] leading-relaxed mt-4 max-w-xl">
-                    Automate your code supply and usage reconciliation — push codes, hear about redemptions
-                    the second they happen, and skip the CSV uploads entirely.
-                </p>
-                <div className="mt-5 flex items-center gap-3">
-                    <code className="text-[11px] font-mono text-[#666] bg-white border border-[#E6E6E1] rounded-full px-4 py-2">{API_BASE_URL}</code>
-                    <CopyButton value={API_BASE_URL} label="Copy base URL" />
-                </div>
-            </div>
+    // ── Derived setup state — drives both the steps and the health rail ──
+    const activeKeys = keys.filter(k => !k.revoked_at);
+    const keyUsed = activeKeys.some(k => k.last_used_at);
+    const activeEps = endpoints.filter(e => e.active);
+    const failingEps = activeEps.filter(e => e.consecutive_failures > 0);
+    const disabledEps = endpoints.filter(e => !e.active && e.disabled_reason);
+    const lastDelivered = deliveries.find(d => d.status === 'delivered');
+    const circuitOpen = integration?.mint_disabled_until && new Date(integration.mint_disabled_until) > new Date();
+    const connTestPassed = !!connTest && !connTest.running && connTest.items.length > 0 && connTest.items.every(it => it.ok);
 
-            <WrongMethodNotice pageMethod="api" />
+    // ── Step contents ─────────────────────────────────────────────
 
-            <div className="flex flex-col xl:flex-row xl:items-start xl:gap-10">
-            {/* ── Connection health — sticky rail on wide screens, stacked on
-                   top otherwise. Sticky works because PartnerLayout's main is
-                   the scroll container (same trick as the Rewards preview). */}
-            <aside className="xl:order-2 xl:w-[340px] xl:shrink-0 xl:sticky xl:top-6">
-            {!loading && (() => {
-                const activeKeys = keys.filter(k => !k.revoked_at);
-                const keyUsed = activeKeys.some(k => k.last_used_at);
-                const activeEps = endpoints.filter(e => e.active);
-                const failingEps = activeEps.filter(e => e.consecutive_failures > 0);
-                const disabledEps = endpoints.filter(e => !e.active && e.disabled_reason);
-                const lastDelivered = deliveries.find(d => d.status === 'delivered');
-                const circuitOpen = integration?.mint_disabled_until && new Date(integration.mint_disabled_until) > new Date();
-                return (
-                    <SectionCard icon={Activity} title="Connection Health">
-                        <HealthItem
-                            state={activeKeys.length === 0 ? 'off' : keyUsed ? 'ok' : 'warn'}
-                            label="API key"
-                            detail={activeKeys.length === 0 ? 'No key yet — create one below.'
-                                : keyUsed ? `Working — last call ${timeAgo(activeKeys.map(k => k.last_used_at).filter(Boolean).sort().pop())}.`
-                                : 'Key created but never used — try GET /v1/ping from your server.'}
-                        />
-                        <HealthItem
-                            state={activeEps.length === 0 ? (disabledEps.length ? 'warn' : 'off') : failingEps.length ? 'warn' : 'ok'}
-                            label="Webhook endpoint"
-                            detail={activeEps.length === 0
-                                ? (disabledEps.length ? 'Your endpoint was auto-disabled after repeated failures — fix it, then re-enable below.' : 'No endpoint yet — add one below to hear about redemptions live.')
-                                : failingEps.length ? `${failingEps[0].consecutive_failures} recent deliveries failed — check your receiver, or hit Test.`
-                                : lastDelivered ? `Receiving — last successful delivery ${timeAgo(lastDelivered.delivered_at)}.`
-                                : 'Endpoint active — use Test below to confirm it receives signed events.'}
-                        />
-                        <HealthItem
-                            state={!integration?.mint_url ? 'off' : circuitOpen ? 'warn' : integration?.mint_enabled ? 'ok' : 'warn'}
-                            label="Just-in-time minting"
-                            detail={!integration?.mint_url ? 'Optional — configure below if you want codes minted from your system at redemption time.'
-                                : circuitOpen ? 'Paused after repeated mint failures — test your endpoint below; it resumes automatically.'
-                                : integration?.mint_enabled ? 'On — POWR asks your endpoint for a fresh code at each redemption.'
-                                : 'Configured but off — run "Test mint endpoint" below, then turn it on.'}
-                        />
-                        {connTest && !connTest.running && (
-                            <div className="mt-5 p-4 bg-[#F4F4F1] border border-[#E6E6E1] rounded-2xl">
-                                <div className="text-[9px] uppercase tracking-[0.4em] font-black text-[#BBB] mb-2">Live test results</div>
-                                {connTest.items.map((it, i) => (
-                                    <div key={i} className="flex items-start gap-2.5 py-1.5">
-                                        {it.ok ? <Check size={13} className="text-emerald-600 shrink-0 mt-0.5" /> : <TriangleAlert size={13} className="text-red-500 shrink-0 mt-0.5" />}
-                                        <div className="min-w-0">
-                                            <div className="text-[11.5px] font-bold text-[#333]">{it.label}</div>
-                                            <div className={`text-[11px] leading-relaxed ${it.ok ? 'text-[#999]' : 'text-red-500'}`}>{it.detail}</div>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                        <button type="button" disabled={connTest?.running} onClick={handleRunConnectionTest}
-                            className="mt-6 w-full flex items-center justify-center gap-2 h-12 bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.2em] rounded-full hover:brightness-95 transition-all disabled:opacity-50">
-                            <Zap size={13} /> {connTest?.running ? 'Testing…' : 'Run connection test'}
-                        </button>
-                    </SectionCard>
-                );
-            })()}
-            </aside>
-
-            <div className="flex-1 min-w-0 max-w-3xl xl:order-1">
-            {/* ── API keys ─────────────────────────────────────────────── */}
-            <SectionCard icon={KeyRound} title="API Keys">
+    const renderKeys = () => (
+        <>
                 {freshKey && (
                     <div className="mb-6 p-5 bg-[#E8D200]/10 border border-[#E8D200]/40 rounded-2xl">
                         <div className="text-[10px] uppercase tracking-[0.3em] font-black text-[#8a7600] mb-2">Copy your new key now — it will not be shown again</div>
@@ -340,10 +259,15 @@ export default function PartnerIntegrationApi() {
                         <Plus size={13} /> {creatingKey ? 'Creating…' : 'Create key'}
                     </button>
                 </div>
-            </SectionCard>
+                <p className="text-[10px] text-[#BBB] mt-3 leading-relaxed">
+                    Then prove it works from your server: <code className="font-mono text-[#8a7600]">GET {API_BASE_URL}/ping</code> with
+                    the key as a bearer token. Full details in the <a href={DOCS_PATH} target="_blank" rel="noreferrer" className="text-[#8a7600] underline">API docs</a>.
+                </p>
+        </>
+    );
 
-            {/* ── Webhooks ─────────────────────────────────────────────── */}
-            <SectionCard icon={Webhook} title="Webhook Endpoints">
+    const renderWebhooks = () => (
+        <>
                 <div className="space-y-4 mb-8">
                     {endpoints.length === 0 && !loading && (
                         <p className="text-[12px] text-[#AAA]">No endpoints yet. Add one and we'll POST signed events to it as they happen.</p>
@@ -421,9 +345,11 @@ export default function PartnerIntegrationApi() {
                         </button>
                     </div>
                 </div>
-            </SectionCard>
+        </>
+    );
 
-            {/* ── Recent deliveries ────────────────────────────────────── */}
+    // ── Recent deliveries — a log, not a step; rendered under the flow ──
+    const deliveriesCard = (
             <SectionCard
                 icon={Send} title="Recent Deliveries"
                 aside={
@@ -462,12 +388,13 @@ export default function PartnerIntegrationApi() {
                     </div>
                 )}
             </SectionCard>
+    );
 
-            {/* ── JIT minting ──────────────────────────────────────────── */}
-            <SectionCard icon={Zap} title="Just-in-time Minting">
+    const renderJit = () => (
+        <>
                 <p className="text-[12px] text-[#999] leading-relaxed mb-6 max-w-xl">
-                    The deepest integration: when a member redeems, POWR asks <em>your</em> endpoint for a fresh
-                    single-use code — no pre-loaded pools, no reconciliation. Applies to rewards set to
+                    When a member redeems, POWR asks <em>your</em> endpoint for a fresh single-use
+                    code — no pre-loaded pools, no reconciliation. Applies to rewards set to
                     API-validated delivery. Keep a small buffer of pool codes loaded as a fallback for outages.
                 </p>
                 <div className="space-y-4">
@@ -529,10 +456,155 @@ export default function PartnerIntegrationApi() {
                         </div>
                     </div>
                 </div>
-            </SectionCard>
+        </>
+    );
 
-            {/* ── Fallback pool ────────────────────────────────────────── */}
-            <FallbackPoolCard />
+    const renderVerify = () => (
+        <>
+            <p className="text-[12px] text-[#999] leading-relaxed mb-6 max-w-xl">
+                One click fires a signed test event at every active webhook endpoint — plus a probe of
+                your mint endpoint if you've configured one — and shows you exactly what came back.
+            </p>
+            <button type="button" disabled={connTest?.running} onClick={handleRunConnectionTest}
+                className="flex items-center justify-center gap-2 h-12 px-8 bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.2em] rounded-full hover:brightness-95 transition-all disabled:opacity-50">
+                <Zap size={13} /> {connTest?.running ? 'Testing…' : 'Run connection test'}
+            </button>
+            {connTest && !connTest.running && (
+                <div className="mt-5 p-4 bg-[#F4F4F1] border border-[#E6E6E1] rounded-2xl">
+                    <div className="text-[9px] uppercase tracking-[0.4em] font-black text-[#BBB] mb-2">Live test results</div>
+                    {connTest.items.map((it, i) => (
+                        <div key={i} className="flex items-start gap-2.5 py-1.5">
+                            {it.ok ? <Check size={13} className="text-emerald-600 shrink-0 mt-0.5" /> : <TriangleAlert size={13} className="text-red-500 shrink-0 mt-0.5" />}
+                            <div className="min-w-0">
+                                <div className="text-[11.5px] font-bold text-[#333]">{it.label}</div>
+                                <div className={`text-[11px] leading-relaxed ${it.ok ? 'text-[#999]' : 'text-red-500'}`}>{it.detail}</div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
+        </>
+    );
+
+    // ── The staged flow — key, webhooks, JIT, then prove it works ──
+    const steps = [
+        {
+            id: 'key',
+            title: 'Create an API key',
+            detail: 'Your server authenticates every call with a bearer key — create one and store it somewhere safe.',
+            summary: `${activeKeys.length} active key${activeKeys.length === 1 ? '' : 's'}${keyUsed ? ` · last call ${timeAgo(activeKeys.map(k => k.last_used_at).filter(Boolean).sort().pop())}` : ' · not called yet'}`,
+            done: activeKeys.length > 0,
+            // A fresh key is shown exactly once — never collapse it away.
+            forceOpen: !!freshKey,
+            render: renderKeys,
+        },
+        {
+            id: 'webhook',
+            title: 'Add a webhook endpoint',
+            detail: 'We POST signed events to your system the moment they happen — a code is assigned, a code is used, a pool runs low.',
+            summary: activeEps.length > 0
+                ? `${activeEps.length} active endpoint${activeEps.length === 1 ? '' : 's'}${lastDelivered ? ` · last delivery ${timeAgo(lastDelivered.delivered_at)}` : ''}`
+                : undefined,
+            done: activeEps.length > 0,
+            render: renderWebhooks,
+        },
+        {
+            id: 'jit',
+            title: 'Turn on just-in-time minting',
+            detail: 'The deepest integration — POWR asks your endpoint for a fresh code at each redemption. Skip it if you\'d rather pre-load code pools.',
+            summary: 'On — POWR mints from your endpoint at redemption time.',
+            done: !!(integration?.mint_url && integration?.mint_enabled),
+            optional: true,
+            render: renderJit,
+        },
+        {
+            id: 'verify',
+            title: 'Verify the integration',
+            detail: 'Fire a signed test at everything you\'ve wired up and watch it come back green.',
+            summary: keyUsed ? 'Verified — your server is making live API calls.' : 'All test calls passed.',
+            done: keyUsed || connTestPassed,
+            render: renderVerify,
+        },
+    ];
+
+    return (
+        <div className="py-16 animate-in fade-in slide-in-from-bottom-6 duration-700 max-w-[1160px]">
+            {/* Header */}
+            <div className="mb-12">
+                <div className="flex items-center gap-3 mb-5">
+                    <div className="h-[1px] w-10 bg-[#8a7600]"></div>
+                    <span className="text-[10px] uppercase tracking-[0.5em] text-[#8a7600] font-black">Integration · API</span>
+                </div>
+                <div className="flex items-end justify-between gap-6 flex-wrap">
+                    <h1 className="text-5xl font-light tracking-tighter text-[#1A1A1A]">API</h1>
+                    <div className="flex items-center gap-3">
+                        <ChangeMethodLink />
+                        <a href={DOCS_PATH} target="_blank" rel="noreferrer"
+                            className="flex items-center gap-2 h-11 px-6 bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.2em] rounded-full hover:brightness-95 transition-all">
+                            <BookOpen size={14} /> API Docs
+                        </a>
+                    </div>
+                </div>
+                <p className="text-[12px] text-[#999] leading-relaxed mt-4 max-w-xl">
+                    Automate your code supply and usage reconciliation in four steps — push codes, hear
+                    about redemptions the second they happen, and skip the CSV uploads entirely.
+                </p>
+                <div className="mt-5 flex items-center gap-3">
+                    <code className="text-[11px] font-mono text-[#666] bg-white border border-[#E6E6E1] rounded-full px-4 py-2">{API_BASE_URL}</code>
+                    <CopyButton value={API_BASE_URL} label="Copy base URL" />
+                </div>
+            </div>
+
+            <WrongMethodNotice pageMethod="api" />
+
+            <div className="flex flex-col xl:flex-row xl:items-start xl:gap-10">
+            {/* ── Connection health — sticky rail on wide screens, stacked on
+                   top otherwise. Sticky works because PartnerLayout's main is
+                   the scroll container (same trick as the Rewards preview). */}
+            <aside className="xl:order-2 xl:w-[340px] xl:shrink-0 xl:sticky xl:top-6">
+            {!loading && (
+                <SectionCard icon={Activity} title="Connection Health">
+                    <HealthItem
+                        state={activeKeys.length === 0 ? 'off' : keyUsed ? 'ok' : 'warn'}
+                        label="API key"
+                        detail={activeKeys.length === 0 ? 'No key yet — create one in step 1.'
+                            : keyUsed ? `Working — last call ${timeAgo(activeKeys.map(k => k.last_used_at).filter(Boolean).sort().pop())}.`
+                            : 'Key created but never used — try GET /v1/ping from your server.'}
+                    />
+                    <HealthItem
+                        state={activeEps.length === 0 ? (disabledEps.length ? 'warn' : 'off') : failingEps.length ? 'warn' : 'ok'}
+                        label="Webhook endpoint"
+                        detail={activeEps.length === 0
+                            ? (disabledEps.length ? 'Your endpoint was auto-disabled after repeated failures — fix it, then re-enable it in step 2.' : 'No endpoint yet — add one in step 2 to hear about redemptions live.')
+                            : failingEps.length ? `${failingEps[0].consecutive_failures} recent deliveries failed — check your receiver, or hit Test.`
+                            : lastDelivered ? `Receiving — last successful delivery ${timeAgo(lastDelivered.delivered_at)}.`
+                            : 'Endpoint active — verify in step 4 to confirm it receives signed events.'}
+                    />
+                    <HealthItem
+                        state={!integration?.mint_url ? 'off' : circuitOpen ? 'warn' : integration?.mint_enabled ? 'ok' : 'warn'}
+                        label="Just-in-time minting"
+                        detail={!integration?.mint_url ? 'Optional — configure it in step 3 if you want codes minted from your system at redemption time.'
+                            : circuitOpen ? 'Paused after repeated mint failures — test your endpoint in step 3; it resumes automatically.'
+                            : integration?.mint_enabled ? 'On — POWR asks your endpoint for a fresh code at each redemption.'
+                            : 'Configured but off — run "Test mint endpoint" in step 3, then turn it on.'}
+                    />
+                </SectionCard>
+            )}
+            </aside>
+
+            <div className="flex-1 min-w-0 max-w-3xl xl:order-1">
+                {loading ? (
+                    <div className="flex justify-center py-20">
+                        <div className="w-7 h-7 border-2 border-[#E8D200]/20 border-t-[#E8D200] rounded-full animate-spin" />
+                    </div>
+                ) : (
+                    <SetupFlow steps={steps} />
+                )}
+
+                {!loading && deliveriesCard}
+
+                {/* ── Fallback pool ────────────────────────────────────── */}
+                <FallbackPoolCard />
             </div>
             </div>
         </div>

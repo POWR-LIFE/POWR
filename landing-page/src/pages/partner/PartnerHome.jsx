@@ -241,23 +241,43 @@ export default function PartnerHome() {
             <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_300px] lg:gap-14 items-start">
             <div className="min-w-0">
 
-            {/* What this brand is connected with — method + live detail */}
-            {method ? (
-                <Link to={integrationPathFor(deliveryMethod)}
-                    className="flex items-center gap-4 bg-white border border-[#E6E6E1] rounded-2xl px-6 py-4 mb-10 hover:border-[#E8D200]/40 transition-all group">
-                    <div className="w-9 h-9 rounded-xl bg-[#F4F4F1] flex items-center justify-center shrink-0">
-                        <method.icon size={16} className="text-[#8a7600]" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                        <div className="text-[9px] uppercase tracking-[0.4em] text-[#BBBBBB] font-black mb-0.5">Delivering via {method.label}</div>
-                        <div className="text-[12px] font-bold text-[#333] truncate">
-                            {methodStatuses?.[deliveryMethod]?.line ?? 'Checking connection…'}
+            {/* What this brand is connected with — method + live detail.
+                Chosen-but-unconfigured flips the bar into an explicit CTA:
+                the status line alone ("Not connected yet") wasn't telling
+                partners what to actually do next. */}
+            {method ? (() => {
+                const status = methodStatuses?.[deliveryMethod];
+                const needsSetup = status && !status.configured;
+                const SETUP_CTA = { shopify: 'Connect your store', api: 'Create your first key', manual: 'Load your first codes' };
+                return (
+                    <Link to={integrationPathFor(deliveryMethod)}
+                        className={`flex items-center gap-4 rounded-2xl px-6 py-4 mb-10 transition-all group ${
+                            needsSetup
+                                ? 'bg-[#E8D200]/5 border border-[#E8D200]/30 hover:border-[#E8D200]/60'
+                                : 'bg-white border border-[#E6E6E1] hover:border-[#E8D200]/40'
+                        }`}>
+                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${needsSetup ? 'bg-[#E8D200]/10' : 'bg-[#F4F4F1]'}`}>
+                            <method.icon size={16} className="text-[#8a7600]" />
                         </div>
-                    </div>
-                    <span className={`h-2 w-2 rounded-full shrink-0 ${methodStatuses ? (methodStatuses[deliveryMethod]?.configured ? 'bg-emerald-500' : 'bg-amber-400') : 'bg-[#D5D5D0]'}`} />
-                    <ChevronRight size={15} className="text-[#CCC] group-hover:text-[#8a7600] transition-colors shrink-0" />
-                </Link>
-            ) : deliveryMethod === null ? (
+                        <div className="flex-1 min-w-0">
+                            <div className={`text-[9px] uppercase tracking-[0.4em] font-black mb-0.5 ${needsSetup ? 'text-[#8a7600]' : 'text-[#BBBBBB]'}`}>Delivering via {method.label}</div>
+                            <div className="text-[12px] font-bold text-[#333] truncate">
+                                {status ? (needsSetup ? `${status.line} — a few guided steps finish the job` : status.line) : 'Checking connection…'}
+                            </div>
+                        </div>
+                        {needsSetup ? (
+                            <span className="flex items-center gap-2 h-9 px-5 bg-[#E8D200] text-[#080808] text-[9px] font-black uppercase tracking-[0.2em] rounded-full group-hover:brightness-95 transition-all shrink-0">
+                                {SETUP_CTA[deliveryMethod] ?? 'Finish setup'} <ChevronRight size={12} />
+                            </span>
+                        ) : (
+                            <>
+                                <span className={`h-2 w-2 rounded-full shrink-0 ${methodStatuses ? (status?.configured ? 'bg-emerald-500' : 'bg-amber-400') : 'bg-[#D5D5D0]'}`} />
+                                <ChevronRight size={15} className="text-[#CCC] group-hover:text-[#8a7600] transition-colors shrink-0" />
+                            </>
+                        )}
+                    </Link>
+                );
+            })() : deliveryMethod === null ? (
                 <Link to="/partner/integration"
                     className="flex items-center gap-4 bg-[#E8D200]/5 border border-[#E8D200]/25 rounded-2xl px-6 py-4 mb-10 hover:border-[#E8D200]/50 transition-all group">
                     <div className="w-9 h-9 rounded-xl bg-[#E8D200]/10 flex items-center justify-center shrink-0">
@@ -457,14 +477,18 @@ export default function PartnerHome() {
                         )}
                     </>
                 ) : (
-                    <div className="border-2 border-dashed border-[#E6E6E1] rounded-3xl px-8 py-16 text-center">
+                    <div className="border-2 border-dashed border-[#E6E6E1] rounded-3xl px-8 py-14 text-center">
                         <Smartphone size={24} className="text-[#DDDDDD] mx-auto mb-5" />
                         <p className="text-[10px] uppercase tracking-[0.4em] text-[#CCCCCC] font-black leading-relaxed mb-3">
                             Nothing live yet
                         </p>
-                        <p className="text-[11px] text-[#BBBBBB] leading-relaxed">
-                            Your first approved reward will appear here exactly as members see it in the app.
+                        <p className="text-[11px] text-[#BBBBBB] leading-relaxed mb-6">
+                            Approved rewards appear here exactly as members see them in the app.
                         </p>
+                        <Link to="/partner/rewards"
+                            className="inline-flex items-center gap-2 h-10 px-6 bg-[#E8D200] text-[#080808] text-[9px] font-black uppercase tracking-[0.2em] rounded-full hover:brightness-95 transition-all">
+                            Create your first reward <ChevronRight size={12} />
+                        </Link>
                     </div>
                 )}
             </aside>

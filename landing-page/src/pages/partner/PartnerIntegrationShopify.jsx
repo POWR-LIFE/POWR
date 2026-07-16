@@ -1,16 +1,10 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { CheckCircle2, FlaskConical, Link2, RefreshCw, ShoppingBag, Sparkles, Store } from 'lucide-react';
+import { Activity, CheckCircle2, RefreshCw } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
 import { useAuth } from '../../App';
 import { callShopify } from '../../lib/partnerApi';
-import { BTN_DARK, BTN_GHOST, ChangeMethodLink, CopyButton, FallbackPoolCard, INPUT, SectionCard, WrongMethodNotice } from './integrationShared';
-
-const HOW_IT_WORKS = [
-    { icon: Link2, title: 'Connect', detail: 'Approve the POWR app on your store — one click, no code.' },
-    { icon: ShoppingBag, title: 'Map', detail: 'Create a template discount in Shopify and pick it for each reward below.' },
-    { icon: Sparkles, title: 'Done', detail: 'Every redemption mints a fresh single-use code; it confirms as used the moment it\'s spent at your checkout.' },
-];
+import { BTN_DARK, BTN_GHOST, ChangeMethodLink, CopyButton, FallbackPoolCard, HealthItem, INPUT, SectionCard, SetupFlow, WrongMethodNotice } from './integrationShared';
 
 export default function PartnerIntegrationShopify() {
     const toast = useToast();
@@ -142,13 +136,189 @@ export default function PartnerIntegrationShopify() {
         } catch (err) { toast.error(err.message); }
     };
 
+    const connected = !!shopify?.connected;
+    const mappings = shopify?.mappings ?? [];
+
     // Mapping deliberately includes NOT-yet-live rewards: partners (and app
     // reviewers) wire up delivery BEFORE a reward goes live in the app, so
     // members can never hit a live-but-unmapped reward. Live ones sort first.
     const mappableRewards = [...brandRewards].sort((a, b) => Number(b.active) - Number(a.active));
 
+    // ── Step contents ─────────────────────────────────────────────
+
+    const renderConnect = () => !connected ? (
+        <>
+            {shopify?.status === 'uninstalled' && (
+                <div className="mb-6 p-4 bg-amber-500/10 border border-amber-500/30 rounded-2xl text-[11px] font-bold text-amber-600">
+                    The POWR app was uninstalled from your store — reconnect below to resume minting.
+                </div>
+            )}
+            <div className="flex gap-3">
+                <input type="text" placeholder="your-store.myshopify.com" value={shopDomain}
+                    onChange={e => setShopDomain(e.target.value)} className={INPUT + ' flex-1'} />
+                <button type="button" onClick={handleConnect} disabled={connecting}
+                    className={BTN_DARK + ' h-14 shrink-0'}>
+                    {connecting ? 'Redirecting…' : 'Connect Shopify'}
+                </button>
+            </div>
+            <p className="text-[10px] text-[#BBB] mt-3 leading-relaxed">
+                You'll approve the POWR Rewards app on Shopify's screen and land straight back here.
+            </p>
+        </>
+    ) : (
+        <>
+            <div className="flex items-center gap-3 flex-wrap">
+                <span className="h-2 w-2 rounded-full bg-emerald-500 shrink-0" />
+                <code className="text-[12px] font-mono text-[#1A1A1A]">{shopify.shop_domain}</code>
+                <span className="text-[9px] uppercase tracking-[0.2em] font-black text-emerald-600 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-3 py-1">Connected</span>
+                <div className="flex-1" />
+                <button type="button" className={BTN_GHOST} onClick={refresh}>
+                    <span className="flex items-center gap-1.5"><RefreshCw size={11} /> Refresh</span>
+                </button>
+                <button type="button" onClick={handleDisconnect}
+                    className="h-9 px-4 text-[9px] font-black uppercase tracking-[0.2em] rounded-full text-red-500/60 hover:text-red-500 hover:bg-red-500/5 border border-transparent hover:border-red-500/10 transition-all">
+                    Disconnect
+                </button>
+            </div>
+            {shopify.health && !shopify.health.token_ok && (
+                <div className="mt-6 p-4 bg-red-500/5 border border-red-500/20 rounded-2xl text-[11px] font-bold text-red-500">
+                    Shopify session expired — hit Connect Shopify again to restore minting and order tracking.
+                </div>
+            )}
+            {shopify.health?.token_ok && !shopify.health.orders_webhook && (
+                <div className="mt-6 p-4 bg-amber-500/10 border border-amber-500/30 rounded-2xl text-[11px] font-bold text-amber-600 leading-relaxed">
+                    Order tracking isn't active yet, so used codes won't confirm automatically. In your
+                    Shopify app settings, approve “Protected customer data” access (reason: app
+                    functionality), then reload this page — it repairs itself.
+                </div>
+            )}
+        </>
+    );
+
+    const renderMappings = () => !connected ? (
+        <p className="text-[12px] text-[#AAA]">Connect your store first — your Shopify discounts will appear here to choose from.</p>
+    ) : (
+        <>
+            {mappableRewards.length === 0 ? (
+                <p className="text-[12px] text-[#AAA]">No rewards yet — create one in My Rewards and it appears here. It doesn't need to be live in the app to wire up minting.</p>
+            ) : (
+                <div className="space-y-3">
+                    {mappableRewards.map((r) => {
+                        const mapping = mappings.find(m => m.reward_id === r.id);
+                        return (
+                            <div key={r.id} className="flex items-center gap-4 p-4 bg-[#F4F4F1] border border-[#E6E6E1] rounded-2xl">
+                                <div className="flex-1 min-w-0">
+                                    <div className="text-[12px] font-bold text-[#222] truncate">
+                                        {r.title}
+                                        {!r.active && (
+                                            <span className="ml-2 text-[8px] uppercase tracking-[0.2em] font-black text-[#8a7600] bg-[#E8D200]/10 border border-[#E8D200]/30 rounded-full px-2 py-0.5 align-middle">
+                                                Not live in app yet
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div className="text-[10px] text-[#999] mt-0.5">
+                                        {mapping ? `Mints from “${mapping.discount_title}”` : 'Not minting yet — pick a discount'}
+                                    </div>
+                                </div>
+                                <select
+                                    value={mapping?.discount_gid ?? ''}
+                                    disabled={mappingBusy === r.id || discounts === null}
+                                    onChange={e => handleMapReward(r.id, e.target.value || null)}
+                                    className="h-11 px-4 bg-white border border-[#E6E6E1] rounded-xl text-[12px] text-[#1A1A1A] outline-none focus:border-[#E8D200]/50 max-w-[240px]"
+                                >
+                                    <option value="">No minting</option>
+                                    {(discounts ?? []).filter(d => d.cloneable).map(d => (
+                                        <option key={d.gid} value={d.gid}>{d.title}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
+            <p className="text-[10px] text-[#BBB] mt-4 leading-relaxed">
+                Create the template discount in Shopify (percentage or fixed amount) — POWR clones it
+                into a single-use code per redemption. Codes confirm as used automatically when spent
+                at your checkout.
+            </p>
+        </>
+    );
+
+    const renderTest = () => !connected ? (
+        <p className="text-[12px] text-[#AAA]">Connect your store first.</p>
+    ) : mappings.length === 0 ? (
+        <p className="text-[12px] text-[#AAA]">Map a reward to a discount in step 2 first.</p>
+    ) : (
+        <>
+            <p className="text-[12px] text-[#999] leading-relaxed mb-6 max-w-xl">
+                Mints one single-use code from your mapped template — exactly like a member
+                redemption, just without the member. Apply it at your own checkout and watch it
+                confirm as used automatically.
+            </p>
+            <button type="button" onClick={handleCreateTestCode} disabled={testBusy} className={BTN_DARK}>
+                {testBusy ? 'Minting…' : 'Create test code'}
+            </button>
+            {testCode && (
+                <div className="mt-6 p-5 bg-[#F4F4F1] border border-[#E6E6E1] rounded-2xl">
+                    <div className="flex items-center gap-3 flex-wrap">
+                        <code className="text-[15px] font-mono font-bold text-[#1A1A1A] tracking-wider">{testCode.code}</code>
+                        <CopyButton value={testCode.code} />
+                        <div className="flex-1" />
+                        {testCode.status === 'used' ? (
+                            <span className="flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] font-black text-emerald-600 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-4 py-1.5">
+                                <CheckCircle2 size={12} /> Used — reconciled
+                            </span>
+                        ) : (
+                            <span className="flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] font-black text-[#8a7600] bg-[#E8D200]/10 border border-[#E8D200]/30 rounded-full px-4 py-1.5">
+                                <span className="h-1.5 w-1.5 rounded-full bg-[#E8D200] animate-pulse" />
+                                Waiting for checkout
+                            </span>
+                        )}
+                        <button type="button" className={BTN_GHOST} onClick={() => checkTestCode(testCode.code)}>
+                            <span className="flex items-center gap-1.5"><RefreshCw size={11} /> Check</span>
+                        </button>
+                    </div>
+                    <p className="text-[10px] text-[#BBB] mt-3 leading-relaxed">
+                        {testCode.status === 'used'
+                            ? 'The full loop works: minted in Shopify, spent at checkout, confirmed back to POWR.'
+                            : 'This is a real single-use discount in your store (it expires in 7 days). Place a test order with it — the status here flips to Used within a minute.'}
+                    </p>
+                </div>
+            )}
+        </>
+    );
+
+    // ── The staged flow — connect, map, prove it works ────────────
+    const steps = [
+        {
+            id: 'connect',
+            title: 'Connect your store',
+            detail: 'Approve the POWR app on your Shopify store — one click, no code, takes a minute.',
+            summary: connected ? `${shopify.shop_domain} · connected` : undefined,
+            done: connected,
+            render: renderConnect,
+        },
+        {
+            id: 'map',
+            title: 'Pick a discount for each reward',
+            detail: 'Create a template discount in Shopify, then choose it here — POWR clones it into a fresh single-use code per redemption.',
+            summary: `${mappings.length} reward${mappings.length === 1 ? '' : 's'} minting from your discounts`,
+            done: connected && mappings.length > 0,
+            render: renderMappings,
+        },
+        {
+            id: 'test',
+            title: 'Test the full loop',
+            detail: 'Mint a real test code and spend it at your own checkout — proves minting and order tracking end to end.',
+            summary: 'Full loop proven — minted, spent at checkout, confirmed back to POWR.',
+            done: testCode?.status === 'used',
+            optional: 'Recommended',
+            render: renderTest,
+        },
+    ];
+
     return (
-        <div className="py-16 animate-in fade-in slide-in-from-bottom-6 duration-700 max-w-3xl">
+        <div className="py-16 animate-in fade-in slide-in-from-bottom-6 duration-700 max-w-[1160px]">
             {/* Header */}
             <div className="mb-12">
                 <div className="flex items-center gap-3 mb-5">
@@ -160,191 +330,59 @@ export default function PartnerIntegrationShopify() {
                     <ChangeMethodLink />
                 </div>
                 <p className="text-[12px] text-[#999] leading-relaxed mt-4 max-w-xl">
-                    The zero-effort integration: connect your store and POWR creates a fresh single-use
-                    discount code in Shopify every time a member redeems — and marks it used the moment
-                    it's spent at your checkout. No CSVs, no API work, nothing to host.
+                    The zero-effort integration: three steps and every redemption mints a fresh single-use
+                    code in your store — marked used the moment it's spent at your checkout. No CSVs, no
+                    API work, nothing to host.
                 </p>
             </div>
 
             <WrongMethodNotice pageMethod="shopify" />
 
-            {/* ── Connection ───────────────────────────────────────────── */}
-            <SectionCard
-                icon={Store} title="Store Connection"
-                aside={shopify?.connected && (
-                    <div className="flex items-center gap-2">
-                        <button type="button" className={BTN_GHOST} onClick={refresh}>
-                            <span className="flex items-center gap-1.5"><RefreshCw size={11} /> Refresh</span>
-                        </button>
-                        <button type="button" onClick={handleDisconnect}
-                            className="h-9 px-4 text-[9px] font-black uppercase tracking-[0.2em] rounded-full text-red-500/60 hover:text-red-500 hover:bg-red-500/5 border border-transparent hover:border-red-500/10 transition-all">
-                            Disconnect
-                        </button>
-                    </div>
-                )}
-            >
+            <div className="flex flex-col xl:flex-row xl:items-start xl:gap-10">
+            {/* ── Store health — sticky rail on wide screens, stacked on top
+                   otherwise. Sticky works because PartnerLayout's main is the
+                   scroll container (same trick as the API page's rail). */}
+            <aside className="xl:order-2 xl:w-[340px] xl:shrink-0 xl:sticky xl:top-6">
+            {!loading && (
+                <SectionCard icon={Activity} title="Store Health">
+                    <HealthItem
+                        state={!connected ? 'off' : shopify.health && !shopify.health.token_ok ? 'warn' : 'ok'}
+                        label="Store connection"
+                        detail={!connected ? 'Not connected yet — start with step 1.'
+                            : shopify.health && !shopify.health.token_ok ? 'Session expired — reconnect in step 1 to restore minting.'
+                            : `Connected to ${shopify.shop_domain}.`}
+                    />
+                    <HealthItem
+                        state={!connected ? 'off' : shopify.health?.orders_webhook ? 'ok' : 'warn'}
+                        label="Order tracking"
+                        detail={!connected ? 'Activates automatically when your store connects.'
+                            : shopify.health?.orders_webhook ? 'Live — codes spent at your checkout confirm as used by themselves.'
+                            : 'Not active — approve “Protected customer data” in your Shopify app settings, then reload.'}
+                    />
+                    <HealthItem
+                        state={mappings.length > 0 ? 'ok' : 'off'}
+                        label="Reward minting"
+                        detail={mappings.length > 0
+                            ? `${mappings.length} reward${mappings.length === 1 ? '' : 's'} minting from your discounts.`
+                            : 'No rewards minting yet — map one in step 2.'}
+                    />
+                </SectionCard>
+            )}
+            </aside>
+
+            <div className="flex-1 min-w-0 max-w-3xl xl:order-1">
                 {loading ? (
-                    <div className="flex justify-center py-10">
+                    <div className="flex justify-center py-20">
                         <div className="w-7 h-7 border-2 border-[#E8D200]/20 border-t-[#E8D200] rounded-full animate-spin" />
                     </div>
-                ) : !shopify?.connected ? (
-                    <>
-                        {shopify?.status === 'uninstalled' && (
-                            <div className="mb-6 p-4 bg-amber-500/10 border border-amber-500/30 rounded-2xl text-[11px] font-bold text-amber-600">
-                                The POWR app was uninstalled from your store — reconnect below to resume minting.
-                            </div>
-                        )}
-                        <div className="flex gap-3">
-                            <input type="text" placeholder="your-store.myshopify.com" value={shopDomain}
-                                onChange={e => setShopDomain(e.target.value)} className={INPUT + ' flex-1'} />
-                            <button type="button" onClick={handleConnect} disabled={connecting}
-                                className={BTN_DARK + ' h-14 shrink-0'}>
-                                {connecting ? 'Redirecting…' : 'Connect Shopify'}
-                            </button>
-                        </div>
-                    </>
                 ) : (
-                    <>
-                        <div className="flex items-center gap-3">
-                            <span className="h-2 w-2 rounded-full bg-emerald-500 shrink-0" />
-                            <code className="text-[12px] font-mono text-[#1A1A1A]">{shopify.shop_domain}</code>
-                            <span className="text-[9px] uppercase tracking-[0.2em] font-black text-emerald-600 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-3 py-1">Connected</span>
-                        </div>
-                        {shopify.health && !shopify.health.token_ok && (
-                            <div className="mt-6 p-4 bg-red-500/5 border border-red-500/20 rounded-2xl text-[11px] font-bold text-red-500">
-                                Shopify session expired — hit Connect Shopify again to restore minting and order tracking.
-                            </div>
-                        )}
-                        {shopify.health?.token_ok && !shopify.health.orders_webhook && (
-                            <div className="mt-6 p-4 bg-amber-500/10 border border-amber-500/30 rounded-2xl text-[11px] font-bold text-amber-600 leading-relaxed">
-                                Order tracking isn't active yet, so used codes won't confirm automatically. In your
-                                Shopify app settings, approve “Protected customer data” access (reason: app
-                                functionality), then reload this page — it repairs itself.
-                            </div>
-                        )}
-                    </>
+                    <SetupFlow steps={steps} />
                 )}
-            </SectionCard>
 
-            {/* ── Discount mappings ────────────────────────────────────── */}
-            {shopify?.connected && (
-                <SectionCard icon={ShoppingBag} title="Reward Mappings">
-                    <div className="text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-3">Which discount should each reward mint from?</div>
-                    {mappableRewards.length === 0 ? (
-                        <p className="text-[12px] text-[#AAA]">No rewards yet — create one in My Rewards and it appears here. It doesn't need to be live in the app to wire up minting.</p>
-                    ) : (
-                        <div className="space-y-3">
-                            {mappableRewards.map((r) => {
-                                const mapping = (shopify.mappings ?? []).find(m => m.reward_id === r.id);
-                                return (
-                                    <div key={r.id} className="flex items-center gap-4 p-4 bg-[#F4F4F1] border border-[#E6E6E1] rounded-2xl">
-                                        <div className="flex-1 min-w-0">
-                                            <div className="text-[12px] font-bold text-[#222] truncate">
-                                                {r.title}
-                                                {!r.active && (
-                                                    <span className="ml-2 text-[8px] uppercase tracking-[0.2em] font-black text-[#8a7600] bg-[#E8D200]/10 border border-[#E8D200]/30 rounded-full px-2 py-0.5 align-middle">
-                                                        Not live in app yet
-                                                    </span>
-                                                )}
-                                            </div>
-                                            <div className="text-[10px] text-[#999] mt-0.5">
-                                                {mapping ? `Mints from “${mapping.discount_title}”` : 'Not minting yet — pick a discount'}
-                                            </div>
-                                        </div>
-                                        <select
-                                            value={mapping?.discount_gid ?? ''}
-                                            disabled={mappingBusy === r.id || discounts === null}
-                                            onChange={e => handleMapReward(r.id, e.target.value || null)}
-                                            className="h-11 px-4 bg-white border border-[#E6E6E1] rounded-xl text-[12px] text-[#1A1A1A] outline-none focus:border-[#E8D200]/50 max-w-[240px]"
-                                        >
-                                            <option value="">No minting</option>
-                                            {(discounts ?? []).filter(d => d.cloneable).map(d => (
-                                                <option key={d.gid} value={d.gid}>{d.title}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    )}
-                    <p className="text-[10px] text-[#BBB] mt-4 leading-relaxed">
-                        Create the template discount in Shopify (percentage or fixed amount) — POWR clones it
-                        into a single-use code per redemption. Codes confirm as used automatically when spent
-                        at your checkout.
-                    </p>
-                </SectionCard>
-            )}
-
-            {/* ── Connection self-test ─────────────────────────────────── */}
-            {shopify?.connected && (
-                <SectionCard icon={FlaskConical} title="Test the Connection">
-                    <p className="text-[12px] text-[#999] leading-relaxed mb-6 max-w-xl">
-                        Mints one single-use code from your mapped template — exactly like a member
-                        redemption, just without the member. Apply it at your own checkout and watch it
-                        confirm as used automatically.
-                    </p>
-                    {(shopify.mappings ?? []).length === 0 ? (
-                        <p className="text-[12px] text-[#AAA]">Map a reward to a discount above first.</p>
-                    ) : (
-                        <>
-                            <button type="button" onClick={handleCreateTestCode} disabled={testBusy} className={BTN_DARK}>
-                                {testBusy ? 'Minting…' : 'Create test code'}
-                            </button>
-                            {testCode && (
-                                <div className="mt-6 p-5 bg-[#F4F4F1] border border-[#E6E6E1] rounded-2xl">
-                                    <div className="flex items-center gap-3 flex-wrap">
-                                        <code className="text-[15px] font-mono font-bold text-[#1A1A1A] tracking-wider">{testCode.code}</code>
-                                        <CopyButton value={testCode.code} />
-                                        <div className="flex-1" />
-                                        {testCode.status === 'used' ? (
-                                            <span className="flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] font-black text-emerald-600 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-4 py-1.5">
-                                                <CheckCircle2 size={12} /> Used — reconciled
-                                            </span>
-                                        ) : (
-                                            <span className="flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] font-black text-[#8a7600] bg-[#E8D200]/10 border border-[#E8D200]/30 rounded-full px-4 py-1.5">
-                                                <span className="h-1.5 w-1.5 rounded-full bg-[#E8D200] animate-pulse" />
-                                                Waiting for checkout
-                                            </span>
-                                        )}
-                                        <button type="button" className={BTN_GHOST} onClick={() => checkTestCode(testCode.code)}>
-                                            <span className="flex items-center gap-1.5"><RefreshCw size={11} /> Check</span>
-                                        </button>
-                                    </div>
-                                    <p className="text-[10px] text-[#BBB] mt-3 leading-relaxed">
-                                        {testCode.status === 'used'
-                                            ? 'The full loop works: minted in Shopify, spent at checkout, confirmed back to POWR.'
-                                            : 'This is a real single-use discount in your store (it expires in 7 days). Place a test order with it — the status here flips to Used within a minute.'}
-                                    </p>
-                                </div>
-                            )}
-                        </>
-                    )}
-                </SectionCard>
-            )}
-
-            {/* ── How it works ─────────────────────────────────────────── */}
-            {!shopify?.connected && !loading && (
-                <SectionCard icon={Sparkles} title="How It Works">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                        {HOW_IT_WORKS.map((beat, index) => (
-                            <div key={beat.title} className="flex items-start gap-4">
-                                <div className="w-10 h-10 rounded-2xl bg-[#E8D200]/10 flex items-center justify-center shrink-0">
-                                    <beat.icon size={17} className="text-[#8a7600]" />
-                                </div>
-                                <div>
-                                    <div className="text-[13px] font-bold text-[#222]">
-                                        <span className="text-[#8a7600] mr-2">{index + 1}</span>{beat.title}
-                                    </div>
-                                    <div className="text-[11px] text-[#999] mt-1 leading-relaxed">{beat.detail}</div>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </SectionCard>
-            )}
-
-            {/* ── Fallback pool ────────────────────────────────────────── */}
-            <FallbackPoolCard />
+                {/* ── Fallback pool ────────────────────────────────────── */}
+                <FallbackPoolCard />
+            </div>
+            </div>
         </div>
     );
 }

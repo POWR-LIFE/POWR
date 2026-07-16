@@ -2,7 +2,7 @@
 // Shopify, promo codes) — split out of the old single Developers page.
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeftRight, Check, Code2, LifeBuoy, Minus, Store, Ticket, TriangleAlert } from 'lucide-react';
+import { ArrowLeftRight, Check, ChevronDown, Code2, LifeBuoy, Minus, Store, Ticket, TriangleAlert } from 'lucide-react';
 import { useToast } from '../../lib/toast';
 import { useAuth } from '../../App';
 
@@ -74,6 +74,125 @@ export function CopyButton({ value, label = 'Copy' }) {
         >
             {copied ? <span className="flex items-center gap-1.5"><Check size={11} /> Copied</span> : label}
         </button>
+    );
+}
+
+// ── Staged setup flow ────────────────────────────────────────────
+// The "do this, then this, then this" spine every method page shares.
+// steps: [{ id, title, detail, summary?, done, optional?, render }]
+//  - done derives from live data, so progress survives reloads
+//  - the first unfinished required step auto-expands ("Do this next");
+//    any step can still be opened or closed by hand
+//  - optional: true → "Optional" tag; a string → custom tag ("Recommended")
+//  - forceOpen: keep the step expanded even once done (e.g. a shown-once
+//    secret is on screen); a manual collapse still wins
+export function SetupFlow({ steps }) {
+    const [toggled, setToggled] = useState({});
+    const current = steps.find(s => !s.done && !s.optional) ?? steps.find(s => !s.done) ?? null;
+    const doneCount = steps.filter(s => s.done).length;
+    const allDone = doneCount === steps.length;
+
+    return (
+        <div className="mb-6">
+            <div className="flex items-center gap-4 mb-5 px-1">
+                <div className="flex-1 h-[3px] bg-[#ECECE7] rounded-full overflow-hidden">
+                    <div
+                        className="h-full bg-[#E8D200] rounded-full transition-all duration-700"
+                        style={{ width: `${Math.max(3, (doneCount / steps.length) * 100)}%` }}
+                    />
+                </div>
+                <span className="text-[9px] uppercase tracking-[0.3em] font-black text-[#999] shrink-0">
+                    {allDone ? 'All set — this now runs itself' : `${doneCount} of ${steps.length} steps done`}
+                </span>
+            </div>
+
+            {steps.map((step, i) => {
+                const isCurrent = !allDone && current && step.id === current.id;
+                const expanded = toggled[step.id] ?? (isCurrent || !!step.forceOpen);
+                return (
+                    <div
+                        key={step.id}
+                        className={`bg-white border rounded-3xl mb-4 transition-all ${
+                            isCurrent ? 'border-[#E8D200]/60 shadow-[0_16px_40px_rgba(232,210,0,0.08)]' : 'border-[#E6E6E1]'
+                        }`}
+                    >
+                        <button
+                            type="button"
+                            onClick={() => setToggled(p => ({ ...p, [step.id]: !expanded }))}
+                            className="w-full flex items-center gap-5 p-6 md:px-8 text-left"
+                        >
+                            <span className={`h-11 w-11 rounded-full flex items-center justify-center shrink-0 border transition-all ${
+                                step.done ? 'bg-[#E8D200] border-[#E8D200]'
+                                : isCurrent ? 'bg-[#1A1A1A] border-[#1A1A1A]'
+                                : 'bg-[#F4F4F1] border-[#E6E6E1]'
+                            }`}>
+                                {step.done
+                                    ? <Check size={16} className="text-[#080808]" strokeWidth={3} />
+                                    : <span className={`text-[13px] font-black ${isCurrent ? 'text-white' : 'text-[#BBB]'}`}>{i + 1}</span>}
+                            </span>
+                            <span className="flex-1 min-w-0">
+                                <span className="flex items-center gap-2.5 flex-wrap">
+                                    <span className="text-[9px] uppercase tracking-[0.4em] font-black text-[#BBB]">Step {i + 1}</span>
+                                    {step.optional && (
+                                        <span className="text-[8px] uppercase tracking-[0.2em] font-black text-[#8a7600] bg-[#E8D200]/10 border border-[#E8D200]/30 rounded-full px-2.5 py-0.5">
+                                            {step.optional === true ? 'Optional' : step.optional}
+                                        </span>
+                                    )}
+                                    {isCurrent && (
+                                        <span className="text-[8px] uppercase tracking-[0.2em] font-black text-[#080808] bg-[#E8D200] rounded-full px-2.5 py-0.5">
+                                            Do this next
+                                        </span>
+                                    )}
+                                </span>
+                                <span className="block text-[17px] font-bold tracking-tight text-[#1A1A1A] mt-1">{step.title}</span>
+                                <span className={`block text-[11px] mt-0.5 leading-relaxed ${step.done ? 'text-emerald-600 font-bold' : 'text-[#999]'}`}>
+                                    {step.done ? (step.summary ?? 'Done') : step.detail}
+                                </span>
+                            </span>
+                            <ChevronDown size={15} className={`text-[#BBB] shrink-0 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+                        </button>
+                        {expanded && <div className="px-6 md:px-8 pb-8 md:pl-[96px]">{step.render()}</div>}
+                    </div>
+                );
+            })}
+        </div>
+    );
+}
+
+// Compact horizontal variant for pages where the workspace below stays
+// put (promo codes) — same numbered-circle language as SetupFlow, plus a
+// one-line hint that always says what to do next.
+export function StageStrip({ steps, doneHint }) {
+    const current = steps.find(s => !s.done) ?? null;
+    const allDone = !current;
+    return (
+        <div className="mb-8 p-5 px-6 bg-white border border-[#E6E6E1] rounded-3xl">
+            <div className="flex items-center flex-wrap gap-y-3">
+                {steps.map((s, i) => {
+                    const isCurrent = current && s === current;
+                    return (
+                        <React.Fragment key={s.label}>
+                            {i > 0 && <span className="h-[1px] w-5 md:w-10 bg-[#E6E6E1] mx-3 shrink-0" />}
+                            <span className="flex items-center gap-2.5 shrink-0">
+                                <span className={`h-7 w-7 rounded-full flex items-center justify-center border text-[11px] font-black shrink-0 ${
+                                    s.done ? 'bg-[#E8D200] border-[#E8D200] text-[#080808]'
+                                    : isCurrent ? 'bg-[#1A1A1A] border-[#1A1A1A] text-white'
+                                    : 'bg-[#F4F4F1] border-[#E6E6E1] text-[#BBB]'
+                                }`}>
+                                    {s.done ? <Check size={12} strokeWidth={3} /> : i + 1}
+                                </span>
+                                <span className={`text-[10px] uppercase tracking-[0.2em] font-black ${
+                                    s.done ? 'text-[#333]' : isCurrent ? 'text-[#1A1A1A]' : 'text-[#BBB]'
+                                }`}>{s.label}</span>
+                            </span>
+                        </React.Fragment>
+                    );
+                })}
+            </div>
+            <p className={`text-[11px] leading-relaxed mt-3 ${allDone ? 'text-emerald-600 font-bold' : 'text-[#999]'}`}>
+                {allDone ? (doneHint ?? 'All set.') : current.hint}
+            </p>
+        </div>
     );
 }
 

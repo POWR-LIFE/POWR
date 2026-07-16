@@ -172,14 +172,14 @@ export function PartnerLayout({ children }) {
         <div className="flex min-h-screen bg-[#F4F4F1] text-[#1A1A1A] font-['Outfit'] selection:bg-[#E8D200] selection:text-[#080808]">
             {/* Sidebar */}
             <aside className="w-72 flex-shrink-0 border-r border-[#E6E6E1] bg-white flex flex-col h-screen sticky top-0 z-[100]">
-                <div className="p-10 mb-6 flex items-center justify-start pointer-events-none">
+                <div className="px-8 pt-8 pb-5 flex items-center justify-start pointer-events-none">
                     <img src="/powr-logo-black.png" alt="POWR" style={{ height: '28px', width: 'auto', display: 'block' }} />
                 </div>
 
                 {/* Partner identity card */}
                 {partnerData && (
-                    <div className="mx-8 mb-8 p-6 bg-[#F4F4F1] border border-[#E6E6E1] rounded-2xl">
-                        <div className="flex items-center gap-4">
+                    <div className="mx-6 mb-5 p-4 bg-[#F4F4F1] border border-[#E6E6E1] rounded-2xl">
+                        <div className="flex items-center gap-3">
                             {partnerData.logo_url ? (
                                 <img
                                     src={partnerData.logo_url}
@@ -200,8 +200,11 @@ export function PartnerLayout({ children }) {
                     </div>
                 )}
 
-                <nav className="flex-1 px-6 space-y-2 overflow-y-auto">
-                    <div className="px-4 mb-6">
+                {/* Vertical rhythm is deliberately tight — the whole sidebar
+                    (7 nav items + chrome) must fit a laptop viewport without
+                    scrolling; overflow-y-auto is only a short-window fallback. */}
+                <nav className="flex-1 px-6 space-y-1.5 overflow-y-auto">
+                    <div className="px-4 mb-4">
                         <div className="text-[10px] uppercase tracking-[0.5em] text-[#BBBBBB] font-black mb-2">Partner Portal</div>
                         <div className="h-[2px] w-10 bg-[#E8D200]/60"></div>
                     </div>
@@ -212,35 +215,32 @@ export function PartnerLayout({ children }) {
                             <Link
                                 key={item.path}
                                 to={item.path}
-                                className={`flex items-center gap-5 px-6 py-4 rounded-2xl transition-all group ${
+                                className={`flex items-center gap-4 px-5 py-3 rounded-2xl transition-all group ${
                                     active
                                         ? 'bg-[#E8D200] text-[#080808] shadow-[0_20px_50px_rgba(232,210,0,0.2)]'
                                         : 'text-[#BBBBBB] hover:bg-[#EFEFEC] hover:text-[#333333]'
                                 }`}
                             >
-                                <item.icon size={20} strokeWidth={active ? 3 : 2} className={active ? '' : 'group-hover:text-[#8a7600] transition-colors'} />
-                                <span className="text-[12px] uppercase tracking-[0.2em] font-black">{item.label}</span>
+                                <item.icon size={18} strokeWidth={active ? 3 : 2} className={active ? '' : 'group-hover:text-[#8a7600] transition-colors'} />
+                                <span className="text-[11px] uppercase tracking-[0.2em] font-black">{item.label}</span>
                             </Link>
                         );
                     })}
                 </nav>
 
-                <div className="p-10 mt-auto">
+                <div className="p-6 mt-auto">
                     {user?.email && (
-                        <div className="mb-6 p-6 bg-[#F4F4F1] rounded-2xl border border-[#E6E6E1]">
-                            <div className="text-[9px] uppercase tracking-[0.5em] text-[#BBBBBB] font-black mb-2">Signed in as</div>
+                        <div className="mb-3 px-4 py-3 bg-[#F4F4F1] rounded-2xl border border-[#E6E6E1]">
+                            <div className="text-[9px] uppercase tracking-[0.5em] text-[#BBBBBB] font-black mb-1">Signed in as</div>
                             <div className="text-[11px] text-[#666] truncate font-mono">{user.email}</div>
                         </div>
                     )}
                     <button
                         onClick={handleSignOut}
-                        className="w-full flex items-center justify-center gap-3 h-16 text-[11px] uppercase tracking-[0.3em] font-black text-red-500/40 hover:text-red-500 hover:bg-red-500/5 rounded-2xl transition-all border border-transparent hover:border-red-500/10"
+                        className="w-full flex items-center justify-center gap-3 h-12 text-[11px] uppercase tracking-[0.3em] font-black text-red-500/40 hover:text-red-500 hover:bg-red-500/5 rounded-2xl transition-all border border-transparent hover:border-red-500/10"
                     >
-                        <LogOut size={18} /> Sign Out
+                        <LogOut size={16} /> Sign Out
                     </button>
-                    <div className="mt-6 text-center">
-                        <span className="text-[9px] uppercase tracking-[0.5em] text-[#CCCCCC] font-black">Partner Portal</span>
-                    </div>
                 </div>
             </aside>
 
