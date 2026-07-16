@@ -477,6 +477,18 @@ export default function PartnerDevelopers() {
                             <code className="text-[12px] font-mono text-[#1A1A1A]">{shopify.shop_domain}</code>
                             <span className="text-[9px] uppercase tracking-[0.2em] font-black text-emerald-600 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-3 py-1">Connected</span>
                         </div>
+                        {shopify.health && !shopify.health.token_ok && (
+                            <div className="mb-6 p-4 bg-red-500/5 border border-red-500/20 rounded-2xl text-[11px] font-bold text-red-500">
+                                Shopify session expired — hit Connect Shopify again to restore minting and order tracking.
+                            </div>
+                        )}
+                        {shopify.health?.token_ok && !shopify.health.orders_webhook && (
+                            <div className="mb-6 p-4 bg-amber-500/10 border border-amber-500/30 rounded-2xl text-[11px] font-bold text-amber-600 leading-relaxed">
+                                Order tracking isn't active yet, so used codes won't confirm automatically. In your
+                                Shopify app settings, approve “Protected customer data” access (reason: app
+                                functionality), then reload this page — it repairs itself.
+                            </div>
+                        )}
                         <div className="text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-3">Which discount should each reward mint from?</div>
                         {brandRewards.filter(r => r.active).length === 0 ? (
                             <p className="text-[12px] text-[#AAA]">No active rewards yet — once a reward is live it appears here.</p>

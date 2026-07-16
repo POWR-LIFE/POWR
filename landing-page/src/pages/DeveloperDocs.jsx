@@ -64,6 +64,7 @@ const TOC = [
     ['webhooks', 'Webhooks'],
     ['signatures', 'Verifying signatures'],
     ['jit', 'Just-in-time minting'],
+    ['shopify', 'Shopify connector'],
     ['errors', 'Errors'],
 ];
 
@@ -346,6 +347,35 @@ function verifyPowrSignature(rawBody, header, secret) {
                             pool; three consecutive failures pause minting for 10 minutes. <b>Keep a small buffer pool
                             loaded</b> so members can still redeem during an outage — the member is never charged points
                             unless a code was secured.
+                        </p>
+                    </Section>
+
+                    <Section id="shopify" title="Shopify connector">
+                        <p className="text-[13px] text-[#555] leading-relaxed mb-2">
+                            If your store runs on Shopify you don't need any of the API above. In the portal
+                            (<b>Developers → Shopify</b>): enter your store domain, approve two permissions
+                            (create discounts, read orders), then pick which of your existing discounts each
+                            POWR reward should mint from. That's the entire integration.
+                        </p>
+                        <p className="text-[13px] text-[#555] leading-relaxed mb-2">
+                            <b>Every redemption creates a brand-new, unique code — never a shared one.</b> When a
+                            member redeems, POWR clones your template discount into a fresh code (e.g.{' '}
+                            <code className="font-mono">POWR-8FK2Q3XN</code>) created directly in your Shopify store with:
+                        </p>
+                        <CodeBlock>{`usage limit:        1          // Shopify enforces one checkout use, ever
+applies once per customer:  yes
+expiry:             matches the member's wallet expiry
+value & rules:      cloned from your chosen template discount`}</CodeBlock>
+                        <p className="text-[13px] text-[#555] leading-relaxed mb-2">
+                            So a code shared in a group chat is worthless after its first use — Shopify itself
+                            rejects the second attempt. Your template discount is never handed out; it only
+                            defines what the minted codes are worth (percentage or fixed amount).
+                        </p>
+                        <p className="text-[13px] text-[#555] leading-relaxed">
+                            Reconciliation is automatic too: the moment a code is used at your checkout, the
+                            order webhook marks it <code className="font-mono">used</code> in POWR — no exports, no
+                            uploads. If you uninstall the app, minting stops immediately and members fall back
+                            to any buffer codes you've loaded.
                         </p>
                     </Section>
 

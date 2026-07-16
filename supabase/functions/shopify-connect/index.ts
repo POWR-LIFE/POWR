@@ -53,26 +53,63 @@ async function shopifyGraphql(shop, token, query, variables = {}) {
   return body;
 }
 
-// Normalise a DiscountCodeBasic node into the config we clone per mint.
-// Returns null when the discount shape isn't something we can clone.
-function normaliseDiscount(codeDiscount) {
+// Shared GraphQL fragment for the customerGets shape. Item __typename only —
+// reading the actual product/collection nodes needs read_products /
+// read_collections scopes the app may not hold, and an ACCESS_DENIED on a
+// nested field nulls the whole query.
+const CUSTOMER_GETS_FRAGMENT = `
+  customerGets {
+    value {
+      __typename
+      ... on DiscountPercentage { percentage }
+      ... on DiscountAmount { amount { amount currencyCode } appliesOnEachItem }
+    }
+    items { __typename }
+  }`;
+
+// Normalise the VALUE side of a DiscountCodeBasic (percentage / fixed amount).
+// Returns null for shapes we can't clone.
+function normaliseValue(codeDiscount) {
   if (codeDiscount?.__typename !== 'DiscountCodeBasic') return null;
   const value = codeDiscount.customerGets?.value;
-  let kind = null;
   if (value?.__typename === 'DiscountPercentage') {
-    kind = { type: 'percentage', percentage: value.percentage };
-  } else if (value?.__typename === 'DiscountAmount') {
-    kind = { type: 'amount', amount: value.amount?.amount, appliesOnEachItem: !!value.appliesOnEachItem };
+    return { type: 'percentage', percentage: value.percentage };
   }
-  if (!kind) return null;
-  const items = codeDiscount.customerGets?.items;
-  const applies = items?.__typename === 'AllDiscountItems' ? { all: true } : { all: false };
-  return {
-    ...kind,
-    applies,
-    appliesOncePerCustomer: !!codeDiscount.appliesOncePerCustomer,
-    title: codeDiscount.title,
-  };
+  if (value?.__typename === 'DiscountAmount') {
+    return { type: 'amount', amount: value.amount?.amount, appliesOnEachItem: !!value.appliesOnEachItem };
+  }
+  return null;
+}
+
+// Fetch the product/collection restriction of a template discount so minted
+// codes are never MORE generous than the template. Requires read_products /
+// read_collections — under minimal scopes this returns an explanatory error
+// string instead, and starts working automatically if scopes are expanded.
+async function fetchItemRestrictions(shop, token, gid, itemsTypename) {
+  const field = itemsTypename === 'DiscountProducts' ? 'products' : 'collections';
+  const { data, errors } = await shopifyGraphql(shop, token, `
+    query($id: ID!) {
+      codeDiscountNode(id: $id) {
+        codeDiscount {
+          ... on DiscountCodeBasic {
+            customerGets {
+              items {
+                ... on Discount${itemsTypename === 'DiscountProducts' ? 'Products' : 'Collections'} {
+                  ${field}(first: 100) { nodes { id } pageInfo { hasNextPage } }
+                }
+              }
+            }
+          }
+        }
+      }
+    }`, { id: gid });
+  if (errors?.length) {
+    return { error: 'This discount is limited to specific products, which needs the app’s product-access permission. Use an order-wide discount as the template for now.' };
+  }
+  const conn = data?.codeDiscountNode?.codeDiscount?.customerGets?.items?.[field];
+  if (!conn?.nodes) return { error: 'Could not read the discount’s product restrictions — try an order-wide discount.' };
+  if (conn.pageInfo?.hasNextPage) return { error: 'This discount is limited to more than 100 items — too broad to clone faithfully. Use an order-wide or smaller template.' };
+  return { applies: { [field]: conn.nodes.map((n) => n.id) } };
 }
 
 const CROCKFORD = '23456789ABCDEFGHJKMNPQRSTVWXYZ';
@@ -236,6 +273,12 @@ Deno.serve(async (req) => {
     const value = cfg.type === 'percentage'
       ? { percentage: cfg.percentage }
       : { discountAmount: { amount: cfg.amount, appliesOnEachItem: !!cfg.appliesOnEachItem } };
+    // Carry the template's product/collection restrictions into the minted code.
+    const mintItems = cfg.applies?.products?.length
+      ? { products: { productsToAdd: cfg.applies.products } }
+      : cfg.applies?.collections?.length
+        ? { collections: { add: cfg.applies.collections } }
+        : { all: true };
 
     const { data, errors } = await shopifyGraphql(shopRow.shop_domain, shopRow.access_token, `
       mutation($discount: DiscountCodeBasicInput!) {
@@ -252,7 +295,7 @@ Deno.serve(async (req) => {
         usageLimit: 1,
         appliesOncePerCustomer: true,
         customerSelection: { all: true },
-        customerGets: { value, items: { all: true } },
+        customerGets: { value, items: mintItems },
       },
     });
     const errs = errors ?? data?.discountCodeBasicCreate?.userErrors;
@@ -330,12 +373,46 @@ Deno.serve(async (req) => {
   }
 
   // ── status ──────────────────────────────────────────────────────────────────
+  // Beyond connection state, this PROBES the store: is the token still valid,
+  // and are our webhooks registered? Missing subscriptions are re-created on
+  // the spot (they fail silently at connect time when the app hasn't been
+  // granted protected-customer-data access yet — the exact gap that made the
+  // first E2E order go unreconciled).
   if (body.action === 'status') {
     const shop = await getShop();
     const { data: mappings } = await admin
       .from('reward_shopify_discounts')
       .select('reward_id, discount_gid, discount_title, config, updated_at')
       .ilike('brand_name', brand);
+
+    let health = null;
+    if (shop?.status === 'connected') {
+      const { data, errors } = await shopifyGraphql(shop.shop_domain, shop.access_token, `
+        { shop { name } webhookSubscriptions(first: 20) { nodes { topic } } }`);
+      if (errors?.length || !data?.shop) {
+        health = { token_ok: false, orders_webhook: false };
+      } else {
+        const topics = new Set((data.webhookSubscriptions?.nodes ?? []).map((n) => n.topic));
+        for (const topic of ['ORDERS_CREATE', 'APP_UNINSTALLED']) {
+          if (topics.has(topic)) continue;
+          const { data: sub, errors: subErrs } = await shopifyGraphql(shop.shop_domain, shop.access_token, `
+            mutation($topic: WebhookSubscriptionTopic!, $sub: WebhookSubscriptionInput!) {
+              webhookSubscriptionCreate(topic: $topic, webhookSubscription: $sub) {
+                webhookSubscription { id }
+                userErrors { message }
+              }
+            }`, { topic, sub: { callbackUrl: WEBHOOK_URL, format: 'JSON' } });
+          const errs = subErrs ?? sub?.webhookSubscriptionCreate?.userErrors;
+          if (!errs?.length && sub?.webhookSubscriptionCreate?.webhookSubscription?.id) {
+            topics.add(topic);
+          } else {
+            console.error('webhook self-heal failed', topic, JSON.stringify(errs));
+          }
+        }
+        health = { token_ok: true, orders_webhook: topics.has('ORDERS_CREATE') };
+      }
+    }
+
     return json({
       ok: true,
       connected: shop?.status === 'connected',
@@ -344,6 +421,7 @@ Deno.serve(async (req) => {
       scopes: shop?.scopes ?? null,
       connected_at: shop?.connected_at ?? null,
       mappings: mappings ?? [],
+      health,
     });
   }
 
@@ -362,14 +440,7 @@ Deno.serve(async (req) => {
                 title
                 summary
                 appliesOncePerCustomer
-                customerGets {
-                  value {
-                    __typename
-                    ... on DiscountPercentage { percentage }
-                    ... on DiscountAmount { amount { amount currencyCode } appliesOnEachItem }
-                  }
-                  items { __typename }
-                }
+                ${CUSTOMER_GETS_FRAGMENT}
               }
             }
           }
@@ -379,17 +450,13 @@ Deno.serve(async (req) => {
 
     const discounts = (data?.codeDiscountNodes?.nodes ?? [])
       .map((n) => {
-        const cfg = normaliseDiscount(n.codeDiscount);
-        return cfg ? {
-          gid: n.id,
-          title: n.codeDiscount.title,
-          summary: n.codeDiscount.summary ?? null,
-          cloneable: true,
-        } : {
+        const kind = normaliseValue(n.codeDiscount);
+        return {
           gid: n.id,
           title: n.codeDiscount?.title ?? '(unsupported discount type)',
           summary: n.codeDiscount?.summary ?? null,
-          cloneable: false,
+          cloneable: !!kind,
+          restricted: kind ? n.codeDiscount?.customerGets?.items?.__typename !== 'AllDiscountItems' : false,
         };
       });
     return json({ ok: true, discounts });
@@ -419,14 +486,7 @@ Deno.serve(async (req) => {
             ... on DiscountCodeBasic {
               title
               appliesOncePerCustomer
-              customerGets {
-                value {
-                  __typename
-                  ... on DiscountPercentage { percentage }
-                  ... on DiscountAmount { amount { amount currencyCode } appliesOnEachItem }
-                }
-                items { __typename }
-              }
+              ${CUSTOMER_GETS_FRAGMENT}
             }
           }
         }
@@ -434,10 +494,31 @@ Deno.serve(async (req) => {
     if (errors?.length) return json({ error: errors[0]?.message ?? 'Shopify query failed' }, 502);
 
     const node = data?.codeDiscountNode;
-    const cfg = normaliseDiscount(node?.codeDiscount);
-    if (!cfg) {
+    const kind = normaliseValue(node?.codeDiscount);
+    if (!kind) {
       return json({ error: 'Only basic percentage or fixed-amount code discounts can be used as templates' }, 400);
     }
+
+    // Carry the template's item restrictions so minted codes are never more
+    // generous than what the partner configured.
+    const itemsType = node.codeDiscount.customerGets?.items?.__typename;
+    let applies;
+    if (itemsType === 'AllDiscountItems') {
+      applies = { all: true };
+    } else if (itemsType === 'DiscountProducts' || itemsType === 'DiscountCollections') {
+      const res = await fetchItemRestrictions(shop.shop_domain, shop.access_token, discount_gid, itemsType);
+      if (res.error) return json({ error: res.error }, 400);
+      applies = res.applies;
+    } else {
+      return json({ error: 'This discount’s item targeting can’t be cloned — use an order-wide discount as the template' }, 400);
+    }
+
+    const cfg = {
+      ...kind,
+      applies,
+      appliesOncePerCustomer: !!node.codeDiscount.appliesOncePerCustomer,
+      title: node.codeDiscount.title,
+    };
 
     await admin.from('reward_shopify_discounts').upsert({
       reward_id: reward.id,
