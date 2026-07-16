@@ -36,7 +36,9 @@ import PartnerPortalRewards from './pages/partner/PartnerRewards';
 import PartnerPortalFeatured from './pages/partner/PartnerFeatured';
 import PartnerPortalPlacements from './pages/partner/PartnerPlacements';
 import PartnerPortalSettings from './pages/partner/PartnerSettings';
+import PartnerPortalDevelopers from './pages/partner/PartnerDevelopers';
 import PartnerSetup from './pages/partner/PartnerSetup';
+import DeveloperDocs from './pages/DeveloperDocs';
 
 import Analytics from './pages/admin/Analytics';
 import AthleteApplications from './pages/admin/AthleteApplications';
@@ -1000,6 +1002,8 @@ export default function App() {
                     <Route path="/partner/placements" element={<PartnerProtectedRoute><PartnerLayout><PartnerPortalPlacements /></PartnerLayout></PartnerProtectedRoute>} />
                     <Route path="/partner/redemptions" element={<PartnerProtectedRoute><PartnerLayout><PartnerPortalRedemptions /></PartnerLayout></PartnerProtectedRoute>} />
                     <Route path="/partner/settings" element={<PartnerProtectedRoute><PartnerLayout><PartnerPortalSettings /></PartnerLayout></PartnerProtectedRoute>} />
+                    <Route path="/partner/developers" element={<PartnerProtectedRoute><PartnerLayout><PartnerPortalDevelopers /></PartnerLayout></PartnerProtectedRoute>} />
+                    <Route path="/developers" element={<DeveloperDocs />} />
                     <Route path="/admin/login" element={<AdminLogin />} />
                     <Route path="/admin" element={<ProtectedRoute><AdminLayout><AdminHome /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/partners" element={<ProtectedRoute><AdminLayout><PartnerManager /></AdminLayout></ProtectedRoute>} />

@@ -1,0 +1,459 @@
+import React, { useCallback, useEffect, useState } from 'react';
+import { BookOpen, Check, Copy, Eye, EyeOff, KeyRound, Plus, RefreshCw, Send, Trash2, Webhook, Zap } from 'lucide-react';
+import { useToast } from '../../lib/toast';
+import { useAuth } from '../../App';
+import {
+    API_BASE_URL, DOCS_PATH, WEBHOOK_EVENTS,
+    callPartnerApi, fetchDeliveries, fetchEndpoints, fetchIntegration,
+} from '../../lib/partnerApi';
+
+const INPUT = "w-full h-14 px-5 bg-white border border-[#E6E6E1] rounded-2xl text-sm text-[#1A1A1A] placeholder-[#BBBBBB] focus:border-[#E8D200]/50 outline-none transition-all font-['Outfit']";
+const BTN_DARK = 'h-11 px-8 bg-[#1A1A1A] text-white text-[10px] font-black uppercase tracking-[0.2em] rounded-full hover:bg-[#333] transition-all disabled:opacity-50';
+const BTN_GHOST = 'h-9 px-4 text-[9px] font-black uppercase tracking-[0.2em] bg-white border border-[#E6E6E1] rounded-full text-[#666] hover:border-[#1A1A1A]/30 hover:text-[#1A1A1A] transition-all disabled:opacity-50';
+
+const timeAgo = (iso) => {
+    if (!iso) return '—';
+    const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+    if (s < 60) return 'just now';
+    if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+    if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+    return `${Math.floor(s / 86400)}d ago`;
+};
+
+function CopyButton({ value, label = 'Copy' }) {
+    const toast = useToast();
+    const [copied, setCopied] = useState(false);
+    return (
+        <button
+            type="button"
+            className={BTN_GHOST}
+            onClick={async () => {
+                try {
+                    await navigator.clipboard.writeText(value);
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 1500);
+                } catch {
+                    toast.error('Could not copy — select it manually');
+                }
+            }}
+        >
+            {copied ? <span className="flex items-center gap-1.5"><Check size={11} /> Copied</span> : label}
+        </button>
+    );
+}
+
+function SectionCard({ icon: Icon, title, children, aside }) {
+    return (
+        <div className="bg-white border border-[#E6E6E1] rounded-3xl p-8 mb-6">
+            <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-3">
+                    <Icon size={16} className="text-[#BBBBBB]" />
+                    <h2 className="text-[10px] uppercase tracking-[0.5em] font-black text-[#BBBBBB]">{title}</h2>
+                </div>
+                {aside}
+            </div>
+            {children}
+        </div>
+    );
+}
+
+const STATUS_CHIP = {
+    delivered: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20',
+    pending: 'bg-amber-500/10 text-amber-600 border-amber-500/20',
+    failed: 'bg-red-500/10 text-red-500 border-red-500/20',
+    skipped: 'bg-[#F4F4F1] text-[#999] border-[#E6E6E1]',
+};
+
+export default function PartnerDevelopers() {
+    const toast = useToast();
+    const { partnerData } = useAuth();
+    const brand = partnerData?.brand_name;
+
+    const [keys, setKeys] = useState([]);
+    const [endpoints, setEndpoints] = useState([]);
+    const [deliveries, setDeliveries] = useState([]);
+    const [integration, setIntegration] = useState(null);
+    const [loading, setLoading] = useState(true);
+
+    // API keys
+    const [newKeyLabel, setNewKeyLabel] = useState('');
+    const [creatingKey, setCreatingKey] = useState(false);
+    const [freshKey, setFreshKey] = useState(null); // shown exactly once
+
+    // Webhook endpoints
+    const [newUrl, setNewUrl] = useState('');
+    const [newEvents, setNewEvents] = useState(WEBHOOK_EVENTS.map(e => e.id));
+    const [addingEndpoint, setAddingEndpoint] = useState(false);
+    const [revealSecret, setRevealSecret] = useState({});
+    const [testResult, setTestResult] = useState({});
+    const [busyEndpoint, setBusyEndpoint] = useState(null);
+
+    // JIT
+    const [mintUrl, setMintUrl] = useState('');
+    const [threshold, setThreshold] = useState(10);
+    const [savingIntegration, setSavingIntegration] = useState(false);
+
+    const refresh = useCallback(async () => {
+        if (!brand) return;
+        try {
+            const [keysRes, eps, dels, integ] = await Promise.all([
+                callPartnerApi('list_keys', brand),
+                fetchEndpoints(brand),
+                fetchDeliveries(brand),
+                fetchIntegration(brand),
+            ]);
+            setKeys(keysRes.keys ?? []);
+            setEndpoints(eps);
+            setDeliveries(dels);
+            setIntegration(integ);
+            setMintUrl(integ?.mint_url ?? '');
+            setThreshold(integ?.pool_low_threshold ?? 10);
+        } catch (err) {
+            toast.error(err.message);
+        } finally {
+            setLoading(false);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [brand]);
+
+    useEffect(() => { refresh(); }, [refresh]);
+
+    if (!partnerData) return null;
+
+    const handleCreateKey = async () => {
+        setCreatingKey(true);
+        try {
+            const res = await callPartnerApi('create_key', brand, { label: newKeyLabel || 'API key' });
+            setFreshKey(res.key);
+            setNewKeyLabel('');
+            await refresh();
+        } catch (err) { toast.error(err.message); }
+        setCreatingKey(false);
+    };
+
+    const handleRevokeKey = async (keyId) => {
+        if (!window.confirm('Revoke this key? Integrations using it will stop working immediately.')) return;
+        try {
+            await callPartnerApi('revoke_key', brand, { key_id: keyId });
+            toast.success('Key revoked');
+            await refresh();
+        } catch (err) { toast.error(err.message); }
+    };
+
+    const handleAddEndpoint = async () => {
+        if (!newUrl.trim()) { toast.error('Enter an endpoint URL'); return; }
+        if (newEvents.length === 0) { toast.error('Pick at least one event'); return; }
+        setAddingEndpoint(true);
+        try {
+            await callPartnerApi('create_endpoint', brand, { url: newUrl.trim(), events: newEvents });
+            toast.success('Endpoint added');
+            setNewUrl('');
+            setNewEvents(WEBHOOK_EVENTS.map(e => e.id));
+            await refresh();
+        } catch (err) { toast.error(err.message); }
+        setAddingEndpoint(false);
+    };
+
+    const handleToggleEndpoint = async (ep) => {
+        setBusyEndpoint(ep.id);
+        try {
+            await callPartnerApi('update_endpoint', brand, { endpoint_id: ep.id, active: !ep.active });
+            await refresh();
+        } catch (err) { toast.error(err.message); }
+        setBusyEndpoint(null);
+    };
+
+    const handleDeleteEndpoint = async (ep) => {
+        if (!window.confirm('Delete this endpoint? Its delivery history goes with it.')) return;
+        try {
+            await callPartnerApi('delete_endpoint', brand, { endpoint_id: ep.id });
+            toast.success('Endpoint deleted');
+            await refresh();
+        } catch (err) { toast.error(err.message); }
+    };
+
+    const handleTestEndpoint = async (ep) => {
+        setBusyEndpoint(ep.id);
+        setTestResult(prev => ({ ...prev, [ep.id]: { pending: true } }));
+        try {
+            const res = await callPartnerApi('test_endpoint', brand, { endpoint_id: ep.id });
+            setTestResult(prev => ({ ...prev, [ep.id]: res }));
+        } catch (err) {
+            setTestResult(prev => ({ ...prev, [ep.id]: { ok: false, error: err.message } }));
+        }
+        setBusyEndpoint(null);
+    };
+
+    const handleRedeliver = async (deliveryId) => {
+        try {
+            await callPartnerApi('redeliver', brand, { delivery_id: deliveryId });
+            toast.success('Queued for redelivery');
+            await refresh();
+        } catch (err) { toast.error(err.message); }
+    };
+
+    const handleSaveIntegration = async (patch) => {
+        setSavingIntegration(true);
+        try {
+            const res = await callPartnerApi('set_integration', brand, patch);
+            setIntegration(res.integration);
+            setMintUrl(res.integration?.mint_url ?? '');
+            setThreshold(res.integration?.pool_low_threshold ?? 10);
+            toast.success('Integration settings saved');
+        } catch (err) { toast.error(err.message); }
+        setSavingIntegration(false);
+    };
+
+    return (
+        <div className="py-16 animate-in fade-in slide-in-from-bottom-6 duration-700 max-w-3xl">
+            {/* Header */}
+            <div className="mb-12">
+                <div className="flex items-center gap-3 mb-5">
+                    <div className="h-[1px] w-10 bg-[#8a7600]"></div>
+                    <span className="text-[10px] uppercase tracking-[0.5em] text-[#8a7600] font-black">Integrations</span>
+                </div>
+                <div className="flex items-end justify-between gap-6 flex-wrap">
+                    <h1 className="text-5xl font-light tracking-tighter text-[#1A1A1A]">Developers</h1>
+                    <a href={DOCS_PATH} target="_blank" rel="noreferrer"
+                        className="flex items-center gap-2 h-11 px-6 bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.2em] rounded-full hover:brightness-95 transition-all">
+                        <BookOpen size={14} /> API Docs
+                    </a>
+                </div>
+                <p className="text-[12px] text-[#999] leading-relaxed mt-4 max-w-xl">
+                    Automate your code supply and usage reconciliation — push codes, hear about redemptions
+                    the second they happen, and skip the CSV uploads entirely.
+                </p>
+                <div className="mt-5 flex items-center gap-3">
+                    <code className="text-[11px] font-mono text-[#666] bg-white border border-[#E6E6E1] rounded-full px-4 py-2">{API_BASE_URL}</code>
+                    <CopyButton value={API_BASE_URL} label="Copy base URL" />
+                </div>
+            </div>
+
+            {/* ── API keys ─────────────────────────────────────────────── */}
+            <SectionCard icon={KeyRound} title="API Keys">
+                {freshKey && (
+                    <div className="mb-6 p-5 bg-[#E8D200]/10 border border-[#E8D200]/40 rounded-2xl">
+                        <div className="text-[10px] uppercase tracking-[0.3em] font-black text-[#8a7600] mb-2">Copy your new key now — it will not be shown again</div>
+                        <div className="flex items-center gap-3 flex-wrap">
+                            <code className="text-[12px] font-mono text-[#1A1A1A] break-all">{freshKey}</code>
+                            <CopyButton value={freshKey} />
+                            <button type="button" className={BTN_GHOST} onClick={() => setFreshKey(null)}>Done</button>
+                        </div>
+                    </div>
+                )}
+
+                {keys.length === 0 && !loading ? (
+                    <p className="text-[12px] text-[#AAA] mb-6">No API keys yet. Create one to start calling the API.</p>
+                ) : (
+                    <div className="space-y-3 mb-6">
+                        {keys.map((k) => (
+                            <div key={k.id} className={`flex items-center gap-4 p-4 rounded-2xl border ${k.revoked_at ? 'bg-[#F4F4F1] border-[#E6E6E1] opacity-60' : 'bg-[#F4F4F1] border-[#E6E6E1]'}`}>
+                                <div className="flex-1 min-w-0">
+                                    <div className="text-[12px] font-bold text-[#222] truncate">{k.label}</div>
+                                    <div className="text-[11px] font-mono text-[#999] mt-0.5">{k.key_prefix}…</div>
+                                </div>
+                                <div className="text-right shrink-0">
+                                    <div className="text-[9px] uppercase tracking-[0.2em] font-black text-[#BBB]">
+                                        {k.revoked_at ? 'Revoked' : k.last_used_at ? `Used ${timeAgo(k.last_used_at)}` : 'Never used'}
+                                    </div>
+                                </div>
+                                {!k.revoked_at && (
+                                    <button type="button" onClick={() => handleRevokeKey(k.id)}
+                                        className="h-9 px-4 text-[9px] font-black uppercase tracking-[0.2em] rounded-full text-red-500/60 hover:text-red-500 hover:bg-red-500/5 border border-transparent hover:border-red-500/10 transition-all">
+                                        Revoke
+                                    </button>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                )}
+
+                <div className="flex gap-3">
+                    <input
+                        type="text" placeholder="Key label (e.g. Shopify sync)" value={newKeyLabel}
+                        onChange={e => setNewKeyLabel(e.target.value)} className={INPUT + ' flex-1'} maxLength={60}
+                    />
+                    <button type="button" onClick={handleCreateKey} disabled={creatingKey} className={BTN_DARK + ' h-14 shrink-0 flex items-center gap-2'}>
+                        <Plus size={13} /> {creatingKey ? 'Creating…' : 'Create key'}
+                    </button>
+                </div>
+            </SectionCard>
+
+            {/* ── Webhooks ─────────────────────────────────────────────── */}
+            <SectionCard icon={Webhook} title="Webhook Endpoints">
+                <div className="space-y-4 mb-8">
+                    {endpoints.length === 0 && !loading && (
+                        <p className="text-[12px] text-[#AAA]">No endpoints yet. Add one and we'll POST signed events to it as they happen.</p>
+                    )}
+                    {endpoints.map((ep) => {
+                        const res = testResult[ep.id];
+                        return (
+                            <div key={ep.id} className="p-5 bg-[#F4F4F1] border border-[#E6E6E1] rounded-2xl">
+                                <div className="flex items-center gap-3 flex-wrap">
+                                    <span className={`h-2 w-2 rounded-full shrink-0 ${ep.active ? 'bg-emerald-500' : 'bg-red-400'}`} />
+                                    <code className="text-[12px] font-mono text-[#1A1A1A] break-all flex-1 min-w-[200px]">{ep.url}</code>
+                                    <div className="flex items-center gap-2 shrink-0">
+                                        <button type="button" className={BTN_GHOST} disabled={busyEndpoint === ep.id} onClick={() => handleTestEndpoint(ep)}>
+                                            <span className="flex items-center gap-1.5"><Send size={11} /> Test</span>
+                                        </button>
+                                        <button type="button" className={BTN_GHOST} disabled={busyEndpoint === ep.id} onClick={() => handleToggleEndpoint(ep)}>
+                                            {ep.active ? 'Disable' : 'Enable'}
+                                        </button>
+                                        <button type="button" onClick={() => handleDeleteEndpoint(ep)}
+                                            className="h-9 w-9 flex items-center justify-center rounded-full text-red-500/50 hover:text-red-500 hover:bg-red-500/5 transition-all">
+                                            <Trash2 size={13} />
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2 mt-3 flex-wrap">
+                                    {(ep.events ?? []).map(ev => (
+                                        <span key={ev} className="text-[9px] uppercase tracking-[0.2em] font-black text-[#8a7600] bg-[#E8D200]/10 border border-[#E8D200]/30 rounded-full px-3 py-1">{ev}</span>
+                                    ))}
+                                    {!ep.active && ep.disabled_reason && (
+                                        <span className="text-[10px] text-red-500/80">{ep.disabled_reason}</span>
+                                    )}
+                                </div>
+                                <div className="flex items-center gap-3 mt-3">
+                                    <span className="text-[9px] uppercase tracking-[0.3em] font-black text-[#BBB]">Signing secret</span>
+                                    <code className="text-[11px] font-mono text-[#666]">
+                                        {revealSecret[ep.id] ? ep.secret : '••••••••••••••••'}
+                                    </code>
+                                    <button type="button" onClick={() => setRevealSecret(p => ({ ...p, [ep.id]: !p[ep.id] }))}
+                                        className="text-[#BBB] hover:text-[#666] transition-colors">
+                                        {revealSecret[ep.id] ? <EyeOff size={13} /> : <Eye size={13} />}
+                                    </button>
+                                    <CopyButton value={ep.secret} label="Copy secret" />
+                                </div>
+                                {res && !res.pending && (
+                                    <div className={`mt-3 text-[11px] font-bold ${res.ok ? 'text-emerald-600' : 'text-red-500'}`}>
+                                        {res.ok ? `Test delivered — HTTP ${res.status}` : `Test failed — ${res.error ?? `HTTP ${res.status}`}`}
+                                    </div>
+                                )}
+                                {res?.pending && <div className="mt-3 text-[11px] text-[#999]">Sending test event…</div>}
+                            </div>
+                        );
+                    })}
+                </div>
+
+                <div className="pt-6 border-t border-[#E6E6E1]">
+                    <div className="text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-3">Add endpoint</div>
+                    <input type="url" placeholder="https://your-system.example.com/powr/webhooks" value={newUrl}
+                        onChange={e => setNewUrl(e.target.value)} className={INPUT} />
+                    <div className="flex items-center gap-2 mt-4 flex-wrap">
+                        {WEBHOOK_EVENTS.map(ev => {
+                            const on = newEvents.includes(ev.id);
+                            return (
+                                <button key={ev.id} type="button" title={ev.description}
+                                    onClick={() => setNewEvents(prev => on ? prev.filter(x => x !== ev.id) : [...prev, ev.id])}
+                                    className={`text-[9px] uppercase tracking-[0.2em] font-black rounded-full px-4 py-2 border transition-all ${
+                                        on ? 'bg-[#E8D200] text-[#080808] border-[#E8D200]' : 'bg-white text-[#999] border-[#E6E6E1] hover:border-[#E8D200]/50'
+                                    }`}>
+                                    {ev.id}
+                                </button>
+                            );
+                        })}
+                        <div className="flex-1" />
+                        <button type="button" onClick={handleAddEndpoint} disabled={addingEndpoint} className={BTN_DARK}>
+                            {addingEndpoint ? 'Adding…' : 'Add endpoint'}
+                        </button>
+                    </div>
+                </div>
+            </SectionCard>
+
+            {/* ── Recent deliveries ────────────────────────────────────── */}
+            <SectionCard
+                icon={Send} title="Recent Deliveries"
+                aside={
+                    <button type="button" className={BTN_GHOST} onClick={refresh}>
+                        <span className="flex items-center gap-1.5"><RefreshCw size={11} /> Refresh</span>
+                    </button>
+                }
+            >
+                {deliveries.length === 0 ? (
+                    <p className="text-[12px] text-[#AAA]">Nothing delivered yet. Events appear here the moment members interact with your rewards.</p>
+                ) : (
+                    <div className="space-y-2">
+                        {deliveries.map((d) => (
+                            <div key={d.id} className="flex items-center gap-4 p-3.5 bg-[#F4F4F1] border border-[#E6E6E1] rounded-2xl">
+                                <span className={`text-[9px] uppercase tracking-[0.2em] font-black rounded-full px-3 py-1 border shrink-0 ${STATUS_CHIP[d.status] ?? STATUS_CHIP.skipped}`}>
+                                    {d.status}
+                                </span>
+                                <div className="flex-1 min-w-0">
+                                    <div className="text-[12px] font-bold text-[#222]">{d.event_type}</div>
+                                    <div className="text-[10px] text-[#999] truncate mt-0.5">
+                                        {d.reward_brand_webhook_endpoints?.url ?? ''}
+                                    </div>
+                                </div>
+                                <div className="text-right shrink-0">
+                                    <div className="text-[10px] text-[#999]">{timeAgo(d.created_at)}</div>
+                                    <div className="text-[9px] text-[#BBB] mt-0.5">
+                                        {d.attempts > 0 ? `${d.attempts} attempt${d.attempts > 1 ? 's' : ''}` : ''}
+                                        {d.last_response_status ? ` · HTTP ${d.last_response_status}` : ''}
+                                    </div>
+                                </div>
+                                {(d.status === 'failed' || d.status === 'skipped') && (
+                                    <button type="button" className={BTN_GHOST} onClick={() => handleRedeliver(d.id)}>Redeliver</button>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </SectionCard>
+
+            {/* ── JIT minting ──────────────────────────────────────────── */}
+            <SectionCard icon={Zap} title="Just-in-time Minting">
+                <p className="text-[12px] text-[#999] leading-relaxed mb-6 max-w-xl">
+                    The deepest integration: when a member redeems, POWR asks <em>your</em> endpoint for a fresh
+                    single-use code — no pre-loaded pools, no reconciliation. Applies to rewards set to
+                    API-validated delivery. Keep a small buffer of pool codes loaded as a fallback for outages.
+                </p>
+                <div className="space-y-4">
+                    <div>
+                        <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">Mint endpoint URL</label>
+                        <input type="url" placeholder="https://your-system.example.com/powr/mint" value={mintUrl}
+                            onChange={e => setMintUrl(e.target.value)} className={INPUT} />
+                    </div>
+                    {integration?.mint_secret && (
+                        <div className="flex items-center gap-3">
+                            <span className="text-[9px] uppercase tracking-[0.3em] font-black text-[#BBB]">Mint signing secret</span>
+                            <code className="text-[11px] font-mono text-[#666]">
+                                {revealSecret.mint ? integration.mint_secret : '••••••••••••••••'}
+                            </code>
+                            <button type="button" onClick={() => setRevealSecret(p => ({ ...p, mint: !p.mint }))}
+                                className="text-[#BBB] hover:text-[#666] transition-colors">
+                                {revealSecret.mint ? <EyeOff size={13} /> : <Eye size={13} />}
+                            </button>
+                            <CopyButton value={integration.mint_secret} label="Copy secret" />
+                        </div>
+                    )}
+                    <div>
+                        <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">Pool-low alert threshold</label>
+                        <input type="number" min={0} max={10000} value={threshold}
+                            onChange={e => setThreshold(e.target.value)} className={INPUT + ' max-w-[160px]'} />
+                        <p className="text-[10px] text-[#BBB] mt-1.5">We send pool.low when a reward's available codes dip to this level. 0 turns it off.</p>
+                    </div>
+                    <div className="flex items-center justify-between pt-2">
+                        <div className="flex items-center gap-3">
+                            <span className={`h-2 w-2 rounded-full ${integration?.mint_enabled ? 'bg-emerald-500' : 'bg-[#CCC]'}`} />
+                            <span className="text-[11px] font-bold text-[#666]">
+                                JIT minting is {integration?.mint_enabled ? 'ON' : 'OFF'}
+                            </span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            {integration?.mint_url && (
+                                <button type="button" disabled={savingIntegration} className={BTN_GHOST}
+                                    onClick={() => handleSaveIntegration({ mint_enabled: !integration?.mint_enabled })}>
+                                    {integration?.mint_enabled ? 'Turn off' : 'Turn on'}
+                                </button>
+                            )}
+                            <button type="button" disabled={savingIntegration} className={BTN_DARK}
+                                onClick={() => handleSaveIntegration({ mint_url: mintUrl.trim() || null, pool_low_threshold: threshold })}>
+                                {savingIntegration ? 'Saving…' : 'Save settings'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </SectionCard>
+        </div>
+    );
+}

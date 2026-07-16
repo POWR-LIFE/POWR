@@ -426,6 +426,18 @@ verify_jwt = false
 # x-resolve-token leg for background upgrades.
 verify_jwt = false
 
+[functions.partner-api]
+# Machine-facing REST API for reward brands. Callers authenticate with a
+# brand API key (Authorization: Bearer powr_sk_…, sha256-matched against
+# reward_brand_api_keys inside the function) — they are not Supabase users,
+# so platform JWT verification is off.
+verify_jwt = false
+
+[functions.partner-webhook-dispatch]
+# Invoked by pg_cron every minute (no Supabase user JWT) — same
+# x-resolve-token gate as the other cron functions.
+verify_jwt = false
+
 [edge_runtime]
 enabled = true
 # Supported request policies: `oneshot`, `per_worker`.
