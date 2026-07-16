@@ -22,6 +22,11 @@ const CATEGORY_LABELS = {
     technical:      'Technical Issue',
     feedback:       'Feedback / Other',
     brand_request:  'Brand Request',
+    // partner_* categories come from the partner portal's Support page
+    partner_setup:   'Setup & Integration',
+    partner_rewards: 'Rewards & Codes',
+    partner_account: 'Account & Team',
+    partner_other:   'Partner / Other',
 };
 
 const STATUS_CONFIG = {
@@ -95,10 +100,11 @@ export default function SupportTickets() {
 
     const filtered = tickets
         .filter(t => filterStatus === 'all' || t.status === filterStatus)
-        .filter(t => !search || 
+        .filter(t => !search ||
             t.email.toLowerCase().includes(search.toLowerCase()) ||
             t.subject.toLowerCase().includes(search.toLowerCase()) ||
-            t.message.toLowerCase().includes(search.toLowerCase())
+            t.message.toLowerCase().includes(search.toLowerCase()) ||
+            (t.brand_name ?? '').toLowerCase().includes(search.toLowerCase())
         );
 
     return (
@@ -184,6 +190,11 @@ export default function SupportTickets() {
                                             {ticket.category === 'brand_request' && (
                                                 <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full border text-[10px] font-black uppercase tracking-widest bg-[#8B5CF6]/10 border-[#8B5CF6]/30 text-[#8B5CF6]">
                                                     Brand Request
+                                                </span>
+                                            )}
+                                            {ticket.category?.startsWith('partner_') && (
+                                                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full border text-[10px] font-black uppercase tracking-widest bg-[#0EA5E9]/10 border-[#0EA5E9]/30 text-[#0EA5E9]">
+                                                    Partner{ticket.brand_name ? ` · ${ticket.brand_name}` : ''}
                                                 </span>
                                             )}
                                             <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full border text-[10px] font-black uppercase tracking-widest ${cfg.bg}`} style={{ color: cfg.color }}>
