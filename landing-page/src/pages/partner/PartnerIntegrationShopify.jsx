@@ -142,7 +142,10 @@ export default function PartnerIntegrationShopify() {
         } catch (err) { toast.error(err.message); }
     };
 
-    const activeRewards = brandRewards.filter(r => r.active);
+    // Mapping deliberately includes NOT-yet-live rewards: partners (and app
+    // reviewers) wire up delivery BEFORE a reward goes live in the app, so
+    // members can never hit a live-but-unmapped reward. Live ones sort first.
+    const mappableRewards = [...brandRewards].sort((a, b) => Number(b.active) - Number(a.active));
 
     return (
         <div className="py-16 animate-in fade-in slide-in-from-bottom-6 duration-700 max-w-3xl">
@@ -227,16 +230,23 @@ export default function PartnerIntegrationShopify() {
             {shopify?.connected && (
                 <SectionCard icon={ShoppingBag} title="Reward Mappings">
                     <div className="text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-3">Which discount should each reward mint from?</div>
-                    {activeRewards.length === 0 ? (
-                        <p className="text-[12px] text-[#AAA]">No active rewards yet — once a reward is live it appears here.</p>
+                    {mappableRewards.length === 0 ? (
+                        <p className="text-[12px] text-[#AAA]">No rewards yet — create one in My Rewards and it appears here. It doesn't need to be live in the app to wire up minting.</p>
                     ) : (
                         <div className="space-y-3">
-                            {activeRewards.map((r) => {
+                            {mappableRewards.map((r) => {
                                 const mapping = (shopify.mappings ?? []).find(m => m.reward_id === r.id);
                                 return (
                                     <div key={r.id} className="flex items-center gap-4 p-4 bg-[#F4F4F1] border border-[#E6E6E1] rounded-2xl">
                                         <div className="flex-1 min-w-0">
-                                            <div className="text-[12px] font-bold text-[#222] truncate">{r.title}</div>
+                                            <div className="text-[12px] font-bold text-[#222] truncate">
+                                                {r.title}
+                                                {!r.active && (
+                                                    <span className="ml-2 text-[8px] uppercase tracking-[0.2em] font-black text-[#8a7600] bg-[#E8D200]/10 border border-[#E8D200]/30 rounded-full px-2 py-0.5 align-middle">
+                                                        Not live in app yet
+                                                    </span>
+                                                )}
+                                            </div>
                                             <div className="text-[10px] text-[#999] mt-0.5">
                                                 {mapping ? `Mints from “${mapping.discount_title}”` : 'Not minting yet — pick a discount'}
                                             </div>
