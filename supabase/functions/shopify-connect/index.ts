@@ -528,6 +528,10 @@ Deno.serve(async (req) => {
     if (errors?.length) return json({ error: errors[0]?.message ?? 'Shopify query failed' }, 502);
 
     const discounts = (data?.codeDiscountNodes?.nodes ?? [])
+      // Codes WE minted are themselves active discounts ("POWR · <template> ·
+      // <code>") — hide them or they'd swamp the template picker after a few
+      // dozen redemptions and invite mapping a single-use code as a template.
+      .filter((n) => !/^POWR( TEST)? · /.test(n.codeDiscount?.title ?? ''))
       .map((n) => {
         const kind = normaliseValue(n.codeDiscount);
         return {
