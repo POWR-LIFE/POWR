@@ -12,6 +12,9 @@
 //   POST {action:'list_discounts'}        JWT → active code discounts in the shop
 //   POST {action:'map_reward', reward_id, discount_gid}  JWT
 //   POST {action:'unmap_reward', reward_id}              JWT
+//   POST {action:'create_test_code', reward_id?}         JWT — mint one labelled
+//                                         single-use code through the production
+//                                         rails (portal + app-review self-test)
 //   POST {action:'disconnect'}            JWT
 //   POST /mint                            signed with the brand's mint_secret
 //                                         (same X-POWR-Signature scheme JIT uses)
@@ -113,12 +116,52 @@ async function fetchItemRestrictions(shop, token, gid, itemsTypename) {
 }
 
 const CROCKFORD = '23456789ABCDEFGHJKMNPQRSTVWXYZ';
-function mintCode() {
-  const bytes = new Uint8Array(8);
+function mintCode(prefix = 'POWR-', len = 8) {
+  const bytes = new Uint8Array(len);
   crypto.getRandomValues(bytes);
   let suffix = '';
   for (const b of bytes) suffix += CROCKFORD[b % CROCKFORD.length];
-  return `POWR-${suffix}`;
+  return `${prefix}${suffix}`;
+}
+
+// Create a single-use DiscountCodeBasic in the brand's store cloned from a
+// mapping's stored config. Shared by /mint (member redemptions) and
+// create_test_code (portal self-test). Returns true on success.
+async function createClonedDiscount(shopRow, cfg, title, code, endsAt) {
+  const value = cfg.type === 'percentage'
+    ? { percentage: cfg.percentage }
+    : { discountAmount: { amount: cfg.amount, appliesOnEachItem: !!cfg.appliesOnEachItem } };
+  // Carry the template's product/collection restrictions into the minted code.
+  const mintItems = cfg.applies?.products?.length
+    ? { products: { productsToAdd: cfg.applies.products } }
+    : cfg.applies?.collections?.length
+      ? { collections: { add: cfg.applies.collections } }
+      : { all: true };
+
+  const { data, errors } = await shopifyGraphql(shopRow.shop_domain, shopRow.access_token, `
+    mutation($discount: DiscountCodeBasicInput!) {
+      discountCodeBasicCreate(basicCodeDiscount: $discount) {
+        codeDiscountNode { id }
+        userErrors { field message }
+      }
+    }`, {
+    discount: {
+      title,
+      code,
+      startsAt: new Date().toISOString(),
+      endsAt: endsAt ?? null,
+      usageLimit: 1,
+      appliesOncePerCustomer: true,
+      customerSelection: { all: true },
+      customerGets: { value, items: mintItems },
+    },
+  });
+  const errs = errors ?? data?.discountCodeBasicCreate?.userErrors;
+  if (errs?.length || !data?.discountCodeBasicCreate?.codeDiscountNode?.id) {
+    console.error('shopify discount create failed', JSON.stringify(errs ?? data));
+    return false;
+  }
+  return true;
 }
 
 Deno.serve(async (req) => {
@@ -269,40 +312,11 @@ Deno.serve(async (req) => {
     if (!mapping) return json({ error: 'reward not mapped to a discount' }, 409);
 
     const code = mintCode();
-    const cfg = mapping.config ?? {};
-    const value = cfg.type === 'percentage'
-      ? { percentage: cfg.percentage }
-      : { discountAmount: { amount: cfg.amount, appliesOnEachItem: !!cfg.appliesOnEachItem } };
-    // Carry the template's product/collection restrictions into the minted code.
-    const mintItems = cfg.applies?.products?.length
-      ? { products: { productsToAdd: cfg.applies.products } }
-      : cfg.applies?.collections?.length
-        ? { collections: { add: cfg.applies.collections } }
-        : { all: true };
-
-    const { data, errors } = await shopifyGraphql(shopRow.shop_domain, shopRow.access_token, `
-      mutation($discount: DiscountCodeBasicInput!) {
-        discountCodeBasicCreate(basicCodeDiscount: $discount) {
-          codeDiscountNode { id }
-          userErrors { field message }
-        }
-      }`, {
-      discount: {
-        title: `POWR · ${mapping.discount_title} · ${code}`,
-        code,
-        startsAt: new Date().toISOString(),
-        endsAt: body.expires_at ?? null,
-        usageLimit: 1,
-        appliesOncePerCustomer: true,
-        customerSelection: { all: true },
-        customerGets: { value, items: mintItems },
-      },
-    });
-    const errs = errors ?? data?.discountCodeBasicCreate?.userErrors;
-    if (errs?.length || !data?.discountCodeBasicCreate?.codeDiscountNode?.id) {
-      console.error('shopify mint failed', JSON.stringify(errs ?? data));
-      return json({ error: 'shopify discount create failed' }, 502);
-    }
+    const ok = await createClonedDiscount(
+      shopRow, mapping.config ?? {},
+      `POWR · ${mapping.discount_title} · ${code}`, code, body.expires_at ?? null,
+    );
+    if (!ok) return json({ error: 'shopify discount create failed' }, 502);
 
     return json({ code });
   }
@@ -559,6 +573,54 @@ Deno.serve(async (req) => {
     // The reward keeps API_VALIDATED + pool fallback; flipping back to POOL is
     // a deliberate admin call since it changes member-facing behaviour.
     return json({ ok: true });
+  }
+
+  // ── create_test_code: one labelled single-use code through the production
+  //    rails — cloned from the mapped template and tracked as 'reserved', so
+  //    spending it at checkout flips it to 'used' via the orders webhook.
+  //    Lets partners (and Shopify app review) verify the full loop without a
+  //    member redemption. reward_id optional; defaults to the latest mapping.
+  if (body.action === 'create_test_code') {
+    const shop = await getShop();
+    if (shop?.status !== 'connected') return json({ error: 'Connect your Shopify store first' }, 409);
+
+    let mq = admin.from('reward_shopify_discounts')
+      .select('reward_id, discount_title, config')
+      .ilike('brand_name', brand);
+    if (body.reward_id) mq = mq.eq('reward_id', body.reward_id);
+    const { data: mappings } = await mq.order('updated_at', { ascending: false }).limit(1);
+    const mapping = mappings?.[0];
+    if (!mapping) return json({ error: 'Map a reward to a discount first' }, 409);
+
+    const code = mintCode('POWR-TEST-', 6);
+    const expiresAt = new Date(Date.now() + 7 * 86_400_000).toISOString();
+    const ok = await createClonedDiscount(
+      shop, mapping.config ?? {},
+      `POWR TEST · ${mapping.discount_title} · ${code}`, code, expiresAt,
+    );
+    if (!ok) return json({ error: 'Shopify discount create failed — check the store connection above' }, 502);
+
+    // Tracked like a member-held code (minus the member) so reconciliation
+    // treats it identically. No redemption ledger row — it isn't one.
+    const { error: insErr } = await admin.from('redemption_codes').insert({
+      reward_id: mapping.reward_id,
+      code,
+      source: 'PARTNER_API',
+      status: 'reserved',
+      assigned_at: new Date().toISOString(),
+      expires_at: expiresAt,
+    });
+    if (insErr) {
+      return json({ error: `The code ${code} was created in Shopify but POWR couldn't track it (${insErr.message}) — delete it in your store and try again` }, 500);
+    }
+
+    if (isAdmin) {
+      await admin.from('admin_audit_log').insert({
+        admin_id: user.id, action: 'shopify_create_test_code', target_type: 'reward_brand',
+        target_id: null, metadata: { brand_name: brand, reward_id: mapping.reward_id, code },
+      });
+    }
+    return json({ ok: true, code, reward_id: mapping.reward_id, expires_at: expiresAt });
   }
 
   // ── disconnect ──────────────────────────────────────────────────────────────

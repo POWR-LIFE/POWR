@@ -1,10 +1,10 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { Link2, RefreshCw, ShoppingBag, Sparkles, Store } from 'lucide-react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { CheckCircle2, FlaskConical, Link2, RefreshCw, ShoppingBag, Sparkles, Store } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
 import { useAuth } from '../../App';
 import { callShopify } from '../../lib/partnerApi';
-import { BTN_DARK, BTN_GHOST, ChangeMethodLink, FallbackPoolCard, INPUT, SectionCard, WrongMethodNotice } from './integrationShared';
+import { BTN_DARK, BTN_GHOST, ChangeMethodLink, CopyButton, FallbackPoolCard, INPUT, SectionCard, WrongMethodNotice } from './integrationShared';
 
 const HOW_IT_WORKS = [
     { icon: Link2, title: 'Connect', detail: 'Approve the POWR app on your store — one click, no code.' },
@@ -24,6 +24,30 @@ export default function PartnerIntegrationShopify() {
     const [brandRewards, setBrandRewards] = useState([]);
     const [mappingBusy, setMappingBusy] = useState(null);
     const [loading, setLoading] = useState(true);
+
+    // Connection self-test: mint one labelled code, then watch it flip to
+    // 'used' when it's spent at the store's checkout.
+    const [testCode, setTestCode] = useState(null);      // { code, reward_id, status }
+    const [testBusy, setTestBusy] = useState(false);
+    const pollRef = useRef(null);
+
+    const checkTestCode = useCallback(async (code) => {
+        const { data } = await supabase
+            .from('redemption_codes')
+            .select('status, used_at')
+            .eq('code', code)
+            .maybeSingle();
+        if (!data) return;
+        setTestCode(prev => (prev && prev.code === code ? { ...prev, status: data.status } : prev));
+        if (data.status === 'used' && pollRef.current) {
+            clearInterval(pollRef.current);
+            pollRef.current = null;
+        }
+    }, []);
+
+    // Poll for the used-flip for a couple of minutes after minting; the
+    // manual refresh button keeps working after that.
+    useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current); }, []);
 
     // Shopify connection state + the brand's rewards (for discount mapping).
     const refresh = useCallback(async () => {
@@ -90,6 +114,22 @@ export default function PartnerIntegrationShopify() {
             await refresh();
         } catch (err) { toast.error(err.message); }
         setMappingBusy(null);
+    };
+
+    const handleCreateTestCode = async () => {
+        setTestBusy(true);
+        try {
+            const res = await callShopify('create_test_code', brand);
+            setTestCode({ code: res.code, reward_id: res.reward_id, status: 'reserved' });
+            if (pollRef.current) clearInterval(pollRef.current);
+            let ticks = 0;
+            pollRef.current = setInterval(() => {
+                ticks += 1;
+                if (ticks > 20 && pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; return; }
+                checkTestCode(res.code);
+            }, 6000);
+        } catch (err) { toast.error(err.message); }
+        setTestBusy(false);
     };
 
     const handleDisconnect = async () => {
@@ -222,6 +262,53 @@ export default function PartnerIntegrationShopify() {
                         into a single-use code per redemption. Codes confirm as used automatically when spent
                         at your checkout.
                     </p>
+                </SectionCard>
+            )}
+
+            {/* ── Connection self-test ─────────────────────────────────── */}
+            {shopify?.connected && (
+                <SectionCard icon={FlaskConical} title="Test the Connection">
+                    <p className="text-[12px] text-[#999] leading-relaxed mb-6 max-w-xl">
+                        Mints one single-use code from your mapped template — exactly like a member
+                        redemption, just without the member. Apply it at your own checkout and watch it
+                        confirm as used automatically.
+                    </p>
+                    {(shopify.mappings ?? []).length === 0 ? (
+                        <p className="text-[12px] text-[#AAA]">Map a reward to a discount above first.</p>
+                    ) : (
+                        <>
+                            <button type="button" onClick={handleCreateTestCode} disabled={testBusy} className={BTN_DARK}>
+                                {testBusy ? 'Minting…' : 'Create test code'}
+                            </button>
+                            {testCode && (
+                                <div className="mt-6 p-5 bg-[#F4F4F1] border border-[#E6E6E1] rounded-2xl">
+                                    <div className="flex items-center gap-3 flex-wrap">
+                                        <code className="text-[15px] font-mono font-bold text-[#1A1A1A] tracking-wider">{testCode.code}</code>
+                                        <CopyButton value={testCode.code} />
+                                        <div className="flex-1" />
+                                        {testCode.status === 'used' ? (
+                                            <span className="flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] font-black text-emerald-600 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-4 py-1.5">
+                                                <CheckCircle2 size={12} /> Used — reconciled
+                                            </span>
+                                        ) : (
+                                            <span className="flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] font-black text-[#8a7600] bg-[#E8D200]/10 border border-[#E8D200]/30 rounded-full px-4 py-1.5">
+                                                <span className="h-1.5 w-1.5 rounded-full bg-[#E8D200] animate-pulse" />
+                                                Waiting for checkout
+                                            </span>
+                                        )}
+                                        <button type="button" className={BTN_GHOST} onClick={() => checkTestCode(testCode.code)}>
+                                            <span className="flex items-center gap-1.5"><RefreshCw size={11} /> Check</span>
+                                        </button>
+                                    </div>
+                                    <p className="text-[10px] text-[#BBB] mt-3 leading-relaxed">
+                                        {testCode.status === 'used'
+                                            ? 'The full loop works: minted in Shopify, spent at checkout, confirmed back to POWR.'
+                                            : 'This is a real single-use discount in your store (it expires in 7 days). Place a test order with it — the status here flips to Used within a minute.'}
+                                    </p>
+                                </div>
+                            )}
+                        </>
+                    )}
                 </SectionCard>
             )}
 
