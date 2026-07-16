@@ -12,7 +12,6 @@
   ],
   "rewrites": [
     { "source": "/app", "destination": "/app.html" },
-    { "source": "/api/partner/:path*", "destination": "https://wjvvujnicwkruaeibttt.supabase.co/functions/v1/partner-api/:path*" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
