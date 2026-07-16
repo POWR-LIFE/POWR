@@ -17,6 +17,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { randomHex, sha256Hex, signedPost } from '../_shared/webhookSign.ts';
+import { testMintEndpoint } from '../_shared/mintTest.ts';
 
 const MAX_KEYS = 5;
 const MAX_ENDPOINTS = 5;
@@ -320,6 +321,15 @@ Deno.serve(async (req) => {
   // ══════════════════════════════════════════════════════════════════════════
   // JIT-mint integration settings
   // ══════════════════════════════════════════════════════════════════════════
+
+  if (body.action === 'test_mint') {
+    const { data: integration } = await adminClient
+      .from('reward_brand_integrations')
+      .select('brand_name, mint_url, mint_secret')
+      .ilike('brand_name', brand)
+      .maybeSingle();
+    return json(await testMintEndpoint(integration));
+  }
 
   if (body.action === 'get_integration') {
     const { data } = await adminClient

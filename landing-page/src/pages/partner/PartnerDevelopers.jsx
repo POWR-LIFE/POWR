@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { BookOpen, Check, Copy, Eye, EyeOff, KeyRound, Plus, RefreshCw, Send, Trash2, Webhook, Zap } from 'lucide-react';
+import { Activity, BookOpen, Check, Copy, Eye, EyeOff, KeyRound, Minus, Plus, RefreshCw, Send, Trash2, TriangleAlert, Webhook, Zap } from 'lucide-react';
 import { useToast } from '../../lib/toast';
 import { useAuth } from '../../App';
 import {
@@ -64,6 +64,24 @@ const STATUS_CHIP = {
     skipped: 'bg-[#F4F4F1] text-[#999] border-[#E6E6E1]',
 };
 
+// state: 'ok' | 'warn' | 'off'
+function HealthItem({ state, label, detail }) {
+    const icon = state === 'ok' ? <Check size={13} className="text-emerald-600" />
+        : state === 'warn' ? <TriangleAlert size={13} className="text-amber-500" />
+        : <Minus size={13} className="text-[#CCC]" />;
+    return (
+        <div className="flex items-center gap-3 py-2.5 border-b border-[#EFEFEC] last:border-0">
+            <span className={`h-7 w-7 rounded-full flex items-center justify-center border shrink-0 ${
+                state === 'ok' ? 'bg-emerald-500/10 border-emerald-500/20'
+                : state === 'warn' ? 'bg-amber-500/10 border-amber-500/20'
+                : 'bg-[#F4F4F1] border-[#E6E6E1]'
+            }`}>{icon}</span>
+            <span className="text-[12px] font-bold text-[#333] w-52 shrink-0">{label}</span>
+            <span className="text-[11px] text-[#999] leading-relaxed">{detail}</span>
+        </div>
+    );
+}
+
 export default function PartnerDevelopers() {
     const toast = useToast();
     const { partnerData } = useAuth();
@@ -92,6 +110,8 @@ export default function PartnerDevelopers() {
     const [mintUrl, setMintUrl] = useState('');
     const [threshold, setThreshold] = useState(10);
     const [savingIntegration, setSavingIntegration] = useState(false);
+    const [mintTest, setMintTest] = useState(null);
+    const [testingMint, setTestingMint] = useState(false);
 
     const refresh = useCallback(async () => {
         if (!brand) return;
@@ -193,6 +213,18 @@ export default function PartnerDevelopers() {
         } catch (err) { toast.error(err.message); }
     };
 
+    const handleTestMint = async () => {
+        setTestingMint(true);
+        setMintTest(null);
+        try {
+            const res = await callPartnerApi('test_mint', brand);
+            setMintTest(res);
+        } catch (err) {
+            setMintTest({ ok: false, error: err.message });
+        }
+        setTestingMint(false);
+    };
+
     const handleSaveIntegration = async (patch) => {
         setSavingIntegration(true);
         try {
@@ -229,6 +261,45 @@ export default function PartnerDevelopers() {
                     <CopyButton value={API_BASE_URL} label="Copy base URL" />
                 </div>
             </div>
+
+            {/* ── Connection health ────────────────────────────────────── */}
+            {!loading && (() => {
+                const activeKeys = keys.filter(k => !k.revoked_at);
+                const keyUsed = activeKeys.some(k => k.last_used_at);
+                const activeEps = endpoints.filter(e => e.active);
+                const failingEps = activeEps.filter(e => e.consecutive_failures > 0);
+                const disabledEps = endpoints.filter(e => !e.active && e.disabled_reason);
+                const lastDelivered = deliveries.find(d => d.status === 'delivered');
+                const circuitOpen = integration?.mint_disabled_until && new Date(integration.mint_disabled_until) > new Date();
+                return (
+                    <SectionCard icon={Activity} title="Connection Health">
+                        <HealthItem
+                            state={activeKeys.length === 0 ? 'off' : keyUsed ? 'ok' : 'warn'}
+                            label="API key"
+                            detail={activeKeys.length === 0 ? 'No key yet — create one below.'
+                                : keyUsed ? `Working — last call ${timeAgo(activeKeys.map(k => k.last_used_at).filter(Boolean).sort().pop())}.`
+                                : 'Key created but never used — try GET /v1/ping from your server.'}
+                        />
+                        <HealthItem
+                            state={activeEps.length === 0 ? (disabledEps.length ? 'warn' : 'off') : failingEps.length ? 'warn' : 'ok'}
+                            label="Webhook endpoint"
+                            detail={activeEps.length === 0
+                                ? (disabledEps.length ? 'Your endpoint was auto-disabled after repeated failures — fix it, then re-enable below.' : 'No endpoint yet — add one below to hear about redemptions live.')
+                                : failingEps.length ? `${failingEps[0].consecutive_failures} recent deliveries failed — check your receiver, or hit Test.`
+                                : lastDelivered ? `Receiving — last successful delivery ${timeAgo(lastDelivered.delivered_at)}.`
+                                : 'Endpoint active — use Test below to confirm it receives signed events.'}
+                        />
+                        <HealthItem
+                            state={!integration?.mint_url ? 'off' : circuitOpen ? 'warn' : integration?.mint_enabled ? 'ok' : 'warn'}
+                            label="Just-in-time minting"
+                            detail={!integration?.mint_url ? 'Optional — configure below if you want codes minted from your system at redemption time.'
+                                : circuitOpen ? 'Paused after repeated mint failures — test your endpoint below; it resumes automatically.'
+                                : integration?.mint_enabled ? 'On — POWR asks your endpoint for a fresh code at each redemption.'
+                                : 'Configured but off — run "Test mint endpoint" below, then turn it on.'}
+                        />
+                    </SectionCard>
+                );
+            })()}
 
             {/* ── API keys ─────────────────────────────────────────────── */}
             <SectionCard icon={KeyRound} title="API Keys">
@@ -433,6 +504,14 @@ export default function PartnerDevelopers() {
                             onChange={e => setThreshold(e.target.value)} className={INPUT + ' max-w-[160px]'} />
                         <p className="text-[10px] text-[#BBB] mt-1.5">We send pool.low when a reward's available codes dip to this level. 0 turns it off.</p>
                     </div>
+                    {mintTest && (
+                        <div className={`text-[11px] font-bold ${mintTest.ok ? 'text-emerald-600' : 'text-red-500'}`}>
+                            {mintTest.ok
+                                ? `Mint endpoint working — responded in ${mintTest.elapsed_ms}ms with a valid code (${mintTest.code_preview}).${mintTest.warning ? ` ⚠ ${mintTest.warning}` : ''}`
+                                : `Mint test failed — ${mintTest.error}`}
+                        </div>
+                    )}
+                    {testingMint && <div className="text-[11px] text-[#999]">Sending a test mint request…</div>}
                     <div className="flex items-center justify-between pt-2">
                         <div className="flex items-center gap-3">
                             <span className={`h-2 w-2 rounded-full ${integration?.mint_enabled ? 'bg-emerald-500' : 'bg-[#CCC]'}`} />
@@ -441,6 +520,11 @@ export default function PartnerDevelopers() {
                             </span>
                         </div>
                         <div className="flex items-center gap-3">
+                            {integration?.mint_url && (
+                                <button type="button" disabled={testingMint} className={BTN_GHOST} onClick={handleTestMint}>
+                                    <span className="flex items-center gap-1.5"><Send size={11} /> Test mint endpoint</span>
+                                </button>
+                            )}
                             {integration?.mint_url && (
                                 <button type="button" disabled={savingIntegration} className={BTN_GHOST}
                                     onClick={() => handleSaveIntegration({ mint_enabled: !integration?.mint_enabled })}>

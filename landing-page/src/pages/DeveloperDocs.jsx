@@ -58,6 +58,7 @@ function Section({ id, title, children }) {
 const TOC = [
     ['overview', 'Overview'],
     ['auth', 'Authentication'],
+    ['verify', 'Verify your integration'],
     ['conventions', 'Rate limits & idempotency'],
     ['endpoints', 'REST endpoints'],
     ['webhooks', 'Webhooks'],
@@ -139,6 +140,28 @@ expired    → the code lapsed before being claimed`}</CodeBlock>
                         </p>
                     </Section>
 
+                    <Section id="verify" title="Verify your integration">
+                        <p className="text-[13px] text-[#555] leading-relaxed mb-2">
+                            Three test calls prove every wire is connected — run them during setup, and keep them in
+                            your CI or monitoring if you like. None of them touch real codes or members.
+                        </p>
+                        <p className="text-[13px] text-[#555] leading-relaxed mb-1"><b>1. Your key works</b> — and is bound to the right brand:</p>
+                        <CodeBlock>{`curl ${BASE}/ping -H "Authorization: Bearer powr_sk_live_…"
+→ { "ok": true, "brand_name": "Your Brand", "scopes": ["read","write"] }`}</CodeBlock>
+                        <p className="text-[13px] text-[#555] leading-relaxed mb-1"><b>2. Your webhook receiver works</b> — fires a signed <code className="font-mono">webhook.test</code> at your endpoint(s) right now and reports each result:</p>
+                        <CodeBlock>{`curl -X POST ${BASE}/test/webhook -H "Authorization: Bearer powr_sk_live_…"
+→ { "ok": true, "results": [{ "url": "https://…", "ok": true, "status": 200 }] }`}</CodeBlock>
+                        <p className="text-[13px] text-[#555] leading-relaxed mb-1"><b>3. Your mint endpoint works</b> (JIT only) — sends a <code className="font-mono">test: true</code> mint request and grades the response, telling you exactly which part failed (unreachable, not JSON, bad code format, too slow). Safe to run before you switch minting on:</p>
+                        <CodeBlock>{`curl -X POST ${BASE}/test/mint -H "Authorization: Bearer powr_sk_live_…"
+→ { "ok": true, "elapsed_ms": 412, "code_preview": "SUMMER-9…" }`}</CodeBlock>
+                        <p className="text-[13px] text-[#555] leading-relaxed">
+                            And for the full picture at any time, <code className="font-mono">GET /v1/status</code> returns a one-call
+                            health report: key state, each endpoint's last delivery, JIT state, and live stock per reward.
+                            The same checks appear visually as the <b>Connection Health</b> panel in the portal's Developers
+                            page, so non-developers can see setup is complete too.
+                        </p>
+                    </Section>
+
                     <Section id="conventions" title="Rate limits & idempotency">
                         <p className="text-[13px] text-[#555] leading-relaxed mb-2">
                             Each key may make <b>120 requests per minute</b>; beyond that you'll receive{' '}
@@ -157,6 +180,21 @@ expired    → the code lapsed before being claimed`}</CodeBlock>
                             Confirms your key works and which brand it is bound to.
                         </Endpoint>
                         <CodeBlock>{`{ "ok": true, "brand_name": "Your Brand", "scopes": ["read", "write"] }`}</CodeBlock>
+
+                        <Endpoint verb="GET" path="/v1/status">
+                            One-call connection health report: active keys, each webhook endpoint with its last delivery
+                            outcome, JIT/circuit state, and available stock per active reward.
+                        </Endpoint>
+
+                        <Endpoint verb="POST" path="/v1/test/webhook">
+                            Sends a signed <code className="font-mono">webhook.test</code> to your active endpoints synchronously and
+                            returns each result. Optional body <code className="font-mono">{'{ "endpoint_url": "…" }'}</code> targets one endpoint.
+                        </Endpoint>
+
+                        <Endpoint verb="POST" path="/v1/test/mint">
+                            Probes your JIT mint endpoint with a <code className="font-mono">test: true</code> request and grades the
+                            response — no code is stored and the mint circuit breaker is untouched.
+                        </Endpoint>
 
                         <Endpoint verb="GET" path="/v1/rewards">
                             Lists your rewards with live code-pool counts — use this to discover the{' '}

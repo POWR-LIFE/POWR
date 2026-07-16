@@ -21,7 +21,8 @@
 // browser is a leaked key.
 
 import { createClient } from '@supabase/supabase-js';
-import { sha256Hex } from '../_shared/webhookSign.ts';
+import { sha256Hex, signedPost } from '../_shared/webhookSign.ts';
+import { testMintEndpoint } from '../_shared/mintTest.ts';
 
 const RATE_LIMIT_PER_MIN = 120;
 const MAX_BATCH = 5000;
@@ -145,6 +146,125 @@ Deno.serve(async (req) => {
   // ══════════════════════════════════════════════════════════════════════════
   if (req.method === 'GET' && path === '/v1/ping') {
     return json({ ok: true, brand_name: brand, scopes: apiKey.scopes });
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // GET /v1/status — one-call connection health report. Everything a partner
+  // developer needs to confirm the integration is wired up correctly.
+  // ══════════════════════════════════════════════════════════════════════════
+  if (req.method === 'GET' && path === '/v1/status') {
+    const [{ count: activeKeys }, { data: endpoints }, { data: integration }, { data: rewards }] = await Promise.all([
+      admin.from('reward_brand_api_keys')
+        .select('id', { count: 'exact', head: true })
+        .ilike('brand_name', brand)
+        .is('revoked_at', null),
+      admin.from('reward_brand_webhook_endpoints')
+        .select('id, url, active, events, consecutive_failures, disabled_reason')
+        .ilike('brand_name', brand)
+        .order('created_at', { ascending: true }),
+      admin.from('reward_brand_integrations')
+        .select('mint_url, mint_enabled, mint_consecutive_failures, mint_disabled_until')
+        .ilike('brand_name', brand)
+        .maybeSingle(),
+      admin.from('rewards')
+        .select('id, title, active, integration_type')
+        .ilike('brand_name', brand),
+    ]);
+
+    const webhooks = await Promise.all((endpoints ?? []).map(async (ep) => {
+      const { data: lastDelivery } = await admin
+        .from('reward_brand_webhook_deliveries')
+        .select('event_type, status, last_response_status, created_at, delivered_at')
+        .eq('endpoint_id', ep.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      return {
+        url: ep.url,
+        active: ep.active,
+        events: ep.events,
+        consecutive_failures: ep.consecutive_failures,
+        disabled_reason: ep.disabled_reason,
+        last_delivery: lastDelivery ?? null,
+      };
+    }));
+
+    const stock = await Promise.all((rewards ?? []).filter((r) => r.active).map(async (r) => {
+      const { count } = await admin.from('redemption_codes')
+        .select('id', { count: 'exact', head: true })
+        .eq('reward_id', r.id)
+        .eq('status', 'available')
+        .gt('expires_at', new Date().toISOString());
+      return { reward_id: r.id, title: r.title, integration_type: r.integration_type, available_codes: count ?? 0 };
+    }));
+
+    const circuitOpen = !!(integration?.mint_disabled_until && new Date(integration.mint_disabled_until) > new Date());
+    return json({
+      ok: true,
+      brand_name: brand,
+      api: { ok: true, active_keys: activeKeys ?? 0 },
+      webhooks: {
+        ok: webhooks.length > 0 && webhooks.some((w) => w.active && w.consecutive_failures === 0),
+        endpoints: webhooks,
+      },
+      jit: {
+        configured: !!integration?.mint_url,
+        enabled: !!integration?.mint_enabled,
+        circuit_open: circuitOpen,
+        consecutive_failures: integration?.mint_consecutive_failures ?? 0,
+      },
+      rewards: stock,
+    });
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // POST /v1/test/webhook — fire a signed webhook.test at the brand's active
+  // endpoints RIGHT NOW (synchronous, bypasses the outbox) and report each
+  // result. Body: { endpoint_url? } to target one endpoint.
+  // ══════════════════════════════════════════════════════════════════════════
+  if (req.method === 'POST' && path === '/v1/test/webhook') {
+    let q = admin.from('reward_brand_webhook_endpoints')
+      .select('id, url, secret, active')
+      .ilike('brand_name', brand);
+    if (body.endpoint_url) q = q.eq('url', String(body.endpoint_url).trim());
+    const { data: endpoints } = await q;
+
+    if (!endpoints?.length) {
+      return err(404, 'no_endpoints', body.endpoint_url
+        ? 'No endpoint with that URL — add it in the portal first'
+        : 'No webhook endpoints yet — add one in the portal first');
+    }
+
+    const results = await Promise.all(endpoints.map(async (ep) => {
+      if (!ep.active) return { url: ep.url, ok: false, error: 'endpoint is disabled' };
+      const payload = JSON.stringify({
+        id: crypto.randomUUID(),
+        type: 'webhook.test',
+        created_at: new Date().toISOString(),
+        data: { brand_name: brand, note: 'Test delivery triggered via the Partner API' },
+      });
+      const res = await signedPost(ep.url, ep.secret, payload, {
+        timeoutMs: 8000,
+        extraHeaders: { 'X-POWR-Event': 'webhook.test' },
+      });
+      return { url: ep.url, ok: res.ok, status: res.status || null, error: res.error };
+    }));
+
+    return json({ ok: results.every((r) => r.ok), results });
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // POST /v1/test/mint — probe the brand's JIT mint endpoint with a test:true
+  // mint request and grade the response. Works before mint_enabled is on;
+  // never stores a code or touches the circuit breaker.
+  // ══════════════════════════════════════════════════════════════════════════
+  if (req.method === 'POST' && path === '/v1/test/mint') {
+    const { data: integration } = await admin
+      .from('reward_brand_integrations')
+      .select('brand_name, mint_url, mint_secret')
+      .ilike('brand_name', brand)
+      .maybeSingle();
+    return json(await testMintEndpoint(integration));
   }
 
   // ══════════════════════════════════════════════════════════════════════════
