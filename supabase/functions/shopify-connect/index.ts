@@ -163,7 +163,9 @@ async function ensureFreshToken(admin, shopRow, clientId, clientSecret) {
     const freshExp = fresh?.access_token_expires_at ? new Date(fresh.access_token_expires_at).getTime() : null;
     if (freshExp && freshExp > Date.now()) return fresh;
     console.error('shopify token refresh failed', shopRow.shop_domain, res.status, JSON.stringify(body).slice(0, 300));
-    return shopRow;
+    // Carried into status.health so the failure reason is observable from
+    // the portal/API instead of only in function logs.
+    return { ...shopRow, _refresh_error: `HTTP ${res.status} ${JSON.stringify(body).slice(0, 200)}` };
   }
 
   const patch = {
@@ -476,7 +478,7 @@ Deno.serve(async (req) => {
       const { data, errors } = await shopifyGraphql(shop.shop_domain, shop.access_token, `
         { shop { name } webhookSubscriptions(first: 20) { nodes { topic } } }`);
       if (errors?.length || !data?.shop) {
-        health = { token_ok: false, orders_webhook: false };
+        health = { token_ok: false, orders_webhook: false, refresh_error: shop._refresh_error ?? null };
       } else {
         const topics = new Set((data.webhookSubscriptions?.nodes ?? []).map((n) => n.topic));
         for (const topic of ['ORDERS_CREATE', 'APP_UNINSTALLED']) {
