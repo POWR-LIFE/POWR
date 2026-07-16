@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Award, Gift, Inbox, ChevronRight, TrendingUp, FilePenLine, CircleAlert, Ticket, CheckCircle2, Send, Zap, X } from 'lucide-react';
+import { Award, Gift, Inbox, ChevronRight, TrendingUp, FilePenLine, CircleAlert, Ticket, CheckCircle2, Send, Zap, X, Plug } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../App';
+import { integrationPathFor } from './integrationShared';
 
 const timeAgo = (dateStr) => {
     if (!dateStr) return '—';
@@ -17,7 +18,7 @@ const timeAgo = (dateStr) => {
 };
 
 export default function PartnerHome() {
-    const { partnerData } = useAuth();
+    const { partnerData, deliveryMethod } = useAuth();
     const [stats, setStats] = useState({ activeRewards: 0, monthRedemptions: 0, pendingSubmissions: 0 });
     const [recentRedemptions, setRecentRedemptions] = useState([]);
     const [actions, setActions] = useState([]);
@@ -100,7 +101,9 @@ export default function PartnerHome() {
                     ...poolCounts.filter(({ count }) => count === 0).map(({ reward }) => ({
                         title: `Add code supply for ${reward.title || 'reward'}`,
                         detail: 'This live reward has no available unique codes.',
-                        to: '/partner/promo-codes', icon: Ticket, tone: 'text-[#8a7600] bg-[#E8D200]/10',
+                        // Manual brands top the pool up directly; API/Shopify
+                        // brands sort it on their integration page.
+                        to: 'codes', icon: Ticket, tone: 'text-[#8a7600] bg-[#E8D200]/10',
                     })),
                 ].slice(0, 4);
 
@@ -154,9 +157,10 @@ export default function PartnerHome() {
     ];
 
     const journeySteps = [
-        { title: 'Create your first reward', detail: 'Set up your offer, imagery and value in My Rewards.', icon: FilePenLine, done: !!journey?.hasDraft },
-        { title: 'Submit it for review', detail: 'POWR checks every reward before it goes live — usually quick.', icon: Send, done: !!journey?.hasSubmitted },
-        { title: 'Go live and track redemptions', detail: 'Approved rewards appear in the app; member claims show up right here.', icon: Zap, done: !!journey?.hasLive },
+        { title: 'Choose your delivery method', detail: 'API, Shopify or managed promo codes — how codes reach members.', icon: Plug, done: deliveryMethod != null, to: '/partner/integration' },
+        { title: 'Create your first reward', detail: 'Set up your offer, imagery and value in My Rewards.', icon: FilePenLine, done: !!journey?.hasDraft, to: '/partner/rewards' },
+        { title: 'Submit it for review', detail: 'POWR checks every reward before it goes live — usually quick.', icon: Send, done: !!journey?.hasSubmitted, to: '/partner/rewards' },
+        { title: 'Go live and track redemptions', detail: 'Approved rewards appear in the app; member claims show up right here.', icon: Zap, done: !!journey?.hasLive, to: '/partner/rewards' },
     ];
     const journeyDone = journeySteps.filter(s => s.done).length;
 
@@ -211,7 +215,7 @@ export default function PartnerHome() {
                     <div className="flex items-center justify-between px-10 py-7 border-b border-[#E6E6E1]">
                         <div>
                             <h2 className="text-xl font-light tracking-tighter text-[#1A1A1A]">Getting started</h2>
-                            <p className="text-[9px] uppercase tracking-[0.4em] text-[#BBBBBB] font-black mt-1">Three steps to your first live reward</p>
+                            <p className="text-[9px] uppercase tracking-[0.4em] text-[#BBBBBB] font-black mt-1">Four steps to your first live reward</p>
                         </div>
                         <span className="text-[10px] uppercase tracking-[0.3em] text-[#8a7600] font-black">{journeyDone} of {journeySteps.length} done</span>
                     </div>
@@ -233,7 +237,7 @@ export default function PartnerHome() {
                             return step.done ? (
                                 <div key={step.title} className="flex items-center gap-5 px-10 py-5">{inner}</div>
                             ) : (
-                                <Link key={step.title} to="/partner/rewards" className="flex items-center gap-5 px-10 py-5 hover:bg-[#FAFAFA] transition-colors group">{inner}</Link>
+                                <Link key={step.title} to={step.to} className="flex items-center gap-5 px-10 py-5 hover:bg-[#FAFAFA] transition-colors group">{inner}</Link>
                             );
                         })}
                     </div>
@@ -271,7 +275,12 @@ export default function PartnerHome() {
                     <div className="divide-y divide-[#F4F4F1]">
                         {actions.map((action, index) => {
                             const Icon = action.icon;
-                            return <Link key={`${action.title}-${index}`} to={action.to} className="flex items-center gap-5 px-10 py-5 hover:bg-[#FAFAFA] transition-colors group">
+                            // 'codes' resolves at render time so it tracks the
+                            // async-loaded delivery method.
+                            const to = action.to === 'codes'
+                                ? (deliveryMethod && deliveryMethod !== 'manual' ? integrationPathFor(deliveryMethod) : '/partner/promo-codes')
+                                : action.to;
+                            return <Link key={`${action.title}-${index}`} to={to} className="flex items-center gap-5 px-10 py-5 hover:bg-[#FAFAFA] transition-colors group">
                                 <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${action.tone}`}><Icon size={17} /></div>
                                 <div className="flex-1 min-w-0">
                                     <div className="text-[13px] font-bold text-[#222] truncate">{action.title}</div>

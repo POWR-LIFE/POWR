@@ -13,7 +13,9 @@
 //   create_endpoint { url, events } | update_endpoint { endpoint_id, url?, events?, active? }
 //   delete_endpoint { endpoint_id } | test_endpoint { endpoint_id }
 //   redeliver { delivery_id }
-//   get_integration | set_integration { mint_url?, mint_enabled?, pool_low_threshold?, rotate_secret? }
+//   get_integration | set_integration { mint_url?, mint_enabled?, pool_low_threshold?, rotate_secret?, delivery_method? }
+//   resolve_delivery_method — chosen method, inferring + persisting one for
+//     brands that integrated before the chooser existed
 
 import { createClient } from '@supabase/supabase-js';
 import { randomHex, sha256Hex, signedPost } from '../_shared/webhookSign.ts';
@@ -22,6 +24,7 @@ import { testMintEndpoint } from '../_shared/mintTest.ts';
 const MAX_KEYS = 5;
 const MAX_ENDPOINTS = 5;
 const ALLOWED_EVENTS = ['code.assigned', 'code.used', 'pool.low'];
+const DELIVERY_METHODS = ['api', 'shopify', 'manual'];
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -340,6 +343,66 @@ Deno.serve(async (req) => {
     return json({ ok: true, integration: data ?? null });
   }
 
+  if (body.action === 'resolve_delivery_method') {
+    const { data: integ } = await adminClient
+      .from('reward_brand_integrations')
+      .select('brand_name, delivery_method, mint_url')
+      .ilike('brand_name', brand)
+      .maybeSingle();
+    if (integ?.delivery_method) {
+      return json({ ok: true, method: integ.delivery_method, inferred: false });
+    }
+
+    // Brands that integrated before the chooser existed must never see the
+    // first-run screen — infer their method from what they already use and
+    // persist it so the answer is stable from then on.
+    let method = null;
+
+    const { data: shop } = await adminClient
+      .from('reward_brand_shopify')
+      .select('status')
+      .ilike('brand_name', brand)
+      .maybeSingle();
+    // 'uninstalled' still means they chose Shopify — the portal nags them to
+    // reconnect. 'disconnected' was deliberate, so it doesn't count.
+    if (shop && ['connected', 'uninstalled'].includes(shop.status)) method = 'shopify';
+
+    if (!method) {
+      const [keysRes, epsRes] = await Promise.all([
+        adminClient
+          .from('reward_brand_api_keys')
+          .select('id', { count: 'exact', head: true })
+          .ilike('brand_name', brand)
+          .is('revoked_at', null),
+        adminClient
+          .from('reward_brand_webhook_endpoints')
+          .select('id', { count: 'exact', head: true })
+          .ilike('brand_name', brand),
+      ]);
+      if ((keysRes.count ?? 0) > 0 || (epsRes.count ?? 0) > 0 || integ?.mint_url) method = 'api';
+    }
+
+    if (!method) {
+      const { count } = await adminClient
+        .from('redemption_codes')
+        .select('id, rewards!inner(brand_name)', { count: 'exact', head: true })
+        .ilike('rewards.brand_name', brand);
+      if ((count ?? 0) > 0) method = 'manual';
+    }
+
+    if (method) {
+      await adminClient
+        .from('reward_brand_integrations')
+        .upsert({
+          brand_name: integ?.brand_name ?? brand,
+          delivery_method: method,
+          delivery_method_set_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'brand_name' });
+    }
+    return json({ ok: true, method, inferred: !!method });
+  }
+
   if (body.action === 'set_integration') {
     const { data: existing } = await adminClient
       .from('reward_brand_integrations')
@@ -382,6 +445,13 @@ Deno.serve(async (req) => {
       if (isNaN(n) || n < 0 || n > 10000) return json({ error: 'pool_low_threshold must be between 0 and 10,000' }, 400);
       row.pool_low_threshold = n;
     }
+    if (body.delivery_method !== undefined) {
+      if (body.delivery_method !== null && !DELIVERY_METHODS.includes(body.delivery_method)) {
+        return json({ error: 'delivery_method must be api, shopify, or manual' }, 400);
+      }
+      row.delivery_method = body.delivery_method;
+      row.delivery_method_set_at = body.delivery_method ? new Date().toISOString() : null;
+    }
     // Any settings change resets the mint circuit breaker.
     row.mint_consecutive_failures = 0;
     row.mint_disabled_until = null;
@@ -397,6 +467,7 @@ Deno.serve(async (req) => {
       mint_enabled: saved.mint_enabled,
       has_mint_url: !!saved.mint_url,
       pool_low_threshold: saved.pool_low_threshold,
+      delivery_method: saved.delivery_method,
     });
     return json({ ok: true, integration: saved });
   }

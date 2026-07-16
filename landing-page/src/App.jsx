@@ -36,8 +36,11 @@ import PartnerPortalRewards from './pages/partner/PartnerRewards';
 import PartnerPortalFeatured from './pages/partner/PartnerFeatured';
 import PartnerPortalPlacements from './pages/partner/PartnerPlacements';
 import PartnerPortalSettings from './pages/partner/PartnerSettings';
-import PartnerPortalDevelopers from './pages/partner/PartnerDevelopers';
+import PartnerIntegrationHub from './pages/partner/PartnerIntegrationHub';
+import PartnerIntegrationApi from './pages/partner/PartnerIntegrationApi';
+import PartnerIntegrationShopify from './pages/partner/PartnerIntegrationShopify';
 import PartnerSetup from './pages/partner/PartnerSetup';
+import { callPartnerApi } from './lib/partnerApi';
 import DeveloperDocs from './pages/DeveloperDocs';
 
 import Analytics from './pages/admin/Analytics';
@@ -72,7 +75,7 @@ import SupportPage from './pages/SupportPage';
 import TermsOfService from './pages/TermsOfService';
 
 // --- Auth Context ---
-const AuthContext = createContext({ user: null, isAdmin: false, isPartner: false, partnerData: null, placementsEnabled: false, loading: true });
+const AuthContext = createContext({ user: null, isAdmin: false, isPartner: false, partnerData: null, placementsEnabled: false, deliveryMethod: undefined, loading: true });
 
 const ACTING_BRAND_KEY = 'powr_acting_brand';
 
@@ -101,6 +104,9 @@ export const AuthProvider = ({ children }) => {
     const [partnerData, setPartnerData] = useState(null);
     const [actingPartner, setActingPartnerState] = useState(null);
     const [placementsEnabled, setPlacementsEnabled] = useState(false);
+    // undefined = unknown/loading, null = brand hasn't chosen a delivery
+    // method yet (drives the first-run chooser), else 'api'|'shopify'|'manual'
+    const [deliveryMethod, setDeliveryMethodState] = useState(undefined);
     const [loading, setLoading] = useState(true);
 
     // Admin-only: preview the portal as any reward brand
@@ -212,6 +218,20 @@ export const AuthProvider = ({ children }) => {
         return () => { mounted = false; authListener.subscription.unsubscribe(); };
     }, []);
 
+    // Resolve the (acting) brand's delivery method — the server infers and
+    // persists one for brands that integrated before the chooser existed, so
+    // established partners never see the first-run screen.
+    const effectiveBrandName = (partnerData ?? actingPartner)?.brand_name ?? null;
+    useEffect(() => {
+        setDeliveryMethodState(undefined);
+        if (!effectiveBrandName) return;
+        let cancelled = false;
+        callPartnerApi('resolve_delivery_method', effectiveBrandName)
+            .then(res => { if (!cancelled) setDeliveryMethodState(res.method ?? null); })
+            .catch(() => { /* stays undefined — never force the chooser on a network blip */ });
+        return () => { cancelled = true; };
+    }, [effectiveBrandName]);
+
     return (
         <AuthContext.Provider value={{
             user, isAdmin, isPartner,
@@ -219,6 +239,8 @@ export const AuthProvider = ({ children }) => {
             isActingPartner: !partnerData && !!actingPartner,
             setActingPartner,
             placementsEnabled,
+            deliveryMethod,
+            updateDeliveryMethod: setDeliveryMethodState,
             loading,
         }}>
             {children}
@@ -398,6 +420,15 @@ const ProtectedRoute = ({ children }) => {
 
     if (!user || !isAdmin) return <Navigate to="/admin/login" state={{ from: location }} replace />;
     return children;
+};
+
+// The old single Developers page split into /partner/integration/*. Shopify's
+// OAuth callback used to land on it with ?shopify=..., so keep the query and
+// send those straight to the Shopify page.
+const LegacyDevelopersRedirect = () => {
+    const location = useLocation();
+    const target = location.search.includes('shopify=') ? '/partner/integration/shopify' : '/partner/integration';
+    return <Navigate to={{ pathname: target, search: location.search }} replace />;
 };
 
 // --- Partner Protected Route ---
@@ -1002,7 +1033,10 @@ export default function App() {
                     <Route path="/partner/placements" element={<PartnerProtectedRoute><PartnerLayout><PartnerPortalPlacements /></PartnerLayout></PartnerProtectedRoute>} />
                     <Route path="/partner/redemptions" element={<PartnerProtectedRoute><PartnerLayout><PartnerPortalRedemptions /></PartnerLayout></PartnerProtectedRoute>} />
                     <Route path="/partner/settings" element={<PartnerProtectedRoute><PartnerLayout><PartnerPortalSettings /></PartnerLayout></PartnerProtectedRoute>} />
-                    <Route path="/partner/developers" element={<PartnerProtectedRoute><PartnerLayout><PartnerPortalDevelopers /></PartnerLayout></PartnerProtectedRoute>} />
+                    <Route path="/partner/integration" element={<PartnerProtectedRoute><PartnerLayout><PartnerIntegrationHub /></PartnerLayout></PartnerProtectedRoute>} />
+                    <Route path="/partner/integration/api" element={<PartnerProtectedRoute><PartnerLayout><PartnerIntegrationApi /></PartnerLayout></PartnerProtectedRoute>} />
+                    <Route path="/partner/integration/shopify" element={<PartnerProtectedRoute><PartnerLayout><PartnerIntegrationShopify /></PartnerLayout></PartnerProtectedRoute>} />
+                    <Route path="/partner/developers" element={<LegacyDevelopersRedirect />} />
                     <Route path="/developers" element={<DeveloperDocs />} />
                     <Route path="/admin/login" element={<AdminLogin />} />
                     <Route path="/admin" element={<ProtectedRoute><AdminLayout><AdminHome /></AdminLayout></ProtectedRoute>} />
