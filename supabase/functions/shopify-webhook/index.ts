@@ -42,10 +42,14 @@ Deno.serve(async (req) => {
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
   );
 
+  // connected-only: an abandoned 'pending' connect attempt for the same
+  // domain must not make maybeSingle() see two rows and silently drop the
+  // event (bit us 2026-07-16 — orders stopped reconciling for two hours).
   const { data: shopRow } = await admin
     .from('reward_brand_shopify')
     .select('brand_name, status')
     .ilike('shop_domain', shop)
+    .eq('status', 'connected')
     .maybeSingle();
   // Always 200 unknown shops/topics — Shopify retries non-2xx and would
   // eventually punish the endpoint for rows we simply don't track.
