@@ -55,7 +55,9 @@ export async function signedPost(url: string, secret: string, body: string, opts
       signal: controller.signal,
     });
     let text = '';
-    try { text = (await res.text()).slice(0, 500); } catch { /* body unavailable */ }
+    // 4KB cap: enough that a verbose-but-valid JSON mint response never gets
+    // truncated into a parse failure, small enough to stay log-safe.
+    try { text = (await res.text()).slice(0, 4096); } catch { /* body unavailable */ }
     return { ok: res.ok, status: res.status, body: text, error: res.ok ? null : `HTTP ${res.status}` };
   } catch (err) {
     const aborted = err?.name === 'AbortError';

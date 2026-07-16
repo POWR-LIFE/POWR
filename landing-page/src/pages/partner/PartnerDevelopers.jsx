@@ -213,6 +213,32 @@ export default function PartnerDevelopers() {
         } catch (err) { toast.error(err.message); }
     };
 
+    // One click, every wire: fires the signed webhook test at each active
+    // endpoint plus the JIT mint probe, all via already-deployed actions.
+    const [connTest, setConnTest] = useState(null);
+    const handleRunConnectionTest = async () => {
+        setConnTest({ running: true, items: [] });
+        const activeEps = endpoints.filter(e => e.active);
+        const results = await Promise.allSettled([
+            ...activeEps.map(ep => callPartnerApi('test_endpoint', brand, { endpoint_id: ep.id }).then(r => ({ kind: 'webhook', ep, r }))),
+            ...(integration?.mint_url ? [callPartnerApi('test_mint', brand).then(r => ({ kind: 'mint', r }))] : []),
+        ]);
+        const items = results.map(res => {
+            if (res.status === 'rejected') return { ok: false, label: 'Test call failed', detail: res.reason?.message ?? 'network error' };
+            const { kind, ep, r } = res.value;
+            if (kind === 'webhook') {
+                let host = ep.url; try { host = new URL(ep.url).host; } catch { /* show raw */ }
+                return { ok: !!r.ok, label: `Webhook → ${host}`, detail: r.ok ? `Delivered — HTTP ${r.status}` : (r.error ?? `HTTP ${r.status}`) };
+            }
+            return {
+                ok: !!r.ok, label: 'JIT mint endpoint',
+                detail: r.ok ? `Responded in ${r.elapsed_ms}ms with a valid code${r.warning ? ` — ${r.warning}` : ''}` : r.error,
+            };
+        });
+        if (activeEps.length === 0) items.unshift({ ok: false, label: 'Webhooks', detail: 'No active endpoint to test — add one below.' });
+        setConnTest({ running: false, items });
+    };
+
     const handleTestMint = async () => {
         setTestingMint(true);
         setMintTest(null);
@@ -272,7 +298,15 @@ export default function PartnerDevelopers() {
                 const lastDelivered = deliveries.find(d => d.status === 'delivered');
                 const circuitOpen = integration?.mint_disabled_until && new Date(integration.mint_disabled_until) > new Date();
                 return (
-                    <SectionCard icon={Activity} title="Connection Health">
+                    <SectionCard
+                        icon={Activity} title="Connection Health"
+                        aside={
+                            <button type="button" disabled={connTest?.running} onClick={handleRunConnectionTest}
+                                className="flex items-center gap-2 h-10 px-6 bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.2em] rounded-full hover:brightness-95 transition-all disabled:opacity-50">
+                                <Zap size={13} /> {connTest?.running ? 'Testing…' : 'Run connection test'}
+                            </button>
+                        }
+                    >
                         <HealthItem
                             state={activeKeys.length === 0 ? 'off' : keyUsed ? 'ok' : 'warn'}
                             label="API key"
@@ -297,6 +331,18 @@ export default function PartnerDevelopers() {
                                 : integration?.mint_enabled ? 'On — POWR asks your endpoint for a fresh code at each redemption.'
                                 : 'Configured but off — run "Test mint endpoint" below, then turn it on.'}
                         />
+                        {connTest && !connTest.running && (
+                            <div className="mt-5 p-4 bg-[#F4F4F1] border border-[#E6E6E1] rounded-2xl">
+                                <div className="text-[9px] uppercase tracking-[0.4em] font-black text-[#BBB] mb-2">Live test results</div>
+                                {connTest.items.map((it, i) => (
+                                    <div key={i} className="flex items-center gap-2.5 py-1.5">
+                                        {it.ok ? <Check size={13} className="text-emerald-600 shrink-0" /> : <TriangleAlert size={13} className="text-red-500 shrink-0" />}
+                                        <span className="text-[11.5px] font-bold text-[#333] shrink-0">{it.label}</span>
+                                        <span className={`text-[11px] ${it.ok ? 'text-[#999]' : 'text-red-500'}`}>{it.detail}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </SectionCard>
                 );
             })()}
