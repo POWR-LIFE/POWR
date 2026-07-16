@@ -119,6 +119,59 @@ async function fetchItemRestrictions(shop, token, gid, itemsTypename) {
   return { applies: { [field]: conn.nodes.map((n) => n.id) } };
 }
 
+// now + seconds → ISO, with a safety margin (default 60s) so we refresh
+// slightly BEFORE Shopify's clock says expired. Null-safe for legacy
+// non-expiring exchanges that omit the field.
+const tokenExpiry = (seconds, marginSeconds = 60) =>
+  seconds ? new Date(Date.now() + Math.max(seconds - marginSeconds, 30) * 1000).toISOString() : null;
+
+// Returns a shop row whose access_token is usable, refreshing and persisting
+// it first if the 1-hour expiry has passed. Refresh tokens ROTATE on every
+// use, so the new pair is written back before any Admin API call. If the
+// refresh fails (e.g. a concurrent worker rotated it first), the row is
+// re-read once and reused when that worker left a fresh token; otherwise the
+// stale row is returned and the caller's probe surfaces the reconnect banner.
+async function ensureFreshToken(admin, shopRow, clientId, clientSecret) {
+  if (!shopRow?.access_token || shopRow.status !== 'connected') return shopRow;
+  const exp = shopRow.access_token_expires_at ? new Date(shopRow.access_token_expires_at).getTime() : null;
+  if (!exp || exp > Date.now()) return shopRow; // legacy token, or still fresh
+  if (!shopRow.refresh_token) return shopRow;
+
+  const res = await fetch(`https://${shopRow.shop_domain}/admin/oauth/access_token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      client_id: clientId,
+      client_secret: clientSecret,
+      grant_type: 'refresh_token',
+      refresh_token: shopRow.refresh_token,
+    }),
+  });
+  const body = await res.json().catch(() => ({}));
+
+  if (!res.ok || !body.access_token) {
+    const { data: fresh } = await admin
+      .from('reward_brand_shopify').select('*')
+      .eq('brand_name', shopRow.brand_name).maybeSingle();
+    const freshExp = fresh?.access_token_expires_at ? new Date(fresh.access_token_expires_at).getTime() : null;
+    if (freshExp && freshExp > Date.now()) return fresh;
+    console.error('shopify token refresh failed', shopRow.shop_domain, res.status, JSON.stringify(body).slice(0, 300));
+    return shopRow;
+  }
+
+  const patch = {
+    access_token: body.access_token,
+    access_token_expires_at: tokenExpiry(body.expires_in),
+    refresh_token: body.refresh_token ?? shopRow.refresh_token,
+    refresh_token_expires_at: body.refresh_token_expires_in
+      ? tokenExpiry(body.refresh_token_expires_in, 0)
+      : shopRow.refresh_token_expires_at,
+    updated_at: new Date().toISOString(),
+  };
+  await admin.from('reward_brand_shopify').update(patch).eq('brand_name', shopRow.brand_name);
+  return { ...shopRow, ...patch };
+}
+
 const CROCKFORD = '23456789ABCDEFGHJKMNPQRSTVWXYZ';
 function mintCode(prefix = 'POWR-', len = 8) {
   const bytes = new Uint8Array(len);
@@ -218,11 +271,13 @@ Deno.serve(async (req) => {
       .maybeSingle();
     if (!row || (row.state_expires && new Date(row.state_expires) < new Date())) return back('state_expired');
 
-    // Exchange the grant for an offline Admin API token.
+    // Exchange the grant for an EXPIRING offline Admin API token (expiring=1).
+    // Shopify rejects non-expiring tokens for public apps created after
+    // 2026-04-01: access tokens live 1h, refresh tokens 90d and rotate.
     const tokenRes = await fetch(`https://${shop}/admin/oauth/access_token`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ client_id: clientId, client_secret: clientSecret, code }),
+      body: JSON.stringify({ client_id: clientId, client_secret: clientSecret, code, expiring: 1 }),
     });
     const tokenBody = await tokenRes.json().catch(() => ({}));
     if (!tokenRes.ok || !tokenBody.access_token) return back('token_exchange_failed');
@@ -231,6 +286,9 @@ Deno.serve(async (req) => {
       .update({
         shop_domain: shop,
         access_token: tokenBody.access_token,
+        access_token_expires_at: tokenExpiry(tokenBody.expires_in),
+        refresh_token: tokenBody.refresh_token ?? null,
+        refresh_token_expires_at: tokenExpiry(tokenBody.refresh_token_expires_in, 0),
         scopes: tokenBody.scope ?? SCOPES,
         status: 'connected',
         state_token: null,
@@ -302,9 +360,9 @@ Deno.serve(async (req) => {
     // connection test without touching the store.
     if (body.test === true) return json({ code: mintCode() });
 
-    const [{ data: shopRow }, { data: mapping }] = await Promise.all([
+    const [{ data: shopRowRaw }, { data: mapping }] = await Promise.all([
       admin.from('reward_brand_shopify')
-        .select('shop_domain, access_token, status')
+        .select('*')
         .ilike('brand_name', body.brand_name)
         .maybeSingle(),
       admin.from('reward_shopify_discounts')
@@ -312,8 +370,9 @@ Deno.serve(async (req) => {
         .eq('reward_id', body.reward_id ?? '')
         .maybeSingle(),
     ]);
-    if (shopRow?.status !== 'connected') return json({ error: 'shop not connected' }, 409);
+    if (shopRowRaw?.status !== 'connected') return json({ error: 'shop not connected' }, 409);
     if (!mapping) return json({ error: 'reward not mapped to a discount' }, 409);
+    const shopRow = await ensureFreshToken(admin, shopRowRaw, clientId, clientSecret);
 
     const code = mintCode();
     const ok = await createClonedDiscount(
@@ -363,7 +422,9 @@ Deno.serve(async (req) => {
       .select('*')
       .ilike('brand_name', brand)
       .maybeSingle();
-    return data;
+    // Hourly-expiring tokens are refreshed just-in-time, so every action
+    // below can treat shop.access_token as live.
+    return ensureFreshToken(admin, data, clientId, clientSecret);
   };
 
   // ── start: mint the OAuth authorize URL ────────────────────────────────────
@@ -632,7 +693,14 @@ Deno.serve(async (req) => {
     const shop = await getShop();
     if (!shop) return json({ ok: true });
     await admin.from('reward_brand_shopify')
-      .update({ status: 'disconnected', access_token: null, updated_at: new Date().toISOString() })
+      .update({
+        status: 'disconnected',
+        access_token: null,
+        access_token_expires_at: null,
+        refresh_token: null,
+        refresh_token_expires_at: null,
+        updated_at: new Date().toISOString(),
+      })
       .eq('brand_name', shop.brand_name);
     await admin.from('reward_brand_integrations')
       .update({ mint_enabled: false })

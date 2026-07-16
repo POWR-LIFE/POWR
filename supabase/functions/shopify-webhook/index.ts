@@ -53,7 +53,15 @@ Deno.serve(async (req) => {
 
   if (topic === 'app/uninstalled') {
     await admin.from('reward_brand_shopify')
-      .update({ status: 'uninstalled', access_token: null, uninstalled_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+      .update({
+        status: 'uninstalled',
+        access_token: null,
+        access_token_expires_at: null,
+        refresh_token: null,
+        refresh_token_expires_at: null,
+        uninstalled_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
       .eq('brand_name', shopRow.brand_name);
     await admin.from('reward_brand_integrations')
       .update({ mint_enabled: false })
