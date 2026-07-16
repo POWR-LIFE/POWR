@@ -26,7 +26,11 @@ const API_VERSION = '2026-07';
 const SCOPES = 'write_discounts,read_orders';
 const CALLBACK_URL = 'https://wjvvujnicwkruaeibttt.supabase.co/functions/v1/shopify-connect/callback';
 const WEBHOOK_URL = 'https://wjvvujnicwkruaeibttt.supabase.co/functions/v1/shopify-webhook';
-const PORTAL_URL = 'https://powr.life/partner/integration/shopify';
+// OAuth-return landing. Deliberately the LEGACY portal route: it exists on
+// every deployed frontend (pre-restructure it's the Developers page with the
+// ?shopify= toast; post-restructure it 301s to the Shopify integration page
+// with the query preserved) — so the redirect never races a web deploy.
+const PORTAL_URL = 'https://powr.life/partner/developers';
 const MINT_URL = 'https://wjvvujnicwkruaeibttt.supabase.co/functions/v1/shopify-connect/mint';
 
 const json = (body, status = 200) =>
