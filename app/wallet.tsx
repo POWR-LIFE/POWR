@@ -8,13 +8,15 @@ import {
   type WalletEntry,
   type WalletStatus,
 } from '@/lib/api/rewards';
+import { rewardHeroUri, rewardLogoUri } from '@/lib/storageImage';
 import { Ionicons } from '@expo/vector-icons';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import { Image as ExpoImage } from 'expo-image';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import * as Sharing from 'expo-sharing';
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -114,12 +116,17 @@ function WalletCard({
     if (entry.checkout_url) Linking.openURL(entry.checkout_url);
   }, [entry.checkout_url]);
 
+  // Resized CDN copies — the raw uploads are 1–5 MB each and made the list
+  // crawl on cellular.
+  const bgUri = rewardHeroUri(entry.reward_hero_image_url ?? entry.reward_image_url);
+  const logoUri = rewardLogoUri(entry.reward_image_url);
+
   return (
     <View style={[styles.card, inactive && styles.cardInactive]}>
-      {(entry.reward_hero_image_url ?? entry.reward_image_url) ? (
+      {bgUri ? (
         <>
           <ExpoImage
-            source={{ uri: entry.reward_hero_image_url ?? entry.reward_image_url! }}
+            source={{ uri: bgUri }}
             style={StyleSheet.absoluteFill}
             contentFit="cover"
           />
@@ -128,8 +135,8 @@ function WalletCard({
       ) : null}
       <View style={styles.cardHeader}>
         <View style={styles.logoBox}>
-          {entry.reward_image_url ? (
-            <ExpoImage source={{ uri: entry.reward_image_url }} style={styles.logoImg} contentFit="contain" />
+          {logoUri ? (
+            <ExpoImage source={{ uri: logoUri }} style={styles.logoImg} contentFit="contain" />
           ) : (
             <Text style={styles.logoFallback}>{title.slice(0, 2).toUpperCase()}</Text>
           )}
@@ -199,52 +206,54 @@ export default function WalletScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const [tab, setTab] = useState<WalletTab>('active');
-  const [active, setActive] = useState<WalletEntry[]>([]);
-  const [history, setHistory] = useState<WalletEntry[]>([]);
-  const [historyEnd, setHistoryEnd] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [pendingShare, setPendingShare] = useState<WalletEntry | null>(null);
   const shareCardRef = useRef<View>(null);
   const shareReadyRef = useRef<(() => void) | null>(null);
 
-  const load = useCallback(async () => {
-    try {
-      const [activeEntries, firstPage] = await Promise.all([
-        fetchActiveWallet(),
-        fetchWalletHistory(0),
-      ]);
-      setActive(activeEntries);
-      setHistory(firstPage);
-      setHistoryEnd(firstPage.length < WALLET_HISTORY_PAGE_SIZE);
-      setError(null);
-    } catch {
-      setError('Could not load your wallet.');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  // Both tabs come from the shared query cache: repeat opens paint instantly
+  // from cache and refresh in the background once stale. Neither query gates
+  // the other — the visible tab renders as soon as its own data arrives.
+  const activeQuery = useQuery({
+    queryKey: ['wallet', 'active'],
+    queryFn: fetchActiveWallet,
+  });
 
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  const historyQuery = useInfiniteQuery({
+    queryKey: ['wallet', 'history'],
+    queryFn: ({ pageParam }) => fetchWalletHistory(pageParam),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, allPages) =>
+      lastPage.length < WALLET_HISTORY_PAGE_SIZE
+        ? undefined
+        : allPages.reduce((n, page) => n + page.length, 0),
+  });
 
-  const loadMoreHistory = useCallback(async () => {
-    if (loadingMore || historyEnd) return;
-    setLoadingMore(true);
-    try {
-      const page = await fetchWalletHistory(history.length);
-      // Dedupe by id: a code expiring between pages shifts offsets slightly.
-      setHistory((prev) => {
-        const seen = new Set(prev.map((e) => e.id));
-        return [...prev, ...page.filter((e) => !seen.has(e.id))];
-      });
-      if (page.length < WALLET_HISTORY_PAGE_SIZE) setHistoryEnd(true);
-    } catch {
-      // Leave historyEnd false so the next scroll retries.
-    } finally {
-      setLoadingMore(false);
+  const active = activeQuery.data ?? [];
+  // Dedupe by id: a code expiring between pages shifts offsets slightly.
+  const history = useMemo(() => {
+    const seen = new Set<string>();
+    const out: WalletEntry[] = [];
+    for (const page of historyQuery.data?.pages ?? []) {
+      for (const entry of page) {
+        if (!seen.has(entry.id)) {
+          seen.add(entry.id);
+          out.push(entry);
+        }
+      }
     }
-  }, [loadingMore, historyEnd, history.length]);
+    return out;
+  }, [historyQuery.data]);
+
+  const visibleQuery = tab === 'active' ? activeQuery : historyQuery;
+  const loading = visibleQuery.isPending;
+  const error = visibleQuery.isError ? 'Could not load your wallet.' : null;
+  const loadingMore = historyQuery.isFetchingNextPage;
+
+  const loadMoreHistory = useCallback(() => {
+    if (historyQuery.hasNextPage && !historyQuery.isFetchingNextPage) {
+      void historyQuery.fetchNextPage();
+    }
+  }, [historyQuery]);
 
   const handleCardReady = useCallback(() => {
     shareReadyRef.current?.();

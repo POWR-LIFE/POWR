@@ -5,6 +5,7 @@ import { RewardHeroMedia } from '@/components/rewards/RewardHeroMedia';
 import { usePoints } from '@/hooks/usePoints';
 import { fetchMyRedemptionSummary, fetchRewards, fetchSmartFeaturedReward, type Reward as ApiReward } from '@/lib/api/rewards';
 import { resolveContextualPlacements, pickHeroPlacement, comparePlacements, type ResolvedPlacement } from '@/lib/api/placements';
+import { rewardHeroUri, rewardLogoUri } from '@/lib/storageImage';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as Location from 'expo-location';
@@ -130,8 +131,8 @@ function apiRewardToUI(r: ApiReward): Reward {
     category: DB_TO_UI_CATEGORY[r.category] ?? 'SLEEP',
     logoText,
     logoLight: false,
-    logoImage: r.image_url ? { uri: r.image_url } : r.partner?.logo_url ? { uri: r.partner.logo_url } : undefined,
-    heroImage: r.hero_image_url ? { uri: r.hero_image_url } : undefined,
+    logoImage: r.image_url ? { uri: rewardLogoUri(r.image_url) } : r.partner?.logo_url ? { uri: rewardLogoUri(r.partner.logo_url) } : undefined,
+    heroImage: r.hero_image_url ? { uri: rewardHeroUri(r.hero_image_url) } : undefined,
     heroImageUrl: r.hero_image_url ?? undefined,
     heroVideoUrl: r.hero_video_url ?? undefined,
     brandColor: undefined,
@@ -245,6 +246,9 @@ export default function SpendScreen() {
     useCallback(() => {
       let sub: Location.LocationSubscription | null = null;
       let cancelled = false;
+      // remove() throws on web (expo-location's emitter lacks removeSubscription),
+      // which crashed the whole app on tab blur — never let cleanup throw.
+      const removeSub = () => { try { sub?.remove(); } catch {} finally { sub = null; } };
       (async () => {
         try {
           const { status } = await Location.getForegroundPermissionsAsync();
@@ -253,12 +257,12 @@ export default function SpendScreen() {
             { accuracy: Location.Accuracy.Balanced, distanceInterval: 40, timeInterval: 20000 },
             (pos) => { applyResolvedAt(pos.coords.latitude, pos.coords.longitude, true).catch(() => {}); },
           );
-          if (cancelled) { sub?.remove(); sub = null; }
+          if (cancelled) { removeSub(); }
         } catch {
           // fail-safe: the one-shot loadPlacements still covers the common case
         }
       })();
-      return () => { cancelled = true; sub?.remove(); };
+      return () => { cancelled = true; removeSub(); };
     }, [applyResolvedAt])
   );
 
@@ -482,9 +486,9 @@ function FeaturedCard({ featured, afford, balance, placement, onRedeem }: Featur
   const value = getRewardDisplayValue(featured);
   const { amount, suffix } = splitDiscount(value);
   const logoSrc = featured.image_url
-    ? { uri: featured.image_url }
+    ? { uri: rewardLogoUri(featured.image_url)! }
     : featured.partner?.logo_url
-    ? { uri: featured.partner.logo_url }
+    ? { uri: rewardLogoUri(featured.partner.logo_url)! }
     : null;
   return (
     <View style={styles.featuredCard}>

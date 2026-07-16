@@ -5,6 +5,7 @@ import { StyleSheet, Text, View, type ViewProps } from 'react-native';
 
 import { fontFamily } from '@/constants/tokens';
 import type { WalletEntry } from '@/lib/api/rewards';
+import { rewardHeroUri, rewardLogoUri } from '@/lib/storageImage';
 
 const TEXT  = '#F2F2F2';
 const DIM   = 'rgba(255,255,255,0.55)';
@@ -29,8 +30,10 @@ export const RewardShareCard = forwardRef<View, RewardShareCardProps>(
     // Scale tokens proportionally to width — base sizes designed for ~1080dp.
     const s = width / 1080;
 
-    const heroUri = entry.reward_hero_image_url;
-    const logoUri = entry.reward_image_url;
+    // Same resized CDN URLs as the wallet card, so both images are usually
+    // already in the expo-image cache and the pre-capture wait never times out.
+    const heroUri = rewardHeroUri(entry.reward_hero_image_url);
+    const logoUri = rewardLogoUri(entry.reward_image_url);
     // Without a hero shot, fall back to a heavily blurred partner logo.
     const bgUri = heroUri ?? logoUri;
     const isAffiliate = entry.integration_type === 'AFFILIATE';
