@@ -23,7 +23,10 @@ import { createClient } from '@supabase/supabase-js';
 import { hmacSha256Hex, randomHex } from '../_shared/webhookSign.ts';
 
 const API_VERSION = '2026-07';
-const SCOPES = 'write_discounts,read_orders';
+// read_products/read_collections exist solely so map_reward can read a
+// template's item restrictions and clone them onto minted codes — without
+// them, product-limited discounts can't be used as templates.
+const SCOPES = 'write_discounts,read_orders,read_products,read_collections';
 const CALLBACK_URL = 'https://wjvvujnicwkruaeibttt.supabase.co/functions/v1/shopify-connect/callback';
 const WEBHOOK_URL = 'https://wjvvujnicwkruaeibttt.supabase.co/functions/v1/shopify-webhook';
 // OAuth-return landing. Deliberately the LEGACY portal route: it exists on
