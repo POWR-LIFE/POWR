@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeftRight, Check, Code2, LifeBuoy, Minus, Store, Ticket, TriangleAlert } from 'lucide-react';
 import { useToast } from '../../lib/toast';
+import { useAuth } from '../../App';
 
 export const INPUT = "w-full h-14 px-5 bg-white border border-[#E6E6E1] rounded-2xl text-sm text-[#1A1A1A] placeholder-[#BBBBBB] focus:border-[#E8D200]/50 outline-none transition-all font-['Outfit']";
 export const BTN_DARK = 'h-11 px-8 bg-[#1A1A1A] text-white text-[10px] font-black uppercase tracking-[0.2em] rounded-full hover:bg-[#333] transition-all disabled:opacity-50';
@@ -120,6 +121,29 @@ export function ChangeMethodLink() {
             className="flex items-center gap-2 h-9 px-4 text-[9px] font-black uppercase tracking-[0.2em] bg-white border border-[#E6E6E1] rounded-full text-[#666] hover:border-[#1A1A1A]/30 hover:text-[#1A1A1A] transition-all">
             <ArrowLeftRight size={11} /> Change method
         </Link>
+    );
+}
+
+// Soft exclusivity: exactly one method delivers at a time. A brand can still
+// open and prepare a different method's page (migration prep), but it's
+// flagged so nobody thinks two paths are live at once.
+export function WrongMethodNotice({ pageMethod }) {
+    const { deliveryMethod } = useAuth();
+    if (!deliveryMethod || deliveryMethod === pageMethod) return null;
+    const current = methodMeta(deliveryMethod);
+    const here = methodMeta(pageMethod);
+    return (
+        <div className="mb-8 p-5 bg-amber-500/10 border border-amber-500/30 rounded-2xl flex items-center gap-4 flex-wrap">
+            <TriangleAlert size={15} className="text-amber-600 shrink-0" />
+            <p className="text-[11px] font-bold text-amber-600 leading-relaxed flex-1 min-w-[240px]">
+                Your rewards currently deliver via {current?.label}. You can prepare {here?.label} here,
+                but it won't take over until you switch methods.
+            </p>
+            <Link to="/partner/integration"
+                className="h-9 px-4 flex items-center text-[9px] font-black uppercase tracking-[0.2em] bg-white border border-amber-500/30 rounded-full text-amber-600 hover:border-amber-500/60 transition-all shrink-0">
+                Switch method
+            </Link>
+        </div>
     );
 }
 

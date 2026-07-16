@@ -4,6 +4,7 @@ import { Award, Gift, Inbox, ChevronRight, TrendingUp, FilePenLine, CircleAlert,
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../App';
 import { integrationPathFor, methodMeta } from './integrationShared';
+import { fetchMethodStatuses } from '../../lib/partnerApi';
 import RewardAppPreview, { previewFromReward } from '../../components/RewardAppPreview';
 
 const timeAgo = (dateStr) => {
@@ -29,6 +30,18 @@ export default function PartnerHome() {
     const [liveRewards, setLiveRewards] = useState([]);
     const [previewIdx, setPreviewIdx] = useState(0);
     const [weekTrend, setWeekTrend] = useState(null); // { last7, prior7 }
+    const [methodStatuses, setMethodStatuses] = useState(null);
+
+    // Connection detail for the "delivering via" bar (keys/webhooks, store
+    // domain, or codes available — depending on the chosen method).
+    useEffect(() => {
+        if (!partnerData?.brand_name) return;
+        let cancelled = false;
+        fetchMethodStatuses(partnerData.brand_name)
+            .then(s => { if (!cancelled) setMethodStatuses(s); })
+            .catch(() => { /* bar just shows the method without detail */ });
+        return () => { cancelled = true; };
+    }, [partnerData?.brand_name]);
 
     // Per-brand so an admin previewing another brand doesn't inherit the dismissal
     const introKey = partnerData?.brand_name
@@ -208,39 +221,19 @@ export default function PartnerHome() {
     const journeyDone = journeySteps.filter(s => s.done).length;
 
     return (
-        <div className="py-16 animate-in fade-in slide-in-from-bottom-6 duration-700">
-            {/* Header */}
-            <header className="mb-16">
-                <div className="flex items-center gap-3 mb-6">
+        <div className="py-10 animate-in fade-in slide-in-from-bottom-6 duration-700">
+            {/* Header — kept shallow so the phone rail sits fully in view */}
+            <header className="mb-8">
+                <div className="flex items-center gap-3 mb-4">
                     <div className="h-[1px] w-10 bg-[#E8D200]"></div>
                     <span className="text-[10px] uppercase tracking-[0.5em] text-[#8a7600] font-black">Partner Dashboard</span>
                 </div>
-                <div className="flex items-end justify-between gap-6 flex-wrap">
-                    <div>
-                        <h1 className="text-5xl font-light tracking-tighter text-[#1A1A1A] mb-4">
-                            {firstRun ? 'Welcome' : 'Welcome back'}{partnerData?.name ? `, ${partnerData.name}` : ''}.
-                        </h1>
-                        <p className="text-[#AAAAAA] text-[11px] font-black uppercase tracking-[0.35em]">
-                            {firstRun ? "Let's get your first reward live." : 'Manage your rewards and track performance.'}
-                        </p>
-                    </div>
-                    {method ? (
-                        <Link to={integrationPathFor(deliveryMethod)}
-                            className="flex items-center gap-3 px-5 py-2.5 bg-white border border-[#E6E6E1] rounded-full hover:border-[#E8D200]/40 transition-all group shrink-0">
-                            <span className="h-1.5 w-1.5 rounded-full bg-[#10B981] shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
-                            <span className="text-[10px] uppercase tracking-[0.2em] font-black text-[#666] group-hover:text-[#8a7600] transition-colors">
-                                Delivering via {method.label}
-                            </span>
-                            <ChevronRight size={12} className="text-[#CCC] group-hover:text-[#8a7600] transition-colors" />
-                        </Link>
-                    ) : deliveryMethod === null ? (
-                        <Link to="/partner/integration"
-                            className="flex items-center gap-3 px-5 py-2.5 bg-[#E8D200]/10 border border-[#E8D200]/30 rounded-full hover:border-[#E8D200]/60 transition-all shrink-0">
-                            <Plug size={12} className="text-[#8a7600]" />
-                            <span className="text-[10px] uppercase tracking-[0.2em] font-black text-[#8a7600]">Choose delivery method</span>
-                        </Link>
-                    ) : null}
-                </div>
+                <h1 className="text-4xl font-light tracking-tighter text-[#1A1A1A] mb-3">
+                    {firstRun ? 'Welcome' : 'Welcome back'}{partnerData?.name ? `, ${partnerData.name}` : ''}.
+                </h1>
+                <p className="text-[#AAAAAA] text-[11px] font-black uppercase tracking-[0.35em]">
+                    {firstRun ? "Let's get your first reward live." : 'Manage your rewards and track performance.'}
+                </p>
             </header>
 
             {/* Main column + live phone rail (the rail is the "what's live
@@ -248,9 +241,39 @@ export default function PartnerHome() {
             <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_300px] lg:gap-14 items-start">
             <div className="min-w-0">
 
+            {/* What this brand is connected with — method + live detail */}
+            {method ? (
+                <Link to={integrationPathFor(deliveryMethod)}
+                    className="flex items-center gap-4 bg-white border border-[#E6E6E1] rounded-2xl px-6 py-4 mb-10 hover:border-[#E8D200]/40 transition-all group">
+                    <div className="w-9 h-9 rounded-xl bg-[#F4F4F1] flex items-center justify-center shrink-0">
+                        <method.icon size={16} className="text-[#8a7600]" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                        <div className="text-[9px] uppercase tracking-[0.4em] text-[#BBBBBB] font-black mb-0.5">Delivering via {method.label}</div>
+                        <div className="text-[12px] font-bold text-[#333] truncate">
+                            {methodStatuses?.[deliveryMethod]?.line ?? 'Checking connection…'}
+                        </div>
+                    </div>
+                    <span className={`h-2 w-2 rounded-full shrink-0 ${methodStatuses ? (methodStatuses[deliveryMethod]?.configured ? 'bg-emerald-500' : 'bg-amber-400') : 'bg-[#D5D5D0]'}`} />
+                    <ChevronRight size={15} className="text-[#CCC] group-hover:text-[#8a7600] transition-colors shrink-0" />
+                </Link>
+            ) : deliveryMethod === null ? (
+                <Link to="/partner/integration"
+                    className="flex items-center gap-4 bg-[#E8D200]/5 border border-[#E8D200]/25 rounded-2xl px-6 py-4 mb-10 hover:border-[#E8D200]/50 transition-all group">
+                    <div className="w-9 h-9 rounded-xl bg-[#E8D200]/10 flex items-center justify-center shrink-0">
+                        <Plug size={16} className="text-[#8a7600]" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                        <div className="text-[9px] uppercase tracking-[0.4em] text-[#8a7600] font-black mb-0.5">Not connected yet</div>
+                        <div className="text-[12px] font-bold text-[#8a7600]">Choose how you deliver rewards — API, Shopify or promo codes</div>
+                    </div>
+                    <ChevronRight size={15} className="text-[#8a7600] shrink-0" />
+                </Link>
+            ) : null}
+
             {/* How POWR works — orientation for partners without a redemption yet */}
             {showIntro && (
-                <section className="relative mb-16 bg-[#E8D200]/5 border border-[#E8D200]/20 rounded-3xl px-10 py-8">
+                <section className="relative mb-10 bg-[#E8D200]/5 border border-[#E8D200]/20 rounded-3xl px-10 py-8">
                     <button
                         onClick={dismissIntro}
                         aria-label="Dismiss"
@@ -279,7 +302,7 @@ export default function PartnerHome() {
 
             {/* Getting started — replaces the zero-stat dashboard until the first reward exists */}
             {showChecklist && (
-                <section className="mb-16 bg-white border border-[#E6E6E1] rounded-3xl overflow-hidden">
+                <section className="mb-12 bg-white border border-[#E6E6E1] rounded-3xl overflow-hidden">
                     <div className="flex items-center justify-between px-10 py-7 border-b border-[#E6E6E1]">
                         <div>
                             <h2 className="text-xl font-light tracking-tighter text-[#1A1A1A]">Getting started</h2>
@@ -312,28 +335,28 @@ export default function PartnerHome() {
                 </section>
             )}
 
-            {/* Stat cards */}
-            {!showChecklist && <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-16">
+            {/* Stat cards — compact so the fold belongs to the phone rail */}
+            {!showChecklist && <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-12">
                 {cards.map(c => (
-                    <Link key={c.label} to={c.to} className="group bg-white border border-[#E6E6E1] p-10 rounded-3xl hover:border-[#E8D200]/30 transition-all hover:shadow-lg">
-                        <div className="flex items-start justify-between mb-8">
-                            <div className="w-12 h-12 rounded-2xl bg-[#F4F4F1] flex items-center justify-center group-hover:scale-110 transition-transform">
-                                <c.icon size={22} style={{ color: c.color }} />
+                    <Link key={c.label} to={c.to} className="group bg-white border border-[#E6E6E1] p-6 rounded-2xl hover:border-[#E8D200]/30 transition-all hover:shadow-lg">
+                        <div className="flex items-start justify-between mb-5">
+                            <div className="w-10 h-10 rounded-xl bg-[#F4F4F1] flex items-center justify-center group-hover:scale-110 transition-transform">
+                                <c.icon size={18} style={{ color: c.color }} />
                             </div>
-                            <ChevronRight size={16} className="text-[#BBBBBB] group-hover:text-[#8a7600] transition-colors mt-1" />
+                            <ChevronRight size={15} className="text-[#BBBBBB] group-hover:text-[#8a7600] transition-colors mt-1" />
                         </div>
-                        <div className="text-5xl font-light tracking-tighter text-[#1A1A1A] mb-2 leading-none">
+                        <div className="text-3xl font-light tracking-tighter text-[#1A1A1A] mb-1.5 leading-none">
                             {loading ? '—' : c.value.toLocaleString()}
                         </div>
                         <div className="text-[9px] uppercase tracking-[0.4em] text-[#BBBBBB] font-black">{c.sub}</div>
-                        <div className="text-[11px] font-black text-[#888] mt-1">{c.label}</div>
+                        <div className="text-[11px] font-black text-[#888] mt-0.5">{c.label}</div>
                         {c.trend ? trendChip(c.trend) : null}
                     </Link>
                 ))}
             </div>}
 
             {actions.length > 0 && (
-                <section className="mb-16 bg-white border border-[#E6E6E1] rounded-3xl overflow-hidden">
+                <section className="mb-12 bg-white border border-[#E6E6E1] rounded-3xl overflow-hidden">
                     <div className="flex items-center justify-between px-10 py-7 border-b border-[#E6E6E1]">
                         <div>
                             <h2 className="text-xl font-light tracking-tighter text-[#1A1A1A]">Needs attention</h2>
@@ -406,8 +429,8 @@ export default function PartnerHome() {
 
             {/* ── Live phone preview — sticky rail; PartnerLayout's main is
                    the scroll container so sticky works (same as Rewards) */}
-            <aside className="hidden lg:block sticky top-6">
-                <div className="flex items-center gap-3 mb-6">
+            <aside className="hidden lg:block sticky top-4">
+                <div className="flex items-center gap-3 mb-4">
                     <span className={`h-1.5 w-1.5 rounded-full ${liveRewards.length ? 'bg-[#10B981] shadow-[0_0_10px_rgba(16,185,129,0.6)] animate-pulse' : 'bg-[#D5D5D0]'}`} />
                     <span className="text-[10px] uppercase tracking-[0.4em] text-[#8a7600] font-black">Live in app</span>
                     {liveRewards.length > 0 && (

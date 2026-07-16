@@ -8,7 +8,7 @@ import {
 } from '../../lib/partnerApi';
 import {
     BTN_DARK, BTN_GHOST, ChangeMethodLink, CopyButton, FallbackPoolCard,
-    HealthItem, INPUT, SectionCard, timeAgo,
+    HealthItem, INPUT, SectionCard, timeAgo, WrongMethodNotice,
 } from './integrationShared';
 
 const STATUS_CHIP = {
@@ -226,6 +226,8 @@ export default function PartnerIntegrationApi() {
                     <CopyButton value={API_BASE_URL} label="Copy base URL" />
                 </div>
             </div>
+
+            <WrongMethodNotice pageMethod="api" />
 
             <div className="flex flex-col xl:flex-row xl:items-start xl:gap-10">
             {/* ── Connection health — sticky rail on wide screens, stacked on

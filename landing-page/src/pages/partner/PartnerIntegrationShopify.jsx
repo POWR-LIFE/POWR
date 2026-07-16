@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
 import { useAuth } from '../../App';
 import { callShopify } from '../../lib/partnerApi';
-import { BTN_DARK, BTN_GHOST, ChangeMethodLink, FallbackPoolCard, INPUT, SectionCard } from './integrationShared';
+import { BTN_DARK, BTN_GHOST, ChangeMethodLink, FallbackPoolCard, INPUT, SectionCard, WrongMethodNotice } from './integrationShared';
 
 const HOW_IT_WORKS = [
     { icon: Link2, title: 'Connect', detail: 'Approve the POWR app on your store — one click, no code.' },
@@ -122,6 +122,8 @@ export default function PartnerIntegrationShopify() {
                     it's spent at your checkout. No CSVs, no API work, nothing to host.
                 </p>
             </div>
+
+            <WrongMethodNotice pageMethod="shopify" />
 
             {/* ── Connection ───────────────────────────────────────────── */}
             <SectionCard
