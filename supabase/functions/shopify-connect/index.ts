@@ -1,0 +1,497 @@
+// @ts-nocheck — Deno runtime
+// SHOPIFY CONNECTOR — control plane. Lets a reward brand connect their
+// Shopify store so codes mint into Shopify at redemption time and usage
+// reconciles automatically. Rides the partner developer API primitives:
+// the brand's JIT mint_url is pointed at THIS function's /mint route, so
+// redeem-reward's existing machinery treats Shopify like any partner system.
+//
+// Routes (platform JWT verification is OFF; each route enforces its own auth):
+//   POST {action:'start', shop_domain}    JWT (brand user / admin+brand_name)
+//   GET  /callback?shop&code&state&hmac   public — Shopify OAuth redirect
+//   POST {action:'status'}                JWT → connection + mappings
+//   POST {action:'list_discounts'}        JWT → active code discounts in the shop
+//   POST {action:'map_reward', reward_id, discount_gid}  JWT
+//   POST {action:'unmap_reward', reward_id}              JWT
+//   POST {action:'disconnect'}            JWT
+//   POST /mint                            signed with the brand's mint_secret
+//                                         (same X-POWR-Signature scheme JIT uses)
+
+import { createClient } from '@supabase/supabase-js';
+import { hmacSha256Hex, randomHex } from '../_shared/webhookSign.ts';
+
+const API_VERSION = '2026-07';
+const SCOPES = 'write_discounts,read_orders';
+const CALLBACK_URL = 'https://wjvvujnicwkruaeibttt.supabase.co/functions/v1/shopify-connect/callback';
+const WEBHOOK_URL = 'https://wjvvujnicwkruaeibttt.supabase.co/functions/v1/shopify-webhook';
+const PORTAL_URL = 'https://powr.life/partner/developers';
+const MINT_URL = 'https://wjvvujnicwkruaeibttt.supabase.co/functions/v1/shopify-connect/mint';
+
+const json = (body, status = 200) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    },
+  });
+
+const sameBrand = (a, b) =>
+  String(a ?? '').trim().toLowerCase() === String(b ?? '').trim().toLowerCase();
+
+const validShop = (raw) => /^[a-z0-9][a-z0-9-]*\.myshopify\.com$/.test(String(raw ?? '').trim().toLowerCase());
+
+// Shopify Admin GraphQL call. Returns { data, errors }.
+async function shopifyGraphql(shop, token, query, variables = {}) {
+  const res = await fetch(`https://${shop}/admin/api/${API_VERSION}/graphql.json`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Shopify-Access-Token': token },
+    body: JSON.stringify({ query, variables }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) return { errors: [{ message: `HTTP ${res.status}` }] };
+  return body;
+}
+
+// Normalise a DiscountCodeBasic node into the config we clone per mint.
+// Returns null when the discount shape isn't something we can clone.
+function normaliseDiscount(codeDiscount) {
+  if (codeDiscount?.__typename !== 'DiscountCodeBasic') return null;
+  const value = codeDiscount.customerGets?.value;
+  let kind = null;
+  if (value?.__typename === 'DiscountPercentage') {
+    kind = { type: 'percentage', percentage: value.percentage };
+  } else if (value?.__typename === 'DiscountAmount') {
+    kind = { type: 'amount', amount: value.amount?.amount, appliesOnEachItem: !!value.appliesOnEachItem };
+  }
+  if (!kind) return null;
+  const items = codeDiscount.customerGets?.items;
+  const applies = items?.__typename === 'AllDiscountItems' ? { all: true } : { all: false };
+  return {
+    ...kind,
+    applies,
+    appliesOncePerCustomer: !!codeDiscount.appliesOncePerCustomer,
+    title: codeDiscount.title,
+  };
+}
+
+const CROCKFORD = '23456789ABCDEFGHJKMNPQRSTVWXYZ';
+function mintCode() {
+  const bytes = new Uint8Array(8);
+  crypto.getRandomValues(bytes);
+  let suffix = '';
+  for (const b of bytes) suffix += CROCKFORD[b % CROCKFORD.length];
+  return `POWR-${suffix}`;
+}
+
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', {
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+      },
+    });
+  }
+
+  const admin = createClient(
+    Deno.env.get('SUPABASE_URL')!,
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+  );
+  const clientId = Deno.env.get('SHOPIFY_CLIENT_ID');
+  const clientSecret = Deno.env.get('SHOPIFY_CLIENT_SECRET');
+  if (!clientId || !clientSecret) return json({ error: 'Shopify app credentials are not configured' }, 500);
+
+  const url = new URL(req.url);
+  const path = url.pathname.replace(/^\/shopify-connect/, '') || '/';
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // GET /callback — Shopify OAuth redirect (public; HMAC + state are the auth)
+  // ══════════════════════════════════════════════════════════════════════════
+  if (req.method === 'GET' && path === '/callback') {
+    const back = (reason) =>
+      Response.redirect(`${PORTAL_URL}?shopify=${reason ? `error&reason=${encodeURIComponent(reason)}` : 'connected'}`, 302);
+
+    const shop = (url.searchParams.get('shop') ?? '').toLowerCase();
+    const code = url.searchParams.get('code') ?? '';
+    const state = url.searchParams.get('state') ?? '';
+    const hmac = url.searchParams.get('hmac') ?? '';
+    if (!validShop(shop) || !code || !state || !hmac) return back('bad_request');
+
+    // Verify Shopify's HMAC over the sorted query string (minus hmac).
+    const params = [...url.searchParams.entries()]
+      .filter(([k]) => k !== 'hmac')
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([k, v]) => `${k}=${v}`)
+      .join('&');
+    const expected = await hmacSha256Hex(clientSecret, params);
+    if (expected !== hmac) return back('bad_hmac');
+
+    const { data: row } = await admin
+      .from('reward_brand_shopify')
+      .select('brand_name, state_token, state_expires')
+      .eq('state_token', state)
+      .maybeSingle();
+    if (!row || (row.state_expires && new Date(row.state_expires) < new Date())) return back('state_expired');
+
+    // Exchange the grant for an offline Admin API token.
+    const tokenRes = await fetch(`https://${shop}/admin/oauth/access_token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ client_id: clientId, client_secret: clientSecret, code }),
+    });
+    const tokenBody = await tokenRes.json().catch(() => ({}));
+    if (!tokenRes.ok || !tokenBody.access_token) return back('token_exchange_failed');
+
+    await admin.from('reward_brand_shopify')
+      .update({
+        shop_domain: shop,
+        access_token: tokenBody.access_token,
+        scopes: tokenBody.scope ?? SCOPES,
+        status: 'connected',
+        state_token: null,
+        state_expires: null,
+        connected_at: new Date().toISOString(),
+        uninstalled_at: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('brand_name', row.brand_name);
+
+    // Register the webhooks that make reconciliation automatic. Failures are
+    // logged, not fatal — status surfaces them and mapping re-attempts.
+    for (const topic of ['ORDERS_CREATE', 'APP_UNINSTALLED']) {
+      const { data, errors } = await shopifyGraphql(shop, tokenBody.access_token, `
+        mutation($topic: WebhookSubscriptionTopic!, $sub: WebhookSubscriptionInput!) {
+          webhookSubscriptionCreate(topic: $topic, webhookSubscription: $sub) {
+            userErrors { field message }
+          }
+        }`, { topic, sub: { callbackUrl: WEBHOOK_URL, format: 'JSON' } });
+      const errs = errors ?? data?.webhookSubscriptionCreate?.userErrors;
+      if (errs?.length) console.error('webhook subscribe failed', topic, JSON.stringify(errs));
+    }
+
+    // Point the brand's JIT machinery at our mint adapter (secret generated
+    // if the brand never had one). Minting only turns ON when a reward is
+    // mapped to a discount.
+    const { data: integ } = await admin
+      .from('reward_brand_integrations')
+      .select('brand_name, mint_secret')
+      .ilike('brand_name', row.brand_name)
+      .maybeSingle();
+    await admin.from('reward_brand_integrations').upsert({
+      brand_name: integ?.brand_name ?? row.brand_name,
+      mint_url: MINT_URL,
+      mint_secret: integ?.mint_secret ?? `whsec_${randomHex(24)}`,
+      mint_consecutive_failures: 0,
+      mint_disabled_until: null,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'brand_name' });
+
+    return back(null);
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // POST /mint — the JIT adapter. redeem-reward signs with the brand's
+  // mint_secret; we verify, then create a single-use discount code in the
+  // brand's Shopify store cloned from the mapped discount's config.
+  // ══════════════════════════════════════════════════════════════════════════
+  if (req.method === 'POST' && path === '/mint') {
+    const raw = await req.text();
+    let body;
+    try { body = JSON.parse(raw); } catch { return json({ error: 'invalid json' }, 400); }
+
+    const sig = req.headers.get('X-POWR-Signature') ?? '';
+    const parts = Object.fromEntries(sig.split(',').map((p) => p.split('=')));
+    if (!parts.t || !parts.v1) return json({ error: 'missing signature' }, 401);
+    if (Math.abs(Date.now() / 1000 - Number(parts.t)) > 300) return json({ error: 'stale signature' }, 401);
+
+    const { data: integ } = await admin
+      .from('reward_brand_integrations')
+      .select('mint_secret')
+      .ilike('brand_name', body.brand_name ?? '')
+      .maybeSingle();
+    if (!integ?.mint_secret) return json({ error: 'unknown brand' }, 401);
+    const expected = await hmacSha256Hex(integ.mint_secret, `${parts.t}.${raw}`);
+    if (expected !== parts.v1) return json({ error: 'bad signature' }, 401);
+
+    // Test probes get a synthetic (never-stored) code so partners can run the
+    // connection test without touching the store.
+    if (body.test === true) return json({ code: mintCode() });
+
+    const [{ data: shopRow }, { data: mapping }] = await Promise.all([
+      admin.from('reward_brand_shopify')
+        .select('shop_domain, access_token, status')
+        .ilike('brand_name', body.brand_name)
+        .maybeSingle(),
+      admin.from('reward_shopify_discounts')
+        .select('config, discount_title')
+        .eq('reward_id', body.reward_id ?? '')
+        .maybeSingle(),
+    ]);
+    if (shopRow?.status !== 'connected') return json({ error: 'shop not connected' }, 409);
+    if (!mapping) return json({ error: 'reward not mapped to a discount' }, 409);
+
+    const code = mintCode();
+    const cfg = mapping.config ?? {};
+    const value = cfg.type === 'percentage'
+      ? { percentage: cfg.percentage }
+      : { discountAmount: { amount: cfg.amount, appliesOnEachItem: !!cfg.appliesOnEachItem } };
+
+    const { data, errors } = await shopifyGraphql(shopRow.shop_domain, shopRow.access_token, `
+      mutation($discount: DiscountCodeBasicInput!) {
+        discountCodeBasicCreate(basicCodeDiscount: $discount) {
+          codeDiscountNode { id }
+          userErrors { field message }
+        }
+      }`, {
+      discount: {
+        title: `POWR · ${mapping.discount_title} · ${code}`,
+        code,
+        startsAt: new Date().toISOString(),
+        endsAt: body.expires_at ?? null,
+        usageLimit: 1,
+        appliesOncePerCustomer: true,
+        customerSelection: { all: true },
+        customerGets: { value, items: { all: true } },
+      },
+    });
+    const errs = errors ?? data?.discountCodeBasicCreate?.userErrors;
+    if (errs?.length || !data?.discountCodeBasicCreate?.codeDiscountNode?.id) {
+      console.error('shopify mint failed', JSON.stringify(errs ?? data));
+      return json({ error: 'shopify discount create failed' }, 502);
+    }
+
+    return json({ code });
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // JWT actions — brand portal user (forced to own brand) or admin+brand_name
+  // ══════════════════════════════════════════════════════════════════════════
+  if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
+
+  let body;
+  try { body = await req.json(); } catch { return json({ error: 'Invalid JSON' }, 400); }
+
+  const authHeader = req.headers.get('Authorization');
+  if (!authHeader) return json({ error: 'Missing authorization' }, 401);
+  const userClient = createClient(
+    Deno.env.get('SUPABASE_URL')!,
+    Deno.env.get('SUPABASE_ANON_KEY')!,
+    { global: { headers: { Authorization: authHeader } } },
+  );
+  const { data: { user }, error: authError } = await userClient.auth.getUser();
+  if (authError || !user) return json({ error: 'Unauthorized' }, 401);
+
+  const { data: adminRow } = await admin
+    .from('admin_roles').select('user_id').eq('user_id', user.id).single();
+  const isAdmin = !!adminRow;
+  let brand = null;
+  if (isAdmin) {
+    brand = String(body.brand_name ?? '').trim();
+    if (!brand) return json({ error: 'brand_name is required' }, 400);
+  } else {
+    const { data: brandRow } = await admin
+      .from('reward_brand_users').select('brand_name').eq('user_id', user.id).single();
+    brand = brandRow?.brand_name ?? null;
+    if (!brand) return json({ error: 'Forbidden' }, 403);
+  }
+
+  const getShop = async () => {
+    const { data } = await admin
+      .from('reward_brand_shopify')
+      .select('*')
+      .ilike('brand_name', brand)
+      .maybeSingle();
+    return data;
+  };
+
+  // ── start: mint the OAuth authorize URL ────────────────────────────────────
+  if (body.action === 'start') {
+    const shop = String(body.shop_domain ?? '').trim().toLowerCase()
+      .replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+    if (!validShop(shop)) {
+      return json({ error: 'Enter your store domain like your-store.myshopify.com' }, 400);
+    }
+    const existing = await getShop();
+    const state = randomHex(24);
+    await admin.from('reward_brand_shopify').upsert({
+      brand_name: existing?.brand_name ?? brand,
+      shop_domain: shop,
+      status: existing?.status === 'connected' ? 'connected' : 'pending',
+      state_token: state,
+      state_expires: new Date(Date.now() + 15 * 60_000).toISOString(),
+      created_by: user.id,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'brand_name' });
+
+    const authorize = `https://${shop}/admin/oauth/authorize?client_id=${clientId}` +
+      `&scope=${encodeURIComponent(SCOPES)}&redirect_uri=${encodeURIComponent(CALLBACK_URL)}&state=${state}`;
+    return json({ ok: true, authorize_url: authorize });
+  }
+
+  // ── status ──────────────────────────────────────────────────────────────────
+  if (body.action === 'status') {
+    const shop = await getShop();
+    const { data: mappings } = await admin
+      .from('reward_shopify_discounts')
+      .select('reward_id, discount_gid, discount_title, config, updated_at')
+      .ilike('brand_name', brand);
+    return json({
+      ok: true,
+      connected: shop?.status === 'connected',
+      status: shop?.status ?? null,
+      shop_domain: shop?.shop_domain ?? null,
+      scopes: shop?.scopes ?? null,
+      connected_at: shop?.connected_at ?? null,
+      mappings: mappings ?? [],
+    });
+  }
+
+  // ── list_discounts: active code discounts we can clone from ────────────────
+  if (body.action === 'list_discounts') {
+    const shop = await getShop();
+    if (shop?.status !== 'connected') return json({ error: 'Connect your Shopify store first' }, 409);
+    const { data, errors } = await shopifyGraphql(shop.shop_domain, shop.access_token, `
+      query {
+        codeDiscountNodes(first: 50, query: "status:active") {
+          nodes {
+            id
+            codeDiscount {
+              __typename
+              ... on DiscountCodeBasic {
+                title
+                summary
+                appliesOncePerCustomer
+                customerGets {
+                  value {
+                    __typename
+                    ... on DiscountPercentage { percentage }
+                    ... on DiscountAmount { amount { amount currencyCode } appliesOnEachItem }
+                  }
+                  items { __typename }
+                }
+              }
+            }
+          }
+        }
+      }`);
+    if (errors?.length) return json({ error: errors[0]?.message ?? 'Shopify query failed' }, 502);
+
+    const discounts = (data?.codeDiscountNodes?.nodes ?? [])
+      .map((n) => {
+        const cfg = normaliseDiscount(n.codeDiscount);
+        return cfg ? {
+          gid: n.id,
+          title: n.codeDiscount.title,
+          summary: n.codeDiscount.summary ?? null,
+          cloneable: true,
+        } : {
+          gid: n.id,
+          title: n.codeDiscount?.title ?? '(unsupported discount type)',
+          summary: n.codeDiscount?.summary ?? null,
+          cloneable: false,
+        };
+      });
+    return json({ ok: true, discounts });
+  }
+
+  // ── map_reward: choose the discount a reward mints from ────────────────────
+  if (body.action === 'map_reward') {
+    const { reward_id, discount_gid } = body;
+    if (!reward_id || !discount_gid) return json({ error: 'reward_id and discount_gid are required' }, 400);
+
+    const shop = await getShop();
+    if (shop?.status !== 'connected') return json({ error: 'Connect your Shopify store first' }, 409);
+
+    const { data: reward } = await admin
+      .from('rewards')
+      .select('id, title, brand_name, integration_type')
+      .eq('id', reward_id)
+      .maybeSingle();
+    if (!reward || !sameBrand(reward.brand_name, brand)) return json({ error: 'No such reward for this brand' }, 404);
+
+    const { data, errors } = await shopifyGraphql(shop.shop_domain, shop.access_token, `
+      query($id: ID!) {
+        codeDiscountNode(id: $id) {
+          id
+          codeDiscount {
+            __typename
+            ... on DiscountCodeBasic {
+              title
+              appliesOncePerCustomer
+              customerGets {
+                value {
+                  __typename
+                  ... on DiscountPercentage { percentage }
+                  ... on DiscountAmount { amount { amount currencyCode } appliesOnEachItem }
+                }
+                items { __typename }
+              }
+            }
+          }
+        }
+      }`, { id: discount_gid });
+    if (errors?.length) return json({ error: errors[0]?.message ?? 'Shopify query failed' }, 502);
+
+    const node = data?.codeDiscountNode;
+    const cfg = normaliseDiscount(node?.codeDiscount);
+    if (!cfg) {
+      return json({ error: 'Only basic percentage or fixed-amount code discounts can be used as templates' }, 400);
+    }
+
+    await admin.from('reward_shopify_discounts').upsert({
+      reward_id: reward.id,
+      brand_name: brand,
+      discount_gid,
+      discount_title: node.codeDiscount.title,
+      config: cfg,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'reward_id' });
+
+    // The mapped reward now mints at redemption time; enable the JIT wiring.
+    if (reward.integration_type !== 'API_VALIDATED') {
+      await admin.from('rewards').update({ integration_type: 'API_VALIDATED' }).eq('id', reward.id);
+    }
+    await admin.from('reward_brand_integrations')
+      .update({ mint_enabled: true, mint_consecutive_failures: 0, mint_disabled_until: null })
+      .ilike('brand_name', brand);
+
+    if (isAdmin) {
+      await admin.from('admin_audit_log').insert({
+        admin_id: user.id, action: 'shopify_map_reward', target_type: 'reward_brand',
+        target_id: null, metadata: { brand_name: brand, reward_id: reward.id, discount_gid },
+      });
+    }
+    return json({ ok: true, config: cfg });
+  }
+
+  // ── unmap_reward ────────────────────────────────────────────────────────────
+  if (body.action === 'unmap_reward') {
+    if (!body.reward_id) return json({ error: 'reward_id is required' }, 400);
+    const { data: mapping } = await admin
+      .from('reward_shopify_discounts')
+      .select('reward_id, brand_name')
+      .eq('reward_id', body.reward_id)
+      .maybeSingle();
+    if (!mapping || !sameBrand(mapping.brand_name, brand)) return json({ error: 'Forbidden' }, 403);
+    await admin.from('reward_shopify_discounts').delete().eq('reward_id', body.reward_id);
+    // The reward keeps API_VALIDATED + pool fallback; flipping back to POOL is
+    // a deliberate admin call since it changes member-facing behaviour.
+    return json({ ok: true });
+  }
+
+  // ── disconnect ──────────────────────────────────────────────────────────────
+  if (body.action === 'disconnect') {
+    const shop = await getShop();
+    if (!shop) return json({ ok: true });
+    await admin.from('reward_brand_shopify')
+      .update({ status: 'disconnected', access_token: null, updated_at: new Date().toISOString() })
+      .eq('brand_name', shop.brand_name);
+    await admin.from('reward_brand_integrations')
+      .update({ mint_enabled: false })
+      .ilike('brand_name', brand);
+    return json({ ok: true });
+  }
+
+  return json({ error: 'Unknown action' }, 400);
+});

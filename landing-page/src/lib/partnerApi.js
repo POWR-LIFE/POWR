@@ -30,6 +30,9 @@ export const WEBHOOK_EVENTS = [
 export const callPartnerApi = (action, brandName, params = {}) =>
     invokeFn('manage-partner-api', { action, brand_name: brandName, ...params });
 
+export const callShopify = (action, brandName, params = {}) =>
+    invokeFn('shopify-connect', { action, brand_name: brandName, ...params });
+
 export async function fetchEndpoints(brandName) {
     const { data, error } = await supabase
         .from('reward_brand_webhook_endpoints')
