@@ -1,0 +1,39 @@
+# POWR Rewards — Shopify app configuration (config-as-code).
+#
+# The new Dev Dashboard has NO UI for compliance webhooks; this file is the
+# only way to declare them. It is also now the source of truth for scopes and
+# URLs — deploy config changes with:
+#
+#   npx @shopify/cli@latest app deploy
+#
+# (interactive Shopify Partners login on first run; creates AND releases a new
+# app version). Editing versions in the Dev Dashboard instead risks the known
+# traps: scopes silently moved out of the required box, embedded re-enabled.
+
+client_id = "12f633b04fe4a3b7b3dc46bce42a3b52"
+name = "POWR Rewards"
+application_url = "https://wjvvujnicwkruaeibttt.supabase.co/functions/v1/shopify-connect/install"
+embedded = false
+
+[access_scopes]
+# read_products also covers collections — there is no read_collections scope.
+scopes = "write_discounts,read_orders,read_products"
+use_legacy_install_flow = true
+
+[auth]
+redirect_urls = [
+  "https://wjvvujnicwkruaeibttt.supabase.co/functions/v1/shopify-connect/callback"
+]
+
+[webhooks]
+api_version = "2026-07"
+
+  # Mandatory GDPR topics — handled by the shopify-webhook edge function
+  # (customers/* acknowledge: no Shopify customer data is stored; shop/redact
+  # scrubs the store's connection rows). Forged HMACs are rejected with 401.
+  [[webhooks.subscriptions]]
+  compliance_topics = ["customers/data_request", "customers/redact", "shop/redact"]
+  uri = "https://wjvvujnicwkruaeibttt.supabase.co/functions/v1/shopify-webhook"
+
+[pos]
+embedded = false
