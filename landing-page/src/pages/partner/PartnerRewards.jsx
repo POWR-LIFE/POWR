@@ -5,7 +5,7 @@ import { uploadPublicImage } from '../../lib/storage';
 import { useToast } from '../../lib/toast';
 import { validateHeroVideoUrl } from '../../lib/heroVideoUrl';
 import { useAuth } from '../../App';
-import RewardAppPreview, { previewValueLabel } from '../../components/RewardAppPreview';
+import RewardAppPreview, { cleanPrefix, prefixFromPromo, previewFromReward, previewValueLabel } from '../../components/RewardAppPreview';
 
 const CATEGORY_OPTIONS = [
     { value: 'food',    label: 'Eat' },
@@ -35,10 +35,6 @@ const INPUT = "w-full h-14 px-5 bg-white border border-[#E6E6E1] rounded-2xl tex
 // from brand_reward_limits (admin-managed); this is just the default when a
 // brand has no row yet. Enforced server-side by the reward-submission trigger.
 const DEFAULT_REWARD_LIMIT = 2;
-
-function cleanPrefix(raw) {
-    return String(raw ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
-}
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
@@ -124,29 +120,6 @@ const STEP_FIELDS = {
     imagery: ['logo_url', 'hero_image_url'],
     review:  [],
 };
-
-// Extract the brand segment from a stored promo code: 'POWR-TRIBE' / 'POWR-TRIBE-XXXXXX' / 'TRIBE' → 'TRIBE'
-function prefixFromPromo(promo, fallbackName) {
-    const parts = String(promo ?? '').toUpperCase().split('-').filter(Boolean);
-    if (parts[0] === 'POWR') parts.shift();
-    return cleanPrefix(parts[0] ?? fallbackName ?? '');
-}
-
-const previewFromReward = (r, partnerName) => ({
-    brandName: r.brand_name || partnerName || '',
-    title: r.title ?? '',
-    description: r.description ?? '',
-    partnerBlurb: r.partner_blurb ?? '',
-    offer: r.offer ?? '',
-    valueLabel: r.value_label ?? '',
-    discountType: r.discount_type ?? '',
-    discountValue: r.discount_value ?? '',
-    pts: r.powr_cost,
-    logoUrl: r.image_url,
-    heroUrl: r.hero_image_url,
-    heroVideoUrl: r.hero_video_url,
-    codePrefix: prefixFromPromo(r.promo_code, r.brand_name || partnerName),
-});
 
 const previewFromSubmission = (s, partnerName) => ({
     brandName: s.brand_name || partnerName || '',

@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Award, Gift, Inbox, ChevronRight, TrendingUp, FilePenLine, CircleAlert, Ticket, CheckCircle2, Send, Zap, X, Plug } from 'lucide-react';
+import { Award, Gift, Inbox, ChevronRight, TrendingUp, FilePenLine, CircleAlert, Ticket, CheckCircle2, Send, Zap, X, Plug, ArrowUpRight, ArrowDownRight, Minus, Smartphone } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../App';
-import { integrationPathFor } from './integrationShared';
+import { integrationPathFor, methodMeta } from './integrationShared';
+import RewardAppPreview, { previewFromReward } from '../../components/RewardAppPreview';
 
 const timeAgo = (dateStr) => {
     if (!dateStr) return '—';
@@ -25,6 +26,9 @@ export default function PartnerHome() {
     const [journey, setJourney] = useState(null);
     const [loading, setLoading] = useState(true);
     const [introDismissed, setIntroDismissed] = useState(true);
+    const [liveRewards, setLiveRewards] = useState([]);
+    const [previewIdx, setPreviewIdx] = useState(0);
+    const [weekTrend, setWeekTrend] = useState(null); // { last7, prior7 }
 
     // Per-brand so an admin previewing another brand doesn't inherit the dismissal
     const introKey = partnerData?.brand_name
@@ -45,15 +49,19 @@ export default function PartnerHome() {
                 monthStart.setDate(1);
                 monthStart.setHours(0, 0, 0, 0);
 
-                // Reward ids first — supabase-js .in() needs a concrete array
+                // Reward ids first — supabase-js .in() needs a concrete array.
+                // Full listing fields so the live phone preview renders
+                // exactly what members see.
                 const { data: rewardRows } = await supabase
                     .from('rewards')
-                    .select('id, title, active, reward_kind, integration_type, promo_code')
-                    .ilike('brand_name', brand);
+                    .select('id, title, active, reward_kind, integration_type, promo_code, brand_name, description, partner_blurb, offer, value_label, discount_type, discount_value, powr_cost, image_url, hero_image_url, hero_video_url, created_at')
+                    .ilike('brand_name', brand)
+                    .order('created_at', { ascending: false });
                 const rewardIds = (rewardRows ?? []).map(r => r.id);
                 const activeCount = (rewardRows ?? []).filter(r => r.active).length;
 
-                const [submissions, monthRedem, recent] = await Promise.all([
+                const fourteenDaysAgo = new Date(Date.now() - 14 * 86400000).toISOString();
+                const [submissions, monthRedem, recent, fortnight] = await Promise.all([
                     supabase
                         .from('reward_submissions')
                         .select('id, title, status, partner_feedback, updated_at')
@@ -72,6 +80,14 @@ export default function PartnerHome() {
                             .in('reward_id', rewardIds)
                             .order('redeemed_at', { ascending: false })
                             .limit(6)
+                        : Promise.resolve({ data: [] }),
+                    rewardIds.length
+                        ? supabase
+                            .from('redemptions')
+                            .select('redeemed_at')
+                            .in('reward_id', rewardIds)
+                            .gte('redeemed_at', fourteenDaysAgo)
+                            .limit(2000)
                         : Promise.resolve({ data: [] }),
                 ]);
 
@@ -114,6 +130,14 @@ export default function PartnerHome() {
                 });
                 setRecentRedemptions(recent.data ?? []);
                 setActions(nextActions);
+                setLiveRewards((rewardRows ?? []).filter(r => r.active));
+
+                const sevenDaysAgo = Date.now() - 7 * 86400000;
+                const stamps = (fortnight.data ?? []).map(r => new Date(r.redeemed_at).getTime());
+                setWeekTrend({
+                    last7: stamps.filter(t => t >= sevenDaysAgo).length,
+                    prior7: stamps.filter(t => t < sevenDaysAgo).length,
+                });
 
                 // 'invited' rows are POWR-created submission links the partner
                 // hasn't touched yet — they don't count as partner activity.
@@ -136,9 +160,28 @@ export default function PartnerHome() {
 
     const cards = [
         { label: 'Active Rewards', value: stats.activeRewards, icon: Award, color: '#10B981', to: '/partner/rewards', sub: 'Live in app' },
-        { label: 'This Month', value: stats.monthRedemptions, icon: Gift, color: '#E8D200', to: '/partner/redemptions', sub: 'Redemptions' },
+        { label: 'This Month', value: stats.monthRedemptions, icon: Gift, color: '#E8D200', to: '/partner/redemptions', sub: 'Redemptions', trend: weekTrend },
         { label: 'Pending Review', value: stats.pendingSubmissions, icon: Inbox, color: '#F43F5E', to: '/partner/rewards', sub: 'Submissions' },
     ];
+
+    // Redemptions momentum: last 7 days vs the 7 before. Direction is carried
+    // by the icon + signed number, not color alone.
+    const trendChip = (trend) => {
+        if (!trend || (trend.last7 === 0 && trend.prior7 === 0)) return null;
+        const diff = trend.last7 - trend.prior7;
+        const TrendIcon = diff > 0 ? ArrowUpRight : diff < 0 ? ArrowDownRight : Minus;
+        const tone = diff > 0 ? 'text-[#10B981]' : diff < 0 ? 'text-red-500' : 'text-[#999]';
+        return (
+            <div className="flex items-center gap-1.5 mt-4">
+                <TrendIcon size={13} className={tone} strokeWidth={3} />
+                <span className="text-[10px] font-black text-[#666]">{trend.last7} this week</span>
+                <span className={`text-[10px] font-black ${tone}`}>{diff > 0 ? `+${diff}` : diff < 0 ? diff : '±0'} vs prior 7 days</span>
+            </div>
+        );
+    };
+
+    // Header chip: where codes come from, one glance, one click.
+    const method = methodMeta(deliveryMethod);
 
     // First run = nothing created yet; the checklist stays until a reward exists
     const firstRun = journey && !journey.hasReward && !journey.hasDraft;
@@ -172,13 +215,38 @@ export default function PartnerHome() {
                     <div className="h-[1px] w-10 bg-[#E8D200]"></div>
                     <span className="text-[10px] uppercase tracking-[0.5em] text-[#8a7600] font-black">Partner Dashboard</span>
                 </div>
-                <h1 className="text-5xl font-light tracking-tighter text-[#1A1A1A] mb-4">
-                    {firstRun ? 'Welcome' : 'Welcome back'}{partnerData?.name ? `, ${partnerData.name}` : ''}.
-                </h1>
-                <p className="text-[#AAAAAA] text-[11px] font-black uppercase tracking-[0.35em]">
-                    {firstRun ? "Let's get your first reward live." : 'Manage your rewards and track performance.'}
-                </p>
+                <div className="flex items-end justify-between gap-6 flex-wrap">
+                    <div>
+                        <h1 className="text-5xl font-light tracking-tighter text-[#1A1A1A] mb-4">
+                            {firstRun ? 'Welcome' : 'Welcome back'}{partnerData?.name ? `, ${partnerData.name}` : ''}.
+                        </h1>
+                        <p className="text-[#AAAAAA] text-[11px] font-black uppercase tracking-[0.35em]">
+                            {firstRun ? "Let's get your first reward live." : 'Manage your rewards and track performance.'}
+                        </p>
+                    </div>
+                    {method ? (
+                        <Link to={integrationPathFor(deliveryMethod)}
+                            className="flex items-center gap-3 px-5 py-2.5 bg-white border border-[#E6E6E1] rounded-full hover:border-[#E8D200]/40 transition-all group shrink-0">
+                            <span className="h-1.5 w-1.5 rounded-full bg-[#10B981] shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
+                            <span className="text-[10px] uppercase tracking-[0.2em] font-black text-[#666] group-hover:text-[#8a7600] transition-colors">
+                                Delivering via {method.label}
+                            </span>
+                            <ChevronRight size={12} className="text-[#CCC] group-hover:text-[#8a7600] transition-colors" />
+                        </Link>
+                    ) : deliveryMethod === null ? (
+                        <Link to="/partner/integration"
+                            className="flex items-center gap-3 px-5 py-2.5 bg-[#E8D200]/10 border border-[#E8D200]/30 rounded-full hover:border-[#E8D200]/60 transition-all shrink-0">
+                            <Plug size={12} className="text-[#8a7600]" />
+                            <span className="text-[10px] uppercase tracking-[0.2em] font-black text-[#8a7600]">Choose delivery method</span>
+                        </Link>
+                    ) : null}
+                </div>
             </header>
+
+            {/* Main column + live phone rail (the rail is the "what's live
+                right now" surface — it renders the real listing component) */}
+            <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_300px] lg:gap-14 items-start">
+            <div className="min-w-0">
 
             {/* How POWR works — orientation for partners without a redemption yet */}
             {showIntro && (
@@ -259,6 +327,7 @@ export default function PartnerHome() {
                         </div>
                         <div className="text-[9px] uppercase tracking-[0.4em] text-[#BBBBBB] font-black">{c.sub}</div>
                         <div className="text-[11px] font-black text-[#888] mt-1">{c.label}</div>
+                        {c.trend ? trendChip(c.trend) : null}
                     </Link>
                 ))}
             </div>}
@@ -332,6 +401,51 @@ export default function PartnerHome() {
                     </div>
                 )}
             </div>}
+
+            </div>
+
+            {/* ── Live phone preview — sticky rail; PartnerLayout's main is
+                   the scroll container so sticky works (same as Rewards) */}
+            <aside className="hidden lg:block sticky top-6">
+                <div className="flex items-center gap-3 mb-6">
+                    <span className={`h-1.5 w-1.5 rounded-full ${liveRewards.length ? 'bg-[#10B981] shadow-[0_0_10px_rgba(16,185,129,0.6)] animate-pulse' : 'bg-[#D5D5D0]'}`} />
+                    <span className="text-[10px] uppercase tracking-[0.4em] text-[#8a7600] font-black">Live in app</span>
+                    {liveRewards.length > 0 && (
+                        <span className="text-[9px] font-black text-[#BBB] uppercase tracking-[0.2em]">
+                            {liveRewards.length} reward{liveRewards.length === 1 ? '' : 's'}
+                        </span>
+                    )}
+                </div>
+                {liveRewards.length > 0 ? (
+                    <>
+                        {(() => {
+                            const idx = Math.min(previewIdx, liveRewards.length - 1);
+                            const reward = liveRewards[idx];
+                            return <RewardAppPreview key={reward.id} pageTheme="light" {...previewFromReward(reward, partnerData?.name)} />;
+                        })()}
+                        {liveRewards.length > 1 && (
+                            <div className="flex items-center justify-center gap-2 mt-5">
+                                {liveRewards.map((r, i) => (
+                                    <button key={r.id} type="button" onClick={() => setPreviewIdx(i)} title={r.title}
+                                        aria-label={`Preview ${r.title}`}
+                                        className={`h-2 rounded-full transition-all ${i === Math.min(previewIdx, liveRewards.length - 1) ? 'w-6 bg-[#8a7600]' : 'w-2 bg-[#D5D5D0] hover:bg-[#BBBBBB]'}`} />
+                                ))}
+                            </div>
+                        )}
+                    </>
+                ) : (
+                    <div className="border-2 border-dashed border-[#E6E6E1] rounded-3xl px-8 py-16 text-center">
+                        <Smartphone size={24} className="text-[#DDDDDD] mx-auto mb-5" />
+                        <p className="text-[10px] uppercase tracking-[0.4em] text-[#CCCCCC] font-black leading-relaxed mb-3">
+                            Nothing live yet
+                        </p>
+                        <p className="text-[11px] text-[#BBBBBB] leading-relaxed">
+                            Your first approved reward will appear here exactly as members see it in the app.
+                        </p>
+                    </div>
+                )}
+            </aside>
+            </div>
         </div>
     );
 }
