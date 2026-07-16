@@ -230,6 +230,13 @@ export default function PartnerIntegrationShopify() {
                                     {(discounts ?? []).filter(d => d.cloneable).map(d => (
                                         <option key={d.gid} value={d.gid}>{d.title}</option>
                                     ))}
+                                    {/* A mapping can point at a discount the picker hides
+                                        (e.g. a POWR-minted code chosen before the filter
+                                        existed) — keep it selectable so the select shows
+                                        the truth instead of falling back to "No minting". */}
+                                    {mapping && !(discounts ?? []).some(d => d.gid === mapping.discount_gid) && (
+                                        <option value={mapping.discount_gid}>{mapping.discount_title} (current)</option>
+                                    )}
                                 </select>
                             </div>
                         );
