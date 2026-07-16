@@ -7,6 +7,8 @@
 //
 // Routes (platform JWT verification is OFF; each route enforces its own auth):
 //   POST {action:'start', shop_domain}    JWT (brand user / admin+brand_name)
+//   GET  /install?shop=x.myshopify.com    public — App Store install entry:
+//                                         immediate OAuth, claimed later in portal
 //   GET  /callback?shop&code&state&hmac   public — Shopify OAuth redirect
 //   POST {action:'status'}                JWT → connection + mappings
 //   POST {action:'list_discounts'}        JWT → active code discounts in the shop
@@ -252,6 +254,35 @@ Deno.serve(async (req) => {
   const path = url.pathname.replace(/^\/shopify-connect/, '') || '/';
 
   // ══════════════════════════════════════════════════════════════════════════
+  // GET /install — App Store / automated-review entry point. Portal-initiated
+  // connects never hit this (the start action binds OAuth to a brand); a
+  // direct install must authenticate immediately, so the attempt is parked on
+  // a PENDING:<shop> row and sent straight to OAuth. After approval the
+  // callback routes the merchant to the portal to claim the store from their
+  // brand account — that claim re-runs OAuth, which is instant since the app
+  // is already installed.
+  // ══════════════════════════════════════════════════════════════════════════
+  if (req.method === 'GET' && path === '/install') {
+    const shop = (url.searchParams.get('shop') ?? '').toLowerCase();
+    if (!validShop(shop)) return json({ error: 'invalid shop parameter' }, 400);
+    const state = randomHex(24);
+    await admin.from('reward_brand_shopify').upsert({
+      brand_name: `PENDING:${shop}`,
+      shop_domain: shop,
+      // Never 'connected': the webhook's connected-only lookup and the
+      // unique connected-domain index both rely on parking rows staying out
+      // of the connected state.
+      status: 'pending',
+      state_token: state,
+      state_expires: new Date(Date.now() + 15 * 60_000).toISOString(),
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'brand_name' });
+    const authorize = `https://${shop}/admin/oauth/authorize?client_id=${clientId}` +
+      `&scope=${encodeURIComponent(SCOPES)}&redirect_uri=${encodeURIComponent(CALLBACK_URL)}&state=${state}`;
+    return Response.redirect(authorize, 302);
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
   // GET /callback — Shopify OAuth redirect (public; HMAC + state are the auth)
   // ══════════════════════════════════════════════════════════════════════════
   if (req.method === 'GET' && path === '/callback') {
@@ -291,6 +322,16 @@ Deno.serve(async (req) => {
     const tokenBody = await tokenRes.json().catch(() => ({}));
     if (!tokenRes.ok || !tokenBody.access_token) return back('token_exchange_failed');
 
+    // Direct App Store install (no brand yet): the exchange above completed
+    // the install; park it — no tokens kept — and send the merchant to the
+    // portal to claim the store from their brand account.
+    if (row.brand_name.startsWith('PENDING:')) {
+      await admin.from('reward_brand_shopify')
+        .update({ state_token: null, state_expires: null, updated_at: new Date().toISOString() })
+        .eq('brand_name', row.brand_name);
+      return Response.redirect('https://powr.life/partner/login?shopify=installed', 302);
+    }
+
     await admin.from('reward_brand_shopify')
       .update({
         shop_domain: shop,
@@ -307,6 +348,12 @@ Deno.serve(async (req) => {
         updated_at: new Date().toISOString(),
       })
       .eq('brand_name', row.brand_name);
+
+    // Any direct-install parking row for this shop is superseded the moment
+    // a real brand connects it.
+    await admin.from('reward_brand_shopify')
+      .delete()
+      .eq('brand_name', `PENDING:${shop}`);
 
     // Register the webhooks that make reconciliation automatic. Failures are
     // logged, not fatal — status surfaces them and mapping re-attempts.

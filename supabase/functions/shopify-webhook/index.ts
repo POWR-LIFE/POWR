@@ -8,6 +8,11 @@
 //                     brand's member-assigned (reserved) codes is reconciled
 //                     to 'used' — which also fires the code.used webhook.
 //   app/uninstalled → mark the connection uninstalled and stop JIT minting.
+//   customers/data_request, customers/redact, shop/redact → mandatory GDPR
+//                     compliance topics. POWR stores no Shopify customer data
+//                     (orders are read only for their discount codes), so the
+//                     customer topics acknowledge with nothing to return, and
+//                     shop/redact scrubs the store's connection row.
 
 import { createClient } from '@supabase/supabase-js';
 
@@ -41,6 +46,33 @@ Deno.serve(async (req) => {
     Deno.env.get('SUPABASE_URL')!,
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
   );
+
+  // ── Mandatory GDPR compliance topics ─────────────────────────────────────
+  // Handled BEFORE the connected-row lookup: shop/redact arrives ~48h after
+  // uninstall, when no connected row exists any more.
+  if (topic === 'customers/data_request' || topic === 'customers/redact') {
+    // POWR stores no Shopify customer data — orders are read only for their
+    // discount codes and never persisted. Nothing to return or erase.
+    console.log('compliance ack', topic, shop);
+    return new Response('ok');
+  }
+  if (topic === 'shop/redact') {
+    // Scrub every non-connected trace of the store (tokens are already null
+    // after uninstall; this clears the domain + any stray pending rows).
+    await admin.from('reward_brand_shopify')
+      .update({
+        shop_domain: null,
+        access_token: null,
+        access_token_expires_at: null,
+        refresh_token: null,
+        refresh_token_expires_at: null,
+        state_token: null,
+        updated_at: new Date().toISOString(),
+      })
+      .ilike('shop_domain', shop)
+      .neq('status', 'connected');
+    return new Response('ok');
+  }
 
   // connected-only: an abandoned 'pending' connect attempt for the same
   // domain must not make maybeSingle() see two rows and silently drop the
