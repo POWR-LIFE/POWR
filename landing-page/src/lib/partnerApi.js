@@ -63,3 +63,58 @@ export async function fetchIntegration(brandName) {
     if (error) throw error;
     return data ?? null;
 }
+
+// One { configured, line } status per delivery method — drives the hub cards
+// and the Overview connection bar. allSettled so one flaky source degrades to
+// its "not set up" line instead of blanking everything.
+export async function fetchMethodStatuses(brandName) {
+    const [keysRes, epsRes, integRes, shopRes, rewardsRes] = await Promise.allSettled([
+        callPartnerApi('list_keys', brandName),
+        fetchEndpoints(brandName),
+        fetchIntegration(brandName),
+        callShopify('status', brandName),
+        supabase.from('rewards').select('id').ilike('brand_name', brandName),
+    ]);
+
+    // Manual = available codes across the brand's rewards (same proven
+    // two-step pattern as the Promo Codes page).
+    let availableCodes = 0;
+    if (rewardsRes.status === 'fulfilled') {
+        const ids = (rewardsRes.value.data ?? []).map(r => r.id);
+        if (ids.length) {
+            const { count } = await supabase
+                .from('redemption_codes')
+                .select('id', { count: 'exact', head: true })
+                .in('reward_id', ids)
+                .eq('status', 'available');
+            availableCodes = count ?? 0;
+        }
+    }
+
+    const activeKeys = keysRes.status === 'fulfilled' ? (keysRes.value.keys ?? []).filter(k => !k.revoked_at).length : 0;
+    const activeEps = epsRes.status === 'fulfilled' ? epsRes.value.filter(e => e.active).length : 0;
+    const mintOn = integRes.status === 'fulfilled' && integRes.value?.mint_enabled;
+    const shop = shopRes.status === 'fulfilled' ? shopRes.value : null;
+
+    return {
+        api: {
+            configured: activeKeys > 0 || activeEps > 0 || !!mintOn,
+            line: activeKeys === 0 && activeEps === 0 && !mintOn
+                ? 'Not set up yet'
+                : [`${activeKeys} key${activeKeys === 1 ? '' : 's'}`, `${activeEps} webhook${activeEps === 1 ? '' : 's'}`, mintOn ? 'JIT minting on' : null]
+                    .filter(Boolean).join(' · '),
+        },
+        shopify: {
+            configured: !!shop?.connected,
+            line: shop?.connected ? `Connected to ${shop.shop_domain}`
+                : shop?.status === 'uninstalled' ? 'App uninstalled — reconnect to resume'
+                : 'Not connected yet',
+        },
+        manual: {
+            configured: availableCodes > 0,
+            line: availableCodes > 0
+                ? `${availableCodes.toLocaleString()} code${availableCodes === 1 ? '' : 's'} available`
+                : 'No codes uploaded yet',
+        },
+    };
+}

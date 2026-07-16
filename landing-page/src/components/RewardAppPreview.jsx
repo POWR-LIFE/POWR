@@ -89,6 +89,35 @@ export function previewValueLabel({ valueLabel, discountType, discountValue }) {
   return valueLabel || '';
 }
 
+export function cleanPrefix(raw) {
+  return String(raw ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
+}
+
+// Extract the brand segment from a stored promo code: 'POWR-TRIBE' / 'POWR-TRIBE-XXXXXX' / 'TRIBE' → 'TRIBE'
+export function prefixFromPromo(promo, fallbackName) {
+  const parts = String(promo ?? '').toUpperCase().split('-').filter(Boolean);
+  if (parts[0] === 'POWR') parts.shift();
+  return cleanPrefix(parts[0] ?? fallbackName ?? '');
+}
+
+// Map a rewards row to this component's props — shared by every surface that
+// shows a live reward in the phone (Rewards editor, Overview rail).
+export const previewFromReward = (r, partnerName) => ({
+  brandName: r.brand_name || partnerName || '',
+  title: r.title ?? '',
+  description: r.description ?? '',
+  partnerBlurb: r.partner_blurb ?? '',
+  offer: r.offer ?? '',
+  valueLabel: r.value_label ?? '',
+  discountType: r.discount_type ?? '',
+  discountValue: r.discount_value ?? '',
+  pts: r.powr_cost,
+  logoUrl: r.image_url,
+  heroUrl: r.hero_image_url,
+  heroVideoUrl: r.hero_video_url,
+  codePrefix: prefixFromPromo(r.promo_code, r.brand_name || partnerName),
+});
+
 // Mirror splitDiscount() from the app.
 function splitDiscount(label) {
   if (!label) return { amount: '', suffix: '' };

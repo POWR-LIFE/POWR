@@ -12,6 +12,9 @@
 //   POST {action:'list_discounts'}        JWT → active code discounts in the shop
 //   POST {action:'map_reward', reward_id, discount_gid}  JWT
 //   POST {action:'unmap_reward', reward_id}              JWT
+//   POST {action:'create_test_code', reward_id?}         JWT — mint one labelled
+//                                         single-use code through the production
+//                                         rails (portal + app-review self-test)
 //   POST {action:'disconnect'}            JWT
 //   POST /mint                            signed with the brand's mint_secret
 //                                         (same X-POWR-Signature scheme JIT uses)
@@ -20,10 +23,17 @@ import { createClient } from '@supabase/supabase-js';
 import { hmacSha256Hex, randomHex } from '../_shared/webhookSign.ts';
 
 const API_VERSION = '2026-07';
-const SCOPES = 'write_discounts,read_orders';
+// read_products/read_collections exist solely so map_reward can read a
+// template's item restrictions and clone them onto minted codes — without
+// them, product-limited discounts can't be used as templates.
+const SCOPES = 'write_discounts,read_orders,read_products,read_collections';
 const CALLBACK_URL = 'https://wjvvujnicwkruaeibttt.supabase.co/functions/v1/shopify-connect/callback';
 const WEBHOOK_URL = 'https://wjvvujnicwkruaeibttt.supabase.co/functions/v1/shopify-webhook';
-const PORTAL_URL = 'https://powr.life/partner/integration/shopify';
+// OAuth-return landing. Deliberately the LEGACY portal route: it exists on
+// every deployed frontend (pre-restructure it's the Developers page with the
+// ?shopify= toast; post-restructure it 301s to the Shopify integration page
+// with the query preserved) — so the redirect never races a web deploy.
+const PORTAL_URL = 'https://powr.life/partner/developers';
 const MINT_URL = 'https://wjvvujnicwkruaeibttt.supabase.co/functions/v1/shopify-connect/mint';
 
 const json = (body, status = 200) =>
@@ -112,13 +122,106 @@ async function fetchItemRestrictions(shop, token, gid, itemsTypename) {
   return { applies: { [field]: conn.nodes.map((n) => n.id) } };
 }
 
+// now + seconds → ISO, with a safety margin (default 60s) so we refresh
+// slightly BEFORE Shopify's clock says expired. Null-safe for legacy
+// non-expiring exchanges that omit the field.
+const tokenExpiry = (seconds, marginSeconds = 60) =>
+  seconds ? new Date(Date.now() + Math.max(seconds - marginSeconds, 30) * 1000).toISOString() : null;
+
+// Returns a shop row whose access_token is usable, refreshing and persisting
+// it first if the 1-hour expiry has passed. Refresh tokens ROTATE on every
+// use, so the new pair is written back before any Admin API call. If the
+// refresh fails (e.g. a concurrent worker rotated it first), the row is
+// re-read once and reused when that worker left a fresh token; otherwise the
+// stale row is returned and the caller's probe surfaces the reconnect banner.
+async function ensureFreshToken(admin, shopRow, clientId, clientSecret) {
+  if (!shopRow?.access_token || shopRow.status !== 'connected') return shopRow;
+  const exp = shopRow.access_token_expires_at ? new Date(shopRow.access_token_expires_at).getTime() : null;
+  if (!exp || exp > Date.now()) return shopRow; // legacy token, or still fresh
+  if (!shopRow.refresh_token) return shopRow;
+
+  const res = await fetch(`https://${shopRow.shop_domain}/admin/oauth/access_token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      client_id: clientId,
+      client_secret: clientSecret,
+      grant_type: 'refresh_token',
+      refresh_token: shopRow.refresh_token,
+    }),
+  });
+  const body = await res.json().catch(() => ({}));
+
+  if (!res.ok || !body.access_token) {
+    const { data: fresh } = await admin
+      .from('reward_brand_shopify').select('*')
+      .eq('brand_name', shopRow.brand_name).maybeSingle();
+    const freshExp = fresh?.access_token_expires_at ? new Date(fresh.access_token_expires_at).getTime() : null;
+    if (freshExp && freshExp > Date.now()) return fresh;
+    console.error('shopify token refresh failed', shopRow.shop_domain, res.status, JSON.stringify(body).slice(0, 300));
+    return shopRow;
+  }
+
+  const patch = {
+    access_token: body.access_token,
+    access_token_expires_at: tokenExpiry(body.expires_in),
+    refresh_token: body.refresh_token ?? shopRow.refresh_token,
+    refresh_token_expires_at: body.refresh_token_expires_in
+      ? tokenExpiry(body.refresh_token_expires_in, 0)
+      : shopRow.refresh_token_expires_at,
+    updated_at: new Date().toISOString(),
+  };
+  await admin.from('reward_brand_shopify').update(patch).eq('brand_name', shopRow.brand_name);
+  return { ...shopRow, ...patch };
+}
+
 const CROCKFORD = '23456789ABCDEFGHJKMNPQRSTVWXYZ';
-function mintCode() {
-  const bytes = new Uint8Array(8);
+function mintCode(prefix = 'POWR-', len = 8) {
+  const bytes = new Uint8Array(len);
   crypto.getRandomValues(bytes);
   let suffix = '';
   for (const b of bytes) suffix += CROCKFORD[b % CROCKFORD.length];
-  return `POWR-${suffix}`;
+  return `${prefix}${suffix}`;
+}
+
+// Create a single-use DiscountCodeBasic in the brand's store cloned from a
+// mapping's stored config. Shared by /mint (member redemptions) and
+// create_test_code (portal self-test). Returns true on success.
+async function createClonedDiscount(shopRow, cfg, title, code, endsAt) {
+  const value = cfg.type === 'percentage'
+    ? { percentage: cfg.percentage }
+    : { discountAmount: { amount: cfg.amount, appliesOnEachItem: !!cfg.appliesOnEachItem } };
+  // Carry the template's product/collection restrictions into the minted code.
+  const mintItems = cfg.applies?.products?.length
+    ? { products: { productsToAdd: cfg.applies.products } }
+    : cfg.applies?.collections?.length
+      ? { collections: { add: cfg.applies.collections } }
+      : { all: true };
+
+  const { data, errors } = await shopifyGraphql(shopRow.shop_domain, shopRow.access_token, `
+    mutation($discount: DiscountCodeBasicInput!) {
+      discountCodeBasicCreate(basicCodeDiscount: $discount) {
+        codeDiscountNode { id }
+        userErrors { field message }
+      }
+    }`, {
+    discount: {
+      title,
+      code,
+      startsAt: new Date().toISOString(),
+      endsAt: endsAt ?? null,
+      usageLimit: 1,
+      appliesOncePerCustomer: true,
+      customerSelection: { all: true },
+      customerGets: { value, items: mintItems },
+    },
+  });
+  const errs = errors ?? data?.discountCodeBasicCreate?.userErrors;
+  if (errs?.length || !data?.discountCodeBasicCreate?.codeDiscountNode?.id) {
+    console.error('shopify discount create failed', JSON.stringify(errs ?? data));
+    return false;
+  }
+  return true;
 }
 
 Deno.serve(async (req) => {
@@ -171,11 +274,13 @@ Deno.serve(async (req) => {
       .maybeSingle();
     if (!row || (row.state_expires && new Date(row.state_expires) < new Date())) return back('state_expired');
 
-    // Exchange the grant for an offline Admin API token.
+    // Exchange the grant for an EXPIRING offline Admin API token (expiring=1).
+    // Shopify rejects non-expiring tokens for public apps created after
+    // 2026-04-01: access tokens live 1h, refresh tokens 90d and rotate.
     const tokenRes = await fetch(`https://${shop}/admin/oauth/access_token`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ client_id: clientId, client_secret: clientSecret, code }),
+      body: JSON.stringify({ client_id: clientId, client_secret: clientSecret, code, expiring: 1 }),
     });
     const tokenBody = await tokenRes.json().catch(() => ({}));
     if (!tokenRes.ok || !tokenBody.access_token) return back('token_exchange_failed');
@@ -184,6 +289,9 @@ Deno.serve(async (req) => {
       .update({
         shop_domain: shop,
         access_token: tokenBody.access_token,
+        access_token_expires_at: tokenExpiry(tokenBody.expires_in),
+        refresh_token: tokenBody.refresh_token ?? null,
+        refresh_token_expires_at: tokenExpiry(tokenBody.refresh_token_expires_in, 0),
         scopes: tokenBody.scope ?? SCOPES,
         status: 'connected',
         state_token: null,
@@ -255,9 +363,9 @@ Deno.serve(async (req) => {
     // connection test without touching the store.
     if (body.test === true) return json({ code: mintCode() });
 
-    const [{ data: shopRow }, { data: mapping }] = await Promise.all([
+    const [{ data: shopRowRaw }, { data: mapping }] = await Promise.all([
       admin.from('reward_brand_shopify')
-        .select('shop_domain, access_token, status')
+        .select('*')
         .ilike('brand_name', body.brand_name)
         .maybeSingle(),
       admin.from('reward_shopify_discounts')
@@ -265,44 +373,16 @@ Deno.serve(async (req) => {
         .eq('reward_id', body.reward_id ?? '')
         .maybeSingle(),
     ]);
-    if (shopRow?.status !== 'connected') return json({ error: 'shop not connected' }, 409);
+    if (shopRowRaw?.status !== 'connected') return json({ error: 'shop not connected' }, 409);
     if (!mapping) return json({ error: 'reward not mapped to a discount' }, 409);
+    const shopRow = await ensureFreshToken(admin, shopRowRaw, clientId, clientSecret);
 
     const code = mintCode();
-    const cfg = mapping.config ?? {};
-    const value = cfg.type === 'percentage'
-      ? { percentage: cfg.percentage }
-      : { discountAmount: { amount: cfg.amount, appliesOnEachItem: !!cfg.appliesOnEachItem } };
-    // Carry the template's product/collection restrictions into the minted code.
-    const mintItems = cfg.applies?.products?.length
-      ? { products: { productsToAdd: cfg.applies.products } }
-      : cfg.applies?.collections?.length
-        ? { collections: { add: cfg.applies.collections } }
-        : { all: true };
-
-    const { data, errors } = await shopifyGraphql(shopRow.shop_domain, shopRow.access_token, `
-      mutation($discount: DiscountCodeBasicInput!) {
-        discountCodeBasicCreate(basicCodeDiscount: $discount) {
-          codeDiscountNode { id }
-          userErrors { field message }
-        }
-      }`, {
-      discount: {
-        title: `POWR · ${mapping.discount_title} · ${code}`,
-        code,
-        startsAt: new Date().toISOString(),
-        endsAt: body.expires_at ?? null,
-        usageLimit: 1,
-        appliesOncePerCustomer: true,
-        customerSelection: { all: true },
-        customerGets: { value, items: mintItems },
-      },
-    });
-    const errs = errors ?? data?.discountCodeBasicCreate?.userErrors;
-    if (errs?.length || !data?.discountCodeBasicCreate?.codeDiscountNode?.id) {
-      console.error('shopify mint failed', JSON.stringify(errs ?? data));
-      return json({ error: 'shopify discount create failed' }, 502);
-    }
+    const ok = await createClonedDiscount(
+      shopRow, mapping.config ?? {},
+      `POWR · ${mapping.discount_title} · ${code}`, code, body.expires_at ?? null,
+    );
+    if (!ok) return json({ error: 'shopify discount create failed' }, 502);
 
     return json({ code });
   }
@@ -345,7 +425,9 @@ Deno.serve(async (req) => {
       .select('*')
       .ilike('brand_name', brand)
       .maybeSingle();
-    return data;
+    // Hourly-expiring tokens are refreshed just-in-time, so every action
+    // below can treat shop.access_token as live.
+    return ensureFreshToken(admin, data, clientId, clientSecret);
   };
 
   // ── start: mint the OAuth authorize URL ────────────────────────────────────
@@ -449,6 +531,10 @@ Deno.serve(async (req) => {
     if (errors?.length) return json({ error: errors[0]?.message ?? 'Shopify query failed' }, 502);
 
     const discounts = (data?.codeDiscountNodes?.nodes ?? [])
+      // Codes WE minted are themselves active discounts ("POWR · <template> ·
+      // <code>") — hide them or they'd swamp the template picker after a few
+      // dozen redemptions and invite mapping a single-use code as a template.
+      .filter((n) => !/^POWR( TEST)? · /.test(n.codeDiscount?.title ?? ''))
       .map((n) => {
         const kind = normaliseValue(n.codeDiscount);
         return {
@@ -561,12 +647,67 @@ Deno.serve(async (req) => {
     return json({ ok: true });
   }
 
+  // ── create_test_code: one labelled single-use code through the production
+  //    rails — cloned from the mapped template and tracked as 'reserved', so
+  //    spending it at checkout flips it to 'used' via the orders webhook.
+  //    Lets partners (and Shopify app review) verify the full loop without a
+  //    member redemption. reward_id optional; defaults to the latest mapping.
+  if (body.action === 'create_test_code') {
+    const shop = await getShop();
+    if (shop?.status !== 'connected') return json({ error: 'Connect your Shopify store first' }, 409);
+
+    let mq = admin.from('reward_shopify_discounts')
+      .select('reward_id, discount_title, config')
+      .ilike('brand_name', brand);
+    if (body.reward_id) mq = mq.eq('reward_id', body.reward_id);
+    const { data: mappings } = await mq.order('updated_at', { ascending: false }).limit(1);
+    const mapping = mappings?.[0];
+    if (!mapping) return json({ error: 'Map a reward to a discount first' }, 409);
+
+    const code = mintCode('POWR-TEST-', 6);
+    const expiresAt = new Date(Date.now() + 7 * 86_400_000).toISOString();
+    const ok = await createClonedDiscount(
+      shop, mapping.config ?? {},
+      `POWR TEST · ${mapping.discount_title} · ${code}`, code, expiresAt,
+    );
+    if (!ok) return json({ error: 'Shopify discount create failed — check the store connection above' }, 502);
+
+    // Tracked like a member-held code (minus the member) so reconciliation
+    // treats it identically. No redemption ledger row — it isn't one.
+    const { error: insErr } = await admin.from('redemption_codes').insert({
+      reward_id: mapping.reward_id,
+      code,
+      source: 'PARTNER_API',
+      status: 'reserved',
+      assigned_at: new Date().toISOString(),
+      expires_at: expiresAt,
+    });
+    if (insErr) {
+      return json({ error: `The code ${code} was created in Shopify but POWR couldn't track it (${insErr.message}) — delete it in your store and try again` }, 500);
+    }
+
+    if (isAdmin) {
+      await admin.from('admin_audit_log').insert({
+        admin_id: user.id, action: 'shopify_create_test_code', target_type: 'reward_brand',
+        target_id: null, metadata: { brand_name: brand, reward_id: mapping.reward_id, code },
+      });
+    }
+    return json({ ok: true, code, reward_id: mapping.reward_id, expires_at: expiresAt });
+  }
+
   // ── disconnect ──────────────────────────────────────────────────────────────
   if (body.action === 'disconnect') {
     const shop = await getShop();
     if (!shop) return json({ ok: true });
     await admin.from('reward_brand_shopify')
-      .update({ status: 'disconnected', access_token: null, updated_at: new Date().toISOString() })
+      .update({
+        status: 'disconnected',
+        access_token: null,
+        access_token_expires_at: null,
+        refresh_token: null,
+        refresh_token_expires_at: null,
+        updated_at: new Date().toISOString(),
+      })
       .eq('brand_name', shop.brand_name);
     await admin.from('reward_brand_integrations')
       .update({ mint_enabled: false })
