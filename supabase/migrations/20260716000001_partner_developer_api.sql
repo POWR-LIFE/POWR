@@ -400,6 +400,53 @@ $$;
 revoke all on function public.reconcile_brand_redemption_codes(text, uuid, text[], timestamptz) from public, anon, authenticated;
 
 -- =============================================================
+-- claim_pool_code 3-arg overload. redeem-reward has been calling
+-- claim_pool_code(p_reward_id, p_user_id, p_expires_at) since the wallet
+-- work, but only the 2-arg version ever shipped — so the RPC errored and
+-- every live claim quietly used the optimistic-update fallback loop. This
+-- restores the intended SKIP LOCKED path (and stamps the member expiry on
+-- the claimed code, like the fallback does).
+-- =============================================================
+create or replace function public.claim_pool_code(
+  p_reward_id  uuid,
+  p_user_id    uuid,
+  p_expires_at timestamptz
+) returns table (id uuid, code text)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_id   uuid;
+  v_code text;
+begin
+  select rc.id, rc.code into v_id, v_code
+    from public.redemption_codes rc
+   where rc.reward_id = p_reward_id
+     and rc.status = 'available'
+     and rc.expires_at > now()
+   order by rc.created_at
+   limit 1
+   for update skip locked;
+
+  if v_id is null then
+    return;
+  end if;
+
+  update public.redemption_codes
+     set status = 'reserved',
+         assigned_user_id = p_user_id,
+         assigned_at = now(),
+         expires_at = coalesce(p_expires_at, redemption_codes.expires_at)
+   where redemption_codes.id = v_id;
+
+  return query select v_id, v_code;
+end;
+$$;
+
+revoke all on function public.claim_pool_code(uuid, uuid, timestamptz) from public, anon, authenticated;
+
+-- =============================================================
 -- Dispatcher claim — SKIP LOCKED so overlapping cron runs never double-send.
 -- Attempts are counted at claim time; the dispatcher then settles each row
 -- to delivered / pending(retry) / failed.
