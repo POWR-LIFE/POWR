@@ -6,6 +6,7 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import { RewardHeroMedia } from '@/components/rewards/RewardHeroMedia';
 import type { Reward } from '@/lib/api/rewards';
+import { rewardLogoUri } from '@/lib/storageImage';
 
 const GOLD = '#E8D200';
 const TEXT_PRIMARY = '#F2F2F2';
@@ -36,7 +37,7 @@ export function RewardCard({ reward, balance, challengeTitle }: RewardCardProps)
   const { amount, suffix } = splitDiscount(label);
 
   const imageUri = reward.hero_image_url ?? reward.image_url;
-  const logoUri = reward.image_url ?? reward.partner?.logo_url;
+  const logoUri = rewardLogoUri(reward.image_url ?? reward.partner?.logo_url);
 
   return (
     <View style={styles.card}>

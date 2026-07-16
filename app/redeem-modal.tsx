@@ -1,6 +1,7 @@
 import GeometricBackground from '@/components/GeometricBackground';
 import { RewardHeroMedia } from '@/components/rewards/RewardHeroMedia';
 import { Ionicons } from '@expo/vector-icons';
+import { useQueryClient } from '@tanstack/react-query';
 import * as Clipboard from 'expo-clipboard';
 import { Image as ExpoImage } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -19,6 +20,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { usePoints } from '@/hooks/usePoints';
 import { redeemReward, RedemptionError, type IntegrationType, type Reward } from '@/lib/api/rewards';
+import { rewardHeroUri, rewardLogoUri } from '@/lib/storageImage';
 import { supabase } from '@/lib/supabase';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
@@ -64,8 +66,8 @@ function toUIReward(r: Reward): UIReward {
     pts: r.powr_cost,
     value: formatValue(r),
     logoText: (r.partner?.name ?? r.brand_name ?? '??').slice(0, 4).toUpperCase(),
-    logoUrl: r.image_url ?? r.partner?.logo_url ?? null,
-    heroUrl: r.hero_image_url ?? null,
+    logoUrl: rewardLogoUri(r.image_url ?? r.partner?.logo_url ?? null),
+    heroUrl: rewardHeroUri(r.hero_image_url ?? null),
     heroVideoUrl: r.hero_video_url ?? null,
     url: r.url || null,
     integrationType: r.integration_type,
@@ -77,6 +79,7 @@ export default function RedeemModal() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { balance, loading: balanceLoading, refresh } = usePoints();
+  const queryClient = useQueryClient();
 
   const [reward, setReward] = useState<UIReward | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -157,6 +160,9 @@ export default function RedeemModal() {
       setCheckoutUrl(result.checkout_url || reward.url || null);
       setStage('success');
       refresh();
+      // The wallet reads from the query cache — without this, a fresh code
+      // could be missing from a recently viewed wallet until it goes stale.
+      queryClient.invalidateQueries({ queryKey: ['wallet'] });
     } catch (e) {
       if (e instanceof RedemptionError) {
         setRedeemError(

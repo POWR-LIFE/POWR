@@ -5,6 +5,8 @@ import { useVideoPlayer, VideoView } from 'expo-video';
 import React, { useEffect, useRef, useState } from 'react';
 import { AccessibilityInfo, AppState, StyleProp, StyleSheet, Text, View, ViewStyle } from 'react-native';
 
+import { rewardHeroUri } from '@/lib/storageImage';
+
 type Fit = 'cover' | 'contain';
 type Position = 'top' | 'center' | 'bottom';
 
@@ -37,14 +39,17 @@ export function RewardHeroMedia({
 }: RewardHeroMediaProps) {
   const reduceMotion = useReducedMotion();
   const showVideo = !!videoUrl && !reduceMotion;
+  // Resized CDN copy — hero stills are uploaded at press resolution (1–5 MB).
+  // Videos stream progressively and must NOT go through the image transform.
+  const posterUri = rewardHeroUri(imageUrl);
 
-  if (!videoUrl && !imageUrl) return null;
+  if (!videoUrl && !posterUri) return null;
 
   return (
     <View style={style}>
-      {imageUrl && (
+      {posterUri && (
         <ExpoImage
-          source={{ uri: imageUrl }}
+          source={{ uri: posterUri }}
           style={StyleSheet.absoluteFill}
           contentFit={contentFit}
           contentPosition={contentPosition}
