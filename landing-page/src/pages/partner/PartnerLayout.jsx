@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Award, Gift, Settings, LogOut, ChevronRight, Search, Eye, CalendarDays, Ticket, MapPin } from 'lucide-react';
+import { LayoutDashboard, Award, Gift, Settings, LogOut, ChevronRight, Search, Eye, CalendarDays, Ticket, MapPin, Code2 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../App';
 
@@ -103,6 +103,7 @@ const NAV_ITEMS = [
     { label: "What's On",   path: '/partner/featured',    icon: CalendarDays    },
     { label: 'Placements',  path: '/partner/placements',  icon: MapPin, gated: true },
     { label: 'Redemptions', path: '/partner/redemptions', icon: Gift            },
+    { label: 'Developers',  path: '/partner/developers',  icon: Code2           },
     { label: 'Settings',    path: '/partner/settings',    icon: Settings        },
 ];
 
@@ -113,6 +114,7 @@ const PATH_LABELS = {
     featured:      "What's On",
     placements:    'Placements',
     redemptions:   'Redemptions',
+    developers:    'Developers',
     settings:      'Settings',
 };
 
