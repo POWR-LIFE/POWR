@@ -4,7 +4,7 @@ import * as XLSX from 'xlsx';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
 import { useAuth } from '../../App';
-import { ChangeMethodLink } from './integrationShared';
+import { ChangeMethodLink, StageStrip } from './integrationShared';
 import {
     parseCodes,
     parseReconciliationCodes,
@@ -124,6 +124,11 @@ export default function PartnerPromoCodes() {
             const stats = await fetchCodeStatsDirect(rewardId);
             setCodeStats(stats);
             setAvailByReward(prev => ({ ...prev, [rewardId]: stats.available }));
+            // Empty pool → the only useful thing to do is add codes, so open
+            // the workspace straight on that mode (step 2 of the stage strip).
+            if (stats.available + stats.reserved + stats.used + stats.expired === 0) {
+                setCodeWorkspaceMode('add');
+            }
         } catch {
             setCodeStats(null);
         }
@@ -336,6 +341,32 @@ export default function PartnerPromoCodes() {
         }
     };
 
+    // ── Staged setup — per selected reward, derived from live pool state ──
+    const poolTotal = codeStats
+        ? codeStats.available + codeStats.reserved + codeStats.used + codeStats.expired
+        : 0;
+    const stageSteps = [
+        {
+            label: 'Pick a reward',
+            done: !!selectedReward,
+            hint: 'Choose which reward these codes unlock — each reward keeps its own pool.',
+        },
+        {
+            label: 'Load codes',
+            done: poolTotal > 0,
+            hint: 'Generate a batch right here or upload the codes from your store — either takes under a minute.',
+        },
+        {
+            label: 'Members redeem',
+            done: poolTotal > 0 && (codeStats?.available ?? 0) > 0 && !!selectedReward?.active,
+            hint: !selectedReward?.active && poolTotal > 0
+                ? 'Codes are ready — once this reward goes live in the app, members draw from the pool automatically.'
+                : poolTotal > 0 && (codeStats?.available ?? 0) === 0
+                    ? 'The pool has run dry — top it up so members can keep redeeming.'
+                    : 'POWR hands a code to each member automatically when they redeem — nothing else to set up.',
+        },
+    ];
+
     // ── Render ────────────────────────────────────────────────────
     if (loading) {
         return (
@@ -376,6 +407,11 @@ export default function PartnerPromoCodes() {
                 </div>
             ) : (
                 <>
+                    <StageStrip
+                        steps={stageSteps}
+                        doneHint="This reward is live — POWR hands a code to each member automatically. Reconcile used codes or top up the pool anytime below."
+                    />
+
                     {/* Reward selector — dropdown */}
                     <div className="mb-8 relative max-w-2xl" ref={selectorRef}>
                         <span className="block text-[10px] uppercase tracking-[0.4em] text-[#888888] font-black mb-3">Your Rewards</span>
