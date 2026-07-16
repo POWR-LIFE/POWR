@@ -95,24 +95,25 @@ export default function PartnerDevelopers() {
 
     const refresh = useCallback(async () => {
         if (!brand) return;
-        try {
-            const [keysRes, eps, dels, integ] = await Promise.all([
-                callPartnerApi('list_keys', brand),
-                fetchEndpoints(brand),
-                fetchDeliveries(brand),
-                fetchIntegration(brand),
-            ]);
-            setKeys(keysRes.keys ?? []);
-            setEndpoints(eps);
-            setDeliveries(dels);
-            setIntegration(integ);
-            setMintUrl(integ?.mint_url ?? '');
-            setThreshold(integ?.pool_low_threshold ?? 10);
-        } catch (err) {
-            toast.error(err.message);
-        } finally {
-            setLoading(false);
+        // allSettled so one transient failure can't blank the whole page —
+        // whatever loaded still renders, and the failure surfaces once.
+        const [keysRes, eps, dels, integ] = await Promise.allSettled([
+            callPartnerApi('list_keys', brand),
+            fetchEndpoints(brand),
+            fetchDeliveries(brand),
+            fetchIntegration(brand),
+        ]);
+        if (keysRes.status === 'fulfilled') setKeys(keysRes.value.keys ?? []);
+        if (eps.status === 'fulfilled') setEndpoints(eps.value);
+        if (dels.status === 'fulfilled') setDeliveries(dels.value);
+        if (integ.status === 'fulfilled') {
+            setIntegration(integ.value);
+            setMintUrl(integ.value?.mint_url ?? '');
+            setThreshold(integ.value?.pool_low_threshold ?? 10);
         }
+        const failed = [keysRes, eps, dels, integ].find(r => r.status === 'rejected');
+        if (failed) toast.error(`Some data failed to load — refresh to retry (${failed.reason?.message ?? 'network error'})`);
+        setLoading(false);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [brand]);
 
