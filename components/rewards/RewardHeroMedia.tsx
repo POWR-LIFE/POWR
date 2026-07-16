@@ -172,15 +172,26 @@ function HeroVideo({ uri, contentFit }: { uri: string; contentFit: Fit }) {
   }
 
   return (
-    <VideoView
-      player={player}
-      style={StyleSheet.absoluteFill}
-      contentFit={contentFit}
-      nativeControls={false}
-      allowsFullscreen={false}
-      allowsPictureInPicture={false}
-      pointerEvents="none"
-    />
+    // Touch-transparency must live on a plain wrapper View: `pointerEvents`
+    // set directly on VideoView is dropped on web (it renders a raw <video>)
+    // and the native player's own subviews still hit-test on iOS/Android —
+    // the hero video was eating the home reward card's Pressable taps.
+    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+      <VideoView
+        player={player}
+        style={StyleSheet.absoluteFill}
+        contentFit={contentFit}
+        nativeControls={false}
+        fullscreenOptions={{ enable: false }}
+        allowsPictureInPicture={false}
+        // Android's default SurfaceView composites in its own layer and
+        // ignores parent clipping, so an expanded list card's video kept
+        // drawing over the rewards hero once scrolled past the ScrollView
+        // edge. TextureView clips like a normal view — fine for short muted
+        // loops (no DRM; the perf cost is negligible at card size).
+        surfaceType="textureView"
+      />
+    </View>
   );
 }
 
