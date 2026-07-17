@@ -8,13 +8,17 @@ import {
   SectionList,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Svg, { Circle } from 'react-native-svg';
 
 import GeometricBackground from '@/components/GeometricBackground';
+import { VaultDoor } from '@/components/vault/VaultDoor';
 import { LEVELS } from '@/constants/levels';
 import { fetchVaultContents, type VaultDeposit } from '@/lib/api/vault';
+import { useCountdown } from '@/hooks/useCountdown';
 import { usePoints } from '@/hooks/usePoints';
 
 // ─── Design tokens (match wallet / points-ledger) ─────────────────────────────
@@ -27,6 +31,13 @@ const GOLD   = '#E8D200';
 const GREEN  = '#4ade80';
 const ORANGE = '#FF9944';
 const BORDER = 'rgba(255,255,255,0.08)';
+
+// Ring geometry: the countdown ring wraps the door with breathing room.
+const RING_SIZE = 240;
+const RING_RADIUS = 112;
+const RING_STROKE = 3.5;
+const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
+const DOOR_SIZE = 168;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -55,6 +66,90 @@ function depositLabel(d: VaultDeposit): string {
 
 function depositSub(d: VaultDeposit): string {
   return d.source === 'level_up' ? 'Level-up bonus' : 'Earned over the daily cap';
+}
+
+// ─── Countdown ring hero ──────────────────────────────────────────────────────
+
+/**
+ * The centrepiece: the vault door wrapped in a gold ring that fills as the
+ * soonest deposit approaches its unlock, with the live countdown beneath.
+ * The once-per-second countdown tick re-renders the ring, so it visibly
+ * creeps — vesting as spectacle, not a spreadsheet.
+ */
+function VaultHero({
+  pending,
+  nextDeposit,
+  totalPending,
+  heroHeight,
+}: {
+  pending: number;
+  nextDeposit: VaultDeposit | null;
+  totalPending: number;
+  heroHeight: number;
+}) {
+  const countdown = useCountdown(nextDeposit ? nextDeposit.vests_at : null);
+
+  // Elapsed fraction of the next deposit's vesting window (fills toward unlock).
+  let progress = 0;
+  if (nextDeposit) {
+    const start = new Date(nextDeposit.created_at).getTime();
+    const end = new Date(nextDeposit.vests_at).getTime();
+    progress = end > start ? Math.min(1, Math.max(0, (Date.now() - start) / (end - start))) : 1;
+  }
+
+  return (
+    <View style={[styles.hero, { minHeight: heroHeight }]}>
+      <View style={styles.ringWrap}>
+        <Svg width={RING_SIZE} height={RING_SIZE} style={StyleSheet.absoluteFill}>
+          <Circle
+            cx={RING_SIZE / 2}
+            cy={RING_SIZE / 2}
+            r={RING_RADIUS}
+            stroke="rgba(255,255,255,0.12)"
+            strokeWidth={RING_STROKE}
+            fill="none"
+          />
+          {nextDeposit && (
+            <Circle
+              cx={RING_SIZE / 2}
+              cy={RING_SIZE / 2}
+              r={RING_RADIUS}
+              stroke={GOLD}
+              strokeWidth={RING_STROKE}
+              fill="none"
+              strokeLinecap="round"
+              strokeDasharray={RING_CIRCUMFERENCE}
+              strokeDashoffset={RING_CIRCUMFERENCE * (1 - progress)}
+              transform={`rotate(-90 ${RING_SIZE / 2} ${RING_SIZE / 2})`}
+            />
+          )}
+        </Svg>
+        <VaultDoor size={DOOR_SIZE} />
+      </View>
+
+      {pending > 0 ? (
+        <>
+          {countdown && <Text style={styles.heroCountdown}>{countdown}</Text>}
+          <Text style={styles.heroAmount}>
+            {totalPending.toLocaleString()} <Text style={styles.heroAmountUnit}>POWR VESTING</Text>
+          </Text>
+          {nextDeposit && (
+            <View style={styles.heroNextRow}>
+              <View style={styles.heroDot} />
+              <Text style={styles.heroNextText}>Next unlock {formatDate(nextDeposit.vests_at)}</Text>
+            </View>
+          )}
+        </>
+      ) : (
+        <>
+          <Text style={styles.heroEmptyTitle}>Nothing vesting yet</Text>
+          <Text style={styles.heroEmptyHint}>
+            Level up or push past a daily cap{'\n'}and the bonus banks here.
+          </Text>
+        </>
+      )}
+    </View>
+  );
 }
 
 // ─── Rows ────────────────────────────────────────────────────────────────────
@@ -93,7 +188,8 @@ function DepositRow({ deposit }: { deposit: VaultDeposit }) {
 export default function VaultScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { vaultPending, vaultNextVestAt } = usePoints();
+  const { height: windowHeight } = useWindowDimensions();
+  const { vaultPending } = usePoints();
 
   const { data, isPending, isError } = useQuery({
     queryKey: ['vault', 'contents'],
@@ -107,6 +203,10 @@ export default function VaultScreen() {
     ...(pending.length > 0 ? [{ title: 'Vesting', data: pending }] : []),
     ...(released.length > 0 ? [{ title: 'Unlocked', data: released }] : []),
   ];
+
+  // The door owns the centre of the first viewport; the ledger scrolls up from
+  // beneath it.
+  const heroHeight = Math.max(380, windowHeight * 0.62);
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
@@ -137,30 +237,12 @@ export default function VaultScreen() {
           showsVerticalScrollIndicator={false}
           stickySectionHeadersEnabled={false}
           ListHeaderComponent={
-            <View style={styles.heroCard}>
-              <View style={styles.heroIconWrap}>
-                <Ionicons name="lock-closed" size={18} color={GOLD} />
-              </View>
-              <Text style={styles.heroAmount}>{vaultPending.toLocaleString()}</Text>
-              <Text style={styles.heroLabel}>POWR vesting</Text>
-              {vaultNextVestAt && vaultPending > 0 && (
-                <View style={styles.heroNextRow}>
-                  <View style={styles.heroDot} />
-                  <Text style={styles.heroNextText}>
-                    Next unlock {formatDate(vaultNextVestAt)}
-                  </Text>
-                </View>
-              )}
-            </View>
-          }
-          ListEmptyComponent={
-            <View style={styles.emptyWrap}>
-              <Ionicons name="lock-open-outline" size={28} color={MUTED} />
-              <Text style={styles.statusText}>Nothing vesting yet.</Text>
-              <Text style={styles.emptyHint}>
-                Level up or push past a daily cap and the bonus banks here.
-              </Text>
-            </View>
+            <VaultHero
+              pending={pending.length}
+              nextDeposit={pending[0] ?? null}
+              totalPending={vaultPending}
+              heroHeight={heroHeight}
+            />
           }
           ListFooterComponent={
             <Text style={styles.footerNote}>
@@ -185,23 +267,25 @@ const styles = StyleSheet.create({
   headerSpacer: { width: 36 },
 
   scroll: { flex: 1 },
-  listContent: { paddingHorizontal: 16, paddingTop: 4, flexGrow: 1 },
+  listContent: { paddingHorizontal: 16, flexGrow: 1 },
 
-  heroCard: {
-    alignItems: 'center', gap: 4,
-    backgroundColor: 'rgba(40,40,40,0.6)',
-    borderWidth: 1, borderColor: 'rgba(232,210,0,0.2)', borderRadius: 16,
-    paddingVertical: 24, marginBottom: 16,
+  hero: { alignItems: 'center', justifyContent: 'center', gap: 6, paddingBottom: 18 },
+  ringWrap: {
+    width: RING_SIZE, height: RING_SIZE,
+    alignItems: 'center', justifyContent: 'center',
+    marginBottom: 20,
   },
-  heroIconWrap: {
-    width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center',
-    backgroundColor: 'rgba(232,210,0,0.12)', marginBottom: 6,
+  heroCountdown: {
+    fontSize: 26, fontWeight: '200', letterSpacing: 3, color: GOLD,
+    fontVariant: ['tabular-nums'],
   },
-  heroAmount: { fontSize: 40, fontWeight: '200', letterSpacing: 1, color: TEXT },
-  heroLabel: { fontSize: 10, fontWeight: '500', letterSpacing: 2, color: MUTED, textTransform: 'uppercase' },
-  heroNextRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10 },
+  heroAmount: { fontSize: 15, fontWeight: '400', letterSpacing: 0.5, color: TEXT, marginTop: 2 },
+  heroAmountUnit: { fontSize: 10, fontWeight: '500', letterSpacing: 2, color: MUTED },
+  heroNextRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 },
   heroDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: GOLD },
   heroNextText: { fontSize: 12, fontWeight: '300', color: DIM },
+  heroEmptyTitle: { fontSize: 15, fontWeight: '400', color: TEXT },
+  heroEmptyHint: { fontSize: 12, fontWeight: '300', color: MUTED, textAlign: 'center', lineHeight: 18 },
 
   sectionHeader: {
     fontSize: 10, fontWeight: '600', letterSpacing: 2, color: MUTED,
@@ -219,9 +303,6 @@ const styles = StyleSheet.create({
   rowTitle: { fontSize: 13, fontWeight: '400', color: TEXT },
   rowSub: { fontSize: 11, fontWeight: '300', color: MUTED },
   rowAmount: { fontSize: 15, fontWeight: '300', letterSpacing: 0.5 },
-
-  emptyWrap: { alignItems: 'center', gap: 10, paddingVertical: 32 },
-  emptyHint: { fontSize: 12, fontWeight: '300', color: MUTED, textAlign: 'center', paddingHorizontal: 40 },
 
   footerNote: {
     fontSize: 11, fontWeight: '300', color: MUTED, lineHeight: 17,

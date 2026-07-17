@@ -2,6 +2,7 @@ import { GeometricBackground } from '@/components/home/GeometricBackground';
 import MagicRings from '@/components/MagicRings';
 import { HeaderActions } from '@/components/HeaderActions';
 import { RewardHeroMedia } from '@/components/rewards/RewardHeroMedia';
+import { VaultTimer } from '@/components/rewards/VaultTimer';
 import { usePoints } from '@/hooks/usePoints';
 import { fetchMyRedemptionSummary, fetchRewards, fetchSmartFeaturedReward, type Reward as ApiReward } from '@/lib/api/rewards';
 import { resolveContextualPlacements, pickHeroPlacement, comparePlacements, type ResolvedPlacement } from '@/lib/api/placements';
@@ -153,7 +154,7 @@ export default function SpendScreen() {
   const router = useRouter();
   const [activeCategory, setActiveCategory] = useState<Category>('ALL');
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const { balance, todayEarned, vaultPending, loading, refresh: refreshPoints } = usePoints();
+  const { balance, todayEarned, vaultPending, vaultNextVestAt, loading, refresh: refreshPoints } = usePoints();
   const scrollViewRef = useRef<ScrollView>(null);
   const rewardPositions = useRef<Record<string, number>>({});
   const pendingRevealId = useRef<string | null>(null);
@@ -348,6 +349,7 @@ export default function SpendScreen() {
           balance={balance}
           todayEarned={todayEarned}
           vaultPending={vaultPending}
+          vaultNextVestAt={vaultNextVestAt}
           loading={loading}
         />
 
@@ -446,41 +448,38 @@ interface BalanceCardProps {
   balance: number;
   todayEarned: number;
   vaultPending: number;
+  vaultNextVestAt: string | null;
   loading: boolean;
 }
 
-function BalanceCard({ balance, todayEarned, vaultPending, loading }: BalanceCardProps) {
+function BalanceCard({ balance, todayEarned, vaultPending, vaultNextVestAt, loading }: BalanceCardProps) {
   const router = useRouter();
   return (
     <View style={styles.balanceCard}>
-      <Text style={styles.metaLabel}>Available balance</Text>
-      <View style={styles.balanceNumberRow}>
-        <Text style={[styles.balanceNumber, loading && { opacity: 0.4 }]}>
-          {balance.toLocaleString()}
-        </Text>
-        <Text style={styles.balanceUnit}>Points</Text>
-        {todayEarned > 0 && (
-          <View style={styles.todayBadge}>
-            <View style={styles.todayDot} />
-            <Text style={styles.todayBadgeText}>+{todayEarned} today</Text>
+      <View style={styles.balanceRow}>
+        <View style={styles.balanceLeft}>
+          <Text style={styles.metaLabel}>Available balance</Text>
+          <View style={styles.balanceNumberRow}>
+            <Text style={[styles.balanceNumber, loading && { opacity: 0.4 }]}>
+              {balance.toLocaleString()}
+            </Text>
+            <Text style={styles.balanceUnit}>Points</Text>
           </View>
-        )}
+          {todayEarned > 0 && (
+            <View style={styles.todayBadgeUnder}>
+              <View style={styles.todayDot} />
+              <Text style={styles.todayBadgeText}>+{todayEarned} today</Text>
+            </View>
+          )}
+        </View>
+        {/* Always visible — even empty, so the Vault is discoverable before
+            the first deposit banks. */}
+        <VaultTimer
+          pending={vaultPending}
+          nextVestAt={vaultNextVestAt}
+          onPress={() => router.push('/vault')}
+        />
       </View>
-      {/* Always visible — even empty, so the Vault is discoverable before the
-          first deposit banks. */}
-      <Pressable
-        style={({ pressed }) => [styles.vaultRow, pressed && { opacity: 0.7 }]}
-        onPress={() => router.push('/vault')}
-        hitSlop={6}
-      >
-        <Ionicons name="lock-closed" size={10} color={GOLD} />
-        <Text style={styles.vaultRowText}>
-          {vaultPending > 0
-            ? `+${vaultPending.toLocaleString()} vesting in your Vault`
-            : 'Vault — bonus POWR vests here'}
-        </Text>
-        <Ionicons name="chevron-forward" size={10} color={MUTED} />
-      </Pressable>
     </View>
   );
 }
@@ -905,6 +904,12 @@ const styles = StyleSheet.create({
     paddingBottom: 10,
     gap: 4,
   },
+  balanceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    gap: 12,
+  },
   balanceLeft: {
     flex: 1,
     gap: 4,
@@ -987,17 +992,11 @@ const styles = StyleSheet.create({
     color: GOLD,
     letterSpacing: 0.3,
   },
-  vaultRow: {
+  todayBadgeUnder: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 5,
     marginTop: 2,
-  },
-  vaultRowText: {
-    fontSize: 11,
-    fontWeight: '400',
-    color: DIM,
-    letterSpacing: 0.3,
   },
 
   // ── Featured card (floating, subtle accent line)
