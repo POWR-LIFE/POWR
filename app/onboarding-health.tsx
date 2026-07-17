@@ -4,6 +4,7 @@ import { androidHealthConnectStatus, useHealthData } from '@/hooks/useHealthData
 import { useHealthProviders } from '@/hooks/useHealthProviders';
 import { syncHistoricalHealthData, type DaySyncResult } from '@/lib/api/onboardingSync';
 import { getNativeProviderId, type HealthProviderId } from '@/lib/health/providers';
+import { recordHealthOnboardingDeclined } from '@/lib/healthPrompt';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -769,6 +770,9 @@ export default function OnboardingHealthScreen() {
                         <Pressable
                             style={skipModalStyles.skipBtn}
                             onPress={() => {
+                                // Starts the HealthPrimeSheet cool-off so the Home
+                                // re-ask doesn't pitch the same person twice in a day.
+                                recordHealthOnboardingDeclined().catch(() => {});
                                 setShowSkipModal(false);
                                 router.push('/onboarding-activities');
                             }}

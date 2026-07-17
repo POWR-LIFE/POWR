@@ -30,6 +30,7 @@ import { HeaderActions } from '@/components/HeaderActions';
 import { HealthGapBanner } from '@/components/HealthGapBanner';
 import NotificationPrimeSheet from '@/components/NotificationPrimeSheet';
 import LocationPrimeSheet from '@/components/LocationPrimeSheet';
+import HealthPrimeSheet from '@/components/HealthPrimeSheet';
 import { ACTIVITIES, type ActivityType } from '@/constants/activities';
 import { useAuth } from '@/context/AuthContext';
 import { useGeofenceContext } from '@/context/GeofenceContext';
@@ -759,6 +760,12 @@ export default function HomeScreen() {
                 + ≥1 session banked + pacing), and yields to the notification
                 sheet so the two never stack. Fixes silent no-earning in pocket. */}
             <LocationPrimeSheet />
+
+            {/* Primed health re-ask — self-gating (no health data flowing + ≥1
+                session banked + pacing), and yields to both sheets above. Catches
+                never-connected users AND dead OS grants ("connected" in our
+                records, toggles off on the device — steps silently stopped). */}
+            <HealthPrimeSheet />
 
             {/* Level-up moment — one-shot, surfaces when lifetime points cross
                 a level boundary (useLevelUp persists the last celebrated level). */}
