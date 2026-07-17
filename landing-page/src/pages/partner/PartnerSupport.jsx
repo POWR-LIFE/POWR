@@ -2,9 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
 import { useAuth } from '../../App';
-import { LifeBuoy, Send, Clock, CheckCircle, XCircle, AlertCircle, ChevronDown, ChevronUp, MessageSquare } from 'lucide-react';
-
-const INPUT = "w-full h-14 px-5 bg-white border border-[#E6E6E1] rounded-2xl text-sm text-[#1A1A1A] placeholder-[#BBBBBB] focus:border-[#E8D200]/50 outline-none transition-all font-['Outfit']";
+import { LifeBuoy, Send, Clock, CheckCircle, XCircle, AlertCircle, ChevronDown, ChevronUp, MessageSquare, Mail, FileText, Plug, Award, Settings } from 'lucide-react';
+import { SectionCard, RailRow, RailLink, INPUT } from './integrationShared';
 
 // Stored in support_tickets.category — the partner_ prefix is what tells the
 // admin triage view this came from the portal, keep it on any new entries.
@@ -86,7 +85,7 @@ export default function PartnerSupport() {
     };
 
     return (
-        <div className="py-16 animate-in fade-in slide-in-from-bottom-6 duration-700 max-w-2xl">
+        <div className="py-16 animate-in fade-in slide-in-from-bottom-6 duration-700 max-w-[1160px]">
             {/* Header */}
             <div className="mb-12">
                 <div className="flex items-center gap-3 mb-5">
@@ -99,6 +98,12 @@ export default function PartnerSupport() {
                     and the POWR team will get back to you within one business day.
                 </p>
             </div>
+
+            {/* Two-col like the integration pages: workspace left, sticky rail
+                right on xl (rail stacks below on smaller screens — the form is
+                the point of this page, so it stays first in DOM order). */}
+            <div className="flex flex-col xl:flex-row xl:items-start xl:gap-10">
+            <div className="flex-1 min-w-0 max-w-3xl xl:order-1">
 
             {/* New ticket form */}
             <form onSubmit={handleSubmit} className="bg-white border border-[#E6E6E1] rounded-3xl p-8 mb-6">
@@ -169,7 +174,14 @@ export default function PartnerSupport() {
 
             {/* Previous tickets */}
             <div className="bg-white border border-[#E6E6E1] rounded-3xl p-8">
-                <h2 className="text-[10px] uppercase tracking-[0.5em] font-black text-[#BBBBBB] mb-6">Your Tickets</h2>
+                <div className="flex items-center justify-between mb-6">
+                    <h2 className="text-[10px] uppercase tracking-[0.5em] font-black text-[#BBBBBB]">Your Tickets</h2>
+                    {tickets.length > 0 && (
+                        <span className="text-[9px] uppercase tracking-[0.3em] font-black text-[#999] bg-[#F4F4F1] border border-[#E6E6E1] rounded-full px-3 py-1">
+                            {tickets.filter(t => t.status === 'open' || t.status === 'in_progress').length} awaiting reply
+                        </span>
+                    )}
+                </div>
 
                 {loading ? (
                     <div className="flex justify-center py-10">
@@ -232,6 +244,51 @@ export default function PartnerSupport() {
                         })}
                     </div>
                 )}
+            </div>
+            </div>
+
+            {/* ── Sticky rail: what happens after you hit send, plus the
+                   self-serve surfaces that answer most tickets on their own. */}
+            <aside className="xl:order-2 xl:w-[340px] xl:shrink-0 xl:sticky xl:top-6 mt-6 xl:mt-0">
+                <SectionCard icon={Clock} title="What to Expect">
+                    <RailRow
+                        icon={Clock}
+                        label="One business day"
+                        detail="The POWR team replies to every ticket — usually much sooner during UK hours."
+                    />
+                    <RailRow
+                        icon={Mail}
+                        label="Replies land here"
+                        detail={`Answers appear on the ticket below and go to ${user?.email ?? 'your email'}.`}
+                    />
+                    <RailRow
+                        icon={FileText}
+                        label="Detail speeds things up"
+                        detail="Include the reward, member or exact error text involved so we can dig in straight away."
+                    />
+                </SectionCard>
+
+                <SectionCard icon={LifeBuoy} title="Fix It Faster">
+                    <RailLink
+                        to="/partner/integration"
+                        icon={Plug}
+                        label="Integration status"
+                        detail="Connection health and setup steps for your delivery method."
+                    />
+                    <RailLink
+                        to="/partner/rewards"
+                        icon={Award}
+                        label="Reward listings"
+                        detail="Edit imagery, descriptions and what members see in the app."
+                    />
+                    <RailLink
+                        to="/partner/settings"
+                        icon={Settings}
+                        label="Team & account"
+                        detail="Invite teammates or change your password."
+                    />
+                </SectionCard>
+            </aside>
             </div>
         </div>
     );
