@@ -154,7 +154,7 @@ export default function SpendScreen() {
   const router = useRouter();
   const [activeCategory, setActiveCategory] = useState<Category>('ALL');
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const { balance, todayEarned, vaultPending, vaultNextVestAt, loading, refresh: refreshPoints } = usePoints();
+  const { balance, todayEarned, loading, refresh: refreshPoints } = usePoints();
   const scrollViewRef = useRef<ScrollView>(null);
   const rewardPositions = useRef<Record<string, number>>({});
   const pendingRevealId = useRef<string | null>(null);
@@ -348,8 +348,6 @@ export default function SpendScreen() {
         <BalanceCard
           balance={balance}
           todayEarned={todayEarned}
-          vaultPending={vaultPending}
-          vaultNextVestAt={vaultNextVestAt}
           loading={loading}
         />
 
@@ -447,12 +445,10 @@ export default function SpendScreen() {
 interface BalanceCardProps {
   balance: number;
   todayEarned: number;
-  vaultPending: number;
-  vaultNextVestAt: string | null;
   loading: boolean;
 }
 
-function BalanceCard({ balance, todayEarned, vaultPending, vaultNextVestAt, loading }: BalanceCardProps) {
+function BalanceCard({ balance, todayEarned, loading }: BalanceCardProps) {
   const router = useRouter();
   return (
     <View style={styles.balanceCard}>
@@ -474,11 +470,7 @@ function BalanceCard({ balance, todayEarned, vaultPending, vaultNextVestAt, load
         </View>
         {/* Always visible — even empty, so the Vault is discoverable before
             the first deposit banks. */}
-        <VaultTimer
-          pending={vaultPending}
-          nextVestAt={vaultNextVestAt}
-          onPress={() => router.push('/vault')}
-        />
+        <VaultTimer onPress={() => router.push('/vault')} />
       </View>
     </View>
   );

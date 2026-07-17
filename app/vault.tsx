@@ -1,9 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
-import React from 'react';
+import React, { useState } from 'react';
 import {
   ActivityIndicator,
+  Modal,
   Pressable,
   SectionList,
   StyleSheet,
@@ -12,7 +13,9 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Circle } from 'react-native-svg';
+import Svg, { Line } from 'react-native-svg';
+
+import { supabase } from '@/lib/supabase';
 
 import GeometricBackground from '@/components/GeometricBackground';
 import { VaultDoor } from '@/components/vault/VaultDoor';
@@ -32,12 +35,28 @@ const GREEN  = '#4ade80';
 const ORANGE = '#FF9944';
 const BORDER = 'rgba(255,255,255,0.08)';
 
-// Ring geometry: the countdown ring wraps the door with breathing room.
+// Tick dial geometry: 60 tick marks wrap the door like a safe dial. Elapsed
+// ticks hold gold as the deposit vests; one bright sweep tick advances every
+// second in step with the countdown.
 const RING_SIZE = 240;
 const RING_RADIUS = 112;
-const RING_STROKE = 3.5;
-const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
-const DOOR_SIZE = 168;
+const TICK_COUNT = 60;
+const TICK_LEN = 8;
+const DOOR_SIZE = 164;
+
+const TICKS = Array.from({ length: TICK_COUNT }, (_, i) => {
+  const a = ((i / TICK_COUNT) * 360 - 90) * (Math.PI / 180);
+  const inner = RING_RADIUS - TICK_LEN / 2;
+  const outer = RING_RADIUS + TICK_LEN / 2;
+  return {
+    x1: RING_SIZE / 2 + inner * Math.cos(a),
+    y1: RING_SIZE / 2 + inner * Math.sin(a),
+    x2: RING_SIZE / 2 + outer * Math.cos(a),
+    y2: RING_SIZE / 2 + outer * Math.sin(a),
+  };
+});
+
+const DEFAULT_VEST_DAYS = 60;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -89,40 +108,34 @@ function VaultHero({
 }) {
   const countdown = useCountdown(nextDeposit ? nextDeposit.vests_at : null);
 
-  // Elapsed fraction of the next deposit's vesting window (fills toward unlock).
+  // Elapsed fraction of the next deposit's vesting window (ticks fill toward
+  // unlock), plus a clock-style sweep tick that advances with each second of
+  // the countdown.
   let progress = 0;
   if (nextDeposit) {
     const start = new Date(nextDeposit.created_at).getTime();
     const end = new Date(nextDeposit.vests_at).getTime();
     progress = end > start ? Math.min(1, Math.max(0, (Date.now() - start) / (end - start))) : 1;
   }
+  const sweep = Math.floor(Date.now() / 1000) % TICK_COUNT;
 
   return (
     <View style={[styles.hero, { minHeight: heroHeight }]}>
       <View style={styles.ringWrap}>
         <Svg width={RING_SIZE} height={RING_SIZE} style={StyleSheet.absoluteFill}>
-          <Circle
-            cx={RING_SIZE / 2}
-            cy={RING_SIZE / 2}
-            r={RING_RADIUS}
-            stroke="rgba(255,255,255,0.12)"
-            strokeWidth={RING_STROKE}
-            fill="none"
-          />
-          {nextDeposit && (
-            <Circle
-              cx={RING_SIZE / 2}
-              cy={RING_SIZE / 2}
-              r={RING_RADIUS}
-              stroke={GOLD}
-              strokeWidth={RING_STROKE}
-              fill="none"
-              strokeLinecap="round"
-              strokeDasharray={RING_CIRCUMFERENCE}
-              strokeDashoffset={RING_CIRCUMFERENCE * (1 - progress)}
-              transform={`rotate(-90 ${RING_SIZE / 2} ${RING_SIZE / 2})`}
-            />
-          )}
+          {TICKS.map((t, i) => {
+            const filled = nextDeposit != null && i / TICK_COUNT <= progress;
+            const isSweep = nextDeposit != null && i === sweep;
+            return (
+              <Line
+                key={i}
+                x1={t.x1} y1={t.y1} x2={t.x2} y2={t.y2}
+                stroke={isSweep ? GOLD : filled ? 'rgba(232,210,0,0.5)' : 'rgba(255,255,255,0.10)'}
+                strokeWidth={isSweep ? 3 : 2}
+                strokeLinecap="round"
+              />
+            );
+          })}
         </Svg>
         <VaultDoor size={DOOR_SIZE} />
       </View>
@@ -190,10 +203,27 @@ export default function VaultScreen() {
   const router = useRouter();
   const { height: windowHeight } = useWindowDimensions();
   const { vaultPending } = usePoints();
+  const [infoOpen, setInfoOpen] = useState(false);
 
   const { data, isPending, isError } = useQuery({
     queryKey: ['vault', 'contents'],
     queryFn: fetchVaultContents,
+  });
+
+  // Live vest window so the explainer copy stays honest when the admin knob
+  // (system_config → vault_vest_days) is tuned.
+  const { data: vestDays } = useQuery({
+    queryKey: ['vault', 'vest-days'],
+    queryFn: async () => {
+      const { data: row } = await supabase
+        .from('system_config')
+        .select('value')
+        .eq('key', 'vault_vest_days')
+        .maybeSingle();
+      const parsed = parseInt(row?.value ?? '', 10);
+      return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_VEST_DAYS;
+    },
+    staleTime: 60 * 60 * 1000,
   });
 
   const pending = data?.pending ?? [];
@@ -217,7 +247,9 @@ export default function VaultScreen() {
           <Ionicons name="chevron-back" size={22} color={DIM} />
         </Pressable>
         <Text style={styles.headerTitle}>Vault</Text>
-        <View style={styles.headerSpacer} />
+        <Pressable style={styles.backBtn} onPress={() => setInfoOpen(true)} hitSlop={8}>
+          <Ionicons name="information-circle-outline" size={20} color={DIM} />
+        </Pressable>
       </View>
 
       {isPending ? (
@@ -253,6 +285,61 @@ export default function VaultScreen() {
           }
         />
       )}
+
+      <Modal visible={infoOpen} transparent animationType="fade" onRequestClose={() => setInfoOpen(false)}>
+        <Pressable style={styles.infoBackdrop} onPress={() => setInfoOpen(false)}>
+          <Pressable style={styles.infoCard} onPress={() => {}}>
+            <View style={styles.infoDoorWrap}>
+              <VaultDoor size={56} />
+            </View>
+            <Text style={styles.infoTitle}>What banks in the Vault</Text>
+
+            <View style={styles.infoRow}>
+              <View style={[styles.infoIcon, { backgroundColor: GOLD + '18' }]}>
+                <Ionicons name="trophy" size={15} color={GOLD} />
+              </View>
+              <View style={styles.infoRowBody}>
+                <Text style={styles.infoRowTitle}>Level-up bonuses</Text>
+                <Text style={styles.infoRowText}>
+                  Every level you reach banks a bonus — bigger through Athlete, Elite and Legend.
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.infoRow}>
+              <View style={[styles.infoIcon, { backgroundColor: ORANGE + '18' }]}>
+                <Ionicons name="flash" size={15} color={ORANGE} />
+              </View>
+              <View style={styles.infoRowBody}>
+                <Text style={styles.infoRowTitle}>Points over the daily cap</Text>
+                <Text style={styles.infoRowText}>
+                  Streak multipliers past an activity's daily cap bank here instead of being lost.
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.infoRow}>
+              <View style={[styles.infoIcon, { backgroundColor: 'rgba(255,255,255,0.08)' }]}>
+                <Ionicons name="time" size={15} color={DIM} />
+              </View>
+              <View style={styles.infoRowBody}>
+                <Text style={styles.infoRowTitle}>Vests like savings</Text>
+                <Text style={styles.infoRowText}>
+                  Deposits vest for {vestDays ?? DEFAULT_VEST_DAYS} days, then unlock into your
+                  spendable balance automatically. They count towards your level straight away.
+                </Text>
+              </View>
+            </View>
+
+            <Pressable
+              style={({ pressed }) => [styles.infoBtn, pressed && { opacity: 0.85 }]}
+              onPress={() => setInfoOpen(false)}
+            >
+              <Text style={styles.infoBtnText}>Got it</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -311,4 +398,30 @@ const styles = StyleSheet.create({
 
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 14, paddingBottom: 80 },
   statusText: { fontSize: 14, color: MUTED },
+
+  infoBackdrop: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.7)',
+    alignItems: 'center', justifyContent: 'center', padding: 24,
+  },
+  infoCard: {
+    alignSelf: 'stretch', maxWidth: 420,
+    backgroundColor: '#161616',
+    borderWidth: 1, borderColor: 'rgba(232,210,0,0.2)', borderRadius: 20,
+    padding: 22, gap: 14,
+  },
+  infoDoorWrap: { alignItems: 'center', marginBottom: 2 },
+  infoTitle: { fontSize: 15, fontWeight: '500', color: TEXT, textAlign: 'center', marginBottom: 4 },
+  infoRow: { flexDirection: 'row', gap: 12, alignItems: 'flex-start' },
+  infoIcon: {
+    width: 30, height: 30, borderRadius: 15,
+    alignItems: 'center', justifyContent: 'center', marginTop: 1,
+  },
+  infoRowBody: { flex: 1, gap: 2 },
+  infoRowTitle: { fontSize: 13, fontWeight: '500', color: TEXT },
+  infoRowText: { fontSize: 12, fontWeight: '300', color: DIM, lineHeight: 17 },
+  infoBtn: {
+    marginTop: 6, backgroundColor: GOLD, borderRadius: 20,
+    paddingVertical: 12, alignItems: 'center',
+  },
+  infoBtnText: { fontSize: 12, fontWeight: '700', letterSpacing: 0.8, color: '#0a0a0a', textTransform: 'uppercase' },
 });
