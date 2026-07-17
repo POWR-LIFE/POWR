@@ -276,6 +276,7 @@ const PATH_LABELS = {
     athletes: 'Athletes',
     profile: 'Profile',
     analytics: 'Analytics',
+    vault: 'Vault',
     sessions: 'Sessions',
     performance: 'Performance',
     redemptions: 'Redemptions',
@@ -883,6 +884,7 @@ const AdminLayout = ({ children }) => {
         { label: 'Broadcast',      path: '/admin/broadcast',      icon: Megaphone  },
         { label: 'Campaigns',      path: '/admin/campaigns',      icon: CalendarDays },
         { label: 'Notifications',  path: '/admin/notifications',  icon: Bell         },
+        { label: 'Vault',          path: '/admin/vault',          icon: Lock         },
         { label: 'Config',         path: '/admin/config',         icon: Settings     },
     ];
 
