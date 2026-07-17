@@ -26,6 +26,9 @@
 import { createClient } from '@supabase/supabase-js';
 import { sendEmail } from '../_shared/mailgun.ts';
 import { brandInviteEmail } from '../_shared/emails/brand-invite.ts';
+import { partnerWelcomeEmail } from '../_shared/emails/partner-welcome.ts';
+
+const REPLY_TO = 'hello@powr.life';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -137,6 +140,14 @@ Deno.serve(async (req) => {
       .update({ status: 'used', used_at: new Date().toISOString(), used_by: userId })
       .eq('id', inv.id);
 
+    // Post-setup welcome — best-effort; a send failure must not fail the setup.
+    try {
+      const tpl = partnerWelcomeEmail({ brandName: inv.brand_name, contactName: contact_name?.trim() || null });
+      await sendEmail({ to: cleanEmail, subject: tpl.subject, html: tpl.html, text: tpl.text, replyTo: REPLY_TO });
+    } catch (err) {
+      console.error('redeem_invite: welcome email failed:', err);
+    }
+
     return json({ ok: true });
   }
 
@@ -209,7 +220,7 @@ Deno.serve(async (req) => {
     if (email) {
       try {
         const tpl = brandInviteEmail({ brandName, setupUrl: setupLink, logoUrl: await brandLogo(adminClient, brandName) });
-        await sendEmail({ to: email, subject: tpl.subject, html: tpl.html, text: tpl.text });
+        await sendEmail({ to: email, subject: tpl.subject, html: tpl.html, text: tpl.text, replyTo: REPLY_TO });
         emailed = true;
       } catch (err) {
         console.error('create_invite: failed to email setup link:', err);

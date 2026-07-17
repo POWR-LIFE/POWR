@@ -1,13 +1,15 @@
 // Weekly summary email — sends each active user a recap of the week just gone.
 //
-// Triggered by a pg_cron job (migration 20260618000001) every Monday 08:00 UTC,
-// which POSTs here with the x-weekly-token shared secret. The function resolves
-// the completed Mon–Sun window, asks get_weekly_summary_recipients() for every
-// eligible/active user's aggregates in one query, then renders and sends.
+// Triggered by a pg_cron job every Monday 08:00 UTC, which POSTs here with the
+// x-resolve-token shared secret. The function resolves the completed Mon–Sun
+// window, asks get_weekly_summary_recipients() for every eligible/active user's
+// aggregates in one query, then renders and sends.
 //
 // Security: verify_jwt=false (pg_net is not a Supabase user); access is gated by
-// the x-weekly-token shared secret, which lives only in the cron job definition
-// and here — mirroring the terra-poll pattern.
+// the x-resolve-token shared secret, validated via the verify_resolve_token RPC
+// against Vault — the same pattern as every other cron-invoked function. (The
+// original x-weekly-token env-var gate was never provisioned, so the cron 403'd
+// and no weekly summary ever left the building; fixed 2026-07-17.)
 //
 // Operational body params (all optional): { dry_run, only_email, limit } — for
 // safe manual runs and previews.
@@ -66,10 +68,6 @@ function challengeTitles(ids: string[] | null): string[] {
   return titles;
 }
 
-// Shared secret gating the cron trigger (verify_jwt=false). Set as a function
-// secret — `supabase secrets set WEEKLY_TOKEN=…` — and store the matching value
-// in Vault (secret name 'weekly_token') so the cron job sends it. Never hardcode.
-const WEEKLY_TOKEN = Deno.env.get("WEEKLY_TOKEN") ?? "";
 const DAY_MS = 24 * 60 * 60 * 1000;
 const CONCURRENCY = 5;
 
@@ -169,7 +167,16 @@ function sampleWeeklyData(weekLabel: string): WeeklySummaryData {
 
 Deno.serve(async (req: Request) => {
   if (req.method !== "POST") return new Response("method not allowed", { status: 405 });
-  if (!WEEKLY_TOKEN || req.headers.get("x-weekly-token") !== WEEKLY_TOKEN) {
+  const supabase = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+  );
+
+  const token = req.headers.get("x-resolve-token") ?? "";
+  const { data: tokenValid } = token
+    ? await supabase.rpc("verify_resolve_token", { p_token: token })
+    : { data: false };
+  if (tokenValid !== true) {
     return new Response("forbidden", { status: 403 });
   }
 
@@ -221,11 +228,6 @@ Deno.serve(async (req: Request) => {
       });
     }
   }
-
-  const supabase = createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-  );
 
   // Active rewards for the "rewards in reach" section. Fetched once and shared:
   // the top 3 (by value) are the same for everyone; the "closest reward" and the
