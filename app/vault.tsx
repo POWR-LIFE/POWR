@@ -210,21 +210,36 @@ export default function VaultScreen() {
     queryFn: fetchVaultContents,
   });
 
-  // Live vest window so the explainer copy stays honest when the admin knob
-  // (system_config → vault_vest_days) is tuned.
-  const { data: vestDays } = useQuery({
-    queryKey: ['vault', 'vest-days'],
+  // Live vault settings (system_config → vault_*) so the explainer copy and
+  // tier pills stay honest when the admin knobs are tuned. Falls back to the
+  // shipped schedule on any read failure.
+  const { data: vaultConfig } = useQuery({
+    queryKey: ['vault', 'config'],
     queryFn: async () => {
-      const { data: row } = await supabase
+      const { data: rows } = await supabase
         .from('system_config')
-        .select('value')
-        .eq('key', 'vault_vest_days')
-        .maybeSingle();
-      const parsed = parseInt(row?.value ?? '', 10);
-      return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_VEST_DAYS;
+        .select('key, value')
+        .like('key', 'vault\\_%');
+      const raw = Object.fromEntries((rows ?? []).map((r) => [r.key, r.value]));
+      const num = (key: string, fallback: number) => {
+        const parsed = parseInt(raw[key] ?? '', 10);
+        return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+      };
+      return {
+        vestDays: Math.max(1, num('vault_vest_days', DEFAULT_VEST_DAYS)),
+        bonuses: {
+          recruit: num('vault_bonus_recruit', VAULT_LEVEL_BONUS.recruit),
+          athlete: num('vault_bonus_athlete', VAULT_LEVEL_BONUS.athlete),
+          elite: num('vault_bonus_elite', VAULT_LEVEL_BONUS.elite),
+          legend: num('vault_bonus_legend', VAULT_LEVEL_BONUS.legend),
+        } as Record<LevelTier, number>,
+        levelUpEnabled: String(raw['vault_level_up_enabled'] ?? '').trim().toLowerCase() !== 'false',
+        capOverflowEnabled: String(raw['vault_cap_overflow_enabled'] ?? '').trim().toLowerCase() !== 'false',
+      };
     },
     staleTime: 60 * 60 * 1000,
   });
+  const bonuses = vaultConfig?.bonuses ?? VAULT_LEVEL_BONUS;
 
   const pending = data?.pending ?? [];
   const released = data?.released ?? [];
@@ -294,39 +309,43 @@ export default function VaultScreen() {
             </View>
             <Text style={styles.infoTitle}>What banks in the Vault</Text>
 
-            <View style={styles.infoRow}>
-              <View style={[styles.infoIcon, { backgroundColor: GOLD + '18' }]}>
-                <Ionicons name="trophy" size={15} color={GOLD} />
-              </View>
-              <View style={styles.infoRowBody}>
-                <Text style={styles.infoRowTitle}>Level-up bonuses</Text>
-                <Text style={styles.infoRowText}>
-                  Every level you reach banks a bonus — and the higher the tier, the bigger the drop.
-                </Text>
-                <View style={styles.tierPillRow}>
-                  {(Object.keys(VAULT_LEVEL_BONUS) as LevelTier[]).map((tier) => (
-                    <View key={tier} style={styles.tierPill}>
-                      <Text style={[styles.tierPillTier, { color: TIER_META[tier].color }]}>
-                        {TIER_META[tier].label}
-                      </Text>
-                      <Text style={styles.tierPillAmount}>+{VAULT_LEVEL_BONUS[tier]}</Text>
-                    </View>
-                  ))}
+            {(vaultConfig?.levelUpEnabled ?? true) && (
+              <View style={styles.infoRow}>
+                <View style={[styles.infoIcon, { backgroundColor: GOLD + '18' }]}>
+                  <Ionicons name="trophy" size={15} color={GOLD} />
+                </View>
+                <View style={styles.infoRowBody}>
+                  <Text style={styles.infoRowTitle}>Level-up bonuses</Text>
+                  <Text style={styles.infoRowText}>
+                    Every level you reach banks a bonus — and the higher the tier, the bigger the drop.
+                  </Text>
+                  <View style={styles.tierPillRow}>
+                    {(Object.keys(bonuses) as LevelTier[]).map((tier) => (
+                      <View key={tier} style={styles.tierPill}>
+                        <Text style={[styles.tierPillTier, { color: TIER_META[tier].color }]}>
+                          {TIER_META[tier].label}
+                        </Text>
+                        <Text style={styles.tierPillAmount}>+{bonuses[tier]}</Text>
+                      </View>
+                    ))}
+                  </View>
                 </View>
               </View>
-            </View>
+            )}
 
-            <View style={styles.infoRow}>
-              <View style={[styles.infoIcon, { backgroundColor: ORANGE + '18' }]}>
-                <Ionicons name="flash" size={15} color={ORANGE} />
+            {(vaultConfig?.capOverflowEnabled ?? true) && (
+              <View style={styles.infoRow}>
+                <View style={[styles.infoIcon, { backgroundColor: ORANGE + '18' }]}>
+                  <Ionicons name="flash" size={15} color={ORANGE} />
+                </View>
+                <View style={styles.infoRowBody}>
+                  <Text style={styles.infoRowTitle}>Points over the daily cap</Text>
+                  <Text style={styles.infoRowText}>
+                    Streak multipliers past an activity's daily cap bank here instead of being lost.
+                  </Text>
+                </View>
               </View>
-              <View style={styles.infoRowBody}>
-                <Text style={styles.infoRowTitle}>Points over the daily cap</Text>
-                <Text style={styles.infoRowText}>
-                  Streak multipliers past an activity's daily cap bank here instead of being lost.
-                </Text>
-              </View>
-            </View>
+            )}
 
             <View style={styles.infoRow}>
               <View style={[styles.infoIcon, { backgroundColor: 'rgba(255,255,255,0.08)' }]}>
@@ -335,8 +354,8 @@ export default function VaultScreen() {
               <View style={styles.infoRowBody}>
                 <Text style={styles.infoRowTitle}>Vests like savings</Text>
                 <Text style={styles.infoRowText}>
-                  Deposits vest for {vestDays ?? DEFAULT_VEST_DAYS} days, then unlock into your
-                  spendable balance automatically. They count towards your level straight away.
+                  Deposits vest for {vaultConfig?.vestDays ?? DEFAULT_VEST_DAYS} days, then unlock
+                  into your spendable balance automatically. They count towards your level straight away.
                 </Text>
               </View>
             </View>

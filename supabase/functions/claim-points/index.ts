@@ -439,13 +439,18 @@ Deno.serve(async (req) => {
   // the authoritative gates. Fall back to the historical 30/40 on any failure.
   let gymDwellMin = 30;
   let gymUpgradeMin = 40;
-  let vaultVestDays = 30;
+  let vaultVestDays = 60;
+  let vaultCapOverflowEnabled = true;
   {
     const { data: cfg } = await supabase
       .from('system_config')
       .select('key, value')
-      .in('key', ['min_gym_dwell_minutes', 'gym_upgrade_minutes', 'vault_vest_days']);
+      .in('key', ['min_gym_dwell_minutes', 'gym_upgrade_minutes', 'vault_vest_days', 'vault_cap_overflow_enabled']);
     for (const row of cfg ?? []) {
+      if (row.key === 'vault_cap_overflow_enabled') {
+        vaultCapOverflowEnabled = String(row.value ?? '').trim().toLowerCase() !== 'false';
+        continue;
+      }
       const parsed = parseInt(row.value ?? '', 10);
       if (!Number.isFinite(parsed) || parsed <= 0) continue;
       if (row.key === 'min_gym_dwell_minutes') gymDwellMin = parsed;
@@ -601,7 +606,9 @@ Deno.serve(async (req) => {
   // excluded: they're the penalised, un-verified path and vaulting their
   // overflow would soften the manual cap. Best-effort — a vault failure must
   // never fail a claim that already credited.
-  const overflow = isManual ? 0 : Math.max(0, base + streakBonus - finalAmount - streakCredited);
+  const overflow = isManual || !vaultCapOverflowEnabled
+    ? 0
+    : Math.max(0, base + streakBonus - finalAmount - streakCredited);
   let vaulted = 0;
   if (overflow > 0) {
     const { error: vaultErr } = await supabase.from('vault_deposits').insert({
