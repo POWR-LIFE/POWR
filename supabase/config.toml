@@ -407,6 +407,11 @@ verify_jwt = false
 # cannot award points, so the blast radius of the open endpoint is a wasted push.
 verify_jwt = false
 
+[functions.release-vault-deposits]
+# Invoked by pg_cron every 15 minutes (no Supabase user JWT) — gated by the
+# x-vault-token shared secret inside the function, mirroring terra-poll.
+verify_jwt = false
+
 [functions.share-card-og]
 # Fetched by WhatsApp/iMessage/X link crawlers, which carry no JWT. It only ever
 # serves a title, a subtitle and a public image URL for one unguessable uuid —

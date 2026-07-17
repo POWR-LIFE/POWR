@@ -13,6 +13,7 @@ type NotificationType =
   | 'sleep_target_met'
   | 'session_completed'
   | 'session_upgraded'
+  | 'vault_unlocked'
   // Shared ("together") challenges + friend graph (scope §4/§6a).
   | 'friend_request'
   | 'friend_accepted'
@@ -57,6 +58,7 @@ function categoryFor(type: NotificationType): 'social' | 'rewards' | 'activity' 
       return 'social';
     case 'reward_unlocked':
     case 'points_milestone':
+    case 'vault_unlocked':
       return 'rewards';
     case 'session_completed':
     case 'session_upgraded':
@@ -294,6 +296,19 @@ function buildMessage(
           sound: 'default',
           channelId: 'powr_rewards_v2',
           priority: 'high',
+        };
+      }
+
+      case 'vault_unlocked': {
+        // Fired by release-vault-deposits when matured deposits land on the
+        // spendable balance. `points` is the total released this sweep.
+        const points = Math.max(0, Math.round(Number(payload.points ?? 0)));
+        return {
+          title: 'Vault unlocked ⚡',
+          body: `+${points.toLocaleString()} POWR just vested into your balance. Spend it on something good.`,
+          data: { type, route: '/vault', points },
+          sound: 'default',
+          channelId: 'powr_rewards_v2',
         };
       }
 
@@ -545,8 +560,12 @@ Deno.serve(async (req: Request) => {
     // Check notification preferences. session_upgraded (the 40-min tier bonus)
     // has no toggle of its own — it rides the session_completed preference so a
     // user who muted session pushes doesn't get the upgrade one either.
+    // vault_unlocked likewise rides points_milestone: both are "your points
+    // moved" moments, and notification_preferences has no column for new types.
     const prefColumn: NotificationType =
-      type === 'session_upgraded' ? 'session_completed' : type;
+      type === 'session_upgraded' ? 'session_completed'
+      : type === 'vault_unlocked' ? 'points_milestone'
+      : type;
     const { data: prefs } = await supabase
       .from('notification_preferences')
       .select(prefColumn)

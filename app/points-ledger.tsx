@@ -188,7 +188,11 @@ function TxBadges({ tx }: { tx: PointTransaction }) {
   if (tx.type === 'streak') {
     badges.push({ label: 'STREAK', color: ORANGE, bg: ORANGE + '22' });
   } else if (tx.type === 'bonus') {
-    badges.push({ label: 'BONUS', color: GOLD, bg: GOLD + '22' });
+    // Vault releases are matured deposits landing on the spendable balance —
+    // badge them distinctly from ordinary bonuses.
+    badges.push(tx.source === 'vault_release'
+      ? { label: 'VAULT', color: GOLD, bg: GOLD + '22' }
+      : { label: 'BONUS', color: GOLD, bg: GOLD + '22' });
   } else if (tx.type === 'earn') {
     const isUpgrade = tx.description?.toLowerCase().includes('upgrade');
     if (isUpgrade) {

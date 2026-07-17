@@ -153,7 +153,7 @@ export default function SpendScreen() {
   const router = useRouter();
   const [activeCategory, setActiveCategory] = useState<Category>('ALL');
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const { balance, todayEarned, loading, refresh: refreshPoints } = usePoints();
+  const { balance, todayEarned, vaultPending, loading, refresh: refreshPoints } = usePoints();
   const scrollViewRef = useRef<ScrollView>(null);
   const rewardPositions = useRef<Record<string, number>>({});
   const pendingRevealId = useRef<string | null>(null);
@@ -347,6 +347,7 @@ export default function SpendScreen() {
         <BalanceCard
           balance={balance}
           todayEarned={todayEarned}
+          vaultPending={vaultPending}
           loading={loading}
         />
 
@@ -444,10 +445,12 @@ export default function SpendScreen() {
 interface BalanceCardProps {
   balance: number;
   todayEarned: number;
+  vaultPending: number;
   loading: boolean;
 }
 
-function BalanceCard({ balance, todayEarned, loading }: BalanceCardProps) {
+function BalanceCard({ balance, todayEarned, vaultPending, loading }: BalanceCardProps) {
+  const router = useRouter();
   return (
     <View style={styles.balanceCard}>
       <Text style={styles.metaLabel}>Available balance</Text>
@@ -463,6 +466,19 @@ function BalanceCard({ balance, todayEarned, loading }: BalanceCardProps) {
           </View>
         )}
       </View>
+      {vaultPending > 0 && (
+        <Pressable
+          style={({ pressed }) => [styles.vaultRow, pressed && { opacity: 0.7 }]}
+          onPress={() => router.push('/vault')}
+          hitSlop={6}
+        >
+          <Ionicons name="lock-closed" size={10} color={GOLD} />
+          <Text style={styles.vaultRowText}>
+            +{vaultPending.toLocaleString()} vesting in your Vault
+          </Text>
+          <Ionicons name="chevron-forward" size={10} color={MUTED} />
+        </Pressable>
+      )}
     </View>
   );
 }
@@ -967,6 +983,18 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '500',
     color: GOLD,
+    letterSpacing: 0.3,
+  },
+  vaultRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 2,
+  },
+  vaultRowText: {
+    fontSize: 11,
+    fontWeight: '400',
+    color: DIM,
     letterSpacing: 0.3,
   },
 
