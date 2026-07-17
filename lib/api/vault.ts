@@ -25,6 +25,22 @@ export interface VaultContents {
     released: VaultDeposit[];
 }
 
+/**
+ * Release every matured deposit for the signed-in user (the press-and-hold
+ * unlock). Atomic + user-locked server-side; racing the cron sweep or a
+ * double invocation can never double-credit. Returns what was released —
+ * {points: 0} when nothing was due.
+ */
+export async function claimVaultDeposits(): Promise<{ points: number; deposits: number }> {
+    const { data, error } = await supabase.rpc('claim_my_vault_deposits');
+    if (error) throw error;
+    const row = Array.isArray(data) ? data[0] : data;
+    return {
+        points: Number(row?.points ?? 0),
+        deposits: Number(row?.deposits ?? 0),
+    };
+}
+
 export async function fetchVaultContents(): Promise<VaultContents> {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return { pending: [], released: [] };

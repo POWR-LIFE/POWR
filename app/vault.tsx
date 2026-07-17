@@ -1,9 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Animated,
+  Easing,
   Modal,
   Pressable,
   SectionList,
@@ -20,7 +23,7 @@ import { supabase } from '@/lib/supabase';
 import GeometricBackground from '@/components/GeometricBackground';
 import { VaultDoor } from '@/components/vault/VaultDoor';
 import { LEVELS, TIER_META, VAULT_LEVEL_BONUS, type LevelTier } from '@/constants/levels';
-import { fetchVaultContents, type VaultDeposit } from '@/lib/api/vault';
+import { claimVaultDeposits, fetchVaultContents, type VaultDeposit } from '@/lib/api/vault';
 import { useCountdown } from '@/hooks/useCountdown';
 import { usePoints } from '@/hooks/usePoints';
 
@@ -90,68 +93,185 @@ function depositSub(d: VaultDeposit): string {
 // ─── Countdown ring hero ──────────────────────────────────────────────────────
 
 /**
- * The centrepiece: the vault door wrapped in a gold ring that fills as the
- * soonest deposit approaches its unlock, with the live countdown beneath.
- * The once-per-second countdown tick re-renders the ring, so it visibly
- * creeps — vesting as spectacle, not a spreadsheet.
+ * The centrepiece: the vault door wrapped in the tick dial.
+ *
+ * Three states:
+ *  - VESTING: ticks fill with the soonest deposit's elapsed fraction, one
+ *    bright sweep tick advances each second with the live countdown.
+ *  - READY (a deposit has matured): press-and-hold the door to unlock — the
+ *    hold charges the dial tick by tick and spins the door; releasing early
+ *    unwinds it. Completing the hold claims every due deposit server-side.
+ *  - UNLOCKED: the payout moment — full gold dial, banked total, and the
+ *    ledger refreshes underneath.
  */
 function VaultHero({
   pending,
-  nextDeposit,
   totalPending,
   heroHeight,
+  onClaim,
 }: {
-  pending: number;
-  nextDeposit: VaultDeposit | null;
+  pending: VaultDeposit[];
   totalPending: number;
   heroHeight: number;
+  onClaim: () => Promise<number>;
 }) {
-  const countdown = useCountdown(nextDeposit ? nextDeposit.vests_at : null);
+  const dueTotal = pending
+    .filter((d) => new Date(d.vests_at).getTime() <= Date.now())
+    .reduce((s, d) => s + d.amount, 0);
+  // Sum of not-yet-due deposits: correct both before the claim refetch (due
+  // rows excluded here) and after it (due rows are gone from `pending`).
+  const remainingVesting = pending
+    .filter((d) => new Date(d.vests_at).getTime() > Date.now())
+    .reduce((s, d) => s + d.amount, 0);
+  const [unlockedPoints, setUnlockedPoints] = useState<number | null>(null);
+  const [claiming, setClaiming] = useState(false);
+  const ready = dueTotal > 0 && unlockedPoints === null;
 
-  // Elapsed fraction of the next deposit's vesting window (ticks fill toward
-  // unlock), plus a clock-style sweep tick that advances with each second of
-  // the countdown.
+  // While vesting, the countdown tracks the soonest not-yet-due deposit and
+  // its once-per-second tick re-renders the sweep. Ready/unlocked states are
+  // driven by the hold animation instead.
+  const nextVesting = pending.find((d) => new Date(d.vests_at).getTime() > Date.now()) ?? null;
+  const showCountdownFor = ready || unlockedPoints !== null ? null : (pending[0] ?? null);
+  const countdown = useCountdown(showCountdownFor ? showCountdownFor.vests_at : null);
+
+  // ── Hold-to-unlock ──
+  const holdAnim = useRef(new Animated.Value(0)).current;
+  const [holdTicks, setHoldTicks] = useState(0);
+
+  useEffect(() => {
+    const id = holdAnim.addListener(({ value }) => {
+      const t = Math.round(value * TICK_COUNT);
+      setHoldTicks((prev) => (prev === t ? prev : t));
+    });
+    return () => holdAnim.removeListener(id);
+  }, [holdAnim]);
+
+  const completeUnlock = useCallback(async () => {
+    setClaiming(true);
+    try {
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch {
+      // Haptics unavailable (web) — the visual moment carries it.
+    }
+    try {
+      const points = await onClaim();
+      setUnlockedPoints(points);
+    } catch {
+      // Claim failed (offline?) — unwind so the user can try again.
+      Animated.timing(holdAnim, { toValue: 0, duration: 250, useNativeDriver: false }).start();
+    }
+    setClaiming(false);
+  }, [holdAnim, onClaim]);
+
+  const startHold = useCallback(() => {
+    if (!ready || claiming) return;
+    Haptics.selectionAsync().catch(() => {});
+    Animated.timing(holdAnim, {
+      toValue: 1,
+      duration: 1400,
+      easing: Easing.linear,
+      useNativeDriver: false,
+    }).start(({ finished }) => {
+      if (finished) void completeUnlock();
+    });
+  }, [ready, claiming, holdAnim, completeUnlock]);
+
+  const cancelHold = useCallback(() => {
+    if (claiming || unlockedPoints !== null) return;
+    Animated.timing(holdAnim, { toValue: 0, duration: 220, useNativeDriver: false }).start();
+  }, [claiming, unlockedPoints, holdAnim]);
+
+  // The wheel spins as the hold charges; a slight grow sells the strain.
+  const doorSpin = holdAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '270deg'] });
+  const doorScale = holdAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.06] });
+
+  // Dial: unlocked → all gold; holding → charged ticks; vesting → elapsed
+  // fraction + sweep.
   let progress = 0;
-  if (nextDeposit) {
-    const start = new Date(nextDeposit.created_at).getTime();
-    const end = new Date(nextDeposit.vests_at).getTime();
+  if (pending[0]) {
+    const start = new Date(pending[0].created_at).getTime();
+    const end = new Date(pending[0].vests_at).getTime();
     progress = end > start ? Math.min(1, Math.max(0, (Date.now() - start) / (end - start))) : 1;
   }
   const sweep = Math.floor(Date.now() / 1000) % TICK_COUNT;
 
   return (
     <View style={[styles.hero, { minHeight: heroHeight }]}>
-      <View style={styles.ringWrap}>
-        <Svg width={RING_SIZE} height={RING_SIZE} style={StyleSheet.absoluteFill}>
-          {TICKS.map((t, i) => {
-            const filled = nextDeposit != null && i / TICK_COUNT <= progress;
-            const isSweep = nextDeposit != null && i === sweep;
-            return (
-              <Line
-                key={i}
-                x1={t.x1} y1={t.y1} x2={t.x2} y2={t.y2}
-                stroke={isSweep ? GOLD : filled ? 'rgba(232,210,0,0.5)' : 'rgba(255,255,255,0.10)'}
-                strokeWidth={isSweep ? 3 : 2}
-                strokeLinecap="round"
-              />
-            );
-          })}
-        </Svg>
-        <VaultDoor size={DOOR_SIZE} />
-      </View>
+      <Pressable
+        testID="vault-door-hold"
+        onPressIn={startHold}
+        onPressOut={cancelHold}
+        disabled={!ready || claiming}
+      >
+        <View style={styles.ringWrap}>
+          <Svg width={RING_SIZE} height={RING_SIZE} style={StyleSheet.absoluteFill}>
+            {TICKS.map((t, i) => {
+              let stroke = 'rgba(255,255,255,0.10)';
+              let width = 2;
+              if (unlockedPoints !== null) {
+                stroke = GOLD;
+              } else if (ready) {
+                if (i < holdTicks) { stroke = GOLD; width = 3; }
+                else stroke = 'rgba(232,210,0,0.28)';
+              } else if (pending.length > 0) {
+                if (i === sweep) { stroke = GOLD; width = 3; }
+                else if (i / TICK_COUNT <= progress) stroke = 'rgba(232,210,0,0.5)';
+              }
+              return (
+                <Line
+                  key={i}
+                  x1={t.x1} y1={t.y1} x2={t.x2} y2={t.y2}
+                  stroke={stroke}
+                  strokeWidth={width}
+                  strokeLinecap="round"
+                />
+              );
+            })}
+          </Svg>
+          <Animated.View style={{ transform: [{ rotate: doorSpin }, { scale: doorScale }] }}>
+            <VaultDoor size={DOOR_SIZE} />
+          </Animated.View>
+        </View>
+      </Pressable>
 
-      {pending > 0 ? (
+      {unlockedPoints !== null ? (
+        <>
+          <Text style={styles.heroUnlocked}>+{unlockedPoints.toLocaleString()} POWR</Text>
+          <Text style={styles.heroReadyHint}>UNLOCKED — ADDED TO YOUR BALANCE</Text>
+          {remainingVesting > 0 && (
+            <View style={styles.heroNextRow}>
+              <View style={styles.heroDot} />
+              <Text style={styles.heroNextText}>
+                {remainingVesting.toLocaleString()} still vesting
+              </Text>
+            </View>
+          )}
+        </>
+      ) : ready ? (
+        <>
+          <Text style={styles.heroCountdown}>{dueTotal.toLocaleString()} POWR</Text>
+          <Text style={styles.heroReadyHint}>
+            {claiming ? 'UNLOCKING…' : 'READY — HOLD THE DOOR TO UNLOCK'}
+          </Text>
+          {nextVesting && (
+            <View style={styles.heroNextRow}>
+              <View style={styles.heroDot} />
+              <Text style={styles.heroNextText}>
+                {remainingVesting.toLocaleString()} more unlocks {formatDate(nextVesting.vests_at)}
+              </Text>
+            </View>
+          )}
+        </>
+      ) : pending.length > 0 ? (
         <>
           {countdown && <Text style={styles.heroCountdown}>{countdown}</Text>}
           <Text style={styles.heroAmount}>
             {totalPending.toLocaleString()} <Text style={styles.heroAmountUnit}>POWR VESTING</Text>
           </Text>
-          {nextDeposit && (
-            <View style={styles.heroNextRow}>
-              <View style={styles.heroDot} />
-              <Text style={styles.heroNextText}>Next unlock {formatDate(nextDeposit.vests_at)}</Text>
-            </View>
-          )}
+          <View style={styles.heroNextRow}>
+            <View style={styles.heroDot} />
+            <Text style={styles.heroNextText}>Next unlock {formatDate(pending[0].vests_at)}</Text>
+          </View>
         </>
       ) : (
         <>
@@ -204,6 +324,16 @@ export default function VaultScreen() {
   const { height: windowHeight } = useWindowDimensions();
   const { vaultPending } = usePoints();
   const [infoOpen, setInfoOpen] = useState(false);
+  const queryClient = useQueryClient();
+
+  // The press-and-hold completion: claim every due deposit, then refresh the
+  // vault ledger and every points surface (balance just changed).
+  const handleClaim = useCallback(async () => {
+    const { points } = await claimVaultDeposits();
+    queryClient.invalidateQueries({ queryKey: ['vault'] });
+    queryClient.invalidateQueries({ queryKey: ['points'] });
+    return points;
+  }, [queryClient]);
 
   const { data, isPending, isError } = useQuery({
     queryKey: ['vault', 'contents'],
@@ -285,10 +415,10 @@ export default function VaultScreen() {
           stickySectionHeadersEnabled={false}
           ListHeaderComponent={
             <VaultHero
-              pending={pending.length}
-              nextDeposit={pending[0] ?? null}
+              pending={pending}
               totalPending={vaultPending}
               heroHeight={heroHeight}
+              onClaim={handleClaim}
             />
           }
           ListFooterComponent={
@@ -402,6 +532,11 @@ const styles = StyleSheet.create({
   heroNextText: { fontSize: 12, fontWeight: '300', color: DIM },
   heroEmptyTitle: { fontSize: 15, fontWeight: '400', color: TEXT },
   heroEmptyHint: { fontSize: 12, fontWeight: '300', color: MUTED, textAlign: 'center', lineHeight: 18 },
+  heroUnlocked: { fontSize: 30, fontWeight: '200', letterSpacing: 2, color: GOLD },
+  heroReadyHint: {
+    fontSize: 10, fontWeight: '600', letterSpacing: 2, color: DIM,
+    textTransform: 'uppercase', marginTop: 2,
+  },
 
   sectionHeader: {
     fontSize: 10, fontWeight: '600', letterSpacing: 2, color: MUTED,
