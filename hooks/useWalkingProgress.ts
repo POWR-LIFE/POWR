@@ -19,6 +19,8 @@ export type WalkingProgressState = {
     /** Steps remaining to reach the next threshold */
     stepsToNext: number;
     loading: boolean;
+    /** True while an OS permission prompt is in flight (mirrors useHealthData). */
+    requesting: boolean;
     requestPermissions: () => Promise<boolean>;
     refresh: () => void;
 };
@@ -31,27 +33,26 @@ export function useWalkingProgress(): WalkingProgressState {
     const appState = useRef(AppState.currentState);
 
     const load = useCallback(async () => {
-        if (!health.isAvailable) {
-            setLoading(false);
-            return;
-        }
         setLoading(true);
         try {
             // Try reading steps first — Health Connect may work even if
             // our permission check returned false (race on init).
-            const steps = await getStepsToday();
+            const steps = health.isAvailable ? await getStepsToday() : 0;
             if (steps > 0) {
-                // Steps readable → sync to Supabase
-                await syncWalkingNow();
-                const session = await getTodayHealthWalkingSession();
-                setStepsToday(steps);
-                setPointsEarned(session?.points ?? 0);
-            } else if (health.isAuthorized) {
-                // Authorized but 0 steps — read the DB session anyway
-                const session = await getTodayHealthWalkingSession();
-                setStepsToday(0);
-                setPointsEarned(session?.points ?? 0);
+                // Steps readable → sync to Supabase. A sync failure must not
+                // hide the count we already read, so it can't abort the load.
+                await syncWalkingNow().catch((e) =>
+                    console.warn('[WalkingProgress] sync failed:', e));
             }
+
+            // The day's synced session is both the points source and the step
+            // FALLBACK: a wearable top-up (Terra) or an earlier sync can hold
+            // more than the live read — and when the health store is unreadable
+            // (permissions revoked, web) it's all we have. Never show less than
+            // what's already banked for today.
+            const session = await getTodayHealthWalkingSession();
+            setStepsToday(Math.max(steps, session?.steps ?? 0));
+            setPointsEarned(session?.points ?? 0);
 
             // Catch up any days the app missed (closed across midnight, bg fetch
             // throttled). Guarded to run once per app session; fire-and-forget so
@@ -94,6 +95,7 @@ export function useWalkingProgress(): WalkingProgressState {
         nextThreshold: nextThr,
         stepsToNext,
         loading,
+        requesting: health.requesting,
         requestPermissions: health.requestPermissions,
         refresh: load,
     };

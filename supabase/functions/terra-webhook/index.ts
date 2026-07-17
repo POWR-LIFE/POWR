@@ -375,36 +375,62 @@ async function handleDaily(supabase, payload): Promise<void> {
     const steps = d.distance_data?.steps;
     if (!start || steps == null || steps <= 0) continue;
 
-    const day = dayStartUTC(start);
+    // Terra sends localized timestamps: start_time is the user's LOCAL midnight
+    // (e.g. "2026-07-16T00:00:00+01:00"). Preserve that exact instant as
+    // started_at — it's the same convention the phone sync uses (local
+    // midnight), so the per-day unique index (which buckets by the UTC day of
+    // started_at) lands a Terra delivery and a phone sync of the same civil day
+    // in the SAME bucket, and the merge below tops up instead of double-awarding.
+    // The old code truncated to the UTC day start, which filed positive-offset
+    // users' steps under the previous day AND dodged the phone-sync's row.
+    const startedAt = new Date(start).toISOString();
+    const bucketStart = dayStartUTC(startedAt);
+    const bucketEnd = new Date(new Date(bucketStart).getTime() + 24 * 60 * 60 * 1000).toISOString();
+    const end = d.metadata?.end_time;
+    const endedAt = end && new Date(end).getTime() < Date.now()
+      ? new Date(end).toISOString()
+      : new Date().toISOString();
     const targetPoints = stepTierPoints(steps);
 
-    // Find an existing walking session for this day (trust 0.90 marks auto-sync).
-    const { data: existing } = await supabase
+    // The day's existing walking session (trust 0.90 marks auto-sync). Queries
+    // the unique index's bucket exactly, so insert-vs-lookup can never disagree
+    // (the index guarantees at most one row per bucket).
+    const findExisting = () => supabase
       .from('activity_sessions')
       .select('id, steps')
       .eq('user_id', userId)
       .eq('type', 'walking')
       .eq('trust_score', 0.90)
-      .gte('started_at', day)
-      .lt('started_at', `${new Date(start).toISOString().split('T')[0]}T23:59:59.999Z`)
+      .gte('started_at', bucketStart)
+      .lt('started_at', bucketEnd)
       .maybeSingle();
+
+    let { data: existing } = await findExisting();
 
     if (!existing) {
       const { data: session, error } = await supabase
         .from('activity_sessions')
         .insert({
-          user_id: userId, type: 'walking', started_at: day,
-          ended_at: new Date().toISOString(), duration_sec: 0, steps,
+          user_id: userId, type: 'walking', started_at: startedAt,
+          ended_at: endedAt, duration_sec: 0, steps,
           verification: 'wearable', trust_score: 0.90, device_id: null,
         })
         .select('id').single();
-      if (error) { if (error.code !== '23505') console.error('[terra-webhook] walking insert:', error.message); continue; }
-      if (targetPoints > 0) {
-        await supabase.from('point_transactions').insert({
-          user_id: userId, session_id: session.id, amount: targetPoints, type: 'earn', source: 'health_sync',
-        });
+      if (!error) {
+        if (targetPoints > 0) {
+          await supabase.from('point_transactions').insert({
+            user_id: userId, session_id: session.id, amount: targetPoints, type: 'earn', source: 'health_sync',
+          });
+        }
+        continue;
       }
-    } else if (steps > (existing.steps ?? 0)) {
+      if (error.code !== '23505') { console.error('[terra-webhook] walking insert:', error.message); continue; }
+      // Lost the race against a concurrent phone sync — merge into its row.
+      ({ data: existing } = await findExisting());
+      if (!existing) continue;
+    }
+
+    if (steps > (existing.steps ?? 0)) {
       const delta = targetPoints - stepTierPoints(existing.steps ?? 0);
       await supabase.from('activity_sessions').update({ steps }).eq('id', existing.id);
       if (delta > 0) {
@@ -434,11 +460,15 @@ Deno.serve(async (req) => {
   );
 
   try {
-    // Freshness stamp: any DATA payload marks this connection as recently
-    // delivered, so the terra-poll cron skips it (see terra-poll/index.ts).
-    // Lifecycle events (auth/deauth) deliberately don't count — a connection
-    // that only ever authed still needs polling.
-    if (['activity', 'sleep', 'daily', 'body'].includes(payload.type) && payload.user?.user_id) {
+    // Freshness stamp: a sleep/activity/body payload marks this connection as
+    // recently delivered, so the terra-poll cron skips it (see
+    // terra-poll/index.ts). Lifecycle events (auth/deauth) deliberately don't
+    // count — a connection that only ever authed still needs polling. 'daily'
+    // doesn't count either: terra-poll requests it unconditionally every cycle
+    // (providers like Whoop never auto-push it), and letting those deliveries
+    // stamp freshness would mark every connection permanently fresh and starve
+    // the sleep/activity re-poll.
+    if (['activity', 'sleep', 'body'].includes(payload.type) && payload.user?.user_id) {
       await supabase.from('terra_connections')
         .update({ last_event_at: new Date().toISOString() })
         .eq('terra_user_id', payload.user.user_id);
