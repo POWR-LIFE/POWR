@@ -4,6 +4,7 @@ import { HeaderActions } from '@/components/HeaderActions';
 import { RewardHeroMedia } from '@/components/rewards/RewardHeroMedia';
 import { VaultTimer } from '@/components/rewards/VaultTimer';
 import { usePoints } from '@/hooks/usePoints';
+import { useRollingNumber } from '@/hooks/useRollingNumber';
 import { fetchMyRedemptionSummary, fetchRewards, fetchSmartFeaturedReward, type Reward as ApiReward } from '@/lib/api/rewards';
 import { resolveContextualPlacements, pickHeroPlacement, comparePlacements, type ResolvedPlacement } from '@/lib/api/placements';
 import { rewardHeroUri, rewardLogoUri } from '@/lib/storageImage';
@@ -450,6 +451,9 @@ interface BalanceCardProps {
 
 function BalanceCard({ balance, todayEarned, loading }: BalanceCardProps) {
   const router = useRouter();
+  // Rolls up when the balance increases (vault unlocks, session claims);
+  // loads and spends snap silently.
+  const displayBalance = useRollingNumber(balance, !loading);
   return (
     <View style={styles.balanceCard}>
       <View style={styles.balanceRow}>
@@ -457,7 +461,7 @@ function BalanceCard({ balance, todayEarned, loading }: BalanceCardProps) {
           <Text style={styles.metaLabel}>Available balance</Text>
           <View style={styles.balanceNumberRow}>
             <Text style={[styles.balanceNumber, loading && { opacity: 0.4 }]}>
-              {balance.toLocaleString()}
+              {displayBalance.toLocaleString()}
             </Text>
             <Text style={styles.balanceUnit}>Points</Text>
           </View>
@@ -929,6 +933,8 @@ const styles = StyleSheet.create({
     letterSpacing: -3,
     lineHeight: 66,
     color: GOLD,
+    // Stable digit widths so the roll-up doesn't make the row jitter.
+    fontVariant: ['tabular-nums'],
   },
   balanceUnit: {
     fontSize: 11,

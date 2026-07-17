@@ -27,6 +27,7 @@ import { useAuth } from '@/context/AuthContext';
 import { claimVaultDeposits, fetchVaultContents, type VaultDeposit } from '@/lib/api/vault';
 import { useCountdown } from '@/hooks/useCountdown';
 import { usePoints } from '@/hooks/usePoints';
+import { useRollingNumber } from '@/hooks/useRollingNumber';
 
 // Same dev account that gets the level-up celebration replay (useLevelUp) and
 // the claim-points cap bypass — mirrored server-side in dev_rearm_vault().
@@ -112,14 +113,21 @@ function depositSub(d: VaultDeposit): string {
 function VaultHero({
   pending,
   totalPending,
+  balance,
+  balanceReady,
   heroHeight,
   onClaim,
 }: {
   pending: VaultDeposit[];
   totalPending: number;
+  balance: number;
+  balanceReady: boolean;
   heroHeight: number;
   onClaim: () => Promise<number>;
 }) {
+  // The epilogue: once the unlock lands and the points query refetches, this
+  // rolls the spendable balance up to its new value right under the payout.
+  const displayBalance = useRollingNumber(balance, balanceReady);
   const dueTotal = pending
     .filter((d) => new Date(d.vests_at).getTime() <= Date.now())
     .reduce((s, d) => s + d.amount, 0);
@@ -243,6 +251,10 @@ function VaultHero({
         <>
           <Text style={styles.heroUnlocked}>+{unlockedPoints.toLocaleString()} POWR</Text>
           <Text style={styles.heroReadyHint}>UNLOCKED — ADDED TO YOUR BALANCE</Text>
+          <View style={styles.heroBalanceRow}>
+            <Text style={styles.heroBalanceLabel}>BALANCE</Text>
+            <Text style={styles.heroBalanceValue}>{displayBalance.toLocaleString()}</Text>
+          </View>
           {remainingVesting > 0 && (
             <View style={styles.heroNextRow}>
               <View style={styles.heroDot} />
@@ -327,7 +339,7 @@ export default function VaultScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { height: windowHeight } = useWindowDimensions();
-  const { vaultPending } = usePoints();
+  const { vaultPending, balance, loading: pointsLoading } = usePoints();
   const { user } = useAuth();
   const [infoOpen, setInfoOpen] = useState(false);
   const queryClient = useQueryClient();
@@ -446,6 +458,8 @@ export default function VaultScreen() {
               key={devKey}
               pending={pending}
               totalPending={vaultPending}
+              balance={balance}
+              balanceReady={!pointsLoading}
               heroHeight={heroHeight}
               onClaim={handleClaim}
             />
@@ -580,6 +594,12 @@ const styles = StyleSheet.create({
   heroReadyHint: {
     fontSize: 10, fontWeight: '600', letterSpacing: 2, color: DIM,
     textTransform: 'uppercase', marginTop: 2,
+  },
+  heroBalanceRow: { flexDirection: 'row', alignItems: 'baseline', gap: 8, marginTop: 12 },
+  heroBalanceLabel: { fontSize: 9, fontWeight: '600', letterSpacing: 2, color: MUTED },
+  heroBalanceValue: {
+    fontSize: 20, fontWeight: '300', letterSpacing: 1, color: TEXT,
+    fontVariant: ['tabular-nums'],
   },
 
   sectionHeader: {
