@@ -64,6 +64,45 @@ function formatSteps(steps: number): string {
   return steps >= 1000 ? `${(steps / 1000).toFixed(1)}k` : String(steps);
 }
 
+// ─── Health-access hint ──────────────────────────────────────────────────────
+// The one-line insight under today's steps. When health access is missing it
+// becomes a tappable re-prime: "connected" in our records doesn't guarantee the
+// OS grant still exists (Health Connect toggles can be off after a reinstall),
+// so the fix must be one tap away from where the gap is noticed.
+
+function HealthAccessHint({
+  walking, steps, remaining,
+}: {
+  walking: ReturnType<typeof useWalkingProgress>;
+  steps: number;
+  remaining: number;
+}) {
+  if (!walking.isAuthorized) {
+    return (
+      <Pressable
+        style={styles.insightRow}
+        disabled={walking.requesting}
+        onPress={() => walking.requestPermissions().then(ok => { if (ok) walking.refresh(); })}
+      >
+        <Ionicons name="alert-circle" size={12} color={GOLD} />
+        <Text style={[styles.insightText, styles.insightAction]}>
+          {walking.requesting ? 'Requesting Health access…' : 'Enable Health access to track steps'}
+        </Text>
+      </Pressable>
+    );
+  }
+  return (
+    <View style={styles.insightRow}>
+      <Ionicons name={steps > 5000 ? 'trending-up' : 'footsteps'} size={12} color={GREEN} />
+      <Text style={styles.insightText}>
+        {steps > 0
+          ? `${remaining.toLocaleString()} steps to today's goal`
+          : "Start moving to track today's steps"}
+      </Text>
+    </View>
+  );
+}
+
 // ─── Day View ────────────────────────────────────────────────────────────────
 
 function MovementDayView({ walking, offset }: { walking: ReturnType<typeof useWalkingProgress>; offset: number }) {
@@ -79,9 +118,10 @@ function MovementDayView({ walking, offset }: { walking: ReturnType<typeof useWa
     return () => { cancelled = true; };
   }, [offset]);
 
-  const daySteps = isToday
-    ? (walking.isAuthorized ? (walking.stepsToday ?? 0) : 0)
-    : (pastDay?.steps ?? 0);
+  // stepsToday already falls back to the day's synced session (Terra top-up /
+  // earlier sync) when the live health read is unavailable — show it even when
+  // health access is currently unauthorized.
+  const daySteps = isToday ? (walking.stepsToday ?? 0) : (pastDay?.steps ?? 0);
   const dayPoints = isToday ? walking.pointsEarned : (pastDay?.totalPoints ?? 0);
   const dayPct = Math.min(daySteps / 10000, 1);
   const remaining = Math.max(0, 10000 - daySteps);
@@ -128,16 +168,7 @@ function MovementDayView({ walking, offset }: { walking: ReturnType<typeof useWa
       )}
 
       {isToday && (
-        <View style={styles.insightRow}>
-          <Ionicons name={daySteps > 5000 ? 'trending-up' : 'footsteps'} size={12} color={GREEN} />
-          <Text style={styles.insightText}>
-            {walking.isAuthorized
-              ? daySteps > 0
-                ? `${remaining.toLocaleString()} steps to today's goal`
-                : "Start moving to track today's steps"
-              : 'Enable Health access to track steps'}
-          </Text>
-        </View>
+        <HealthAccessHint walking={walking} steps={daySteps} remaining={remaining} />
       )}
 
       {history.length > 0 && (
@@ -185,7 +216,7 @@ function MovementWeekView({
   offset: number;
 }) {
   const isCurrent  = offset === 0;
-  const todaySteps = walking.isAuthorized ? (walking.stepsToday ?? 0) : 0;
+  const todaySteps = walking.stepsToday ?? 0;
   const todayPct   = Math.min(todaySteps / 10000, 1);
   const remaining  = Math.max(0, 10000 - todaySteps);
 
@@ -225,7 +256,7 @@ function MovementWeekView({
           <View style={styles.bigMetric}>
             <Text style={styles.bigMetricSup}>TODAY</Text>
             <Text style={[styles.bigMetricVal, { color: GREEN }]}>
-              {walking.isAuthorized && todaySteps > 0 ? todaySteps.toLocaleString() : '—'}
+              {todaySteps > 0 ? todaySteps.toLocaleString() : '—'}
             </Text>
             <Text style={styles.bigMetricMax}>/ 10,000 steps</Text>
             <View style={styles.metricBar}>
@@ -298,16 +329,7 @@ function MovementWeekView({
       )}
 
       {isCurrent && (
-        <View style={styles.insightRow}>
-          <Ionicons name={todaySteps > 5000 ? 'trending-up' : 'footsteps'} size={12} color={GREEN} />
-          <Text style={styles.insightText}>
-            {walking.isAuthorized
-              ? todaySteps > 0
-                ? `${remaining.toLocaleString()} steps to today's goal`
-                : "Start moving to track today's steps"
-              : 'Enable Health access to track steps'}
-          </Text>
-        </View>
+        <HealthAccessHint walking={walking} steps={todaySteps} remaining={remaining} />
       )}
     </View>
   );
@@ -649,6 +671,7 @@ const styles = StyleSheet.create({
   // Insight
   insightRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
   insightText: { fontSize: 12, fontWeight: '300', color: MUTED, flex: 1 },
+  insightAction: { color: GOLD, fontWeight: '500', textDecorationLine: 'underline' },
 
   // Week bar chart
   weekBarChart: {
