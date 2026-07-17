@@ -1,8 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { sendEmail } from "../_shared/mailgun.ts";
 import {
-  waitlistUserEmail,
-  waitlistPartnerEmail,
   welcomeEmail,
   rewardNotificationEmail,
   streakAtRiskEmail,
@@ -11,8 +9,6 @@ import {
   pointsMilestoneEmail,
   inactivityNudgeEmail,
   weeklySummaryEmail,
-  type WaitlistUserData,
-  type WaitlistPartnerData,
   type WelcomeData,
   type RewardNotificationData,
   type StreakAtRiskData,
@@ -26,8 +22,6 @@ import {
 const SEND_EMAIL_SECRET = Deno.env.get("SEND_EMAIL_SECRET");
 
 type EmailPayload =
-  | { type: "waitlist_user"; to: string; data: WaitlistUserData }
-  | { type: "waitlist_partner"; to: string; data: WaitlistPartnerData }
   | { type: "welcome"; to: string; data: WelcomeData }
   | { type: "reward"; to: string; data: RewardNotificationData }
   | { type: "streak_at_risk"; to: string; data: StreakAtRiskData }
@@ -42,12 +36,16 @@ Deno.serve(async (req: Request) => {
     return new Response("Method not allowed", { status: 405 });
   }
 
-  if (SEND_EMAIL_SECRET) {
-    const authHeader = req.headers.get("Authorization") ?? "";
-    const token = authHeader.replace(/^Bearer\s+/i, "");
-    if (token !== SEND_EMAIL_SECRET) {
-      return new Response("Unauthorized", { status: 401 });
-    }
+  // Fail closed: with no secret provisioned this endpoint sends nothing.
+  // (verify_jwt is off, so this check is the only thing between the public
+  // internet and POWR-branded outbound mail.)
+  if (!SEND_EMAIL_SECRET) {
+    return new Response("Sending disabled: SEND_EMAIL_SECRET is not provisioned", { status: 503 });
+  }
+  const authHeader = req.headers.get("Authorization") ?? "";
+  const token = authHeader.replace(/^Bearer\s+/i, "");
+  if (token !== SEND_EMAIL_SECRET) {
+    return new Response("Unauthorized", { status: 401 });
   }
 
   let payload: EmailPayload;
@@ -65,12 +63,6 @@ Deno.serve(async (req: Request) => {
     let email: { subject: string; html: string; text: string };
 
     switch (payload.type) {
-      case "waitlist_user":
-        email = waitlistUserEmail(payload.data);
-        break;
-      case "waitlist_partner":
-        email = waitlistPartnerEmail(payload.data);
-        break;
       case "welcome":
         email = welcomeEmail(payload.data);
         break;

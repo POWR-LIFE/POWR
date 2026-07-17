@@ -455,6 +455,29 @@ verify_jwt = false
 # mirroring terra-webhook.
 verify_jwt = false
 
+[functions.email-previews]
+# TEMPORARY QA rig — sends the proposed email set to jamie@powr.life (the
+# recipient is hardcoded; it cannot email anyone else). Gated by an in-code
+# key rather than a JWT. Delete alongside the function once the set ships.
+verify_jwt = false
+
+[functions.send-weekly-summary]
+# Invoked by pg_cron every Monday 08:00 UTC (no Supabase user JWT) — gated by
+# the x-resolve-token check (verify_resolve_token) inside the function. This
+# entry was missing originally, so the function deployed with JWT verification
+# on and the cron could never reach it.
+verify_jwt = false
+
+[functions.send-brand-weekly-report]
+# Invoked by pg_cron every Monday 09:00 UTC (no Supabase user JWT) — same
+# x-resolve-token gate as the other cron functions.
+verify_jwt = false
+
+[functions.send-level-up-email]
+# Invoked by the notify_level_up_email() DB trigger via pg_net (no Supabase
+# user JWT) — same x-resolve-token gate as the cron functions.
+verify_jwt = false
+
 [edge_runtime]
 enabled = true
 # Supported request policies: `oneshot`, `per_worker`.
