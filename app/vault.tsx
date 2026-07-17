@@ -16,12 +16,18 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Line } from 'react-native-svg';
 
 import { supabase } from '@/lib/supabase';
 
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
 import GeometricBackground from '@/components/GeometricBackground';
 import { VaultDoor } from '@/components/vault/VaultDoor';
+import {
+  VAULT_HERO_DESIGNS,
+  type VaultHeroDesign,
+  type VaultHeroDesignId,
+} from '@/components/vault/heroDesigns';
 import { LEVELS, TIER_META, VAULT_LEVEL_BONUS, type LevelTier } from '@/constants/levels';
 import { useAuth } from '@/context/AuthContext';
 import { claimVaultDeposits, fetchVaultContents, type VaultDeposit } from '@/lib/api/vault';
@@ -32,6 +38,10 @@ import { useRollingNumber } from '@/hooks/useRollingNumber';
 // Same dev account that gets the level-up celebration replay (useLevelUp) and
 // the claim-points cap bypass — mirrored server-side in dev_rearm_vault().
 const DEV_TEST_EMAILS = new Set(['jamiemasonwright@gmail.com']);
+
+// Dev-only door design preference (set from the picker under the re-arm
+// button). Everyone else always gets the shipped 'classic' door.
+const DOOR_DESIGN_STORAGE_KEY = '@powr/dev_vault_door';
 
 // ─── Design tokens (match wallet / points-ledger) ─────────────────────────────
 
@@ -44,26 +54,8 @@ const GREEN  = '#4ade80';
 const ORANGE = '#FF9944';
 const BORDER = 'rgba(255,255,255,0.08)';
 
-// Tick dial geometry: 60 tick marks wrap the door like a safe dial. Elapsed
-// ticks hold gold as the deposit vests; one bright sweep tick advances every
-// second in step with the countdown.
-const RING_SIZE = 240;
-const RING_RADIUS = 112;
+// The hold charge is quantised to this many steps for the designs' dials.
 const TICK_COUNT = 60;
-const TICK_LEN = 8;
-const DOOR_SIZE = 164;
-
-const TICKS = Array.from({ length: TICK_COUNT }, (_, i) => {
-  const a = ((i / TICK_COUNT) * 360 - 90) * (Math.PI / 180);
-  const inner = RING_RADIUS - TICK_LEN / 2;
-  const outer = RING_RADIUS + TICK_LEN / 2;
-  return {
-    x1: RING_SIZE / 2 + inner * Math.cos(a),
-    y1: RING_SIZE / 2 + inner * Math.sin(a),
-    x2: RING_SIZE / 2 + outer * Math.cos(a),
-    y2: RING_SIZE / 2 + outer * Math.sin(a),
-  };
-});
 
 const DEFAULT_VEST_DAYS = 60;
 
@@ -117,6 +109,7 @@ function VaultHero({
   balanceReady,
   heroHeight,
   onClaim,
+  design,
 }: {
   pending: VaultDeposit[];
   totalPending: number;
@@ -124,6 +117,7 @@ function VaultHero({
   balanceReady: boolean;
   heroHeight: number;
   onClaim: () => Promise<number>;
+  design: VaultHeroDesign;
 }) {
   // The epilogue: once the unlock lands and the points query refetches, this
   // rolls the spendable balance up to its new value right under the payout.
@@ -194,19 +188,13 @@ function VaultHero({
     Animated.timing(holdAnim, { toValue: 0, duration: 220, useNativeDriver: false }).start();
   }, [claiming, unlockedPoints, holdAnim]);
 
-  // The wheel spins as the hold charges; a slight grow sells the strain.
-  const doorSpin = holdAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '270deg'] });
-  const doorScale = holdAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.06] });
-
-  // Dial: unlocked → all gold; holding → charged ticks; vesting → elapsed
-  // fraction + sweep.
+  // Elapsed vest fraction of the soonest pending deposit.
   let progress = 0;
   if (pending[0]) {
     const start = new Date(pending[0].created_at).getTime();
     const end = new Date(pending[0].vests_at).getTime();
     progress = end > start ? Math.min(1, Math.max(0, (Date.now() - start) / (end - start))) : 1;
   }
-  const sweep = Math.floor(Date.now() / 1000) % TICK_COUNT;
 
   return (
     <View style={[styles.hero, { minHeight: heroHeight }]}>
@@ -216,35 +204,18 @@ function VaultHero({
         onPressOut={cancelHold}
         disabled={!ready || claiming}
       >
-        <View style={styles.ringWrap}>
-          <Svg width={RING_SIZE} height={RING_SIZE} style={StyleSheet.absoluteFill}>
-            {TICKS.map((t, i) => {
-              let stroke = 'rgba(255,255,255,0.10)';
-              let width = 2;
-              if (unlockedPoints !== null) {
-                stroke = GOLD;
-              } else if (ready) {
-                if (i < holdTicks) { stroke = GOLD; width = 3; }
-                else stroke = 'rgba(232,210,0,0.28)';
-              } else if (pending.length > 0) {
-                if (i === sweep) { stroke = GOLD; width = 3; }
-                else if (i / TICK_COUNT <= progress) stroke = 'rgba(232,210,0,0.5)';
-              }
-              return (
-                <Line
-                  key={i}
-                  x1={t.x1} y1={t.y1} x2={t.x2} y2={t.y2}
-                  stroke={stroke}
-                  strokeWidth={width}
-                  strokeLinecap="round"
-                />
-              );
-            })}
-          </Svg>
-          <Animated.View style={{ transform: [{ rotate: doorSpin }, { scale: doorScale }] }}>
-            <VaultDoor size={DOOR_SIZE} />
-          </Animated.View>
-        </View>
+        <design.Centerpiece
+          hasPending={pending.length > 0}
+          progress={progress}
+          ready={ready}
+          unlocked={unlockedPoints !== null}
+          holdTicks={holdTicks}
+          holdAnim={holdAnim}
+          countdown={countdown}
+          nextVestAt={pending[0]?.vests_at ?? null}
+          dueTotal={dueTotal}
+          totalPending={totalPending}
+        />
       </Pressable>
 
       {unlockedPoints !== null ? (
@@ -266,9 +237,11 @@ function VaultHero({
         </>
       ) : ready ? (
         <>
-          <Text style={styles.heroCountdown}>{dueTotal.toLocaleString()} POWR</Text>
+          {!design.ownCountdown && (
+            <Text style={styles.heroCountdown}>{dueTotal.toLocaleString()} POWR</Text>
+          )}
           <Text style={styles.heroReadyHint}>
-            {claiming ? 'UNLOCKING…' : 'READY — HOLD THE DOOR TO UNLOCK'}
+            {claiming ? 'UNLOCKING…' : 'READY — PRESS & HOLD TO UNLOCK'}
           </Text>
           {nextVesting && (
             <View style={styles.heroNextRow}>
@@ -281,7 +254,9 @@ function VaultHero({
         </>
       ) : pending.length > 0 ? (
         <>
-          {countdown && <Text style={styles.heroCountdown}>{countdown}</Text>}
+          {!design.ownCountdown && countdown && (
+            <Text style={styles.heroCountdown}>{countdown}</Text>
+          )}
           <Text style={styles.heroAmount}>
             {totalPending.toLocaleString()} <Text style={styles.heroAmountUnit}>POWR VESTING</Text>
           </Text>
@@ -349,6 +324,22 @@ export default function VaultScreen() {
   // its unlocked state resets and the hold can run again.
   const isDevTestUser = DEV_TEST_EMAILS.has(user?.email ?? '');
   const [devKey, setDevKey] = useState(0);
+
+  // Dev-only design shoot-out: the picker under the re-arm button swaps the
+  // whole hero centrepiece (persisted so it survives reloads mid-comparison).
+  const [designId, setDesignId] = useState<VaultHeroDesignId>('classic');
+  useEffect(() => {
+    AsyncStorage.getItem(DOOR_DESIGN_STORAGE_KEY).then((stored) => {
+      if (VAULT_HERO_DESIGNS.some((d) => d.id === stored)) {
+        setDesignId(stored as VaultHeroDesignId);
+      }
+    });
+  }, []);
+  const selectDesign = useCallback((id: VaultHeroDesignId) => {
+    setDesignId(id);
+    void AsyncStorage.setItem(DOOR_DESIGN_STORAGE_KEY, id);
+  }, []);
+  const design = VAULT_HERO_DESIGNS.find((d) => d.id === designId) ?? VAULT_HERO_DESIGNS[0];
   const [devRearming, setDevRearming] = useState(false);
   const handleDevRearm = useCallback(async () => {
     setDevRearming(true);
@@ -455,13 +446,14 @@ export default function VaultScreen() {
           stickySectionHeadersEnabled={false}
           ListHeaderComponent={
             <VaultHero
-              key={devKey}
+              key={`${devKey}-${designId}`}
               pending={pending}
               totalPending={vaultPending}
               balance={balance}
               balanceReady={!pointsLoading}
               heroHeight={heroHeight}
               onClaim={handleClaim}
+              design={design}
             />
           }
           ListFooterComponent={
@@ -472,17 +464,38 @@ export default function VaultScreen() {
                 into your spendable balance automatically.
               </Text>
               {isDevTestUser && (
-                <Pressable
-                  style={({ pressed }) => [styles.devRearmBtn, pressed && { opacity: 0.7 }]}
-                  onPress={handleDevRearm}
-                  disabled={devRearming}
-                >
-                  {devRearming ? (
-                    <ActivityIndicator size="small" color={GOLD} />
-                  ) : (
-                    <Text style={styles.devRearmText}>DEV · RE-ARM UNLOCK</Text>
-                  )}
-                </Pressable>
+                <>
+                  <Pressable
+                    style={({ pressed }) => [styles.devRearmBtn, pressed && { opacity: 0.7 }]}
+                    onPress={handleDevRearm}
+                    disabled={devRearming}
+                  >
+                    {devRearming ? (
+                      <ActivityIndicator size="small" color={GOLD} />
+                    ) : (
+                      <Text style={styles.devRearmText}>DEV · RE-ARM UNLOCK</Text>
+                    )}
+                  </Pressable>
+                  <Text style={styles.devDesignLabel}>DEV · VAULT DESIGN</Text>
+                  <View style={styles.devDesignRow}>
+                    {VAULT_HERO_DESIGNS.map((d) => (
+                      <Pressable
+                        key={d.id}
+                        style={({ pressed }) => [
+                          styles.devDesignCard,
+                          designId === d.id && styles.devDesignCardActive,
+                          pressed && { opacity: 0.7 },
+                        ]}
+                        onPress={() => selectDesign(d.id)}
+                      >
+                        <d.Preview />
+                        <Text style={[styles.devDesignName, designId === d.id && { color: GOLD }]}>
+                          {d.label}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </>
               )}
             </>
           }
@@ -574,11 +587,6 @@ const styles = StyleSheet.create({
   listContent: { paddingHorizontal: 16, flexGrow: 1 },
 
   hero: { alignItems: 'center', justifyContent: 'center', gap: 6, paddingBottom: 18 },
-  ringWrap: {
-    width: RING_SIZE, height: RING_SIZE,
-    alignItems: 'center', justifyContent: 'center',
-    marginBottom: 20,
-  },
   heroCountdown: {
     fontSize: 26, fontWeight: '200', letterSpacing: 3, color: GOLD,
     fontVariant: ['tabular-nums'],
@@ -667,4 +675,15 @@ const styles = StyleSheet.create({
     paddingVertical: 8, paddingHorizontal: 16, minWidth: 160, alignItems: 'center',
   },
   devRearmText: { fontSize: 9, fontWeight: '700', letterSpacing: 1.5, color: GOLD },
+  devDesignLabel: {
+    fontSize: 8, fontWeight: '700', letterSpacing: 2, color: MUTED,
+    textAlign: 'center', marginTop: 20, marginBottom: 10,
+  },
+  devDesignRow: { flexDirection: 'row', gap: 8, justifyContent: 'center' },
+  devDesignCard: {
+    alignItems: 'center', gap: 6, paddingVertical: 10, paddingHorizontal: 6,
+    borderWidth: 1, borderColor: BORDER, borderRadius: 14, width: 76,
+  },
+  devDesignCardActive: { borderColor: 'rgba(232,210,0,0.5)', backgroundColor: 'rgba(232,210,0,0.05)' },
+  devDesignName: { fontSize: 8, fontWeight: '700', letterSpacing: 1.2, color: MUTED },
 });
