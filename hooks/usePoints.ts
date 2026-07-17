@@ -8,6 +8,8 @@ type PointsState = {
     todayEarned: number;
     totalEarned: number;
     weeklyEarned: number;
+    vaultPending: number;
+    vaultNextVestAt: string | null;
     loading: boolean;
     error: string | null;
     refresh: () => void;
@@ -38,6 +40,8 @@ export function usePoints(): PointsState {
         todayEarned: data?.todayEarned ?? 0,
         totalEarned: data?.totalEarned ?? 0,
         weeklyEarned: data?.weeklyEarned ?? 0,
+        vaultPending: data?.vaultPending ?? 0,
+        vaultNextVestAt: data?.vaultNextVestAt ?? null,
         loading: isPending,
         error: error ? (error instanceof Error ? error.message : 'Failed to load points') : null,
         // Returns the refetch promise so pull-to-refresh can await completion.

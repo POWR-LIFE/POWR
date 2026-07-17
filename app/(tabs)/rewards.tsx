@@ -2,7 +2,9 @@ import { GeometricBackground } from '@/components/home/GeometricBackground';
 import MagicRings from '@/components/MagicRings';
 import { HeaderActions } from '@/components/HeaderActions';
 import { RewardHeroMedia } from '@/components/rewards/RewardHeroMedia';
+import { VaultTimer } from '@/components/rewards/VaultTimer';
 import { usePoints } from '@/hooks/usePoints';
+import { useRollingNumber } from '@/hooks/useRollingNumber';
 import { fetchMyRedemptionSummary, fetchRewards, fetchSmartFeaturedReward, type Reward as ApiReward } from '@/lib/api/rewards';
 import { resolveContextualPlacements, pickHeroPlacement, comparePlacements, type ResolvedPlacement } from '@/lib/api/placements';
 import { rewardHeroUri, rewardLogoUri } from '@/lib/storageImage';
@@ -448,20 +450,31 @@ interface BalanceCardProps {
 }
 
 function BalanceCard({ balance, todayEarned, loading }: BalanceCardProps) {
+  const router = useRouter();
+  // Rolls up when the balance increases (vault unlocks, session claims);
+  // loads and spends snap silently.
+  const displayBalance = useRollingNumber(balance, !loading);
   return (
     <View style={styles.balanceCard}>
-      <Text style={styles.metaLabel}>Available balance</Text>
-      <View style={styles.balanceNumberRow}>
-        <Text style={[styles.balanceNumber, loading && { opacity: 0.4 }]}>
-          {balance.toLocaleString()}
-        </Text>
-        <Text style={styles.balanceUnit}>Points</Text>
-        {todayEarned > 0 && (
-          <View style={styles.todayBadge}>
-            <View style={styles.todayDot} />
-            <Text style={styles.todayBadgeText}>+{todayEarned} today</Text>
+      <View style={styles.balanceRow}>
+        <View style={styles.balanceLeft}>
+          <Text style={styles.metaLabel}>Available balance</Text>
+          <View style={styles.balanceNumberRow}>
+            <Text style={[styles.balanceNumber, loading && { opacity: 0.4 }]}>
+              {displayBalance.toLocaleString()}
+            </Text>
+            <Text style={styles.balanceUnit}>Points</Text>
           </View>
-        )}
+          {todayEarned > 0 && (
+            <View style={styles.todayBadgeUnder}>
+              <View style={styles.todayDot} />
+              <Text style={styles.todayBadgeText}>+{todayEarned} today</Text>
+            </View>
+          )}
+        </View>
+        {/* Always visible — even empty, so the Vault is discoverable before
+            the first deposit banks. */}
+        <VaultTimer onPress={() => router.push('/vault')} />
       </View>
     </View>
   );
@@ -887,6 +900,12 @@ const styles = StyleSheet.create({
     paddingBottom: 10,
     gap: 4,
   },
+  balanceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    gap: 12,
+  },
   balanceLeft: {
     flex: 1,
     gap: 4,
@@ -914,6 +933,8 @@ const styles = StyleSheet.create({
     letterSpacing: -3,
     lineHeight: 66,
     color: GOLD,
+    // Stable digit widths so the roll-up doesn't make the row jitter.
+    fontVariant: ['tabular-nums'],
   },
   balanceUnit: {
     fontSize: 11,
@@ -968,6 +989,12 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: GOLD,
     letterSpacing: 0.3,
+  },
+  todayBadgeUnder: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginTop: 2,
   },
 
   // ── Featured card (floating, subtle accent line)

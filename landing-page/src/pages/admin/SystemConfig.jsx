@@ -21,6 +21,17 @@ const STEPPERS = {
     // and simply collapses the tiers (any qualifying session earns the upgrade
     // tier immediately) — the server stays coherent either way.
     gym_upgrade_minutes: { step: 5, min: 10, max: 120, unit: 'min' },
+    // Vault economy. Vesting window applies to NEW deposits only; per-tier
+    // level-up bonuses take effect on the next level crossing. min 0 on a
+    // bonus disables that tier (the trigger skips 0-bonus deposits).
+    vault_vest_days:     { step: 5,  min: 5, max: 365,  unit: 'days' },
+    // Days a matured deposit waits for the user's press-and-hold unlock
+    // before the cron auto-releases it. 0 = auto-release immediately.
+    vault_auto_release_grace_days: { step: 1, min: 0, max: 30, unit: 'days' },
+    vault_bonus_recruit: { step: 5,  min: 0, max: 500,  unit: 'pts' },
+    vault_bonus_athlete: { step: 10, min: 0, max: 1000, unit: 'pts' },
+    vault_bonus_elite:   { step: 25, min: 0, max: 2000, unit: 'pts' },
+    vault_bonus_legend:  { step: 50, min: 0, max: 5000, unit: 'pts' },
 };
 const clampStep = (n, { step, min, max }) => {
     const snapped = Math.round(n / step) * step;

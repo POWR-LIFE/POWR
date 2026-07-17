@@ -439,16 +439,23 @@ Deno.serve(async (req) => {
   // the authoritative gates. Fall back to the historical 30/40 on any failure.
   let gymDwellMin = 30;
   let gymUpgradeMin = 40;
+  let vaultVestDays = 60;
+  let vaultCapOverflowEnabled = true;
   {
     const { data: cfg } = await supabase
       .from('system_config')
       .select('key, value')
-      .in('key', ['min_gym_dwell_minutes', 'gym_upgrade_minutes']);
+      .in('key', ['min_gym_dwell_minutes', 'gym_upgrade_minutes', 'vault_vest_days', 'vault_cap_overflow_enabled']);
     for (const row of cfg ?? []) {
+      if (row.key === 'vault_cap_overflow_enabled') {
+        vaultCapOverflowEnabled = String(row.value ?? '').trim().toLowerCase() !== 'false';
+        continue;
+      }
       const parsed = parseInt(row.value ?? '', 10);
       if (!Number.isFinite(parsed) || parsed <= 0) continue;
       if (row.key === 'min_gym_dwell_minutes') gymDwellMin = parsed;
       if (row.key === 'gym_upgrade_minutes') gymUpgradeMin = parsed;
+      if (row.key === 'vault_vest_days') vaultVestDays = parsed;
     }
   }
   let base = calcBasePoints(session, gymDwellMin, gymUpgradeMin);
@@ -561,6 +568,7 @@ Deno.serve(async (req) => {
   }
 
   // 11. Persist the recomputed streak (skip for manual logs)
+  let streakCredited = 0;
   if (!isManual && streak) {
     await supabase
       .from('user_streaks')
@@ -587,6 +595,36 @@ Deno.serve(async (req) => {
         description: `${currentStreak}-day streak bonus`,
         multiplier: 1.0,
       });
+    }
+    streakCredited = Math.max(0, streakAmount);
+  }
+
+  // 11a. Vault the merit the daily cap clamped away. Only BONUS value ever
+  // lands here (base is always credited first, so overflow is the streak
+  // multiplier / cap clamp remainder) — it counts toward level immediately via
+  // vault_deposits but only becomes spendable when it vests. Manual logs are
+  // excluded: they're the penalised, un-verified path and vaulting their
+  // overflow would soften the manual cap. Best-effort — a vault failure must
+  // never fail a claim that already credited.
+  const overflow = isManual || !vaultCapOverflowEnabled
+    ? 0
+    : Math.max(0, base + streakBonus - finalAmount - streakCredited);
+  let vaulted = 0;
+  if (overflow > 0) {
+    const { error: vaultErr } = await supabase.from('vault_deposits').insert({
+      user_id: user.id,
+      session_id: session.id,
+      amount: overflow,
+      source: 'cap_overflow',
+      description: streakBonus > 0
+        ? `${currentStreak}-day streak · ${session.type} over the daily cap`
+        : `${session.type} over the daily cap`,
+      vests_at: new Date(Date.now() + vaultVestDays * 24 * 60 * 60 * 1000).toISOString(),
+    });
+    if (vaultErr) {
+      console.warn('[claim-points] vault deposit failed:', vaultErr);
+    } else {
+      vaulted = overflow;
     }
   }
 
@@ -710,6 +748,7 @@ Deno.serve(async (req) => {
       ok: true,
       earned: finalAmount,
       streak_bonus: streakBonus,
+      vaulted,
       base,
       transaction_id: tx.id,
       within_reach: withinReach,

@@ -17,7 +17,12 @@ export interface PointsSummary {
     todayEarned: number;
     weeklyEarned: number;
     monthlyEarned: number;
+    /** Lifetime earned (level basis) — INCLUDES still-vesting vault points. */
     totalEarned: number;
+    /** Bonus points vesting in the Vault — not yet spendable. */
+    vaultPending: number;
+    /** When the next vault deposit vests, or null when the vault is empty. */
+    vaultNextVestAt: string | null;
 }
 
 const EMPTY_SUMMARY: PointsSummary = {
@@ -26,6 +31,8 @@ const EMPTY_SUMMARY: PointsSummary = {
     weeklyEarned: 0,
     monthlyEarned: 0,
     totalEarned: 0,
+    vaultPending: 0,
+    vaultNextVestAt: null,
 };
 
 /**
@@ -65,6 +72,8 @@ export async function fetchPointsSummary(): Promise<PointsSummary> {
         weeklyEarned: Number(row.weekly_earned ?? 0),
         monthlyEarned: Number(row.monthly_earned ?? 0),
         totalEarned: Number(row.total_earned ?? 0),
+        vaultPending: Number(row.vault_pending ?? 0),
+        vaultNextVestAt: row.vault_next_vest_at ?? null,
     };
 }
 
