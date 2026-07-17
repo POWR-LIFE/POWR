@@ -70,17 +70,26 @@ TaskManager.defineTask(BACKGROUND_NOTIFICATION_TASK, async ({ data, error }) => 
   }
 });
 
-/** Registers the task so data-only pushes are delivered while backgrounded/closed.
- *  Registration is UNCONDITIONAL on purpose — never guard it behind
- *  isTaskRegisteredAsync. Task registration persists natively, so after an OTA
- *  restart-prompt reload (Updates.reloadAsync — new JS context, same process)
- *  the guard reported "already registered" and skipped the call, leaving the
- *  delivery binding wired to the DEAD context: FCM accepted the wakes but the
- *  task never ran until the next cold start (field-caught 2026-07-15, ~05:44Z —
- *  a gym session straight after an accepted update prompt got zero wakes).
- *  registerTaskAsync is idempotent, so re-registering on every boot is free. */
+/** REBINDS the task so data-only pushes are delivered while backgrounded/closed.
+ *
+ *  unregister → register, never register alone: registration persists natively,
+ *  and a bare registerTaskAsync no-ops when the name is already registered —
+ *  which keeps delivery wired to whatever JS context registered it FIRST. When
+ *  the context changes under the same process (an OTA restart-prompt reload via
+ *  Updates.reloadAsync, or a headless-born process — fg-service/location restart
+ *  — whose UI context mounts later), that first context is dead and every wake
+ *  is dropped in silence: the OS hands us the FCM broadcast, the task never
+ *  runs. Proven live 2026-07-17: batterystats showed all 7 beacon wakes
+ *  dispatched to the app in ~2 s, zero JS reaction, for a session that was alive
+ *  the whole time; a cold start healed it, foregrounding alone did NOT.
+ *  (Re-registering on boot alone — the 2026-07-15 fix — was not enough.)
+ *
+ *  The unregister may reject when nothing was registered yet — ignore it and
+ *  register anyway. Call this on every UI mount AND every return-to-foreground:
+ *  those are the earliest moments a live context can steal the binding back. */
 export async function registerBackgroundNotificationTask(): Promise<void> {
   try {
+    await Notifications.unregisterTaskAsync(BACKGROUND_NOTIFICATION_TASK).catch(() => {});
     await Notifications.registerTaskAsync(BACKGROUND_NOTIFICATION_TASK);
     console.log('[BackgroundNotification] task registered.');
   } catch (err) {

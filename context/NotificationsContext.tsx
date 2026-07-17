@@ -322,7 +322,15 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     });
 
     const appSub = AppState.addEventListener('change', (next: AppStateStatus) => {
-      if (next === 'active' && !expoPushToken) registerForPush(uid);
+      if (next !== 'active') return;
+      if (!expoPushToken) registerForPush(uid);
+      // Rebind the silent-wake task on every foreground. The native binding dies
+      // when the JS context changes under the process (OTA reload, headless-born
+      // start) and a dead binding drops every server wake until the next cold
+      // start — foregrounding is the earliest moment this context can take it
+      // back (field-proven 2026-07-17).
+      registerBackgroundNotificationTask()
+        .catch((err) => console.warn('[Notifications] Background task rebind failed:', err));
     });
 
     return () => {
