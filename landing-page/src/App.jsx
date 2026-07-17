@@ -12,6 +12,7 @@ import {
     MapPin,
     Megaphone,
     MessageSquare,
+    Lock,
     ScrollText,
     Settings,
     Shield,
@@ -66,6 +67,7 @@ import UserManager from './pages/admin/UserManager';
 import UserProfile from './pages/admin/UserProfile';
 import WeeklyChallenges from './pages/admin/WeeklyChallenges';
 import NotificationManager from './pages/admin/NotificationManager';
+import VaultManager from './pages/admin/VaultManager';
 import AthleteSignup from './pages/AthleteSignup';
 import LandingV2 from './landing/LandingV2';
 import CookiePolicy from './pages/CookiePolicy';
@@ -619,6 +621,7 @@ const AdminHome = () => {
         { label: 'Performance', path: '/admin/performance',        icon: TrendingUp,    color: '#F97316' },
         { label: 'Redemptions', path: '/admin/redemptions',        icon: Gift,          color: '#8B5CF6' },
         { label: 'Support',     path: '/admin/support',            icon: MessageSquare, color: '#0EA5E9' },
+        { label: 'Vault',       path: '/admin/vault',              icon: Lock,          color: '#E8D200' },
         { label: 'Audit Log',   path: '/admin/audit',              icon: ScrollText,    color: '#AAAAAA' },
         { label: 'Config',      path: '/admin/config',             icon: Settings,      color: '#AAAAAA' },
     ];
@@ -1059,6 +1062,7 @@ export default function App() {
                     <Route path="/admin/redemptions" element={<ProtectedRoute><AdminLayout><RedemptionTracker /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/audit" element={<ProtectedRoute><AdminLayout><AuditLog /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/config" element={<ProtectedRoute><AdminLayout><SystemConfig /></AdminLayout></ProtectedRoute>} />
+                    <Route path="/admin/vault" element={<ProtectedRoute><AdminLayout><VaultManager /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/support" element={<ProtectedRoute><AdminLayout><SupportTickets /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/broadcast" element={<ProtectedRoute><AdminLayout><Broadcast /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/campaigns" element={<ProtectedRoute><AdminLayout><Campaigns /></AdminLayout></ProtectedRoute>} />
