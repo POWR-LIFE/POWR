@@ -105,6 +105,19 @@ export const LEVEL_IMAGE: Partial<Record<number, string>> = Object.fromEntries(
     }),
 );
 
+/**
+ * POWR banked into the Vault when a level in each tier is reached.
+ * MUST stay in sync with the vault_level_up_check() trigger
+ * (supabase/migrations/20260718000003_vault_level_bonus_steepening.sql) —
+ * the trigger is authoritative; this copy only drives display.
+ */
+export const VAULT_LEVEL_BONUS: Record<LevelTier, number> = {
+  recruit: 10,
+  athlete: 50,
+  elite: 150,
+  legend: 400,
+};
+
 export interface LevelInfo {
   current: LevelDef;
   next: LevelDef | undefined;

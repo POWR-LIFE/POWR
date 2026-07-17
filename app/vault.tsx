@@ -19,7 +19,7 @@ import { supabase } from '@/lib/supabase';
 
 import GeometricBackground from '@/components/GeometricBackground';
 import { VaultDoor } from '@/components/vault/VaultDoor';
-import { LEVELS } from '@/constants/levels';
+import { LEVELS, TIER_META, VAULT_LEVEL_BONUS, type LevelTier } from '@/constants/levels';
 import { fetchVaultContents, type VaultDeposit } from '@/lib/api/vault';
 import { useCountdown } from '@/hooks/useCountdown';
 import { usePoints } from '@/hooks/usePoints';
@@ -301,8 +301,18 @@ export default function VaultScreen() {
               <View style={styles.infoRowBody}>
                 <Text style={styles.infoRowTitle}>Level-up bonuses</Text>
                 <Text style={styles.infoRowText}>
-                  Every level you reach banks a bonus — bigger through Athlete, Elite and Legend.
+                  Every level you reach banks a bonus — and the higher the tier, the bigger the drop.
                 </Text>
+                <View style={styles.tierPillRow}>
+                  {(Object.keys(VAULT_LEVEL_BONUS) as LevelTier[]).map((tier) => (
+                    <View key={tier} style={styles.tierPill}>
+                      <Text style={[styles.tierPillTier, { color: TIER_META[tier].color }]}>
+                        {TIER_META[tier].label}
+                      </Text>
+                      <Text style={styles.tierPillAmount}>+{VAULT_LEVEL_BONUS[tier]}</Text>
+                    </View>
+                  ))}
+                </View>
               </View>
             </View>
 
@@ -419,6 +429,14 @@ const styles = StyleSheet.create({
   infoRowBody: { flex: 1, gap: 2 },
   infoRowTitle: { fontSize: 13, fontWeight: '500', color: TEXT },
   infoRowText: { fontSize: 12, fontWeight: '300', color: DIM, lineHeight: 17 },
+  tierPillRow: { flexDirection: 'row', gap: 6, marginTop: 8 },
+  tierPill: {
+    flex: 1, alignItems: 'center', gap: 1,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.10)', borderRadius: 10,
+    paddingVertical: 7,
+  },
+  tierPillTier: { fontSize: 7, fontWeight: '700', letterSpacing: 1 },
+  tierPillAmount: { fontSize: 12, fontWeight: '500', color: TEXT },
   infoBtn: {
     marginTop: 6, backgroundColor: GOLD, borderRadius: 20,
     paddingVertical: 12, alignItems: 'center',
