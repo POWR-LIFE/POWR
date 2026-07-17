@@ -23,9 +23,14 @@ import { supabase } from '@/lib/supabase';
 import GeometricBackground from '@/components/GeometricBackground';
 import { VaultDoor } from '@/components/vault/VaultDoor';
 import { LEVELS, TIER_META, VAULT_LEVEL_BONUS, type LevelTier } from '@/constants/levels';
+import { useAuth } from '@/context/AuthContext';
 import { claimVaultDeposits, fetchVaultContents, type VaultDeposit } from '@/lib/api/vault';
 import { useCountdown } from '@/hooks/useCountdown';
 import { usePoints } from '@/hooks/usePoints';
+
+// Same dev account that gets the level-up celebration replay (useLevelUp) and
+// the claim-points cap bypass — mirrored server-side in dev_rearm_vault().
+const DEV_TEST_EMAILS = new Set(['jamiemasonwright@gmail.com']);
 
 // ─── Design tokens (match wallet / points-ledger) ─────────────────────────────
 
@@ -323,8 +328,31 @@ export default function VaultScreen() {
   const router = useRouter();
   const { height: windowHeight } = useWindowDimensions();
   const { vaultPending } = usePoints();
+  const { user } = useAuth();
   const [infoOpen, setInfoOpen] = useState(false);
   const queryClient = useQueryClient();
+
+  // Dev-only unlock replay: dev_rearm_vault() reverses the released deposits
+  // (and their payout rows) back to READY; the key bump remounts the hero so
+  // its unlocked state resets and the hold can run again.
+  const isDevTestUser = DEV_TEST_EMAILS.has(user?.email ?? '');
+  const [devKey, setDevKey] = useState(0);
+  const [devRearming, setDevRearming] = useState(false);
+  const handleDevRearm = useCallback(async () => {
+    setDevRearming(true);
+    try {
+      const { error } = await supabase.rpc('dev_rearm_vault');
+      if (!error) {
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ['vault'] }),
+          queryClient.invalidateQueries({ queryKey: ['points'] }),
+        ]);
+        setDevKey((k) => k + 1);
+      }
+    } finally {
+      setDevRearming(false);
+    }
+  }, [queryClient]);
 
   // The press-and-hold completion: claim every due deposit, then refresh the
   // vault ledger and every points surface (balance just changed).
@@ -415,6 +443,7 @@ export default function VaultScreen() {
           stickySectionHeadersEnabled={false}
           ListHeaderComponent={
             <VaultHero
+              key={devKey}
               pending={pending}
               totalPending={vaultPending}
               heroHeight={heroHeight}
@@ -422,11 +451,26 @@ export default function VaultScreen() {
             />
           }
           ListFooterComponent={
-            <Text style={styles.footerNote}>
-              Vault points are bonus POWR — level-up rewards and points earned over
-              a daily cap. They count towards your level straight away and unlock
-              into your spendable balance automatically.
-            </Text>
+            <>
+              <Text style={styles.footerNote}>
+                Vault points are bonus POWR — level-up rewards and points earned over
+                a daily cap. They count towards your level straight away and unlock
+                into your spendable balance automatically.
+              </Text>
+              {isDevTestUser && (
+                <Pressable
+                  style={({ pressed }) => [styles.devRearmBtn, pressed && { opacity: 0.7 }]}
+                  onPress={handleDevRearm}
+                  disabled={devRearming}
+                >
+                  {devRearming ? (
+                    <ActivityIndicator size="small" color={GOLD} />
+                  ) : (
+                    <Text style={styles.devRearmText}>DEV · RE-ARM UNLOCK</Text>
+                  )}
+                </Pressable>
+              )}
+            </>
           }
         />
       )}
@@ -596,4 +640,11 @@ const styles = StyleSheet.create({
     paddingVertical: 12, alignItems: 'center',
   },
   infoBtnText: { fontSize: 12, fontWeight: '700', letterSpacing: 0.8, color: '#0a0a0a', textTransform: 'uppercase' },
+
+  devRearmBtn: {
+    alignSelf: 'center', marginTop: 18,
+    borderWidth: 1, borderColor: 'rgba(232,210,0,0.4)', borderRadius: 16,
+    paddingVertical: 8, paddingHorizontal: 16, minWidth: 160, alignItems: 'center',
+  },
+  devRearmText: { fontSize: 9, fontWeight: '700', letterSpacing: 1.5, color: GOLD },
 });
