@@ -14,6 +14,7 @@ type NotificationType =
   | 'session_completed'
   | 'session_upgraded'
   | 'vault_unlocked'
+  | 'vault_ready'
   // Shared ("together") challenges + friend graph (scope §4/§6a).
   | 'friend_request'
   | 'friend_accepted'
@@ -59,6 +60,7 @@ function categoryFor(type: NotificationType): 'social' | 'rewards' | 'activity' 
     case 'reward_unlocked':
     case 'points_milestone':
     case 'vault_unlocked':
+    case 'vault_ready':
       return 'rewards';
     case 'session_completed':
     case 'session_upgraded':
@@ -306,6 +308,21 @@ function buildMessage(
         return {
           title: 'Vault unlocked ⚡',
           body: `+${points.toLocaleString()} POWR just vested into your balance. Spend it on something good.`,
+          data: { type, route: '/vault', points },
+          sound: 'default',
+          channelId: 'powr_rewards_v2',
+        };
+      }
+
+      case 'vault_ready': {
+        // Fired when an admin unlock event (or natural vesting via events)
+        // makes deposits claimable — the user still does the press-and-hold.
+        const points = Math.max(0, Math.round(Number(payload.points ?? 0)));
+        return {
+          title: 'Your Vault is ready 🔓',
+          body: points > 0
+            ? `${points.toLocaleString()} POWR has finished vesting — press and hold the door to unlock it.`
+            : 'Your Vault is ready — press and hold the door to unlock it.',
           data: { type, route: '/vault', points },
           sound: 'default',
           channelId: 'powr_rewards_v2',
@@ -565,6 +582,7 @@ Deno.serve(async (req: Request) => {
     const prefColumn: NotificationType =
       type === 'session_upgraded' ? 'session_completed'
       : type === 'vault_unlocked' ? 'points_milestone'
+      : type === 'vault_ready' ? 'points_milestone'
       : type;
     const { data: prefs } = await supabase
       .from('notification_preferences')
