@@ -466,19 +466,21 @@ function BalanceCard({ balance, todayEarned, vaultPending, loading }: BalanceCar
           </View>
         )}
       </View>
-      {vaultPending > 0 && (
-        <Pressable
-          style={({ pressed }) => [styles.vaultRow, pressed && { opacity: 0.7 }]}
-          onPress={() => router.push('/vault')}
-          hitSlop={6}
-        >
-          <Ionicons name="lock-closed" size={10} color={GOLD} />
-          <Text style={styles.vaultRowText}>
-            +{vaultPending.toLocaleString()} vesting in your Vault
-          </Text>
-          <Ionicons name="chevron-forward" size={10} color={MUTED} />
-        </Pressable>
-      )}
+      {/* Always visible — even empty, so the Vault is discoverable before the
+          first deposit banks. */}
+      <Pressable
+        style={({ pressed }) => [styles.vaultRow, pressed && { opacity: 0.7 }]}
+        onPress={() => router.push('/vault')}
+        hitSlop={6}
+      >
+        <Ionicons name="lock-closed" size={10} color={GOLD} />
+        <Text style={styles.vaultRowText}>
+          {vaultPending > 0
+            ? `+${vaultPending.toLocaleString()} vesting in your Vault`
+            : 'Vault — bonus POWR vests here'}
+        </Text>
+        <Ionicons name="chevron-forward" size={10} color={MUTED} />
+      </Pressable>
     </View>
   );
 }
