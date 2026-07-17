@@ -2,7 +2,7 @@
 // Shopify, promo codes) — split out of the old single Developers page.
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeftRight, Check, ChevronDown, Code2, LifeBuoy, Minus, Store, Ticket, TriangleAlert } from 'lucide-react';
+import { ArrowLeftRight, Check, ChevronDown, ChevronRight, Code2, LifeBuoy, Minus, Store, Ticket, TriangleAlert } from 'lucide-react';
 import { useToast } from '../../lib/toast';
 import { useAuth } from '../../App';
 
@@ -229,6 +229,37 @@ export function HealthItem({ state, label, detail }) {
             </div>
             <p className="text-[11px] text-[#999] leading-relaxed mt-1.5 pl-10">{detail}</p>
         </div>
+    );
+}
+
+// Rail chrome for the sticky asides (support, settings) — HealthItem's
+// stacked layout without the state semantics.
+export function RailRow({ icon: Icon, label, detail }) {
+    return (
+        <div className="py-3 border-b border-[#EFEFEC] last:border-0">
+            <div className="flex items-center gap-3">
+                <span className="h-7 w-7 rounded-full flex items-center justify-center border bg-[#F4F4F1] border-[#E6E6E1] shrink-0">
+                    <Icon size={13} className="text-[#8a7600]" />
+                </span>
+                <span className="text-[12px] font-bold text-[#333]">{label}</span>
+            </div>
+            {detail && <p className="text-[11px] text-[#999] leading-relaxed mt-1.5 pl-10">{detail}</p>}
+        </div>
+    );
+}
+
+export function RailLink({ to, icon: Icon, label, detail }) {
+    return (
+        <Link to={to} className="block py-3 border-b border-[#EFEFEC] last:border-0 group">
+            <span className="flex items-center gap-3">
+                <span className="h-7 w-7 rounded-full flex items-center justify-center border bg-[#F4F4F1] border-[#E6E6E1] shrink-0 group-hover:border-[#E8D200]/40 transition-colors">
+                    <Icon size={13} className="text-[#8a7600]" />
+                </span>
+                <span className="text-[12px] font-bold text-[#333] group-hover:text-[#8a7600] transition-colors flex-1">{label}</span>
+                <ChevronRight size={13} className="text-[#CCC] group-hover:text-[#8a7600] transition-colors shrink-0" />
+            </span>
+            {detail && <p className="text-[11px] text-[#999] leading-relaxed mt-1.5 pl-10">{detail}</p>}
+        </Link>
     );
 }
 

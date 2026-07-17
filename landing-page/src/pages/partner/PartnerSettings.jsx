@@ -3,11 +3,9 @@ import { Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
 import { useAuth } from '../../App';
-import { ChevronRight, Key } from 'lucide-react';
+import { ChevronRight, Key, LifeBuoy, Award } from 'lucide-react';
 import BrandAccessPanel from '../../components/BrandAccessPanel';
-import { methodMeta } from './integrationShared';
-
-const INPUT = "w-full h-14 px-5 bg-white border border-[#E6E6E1] rounded-2xl text-sm text-[#1A1A1A] placeholder-[#BBBBBB] focus:border-[#E8D200]/50 outline-none transition-all font-['Outfit']";
+import { methodMeta, SectionCard, INPUT } from './integrationShared';
 
 export default function PartnerSettings() {
     const toast = useToast();
@@ -43,7 +41,7 @@ export default function PartnerSettings() {
     };
 
     return (
-        <div className="py-16 animate-in fade-in slide-in-from-bottom-6 duration-700 max-w-2xl">
+        <div className="py-16 animate-in fade-in slide-in-from-bottom-6 duration-700 max-w-[1160px]">
             {/* Header */}
             <div className="mb-12">
                 <div className="flex items-center gap-3 mb-5">
@@ -52,6 +50,11 @@ export default function PartnerSettings() {
                 </div>
                 <h1 className="text-5xl font-light tracking-tighter text-[#1A1A1A]">Settings</h1>
             </div>
+
+            {/* Two-col like the integration pages: settings left, sticky
+                help rail right on xl (stacks below on smaller screens). */}
+            <div className="flex flex-col xl:flex-row xl:items-start xl:gap-10">
+            <div className="flex-1 min-w-0 max-w-3xl xl:order-1">
 
             {/* Brand info (read-only) */}
             <div className="bg-white border border-[#E6E6E1] rounded-3xl p-8 mb-6">
@@ -70,9 +73,6 @@ export default function PartnerSettings() {
                             {user?.email}
                         </div>
                     </div>
-                    <p className="text-[11px] text-[#AAAAAA] leading-relaxed pt-2">
-                        Your logo and imagery live on each reward listing — edit them from My Rewards via "Edit Listing".
-                    </p>
                 </div>
             </div>
 
@@ -119,6 +119,34 @@ export default function PartnerSettings() {
                         </button>
                     </div>
                 </form>
+            </div>
+            </div>
+
+            {/* ── Sticky help rail: the things this page can't do itself,
+                   each with somewhere to go. */}
+            <aside className="xl:order-2 xl:w-[340px] xl:shrink-0 xl:sticky xl:top-6 mt-6 xl:mt-0">
+                <SectionCard icon={LifeBuoy} title="Need a Hand?">
+                    <p className="text-[12px] text-[#999] leading-relaxed mb-5">
+                        Brand name changes and anything you can't edit here go through
+                        the POWR team — send a ticket and we'll reply within one business day.
+                    </p>
+                    <Link to="/partner/support"
+                        className="flex items-center justify-center gap-2 h-11 px-6 bg-[#E8D200] text-[#080808] rounded-full text-[10px] font-black uppercase tracking-[0.2em] hover:translate-y-[-1px] transition-all shadow-lg shadow-[#E8D200]/10">
+                        <LifeBuoy size={13} /> Contact Support
+                    </Link>
+                </SectionCard>
+
+                <SectionCard icon={Award} title="Your Brand on POWR">
+                    <p className="text-[12px] text-[#999] leading-relaxed mb-5">
+                        Your logo, imagery and reward descriptions live on each reward
+                        listing — that's exactly what members see in the app.
+                    </p>
+                    <Link to="/partner/rewards"
+                        className="flex items-center justify-center gap-2 h-11 px-6 bg-white border border-[#E6E6E1] rounded-full text-[10px] font-black uppercase tracking-[0.2em] text-[#666] hover:border-[#E8D200]/40 hover:text-[#8a7600] transition-all">
+                        <Award size={13} /> Edit Your Listings
+                    </Link>
+                </SectionCard>
+            </aside>
             </div>
         </div>
     );
