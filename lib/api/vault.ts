@@ -9,7 +9,7 @@ import { supabase } from '@/lib/supabase';
 export interface VaultDeposit {
     id: string;
     amount: number;
-    source: 'level_up' | 'cap_overflow';
+    source: 'level_up' | 'cap_overflow' | 'admin_grant';
     description: string | null;
     /** Set for level_up deposits — the level whose bonus this is. */
     level: number | null;

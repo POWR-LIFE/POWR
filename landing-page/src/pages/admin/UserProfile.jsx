@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
 import { useAuth } from '../../App';
 import {
+    Lock,
     User, Activity, Award, Calendar, Clock, MapPin,
     ChevronLeft, TrendingUp, Zap, Shield, AlertCircle,
     ArrowUpRight, ArrowDownRight, Gift, Plus, X,
@@ -99,6 +100,12 @@ export default function UserProfile() {
     const [redemptions, setRedemptions] = useState([]);
     const [healthSnapshots, setHealthSnapshots] = useState([]);
     const [showAdjust, setShowAdjust] = useState(false);
+    const [showVaultGrant, setShowVaultGrant] = useState(false);
+    const [vgAmount, setVgAmount] = useState('');
+    const [vgDays, setVgDays] = useState('');
+    const [vgNote, setVgNote] = useState('');
+    const [vgLoading, setVgLoading] = useState(false);
+    const [vaultDeposits, setVaultDeposits] = useState([]);
     const [adjAmount, setAdjAmount] = useState('');
     const [adjDesc, setAdjDesc] = useState('');
     const [adjLoading, setAdjLoading] = useState(false);
@@ -257,6 +264,21 @@ export default function UserProfile() {
         await logAction(adminUser.id, 'release_device_lock', 'user', userId, { released: data ?? 0 });
         setDeviceBindings([]);
         toast.success(data > 0 ? `Released ${data} device${data === 1 ? '' : 's'}` : 'No device was locked');
+    };
+
+    const handleVaultGrant = async () => {
+        const amt = parseInt(vgAmount, 10);
+        if (!Number.isFinite(amt) || amt < 1) { toast.error('Enter a valid amount'); return; }
+        const vestDays = vgDays.trim() === '' ? null : Math.max(0, parseInt(vgDays, 10) || 0);
+        setVgLoading(true);
+        const { data, error } = await supabase.rpc('admin_grant_vault_deposit', {
+            p_amount: amt, p_user_ids: [userId], p_note: vgNote || null, p_vest_days: vestDays,
+        });
+        if (error) { toast.error(error.message); setVgLoading(false); return; }
+        await logAction(adminUser.id, 'vault_grant', 'user', userId, { amount: amt, vest_days: data?.vest_days, note: vgNote });
+        toast.success(`+${amt} POWR banked in the Vault · vests in ${data?.vest_days} day(s)`);
+        setShowVaultGrant(false); setVgAmount(''); setVgDays(''); setVgNote(''); setVgLoading(false);
+        fetchData();
     };
 
     const handlePointAdjust = async () => {
@@ -529,13 +551,14 @@ export default function UserProfile() {
     const fetchData = async () => {
         setLoading(true);
         try {
-            const [p, s, t, str, r, hs] = await Promise.all([
+            const [p, s, t, str, r, hs, vd] = await Promise.all([
                 supabase.from('profiles').select('*').eq('id', userId).single(),
                 supabase.from('activity_sessions').select('*').eq('user_id', userId).order('started_at', { ascending: false }),
                 supabase.from('point_transactions').select('*').eq('user_id', userId).order('created_at', { ascending: false }),
                 supabase.from('user_streaks').select('*').eq('user_id', userId).single(),
                 supabase.from('redemptions').select('*, rewards(*)').eq('user_id', userId).order('redeemed_at', { ascending: false }),
-                supabase.from('health_snapshots').select('*').eq('user_id', userId).order('recorded_at', { ascending: false }).limit(100)
+                supabase.from('health_snapshots').select('*').eq('user_id', userId).order('recorded_at', { ascending: false }).limit(100),
+                supabase.from('vault_deposits').select('amount, vests_at, released_at').eq('user_id', userId)
             ]);
 
             if (p.error) throw p.error;
@@ -546,6 +569,7 @@ export default function UserProfile() {
             setStreak(str.data || null);
             setRedemptions(r.data || []);
             setHealthSnapshots(hs.data || []);
+            setVaultDeposits(vd.data || []);
 
             // Fetch email (lives in auth.users, not profiles)
             const { data: emailData } = await supabase.rpc('admin_get_user_email', { p_user_id: userId });
@@ -637,6 +661,7 @@ export default function UserProfile() {
     );
 
     const totalPoints = transactions.reduce((acc, t) => acc + t.amount, 0);
+    const vaultPending = vaultDeposits.filter(d => !d.released_at).reduce((acc, d) => acc + d.amount, 0);
 
     // Most recently seen token per platform (tokens are sorted updated_at desc).
     const latestTokenByPlatform = pushTokens.filter(
@@ -859,6 +884,24 @@ export default function UserProfile() {
                         <div className="text-[9px] uppercase tracking-[0.3em] text-[#999999] font-black mt-2">Click to adjust</div>
                     </button>
 
+                    {/* Vault card — clickable to grant a deposit */}
+                    <button
+                        onClick={() => setShowVaultGrant(true)}
+                        className="group bg-white border border-[#E6E6E1] hover:border-[#E8D200]/30 p-6 px-8 rounded-2xl text-left transition-all hover:bg-[#E8D200]/[0.03] min-w-[200px]"
+                    >
+                        <div className="flex items-center justify-between gap-4 mb-3">
+                            <div className="flex items-center gap-3">
+                                <Lock size={15} className="text-[#8a7600]" />
+                                <span className="text-[9px] uppercase tracking-[0.4em] text-[#666666] font-black">Vault</span>
+                            </div>
+                            <span className="text-[9px] uppercase tracking-[0.3em] text-[#8a7600] font-black opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
+                                <Plus size={10} /> Add
+                            </span>
+                        </div>
+                        <div className="text-4xl font-light tracking-tighter text-[#8a7600] leading-none">{vaultPending.toLocaleString()}</div>
+                        <div className="text-[9px] uppercase tracking-[0.3em] text-[#999999] font-black mt-2">Vesting · click to add</div>
+                    </button>
+
                     <div className="bg-white border border-[#E6E6E1] p-6 px-8 rounded-2xl min-w-[160px]">
                         <div className="flex items-center gap-3 mb-3">
                             <TrendingUp size={15} className="text-[#10B981]" />
@@ -902,6 +945,45 @@ export default function UserProfile() {
                     )}
                 </div>
             </header>
+
+            {/* Vault Grant Modal */}
+            {showVaultGrant && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] flex items-center justify-center" onClick={() => setShowVaultGrant(false)}>
+                    <div className="bg-white border border-[#E6E6E1] rounded-3xl p-12 w-full max-w-md shadow-2xl" onClick={e => e.stopPropagation()}>
+                        <div className="flex justify-between items-center mb-6">
+                            <h3 className="text-2xl font-light tracking-tighter text-[#1A1A1A]">Add to Vault</h3>
+                            <button onClick={() => setShowVaultGrant(false)} className="w-10 h-10 rounded-full bg-[#EFEFEC] flex items-center justify-center text-[#BBB] hover:text-[#1A1A1A] transition-colors"><X size={18} /></button>
+                        </div>
+                        <div className="flex items-center justify-between bg-[#F4F4F1] border border-[#E6E6E1] rounded-2xl px-6 py-4 mb-8">
+                            <div>
+                                <div className="text-[9px] uppercase tracking-[0.4em] text-[#999999] font-black mb-1">Currently vesting</div>
+                                <div className="text-3xl font-light tracking-tighter text-[#8a7600]">{vaultPending.toLocaleString()} <span className="text-base text-[#999999]">pts</span></div>
+                            </div>
+                            <Lock size={20} className="text-[#8a7600]" />
+                        </div>
+                        <p className="text-[10px] uppercase tracking-[0.4em] text-[#666666] font-black mb-8">Banks a vesting deposit — 0 days = ready immediately</p>
+                        <div className="space-y-6">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-[10px] uppercase tracking-widest text-[#BBB] font-black mb-3">Amount</label>
+                                    <input type="number" min="1" value={vgAmount} onChange={e => setVgAmount(e.target.value)} placeholder="e.g. 50" className="w-full h-14 px-6 bg-[#F4F4F1] border border-[#E6E6E1] rounded-xl text-[#1A1A1A] text-lg font-light outline-none focus:border-[#E8D200]/40 transition-all" />
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] uppercase tracking-widest text-[#BBB] font-black mb-3">Vest days</label>
+                                    <input type="number" min="0" value={vgDays} onChange={e => setVgDays(e.target.value)} placeholder="default" className="w-full h-14 px-6 bg-[#F4F4F1] border border-[#E6E6E1] rounded-xl text-[#1A1A1A] text-lg font-light outline-none focus:border-[#E8D200]/40 transition-all" />
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-[10px] uppercase tracking-widest text-[#BBB] font-black mb-3">Note (shown to the user)</label>
+                                <input type="text" value={vgNote} onChange={e => setVgNote(e.target.value)} placeholder="Launch week drop" className="w-full h-14 px-6 bg-[#F4F4F1] border border-[#E6E6E1] rounded-xl text-[#1A1A1A] text-sm outline-none focus:border-[#E8D200]/40 transition-all" />
+                            </div>
+                            <button onClick={handleVaultGrant} disabled={vgLoading} className="w-full h-14 bg-[#E8D200] text-[#080808] font-black uppercase tracking-widest text-xs rounded-xl hover:translate-y-[-2px] transition-all shadow-lg shadow-[#E8D200]/10 disabled:opacity-50">
+                                {vgLoading ? 'Processing...' : 'Bank It'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Point Adjustment Modal */}
             {showAdjust && (

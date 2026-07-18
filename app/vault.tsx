@@ -81,11 +81,13 @@ function depositLabel(d: VaultDeposit): string {
     const def = LEVELS.find((l) => l.level === d.level);
     return def ? `Level ${d.level} — ${def.name}` : `Level ${d.level} bonus`;
   }
-  return d.description ?? 'Bonus points';
+  return d.description ?? (d.source === 'admin_grant' ? 'POWR drop' : 'Bonus points');
 }
 
 function depositSub(d: VaultDeposit): string {
-  return d.source === 'level_up' ? 'Level-up bonus' : 'Earned over the daily cap';
+  if (d.source === 'level_up') return 'Level-up bonus';
+  if (d.source === 'admin_grant') return 'Bonus drop from POWR';
+  return 'Earned over the daily cap';
 }
 
 // ─── Countdown ring hero ──────────────────────────────────────────────────────
@@ -282,13 +284,14 @@ function VaultHero({
 function DepositRow({ deposit }: { deposit: VaultDeposit }) {
   const released = deposit.released_at !== null;
   const isLevel = deposit.source === 'level_up';
-  const accent = released ? DIM : isLevel ? GOLD : ORANGE;
+  const isGrant = deposit.source === 'admin_grant';
+  const accent = released ? DIM : isGrant || isLevel ? GOLD : ORANGE;
 
   return (
     <View style={[styles.row, released && { opacity: 0.55 }]}>
       <View style={[styles.rowIcon, { backgroundColor: accent + '18' }]}>
         <Ionicons
-          name={released ? 'lock-open' : isLevel ? 'trophy' : 'flash'}
+          name={released ? 'lock-open' : isGrant ? 'gift' : isLevel ? 'trophy' : 'flash'}
           size={16}
           color={accent}
         />
