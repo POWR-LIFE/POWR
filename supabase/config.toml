@@ -412,6 +412,11 @@ verify_jwt = false
 # x-vault-token shared secret inside the function, mirroring terra-poll.
 verify_jwt = false
 
+[functions.notify-vault-grant]
+# Invoked by the admin_grant_vault_deposit() RPC via pg_net (no Supabase user
+# JWT) — same x-resolve-token gate as the cron/trigger functions.
+verify_jwt = false
+
 [functions.share-card-og]
 # Fetched by WhatsApp/iMessage/X link crawlers, which carry no JWT. It only ever
 # serves a title, a subtitle and a public image URL for one unguessable uuid —

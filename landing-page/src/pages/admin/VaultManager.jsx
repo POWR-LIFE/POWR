@@ -55,6 +55,7 @@ export default function VaultManager() {
     const [grantAmount, setGrantAmount] = useState('');
     const [grantVestDays, setGrantVestDays] = useState('');
     const [grantNote, setGrantNote] = useState('');
+    const [grantNotify, setGrantNotify] = useState(true);
     const [granting, setGranting] = useState(false);
 
     useEffect(() => { fetchAll(); }, []);
@@ -130,7 +131,9 @@ export default function VaultManager() {
         if (!Number.isFinite(amount) || amount < 1) { toast.error('Enter a valid amount'); return; }
         const vestDays = grantVestDays.trim() === '' ? null : Math.max(0, parseInt(grantVestDays, 10) || 0);
 
-        const params = { p_amount: amount, p_note: grantNote || null, p_vest_days: vestDays };
+        const params = {
+            p_amount: amount, p_note: grantNote || null, p_vest_days: vestDays, p_notify: grantNotify,
+        };
         if (grantTarget === 'all') {
             params.p_all = true;
         } else if (grantTarget === 'emails') {
@@ -157,10 +160,11 @@ export default function VaultManager() {
             if (missing.length > 0) {
                 toast.error(`Granted to ${data?.granted_users}, but ${missing.length} email(s) not found: ${missing.join(', ')}`);
             } else {
-                toast.success(`+${amount} POWR banked for ${data?.granted_users} user(s) · vests in ${data?.vest_days} day(s)`);
+                toast.success(`+${amount} POWR banked for ${data?.granted_users} user(s) · vests in ${data?.vest_days} day(s)${grantNotify ? ' · push sent' : ''}`);
             }
             await logAction(user.id, 'vault_grant', 'vault_deposits', null, {
-                amount, target: grantTarget, params, granted: data?.granted_users, vest_days: data?.vest_days, note: grantNote,
+                amount, target: grantTarget, params, granted: data?.granted_users, vest_days: data?.vest_days,
+                note: grantNote, notify: grantNotify, batch_id: data?.batch_id,
             });
             setGrantEmails(''); setGrantAmount(''); setGrantVestDays(''); setGrantNote('');
             setGrantTiers([]); setGrantExactLevels(''); setGrantActivities([]);
@@ -400,7 +404,7 @@ export default function VaultManager() {
                             </div>
                         </div>
                         <div>
-                            <label className="block text-[9px] uppercase tracking-[0.4em] text-[#888888] font-black mb-2">Note (shown to the user on the deposit)</label>
+                            <label className="block text-[9px] uppercase tracking-[0.4em] text-[#888888] font-black mb-2">Note (shown on the deposit + in the push)</label>
                             <input
                                 type="text"
                                 value={grantNote}
@@ -409,6 +413,11 @@ export default function VaultManager() {
                                 className="w-full h-12 px-4 bg-[#F4F4F1] border border-[#E6E6E1] rounded-xl text-sm text-[#1A1A1A] outline-none focus:border-[#E8D200]/60 transition-all"
                             />
                         </div>
+                        <button type="button" onClick={() => setGrantNotify(!grantNotify)}
+                            className={`w-full h-12 px-5 rounded-xl border flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] transition-all ${grantNotify ? 'border-[#10B981]/40 bg-[#10B981]/10 text-[#10B981]' : 'border-[#E6E6E1] bg-[#F4F4F1] text-[#888888]'}`}>
+                            {grantNotify ? <Bell size={13} /> : <BellOff size={13} />}
+                            {grantNotify ? 'Push the drop to users' : 'Silent — no push'}
+                        </button>
                         <button
                             onClick={handleGrant}
                             disabled={granting}

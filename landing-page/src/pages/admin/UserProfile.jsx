@@ -105,6 +105,7 @@ export default function UserProfile() {
     const [vgDays, setVgDays] = useState('');
     const [vgNote, setVgNote] = useState('');
     const [vgLoading, setVgLoading] = useState(false);
+    const [vgNotify, setVgNotify] = useState(true);
     const [vaultDeposits, setVaultDeposits] = useState([]);
     const [adjAmount, setAdjAmount] = useState('');
     const [adjDesc, setAdjDesc] = useState('');
@@ -273,11 +274,14 @@ export default function UserProfile() {
         setVgLoading(true);
         const { data, error } = await supabase.rpc('admin_grant_vault_deposit', {
             p_amount: amt, p_user_ids: [userId], p_note: vgNote || null, p_vest_days: vestDays,
+            p_notify: vgNotify,
         });
         if (error) { toast.error(error.message); setVgLoading(false); return; }
-        await logAction(adminUser.id, 'vault_grant', 'user', userId, { amount: amt, vest_days: data?.vest_days, note: vgNote });
-        toast.success(`+${amt} POWR banked in the Vault · vests in ${data?.vest_days} day(s)`);
-        setShowVaultGrant(false); setVgAmount(''); setVgDays(''); setVgNote(''); setVgLoading(false);
+        await logAction(adminUser.id, 'vault_grant', 'user', userId, {
+            amount: amt, vest_days: data?.vest_days, note: vgNote, notify: vgNotify, batch_id: data?.batch_id,
+        });
+        toast.success(`+${amt} POWR banked in the Vault · vests in ${data?.vest_days} day(s)${vgNotify ? ' · push sent' : ''}`);
+        setShowVaultGrant(false); setVgAmount(''); setVgDays(''); setVgNote(''); setVgNotify(true); setVgLoading(false);
         fetchData();
     };
 
@@ -977,6 +981,10 @@ export default function UserProfile() {
                                 <label className="block text-[10px] uppercase tracking-widest text-[#BBB] font-black mb-3">Note (shown to the user)</label>
                                 <input type="text" value={vgNote} onChange={e => setVgNote(e.target.value)} placeholder="Launch week drop" className="w-full h-14 px-6 bg-[#F4F4F1] border border-[#E6E6E1] rounded-xl text-[#1A1A1A] text-sm outline-none focus:border-[#E8D200]/40 transition-all" />
                             </div>
+                            <button type="button" onClick={() => setVgNotify(!vgNotify)}
+                                className={`w-full h-14 rounded-xl border flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest transition-all ${vgNotify ? 'border-[#10B981]/40 bg-[#10B981]/10 text-[#10B981]' : 'border-[#E6E6E1] bg-[#F4F4F1] text-[#888888]'}`}>
+                                {vgNotify ? 'Push the drop to them' : 'Silent — no push'}
+                            </button>
                             <button onClick={handleVaultGrant} disabled={vgLoading} className="w-full h-14 bg-[#E8D200] text-[#080808] font-black uppercase tracking-widest text-xs rounded-xl hover:translate-y-[-2px] transition-all shadow-lg shadow-[#E8D200]/10 disabled:opacity-50">
                                 {vgLoading ? 'Processing...' : 'Bank It'}
                             </button>
