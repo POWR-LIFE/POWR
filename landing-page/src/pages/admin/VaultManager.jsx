@@ -2,11 +2,19 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
 import { useAuth } from '../../App';
-import { Lock, CalendarClock, Users, Globe, X, Bell, BellOff } from 'lucide-react';
+import { Lock, CalendarClock, Users, Globe, X, Bell, BellOff, Gift } from 'lucide-react';
 
 const logAction = async (adminId, action, targetType, targetId, metadata = {}) => {
     await supabase.from('admin_audit_log').insert({ admin_id: adminId, action, target_type: targetType, target_id: targetId, metadata });
 };
+
+const TIER_LEVELS = {
+    RECRUIT: [1, 2, 3, 4, 5],
+    ATHLETE: [6, 7, 8, 9, 10],
+    ELITE: [11, 12, 13, 14, 15],
+    LEGEND: [16, 17, 18, 19, 20],
+};
+const ACTIVITY_OPTIONS = ['walking', 'running', 'cycling', 'swimming', 'gym', 'hiit', 'sports', 'yoga', 'dance', 'sleep'];
 
 const fmtDateTime = (iso) => new Date(iso).toLocaleString('en-GB', {
     day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
@@ -37,6 +45,17 @@ export default function VaultManager() {
     const [notify, setNotify] = useState(true);
     const [submitting, setSubmitting] = useState(false);
     const [cancelling, setCancelling] = useState(null);
+
+    // Grant form
+    const [grantTarget, setGrantTarget] = useState('emails'); // 'emails' | 'all' | 'levels' | 'activities'
+    const [grantTiers, setGrantTiers] = useState([]);
+    const [grantExactLevels, setGrantExactLevels] = useState('');
+    const [grantActivities, setGrantActivities] = useState([]);
+    const [grantEmails, setGrantEmails] = useState('');
+    const [grantAmount, setGrantAmount] = useState('');
+    const [grantVestDays, setGrantVestDays] = useState('');
+    const [grantNote, setGrantNote] = useState('');
+    const [granting, setGranting] = useState(false);
 
     useEffect(() => { fetchAll(); }, []);
 
@@ -103,6 +122,53 @@ export default function VaultManager() {
             toast.error(e.message || 'Failed to schedule unlock');
         } finally {
             setSubmitting(false);
+        }
+    };
+
+    const handleGrant = async () => {
+        const amount = parseInt(grantAmount, 10);
+        if (!Number.isFinite(amount) || amount < 1) { toast.error('Enter a valid amount'); return; }
+        const vestDays = grantVestDays.trim() === '' ? null : Math.max(0, parseInt(grantVestDays, 10) || 0);
+
+        const params = { p_amount: amount, p_note: grantNote || null, p_vest_days: vestDays };
+        if (grantTarget === 'all') {
+            params.p_all = true;
+        } else if (grantTarget === 'emails') {
+            const emailList = grantEmails.split(/[\n,;]+/).map(e => e.trim()).filter(Boolean);
+            if (emailList.length === 0) { toast.error('Add at least one email'); return; }
+            params.p_emails = emailList;
+        } else if (grantTarget === 'levels') {
+            const levels = new Set(grantTiers.flatMap(t => TIER_LEVELS[t]));
+            grantExactLevels.split(/[\s,;]+/).map(x => parseInt(x, 10))
+                .filter(n => Number.isFinite(n) && n >= 1 && n <= 20)
+                .forEach(n => levels.add(n));
+            if (levels.size === 0) { toast.error('Pick at least one tier or level'); return; }
+            params.p_levels = [...levels];
+        } else if (grantTarget === 'activities') {
+            if (grantActivities.length === 0) { toast.error('Pick at least one activity'); return; }
+            params.p_activities = grantActivities;
+        }
+
+        setGranting(true);
+        try {
+            const { data, error } = await supabase.rpc('admin_grant_vault_deposit', params);
+            if (error) throw error;
+            const missing = data?.missing_emails || [];
+            if (missing.length > 0) {
+                toast.error(`Granted to ${data?.granted_users}, but ${missing.length} email(s) not found: ${missing.join(', ')}`);
+            } else {
+                toast.success(`+${amount} POWR banked for ${data?.granted_users} user(s) · vests in ${data?.vest_days} day(s)`);
+            }
+            await logAction(user.id, 'vault_grant', 'vault_deposits', null, {
+                amount, target: grantTarget, params, granted: data?.granted_users, vest_days: data?.vest_days, note: grantNote,
+            });
+            setGrantEmails(''); setGrantAmount(''); setGrantVestDays(''); setGrantNote('');
+            setGrantTiers([]); setGrantExactLevels(''); setGrantActivities([]);
+            fetchAll();
+        } catch (e) {
+            toast.error(e.message || 'Failed to grant');
+        } finally {
+            setGranting(false);
         }
     };
 
@@ -228,6 +294,127 @@ export default function VaultManager() {
                             className="w-full h-12 rounded-xl bg-[#1A1A1A] text-white text-[10px] font-black uppercase tracking-[0.3em] hover:bg-[#333333] transition-all disabled:opacity-50"
                         >
                             {submitting ? 'Scheduling…' : 'Schedule unlock'}
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            {/* Grant */}
+            <div className="bg-white border border-[#E6E6E1] rounded-3xl p-10 mb-12">
+                <div className="flex items-center gap-4 mb-8">
+                    <div className="w-12 h-12 rounded-2xl bg-[#F4F4F1] border border-[#E6E6E1] flex items-center justify-center">
+                        <Gift size={18} className="text-[#8a7600]" />
+                    </div>
+                    <div>
+                        <div className="text-base font-bold text-[#222222]">Grant a deposit</div>
+                        <div className="text-[10px] text-[#666666] font-black uppercase tracking-[0.3em]">Bank bonus POWR into vaults — vests like any deposit. 0 days = ready immediately</div>
+                    </div>
+                </div>
+                <div className="grid lg:grid-cols-2 gap-8">
+                    <div className="space-y-5">
+                        <div>
+                            <label className="block text-[9px] uppercase tracking-[0.4em] text-[#888888] font-black mb-2">Target</label>
+                            <div className="grid grid-cols-4 gap-2">
+                                {[['emails', 'Emails'], ['all', 'All users'], ['levels', 'Levels'], ['activities', 'Activities']].map(([id, label]) => (
+                                    <button key={id} type="button" onClick={() => setGrantTarget(id)}
+                                        className={`h-11 rounded-xl border text-[9px] font-black uppercase tracking-[0.15em] transition-all ${grantTarget === id ? 'border-[#E8D200] bg-[#E8D200]/10 text-[#1A1A1A]' : 'border-[#E6E6E1] bg-[#F4F4F1] text-[#888888]'}`}>
+                                        {label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                        {grantTarget === 'emails' && (
+                            <div>
+                                <label className="block text-[9px] uppercase tracking-[0.4em] text-[#888888] font-black mb-2">User emails (comma or newline separated)</label>
+                                <textarea
+                                    value={grantEmails}
+                                    onChange={e => setGrantEmails(e.target.value)}
+                                    rows={4}
+                                    placeholder={'user1@example.com\nuser2@example.com'}
+                                    className="w-full px-4 py-3 bg-[#F4F4F1] border border-[#E6E6E1] rounded-xl font-mono text-xs text-[#1A1A1A] outline-none focus:border-[#E8D200]/60 transition-all resize-none"
+                                />
+                            </div>
+                        )}
+                        {grantTarget === 'all' && (
+                            <div className="px-4 py-4 bg-[#F4F4F1] border border-[#E6E6E1] rounded-xl">
+                                <p className="text-[10px] text-[#666666] font-black uppercase tracking-[0.3em]">Every user gets the deposit — check the total before you fire.</p>
+                            </div>
+                        )}
+                        {grantTarget === 'levels' && (
+                            <>
+                                <div>
+                                    <label className="block text-[9px] uppercase tracking-[0.4em] text-[#888888] font-black mb-2">Tiers</label>
+                                    <div className="grid grid-cols-4 gap-2">
+                                        {Object.keys(TIER_LEVELS).map(tier => (
+                                            <button key={tier} type="button"
+                                                onClick={() => setGrantTiers(prev => prev.includes(tier) ? prev.filter(t => t !== tier) : [...prev, tier])}
+                                                className={`h-11 rounded-xl border text-[9px] font-black uppercase tracking-[0.15em] transition-all ${grantTiers.includes(tier) ? 'border-[#E8D200] bg-[#E8D200]/10 text-[#1A1A1A]' : 'border-[#E6E6E1] bg-[#F4F4F1] text-[#888888]'}`}>
+                                                {tier}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-[9px] uppercase tracking-[0.4em] text-[#888888] font-black mb-2">Or exact levels (e.g. 7, 12)</label>
+                                    <input type="text" value={grantExactLevels} onChange={e => setGrantExactLevels(e.target.value)} placeholder="7, 12"
+                                        className="w-full h-11 px-4 bg-[#F4F4F1] border border-[#E6E6E1] rounded-xl font-mono text-xs text-[#1A1A1A] outline-none focus:border-[#E8D200]/60 transition-all" />
+                                </div>
+                            </>
+                        )}
+                        {grantTarget === 'activities' && (
+                            <div>
+                                <label className="block text-[9px] uppercase tracking-[0.4em] text-[#888888] font-black mb-2">Preferred activities (any match)</label>
+                                <div className="flex flex-wrap gap-2">
+                                    {ACTIVITY_OPTIONS.map(a => (
+                                        <button key={a} type="button"
+                                            onClick={() => setGrantActivities(prev => prev.includes(a) ? prev.filter(x => x !== a) : [...prev, a])}
+                                            className={`h-9 px-4 rounded-full border text-[9px] font-black uppercase tracking-[0.15em] transition-all ${grantActivities.includes(a) ? 'border-[#E8D200] bg-[#E8D200]/10 text-[#1A1A1A]' : 'border-[#E6E6E1] bg-[#F4F4F1] text-[#888888]'}`}>
+                                            {a}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                    <div className="space-y-6">
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-[9px] uppercase tracking-[0.4em] text-[#888888] font-black mb-2">POWR each</label>
+                                <input
+                                    type="number" min="1"
+                                    value={grantAmount}
+                                    onChange={e => setGrantAmount(e.target.value)}
+                                    placeholder="50"
+                                    className="w-full h-12 px-4 bg-[#F4F4F1] border border-[#E6E6E1] rounded-xl font-mono text-sm text-[#1A1A1A] outline-none focus:border-[#E8D200]/60 transition-all"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-[9px] uppercase tracking-[0.4em] text-[#888888] font-black mb-2">Vest days (blank = default)</label>
+                                <input
+                                    type="number" min="0"
+                                    value={grantVestDays}
+                                    onChange={e => setGrantVestDays(e.target.value)}
+                                    placeholder="60"
+                                    className="w-full h-12 px-4 bg-[#F4F4F1] border border-[#E6E6E1] rounded-xl font-mono text-sm text-[#1A1A1A] outline-none focus:border-[#E8D200]/60 transition-all"
+                                />
+                            </div>
+                        </div>
+                        <div>
+                            <label className="block text-[9px] uppercase tracking-[0.4em] text-[#888888] font-black mb-2">Note (shown to the user on the deposit)</label>
+                            <input
+                                type="text"
+                                value={grantNote}
+                                onChange={e => setGrantNote(e.target.value)}
+                                placeholder="Launch week drop"
+                                className="w-full h-12 px-4 bg-[#F4F4F1] border border-[#E6E6E1] rounded-xl text-sm text-[#1A1A1A] outline-none focus:border-[#E8D200]/60 transition-all"
+                            />
+                        </div>
+                        <button
+                            onClick={handleGrant}
+                            disabled={granting}
+                            className="w-full h-12 rounded-xl bg-[#1A1A1A] text-white text-[10px] font-black uppercase tracking-[0.3em] hover:bg-[#333333] transition-all disabled:opacity-50"
+                        >
+                            {granting ? 'Granting…' : 'Grant deposit'}
                         </button>
                     </div>
                 </div>
