@@ -15,6 +15,7 @@ type NotificationType =
   | 'session_upgraded'
   | 'vault_unlocked'
   | 'vault_ready'
+  | 'vault_granted'
   // Shared ("together") challenges + friend graph (scope §4/§6a).
   | 'friend_request'
   | 'friend_accepted'
@@ -61,6 +62,7 @@ function categoryFor(type: NotificationType): 'social' | 'rewards' | 'activity' 
     case 'points_milestone':
     case 'vault_unlocked':
     case 'vault_ready':
+    case 'vault_granted':
       return 'rewards';
     case 'session_completed':
     case 'session_upgraded':
@@ -103,6 +105,16 @@ const TTL_SECONDS: Partial<Record<NotificationType, number>> = {
   daily_reminder:          6 * 60 * 60,
   inactivity_nudge:        12 * 60 * 60,
 };
+
+// "on 16 Sep" for a vault maturity date. Falls back to a vaguer phrase rather
+// than printing "Invalid Date" if the timestamp is missing or unparseable.
+function formatVestDate(vestsAt: unknown): string {
+  const d = new Date(String(vestsAt ?? ''));
+  if (Number.isNaN(d.getTime())) return 'once it vests';
+  return `on ${d.toLocaleDateString('en-GB', {
+    day: 'numeric', month: 'short', timeZone: 'Europe/London',
+  })}`;
+}
 
 function formatSessionCompletedBody(
   partnerName?: string | null,
@@ -326,6 +338,32 @@ function buildMessage(
           data: { type, route: '/vault', points },
           sound: 'default',
           channelId: 'powr_rewards_v2',
+        };
+      }
+
+      case 'vault_granted': {
+        // Fired by notify-vault-grant when an admin banks POWR into a user's
+        // Vault. Unlike vault_ready/vault_unlocked this is a gift landing, not
+        // a maturity event — so it leads with the drop and only then says what
+        // happens next. `note` is the admin's message when they left one.
+        const points = Math.max(0, Math.round(Number(payload.points ?? 0)));
+        const note = typeof payload.note === 'string' ? payload.note.trim() : '';
+        const ready = payload.ready === true;
+
+        // Deposits count toward level the moment they land (the level trigger
+        // sums pending vault alongside the ledger) — worth saying, since the
+        // spendable balance won't move until the door is opened.
+        const detail = ready
+          ? 'is waiting in your Vault. Press and hold the door to unlock it.'
+          : `just landed in your Vault. It's already counting toward your level, and unlocks ${formatVestDate(payload.vests_at)}.`;
+
+        return {
+          title: ready ? 'A POWR drop landed ⚡' : 'POWR banked in your Vault 🏦',
+          body: `${note ? `${note} — ` : ''}${points.toLocaleString()} POWR ${detail}`,
+          data: { type, route: '/vault', points, ready },
+          sound: 'default',
+          channelId: 'powr_rewards_v2',
+          priority: 'high',
         };
       }
 
@@ -583,6 +621,7 @@ Deno.serve(async (req: Request) => {
       type === 'session_upgraded' ? 'session_completed'
       : type === 'vault_unlocked' ? 'points_milestone'
       : type === 'vault_ready' ? 'points_milestone'
+      : type === 'vault_granted' ? 'points_milestone'
       : type;
     const { data: prefs } = await supabase
       .from('notification_preferences')
