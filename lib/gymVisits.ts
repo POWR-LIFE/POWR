@@ -1,0 +1,119 @@
+// Client half of the gym visit beacon.
+//
+// The device tells the server when a visit opens (it is provably awake then — it
+// has just fired "You're in"), and the server holds the timers. At each threshold
+// the server sends a SILENT push to wake this device, which then takes a fresh fix
+// and decides for itself whether it is still inside the gym (see runVisitCheck in
+// GeofenceContext). The server never credits on a timer — it can only ask.
+//
+// Every call here is best-effort and must never break the geofence flow: a visit
+// beacon failing is a lost nudge, not a lost session. The existing exit path and
+// pending-claim queue remain the backstop.
+
+import { Platform } from 'react-native';
+import { withNetworkTimeout } from '@/lib/networkTimeout';
+import { supabase } from '@/lib/supabase';
+
+/** Opens (or re-uses) the server-side visit record. Returns the visit id to store
+ *  alongside the active geofence so later stages can reference it. */
+export async function openGymVisit(
+  partnerId: string,
+  regionId: string | undefined,
+  startedAtMs: number,
+): Promise<string | null> {
+  try {
+    const { data, error } = await withNetworkTimeout(supabase.rpc('open_gym_visit', {
+      p_partner_id: partnerId,
+      p_region_id:  regionId ?? null,
+      p_started_at: new Date(startedAtMs).toISOString(),
+      p_platform:   Platform.OS,
+    }), 'open_gym_visit');
+    if (error) throw error;
+    return (data as string) ?? null;
+  } catch (err) {
+    console.warn('[GymVisit] openGymVisit failed:', err);
+    return null;
+  }
+}
+
+/** Reports what the device actually SAW when the server woke it. `inside` is the
+ *  device's verdict from a real GPS fix — the only thing that can unlock a credit. */
+export async function confirmGymVisit(
+  visitId: string,
+  inside: boolean,
+  detail: Record<string, unknown> = {},
+  requestCredit = false,
+): Promise<void> {
+  try {
+    // v2 lets this single round-trip ALSO ask the server to credit the visit
+    // (claim or upgrade, decided server-side from visit status + elapsed +
+    // system_config). The FCM wake window fits ~one round-trip, and this is it —
+    // the local claim chain behind it starved every time (field 2026-07-14).
+    // Credit only ever follows p_inside=true, so "no fix, no credit" holds.
+    const { data, error } = await withNetworkTimeout(supabase.rpc('confirm_gym_visit_v2', {
+      p_visit_id:       visitId,
+      p_inside:         inside,
+      p_detail:         detail,
+      p_request_credit: requestCredit,
+    }), 'confirm_gym_visit');
+    if (error) throw error;
+    const triggered = (data as { triggered?: string | null } | null)?.triggered;
+    if (triggered) {
+      console.log(`[GymVisit] Server credit trigger fired from confirm: ${triggered}.`);
+    }
+  } catch (err) {
+    console.warn('[GymVisit] confirmGymVisit failed:', err);
+  }
+}
+
+/** Heartbeat: the in-gym location stream delivered a fix to JS. Deliberately NOT
+ *  confirmGymVisit — that means location-PROVEN presence and bounds a late exit,
+ *  and an indoor fix is usually too coarse to prove anything. This records only
+ *  that the stream is alive, which is the one thing the server cannot otherwise
+ *  see and the question behind every background-claim failure. */
+export async function logGymVisitTick(
+  visitId: string,
+  detail: Record<string, unknown> = {},
+): Promise<void> {
+  try {
+    const { error } = await withNetworkTimeout(supabase.rpc('log_gym_visit_tick', {
+      p_visit_id: visitId,
+      p_detail:   detail,
+    }), 'log_gym_visit_tick');
+    if (error) throw error;
+  } catch (err) {
+    console.warn('[GymVisit] logGymVisitTick failed:', err);
+  }
+}
+
+/** Records that a claim/upgrade actually landed. Called AFTER claim-points or
+ *  upgrade-gym-tier succeeded — this cannot award anything itself. */
+export async function markGymVisitProgress(
+  visitId: string,
+  stage: 'claimed' | 'upgraded',
+  sessionId?: string,
+): Promise<void> {
+  try {
+    const { error } = await withNetworkTimeout(supabase.rpc('mark_gym_visit_progress', {
+      p_visit_id:   visitId,
+      p_stage:      stage,
+      p_session_id: sessionId ?? null,
+    }), 'mark_gym_visit_progress');
+    if (error) throw error;
+  } catch (err) {
+    console.warn('[GymVisit] markGymVisitProgress failed:', err);
+  }
+}
+
+/** Closes the visit so the server stops nudging a device that has left. */
+export async function closeGymVisit(visitId: string, endedAtMs?: number): Promise<void> {
+  try {
+    const { error } = await withNetworkTimeout(supabase.rpc('close_gym_visit', {
+      p_visit_id: visitId,
+      p_ended_at: endedAtMs ? new Date(endedAtMs).toISOString() : null,
+    }), 'close_gym_visit');
+    if (error) throw error;
+  } catch (err) {
+    console.warn('[GymVisit] closeGymVisit failed:', err);
+  }
+}

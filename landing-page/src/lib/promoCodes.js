@@ -154,6 +154,32 @@ export function parseCodes(raw) {
     return Array.from(new Set(parts));
 }
 
+// Parses an external redemption export. Unlike parseCodes(), this keeps every
+// code in a CSV's Code column regardless of the source system's status labels.
+// The server-side reconciliation RPC decides whether a matching POWR code is
+// eligible to become used.
+export function parseReconciliationCodes(raw) {
+    if (!raw) return [];
+    const trimmed = raw.trim();
+    const lines = trimmed.split(/[\r\n]+/).map(l => l.trim()).filter(Boolean);
+    if (!lines.length) return [];
+
+    if (lines[0].includes(',')) {
+        const headers = splitCSVLine(lines[0]).map(h => h.toLowerCase());
+        const codeIdx = headers.findIndex(h => h === 'code' || h === 'promo code' || h === 'coupon code');
+        if (codeIdx >= 0) {
+            return Array.from(new Set(lines.slice(1)
+                .map(line => normalise(splitCSVLine(line)[codeIdx] ?? ''))
+                .filter(Boolean)));
+        }
+    }
+
+    return Array.from(new Set(trimmed
+        .split(/[\s,;\n\r]+/)
+        .map(normalise)
+        .filter(Boolean)));
+}
+
 // Uploads codes for a reward. Validates format + partner prefix.
 // Pass `scheme` (from buildScheme) to use a custom format instead of the default regex.
 // Returns { accepted, rejected: [{code, reason}] }.

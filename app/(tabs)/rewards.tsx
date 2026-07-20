@@ -1,14 +1,25 @@
 import { GeometricBackground } from '@/components/home/GeometricBackground';
 import MagicRings from '@/components/MagicRings';
 import { HeaderActions } from '@/components/HeaderActions';
+import { RewardHeroMedia } from '@/components/rewards/RewardHeroMedia';
+import { VaultTimer } from '@/components/rewards/VaultTimer';
+import { useQueryClient } from '@tanstack/react-query';
+
 import { usePoints } from '@/hooks/usePoints';
+import { useRollingNumber } from '@/hooks/useRollingNumber';
+import { useVaultAccess } from '@/hooks/useVaultAccess';
 import { fetchMyRedemptionSummary, fetchRewards, fetchSmartFeaturedReward, type Reward as ApiReward } from '@/lib/api/rewards';
+import { resolveContextualPlacements, pickHeroPlacement, comparePlacements, type ResolvedPlacement } from '@/lib/api/placements';
+import { fetchVaultContents } from '@/lib/api/vault';
+import { tracked } from '@/lib/analytics';
+import { rewardHeroUri, rewardLogoUri } from '@/lib/storageImage';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import * as Location from 'expo-location';
 import { Image as ExpoImage } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -53,6 +64,8 @@ interface Reward {
   logoLight: boolean;
   logoImage?: any;
   heroImage?: any;
+  heroImageUrl?: string;
+  heroVideoUrl?: string;
   brandColor?: string;
   title: string;
   subtitle: string;
@@ -116,8 +129,10 @@ function apiRewardToUI(r: ApiReward): Reward {
     logoText,
     brandName: displayName ?? r.title,
     logoLight: false,
-    logoImage: r.image_url ? { uri: r.image_url } : r.partner?.logo_url ? { uri: r.partner.logo_url } : undefined,
-    heroImage: r.hero_image_url ? { uri: r.hero_image_url } : undefined,
+    logoImage: r.image_url ? { uri: rewardLogoUri(r.image_url) } : r.partner?.logo_url ? { uri: rewardLogoUri(r.partner.logo_url) } : undefined,
+    heroImage: r.hero_image_url ? { uri: rewardHeroUri(r.hero_image_url) } : undefined,
+    heroImageUrl: r.hero_image_url ?? undefined,
+    heroVideoUrl: r.hero_video_url ?? undefined,
     brandColor: undefined,
     title: r.title,
     subtitle: r.description ?? displayName ?? '',
@@ -155,7 +170,44 @@ export default function SpendScreen() {
   const [rewards, setRewards] = useState<Reward[]>([]);
   const [catalogueLoaded, setCatalogueLoaded] = useState(false);
   const [catalogueError, setCatalogueError] = useState(false);
+  // Raw API rewards kept alongside the UI list so a placed reward can be
+  // rehydrated into the hero card (which renders from ApiReward fields).
+  const [rawRewards, setRawRewards] = useState<ApiReward[]>([]);
   const [redemptionInfo, setRedemptionInfo] = useState<Record<string, { active: number; nonRefunded: number }>>({});
+  // Location-targeted placements, keyed by reward_id. Empty = normal vault.
+  const [placementMap, setPlacementMap] = useState<Map<string, ResolvedPlacement>>(new Map());
+  // Resolve at a specific coarse fix and update the placement map. The API
+  // records bounded in-app impressions server-side; a fresh read additionally
+  // records a bounded presence signal after resolver validation.
+  const applyResolvedAt = useCallback(async (lat: number, lng: number, fresh: boolean) => {
+    const placements = await resolveContextualPlacements(lat, lng, {
+      recordSurface: true,
+      confirmPresence: fresh,
+    });
+    const map = new Map<string, ResolvedPlacement>();
+    for (const p of placements) if (!map.has(p.reward_id)) map.set(p.reward_id, p);
+    setPlacementMap(map);
+  }, []);
+
+  const loadPlacements = useCallback(async () => {
+    try {
+      const { status } = await Location.getForegroundPermissionsAsync();
+      if (status !== 'granted') { setPlacementMap(new Map()); return; }
+      // Prefer a recent cached fix (instant, good enough for a boost), but
+      // reject a stale/inaccurate one so a paid "you're here" surface isn't
+      // driven by yesterday's location. Fall back to a fresh read.
+      let pos = await Location.getLastKnownPositionAsync({ maxAge: 5 * 60 * 1000, requiredAccuracy: 250 });
+      let fresh = false;
+      if (!pos) {
+        pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        fresh = true;
+      }
+      if (!pos) { setPlacementMap(new Map()); return; }
+      await applyResolvedAt(pos.coords.latitude, pos.coords.longitude, fresh);
+    } catch {
+      // fail-safe: keep the normal vault
+    }
+  }, [applyResolvedAt]);
 
   const loadRewards = useCallback(async () => {
     try {
@@ -165,6 +217,7 @@ export default function SpendScreen() {
         fetchMyRedemptionSummary().catch(() => ({})),
       ]);
       setRewards(data.map(apiRewardToUI));
+      setRawRewards(data);
       setFeaturedReward(featured);
       setRedemptionInfo(summary);
       setCatalogueLoaded(true);
@@ -176,33 +229,83 @@ export default function SpendScreen() {
     }
   }, [balance]);
   useEffect(() => { loadRewards(); }, [loadRewards]);
-
-
+  useEffect(() => { loadPlacements(); }, [loadPlacements]);
 
   useFocusEffect(
     useCallback(() => {
       refreshPoints();
       loadRewards();
-    }, [refreshPoints, loadRewards])
+      loadPlacements();
+    }, [refreshPoints, loadRewards, loadPlacements])
+  );
+
+  // Live step-in / step-out: while the Rewards tab is focused, watch position
+  // and re-resolve so the hero swaps the moment the user crosses a boundary,
+  // then reverts when they leave. Stops on blur to spare the battery. Uses the
+  // existing foreground permission only — never prompts.
+  useFocusEffect(
+    useCallback(() => {
+      let sub: Location.LocationSubscription | null = null;
+      let cancelled = false;
+      // remove() throws on web (expo-location's emitter lacks removeSubscription),
+      // which crashed the whole app on tab blur — never let cleanup throw.
+      const removeSub = () => { try { sub?.remove(); } catch {} finally { sub = null; } };
+      (async () => {
+        try {
+          const { status } = await Location.getForegroundPermissionsAsync();
+          if (status !== 'granted' || cancelled) return;
+          sub = await Location.watchPositionAsync(
+            { accuracy: Location.Accuracy.Balanced, distanceInterval: 40, timeInterval: 20000 },
+            (pos) => { applyResolvedAt(pos.coords.latitude, pos.coords.longitude, true).catch(() => {}); },
+          );
+          if (cancelled) { removeSub(); }
+        } catch {
+          // fail-safe: the one-shot loadPlacements still covers the common case
+        }
+      })();
+      return () => { cancelled = true; removeSub(); };
+    }, [applyResolvedAt])
   );
 
   const [refreshing, setRefreshing] = useState(false);
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      await Promise.all([refreshPoints(), loadRewards()]);
+      await Promise.all([refreshPoints(), loadRewards(), loadPlacements()]);
     } finally {
       setRefreshing(false);
     }
-  }, [refreshPoints, loadRewards]);
+  }, [refreshPoints, loadRewards, loadPlacements]);
 
   const filtered = activeCategory === 'ALL'
     ? rewards
     : rewards.filter((r) => r.category === activeCategory);
 
-  const sorted = filtered;
+  // Boost placed rewards to the front (paid → priority → nearest); hide nothing.
+  const sorted = placementMap.size === 0
+    ? filtered
+    : [
+        ...filtered.filter((r) => placementMap.has(r.id)).sort(
+          (a, b) => comparePlacements(placementMap.get(a.id)!, placementMap.get(b.id)!),
+        ),
+        ...filtered.filter((r) => !placementMap.has(r.id)),
+      ];
 
-  const featuredAfford = featuredReward ? affordability(balance, featuredReward.powr_cost) : 'locked';
+  // Hero takeover: the best placement whose reward is visible seizes the hero
+  // card while the user is in-zone; when they step out (placements clear on the
+  // next resolve) it falls straight back to the scheduled/smart featured reward.
+  const heroPlacement = useMemo(
+    () => (placementMap.size
+      ? pickHeroPlacement(new Set(rewards.map((r) => r.id)), [...placementMap.values()])
+      : null),
+    [placementMap, rewards],
+  );
+  const placedHero = heroPlacement
+    ? rawRewards.find((r) => r.id === heroPlacement.reward_id) ?? null
+    : null;
+  const heroReward = placedHero ?? featuredReward;
+
+  const featuredAfford = heroReward ? affordability(balance, heroReward.powr_cost) : 'locked';
   const walletCount = Object.values(redemptionInfo).reduce((sum, e) => sum + e.active, 0);
   const revealFeaturedInList = useCallback((id: string) => {
     Haptics.selectionAsync();
@@ -247,12 +350,13 @@ export default function SpendScreen() {
           loading={loading}
         />
 
-        {featuredReward && (
+        {heroReward && (
           <FeaturedCard
-            featured={featuredReward}
+            featured={heroReward}
             afford={featuredAfford}
             balance={balance}
-            onRedeem={() => revealFeaturedInList(featuredReward.id)}
+            placement={placedHero ? heroPlacement : null}
+            onRedeem={() => revealFeaturedInList(heroReward.id)}
           />
         )}
 
@@ -329,13 +433,18 @@ export default function SpendScreen() {
               >
                 <RewardCard
                   reward={reward}
+                  placement={placementMap.get(reward.id)}
                   afford={affordability(balance, reward.pts)}
                   balance={balance}
                   expanded={expandedId === reward.id}
                   activeCount={redemptionInfo[reward.id]?.active ?? 0}
                   capReached={reward.maxPerUser != null && (redemptionInfo[reward.id]?.nonRefunded ?? 0) >= reward.maxPerUser}
                   onToggle={() => toggleExpand(reward.id)}
-                  onRedeem={() => router.push({ pathname: '/redeem-modal', params: { id: reward.id } })}
+                  onRedeem={() => {
+                    // 'redeemed' attribution is recorded server-side by the
+                    // redemptions trigger on a confirmed spend — not on tap.
+                    router.push({ pathname: '/redeem-modal', params: { id: reward.id } });
+                  }}
                   onViewWallet={() => router.push('/wallet')}
                 />
               </View>
@@ -356,19 +465,50 @@ interface BalanceCardProps {
 }
 
 function BalanceCard({ balance, todayEarned, loading }: BalanceCardProps) {
+  const router = useRouter();
+  const queryClient = useQueryClient();
+  const vaultEnabled = useVaultAccess();
+  // Warms the Vault's deposits query on tap so /vault does not start its
+  // fetch from cold — see the comment on VaultTimer below.
+  const prefetchVault = useCallback(
+    () => queryClient.prefetchQuery({ queryKey: ['vault', 'contents'], queryFn: fetchVaultContents }),
+    [queryClient],
+  );
+  // Rolls up when the balance increases (vault unlocks, session claims);
+  // loads and spends snap silently.
+  const displayBalance = useRollingNumber(balance, !loading);
   return (
     <View style={styles.balanceCard}>
-      <Text style={styles.metaLabel}>Available balance</Text>
-      <View style={styles.balanceNumberRow}>
-        <Text style={[styles.balanceNumber, loading && { opacity: 0.4 }]}>
-          {balance.toLocaleString()}
-        </Text>
-        <Text style={styles.balanceUnit}>Points</Text>
-        {todayEarned > 0 && (
-          <View style={styles.todayBadge}>
-            <View style={styles.todayDot} />
-            <Text style={styles.todayBadgeText}>+{todayEarned} today</Text>
+      <View style={styles.balanceRow}>
+        <View style={styles.balanceLeft}>
+          <Text style={styles.metaLabel}>Available balance</Text>
+          <View style={styles.balanceNumberRow}>
+            <Text style={[styles.balanceNumber, loading && { opacity: 0.4 }]}>
+              {displayBalance.toLocaleString()}
+            </Text>
+            <Text style={styles.balanceUnit}>Points</Text>
           </View>
+          {todayEarned > 0 && (
+            <View style={styles.todayBadgeUnder}>
+              <View style={styles.todayDot} />
+              <Text style={styles.todayBadgeText}>+{todayEarned} today</Text>
+            </View>
+          )}
+        </View>
+        {/* Visible to everyone IN THE ROLLOUT — even with an empty vault, so
+            it is discoverable before the first deposit banks. Users outside the
+            rollout keep banking POWR they cannot see yet; this widget is the
+            only entry point, so hiding it hides the feature.
+            Prefetching on press means the deposits query is usually already in
+            flight (often resolved) by the time /vault mounts, so its hero fills
+            in as the door appears rather than a second later. */}
+        {vaultEnabled && (
+          <VaultTimer
+            onPress={() => {
+              void prefetchVault();
+              router.push('/vault');
+            }}
+          />
         )}
       </View>
     </View>
@@ -381,10 +521,12 @@ interface FeaturedProps {
   featured: ApiReward;
   afford: Afford;
   balance: number;
+  /** Set when a location placement has taken over the hero (in-zone). */
+  placement?: ResolvedPlacement | null;
   onRedeem: () => void;
 }
 
-function FeaturedCard({ featured, afford, balance, onRedeem }: FeaturedProps) {
+function FeaturedCard({ featured, afford, balance, placement, onRedeem }: FeaturedProps) {
   const pts = featured.powr_cost;
   const ptsNeeded = pts - balance;
   const progress = Math.min(balance / pts, 1);
@@ -392,18 +534,20 @@ function FeaturedCard({ featured, afford, balance, onRedeem }: FeaturedProps) {
   const value = getRewardDisplayValue(featured);
   const { amount, suffix } = splitDiscount(value);
   const logoSrc = featured.image_url
-    ? { uri: featured.image_url }
+    ? { uri: rewardLogoUri(featured.image_url)! }
     : featured.partner?.logo_url
-    ? { uri: featured.partner.logo_url }
+    ? { uri: rewardLogoUri(featured.partner.logo_url)! }
     : null;
-  const heroSrc = featured.hero_image_url ? { uri: featured.hero_image_url } : null;
-
   return (
     <View style={styles.featuredCard}>
       <View style={styles.featuredHero}>
-        {heroSrc && (
-          <ExpoImage source={heroSrc} style={styles.featuredHeroImg} contentFit="cover" contentPosition="top" />
-        )}
+        <RewardHeroMedia
+          videoUrl={featured.hero_video_url}
+          imageUrl={featured.hero_image_url}
+          style={styles.featuredHeroImg}
+          contentFit="cover"
+          contentPosition="top"
+        />
         <LinearGradient
           colors={['rgba(10,10,10,0)', 'rgba(10,10,10,0.45)', 'rgba(10,10,10,0.85)']}
           locations={[0.3, 0.65, 1]}
@@ -413,6 +557,21 @@ function FeaturedCard({ featured, afford, balance, onRedeem }: FeaturedProps) {
         <View style={styles.featuredPointsBlock}>
           <Text style={styles.featuredPtsNum}>{pts} <Text style={styles.featuredPtsUnit}>points</Text></Text>
         </View>
+
+        {placement && (
+          placement.paid ? (
+            // Paid = a brand bought this slot → clear "AD" disclosure.
+            <View style={styles.featuredAdTag}>
+              <Text style={styles.featuredAdTagText}>AD</Text>
+            </View>
+          ) : (
+            // First-party curation → just the useful "nearby" signal.
+            <View style={styles.featuredZoneBadge}>
+              <Ionicons name="location" size={10} color="#0a0a0a" />
+              <Text style={styles.featuredZoneBadgeText}>NEARBY NOW</Text>
+            </View>
+          )
+        )}
 
         <View style={styles.featuredOverlayBody}>
           {logoSrc && (
@@ -435,7 +594,7 @@ function FeaturedCard({ featured, afford, balance, onRedeem }: FeaturedProps) {
               </View>
             ) : <View />}
             {afford === 'can' ? (
-              <Pressable style={({ pressed }) => [styles.redeemPrimary, pressed && { opacity: 0.85 }]} onPress={onRedeem}>
+              <Pressable style={({ pressed }) => [styles.redeemPrimary, pressed && { opacity: 0.85 }]} onPress={tracked('reward_redeem_start', onRedeem)}>
                 <Text style={styles.redeemPrimaryText}>Redeem</Text>
                 <Ionicons name="arrow-forward" size={13} color="#0a0a0a" />
               </Pressable>
@@ -458,6 +617,7 @@ function FeaturedCard({ featured, afford, balance, onRedeem }: FeaturedProps) {
 
 interface RewardCardProps {
   reward: Reward;
+  placement?: ResolvedPlacement;
   afford: Afford;
   balance: number;
   expanded: boolean;
@@ -468,7 +628,7 @@ interface RewardCardProps {
   onViewWallet: () => void;
 }
 
-function RewardCard({ reward, afford, balance, expanded, activeCount, capReached, onToggle, onRedeem, onViewWallet }: RewardCardProps) {
+function RewardCard({ reward, placement, afford, balance, expanded, activeCount, capReached, onToggle, onRedeem, onViewWallet }: RewardCardProps) {
   const ptsNeeded = reward.pts - balance;
   const progress = Math.min(balance / reward.pts, 1);
   const isLocked = afford === 'locked';
@@ -485,12 +645,13 @@ function RewardCard({ reward, afford, balance, expanded, activeCount, capReached
         pressed && !isLocked && { opacity: 0.92 },
       ]}
     >
-      {expanded && reward.heroImage && (
+      {expanded && (reward.heroVideoUrl || reward.heroImageUrl) && (
         <View style={styles.heroBanner} collapsable={false}>
-          <Image
-            source={reward.heroImage}
+          <RewardHeroMedia
+            videoUrl={reward.heroVideoUrl}
+            imageUrl={reward.heroImageUrl}
             style={styles.heroImage}
-            resizeMode="cover"
+            contentFit="cover"
           />
           <LinearGradient
             colors={['rgba(0,0,0,0)', 'rgba(30,30,30,0.95)']}
@@ -539,7 +700,18 @@ function RewardCard({ reward, afford, balance, expanded, activeCount, capReached
             {reward.title}
           </Text>
           <Text style={styles.rewardSubtitle} numberOfLines={1}>{reward.subtitle}</Text>
-
+          {placement && (
+            placement.paid ? (
+              <View style={styles.placementAdTag}>
+                <Text style={styles.placementAdText}>AD</Text>
+              </View>
+            ) : (
+              <View style={styles.placementPill}>
+                <Ionicons name="location" size={9} color={GOLD} />
+                <Text style={styles.placementPillText}>NEARBY</Text>
+              </View>
+            )
+          )}
         </View>
 
         {!expanded && (
@@ -763,6 +935,12 @@ const styles = StyleSheet.create({
     paddingBottom: 10,
     gap: 4,
   },
+  balanceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    gap: 12,
+  },
   balanceLeft: {
     flex: 1,
     gap: 4,
@@ -790,6 +968,8 @@ const styles = StyleSheet.create({
     letterSpacing: -3,
     lineHeight: 66,
     color: GOLD,
+    // Stable digit widths so the roll-up doesn't make the row jitter.
+    fontVariant: ['tabular-nums'],
   },
   balanceUnit: {
     fontSize: 11,
@@ -845,6 +1025,12 @@ const styles = StyleSheet.create({
     color: GOLD,
     letterSpacing: 0.3,
   },
+  todayBadgeUnder: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginTop: 2,
+  },
 
   // ── Featured card (floating, subtle accent line)
   featuredCard: {
@@ -884,6 +1070,41 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 12,
+  },
+  featuredZoneBadge: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    zIndex: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: GOLD,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 20,
+  },
+  featuredZoneBadgeText: {
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+    color: '#0a0a0a',
+  },
+  featuredAdTag: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    zIndex: 2,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 4,
+  },
+  featuredAdTagText: {
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 1,
+    color: '#FFFFFF',
   },
   featuredPtsBlock: {
     alignItems: 'flex-end',
@@ -1209,6 +1430,40 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '300',
     color: DIM,
+  },
+  placementPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 3,
+    marginTop: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 20,
+    backgroundColor: 'rgba(232,210,0,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(232,210,0,0.28)',
+  },
+  placementPillText: {
+    fontSize: 8,
+    fontWeight: '700',
+    letterSpacing: 1,
+    color: GOLD,
+  },
+  placementAdTag: {
+    alignSelf: 'flex-start',
+    marginTop: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    borderRadius: 3,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.25)',
+  },
+  placementAdText: {
+    fontSize: 8,
+    fontWeight: '700',
+    letterSpacing: 1,
+    color: '#FFFFFF',
   },
   rewardValueBadge: {
     alignItems: 'center',

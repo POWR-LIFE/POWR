@@ -1,11 +1,14 @@
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
-import * as Sharing from 'expo-sharing';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
+import * as Sharing from 'expo-sharing';
 import {
   ActivityIndicator,
+  Platform,
   Pressable,
+  Share,
   StyleSheet,
   Text,
   useWindowDimensions,
@@ -15,7 +18,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { captureRef } from 'react-native-view-shot';
 
 import { ShareCard } from '@/components/share/ShareCard';
-import { fetchAutoSummary, fetchChallengeSummary, fetchCheckInSummary, type ShareSummary } from '@/lib/api/share';
+import { tracked } from '@/lib/analytics';
+import { LEVEL_IMAGE, getLevelInfo } from '@/constants/levels';
+import { buildShareMessage, fetchAutoSummary, fetchChallengeSummary, fetchCheckInSummary, fetchLevelUpSummary, publishShareCard, type ShareSummary } from '@/lib/api/share';
 
 const GOLD  = '#E8D200';
 const BG    = '#0d0d0d';
@@ -23,37 +28,83 @@ const TEXT  = '#F2F2F2';
 const DIM   = 'rgba(255,255,255,0.5)';
 const MUTED = 'rgba(255,255,255,0.25)';
 
-const POWR_LOGO_URI = 'https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/landing-page-assets/powrlogotext.png';
+/**
+ * The og:image is captured smaller than the shareable PNG on purpose: link
+ * crawlers cap the image they will fetch to build a thumbnail (WhatsApp's is
+ * well under a megabyte), and a preview with no picture is worse than no
+ * preview. Must stay in step with the og:image:width/height the share-card-og
+ * function declares.
+ */
+const OG_IMAGE_WIDTH  = 720;
+const OG_IMAGE_HEIGHT = 1280;
 
-type Mode   = 'check-in' | 'streak' | 'challenge';
-type BgMode = 'cover' | 'powr' | 'gallery';
+type Mode   = 'check-in' | 'streak' | 'challenge' | 'level-up';
+type BgMode = 'cover' | 'level' | 'gallery';
 
 const BG_OPTIONS: { key: BgMode; icon: React.ComponentProps<typeof Ionicons>['name']; label: string }[] = [
   { key: 'cover',   icon: 'person-circle-outline', label: 'My Photo'  },
-  { key: 'powr',    icon: 'flash',                 label: 'POWR'      },
+  { key: 'level',   icon: 'ribbon-outline',        label: 'My Level'  },
   { key: 'gallery', icon: 'images-outline',        label: 'Gallery'   },
 ];
+
+/** A circular icon button with a label beneath, à la the TikTok "send to" row. */
+function ActionButton({ icon, label, onPress, loading, disabled, primary }: {
+  icon: React.ComponentProps<typeof Ionicons>['name'];
+  label: string;
+  onPress: () => void;
+  loading: boolean;
+  disabled: boolean;
+  primary?: boolean;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      style={({ pressed }) => [styles.action, pressed && !disabled && { opacity: 0.7 }]}
+    >
+      <View style={[styles.actionCircle, primary ? styles.actionCirclePrimary : styles.actionCircleGhost]}>
+        {loading ? (
+          <ActivityIndicator color={primary ? '#0a0a0a' : TEXT} />
+        ) : (
+          <Ionicons name={icon} size={24} color={primary ? '#0a0a0a' : TEXT} />
+        )}
+      </View>
+      <Text style={styles.actionLabel}>{label}</Text>
+    </Pressable>
+  );
+}
 
 export default function ShareStatsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const params = useLocalSearchParams<{ mode?: string; sessionId?: string; challenge?: string }>();
+  const params = useLocalSearchParams<{ mode?: string; sessionId?: string; challenge?: string; historical?: string; asOf?: string }>();
   const mode: Mode =
-    params.mode === 'check-in' ? 'check-in' : params.mode === 'challenge' ? 'challenge' : 'streak';
+    params.mode === 'check-in' ? 'check-in'
+    : params.mode === 'challenge' ? 'challenge'
+    : params.mode === 'level-up' ? 'level-up'
+    : 'streak';
 
   const cardRef = useRef<View>(null);
   const [summary, setSummary]     = useState<ShareSummary | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [sharing, setSharing]     = useState(false);
-  const [bgMode, setBgMode]       = useState<BgMode>('cover');
+  const [notice, setNotice]       = useState<string | null>(null);
+  const [busy, setBusy]           = useState<'share' | 'save' | null>(null);
+  // A level-up share is about the new mark — lead with it.
+  const [bgMode, setBgMode]       = useState<BgMode>(mode === 'level-up' ? 'level' : 'cover');
   const [galleryUri, setGalleryUri] = useState<string | null>(null);
 
   useEffect(() => {
     if (mode === 'check-in') {
       if (!params.sessionId) { setLoadError('No session specified.'); return; }
-      fetchCheckInSummary(params.sessionId)
+      fetchCheckInSummary(params.sessionId, { historical: params.historical === '1' })
         .then(setSummary)
         .catch((e: unknown) => setLoadError(e instanceof Error ? e.message : 'Could not load this check-in.'));
+    } else if (mode === 'level-up') {
+      // asOf = a past level-up from the points-history row; absent = the live one
+      const asOf = params.asOf ? new Date(params.asOf) : undefined;
+      fetchLevelUpSummary(asOf && Number.isFinite(asOf.getTime()) ? { asOf } : undefined)
+        .then(setSummary)
+        .catch((e: unknown) => setLoadError(e instanceof Error ? e.message : 'Could not load your level.'));
     } else if (mode === 'challenge') {
       if (!params.challenge) { setLoadError('No challenge specified.'); return; }
       let challenge;
@@ -71,7 +122,15 @@ export default function ShareStatsScreen() {
         .then(setSummary)
         .catch((e: unknown) => setLoadError(e instanceof Error ? e.message : 'Could not load your stats.'));
     }
-  }, [mode, params.sessionId, params.challenge]);
+  }, [mode, params.sessionId, params.challenge, params.historical, params.asOf]);
+
+  // Warm the level artwork before the user can pick it — captureRef would
+  // otherwise snapshot an empty tile if they tap Share while it's still loading.
+  useEffect(() => {
+    if (!summary) return;
+    const uri = LEVEL_IMAGE[getLevelInfo(summary.totalEarned).current.level];
+    if (uri) Image.prefetch(uri);
+  }, [summary]);
 
   async function pickFromGallery() {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -101,17 +160,12 @@ export default function ShareStatsScreen() {
 
   function effectiveBgSource(): string | number | null | undefined {
     if (bgMode === 'gallery') return galleryUri ?? undefined;
-    if (bgMode === 'powr')    return null;   // solid dark
+    if (bgMode === 'level')   return null;   // solid dark
     return null;                             // cover → solid dark + circular avatar overlay
   }
 
   function effectiveAvatarUri(): string | null {
     if (bgMode === 'cover') return summary?.profile.avatarUrl ?? null;
-    return null;
-  }
-
-  function effectiveTopImage(): string | null {
-    if (bgMode === 'powr') return POWR_LOGO_URI;
     return null;
   }
 
@@ -122,9 +176,43 @@ export default function ShareStatsScreen() {
   const maxWidthFromHeight = maxCardHeight * (9 / 16);
   const previewWidth = Math.min(windowWidth - 48, 360, maxWidthFromHeight);
 
+  /**
+   * Publishes the card and opens the OS share sheet on a link to it — the sheet
+   * itself is the "send to" menu of WhatsApp / Messenger / Instagram / SMS.
+   *
+   * The link, not the image, is what goes out: chat apps only draw a tappable
+   * preview for a URL they can scrape. An attached image is the whole message,
+   * and any text alongside it is dropped.
+   *
+   * The upload is a JPEG, not the 1080×1920 PNG the Save button writes — link
+   * crawlers cap the image they will fetch for a thumbnail, and a multi-megabyte
+   * PNG buys a preview with no picture in it.
+   */
   async function handleShare() {
-    if (!cardRef.current || sharing) return;
-    setSharing(true);
+    if (!cardRef.current || !summary || busy) return;
+    setBusy('share');
+    setNotice(null);
+    try {
+      const uri = await captureRef(cardRef, {
+        format: 'jpg',
+        quality: 0.8,
+        width: OG_IMAGE_WIDTH,
+        height: OG_IMAGE_HEIGHT,
+        result: 'tmpfile',
+      });
+      const shareUrl = await publishShareCard(summary, uri);
+      await Share.share({ message: buildShareMessage(summary, shareUrl) });
+    } catch (e) {
+      setLoadError(e instanceof Error ? e.message : 'Could not publish your card.');
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleSave() {
+    if (!cardRef.current || busy) return;
+    setBusy('save');
+    setNotice(null);
     try {
       const uri = await captureRef(cardRef, {
         format: 'png',
@@ -133,26 +221,18 @@ export default function ShareStatsScreen() {
         height: 1920,
         result: 'tmpfile',
       });
-      const available = await Sharing.isAvailableAsync();
-      if (!available) { setLoadError('Sharing is not available on this device.'); return; }
-      await Sharing.shareAsync(uri, {
-        mimeType: 'image/png',
-        dialogTitle:
-          mode === 'check-in' ? 'Share your check-in'
-          : mode === 'challenge' ? 'Share your challenge'
-          : 'Share your streak',
-        UTI: 'public.png',
-      });
+      await Sharing.shareAsync(uri, { mimeType: 'image/png', UTI: 'public.png', dialogTitle: 'Post your workout' });
     } catch (e) {
-      setLoadError(e instanceof Error ? e.message : 'Could not share image.');
+      setLoadError(e instanceof Error ? e.message : 'Could not share your card.');
     } finally {
-      setSharing(false);
+      setBusy(null);
     }
   }
 
   const headerTitle =
-    mode === 'check-in' ? 'Share check-in'
+    mode === 'check-in' ? (params.historical === '1' ? 'Share session' : 'Share check-in')
     : mode === 'challenge' ? 'Share challenge'
+    : mode === 'level-up' ? 'Share your level'
     : 'Share your streak';
 
   return (
@@ -177,8 +257,7 @@ export default function ShareStatsScreen() {
             width={previewWidth}
             backgroundSource={effectiveBgSource()}
             avatarUri={effectiveAvatarUri()}
-            topImage={effectiveTopImage()}
-            hideLogo={bgMode === 'powr'}
+            showLevel={bgMode === 'level'}
           />
         )}
       </View>
@@ -213,25 +292,29 @@ export default function ShareStatsScreen() {
         </View>
       )}
 
-      {/* Share button */}
+      {/* Actions — Share sends a link preview (WhatsApp, iMessage, etc.);
+          Post opens the image share sheet (TikTok, Instagram, X, Threads, etc.) */}
       {summary && (
         <View style={styles.footer}>
-          <Pressable
-            style={({ pressed }) => [styles.shareBtn, (pressed || sharing) && { opacity: 0.85 }]}
-            onPress={handleShare}
-            disabled={sharing}
-          >
-            {sharing ? (
-              <ActivityIndicator color="#0a0a0a" />
-            ) : (
-              <>
-                <Ionicons name="share-outline" size={18} color="#0a0a0a" />
-                <Text style={styles.shareBtnText}>Share to Socials</Text>
-              </>
-            )}
-          </Pressable>
+          <View style={styles.actionRow}>
+            <ActionButton
+              icon="paper-plane"
+              label="Share"
+              onPress={tracked('share_stats_send', handleShare)}
+              loading={busy === 'share'}
+              disabled={busy !== null}
+              primary
+            />
+            <ActionButton
+              icon="share-social-outline"
+              label="Post"
+              onPress={tracked('share_stats_post', handleSave)}
+              loading={busy === 'save'}
+              disabled={busy !== null}
+            />
+          </View>
           <Text style={styles.helperText}>
-            Posts as a 1080×1920 image — works for Instagram, Facebook, TikTok and X.
+            {notice ?? 'Share sends a tappable link preview. Post shares the image to TikTok, Instagram, X, Threads and more.'}
           </Text>
         </View>
       )}
@@ -306,24 +389,38 @@ const styles = StyleSheet.create({
   },
   footer: {
     paddingHorizontal: 24,
-    paddingTop: 4,
-    gap: 12,
+    paddingTop: 8,
+    gap: 14,
   },
-  shareBtn: {
+  actionRow: {
     flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 40,
+  },
+  action: {
+    alignItems: 'center',
+    gap: 8,
+  },
+  actionCircle: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
-    backgroundColor: GOLD,
-    borderRadius: 20,
-    paddingVertical: 14,
   },
-  shareBtnText: {
-    fontSize: 13,
-    fontWeight: '700',
-    letterSpacing: 1.2,
-    color: '#0a0a0a',
-    textTransform: 'uppercase',
+  actionCirclePrimary: {
+    backgroundColor: GOLD,
+  },
+  actionCircleGhost: {
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.18)',
+  },
+  actionLabel: {
+    fontSize: 12,
+    fontWeight: '400',
+    letterSpacing: 0.3,
+    color: DIM,
   },
   helperText: {
     fontSize: 11,

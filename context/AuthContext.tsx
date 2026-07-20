@@ -4,10 +4,13 @@ import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
 import { router } from 'expo-router';
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
-import { Alert } from 'react-native';
+import { Alert, AppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { supabase } from '@/lib/supabase';
+import { EMAIL_CONFIRM_REDIRECT, supabase } from '@/lib/supabase';
+import { claimDevice, confirmDeviceTransfer } from '@/lib/deviceLock';
+import { reportLocationPermission } from '@/lib/locationPermission';
+import TransferDeviceSheet from '@/components/TransferDeviceSheet';
 
 type AuthContextType = {
     session: Session | null;
@@ -16,7 +19,7 @@ type AuthContextType = {
     signInWithGoogle: () => Promise<{ error: string | null }>;
     signInWithApple: () => Promise<{ error: string | null }>;
     signInWithEmail: (email: string, password: string) => Promise<{ error: string | null }>;
-    signUpWithEmail: (email: string, password: string) => Promise<{ error: string | null; needsConfirmation?: boolean }>;
+    signUpWithEmail: (email: string, password: string) => Promise<{ error: string | null; needsConfirmation?: boolean; alreadyRegistered?: boolean }>;
     signOut: () => Promise<void>;
     markOnboardingComplete: () => Promise<{ error: string | null }>;
     updateUserMetadata: (data: Record<string, any>) => Promise<{ error: string | null }>;
@@ -41,12 +44,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [session, setSession] = useState<Session | null>(null);
     const [loading, setLoading] = useState(true);
 
+    // Device-transfer confirmation sheet: shown when claim_device reports
+    // 'transfer_available' (account is on another recently-seen device). Null =
+    // hidden. The pending session is held signed-in behind the sheet until the
+    // user chooses; "Not now" then signs it out locally.
+    const [transferPrompt, setTransferPrompt] = useState<
+        { fromPlatform?: string | null; fromLastSeen?: string | null } | null
+    >(null);
+    const [transferBusy, setTransferBusy] = useState(false);
+
     // Refs for the Realtime channel and the session_id this device owns.
     // Using refs (not state) avoids re-renders and stale-closure issues.
     const sessionChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
     const currentSessionIdRef = useRef<string | null>(null);
     const registeringRef = useRef(false); // prevents concurrent registerAndWatchSession calls
     const forcedSignOutRef = useRef(false); // set when another device kicked us, so we can explain why
+    const deviceLockedRef = useRef(false); // set when this device is already bound to a different account
+    const deviceLockReasonRef = useRef<'locked' | 'rate_limited'>('locked'); // why we blocked, for the SIGNED_OUT copy
+    const deviceCheckedSessionRef = useRef<string | null>(null); // session we've already run the device-lock check for
+    const sessionUserRef = useRef<string | null>(null); // current user id for listeners that outlive the auth closure
 
     /**
      * Upserts this device's session_id into user_active_sessions, overwriting any
@@ -94,16 +110,87 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 },
                 (payload) => {
                     const incomingId = (payload.new as { session_id?: string })?.session_id;
-                    // A different session_id means another device signed in — kick this one out now
+                    // A different session_id means another device signed in — kick this one out now.
+                    // Local scope only: the default 'global' would revoke EVERY session for the
+                    // user — including the new device that just signed in — so the device the
+                    // user is actively using would silently log out at its next token refresh.
+                    // Server-side revocation of old sessions is enforceOneSession's job.
                     if (incomingId && incomingId !== currentSessionIdRef.current) {
                         currentSessionIdRef.current = null;
                         forcedSignOutRef.current = true;
-                        supabase.auth.signOut();
+                        supabase.auth.signOut({ scope: 'local' });
                     }
                 },
             )
             .subscribe();
         registeringRef.current = false;
+    };
+
+    /**
+     * One-account-per-device. Bind this physical device to the signed-in user;
+     * if it's already locked to a DIFFERENT account, sign this session straight
+     * back out (the SIGNED_OUT branch shows the explanation). Runs once per
+     * distinct session — not on every token refresh — and fails open, so a
+     * transient RPC/network error can never lock a user out of their own account.
+     */
+    const enforceDeviceLock = async (activeSession: Session) => {
+        const sessionKey = getJwtSessionId(activeSession.access_token) ?? activeSession.access_token;
+        if (deviceCheckedSessionRef.current === sessionKey) return;
+        deviceCheckedSessionRef.current = sessionKey;
+
+        const res = await claimDevice();
+
+        // 'transfer_available' — the account is on another recently-used device.
+        // Don't sign out; hold the session and let the user confirm the move.
+        if (res.status === 'transfer_available') {
+            setTransferPrompt({ fromPlatform: res.from_platform, fromLastSeen: res.from_last_seen });
+            return;
+        }
+
+        // 'rate_limited' — a transfer is warranted but the account is over its
+        // self-transfer cap. Treat like locked (sign out + support message).
+        if (res.status === 'locked' || res.status === 'rate_limited') {
+            deviceLockedRef.current = true;
+            deviceLockReasonRef.current = res.status;
+            // Local scope: only this device is refused — signing in on a locked phone
+            // must not revoke the user's legitimate sessions on their own devices.
+            await supabase.auth.signOut({ scope: 'local' });
+        }
+    };
+
+    /**
+     * The user tapped "Move to this device" on the transfer sheet. Migrate the
+     * binding to this device (server signs the old one out) and keep the session.
+     * On a non-'ok' result (raced into 'locked', or over the cap) fall back to the
+     * sign-out + explanation path.
+     */
+    const handleConfirmTransfer = async () => {
+        if (transferBusy) return;
+        setTransferBusy(true);
+        try {
+            const res = await confirmDeviceTransfer();
+            if (res.status === 'ok') {
+                setTransferPrompt(null);
+                // Server revoked the old device's sessions; this one wins. Re-stamp
+                // single-device ownership so our watcher tracks the right row.
+                if (session) await enforceOneSession();
+                return;
+            }
+            // Couldn't take the device — explain and sign this session out.
+            deviceLockedRef.current = true;
+            deviceLockReasonRef.current = res.status === 'rate_limited' ? 'rate_limited' : 'locked';
+            setTransferPrompt(null);
+            await supabase.auth.signOut({ scope: 'local' });
+        } finally {
+            setTransferBusy(false);
+        }
+    };
+
+    /** "Not now" on the transfer sheet — back out to the login screen. */
+    const handleCancelTransfer = async () => {
+        setTransferPrompt(null);
+        forcedSignOutRef.current = false; // this is a user choice, not a kick — no alert
+        await supabase.auth.signOut({ scope: 'local' });
     };
 
     const cleanupSessionWatch = () => {
@@ -123,8 +210,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
             setSession(session);
+            sessionUserRef.current = session?.user?.id ?? null;
             if (session && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION')) {
                 registerAndWatchSession(session);
+            }
+            // Device-lock check on a fresh session only (a token refresh keeps the
+            // same binding, so re-checking every hour would be wasted work).
+            if (session && (event === 'SIGNED_IN' || event === 'INITIAL_SESSION')) {
+                enforceDeviceLock(session);
+                reportLocationPermission(session.user.id);
             }
             if (!session) {
                 cleanupSessionWatch();
@@ -136,9 +230,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             // screen, and if another device kicked them out, say so.
             if (event === 'SIGNED_OUT') {
                 const wasForced = forcedSignOutRef.current;
+                const wasDeviceLocked = deviceLockedRef.current;
+                const lockReason = deviceLockReasonRef.current;
                 forcedSignOutRef.current = false;
+                deviceLockedRef.current = false;
+                deviceLockReasonRef.current = 'locked';
+                deviceCheckedSessionRef.current = null;
                 router.replace('/onboarding');
-                if (wasForced) {
+                if (wasDeviceLocked && lockReason === 'rate_limited') {
+                    Alert.alert(
+                        'Too many device changes',
+                        'You’ve moved your POWR account between devices several times recently. To move it again, contact support and we’ll help you switch.',
+                    );
+                } else if (wasDeviceLocked) {
+                    Alert.alert(
+                        'This device is linked to another account',
+                        'This phone is already tied to a different POWR account. Sign in with that account to continue. If you need to move this device to a new account, contact support.',
+                    );
+                } else if (wasForced) {
                     Alert.alert(
                         'Signed out',
                         'You signed in on another device. POWR allows one device at a time, so you were signed out here. Sign in again to keep using this device.',
@@ -162,9 +271,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             return m ? decodeURIComponent(m[1]) : null;
         };
 
+        // Guard against handling the same OAuth code twice — on Android both
+        // getInitialURL() and the 'url' listener can deliver the launch URL, and a
+        // cold-start deep link can re-deliver it. Re-exchanging would needlessly
+        // re-run signOut(scope:others) and kick this user's other devices again,
+        // which is a big contributor to the "logged out for no reason" reports.
+        const handledCodes = new Set<string>();
         const tryExchangeCode = async (url: string) => {
             const code = extractCode(url);
-            if (!code) return;
+            if (!code || handledCodes.has(code)) return;
+            handledCodes.add(code);
             const { error } = await supabase.auth.exchangeCodeForSession(code);
             if (!error) await supabase.auth.signOut({ scope: 'others' });
         };
@@ -185,9 +301,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             await tryExchangeCode(url);
         });
 
+        // Location permission changes happen in system Settings, so re-snapshot
+        // when the app returns to the foreground — the report itself dedupes.
+        const appStateSubscription = AppState.addEventListener('change', (state) => {
+            if (state === 'active' && sessionUserRef.current) {
+                reportLocationPermission(sessionUserRef.current);
+            }
+        });
+
         return () => {
             subscription.unsubscribe();
             linkingSubscription.remove();
+            appStateSubscription.remove();
             cleanupSessionWatch();
         };
     }, []);
@@ -264,9 +389,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const signUpWithEmail = async (
         email: string,
         password: string
-    ): Promise<{ error: string | null; needsConfirmation?: boolean }> => {
-        const { data, error } = await supabase.auth.signUp({ email, password });
+    ): Promise<{ error: string | null; needsConfirmation?: boolean; alreadyRegistered?: boolean }> => {
+        const { data, error } = await supabase.auth.signUp({
+            email,
+            password,
+            options: { emailRedirectTo: EMAIL_CONFIRM_REDIRECT },
+        });
         if (error) return { error: error.message };
+
+        // Signing up with an address that already has an account (commonly one
+        // created via Google/Apple) does NOT error — GoTrue returns a decoy user
+        // with an empty `identities` array and sends no email, so the response
+        // can't be used to enumerate accounts. Left untreated that looks exactly
+        // like "confirmation required" and strands the user on a check-your-inbox
+        // screen waiting for mail that will never arrive.
+        // Guarded on the absent session too: a real signup that somehow reported
+        // no identities would still be a real signup, and must not be diverted.
+        if (!data.session && data.user && (data.user.identities?.length ?? 0) === 0) {
+            return { error: null, alreadyRegistered: true };
+        }
+
         // Supabase returns a session immediately if email confirmation is disabled,
         // or a user with no session if confirmation is required.
         const needsConfirmation = !data.session;
@@ -302,6 +444,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             updateUserMetadata,
         }}>
             {children}
+            <TransferDeviceSheet
+                visible={transferPrompt !== null}
+                fromPlatform={transferPrompt?.fromPlatform}
+                fromLastSeen={transferPrompt?.fromLastSeen}
+                busy={transferBusy}
+                onConfirm={handleConfirmTransfer}
+                onCancel={handleCancelTransfer}
+            />
         </AuthContext.Provider>
     );
 }

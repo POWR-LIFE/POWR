@@ -53,7 +53,11 @@ const DAILY_CAPS: Record<ActivityType, number> = {
   sleep:    5,
 };
 
-function calcBasePoints(session: ActivitySession): number {
+// gymDwellMin is the admin-tunable minutes required to lock in a base gym
+// check-in point (system_config → min_gym_dwell_minutes, default 30).
+// gymUpgradeMin is the admin-tunable upgrade-tier threshold (system_config →
+// gym_upgrade_minutes, default 40) — keep in sync with upgrade-gym-tier.
+function calcBasePoints(session: ActivitySession, gymDwellMin = 30, gymUpgradeMin = 40): number {
   const mins = Math.floor(session.duration_sec / 60);
   const dist = session.distance_m ?? 0;
   const steps = session.steps ?? 0;
@@ -88,8 +92,10 @@ function calcBasePoints(session: ActivitySession): number {
       return 0;
 
     case 'gym':
-      if (mins >= 40) return 20;
-      if (mins >= 30) return 15;
+      // Upgrade tier only applies once the (tunable) entry gate is met, so
+      // raising the dwell threshold above it can't be bypassed by the upgrade tier.
+      if (mins >= gymUpgradeMin && mins >= gymDwellMin) return 20;
+      if (mins >= gymDwellMin) return 15;
       return 0;
 
     case 'hiit':
@@ -265,33 +271,13 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405 });
   }
 
-  // 1. Validate JWT
-  const authHeader = req.headers.get('Authorization');
-  if (!authHeader) {
-    return new Response(JSON.stringify({ error: 'Missing authorization' }), { status: 401 });
-  }
-
   const supabase = createClient(
     Deno.env.get('SUPABASE_URL')!,
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
   );
 
-  // Verify the user's JWT
-  const userClient = createClient(
-    Deno.env.get('SUPABASE_URL')!,
-    Deno.env.get('SUPABASE_ANON_KEY')!
-  );
-  
-  const jwt = authHeader.replace(/^Bearer\s+/i, '');
-  const { data: { user }, error: authError } = await userClient.auth.getUser(jwt);
-  
-  if (authError || !user) {
-    console.error('Auth error:', authError);
-    return new Response(JSON.stringify({ error: 'Unauthorized', details: authError?.message }), { status: 401 });
-  }
-
-  // 2. Parse request body
-  let body: ClaimRequest;
+  // 1. Parse request body (before auth — the relay leg carries user_id in it)
+  let body: ClaimRequest & { user_id?: string; visit_id?: string };
   try {
     body = await req.json();
   } catch {
@@ -299,6 +285,47 @@ Deno.serve(async (req) => {
   }
   if (!body.session_id) {
     return new Response(JSON.stringify({ error: 'session_id required' }), { status: 400 });
+  }
+
+  // 2. Authenticate — two legs:
+  //    (a) the app calls with the user's JWT (verified in-code);
+  //    (b) relay_gym_claim (SECURITY DEFINER RPC → pg_net) calls with the shared
+  //        resolve token + an explicit user_id — the background path. A client
+  //        functions.invoke never arrives from a backgrounded Android app while
+  //        its REST calls do (six field captures 2026-07-14), so the claim rides
+  //        the REST path to the RPC and pg_net brings it here server-to-server.
+  //        The RPC has already verified the session belongs to that user; the
+  //        session ownership check below re-verifies against the same user_id.
+  const relayToken = req.headers.get('x-resolve-token');
+  const viaRelay = relayToken != null;
+  let user: { id: string; email?: string };
+  if (viaRelay) {
+    const { data: valid } = await supabase.rpc('verify_resolve_token', { p_token: relayToken });
+    if (valid !== true || !body.user_id) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
+    }
+    const { data: got, error: adminError } = await supabase.auth.admin.getUserById(body.user_id);
+    if (adminError || !got?.user) {
+      console.error('Relay auth error:', adminError);
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
+    }
+    user = got.user;
+  } else {
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(JSON.stringify({ error: 'Missing authorization' }), { status: 401 });
+    }
+    const userClient = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_ANON_KEY')!
+    );
+    const jwt = authHeader.replace(/^Bearer\s+/i, '');
+    const { data: { user: jwtUser }, error: authError } = await userClient.auth.getUser(jwt);
+    if (authError || !jwtUser) {
+      console.error('Auth error:', authError);
+      return new Response(JSON.stringify({ error: 'Unauthorized', details: authError?.message }), { status: 401 });
+    }
+    user = jwtUser;
   }
 
   // 3. Fetch the session — must belong to this user
@@ -407,7 +434,31 @@ Deno.serve(async (req) => {
   }
 
   // 8. Calculate points
-  let base = calcBasePoints(session);
+  // Admin-tunable gym thresholds (system_config → min_gym_dwell_minutes /
+  // gym_upgrade_minutes). Read via the service client (bypasses RLS); these are
+  // the authoritative gates. Fall back to the historical 30/40 on any failure.
+  let gymDwellMin = 30;
+  let gymUpgradeMin = 40;
+  let vaultVestDays = 60;
+  let vaultCapOverflowEnabled = true;
+  {
+    const { data: cfg } = await supabase
+      .from('system_config')
+      .select('key, value')
+      .in('key', ['min_gym_dwell_minutes', 'gym_upgrade_minutes', 'vault_vest_days', 'vault_cap_overflow_enabled']);
+    for (const row of cfg ?? []) {
+      if (row.key === 'vault_cap_overflow_enabled') {
+        vaultCapOverflowEnabled = String(row.value ?? '').trim().toLowerCase() !== 'false';
+        continue;
+      }
+      const parsed = parseInt(row.value ?? '', 10);
+      if (!Number.isFinite(parsed) || parsed <= 0) continue;
+      if (row.key === 'min_gym_dwell_minutes') gymDwellMin = parsed;
+      if (row.key === 'gym_upgrade_minutes') gymUpgradeMin = parsed;
+      if (row.key === 'vault_vest_days') vaultVestDays = parsed;
+    }
+  }
+  let base = calcBasePoints(session, gymDwellMin, gymUpgradeMin);
 
   // DEV-TEST-ONLY: when DEV_MIN_DWELL_SEC is set, a geofence gym session meeting
   // that lower threshold qualifies for base points so we can test check-ins without
@@ -517,6 +568,7 @@ Deno.serve(async (req) => {
   }
 
   // 11. Persist the recomputed streak (skip for manual logs)
+  let streakCredited = 0;
   if (!isManual && streak) {
     await supabase
       .from('user_streaks')
@@ -527,16 +579,78 @@ Deno.serve(async (req) => {
       })
       .eq('user_id', user.id);
 
-    // Insert streak bonus transaction if applicable
-    if (streakBonus > 0) {
+    // Insert streak bonus transaction if applicable. Clamp to the cap headroom
+    // LEFT AFTER the base earn row and guard on the clamped amount — the base
+    // row already carries min(base + streakBonus, cap), so when the streak
+    // multiplier alone fills the daily cap this would otherwise write a 0-pt
+    // (or, for cap-exempt dev users, negative) STREAK row that renders red in
+    // the ledger.
+    const streakAmount = Math.min(streakBonus, Math.max(0, remaining - finalAmount));
+    if (streakAmount > 0) {
       await supabase.from('point_transactions').insert({
         user_id: user.id,
         session_id: session.id,
-        amount: Math.min(streakBonus, remaining - finalAmount),
+        amount: streakAmount,
         type: 'streak',
         description: `${currentStreak}-day streak bonus`,
         multiplier: 1.0,
       });
+    }
+    streakCredited = Math.max(0, streakAmount);
+  }
+
+  // 11a. Vault the merit the daily cap clamped away. Only BONUS value ever
+  // lands here (base is always credited first, so overflow is the streak
+  // multiplier / cap clamp remainder) — it counts toward level immediately via
+  // vault_deposits but only becomes spendable when it vests. Manual logs are
+  // excluded: they're the penalised, un-verified path and vaulting their
+  // overflow would soften the manual cap. Best-effort — a vault failure must
+  // never fail a claim that already credited.
+  const overflow = isManual || !vaultCapOverflowEnabled
+    ? 0
+    : Math.max(0, base + streakBonus - finalAmount - streakCredited);
+  let vaulted = 0;
+  if (overflow > 0) {
+    const { error: vaultErr } = await supabase.from('vault_deposits').insert({
+      user_id: user.id,
+      session_id: session.id,
+      amount: overflow,
+      source: 'cap_overflow',
+      description: streakBonus > 0
+        ? `${currentStreak}-day streak · ${session.type} over the daily cap`
+        : `${session.type} over the daily cap`,
+      vests_at: new Date(Date.now() + vaultVestDays * 24 * 60 * 60 * 1000).toISOString(),
+    });
+    if (vaultErr) {
+      console.warn('[claim-points] vault deposit failed:', vaultErr);
+    } else {
+      vaulted = overflow;
+    }
+  }
+
+  // 11b. A relayed claim can't rely on the client to mark the visit (the device
+  // may be frozen in Doze until it next wakes) — record claim progress on the
+  // beacon here so dwell nudges stop and the upgrade timer starts on time.
+  // Mirrors mark_gym_visit_progress; the status='open' guard keeps it idempotent
+  // against the client's own later mark.
+  if (viaRelay && body.visit_id) {
+    try {
+      const nowIso = new Date().toISOString();
+      const { data: marked } = await supabase
+        .from('gym_visits')
+        .update({ status: 'claimed', claimed_session_id: session.id, claimed_at: nowIso, last_confirmed_at: nowIso })
+        .eq('id', body.visit_id)
+        .eq('user_id', user.id)
+        .eq('status', 'open')
+        .select('id');
+      if ((marked ?? []).length > 0) {
+        await supabase.from('gym_visit_events').insert({
+          visit_id: body.visit_id, user_id: user.id, event: 'claimed',
+          detail: { session_id: session.id, via: 'relay' },
+        });
+      }
+    } catch (visitErr) {
+      console.warn('[claim-points] relay visit mark failed:', visitErr);
     }
   }
 
@@ -634,6 +748,7 @@ Deno.serve(async (req) => {
       ok: true,
       earned: finalAmount,
       streak_bonus: streakBonus,
+      vaulted,
       base,
       transaction_id: tx.id,
       within_reach: withinReach,

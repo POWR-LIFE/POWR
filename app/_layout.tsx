@@ -8,20 +8,27 @@ import {
   Outfit_700Bold,
   useFonts,
 } from '@expo-google-fonts/outfit';
-import { Stack } from 'expo-router';
+import { Stack, usePathname } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import * as WebBrowser from 'expo-web-browser';
 import { useEffect } from 'react';
-import { View } from 'react-native';
+import { Dimensions, View } from 'react-native';
 import 'react-native-reanimated';
 import '../global.css';
+import { QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from '@/context/AuthContext';
 import { GeofenceProvider } from '@/context/GeofenceContext';
 import { NotificationsProvider } from '@/context/NotificationsContext';
 import { ThemeProvider as AppThemeProvider, useAppTheme } from '@/context/ThemeContext';
+import { queryClient } from '@/lib/queryClient';
+import { startAnalytics, trackScreen, trackTouch } from '@/lib/analytics';
 import { registerWalkingSync } from '@/lib/health/walkingSync';
 import { ensureAndroidChannels } from '@/lib/notifications';
+import { useOtaUpdatePrompt } from '@/lib/otaUpdates';
+import { registerPlacementNotifyTask } from '@/lib/placementNotifyTask';
+import { refreshGymDwellMinutes } from '@/lib/gymDwellConfig';
+import { supabase } from '@/lib/supabase';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -63,17 +70,79 @@ function RootLayoutNav() {
     );
   }, []);
 
+  // Register the placement zone-entry notifier at launch. Deliberately NOT in
+  // GeofenceContext's startup path: that requires a home gym + "Always"
+  // location, while this task needs neither (foreground permission + a cached
+  // coarse fix) — placements must reach users the points geofence never will.
+  useEffect(() => {
+    registerPlacementNotifyTask().catch(() => { /* non-fatal */ });
+  }, []);
+
+  // Pull the admin-tunable gym dwell threshold (system_config →
+  // min_gym_dwell_minutes) and cache it so the geofence dwell timer + home
+  // progress ring match what claim-points actually rewards. Falls back to 30.
+  //
+  // system_config is authenticated-read only, so the launch fetch reads nothing
+  // on a first-ever launch (fresh install, no session yet) and the process kept
+  // the 30/40 defaults for its whole life (field 2026-07-14). Re-fetch whenever
+  // a session becomes available so the first-ever gym visit uses real values.
+  useEffect(() => {
+    refreshGymDwellMinutes().catch(() => { /* keeps default */ });
+    const { data: sub } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
+        refreshGymDwellMinutes().catch(() => { /* keeps default */ });
+      }
+    });
+    return () => sub.subscription.unsubscribe();
+  }, []);
+
+  // Product analytics. One pathname subscription here covers every route in the
+  // app — there is no per-screen instrumentation to add or to forget when a
+  // screen is added later. trackScreen() de-duplicates repeat paths itself, and
+  // the whole module is a no-op when the analytics_enabled switch is off.
+  const pathname = usePathname();
+  useEffect(() => {
+    startAnalytics();
+  }, []);
+  useEffect(() => {
+    if (pathname) trackScreen(pathname);
+  }, [pathname]);
+
+  // Offer a restart when an OTA update is ready (launch + foreground checks).
+  useOtaUpdatePrompt();
+
   if (!fontsLoaded) {
     return null;
   }
 
+  // Observes every touch in the app for the admin heatmap.
+  //
+  // onStartShouldSetResponderCapture runs on the CAPTURE phase, before any
+  // child sees the touch, and returning false declines to become the responder
+  // — so this reads the position and then gets out of the way completely. The
+  // gesture continues to whatever button, scroll view or sheet was actually
+  // touched, exactly as if this handler were not here. That matters: an earlier
+  // instinct was to wrap things in an overlay View, and an invisible view over
+  // the app is precisely how touches get swallowed.
+  const onTouchCapture = (e: { nativeEvent: { pageX: number; pageY: number } }) => {
+    const { width, height } = Dimensions.get('window');
+    trackTouch(e.nativeEvent.pageX, e.nativeEvent.pageY, width, height);
+    return false;
+  };
+
   return (
-    <View className={`theme-${theme} bg-theme-bg`} style={{ flex: 1, backgroundColor: '#0d0d0d' }}>
+    <View
+      className={`theme-${theme} bg-theme-bg`}
+      style={{ flex: 1, backgroundColor: '#0d0d0d' }}
+      onStartShouldSetResponderCapture={onTouchCapture}
+    >
       <ThemeProvider value={APP_DARK_THEME}>
         <Stack screenOptions={{ contentStyle: { backgroundColor: '#0d0d0d' } }}>
           <Stack.Screen name="index" options={{ headerShown: false }} />
           <Stack.Screen name="onboarding" options={{ headerShown: false, contentStyle: { backgroundColor: 'transparent' } }} />
           <Stack.Screen name="onboarding-permission" options={{ headerShown: false, contentStyle: { backgroundColor: 'transparent' } }} />
+          <Stack.Screen name="onboarding-permission-background" options={{ headerShown: false, contentStyle: { backgroundColor: 'transparent' } }} />
+          <Stack.Screen name="onboarding-notifications" options={{ headerShown: false, contentStyle: { backgroundColor: 'transparent' } }} />
           <Stack.Screen name="onboarding-activities" options={{ headerShown: false, contentStyle: { backgroundColor: 'transparent' } }} />
           <Stack.Screen name="onboarding-health" options={{ headerShown: false, contentStyle: { backgroundColor: 'transparent' } }} />
           <Stack.Screen name="onboarding-account" options={{ headerShown: false, contentStyle: { backgroundColor: 'transparent' } }} />
@@ -93,6 +162,7 @@ function RootLayoutNav() {
           <Stack.Screen name="manual-log" options={{ headerShown: false, contentStyle: { backgroundColor: 'transparent' } }} />
           <Stack.Screen name="points-ledger" options={{ headerShown: false, contentStyle: { backgroundColor: '#0d0d0d' } }} />
           <Stack.Screen name="wallet" options={{ headerShown: false, contentStyle: { backgroundColor: '#0d0d0d' } }} />
+          <Stack.Screen name="vault" options={{ headerShown: false, contentStyle: { backgroundColor: '#07090A' } }} />
           <Stack.Screen name="achievements" options={{ headerShown: false, contentStyle: { backgroundColor: '#0d0d0d' } }} />
           <Stack.Screen name="admin-partners" options={{ headerShown: false, contentStyle: { backgroundColor: '#0d0d0d' } }} />
           <Stack.Screen name="admin-challenges" options={{ headerShown: false, contentStyle: { backgroundColor: '#0d0d0d' } }} />
@@ -124,14 +194,16 @@ registerWalkingSync();
 
 export default function RootLayout() {
   return (
-    <AuthProvider>
-      <GeofenceProvider>
-        <AppThemeProvider>
-          <NotificationsProvider>
-            <RootLayoutNav />
-          </NotificationsProvider>
-        </AppThemeProvider>
-      </GeofenceProvider>
-    </AuthProvider>
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider>
+        <GeofenceProvider>
+          <AppThemeProvider>
+            <NotificationsProvider>
+              <RootLayoutNav />
+            </NotificationsProvider>
+          </AppThemeProvider>
+        </GeofenceProvider>
+      </AuthProvider>
+    </QueryClientProvider>
   );
 }

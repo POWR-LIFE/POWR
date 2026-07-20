@@ -9,8 +9,16 @@ import React, {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
 import { useRouter } from 'expo-router';
-import { AppState, AppStateStatus } from 'react-native';
+import { AppState, AppStateStatus, Platform } from 'react-native';
 import { useAuth } from '@/context/AuthContext';
+// STATIC, side-effecting import — do NOT make this lazy. The module's top-level
+// TaskManager.defineTask() is what gives the wake-up push somewhere to land, and
+// TaskManager resolves a task by name against whatever the BUNDLE defined at load.
+// Behind a dynamic import inside the effect below, it was only ever defined in a
+// mounted, logged-in app — so a background/headless bundle load had no handler and
+// FCM dropped every silent wake (Sony/Android 12 field capture, 2026-07-13).
+import { registerBackgroundNotificationTask } from '@/lib/backgroundNotificationTask';
+import { isExpoGoClient } from '@/lib/device';
 import {
   requestPermissionsAndGetToken,
   scheduleStreakAtRiskWarning,
@@ -113,6 +121,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     deviceToken: string | null;
   } | null>(null);
 
+
   // -------------------------------------------------------------------------
   // Shared notification-tap handler (foreground listener + cold start)
   // -------------------------------------------------------------------------
@@ -158,50 +167,72 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   // Register device for push when user signs in
   // -------------------------------------------------------------------------
 
-  const registerForPush = useCallback(async (userId: string) => {
-    // Fetching the token below fires addPushTokenListener on Android (it emits
-    // on every fetch, not just rotations), whose handler calls back into this
-    // function — without the guard that's an infinite upsert loop hammering
-    // the API several times a second.
-    if (registeringPush.current) return;
-    registeringPush.current = true;
-    try {
-      const registration = await requestPermissionsAndGetToken();
-      if (!registration) {
-        setPermissionGranted(false);
-        return;
+  const registerForPush = useCallback(
+    async (userId: string, opts?: { promptIfNeeded?: boolean }): Promise<boolean> => {
+      // Fetching the token below fires addPushTokenListener on Android (it emits
+      // on every fetch, not just rotations), whose handler calls back into this
+      // function — without the guard that's an infinite upsert loop hammering
+      // the API several times a second.
+      if (registeringPush.current) return false;
+      registeringPush.current = true;
+      try {
+        // Automatic callers (sign-in effect, token-rotation listener, foreground
+        // re-check) NEVER show the OS dialog — iOS grants exactly one shot at it,
+        // so it must only fire from a primed surface the user deliberately tapped
+        // (onboarding notifications page, NotificationPrimeSheet, settings).
+        // Automatic calls silently refresh tokens for already-granted users.
+        // Expo Go is only a development client. Remove its own prior token so
+        // test sessions never receive production pushes alongside the installed app.
+        if (isExpoGoClient()) {
+          const registration = await requestPermissionsAndGetToken({ promptIfNeeded: false });
+          if (registration) await removePushToken(userId, registration.expoPushToken);
+          setExpoPushToken(null);
+          setPermissionGranted(false);
+          return false;
+        }
+
+        const registration = await requestPermissionsAndGetToken({
+          promptIfNeeded: opts?.promptIfNeeded ?? false,
+        });
+        if (!registration) {
+          setPermissionGranted(false);
+          return false;
+        }
+
+        setPermissionGranted(true);
+        setExpoPushToken(registration.expoPushToken);
+
+        const prev = lastRegistration.current;
+        if (
+          prev &&
+          prev.userId === userId &&
+          prev.expoPushToken === registration.expoPushToken &&
+          prev.deviceToken === registration.deviceToken
+        ) {
+          return true; // already registered exactly this — skip the redundant writes
+        }
+
+        await upsertPushToken(
+          userId,
+          registration.expoPushToken,
+          registration.deviceToken,
+          registration.platform,
+        );
+        lastRegistration.current = {
+          userId,
+          expoPushToken: registration.expoPushToken,
+          deviceToken: registration.deviceToken,
+        };
+        return true;
+      } catch (err) {
+        console.warn('[Notifications] Failed to register push token:', err);
+        return false;
+      } finally {
+        registeringPush.current = false;
       }
-
-      setPermissionGranted(true);
-      setExpoPushToken(registration.expoPushToken);
-
-      const prev = lastRegistration.current;
-      if (
-        prev &&
-        prev.userId === userId &&
-        prev.expoPushToken === registration.expoPushToken &&
-        prev.deviceToken === registration.deviceToken
-      ) {
-        return; // already registered exactly this — skip the redundant writes
-      }
-
-      await upsertPushToken(
-        userId,
-        registration.expoPushToken,
-        registration.deviceToken,
-        registration.platform,
-      );
-      lastRegistration.current = {
-        userId,
-        expoPushToken: registration.expoPushToken,
-        deviceToken: registration.deviceToken,
-      };
-    } catch (err) {
-      console.warn('[Notifications] Failed to register push token:', err);
-    } finally {
-      registeringPush.current = false;
-    }
-  }, []);
+    },
+    [],
+  );
 
   // -------------------------------------------------------------------------
   // Load preferences
@@ -212,6 +243,11 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
 
     registerForPush(user.id);
 
+    // Lets the gym-visit beacon's SILENT push wake us while backgrounded/closed —
+    // a stationary phone gets no location callbacks, so the server has to knock.
+    registerBackgroundNotificationTask()
+      .catch((err) => console.warn('[Notifications] Background task registration failed:', err));
+
     getNotificationPreferences(user.id)
       .then((prefs) => {
         setPreferences(prefs);
@@ -219,6 +255,26 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
       })
       .catch((err) => console.warn('[Notifications] Failed to load preferences:', err));
   }, [user?.id, registerForPush]);
+
+  // The background task does NOT run when the app is in the foreground — the
+  // received-listener gets the push instead. Handle the beacon's presence check
+  // here too, or an open app would silently ignore it.
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const sub = Notifications.addNotificationReceivedListener((notification) => {
+      const data = notification?.request?.content?.data as
+        { type?: string; stage?: 'dwell' | 'upgrade' } | undefined;
+      if (data?.type !== 'gym_visit_check') return;
+
+      const stage = data.stage === 'upgrade' ? 'upgrade' : 'dwell';
+      import('@/context/GeofenceContext')
+        .then(({ runVisitCheck }) => runVisitCheck(stage))
+        .catch((err) => console.warn('[Notifications] Foreground visit check failed:', err));
+    });
+
+    return () => sub.remove();
+  }, [user?.id]);
 
   // -------------------------------------------------------------------------
   // Clean up token on sign-out
@@ -266,7 +322,15 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     });
 
     const appSub = AppState.addEventListener('change', (next: AppStateStatus) => {
-      if (next === 'active' && !expoPushToken) registerForPush(uid);
+      if (next !== 'active') return;
+      if (!expoPushToken) registerForPush(uid);
+      // Rebind the silent-wake task on every foreground. The native binding dies
+      // when the JS context changes under the process (OTA reload, headless-born
+      // start) and a dead binding drops every server wake until the next cold
+      // start — foregrounding is the earliest moment this context can take it
+      // back (field-proven 2026-07-17).
+      registerBackgroundNotificationTask()
+        .catch((err) => console.warn('[Notifications] Background task rebind failed:', err));
     });
 
     return () => {
@@ -348,6 +412,9 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   // addNotificationResponseReceivedListener does not fire for cold starts on iOS;
   // getLastNotificationResponseAsync is the only way to get that response.
   useEffect(() => {
+    // Not implemented on web (expo start --web) — calling it throws and takes
+    // the whole tree down; there is no push cold-start on web anyway.
+    if (Platform.OS === 'web') return;
     if (authLoading || !user?.id || coldStartHandled.current) return;
     coldStartHandled.current = true;
 
@@ -363,9 +430,10 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
 
   const requestPermissions = useCallback(async (): Promise<boolean> => {
     if (!user?.id) return false;
-    await registerForPush(user.id);
-    return permissionGranted;
-  }, [user?.id, registerForPush, permissionGranted]);
+    // Deliberate user action (onboarding screen / settings) — always allowed to
+    // show the OS dialog. Returns the fresh result, not the pre-request state.
+    return registerForPush(user.id, { promptIfNeeded: true });
+  }, [user?.id, registerForPush]);
 
   const updatePreferences = useCallback(
     async (partial: Partial<NotificationPreferences>) => {

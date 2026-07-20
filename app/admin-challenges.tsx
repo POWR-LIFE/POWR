@@ -12,7 +12,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { supabase } from '@/lib/supabase';
+import { getSessionUser, supabase } from '@/lib/supabase';
 import {
   CATALOG,
   CATEGORY_META,
@@ -110,7 +110,7 @@ export default function AdminChallengesScreen() {
 
   useEffect(() => {
     (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) { setIsAdmin(false); setLoading(false); return; }
       const { data } = await supabase
         .from('profiles')
@@ -150,7 +150,9 @@ export default function AdminChallengesScreen() {
   // ── Auto rotation for selected week ───────────────────────────────────────
 
   const autoForWeek = useMemo(
-    () => getActiveChallengesForWeek(selectedWeek, CATALOG as CatalogEntry[]) as CatalogEntry[],
+    // CATALOG is this function's own default argument — passing it back in (cast to
+    // the local CatalogEntry shape) is what tripped the type, so let the default stand.
+    () => getActiveChallengesForWeek(selectedWeek) as CatalogEntry[],
     [selectedWeek],
   );
 
@@ -172,7 +174,7 @@ export default function AdminChallengesScreen() {
     setSaving(true);
     try {
       const value = JSON.stringify(next);
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       const payload = {
         key:         CONFIG_KEY,
         value,

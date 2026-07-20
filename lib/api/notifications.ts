@@ -1,3 +1,4 @@
+import { getAppVersion } from '@/lib/device';
 import { supabase } from '@/lib/supabase';
 import type { NotificationType } from '@/lib/notifications';
 
@@ -11,12 +12,20 @@ export async function upsertPushToken(
   deviceToken: string | null,
   platform: 'ios' | 'android',
 ) {
+  // Piggyback version telemetry on the launch-time token upsert so the admin
+  // panel can see what build each device runs (updated_at = last seen on it).
+  const { appVersion, appBuild, otaUpdateId, otaChannel } = getAppVersion();
+
   const { error } = await supabase.from('user_push_tokens').upsert(
     {
       user_id: userId,
       expo_push_token: expoPushToken,
       device_token: deviceToken,
       platform,
+      app_version: appVersion,
+      app_build: appBuild,
+      ota_update_id: otaUpdateId,
+      ota_channel: otaChannel,
       updated_at: new Date().toISOString(),
     },
     { onConflict: 'user_id,expo_push_token' },

@@ -25,11 +25,15 @@ export interface Reward {
   partner: PartnerSummary | null;
   offer: string | null;
   hero_image_url: string | null;
+  hero_video_url: string | null;
   brand_color: string | null;
   url: string | null;
   partner_blurb: string | null;
   value_label: string | null;
   image_url: string | null;
+  // Only populated by callers that select it explicitly (redeem-modal). The
+  // catalogue reads no longer fetch it — the pooled code is the source of truth.
+  promo_code?: string | null;
   discount_type: 'percentage' | 'fixed_amount' | null;
   discount_value: number | null;
   brand_name: string | null;
@@ -69,7 +73,7 @@ export class RedemptionError extends Error {
 export async function fetchRewards(): Promise<Reward[]> {
   const { data, error } = await supabase
     .from('rewards')
-    .select('id, partner_id, title, description, powr_cost, category, integration_type, code_expiry_days, active, offer, hero_image_url, brand_color, url, partner_blurb, value_label, image_url, discount_type, discount_value, brand_name, max_redemptions_per_user, partners(id, name, partner_code, logo_url, category, checkout_url_template)')
+    .select('id, partner_id, title, description, powr_cost, category, integration_type, code_expiry_days, active, offer, hero_image_url, hero_video_url, brand_color, url, partner_blurb, value_label, image_url, discount_type, discount_value, brand_name, max_redemptions_per_user, partners(id, name, partner_code, logo_url, category, checkout_url_template)')
     .eq('active', true)
     .order('sort_order', { ascending: true })
     .order('powr_cost', { ascending: true });
@@ -224,7 +228,7 @@ export async function fetchMyRedemptionSummary(): Promise<Record<string, { activ
   return out;
 }
 
-const REWARD_FIELDS = 'id, partner_id, title, description, powr_cost, category, integration_type, code_expiry_days, active, featured_on_home, offer, hero_image_url, brand_color, url, partner_blurb, value_label, image_url, discount_type, discount_value, brand_name, max_redemptions_per_user, partners(id, name, partner_code, logo_url, category, checkout_url_template)';
+const REWARD_FIELDS = 'id, partner_id, title, description, powr_cost, category, integration_type, code_expiry_days, active, featured_on_home, offer, hero_image_url, hero_video_url, brand_color, url, partner_blurb, value_label, image_url, discount_type, discount_value, brand_name, max_redemptions_per_user, partners(id, name, partner_code, logo_url, category, checkout_url_template)';
 
 export async function fetchFeaturedScheduledReward(): Promise<Reward | null> {
   const now = new Date().toISOString();

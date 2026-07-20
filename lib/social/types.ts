@@ -34,14 +34,29 @@ export interface ChallengeTemplate {
   icon: IconSpec;
   tier: 'easy' | 'medium' | 'hard';
   title: string;
-  /** Short "what you each have to do" line. */
+  /** Short "what you each have to do" line — never names a timeframe (the chosen duration is the single source of timing). */
   goal: string;
   basePoints: number;
   /** 'solo' = each does their own part; 'pooled' = effort sums toward one shared total. */
   mode: 'solo' | 'pooled';
+  /**
+   * Authored run length (hours) — part of the template's design, next to
+   * target/tier/points. Every challenge from this template runs exactly this
+   * long once everyone's in; members make no timing choice. Optional only
+   * because in-flight challenge snapshots predating the column lack it.
+   */
+  durationHours?: number;
 }
 
 export type ParticipantState = 'invited' | 'accepted' | 'declined' | 'completed' | 'left';
+
+export interface ChallengeGoalRule {
+  kind: string;
+  category?: string;
+  metric?: 'steps' | 'distance_m';
+  threshold?: number;
+  window?: 'morning' | 'midday' | 'evening';
+}
 
 /** One participant's row within a shared challenge instance. */
 export interface Participant {
@@ -49,6 +64,14 @@ export interface Participant {
   state: ParticipantState;
   /** 0–1 progress. For 'parallel' this is toward their own goal; for 'pooled' it mirrors the shared pool fraction. */
   progress: number;
+  /**
+   * "So far today" momentum for goals with a partial-in-progress notion (e.g.
+   * "10k steps, 4 days" → today's 2,567 / 10,000). Null when the goal has no
+   * partial (distinct_days / count-of-sessions) or the day already counted.
+   * Surfaced as a small secondary line under the day-count so a day-in-progress
+   * doesn't read as zero effort.
+   */
+  momentum?: { current: number; target: number; unit: string } | null;
   /** Did they individually finish? (drives the co-completer bonus). */
   completed: boolean;
   /** Pooled (type B) only: this person's raw contribution toward the shared total. */
@@ -99,4 +122,11 @@ export interface SharedChallenge {
    * clean integer target — those fall back to the percentage.
    */
   goalTarget?: number;
+  goalRule?: ChallengeGoalRule;
+  /**
+   * When the signed-in user dismissed this (settled) challenge from their Home
+   * via the card's (X). Per-user display flag only — the challenge and everyone
+   * else's view are untouched; Home just stops showing the card.
+   */
+  dismissedAt?: string | null;
 }

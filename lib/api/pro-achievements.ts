@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase';
+import { getSessionUser, supabase } from '@/lib/supabase';
 
 export const MAX_ACHIEVEMENTS = 4;
 
@@ -31,7 +31,7 @@ export async function fetchAchievements(userId: string): Promise<Achievement[]> 
 export async function createAchievement(
     input: AchievementInput,
 ): Promise<{ achievement: Achievement | null; error: string | null }> {
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getSessionUser();
     if (!user) return { achievement: null, error: 'Not authenticated' };
 
     const { data: existing } = await supabase

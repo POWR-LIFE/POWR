@@ -3,9 +3,19 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { forwardRef } from 'react';
 import { StyleSheet, Text, View, type ViewProps } from 'react-native';
 
+import { LevelIcon } from '@/components/LevelIcon';
 import { ACTIVITIES } from '@/constants/activities';
+import { LEVEL_IMAGE, getLevelInfo } from '@/constants/levels';
 import { fontFamily } from '@/constants/tokens';
 import type { ShareSummary } from '@/lib/api/share';
+
+/**
+ * Chat clients centre-crop a 9:16 image down to roughly 3:4 in the message
+ * bubble, taking ~12.5% off the top and bottom. Anything the reader must see
+ * without opening the image — the wordmark, the stats, the URL — lives inside
+ * that band. Stories still show the full frame; the padding just reads as air.
+ */
+const CROP_SAFE_Y = 250;
 
 const GOLD   = '#E8D200';
 const ORANGE = '#FF9944';
@@ -25,19 +35,16 @@ interface ShareCardProps extends ViewProps {
   backgroundSource?: string | number | null;
   /** When provided, renders a circular avatar in the upper half of the card. */
   avatarUri?: string | null;
-  /**
-   * When provided, renders a brand/logo image centred in the upper half of the card.
-   * Pass a URI string or local require() result.
-   */
-  topImage?: string | number | null;
-  /** Hide the POWR logo in the header. */
-  hideLogo?: boolean;
+  /** Renders the member's current level mark centred in the upper half of the card. */
+  showLevel?: boolean;
 }
 
-export const ShareCard = forwardRef<View, ShareCardProps>(({ summary, width, backgroundSource, avatarUri, topImage, hideLogo, style, ...rest }, ref) => {
+export const ShareCard = forwardRef<View, ShareCardProps>(({ summary, width, backgroundSource, avatarUri, showLevel, style, ...rest }, ref) => {
   const height = (width * 16) / 9;
   // Scale tokens proportionally to width — base sizes designed for ~1080dp.
   const s = width / 1080;
+
+  const { current: level } = getLevelInfo(summary.totalEarned);
 
   // backgroundSource prop takes priority; undefined → fall back to cover_url only; null → gradient
   const resolvedBgSource: string | number | null =
@@ -74,21 +81,32 @@ export const ShareCard = forwardRef<View, ShareCardProps>(({ summary, width, bac
         style={StyleSheet.absoluteFillObject}
       />
 
-      {/* POWR / brand logo — centred in upper half */}
-      {topImage != null && (
-        <View style={[StyleSheet.absoluteFillObject, styles.topImageSlot]} pointerEvents="none">
-          <Image
-            source={typeof topImage === 'string' ? { uri: topImage } : topImage}
-            style={{ width: width * 0.95, height: height * 0.50 }}
-            contentFit="contain"
-            transition={0}
-          />
+      {/* Level mark — centred in the upper half. */}
+      {showLevel && (
+        <View style={[StyleSheet.absoluteFillObject, styles.centreSlot]} pointerEvents="none">
+          <View style={[styles.levelTile, {
+            width: 440 * s,
+            height: 440 * s,
+          }]}>
+            <LevelIcon
+              level={level.level}
+              size={LEVEL_IMAGE[level.level] ? 440 * s : 260 * s}
+              color={GOLD}
+              strokeWidth={1.7}
+            />
+          </View>
+          <Text style={[styles.levelEyebrow, { fontSize: 26 * s, letterSpacing: 5 * s, marginTop: 44 * s }]}>
+            {`LEVEL ${level.level}`}
+          </Text>
+          <Text style={[styles.levelName, { color: level.textColor, fontSize: 46 * s, letterSpacing: 2 * s, marginTop: 16 * s }]}>
+            {level.name.toUpperCase()}
+          </Text>
         </View>
       )}
 
       {/* Circular avatar — My Photo mode */}
       {avatarUri ? (
-        <View style={[StyleSheet.absoluteFillObject, styles.topImageSlot]} pointerEvents="none">
+        <View style={[StyleSheet.absoluteFillObject, styles.centreSlot]} pointerEvents="none">
           <Image
             source={{ uri: avatarUri }}
             style={{
@@ -105,17 +123,13 @@ export const ShareCard = forwardRef<View, ShareCardProps>(({ summary, width, bac
       ) : null}
 
       {/* ── Header ─────────────────────────────────────────────── */}
-      <View style={[styles.header, { paddingHorizontal: 60 * s, paddingTop: 60 * s }]}>
-        {!hideLogo ? (
-          <Image
-            source={require('@/assets/images/powrlogotext.png')}
-            style={{ width: 400 * s, height: 120 * s, marginLeft: -50 * s }}
-            contentFit="contain"
-            transition={0}
-          />
-        ) : (
-          <View style={{ width: 110 * s }} />
-        )}
+      <View style={[styles.header, { paddingHorizontal: 60 * s, paddingTop: CROP_SAFE_Y * s }]}>
+        <Image
+          source={require('@/assets/images/powrlogotext.png')}
+          style={{ width: 400 * s, height: 120 * s, marginLeft: -50 * s }}
+          contentFit="contain"
+          transition={0}
+        />
         <View style={{ flex: 1 }} />
         <View style={styles.statusPill}>
           <View style={[styles.statusDot, {
@@ -131,9 +145,10 @@ export const ShareCard = forwardRef<View, ShareCardProps>(({ summary, width, bac
       </View>
 
       {/* ── Body (pinned to bottom) ─────────────────────────────── */}
-      <View style={[styles.body, { paddingHorizontal: 60 * s, paddingBottom: 72 * s }]}>
-        {/* Venue / name */}
-        <Text style={[styles.heroTitle, { fontSize: 80 * s, letterSpacing: 2 * s, lineHeight: 88 * s }]} numberOfLines={2}>
+      <View style={[styles.body, { paddingHorizontal: 60 * s, paddingBottom: CROP_SAFE_Y * s }]}>
+        {/* Venue / name. Capped to one line under the level mark: a second line
+            grows the bottom block upward into the mark's caption. */}
+        <Text style={[styles.heroTitle, { fontSize: 80 * s, letterSpacing: 2 * s, lineHeight: 88 * s }]} numberOfLines={showLevel ? 1 : 2}>
           {heroTitle.toUpperCase()}
         </Text>
         {heroSubtitle ? (
@@ -153,6 +168,12 @@ export const ShareCard = forwardRef<View, ShareCardProps>(({ summary, width, bac
           <View style={[styles.statDivider, { height: 100 * s }]} />
           <StatCol scale={s} {...stats[2]} />
         </View>
+
+        {/* Instagram/TikTok strip share-sheet text, so the image itself must
+            carry where to find us. */}
+        <Text style={[styles.footerUrl, { fontSize: 24 * s, letterSpacing: 7 * s, marginTop: 52 * s }]}>
+          POWR.LIFE
+        </Text>
       </View>
     </View>
   );
@@ -172,6 +193,9 @@ function renderStatus(summary: ShareSummary): { label: string; dotColor: string 
   }
   if (summary.mode === 'challenge') {
     return { label: 'Challenge Complete', dotColor: GREEN };
+  }
+  if (summary.mode === 'level-up') {
+    return { label: 'Level Up', dotColor: GOLD };
   }
   return getStreakStatus(summary.currentStreak);
 }
@@ -205,12 +229,37 @@ function renderStatsRow(summary: ShareSummary): StatColProps[] {
     return [
       { label: 'SESSION', value: summary.durationMin.toString(), unit: 'min' },
       { label: 'TOTAL', value: summary.lifetimeCount.toString(), unit: 'visits' },
-      {
-        label: 'STREAK',
-        value: summary.currentStreak.toString(),
-        unit: 'days',
-        valueColor: summary.currentStreak > 0 ? GOLD : TEXT,
-      },
+      // Throwbacks can't reconstruct "streak as of then", so they flex the
+      // session's own points instead.
+      summary.historical
+        ? {
+            label: 'EARNED',
+            value: `+${summary.sessionPoints.toLocaleString()}`,
+            unit: 'pts',
+            valueColor: GOLD,
+          }
+        : {
+            label: 'STREAK',
+            value: summary.currentStreak.toString(),
+            unit: 'days',
+            valueColor: summary.currentStreak > 0 ? GOLD : TEXT,
+          },
+    ];
+  }
+  if (summary.mode === 'level-up') {
+    const { current } = getLevelInfo(summary.totalEarned);
+    return [
+      { label: 'LEVEL', value: current.level.toString(), valueColor: GOLD },
+      { label: 'LIFETIME', value: summary.totalEarned.toLocaleString(), unit: 'pts' },
+      // Streak history isn't stored, so throwbacks show sessions-to-date instead.
+      summary.historical
+        ? { label: 'TOTAL', value: summary.lifetimeCount.toString(), unit: 'sessions' }
+        : {
+            label: 'STREAK',
+            value: summary.currentStreak.toString(),
+            unit: 'days',
+            valueColor: summary.currentStreak > 0 ? GOLD : TEXT,
+          },
     ];
   }
   if (summary.mode === 'challenge') {
@@ -311,11 +360,24 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     position: 'relative',
   },
-  topImageSlot: {
+  centreSlot: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingBottom: '30%', // shift up slightly from true centre
+    // Lifts the mark off true centre so it clears the bottom block even when the
+    // hero title wraps to two lines, while staying below the header.
+    paddingBottom: '18%',
     zIndex: 2,
+  },
+  levelTile: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  levelEyebrow: {
+    fontFamily: fontFamily.medium,
+    color: DIM,
+  },
+  levelName: {
+    fontFamily: fontFamily.regular,
   },
   header: {
     position: 'absolute',
@@ -354,6 +416,11 @@ const styles = StyleSheet.create({
   statsRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
+  },
+  footerUrl: {
+    fontFamily: fontFamily.light,
+    color: MUTED,
+    textAlign: 'center',
   },
   statCol: {
     flex: 1,

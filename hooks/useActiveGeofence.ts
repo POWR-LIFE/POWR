@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 import { useEffect, useRef, useState } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
+import { finalizeActiveGeofence } from '@/context/GeofenceContext';
 
 const ACTIVE_GEOFENCE_KEY    = '@powr/active_geofence';
 const SESSION_COMPLETED_KEY  = '@powr/session_completed';
@@ -111,8 +112,9 @@ export function useActiveGeofence(): {
     );
 
     if (distance > threshold) {
-      await AsyncStorage.removeItem(ACTIVE_GEOFENCE_KEY);
-      return null;
+      // GeofenceProvider owns session finalization. Deleting the key here used
+      // to bypass the exit claim and could lose an earned session entirely.
+      return (await finalizeActiveGeofence()) ? null : parsed;
     }
 
     return parsed;

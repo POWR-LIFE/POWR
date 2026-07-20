@@ -28,7 +28,7 @@ import {
 } from '@/lib/health/providers';
 import { verificationFromProvenances, summarizeSources, type HealthDataProvenance } from '@/lib/health/dataSource';
 import { getInferredRunWindowsToday } from '@/lib/health/runInference';
-import { supabase } from '@/lib/supabase';
+import { getSessionUser, supabase } from '@/lib/supabase';
 
 export const WALKING_SYNC_TASK = 'powr-walking-sync';
 
@@ -240,7 +240,7 @@ export async function syncStepWindowsNow(): Promise<void> {
 /** Reads `profiles.active_health_provider`, falls back to the native provider for this OS. */
 async function resolveActiveProviderId(): Promise<HealthProviderId | null> {
     try {
-        const { data: { user } } = await supabase.auth.getUser();
+        const user = await getSessionUser();
         if (!user) return getNativeProviderId();
         const { data } = await supabase
             .from('profiles')
@@ -342,7 +342,7 @@ async function _syncWalkingNowImpl(): Promise<void> {
             // Constraint conflict — re-fetch the existing session and update it
             const refetched = await getTodayHealthWalkingSession();
             if (!refetched) return;
-            await updateHealthWalkingSession(refetched.id, steps, 0);
+            await updateHealthWalkingSession(refetched.id, Math.max(steps, refetched.steps ?? 0), 0);
             sessionId = refetched.id;
         } else {
             sessionId = newId;
@@ -353,7 +353,10 @@ async function _syncWalkingNowImpl(): Promise<void> {
             Math.max(0, tierPoints - existing.points),
             capRemaining,
         );
-        await updateHealthWalkingSession(existing.id, steps, additional);
+        // Steps only ever go UP: a Terra wearable top-up (terra-webhook
+        // handleDaily) may have banked more steps than the phone store sees —
+        // overwriting with the lower phone read would flap the displayed count.
+        await updateHealthWalkingSession(existing.id, Math.max(steps, existing.steps ?? 0), additional);
         sessionId = existing.id;
     }
 

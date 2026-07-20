@@ -4,11 +4,13 @@ import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
 import { useAuth } from '../../App';
 import {
+    Lock,
     User, Activity, Award, Calendar, Clock, MapPin,
     ChevronLeft, TrendingUp, Zap, Shield, AlertCircle,
     ArrowUpRight, ArrowDownRight, Gift, Plus, X,
     Heart, Moon, Flame, Footprints, Star, Trash2,
-    Camera, ImagePlus, Trophy, Check, Link2, RefreshCw, Pencil
+    Camera, ImagePlus, Trophy, Check, Link2, RefreshCw, Pencil,
+    Smartphone, Bell
 } from 'lucide-react';
 
 const MIN_USERNAME = 3;
@@ -18,6 +20,55 @@ const normalizeUsername = (raw) => raw.toLowerCase().replace(/[^a-z0-9_]/g, '').
 const logAction = async (adminId, action, targetType, targetId, metadata = {}) => {
     await supabase.from('admin_audit_log').insert({ admin_id: adminId, action, target_type: targetType, target_id: targetId, metadata });
 };
+
+// Live location-permission snapshot (profiles.location_permission, reported by
+// newer clients on every launch/foreground). NULL = build predates the
+// telemetry — fall back to the legacy write-once onboarding-bonus flag
+// (location_granted), which can't see later grants/revokes.
+const LOCATION_STATES = {
+    always:       { chip: 'Location Always',      detail: 'Always',           cls: 'bg-[#10B981]/10 border border-[#10B981]/20 text-[#10B981]' },
+    while_using:  { chip: 'Location While Using', detail: 'While Using only', cls: 'bg-[#F59E0B]/10 border border-[#F59E0B]/25 text-[#B45309]' },
+    denied:       { chip: 'Location Off',         detail: 'Denied',           cls: 'bg-red-500/10 border border-red-500/20 text-red-500' },
+    undetermined: { chip: 'Location Not Asked',   detail: 'Never asked',      cls: 'bg-[#EFEFEC] text-[#999999]' },
+};
+
+// push_send_log status → chip styling + what it actually proves. 'accepted'
+// deliberately reads "Accepted by APNs/FCM", not "delivered": the platform
+// taking the push is where server-side visibility ends (a device can still
+// fail to display it — that gap is the open iOS incident).
+const PUSH_STATES = {
+    accepted: { label: 'Accepted',  cls: 'border-[#10B981]/20 text-[#10B981]' },
+    queued:   { label: 'Queued',    cls: 'border-[#F59E0B]/25 text-[#B45309]' },
+    rejected: { label: 'Rejected',  cls: 'border-red-500/20 text-red-500' },
+    failed:   { label: 'Failed',    cls: 'border-red-500/20 text-red-500' },
+    skipped:  { label: 'Skipped',   cls: 'border-[#E6E6E1] text-[#999999]' },
+};
+
+// gym_visit_events → how a visit actually unfolded on the device. 'confirmed_inside'
+// is the device proving, with a real GPS fix, that it was still at the gym — the only
+// thing that unlocks a claim. The server never credits on a timer.
+const VISIT_EVENT_STYLES = {
+    check_in:          { label: 'Checked in',        cls: 'text-[#10B981]' },
+    nudge_sent:        { label: 'Server woke device', cls: 'text-[#8a7600]' },
+    confirmed_inside:  { label: 'Confirmed inside',   cls: 'text-[#10B981]' },
+    confirmed_outside: { label: 'Confirmed outside',  cls: 'text-[#B45309]' },
+    claimed:           { label: 'Points claimed',     cls: 'text-[#10B981]' },
+    upgraded:          { label: 'Bonus upgraded',     cls: 'text-[#10B981]' },
+    exit:              { label: 'Exit',               cls: 'text-[#666666]' },
+    nudge_failed:      { label: 'Wake failed',        cls: 'text-red-500' },
+    abandoned:         { label: 'Abandoned',          cls: 'text-red-500' },
+};
+
+const VISIT_STATUS_CLS = {
+    open:      'border-[#F59E0B]/25 text-[#B45309]',
+    claimed:   'border-[#10B981]/20 text-[#10B981]',
+    upgraded:  'border-[#10B981]/20 text-[#10B981]',
+    closed:    'border-[#E6E6E1] text-[#666666]',
+    abandoned: 'border-red-500/20 text-red-500',
+};
+
+const clockTime = (dateStr) =>
+    new Date(dateStr).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
 const timeAgo = (dateStr) => {
     const diff = Date.now() - new Date(dateStr).getTime();
@@ -49,6 +100,13 @@ export default function UserProfile() {
     const [redemptions, setRedemptions] = useState([]);
     const [healthSnapshots, setHealthSnapshots] = useState([]);
     const [showAdjust, setShowAdjust] = useState(false);
+    const [showVaultGrant, setShowVaultGrant] = useState(false);
+    const [vgAmount, setVgAmount] = useState('');
+    const [vgDays, setVgDays] = useState('');
+    const [vgNote, setVgNote] = useState('');
+    const [vgLoading, setVgLoading] = useState(false);
+    const [vgNotify, setVgNotify] = useState(true);
+    const [vaultDeposits, setVaultDeposits] = useState([]);
     const [adjAmount, setAdjAmount] = useState('');
     const [adjDesc, setAdjDesc] = useState('');
     const [adjLoading, setAdjLoading] = useState(false);
@@ -58,6 +116,14 @@ export default function UserProfile() {
     const [usernameSaving, setUsernameSaving] = useState(false);
     const [deleteConfirm, setDeleteConfirm] = useState(false);
     const [deleteLoading, setDeleteLoading] = useState(false);
+    const [deviceBindings, setDeviceBindings] = useState([]);
+    const [deviceTransfers, setDeviceTransfers] = useState([]);
+    const [deviceReleasing, setDeviceReleasing] = useState(false);
+    const [pushTokens, setPushTokens] = useState([]);
+    const [pushLog, setPushLog] = useState([]);
+    const [visiblePushLog, setVisiblePushLog] = useState(15);
+    const [gymVisits, setGymVisits] = useState([]);
+    const [visitEvents, setVisitEvents] = useState([]);
     const [activeTab, setActiveTab] = useState('activity');
     const [visibleSessions, setVisibleSessions] = useState(10);
     const [visibleTransactions, setVisibleTransactions] = useState(10);
@@ -189,6 +255,34 @@ export default function UserProfile() {
         if (result.error) { toast.error(result.error); return; }
         toast.success('User deleted');
         navigate('/admin/users');
+    };
+
+    const handleReleaseDevices = async () => {
+        setDeviceReleasing(true);
+        const { data, error } = await supabase.rpc('admin_release_user_devices', { p_user_id: userId });
+        setDeviceReleasing(false);
+        if (error) { toast.error(error.message); return; }
+        await logAction(adminUser.id, 'release_device_lock', 'user', userId, { released: data ?? 0 });
+        setDeviceBindings([]);
+        toast.success(data > 0 ? `Released ${data} device${data === 1 ? '' : 's'}` : 'No device was locked');
+    };
+
+    const handleVaultGrant = async () => {
+        const amt = parseInt(vgAmount, 10);
+        if (!Number.isFinite(amt) || amt < 1) { toast.error('Enter a valid amount'); return; }
+        const vestDays = vgDays.trim() === '' ? null : Math.max(0, parseInt(vgDays, 10) || 0);
+        setVgLoading(true);
+        const { data, error } = await supabase.rpc('admin_grant_vault_deposit', {
+            p_amount: amt, p_user_ids: [userId], p_note: vgNote || null, p_vest_days: vestDays,
+            p_notify: vgNotify,
+        });
+        if (error) { toast.error(error.message); setVgLoading(false); return; }
+        await logAction(adminUser.id, 'vault_grant', 'user', userId, {
+            amount: amt, vest_days: data?.vest_days, note: vgNote, notify: vgNotify, batch_id: data?.batch_id,
+        });
+        toast.success(`+${amt} POWR banked in the Vault · vests in ${data?.vest_days} day(s)${vgNotify ? ' · push sent' : ''}`);
+        setShowVaultGrant(false); setVgAmount(''); setVgDays(''); setVgNote(''); setVgNotify(true); setVgLoading(false);
+        fetchData();
     };
 
     const handlePointAdjust = async () => {
@@ -461,13 +555,14 @@ export default function UserProfile() {
     const fetchData = async () => {
         setLoading(true);
         try {
-            const [p, s, t, str, r, hs] = await Promise.all([
+            const [p, s, t, str, r, hs, vd] = await Promise.all([
                 supabase.from('profiles').select('*').eq('id', userId).single(),
                 supabase.from('activity_sessions').select('*').eq('user_id', userId).order('started_at', { ascending: false }),
                 supabase.from('point_transactions').select('*').eq('user_id', userId).order('created_at', { ascending: false }),
                 supabase.from('user_streaks').select('*').eq('user_id', userId).single(),
                 supabase.from('redemptions').select('*, rewards(*)').eq('user_id', userId).order('redeemed_at', { ascending: false }),
-                supabase.from('health_snapshots').select('*').eq('user_id', userId).order('recorded_at', { ascending: false }).limit(100)
+                supabase.from('health_snapshots').select('*').eq('user_id', userId).order('recorded_at', { ascending: false }).limit(100),
+                supabase.from('vault_deposits').select('amount, vests_at, released_at').eq('user_id', userId)
             ]);
 
             if (p.error) throw p.error;
@@ -478,10 +573,62 @@ export default function UserProfile() {
             setStreak(str.data || null);
             setRedemptions(r.data || []);
             setHealthSnapshots(hs.data || []);
+            setVaultDeposits(vd.data || []);
 
             // Fetch email (lives in auth.users, not profiles)
             const { data: emailData } = await supabase.rpc('admin_get_user_email', { p_user_id: userId });
             setUserEmail(emailData || null);
+
+            // Device lock: which physical device(s) are bound to this account.
+            const { data: devData } = await supabase.rpc('admin_get_user_devices', { p_user_id: userId });
+            setDeviceBindings(devData || []);
+
+            // Recent self-serve device transfers — spot abuse of the auto/confirm
+            // transfer path (many moves = possible rotating-device farm).
+            const { data: xferData } = await supabase.rpc('admin_get_user_device_transfers', { p_user_id: userId, p_limit: 10 });
+            setDeviceTransfers(xferData || []);
+
+            // App version per device, reported with the push-token upsert on
+            // every launch. NULL app_version = a build predating the telemetry.
+            const { data: tokenData } = await supabase
+                .from('user_push_tokens')
+                .select('platform, app_version, app_build, ota_update_id, ota_channel, updated_at')
+                .eq('user_id', userId)
+                .order('updated_at', { ascending: false });
+            setPushTokens(tokenData || []);
+
+            // Push delivery log: every send attempt for this user (ticket +
+            // receipt outcome, or the gate that skipped it). 30-day retention.
+            const { data: pushLogData } = await supabase
+                .from('push_send_log')
+                .select('id, type, title, body, status, skip_reason, error, receipt_checked_at, created_at')
+                .eq('user_id', userId)
+                .order('created_at', { ascending: false })
+                .limit(100);
+            setPushLog(pushLogData || []);
+
+            // Gym visit beacons + their lifecycle events. This is how we see what a
+            // device actually did during a visit (check-in → nudge → confirmed
+            // inside/outside → claim → exit) instead of inferring it from user reports.
+            const { data: visitData } = await supabase
+                .from('gym_visits')
+                .select('id, partner_id, platform, started_at, last_confirmed_at, claimed_at, upgraded_at, ended_at, status, nudge_count')
+                .eq('user_id', userId)
+                .order('started_at', { ascending: false })
+                .limit(20);
+            setGymVisits(visitData || []);
+
+            const visitIds = (visitData || []).map(v => v.id);
+            if (visitIds.length) {
+                const { data: eventData } = await supabase
+                    .from('gym_visit_events')
+                    .select('id, visit_id, event, detail, created_at')
+                    .in('visit_id', visitIds)
+                    .order('created_at', { ascending: true });
+                setVisitEvents(eventData || []);
+            } else {
+                setVisitEvents([]);
+            }
 
             // Load preferred gym name if set
             if (p.data.preferred_gym_id) {
@@ -518,6 +665,27 @@ export default function UserProfile() {
     );
 
     const totalPoints = transactions.reduce((acc, t) => acc + t.amount, 0);
+    const vaultPending = vaultDeposits.filter(d => !d.released_at).reduce((acc, d) => acc + d.amount, 0);
+
+    // Most recently seen token per platform (tokens are sorted updated_at desc).
+    const latestTokenByPlatform = pushTokens.filter(
+        (t, i) => pushTokens.findIndex(x => x.platform === t.platform) === i
+    );
+
+    const locationState = LOCATION_STATES[profile.location_permission] ?? null;
+    const locationCheckedAt = profile.location_permission_checked_at
+        ? new Date(profile.location_permission_checked_at).toLocaleDateString()
+        : null;
+    // Sampled fix accuracy (m) reported with the snapshot. A granted permission
+    // with a large radius means reduced accuracy (iOS Precise Location off /
+    // Android coarse-only) — geofencing is silently dead despite the grant.
+    const locationGranted = profile.location_permission === 'always' || profile.location_permission === 'while_using';
+    const reducedAccuracy = locationGranted && profile.location_accuracy_m > 500;
+    const accuracyLabel = profile.location_accuracy_m != null
+        ? (profile.location_accuracy_m >= 1000
+            ? `~${(profile.location_accuracy_m / 1000).toFixed(1)} km`
+            : `~${profile.location_accuracy_m} m`)
+        : null;
 
     return (
         <div className="px-4 lg:px-0 py-20 animate-in fade-in slide-in-from-bottom-8 duration-1000">
@@ -534,6 +702,55 @@ export default function UserProfile() {
                     <Trash2 size={13} /> Delete User
                 </button>
             </div>
+
+            {/* Device lock — one account per device. Shown only when a device is bound. */}
+            {deviceBindings.length > 0 && (
+                <div className="mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4 px-5 py-4 rounded-2xl bg-white border border-[#E6E6E1]">
+                    <div className="flex items-center gap-3 min-w-0">
+                        <Shield size={15} className="text-[#8a7600] shrink-0" />
+                        <div className="min-w-0">
+                            <div className="text-[10px] uppercase tracking-[0.3em] font-black text-[#999999]">Device Lock</div>
+                            <div className="text-[13px] text-[#1A1A1A] truncate">
+                                {deviceBindings.length === 1
+                                    ? `Locked to 1 device · ${deviceBindings[0].platform || 'unknown'}`
+                                    : `Locked to ${deviceBindings.length} devices`}
+                                {deviceBindings[0]?.last_seen_at && (
+                                    <span className="text-[#999999]"> · last seen {new Date(deviceBindings[0].last_seen_at).toLocaleDateString()}</span>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                    <button
+                        onClick={handleReleaseDevices}
+                        disabled={deviceReleasing}
+                        className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-white border border-[#E6E6E1] text-[#999999] hover:text-[#1A1A1A] hover:border-[#E8D200]/40 transition-all text-[10px] font-black uppercase tracking-widest disabled:opacity-50 shrink-0"
+                    >
+                        <X size={13} /> {deviceReleasing ? 'Releasing…' : 'Release Lock'}
+                    </button>
+                </div>
+            )}
+
+            {/* Recent self-serve device transfers — a burst here can mean alt-farming
+                via the auto/confirm move path. 'auto' = silent stale-device migration,
+                'confirmed' = user tapped "Move to this device". */}
+            {deviceTransfers.length > 0 && (
+                <div className="mb-8 px-5 py-4 rounded-2xl bg-white border border-[#E6E6E1]">
+                    <div className="text-[10px] uppercase tracking-[0.3em] font-black text-[#999999] mb-2">
+                        Recent Device Transfers · {deviceTransfers.length}
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                        {deviceTransfers.map((t) => (
+                            <div key={t.id} className="flex items-center gap-2 text-[12px] text-[#1A1A1A]">
+                                <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest ${t.kind === 'confirmed' ? 'bg-[#E8D200]/20 text-[#8a7600]' : 'bg-[#F0F0EC] text-[#999999]'}`}>
+                                    {t.kind === 'confirmed' ? 'Confirmed' : 'Auto'}
+                                </span>
+                                <span className="text-[#666666]">{t.platform || 'unknown'}</span>
+                                <span className="text-[#999999]">· {new Date(t.created_at).toLocaleString()}</span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             {/* Header / Identity */}
             <header className="mb-16">
@@ -616,13 +833,33 @@ export default function UserProfile() {
                         </div>
                         <div className="flex items-center flex-wrap gap-3">
                             <span className="px-3 py-1 rounded-full bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.2em]">LVL {profile.level || 1}</span>
-                            {profile.location_granted ? (
-                                <span className="px-3 py-1 rounded-full bg-[#10B981]/10 border border-[#10B981]/20 text-[#10B981] text-[10px] font-black uppercase tracking-[0.2em] flex items-center gap-1.5">
+                            {locationState ? (
+                                <span
+                                    title={`Live permission snapshot${locationCheckedAt ? ` · reported ${locationCheckedAt}` : ''}${accuracyLabel ? ` · fix accuracy ${accuracyLabel}` : ''}${reducedAccuracy ? ' · reduced accuracy: iOS Precise Location off / Android coarse-only — geofence check-ins cannot fire' : ''}`}
+                                    className={`px-3 py-1 rounded-full ${reducedAccuracy ? 'bg-red-500/10 border border-red-500/20 text-red-500' : locationState.cls} text-[10px] font-black uppercase tracking-[0.2em] flex items-center gap-1.5`}
+                                >
+                                    <MapPin size={11} /> {locationState.chip}{reducedAccuracy ? ' · Precise Off' : ''}
+                                </span>
+                            ) : profile.location_granted ? (
+                                <span title="Legacy onboarding-bonus flag — this build doesn't report live permission state" className="px-3 py-1 rounded-full bg-[#10B981]/10 border border-[#10B981]/20 text-[#10B981] text-[10px] font-black uppercase tracking-[0.2em] flex items-center gap-1.5">
                                     <MapPin size={11} /> Location
                                 </span>
                             ) : (
-                                <span className="px-3 py-1 rounded-full bg-[#EFEFEC] text-[#999999] text-[10px] font-black uppercase tracking-[0.2em]">No Location</span>
+                                <span title="Legacy onboarding-bonus flag — this build doesn't report live permission state" className="px-3 py-1 rounded-full bg-[#EFEFEC] text-[#999999] text-[10px] font-black uppercase tracking-[0.2em]">No Location</span>
                             )}
+                            {latestTokenByPlatform.map(t => (
+                                <span
+                                    key={t.platform}
+                                    title={`Reported with push registration · last seen ${new Date(t.updated_at).toLocaleDateString()}${t.ota_channel ? ` · channel ${t.ota_channel}` : ''}${t.ota_update_id ? ` · OTA update ${t.ota_update_id}` : t.ota_channel ? ' · embedded bundle' : ''}`}
+                                    className="px-3 py-1 rounded-full bg-[#EFEFEC] text-[#666666] text-[10px] font-black uppercase tracking-[0.2em] flex items-center gap-1.5"
+                                >
+                                    <Smartphone size={11} />
+                                    {t.platform}
+                                    {t.app_version
+                                        ? ` v${t.app_version}${t.app_build ? ` (${t.app_build})` : ''}${t.ota_update_id ? ` · ${t.ota_update_id.slice(0, 8)}` : ''}`
+                                        : ' · older build'}
+                                </span>
+                            ))}
                             <button
                                 onClick={handleTogglePro}
                                 disabled={proLoading}
@@ -659,6 +896,24 @@ export default function UserProfile() {
                         </div>
                         <div className="text-4xl font-light tracking-tighter text-[#8a7600] leading-none">{totalPoints.toLocaleString()}</div>
                         <div className="text-[9px] uppercase tracking-[0.3em] text-[#999999] font-black mt-2">Click to adjust</div>
+                    </button>
+
+                    {/* Vault card — clickable to grant a deposit */}
+                    <button
+                        onClick={() => setShowVaultGrant(true)}
+                        className="group bg-white border border-[#E6E6E1] hover:border-[#E8D200]/30 p-6 px-8 rounded-2xl text-left transition-all hover:bg-[#E8D200]/[0.03] min-w-[200px]"
+                    >
+                        <div className="flex items-center justify-between gap-4 mb-3">
+                            <div className="flex items-center gap-3">
+                                <Lock size={15} className="text-[#8a7600]" />
+                                <span className="text-[9px] uppercase tracking-[0.4em] text-[#666666] font-black">Vault</span>
+                            </div>
+                            <span className="text-[9px] uppercase tracking-[0.3em] text-[#8a7600] font-black opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
+                                <Plus size={10} /> Add
+                            </span>
+                        </div>
+                        <div className="text-4xl font-light tracking-tighter text-[#8a7600] leading-none">{vaultPending.toLocaleString()}</div>
+                        <div className="text-[9px] uppercase tracking-[0.3em] text-[#999999] font-black mt-2">Vesting · click to add</div>
                     </button>
 
                     <div className="bg-white border border-[#E6E6E1] p-6 px-8 rounded-2xl min-w-[160px]">
@@ -704,6 +959,49 @@ export default function UserProfile() {
                     )}
                 </div>
             </header>
+
+            {/* Vault Grant Modal */}
+            {showVaultGrant && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] flex items-center justify-center" onClick={() => setShowVaultGrant(false)}>
+                    <div className="bg-white border border-[#E6E6E1] rounded-3xl p-12 w-full max-w-md shadow-2xl" onClick={e => e.stopPropagation()}>
+                        <div className="flex justify-between items-center mb-6">
+                            <h3 className="text-2xl font-light tracking-tighter text-[#1A1A1A]">Add to Vault</h3>
+                            <button onClick={() => setShowVaultGrant(false)} className="w-10 h-10 rounded-full bg-[#EFEFEC] flex items-center justify-center text-[#BBB] hover:text-[#1A1A1A] transition-colors"><X size={18} /></button>
+                        </div>
+                        <div className="flex items-center justify-between bg-[#F4F4F1] border border-[#E6E6E1] rounded-2xl px-6 py-4 mb-8">
+                            <div>
+                                <div className="text-[9px] uppercase tracking-[0.4em] text-[#999999] font-black mb-1">Currently vesting</div>
+                                <div className="text-3xl font-light tracking-tighter text-[#8a7600]">{vaultPending.toLocaleString()} <span className="text-base text-[#999999]">pts</span></div>
+                            </div>
+                            <Lock size={20} className="text-[#8a7600]" />
+                        </div>
+                        <p className="text-[10px] uppercase tracking-[0.4em] text-[#666666] font-black mb-8">Banks a vesting deposit — 0 days = ready immediately</p>
+                        <div className="space-y-6">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-[10px] uppercase tracking-widest text-[#BBB] font-black mb-3">Amount</label>
+                                    <input type="number" min="1" value={vgAmount} onChange={e => setVgAmount(e.target.value)} placeholder="e.g. 50" className="w-full h-14 px-6 bg-[#F4F4F1] border border-[#E6E6E1] rounded-xl text-[#1A1A1A] text-lg font-light outline-none focus:border-[#E8D200]/40 transition-all" />
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] uppercase tracking-widest text-[#BBB] font-black mb-3">Vest days</label>
+                                    <input type="number" min="0" value={vgDays} onChange={e => setVgDays(e.target.value)} placeholder="default" className="w-full h-14 px-6 bg-[#F4F4F1] border border-[#E6E6E1] rounded-xl text-[#1A1A1A] text-lg font-light outline-none focus:border-[#E8D200]/40 transition-all" />
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-[10px] uppercase tracking-widest text-[#BBB] font-black mb-3">Note (shown to the user)</label>
+                                <input type="text" value={vgNote} onChange={e => setVgNote(e.target.value)} placeholder="Launch week drop" className="w-full h-14 px-6 bg-[#F4F4F1] border border-[#E6E6E1] rounded-xl text-[#1A1A1A] text-sm outline-none focus:border-[#E8D200]/40 transition-all" />
+                            </div>
+                            <button type="button" onClick={() => setVgNotify(!vgNotify)}
+                                className={`w-full h-14 rounded-xl border flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest transition-all ${vgNotify ? 'border-[#10B981]/40 bg-[#10B981]/10 text-[#10B981]' : 'border-[#E6E6E1] bg-[#F4F4F1] text-[#888888]'}`}>
+                                {vgNotify ? 'Push the drop to them' : 'Silent — no push'}
+                            </button>
+                            <button onClick={handleVaultGrant} disabled={vgLoading} className="w-full h-14 bg-[#E8D200] text-[#080808] font-black uppercase tracking-widest text-xs rounded-xl hover:translate-y-[-2px] transition-all shadow-lg shadow-[#E8D200]/10 disabled:opacity-50">
+                                {vgLoading ? 'Processing...' : 'Bank It'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Point Adjustment Modal */}
             {showAdjust && (
@@ -761,6 +1059,12 @@ export default function UserProfile() {
                             className={`pb-4 text-[11px] font-black uppercase tracking-[0.2em] transition-colors border-b-2 flex items-center gap-2 ${activeTab === 'health' ? 'text-[#8a7600] border-[#E8D200]' : 'text-[#BBB] border-transparent hover:text-[#333333]'}`}
                         >
                             <Heart size={14} /> Health Data
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('notifications')}
+                            className={`pb-4 text-[11px] font-black uppercase tracking-[0.2em] transition-colors border-b-2 flex items-center gap-2 ${activeTab === 'notifications' ? 'text-[#8a7600] border-[#E8D200]' : 'text-[#BBB] border-transparent hover:text-[#333333]'}`}
+                        >
+                            <Bell size={14} /> Notifications
                         </button>
                         {profile.is_pro && (
                             <button
@@ -905,6 +1209,127 @@ export default function UserProfile() {
                                         className="text-[10px] text-[#8a7600] font-black uppercase tracking-[0.3em] transition-colors py-2 px-6"
                                     >
                                         Load More Activity
+                                    </button>
+                                </div>
+                            )}
+                        </section>
+                    )}
+
+                    {/* Gym visit beacons — what the device actually did during a visit */}
+                    {activeTab === 'notifications' && (
+                        <section className="bg-white border border-[#E6E6E1] rounded-[2rem] overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500 mb-8">
+                            <div className="p-10 border-b border-[#E6E6E1] flex items-center justify-between">
+                                <div>
+                                    <h3 className="text-xl font-light tracking-tighter text-[#1A1A1A]">Gym Visits</h3>
+                                    <p className="text-[9px] uppercase tracking-[0.4em] text-[#666666] font-black mt-2">Check-in → wake → confirm → claim</p>
+                                </div>
+                                <span className="text-[10px] font-black text-[#555555] uppercase tracking-[0.3em]">{gymVisits.length} RECORDED</span>
+                            </div>
+                            <div className="px-10 py-4 bg-[#F4F4F1] border-b border-[#E6E6E1] text-[11px] text-[#666666] leading-relaxed">
+                                A stationary phone receives no GPS callbacks, so the device can't wake itself to claim. The server holds the timers and sends a <span className="font-bold text-[#333333]">silent push</span> at each threshold; the device then takes a fresh fix and decides. <span className="font-bold text-[#333333]">Confirmed inside</span> is a real location proof — and nothing is ever credited without one.
+                            </div>
+                            <div className="divide-y divide-[#E6E6E1]">
+                                {gymVisits.length === 0 ? (
+                                    <div className="p-20 text-center text-[#888888] text-[10px] uppercase tracking-[0.4em] font-black">No gym visits recorded yet</div>
+                                ) : gymVisits.map(visit => {
+                                    const events = visitEvents.filter(e => e.visit_id === visit.id);
+                                    const statusCls = VISIT_STATUS_CLS[visit.status] ?? 'border-[#E6E6E1] text-[#666666]';
+                                    const mins = visit.ended_at
+                                        ? Math.round((new Date(visit.ended_at) - new Date(visit.started_at)) / 60000)
+                                        : Math.round((Date.now() - new Date(visit.started_at)) / 60000);
+                                    return (
+                                        <div key={visit.id} className="px-10 py-6 hover:bg-[#F4F4F1] transition-all">
+                                            <div className="flex items-center justify-between gap-4 mb-3">
+                                                <div className="flex items-center gap-3 min-w-0">
+                                                    <MapPin size={14} className="text-[#8a7600] shrink-0" />
+                                                    <span className="text-[13px] font-bold text-[#222222]">
+                                                        {new Date(visit.started_at).toLocaleDateString()} · {clockTime(visit.started_at)}
+                                                    </span>
+                                                    <span className="text-[11px] text-[#666666]">{mins}m{visit.ended_at ? '' : ' (open)'}</span>
+                                                    {visit.platform && <span className="text-[9px] uppercase tracking-[0.2em] font-black text-[#999999]">{visit.platform}</span>}
+                                                </div>
+                                                <div className="flex items-center gap-3 shrink-0">
+                                                    {visit.nudge_count > 0 && (
+                                                        <span className="text-[9px] uppercase tracking-[0.2em] font-black text-[#999999]">{visit.nudge_count} wake{visit.nudge_count === 1 ? '' : 's'}</span>
+                                                    )}
+                                                    <span className={`px-3 py-1 rounded-full border text-[9px] font-black uppercase tracking-[0.2em] ${statusCls}`}>{visit.status}</span>
+                                                </div>
+                                            </div>
+                                            <div className="flex flex-wrap gap-x-6 gap-y-1 pl-7">
+                                                {events.length === 0 ? (
+                                                    <span className="text-[11px] text-[#999999]">No events recorded</span>
+                                                ) : events.map(ev => {
+                                                    const style = VISIT_EVENT_STYLES[ev.event] ?? { label: ev.event, cls: 'text-[#666666]' };
+                                                    const dist = ev.detail?.distance_m;
+                                                    return (
+                                                        <span key={ev.id} className="text-[11px] flex items-center gap-1.5">
+                                                            <span className="text-[#999999] tabular-nums">{clockTime(ev.created_at)}</span>
+                                                            <span className={`font-medium ${style.cls}`}>{style.label}</span>
+                                                            {dist != null && <span className="text-[#999999]">({dist}m)</span>}
+                                                            {ev.detail?.reason && <span className="text-[#B45309]">{ev.detail.reason}</span>}
+                                                        </span>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </section>
+                    )}
+
+                    {/* Push delivery log */}
+                    {activeTab === 'notifications' && (
+                        <section className="bg-white border border-[#E6E6E1] rounded-[2rem] overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
+                            <div className="p-10 border-b border-[#E6E6E1] flex items-center justify-between">
+                                <div>
+                                    <h3 className="text-xl font-light tracking-tighter text-[#1A1A1A]">Push Delivery Log</h3>
+                                    <p className="text-[9px] uppercase tracking-[0.4em] text-[#666666] font-black mt-2">Every send attempt · last 30 days</p>
+                                </div>
+                                <span className="text-[10px] font-black text-[#555555] uppercase tracking-[0.3em]">{pushLog.length} RECORDED</span>
+                            </div>
+                            <div className="px-10 py-4 bg-[#F4F4F1] border-b border-[#E6E6E1] text-[11px] text-[#666666] leading-relaxed">
+                                <span className="font-bold text-[#333333]">Accepted</span> means APNs/FCM took the push — it does not guarantee the device displayed it.
+                                <span className="font-bold text-[#333333]"> Skipped</span> means a server gate stopped the send (reason shown).
+                                <span className="font-bold text-[#333333]"> Rejected/Failed</span> carry the exact Expo error. Entries older than this log (pre 13 Jul 2026) were never recorded.
+                            </div>
+                            <div className="divide-y divide-[#E6E6E1]">
+                                {pushLog.length === 0 ? (
+                                    <div className="p-20 text-center text-[#888888] text-[10px] uppercase tracking-[0.4em] font-black">No push attempts logged yet</div>
+                                ) : pushLog.slice(0, visiblePushLog).map(entry => {
+                                    const state = PUSH_STATES[entry.status] ?? { label: entry.status, cls: 'border-[#E6E6E1] text-[#666666]' };
+                                    return (
+                                        <div key={entry.id} className="px-10 py-6 flex items-start gap-6 hover:bg-[#F4F4F1] transition-all">
+                                            <div className="w-11 h-11 rounded-2xl bg-[#F4F4F1] border border-[#E6E6E1] flex items-center justify-center shrink-0">
+                                                <Bell size={16} className="text-[#666666]" />
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex justify-between items-center gap-4 mb-1">
+                                                    <span className="text-[13px] font-bold text-[#222222] truncate">{entry.title || entry.type}</span>
+                                                    <span className="text-[10px] text-[#666666] font-black uppercase tracking-[0.3em] shrink-0">{timeAgo(entry.created_at)}</span>
+                                                </div>
+                                                {entry.body && <div className="text-[12px] text-[#555555] truncate mb-2">{entry.body}</div>}
+                                                <div className="flex flex-wrap items-center gap-3 text-[9px] font-black uppercase tracking-[0.2em]">
+                                                    <span className="text-[#999999]">{entry.type}</span>
+                                                    <span className={`px-3 py-1 rounded-full border ${state.cls}`}>{state.label}</span>
+                                                    {entry.skip_reason && <span className="text-[#B45309] normal-case tracking-normal font-medium">{entry.skip_reason}</span>}
+                                                    {entry.error && <span className="text-red-500 normal-case tracking-normal font-medium">{entry.error}</span>}
+                                                    {entry.status === 'queued' && !entry.receipt_checked_at && (
+                                                        <span className="text-[#999999] normal-case tracking-normal font-medium">receipt never confirmed</span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                            {pushLog.length > visiblePushLog && (
+                                <div className="p-6 border-t border-[#E6E6E1] text-center bg-[#F4F4F1] hover:bg-[#EFEFEC] transition-colors">
+                                    <button
+                                        onClick={() => setVisiblePushLog(prev => prev + 15)}
+                                        className="text-[10px] text-[#8a7600] font-black uppercase tracking-[0.3em] transition-colors py-2 px-6"
+                                    >
+                                        Load More
                                     </button>
                                 </div>
                             )}
@@ -1541,7 +1966,15 @@ export default function UserProfile() {
                         <h3 className="text-base font-black uppercase tracking-[0.3em] text-[#555555] mb-10">Diagnostic Data</h3>
                         <div className="space-y-6">
                             {[
-                                { label: 'Location Access', value: profile.location_granted ? 'Granted' : 'Denied', icon: MapPin, highlight: profile.location_granted },
+                                {
+                                    label: 'Location Access',
+                                    value: locationState
+                                        ? `${locationState.detail}${reducedAccuracy ? ' · PRECISE OFF' : ''}${accuracyLabel ? ` · fix ${accuracyLabel}` : ''}${locationCheckedAt ? ` · as of ${locationCheckedAt}` : ''}`
+                                        : (profile.location_granted ? 'Granted (legacy flag)' : 'Unknown (legacy flag)'),
+                                    icon: MapPin,
+                                    // Reduced accuracy breaks geofencing even on 'always' — never show it green.
+                                    highlight: !reducedAccuracy && (profile.location_permission === 'always' || (!profile.location_permission && profile.location_granted)),
+                                },
                                 { label: 'Node Uptime', value: '182 Days', icon: Clock },
                                 { label: 'Sync Status', value: 'Verified', icon: Shield },
                                 { label: 'Risk Factor', value: 'Low (0.02)', icon: AlertCircle },

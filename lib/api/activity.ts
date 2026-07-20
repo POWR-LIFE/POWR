@@ -1,6 +1,6 @@
 import { type ActivityType } from '@/constants/activities';
 import { getDeviceId } from '@/lib/device';
-import { supabase } from '@/lib/supabase';
+import { getSessionUser, supabase } from '@/lib/supabase';
 
 // ── Walking step-tier helpers (shared by manual-log + health sync) ─────────────
 
@@ -32,11 +32,12 @@ export type ActivitySession = {
     steps: number | null;
     verification: string;
     trust_score: number;
+    raw_activity_name: string | null;
     point_transactions: { amount: number }[];
 };
 
 async function getCurrentUserId(): Promise<string | null> {
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getSessionUser();
     return user?.id ?? null;
 }
 
@@ -54,7 +55,7 @@ export async function fetchRecentSessions(limit = 5): Promise<ActivitySession[]>
     if (!uid) return [];
     const { data, error } = await supabase
         .from('activity_sessions')
-        .select('id, type, started_at, ended_at, duration_sec, distance_m, steps, verification, trust_score, point_transactions(amount)')
+        .select('id, type, started_at, ended_at, duration_sec, distance_m, steps, verification, trust_score, raw_activity_name, point_transactions(amount)')
         .eq('user_id', uid)
         .order('ended_at', { ascending: false, nullsFirst: false })
         .limit(limit);
@@ -98,6 +99,13 @@ export type WeeklyMetrics = {
     perType: Record<string, number>;
     /** Mon–Sun active-day booleans keyed by activity type */
     activeDaysPerType: Record<string, boolean[]>;
+    /**
+     * Points earned from this week's sessions, keyed by activity type. Only
+     * covers session-linked transactions, so these will not sum to the weekly
+     * total from get_my_points_summary (challenge rewards, referrals and other
+     * standalone bonuses have no session to attribute them to).
+     */
+    pointsPerType: Record<string, number>;
 };
 
 export type DailyMetrics = {
@@ -144,6 +152,8 @@ export type ManualSessionParams = {
      * true wearable. See `verificationForProvider`.
      */
     healthSource?: 'wearable' | 'health';
+    /** Provider-reported activity name before bucketing (e.g. "Strength Training"). */
+    rawActivityName?: string;
 };
 
 /** Max unverified manual logs allowed per calendar day (across all types). */
@@ -266,6 +276,7 @@ export async function logManualSession(params: ManualSessionParams): Promise<boo
             verification,
             trust_score,
             device_id,
+            raw_activity_name: params.rawActivityName?.trim().slice(0, 80) || null,
         })
         .select('id')
         .single();
@@ -300,7 +311,7 @@ export async function logManualSession(params: ManualSessionParams): Promise<boo
 
 export async function fetchWeeklyMetrics(): Promise<WeeklyMetrics> {
     const uid = await getCurrentUserId();
-    if (!uid) return { gymVisits: 0, runs: 0, totalSteps: 0, sessionCount: 0, perType: {}, activeDaysPerType: {} };
+    if (!uid) return { gymVisits: 0, runs: 0, totalSteps: 0, sessionCount: 0, perType: {}, activeDaysPerType: {}, pointsPerType: {} };
     const now = new Date();
     const dayOfWeek = now.getDay();
     const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
@@ -310,14 +321,20 @@ export async function fetchWeeklyMetrics(): Promise<WeeklyMetrics> {
 
     const { data, error } = await supabase
         .from('activity_sessions')
-        .select('type, steps, started_at')
+        .select('type, steps, started_at, point_transactions(amount)')
         .eq('user_id', uid)
         .gte('started_at', monday.toISOString());
     if (error) throw error;
 
-    const sessions = data ?? [];
+    const sessions = (data ?? []) as unknown as {
+        type: string;
+        steps: number | null;
+        started_at: string;
+        point_transactions: { amount: number }[] | null;
+    }[];
     const perType: Record<string, number> = {};
     const activeDaysPerType: Record<string, boolean[]> = {};
+    const pointsPerType: Record<string, number> = {};
     for (const s of sessions) {
         perType[s.type] = (perType[s.type] ?? 0) + 1;
         if (!activeDaysPerType[s.type]) {
@@ -325,6 +342,10 @@ export async function fetchWeeklyMetrics(): Promise<WeeklyMetrics> {
         }
         const d = new Date(s.started_at).getDay();
         activeDaysPerType[s.type][d === 0 ? 6 : d - 1] = true;
+        // Any transaction written against the session counts towards its type —
+        // that includes streak bonuses awarded on the back of the session.
+        const sessionPoints = (s.point_transactions ?? []).reduce((sum, t) => sum + t.amount, 0);
+        pointsPerType[s.type] = (pointsPerType[s.type] ?? 0) + sessionPoints;
     }
     return {
         gymVisits: perType['gym'] ?? 0,
@@ -333,6 +354,7 @@ export async function fetchWeeklyMetrics(): Promise<WeeklyMetrics> {
         sessionCount: sessions.length,
         perType,
         activeDaysPerType,
+        pointsPerType,
     };
 }
 
@@ -448,7 +470,7 @@ export async function updateHealthWalkingSession(
 
 /** Marks today as an active streak day. Idempotent — safe to call repeatedly. */
 export async function updateStreakForToday(): Promise<void> {
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getSessionUser();
     if (!user) return;
 
     const { data: streak } = await supabase
@@ -488,7 +510,7 @@ export async function updateStreakForToday(): Promise<void> {
 export async function buildStreakFromDates(activeDates: string[]): Promise<number> {
     if (activeDates.length === 0) return 0;
 
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getSessionUser();
     if (!user) return 0;
 
     // Deduplicate and sort ascending
@@ -563,19 +585,18 @@ export type DailyWalkingHistory = {
 };
 
 /**
- * Returns the last `days` days of walking data (excluding today),
- * aggregated by date with step counts and points earned.
+ * Returns the `days` days of walking data before `before` (default today,
+ * which is excluded), aggregated by date with step counts and points earned.
  */
-export async function fetchRecentWalkingHistory(days = 5): Promise<DailyWalkingHistory[]> {
+export async function fetchRecentWalkingHistory(days = 5, before?: Date): Promise<DailyWalkingHistory[]> {
     const uid = await getCurrentUserId();
     if (!uid) return [];
 
-    const rangeStart = new Date();
-    rangeStart.setDate(rangeStart.getDate() - days);
-    rangeStart.setHours(0, 0, 0, 0);
-
-    const todayStart = new Date();
+    const todayStart = new Date(before ?? new Date());
     todayStart.setHours(0, 0, 0, 0);
+
+    const rangeStart = new Date(todayStart);
+    rangeStart.setDate(rangeStart.getDate() - days);
 
     const { data, error } = await supabase
         .from('activity_sessions')
@@ -602,7 +623,7 @@ export async function fetchRecentWalkingHistory(days = 5): Promise<DailyWalkingH
 
     const result: DailyWalkingHistory[] = [];
     for (let i = days; i >= 1; i--) {
-        const d = new Date();
+        const d = new Date(todayStart);
         d.setDate(d.getDate() - i);
         const dateKey = localDateStr(d);
         const val = byDate.get(dateKey);
@@ -643,6 +664,65 @@ export async function fetchWeeklyStepsPerDay(): Promise<number[]> {
     return steps;
 }
 
+// ── Anchored week data (Week view lookback) ──────────────────────────────────
+
+export type WeekActivityData = {
+    /** Mon–Sun active-day booleans */
+    activeDays: boolean[];
+    sessionCount: number;
+    totalDurationMin: number;
+    /** Session-linked points earned that week for this type */
+    points: number;
+    /** Mon–Sun step counts (walking only; zeros otherwise) */
+    stepsPerDay: number[];
+    totalSteps: number;
+};
+
+/**
+ * Fetches one Mon–Sun week of sessions for a type, anchored at `weekStart`
+ * (a local-midnight Monday). Powers the Week view when looking back at past
+ * weeks; the current week keeps using the live hooks.
+ */
+export async function fetchWeekActivityData(type: ActivityType, weekStart: Date): Promise<WeekActivityData> {
+    const empty: WeekActivityData = {
+        activeDays: [false, false, false, false, false, false, false],
+        sessionCount: 0,
+        totalDurationMin: 0,
+        points: 0,
+        stepsPerDay: [0, 0, 0, 0, 0, 0, 0],
+        totalSteps: 0,
+    };
+    const uid = await getCurrentUserId();
+    if (!uid) return empty;
+
+    const start = new Date(weekStart);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 7);
+
+    const { data, error } = await supabase
+        .from('activity_sessions')
+        .select('started_at, duration_sec, steps, point_transactions(amount)')
+        .eq('user_id', uid)
+        .eq('type', type)
+        .gte('started_at', start.toISOString())
+        .lt('started_at', end.toISOString());
+    if (error) throw error;
+
+    const result = { ...empty, activeDays: [...empty.activeDays], stepsPerDay: [...empty.stepsPerDay] };
+    for (const s of (data ?? []) as Array<{ started_at: string; duration_sec: number | null; steps: number | null; point_transactions: { amount: number }[] }>) {
+        const d = new Date(s.started_at).getDay();
+        const idx = d === 0 ? 6 : d - 1; // Mon=0 … Sun=6
+        result.activeDays[idx] = true;
+        result.sessionCount++;
+        result.totalDurationMin += Math.round((s.duration_sec ?? 0) / 60);
+        result.points += (s.point_transactions ?? []).reduce((sum, t) => sum + t.amount, 0);
+        result.stepsPerDay[idx] += s.steps ?? 0;
+        result.totalSteps += s.steps ?? 0;
+    }
+    return result;
+}
+
 // ── Recent workout history (Day view) ────────────────────────────────────────
 
 export type DailyWorkoutHistory = {
@@ -653,22 +733,21 @@ export type DailyWorkoutHistory = {
 };
 
 /**
- * Returns the last `days` days of workout sessions (excluding today)
- * for the given activity type, grouped by date.
+ * Returns the `days` days of workout sessions before `before` (default today,
+ * which is excluded) for the given activity type, grouped by date.
  */
-export async function fetchRecentWorkoutHistory(type: ActivityType, days = 5): Promise<DailyWorkoutHistory[]> {
+export async function fetchRecentWorkoutHistory(type: ActivityType, days = 5, before?: Date): Promise<DailyWorkoutHistory[]> {
     const uid = await getCurrentUserId();
     if (!uid) return [];
 
-    const rangeStart = new Date();
-    rangeStart.setDate(rangeStart.getDate() - days);
-    rangeStart.setHours(0, 0, 0, 0);
-
-    // Exclude today — it already appears in the big "TODAY'S …" metric above the
-    // list. (Matches fetchRecentWalkingHistory / fetchRecentSleepHistory, which
-    // also stop at yesterday; previously this view double-counted today.)
-    const todayStart = new Date();
+    // Exclude the anchor day itself — it already appears in the big "TODAY'S …"
+    // metric above the list. (Matches fetchRecentWalkingHistory /
+    // fetchRecentSleepHistory, which also stop at the day before.)
+    const todayStart = new Date(before ?? new Date());
     todayStart.setHours(0, 0, 0, 0);
+
+    const rangeStart = new Date(todayStart);
+    rangeStart.setDate(rangeStart.getDate() - days);
 
     const { data, error } = await supabase
         .from('activity_sessions')
@@ -697,7 +776,7 @@ export async function fetchRecentWorkoutHistory(type: ActivityType, days = 5): P
 
     const result: DailyWorkoutHistory[] = [];
     for (let i = days; i >= 1; i--) {
-        const d = new Date();
+        const d = new Date(todayStart);
         d.setDate(d.getDate() - i);
         const dateKey = localDateStr(d);
         const val = byDate.get(dateKey);
@@ -1010,13 +1089,15 @@ export type TodayActivityDetail = {
     latestStartedAt: string | null;
 };
 
-/** Returns today's session summary for a given activity type. */
-export async function fetchTodayActivityDetail(type: ActivityType): Promise<TodayActivityDetail> {
+/** Returns the session summary for a given activity type on one local day (default today). */
+export async function fetchTodayActivityDetail(type: ActivityType, day?: Date): Promise<TodayActivityDetail> {
     const uid = await getCurrentUserId();
     if (!uid) return { sessionCount: 0, totalDurationMin: 0, totalPoints: 0, steps: null, distanceM: null, latestStartedAt: null };
 
-    const start = new Date();
+    const start = new Date(day ?? new Date());
     start.setHours(0, 0, 0, 0);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 1);
 
     const { data, error } = await supabase
         .from('activity_sessions')
@@ -1024,6 +1105,7 @@ export async function fetchTodayActivityDetail(type: ActivityType): Promise<Toda
         .eq('user_id', uid)
         .eq('type', type)
         .gte('started_at', start.toISOString())
+        .lt('started_at', end.toISOString())
         .order('started_at', { ascending: false });
     if (error) throw error;
 
@@ -1075,14 +1157,27 @@ export type MonthlyActivityData = {
     type: ActivityType;
 };
 
-/** Fetches 30 days of activity data for a given type (heatmap + summary). */
-export async function fetchMonthlyActivityData(type: ActivityType): Promise<MonthlyActivityData> {
+/**
+ * Fetches a 30-day window of activity data for a given type (heatmap +
+ * summary). The window ends on `end` (default today).
+ */
+export async function fetchMonthlyActivityData(type: ActivityType, end?: Date): Promise<MonthlyActivityData> {
     const uid = await getCurrentUserId();
     if (!uid) return { entries: [], totalSessions: 0, avgPerDay: 0, bestDay: null, type };
 
-    const rangeStart = new Date();
+    // Entry date keys are built via toISOString (UTC); pin an explicit anchor
+    // to local noon so its UTC calendar date can't shift across the boundary.
+    const anchor = new Date(end ?? new Date());
+    if (end) anchor.setHours(12, 0, 0, 0);
+
+    const endDayStart = new Date(anchor);
+    endDayStart.setHours(0, 0, 0, 0);
+
+    const rangeStart = new Date(endDayStart);
     rangeStart.setDate(rangeStart.getDate() - 29);
-    rangeStart.setHours(0, 0, 0, 0);
+
+    const rangeEnd = new Date(endDayStart);
+    rangeEnd.setDate(rangeEnd.getDate() + 1);
 
     const { data, error } = await supabase
         .from('activity_sessions')
@@ -1090,6 +1185,7 @@ export async function fetchMonthlyActivityData(type: ActivityType): Promise<Mont
         .eq('user_id', uid)
         .eq('type', type)
         .gte('started_at', rangeStart.toISOString())
+        .lt('started_at', rangeEnd.toISOString())
         .order('started_at', { ascending: true });
     if (error) throw error;
 
@@ -1114,7 +1210,7 @@ export async function fetchMonthlyActivityData(type: ActivityType): Promise<Mont
     // Build the 30-entry array
     const entries: DailyActivityEntry[] = [];
     for (let i = 29; i >= 0; i--) {
-        const d = new Date();
+        const d = new Date(anchor);
         d.setDate(d.getDate() - i);
         const dateKey = d.toISOString().split('T')[0];
         const val = byDate.get(dateKey);

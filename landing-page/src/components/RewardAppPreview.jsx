@@ -15,20 +15,25 @@ import React, { useState } from 'react';
 //   • Redeem screen   → app/redeem-modal.tsx
 // ─────────────────────────────────────────────────────────────────────────────
 
-const GOLD = '#E8D200';
-const TEXT = '#F2F2F2';
-const DIM = 'rgba(255,255,255,0.55)';
-const MUTED = 'rgba(255,255,255,0.35)';
-const BORDER = 'rgba(255,255,255,0.08)';
-const FONT = "'Outfit', system-ui, sans-serif";
+// These tokens and the chrome below (Ion/StatusBar/PreviewBackground) are also
+// consumed by the admin Usage heatmap's interactive preview. Exported rather
+// than copied so the two previews cannot drift into showing different apps —
+// and so the Ionicons codepoints, which are private-use characters that do not
+// survive being retyped, have exactly one definition.
+export const GOLD = '#E8D200';
+export const TEXT = '#F2F2F2';
+export const DIM = 'rgba(255,255,255,0.55)';
+export const MUTED = 'rgba(255,255,255,0.35)';
+export const BORDER = 'rgba(255,255,255,0.08)';
+export const FONT = "'Outfit', system-ui, sans-serif";
 
 // Device geometry (true app pixels) → scaled to DISPLAY_W on screen.
-const BEZEL = 12;
-const DEVICE_W = 390, DEVICE_H = 844;       // iPhone logical resolution
+export const BEZEL = 12;
+export const DEVICE_W = 390, DEVICE_H = 844;  // iPhone logical resolution
 const PHONE_W = DEVICE_W + BEZEL * 2;         // 414
 const PHONE_H = DEVICE_H + BEZEL * 2;         // 868
-const STATUS_H = 50;                          // ~ safe-area top (insets.top)
-const TAB_H = 84;                             // _layout.tsx iOS tabBar height
+export const STATUS_H = 50;                   // ~ safe-area top (insets.top)
+export const TAB_H = 84;                      // _layout.tsx iOS tabBar height
 const DISPLAY_W = 300;                        // on-screen width (fits both columns)
 const SCALE = DISPLAY_W / PHONE_W;            // uniform downscale
 
@@ -44,7 +49,7 @@ function affordState(balance, pts) {
 
 // Exact Ionicons glyphs — same font (@expo/vector-icons Ionicons.ttf) and
 // codepoints the app renders. Font file lives at landing-page/public/Ionicons.ttf.
-const ION = {
+export const ION = {
   'home-outline': '',
   'bar-chart-outline': '',
   'trophy-outline': '',
@@ -60,7 +65,7 @@ const ION = {
   'checkmark': '',
 };
 
-function Ion({ name, size = 16, color = TEXT, style }) {
+export function Ion({ name, size = 16, color = TEXT, style }) {
   return (
     <span style={{ fontFamily: 'PreviewIonicons', fontSize: size, lineHeight: 1, color, fontStyle: 'normal', fontWeight: 'normal', display: 'inline-block', ...style }}>
       {ION[name]}
@@ -89,6 +94,35 @@ export function previewValueLabel({ valueLabel, discountType, discountValue }) {
   return valueLabel || '';
 }
 
+export function cleanPrefix(raw) {
+  return String(raw ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
+}
+
+// Extract the brand segment from a stored promo code: 'POWR-TRIBE' / 'POWR-TRIBE-XXXXXX' / 'TRIBE' → 'TRIBE'
+export function prefixFromPromo(promo, fallbackName) {
+  const parts = String(promo ?? '').toUpperCase().split('-').filter(Boolean);
+  if (parts[0] === 'POWR') parts.shift();
+  return cleanPrefix(parts[0] ?? fallbackName ?? '');
+}
+
+// Map a rewards row to this component's props — shared by every surface that
+// shows a live reward in the phone (Rewards editor, Overview rail).
+export const previewFromReward = (r, partnerName) => ({
+  brandName: r.brand_name || partnerName || '',
+  title: r.title ?? '',
+  description: r.description ?? '',
+  partnerBlurb: r.partner_blurb ?? '',
+  offer: r.offer ?? '',
+  valueLabel: r.value_label ?? '',
+  discountType: r.discount_type ?? '',
+  discountValue: r.discount_value ?? '',
+  pts: r.powr_cost,
+  logoUrl: r.image_url,
+  heroUrl: r.hero_image_url,
+  heroVideoUrl: r.hero_video_url,
+  codePrefix: prefixFromPromo(r.promo_code, r.brand_name || partnerName),
+});
+
 // Mirror splitDiscount() from the app.
 function splitDiscount(label) {
   if (!label) return { amount: '', suffix: '' };
@@ -100,7 +134,7 @@ export default function RewardAppPreview(props) {
   const {
     brandName = '', title = '', description = '', partnerBlurb = '', offer = '',
     valueLabel = '', discountType = '', discountValue = '',
-    pts = null, logoUrl = null, heroUrl = null, codePrefix = '',
+    pts = null, logoUrl = null, heroUrl = null, heroVideoUrl = null, codePrefix = '',
     pageTheme = 'dark',
   } = props;
 
@@ -123,7 +157,7 @@ export default function RewardAppPreview(props) {
   const reward = {
     title: title || 'Your reward title',
     subtitle: description || displayBrand,
-    value, pts: ptsNum, logoUrl, heroUrl, fallback,
+    value, pts: ptsNum, logoUrl, heroUrl, heroVideoUrl, fallback,
     brand: displayBrand, blurb: partnerBlurb, offer,
   };
 
@@ -184,7 +218,7 @@ export default function RewardAppPreview(props) {
 }
 
 // ── Status bar ────────────────────────────────────────────────────────────────
-function StatusBar() {
+export function StatusBar() {
   return (
     <div style={{ height: STATUS_H, paddingTop: 14, paddingLeft: 30, paddingRight: 30, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
       <span style={{ fontSize: 15, fontWeight: 600, color: TEXT, letterSpacing: '0.5px' }}>9:41</span>
@@ -200,7 +234,7 @@ function StatusBar() {
 }
 
 // ── Geometric background (components/home/GeometricBackground.tsx) ───────────
-function PreviewBackground() {
+export function PreviewBackground() {
   const W = DEVICE_W, H = DEVICE_H;
   return (
     <div style={{ position: 'absolute', inset: 0, zIndex: 0, pointerEvents: 'none' }}>
@@ -327,6 +361,13 @@ function LogoBox({ logoUrl, fallback, size = 56 }) {
   );
 }
 
+// Hero media — video-first (plays the loop) with the still image as the fallback/poster.
+function HeroMedia({ videoUrl, imageUrl, style }) {
+  if (videoUrl) return <video src={videoUrl} muted loop autoPlay playsInline preload="auto" style={style} />;
+  if (imageUrl) return <img src={imageUrl} alt="" style={style} />;
+  return null;
+}
+
 // ── Featured hero card (height 200) ──────────────────────────────────────────
 function FeaturedCard({ reward, af, onRedeem }) {
   const { amount, suffix } = splitDiscount(reward.value);
@@ -334,9 +375,9 @@ function FeaturedCard({ reward, af, onRedeem }) {
   const progress = Math.min(SAMPLE_BALANCE / reward.pts, 1);
   return (
     <div style={{ background: 'rgba(255,255,255,0.025)', border: `1px solid ${BORDER}`, borderRadius: 20, overflow: 'hidden' }}>
-      <div style={{ height: 200, position: 'relative', background: reward.heroUrl ? 'transparent' : '#101010' }}>
-        {reward.heroUrl
-          ? <img src={reward.heroUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top' }} />
+      <div style={{ height: 200, position: 'relative', background: (reward.heroVideoUrl || reward.heroUrl) ? 'transparent' : '#101010' }}>
+        {(reward.heroVideoUrl || reward.heroUrl)
+          ? <HeroMedia videoUrl={reward.heroVideoUrl} imageUrl={reward.heroUrl} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top' }} />
           : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: MUTED, fontSize: 10, letterSpacing: '0.2em', textTransform: 'uppercase' }}>Hero image</div>}
         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to bottom, rgba(10,10,10,0) 30%, rgba(10,10,10,0.45) 65%, rgba(10,10,10,0.85) 100%)' }} />
 
@@ -389,9 +430,9 @@ function RewardCard({ reward, af, expanded, onToggle, onRedeem }) {
   const ptsNeeded = reward.pts - SAMPLE_BALANCE;
   return (
     <div onClick={onToggle} style={{ cursor: 'pointer', padding: '14px 4px', borderBottom: '1px solid rgba(255,255,255,0.06)', overflow: 'hidden', opacity: af === 'locked' ? 0.5 : 1, background: expanded ? 'linear-gradient(to bottom, rgba(255,255,255,0.13), rgba(0,0,0,0))' : 'transparent' }}>
-      {expanded && reward.heroUrl && (
+      {expanded && (reward.heroVideoUrl || reward.heroUrl) && (
         <div style={{ height: 170, margin: '-14px -4px 4px', overflow: 'hidden', position: 'relative', background: 'rgba(0,0,0,0.35)' }}>
-          <img src={reward.heroUrl} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+          <HeroMedia videoUrl={reward.heroVideoUrl} imageUrl={reward.heroUrl} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
           <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to bottom, rgba(0,0,0,0) 60%, rgba(30,30,30,0.95) 100%)' }} />
         </div>
       )}
@@ -490,8 +531,8 @@ function RedeemScreen({ reward, brand, codePrefix, onBack }) {
 
       {/* Cover image (260) */}
       <div style={{ width: '100%', height: 260, position: 'relative', overflow: 'hidden' }}>
-        {reward.heroUrl
-          ? <img src={reward.heroUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+        {(reward.heroVideoUrl || reward.heroUrl)
+          ? <HeroMedia videoUrl={reward.heroVideoUrl} imageUrl={reward.heroUrl} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
           : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: R_MUTED, fontSize: 10, letterSpacing: '0.2em', textTransform: 'uppercase' }}>Cover image</div>}
         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to bottom, rgba(13,13,13,0) 40%, rgba(13,13,13,0.6) 80%, #0d0d0d 100%)' }} />
       </div>

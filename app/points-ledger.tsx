@@ -14,13 +14,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ActivityIcon } from '@/components/ActivityIcon';
 import GeometricBackground from '@/components/GeometricBackground';
 import { ACTIVITIES, type ActivityType } from '@/constants/activities';
+import { LEVELS } from '@/constants/levels';
 import { typography } from '@/constants/tokens';
 import {
-  fetchBalance,
-  fetchTotalEarned,
+  fetchPointsSummary,
   fetchTransactionHistory,
   type PointTransaction,
 } from '@/lib/api/points';
+import { deriveLevelUps, type LevelUpEvent } from '@/lib/levelHistory';
 
 // ─── Design tokens (match settings-screen) ───────────────────────────────────
 
@@ -71,17 +72,41 @@ function formatAmount(amount: number): string {
   return `${amount > 0 ? '+' : ''}${Math.abs(amount).toLocaleString()}`;
 }
 
-type Section = { title: string; data: PointTransaction[] };
+/** A ledger line: a real transaction, or a derived level-up moment. */
+type LedgerItem =
+  | { kind: 'tx'; tx: PointTransaction }
+  | { kind: 'levelup'; event: LevelUpEvent };
 
-function groupByDate(transactions: PointTransaction[]): Section[] {
-  const map = new Map<string, PointTransaction[]>();
+function itemDate(item: LedgerItem): string {
+  return item.kind === 'tx' ? item.tx.created_at : item.event.createdAt;
+}
+
+/**
+ * Weaves the derived level-up moments into the newest-first transaction list,
+ * each directly above the credit that crossed the boundary.
+ */
+function mergeLevelUps(transactions: PointTransaction[], events: LevelUpEvent[]): LedgerItem[] {
+  const byTx = new Map(events.map((e) => [e.txId, e]));
+  const items: LedgerItem[] = [];
   for (const tx of transactions) {
-    const key = toDateKey(tx.created_at);
+    const event = byTx.get(tx.id);
+    if (event) items.push({ kind: 'levelup', event });
+    items.push({ kind: 'tx', tx });
+  }
+  return items;
+}
+
+type Section = { title: string; data: LedgerItem[] };
+
+function groupByDate(items: LedgerItem[]): Section[] {
+  const map = new Map<string, LedgerItem[]>();
+  for (const item of items) {
+    const key = toDateKey(itemDate(item));
     const group = map.get(key);
     if (group) {
-      group.push(tx);
+      group.push(item);
     } else {
-      map.set(key, [tx]);
+      map.set(key, [item]);
     }
   }
   return Array.from(map.entries()).map(([key, data]) => ({
@@ -163,11 +188,18 @@ function TxBadges({ tx }: { tx: PointTransaction }) {
   if (tx.type === 'streak') {
     badges.push({ label: 'STREAK', color: ORANGE, bg: ORANGE + '22' });
   } else if (tx.type === 'bonus') {
-    badges.push({ label: 'BONUS', color: GOLD, bg: GOLD + '22' });
+    // Vault releases are matured deposits landing on the spendable balance —
+    // badge them distinctly from ordinary bonuses.
+    badges.push(tx.source === 'vault_release'
+      ? { label: 'VAULT', color: GOLD, bg: GOLD + '22' }
+      : { label: 'BONUS', color: GOLD, bg: GOLD + '22' });
   } else if (tx.type === 'earn') {
     const isUpgrade = tx.description?.toLowerCase().includes('upgrade');
     if (isUpgrade) {
-      badges.push({ label: '+40 MIN', color: '#6EC6FF', bg: '#6EC6FF22' });
+      // upgrade-gym-tier writes "gym session upgrade (Xmin)" where X is the
+      // admin-tunable threshold; fall back to the historical 40.
+      const mins = tx.description?.match(/\((\d+)\s*min\)/i)?.[1] ?? '40';
+      badges.push({ label: `+${mins} MIN`, color: '#6EC6FF', bg: '#6EC6FF22' });
     } else if (tx.multiplier > 1) {
       const label = `×${tx.multiplier % 1 === 0 ? tx.multiplier.toFixed(0) : tx.multiplier.toFixed(1)}`;
       badges.push({ label, color: ORANGE, bg: ORANGE + '22' });
@@ -190,24 +222,38 @@ function TxBadges({ tx }: { tx: PointTransaction }) {
   );
 }
 
+/**
+ * A row a member can re-share as a session card: it must trace back to an
+ * actual session and represent points won, not spends, penalties, adjustments
+ * or the 0-pt capped streak rows.
+ */
+function isShareable(tx: PointTransaction): boolean {
+  return tx.session_id !== null && tx.amount > 0 && (tx.type === 'earn' || tx.type === 'bonus');
+}
+
 function TransactionRow({
   tx,
   isFirst,
   isLast,
+  onShare,
 }: {
   tx: PointTransaction;
   isFirst: boolean;
   isLast: boolean;
+  onShare?: () => void;
 }) {
   const isPositive = tx.amount > 0;
 
   return (
-    <View
-      style={[
+    <Pressable
+      onPress={onShare}
+      disabled={!onShare}
+      style={({ pressed }) => [
         styles.txRow,
         isFirst && styles.txRowFirst,
         isLast && styles.txRowLast,
         !isLast && styles.txRowBorder,
+        pressed && onShare && { opacity: 0.6 },
       ]}
     >
       <TxIcon tx={tx} />
@@ -226,7 +272,55 @@ function TransactionRow({
         </Text>
         <Text style={styles.txUnit}>POWR</Text>
       </View>
-    </View>
+      {onShare && (
+        <Ionicons name="share-social-outline" size={14} color={MUTED} style={styles.txShareHint} />
+      )}
+    </Pressable>
+  );
+}
+
+/** A derived "crossed a level boundary here" line — tappable into a throwback level card. */
+function LevelUpRow({
+  event,
+  isFirst,
+  isLast,
+  onShare,
+}: {
+  event: LevelUpEvent;
+  isFirst: boolean;
+  isLast: boolean;
+  onShare: () => void;
+}) {
+  const name = LEVELS.find((l) => l.level === event.level)?.name ?? '';
+  return (
+    <Pressable
+      onPress={onShare}
+      style={({ pressed }) => [
+        styles.txRow,
+        isFirst && styles.txRowFirst,
+        isLast && styles.txRowLast,
+        !isLast && styles.txRowBorder,
+        pressed && { opacity: 0.6 },
+      ]}
+    >
+      <View style={[styles.txIcon, { backgroundColor: GOLD + '18' }]}>
+        <Ionicons name="trending-up" size={16} color={GOLD} />
+      </View>
+      <View style={styles.txBody}>
+        <View style={styles.txLabelRow}>
+          <Text style={styles.txLabel} numberOfLines={1}>
+            {`Level ${event.level} — ${name}`}
+          </Text>
+          <View style={styles.badgeRow}>
+            <View style={[styles.badge, { backgroundColor: GOLD + '22' }]}>
+              <Text style={[styles.badgeText, { color: GOLD }]}>LEVEL UP</Text>
+            </View>
+          </View>
+        </View>
+        <Text style={styles.txTime}>{formatTime(event.createdAt)}</Text>
+      </View>
+      <Ionicons name="share-social-outline" size={14} color={MUTED} style={styles.txShareHint} />
+    </Pressable>
   );
 }
 
@@ -245,14 +339,13 @@ export default function PointsLedgerScreen() {
   useEffect(() => {
     (async () => {
       try {
-        const [txs, bal, earned] = await Promise.all([
+        const [txs, summary] = await Promise.all([
           fetchTransactionHistory(),
-          fetchBalance(),
-          fetchTotalEarned(),
+          fetchPointsSummary(),
         ]);
         setTransactions(txs);
-        setBalance(bal);
-        setTotalEarned(earned);
+        setBalance(summary.balance);
+        setTotalEarned(summary.totalEarned);
       } catch {
         setError('Could not load history.');
       } finally {
@@ -261,7 +354,10 @@ export default function PointsLedgerScreen() {
     })();
   }, []);
 
-  const sections = useMemo(() => groupByDate(transactions), [transactions]);
+  const sections = useMemo(
+    () => groupByDate(mergeLevelUps(transactions, deriveLevelUps(transactions, totalEarned))),
+    [transactions, totalEarned],
+  );
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
@@ -287,15 +383,40 @@ export default function PointsLedgerScreen() {
       ) : (
         <SectionList
           sections={sections}
-          keyExtractor={(tx) => tx.id}
+          keyExtractor={(item) =>
+            item.kind === 'tx' ? item.tx.id : `levelup-${item.event.level}-${item.event.txId}`
+          }
           renderSectionHeader={({ section }) => <SectionHeader title={section.title} />}
-          renderItem={({ item, index, section }) => (
-            <TransactionRow
-              tx={item}
-              isFirst={index === 0}
-              isLast={index === section.data.length - 1}
-            />
-          )}
+          renderItem={({ item, index, section }) =>
+            item.kind === 'levelup' ? (
+              <LevelUpRow
+                event={item.event}
+                isFirst={index === 0}
+                isLast={index === section.data.length - 1}
+                onShare={() =>
+                  router.push({
+                    pathname: '/share-stats',
+                    params: { mode: 'level-up', asOf: item.event.createdAt },
+                  })
+                }
+              />
+            ) : (
+              <TransactionRow
+                tx={item.tx}
+                isFirst={index === 0}
+                isLast={index === section.data.length - 1}
+                onShare={
+                  isShareable(item.tx)
+                    ? () =>
+                        router.push({
+                          pathname: '/share-stats',
+                          params: { mode: 'check-in', sessionId: item.tx.session_id!, historical: '1' },
+                        })
+                    : undefined
+                }
+              />
+            )
+          }
           ListHeaderComponent={
             <SummaryCard balance={balance} totalEarned={totalEarned} />
           }
@@ -452,6 +573,9 @@ const styles = StyleSheet.create({
   txRight: {
     alignItems: 'flex-end',
     gap: 1,
+  },
+  txShareHint: {
+    marginLeft: 2,
   },
   txAmount: {
     fontFamily: typography.stat.fontFamily,

@@ -9,7 +9,7 @@
  */
 
 import { Platform } from 'react-native';
-import { supabase } from '@/lib/supabase';
+import { getSessionUser, supabase } from '@/lib/supabase';
 import { ACTIVITIES, type ActivityType } from '@/constants/activities';
 import type { DayHealthSummary } from '@/hooks/useHealthData';
 import { buildStreakFromDates, saveHealthSnapshot } from '@/lib/api/activity';
@@ -76,7 +76,7 @@ export async function syncHistoricalHealthData(
     onDayComplete?: (day: DaySyncResult, index: number) => void,
 ): Promise<OnboardingSyncResult> {
     // Guard: check if already synced
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getSessionUser();
     if (!user) throw new Error('Not authenticated');
     if (user.user_metadata?.initial_health_sync_complete) {
         console.log('[OnboardingSync] Already completed, skipping');
@@ -130,6 +130,7 @@ export async function syncHistoricalHealthData(
                     hr_avg: day.heartRate?.avg ?? null,
                     verification: 'health',
                     trust_score: 0.85,
+                    raw_activity_name: (activity.rawName ?? activity.type)?.trim().slice(0, 80) || null,
                 });
             if (sessErr) {
                 console.warn(`[OnboardingSync] Failed to insert ${mappedType}:`, sessErr.message);

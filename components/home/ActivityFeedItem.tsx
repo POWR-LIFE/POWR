@@ -14,6 +14,8 @@ interface ActivityFeedItemProps {
   /** ISO timestamp string */
   timestamp: string;
   verified?: boolean;
+  /** Display-ready provider activity name (e.g. "Strength Training"), when it adds info. */
+  rawName?: string;
   cardHeight?: number;
 }
 
@@ -24,6 +26,7 @@ export function ActivityFeedItem({
   detail,
   timestamp,
   verified = true,
+  rawName,
   cardHeight,
 }: ActivityFeedItemProps) {
   const config = ACTIVITIES[type];
@@ -45,7 +48,10 @@ export function ActivityFeedItem({
 
       {/* Name + meta */}
       <View style={styles.bottom}>
-        <Text style={styles.activityName} numberOfLines={1}>{config.label}</Text>
+        <Text style={styles.activityName} numberOfLines={1}>
+          {config.label}
+          {rawName ? <Text style={styles.rawName}> · {rawName}</Text> : null}
+        </Text>
         <Text style={styles.meta}>
           {duration}
           <Text style={styles.separator}> · </Text>
@@ -120,6 +126,11 @@ const styles = StyleSheet.create({
     fontFamily: typography.h3.fontFamily,
     fontSize: 13,
     color: colours.textPrimary,
+  },
+  rawName: {
+    fontFamily: typography.caption.fontFamily,
+    fontSize: 11,
+    color: colours.textSecondary,
   },
   meta: {
     fontFamily: typography.caption.fontFamily,

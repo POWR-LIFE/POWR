@@ -1,6 +1,7 @@
 import {
     Activity, Award,
     BarChart3,
+    Bell,
     Building2,
     CalendarDays,
     ChevronLeft, ChevronRight,
@@ -8,8 +9,11 @@ import {
     Inbox,
     LayoutDashboard,
     LogOut,
+    MapPin,
     Megaphone,
     MessageSquare,
+    MousePointerClick,
+    Lock,
     ScrollText,
     Settings,
     Shield,
@@ -23,7 +27,6 @@ import {
 } from 'lucide-react';
 import { createContext, useContext, useEffect, useState } from 'react';
 import { Link, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
-import { initLandingPage } from '../main.js';
 import { supabase } from './lib/supabase';
 import { ToastProvider } from './lib/toast';
 
@@ -33,10 +36,18 @@ import PartnerPortalPromoCodes from './pages/partner/PartnerPromoCodes';
 import PartnerPortalRedemptions from './pages/partner/PartnerRedemptions';
 import PartnerPortalRewards from './pages/partner/PartnerRewards';
 import PartnerPortalFeatured from './pages/partner/PartnerFeatured';
+import PartnerPortalPlacements from './pages/partner/PartnerPlacements';
 import PartnerPortalSettings from './pages/partner/PartnerSettings';
+import PartnerPortalSupport from './pages/partner/PartnerSupport';
+import PartnerIntegrationHub from './pages/partner/PartnerIntegrationHub';
+import PartnerIntegrationApi from './pages/partner/PartnerIntegrationApi';
+import PartnerIntegrationShopify from './pages/partner/PartnerIntegrationShopify';
 import PartnerSetup from './pages/partner/PartnerSetup';
+import { callPartnerApi } from './lib/partnerApi';
+import DeveloperDocs from './pages/DeveloperDocs';
 
 import Analytics from './pages/admin/Analytics';
+import UsageAnalytics from './pages/admin/UsageAnalytics';
 import AthleteApplications from './pages/admin/AthleteApplications';
 import AuditLog from './pages/admin/AuditLog';
 import Broadcast from './pages/admin/Broadcast';
@@ -49,6 +60,7 @@ import PartnerPerformance from './pages/admin/PartnerPerformance';
 import PartnerProfile from './pages/admin/PartnerProfile';
 import RedemptionTracker from './pages/admin/RedemptionTracker';
 import RewardManager from './pages/admin/RewardManager';
+import RewardPlacements from './pages/admin/RewardPlacements';
 import RewardSubmissions from './pages/admin/RewardSubmissions';
 import SessionReview from './pages/admin/SessionReview';
 import SupportTickets from './pages/admin/SupportTickets';
@@ -56,7 +68,10 @@ import SystemConfig from './pages/admin/SystemConfig';
 import UserManager from './pages/admin/UserManager';
 import UserProfile from './pages/admin/UserProfile';
 import WeeklyChallenges from './pages/admin/WeeklyChallenges';
+import NotificationManager from './pages/admin/NotificationManager';
+import VaultManager from './pages/admin/VaultManager';
 import AthleteSignup from './pages/AthleteSignup';
+import LandingV2 from './landing/LandingV2';
 import CookiePolicy from './pages/CookiePolicy';
 import DeleteAccount from './pages/DeleteAccount';
 import PartnerRewardSubmit from './pages/PartnerRewardSubmit';
@@ -65,7 +80,7 @@ import SupportPage from './pages/SupportPage';
 import TermsOfService from './pages/TermsOfService';
 
 // --- Auth Context ---
-const AuthContext = createContext({ user: null, isAdmin: false, isPartner: false, partnerData: null, loading: true });
+const AuthContext = createContext({ user: null, isAdmin: false, isPartner: false, partnerData: null, placementsEnabled: false, deliveryMethod: undefined, loading: true });
 
 const ACTING_BRAND_KEY = 'powr_acting_brand';
 
@@ -93,6 +108,10 @@ export const AuthProvider = ({ children }) => {
     const [isPartner, setIsPartner] = useState(false);
     const [partnerData, setPartnerData] = useState(null);
     const [actingPartner, setActingPartnerState] = useState(null);
+    const [placementsEnabled, setPlacementsEnabled] = useState(false);
+    // undefined = unknown/loading, null = brand hasn't chosen a delivery
+    // method yet (drives the first-run chooser), else 'api'|'shopify'|'manual'
+    const [deliveryMethod, setDeliveryMethodState] = useState(undefined);
     const [loading, setLoading] = useState(true);
 
     // Admin-only: preview the portal as any reward brand
@@ -135,6 +154,22 @@ export const AuthProvider = ({ children }) => {
         }
     };
 
+    // Self-serve reward placements are gated behind this flag (default off).
+    // system_config SELECT is admin-only except this one key (see migration
+    // 20260704000006). Fails safe to disabled; admins see the page regardless.
+    const fetchPlacementsFlag = async () => {
+        try {
+            const { data } = await supabase
+                .from('system_config')
+                .select('value')
+                .eq('key', 'partner_placements_enabled')
+                .maybeSingle();
+            return data?.value === 'true';
+        } catch {
+            return false;
+        }
+    };
+
     useEffect(() => {
         let mounted = true;
         let lastUserId = null;
@@ -145,9 +180,10 @@ export const AuthProvider = ({ children }) => {
                 if (session.user.id === lastUserId) return;
                 lastUserId = session.user.id;
                 setUser(session.user);
-                const [adminStatus, partnerResult] = await Promise.all([
+                const [adminStatus, partnerResult, flagOn] = await Promise.all([
                     checkAdmin(session.user.id),
                     checkPartner(session.user.id),
+                    fetchPlacementsFlag(),
                 ]);
                 // Restore admin preview selection (admins with no brand link)
                 let restoredActing = null;
@@ -160,6 +196,7 @@ export const AuthProvider = ({ children }) => {
                     setIsPartner(!!partnerResult);
                     setPartnerData(partnerResult);
                     setActingPartnerState(restoredActing);
+                    setPlacementsEnabled(flagOn);
                     setLoading(false);
                 }
             } else {
@@ -169,6 +206,7 @@ export const AuthProvider = ({ children }) => {
                 setIsPartner(false);
                 setPartnerData(null);
                 setActingPartnerState(null);
+                setPlacementsEnabled(false);
                 if (mounted) setLoading(false);
             }
         };
@@ -185,12 +223,29 @@ export const AuthProvider = ({ children }) => {
         return () => { mounted = false; authListener.subscription.unsubscribe(); };
     }, []);
 
+    // Resolve the (acting) brand's delivery method — the server infers and
+    // persists one for brands that integrated before the chooser existed, so
+    // established partners never see the first-run screen.
+    const effectiveBrandName = (partnerData ?? actingPartner)?.brand_name ?? null;
+    useEffect(() => {
+        setDeliveryMethodState(undefined);
+        if (!effectiveBrandName) return;
+        let cancelled = false;
+        callPartnerApi('resolve_delivery_method', effectiveBrandName)
+            .then(res => { if (!cancelled) setDeliveryMethodState(res.method ?? null); })
+            .catch(() => { /* stays undefined — never force the chooser on a network blip */ });
+        return () => { cancelled = true; };
+    }, [effectiveBrandName]);
+
     return (
         <AuthContext.Provider value={{
             user, isAdmin, isPartner,
             partnerData: partnerData ?? actingPartner,
             isActingPartner: !partnerData && !!actingPartner,
             setActingPartner,
+            placementsEnabled,
+            deliveryMethod,
+            updateDeliveryMethod: setDeliveryMethodState,
             loading,
         }}>
             {children}
@@ -217,11 +272,14 @@ const PATH_LABELS = {
     rewards: 'Rewards',
     'reward-submissions': 'Submissions',
     'gym-requests': 'Gym Requests',
+    placements: 'Placements',
     challenges: 'Challenges',
     users: 'Users',
     athletes: 'Athletes',
     profile: 'Profile',
     analytics: 'Analytics',
+    usage: 'Usage',
+    vault: 'Vault',
     sessions: 'Sessions',
     performance: 'Performance',
     redemptions: 'Redemptions',
@@ -229,18 +287,8 @@ const PATH_LABELS = {
     support: 'Support Tickets',
     broadcast: 'Broadcast',
     campaigns: 'Campaigns',
+    notifications: 'Notifications',
     config: 'Config',
-};
-
-// --- Landing Page ---
-const LandingPage = () => {
-    useEffect(() => {
-        const landing = document.getElementById('landing-content');
-        if (landing) landing.style.display = 'block';
-        initLandingPage();
-        return () => { if (landing) landing.style.display = 'none'; };
-    }, []);
-    return null;
 };
 
 // --- Partner Login ---
@@ -379,6 +427,15 @@ const ProtectedRoute = ({ children }) => {
 
     if (!user || !isAdmin) return <Navigate to="/admin/login" state={{ from: location }} replace />;
     return children;
+};
+
+// The old single Developers page split into /partner/integration/*. Shopify's
+// OAuth callback used to land on it with ?shopify=..., so keep the query and
+// send those straight to the Shopify page.
+const LegacyDevelopersRedirect = () => {
+    const location = useLocation();
+    const target = location.search.includes('shopify=') ? '/partner/integration/shopify' : '/partner/integration';
+    return <Navigate to={{ pathname: target, search: location.search }} replace />;
 };
 
 // --- Partner Protected Route ---
@@ -564,10 +621,12 @@ const AdminHome = () => {
         { label: 'Featured',    path: '/admin/featured',           icon: Star,          color: '#AAAAAA' },
         { label: 'Challenges',  path: '/admin/challenges',         icon: Target,        color: '#AAAAAA' },
         { label: 'Analytics',   path: '/admin/analytics',          icon: BarChart3,     color: '#E8D200' },
+        { label: 'Usage',       path: '/admin/usage',              icon: MousePointerClick, color: '#F97316' },
         { label: 'Sessions',    path: '/admin/sessions',           icon: Shield,        color: '#F43F5E' },
         { label: 'Performance', path: '/admin/performance',        icon: TrendingUp,    color: '#F97316' },
         { label: 'Redemptions', path: '/admin/redemptions',        icon: Gift,          color: '#8B5CF6' },
         { label: 'Support',     path: '/admin/support',            icon: MessageSquare, color: '#0EA5E9' },
+        { label: 'Vault',       path: '/admin/vault',              icon: Lock,          color: '#E8D200' },
         { label: 'Audit Log',   path: '/admin/audit',              icon: ScrollText,    color: '#AAAAAA' },
         { label: 'Config',      path: '/admin/config',             icon: Settings,      color: '#AAAAAA' },
     ];
@@ -813,6 +872,7 @@ const AdminLayout = ({ children }) => {
         { label: 'Rewards',     path: '/admin/rewards',            icon: Award           },
         { label: 'Submissions', path: '/admin/reward-submissions', icon: Inbox,          badge: pendingSubmissions },
         { label: 'Featured',    path: '/admin/featured',           icon: Star            },
+        { label: 'Placements',  path: '/admin/placements',         icon: MapPin          },
         { label: 'Challenges',  path: '/admin/challenges',         icon: Target          },
         { label: 'Users',       path: '/admin/users',              icon: Users           },
         { label: 'Athletes',    path: '/admin/athletes',           icon: Star,           badge: pendingAthletes },
@@ -820,14 +880,17 @@ const AdminLayout = ({ children }) => {
 
     const opsItems = [
         { label: 'Analytics',   path: '/admin/analytics',   icon: BarChart3     },
+        { label: 'Usage',       path: '/admin/usage',       icon: MousePointerClick },
         { label: 'Sessions',    path: '/admin/sessions',    icon: Shield        },
         { label: 'Performance', path: '/admin/performance', icon: Activity      },
         { label: 'Redemptions', path: '/admin/redemptions', icon: Gift          },
         { label: 'Audit Log',   path: '/admin/audit',       icon: ScrollText    },
         { label: 'Support',     path: '/admin/support',     icon: MessageSquare },
-        { label: 'Broadcast',   path: '/admin/broadcast',   icon: Megaphone     },
-        { label: 'Campaigns',   path: '/admin/campaigns',   icon: CalendarDays  },
-        { label: 'Config',      path: '/admin/config',      icon: Settings      },
+        { label: 'Broadcast',      path: '/admin/broadcast',      icon: Megaphone  },
+        { label: 'Campaigns',      path: '/admin/campaigns',      icon: CalendarDays },
+        { label: 'Notifications',  path: '/admin/notifications',  icon: Bell         },
+        { label: 'Vault',          path: '/admin/vault',          icon: Lock         },
+        { label: 'Config',         path: '/admin/config',         icon: Settings     },
     ];
 
     const segment = location.pathname.split('/')[2] || 'admin';
@@ -958,18 +1021,13 @@ const AdminLayout = ({ children }) => {
 
 // --- App Root ---
 export default function App() {
-    const location = useLocation();
-
-    useEffect(() => {
-        const landing = document.getElementById('landing-content');
-        if (landing) landing.style.display = location.pathname === '/' ? 'block' : 'none';
-    }, [location]);
-
     return (
         <ToastProvider>
             <AuthProvider>
                 <Routes>
-                    <Route path="/" element={<LandingPage />} />
+                    <Route path="/" element={<LandingV2 />} />
+                    {/* The showcase shipped at /v2 before it became the homepage — keep old links working */}
+                    <Route path="/v2" element={<Navigate to="/" replace />} />
                     <Route path="/privacy" element={<PrivacyPolicy />} />
                     <Route path="/terms" element={<TermsOfService />} />
                     <Route path="/cookies" element={<CookiePolicy />} />
@@ -983,8 +1041,15 @@ export default function App() {
                     <Route path="/partner/rewards" element={<PartnerProtectedRoute><PartnerLayout><PartnerPortalRewards /></PartnerLayout></PartnerProtectedRoute>} />
                     <Route path="/partner/promo-codes" element={<PartnerProtectedRoute><PartnerLayout><PartnerPortalPromoCodes /></PartnerLayout></PartnerProtectedRoute>} />
                     <Route path="/partner/featured" element={<PartnerProtectedRoute><PartnerLayout><PartnerPortalFeatured /></PartnerLayout></PartnerProtectedRoute>} />
+                    <Route path="/partner/placements" element={<PartnerProtectedRoute><PartnerLayout><PartnerPortalPlacements /></PartnerLayout></PartnerProtectedRoute>} />
                     <Route path="/partner/redemptions" element={<PartnerProtectedRoute><PartnerLayout><PartnerPortalRedemptions /></PartnerLayout></PartnerProtectedRoute>} />
                     <Route path="/partner/settings" element={<PartnerProtectedRoute><PartnerLayout><PartnerPortalSettings /></PartnerLayout></PartnerProtectedRoute>} />
+                    <Route path="/partner/support" element={<PartnerProtectedRoute><PartnerLayout><PartnerPortalSupport /></PartnerLayout></PartnerProtectedRoute>} />
+                    <Route path="/partner/integration" element={<PartnerProtectedRoute><PartnerLayout><PartnerIntegrationHub /></PartnerLayout></PartnerProtectedRoute>} />
+                    <Route path="/partner/integration/api" element={<PartnerProtectedRoute><PartnerLayout><PartnerIntegrationApi /></PartnerLayout></PartnerProtectedRoute>} />
+                    <Route path="/partner/integration/shopify" element={<PartnerProtectedRoute><PartnerLayout><PartnerIntegrationShopify /></PartnerLayout></PartnerProtectedRoute>} />
+                    <Route path="/partner/developers" element={<LegacyDevelopersRedirect />} />
+                    <Route path="/developers" element={<DeveloperDocs />} />
                     <Route path="/admin/login" element={<AdminLogin />} />
                     <Route path="/admin" element={<ProtectedRoute><AdminLayout><AdminHome /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/partners" element={<ProtectedRoute><AdminLayout><PartnerManager /></AdminLayout></ProtectedRoute>} />
@@ -992,20 +1057,24 @@ export default function App() {
                     <Route path="/admin/rewards" element={<ProtectedRoute><AdminLayout><RewardManager /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/reward-submissions" element={<ProtectedRoute><AdminLayout><RewardSubmissions /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/featured" element={<ProtectedRoute><AdminLayout><FeaturedSchedule /></AdminLayout></ProtectedRoute>} />
+                    <Route path="/admin/placements" element={<ProtectedRoute><AdminLayout><RewardPlacements /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/challenges" element={<ProtectedRoute><AdminLayout><WeeklyChallenges /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/users" element={<ProtectedRoute><AdminLayout><UserManager /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/users/:userId" element={<ProtectedRoute><AdminLayout><UserProfile /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/partners/:partnerId" element={<ProtectedRoute><AdminLayout><PartnerProfile /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/analytics" element={<ProtectedRoute><AdminLayout><Analytics /></AdminLayout></ProtectedRoute>} />
+                    <Route path="/admin/usage" element={<ProtectedRoute><AdminLayout><UsageAnalytics /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/sessions" element={<ProtectedRoute><AdminLayout><SessionReview /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/performance" element={<ProtectedRoute><AdminLayout><PartnerPerformance /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/performance/:partnerId" element={<ProtectedRoute><AdminLayout><GymDetail /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/redemptions" element={<ProtectedRoute><AdminLayout><RedemptionTracker /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/audit" element={<ProtectedRoute><AdminLayout><AuditLog /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/config" element={<ProtectedRoute><AdminLayout><SystemConfig /></AdminLayout></ProtectedRoute>} />
+                    <Route path="/admin/vault" element={<ProtectedRoute><AdminLayout><VaultManager /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/support" element={<ProtectedRoute><AdminLayout><SupportTickets /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/broadcast" element={<ProtectedRoute><AdminLayout><Broadcast /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/campaigns" element={<ProtectedRoute><AdminLayout><Campaigns /></AdminLayout></ProtectedRoute>} />
+                    <Route path="/admin/notifications" element={<ProtectedRoute><AdminLayout><NotificationManager /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/athletes" element={<ProtectedRoute><AdminLayout><AthleteApplications /></AdminLayout></ProtectedRoute>} />
                     <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>

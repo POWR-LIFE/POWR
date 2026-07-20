@@ -2,14 +2,20 @@ import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { TimeStepper } from '@/components/progress/TimeStepper';
 import { type useWalkingProgress } from '@/hooks/useWalkingProgress';
 import {
     fetchMonthlyActivityData,
     fetchRecentWalkingHistory,
+    fetchTodayActivityDetail,
+    fetchWeekActivityData,
     fetchWeeklyStepsPerDay,
     type DailyWalkingHistory,
     type MonthlyActivityData,
+    type TodayActivityDetail,
+    type WeekActivityData,
 } from '@/lib/api/activity';
+import { dayAnchor, monthAnchorEnd, weekAnchorMonday } from '@/lib/progressLookback';
 
 // ─── Design tokens (match progress.tsx) ──────────────────────────────────────
 
@@ -58,43 +64,98 @@ function formatSteps(steps: number): string {
   return steps >= 1000 ? `${(steps / 1000).toFixed(1)}k` : String(steps);
 }
 
+// ─── Health-access hint ──────────────────────────────────────────────────────
+// The one-line insight under today's steps. When health access is missing it
+// becomes a tappable re-prime: "connected" in our records doesn't guarantee the
+// OS grant still exists (Health Connect toggles can be off after a reinstall),
+// so the fix must be one tap away from where the gap is noticed.
+
+function HealthAccessHint({
+  walking, steps, remaining,
+}: {
+  walking: ReturnType<typeof useWalkingProgress>;
+  steps: number;
+  remaining: number;
+}) {
+  if (!walking.isAuthorized) {
+    return (
+      <Pressable
+        style={styles.insightRow}
+        disabled={walking.requesting}
+        onPress={() => walking.requestPermissions().then(ok => { if (ok) walking.refresh(); })}
+      >
+        <Ionicons name="alert-circle" size={12} color={GOLD} />
+        <Text style={[styles.insightText, styles.insightAction]}>
+          {walking.requesting ? 'Requesting Health access…' : 'Enable Health access to track steps'}
+        </Text>
+      </Pressable>
+    );
+  }
+  return (
+    <View style={styles.insightRow}>
+      <Ionicons name={steps > 5000 ? 'trending-up' : 'footsteps'} size={12} color={GREEN} />
+      <Text style={styles.insightText}>
+        {steps > 0
+          ? `${remaining.toLocaleString()} steps to today's goal`
+          : "Start moving to track today's steps"}
+      </Text>
+    </View>
+  );
+}
+
 // ─── Day View ────────────────────────────────────────────────────────────────
 
-function MovementDayView({ walking }: { walking: ReturnType<typeof useWalkingProgress> }) {
-  const todaySteps = walking.isAuthorized ? (walking.stepsToday ?? 0) : 0;
-  const todayPct = Math.min(todaySteps / 10000, 1);
-  const remaining = Math.max(0, 10000 - todaySteps);
+function MovementDayView({ walking, offset }: { walking: ReturnType<typeof useWalkingProgress>; offset: number }) {
+  const isToday = offset === 0;
+  const [pastDay, setPastDay] = useState<TodayActivityDetail | null>(null);
+
+  useEffect(() => {
+    if (offset === 0) { setPastDay(null); return; }
+    let cancelled = false;
+    fetchTodayActivityDetail('walking', dayAnchor(offset))
+      .then(r => { if (!cancelled) setPastDay(r); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [offset]);
+
+  // stepsToday already falls back to the day's synced session (Terra top-up /
+  // earlier sync) when the live health read is unavailable — show it even when
+  // health access is currently unauthorized.
+  const daySteps = isToday ? (walking.stepsToday ?? 0) : (pastDay?.steps ?? 0);
+  const dayPoints = isToday ? walking.pointsEarned : (pastDay?.totalPoints ?? 0);
+  const dayPct = Math.min(daySteps / 10000, 1);
+  const remaining = Math.max(0, 10000 - daySteps);
 
   const [history, setHistory] = useState<DailyWalkingHistory[]>([]);
 
   useEffect(() => {
-    fetchRecentWalkingHistory(5).then(setHistory).catch(() => {});
-  }, []);
+    fetchRecentWalkingHistory(5, offset === 0 ? undefined : dayAnchor(offset)).then(setHistory).catch(() => {});
+  }, [offset]);
 
   return (
     <View style={styles.tabPanel}>
       <View style={styles.bigMetricRow}>
         <View style={styles.bigMetric}>
-          <Text style={styles.bigMetricSup}>TODAY'S STEPS</Text>
+          <Text style={styles.bigMetricSup}>{isToday ? "TODAY'S STEPS" : 'STEPS'}</Text>
           <Text style={[styles.bigMetricVal, { color: GREEN }]}>
-            {walking.isAuthorized && todaySteps > 0 ? todaySteps.toLocaleString() : '—'}
+            {daySteps > 0 ? daySteps.toLocaleString() : '—'}
           </Text>
           <Text style={styles.bigMetricMax}>/ 10,000 goal</Text>
           <View style={styles.metricBar}>
-            <View style={[styles.metricBarFill, { width: `${Math.round(todayPct * 100)}%` as any, backgroundColor: GREEN }]} />
+            <View style={[styles.metricBarFill, { width: `${Math.round(dayPct * 100)}%` as any, backgroundColor: GREEN }]} />
           </View>
         </View>
         <View style={styles.bigMetricDivider} />
         <View style={styles.bigMetric}>
           <Text style={styles.bigMetricSup}>POWR EARNED</Text>
           <Text style={[styles.bigMetricVal, { color: GOLD }]}>
-            {walking.pointsEarned > 0 ? walking.pointsEarned : '—'}
+            {dayPoints > 0 ? dayPoints : '—'}
           </Text>
-          <Text style={styles.bigMetricMax}>today</Text>
+          <Text style={styles.bigMetricMax}>{isToday ? 'today' : 'this day'}</Text>
         </View>
       </View>
 
-      {walking.nextThreshold && (
+      {isToday && walking.nextThreshold && (
         <>
           <View style={styles.tabSep} />
           <View style={styles.nextTierRow}>
@@ -106,21 +167,14 @@ function MovementDayView({ walking }: { walking: ReturnType<typeof useWalkingPro
         </>
       )}
 
-      <View style={styles.insightRow}>
-        <Ionicons name={todaySteps > 5000 ? 'trending-up' : 'footsteps'} size={12} color={GREEN} />
-        <Text style={styles.insightText}>
-          {walking.isAuthorized
-            ? todaySteps > 0
-              ? `${remaining.toLocaleString()} steps to today's goal`
-              : "Start moving to track today's steps"
-            : 'Enable Health access to track steps'}
-        </Text>
-      </View>
+      {isToday && (
+        <HealthAccessHint walking={walking} steps={daySteps} remaining={remaining} />
+      )}
 
       {history.length > 0 && (
         <>
           <View style={styles.tabSep} />
-          <Text style={styles.tabSubLabel}>PAST 5 DAYS</Text>
+          <Text style={styles.tabSubLabel}>{isToday ? 'PAST 5 DAYS' : 'PREVIOUS DAYS'}</Text>
           {history.map((day) => {
             const d = new Date(day.date + 'T00:00:00');
             const dayName = d.toLocaleDateString('en-GB', { weekday: 'short' });
@@ -153,28 +207,43 @@ function MovementDayView({ walking }: { walking: ReturnType<typeof useWalkingPro
 // ─── Week View ───────────────────────────────────────────────────────────────
 
 function MovementWeekView({
-  walking, totalSteps, stepsF, weekActiveDays,
+  walking, totalSteps, stepsF, weekActiveDays, offset,
 }: {
   walking: ReturnType<typeof useWalkingProgress>;
   totalSteps: number;
   stepsF: string;
   weekActiveDays: boolean[];
+  offset: number;
 }) {
-  const todaySteps = walking.isAuthorized ? (walking.stepsToday ?? 0) : 0;
+  const isCurrent  = offset === 0;
+  const todaySteps = walking.stepsToday ?? 0;
   const todayPct   = Math.min(todaySteps / 10000, 1);
-  const weeklyPct  = Math.min(totalSteps / 70000, 1);
   const remaining  = Math.max(0, 10000 - todaySteps);
 
   const [weekSteps, setWeekSteps] = useState<number[]>([0, 0, 0, 0, 0, 0, 0]);
+  const [pastWeek, setPastWeek] = useState<WeekActivityData | null>(null);
 
   useEffect(() => {
-    fetchWeeklyStepsPerDay().then(setWeekSteps).catch(() => {});
-  }, []);
+    let cancelled = false;
+    setWeekSteps([0, 0, 0, 0, 0, 0, 0]);
+    setPastWeek(null);
+    if (offset === 0) {
+      fetchWeeklyStepsPerDay().then(s => { if (!cancelled) setWeekSteps(s); }).catch(() => {});
+    } else {
+      fetchWeekActivityData('walking', weekAnchorMonday(offset))
+        .then(d => { if (!cancelled) { setWeekSteps(d.stepsPerDay); setPastWeek(d); } })
+        .catch(() => {});
+    }
+    return () => { cancelled = true; };
+  }, [offset]);
 
-  // Sync today's live step count into the fetched array
+  // Sync today's live step count into the fetched array (current week only)
   const displaySteps = weekSteps.map((s, i) =>
-    i === TODAY_INDEX ? Math.max(s, todaySteps) : s
+    isCurrent && i === TODAY_INDEX ? Math.max(s, todaySteps) : s
   );
+
+  const weekTotal = isCurrent ? totalSteps : displaySteps.reduce((sum, s) => sum + s, 0);
+  const weeklyPct = Math.min(weekTotal / 70000, 1);
 
   const maxSteps = Math.max(...displaySteps, 1);
   const bestIdx  = displaySteps.indexOf(Math.max(...displaySteps));
@@ -183,20 +252,32 @@ function MovementWeekView({
   return (
     <View style={styles.tabPanel}>
       <View style={styles.bigMetricRow}>
-        <View style={styles.bigMetric}>
-          <Text style={styles.bigMetricSup}>TODAY</Text>
-          <Text style={[styles.bigMetricVal, { color: GREEN }]}>
-            {walking.isAuthorized && todaySteps > 0 ? todaySteps.toLocaleString() : '—'}
-          </Text>
-          <Text style={styles.bigMetricMax}>/ 10,000 steps</Text>
-          <View style={styles.metricBar}>
-            <View style={[styles.metricBarFill, { width: `${Math.round(todayPct * 100)}%` as any, backgroundColor: GREEN }]} />
+        {isCurrent ? (
+          <View style={styles.bigMetric}>
+            <Text style={styles.bigMetricSup}>TODAY</Text>
+            <Text style={[styles.bigMetricVal, { color: GREEN }]}>
+              {todaySteps > 0 ? todaySteps.toLocaleString() : '—'}
+            </Text>
+            <Text style={styles.bigMetricMax}>/ 10,000 steps</Text>
+            <View style={styles.metricBar}>
+              <View style={[styles.metricBarFill, { width: `${Math.round(todayPct * 100)}%` as any, backgroundColor: GREEN }]} />
+            </View>
           </View>
-        </View>
+        ) : (
+          <View style={styles.bigMetric}>
+            <Text style={styles.bigMetricSup}>POWR EARNED</Text>
+            <Text style={[styles.bigMetricVal, { color: GOLD }]}>
+              {(pastWeek?.points ?? 0) > 0 ? pastWeek!.points : '—'}
+            </Text>
+            <Text style={styles.bigMetricMax}>from that week</Text>
+          </View>
+        )}
         <View style={styles.bigMetricDivider} />
         <View style={styles.bigMetric}>
-          <Text style={styles.bigMetricSup}>THIS WEEK</Text>
-          <Text style={[styles.bigMetricVal, { color: GREEN }]}>{stepsF}</Text>
+          <Text style={styles.bigMetricSup}>{isCurrent ? 'THIS WEEK' : 'WEEK TOTAL'}</Text>
+          <Text style={[styles.bigMetricVal, { color: GREEN }]}>
+            {isCurrent ? stepsF : weekTotal > 0 ? formatSteps(weekTotal) : '—'}
+          </Text>
           <Text style={styles.bigMetricMax}>/ 70k goal</Text>
           <View style={styles.metricBar}>
             <View style={[styles.metricBarFill, { width: `${Math.round(weeklyPct * 100)}%` as any, backgroundColor: GREEN }]} />
@@ -206,13 +287,13 @@ function MovementWeekView({
 
       <View style={styles.tabSep} />
 
-      <Text style={styles.tabSubLabel}>THIS WEEK</Text>
+      <Text style={styles.tabSubLabel}>{isCurrent ? 'THIS WEEK' : 'DAY BY DAY'}</Text>
       <View style={styles.weekBarChart}>
         {DAY_LABELS.map((day, i) => {
           const steps   = displaySteps[i];
-          const isToday = i === TODAY_INDEX;
+          const isToday = isCurrent && i === TODAY_INDEX;
           const isBest  = hasBest && i === bestIdx;
-          const isFuture = i > TODAY_INDEX;
+          const isFuture = isCurrent && i > TODAY_INDEX;
           const barPct  = isFuture ? 0 : Math.max(steps / maxSteps, steps > 0 ? 0.04 : 0);
           const barColor = isBest ? GOLD : isToday ? GREEN : `${GREEN}80`;
           return (
@@ -247,16 +328,9 @@ function MovementWeekView({
         </View>
       )}
 
-      <View style={styles.insightRow}>
-        <Ionicons name={todaySteps > 5000 ? 'trending-up' : 'footsteps'} size={12} color={GREEN} />
-        <Text style={styles.insightText}>
-          {walking.isAuthorized
-            ? todaySteps > 0
-              ? `${remaining.toLocaleString()} steps to today's goal`
-              : "Start moving to track today's steps"
-            : 'Enable Health access to track steps'}
-        </Text>
-      </View>
+      {isCurrent && (
+        <HealthAccessHint walking={walking} steps={todaySteps} remaining={remaining} />
+      )}
     </View>
   );
 }
@@ -310,9 +384,6 @@ function MovementMonthView({ data }: { data: MonthlyActivityData | null }) {
   const gridStart = new Date(firstDate);
   gridStart.setDate(gridStart.getDate() + mondayOffset);
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
   const lookup = new Map<string, number>();
   for (const e of data.entries) lookup.set(e.date, e.steps ?? 0);
 
@@ -320,7 +391,7 @@ function MovementMonthView({ data }: { data: MonthlyActivityData | null }) {
   let cursor = new Date(gridStart);
   const lastEntry = new Date(data.entries[data.entries.length - 1].date + 'T00:00:00');
 
-  while (cursor <= lastEntry || cursor <= today) {
+  while (cursor <= lastEntry) {
     const row: { date: string; steps: number; inRange: boolean }[] = [];
     for (let col = 0; col < 7; col++) {
       const dateKey = cursor.toISOString().split('T')[0];
@@ -403,6 +474,8 @@ export function MovementTab({
   weekActiveDays,
   period,
   onPeriodChange,
+  offset,
+  onOffsetChange,
 }: {
   walking: ReturnType<typeof useWalkingProgress>;
   totalSteps: number;
@@ -410,9 +483,17 @@ export function MovementTab({
   weekActiveDays: boolean[];
   period: Period;
   onPeriodChange: (p: Period) => void;
+  offset: number;
+  onOffsetChange: (offset: number) => void;
 }) {
   const [monthData, setMonthData] = useState<MonthlyActivityData | null>(null);
   const [monthLoaded, setMonthLoaded] = useState(false);
+
+  // Reset loaded state when the lookback offset changes
+  useEffect(() => {
+    setMonthLoaded(false);
+    setMonthData(null);
+  }, [offset]);
 
   // Load month data reactively
   useEffect(() => {
@@ -421,7 +502,7 @@ export function MovementTab({
 
     (async () => {
       try {
-        const result = await fetchMonthlyActivityData('walking');
+        const result = await fetchMonthlyActivityData('walking', offset === 0 ? undefined : monthAnchorEnd(offset));
         if (!cancelled) {
           setMonthData(result);
           setMonthLoaded(true);
@@ -436,14 +517,15 @@ export function MovementTab({
     })();
 
     return () => { cancelled = true; };
-  }, [period, monthLoaded]);
+  }, [period, monthLoaded, offset]);
 
   return (
     <View style={styles.tabPanel}>
       <PillToggle value={period} onChange={onPeriodChange} />
+      <TimeStepper period={period} offset={offset} onOffsetChange={onOffsetChange} />
 
       {period === 'D' && (
-        <MovementDayView walking={walking} />
+        <MovementDayView walking={walking} offset={offset} />
       )}
       {period === 'W' && (
         <MovementWeekView
@@ -451,6 +533,7 @@ export function MovementTab({
           totalSteps={totalSteps}
           stepsF={stepsF}
           weekActiveDays={weekActiveDays}
+          offset={offset}
         />
       )}
       {period === 'M' && (
@@ -588,6 +671,7 @@ const styles = StyleSheet.create({
   // Insight
   insightRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
   insightText: { fontSize: 12, fontWeight: '300', color: MUTED, flex: 1 },
+  insightAction: { color: GOLD, fontWeight: '500', textDecorationLine: 'underline' },
 
   // Week bar chart
   weekBarChart: {

@@ -262,6 +262,53 @@ export function evaluateChallenge(rule: any, ctx: EvalContext): { progress: numb
   }
 }
 
+/**
+ * "So far today" momentum — the partial figure that `evaluateChallenge` throws
+ * away because it only counts *completed* days/sessions. For a "10k steps, 4
+ * days" goal, progress is 0 days until you cross 10k, so the card reads 0/4 even
+ * mid-walk; this surfaces "today: 2,567 / 10,000" so momentum is visible.
+ *
+ * Only meaningful for goals with a partial-in-progress notion:
+ *   - daily_metric_days / step_window: today's best figure vs. the daily bar
+ *   - weekly_sum / weekend_sum: the running total (already `progress`) vs. target
+ * Everything else (distinct_days, count_* — a session either happened or didn't)
+ * has no partial, so returns null and the UI shows no momentum line.
+ *
+ * `current` is capped at `target` (once you hit the bar the day *counts*, so the
+ * momentum line is done — the day-count is what advances from there).
+ */
+export function evaluateMomentum(
+  rule: any,
+  ctx: EvalContext,
+  utcOffsetMinutes: number,
+): { current: number; target: number; unit: string } | null {
+  const todayKey = localParts(new Date().toISOString(), utcOffsetMinutes).dateKey;
+  switch (rule?.kind) {
+    case 'daily_metric_days': {
+      const today = ctx.dailySteps.get(todayKey)?.steps ?? 0;
+      return { current: Math.min(today, rule.threshold), target: rule.threshold, unit: 'steps' };
+    }
+    case 'step_window': {
+      const today = (ctx.stepWindows.get(todayKey) as any)?.[rule.window] ?? 0;
+      return { current: Math.min(today, rule.threshold), target: rule.threshold, unit: 'steps' };
+    }
+    case 'weekly_sum': {
+      let sum = 0;
+      if (rule.metric === 'steps') { for (const { steps } of ctx.dailySteps.values()) sum += steps; }
+      else { for (const s of ctx.sessions) if (s.category === rule.category) sum += s.distance_m; }
+      const unit = rule.metric === 'steps' ? 'steps' : 'distance_m';
+      return { current: Math.min(sum, rule.target), target: rule.target, unit };
+    }
+    case 'weekend_sum': {
+      let sum = 0;
+      for (const { steps, dow } of ctx.dailySteps.values()) if (dow >= 5) sum += steps;
+      return { current: Math.min(sum, rule.target), target: rule.target, unit: 'steps' };
+    }
+    default:
+      return null;
+  }
+}
+
 // ── Week helpers ──────────────────────────────────────────────────────────────
 export function getISOWeek(date: Date): string {
   const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));

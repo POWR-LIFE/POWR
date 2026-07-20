@@ -1,5 +1,8 @@
+import * as FileSystem from 'expo-file-system/legacy';
+
 import type { ActivityType } from '@/constants/activities';
-import { supabase } from '@/lib/supabase';
+import { getLevelInfo } from '@/constants/levels';
+import { getSessionUser, supabase } from '@/lib/supabase';
 
 export interface ShareVenue {
   name: string;
@@ -22,10 +25,13 @@ export interface ShareProfile {
   username: string | null;
   avatarUrl: string | null;
   coverUrl: string | null;
+  referralCode: string | null;
 }
 
 interface BaseShareSummary {
   pointsBalance: number;
+  /** Lifetime points earned — the XP the level ladder is keyed on. */
+  totalEarned: number;
   lifetimeCount: number;
   monthCount: number;
   currentStreak: number;
@@ -44,6 +50,13 @@ export interface CheckInSummary extends BaseShareSummary {
   /** Points earned in this specific session */
   sessionPoints: number;
   venue: ShareVenue | null;
+  /**
+   * A throwback share from points history. Aggregates are anchored to the end
+   * of the session's day rather than now, so the card reads as a snapshot of
+   * that moment — and present-tense panels (streak, affordable reward) are
+   * suppressed because they can't be reconstructed for a past date.
+   */
+  historical: boolean;
 }
 
 export interface StatsSummary extends BaseShareSummary {
@@ -67,12 +80,27 @@ export interface ChallengeShareSummary extends BaseShareSummary, ChallengeShareI
   mode: 'challenge';
 }
 
-export type ShareSummary = CheckInSummary | StatsSummary | ChallengeShareSummary;
+export interface LevelUpSummary extends BaseShareSummary {
+  mode: 'level-up';
+  /**
+   * A throwback share of a past level-up (from the points-history row).
+   * Aggregates are anchored to the crossing moment, so the card shows the
+   * level — and the numbers — as they stood right then. Same suppression
+   * rules as historical check-ins: no live streak, no reward lookup.
+   */
+  historical: boolean;
+}
+
+export type ShareSummary = CheckInSummary | StatsSummary | ChallengeShareSummary | LevelUpSummary;
 
 // ─── Check-in summary (per-session) ────────────────────────────────────────
 
-export async function fetchCheckInSummary(sessionId: string): Promise<CheckInSummary> {
-  const { data: { user } } = await supabase.auth.getUser();
+export async function fetchCheckInSummary(
+  sessionId: string,
+  opts?: { historical?: boolean },
+): Promise<CheckInSummary> {
+  const historical = opts?.historical ?? false;
+  const user = await getSessionUser();
   if (!user) throw new Error('Not authenticated');
 
   const { data: session, error: sErr } = await supabase
@@ -85,7 +113,15 @@ export async function fetchCheckInSummary(sessionId: string): Promise<CheckInSum
   const sessionPoints = ((session as any).point_transactions ?? [])
     .reduce((sum: number, t: { amount: number }) => sum + t.amount, 0);
 
-  const aggregates = await fetchAggregates(user.id, session.type as ActivityType);
+  // Historical shares anchor to the close of the session's day, so the
+  // session's own points (credited after started_at) still count.
+  let asOf: Date | undefined;
+  if (historical) {
+    asOf = new Date(session.started_at);
+    asOf.setHours(23, 59, 59, 999);
+  }
+
+  const aggregates = await fetchAggregates(user.id, session.type as ActivityType, asOf);
 
   // Venue resolution: prefer partner_id column, fall back to raw_gps for older sessions
   let venue: ShareVenue | null = null;
@@ -125,8 +161,9 @@ export async function fetchCheckInSummary(sessionId: string): Promise<CheckInSum
     }
   }
 
-  // Best reward the user can currently redeem with their balance
-  const reward = await fetchHighestAffordableReward(aggregates.pointsBalance);
+  // Best reward the user can currently redeem with their balance. Present-tense
+  // by definition (there is no historical catalog), so throwbacks skip it.
+  const reward = historical ? null : await fetchHighestAffordableReward(aggregates.pointsBalance);
 
   return {
     mode: 'check-in',
@@ -136,7 +173,11 @@ export async function fetchCheckInSummary(sessionId: string): Promise<CheckInSum
     durationMin: Math.round(session.duration_sec / 60),
     sessionPoints,
     venue,
+    historical,
     ...aggregates,
+    // user_streaks only stores the live value — a reconstructed "streak as of
+    // then" would drift from the canonical logic, so throwbacks drop it.
+    ...(historical ? { currentStreak: 0 } : null),
     reward,
   };
 }
@@ -144,7 +185,7 @@ export async function fetchCheckInSummary(sessionId: string): Promise<CheckInSum
 // ─── Stats summary (no specific session — for streak/profile shares) ────────
 
 export async function fetchStatsSummary(): Promise<StatsSummary> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getSessionUser();
   if (!user) throw new Error('Not authenticated');
 
   // Lifetime count = all activity sessions; monthCount likewise
@@ -177,7 +218,7 @@ export async function fetchStatsSummary(): Promise<StatsSummary> {
 export async function fetchChallengeSummary(
   challenge: ChallengeShareInput,
 ): Promise<ChallengeShareSummary> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getSessionUser();
   if (!user) throw new Error('Not authenticated');
 
   const aggregates = await fetchAggregates(user.id, /* type */ null);
@@ -189,10 +230,31 @@ export async function fetchChallengeSummary(
   };
 }
 
+// ─── Level-up summary (the moment a level boundary is crossed) ──────────────
+// The card derives the level itself from totalEarned via getLevelInfo, which
+// at share time already reflects the freshly crossed boundary. For throwbacks,
+// `asOf` is the crossing transaction's timestamp (inclusive), so the as-of
+// totalEarned lands exactly on the level that was reached.
+
+export async function fetchLevelUpSummary(opts?: { asOf?: Date }): Promise<LevelUpSummary> {
+  const user = await getSessionUser();
+  if (!user) throw new Error('Not authenticated');
+
+  const historical = opts?.asOf !== undefined;
+  const aggregates = await fetchAggregates(user.id, /* type */ null, opts?.asOf);
+
+  return {
+    mode: 'level-up',
+    historical,
+    ...aggregates,
+    ...(historical ? { currentStreak: 0 } : null),
+  };
+}
+
 // ─── Auto-select: geofence check-in if recent, else streak ──────────────────
 
 export async function fetchAutoSummary(): Promise<ShareSummary> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getSessionUser();
   if (!user) throw new Error('Not authenticated');
 
   const windowStart = new Date();
@@ -218,16 +280,24 @@ export async function fetchAutoSummary(): Promise<ShareSummary> {
 async function fetchAggregates(
   userId: string,
   type: ActivityType | null,
+  /**
+   * Point-in-time anchor for historical shares. Every date-windowed number
+   * (lifetime, month, week, points) is computed as of this moment instead of
+   * now — so a throwback card shows the stats (and therefore the level) the
+   * member had back then. Omit for live shares.
+   */
+  asOf?: Date,
 ): Promise<BaseShareSummary> {
-  const monthStart = new Date();
+  const anchor = asOf ?? new Date();
+
+  const monthStart = new Date(anchor);
   monthStart.setDate(1);
   monthStart.setHours(0, 0, 0, 0);
 
-  const now = new Date();
-  const dayOfWeek = now.getDay();
+  const dayOfWeek = anchor.getDay();
   const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-  const monday = new Date(now);
-  monday.setDate(now.getDate() + mondayOffset);
+  const monday = new Date(anchor);
+  monday.setDate(anchor.getDate() + mondayOffset);
   monday.setHours(0, 0, 0, 0);
 
   const lifetimeQ = supabase
@@ -235,6 +305,7 @@ async function fetchAggregates(
     .select('id', { count: 'exact', head: true })
     .eq('user_id', userId);
   if (type) lifetimeQ.eq('type', type);
+  if (asOf) lifetimeQ.lte('started_at', asOf.toISOString());
 
   const monthQ = supabase
     .from('activity_sessions')
@@ -242,11 +313,25 @@ async function fetchAggregates(
     .eq('user_id', userId)
     .gte('started_at', monthStart.toISOString());
   if (type) monthQ.eq('type', type);
+  if (asOf) monthQ.lte('started_at', asOf.toISOString());
+
+  const weekQ = supabase
+    .from('activity_sessions')
+    .select('started_at')
+    .eq('user_id', userId)
+    .neq('verification', 'manual')
+    .gte('started_at', monday.toISOString());
+  if (asOf) weekQ.lte('started_at', asOf.toISOString());
+
+  const txQ = supabase
+    .from('point_transactions')
+    .select('amount');
+  if (asOf) txQ.lte('created_at', asOf.toISOString());
 
   const [profileRes, lifetimeRes, monthRes, streakRes, weekRes, balanceRes, authRes] = await Promise.all([
     supabase
       .from('profiles')
-      .select('display_name, username, avatar_url, cover_url')
+      .select('display_name, username, avatar_url, cover_url, referral_code')
       .eq('id', userId)
       .maybeSingle(),
     lifetimeQ,
@@ -256,28 +341,26 @@ async function fetchAggregates(
       .select('current_streak')
       .eq('user_id', userId)
       .maybeSingle(),
-    supabase
-      .from('activity_sessions')
-      .select('started_at')
-      .eq('user_id', userId)
-      .neq('verification', 'manual')
-      .gte('started_at', monday.toISOString()),
-    supabase
-      .from('point_transactions')
-      .select('amount'),
-    supabase.auth.getUser(),
+    weekQ,
+    txQ,
+    getSessionUser(),
   ]);
 
   const profile = profileRes.data;
-  const metaAvatarUrl = (authRes.data.user?.user_metadata?.avatar_url as string | undefined) ?? null;
+  const metaAvatarUrl = (authRes?.user_metadata?.avatar_url as string | undefined) ?? null;
   const weekActiveDays = [false, false, false, false, false, false, false];
   for (const s of (weekRes.data ?? []) as Array<{ started_at: string }>) {
     const d = new Date(s.started_at).getDay();
     weekActiveDays[d === 0 ? 6 : d - 1] = true;
   }
 
+  // Credits only, to match get_my_points_summary.total_earned — spends must not
+  // pull a member back down the level ladder.
+  const transactions = balanceRes.data ?? [];
+
   return {
-    pointsBalance: (balanceRes.data ?? []).reduce((sum, t) => sum + t.amount, 0),
+    pointsBalance: transactions.reduce((sum, t) => sum + t.amount, 0),
+    totalEarned: transactions.reduce((sum, t) => sum + Math.max(t.amount, 0), 0),
     lifetimeCount: lifetimeRes.count ?? 0,
     monthCount: monthRes.count ?? 0,
     currentStreak: streakRes.data?.current_streak ?? 0,
@@ -288,8 +371,111 @@ async function fetchAggregates(
       username: (profile as any)?.username ?? null,
       avatarUrl: profile?.avatar_url ?? metaAvatarUrl ?? null,
       coverUrl: (profile as any)?.cover_url ?? null,
+      referralCode: (profile as any)?.referral_code ?? null,
     },
   };
+}
+
+// ─── Publishing a card as a link ────────────────────────────────────────────
+
+const SITE = 'https://powr.life';
+
+/** "20 Jun", with the year only once it stops being obvious. */
+function shortDate(d: Date): string {
+  const sameYear = d.getFullYear() === new Date().getFullYear();
+  return d.toLocaleDateString(undefined, {
+    day: 'numeric',
+    month: 'short',
+    ...(sameYear ? null : { year: 'numeric' }),
+  });
+}
+
+/** The sentence a member sends with the link. */
+export function buildShareHeadline(summary: ShareSummary): string {
+  if (summary.mode === 'check-in') {
+    const where = summary.venue ? ` at ${summary.venue.name}` : '';
+    const detail = [
+      summary.historical ? shortDate(new Date(summary.startedAt)) : null,
+      summary.durationMin > 0 ? `${summary.durationMin} min` : null,
+      summary.sessionPoints > 0 ? `+${summary.sessionPoints} pts` : null,
+    ].filter(Boolean).join(', ');
+    let line = `Checked in${where} on POWR${detail ? ` — ${detail}` : ''}.`;
+    if (summary.currentStreak > 1) line += ` Day ${summary.currentStreak} of my streak.`;
+    return line;
+  }
+  if (summary.mode === 'challenge') {
+    return `Challenge complete on POWR: ${summary.challengeTitle} (+${summary.points} pts).`;
+  }
+  if (summary.mode === 'level-up') {
+    const { current } = getLevelInfo(summary.totalEarned);
+    return summary.historical
+      ? `Hit Level ${current.level} — ${current.name} — on POWR.`
+      : `Just hit Level ${current.level} — ${current.name} — on POWR.`;
+  }
+  return summary.currentStreak > 0
+    ? `${summary.currentStreak}-day streak on POWR — ${summary.monthCount} sessions this month.`
+    : `${summary.monthCount} sessions this month on POWR.`;
+}
+
+/** Bold line of the link preview — the member's level, which the card shows. */
+export function buildShareTitle(summary: ShareSummary): string {
+  const { current } = getLevelInfo(summary.totalEarned);
+  const who = summary.profile.displayName ?? summary.profile.username ?? 'A POWR member';
+  return `${who} — Level ${current.level}, ${current.name}`;
+}
+
+/** Grey line beneath it. */
+export function buildShareSubtitle(summary: ShareSummary): string {
+  return `${buildShareHeadline(summary)} Tap to get POWR and earn rewards for every workout.`;
+}
+
+/**
+ * Uploads the captured card and records the row that https://powr.life/s/<id>
+ * renders its Open Graph tags from, returning that URL.
+ *
+ * An attached image *is* the message — WhatsApp, iMessage and X only draw a
+ * tappable preview when they are handed a URL they can scrape. So the card gets
+ * published, and the member shares a link to it rather than the file itself.
+ */
+export async function publishShareCard(summary: ShareSummary, imageUri: string): Promise<string> {
+  const user = await getSessionUser();
+  if (!user) throw new Error('Not authenticated');
+
+  // Owner's folder satisfies the storage policy; the random suffix is what keeps
+  // a card unguessable in a public bucket.
+  const path = `${user.id}/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.jpg`;
+
+  const base64 = await FileSystem.readAsStringAsync(imageUri, {
+    encoding: FileSystem.EncodingType.Base64,
+  });
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+
+  const { error: uploadError } = await supabase.storage
+    .from('share-cards')
+    .upload(path, bytes, { contentType: 'image/jpeg' });
+  if (uploadError) throw new Error(uploadError.message);
+
+  const { data, error } = await supabase
+    .from('share_cards')
+    .insert({
+      user_id: user.id,
+      image_path: path,
+      title: buildShareTitle(summary),
+      subtitle: buildShareSubtitle(summary),
+      referral_code: summary.profile.referralCode,
+    })
+    .select('id')
+    .single();
+  if (error) throw new Error(error.message);
+
+  return `${SITE}/s/${data.id}`;
+}
+
+/** Caption + link. The link is what makes the post tappable and attributable. */
+export function buildShareMessage(summary: ShareSummary, shareUrl: string): string {
+  return `${buildShareHeadline(summary)}\n${shareUrl}`;
 }
 
 async function fetchUnlockedReward(preBalance: number, balance: number): Promise<ShareReward | null> {

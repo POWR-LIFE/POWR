@@ -14,7 +14,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { supabase } from '@/lib/supabase';
+import { getSessionUser, supabase } from '@/lib/supabase';
 
 // ─── Design tokens ─────────────────────────────────────────────────────────────
 
@@ -94,7 +94,7 @@ export default function AdminAthletesScreen() {
   // Admin guard
   useEffect(() => {
     (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) { setIsAdmin(false); setLoading(false); return; }
       const { data } = await supabase
         .from('profiles')
@@ -128,7 +128,7 @@ export default function AdminAthletesScreen() {
     if (!selected) return;
     setSaving(true);
 
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getSessionUser();
 
     const updates: Partial<AthleteApplication> & { reviewed_by?: string; reviewed_at?: string } = {
       status: decision,

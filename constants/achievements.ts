@@ -1,7 +1,7 @@
 /**
  * POWR Achievement Library
  *
- * 19 achievements focused on level progression. Each has a typed unlock condition
+ * 20 achievements focused on level progression. Each has a typed unlock condition
  * that `computeEarnedIds()` evaluates against real user stats.
  *
  * Category: level
@@ -89,10 +89,21 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   // ── Level progression milestones ─────────────────────────────────────────
 
   {
+    id: 'lvl-1',
+    code: 'LV1',
+    name: 'Touching Grass',
+    description: 'Reach Level 1: Touching Grass',
+    category: 'level',
+    colour: '#4ade80',
+    icon: 'ribbon',
+    rarity: 'common',
+    unlock: { type: 'level', level: 1 },
+  },
+  {
     id: 'lvl-2',
     code: 'LV2',
-    name: 'Sofa Survivor',
-    description: 'Reach Level 2: Sofa Survivor',
+    name: 'Cardio Goblin',
+    description: 'Reach Level 2: Cardio Goblin',
     category: 'level',
     colour: '#4ade80',
     icon: 'ribbon',
@@ -102,8 +113,8 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   {
     id: 'lvl-3',
     code: 'LV3',
-    name: 'Accidental Athlete',
-    description: 'Reach Level 3: Accidental Athlete',
+    name: 'Streak Freak',
+    description: 'Reach Level 3: Streak Freak',
     category: 'level',
     colour: '#38bdf8',
     icon: 'ribbon',
@@ -113,8 +124,8 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   {
     id: 'lvl-4',
     code: 'LV4',
-    name: 'Showing Up',
-    description: 'Reach Level 4: Showing Up',
+    name: 'Motion Magic',
+    description: 'Reach Level 4: Motion Magic',
     category: 'level',
     colour: '#a855f7',
     icon: 'ribbon',
@@ -124,8 +135,8 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   {
     id: 'lvl-5',
     code: 'LV5',
-    name: 'Gym Curious',
-    description: 'Reach Level 5: Gym Curious',
+    name: 'Heavy Hitter',
+    description: 'Reach Level 5: Heavy Hitter',
     category: 'level',
     colour: '#E8D200',
     icon: 'trophy',
@@ -135,8 +146,8 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   {
     id: 'lvl-6',
     code: 'LV6',
-    name: 'Semi-Serious',
-    description: 'Reach Level 6: Semi-Serious',
+    name: 'Can\'t Sit Still',
+    description: 'Reach Level 6: Can\'t Sit Still',
     category: 'level',
     colour: '#f97316',
     icon: 'trophy',
@@ -146,8 +157,8 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   {
     id: 'lvl-7',
     code: 'LV7',
-    name: 'Getting There',
-    description: 'Reach Level 7: Getting There',
+    name: 'Iron Lungs',
+    description: 'Reach Level 7: Iron Lungs',
     category: 'level',
     colour: '#ef4444',
     icon: 'trophy',
@@ -157,8 +168,8 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   {
     id: 'lvl-8',
     code: 'LV8',
-    name: 'Committed',
-    description: 'Reach Level 8: Committed',
+    name: 'Pavement Predator',
+    description: 'Reach Level 8: Pavement Predator',
     category: 'level',
     colour: '#E8D200',
     icon: 'ribbon',
@@ -168,8 +179,8 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   {
     id: 'lvl-9',
     code: 'LV9',
-    name: 'Consistent',
-    description: 'Reach Level 9: Consistent',
+    name: 'Step Collector',
+    description: 'Reach Level 9: Step Collector',
     category: 'level',
     colour: '#22c55e',
     icon: 'ribbon',
@@ -179,8 +190,8 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   {
     id: 'lvl-10',
     code: 'LV10',
-    name: 'Dialled In',
-    description: 'Reach Level 10: Dialled In',
+    name: 'Calorie Criminal',
+    description: 'Reach Level 10: Calorie Criminal',
     category: 'level',
     colour: '#0ea5e9',
     icon: 'trophy',
@@ -190,8 +201,8 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   {
     id: 'lvl-11',
     code: 'LV11',
-    name: 'Driven',
-    description: 'Reach Level 11: Driven',
+    name: 'Mile Muncher',
+    description: 'Reach Level 11: Mile Muncher',
     category: 'level',
     colour: '#06b6d4',
     icon: 'trophy',
@@ -201,8 +212,8 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   {
     id: 'lvl-12',
     code: 'LV12',
-    name: 'Sharp',
-    description: 'Reach Level 12: Sharp',
+    name: 'Move Machine',
+    description: 'Reach Level 12: Move Machine',
     category: 'level',
     colour: '#a855f7',
     icon: 'trophy',
@@ -212,8 +223,8 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   {
     id: 'lvl-13',
     code: 'LV13',
-    name: 'Relentless',
-    description: 'Reach Level 13: Relentless',
+    name: 'Need New Shoes',
+    description: 'Reach Level 13: Need New Shoes',
     category: 'level',
     colour: '#ef4444',
     icon: 'trophy',
@@ -223,8 +234,8 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   {
     id: 'lvl-14',
     code: 'LV14',
-    name: 'Elite',
-    description: 'Reach Level 14: Elite',
+    name: 'Certified Weapon',
+    description: 'Reach Level 14: Certified Weapon',
     category: 'level',
     colour: '#f59e0b',
     icon: 'medal',
@@ -234,8 +245,8 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   {
     id: 'lvl-15',
     code: 'LV15',
-    name: 'Ironclad',
-    description: 'Reach Level 15: Ironclad',
+    name: 'Momentum Monster',
+    description: 'Reach Level 15: Momentum Monster',
     category: 'level',
     colour: '#f97316',
     icon: 'shield-checkmark',
@@ -245,8 +256,8 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   {
     id: 'lvl-16',
     code: 'LV16',
-    name: 'Unstoppable',
-    description: 'Reach Level 16: Unstoppable',
+    name: 'Limit Breaker',
+    description: 'Reach Level 16: Limit Breaker',
     category: 'level',
     colour: '#f43f5e',
     icon: 'medal',
@@ -256,8 +267,8 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   {
     id: 'lvl-17',
     code: 'LV17',
-    name: 'Legendary',
-    description: 'Reach Level 17: Legendary',
+    name: 'Diesel Mode',
+    description: 'Reach Level 17: Diesel Mode',
     category: 'level',
     colour: '#E8D200',
     icon: 'medal',
@@ -267,8 +278,8 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   {
     id: 'lvl-18',
     code: 'LV18',
-    name: 'Mythic',
-    description: 'Reach Level 18: Mythic',
+    name: 'Peak Condition',
+    description: 'Reach Level 18: Peak Condition',
     category: 'level',
     colour: '#22d3ee',
     icon: 'diamond',
@@ -278,8 +289,8 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   {
     id: 'lvl-19',
     code: 'LV19',
-    name: 'Immortal',
-    description: 'Reach Level 19: Immortal',
+    name: 'Long Hauler',
+    description: 'Reach Level 19: Long Hauler',
     category: 'level',
     colour: '#d946ef',
     icon: 'diamond',
@@ -289,8 +300,8 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   {
     id: 'lvl-20',
     code: 'LV20',
-    name: 'POWR',
-    description: 'The summit. Reach Level 20: POWR',
+    name: 'Goggins',
+    description: 'The summit. Reach Level 20: Goggins',
     category: 'level',
     colour: '#E8D200',
     icon: 'medal',

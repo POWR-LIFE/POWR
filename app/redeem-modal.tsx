@@ -1,5 +1,7 @@
 import GeometricBackground from '@/components/GeometricBackground';
+import { RewardHeroMedia } from '@/components/rewards/RewardHeroMedia';
 import { Ionicons } from '@expo/vector-icons';
+import { useQueryClient } from '@tanstack/react-query';
 import * as Clipboard from 'expo-clipboard';
 import { Image as ExpoImage } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -17,7 +19,9 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { usePoints } from '@/hooks/usePoints';
+import { tracked } from '@/lib/analytics';
 import { redeemReward, RedemptionError, type IntegrationType, type Reward } from '@/lib/api/rewards';
+import { rewardHeroUri, rewardLogoUri } from '@/lib/storageImage';
 import { supabase } from '@/lib/supabase';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
@@ -41,6 +45,7 @@ interface UIReward {
   logoText: string;
   logoUrl: string | null;
   heroUrl: string | null;
+  heroVideoUrl: string | null;
   url: string | null;
   integrationType: IntegrationType;
   expiryDays: number;
@@ -63,8 +68,9 @@ function toUIReward(r: Reward): UIReward {
     pts: r.powr_cost,
     value: formatValue(r),
     logoText: (r.partner?.name ?? r.brand_name ?? '??').slice(0, 4).toUpperCase(),
-    logoUrl: r.image_url ?? r.partner?.logo_url ?? null,
-    heroUrl: r.hero_image_url ?? null,
+    logoUrl: rewardLogoUri(r.image_url ?? r.partner?.logo_url ?? null),
+    heroUrl: rewardHeroUri(r.hero_image_url ?? null),
+    heroVideoUrl: r.hero_video_url ?? null,
     url: r.url || null,
     integrationType: r.integration_type,
     expiryDays: r.code_expiry_days,
@@ -76,6 +82,7 @@ export default function RedeemModal() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { balance, loading: balanceLoading, refresh } = usePoints();
+  const queryClient = useQueryClient();
 
   const [reward, setReward] = useState<UIReward | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -96,7 +103,7 @@ export default function RedeemModal() {
       const [rewardRes, redemptionRes] = await Promise.all([
         supabase
           .from('rewards')
-          .select('id, partner_id, title, description, powr_cost, category, integration_type, code_expiry_days, active, offer, hero_image_url, image_url, url, value_label, discount_type, discount_value, brand_name, partners(id, name, partner_code, logo_url, category, checkout_url_template)')
+          .select('id, partner_id, title, description, powr_cost, category, integration_type, code_expiry_days, active, offer, hero_image_url, hero_video_url, image_url, url, promo_code, value_label, discount_type, discount_value, brand_name, partners(id, name, partner_code, logo_url, category, checkout_url_template)')
           .eq('id', id)
           .single(),
         supabase
@@ -117,14 +124,12 @@ export default function RedeemModal() {
       const active = redemptionRes.data ?? [];
       setExistingActiveCount(active.length);
 
-      // AFFILIATE rewards have no per-redemption code — redeeming again just
-      // re-charges points for the identical discount link, so show the existing
-      // one rather than allowing a wasted spend. Code-based rewards (POOL /
-      // API_VALIDATED) stay on the confirm screen so the user can redeem again.
-      if (full.integration_type === 'AFFILIATE' && active[0]?.code) {
+      // Affiliate links and configured shared promo codes are reusable receipts.
+      // Showing the active receipt avoids charging points again for the same offer.
+      if ((full.integration_type === 'AFFILIATE' || full.promo_code?.trim()) && active[0]?.code) {
         setCode(active[0].code);
         setExpiresAt(active[0].expires_at ?? null);
-        setCheckoutUrl(active[0].checkout_url ?? full.url ?? null);
+        setCheckoutUrl(active[0].checkout_url ?? full.url ?? full.partner?.checkout_url_template ?? null);
         setAlreadyRedeemed(true);
         setStage('success');
       }
@@ -161,6 +166,9 @@ export default function RedeemModal() {
       setCheckoutUrl(result.checkout_url || reward.url || null);
       setStage('success');
       refresh();
+      // The wallet reads from the query cache — without this, a fresh code
+      // could be missing from a recently viewed wallet until it goes stale.
+      queryClient.invalidateQueries({ queryKey: ['wallet'] });
     } catch (e) {
       if (e instanceof RedemptionError) {
         setRedeemError(
@@ -244,10 +252,16 @@ interface ConfirmProps {
 function ConfirmView({ reward, balance, canAfford, remaining, submitting, error, existingActiveCount, onConfirm, onCancel, onViewWallet }: ConfirmProps) {
   return (
     <View style={styles.sheet}>
-      {/* Hero image */}
-      {reward.heroUrl && (
+      {/* Hero — video-first, still image as poster/fallback */}
+      {(reward.heroVideoUrl || reward.heroUrl) && (
         <View style={styles.heroWrap}>
-          <ExpoImage source={{ uri: reward.heroUrl }} style={styles.heroImg} contentFit="cover" contentPosition="top" />
+          <RewardHeroMedia
+            videoUrl={reward.heroVideoUrl}
+            imageUrl={reward.heroUrl}
+            style={styles.heroImg}
+            contentFit="cover"
+            contentPosition="top"
+          />
           <LinearGradient
             colors={['rgba(13,13,13,0)', 'rgba(13,13,13,0.6)', '#0d0d0d']}
             locations={[0.3, 0.7, 1]}
@@ -322,7 +336,7 @@ function ConfirmView({ reward, balance, canAfford, remaining, submitting, error,
             (!canAfford || submitting) && styles.confirmBtnDisabled,
             pressed && canAfford && !submitting && { opacity: 0.85 },
           ]}
-          onPress={canAfford && !submitting ? onConfirm : undefined}
+          onPress={canAfford && !submitting ? tracked('redeem_confirm', onConfirm) : undefined}
         >
           {submitting ? (
             <ActivityIndicator color='#0a0a0a' />
@@ -332,7 +346,7 @@ function ConfirmView({ reward, balance, canAfford, remaining, submitting, error,
             </Text>
           )}
         </Pressable>
-        <Pressable style={({ pressed }) => [styles.cancelBtn, pressed && { opacity: 0.7 }]} onPress={onCancel}>
+        <Pressable style={({ pressed }) => [styles.cancelBtn, pressed && { opacity: 0.7 }]} onPress={tracked('redeem_cancel', onCancel)}>
           <Text style={styles.cancelBtnText}>Cancel</Text>
         </Pressable>
       </View>
@@ -437,7 +451,7 @@ function SuccessView({ reward, code, expiresAt, copied, checkoutUrl, alreadyRede
             {checkoutUrl && (
               <Pressable
                 style={({ pressed }) => [styles.confirmBtn, pressed && { opacity: 0.85 }]}
-                onPress={onOpenCheckout}
+                onPress={tracked('redeem_checkout_affiliate', onOpenCheckout)}
               >
                 <Ionicons name="open-outline" size={16} color="#0a0a0a" />
                 <Text style={styles.confirmBtnText}>Shop at {partnerLabel || reward.title}</Text>
@@ -448,7 +462,7 @@ function SuccessView({ reward, code, expiresAt, copied, checkoutUrl, alreadyRede
           <>
             <Pressable
               style={({ pressed }) => [styles.codeBlock, pressed && { opacity: 0.8 }]}
-              onPress={onCopy}
+              onPress={tracked('redeem_copy_code', onCopy)}
             >
               <Text style={styles.codeLabel}>YOUR CODE</Text>
               <Text style={styles.codeText}>{code}</Text>
@@ -469,7 +483,7 @@ function SuccessView({ reward, code, expiresAt, copied, checkoutUrl, alreadyRede
             {checkoutUrl && (
               <Pressable
                 style={({ pressed }) => [styles.visitBtn, pressed && { opacity: 0.85 }]}
-                onPress={onOpenCheckout}
+                onPress={tracked('redeem_checkout_code', onOpenCheckout)}
               >
                 <Ionicons name="open-outline" size={14} color="#0a0a0a" />
                 <Text style={styles.visitBtnText}>Use code at {partnerLabel || reward.title}</Text>

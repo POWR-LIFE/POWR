@@ -3,7 +3,19 @@
   "buildCommand": "cd landing-page && npm run build",
   "outputDirectory": "landing-page/dist",
   "cleanUrls": true,
+  "headers": [
+    {
+      "source": "/.well-known/apple-app-site-association",
+      "headers": [{ "key": "Content-Type", "value": "application/json" }]
+    },
+    {
+      "source": "/.well-known/assetlinks.json",
+      "headers": [{ "key": "Content-Type", "value": "application/json" }]
+    }
+  ],
   "rewrites": [
+    { "source": "/s/:id", "destination": "https://wjvvujnicwkruaeibttt.supabase.co/functions/v1/share-card-og?id=:id" },
+    { "source": "/api/partner/:path*", "destination": "https://wjvvujnicwkruaeibttt.supabase.co/functions/v1/partner-api/:path*" },
     { "source": "/(.*)", "destination": "/" }
   ]
 }

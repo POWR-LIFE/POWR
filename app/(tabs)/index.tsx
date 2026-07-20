@@ -7,6 +7,8 @@ import { Animated, Easing, LayoutChangeEvent, Modal, Pressable, RefreshControl, 
 import ReAnimated, {
     Extrapolate,
     interpolate,
+    runOnJS,
+    useAnimatedReaction,
     useAnimatedScrollHandler,
     useAnimatedStyle,
     useSharedValue,
@@ -18,6 +20,7 @@ import { ChallengeCard } from '@/components/home/ChallengeCard';
 import { TogetherSection } from '@/components/home/TogetherSection';
 import { RewardCard } from '@/components/home/RewardCard';
 import { LevelProgressRow } from '@/components/home/LevelProgressRow';
+import { LevelUpCelebration } from '@/components/LevelUpCelebration';
 import { GeometricBackground } from '@/components/home/GeometricBackground';
 import { StickyActivityIndicators } from '@/components/home/StickyActivityIndicators';
 import { StreakCard } from '@/components/home/StreakCard';
@@ -25,16 +28,22 @@ import { WeeklyActivityBars, type WeeklyRingData } from '@/components/home/Weekl
 import { WeeklyActivityCircles } from '@/components/home/WeeklyActivityRings';
 import { HeaderActions } from '@/components/HeaderActions';
 import { HealthGapBanner } from '@/components/HealthGapBanner';
+import NotificationPrimeSheet from '@/components/NotificationPrimeSheet';
+import LocationPrimeSheet from '@/components/LocationPrimeSheet';
+import HealthPrimeSheet from '@/components/HealthPrimeSheet';
 import { ACTIVITIES, type ActivityType } from '@/constants/activities';
 import { useAuth } from '@/context/AuthContext';
 import { useGeofenceContext } from '@/context/GeofenceContext';
+import { getGymDwellMs, getGymUpgradeMinutes, getGymUpgradeMs } from '@/lib/gymDwellConfig';
 import { useActiveGeofence } from '@/hooks/useActiveGeofence';
 import { useActivity } from '@/hooks/useActivity';
 import { useHealthData } from '@/hooks/useHealthData';
+import { useLevelUp } from '@/hooks/useLevelUp';
 import { usePoints } from '@/hooks/usePoints';
 import { useStreak } from '@/hooks/useStreak';
 import { fetchSmartFeaturedReward, type Reward } from '@/lib/api/rewards';
 import { fetchProfile } from '@/lib/api/user';
+import { applyDetectedActivitySwap, WEEKLY_SESSION_TARGET, WEEKLY_STEPS_TARGET } from '@/lib/weeklyActivities';
 import { useWeeklyChallenges, type ChallengeCardData } from '@/hooks/useWeeklyChallenge';
 
 const GOLD = '#E8D200';
@@ -105,6 +114,7 @@ export default function HomeScreen() {
     const { recentItems, weekActiveDays, weeklyMetrics, dailyMetrics, refresh: refreshActivity } = useActivity();
     const { balance, totalEarned, weeklyEarned, refresh: refreshPoints } = usePoints();
     const { activeGeofence, sessionCompleted, clearSessionCompleted } = useActiveGeofence();
+    const { pending: pendingLevelUp, ack: ackLevelUp, preview: previewLevelUp } = useLevelUp();
     const { partners } = useGeofenceContext();
     const [devMsg, setDevMsg] = useState<string | null>(null);
 
@@ -242,8 +252,13 @@ export default function HomeScreen() {
     // New user detection: no points earned and no recent activity
     const isNewUser = totalEarned === 0 && recentItems.length === 0;
 
-    // Derived session state — re-computed every second via elapsedStr re-renders
-    const DWELL_MS = 30 * 60 * 1000;
+    // Derived session state — re-computed every second via elapsedStr re-renders.
+    // Both gym timers are admin-tunable (system_config → min_gym_dwell_minutes /
+    // gym_upgrade_minutes), cached at launch by refreshGymDwellMinutes; fall back
+    // to 30 / 40 min.
+    const DWELL_MS = getGymDwellMs();
+    const UPGRADE_TIER_MS = getGymUpgradeMs();
+    const upgradeTierMins = getGymUpgradeMinutes();
     const elapsedMs = activeGeofence ? Date.now() - activeGeofence.entryTimestamp : 0;
     const dwellProgress = Math.min(elapsedMs / DWELL_MS, 1);
     // Projected gym points — streak-adjusted and capped at the per-day gym cap so
@@ -252,11 +267,11 @@ export default function HomeScreen() {
     // so it under-showed. The cap assumes no gym points earned yet today (the
     // common first-visit case); a repeat same-day visit is daily-capped server-side.
     const GYM_DAILY_CAP = 30;
-    const proj30 = Math.min(Math.round(15 * multiplier), GYM_DAILY_CAP);
-    const proj40 = Math.min(Math.round(20 * multiplier), GYM_DAILY_CAP);
-    const atUpgradeTier = elapsedMs >= 40 * 60 * 1000;
-    const projectedPoints = atUpgradeTier ? proj40 : proj30;
-    const upgradeBonus = Math.max(0, proj40 - proj30); // extra unlocked by staying to 40 min
+    const projBase = Math.min(Math.round(15 * multiplier), GYM_DAILY_CAP);
+    const projUpgrade = Math.min(Math.round(20 * multiplier), GYM_DAILY_CAP);
+    const atUpgradeTier = elapsedMs >= UPGRADE_TIER_MS;
+    const projectedPoints = atUpgradeTier ? projUpgrade : projBase;
+    const upgradeBonus = Math.max(0, projUpgrade - projBase); // extra unlocked by staying to the upgrade tier
     const sessionMaxTier = atUpgradeTier || upgradeBonus <= 0;
     const minsRemaining = Math.max(0, Math.ceil((DWELL_MS - elapsedMs) / 60000));
 
@@ -345,9 +360,6 @@ export default function HomeScreen() {
     const firstName = displayName.split(' ')[0];
 
     // Build weekly activity rings from user's preferences
-    const WEEKLY_SESSION_TARGET = 3;
-    const WEEKLY_STEPS_TARGET = 50000;
-
     function buildWeeklyRing(type: ActivityType): WeeklyRingData {
         const config = ACTIVITIES[type] ?? ACTIVITIES.walking;
         if (type === 'walking') {
@@ -394,16 +406,12 @@ export default function HomeScreen() {
     // If health data detected an activity outside the user's 3 preferences, smart-
     // swap it into the ring with the least progress so we always show exactly 3.
     // The weakest preferred ring is displaced — points for it are still earned.
-    const detectedBonus = (Object.keys(weeklyMetrics.perType) as ActivityType[])
-        .filter(type => !activePrefs.includes(type) && (weeklyMetrics.perType[type] ?? 0) > 0)
-        .map(type => ({ ...buildWeeklyRing(type), isBonus: true }))
-        .sort((a, b) => b.pct - a.pct)[0] ?? null;
-
-    const displayRings: WeeklyRingData[] = detectedBonus
-        ? (() => {
-            const weakest = [...weeklyRings].sort((a, b) => a.pct - b.pct)[0];
-            return weeklyRings.map(r => r.type === weakest.type ? detectedBonus : r);
-          })()
+    // Shared with the progress screen so both surfaces show the same 3 activities.
+    const { bonusType, displacedType } = applyDetectedActivitySwap(activePrefs, weeklyMetrics);
+    const displayRings: WeeklyRingData[] = bonusType
+        ? weeklyRings.map(r => r.type === displacedType
+            ? { ...buildWeeklyRing(bonusType), isBonus: true }
+            : r)
         : weeklyRings;
 
     // ── Scroll-based sticky indicators ──
@@ -411,6 +419,12 @@ export default function HomeScreen() {
     const barsOffsetY = useSharedValue(0);
     const barsHeight = useSharedValue(0);
     const HEADER_HEIGHT = 56;
+
+    // Mirror the sticky state onto JS so we can drop the overlay's touch
+    // capture while it's hidden. When not sticky the bar is translated up
+    // (-82) over the header, and an opacity:0 Pressable still swallows taps —
+    // that invisible ring was eating the profile-avatar press. (index bug)
+    const [stickyActive, setStickyActive] = useState(false);
 
     const onReanimatedScroll = useAnimatedScrollHandler((event) => {
       scrollY.value = event.contentOffset.y;
@@ -424,6 +438,13 @@ export default function HomeScreen() {
     };
 
     const STICKY_BAR_HEIGHT = 82; // circle (48) + gap (4) + icon (14) + padding (16)
+
+    useAnimatedReaction(
+      () => barsOffsetY.value > 0 && scrollY.value > barsOffsetY.value - HEADER_HEIGHT,
+      (isSticky, prev) => {
+        if (isSticky !== prev) runOnJS(setStickyActive)(isSticky);
+      }
+    );
 
     const stickyAnimatedStyle = useAnimatedStyle(() => {
       const threshold = barsOffsetY.value - HEADER_HEIGHT;
@@ -487,7 +508,7 @@ export default function HomeScreen() {
                     paddingBottom: 8,
                     paddingHorizontal: 16,
                 }, stickyAnimatedStyle]}
-                pointerEvents="box-none"
+                pointerEvents={stickyActive ? 'box-none' : 'none'}
             >
                 <StickyActivityIndicators
                     rings={displayRings}
@@ -571,6 +592,7 @@ export default function HomeScreen() {
                     sessionDwellMet={dwellProgress >= 1}
                     sessionProjectedPts={projectedPoints}
                     sessionUpgradeBonus={upgradeBonus}
+                    sessionUpgradeMinutes={upgradeTierMins}
                     sessionMaxTier={sessionMaxTier}
                     onShare={() => router.push({ pathname: '/share-stats', params: { mode: 'streak' } })}
                 />
@@ -588,6 +610,7 @@ export default function HomeScreen() {
                 <LevelProgressRow
                     totalEarned={totalEarned}
                     onPress={() => router.push('/achievements')}
+                    onLongPress={previewLevelUp}
                 />
 
                 {/* Shared "together" challenges — the social hero band. Sits above
@@ -728,6 +751,37 @@ export default function HomeScreen() {
                     </View>
                 </View>
             </Modal>
+
+            {/* Primed notification re-ask — self-gating (permission off + ≥1
+                session banked + pacing), so mounting is unconditional. */}
+            <NotificationPrimeSheet />
+
+            {/* Primed background-location re-ask — self-gating (on "While Using"
+                + ≥1 session banked + pacing), and yields to the notification
+                sheet so the two never stack. Fixes silent no-earning in pocket. */}
+            <LocationPrimeSheet />
+
+            {/* Primed health re-ask — self-gating (no health data flowing + ≥1
+                session banked + pacing), and yields to both sheets above. Catches
+                never-connected users AND dead OS grants ("connected" in our
+                records, toggles off on the device — steps silently stopped). */}
+            <HealthPrimeSheet />
+
+            {/* Level-up moment — one-shot, surfaces when lifetime points cross
+                a level boundary (useLevelUp persists the last celebrated level). */}
+            {pendingLevelUp && (
+                <LevelUpCelebration
+                    fromLevel={pendingLevelUp.fromLevel}
+                    toLevel={pendingLevelUp.toLevel}
+                    fromXp={pendingLevelUp.fromXp}
+                    totalEarned={totalEarned}
+                    onDone={ackLevelUp}
+                    onShare={() => {
+                        ackLevelUp();
+                        router.push({ pathname: '/share-stats', params: { mode: 'level-up' } });
+                    }}
+                />
+            )}
         </View>
     );
 }

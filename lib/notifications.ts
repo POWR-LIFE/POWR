@@ -1,7 +1,8 @@
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Platform, NativeModules } from 'react-native';
+import { Platform } from 'react-native';
+import { getGymUpgradeMinutes } from '@/lib/gymDwellConfig';
 const CHANNEL_DEFAULT = 'powr_default_v2';
 const CHANNEL_STREAK = 'powr_streak_v2';
 const CHANNEL_REWARDS = 'powr_rewards_v2';
@@ -18,7 +19,8 @@ export type NotificationType =
   | 'points_milestone'
   | 'inactivity_nudge'
   | 'session_completed'
-  | 'sleep_target_met';
+  | 'sleep_target_met'
+  | 'nearby_offer';
 
 export interface PointsMilestoneOptions {
   pointsToUnlock?: number;
@@ -32,18 +34,14 @@ export interface NotificationPayload {
   [key: string]: unknown;
 }
 
-// ---------------------------------------------------------------------------
-// Firebase background message handler
-// Must be registered outside of any React component (module-level)
-// ---------------------------------------------------------------------------
-
-if ((Platform.OS === 'android' || Platform.OS === 'ios') && NativeModules.RNFBAppModule) {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const messaging = require('@react-native-firebase/messaging').default;
-  messaging().setBackgroundMessageHandler(async (_remoteMessage: unknown) => {
-    // Background FCM messages are handled silently by the system.
-  });
-}
+// NOTE: Do NOT install @react-native-firebase/messaging alongside
+// expo-notifications. Both register a com.google.firebase.MESSAGING_EVENT
+// service on Android and only one receives each message; RNFB's won, handed
+// every Expo push (data-only FCM) to a no-op background handler, and silently
+// dropped it — remote pushes never displayed on standalone builds from
+// 2026-05-05 (926596c) until its removal on 2026-07-11. Expo pushes need
+// expo-notifications' own service to display. See
+// project_session_notification_incident_20260707.
 
 // ---------------------------------------------------------------------------
 // Foreground display handler — show banner even when app is open
@@ -98,7 +96,11 @@ export interface PushRegistration {
   platform: 'ios' | 'android';
 }
 
-export async function requestPermissionsAndGetToken(): Promise<PushRegistration | null> {
+export async function requestPermissionsAndGetToken(
+  opts: { promptIfNeeded?: boolean } = {},
+): Promise<PushRegistration | null> {
+  const { promptIfNeeded = true } = opts;
+
   if (!Device.isDevice) {
     // Simulators cannot receive push notifications
     return null;
@@ -110,6 +112,12 @@ export async function requestPermissionsAndGetToken(): Promise<PushRegistration 
   let finalStatus = existing;
 
   if (existing !== 'granted') {
+    // Callers that only want to refresh an existing registration (e.g. the
+    // automatic sign-in path while the user is still mid-onboarding) must not
+    // ambush the user with the OS dialog — that ask belongs to the primed
+    // onboarding-notifications screen.
+    if (!promptIfNeeded) return null;
+
     const { status } = await Notifications.requestPermissionsAsync({
       ios: {
         allowAlert: true,
@@ -126,27 +134,12 @@ export async function requestPermissionsAndGetToken(): Promise<PushRegistration 
     // projectId is read from app.json automatically via Constants.expoConfig
   });
 
-  // Get the raw FCM token via Firebase Messaging (Android) or fallback
-  let deviceToken: string | null = null;
-  if (Platform.OS === 'android' && NativeModules.RNFBAppModule) {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const messaging = require('@react-native-firebase/messaging').default;
-      await messaging().registerDeviceForRemoteMessages();
-      deviceToken = await messaging().getToken();
-    } catch {
-      // Fallback: try expo's device push token
-      deviceToken = await Notifications.getDevicePushTokenAsync().then(
-        (t) => t.data as string,
-        () => null,
-      );
-    }
-  } else {
-    deviceToken = await Notifications.getDevicePushTokenAsync().then(
-      (t) => t.data as string,
-      () => null,
-    );
-  }
+  // Raw native token (FCM on Android, APNs on iOS) for the direct-delivery
+  // fallback path. expo-notifications reads it natively — no Firebase SDK.
+  const deviceToken: string | null = await Notifications.getDevicePushTokenAsync().then(
+    (t) => t.data as string,
+    () => null,
+  );
 
   return {
     expoPushToken: tokenData.data,
@@ -291,6 +284,11 @@ const CHECK_IN_LAST_FIRED_PREFIX = '@powr/check_in_last_fired/';
 export async function notifyCheckInAvailable(partnerName: string, locationId: string) {
   if (!(await isCheckInReminderEnabled())) return;
 
+  const permissions = await Notifications.getPermissionsAsync().catch(() => null);
+  const allowed = permissions?.granted
+    || permissions?.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL;
+  if (!allowed) return;
+
   const cooldownKey = `${CHECK_IN_LAST_FIRED_PREFIX}${locationId}`;
   try {
     const lastFiredRaw = await AsyncStorage.getItem(cooldownKey);
@@ -298,7 +296,6 @@ export async function notifyCheckInAvailable(partnerName: string, locationId: st
       const lastFired = parseInt(lastFiredRaw, 10);
       if (Number.isFinite(lastFired) && Date.now() - lastFired < CHECK_IN_COOLDOWN_MS) return;
     }
-    await AsyncStorage.setItem(cooldownKey, String(Date.now()));
   } catch { /* non-fatal — fall through and notify */ }
 
   await Notifications.scheduleNotificationAsync({
@@ -317,6 +314,83 @@ export async function notifyCheckInAvailable(partnerName: string, locationId: st
     },
     trigger: null, // immediate
   });
+  // Stamp only after scheduling succeeds; otherwise a transient local-notification
+  // failure would suppress the next legitimate entry alert for 30 minutes.
+  await AsyncStorage.setItem(cooldownKey, String(Date.now())).catch(() => {});
+}
+
+// ---------------------------------------------------------------------------
+// Nearby offer — fired from the placement background task when a location
+// reward applies where the user physically is. Independent of the gym
+// check-in reminder above and of the 25 m points geofence.
+// ---------------------------------------------------------------------------
+
+const NEARBY_OFFER_PREF_KEY = '@powr/pref_nearby_offer';
+// Don't re-notify about the same placement within this window (a wake happens
+// ~every 15 min; without this the user would be pinged repeatedly in one visit).
+const NEARBY_OFFER_COOLDOWN_MS = 6 * 60 * 60 * 1000;
+const NEARBY_OFFER_LAST_FIRED_PREFIX = '@powr/nearby_offer_last_fired/';
+
+export async function cacheNearbyOfferPreference(enabled: boolean) {
+  await AsyncStorage.setItem(NEARBY_OFFER_PREF_KEY, enabled ? '1' : '0');
+}
+
+export async function isNearbyOfferEnabled(): Promise<boolean> {
+  try {
+    return (await AsyncStorage.getItem(NEARBY_OFFER_PREF_KEY)) !== '0';
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * Present a "reward nearby" notification. Returns true if it actually fired
+ * (so the caller can log the 'notified' funnel event only when shown). No-ops
+ * when the pref is off or the placement is still within its cooldown.
+ */
+export async function notifyNearbyOffer(opts: {
+  placementId: string;
+  rewardName: string;
+  brandName?: string | null;
+}): Promise<boolean> {
+  if (!(await isNearbyOfferEnabled())) return false;
+
+  // OS-level permission: without it the schedule call shows nothing, and the
+  // caller would log a 'notified' funnel event for a push nobody ever saw.
+  const perms = await Notifications.getPermissionsAsync().catch(() => null);
+  const allowed = perms?.granted
+    || perms?.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL;
+  if (!allowed) return false;
+
+  const cooldownKey = `${NEARBY_OFFER_LAST_FIRED_PREFIX}${opts.placementId}`;
+  try {
+    const lastFiredRaw = await AsyncStorage.getItem(cooldownKey);
+    if (lastFiredRaw) {
+      const lastFired = parseInt(lastFiredRaw, 10);
+      if (Number.isFinite(lastFired) && Date.now() - lastFired < NEARBY_OFFER_COOLDOWN_MS) return false;
+    }
+  } catch { /* non-fatal — fall through and notify */ }
+
+  const title = opts.brandName ? `${opts.brandName} is nearby` : 'A reward is nearby';
+  await Notifications.scheduleNotificationAsync({
+    identifier: `powr-nearby_offer-${opts.placementId}`,
+    content: {
+      title,
+      body: `${opts.rewardName} is boosted where you are right now — open to redeem.`,
+      data: {
+        type: 'nearby_offer',
+        route: '/(tabs)/rewards',
+        placementId: opts.placementId,
+      } satisfies NotificationPayload,
+      sound: 'default',
+      ...(Platform.OS === 'android' && { channelId: CHANNEL_DEFAULT }),
+    },
+    trigger: null, // immediate
+  });
+  // Stamp the cooldown only after a successful schedule so a failed attempt
+  // doesn't mute the placement for 6 h without any push having been shown.
+  await AsyncStorage.setItem(cooldownKey, String(Date.now())).catch(() => {});
+  return true;
 }
 
 export async function notifySessionCompleted(
@@ -358,9 +432,10 @@ export async function notifySessionCompleted(
   });
 }
 
-// On-device fallback for the 40-min tier bonus. Mirrors the server
+// On-device fallback for the upgrade-tier bonus. Mirrors the server
 // `session_upgraded` copy exactly so it's indistinguishable from the push. Fired
 // by the geofence client only when the server reports it couldn't deliver.
+// The threshold is admin-tunable (system_config → gym_upgrade_minutes).
 export async function notifySessionUpgraded(
   partnerName: string,
   sessionId: string,
@@ -371,7 +446,7 @@ export async function notifySessionUpgraded(
   const parts: string[] = [];
   if (name) parts.push(name);
   if (pts > 0) parts.push(`+${pts.toLocaleString()} pts`);
-  parts.push('40-min bonus');
+  parts.push(`${getGymUpgradeMinutes()}-min bonus`);
 
   await Notifications.scheduleNotificationAsync({
     identifier: `powr-session_upgraded-${sessionId}`,

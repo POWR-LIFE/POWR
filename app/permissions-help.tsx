@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import GeometricBackground from '@/components/GeometricBackground';
 import { androidOpenHealthConnectSettings } from '@/hooks/useHealthData';
 import { requestBatteryOptimizationExemption } from '@/lib/batteryOptimization';
+import { openAppLocationSettings } from '@/lib/openAppSettings';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 
@@ -95,12 +96,12 @@ export default function PermissionsHelpScreen() {
           steps={
             isIOS
               ? [
-                  'Open Settings, then Privacy & Security',
-                  'Tap Location Services, then POWR',
-                  'Choose "Always" and turn on Precise Location',
+                  'Tap Open Settings below to jump to POWR\'s settings',
+                  'Tap Location',
+                  'Choose "Always" (turn on Precise Location too)',
                 ]
               : [
-                  'Open Settings, then Apps › POWR',
+                  'Tap Open Settings below to open POWR\'s app info',
                   'Tap Permissions › Location',
                   'Choose "Allow all the time" and "Precise"',
                 ]
@@ -108,12 +109,12 @@ export default function PermissionsHelpScreen() {
           note={
             locationStatus === 'limited'
               ? isIOS
-                ? 'Location is on, but not set to "Always" — POWR can\'t detect gym arrivals when it\'s closed.'
+                ? 'Location is on, but not set to "Always" — POWR can\'t detect gym arrivals when it\'s closed. If you don\'t see "Always" yet, choose "While Using the App" first, then come back.'
                 : 'Location is on, but not "Allow all the time" — POWR can\'t detect gym arrivals when it\'s closed.'
               : undefined
           }
           buttonLabel="Open Settings"
-          onPress={() => Linking.openSettings()}
+          onPress={openAppLocationSettings}
         />
 
         {/* ── Background activity (Android only) ─────────────── */}

@@ -1,0 +1,145 @@
+import { supabase } from '@/lib/supabase';
+import type { Reward } from './rewards';
+
+// =============================================================
+// Reward Placements — location/time-targeted reward surfacing.
+//
+// "Invisible geofence": the resolver returns which placements apply to the
+// current user right now (inside a coarse fence, in the flight window,
+// matching prefs, under the daily cap). The client merges them into the
+// existing vault (see applyPlacements / pickHeroPlacement) to boost the
+// placed reward, and the background notifier surfaces a nearby offer.
+// =============================================================
+
+export type PlacementVisibility = 'boost' | 'exclusive';
+
+export interface ResolvedPlacement {
+  placement_id: string;
+  reward_id: string;
+  visibility: PlacementVisibility;
+  priority: number;
+  paid: boolean;
+  partner_id: string | null;
+  distance_m: number;
+}
+
+/**
+ * Ask the backend which placements apply at the given coarse coordinates.
+ * Day/hour are sent from the DEVICE clock so time-targeting matches the
+ * user's actual local time (mirrors per-user-local broadcast delivery).
+ */
+export interface PlacementResolutionOptions {
+  /** Record a bounded in-app impression for placements currently resolved. */
+  recordSurface?: boolean;
+  /** Record a bounded fresh-location footfall signal alongside the impression. */
+  confirmPresence?: boolean;
+}
+
+export async function resolveContextualPlacements(
+  lat: number,
+  lng: number,
+  options: PlacementResolutionOptions = {},
+): Promise<ResolvedPlacement[]> {
+  const now = new Date();
+  const { data, error } = await supabase.rpc('resolve_reward_placements_and_record', {
+    p_lat: lat,
+    p_lng: lng,
+    p_local_dow: now.getDay(),   // 0 = Sunday … 6 = Saturday
+    p_local_hour: now.getHours(),
+    p_record_surface: options.recordSurface ?? false,
+    p_confirm_presence: options.confirmPresence ?? false,
+  });
+  if (error) throw error;
+  return (data ?? []) as ResolvedPlacement[];
+}
+
+/**
+ * Record a notification only after the OS has shown it. The backend confirms
+ * that the placement resolves for the caller's location before accepting the
+ * event, so a client cannot attribute an arbitrary placement ID.
+ */
+export async function recordPlacementNotification(
+  placementId: string,
+  coords: { lat: number; lng: number },
+): Promise<boolean> {
+  try {
+    const now = new Date();
+    const { data, error } = await supabase.rpc('record_placement_notification', {
+      p_placement_id: placementId,
+      p_lat: coords.lat,
+      p_lng: coords.lng,
+      p_local_dow: now.getDay(),
+      p_local_hour: now.getHours(),
+    });
+    return !error && data === true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Ordering for placements — paid beats unpaid, then higher priority, then
+ * nearer. Strict lexicographic, mirroring the resolver's ORDER BY exactly
+ * (a weighted scalar breaks paid-first once priority deltas grow large).
+ * The single source of truth for ordering, shared by the vault list boost
+ * AND the hero-card takeover.
+ */
+export function comparePlacements(a: ResolvedPlacement, b: ResolvedPlacement): number {
+  if (a.paid !== b.paid) return a.paid ? -1 : 1;
+  if (a.priority !== b.priority) return b.priority - a.priority;
+  return a.distance_m - b.distance_m;
+}
+
+/**
+ * Choose the single placement that should take over the hero card. Only
+ * placements whose reward is actually in the vault (present in `rewardIds`)
+ * are eligible — a placement for a reward the user can't see shouldn't seize
+ * the hero. Returns the best-ranked one, or null (→ keep the normal hero).
+ */
+export function pickHeroPlacement(
+  rewardIds: Set<string>,
+  placements: ResolvedPlacement[],
+): ResolvedPlacement | null {
+  let best: ResolvedPlacement | null = null;
+  for (const p of placements) {
+    if (!rewardIds.has(p.reward_id)) continue;
+    if (best === null || comparePlacements(p, best) < 0) best = p;
+  }
+  return best;
+}
+
+export interface MergedRewards {
+  /** Rewards reordered so placed ones lead (paid → priority → distance). */
+  rewards: Reward[];
+  /** reward_id → the placement that surfaced it, for the "Sponsored" tag + logging. */
+  placementByRewardId: Map<string, ResolvedPlacement>;
+}
+
+/**
+ * Merge resolved placements into the base vault WITHOUT hiding anything.
+ * 'boost' placements move a reward the user can already see to the front;
+ * rewards with no placement keep their normal relative order behind them.
+ *
+ * 'exclusive' placements are recognised and tagged, but surfacing rewards
+ * that are otherwise hidden is a later increment (needs a hidden-reward
+ * fetch path); for now they behave like a boost if the reward is present.
+ */
+export function applyPlacements(
+  rewards: Reward[],
+  placements: ResolvedPlacement[],
+): MergedRewards {
+  // Best placement per reward (resolver already ordered; keep the first seen).
+  const placementByRewardId = new Map<string, ResolvedPlacement>();
+  for (const p of placements) {
+    if (!placementByRewardId.has(p.reward_id)) placementByRewardId.set(p.reward_id, p);
+  }
+
+  const boosted: Reward[] = [];
+  const rest: Reward[] = [];
+  for (const r of rewards) (placementByRewardId.has(r.id) ? boosted : rest).push(r);
+  boosted.sort((a, b) =>
+    comparePlacements(placementByRewardId.get(a.id)!, placementByRewardId.get(b.id)!),
+  );
+
+  return { rewards: [...boosted, ...rest], placementByRewardId };
+}

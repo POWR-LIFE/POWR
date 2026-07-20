@@ -1,19 +1,21 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import GeometricBackground from '@/components/GeometricBackground';
 import { Avatar } from '@/components/social/Avatar';
 import { Countdown } from '@/components/social/Countdown';
-import { FriendSearchSheet } from '@/components/social/FriendSearchSheet';
+import { InvitePeopleSheet } from '@/components/social/InvitePeopleSheet';
 import { SharedChallengeCelebration } from '@/components/social/SharedChallengeCelebration';
 import { UserProfileSheet } from '@/components/UserProfileSheet';
 import { fontFamily } from '@/constants/tokens';
-import { useSharedChallenges } from '@/hooks/useSharedChallenges';
-import { earnedPoints, groupBonus, maxBonusForGroup } from '@/lib/social/bonus';
+import { durationLabel, useSharedChallenges } from '@/hooks/useSharedChallenges';
+import { earnedPoints, maxBonusForGroup } from '@/lib/social/bonus';
+import { dailyMilestoneHint, progressUnit } from '@/lib/social/challengeProgress';
+import { buildSharedChallengeShareInput } from '@/lib/social/share';
 import type { IconSpec, Participant, SharedChallenge } from '@/lib/social/types';
 
 // ─── Palette ──────────────────────────────────────────────────────────────────
@@ -56,6 +58,22 @@ function countText(progress: number, target: number): string {
   return `${fmt(current)} / ${fmt(target)}`;
 }
 
+/** "2,567 / 10,000" today-so-far readout — mirrors the card. Only shown for a
+ *  day in progress (current > 0, not yet at the bar). */
+function momentumText(m: { current: number; target: number; unit: string }): string {
+  if (m.unit === 'distance_m') return `${(m.current / 1000).toFixed(1)} / ${(m.target / 1000).toFixed(1)} km`;
+  const sep = (n: number) => Math.round(n).toLocaleString('en-US');
+  return `${sep(m.current)} / ${sep(m.target)}`;
+}
+
+/** Hero-sized readout for the "left to do" card: full number + display unit.
+ *  Distance values arrive in metres ('distance_m' from momentum, 'km'/'mi' pools). */
+function fmtBig(v: number, unit?: string): { num: string; unitLabel: string } {
+  if (unit === 'distance_m' || unit === 'km') return { num: (v / 1000).toFixed(1), unitLabel: 'km' };
+  if (unit === 'mi') return { num: (v / 1609.34).toFixed(1), unitLabel: 'mi' };
+  return { num: Math.round(v).toLocaleString('en-US'), unitLabel: unit ?? '' };
+}
+
 function StatePill({ p, target }: { p: Participant; target?: number }) {
   if (p.completed) return <Text style={[styles.statePill, { color: GREEN }]}>Done</Text>;
   if (p.state === 'invited') return <Text style={[styles.statePill, { color: MUTED }]}>Invited</Text>;
@@ -76,8 +94,8 @@ function ParticipantRow({ p, pool, goalTarget, onPress }: { p: Participant; pool
       accessibilityRole={onPress ? 'button' : undefined}
       accessibilityLabel={onPress ? `View ${p.friend.displayName}'s profile` : undefined}
     >
-      <Avatar friend={p.friend} size={40} completed={p.completed} pending={p.state === 'invited'} />
-      <View style={{ flex: 1, gap: 6 }}>
+      <Avatar friend={p.friend} size={32} completed={p.completed} pending={p.state === 'invited'} />
+      <View style={{ flex: 1, gap: 5 }}>
         <View style={styles.pNameRow}>
           <Text style={styles.pName}>
             {p.isSelf ? 'You' : p.friend.displayName}
@@ -100,6 +118,11 @@ function ParticipantRow({ p, pool, goalTarget, onPress }: { p: Participant; pool
             />
           </View>
         )}
+        {!pool && !p.completed && p.momentum && p.momentum.current > 0 && p.momentum.current < p.momentum.target && (
+          <Text style={styles.pMomentum} numberOfLines={1}>
+            Today · {momentumText(p.momentum)}
+          </Text>
+        )}
       </View>
     </Pressable>
   );
@@ -109,25 +132,43 @@ export default function SharedChallengeDetail() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const params = useLocalSearchParams<{ challenge?: string; id?: string }>();
-  const { acceptInvite, declineInvite, leaveChallenge, getById, bonusConfig, loading, error, refresh, search, sendRequest } = useSharedChallenges();
+  const { acceptInvite, declineInvite, leaveChallenge, inviteToChallenge, fetchById, getById, bonusConfig, loading, error, refresh, friends, search, sendRequest } = useSharedChallenges();
   const [showCelebration, setShowCelebration] = useState(false);
-  const [showAddFriend, setShowAddFriend] = useState(false);
+  const [showInvite, setShowInvite] = useState(false);
   const [retrying, setRetrying] = useState(false);
   // Tap a participant to view their profile / add them. Relationship is unknown
   // here, so the sheet resolves it via RPC.
   const [sheetUserId, setSheetUserId] = useState<string | null>(null);
+  // Historical fallback: the list RPC drops challenges 3 days after settlement,
+  // but notification links live forever — resolve those by id instead of
+  // dead-ending on "not available".
+  const [fetched, setFetched] = useState<SharedChallenge | null>(null);
+  const [fetchingById, setFetchingById] = useState(false);
 
   // Prefer the live hook record (by id — used by Home nav + notification deep
   // links); fall back to a serialized challenge param for older nav paths.
   const challenge = useMemo<SharedChallenge | null>(() => {
-    if (params.id) return getById(params.id) ?? null;
+    if (params.id) return getById(params.id) ?? fetched;
     if (!params.challenge) return null;
     try {
       return JSON.parse(params.challenge) as SharedChallenge;
     } catch {
       return null;
     }
-  }, [params.id, params.challenge, getById]);
+  }, [params.id, params.challenge, getById, fetched]);
+
+  // Once the list has loaded and still doesn't know this id, try the durable
+  // by-id lookup (works for completed >3d / expired / cancelled challenges).
+  useEffect(() => {
+    if (!params.id || loading || fetched) return;
+    if (getById(params.id)) return;
+    let cancelled = false;
+    setFetchingById(true);
+    fetchById(params.id)
+      .then((c) => { if (!cancelled && c) setFetched(c); })
+      .finally(() => { if (!cancelled) setFetchingById(false); });
+    return () => { cancelled = true; };
+  }, [params.id, loading, fetched, getById, fetchById]);
 
   if (!challenge) {
     // Three distinct states so we never dead-end on a blank screen:
@@ -135,7 +176,7 @@ export default function SharedChallengeDetail() {
     //   error    → the fetch failed; the challenge may well still exist, so offer
     //              a retry instead of wrongly declaring it gone
     //   missing  → loaded cleanly but it's genuinely not in our list
-    const isLoading = retrying || (!!params.id && loading);
+    const isLoading = retrying || fetchingById || (!!params.id && loading);
     const isError = !isLoading && error;
 
     const handleRetry = async () => {
@@ -196,6 +237,14 @@ export default function SharedChallengeDetail() {
   const others = participants.filter((p) => !p.isSelf);
   const accepted = participants.filter((p) => p.state !== 'invited' && p.state !== 'declined');
   const finished = participants.filter((p) => p.completed);
+  // Anyone still in the challenge (invited or committed) can't be re-invited.
+  // `state` from the RPC only ever surfaces live rows, but guard declined/left
+  // explicitly so a re-invite path stays open for them. Plain derivation — no
+  // hook — because we're below the `!challenge` early return (hooks up there
+  // would violate the rules of hooks) and it's a handful of rows at most.
+  const alreadyInIds = new Set(
+    participants.filter((p) => p.state !== 'declined' && p.state !== 'left').map((p) => p.friend.id),
+  );
 
   // What YOU'RE on track for: bonus scales with OTHER finishers (co-completers).
   const coCompleters = others.filter((p) => p.completed).length;
@@ -209,8 +258,45 @@ export default function SharedChallengeDetail() {
 
   const isInvited = self?.state === 'invited';
   const isCreator = challenge.creatorId === self?.friend.id;
+  // Terminal statuses — reachable via the 3-day linger and the by-id fallback
+  // (old notification links). The game's over: no accept/invite/leave, just the
+  // outcome and its share.
+  const challengeOver =
+    challenge.status === 'completed' || challenge.status === 'expired' || challenge.status === 'cancelled';
   // Forming until everyone's accepted — the clock (endsAt) only runs after that.
   const forming = participants.some((p) => p.state === 'invited');
+
+  // The flip side of the progress the cards above show: what's STILL to be
+  // done. Pooled = the group's gap to the shared target; parallel = YOUR gap
+  // to your own goal (mirrors countText's rounding so the two never disagree).
+  const selfProgress = self?.progress ?? 0;
+  const remaining =
+    pooled && pool
+      ? Math.max(0, pool.target - pool.total)
+      : challenge.goalTarget
+        ? challenge.goalTarget - Math.min(Math.round(selfProgress * challenge.goalTarget), challenge.goalTarget)
+        : null;
+  const remainingDone = pooled ? poolPct >= 1 : !!self?.completed;
+  const remainingUnit = pooled && pool ? pool.unit : progressUnit(challenge.goalRule) ?? self?.momentum?.unit;
+  const remainParts =
+    remaining !== null
+      ? fmtBig(remaining, remainingUnit)
+      : { num: `${Math.max(0, Math.round((1 - selfProgress) * 100))}%`, unitLabel: '' };
+  const milestoneHint = remainingDone ? null : dailyMilestoneHint(challenge.goalRule, challenge.goalTarget);
+
+  // With a day or more on the clock, break the gap into a daily chunk — a
+  // concrete "do this today" beats a big scary total.
+  let paceHint: string | null = null;
+  if (!milestoneHint && !remainingDone && remaining !== null && remaining > 0 && !forming && challenge.endsAt) {
+    const daysLeft = (new Date(challenge.endsAt).getTime() - Date.now()) / 86_400_000;
+    if (daysLeft >= 1) {
+      const perDayRaw = remaining / daysLeft;
+      // Steps read better rounded up to the nearest hundred; small counts stay exact.
+      const perDay = fmtBig(perDayRaw >= 1000 ? Math.ceil(perDayRaw / 100) * 100 : Math.ceil(perDayRaw), remainingUnit);
+      const unitWord = perDay.num === '1' && perDay.unitLabel.endsWith('s') ? perDay.unitLabel.slice(0, -1) : perDay.unitLabel;
+      paceHint = `About ${perDay.num}${unitWord ? ` ${unitWord}` : ''} a day${pooled ? ' between you' : ''} gets it done.`;
+    }
+  }
 
   // Leaving / cancelling was a one-tap action that, for a pair, ends the
   // challenge for BOTH people (dropping below two live members cancels it).
@@ -242,7 +328,8 @@ export default function SharedChallengeDetail() {
   const handleShare = async () => {
     const url = `https://powr.life/app?challenge=${challenge.id}`;
     try {
-      await Share.share({ message: `Join my POWR challenge "${template.title}" — ${template.goal}. ${url}`, url });
+      const runLength = challenge.durationHours ? ` in ${durationLabel(challenge.durationHours)}` : '';
+      await Share.share({ message: `Join my POWR challenge "${template.title}" — ${template.goal}${runLength}. ${url}`, url });
     } catch {
       /* dismissed */
     }
@@ -279,6 +366,14 @@ export default function SharedChallengeDetail() {
             <View style={styles.tag}>
               <Text style={[styles.tagText, { color: TIER_COLOR[template.tier] }]}>{template.tier.toUpperCase()}</Text>
             </View>
+            {/* While forming, the accept countdown says nothing about how long the
+                game will run — surface the chosen run length until the clock starts. */}
+            {forming && challenge.durationHours ? (
+              <View style={styles.tag}>
+                <Ionicons name="timer-outline" size={11} color={SECONDARY} />
+                <Text style={[styles.tagText, { textTransform: 'none' }]}>{durationLabel(challenge.durationHours)}</Text>
+              </View>
+            ) : null}
             <View style={styles.tag}>
               <Ionicons name={forming ? 'hourglass-outline' : 'time-outline'} size={11} color={SECONDARY} />
               {!forming && challenge.endsAt ? (
@@ -292,9 +387,47 @@ export default function SharedChallengeDetail() {
           </View>
         </View>
 
+        {!challengeOver && (
+          <View style={styles.remainCard}>
+            <Text style={[styles.sectionLabel, { textAlign: 'center' }]}>LEFT TO DO</Text>
+            <View style={styles.remainRow}>
+              <View style={styles.remainCol}>
+                {remainingDone ? (
+                  <Text style={[styles.remainNum, { color: GREEN }]}>Done</Text>
+                ) : (
+                  <Text style={styles.remainNum}>{remainParts.num}</Text>
+                )}
+                <Text style={styles.remainColLabel}>
+                  {remainingDone
+                    ? pooled ? 'target hit' : 'your goal is in'
+                    : `${remainParts.unitLabel ? `${remainParts.unitLabel} ` : ''}to go`}
+                </Text>
+              </View>
+              <View style={styles.remainDivider} />
+              <View style={styles.remainCol}>
+                {!forming && challenge.endsAt ? (
+                  <Countdown endsAt={challenge.endsAt} suffix="" style={styles.remainTime} />
+                ) : (
+                  <Text style={[styles.remainTime, { color: MUTED }]}>—</Text>
+                )}
+                <Text style={styles.remainColLabel}>
+                  {!forming && challenge.endsAt ? 'time left' : 'starts when everyone’s in'}
+                </Text>
+              </View>
+            </View>
+            {milestoneHint ? (
+              <Text style={styles.bonusHint}>{milestoneHint}</Text>
+            ) : paceHint ? (
+              <Text style={styles.bonusHint}>{paceHint}</Text>
+            ) : remainingDone && !pooled ? (
+              <Text style={styles.bonusHint}>You’re done — your bonus still grows as the others finish.</Text>
+            ) : null}
+          </View>
+        )}
+
         {/* Pooled: shared combined-total progress (replaces the per-you bonus card) */}
         {pooled && pool && (
-          <View style={styles.bonusCard}>
+          <View style={[styles.bonusCard, styles.compactCard]}>
             <View style={styles.pNameRow}>
               <Text style={styles.sectionLabel}>GROUP TOTAL</Text>
               <Text style={[styles.poolPctText, poolPct >= 1 && { color: GREEN }]}>{Math.round(poolPct * 100)}%</Text>
@@ -311,27 +444,23 @@ export default function SharedChallengeDetail() {
           </View>
         )}
 
-        {/* Bonus breakdown (solo co-op only) */}
+        {/* Bonus breakdown (solo co-op only) — one compact line; the "left to
+            do" card below carries the visual weight now. */}
         {!pooled && (
-        <View style={styles.bonusCard}>
-          <Text style={styles.sectionLabel}>YOUR POINTS</Text>
-          <View style={styles.bonusMath}>
-            <View style={styles.bonusCol}>
-              <Text style={styles.bonusNum}>{current.base}</Text>
-              <Text style={styles.bonusColLabel}>base</Text>
-            </View>
-            <Text style={styles.bonusPlus}>+</Text>
-            <View style={styles.bonusCol}>
-              <Text style={[styles.bonusNum, { color: current.bonus > 0 ? GOLD : MUTED }]}>{current.bonus}</Text>
-              <Text style={styles.bonusColLabel}>group bonus</Text>
-            </View>
-            <Text style={styles.bonusPlus}>=</Text>
-            <View style={styles.bonusCol}>
-              <Text style={[styles.bonusNum, styles.bonusTotal]}>{current.total}</Text>
-              <Text style={styles.bonusColLabel}>so far</Text>
-            </View>
+        <View style={[styles.bonusCard, styles.compactCard]}>
+          <View style={styles.pNameRow}>
+            <Text style={styles.sectionLabel}>YOUR POINTS</Text>
+            <Text style={styles.bonusInline}>
+              {current.base}
+              <Text style={styles.bonusInlineLabel}> base</Text>
+              <Text style={styles.bonusInlineOp}>{'  +  '}</Text>
+              <Text style={current.bonus > 0 ? { color: GOLD } : { color: MUTED }}>{current.bonus}</Text>
+              <Text style={styles.bonusInlineLabel}> bonus</Text>
+              <Text style={styles.bonusInlineOp}>{'  =  '}</Text>
+              <Text style={{ color: GOLD }}>{current.total}</Text>
+            </Text>
           </View>
-          <Text style={styles.bonusHint}>
+          <Text style={[styles.bonusHint, styles.bonusHintCompact]}>
             {coCompleters > 0
               ? `${coCompleters} ${coCompleters === 1 ? 'friend has' : 'friends have'} finished — your bonus grows with each one.`
               : 'Your bonus grows each time a friend finishes.'}
@@ -341,7 +470,7 @@ export default function SharedChallengeDetail() {
         )}
 
         {/* Participants */}
-        <View style={styles.listCard}>
+        <View style={[styles.listCard, styles.compactCard]}>
           <View style={styles.listHeader}>
             <Text style={styles.sectionLabel}>{pooled ? 'CONTRIBUTORS' : 'PARTICIPANTS'}</Text>
             <Text style={styles.listCount}>
@@ -355,7 +484,7 @@ export default function SharedChallengeDetail() {
               )}
             </Text>
           </View>
-          <View style={{ gap: 14, marginTop: 12 }}>
+          <View style={{ gap: 10, marginTop: 10 }}>
             {sorted.map((p) => (
               <ParticipantRow
                 key={p.friend.id}
@@ -368,7 +497,7 @@ export default function SharedChallengeDetail() {
           </View>
         </View>
 
-        {isInvited ? (
+        {isInvited && !challengeOver ? (
           /* Pending-invite — Accept / Decline */
           <>
             <Text style={styles.invitePrompt}>
@@ -378,6 +507,14 @@ export default function SharedChallengeDetail() {
               </Text>
               .
             </Text>
+            {/* Joining an already-running challenge: be honest about the clock —
+                they inherit the time that's left, not a fresh run. */}
+            {!forming && challenge.endsAt ? (
+              <Text style={styles.inviteSub}>
+                This one’s already underway — you’d be joining with{' '}
+                <Countdown endsAt={challenge.endsAt} suffix="" style={styles.inviteSubStrong} /> left.
+              </Text>
+            ) : null}
             <Pressable
               style={styles.acceptBtn}
               onPress={() => {
@@ -395,20 +532,36 @@ export default function SharedChallengeDetail() {
               <Text style={styles.leaveText}>Decline</Text>
             </Pressable>
           </>
+        ) : challengeOver ? (
+          /* Finished (completed/expired/cancelled) — outcome is read-only; the
+             only live action is sharing the result. */
+          <View style={styles.actionRow}>
+            <Pressable
+              style={[styles.actionBtn, styles.actionGhost]}
+              onPress={handleShare}
+              accessibilityRole="button"
+              accessibilityLabel="Share challenge result"
+            >
+              <Ionicons name="share-outline" size={15} color={SECONDARY} />
+              <Text style={styles.actionGhostText}>Share result</Text>
+            </Pressable>
+          </View>
         ) : (
           <>
-            {/* Grow the group — add new friends by username, or share a link to
-                invite anyone (friend or not) straight into this challenge. */}
+            {/* Grow the group. Only the creator can invite people straight into
+                the challenge; everyone else can still share a link. */}
             <View style={styles.actionRow}>
-              <Pressable
-                style={[styles.actionBtn, styles.actionPrimary]}
-                onPress={() => { Haptics.selectionAsync(); setShowAddFriend(true); }}
-                accessibilityRole="button"
-                accessibilityLabel="Add friends by username"
-              >
-                <Ionicons name="person-add-outline" size={16} color={GOLD} />
-                <Text style={styles.actionPrimaryText}>Add friends</Text>
-              </Pressable>
+              {isCreator && (
+                <Pressable
+                  style={[styles.actionBtn, styles.actionPrimary]}
+                  onPress={() => { Haptics.selectionAsync(); setShowInvite(true); }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Invite people to this challenge"
+                >
+                  <Ionicons name="person-add-outline" size={16} color={GOLD} />
+                  <Text style={styles.actionPrimaryText}>Invite people</Text>
+                </Pressable>
+              )}
               <Pressable
                 style={[styles.actionBtn, styles.actionGhost]}
                 onPress={handleShare}
@@ -445,13 +598,27 @@ export default function SharedChallengeDetail() {
         <SharedChallengeCelebration
           challenge={challenge}
           onDone={() => setShowCelebration(false)}
-          onShare={handleShare}
+          // The completion brag is a share CARD; the header share stays the
+          // plain-text "join me" invite.
+          onShare={() => {
+            setShowCelebration(false);
+            router.push({
+              pathname: '/share-stats',
+              params: {
+                mode: 'challenge',
+                challenge: JSON.stringify(buildSharedChallengeShareInput(challenge)),
+              },
+            });
+          }}
         />
       )}
 
-      <FriendSearchSheet
-        visible={showAddFriend}
-        onClose={() => setShowAddFriend(false)}
+      <InvitePeopleSheet
+        visible={showInvite}
+        onClose={() => setShowInvite(false)}
+        friends={friends}
+        alreadyInIds={alreadyInIds}
+        onInvite={(ids) => inviteToChallenge(challenge.id, ids)}
         search={search}
         sendRequest={sendRequest}
       />
@@ -497,15 +664,25 @@ const styles = StyleSheet.create({
 
   // bonus card
   bonusCard: { backgroundColor: CARD_BG, borderRadius: 18, borderWidth: 1, borderColor: BORDER, padding: 18, gap: 14 },
-  bonusMath: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  bonusCol: { alignItems: 'center', gap: 4, flex: 1 },
-  bonusNum: { fontFamily: fontFamily.extraLight, fontSize: 34, color: TEXT, lineHeight: 36 },
-  bonusTotal: { color: GOLD },
-  bonusColLabel: { fontFamily: fontFamily.medium, fontSize: 9, letterSpacing: 1.5, color: FAINT, textTransform: 'uppercase' },
-  bonusPlus: { fontFamily: fontFamily.extraLight, fontSize: 22, color: MUTED, paddingHorizontal: 4 },
   bonusHint: { fontFamily: fontFamily.light, fontSize: 12, color: SECONDARY, lineHeight: 18, textAlign: 'center' },
-  poolHeadline: { fontFamily: fontFamily.extraLight, fontSize: 30, color: GOLD, letterSpacing: -0.5 },
+  poolHeadline: { fontFamily: fontFamily.extraLight, fontSize: 24, color: GOLD, letterSpacing: -0.5 },
   poolPctText: { fontFamily: fontFamily.semiBold, fontSize: 13, color: GOLD },
+
+  // compact variants — the summary cards cede the stage to the remain card
+  compactCard: { padding: 14, gap: 8 },
+  bonusInline: { fontFamily: fontFamily.light, fontSize: 16, color: TEXT },
+  bonusInlineLabel: { fontFamily: fontFamily.medium, fontSize: 9, letterSpacing: 0.5, color: FAINT, textTransform: 'uppercase' },
+  bonusInlineOp: { fontFamily: fontFamily.extraLight, fontSize: 14, color: MUTED },
+  bonusHintCompact: { fontSize: 11.5, lineHeight: 16, textAlign: 'left' },
+
+  // "left to do" card
+  remainCard: { backgroundColor: CARD_BG, borderRadius: 18, borderWidth: 1, borderColor: BORDER, padding: 18, gap: 14 },
+  remainRow: { flexDirection: 'row', alignItems: 'center' },
+  remainCol: { flex: 1, alignItems: 'center', gap: 6 },
+  remainDivider: { width: StyleSheet.hairlineWidth, alignSelf: 'stretch', backgroundColor: BORDER },
+  remainNum: { fontFamily: fontFamily.extraLight, fontSize: 38, lineHeight: 42, color: GOLD, letterSpacing: -1 },
+  remainTime: { fontFamily: fontFamily.extraLight, fontSize: 38, lineHeight: 42, color: TEXT, letterSpacing: -1 },
+  remainColLabel: { fontFamily: fontFamily.medium, fontSize: 9, letterSpacing: 1.5, color: FAINT, textTransform: 'uppercase' },
 
   // participant list
   listCard: { backgroundColor: CARD_BG, borderRadius: 18, borderWidth: 1, borderColor: BORDER, padding: 18 },
@@ -515,6 +692,7 @@ const styles = StyleSheet.create({
   pNameRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   pName: { fontFamily: fontFamily.regular, fontSize: 14, color: TEXT },
   statePill: { fontFamily: fontFamily.medium, fontSize: 11, letterSpacing: 0.3 },
+  pMomentum: { fontFamily: fontFamily.regular, fontSize: 11, color: SECONDARY },
   track: { height: 4, backgroundColor: BORDER, borderRadius: 2, overflow: 'hidden' },
   fill: { height: 4, borderRadius: 2 },
 
@@ -533,6 +711,8 @@ const styles = StyleSheet.create({
 
   // pending invite
   invitePrompt: { fontFamily: fontFamily.light, fontSize: 14, color: SECONDARY, lineHeight: 20, textAlign: 'center', paddingHorizontal: 8 },
+  inviteSub: { fontFamily: fontFamily.light, fontSize: 12.5, color: MUTED, lineHeight: 18, textAlign: 'center', paddingHorizontal: 8, marginTop: -4 },
+  inviteSubStrong: { fontFamily: fontFamily.medium, fontSize: 12.5, color: SECONDARY },
   acceptBtn: { backgroundColor: GOLD, borderRadius: 100, paddingVertical: 15, alignItems: 'center' },
   acceptText: { fontFamily: fontFamily.bold, fontSize: 13, color: '#0a0a0a', letterSpacing: 0.5 },
 

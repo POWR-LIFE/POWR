@@ -1,11 +1,16 @@
+import { Image } from 'expo-image';
 import React from 'react';
 import Svg, { Circle, Line, Path, Rect } from 'react-native-svg';
+
+import { LEVEL_IMAGE } from '@/constants/levels';
 
 interface LevelIconProps {
   level: number;
   size?: number;
   color: string;
   strokeWidth?: number;
+  /** When false, image-based levels render dimmed to signal a locked state. */
+  unlocked?: boolean;
 }
 
 // 5-pointed star path centered in a 40×40 viewBox
@@ -29,8 +34,22 @@ function poly(cx: number, cy: number, r: number, n: number): string {
   return `M${pts.join('L')}Z`;
 }
 
-export function LevelIcon({ level, size = 40, color, strokeWidth = 1.8 }: LevelIconProps) {
+export function LevelIcon({ level, size = 40, color, strokeWidth = 1.8, unlocked = true }: LevelIconProps) {
   const sw = strokeWidth;
+
+  // Pre-rendered artwork takes precedence over the generated SVG. The image is
+  // its own colour, so instead of recolouring we dim it when the level is locked.
+  const imageUri = LEVEL_IMAGE[level];
+  if (imageUri) {
+    return (
+      <Image
+        source={{ uri: imageUri }}
+        style={{ width: size, height: size, opacity: unlocked ? 1 : 0.28 }}
+        contentFit="contain"
+        transition={200}
+      />
+    );
+  }
 
   const icon = (() => {
     switch (level) {

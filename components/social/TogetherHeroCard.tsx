@@ -5,6 +5,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
 import { fontFamily } from '@/constants/tokens';
+import { durationLabel } from '@/hooks/useSharedChallenges';
 import { BONUS_DEFAULTS, type BonusConfig } from '@/lib/social/bonus';
 import type { ChallengeTemplate } from '@/lib/social/types';
 import { ChallengeBadge } from './ChallengeBadge';
@@ -64,10 +65,13 @@ export function TogetherHeroCard({ template, bonusConfig, onPress }: TogetherHer
           </View>
         </View>
 
-        {/* What it is */}
+        {/* What it is (run length rides on the goal line — timing has no other home here) */}
         <View style={styles.titleBlock}>
           <Text style={styles.title} numberOfLines={2}>{template.title}</Text>
-          <Text style={styles.goal} numberOfLines={2}>{template.goal}</Text>
+          <Text style={styles.goal} numberOfLines={2}>
+            {template.goal}
+            {template.durationHours ? ` · ${durationLabel(template.durationHours)}` : ''}
+          </Text>
         </View>
 
         {/* Tier + the group-bonus hook (the centrepiece mechanic) */}

@@ -13,6 +13,9 @@ type NotificationType =
   | 'sleep_target_met'
   | 'session_completed'
   | 'session_upgraded'
+  | 'vault_unlocked'
+  | 'vault_ready'
+  | 'vault_granted'
   // Shared ("together") challenges + friend graph (scope §4/§6a).
   | 'friend_request'
   | 'friend_accepted'
@@ -57,6 +60,9 @@ function categoryFor(type: NotificationType): 'social' | 'rewards' | 'activity' 
       return 'social';
     case 'reward_unlocked':
     case 'points_milestone':
+    case 'vault_unlocked':
+    case 'vault_ready':
+    case 'vault_granted':
       return 'rewards';
     case 'session_completed':
     case 'session_upgraded':
@@ -99,6 +105,16 @@ const TTL_SECONDS: Partial<Record<NotificationType, number>> = {
   daily_reminder:          6 * 60 * 60,
   inactivity_nudge:        12 * 60 * 60,
 };
+
+// "on 16 Sep" for a vault maturity date. Falls back to a vaguer phrase rather
+// than printing "Invalid Date" if the timestamp is missing or unparseable.
+function formatVestDate(vestsAt: unknown): string {
+  const d = new Date(String(vestsAt ?? ''));
+  if (Number.isNaN(d.getTime())) return 'once it vests';
+  return `on ${d.toLocaleDateString('en-GB', {
+    day: 'numeric', month: 'short', timeZone: 'Europe/London',
+  })}`;
+}
 
 function formatSessionCompletedBody(
   partnerName?: string | null,
@@ -266,18 +282,20 @@ function buildMessage(
       }
 
       case 'session_upgraded': {
-        // The 40-min tier bonus, credited by upgrade-gym-tier AFTER the initial
+        // The upgrade-tier bonus, credited by upgrade-gym-tier AFTER the initial
         // claim already pushed "Session recorded". `earned` is the delta (the
-        // extra points for staying to 40 min), carried explicitly because the
-        // session now has multiple 'earn' rows on the ledger.
+        // extra points for staying to the upgrade tier), carried explicitly
+        // because the session now has multiple 'earn' rows on the ledger.
+        // `upgrade_minutes` carries the admin-tunable threshold (default 40).
         const sessionId = (payload.session_id as string) ?? '';
         const earned = Math.max(0, Math.round(Number(payload.earned ?? 0)));
         const partnerName = (payload.partner_name as string | undefined)?.trim();
+        const upgradeMins = Math.round(Number(payload.upgrade_minutes ?? 40)) || 40;
 
         const parts: string[] = [];
         if (partnerName) parts.push(partnerName);
         if (earned > 0) parts.push(`+${earned.toLocaleString()} pts`);
-        parts.push('40-min bonus');
+        parts.push(`${upgradeMins}-min bonus`);
 
         return {
           title: 'Bonus unlocked 🔓',
@@ -289,6 +307,64 @@ function buildMessage(
             earned: earned > 0 ? earned : undefined,
             partner_name: partnerName,
           },
+          sound: 'default',
+          channelId: 'powr_rewards_v2',
+          priority: 'high',
+        };
+      }
+
+      case 'vault_unlocked': {
+        // Fired by release-vault-deposits when matured deposits land on the
+        // spendable balance. `points` is the total released this sweep.
+        const points = Math.max(0, Math.round(Number(payload.points ?? 0)));
+        return {
+          title: 'Vault unlocked ⚡',
+          body: `+${points.toLocaleString()} POWR just vested into your balance. Spend it on something good.`,
+          data: { type, route: '/vault', points },
+          sound: 'default',
+          channelId: 'powr_rewards_v2',
+        };
+      }
+
+      case 'vault_ready': {
+        // Fired down two paths, both landing on the same moment: an admin
+        // unlock event pulling deposits forward, and the natural-maturity
+        // sweep (notify_matured_vault_deposits) catching a vest window that
+        // simply ran out. Either way the user still does the press-and-hold.
+        // ⚠ "the dial", not "the door" — the door is a display, and the dial
+        // beside it is the only control on that screen.
+        const points = Math.max(0, Math.round(Number(payload.points ?? 0)));
+        return {
+          title: 'Your Vault is ready 🔓',
+          body: points > 0
+            ? `${points.toLocaleString()} POWR has finished vesting — hold the dial to unlock it.`
+            : 'Your Vault is ready — hold the dial to unlock it.',
+          data: { type, route: '/vault', points },
+          sound: 'default',
+          channelId: 'powr_rewards_v2',
+        };
+      }
+
+      case 'vault_granted': {
+        // Fired by notify-vault-grant when an admin banks POWR into a user's
+        // Vault. Unlike vault_ready/vault_unlocked this is a gift landing, not
+        // a maturity event — so it leads with the drop and only then says what
+        // happens next. `note` is the admin's message when they left one.
+        const points = Math.max(0, Math.round(Number(payload.points ?? 0)));
+        const note = typeof payload.note === 'string' ? payload.note.trim() : '';
+        const ready = payload.ready === true;
+
+        // Deposits count toward level the moment they land (the level trigger
+        // sums pending vault alongside the ledger) — worth saying, since the
+        // spendable balance won't move until the door is opened.
+        const detail = ready
+          ? 'is waiting in your Vault. Press and hold the door to unlock it.'
+          : `just landed in your Vault. It's already counting toward your level, and unlocks ${formatVestDate(payload.vests_at)}.`;
+
+        return {
+          title: ready ? 'A POWR drop landed ⚡' : 'POWR banked in your Vault 🏦',
+          body: `${note ? `${note} — ` : ''}${points.toLocaleString()} POWR ${detail}`,
+          data: { type, route: '/vault', points, ready },
           sound: 'default',
           channelId: 'powr_rewards_v2',
           priority: 'high',
@@ -424,6 +500,20 @@ function buildMessage(
   return { to: token, ...base, ...(ttl != null ? { ttl } : {}) };
 }
 
+// Apply admin-level copy overrides (from notification_config) to a built message.
+// Overrides are static strings — dynamic payload values are not injected.
+function applyNotifOverrides(
+  msg: ExpoMessage,
+  config: { title_override?: string | null; body_override?: string | null } | null,
+): ExpoMessage {
+  if (!config) return msg;
+  return {
+    ...msg,
+    ...(config.title_override ? { title: config.title_override } : {}),
+    ...(config.body_override  ? { body:  config.body_override  } : {}),
+  };
+}
+
 // Consecutive distinct activity days ending today or yesterday, computed
 // straight from activity_sessions — the same basis the app's streak display
 // uses. We do NOT read user_streaks.current_streak: it's mutated by an
@@ -466,6 +556,19 @@ async function streakFromSessions(supabase: any, userId: string): Promise<number
   return streak;
 }
 
+// Record a gated (never-attempted) send in push_send_log so the admin panel can
+// show WHY a user got no push, not just that nothing arrived. Best-effort.
+async function logSkip(supabase: any, userId: string, type: string, reason: string): Promise<void> {
+  try {
+    const { error } = await supabase
+      .from('push_send_log')
+      .insert({ user_id: userId, type, status: 'skipped', skip_reason: reason });
+    if (error) console.warn('[send-push-notification] skip log failed:', error);
+  } catch (err) {
+    console.warn('[send-push-notification] skip log failed:', err);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Handler
 // ---------------------------------------------------------------------------
@@ -497,11 +600,58 @@ Deno.serve(async (req: Request) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     );
 
+    // Check admin-level notification config (global kill-switch + copy overrides).
+    // Fetched once here; overrides are applied to every message built below.
+    const { data: notifConfig } = await supabase
+      .from('notification_config')
+      .select('enabled, title_override, body_override')
+      .eq('type', type)
+      .maybeSingle();
+
+    if (notifConfig?.enabled === false) {
+      await logSkip(supabase, target_user_id, type, 'admin_disabled');
+      return new Response(JSON.stringify({ skipped: true, reason: 'admin_disabled' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Vault rollout gate. A user outside the rollout has no Vault surface, so a
+    // vault push would deep-link them to a screen that bounces them straight
+    // back. Scoped to vault_* types ONLY — every other push is untouched by
+    // this block.
+    //
+    // ⚠ FAILS OPEN on any error. This is the shared push path for the whole
+    // app; an RPC hiccup must not silently swallow notifications. The rollout
+    // stages a launch, it protects nothing, so a stray push is a far cheaper
+    // failure than a mute nobody notices.
+    if (type.startsWith('vault_')) {
+      try {
+        const { data: hasVault, error: accessErr } = await supabase
+          .rpc('vault_has_access', { p_user: target_user_id });
+        if (!accessErr && hasVault === false) {
+          await logSkip(supabase, target_user_id, type, 'vault_rollout');
+          return new Response(JSON.stringify({ skipped: true, reason: 'vault_rollout' }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+      } catch (err) {
+        console.warn('[send-push] vault rollout check failed, allowing:', err);
+      }
+    }
+
     // Check notification preferences. session_upgraded (the 40-min tier bonus)
     // has no toggle of its own — it rides the session_completed preference so a
     // user who muted session pushes doesn't get the upgrade one either.
+    // vault_unlocked likewise rides points_milestone: both are "your points
+    // moved" moments, and notification_preferences has no column for new types.
     const prefColumn: NotificationType =
-      type === 'session_upgraded' ? 'session_completed' : type;
+      type === 'session_upgraded' ? 'session_completed'
+      : type === 'vault_unlocked' ? 'points_milestone'
+      : type === 'vault_ready' ? 'points_milestone'
+      : type === 'vault_granted' ? 'points_milestone'
+      : type;
     const { data: prefs } = await supabase
       .from('notification_preferences')
       .select(prefColumn)
@@ -509,6 +659,7 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
 
     if (prefs && prefs[prefColumn] === false) {
+      await logSkip(supabase, target_user_id, type, 'user_preference');
       return new Response(JSON.stringify({ skipped: true, reason: 'user_preference' }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
@@ -520,6 +671,7 @@ Deno.serve(async (req: Request) => {
     if (TOGETHER_TYPES.includes(type)) {
       const { data: u } = await supabase.auth.admin.getUserById(target_user_id);
       if (u?.user?.user_metadata?.together_enabled === false) {
+        await logSkip(supabase, target_user_id, type, 'together_disabled');
         return new Response(JSON.stringify({ skipped: true, reason: 'together_disabled' }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
@@ -534,6 +686,7 @@ Deno.serve(async (req: Request) => {
       const computedStreak = await streakFromSessions(supabase, target_user_id);
 
       if (computedStreak === 0) {
+        await logSkip(supabase, target_user_id, type, 'no_active_streak');
         return new Response(JSON.stringify({ skipped: true, reason: 'no_active_streak' }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
@@ -636,7 +789,8 @@ Deno.serve(async (req: Request) => {
     // push path.
     if (!FEED_EXCLUDED.has(type)) {
       try {
-        const sample = buildMessage(type, payload, '');
+        const rawSample = buildMessage(type, payload, '');
+        const sample = applyNotifOverrides(rawSample, notifConfig);
         const route =
           typeof sample.data?.route === 'string' ? sample.data.route : null;
         await supabase.from('user_activity').insert({
@@ -661,6 +815,7 @@ Deno.serve(async (req: Request) => {
 
     if (tokenError) throw tokenError;
     if (!tokens || tokens.length === 0) {
+      await logSkip(supabase, target_user_id, type, 'no_tokens');
       return new Response(JSON.stringify({ skipped: true, reason: 'no_tokens' }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
@@ -674,10 +829,10 @@ Deno.serve(async (req: Request) => {
     // swallowing every future push. Same single inline Expo round-trip as before —
     // no added latency for callers that await this (e.g. claim-points).
     const messages: ExpoMessage[] = tokens.map(({ expo_push_token }) =>
-      buildMessage(type, payload, expo_push_token),
+      applyNotifOverrides(buildMessage(type, payload, expo_push_token), notifConfig),
     );
 
-    const result = await deliverExpoMessages(supabase, messages);
+    const result = await deliverExpoMessages(supabase, messages, { userId: target_user_id, type });
 
     return new Response(JSON.stringify({ ok: true, result }), {
       status: 200,

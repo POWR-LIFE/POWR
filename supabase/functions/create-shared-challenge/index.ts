@@ -29,6 +29,8 @@ Deno.serve(async (req) => {
   const { data: { user }, error: authError } = await userClient.auth.getUser();
   if (authError || !user) return json({ error: 'Unauthorized' }, 401);
 
+  // duration_hours is accepted-but-ignored: run length is template-owned now,
+  // and older clients still send their config-default value.
   let body: { template_id: string; friend_ids: string[]; duration_hours?: number; utc_offset_minutes?: number };
   try {
     body = await req.json();
@@ -46,25 +48,35 @@ Deno.serve(async (req) => {
   // 1. Config (bonus + timer options + cap), snapshotted onto the challenge.
   const { data: cfg } = await supabase
     .from('shared_challenge_config')
-    .select('per_head, max_bonus, accept_window_hours, duration_options, default_duration_hours, challenge_cap')
+    .select('per_head, max_bonus, accept_window_hours, default_duration_hours, challenge_cap')
     .eq('id', 1).maybeSingle();
   const perHead = cfg?.per_head ?? 5;
   const maxBonus = cfg?.max_bonus ?? 30;
   const acceptWindowHours = cfg?.accept_window_hours ?? 48;
-  const durationOptions: number[] = Array.isArray(cfg?.duration_options) ? cfg!.duration_options : [48, 72, 168];
+  // Only a fallback for templates predating the duration_hours column.
   const defaultDuration = cfg?.default_duration_hours ?? 72;
   const challengeCap = cfg?.challenge_cap ?? 3;
-  const durationHours = durationOptions.includes(Number(body.duration_hours))
-    ? Number(body.duration_hours) : defaultDuration;
-
-  // 2. Template → snapshot + derived rule.
+  // 2. Template → snapshot + derived rule. The run length is the TEMPLATE's —
+  // it's part of the challenge's design (a goal is a different game over 24h
+  // vs 2 weeks, and tier/points are priced against a known window). Any
+  // duration_hours in the body (older clients still send one) is ignored.
   const { data: tmpl } = await supabase
     .from('shared_challenge_templates')
-    .select('id, category, title, tier, base_points, goal, measure, mode, active')
+    .select('id, category, title, tier, base_points, goal, measure, mode, active, duration_hours')
     .eq('id', templateId).maybeSingle();
   if (!tmpl || tmpl.active === false) return json({ error: 'Unknown or inactive template' }, 404);
   const isPooled = tmpl.mode === 'pooled';
   const rule = isPooled ? pooledRule(tmpl.category, tmpl.measure || {}) : templateRule(tmpl.category, tmpl.measure || {});
+
+  // A day-based goal ("10,000 steps a day, 4 days", "check in on 7 different
+  // days") can't fit a shorter run — that challenge would be unwinnable. The
+  // admin editor enforces this at authoring time; this is the server backstop.
+  const measure = tmpl.measure || {};
+  const goalDays = Math.max(
+    Number(measure.days) || 0,
+    measure.measure === 'distinct_days' ? Number(measure.target) || 0 : 0,
+  );
+  const durationHours = Math.max(Number(tmpl.duration_hours) || defaultDuration, goalDays * 24);
 
   // 3. Only ACCEPTED friends are invitable.
   const { data: edges } = await supabase

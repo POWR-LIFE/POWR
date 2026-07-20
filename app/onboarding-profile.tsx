@@ -282,7 +282,12 @@ export default function OnboardingProfileScreen() {
                 <Ionicons name="chevron-back" size={26} color="rgba(255,255,255,0.55)" />
             </Pressable>
 
-            <Animated.View style={[styles.center, { paddingTop: insets.top + 70, opacity: fade }]}>
+            <Animated.ScrollView
+                style={[styles.scroll, { opacity: fade }]}
+                contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 70 }]}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+            >
                 <Text style={styles.eyebrow}>YOUR PROFILE</Text>
                 <Text style={styles.headline}>
                     Claim your <Text style={styles.headlineGold}>name.</Text>
@@ -361,7 +366,7 @@ export default function OnboardingProfileScreen() {
                         <Text style={styles.errorText}>{error}</Text>
                     </View>
                 )}
-            </Animated.View>
+            </Animated.ScrollView>
 
             {/* Bottom */}
             <View style={[styles.bottom, { paddingBottom: insets.bottom + 28 }]}>
@@ -391,10 +396,14 @@ const styles = StyleSheet.create({
         zIndex: 20,
         padding: 4,
     },
-    center: {
+    scroll: {
         flex: 1,
+    },
+    scrollContent: {
+        flexGrow: 1,
         alignItems: 'center',
         paddingHorizontal: 28,
+        paddingBottom: 24,
     },
     eyebrow: {
         color: 'rgba(255,255,255,0.22)',

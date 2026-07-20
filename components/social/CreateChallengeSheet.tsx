@@ -3,7 +3,9 @@ import * as Haptics from 'expo-haptics';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Dimensions,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   Share,
@@ -15,6 +17,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { fontFamily } from '@/constants/tokens';
+import { durationLabel } from '@/hooks/useSharedChallenges';
 import { groupBonus } from '@/lib/social/bonus';
 import type { ChallengeTemplate, Friend, IconSpec, SharedChallenge } from '@/lib/social/types';
 import { Avatar } from './Avatar';
@@ -189,7 +192,7 @@ export function CreateChallengeSheet({
     const url = `https://powr.life/app?challenge=${template.id}`;
     try {
       await Share.share({
-        message: `Join me on POWR: "${template.title}" — ${template.goal}. ${url}`,
+        message: `Join me on POWR: "${template.title}" — ${template.goal}${template.durationHours ? ` in ${durationLabel(template.durationHours)}` : ''}. ${url}`,
         url,
       });
     } catch {
@@ -201,7 +204,10 @@ export function CreateChallengeSheet({
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={handleClose}>
-      <View style={styles.overlay}>
+      <KeyboardAvoidingView
+        style={styles.overlay}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
         <Pressable style={styles.backdrop} onPress={handleClose} />
         <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 16) + 8 }]}>
           <View style={styles.handle} />
@@ -351,7 +357,10 @@ export function CreateChallengeSheet({
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.selectedTitle} numberOfLines={1}>{template.title}</Text>
-                    <Text style={styles.selectedGoal} numberOfLines={1}>{template.goal}</Text>
+                    <Text style={styles.selectedGoal} numberOfLines={1}>
+                      {template.goal}
+                      {template.durationHours ? ` · ${durationLabel(template.durationHours)}` : ''}
+                    </Text>
                   </View>
                   <View style={styles.selectedPts}>
                     <Text style={styles.selectedPtsValue}>+{template.basePoints}</Text>
@@ -378,7 +387,10 @@ export function CreateChallengeSheet({
                       >
                         <CatIcon spec={t.icon} size={22} color={active ? '#0a0a0a' : GOLD} />
                         <Text style={[styles.chipTitle, active && styles.chipTitleActive]}>{t.title}</Text>
-                        <Text style={[styles.chipGoal, active && styles.chipGoalActive]}>{t.goal}</Text>
+                        <Text style={[styles.chipGoal, active && styles.chipGoalActive]}>
+                          {t.goal}
+                          {t.durationHours ? ` · ${durationLabel(t.durationHours)}` : ''}
+                        </Text>
                         <View style={styles.chipFooter}>
                           <Text style={[styles.chipPts, active && { color: '#0a0a0a' }]}>+{t.basePoints}</Text>
                           <Text style={[styles.chipTier, { color: TIER_COLOR[t.tier] }, active && { color: '#0a0a0a' }]}>
@@ -391,6 +403,17 @@ export function CreateChallengeSheet({
                 </ScrollView>
               </View>
             )}
+
+            {/* Run length is the template's — no timing decision here. One quiet
+                line states it; the countdown takes over once everyone's in. */}
+            {template?.durationHours ? (
+              <View style={styles.durationLine}>
+                <Ionicons name="time-outline" size={13} color={SECONDARY} />
+                <Text style={styles.durationLineText}>
+                  Runs for {durationLabel(template.durationHours)} — clock starts when everyone’s in
+                </Text>
+              </View>
+            ) : null}
 
             {/* ── Invite friends ── */}
             <View style={styles.section}>
@@ -501,7 +524,7 @@ export function CreateChallengeSheet({
             </>
           )}
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -544,6 +567,10 @@ const styles = StyleSheet.create({
   chipFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   chipPts: { fontFamily: fontFamily.semiBold, fontSize: 13, color: GOLD },
   chipTier: { fontFamily: fontFamily.medium, fontSize: 9, letterSpacing: 1, textTransform: 'uppercase' },
+
+  // run-length note (template-owned — informational, not a choice)
+  durationLine: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: -10 },
+  durationLineText: { fontFamily: fontFamily.light, fontSize: 12, color: SECONDARY },
 
   // selected-challenge confirmation (browse-card entry)
   selectedCard: {

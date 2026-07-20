@@ -175,6 +175,7 @@ export function useHealthSync() {
           points: calculateBasePoints(mappedType, health.durationMin),
           healthVerified: true,
           healthSource: activityVerification,
+          rawActivityName: health.rawName ?? health.type,
         });
 
         // Save full health snapshot for this session

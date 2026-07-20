@@ -1,6 +1,6 @@
 import * as FileSystem from 'expo-file-system/legacy';
 
-import { supabase } from '@/lib/supabase';
+import { getSessionUser, supabase } from '@/lib/supabase';
 import { isHandleFree } from '@/lib/onboarding/username';
 
 export type Profile = {
@@ -34,7 +34,7 @@ export type FriendRelationship =
     | 'blocked';
 
 export async function fetchProfile(): Promise<Profile | null> {
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getSessionUser();
     if (!user) return null;
 
     const { data, error } = await supabase
@@ -136,7 +136,7 @@ export async function updateProfile(
     const { error } = await supabase
         .from('profiles')
         .update(fields)
-        .eq('id', (await supabase.auth.getUser()).data.user?.id ?? '');
+        .eq('id', (await getSessionUser())?.id ?? '');
     return { error: error?.message ?? null };
 }
 
@@ -149,7 +149,7 @@ export async function updateProfile(
 export async function isUsernameAvailable(
     username: string,
 ): Promise<{ available: boolean; error: string | null }> {
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getSessionUser();
     const { data, error } = await supabase
         .from('profiles')
         .select('id')
@@ -163,14 +163,14 @@ export async function isUsernameAvailable(
 export async function updateProProfile(
     fields: Partial<Pick<Profile, 'bio' | 'cover_url'>>
 ): Promise<{ error: string | null }> {
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getSessionUser();
     if (!user) return { error: 'Not authenticated' };
     const { error } = await supabase.from('profiles').update(fields).eq('id', user.id);
     return { error: error?.message ?? null };
 }
 
 export async function setPreferredGym(gymId: string | null): Promise<{ error: string | null }> {
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getSessionUser();
     if (!user) return { error: 'Not authenticated' };
     const { error } = await supabase
         .from('profiles')
@@ -180,7 +180,7 @@ export async function setPreferredGym(gymId: string | null): Promise<{ error: st
 }
 
 export async function updateLeaderboardVisibility(show: boolean): Promise<{ error: string | null }> {
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getSessionUser();
     if (!user) return { error: 'Not authenticated' };
     const { error } = await supabase
         .from('profiles')
@@ -190,7 +190,7 @@ export async function updateLeaderboardVisibility(show: boolean): Promise<{ erro
 }
 
 export async function uploadCover(localUri: string): Promise<{ url: string | null; error: string | null }> {
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getSessionUser();
     if (!user) return { url: null, error: 'Not authenticated' };
 
     const ext = localUri.split('.').pop()?.toLowerCase() ?? 'jpg';
@@ -220,7 +220,7 @@ export async function uploadCover(localUri: string): Promise<{ url: string | nul
 export async function updateActivityPreferences(
     preferences: string[]
 ): Promise<{ error: string | null }> {
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getSessionUser();
     if (!user) return { error: 'Not authenticated' };
 
     // Write to profiles table (source of truth)
@@ -248,7 +248,7 @@ export async function updateActivityPreferences(
  * (file://, ph://, content://) without needing any special permissions.
  */
 export async function uploadAvatar(localUri: string): Promise<{ url: string | null; error: string | null }> {
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getSessionUser();
     if (!user) return { url: null, error: 'Not authenticated' };
 
     const ext = localUri.split('.').pop()?.toLowerCase() ?? 'jpg';

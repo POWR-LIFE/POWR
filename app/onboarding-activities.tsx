@@ -73,7 +73,7 @@ export default function OnboardingActivitiesScreen() {
     // don't block the transition on 3 sequential network round-trips.
     updateActivityPreferences(Array.from(selected)).catch(() => {});
     router.push({
-      pathname: '/onboarding-achievement',
+      pathname: '/onboarding-notifications',
       params: {
         ...(params.streakDays ? { streakDays: params.streakDays } : {}),
         ...(params.totalSessions ? { totalSessions: params.totalSessions } : {}),

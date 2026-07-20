@@ -16,12 +16,13 @@ import {
     TextInput,
     View,
 } from 'react-native';
-import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
+import MapView, { Marker } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import GeometricBackground from '@/components/GeometricBackground';
 import { fetchNearbyGyms, searchPartners, type Partner } from '@/context/GeofenceContext';
 import { createGymRequest } from '@/lib/api/gyms';
 import { setPreferredGym } from '@/lib/api/user';
+import { MAP_PROVIDER } from '@/lib/mapProvider';
 import { ONBOARDING_DOT_COUNT, dotIndexFor } from '@/lib/onboarding/flow';
 import { continueLabel, displayedGyms, gymMarkers, hasGymCoords, toggleSelection } from '@/lib/onboarding/gym';
 
@@ -248,8 +249,8 @@ export default function OnboardingGymScreen() {
                     <MapView
                         ref={mapRef}
                         style={StyleSheet.absoluteFill}
-                        provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
-                        customMapStyle={Platform.OS === 'android' ? DARK_MAP_STYLE : undefined}
+                        provider={MAP_PROVIDER}
+                        customMapStyle={DARK_MAP_STYLE}
                         initialRegion={DEFAULT_REGION}
                         showsUserLocation
                         showsMyLocationButton={false}

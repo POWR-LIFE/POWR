@@ -21,13 +21,16 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import * as SecureStore from 'expo-secure-store';
 import { useAuth } from '@/context/AuthContext';
+import { useNotifications } from '@/context/NotificationsContext';
 import { androidOpenHealthConnectSettings, useHealthData } from '@/hooks/useHealthData';
 import { useHealthProviders } from '@/hooks/useHealthProviders';
 import { HealthProviderNotImplementedError } from '@/lib/health/providers';
 import { ACTIVITIES, type ActivityType } from '@/constants/activities';
-import { supabase } from '@/lib/supabase';
+import { getSessionUser, supabase } from '@/lib/supabase';
 import { getNotificationPreferences, updateNotificationPreferences } from '@/lib/api/notifications';
+import { cacheNearbyOfferPreference, isNearbyOfferEnabled } from '@/lib/notifications';
 import { requestBatteryOptimizationExemption } from '@/lib/batteryOptimization';
+import { getAppVersion } from '@/lib/device';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 
@@ -40,12 +43,20 @@ const MUTED   = 'rgba(255,255,255,0.25)';
 const DIM     = 'rgba(255,255,255,0.5)';
 const RED     = '#ef4444';
 
+// Real version + build + OTA update id (short), so support conversations match
+// what the admin panel shows. Module-level: it can only change via a reload.
+const { appVersion, appBuild, otaUpdateId } = getAppVersion();
+const appVersionLabel = `POWR · v${appVersion ?? '?'}${appBuild ? ` (${appBuild})` : ''}${
+  otaUpdateId ? ` · ${otaUpdateId.slice(0, 8)}` : ''
+}`;
+
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { signOut, user, updateUserMetadata } = useAuth();
+  const { requestPermissions } = useNotifications();
 
   const [isAdmin, setIsAdmin] = React.useState(false);
   const health = useHealthData();
@@ -62,12 +73,20 @@ export default function SettingsScreen() {
   // Background ("Always" / "Allow all the time") location + OS notification permission.
   // Closed-app gym detection silently fails without background location, so we surface it.
   const [bgLocationGranted, setBgLocationGranted] = useState<boolean | null>(null);
-  const [notifGranted, setNotifGranted] = useState<boolean | null>(null);
+  // Android 12+ "Approximate" grants can't verify 25 m gym geofences — surfaced
+  // as their own broken state. null = unknown / iOS (no API to detect there).
+  const [preciseGranted, setPreciseGranted] = useState<boolean | null>(null);
+  // OS notification permission. 'undetermined' = never asked (the app hasn't even
+  // registered, so iOS shows no Notifications row in its settings — tapping the
+  // banner must fire the OS dialog, not deep-link to a page with nothing to fix).
+  // 'denied' = user said no earlier → deep-link to Settings. null = still loading.
+  const [notifStatus, setNotifStatus] = useState<'granted' | 'denied' | 'undetermined' | null>(null);
+  const notifGranted = notifStatus === null ? null : notifStatus === 'granted';
 
   React.useEffect(() => {
     (async () => {
-      const { supabase } = await import('@/lib/supabase');
-      const { data: { user } } = await supabase.auth.getUser();
+      const { supabase, getSessionUser } = await import('@/lib/supabase');
+      const user = await getSessionUser();
       if (!user) return;
       const { data } = await supabase
         .from('profiles')
@@ -82,16 +101,52 @@ export default function SettingsScreen() {
   // updates after the user returns from the system settings app.
   const refreshPermissionStatuses = useCallback(async () => {
     const fg = await Location.getForegroundPermissionsAsync().catch(() => null);
-    if (fg) setLocationStatus(fg.status === 'granted' ? 'granted' : fg.status === 'denied' ? 'denied' : 'undetermined');
+    if (fg) {
+      setLocationStatus(fg.status === 'granted' ? 'granted' : fg.status === 'denied' ? 'denied' : 'undetermined');
+      setPreciseGranted(fg.android ? fg.android.accuracy === 'fine' : null);
+    }
     const bg = await Location.getBackgroundPermissionsAsync().catch(() => null);
     if (bg) setBgLocationGranted(bg.status === 'granted');
     const notif = await Notifications.getPermissionsAsync().catch(() => null);
-    if (notif) setNotifGranted(notif.status === 'granted');
+    if (notif) {
+      setNotifStatus(
+        notif.status === 'granted' ? 'granted'
+          : notif.status === 'denied' ? 'denied'
+            : 'undetermined',
+      );
+    }
   }, []);
 
   useFocusEffect(
     useCallback(() => { refreshPermissionStatuses(); }, [refreshPermissionStatuses]),
   );
+
+  // Banner tap when notifications are off. If we've never asked ('undetermined')
+  // the app hasn't registered — fire the OS dialog (which also registers the push
+  // token, so a Notifications row finally appears in iOS settings). If the user
+  // already denied it, the OS won't show the dialog again, so send them to
+  // Settings with an explanation rather than a page that has nothing to toggle.
+  const handleEnableNotifications = useCallback(async () => {
+    if (notifStatus === 'undetermined') {
+      const granted = await requestPermissions();
+      if (!granted) {
+        // They dismissed/denied the dialog — the permission is now 'denied', so
+        // the only remaining path is the system settings app.
+        Alert.alert(
+          'Notifications off',
+          'To get gym check-ins and reward alerts, turn on Notifications for POWR in Settings.',
+          [
+            { text: 'Not now', style: 'cancel' },
+            { text: 'Open Settings', onPress: () => Linking.openSettings() },
+          ],
+        );
+      }
+      refreshPermissionStatuses();
+    } else {
+      // 'denied' — iOS won't re-prompt, so Settings is the only lever.
+      Linking.openSettings();
+    }
+  }, [notifStatus, requestPermissions, refreshPermissionStatuses]);
 
   // Activity preferences (saved in user_metadata, edited on dedicated screen)
   const savedPrefs: ActivityType[] = user?.user_metadata?.activity_preferences ?? ['gym', 'running', 'walking'];
@@ -102,6 +157,7 @@ export default function SettingsScreen() {
   const [notifRewards,    setNotifRewards]    = useState(true);
   const [notifFriends,    setNotifFriends]    = useState(meta.notif_friends ?? true);
   const [notifNews,       setNotifNews]       = useState(true);
+  const [notifNearby,     setNotifNearby]     = useState(true);
   const [emailWeekly,     setEmailWeekly]     = useState(true);
   const [shareActivity,   setShareActivity]   = useState(meta.share_activity ?? true);
   const [togetherEnabled, setTogetherEnabled] = useState(meta.together_enabled ?? true);
@@ -116,6 +172,8 @@ export default function SettingsScreen() {
       setNotifFriends(prefs.challenge_invite);
     });
   }, [user?.id]);
+  // Nearby-rewards push is stored locally (the background task reads it offline).
+  useEffect(() => { isNearbyOfferEnabled().then(setNotifNearby); }, []);
 
   // Persist a single metadata key when a toggle changes
   const persistMeta = async (key: string, value: boolean) => {
@@ -350,16 +408,18 @@ export default function SettingsScreen() {
             icon="location-outline"
             label="Location Services"
             value={
-              locationStatus === 'granted' && bgLocationGranted === false
-                ? 'Limited'
-                : locationStatus === 'granted'
-                  ? 'Enabled'
-                  : locationStatus === 'denied'
-                    ? 'Denied'
-                    : 'Not set up'
+              locationStatus === 'granted' && preciseGranted === false
+                ? 'Approximate'
+                : locationStatus === 'granted' && bgLocationGranted === false
+                  ? 'Limited'
+                  : locationStatus === 'granted'
+                    ? 'Enabled'
+                    : locationStatus === 'denied'
+                      ? 'Denied'
+                      : 'Not set up'
             }
             valueColor={
-              locationStatus === 'granted' && bgLocationGranted === false
+              locationStatus === 'granted' && (bgLocationGranted === false || preciseGranted === false)
                 ? RED
                 : locationStatus === 'granted'
                   ? '#4ade80'
@@ -368,7 +428,16 @@ export default function SettingsScreen() {
                     : undefined
             }
             onPress={async () => {
-              if (locationStatus === 'granted' && bgLocationGranted === false) {
+              if (locationStatus === 'granted' && preciseGranted === false) {
+                Alert.alert(
+                  'Turn on Precise location',
+                  'POWR verifies you\'re really at the gym — approximate location can\'t do that, so sessions won\'t count. In settings, turn on "Use precise location" for POWR.',
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    { text: 'Open Settings', onPress: () => Linking.openSettings() },
+                  ],
+                );
+              } else if (locationStatus === 'granted' && bgLocationGranted === false) {
                 Alert.alert(
                   Platform.OS === 'ios' ? 'Enable "Always" Location' : 'Enable "Allow all the time"',
                   Platform.OS === 'ios'
@@ -430,13 +499,20 @@ export default function SettingsScreen() {
         {/* ── Notifications ─────────────────────────────────── */}
         <SectionLabel label="Notifications" />
         {notifGranted === false && (
-          <Pressable onPress={() => Linking.openSettings()}>
-            <Text style={[styles.sectionHint, { color: RED }]}>
-              ⚠️ Notifications are turned off, so you won’t get gym check-ins or reward alerts. Tap to open settings.
-            </Text>
+          <Pressable onPress={handleEnableNotifications} style={styles.notifWarnBanner}>
+            <Ionicons name="notifications-off-outline" size={18} color={RED} style={{ marginTop: 1 }} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.notifWarnText}>
+                Notifications are off, so gym check-ins and reward alerts won’t reach you. The
+                switches below have no effect until you turn them on.
+              </Text>
+              <Text style={styles.notifWarnCta}>
+                {notifStatus === 'undetermined' ? 'Turn on notifications' : 'Open Settings'} ›
+              </Text>
+            </View>
           </Pressable>
         )}
-        <View style={styles.card}>
+        <View style={[styles.card, notifGranted === false && styles.cardDisabled]} pointerEvents={notifGranted === false ? 'none' : 'auto'}>
           <RowToggle
             icon="barbell-outline"
             label="Workout reminders"
@@ -454,6 +530,13 @@ export default function SettingsScreen() {
               setNotifRewards(v);
               if (user?.id) updateNotificationPreferences(user.id, { reward_unlocked: v, points_milestone: v });
             }}
+          />
+          <RowToggle
+            icon="location-outline"
+            label="Nearby rewards"
+            sublabel="A nudge when a reward is boosted where you are"
+            value={notifNearby}
+            onValueChange={(v) => { setNotifNearby(v); cacheNearbyOfferPreference(v); }}
           />
           <RowToggle
             icon="people-outline"
@@ -578,7 +661,7 @@ export default function SettingsScreen() {
 
         {/* ── App info ──────────────────────────────────────── */}
         <View style={styles.appInfo}>
-          <Text style={styles.appVersion}>POWR · Version 1.0.0</Text>
+          <Text style={styles.appVersion}>{appVersionLabel}</Text>
         </View>
 
         {/* ── Danger zone ───────────────────────────────────── */}
@@ -1050,6 +1133,37 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     paddingHorizontal: 14,
     overflow: 'hidden',
+  },
+  // When the OS notification gate is shut, the toggles are inert — dim the whole
+  // card so it reads as disabled rather than a live control that does nothing.
+  cardDisabled: {
+    opacity: 0.4,
+  },
+
+  // Notifications-off warning banner (tappable)
+  notifWarnBanner: {
+    flexDirection: 'row',
+    gap: 10,
+    alignItems: 'flex-start',
+    backgroundColor: 'rgba(239,68,68,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(239,68,68,0.25)',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 10,
+  },
+  notifWarnText: {
+    fontSize: 12,
+    fontWeight: '400',
+    lineHeight: 17,
+    color: RED,
+  },
+  notifWarnCta: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: RED,
+    marginTop: 6,
   },
 
   // Row shared

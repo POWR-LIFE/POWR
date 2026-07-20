@@ -401,6 +401,88 @@ verify_jwt = false
 # inside the function, mirroring resolve-shared-challenges.
 verify_jwt = false
 
+[functions.gym-visit-beacon]
+# Invoked by pg_cron every minute (no Supabase user JWT) — same x-resolve-token
+# gate as the other cron functions. It only ever sends a SILENT wake push; it
+# cannot award points, so the blast radius of the open endpoint is a wasted push.
+verify_jwt = false
+
+[functions.release-vault-deposits]
+# Invoked by pg_cron every 15 minutes (no Supabase user JWT) — gated by the
+# x-vault-token shared secret inside the function, mirroring terra-poll.
+verify_jwt = false
+
+[functions.notify-vault-grant]
+# Invoked by the admin_grant_vault_deposit() RPC via pg_net (no Supabase user
+# JWT) — same x-resolve-token gate as the cron/trigger functions.
+verify_jwt = false
+
+[functions.share-card-og]
+# Fetched by WhatsApp/iMessage/X link crawlers, which carry no JWT. It only ever
+# serves a title, a subtitle and a public image URL for one unguessable uuid —
+# there is nothing to authorise.
+verify_jwt = false
+
+[functions.claim-points]
+# Called by the app with a user JWT (validated in-code), AND by relay_gym_claim
+# via pg_net with x-resolve-token + an explicit user id — the background claim
+# path (a client functions.invoke never arrives from a backgrounded Android app
+# while its REST calls do, 2026-07-14). Platform JWT verification must be off so
+# the token-gated relay leg reaches the in-code auth; every award gate is inside.
+verify_jwt = false
+
+[functions.upgrade-gym-tier]
+# Same dual auth as claim-points — user JWT in-code, or relay_gym_upgrade's
+# x-resolve-token leg for background upgrades.
+verify_jwt = false
+
+[functions.partner-api]
+# Machine-facing REST API for reward brands. Callers authenticate with a
+# brand API key (Authorization: Bearer powr_sk_…, sha256-matched against
+# reward_brand_api_keys inside the function) — they are not Supabase users,
+# so platform JWT verification is off.
+verify_jwt = false
+
+[functions.partner-webhook-dispatch]
+# Invoked by pg_cron every minute (no Supabase user JWT) — same
+# x-resolve-token gate as the other cron functions.
+verify_jwt = false
+
+[functions.shopify-connect]
+# Mixed auth by route: /callback is Shopify's OAuth redirect (state + HMAC
+# are the credential), /mint is signed with the brand's mint_secret, and the
+# portal actions verify the user JWT in-code — so platform verification is off.
+verify_jwt = false
+
+[functions.shopify-webhook]
+# Shopify posts order/uninstall events here; it is not a Supabase user.
+# Security rests on the X-Shopify-Hmac-Sha256 check inside the function,
+# mirroring terra-webhook.
+verify_jwt = false
+
+[functions.email-previews]
+# TEMPORARY QA rig — sends the proposed email set to jamie@powr.life (the
+# recipient is hardcoded; it cannot email anyone else). Gated by an in-code
+# key rather than a JWT. Delete alongside the function once the set ships.
+verify_jwt = false
+
+[functions.send-weekly-summary]
+# Invoked by pg_cron every Monday 08:00 UTC (no Supabase user JWT) — gated by
+# the x-resolve-token check (verify_resolve_token) inside the function. This
+# entry was missing originally, so the function deployed with JWT verification
+# on and the cron could never reach it.
+verify_jwt = false
+
+[functions.send-brand-weekly-report]
+# Invoked by pg_cron every Monday 09:00 UTC (no Supabase user JWT) — same
+# x-resolve-token gate as the other cron functions.
+verify_jwt = false
+
+[functions.send-level-up-email]
+# Invoked by the notify_level_up_email() DB trigger via pg_net (no Supabase
+# user JWT) — same x-resolve-token gate as the cron functions.
+verify_jwt = false
+
 [edge_runtime]
 enabled = true
 # Supported request policies: `oneshot`, `per_worker`.

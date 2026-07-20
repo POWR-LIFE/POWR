@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { uploadPublicImage } from '../lib/storage';
+import { validateHeroVideoUrl } from '../lib/heroVideoUrl';
 import RewardAppPreview from '../components/RewardAppPreview';
 
 // ─── Category options (app sectors) ─────────────────────────────────────────
@@ -20,6 +21,7 @@ const DISCOUNT_OPTIONS = [
 ];
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
 const INPUT_BASE = "w-full h-14 rounded-2xl text-sm font-light px-6 outline-none transition-colors border font-['Outfit']";
 
 function cleanPrefix(raw) {
@@ -107,10 +109,13 @@ export default function PartnerRewardSubmit() {
   // Images
   const [logoUrl, setLogoUrl] = useState(null);
   const [heroUrl, setHeroUrl] = useState(null);
+  const [heroVideoUrl, setHeroVideoUrl] = useState(null);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [uploadingHero, setUploadingHero] = useState(false);
+  const [uploadingHeroVideo, setUploadingHeroVideo] = useState(false);
   const logoRef = useRef(null);
   const heroRef = useRef(null);
+  const heroVideoRef = useRef(null);
 
   useEffect(() => {
     if (!token) { setTokenState('invalid'); return; }
@@ -149,6 +154,23 @@ export default function PartnerRewardSubmit() {
       setError(err.message || 'Upload failed');
     } finally {
       setUploading(false);
+    }
+  }
+
+  async function handleHeroVideo(e) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (file.size > MAX_VIDEO_BYTES) { setError('Video must be under 50 MB — use a short, compressed loop.'); return; }
+    setError('');
+    setUploadingHeroVideo(true);
+    try {
+      const publicUrl = await uploadPublicImage('reward-submissions', file, 'hero-videos');
+      setHeroVideoUrl(publicUrl);
+    } catch (err) {
+      setError(err.message || 'Upload failed');
+    } finally {
+      setUploadingHeroVideo(false);
     }
   }
 
@@ -204,6 +226,7 @@ export default function PartnerRewardSubmit() {
             url: website || url,
             image_url: logoUrl,
             hero_image_url: heroUrl,
+            hero_video_url: heroVideoUrl,
             code_prefix: codePrefix,
           },
         },
@@ -398,6 +421,30 @@ export default function PartnerRewardSubmit() {
                   <ImagePicker preview={heroUrl} uploading={uploadingHero} onClick={() => heroRef.current?.click()} aspect="aspect-video" label="Add hero" />
                   <input ref={heroRef} type="file" accept="image/*" className="hidden" onChange={e => handleImage(e, 'hero')} />
                 </div>
+                {/* Hero video (optional) */}
+                <div className="md:col-span-2">
+                  <p className={`text-[10px] uppercase tracking-[0.3em] font-black mb-2 ${t.label}`}>Hero / banner video <span className={t.specText}>— optional</span></p>
+                  <p className={`text-[11px] font-light mb-3 leading-relaxed ${t.specText}`}>A short, looping clip that plays <span className={t.specStrong}>instead of the hero image</span>. Landscape 16:9, MP4, muted. Max 50 MB. The hero image is still used as the still fallback.</p>
+                  <ImagePicker preview={heroVideoUrl} uploading={uploadingHeroVideo} onClick={() => heroVideoRef.current?.click()} aspect="aspect-video" label="Add video" isVideo />
+                  <input ref={heroVideoRef} type="file" accept="video/mp4,video/quicktime,video/webm" className="hidden" onChange={handleHeroVideo} />
+                  {/* Or paste a direct video-file URL instead of uploading (own CDN /
+                      Cloudflare Stream). Validated on blur so streaming-site links are
+                      rejected; this form surfaces feedback through the shared error banner. */}
+                  <input
+                    type="url"
+                    placeholder="Or paste a direct link — https://…/clip.mp4"
+                    className={`mt-3 ${INPUT_BASE} ${t.input}`}
+                    value={heroVideoUrl || ''}
+                    onChange={e => setHeroVideoUrl(e.target.value)}
+                    onBlur={e => {
+                      const res = validateHeroVideoUrl(e.target.value);
+                      if (res.error) { setError(res.error); setHeroVideoUrl(null); return; }
+                      setHeroVideoUrl(res.value || null);
+                      setError('');
+                    }}
+                  />
+                  <p className={`mt-2 text-[10px] font-light ${t.specText}`}>Direct .mp4 / .m3u8 / .webm or Cloudflare Stream. YouTube &amp; Vimeo links won't play as a background.</p>
+                </div>
               </div>
             </FormSection>
 
@@ -408,8 +455,8 @@ export default function PartnerRewardSubmit() {
                 <p className={`text-xs font-light leading-relaxed max-w-md ${t.legal}`}>
                   By submitting you agree to let POWR feature this reward in the app. We'll set the points price and review before it goes live.
                 </p>
-                <button type="submit" disabled={submitting || uploadingLogo || uploadingHero}
-                  className={`shrink-0 h-16 px-16 rounded-full bg-[#E8D200] text-[#080808] text-[11px] font-black uppercase tracking-[0.4em] transition-all shadow-lg shadow-[#E8D200]/20 ${(submitting || uploadingLogo || uploadingHero) ? 'opacity-50 cursor-not-allowed' : 'hover:translate-y-[-2px] cursor-pointer'}`}>
+                <button type="submit" disabled={submitting || uploadingLogo || uploadingHero || uploadingHeroVideo}
+                  className={`shrink-0 h-16 px-16 rounded-full bg-[#E8D200] text-[#080808] text-[11px] font-black uppercase tracking-[0.4em] transition-all shadow-lg shadow-[#E8D200]/20 ${(submitting || uploadingLogo || uploadingHero || uploadingHeroVideo) ? 'opacity-50 cursor-not-allowed' : 'hover:translate-y-[-2px] cursor-pointer'}`}>
                   {submitting ? 'Submitting…' : 'Submit Reward'}
                 </button>
               </div>
@@ -432,6 +479,7 @@ export default function PartnerRewardSubmit() {
                 pts={null}
                 logoUrl={logoUrl}
                 heroUrl={heroUrl}
+                heroVideoUrl={heroVideoUrl}
                 codePrefix={codePrefix}
                 category={category}
               />
@@ -466,13 +514,15 @@ function Field({ label, children }) {
   );
 }
 
-function ImagePicker({ preview, uploading, onClick, aspect, label }) {
+function ImagePicker({ preview, uploading, onClick, aspect, label, isVideo }) {
   return (
     <div onClick={onClick} className={`${aspect} rounded-2xl border flex items-center justify-center cursor-pointer overflow-hidden transition-colors group ${t.imgBox}`}>
       {uploading ? (
         <div className="w-7 h-7 border-2 border-[#E8D200]/30 border-t-[#E8D200] rounded-full animate-spin" />
       ) : preview ? (
-        <img src={preview} alt="" className="w-full h-full object-contain" />
+        isVideo
+          ? <video src={preview} className="w-full h-full object-cover" muted loop autoPlay playsInline preload="auto" />
+          : <img src={preview} alt="" className="w-full h-full object-contain" />
       ) : (
         <div className="flex flex-col items-center gap-3">
           <div className={`w-12 h-12 rounded-2xl border flex items-center justify-center group-hover:border-[#E8D200]/40 transition-colors ${t.imgInner}`}><span className={`${t.imgPlaceholder} text-xl`}>+</span></div>

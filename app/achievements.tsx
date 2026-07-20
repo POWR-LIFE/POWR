@@ -1,9 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
   Dimensions,
+  Image as NativeImage,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -21,7 +23,7 @@ import {
   type AchievementCategory,
   type AchievementWithState,
 } from '@/constants/achievements';
-import { LEVELS, TIER_META, getLevelInfo, type LevelDef, type LevelTier } from '@/constants/levels';
+import { LEVELS, LEVEL_IMAGE, TIER_META, getLevelInfo, type LevelDef, type LevelTier } from '@/constants/levels';
 import { useAchievements } from '@/hooks/useAchievements';
 import { usePoints } from '@/hooks/usePoints';
 
@@ -90,6 +92,12 @@ function progressToTarget(totalEarned: number, targetLevel: number): number {
 
 type MainView = 'levels' | 'badges';
 
+// The Badges tab currently only holds level-milestone achievements, which
+// duplicate the Levels view. Hidden until the badge library gains real variety
+// (streaks, per-activity, distance, steps…) alongside the leaderboard work.
+// Flip to true to bring the tab back — all badge code is left intact.
+const SHOW_BADGES = false;
+
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function AchievementsScreen() {
@@ -116,8 +124,21 @@ export default function AchievementsScreen() {
     ? totalCount
     : ACHIEVEMENTS.filter(a => a.category === activeCategory).length;
 
-  const pct = totalCount > 0 ? Math.round((earnedCount / totalCount) * 100) : 0;
   const { current: currentLevel } = getLevelInfo(totalEarned);
+
+  // Levels-view summary: how many of the 20 levels the user has reached.
+  const levelsUnlocked = LEVELS.filter(l => totalEarned >= l.xpMin).length;
+  const levelsTotal = LEVELS.length;
+  const levelPct = Math.round((levelsUnlocked / levelsTotal) * 100);
+
+  // Badges-view summary (only used when SHOW_BADGES is on).
+  const pct = totalCount > 0 ? Math.round((earnedCount / totalCount) * 100) : 0;
+
+  // Active summary numbers depend on which view is shown.
+  const summaryEarned = SHOW_BADGES && mainView === 'badges' ? earnedCount : levelsUnlocked;
+  const summaryTotal  = SHOW_BADGES && mainView === 'badges' ? totalCount : levelsTotal;
+  const summaryPct    = SHOW_BADGES && mainView === 'badges' ? pct : levelPct;
+  const summaryLabel  = SHOW_BADGES && mainView === 'badges' ? 'earned' : 'levels';
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
@@ -135,34 +156,36 @@ export default function AchievementsScreen() {
       {/* Progress summary */}
       <View style={styles.summaryBar}>
         <View style={styles.summaryLeft}>
-          <Text style={styles.summaryEarned}>{earnedCount}</Text>
-          <Text style={styles.summaryOf}>/ {totalCount}</Text>
-          <Text style={styles.summaryLabel}>  earned</Text>
+          <Text style={styles.summaryEarned}>{summaryEarned}</Text>
+          <Text style={styles.summaryOf}>/ {summaryTotal}</Text>
+          <Text style={styles.summaryLabel}>  {summaryLabel}</Text>
         </View>
         <View style={styles.summaryRight}>
           <View style={styles.progressTrack}>
-            <View style={[styles.progressFill, { width: `${pct}%` as any }]} />
+            <View style={[styles.progressFill, { width: `${summaryPct}%` as any }]} />
           </View>
-          <Text style={styles.progressPct}>{pct}%</Text>
+          <Text style={styles.progressPct}>{summaryPct}%</Text>
         </View>
       </View>
 
-      {/* Main view toggle */}
-      <View style={styles.viewToggle}>
-        {(['levels', 'badges'] as MainView[]).map(v => (
-          <Pressable
-            key={v}
-            style={[styles.viewTab, mainView === v && styles.viewTabActive]}
-            onPress={() => setMainView(v)}
-          >
-            <Text style={[styles.viewTabText, mainView === v && styles.viewTabTextActive]}>
-              {v === 'levels' ? 'LEVELS' : 'BADGES'}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
+      {/* Main view toggle — hidden while Badges is parked (single Levels view) */}
+      {SHOW_BADGES && (
+        <View style={styles.viewToggle}>
+          {(['levels', 'badges'] as MainView[]).map(v => (
+            <Pressable
+              key={v}
+              style={[styles.viewTab, mainView === v && styles.viewTabActive]}
+              onPress={() => setMainView(v)}
+            >
+              <Text style={[styles.viewTabText, mainView === v && styles.viewTabTextActive]}>
+                {v === 'levels' ? 'LEVELS' : 'BADGES'}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      )}
 
-      {mainView === 'levels' ? (
+      {!SHOW_BADGES || mainView === 'levels' ? (
         /* ── Levels grid ──────────────────────────────────────────────── */
         <ScrollView
           style={styles.scroll}
@@ -184,6 +207,8 @@ export default function AchievementsScreen() {
                       levelDef={levelDef}
                       isUnlocked={totalEarned >= levelDef.xpMin}
                       isCurrent={levelDef.level === currentLevel.level}
+                      isNext={levelDef.level === currentLevel.level + 1}
+                      totalEarned={totalEarned}
                     />
                   ))}
                 </View>
@@ -273,61 +298,139 @@ export default function AchievementsScreen() {
 
 // ─── Level Card ───────────────────────────────────────────────────────────────
 
-function LevelCard({ levelDef, isUnlocked, isCurrent }: {
+function LevelCard({ levelDef, isUnlocked, isCurrent, isNext, totalEarned }: {
   levelDef: LevelDef;
   isUnlocked: boolean;
   isCurrent: boolean;
+  isNext: boolean;
+  totalEarned: number;
 }) {
-  // Three states: locked (dim), earned (tier-accent premium), current (gold hero).
+  // Four states: locked (named, artwork concealed), next (locked + XP-to-unlock
+  // counter), earned (tier-accent premium), current (gold hero).
   const accent = isCurrent ? GOLD : TIER_ACCENT[levelDef.tier];
   const iconColor = isUnlocked ? accent : 'rgba(255,255,255,0.18)';
-  const nameColor = isUnlocked ? TEXT : 'rgba(255,255,255,0.3)';
+  // Level name uses the artwork's per-level accent colour when unlocked.
+  const nameColor = isUnlocked ? levelDef.textColor : 'rgba(255,255,255,0.3)';
   const xpLabel = levelDef.level === 20
     ? '∞'
     : levelDef.xpMin.toLocaleString();
 
-  return (
-    <View style={[
-      styles.levelCard,
-      { width: CARD_W },
-      isUnlocked && {
-        borderColor: withAlpha(accent, isCurrent ? 0.9 : 0.4),
-        borderWidth: isCurrent ? 1.4 : 1,
-        shadowColor: accent,
-        shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: isCurrent ? 0.5 : 0.28,
-        shadowRadius: isCurrent ? 10 : 7,
-        elevation: isCurrent ? 7 : 4,
-      },
-    ]}>
-      {/* Premium tier wash — lit from the top for earned levels */}
-      {isUnlocked && (
-        <LinearGradient
-          pointerEvents="none"
-          colors={[withAlpha(accent, isCurrent ? 0.24 : 0.16), withAlpha(accent, 0.04), 'transparent']}
-          start={{ x: 0.15, y: 0 }}
-          end={{ x: 0.85, y: 1 }}
-          style={StyleSheet.absoluteFill}
-        />
-      )}
+  // Progress toward this (locked) level, for the "next to unlock" counter.
+  const xpToGo = Math.max(0, levelDef.xpMin - totalEarned);
+  const nextProgress = isNext ? progressToTarget(totalEarned, levelDef.level) : 0;
 
-      {/* Earned seal / locked dot */}
-      {isUnlocked ? (
+  const cardShell = [
+    styles.levelCard,
+    { width: CARD_W },
+    isUnlocked && {
+      shadowColor: accent,
+      shadowOffset: { width: 0, height: 0 },
+      shadowOpacity: isCurrent ? 0.5 : 0.28,
+      shadowRadius: isCurrent ? 10 : 7,
+      elevation: isCurrent ? 7 : 4,
+    },
+  ];
+
+  // ── Locked variant ───────────────────────────────────────────────────────────
+  // Locked levels show their name but keep the artwork concealed — you can see
+  // what's coming, but not what it looks like. The next level to unlock also
+  // shows how much XP remains.
+  if (!isUnlocked) {
+    return (
+      <View style={[cardShell, styles.levelCardLocked, isNext && styles.levelCardNext]}>
+        <View style={styles.levelLockBadge}>
+          <Ionicons name="lock-closed" size={9} color="rgba(255,255,255,0.7)" />
+        </View>
+
+        <Text style={[styles.levelNum, styles.levelNumLocked]}>LVL {levelDef.level}</Text>
+
+        {/* Concealed artwork — a faded POWR mark stands in for it, the same
+            placeholder the onboarding avatar uses before a photo is picked. */}
+        <View style={styles.levelLockIconWrap}>
+          <Image
+            source={require('@/assets/images/powr_transparent.png')}
+            style={[styles.levelLockLogo, { opacity: isNext ? 0.5 : 0.18 }]}
+            contentFit="contain"
+          />
+        </View>
+
+        <Text style={[styles.levelName, styles.levelNameLocked]}>
+          {levelDef.name.toUpperCase()}
+        </Text>
+
+        {isNext ? (
+          <NextLevelCounter
+            xpToGo={xpToGo}
+            progress={nextProgress}
+            totalEarned={totalEarned}
+            target={levelDef.xpMin}
+            accent={GOLD}
+          />
+        ) : (
+          <Text style={[styles.levelXp, { color: 'rgba(255,255,255,0.25)' }]}>
+            Unlock at {xpLabel} pts
+          </Text>
+        )}
+      </View>
+    );
+  }
+
+  // ── Full-bleed artwork variant (unlocked) ───────────────────────────────────
+  const imageUri = LEVEL_IMAGE[levelDef.level];
+  if (imageUri) {
+    return (
+      <View style={[cardShell, styles.levelCardImage]}>
+        <NativeImage
+          source={{ uri: imageUri }}
+          style={[StyleSheet.absoluteFill, { backgroundColor: 'transparent' }]}
+          resizeMode="cover"
+        />
+
+        {/* Earned seal */}
         <View style={[styles.levelSeal, { backgroundColor: accent }]}>
           <Text style={styles.levelSealCheck}>✓</Text>
         </View>
-      ) : (
-        <View style={[styles.levelDot, { backgroundColor: 'rgba(255,255,255,0.15)' }]} />
-      )}
+
+        <Text style={[styles.levelNum, styles.levelNumOverlay]}>LVL {levelDef.level}</Text>
+
+        {/* Name + XP pinned to the bottom */}
+        <View style={styles.levelImageFooter}>
+          <Text style={[styles.levelName, styles.levelNameOverlay, { color: levelDef.textColor }]}>
+            {levelDef.name.toUpperCase()}
+          </Text>
+          <Text style={[styles.levelXp, { color: accent }]}>
+            {xpLabel} pts
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  // ── Generated-SVG variant (unlocked levels without artwork yet) ─────────────
+  return (
+    <View style={cardShell}>
+      {/* Premium tier wash — lit from the top for earned levels */}
+      <LinearGradient
+        pointerEvents="none"
+        colors={[withAlpha(accent, isCurrent ? 0.24 : 0.16), withAlpha(accent, 0.04), 'transparent']}
+        start={{ x: 0.15, y: 0 }}
+        end={{ x: 0.85, y: 1 }}
+        style={StyleSheet.absoluteFill}
+      />
+
+      {/* Earned seal */}
+      <View style={[styles.levelSeal, { backgroundColor: accent }]}>
+        <Text style={styles.levelSealCheck}>✓</Text>
+      </View>
 
       {/* Level number */}
-      <Text style={[styles.levelNum, isUnlocked && styles.levelNumEarned]}>
+      <Text style={[styles.levelNum, styles.levelNumEarned]}>
         LVL {levelDef.level}
       </Text>
 
       {/* Premium icon */}
       <View style={styles.levelIconWrap}>
-        <LevelIcon level={levelDef.level} size={42} color={iconColor} strokeWidth={1.7} />
+        <LevelIcon level={levelDef.level} size={42} color={iconColor} strokeWidth={1.7} unlocked={isUnlocked} />
       </View>
 
       {/* Level name */}
@@ -336,8 +439,39 @@ function LevelCard({ levelDef, isUnlocked, isCurrent }: {
       </Text>
 
       {/* XP threshold */}
-      <Text style={[styles.levelXp, { color: isUnlocked ? accent : 'rgba(255,255,255,0.2)' }]}>
+      <Text style={[styles.levelXp, { color: accent }]}>
         {xpLabel} pts
+      </Text>
+    </View>
+  );
+}
+
+// ─── Next-Level XP Counter ──────────────────────────────────────────────────────
+// Shown on the single "next to unlock" level card: how much XP the user has of
+// the amount needed, a progress bar, and the remaining XP to go.
+
+function NextLevelCounter({ xpToGo, progress, totalEarned, target, accent }: {
+  xpToGo: number;
+  progress: number;
+  totalEarned: number;
+  target: number;
+  accent: string;
+}) {
+  return (
+    <View style={styles.nextCounter}>
+      <View style={styles.nextTrack}>
+        <View
+          style={[
+            styles.nextFill,
+            { width: `${Math.round(clamp01(progress) * 100)}%` as any, backgroundColor: accent },
+          ]}
+        />
+      </View>
+      <Text style={[styles.nextToGo, { color: accent }]}>
+        {xpToGo.toLocaleString()} pts to go
+      </Text>
+      <Text style={styles.nextOf}>
+        {totalEarned.toLocaleString()} / {target.toLocaleString()}
       </Text>
     </View>
   );
@@ -397,7 +531,7 @@ function AchievementTile({
       ]}>
         <View style={styles.medallionInner}>
           {levelDef ? (
-            <LevelIcon level={levelDef.level} size={32} color={iconColor} strokeWidth={1.6} />
+            <LevelIcon level={levelDef.level} size={32} color={iconColor} strokeWidth={1.6} unlocked={a.earned} />
           ) : (
             <Ionicons name={a.icon as any} size={24} color={iconColor} />
           )}
@@ -514,9 +648,6 @@ const styles = StyleSheet.create({
   },
   levelCard: {
     borderRadius: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    backgroundColor: 'rgba(22,22,22,0.92)',
     paddingTop: 14,
     paddingBottom: 16,
     paddingHorizontal: 12,
@@ -525,13 +656,76 @@ const styles = StyleSheet.create({
     position: 'relative',
     overflow: 'hidden',
   },
-  levelDot: {
+  // Locked card: same fixed height as the artwork cards so grid rows stay
+  // even, with contents centred around the placeholder mark.
+  levelCardLocked: {
+    height: Math.round(CARD_W * 1.2),
+    justifyContent: 'center',
+  },
+  levelLockIconWrap: {
+    marginVertical: 8,
+  },
+  // The mark is landscape (roughly 1.43:1), so the box is sized to give it the
+  // same visual height the lock glyph had.
+  levelLockLogo: {
+    width: 46,
+    height: 34,
+  },
+  // Level number pinned top-left on the locked card (matches the artwork cards).
+  levelNumLocked: {
     position: 'absolute',
     top: 10,
-    right: 10,
-    width: 6,
-    height: 6,
-    borderRadius: 3,
+    left: 12,
+    marginLeft: 0,
+  },
+  // The next level to unlock: a faint gold hint so it stands out from the
+  // plain locked cards.
+  levelCardNext: {
+  },
+  // Full-bleed image variant: fixed portrait height, no padding, text overlaid.
+  levelCardImage: {
+    height: Math.round(CARD_W * 1.2),
+    paddingTop: 0,
+    paddingBottom: 0,
+    paddingHorizontal: 0,
+    gap: 0,
+    justifyContent: 'flex-end',
+    alignItems: 'stretch',
+    backgroundColor: 'transparent',
+  },
+  levelNumOverlay: {
+    position: 'absolute',
+    top: 10,
+    left: 12,
+    marginLeft: 0,
+    color: 'rgba(255,255,255,0.9)',
+    textShadowColor: 'rgba(0,0,0,0.6)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
+  levelImageFooter: {
+    paddingHorizontal: 12,
+    paddingBottom: 12,
+    gap: 3,
+  },
+  levelNameOverlay: {
+    textAlign: 'left',
+    color: '#FFFFFF',
+    textShadowColor: 'rgba(0,0,0,0.6)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
+  levelLockBadge: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 2,
   },
   levelSeal: {
     position: 'absolute',
@@ -572,11 +766,42 @@ const styles = StyleSheet.create({
     color: TEXT,
     textAlign: 'center',
   },
+  levelNameLocked: {
+    color: 'rgba(255,255,255,0.45)',
+  },
   levelXp: {
     fontSize: 9,
     fontWeight: '500',
     letterSpacing: 0.3,
     color: GOLD,
+  },
+
+  // ── Next-level XP counter ────────────────────────────────────────────────────
+  nextCounter: {
+    alignSelf: 'stretch',
+    marginTop: 3,
+    gap: 3,
+  },
+  nextTrack: {
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    overflow: 'hidden',
+  },
+  nextFill: {
+    height: '100%',
+    borderRadius: 2,
+  },
+  nextToGo: {
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+  },
+  nextOf: {
+    fontSize: 8,
+    fontWeight: '500',
+    letterSpacing: 0.2,
+    color: 'rgba(255,255,255,0.5)',
   },
 
   // ── Badges grid ────────────────────────────────────────────────────────────

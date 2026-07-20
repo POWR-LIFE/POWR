@@ -3,8 +3,9 @@ import { Plus, ChevronLeft, Upload, Award, Clock, CheckCircle, XCircle, AlertCir
 import { supabase } from '../../lib/supabase';
 import { uploadPublicImage } from '../../lib/storage';
 import { useToast } from '../../lib/toast';
+import { validateHeroVideoUrl } from '../../lib/heroVideoUrl';
 import { useAuth } from '../../App';
-import RewardAppPreview from '../../components/RewardAppPreview';
+import RewardAppPreview, { cleanPrefix, prefixFromPromo, previewFromReward, previewValueLabel } from '../../components/RewardAppPreview';
 
 const CATEGORY_OPTIONS = [
     { value: 'food',    label: 'Eat' },
@@ -21,9 +22,10 @@ const DISCOUNT_OPTIONS = [
 
 const STATUS_BADGE = {
     invited:  { label: 'Draft',    color: 'bg-[#F4F4F1] text-[#666]',          icon: Clock        },
+    draft:    { label: 'Draft',    color: 'bg-[#F4F4F1] text-[#666]',          icon: Clock        },
     pending:  { label: 'Review',   color: 'bg-[#E8D200]/10 text-[#8a7600]',    icon: AlertCircle  },
     approved: { label: 'Approved', color: 'bg-[#10B981]/10 text-[#10B981]',    icon: CheckCircle  },
-    rejected: { label: 'Rejected', color: 'bg-red-500/10 text-red-500',        icon: XCircle      },
+    rejected: { label: 'Needs changes', color: 'bg-red-500/10 text-red-500',   icon: XCircle      },
 };
 
 const INPUT = "w-full h-14 px-5 bg-white border border-[#E6E6E1] rounded-2xl text-sm font-light text-[#1A1A1A] placeholder-[#BBBBBB] focus:border-[#E8D200]/50 outline-none transition-all font-['Outfit']";
@@ -34,18 +36,15 @@ const INPUT = "w-full h-14 px-5 bg-white border border-[#E6E6E1] rounded-2xl tex
 // brand has no row yet. Enforced server-side by the reward-submission trigger.
 const DEFAULT_REWARD_LIMIT = 2;
 
-function cleanPrefix(raw) {
-    return String(raw ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
-}
-
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
 
-function ImagePicker({ label, preview, uploading, onFile, aspect = 'aspect-video' }) {
+function ImagePicker({ label, preview, uploading, onFile, aspect = 'aspect-video', accept = 'image/*', isVideo = false }) {
     const ref = useRef(null);
     return (
         <div>
             <p className="text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-3">{label}</p>
-            <input ref={ref} type="file" accept="image/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) onFile(f); }} />
+            <input ref={ref} type="file" accept={accept} className="hidden" onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) onFile(f); }} />
             <div
                 onClick={() => !uploading && ref.current?.click()}
                 className={`${aspect} rounded-2xl border-2 border-dashed flex items-center justify-center cursor-pointer overflow-hidden transition-colors ${uploading ? 'border-[#E8D200]/40 opacity-60 cursor-not-allowed' : preview ? 'border-[#E6E6E1] hover:border-[#E8D200]/40' : 'border-[#E6E6E1] bg-[#FAFAFA] hover:border-[#E8D200]/40'}`}
@@ -53,7 +52,9 @@ function ImagePicker({ label, preview, uploading, onFile, aspect = 'aspect-video
                 {uploading ? (
                     <div className="w-6 h-6 border-2 border-[#E8D200]/20 border-t-[#E8D200] rounded-full animate-spin" />
                 ) : preview ? (
-                    <img src={preview} alt="" className="w-full h-full object-contain" />
+                    isVideo
+                        ? <video src={preview} className="w-full h-full object-cover" muted loop autoPlay playsInline preload="auto" />
+                        : <img src={preview} alt="" className="w-full h-full object-contain" />
                 ) : (
                     <div className="flex flex-col items-center gap-2">
                         <Upload size={20} className="text-[#BBBBBB]" />
@@ -69,30 +70,56 @@ const BLANK_FORM = {
     title: '', description: '', category: 'gym', reward_kind: 'digital',
     discount_type: '', discount_value: '', value_label: '',
     offer: '', partner_blurb: '', terms: '', url: '', code_prefix: '',
-    logo_url: null, hero_image_url: null,
+    delivery_method: 'code_pool', fulfilment_notes: '', stock: '', max_redemptions_per_user: '',
+    logo_url: null, hero_image_url: null, hero_video_url: null,
 };
 
-// Extract the brand segment from a stored promo code: 'POWR-TRIBE' / 'POWR-TRIBE-XXXXXX' / 'TRIBE' → 'TRIBE'
-function prefixFromPromo(promo, fallbackName) {
-    const parts = String(promo ?? '').toUpperCase().split('-').filter(Boolean);
-    if (parts[0] === 'POWR') parts.shift();
-    return cleanPrefix(parts[0] ?? fallbackName ?? '');
+// ── Submission wizard ────────────────────────────────────────────────────────
+// The form is split into ordered steps so brands fill it out a section at a
+// time instead of facing one long scroll. Each step validates its own required
+// fields (see fieldErrors); the "Next" button is blocked and errors surface
+// inline until the current step is complete. Steps stay freely clickable — this
+// is soft gating, not a locked sequence.
+const WIZARD_STEPS = [
+    { key: 'offer',   label: 'The Offer',  hint: 'What members get' },
+    { key: 'details', label: 'Details',    hint: 'Copy & terms' },
+    { key: 'delivery', label: 'Delivery',  hint: 'How members redeem' },
+    { key: 'imagery', label: 'Imagery',    hint: 'Logo & hero' },
+    { key: 'review',  label: 'Review',     hint: 'Check & submit' },
+];
+
+// Which required fields live on each step, and the message shown when missing.
+// Keyed by field so the input can highlight itself and the step can tell
+// whether it's complete. Kept in one place so validation and the review
+// summary never drift apart.
+function fieldErrors(form) {
+    const e = {};
+    if (!form.title.trim()) e.title = 'Reward title is required';
+    if (!form.description.trim()) e.description = 'Short description is required';
+    if (form.discount_type) {
+        if (!(Number(form.discount_value) > 0)) e.discount_value = 'Enter a value greater than 0';
+    } else if (!form.value_label.trim()) {
+        e.value_label = 'Add a value label (e.g. £20 value)';
+    }
+    if (!form.offer.trim()) e.offer = 'Offer detail is required';
+    if (!form.partner_blurb.trim()) e.partner_blurb = 'A line about your brand is required';
+    if (!form.terms.trim()) e.terms = 'Terms & conditions are required';
+    if (form.delivery_method === 'code_pool' && cleanPrefix(form.code_prefix).length < 2) e.code_prefix = 'Code name needs at least 2 characters';
+    if (form.delivery_method === 'affiliate' && !form.url.trim()) e.url = 'An affiliate destination URL is required';
+    if (form.delivery_method === 'manual_fulfilment' && !form.fulfilment_notes.trim()) e.fulfilment_notes = 'Explain how your team will fulfil this reward';
+    if (!form.logo_url) e.logo_url = 'Upload a logo';
+    if (!form.hero_image_url) e.hero_image_url = 'Upload a hero image';
+    return e;
 }
 
-const previewFromReward = (r, partnerName) => ({
-    brandName: r.brand_name || partnerName || '',
-    title: r.title ?? '',
-    description: r.description ?? '',
-    partnerBlurb: r.partner_blurb ?? '',
-    offer: r.offer ?? '',
-    valueLabel: r.value_label ?? '',
-    discountType: r.discount_type ?? '',
-    discountValue: r.discount_value ?? '',
-    pts: r.powr_cost,
-    logoUrl: r.image_url,
-    heroUrl: r.hero_image_url,
-    codePrefix: prefixFromPromo(r.promo_code, r.brand_name || partnerName),
-});
+// Required-field keys per step, in order, so a step reports complete/incomplete.
+const STEP_FIELDS = {
+    offer:   ['title', 'description', 'discount_value', 'value_label'],
+    details: ['offer', 'partner_blurb', 'terms'],
+    delivery: ['code_prefix', 'url', 'fulfilment_notes'],
+    imagery: ['logo_url', 'hero_image_url'],
+    review:  [],
+};
 
 const previewFromSubmission = (s, partnerName) => ({
     brandName: s.brand_name || partnerName || '',
@@ -106,6 +133,7 @@ const previewFromSubmission = (s, partnerName) => ({
     pts: null, // points price is set by POWR on approval
     logoUrl: s.image_url,
     heroUrl: s.hero_image_url,
+    heroVideoUrl: s.hero_video_url,
     codePrefix: cleanPrefix(s.code_prefix ?? ''),
 });
 
@@ -123,14 +151,26 @@ export default function PartnerRewards() {
     const [saving, setSaving] = useState(false);
     const [uploadingLogo, setUploadingLogo] = useState(false);
     const [uploadingHero, setUploadingHero] = useState(false);
+    const [uploadingHeroVideo, setUploadingHeroVideo] = useState(false);
     const [selectedKey, setSelectedKey] = useState(null);
     const [rewardLimit, setRewardLimit] = useState(DEFAULT_REWARD_LIMIT);
     const [limitOpen, setLimitOpen] = useState(false);
     const [contactNote, setContactNote] = useState('');
     const [sendingContact, setSendingContact] = useState(false);
+    const [stepIndex, setStepIndex] = useState(0);   // active wizard step
+    const [showErrors, setShowErrors] = useState(false); // reveal inline errors after a blocked Next/Submit
+    const [lastSavedAt, setLastSavedAt] = useState(null);
     const pageTopRef = useRef(null);
 
     const brand = partnerData?.brand_name;
+
+    // Live validation for the open form. errors is keyed by field; a step is
+    // "complete" when none of its required fields have an error.
+    const errors = fieldErrors(form);
+    const step = WIZARD_STEPS[stepIndex];
+    const stepComplete = (key) => STEP_FIELDS[key].every(f => !errors[f]);
+    const currentStepComplete = stepComplete(step.key);
+    const err = (field) => (showErrors && errors[field] ? errors[field] : null);
 
     // Count rewards toward the cap: live rewards + any brand-new submission
     // still in review. Listing-update change requests (target_reward_id) and
@@ -159,6 +199,7 @@ export default function PartnerRewards() {
             pts: editingListing?.powr_cost ?? null,
             logoUrl: form.logo_url,
             heroUrl: form.hero_image_url,
+            heroVideoUrl: form.hero_video_url,
             codePrefix: form.code_prefix,
         }
         : selectedItem
@@ -173,9 +214,12 @@ export default function PartnerRewards() {
     }, [brand]);
 
     // The portal scrolls inside the layout's container, so bring the page top
-    // back into view when switching between list and form.
+    // back into view when switching between list and form. Opening the form
+    // (new, edit listing, or edit submission) always starts on step one with a
+    // clean error slate.
     useEffect(() => {
         pageTopRef.current?.scrollIntoView({ block: 'start' });
+        if (formOpen) { setStepIndex(0); setShowErrors(false); setLastSavedAt(null); }
     }, [formOpen]);
 
     const fetchAll = async () => {
@@ -256,8 +300,13 @@ export default function PartnerRewards() {
             terms: r.terms ?? '',
             url: r.url ?? '',
             code_prefix: prefixFromPromo(r.promo_code, r.brand_name || partnerData?.name),
+            delivery_method: r.reward_kind === 'physical' ? 'manual_fulfilment' : r.integration_type === 'AFFILIATE' ? 'affiliate' : 'code_pool',
+            fulfilment_notes: '',
+            stock: r.stock ?? '',
+            max_redemptions_per_user: r.max_redemptions_per_user ?? '',
             logo_url: r.image_url ?? null,
             hero_image_url: r.hero_image_url ?? null,
+            hero_video_url: r.hero_video_url ?? null,
         });
         setFormOpen(true);
     };
@@ -278,10 +327,28 @@ export default function PartnerRewards() {
             terms: sub.terms ?? '',
             url: sub.url ?? '',
             code_prefix: sub.code_prefix ?? '',
+            delivery_method: sub.delivery_method ?? (sub.reward_kind === 'physical' ? 'manual_fulfilment' : 'code_pool'),
+            fulfilment_notes: sub.fulfilment_notes ?? '',
+            stock: sub.stock ?? '',
+            max_redemptions_per_user: sub.max_redemptions_per_user ?? '',
             logo_url: sub.image_url ?? null,
             hero_image_url: sub.hero_image_url ?? null,
+            hero_video_url: sub.hero_video_url ?? null,
         });
         setFormOpen(true);
+    };
+
+    const uploadVideo = async (file) => {
+        if (file.size > MAX_VIDEO_BYTES) { toast.error('Video must be under 50 MB — use a short, compressed loop'); return null; }
+        setUploadingHeroVideo(true);
+        try {
+            return await uploadPublicImage('reward-submissions', file, 'hero-videos');
+        } catch (err) {
+            toast.error(err.message || 'Upload failed');
+            return null;
+        } finally {
+            setUploadingHeroVideo(false);
+        }
     };
 
     const uploadImage = async (file, kind) => {
@@ -299,48 +366,82 @@ export default function PartnerRewards() {
         }
     };
 
+    const submissionPayload = (status) => ({
+        brand_name: brand ?? '',
+        status,
+        title: form.title.trim() || null,
+        description: form.description.trim() || null,
+        category: form.category,
+        reward_kind: form.reward_kind,
+        discount_type: form.discount_type || null,
+        discount_value: form.discount_value ? Number(form.discount_value) : null,
+        value_label: form.value_label.trim() || null,
+        offer: form.offer.trim() || null,
+        partner_blurb: form.partner_blurb.trim() || null,
+        terms: form.terms.trim() || null,
+        url: form.url.trim() || null,
+        code_prefix: cleanPrefix(form.code_prefix) || null,
+        delivery_method: form.delivery_method,
+        fulfilment_notes: form.fulfilment_notes.trim() || null,
+        stock: form.stock === '' ? null : Number(form.stock),
+        max_redemptions_per_user: form.max_redemptions_per_user === '' ? null : Number(form.max_redemptions_per_user),
+        image_url: form.logo_url,
+        hero_image_url: form.hero_image_url,
+        hero_video_url: form.hero_video_url,
+        updated_at: new Date().toISOString(),
+        ...(status === 'pending' ? { submitted_at: new Date().toISOString() } : {}),
+    });
+
+    const saveDraft = async () => {
+        if (!brand) { toast.error('Your brand profile is still loading'); return false; }
+        setSaving(true);
+        // Keep an already-submitted reward in review when its owner saves an
+        // edit. Drafts and revision requests remain editable work in progress.
+        const status = editingSubmission?.status === 'pending' ? 'pending' : 'draft';
+        const payload = submissionPayload(status);
+        let data;
+        let error;
+        if (editingSubmission) {
+            ({ data, error } = await supabase.from('reward_submissions').update(payload).eq('id', editingSubmission.id).select().single());
+        } else {
+            ({ data, error } = await supabase.from('reward_submissions').insert({
+                ...payload,
+                invite_token: crypto.randomUUID(),
+                target_reward_id: editingListing?.id ?? null,
+            }).select().single());
+        }
+        setSaving(false);
+        if (error) { toast.error(error.message); return false; }
+        setEditingSubmission(data);
+        setLastSavedAt(new Date());
+        toast.success(status === 'pending' ? 'Changes saved' : 'Draft saved');
+        fetchAll();
+        return true;
+    };
+
+    const saveAndContinue = async () => {
+        if (!currentStepComplete) { setShowErrors(true); return; }
+        const saved = await saveDraft();
+        if (!saved) return;
+        setShowErrors(false);
+        setStepIndex(current => Math.min(WIZARD_STEPS.length - 1, current + 1));
+    };
+
     const handleSave = async (e) => {
         e.preventDefault();
-        const missing = [];
-        if (!form.title.trim()) missing.push('Reward title');
-        if (!form.description.trim()) missing.push('Short description');
-        if (form.discount_type) {
-            if (!(Number(form.discount_value) > 0)) missing.push('Discount value');
-        } else if (!form.value_label.trim()) {
-            missing.push('Value label');
-        }
-        if (!form.offer.trim()) missing.push('Offer detail');
-        if (!form.partner_blurb.trim()) missing.push('About your brand');
-        if (!form.terms.trim()) missing.push('Terms & conditions');
-        if (cleanPrefix(form.code_prefix).length < 2) missing.push('Promo code name (min 2 characters)');
-        if (!form.logo_url) missing.push('Logo image');
-        if (!form.hero_image_url) missing.push('Hero image');
-
-        if (missing.length) {
-            toast.error(`Still needed: ${missing.join(', ')}`);
+        // Final guard: if anything's still missing, reveal inline errors and
+        // jump to the first step that has a gap rather than a vague toast.
+        const problems = fieldErrors(form);
+        if (Object.keys(problems).length) {
+            setShowErrors(true);
+            const firstBad = WIZARD_STEPS.findIndex(s => !STEP_FIELDS[s.key].every(f => !problems[f]));
+            if (firstBad >= 0) setStepIndex(firstBad);
+            toast.error('A few fields still need attention');
             return;
         }
 
         setSaving(true);
-        const payload = {
-            brand_name: brand ?? '',
-            status: 'pending',
-            title: form.title.trim(),
-            description: form.description.trim(),
-            category: form.category,
-            reward_kind: form.reward_kind,
-            discount_type: form.discount_type || null,
-            discount_value: form.discount_value ? Number(form.discount_value) : null,
-            value_label: form.value_label.trim() || null,
-            offer: form.offer.trim(),
-            partner_blurb: form.partner_blurb.trim(),
-            terms: form.terms.trim(),
-            url: form.url.trim() || null,
-            code_prefix: cleanPrefix(form.code_prefix),
-            image_url: form.logo_url,
-            hero_image_url: form.hero_image_url,
-            submitted_at: new Date().toISOString(),
-        };
+        const payload = submissionPayload('pending');
 
         let error;
         if (editingSubmission) {
@@ -390,24 +491,55 @@ export default function PartnerRewards() {
                         <h1 className="text-5xl font-light tracking-tighter text-[#1A1A1A] mb-3">
                             {editingListing ? 'Edit Listing' : editingSubmission ? 'Edit Submission' : 'Submit a Reward'}
                         </h1>
-                        <p className="text-[10px] uppercase tracking-[0.4em] text-[#BBBBBB] font-black">
+                                <p className="text-[10px] uppercase tracking-[0.4em] text-[#BBBBBB] font-black">
                             {editingListing
                                 ? 'Your live listing stays unchanged until POWR approves these changes'
-                                : 'Our team reviews all submissions before going live'}
+                                : 'Build a draft in stages, then send it to POWR for review'}
                         </p>
+                            {lastSavedAt && <p className="mt-3 text-[10px] uppercase tracking-[0.25em] text-[#10B981] font-black">Saved {lastSavedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>}
                     </div>
 
-                    <form onSubmit={handleSave} className="bg-white border border-[#E6E6E1] rounded-3xl p-10 space-y-10">
-                        {/* The Offer */}
-                        <section className="space-y-5">
-                            <h3 className="text-[10px] uppercase tracking-[0.5em] text-[#BBBBBB] font-black">The Offer</h3>
+                    <form onSubmit={handleSave} className="bg-white border border-[#E6E6E1] rounded-3xl p-10">
+                        {/* Step rail — one section at a time. Steps stay clickable
+                            (soft gating); a green tick marks a completed step. */}
+                        <div className="flex items-stretch gap-2 mb-4 overflow-x-auto pb-1">
+                            {WIZARD_STEPS.map((s, i) => {
+                                const active = i === stepIndex;
+                                const done = stepComplete(s.key) && i !== stepIndex;
+                                return (
+                                    <button
+                                        key={s.key}
+                                        type="button"
+                                        onClick={() => setStepIndex(i)}
+                                        className={`group flex-1 min-w-[8.5rem] text-left px-4 py-3 rounded-2xl border transition-all ${active ? 'border-[#E8D200] bg-[#E8D200]/10' : 'border-[#EDEDEA] bg-white hover:border-[#DDD]'}`}
+                                    >
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <span className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-black shrink-0 ${active ? 'bg-[#E8D200] text-[#080808]' : done ? 'bg-[#10B981] text-white' : 'bg-[#F0F0EC] text-[#AAA]'}`}>
+                                                {done ? <CheckCircle size={12} /> : i + 1}
+                                            </span>
+                                            <span className={`text-[10px] uppercase tracking-[0.2em] font-black truncate ${active ? 'text-[#8a7600]' : 'text-[#888]'}`}>{s.label}</span>
+                                        </div>
+                                        <p className="text-[9px] uppercase tracking-[0.2em] font-black text-[#BBB] truncate pl-7">{s.hint}</p>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                        <div className="h-1 w-full bg-[#F0F0EC] rounded-full overflow-hidden mb-10">
+                            <div className="h-full bg-[#E8D200] transition-all duration-500" style={{ width: `${((stepIndex + 1) / WIZARD_STEPS.length) * 100}%` }} />
+                        </div>
+
+                        {/* ── Step 1 · The Offer ── */}
+                        {step.key === 'offer' && (
+                        <section className="space-y-5 animate-in fade-in slide-in-from-right-2 duration-300">
                             <div>
                                 <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">Reward Title *</label>
-                                <input value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))} placeholder="e.g. 30% off your first order" maxLength={60} className={INPUT} />
+                                <input value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))} placeholder="e.g. 30% off your first order" maxLength={60} className={`${INPUT} ${err('title') ? 'border-red-400' : ''}`} />
+                                {err('title') && <p className="mt-2 text-[10px] font-black text-red-500 tracking-[0.1em]">{err('title')}</p>}
                             </div>
                             <div>
                                 <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">Short Description *</label>
-                                <input value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} placeholder="e.g. Your Brand · Any product" maxLength={80} className={INPUT} />
+                                <input value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} placeholder="e.g. Your Brand · Any product" maxLength={80} className={`${INPUT} ${err('description') ? 'border-red-400' : ''}`} />
+                                {err('description') && <p className="mt-2 text-[10px] font-black text-red-500 tracking-[0.1em]">{err('description')}</p>}
                             </div>
                             <div className="grid grid-cols-3 gap-4">
                                 <div>
@@ -419,12 +551,12 @@ export default function PartnerRewards() {
                                 {form.discount_type ? (
                                     <div>
                                         <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">{form.discount_type === 'percentage' ? 'Percent off *' : 'Amount off £ *'}</label>
-                                        <input type="number" min="0" value={form.discount_value} onChange={e => setForm(p => ({ ...p, discount_value: e.target.value }))} placeholder={form.discount_type === 'percentage' ? '30' : '20'} className={INPUT} />
+                                        <input type="number" min="0" value={form.discount_value} onChange={e => setForm(p => ({ ...p, discount_value: e.target.value }))} placeholder={form.discount_type === 'percentage' ? '30' : '20'} className={`${INPUT} ${err('discount_value') ? 'border-red-400' : ''}`} />
                                     </div>
                                 ) : (
                                     <div>
                                         <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">Value label *</label>
-                                        <input value={form.value_label} onChange={e => setForm(p => ({ ...p, value_label: e.target.value }))} placeholder="e.g. £20 value" className={INPUT} />
+                                        <input value={form.value_label} onChange={e => setForm(p => ({ ...p, value_label: e.target.value }))} placeholder="e.g. £20 value" className={`${INPUT} ${err('value_label') ? 'border-red-400' : ''}`} />
                                     </div>
                                 )}
                                 <div>
@@ -434,84 +566,224 @@ export default function PartnerRewards() {
                                     </select>
                                 </div>
                             </div>
+                            {(err('discount_value') || err('value_label')) && <p className="text-[10px] font-black text-red-500 tracking-[0.1em]">{err('discount_value') || err('value_label')}</p>}
                             <div>
                                 <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">Reward type *</label>
                                 <div className="flex gap-3">
                                     {[['digital', 'Digital code'], ['physical', 'Physical item']].map(([val, lbl]) => (
-                                        <button key={val} type="button" onClick={() => setForm(p => ({ ...p, reward_kind: val }))}
+                                        <button key={val} type="button" onClick={() => setForm(p => ({ ...p, reward_kind: val, delivery_method: val === 'physical' ? 'manual_fulfilment' : (p.delivery_method === 'manual_fulfilment' ? 'code_pool' : p.delivery_method) }))}
                                             className={`flex-1 h-12 rounded-2xl text-[11px] font-black uppercase tracking-[0.15em] border transition-all ${form.reward_kind === val ? 'border-[#E8D200]/60 bg-[#E8D200]/10 text-[#8a7600]' : 'border-[#DDD] bg-white text-[#888] hover:text-[#444]'}`}>
                                             {lbl}
                                         </button>
                                     ))}
                                 </div>
                             </div>
+                        </section>
+                        )}
+
+                        {/* ── Step 2 · Details & Terms ── */}
+                        {step.key === 'details' && (
+                        <section className="space-y-5 animate-in fade-in slide-in-from-right-2 duration-300">
                             <div>
                                 <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">Offer detail * (expanded view)</label>
-                                <textarea value={form.offer} onChange={e => setForm(p => ({ ...p, offer: e.target.value }))} rows={2} placeholder="e.g. Get 30% off any single order. New customers only." className={`${INPUT} h-auto py-4 resize-none`} />
+                                <textarea value={form.offer} onChange={e => setForm(p => ({ ...p, offer: e.target.value }))} rows={2} placeholder="e.g. Get 30% off any single order. New customers only." className={`${INPUT} h-auto py-4 resize-none ${err('offer') ? 'border-red-400' : ''}`} />
+                                {err('offer') && <p className="mt-2 text-[10px] font-black text-red-500 tracking-[0.1em]">{err('offer')}</p>}
                             </div>
                             <div>
                                 <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">About your brand *</label>
-                                <textarea value={form.partner_blurb} onChange={e => setForm(p => ({ ...p, partner_blurb: e.target.value }))} rows={2} placeholder="A short line about who you are." className={`${INPUT} h-auto py-4 resize-none`} />
+                                <textarea value={form.partner_blurb} onChange={e => setForm(p => ({ ...p, partner_blurb: e.target.value }))} rows={2} placeholder="A short line about who you are." className={`${INPUT} h-auto py-4 resize-none ${err('partner_blurb') ? 'border-red-400' : ''}`} />
+                                {err('partner_blurb') && <p className="mt-2 text-[10px] font-black text-red-500 tracking-[0.1em]">{err('partner_blurb')}</p>}
                             </div>
                             <div>
                                 <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">Terms & conditions *</label>
-                                <textarea value={form.terms} onChange={e => setForm(p => ({ ...p, terms: e.target.value }))} rows={2} placeholder="e.g. One use per member. Cannot be combined with other offers." className={`${INPUT} h-auto py-4 resize-none`} />
+                                <textarea value={form.terms} onChange={e => setForm(p => ({ ...p, terms: e.target.value }))} rows={2} placeholder="e.g. One use per member. Cannot be combined with other offers." className={`${INPUT} h-auto py-4 resize-none ${err('terms') ? 'border-red-400' : ''}`} />
+                                {err('terms') && <p className="mt-2 text-[10px] font-black text-red-500 tracking-[0.1em]">{err('terms')}</p>}
                             </div>
                             <div>
-                                <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">Website URL</label>
+                                <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">Website URL <span className="text-[#BBB] normal-case tracking-normal ml-1">— optional</span></label>
                                 <input value={form.url} onChange={e => setForm(p => ({ ...p, url: e.target.value }))} placeholder="https://yourbrand.com" className={INPUT} />
                             </div>
                         </section>
+                        )}
 
-                        {/* Promo code */}
-                        <section className="space-y-4">
-                            <h3 className="text-[10px] uppercase tracking-[0.5em] text-[#BBBBBB] font-black">Promo Code</h3>
-                            <div>
-                                <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">Code name * (your brand segment)</label>
-                                <input value={form.code_prefix} onChange={e => setForm(p => ({ ...p, code_prefix: cleanPrefix(e.target.value) }))} placeholder="e.g. TRIBE" maxLength={8} className={`${INPUT} uppercase tracking-[0.2em]`} />
-                            </div>
-                            <div className="p-5 rounded-2xl border border-[#E8D200]/40 bg-[#E8D200]/5">
-                                <p className="text-[9px] uppercase tracking-[0.3em] font-black text-[#777] mb-2">Members receive</p>
-                                <div className="font-mono text-lg tracking-[0.12em] text-[#1A1A1A]">
-                                    POWR-<span className="text-[#8a7600]">{form.code_prefix || 'BRAND'}</span>-<span className="text-[#AAA]">A1B2C3</span>
+                        {/* ── Step 3 · Delivery ── */}
+                        {step.key === 'delivery' && (
+                        <section className="space-y-4 animate-in fade-in slide-in-from-right-2 duration-300">
+                            {form.reward_kind === 'digital' ? (
+                                <>
+                                    <div>
+                                        <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">Member redemption *</label>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            {[
+                                                ['code_pool', 'Unique code', 'POWR issues one of your codes per claim'],
+                                                ['affiliate', 'Shared link', 'Members redeem through your destination'],
+                                            ].map(([value, label, detail]) => (
+                                                <button key={value} type="button" onClick={() => setForm(p => ({ ...p, delivery_method: value }))} className={`text-left p-4 rounded-2xl border transition-all ${form.delivery_method === value ? 'border-[#E8D200] bg-[#E8D200]/10' : 'border-[#E6E6E1] bg-white hover:border-[#DDD]'}`}>
+                                                    <span className={`block text-[10px] font-black uppercase tracking-[0.2em] ${form.delivery_method === value ? 'text-[#8a7600]' : 'text-[#666]'}`}>{label}</span>
+                                                    <span className="block text-[10px] text-[#999] mt-2 leading-relaxed">{detail}</span>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    {form.delivery_method === 'code_pool' ? <>
+                                        <div>
+                                            <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">Code name * (your brand segment)</label>
+                                            <input value={form.code_prefix} onChange={e => setForm(p => ({ ...p, code_prefix: cleanPrefix(e.target.value) }))} placeholder="e.g. TRIBE" maxLength={8} className={`${INPUT} uppercase tracking-[0.2em] ${err('code_prefix') ? 'border-red-400' : ''}`} />
+                                            {err('code_prefix') && <p className="mt-2 text-[10px] font-black text-red-500 tracking-[0.1em]">{err('code_prefix')}</p>}
+                                        </div>
+                                        <div className="p-5 rounded-2xl border border-[#E8D200]/40 bg-[#E8D200]/5">
+                                            <p className="text-[9px] uppercase tracking-[0.3em] font-black text-[#777] mb-2">Members receive</p>
+                                            <div className="font-mono text-lg tracking-[0.12em] text-[#1A1A1A]">POWR-<span className="text-[#8a7600]">{form.code_prefix || 'BRAND'}</span>-<span className="text-[#AAA]">A1B2C3</span></div>
+                                        </div>
+                                    </> : (
+                                        <div>
+                                            <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">Affiliate destination URL *</label>
+                                            <input type="url" value={form.url} onChange={e => setForm(p => ({ ...p, url: e.target.value }))} placeholder="https://yourbrand.com/powr" className={`${INPUT} ${err('url') ? 'border-red-400' : ''}`} />
+                                            {err('url') && <p className="mt-2 text-[10px] font-black text-red-500 tracking-[0.1em]">{err('url')}</p>}
+                                        </div>
+                                    )}
+                                </>
+                            ) : (
+                                <div>
+                                    <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">Fulfilment plan *</label>
+                                    <textarea value={form.fulfilment_notes} onChange={e => setForm(p => ({ ...p, fulfilment_notes: e.target.value }))} rows={3} placeholder="Explain what happens after a member claims, including delivery timing and any details your team needs." className={`${INPUT} h-auto py-4 resize-none ${err('fulfilment_notes') ? 'border-red-400' : ''}`} />
+                                    {err('fulfilment_notes') && <p className="mt-2 text-[10px] font-black text-red-500 tracking-[0.1em]">{err('fulfilment_notes')}</p>}
+                                </div>
+                            )}
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">Inventory limit <span className="normal-case tracking-normal text-[#BBB]">optional</span></label>
+                                    <input type="number" min="0" value={form.stock} onChange={e => setForm(p => ({ ...p, stock: e.target.value }))} placeholder="Unlimited" className={INPUT} />
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-2">Claims per member <span className="normal-case tracking-normal text-[#BBB]">optional</span></label>
+                                    <input type="number" min="1" value={form.max_redemptions_per_user} onChange={e => setForm(p => ({ ...p, max_redemptions_per_user: e.target.value }))} placeholder="Unlimited" className={INPUT} />
                                 </div>
                             </div>
                         </section>
+                        )}
 
-                        {/* Imagery */}
-                        <section className="space-y-4">
-                            <h3 className="text-[10px] uppercase tracking-[0.5em] text-[#BBBBBB] font-black">Imagery</h3>
+                        {/* ── Step 4 · Imagery ── */}
+                        {step.key === 'imagery' && (
+                        <section className="space-y-4 animate-in fade-in slide-in-from-right-2 duration-300">
                             <div className="grid grid-cols-2 gap-5">
-                                <ImagePicker
-                                    label="Logo / brand mark * (square, min 512×512px)"
-                                    preview={form.logo_url}
-                                    uploading={uploadingLogo}
-                                    aspect="aspect-square"
-                                    onFile={async (file) => { const url = await uploadImage(file, 'logo'); if (url) setForm(p => ({ ...p, logo_url: url })); }}
-                                />
-                                <ImagePicker
-                                    label="Hero / banner * (landscape 16:9, min 1200×675px)"
-                                    preview={form.hero_image_url}
-                                    uploading={uploadingHero}
-                                    aspect="aspect-video"
-                                    onFile={async (file) => { const url = await uploadImage(file, 'hero'); if (url) setForm(p => ({ ...p, hero_image_url: url })); }}
-                                />
+                                <div>
+                                    <ImagePicker
+                                        label="Logo / brand mark * (square, min 512×512px)"
+                                        preview={form.logo_url}
+                                        uploading={uploadingLogo}
+                                        aspect="aspect-square"
+                                        onFile={async (file) => { const url = await uploadImage(file, 'logo'); if (url) setForm(p => ({ ...p, logo_url: url })); }}
+                                    />
+                                    {err('logo_url') && <p className="mt-2 text-[10px] font-black text-red-500 tracking-[0.1em]">{err('logo_url')}</p>}
+                                </div>
+                                <div>
+                                    <ImagePicker
+                                        label="Hero / banner * (landscape 16:9, min 1200×675px)"
+                                        preview={form.hero_image_url}
+                                        uploading={uploadingHero}
+                                        aspect="aspect-video"
+                                        onFile={async (file) => { const url = await uploadImage(file, 'hero'); if (url) setForm(p => ({ ...p, hero_image_url: url })); }}
+                                    />
+                                    {err('hero_image_url') && <p className="mt-2 text-[10px] font-black text-red-500 tracking-[0.1em]">{err('hero_image_url')}</p>}
+                                </div>
+                                <div className="col-span-2">
+                                    <ImagePicker
+                                        label="Hero video (optional) — plays instead of the image; MP4, ≤50 MB. Image stays as the still fallback."
+                                        preview={form.hero_video_url}
+                                        uploading={uploadingHeroVideo}
+                                        aspect="aspect-video"
+                                        accept="video/mp4,video/quicktime,video/webm"
+                                        isVideo
+                                        onFile={async (file) => { const url = await uploadVideo(file); if (url) setForm(p => ({ ...p, hero_video_url: url })); }}
+                                    />
+                                    {form.hero_video_url && (
+                                        <button type="button" onClick={() => setForm(p => ({ ...p, hero_video_url: null }))} className="mt-2 text-[10px] uppercase tracking-[0.2em] text-[#999] hover:text-red-500 transition-colors font-black">Remove video</button>
+                                    )}
+                                    {/* Or paste a direct video-file URL instead of uploading (own CDN /
+                                        Cloudflare Stream). Bound to hero_video_url so it also live-previews;
+                                        validated on blur so streaming-site links are rejected. */}
+                                    <input
+                                        type="url"
+                                        placeholder="Or paste a direct link — https://…/clip.mp4"
+                                        className="mt-3 w-full h-11 px-5 bg-white border border-[#E6E6E1] rounded-full focus:border-[#E8D200] outline-none transition-all text-[11px] font-bold text-[#1A1A1A] placeholder-[#BBB] tracking-[0.05em]"
+                                        value={form.hero_video_url || ''}
+                                        onChange={e => setForm(p => ({ ...p, hero_video_url: e.target.value }))}
+                                        onBlur={e => {
+                                            const res = validateHeroVideoUrl(e.target.value);
+                                            if (res.error) { toast.error(res.error); setForm(p => ({ ...p, hero_video_url: null })); return; }
+                                            setForm(p => ({ ...p, hero_video_url: res.value || null }));
+                                            if (res.warn) toast.info(res.warn);
+                                        }}
+                                    />
+                                    <p className="mt-2 text-[9px] uppercase tracking-[0.2em] text-[#AAA] font-black">Direct .mp4 / .m3u8 / .webm or Cloudflare Stream · YouTube &amp; Vimeo links won't play</p>
+                                </div>
                             </div>
                         </section>
+                        )}
 
-                        {/* Footer */}
-                        <div className="flex items-center justify-between gap-6 pt-8 border-t border-[#E6E6E1]">
-                            <p className="text-[10px] text-[#BBB] font-black max-w-sm leading-relaxed">
+                        {/* ── Step 5 · Review ── */}
+                        {step.key === 'review' && (
+                        <section className="space-y-4 animate-in fade-in slide-in-from-right-2 duration-300">
+                            <p className="text-[10px] uppercase tracking-[0.3em] text-[#BBB] font-black">Check everything below, then submit. Tap any step above to edit.</p>
+                            <div className="rounded-2xl border border-[#EDEDEA] divide-y divide-[#F0F0EC]">
+                                {[
+                                    ['Title', form.title],
+                                    ['Description', form.description],
+                                    ['Value', previewValueLabel({ valueLabel: form.value_label, discountType: form.discount_type, discountValue: form.discount_value }) || '—'],
+                                    ['Sector', CATEGORY_OPTIONS.find(o => o.value === form.category)?.label ?? form.category],
+                                    ['Reward type', form.reward_kind === 'physical' ? 'Physical item' : 'Digital code'],
+                                    ['Offer detail', form.offer],
+                                    ['About brand', form.partner_blurb],
+                                    ['Terms', form.terms],
+                                    ['Website', form.url || '—'],
+                                    ['Delivery', form.delivery_method === 'code_pool' ? `Unique code · POWR-${cleanPrefix(form.code_prefix) || 'BRAND'}-A1B2C3` : form.delivery_method === 'affiliate' ? 'Shared affiliate link' : 'Manual fulfilment'],
+                                    ...(form.fulfilment_notes ? [['Fulfilment', form.fulfilment_notes]] : []),
+                                    ['Imagery', [form.logo_url && 'Logo', form.hero_image_url && 'Hero', form.hero_video_url && 'Video'].filter(Boolean).join(' · ') || '—'],
+                                ].map(([k, v]) => (
+                                    <div key={k} className="flex gap-4 px-5 py-3">
+                                        <span className="w-32 shrink-0 text-[9px] uppercase tracking-[0.25em] font-black text-[#AAA] pt-0.5">{k}</span>
+                                        <span className="text-sm text-[#1A1A1A] font-light break-words min-w-0">{v}</span>
+                                    </div>
+                                ))}
+                            </div>
+                            <p className="text-[10px] text-[#BBB] font-black leading-relaxed">
                                 {editingListing
                                     ? 'POWR will review your changes and apply them to the live listing.'
                                     : 'Our team will set the points price and review before it goes live.'}
                             </p>
-                            <div className="flex gap-4 shrink-0">
-                                <button type="button" onClick={closeForm} className="h-12 px-8 text-[10px] font-black uppercase tracking-[0.2em] text-[#666] hover:text-[#222] transition-colors">Cancel</button>
-                                <button type="submit" disabled={saving || uploadingLogo || uploadingHero} className="h-12 px-10 bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.2em] rounded-full transition-all hover:translate-y-[-2px] shadow-lg shadow-[#E8D200]/20 disabled:opacity-50">
-                                    {saving ? 'Submitting...' : editingListing ? 'Submit Changes' : editingSubmission ? 'Update Submission' : 'Submit for Review'}
-                                </button>
-                            </div>
+                        </section>
+                        )}
+
+                        {/* Footer nav — Back / Next through the steps, Submit on the last. */}
+                        <div className="flex items-center justify-between gap-6 pt-8 mt-10 border-t border-[#E6E6E1]">
+                            <button
+                                type="button"
+                                onClick={() => (stepIndex === 0 ? closeForm() : setStepIndex(stepIndex - 1))}
+                                className="h-12 px-8 text-[10px] font-black uppercase tracking-[0.2em] text-[#666] hover:text-[#222] transition-colors"
+                            >
+                                {stepIndex === 0 ? 'Cancel' : '← Back'}
+                            </button>
+                            {step.key === 'review' ? (
+                                <div className="flex items-center gap-2">
+                                    <button type="button" onClick={saveDraft} disabled={saving || uploadingLogo || uploadingHero || uploadingHeroVideo} className="h-12 px-6 text-[10px] font-black uppercase tracking-[0.2em] text-[#666] hover:text-[#222] transition-colors disabled:opacity-50">Save draft</button>
+                                    <button type="submit" disabled={saving || uploadingLogo || uploadingHero || uploadingHeroVideo} className="h-12 px-10 bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.2em] rounded-full transition-all hover:translate-y-[-2px] shadow-lg shadow-[#E8D200]/20 disabled:opacity-50">
+                                        {saving ? 'Submitting...' : editingListing ? 'Submit Changes' : editingSubmission?.status === 'rejected' ? 'Resubmit for Review' : editingSubmission ? 'Update Submission' : 'Submit for Review'}
+                                    </button>
+                                </div>
+                            ) : (
+                                <div className="flex items-center gap-2">
+                                    <button type="button" onClick={saveDraft} disabled={saving || uploadingLogo || uploadingHero || uploadingHeroVideo} className="h-12 px-6 text-[10px] font-black uppercase tracking-[0.2em] text-[#666] hover:text-[#222] transition-colors disabled:opacity-50">Save draft</button>
+                                    <button
+                                        type="button"
+                                        onClick={saveAndContinue}
+                                        disabled={saving || uploadingLogo || uploadingHero || uploadingHeroVideo}
+                                        className="h-12 px-10 bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.2em] rounded-full transition-all hover:translate-y-[-2px] shadow-lg shadow-[#E8D200]/20 disabled:opacity-50"
+                                    >
+                                        {saving ? 'Saving...' : 'Save & continue →'}
+                                    </button>
+                                </div>
+                            )}
                         </div>
                     </form>
                 </div>
@@ -648,7 +920,7 @@ export default function PartnerRewards() {
                                 {submissions.map(s => {
                                     const badge = STATUS_BADGE[s.status] ?? STATUS_BADGE.pending;
                                     const BadgeIcon = badge.icon;
-                                    const canEdit = s.status === 'pending' || s.status === 'invited';
+                                    const canEdit = s.status === 'draft' || s.status === 'pending' || s.status === 'invited' || s.status === 'rejected';
                                     return (
                                         <tr
                                             key={s.id}
@@ -669,8 +941,8 @@ export default function PartnerRewards() {
                                                     <BadgeIcon size={10} />
                                                     {badge.label}
                                                 </span>
-                                                {s.reviewer_notes && (
-                                                    <p className="text-[10px] text-[#999] mt-2 max-w-xs leading-relaxed">{s.reviewer_notes}</p>
+                                                {s.partner_feedback && (
+                                                    <p className="text-[10px] text-red-500 mt-2 max-w-xs leading-relaxed">Feedback: {s.partner_feedback}</p>
                                                 )}
                                             </td>
                                             <td className="px-6 py-5 text-[11px] text-[#BBB] font-black">
@@ -679,7 +951,7 @@ export default function PartnerRewards() {
                                             <td className="px-6 py-5 text-right">
                                                 {canEdit && (
                                                     <button onClick={(e) => { e.stopPropagation(); openEdit(s); }} className="h-9 px-5 text-[9px] font-black uppercase tracking-[0.2em] bg-[#F4F4F1] border border-[#E6E6E1] rounded-full text-[#666] hover:border-[#E8D200]/30 hover:text-[#8a7600] transition-all">
-                                                        Edit
+                                                        {s.status === 'rejected' ? 'Revise' : s.status === 'draft' ? 'Continue' : 'Edit'}
                                                     </button>
                                                 )}
                                             </td>

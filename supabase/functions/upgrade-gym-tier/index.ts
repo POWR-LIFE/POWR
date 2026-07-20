@@ -14,28 +14,13 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405 });
   }
 
-  const authHeader = req.headers.get('Authorization');
-  if (!authHeader) {
-    return new Response(JSON.stringify({ error: 'Missing authorization' }), { status: 401 });
-  }
-
   const supabase = createClient(
     Deno.env.get('SUPABASE_URL')!,
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
   );
 
-  const userClient = createClient(
-    Deno.env.get('SUPABASE_URL')!,
-    Deno.env.get('SUPABASE_ANON_KEY')!,
-  );
-
-  const jwt = authHeader.replace(/^Bearer\s+/i, '');
-  const { data: { user }, error: authError } = await userClient.auth.getUser(jwt);
-  if (authError || !user) {
-    return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
-  }
-
-  let body: { session_id: string };
+  // Parse body before auth — the relay leg carries user_id in it.
+  let body: { session_id: string; user_id?: string; visit_id?: string };
   try {
     body = await req.json();
   } catch {
@@ -43,6 +28,40 @@ Deno.serve(async (req) => {
   }
   if (!body.session_id) {
     return new Response(JSON.stringify({ error: 'session_id required' }), { status: 400 });
+  }
+
+  // Two auth legs, mirroring claim-points: the app's user JWT (verified in-code),
+  // or relay_gym_upgrade's resolve-token + explicit user_id — the background
+  // path, where a client functions.invoke never arrives but REST does
+  // (2026-07-14). Session ownership below re-verifies against the same user_id.
+  const relayToken = req.headers.get('x-resolve-token');
+  const viaRelay = relayToken != null;
+  let user: { id: string; email?: string };
+  if (viaRelay) {
+    const { data: valid } = await supabase.rpc('verify_resolve_token', { p_token: relayToken });
+    if (valid !== true || !body.user_id) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
+    }
+    const { data: got, error: adminError } = await supabase.auth.admin.getUserById(body.user_id);
+    if (adminError || !got?.user) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
+    }
+    user = got.user;
+  } else {
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(JSON.stringify({ error: 'Missing authorization' }), { status: 401 });
+    }
+    const userClient = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_ANON_KEY')!,
+    );
+    const jwt = authHeader.replace(/^Bearer\s+/i, '');
+    const { data: { user: jwtUser }, error: authError } = await userClient.auth.getUser(jwt);
+    if (authError || !jwtUser) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
+    }
+    user = jwtUser;
   }
 
   // Dev test accounts bypass daily cap
@@ -62,6 +81,33 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ error: 'Session not found' }), { status: 404 });
   }
 
+  // A relayed upgrade can't rely on the client to mark the visit (the device may
+  // be frozen in Doze) — record it on the beacon here so upgrade nudges stop.
+  // Mirrors mark_gym_visit_progress; the upgraded_at guard keeps it idempotent
+  // against the client's own later mark. Called on every ok outcome, matching the
+  // client contract (markGymVisitProgress fires on any successful upgrade call).
+  const markVisitUpgraded = async () => {
+    if (!viaRelay || !body.visit_id) return;
+    try {
+      const nowIso = new Date().toISOString();
+      const { data: marked } = await supabase
+        .from('gym_visits')
+        .update({ status: 'upgraded', upgraded_at: nowIso, last_confirmed_at: nowIso })
+        .eq('id', body.visit_id)
+        .eq('user_id', user.id)
+        .is('upgraded_at', null)
+        .select('id');
+      if ((marked ?? []).length > 0) {
+        await supabase.from('gym_visit_events').insert({
+          visit_id: body.visit_id, user_id: user.id, event: 'upgraded',
+          detail: { session_id: session.id, via: 'relay' },
+        });
+      }
+    } catch (visitErr) {
+      console.warn('[upgrade-gym-tier] relay visit mark failed:', visitErr);
+    }
+  };
+
   // Loose sanity backstop on a recorded gym dwell — keep in sync with GeofenceContext.
   // A 40-min upgrade firing late (app reopened hours later, or a delayed EXIT)
   // must not overwrite duration_sec with an impossible entry→now wall-clock.
@@ -79,14 +125,28 @@ Deno.serve(async (req) => {
   );
   const actualMins = Math.floor(actualDurationSec / 60);
 
-  if (actualMins < 40) {
+  // Admin-tunable upgrade-tier threshold (system_config → gym_upgrade_minutes,
+  // default 40). Keep in sync with claim-points calcBasePoints — this is the
+  // authoritative gate; the client timer/copy read the same row.
+  let upgradeMin = 40;
+  {
+    const { data: cfg } = await supabase
+      .from('system_config')
+      .select('value')
+      .eq('key', 'gym_upgrade_minutes')
+      .maybeSingle();
+    const parsed = parseInt(cfg?.value ?? '', 10);
+    if (Number.isFinite(parsed) && parsed > 0) upgradeMin = parsed;
+  }
+
+  if (actualMins < upgradeMin) {
     // DEV-TEST-ONLY override: when DEV_MIN_UPGRADE_SEC is set, a dev-test account can
-    // upgrade to the 40-min tier at a lower threshold (test without a real 40-min
+    // upgrade to the upgrade tier at a lower threshold (test without a real full
     // dwell). Gated on isDevTestUser so a real user can NEVER upgrade early even if
     // the env var is left set in production — the env var alone is not enough.
     const devMinUpgradeSec = parseInt(Deno.env.get('DEV_MIN_UPGRADE_SEC') ?? '0', 10);
     if (!isDevTestUser || devMinUpgradeSec <= 0 || actualDurationSec < devMinUpgradeSec) {
-      return new Response(JSON.stringify({ error: 'Session has not reached the 40-min tier' }), { status: 422 });
+      return new Response(JSON.stringify({ error: `Session has not reached the ${upgradeMin}-min tier` }), { status: 422 });
     }
     console.log(`[DEV] Allowing tier upgrade for short session (${actualDurationSec}s >= ${devMinUpgradeSec}s dev threshold)`);
   }
@@ -99,7 +159,7 @@ Deno.serve(async (req) => {
     .update({ ended_at: endedAt.toISOString(), duration_sec: actualDurationSec })
     .eq('id', session.id);
 
-  // Calculate target earnings at 40-min tier including streak multiplier
+  // Calculate target earnings at the upgrade tier including streak multiplier
   const targetBase = 20;
   const { data: streak } = await supabase
     .from('user_streaks')
@@ -121,6 +181,7 @@ Deno.serve(async (req) => {
   const delta = targetTotal - alreadyEarned;
 
   if (delta <= 0) {
+    await markVisitUpgraded();
     return new Response(JSON.stringify({ ok: true, delta: 0, message: 'Already at max tier' }), { status: 200 });
   }
 
@@ -160,7 +221,10 @@ Deno.serve(async (req) => {
       session_id: session.id,
       amount: finalDelta,
       type: 'earn',
-      description: 'gym session upgrade (40min)',
+      // The "(Xmin)" suffix is parsed by the ledger's "+X MIN" badge, and the
+      // (session_id, description) unique index dedupes concurrent upgrades —
+      // the threshold rarely changes mid-session, so the string stays stable.
+      description: `gym session upgrade (${upgradeMin}min)`,
       multiplier: 1.0,
     })
     .select()
@@ -168,15 +232,18 @@ Deno.serve(async (req) => {
 
   if (txError) {
     // 23505 = unique violation on (session_id, description) — a concurrent upgrade
-    // already inserted the 'gym session upgrade (40min)' row. The delta check above
+    // already inserted the 'gym session upgrade (Xmin)' row. The delta check above
     // is not atomic, so two simultaneous calls can both compute a positive delta;
     // the DB index is the backstop. Treat the loser as a no-op success.
     if ((txError as { code?: string }).code === '23505') {
+      await markVisitUpgraded();
       return new Response(JSON.stringify({ ok: true, delta: 0, message: 'Upgrade already recorded' }), { status: 200 });
     }
     console.error('[upgrade-gym-tier] Transaction insert failed:', txError);
     return new Response(JSON.stringify({ error: 'Failed to record upgrade' }), { status: 500 });
   }
+
+  await markVisitUpgraded();
 
   // Push the 40-min tier bonus. Until now this path was silent — only the
   // initial claim (claim-points) notified — so the "stay 40m to unlock +X"
@@ -197,7 +264,7 @@ Deno.serve(async (req) => {
       body: JSON.stringify({
         target_user_id: user.id,
         type: 'session_upgraded',
-        payload: { session_id: session.id, earned: finalDelta },
+        payload: { session_id: session.id, earned: finalDelta, upgrade_minutes: upgradeMin },
       }),
     });
     const pushBody = await pushRes.json().catch(() => null);

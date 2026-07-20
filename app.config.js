@@ -1,10 +1,29 @@
 const { expo } = require('./app.json');
 
+// Public client-side Maps key (the same value already ships in eas.json and in
+// every built app). NEVER default to '' here: an empty key makes `expo prebuild`
+// silently skip the iOS GMSServices init + google-maps pod, which produced the
+// Discover-map crash in TestFlight 1.4.10 (13).
+const GOOGLE_MAPS_API_KEY =
+  process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ??
+  'AIzaSyBlWjadfjwrtx62Rmb_b5aAPMM-l2pSgww';
+
 module.exports = {
   expo: {
     ...expo,
     ios: {
       ...expo.ios,
+      // Local path is gitignored; EAS builders get it via the
+      // GOOGLE_SERVICE_INFO_PLIST file env var (resolves to a builder path).
+      googleServicesFile:
+        process.env.GOOGLE_SERVICE_INFO_PLIST ?? './GoogleService-Info.plist',
+      // iOS now renders Google Maps too (matches Android for visual
+      // consistency). Reuses the same key as Android — requires the
+      // "Maps SDK for iOS" API to be enabled on it in GCP.
+      config: {
+        ...expo.ios?.config,
+        googleMapsApiKey: GOOGLE_MAPS_API_KEY,
+      },
       infoPlist: {
         ...expo.ios?.infoPlist,
         NSHealthShareUsageDescription:
@@ -28,7 +47,7 @@ module.exports = {
       googleServicesFile: './google-services.json',
       config: {
         googleMaps: {
-          apiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ?? '',
+          apiKey: GOOGLE_MAPS_API_KEY,
         },
       },
     },
@@ -38,14 +57,32 @@ module.exports = {
         projectId: '7f4fe661-8919-4790-bd66-209373f958de',
       },
     },
+    updates: {
+      url: 'https://u.expo.dev/7f4fe661-8919-4790-bd66-209373f958de',
+      // Channel for builds made outside EAS (local Xcode iOS builds); EAS
+      // builds override this with the profile's channel at build time.
+      // For an App Store archive: POWR_IOS_CHANNEL=production npx expo prebuild -p ios --clean
+      requestHeaders: {
+        'expo-channel-name': process.env.POWR_IOS_CHANNEL ?? 'preview',
+      },
+    },
+    // Fingerprint = hash of the native project: JS-only changes share a runtime
+    // (deliverable OTA), anything touching native modules fences itself off to
+    // new binaries automatically. Never publish OTA across a native change.
+    runtimeVersion: {
+      policy: 'fingerprint',
+    },
     plugins: [
-      './withFirebaseMessagingManifestFix.js',
       ...expo.plugins,
-      './withGoogleUtilitiesModularHeaders.js',
-      '@react-native-firebase/app',
       'expo-apple-authentication',
       ['react-native-health-connect'],
       'expo-secure-store',
+      // Picks a profile/share-card image and nothing else. On Android 13+ this
+      // goes through the system photo picker and requests NO permission, which
+      // is what Google Play's Photo and Video Permissions policy requires.
+      // NEVER add expo-media-library back: its plugin injects READ_MEDIA_IMAGES
+      // /_VIDEO /_AUDIO, which got the app rejected (we only ever *share* the
+      // card via the OS share sheet — we never read or write the gallery).
       [
         'expo-image-picker',
         {

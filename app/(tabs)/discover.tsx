@@ -19,14 +19,15 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import MapView, { Circle, Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
+import MapView, { Circle, Marker, Polyline } from 'react-native-maps';
 import MapViewDirections from 'react-native-maps-directions';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { HeaderActions } from '@/components/HeaderActions';
 import { useActiveGeofence } from '@/hooks/useActiveGeofence';
 import { useGeofenceContext, searchPartners, type Partner, type Trainer, type DayKey, type OpeningHours } from '@/context/GeofenceContext';
 import { createGymRequest } from '@/lib/api/gyms';
-import { supabase } from '@/lib/supabase';
+import { MAP_PROVIDER } from '@/lib/mapProvider';
+import { getSessionUser, supabase } from '@/lib/supabase';
 import { GeometricBackground } from '@/components/home/GeometricBackground';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
@@ -208,7 +209,7 @@ export default function DiscoverScreen() {
   // Load user's preferred gym
   useEffect(() => {
     (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) return;
       const { data } = await supabase
         .from('profiles')
@@ -222,7 +223,7 @@ export default function DiscoverScreen() {
   // Load the set of partners the user has previously visited (any check-in)
   useEffect(() => {
     (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) return;
       const { data } = await supabase
         .from('activity_sessions')
@@ -237,7 +238,7 @@ export default function DiscoverScreen() {
 
   const handleTogglePreferred = useCallback(async (partner: Partner) => {
     if (savingPreferred) return;
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getSessionUser();
     if (!user) return;
     const newValue = preferredGymId === partner.dbId ? null : partner.dbId;
     setSavingPreferred(true);
@@ -591,8 +592,8 @@ export default function DiscoverScreen() {
         <MapView
           ref={mapRef}
           style={StyleSheet.absoluteFillObject}
-          provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
-          customMapStyle={Platform.OS === 'android' ? DARK_MAP_STYLE : undefined}
+          provider={MAP_PROVIDER}
+          customMapStyle={DARK_MAP_STYLE}
           userInterfaceStyle="dark"
           initialRegion={DEFAULT_REGION}
           showsUserLocation={locationGranted}
@@ -1044,8 +1045,8 @@ export default function DiscoverScreen() {
           <MapView
             ref={navMapRef}
             style={StyleSheet.absoluteFillObject}
-            provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
-            customMapStyle={Platform.OS === 'android' ? DARK_MAP_STYLE : undefined}
+            provider={MAP_PROVIDER}
+            customMapStyle={DARK_MAP_STYLE}
             userInterfaceStyle="dark"
             initialRegion={DEFAULT_REGION}
             showsUserLocation

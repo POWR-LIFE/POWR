@@ -19,7 +19,7 @@ import Svg, { Circle, Defs, Line, Stop, LinearGradient as SvgLinearGradient } fr
 import { LevelIcon } from '@/components/LevelIcon';
 import { ProfileGeometricBackground } from '@/components/ProfileGeometricBackground';
 import { ProBadge } from '@/components/ui/ProBadge';
-import { getLevelInfo, LEVELS } from '@/constants/levels';
+import { getLevelInfo, LEVELS, LEVEL_IMAGE } from '@/constants/levels';
 import { useAuth } from '@/context/AuthContext';
 import { useAchievements } from '@/hooks/useAchievements';
 import { useActivity } from '@/hooks/useActivity';
@@ -71,6 +71,11 @@ const TILE_GAP = 10;
 const TILE_W = Math.floor((SCREEN_W - 32 - TILE_GAP * 2) / 3);
 
 const LEVEL_BY_NUMBER = new Map(LEVELS.map(l => [l.level, l]));
+
+// Achievement medallion is a 60px circle with a 1.5px border. Full-square level
+// artwork renders at this size (near edge-to-edge) so it fills the badge instead
+// of floating as a small square in the middle; the wrapper clips it to the circle.
+const MEDALLION_INNER = 54;
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
@@ -391,7 +396,20 @@ export default function ProfileScreen() {
                       if (a.unlock.type === 'level') {
                         const levelDef = LEVEL_BY_NUMBER.get(a.unlock.level);
                         if (levelDef) {
-                          return <LevelIcon level={levelDef.level} size={28} color={a.colour} strokeWidth={1.6} />;
+                          // Level artwork is a full square logo, so render it near
+                          // edge-to-edge and let the circular wrapper clip it —
+                          // otherwise it reads as a small square floating in the ring.
+                          // Generated SVG glyphs stay smaller (they're designed with
+                          // built-in breathing room and shouldn't touch the border).
+                          const hasArtwork = !!LEVEL_IMAGE[levelDef.level];
+                          return (
+                            <LevelIcon
+                              level={levelDef.level}
+                              size={hasArtwork ? MEDALLION_INNER : 28}
+                              color={a.colour}
+                              strokeWidth={1.6}
+                            />
+                          );
                         }
                       }
                       return <Ionicons name={a.icon as any} size={24} color={a.colour} />;
@@ -660,6 +678,7 @@ const s = StyleSheet.create({
     width: '100%', height: '100%', borderRadius: 30,
     alignItems: 'center', justifyContent: 'center',
     backgroundColor: 'transparent',
+    overflow: 'hidden',
   },
   achieveCheckBadge: {
     position: 'absolute', bottom: -1, right: -1,
