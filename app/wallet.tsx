@@ -8,6 +8,7 @@ import {
   type WalletEntry,
   type WalletStatus,
 } from '@/lib/api/rewards';
+import { tracked } from '@/lib/analytics';
 import { rewardHeroUri, rewardLogoUri } from '@/lib/storageImage';
 import { Ionicons } from '@expo/vector-icons';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
@@ -156,7 +157,7 @@ function WalletCard({
           <Text style={styles.affiliateText}>Discount applied automatically at checkout.</Text>
         </View>
       ) : (
-        <Pressable style={styles.codeBlock} onPress={inactive ? undefined : copy} disabled={inactive}>
+        <Pressable style={styles.codeBlock} onPress={inactive ? undefined : tracked('wallet_copy_code', copy)} disabled={inactive}>
           <Text style={styles.codeLabel}>CODE</Text>
           <Text style={[styles.codeText, inactive && { color: DIM }]}>{entry.code}</Text>
           {!inactive && (
@@ -173,14 +174,14 @@ function WalletCard({
       {!inactive && (
         <View style={styles.actions}>
           {entry.checkout_url && (
-            <Pressable style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.85 }]} onPress={openCheckout}>
+            <Pressable style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.85 }]} onPress={tracked('wallet_open_checkout', openCheckout)}>
               <Ionicons name="open-outline" size={14} color="#0a0a0a" />
               <Text style={styles.primaryBtnText}>Use{partner ? ` at ${partner}` : ''}</Text>
             </Pressable>
           )}
           <Pressable
             style={({ pressed }) => [styles.secondaryBtn, pressed && { opacity: 0.7 }]}
-            onPress={() => onShare(entry)}
+            onPress={tracked('wallet_share_reward', () => onShare(entry))}
             disabled={shareBusy}
           >
             {shareBusy ? (

@@ -12,6 +12,7 @@ import {
     MapPin,
     Megaphone,
     MessageSquare,
+    MousePointerClick,
     Lock,
     ScrollText,
     Settings,
@@ -46,6 +47,7 @@ import { callPartnerApi } from './lib/partnerApi';
 import DeveloperDocs from './pages/DeveloperDocs';
 
 import Analytics from './pages/admin/Analytics';
+import UsageAnalytics from './pages/admin/UsageAnalytics';
 import AthleteApplications from './pages/admin/AthleteApplications';
 import AuditLog from './pages/admin/AuditLog';
 import Broadcast from './pages/admin/Broadcast';
@@ -276,6 +278,7 @@ const PATH_LABELS = {
     athletes: 'Athletes',
     profile: 'Profile',
     analytics: 'Analytics',
+    usage: 'Usage',
     vault: 'Vault',
     sessions: 'Sessions',
     performance: 'Performance',
@@ -618,6 +621,7 @@ const AdminHome = () => {
         { label: 'Featured',    path: '/admin/featured',           icon: Star,          color: '#AAAAAA' },
         { label: 'Challenges',  path: '/admin/challenges',         icon: Target,        color: '#AAAAAA' },
         { label: 'Analytics',   path: '/admin/analytics',          icon: BarChart3,     color: '#E8D200' },
+        { label: 'Usage',       path: '/admin/usage',              icon: MousePointerClick, color: '#F97316' },
         { label: 'Sessions',    path: '/admin/sessions',           icon: Shield,        color: '#F43F5E' },
         { label: 'Performance', path: '/admin/performance',        icon: TrendingUp,    color: '#F97316' },
         { label: 'Redemptions', path: '/admin/redemptions',        icon: Gift,          color: '#8B5CF6' },
@@ -876,6 +880,7 @@ const AdminLayout = ({ children }) => {
 
     const opsItems = [
         { label: 'Analytics',   path: '/admin/analytics',   icon: BarChart3     },
+        { label: 'Usage',       path: '/admin/usage',       icon: MousePointerClick },
         { label: 'Sessions',    path: '/admin/sessions',    icon: Shield        },
         { label: 'Performance', path: '/admin/performance', icon: Activity      },
         { label: 'Redemptions', path: '/admin/redemptions', icon: Gift          },
@@ -1058,6 +1063,7 @@ export default function App() {
                     <Route path="/admin/users/:userId" element={<ProtectedRoute><AdminLayout><UserProfile /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/partners/:partnerId" element={<ProtectedRoute><AdminLayout><PartnerProfile /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/analytics" element={<ProtectedRoute><AdminLayout><Analytics /></AdminLayout></ProtectedRoute>} />
+                    <Route path="/admin/usage" element={<ProtectedRoute><AdminLayout><UsageAnalytics /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/sessions" element={<ProtectedRoute><AdminLayout><SessionReview /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/performance" element={<ProtectedRoute><AdminLayout><PartnerPerformance /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/performance/:partnerId" element={<ProtectedRoute><AdminLayout><GymDetail /></AdminLayout></ProtectedRoute>} />

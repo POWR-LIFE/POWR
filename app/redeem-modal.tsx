@@ -19,6 +19,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { usePoints } from '@/hooks/usePoints';
+import { tracked } from '@/lib/analytics';
 import { redeemReward, RedemptionError, type IntegrationType, type Reward } from '@/lib/api/rewards';
 import { rewardHeroUri, rewardLogoUri } from '@/lib/storageImage';
 import { supabase } from '@/lib/supabase';
@@ -330,7 +331,7 @@ function ConfirmView({ reward, balance, canAfford, remaining, submitting, error,
             (!canAfford || submitting) && styles.confirmBtnDisabled,
             pressed && canAfford && !submitting && { opacity: 0.85 },
           ]}
-          onPress={canAfford && !submitting ? onConfirm : undefined}
+          onPress={canAfford && !submitting ? tracked('redeem_confirm', onConfirm) : undefined}
         >
           {submitting ? (
             <ActivityIndicator color='#0a0a0a' />
@@ -340,7 +341,7 @@ function ConfirmView({ reward, balance, canAfford, remaining, submitting, error,
             </Text>
           )}
         </Pressable>
-        <Pressable style={({ pressed }) => [styles.cancelBtn, pressed && { opacity: 0.7 }]} onPress={onCancel}>
+        <Pressable style={({ pressed }) => [styles.cancelBtn, pressed && { opacity: 0.7 }]} onPress={tracked('redeem_cancel', onCancel)}>
           <Text style={styles.cancelBtnText}>Cancel</Text>
         </Pressable>
       </View>
@@ -443,7 +444,7 @@ function SuccessView({ reward, code, expiresAt, copied, checkoutUrl, alreadyRede
             {checkoutUrl && (
               <Pressable
                 style={({ pressed }) => [styles.confirmBtn, pressed && { opacity: 0.85 }]}
-                onPress={onOpenCheckout}
+                onPress={tracked('redeem_checkout_affiliate', onOpenCheckout)}
               >
                 <Ionicons name="open-outline" size={16} color="#0a0a0a" />
                 <Text style={styles.confirmBtnText}>Shop at {partnerLabel || reward.title}</Text>
@@ -454,7 +455,7 @@ function SuccessView({ reward, code, expiresAt, copied, checkoutUrl, alreadyRede
           <>
             <Pressable
               style={({ pressed }) => [styles.codeBlock, pressed && { opacity: 0.8 }]}
-              onPress={onCopy}
+              onPress={tracked('redeem_copy_code', onCopy)}
             >
               <Text style={styles.codeLabel}>YOUR CODE</Text>
               <Text style={styles.codeText}>{code}</Text>
@@ -475,7 +476,7 @@ function SuccessView({ reward, code, expiresAt, copied, checkoutUrl, alreadyRede
             {checkoutUrl && (
               <Pressable
                 style={({ pressed }) => [styles.visitBtn, pressed && { opacity: 0.85 }]}
-                onPress={onOpenCheckout}
+                onPress={tracked('redeem_checkout_code', onOpenCheckout)}
               >
                 <Ionicons name="open-outline" size={14} color="#0a0a0a" />
                 <Text style={styles.visitBtnText}>Use code at {partnerLabel || reward.title}</Text>

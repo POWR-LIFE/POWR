@@ -11,6 +11,7 @@ import { useVaultAccess } from '@/hooks/useVaultAccess';
 import { fetchMyRedemptionSummary, fetchRewards, fetchSmartFeaturedReward, type Reward as ApiReward } from '@/lib/api/rewards';
 import { resolveContextualPlacements, pickHeroPlacement, comparePlacements, type ResolvedPlacement } from '@/lib/api/placements';
 import { fetchVaultContents } from '@/lib/api/vault';
+import { tracked } from '@/lib/analytics';
 import { rewardHeroUri, rewardLogoUri } from '@/lib/storageImage';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -583,7 +584,7 @@ function FeaturedCard({ featured, afford, balance, placement, onRedeem }: Featur
               </View>
             ) : <View />}
             {afford === 'can' ? (
-              <Pressable style={({ pressed }) => [styles.redeemPrimary, pressed && { opacity: 0.85 }]} onPress={onRedeem}>
+              <Pressable style={({ pressed }) => [styles.redeemPrimary, pressed && { opacity: 0.85 }]} onPress={tracked('reward_redeem_start', onRedeem)}>
                 <Text style={styles.redeemPrimaryText}>Redeem</Text>
                 <Ionicons name="arrow-forward" size={13} color="#0a0a0a" />
               </Pressable>

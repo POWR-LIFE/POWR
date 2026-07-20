@@ -17,6 +17,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ACTIVITIES, ACTIVITY_ORDER, type ActivityType } from '@/constants/activities';
+import { tracked } from '@/lib/analytics';
 import { logManualSession } from '@/lib/api/activity';
 import { useHealthData, type VerifyResult } from '@/hooks/useHealthData';
 
@@ -455,7 +456,7 @@ function DetailsForm({
                     (!inputValid || !qualifies) && styles.submitBtnDisabled,
                     pressed && inputValid && qualifies && { opacity: 0.85 },
                 ]}
-                onPress={onSubmit}
+                onPress={tracked('manual_log_submit', onSubmit)}
                 disabled={!inputValid || !qualifies || submitting}
             >
                 {submitting ? (

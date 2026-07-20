@@ -8,12 +8,12 @@ import {
   Outfit_700Bold,
   useFonts,
 } from '@expo-google-fonts/outfit';
-import { Stack } from 'expo-router';
+import { Stack, usePathname } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import * as WebBrowser from 'expo-web-browser';
 import { useEffect } from 'react';
-import { View } from 'react-native';
+import { Dimensions, View } from 'react-native';
 import 'react-native-reanimated';
 import '../global.css';
 import { QueryClientProvider } from '@tanstack/react-query';
@@ -22,6 +22,7 @@ import { GeofenceProvider } from '@/context/GeofenceContext';
 import { NotificationsProvider } from '@/context/NotificationsContext';
 import { ThemeProvider as AppThemeProvider, useAppTheme } from '@/context/ThemeContext';
 import { queryClient } from '@/lib/queryClient';
+import { startAnalytics, trackScreen, trackTouch } from '@/lib/analytics';
 import { registerWalkingSync } from '@/lib/health/walkingSync';
 import { ensureAndroidChannels } from '@/lib/notifications';
 import { useOtaUpdatePrompt } from '@/lib/otaUpdates';
@@ -95,6 +96,18 @@ function RootLayoutNav() {
     return () => sub.subscription.unsubscribe();
   }, []);
 
+  // Product analytics. One pathname subscription here covers every route in the
+  // app — there is no per-screen instrumentation to add or to forget when a
+  // screen is added later. trackScreen() de-duplicates repeat paths itself, and
+  // the whole module is a no-op when the analytics_enabled switch is off.
+  const pathname = usePathname();
+  useEffect(() => {
+    startAnalytics();
+  }, []);
+  useEffect(() => {
+    if (pathname) trackScreen(pathname);
+  }, [pathname]);
+
   // Offer a restart when an OTA update is ready (launch + foreground checks).
   useOtaUpdatePrompt();
 
@@ -102,8 +115,27 @@ function RootLayoutNav() {
     return null;
   }
 
+  // Observes every touch in the app for the admin heatmap.
+  //
+  // onStartShouldSetResponderCapture runs on the CAPTURE phase, before any
+  // child sees the touch, and returning false declines to become the responder
+  // — so this reads the position and then gets out of the way completely. The
+  // gesture continues to whatever button, scroll view or sheet was actually
+  // touched, exactly as if this handler were not here. That matters: an earlier
+  // instinct was to wrap things in an overlay View, and an invisible view over
+  // the app is precisely how touches get swallowed.
+  const onTouchCapture = (e: { nativeEvent: { pageX: number; pageY: number } }) => {
+    const { width, height } = Dimensions.get('window');
+    trackTouch(e.nativeEvent.pageX, e.nativeEvent.pageY, width, height);
+    return false;
+  };
+
   return (
-    <View className={`theme-${theme} bg-theme-bg`} style={{ flex: 1, backgroundColor: '#0d0d0d' }}>
+    <View
+      className={`theme-${theme} bg-theme-bg`}
+      style={{ flex: 1, backgroundColor: '#0d0d0d' }}
+      onStartShouldSetResponderCapture={onTouchCapture}
+    >
       <ThemeProvider value={APP_DARK_THEME}>
         <Stack screenOptions={{ contentStyle: { backgroundColor: '#0d0d0d' } }}>
           <Stack.Screen name="index" options={{ headerShown: false }} />
