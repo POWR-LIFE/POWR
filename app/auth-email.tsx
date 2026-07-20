@@ -38,6 +38,7 @@ export default function AuthEmailScreen() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [confirmationSent, setConfirmationSent] = useState(false);
+    const [existingAccount, setExistingAccount] = useState(false);
     const [resetSent, setResetSent] = useState(false);
     const [resetLoading, setResetLoading] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
@@ -60,9 +61,11 @@ export default function AuthEmailScreen() {
                 if (error) { setError(error); return; }
                 router.replace('/(tabs)');
             } else {
-                const { error, needsConfirmation } = await signUpWithEmail(email.trim(), password);
+                const { error, needsConfirmation, alreadyRegistered } = await signUpWithEmail(email.trim(), password);
                 if (error) { setError(error); return; }
-                if (needsConfirmation) {
+                if (alreadyRegistered) {
+                    setExistingAccount(true);
+                } else if (needsConfirmation) {
                     setConfirmationSent(true);
                 } else {
                     // Email confirmation disabled — session created immediately
@@ -109,6 +112,38 @@ export default function AuthEmailScreen() {
                 </View>
                 <Pressable
                     onPress={() => { setResetSent(false); setMode('signin'); }}
+                    style={({ pressed }) => [styles.secondaryButton, pressed && { opacity: 0.7 }]}
+                >
+                    <Text style={styles.secondaryLabel}>Back to Log In</Text>
+                </Pressable>
+            </View>
+        );
+    }
+
+    // Signup hit an address that already has an account. Deliberately phrased as
+    // a conditional ("if this is a new email") rather than "you already have an
+    // account": confirming it outright would turn the signup form into an
+    // account-enumeration oracle, and it matches how the reset screen above
+    // stays non-committal. The user still gets the action they need — go log in,
+    // and try the provider buttons if the password isn't recognised.
+    if (existingAccount) {
+        return (
+            <View style={[styles.container, { justifyContent: 'center', alignItems: 'center', paddingHorizontal: 32 }]}>
+                <View style={styles.confirmBox}>
+                    <Text style={styles.confirmIcon}>✉</Text>
+                    <Text style={styles.confirmTitle}>Check your inbox</Text>
+                    <Text style={styles.confirmBody}>
+                        If{'\n'}
+                        <Text style={styles.confirmEmail}>{email.trim()}</Text>
+                        {'\n'}is new to POWR, we sent a confirmation link.
+                    </Text>
+                    <Text style={styles.confirmHint}>
+                        Already signed up? Head back and log in — and if you started with
+                        Google or Apple, use that button instead of a password.
+                    </Text>
+                </View>
+                <Pressable
+                    onPress={() => { setExistingAccount(false); setMode('signin'); }}
                     style={({ pressed }) => [styles.secondaryButton, pressed && { opacity: 0.7 }]}
                 >
                     <Text style={styles.secondaryLabel}>Back to Log In</Text>

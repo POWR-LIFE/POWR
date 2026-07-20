@@ -43,6 +43,17 @@ const webStorageAdapter = {
  */
 export const PASSWORD_RESET_REDIRECT = 'https://powr.life/app?to=reset-password';
 
+/**
+ * Where signup confirmation emails land, via the same smart-link page.
+ *
+ * Only used once "Confirm email" is enabled in Auth settings — until then
+ * signup auto-confirms and no email is ever sent. Shipping the redirect (and
+ * the /signup-confirmed route) ahead of that flip is deliberate: the setting
+ * applies to every installed build the instant it's toggled, so the landing
+ * has to already be out in the field before anyone turns it on.
+ */
+export const EMAIL_CONFIRM_REDIRECT = 'https://powr.life/app?to=signup-confirmed';
+
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     auth: {
         storage: Platform.OS === 'web' ? webStorageAdapter : secureStoreAdapter,
