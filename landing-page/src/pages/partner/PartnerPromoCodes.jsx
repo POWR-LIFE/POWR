@@ -4,7 +4,7 @@ import * as XLSX from 'xlsx';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
 import { useAuth } from '../../App';
-import { ChangeMethodLink, StageStrip } from './integrationShared';
+import { ChangeMethodLink, GuideLink, StageStrip } from './integrationShared';
 import {
     parseCodes,
     parseReconciliationCodes,
@@ -462,7 +462,10 @@ export default function PartnerPromoCodes() {
                 </div>
                 <div className="flex items-end justify-between gap-6 flex-wrap">
                     <h1 className="text-5xl font-light tracking-tighter text-[#1A1A1A]">Promo Codes</h1>
-                    <ChangeMethodLink />
+                    <div className="flex items-center gap-3">
+                        <ChangeMethodLink />
+                        <GuideLink method="manual" />
+                    </div>
                 </div>
                 <p className="text-[12px] text-[#AAAAAA] font-black mt-3 max-w-xl">
                     Upload the discount codes from your store, or let POWR mint them. Members draw one from the pool when they redeem.

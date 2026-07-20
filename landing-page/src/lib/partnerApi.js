@@ -7,7 +7,15 @@ import { invokeFn } from './invokeFn';
 // server-forced to their own brand). Reads are direct RLS-scoped queries.
 
 export const API_BASE_URL = 'https://powr.life/api/partner/v1';
-export const DOCS_PATH = '/developers';
+export const DOCS_PATH = '/docs/api';
+
+// Public guide per delivery method — every method page links to its own, so
+// "how do I set this up" is one click from wherever the partner is standing.
+export const DOCS_PATHS = {
+    api: '/docs/api',
+    shopify: '/docs/shopify',
+    manual: '/docs/promo-codes',
+};
 
 export const WEBHOOK_EVENTS = [
     {

@@ -44,7 +44,10 @@ import PartnerIntegrationApi from './pages/partner/PartnerIntegrationApi';
 import PartnerIntegrationShopify from './pages/partner/PartnerIntegrationShopify';
 import PartnerSetup from './pages/partner/PartnerSetup';
 import { callPartnerApi } from './lib/partnerApi';
-import DeveloperDocs from './pages/DeveloperDocs';
+import DocsOverview from './pages/docs/DocsOverview';
+import DocsPromoCodes from './pages/docs/DocsPromoCodes';
+import DocsShopify from './pages/docs/DocsShopify';
+import DocsApi from './pages/docs/DocsApi';
 
 import Analytics from './pages/admin/Analytics';
 import UsageAnalytics from './pages/admin/UsageAnalytics';
@@ -1049,7 +1052,12 @@ export default function App() {
                     <Route path="/partner/integration/api" element={<PartnerProtectedRoute><PartnerLayout><PartnerIntegrationApi /></PartnerLayout></PartnerProtectedRoute>} />
                     <Route path="/partner/integration/shopify" element={<PartnerProtectedRoute><PartnerLayout><PartnerIntegrationShopify /></PartnerLayout></PartnerProtectedRoute>} />
                     <Route path="/partner/developers" element={<LegacyDevelopersRedirect />} />
-                    <Route path="/developers" element={<DeveloperDocs />} />
+                    <Route path="/docs" element={<DocsOverview />} />
+                    <Route path="/docs/promo-codes" element={<DocsPromoCodes />} />
+                    <Route path="/docs/shopify" element={<DocsShopify />} />
+                    <Route path="/docs/api" element={<DocsApi />} />
+                    {/* Legacy — the API reference lived here before the docs hub */}
+                    <Route path="/developers" element={<Navigate to="/docs/api" replace />} />
                     <Route path="/admin/login" element={<AdminLogin />} />
                     <Route path="/admin" element={<ProtectedRoute><AdminLayout><AdminHome /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/partners" element={<ProtectedRoute><AdminLayout><PartnerManager /></AdminLayout></ProtectedRoute>} />
