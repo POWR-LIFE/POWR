@@ -32,6 +32,11 @@ const STEPPERS = {
     // Days a matured deposit waits for the user's press-and-hold unlock
     // before the cron auto-releases it. 0 = auto-release immediately.
     vault_auto_release_grace_days: { step: 1, min: 0, max: 30, unit: 'days' },
+    // Level floor before POWR can leave the Vault. 1 = off (everyone is at
+    // least level 1). Below it BOTH doors stay shut — the press-and-hold claim
+    // and the grace auto-release — so raising this genuinely withholds POWR
+    // rather than just hiding the button.
+    vault_unlock_min_level: { step: 1, min: 1, max: 20, unit: 'level' },
     vault_bonus_recruit: { step: 5,  min: 0, max: 500,  unit: 'pts' },
     vault_bonus_athlete: { step: 10, min: 0, max: 1000, unit: 'pts' },
     vault_bonus_elite:   { step: 25, min: 0, max: 2000, unit: 'pts' },
@@ -61,8 +66,11 @@ const GROUPS = [
         id: 'vault', title: 'Points Vault', icon: Vault, accent: '#8B5CF6',
         blurb: 'Vesting bonuses, daily-cap overflow banking and release timing.',
         keys: [
+            // Rollout first: who can see the Vault at all frames everything below it.
+            'vault_rollout',
             'vault_cap_overflow_enabled', 'vault_level_up_enabled', 'vault_vest_days',
-            'vault_auto_release_grace_days', 'vault_bonus_recruit', 'vault_bonus_athlete',
+            'vault_auto_release_grace_days', 'vault_unlock_min_level',
+            'vault_bonus_recruit', 'vault_bonus_athlete',
             'vault_bonus_elite', 'vault_bonus_legend',
         ],
     },
@@ -123,6 +131,10 @@ const UNITS = {
 // Keys whose value is edited elsewhere — link out instead of a raw text box.
 const MANAGED = {
     weekly_challenges: { to: '/admin/challenges', cta: 'Edit on Challenges' },
+    // A JSON blob with cohort rules — it is read by a STABLE function on the
+    // app-load path, so hand-editing it in a 128px text box is a good way to
+    // black out the Vault. The Vault page has a real editor with validation.
+    vault_rollout: { to: '/admin/vault', cta: 'Edit on Vault' },
 };
 
 const prettyKey = (k) => k.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());

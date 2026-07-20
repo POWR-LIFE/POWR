@@ -17,63 +17,70 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { supabase } from '@/lib/supabase';
-
-import AsyncStorage from '@react-native-async-storage/async-storage';
-
 import GeometricBackground from '@/components/GeometricBackground';
-import { VaultDoor } from '@/components/vault/VaultDoor';
+import { VaultPotDoor } from '@/components/vault/VaultPotDoor';
+import { VaultTimer } from '@/components/vault/VaultTimer';
+import { UNLOCK_DIAL_SIZE, VaultUnlockButton } from '@/components/vault/VaultUnlockButton';
 import {
-  VAULT_HERO_DESIGNS,
-  type VaultHeroDesign,
-  type VaultHeroDesignId,
-} from '@/components/vault/heroDesigns';
-import { LEVELS, TIER_META, VAULT_LEVEL_BONUS, type LevelTier } from '@/constants/levels';
+  ACCENT,
+  ACCENT_DIM,
+  DIM,
+  MUTED,
+  POT_BG,
+  POT_BORDER,
+  POT_SURFACE,
+  TEXT,
+} from '@/components/vault/potTokens';
+import { LEVELS, TIER_META, VAULT_LEVEL_BONUS, getLevelInfo, type LevelTier } from '@/constants/levels';
 import { useAuth } from '@/context/AuthContext';
-import { claimVaultDeposits, fetchVaultContents, type VaultDeposit } from '@/lib/api/vault';
-import { useCountdown } from '@/hooks/useCountdown';
 import { usePoints } from '@/hooks/usePoints';
 import { useRollingNumber } from '@/hooks/useRollingNumber';
+import { useVaultAccess } from '@/hooks/useVaultAccess';
+import {
+  claimVaultDeposits,
+  fetchVaultContents,
+  fetchVaultOutlook,
+  isVaultGated,
+  type VaultDeposit,
+  type VaultOutlook,
+} from '@/lib/api/vault';
+import { supabase } from '@/lib/supabase';
 
 // Same dev account that gets the level-up celebration replay (useLevelUp) and
 // the claim-points cap bypass — mirrored server-side in dev_rearm_vault().
 const DEV_TEST_EMAILS = new Set(['jamiemasonwright@gmail.com']);
 
-// Dev-only door design preference (set from the picker under the re-arm
-// button). Everyone else always gets the shipped 'classic' door.
-const DOOR_DESIGN_STORAGE_KEY = '@powr/dev_vault_door';
-
-// ─── Design tokens (match wallet / points-ledger) ─────────────────────────────
-
-const BG     = '#0d0d0d';
-const TEXT   = '#F2F2F2';
-const MUTED  = 'rgba(255,255,255,0.25)';
-const DIM    = 'rgba(255,255,255,0.5)';
-const GOLD   = '#E8D200';
-const GREEN  = '#4ade80';
-const ORANGE = '#FF9944';
-const BORDER = 'rgba(255,255,255,0.08)';
-
-// The hold charge is quantised to this many steps for the designs' dials.
-const TICK_COUNT = 60;
-
 const DEFAULT_VEST_DAYS = 60;
+
+const HOLD_MS = 1400;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+// Floor, not ceil: the timer counts down in whole days plus a live clock, so
+// 17d 23:56 has to read as 17 everywhere. Rounding up here put "18 days" on the
+// rail directly beneath a door showing 17.
 function daysUntil(iso: string): number {
-  return Math.ceil((new Date(iso).getTime() - Date.now()) / 86400000);
+  return Math.max(0, Math.floor((new Date(iso).getTime() - Date.now()) / 86400000));
 }
 
 function unlockCopy(iso: string): string {
+  if (new Date(iso).getTime() <= Date.now()) return 'Ready to unlock';
   const days = daysUntil(iso);
-  if (days <= 0) return 'Unlocking…';
+  // Flooring means 0 covers "some hours left", which is not the same as ready.
+  if (days === 0) return 'Unlocks today';
   if (days === 1) return 'Unlocks tomorrow';
   return `Unlocks in ${days} days`;
 }
 
-function formatDate(iso: string): string {
+function shortDate(iso: string): string {
   return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+}
+
+/** "Friday 24 Jul" — a scheduled unlock reads as an occasion, not a timestamp. */
+function occasionDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-GB', {
+    weekday: 'long', day: 'numeric', month: 'short',
+  });
 }
 
 function depositLabel(d: VaultDeposit): string {
@@ -90,94 +97,157 @@ function depositSub(d: VaultDeposit): string {
   return 'Earned over the daily cap';
 }
 
-// ─── Countdown ring hero ──────────────────────────────────────────────────────
+// ─── Aggregate pot hero ──────────────────────────────────────────────────────
 
 /**
- * The centrepiece: the vault door wrapped in the tick dial.
+ * The Vault as one pot. The door stands for the whole vault rather than any
+ * single deposit — so the porthole figure is everything still held, and the
+ * timer beneath it tracks only the SOONEST deposit, which is the one claim the
+ * screen can make truthfully when deposits mature on different days.
  *
  * Three states:
- *  - VESTING: ticks fill with the soonest deposit's elapsed fraction, one
- *    bright sweep tick advances each second with the live countdown.
- *  - READY (a deposit has matured): press-and-hold the door to unlock — the
- *    hold charges the dial tick by tick and spins the door; releasing early
- *    unwinds it. Completing the hold claims every due deposit server-side.
- *  - UNLOCKED: the payout moment — full gold dial, banked total, and the
- *    ledger refreshes underneath.
+ *  - VESTING: bolts thrown, live timer, rail across the soonest pot's window.
+ *  - READY: something has matured — hold the dial on the door to draw the bolts.
+ *  - UNLOCKED: the payout, with the balance rolling up underneath.
+ *
+ * The door scrolls WITH this content. It was briefly pinned and collapsing at
+ * the top of the screen; that was dropped because a shrinking door tracking the
+ * scroll read worse than one that simply scrolls away. If sticky is ever
+ * revisited, the hard part is the backdrop — see git history for the three
+ * attempts (no backdrop shows rows through the door's transparent corners; a
+ * flat fill seams against the diagonal page gradient; a clipped copy of
+ * GeometricBackground is the one that worked).
  */
-function VaultHero({
+function VaultPotHero({
   pending,
   totalPending,
   balance,
   balanceReady,
-  heroHeight,
+  level,
+  totalEarned,
+  loading,
+  outlook,
   onClaim,
-  design,
 }: {
   pending: VaultDeposit[];
   totalPending: number;
   balance: number;
   balanceReady: boolean;
-  heroHeight: number;
+  /** Drives the level artwork sitting behind the payout in the chamber. */
+  level: number;
+  /** Lifetime earned — the level basis, used for "POWR to go" to an unlock level. */
+  totalEarned: number;
+  /** Deposits still in flight — say nothing rather than something wrong. */
+  loading: boolean;
+  /** Grace window + any scheduled Vault Day. Null while loading or on failure. */
+  outlook: VaultOutlook | null;
   onClaim: () => Promise<number>;
-  design: VaultHeroDesign;
 }) {
-  // The epilogue: once the unlock lands and the points query refetches, this
-  // rolls the spendable balance up to its new value right under the payout.
-  const displayBalance = useRollingNumber(balance, balanceReady);
+  const { width } = useWindowDimensions();
+  // The 3D door renders into a square GL viewport.
+  const doorSize = Math.min(width - 32, 420);
+  const [unlockedPoints, setUnlockedPoints] = useState<number | null>(null);
+  const [claiming, setClaiming] = useState(false);
+  // A hold that doesn't pay out has to SAY so. This used to unwind in silence:
+  // offline, or sealed by a level floor the screen didn't know about, the dial
+  // filled, the door did nothing, and there was no explanation anywhere.
+  const [claimError, setClaimError] = useState<string | null>(null);
+
   const dueTotal = pending
     .filter((d) => new Date(d.vests_at).getTime() <= Date.now())
     .reduce((s, d) => s + d.amount, 0);
-  // Sum of not-yet-due deposits: correct both before the claim refetch (due
-  // rows excluded here) and after it (due rows are gone from `pending`).
+  // Not-yet-due only: correct both before the claim refetch (due rows excluded
+  // here) and after it (due rows are gone from `pending` entirely).
   const remainingVesting = pending
     .filter((d) => new Date(d.vests_at).getTime() > Date.now())
     .reduce((s, d) => s + d.amount, 0);
-  const [unlockedPoints, setUnlockedPoints] = useState<number | null>(null);
-  const [claiming, setClaiming] = useState(false);
-  const ready = dueTotal > 0 && unlockedPoints === null;
+  const soonest = pending.find((d) => new Date(d.vests_at).getTime() > Date.now()) ?? null;
 
-  // While vesting, the countdown tracks the soonest not-yet-due deposit and
-  // its once-per-second tick re-renders the sweep. Ready/unlocked states are
-  // driven by the hold animation instead.
-  const nextVesting = pending.find((d) => new Date(d.vests_at).getTime() > Date.now()) ?? null;
-  const showCountdownFor = ready || unlockedPoints !== null ? null : (pending[0] ?? null);
-  const countdown = useCountdown(showCountdownFor ? showCountdownFor.vests_at : null);
+  // Sealed by the level floor. The server owns the decision (it enforces the
+  // same threshold on both the claim RPC and the auto-release sweep); the
+  // client only works out how far off the level is, so the two can't disagree
+  // about WHETHER you're gated — only about the encouragement.
+  const gated = isVaultGated(outlook);
+  const gateGap = (() => {
+    if (!gated || !outlook) return null;
+    const xpMin = LEVELS.find((l) => l.level === outlook.minLevel)?.xpMin;
+    return {
+      level: outlook.minLevel,
+      toGo: xpMin == null ? 0 : Math.max(0, xpMin - totalEarned),
+    };
+  })();
+
+  // A gated vault never offers the control — matured POWR is real, but it
+  // cannot leave yet, and a dial that throws VAULT_LOCKED_LEVEL on hold is a
+  // worse answer than a door that plainly says what opens it.
+  const ready = dueTotal > 0 && unlockedPoints === null && !gated;
+  const opened = unlockedPoints !== null;
+
+  const displayBalance = useRollingNumber(balance, balanceReady);
 
   // ── Hold-to-unlock ──
+  // The hold drives the door mechanism, glow and the progress bar as straight
+  // Animated interpolations — no listener, no per-tick re-renders. The old SVG
+  // door re-rendered ~40 filtered nodes per tick and was unusably slow.
   const holdAnim = useRef(new Animated.Value(0)).current;
-  const [holdTicks, setHoldTicks] = useState(0);
-
-  useEffect(() => {
-    const id = holdAnim.addListener(({ value }) => {
-      const t = Math.round(value * TICK_COUNT);
-      setHoldTicks((prev) => (prev === t ? prev : t));
-    });
-    return () => holdAnim.removeListener(id);
-  }, [holdAnim]);
 
   const completeUnlock = useCallback(async () => {
     setClaiming(true);
-    try {
-      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    } catch {
-      // Haptics unavailable (web) — the visual moment carries it.
-    }
+    setClaimError(null);
+
+    const unwind = () =>
+      Animated.timing(holdAnim, { toValue: 0, duration: 250, useNativeDriver: false }).start();
+
     try {
       const points = await onClaim();
-      setUnlockedPoints(points);
-    } catch {
-      // Claim failed (offline?) — unwind so the user can try again.
-      Animated.timing(holdAnim, { toValue: 0, duration: 250, useNativeDriver: false }).start();
+
+      // Nothing was due after all. The grace sweep runs every 15 minutes and
+      // can credit a matured deposit between this screen loading and the hold
+      // completing — claim_my_vault_deposits then returns {points: 0}. Playing
+      // the full ceremony over a "+0" chamber would be a lie about what just
+      // happened, so unwind instead and let the refetch onClaim already fired
+      // redraw whatever is now true.
+      if (points <= 0) {
+        unwind();
+        setClaimError('That POWR had already moved into your balance.');
+      } else {
+        // Celebrate only once there is something to celebrate — the success
+        // haptic used to fire BEFORE the claim, so a failed unlock still
+        // buzzed like a win.
+        try {
+          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        } catch {
+          // Haptics unavailable (web) — the door opening carries the moment.
+        }
+        setUnlockedPoints(points);
+      }
+    } catch (err) {
+      unwind();
+      // VAULT_LOCKED_LEVEL_n is reachable even though a gated vault hides the
+      // dial: `gated` is derived from the outlook query, which returns null on
+      // failure, so a flaky fetch puts the control back on screen while the
+      // server still refuses. Name the real reason rather than blaming the
+      // network for a level floor.
+      const message = String((err as { message?: string })?.message ?? '');
+      const lockedAtLevel = message.match(/VAULT_LOCKED_LEVEL_(\d+)/)?.[1];
+      setClaimError(
+        lockedAtLevel
+          ? `Your Vault opens at Level ${lockedAtLevel}.`
+          : 'Could not unlock just now — check your connection and try again.',
+      );
     }
     setClaiming(false);
   }, [holdAnim, onClaim]);
 
   const startHold = useCallback(() => {
     if (!ready || claiming) return;
+    // Clear on the new attempt, not on its result — otherwise the last
+    // failure sits under the door for the whole 1.4s of the retry.
+    setClaimError(null);
     Haptics.selectionAsync().catch(() => {});
     Animated.timing(holdAnim, {
       toValue: 1,
-      duration: 1400,
+      duration: HOLD_MS,
       easing: Easing.linear,
       useNativeDriver: false,
     }).start(({ finished }) => {
@@ -186,127 +256,271 @@ function VaultHero({
   }, [ready, claiming, holdAnim, completeUnlock]);
 
   const cancelHold = useCallback(() => {
-    if (claiming || unlockedPoints !== null) return;
+    if (claiming || opened) return;
     Animated.timing(holdAnim, { toValue: 0, duration: 220, useNativeDriver: false }).start();
-  }, [claiming, unlockedPoints, holdAnim]);
+  }, [claiming, opened, holdAnim]);
 
-  // Elapsed vest fraction of the soonest pending deposit.
+  // A scheduled Vault Day pulls every still-vesting deposit to READY at its
+  // moment, so once one is announced the deposit's own vests_at is no longer
+  // when the user gets paid — it is a date that will never arrive. The whole
+  // hero (card, rail, timer) has to track the EARLIER of the two or it spends
+  // the run-up to the event counting down to the wrong day.
+  const vaultDayAt =
+    outlook?.nextUnlockAt && soonest && new Date(outlook.nextUnlockAt) < new Date(soonest.vests_at)
+      ? outlook.nextUnlockAt
+      : null;
+  const effectiveUnlockAt = vaultDayAt ?? soonest?.vests_at ?? null;
+
+  // Elapsed fraction of the soonest deposit's vest window — the rail's fill.
   let progress = 0;
-  if (pending[0]) {
-    const start = new Date(pending[0].created_at).getTime();
-    const end = new Date(pending[0].vests_at).getTime();
+  if (soonest && effectiveUnlockAt) {
+    const start = new Date(soonest.created_at).getTime();
+    const end = new Date(effectiveUnlockAt).getTime();
     progress = end > start ? Math.min(1, Math.max(0, (Date.now() - start) / (end - start))) : 1;
   }
 
-  return (
-    <View style={[styles.hero, { minHeight: heroHeight }]}>
-      <Pressable
-        testID="vault-door-hold"
-        onPressIn={startHold}
-        onPressOut={cancelHold}
-        disabled={!ready || claiming}
-      >
-        <design.Centerpiece
-          hasPending={pending.length > 0}
-          progress={progress}
-          ready={ready}
-          unlocked={unlockedPoints !== null}
-          holdTicks={holdTicks}
-          holdAnim={holdAnim}
-          countdown={countdown}
-          nextVestAt={pending[0]?.vests_at ?? null}
-          dueTotal={dueTotal}
-          totalPending={totalPending}
-        />
-      </Pressable>
+  const potCount = pending.length;
+  const empty = potCount === 0 && !opened;
 
-      {unlockedPoints !== null ? (
-        <>
-          <Text style={styles.heroUnlocked}>+{unlockedPoints.toLocaleString()} POWR</Text>
-          <Text style={styles.heroReadyHint}>UNLOCKED — ADDED TO YOUR BALANCE</Text>
-          <View style={styles.heroBalanceRow}>
-            <Text style={styles.heroBalanceLabel}>BALANCE</Text>
-            <Text style={styles.heroBalanceValue}>{displayBalance.toLocaleString()}</Text>
+  // What sits behind the glass. Once something has matured the porthole tracks
+  // the MATURED portion rather than the whole vault, so the figure and the dial
+  // that takes it can never disagree; otherwise it is everything held.
+  const portholeAmount = ready ? dueTotal : totalPending;
+
+  // ── The timer belongs to no single state ──
+  // If anything is still vesting there is a countdown to run, whatever else the
+  // screen is doing. It was first built inside the vesting branch, which meant
+  // it vanished the moment a deposit matured: READY showed the next unlock as a
+  // dead date, and a SEALED vault — which can sit there for weeks — showed
+  // nothing at all. The label carries the framing instead, so one timer serves
+  // every state.
+  const timerLabel = vaultDayAt
+    ? 'OPENS IN'
+    : ready
+      ? `${remainingVesting.toLocaleString()} POWR UNLOCKS IN`
+      : opened || gated
+        ? 'NEXT UNLOCK IN'
+        : 'UNLOCKS IN';
+
+  // The rail is the soonest pot's whole window, which only reads as the story
+  // of the screen while that pot IS the story. Once something has matured, or
+  // the vault is sealed, the state block above is the answer and a second
+  // progress graphic underneath it is just weight.
+  const showRail =
+    !loading && !empty && !ready && !opened && !gateGap && soonest != null && effectiveUnlockAt != null;
+
+  // Plain vesting puts the timer straight under the door; every other state has
+  // a card or a line above it that needs clearing first. READY only counts when
+  // it actually renders its one line — with no grace window it renders nothing,
+  // and the timer would otherwise clear a block that isn't there.
+  const hasStateBlock =
+    (ready && outlook?.autoReleaseAt != null) || gateGap != null || opened || vaultDayAt != null;
+
+  return (
+    <View style={styles.hero}>
+      {/* ⚠ The status pill that used to sit here is gone, but `listContent`
+          still needs its paddingTop: that reserves room for the door's recess
+          halo, which is clipped by the scroll viewport. The pill was never what
+          was holding the halo clear — see VaultRecess. */}
+
+      {/* The door itself is a display, never a control — holding the artwork
+          was an invisible affordance, since nothing about a rendered door says
+          "press me". The unlock dial below is the control; the door reacts. */}
+      <View style={{ width: doorSize, height: doorSize }}>
+        <View pointerEvents="none">
+          <VaultPotDoor
+            size={doorSize}
+            amount={portholeAmount}
+            ready={ready}
+            loading={loading}
+            vestProgress={progress}
+            open={opened}
+            releasedAmount={unlockedPoints}
+            level={level}
+            glowAnim={holdAnim}
+          />
+        </View>
+
+        {/* Parked clear of the door's lower-right rim.
+            ⚠ Placed by the dial's EDGE, not its centre. The art reaches
+            r≈0.353·size; anchoring the CENTRE just outside that still put the
+            near edge back on the rim (0px clearance at 388), which is how it
+            ended up sitting over the vault. Anchor 0.82/0.86 keeps the near
+            edge ~14px off the art, and the vertical figure runs lower than the
+            horizontal one because the "HOLD" label hangs below the dial and
+            would otherwise ride up over the bolts. */}
+        {ready && (
+          <View
+            style={[
+              styles.unlockSlot,
+              {
+                left: doorSize * 0.82 - UNLOCK_DIAL_SIZE / 2,
+                top: doorSize * 0.86 - UNLOCK_DIAL_SIZE / 2,
+              },
+            ]}
+          >
+            <VaultUnlockButton
+              progress={holdAnim}
+              claiming={claiming}
+              onPressIn={startHold}
+              onPressOut={cancelHold}
+            />
           </View>
-          {remainingVesting > 0 && (
-            <View style={styles.heroNextRow}>
-              <View style={styles.heroDot} />
-              <Text style={styles.heroNextText}>
-                {remainingVesting.toLocaleString()} still vesting
-              </Text>
-            </View>
-          )}
-        </>
-      ) : ready ? (
-        <>
-          {!design.ownCountdown && (
-            <Text style={styles.heroCountdown}>{dueTotal.toLocaleString()} POWR</Text>
-          )}
-          <Text style={styles.heroReadyHint}>
-            {claiming ? 'UNLOCKING…' : 'READY — PRESS & HOLD TO UNLOCK'}
-          </Text>
-          {nextVesting && (
-            <View style={styles.heroNextRow}>
-              <View style={styles.heroDot} />
-              <Text style={styles.heroNextText}>
-                {remainingVesting.toLocaleString()} more unlocks {formatDate(nextVesting.vests_at)}
-              </Text>
-            </View>
-          )}
-        </>
-      ) : pending.length > 0 ? (
-        <>
-          {!design.ownCountdown && countdown && (
-            <Text style={styles.heroCountdown}>{countdown}</Text>
-          )}
-          <Text style={styles.heroAmount}>
-            {totalPending.toLocaleString()} <Text style={styles.heroAmountUnit}>POWR VESTING</Text>
-          </Text>
-          <View style={styles.heroNextRow}>
-            <View style={styles.heroDot} />
-            <Text style={styles.heroNextText}>Next unlock {formatDate(pending[0].vests_at)}</Text>
+        )}
+      </View>
+
+      {/* Under the door: one thing per state, and never the figure — that is
+          behind the glass now. The big POWR headline that used to sit here was
+          the same number as the porthole, so what takes its place is the fact
+          the porthole CAN'T carry: how long it has left.
+
+          Nothing renders until the deposits land. "Nothing vesting yet"
+          against an in-flight query is a claim the screen cannot make, and it
+          flips a beat later — worse than a blank. */}
+      <View style={styles.below}>
+        {loading ? (
+          <View style={styles.heroLoading}>
+            <ActivityIndicator color={ACCENT} />
           </View>
-        </>
-      ) : (
-        <>
-          <Text style={styles.heroEmptyTitle}>Nothing vesting yet</Text>
-          <Text style={styles.heroEmptyHint}>
-            Level up or push past a daily cap{'\n'}and the bonus banks here.
-          </Text>
-        </>
-      )}
+        ) : empty ? (
+          <>
+            <Text style={styles.emptyTitle}>Nothing vesting yet</Text>
+            <Text style={styles.emptyHint}>
+              Level up or push past a daily cap{'\n'}and the bonus banks here.
+            </Text>
+          </>
+        ) : ready ? (
+          /* The backstop, stated — and in this state it is the ONLY thing said
+             under the door. A "hold the dial to unlock" prompt lived here and
+             was cut: the porthole reads MATURED, the dial is lit and labelled
+             HOLD, and a line of text explaining a control the eye has already
+             found is the kind of caption that makes a screen feel busy.
+
+             vault_auto_release_grace_days is an admin knob that silently
+             decides what happens to POWR the user never claims. Leaving it
+             unsaid meant a READY door looked like it could be ignored forever,
+             and the eventual auto-credit arrived with no explanation. Kept to
+             one line; the full "you can't miss it" framing is in the sheet. */
+          outlook?.autoReleaseAt ? (
+            <Text style={styles.metaLine}>
+              Unlocks on its own {shortDate(outlook.autoReleaseAt)}
+            </Text>
+          ) : null
+        ) : gateGap ? (
+          /* SEALED. This branch must come before the vesting one: a gated user
+             whose POWR has all matured has no `soonest`, so without it the hero
+             would render nothing at all under the door — real value on the
+             screen with no explanation and a dial that does nothing. The gate
+             is also the one state where the dial is deliberately absent, so the
+             card has to carry the whole answer: what opens it, and how far. */
+          <View style={styles.card}>
+            <Text style={styles.cardLabel}>SEALED</Text>
+            <Text style={styles.cardHeadline}>LEVEL {gateGap.level}</Text>
+            <Text style={styles.cardBody}>
+              {dueTotal > 0
+                ? `${dueTotal.toLocaleString()} POWR has matured and is waiting. Reach Level ${gateGap.level} to open the Vault.`
+                : `Your Vault opens at Level ${gateGap.level}. Everything banked keeps vesting until then.`}
+            </Text>
+            {/* The reason this is not a punishment, said plainly — vaulted POWR
+                counts toward the level that frees it, so the vault is helping
+                the user out of the gate rather than holding them behind it.
+                Inside the card, not floating under it: the gate is one answer. */}
+            <Text style={styles.cardBody}>
+              {gateGap.toGo > 0
+                ? `${gateGap.toGo.toLocaleString()} POWR to go — everything in here counts toward it.`
+                : 'Everything in here counts toward your level.'}
+            </Text>
+          </View>
+        ) : opened ? (
+          <View style={styles.card}>
+            <Text style={styles.cardLabel}>BALANCE</Text>
+            <Text style={styles.cardHeadline}>{displayBalance.toLocaleString()}</Text>
+            {remainingVesting > 0 && (
+              <Text style={styles.cardBody}>
+                {remainingVesting.toLocaleString()} POWR is still vesting in your Vault.
+              </Text>
+            )}
+          </View>
+        ) : vaultDayAt ? (
+          /* A scheduled Vault Day is the only thing here worth a card: it is an
+             ANNOUNCEMENT, not a status readout. The ordinary next-unlock card
+             that used to sit here said nothing the rest of the screen wasn't
+             already saying — its date is the rail's right-hand end, its amount
+             is the row in the list, and its countdown is the timer directly
+             below — so plain vesting gets no card at all. */
+          <View style={[styles.card, styles.cardEvent]}>
+            <Text style={styles.cardLabel}>
+              {(outlook?.nextUnlockNote || 'VAULT DAY').toUpperCase()}
+            </Text>
+            <Text style={styles.cardHeadline}>{occasionDate(vaultDayAt)}</Text>
+            <Text style={styles.cardBody}>
+              All {totalPending.toLocaleString()} POWR unlocks early.
+            </Text>
+          </View>
+        ) : null}
+
+        {/* Outside the chain: a failed hold has to be explained whatever state
+            the door is in, and the chain above is already spoken for. */}
+        {claimError && <Text style={styles.claimError}>{claimError}</Text>}
+
+        {/* Outside the chain above, deliberately: every state that still has
+            something vesting gets the countdown, not just the plain one. */}
+        {!loading && !empty && effectiveUnlockAt && (
+          <VaultTimer
+            vestsAt={effectiveUnlockAt}
+            startAt={soonest?.created_at ?? null}
+            label={timerLabel}
+            style={hasStateBlock && styles.timerSpaced}
+          />
+        )}
+
+        {/* Dates only. This block used to lead with a filled progress rail,
+            which — once the timer grew its fuse — was the same fraction drawn
+            twice, one above the other. The fuse won (it is tied to the digits
+            and reads as time running out rather than a task completing), so
+            all that survives here is what it can't say: the two dates. */}
+        {showRail && soonest && effectiveUnlockAt && (
+          <View style={styles.railBlock}>
+            <View style={styles.railLabels}>
+              <View style={styles.railEnd}>
+                <Text style={styles.railCap}>EARNED</Text>
+                <Text style={styles.railDate}>{shortDate(soonest.created_at)}</Text>
+              </View>
+              <View style={[styles.railEnd, { alignItems: 'flex-end' }]}>
+                <Text style={styles.railCap}>{vaultDayAt ? 'OPENS' : 'UNLOCKS'}</Text>
+                <Text style={styles.railDate}>{shortDate(effectiveUnlockAt)}</Text>
+              </View>
+            </View>
+          </View>
+        )}
+      </View>
     </View>
   );
 }
 
 // ─── Rows ────────────────────────────────────────────────────────────────────
 
+/** Only ever renders a deposit that is still in the vault — see `sections`. */
 function DepositRow({ deposit }: { deposit: VaultDeposit }) {
-  const released = deposit.released_at !== null;
   const isLevel = deposit.source === 'level_up';
   const isGrant = deposit.source === 'admin_grant';
-  const accent = released ? DIM : isGrant || isLevel ? GOLD : ORANGE;
 
   return (
-    <View style={[styles.row, released && { opacity: 0.55 }]}>
-      <View style={[styles.rowIcon, { backgroundColor: accent + '18' }]}>
+    <View style={styles.row}>
+      <View style={styles.rowIcon}>
         <Ionicons
-          name={released ? 'lock-open' : isGrant ? 'gift' : isLevel ? 'trophy' : 'flash'}
+          name={isGrant ? 'gift' : isLevel ? 'trophy' : 'flash'}
           size={16}
-          color={accent}
+          color={ACCENT}
         />
       </View>
       <View style={styles.rowBody}>
         <Text style={styles.rowTitle} numberOfLines={1}>{depositLabel(deposit)}</Text>
         <Text style={styles.rowSub} numberOfLines={1}>
-          {released
-            ? `Unlocked ${formatDate(deposit.released_at!)} · ${depositSub(deposit)}`
-            : `${unlockCopy(deposit.vests_at)} · ${depositSub(deposit)}`}
+          {unlockCopy(deposit.vests_at)} · {depositSub(deposit)}
         </Text>
       </View>
-      <Text style={[styles.rowAmount, { color: released ? GREEN : TEXT }]}>
-        +{deposit.amount.toLocaleString()}
-      </Text>
+      <Text style={styles.rowAmount}>+{deposit.amount.toLocaleString()}</Text>
     </View>
   );
 }
@@ -316,8 +530,7 @@ function DepositRow({ deposit }: { deposit: VaultDeposit }) {
 export default function VaultScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { height: windowHeight } = useWindowDimensions();
-  const { vaultPending, balance, loading: pointsLoading } = usePoints();
+  const { vaultPending, balance, totalEarned, loading: pointsLoading } = usePoints();
   const { user } = useAuth();
   const [infoOpen, setInfoOpen] = useState(false);
   const queryClient = useQueryClient();
@@ -327,23 +540,8 @@ export default function VaultScreen() {
   // its unlocked state resets and the hold can run again.
   const isDevTestUser = DEV_TEST_EMAILS.has(user?.email ?? '');
   const [devKey, setDevKey] = useState(0);
-
-  // Dev-only design shoot-out: the picker under the re-arm button swaps the
-  // whole hero centrepiece (persisted so it survives reloads mid-comparison).
-  const [designId, setDesignId] = useState<VaultHeroDesignId>('classic');
-  useEffect(() => {
-    AsyncStorage.getItem(DOOR_DESIGN_STORAGE_KEY).then((stored) => {
-      if (VAULT_HERO_DESIGNS.some((d) => d.id === stored)) {
-        setDesignId(stored as VaultHeroDesignId);
-      }
-    });
-  }, []);
-  const selectDesign = useCallback((id: VaultHeroDesignId) => {
-    setDesignId(id);
-    void AsyncStorage.setItem(DOOR_DESIGN_STORAGE_KEY, id);
-  }, []);
-  const design = VAULT_HERO_DESIGNS.find((d) => d.id === designId) ?? VAULT_HERO_DESIGNS[0];
   const [devRearming, setDevRearming] = useState(false);
+
   const handleDevRearm = useCallback(async () => {
     setDevRearming(true);
     try {
@@ -369,9 +567,27 @@ export default function VaultScreen() {
     return points;
   }, [queryClient]);
 
+  // Route guard. The Rewards widget is not the only way in — vault pushes
+  // deep-link straight here, and a link outlives the rollout state that created
+  // it — so the screen has to check for itself rather than trusting that
+  // whoever arrived was shown a door.
+  const vaultEnabled = useVaultAccess();
+  useEffect(() => {
+    if (!vaultEnabled) router.replace('/(tabs)/rewards');
+  }, [vaultEnabled, router]);
+
   const { data, isPending, isError } = useQuery({
     queryKey: ['vault', 'contents'],
     queryFn: fetchVaultContents,
+  });
+
+  // Grace window + any scheduled Vault Day. Short staleTime because an admin
+  // scheduling an unlock is exactly the kind of change that should reach a
+  // user who reopens the screen, not one that waits out an hour-long cache.
+  const { data: outlook } = useQuery({
+    queryKey: ['vault', 'outlook'],
+    queryFn: fetchVaultOutlook,
+    staleTime: 60 * 1000,
   });
 
   // Live vault settings (system_config → vault_*) so the explainer copy and
@@ -406,34 +622,34 @@ export default function VaultScreen() {
   const bonuses = vaultConfig?.bonuses ?? VAULT_LEVEL_BONUS;
 
   const pending = data?.pending ?? [];
-  const released = data?.released ?? [];
 
-  const sections = [
-    ...(pending.length > 0 ? [{ title: 'Vesting', data: pending }] : []),
-    ...(released.length > 0 ? [{ title: 'Unlocked', data: released }] : []),
-  ];
-
-  // The door owns the centre of the first viewport; the ledger scrolls up from
-  // beneath it.
-  const heroHeight = Math.max(380, windowHeight * 0.62);
+  // The list is a tally of what is IN the vault — released deposits have left
+  // and are in the spendable balance, so listing them here double-counted the
+  // vault's contents by eye. The unlock history lives in the points ledger.
+  const sections = pending.length > 0 ? [{ title: 'In the vault', data: pending }] : [];
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
       <GeometricBackground />
 
       <View style={styles.header}>
-        <Pressable style={styles.backBtn} onPress={() => router.back()} hitSlop={8}>
-          <Ionicons name="chevron-back" size={22} color={DIM} />
+        <Pressable style={styles.headerBtn} onPress={() => router.back()} hitSlop={8}>
+          <Ionicons name="chevron-back" size={22} color={TEXT} />
         </Pressable>
         <Text style={styles.headerTitle}>Vault</Text>
-        <Pressable style={styles.backBtn} onPress={() => setInfoOpen(true)} hitSlop={8}>
+        <Pressable style={styles.headerBtn} onPress={() => setInfoOpen(true)} hitSlop={8}>
           <Ionicons name="information-circle-outline" size={20} color={DIM} />
         </Pressable>
       </View>
 
-      {isPending ? (
-        <View style={styles.centered}><ActivityIndicator color={GOLD} /></View>
-      ) : isError ? (
+      {/* ⚠ NOT gated on `isPending`. The door used to sit behind the loading
+          spinner, so its GL context, geometry and PMREM pass — ~430ms of work —
+          only STARTED once the deposits query came back, and the text appeared
+          before the vault did. Mounting it unconditionally runs all of that in
+          parallel with the fetch, which is the whole speed-up. The door has
+          nothing to say about the data anyway: it is a sealed vault until told
+          otherwise. Keep this outside any data gate. */}
+      {isError ? (
         <View style={styles.centered}><Text style={styles.statusText}>Could not load your Vault.</Text></View>
       ) : (
         <SectionList
@@ -448,58 +664,46 @@ export default function VaultScreen() {
           showsVerticalScrollIndicator={false}
           stickySectionHeadersEnabled={false}
           ListHeaderComponent={
-            <VaultHero
-              key={`${devKey}-${designId}`}
+            <VaultPotHero
+              key={devKey}
               pending={pending}
               totalPending={vaultPending}
+              level={getLevelInfo(totalEarned).current.level}
+              totalEarned={totalEarned}
               balance={balance}
               balanceReady={!pointsLoading}
-              heroHeight={heroHeight}
+              loading={isPending}
+              outlook={outlook ?? null}
               onClaim={handleClaim}
-              design={design}
             />
           }
           ListFooterComponent={
             <>
-              <Text style={styles.footerNote}>
-                Vault points are bonus POWR — level-up rewards and points earned over
-                a daily cap. They count towards your level straight away and unlock
-                into your spendable balance automatically.
-              </Text>
-              {isDevTestUser && (
-                <>
-                  <Pressable
-                    style={({ pressed }) => [styles.devRearmBtn, pressed && { opacity: 0.7 }]}
-                    onPress={handleDevRearm}
-                    disabled={devRearming}
-                  >
-                    {devRearming ? (
-                      <ActivityIndicator size="small" color={GOLD} />
-                    ) : (
-                      <Text style={styles.devRearmText}>DEV · RE-ARM UNLOCK</Text>
-                    )}
-                  </Pressable>
-                  <Text style={styles.devDesignLabel}>DEV · VAULT DESIGN</Text>
-                  <View style={styles.devDesignRow}>
-                    {VAULT_HERO_DESIGNS.map((d) => (
-                      <Pressable
-                        key={d.id}
-                        style={({ pressed }) => [
-                          styles.devDesignCard,
-                          designId === d.id && styles.devDesignCardActive,
-                          pressed && { opacity: 0.7 },
-                        ]}
-                        onPress={() => selectDesign(d.id)}
-                      >
-                        <d.Preview />
-                        <Text style={[styles.devDesignName, designId === d.id && { color: GOLD }]}>
-                          {d.label}
-                        </Text>
-                      </Pressable>
-                    ))}
-                  </View>
-                </>
-              )}
+              {/* Lives at the very bottom, not wedged between the hero and the
+                  deposits: the explainer is a destination, and putting it here
+                  lets the door run straight into the list. Same sheet as the
+                  (i) in the header — this is the discoverable way in. */}
+              <Pressable
+                style={({ pressed }) => [styles.termsRow, pressed && { opacity: 0.6 }]}
+                onPress={() => setInfoOpen(true)}
+              >
+                <Text style={styles.termsText}>How the Vault works</Text>
+                <Ionicons name="chevron-forward" size={14} color={MUTED} />
+              </Pressable>
+
+              {isDevTestUser ? (
+                <Pressable
+                  style={({ pressed }) => [styles.devRearmBtn, pressed && { opacity: 0.7 }]}
+                  onPress={handleDevRearm}
+                  disabled={devRearming}
+                >
+                  {devRearming ? (
+                    <ActivityIndicator size="small" color={ACCENT} />
+                  ) : (
+                    <Text style={styles.devRearmText}>DEV · RE-ARM UNLOCK</Text>
+                  )}
+                </Pressable>
+              ) : null}
             </>
           }
         />
@@ -508,15 +712,12 @@ export default function VaultScreen() {
       <Modal visible={infoOpen} transparent animationType="fade" onRequestClose={() => setInfoOpen(false)}>
         <Pressable style={styles.infoBackdrop} onPress={() => setInfoOpen(false)}>
           <Pressable style={styles.infoCard} onPress={() => {}}>
-            <View style={styles.infoDoorWrap}>
-              <VaultDoor size={56} />
-            </View>
             <Text style={styles.infoTitle}>What banks in the Vault</Text>
 
             {(vaultConfig?.levelUpEnabled ?? true) && (
               <View style={styles.infoRow}>
-                <View style={[styles.infoIcon, { backgroundColor: GOLD + '18' }]}>
-                  <Ionicons name="trophy" size={15} color={GOLD} />
+                <View style={styles.infoIcon}>
+                  <Ionicons name="trophy" size={15} color={ACCENT} />
                 </View>
                 <View style={styles.infoRowBody}>
                   <Text style={styles.infoRowTitle}>Level-up bonuses</Text>
@@ -539,30 +740,71 @@ export default function VaultScreen() {
 
             {(vaultConfig?.capOverflowEnabled ?? true) && (
               <View style={styles.infoRow}>
-                <View style={[styles.infoIcon, { backgroundColor: ORANGE + '18' }]}>
-                  <Ionicons name="flash" size={15} color={ORANGE} />
+                <View style={styles.infoIcon}>
+                  <Ionicons name="flash" size={15} color={ACCENT} />
                 </View>
                 <View style={styles.infoRowBody}>
                   <Text style={styles.infoRowTitle}>Points over the daily cap</Text>
                   <Text style={styles.infoRowText}>
-                    Streak multipliers past an activity's daily cap bank here instead of being lost.
+                    Streak multipliers past an activity&apos;s daily cap bank here instead of being lost.
                   </Text>
                 </View>
               </View>
             )}
 
             <View style={styles.infoRow}>
-              <View style={[styles.infoIcon, { backgroundColor: 'rgba(255,255,255,0.08)' }]}>
-                <Ionicons name="time" size={15} color={DIM} />
+              <View style={styles.infoIcon}>
+                <Ionicons name="time" size={15} color={ACCENT} />
               </View>
               <View style={styles.infoRowBody}>
                 <Text style={styles.infoRowTitle}>Vests like savings</Text>
                 <Text style={styles.infoRowText}>
                   Deposits vest for {vaultConfig?.vestDays ?? DEFAULT_VEST_DAYS} days, then unlock
-                  into your spendable balance automatically. They count towards your level straight away.
+                  into your spendable balance. They count towards your level straight away.
                 </Text>
               </View>
             </View>
+
+            {/* Only shown while the floor actually applies to this reader.
+                Once past it the rule is irrelevant to them, and a modal that
+                explains restrictions you are no longer subject to reads as a
+                warning rather than an answer. */}
+            {isVaultGated(outlook) && (
+              <View style={styles.infoRow}>
+                <View style={styles.infoIcon}>
+                  <Ionicons name="lock-closed" size={15} color={ACCENT} />
+                </View>
+                <View style={styles.infoRowBody}>
+                  <Text style={styles.infoRowTitle}>Opens at Level {outlook!.minLevel}</Text>
+                  <Text style={styles.infoRowText}>
+                    POWR banks and vests as normal below Level {outlook!.minLevel}, and counts
+                    toward your level the whole time — it just can&apos;t be taken out until
+                    you get there. Nothing expires.
+                  </Text>
+                </View>
+              </View>
+            )}
+
+            {/* The grace window was the one economy knob with no user-facing
+                translation at all. Framed as "you can't lose it" rather than
+                "claim by X" — the backstop exists to protect the user, and a
+                deadline reading would invent an anxiety the mechanic doesn't
+                have. Hidden at 0, where there is no window to describe. */}
+            {(outlook?.graceDays ?? 0) > 0 && (
+              <View style={styles.infoRow}>
+                <View style={styles.infoIcon}>
+                  <Ionicons name="shield-checkmark" size={15} color={ACCENT} />
+                </View>
+                <View style={styles.infoRowBody}>
+                  <Text style={styles.infoRowTitle}>You can&apos;t miss it</Text>
+                  <Text style={styles.infoRowText}>
+                    Unlock it yourself for the moment — or leave it. Anything still sitting
+                    there {outlook!.graceDays} {outlook!.graceDays === 1 ? 'day' : 'days'} after
+                    it matures moves into your balance automatically.
+                  </Text>
+                </View>
+              </View>
+            )}
 
             <Pressable
               style={({ pressed }) => [styles.infoBtn, pressed && { opacity: 0.85 }]}
@@ -580,79 +822,109 @@ export default function VaultScreen() {
 // ─── Styles ──────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: BG },
-  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12 },
-  backBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
-  headerTitle: { flex: 1, textAlign: 'center', fontSize: 16, fontWeight: '400', letterSpacing: 0.5, color: TEXT },
-  headerSpacer: { width: 36 },
+  screen: { flex: 1, backgroundColor: POT_BG },
+  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 10 },
+  headerBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  headerTitle: { flex: 1, textAlign: 'center', fontSize: 17, fontWeight: '500', color: TEXT },
 
   scroll: { flex: 1 },
-  listContent: { paddingHorizontal: 16, flexGrow: 1 },
+  // ⚠ paddingTop is NOT cosmetic. The door's recess halo overhangs its box by
+  // `RECESS_OVERHANG`, and anything above the top of the list gets hard-clipped
+  // by the scroll viewport — which showed up on device as a line under the
+  // header. This reserves the room the halo needs. Keep it >= doorSize *
+  // RECESS_OVERHANG (max doorSize is 420, so 420 * 0.1 = 42).
+  listContent: { paddingHorizontal: 16, paddingTop: 44, flexGrow: 1 },
 
-  hero: { alignItems: 'center', justifyContent: 'center', gap: 6, paddingBottom: 18 },
-  heroCountdown: {
-    fontSize: 26, fontWeight: '200', letterSpacing: 3, color: GOLD,
+  hero: { alignItems: 'center', paddingBottom: 4 },
+  heroLoading: { height: 96, alignItems: 'center', justifyContent: 'center' },
+
+  // Everything under the door. One wrapper so each state's block sits the same
+  // distance from the artwork without every branch carrying its own margin.
+  below: { alignSelf: 'stretch', alignItems: 'center', marginTop: 14 },
+
+  emptyTitle: { fontSize: 16, fontWeight: '400', color: TEXT, marginTop: 8 },
+  emptyHint: {
+    fontSize: 13, fontWeight: '300', color: MUTED, textAlign: 'center',
+    lineHeight: 19, marginTop: 4, marginBottom: 22,
+  },
+
+  // A scheduled Vault Day is the one card that is an ANNOUNCEMENT rather than
+  // a status readout, so it carries the gold treatment the ready card uses.
+  cardEvent: { backgroundColor: ACCENT_DIM, borderColor: 'rgba(232,210,0,0.35)' },
+  card: {
+    alignSelf: 'stretch', alignItems: 'center',
+    backgroundColor: POT_SURFACE, borderWidth: 1, borderColor: POT_BORDER,
+    borderRadius: 16, paddingVertical: 20, paddingHorizontal: 20, gap: 6,
+  },
+  cardLabel: { fontSize: 11, fontWeight: '700', letterSpacing: 1.6, color: ACCENT },
+  cardHeadline: {
+    fontSize: 26, fontWeight: '400', letterSpacing: 0.5, color: TEXT,
     fontVariant: ['tabular-nums'],
   },
-  heroAmount: { fontSize: 15, fontWeight: '400', letterSpacing: 0.5, color: TEXT, marginTop: 2 },
-  heroAmountUnit: { fontSize: 10, fontWeight: '500', letterSpacing: 2, color: MUTED },
-  heroNextRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 },
-  heroDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: GOLD },
-  heroNextText: { fontSize: 12, fontWeight: '300', color: DIM },
-  heroEmptyTitle: { fontSize: 15, fontWeight: '400', color: TEXT },
-  heroEmptyHint: { fontSize: 12, fontWeight: '300', color: MUTED, textAlign: 'center', lineHeight: 18 },
-  heroUnlocked: { fontSize: 30, fontWeight: '200', letterSpacing: 2, color: GOLD },
-  heroReadyHint: {
-    fontSize: 10, fontWeight: '600', letterSpacing: 2, color: DIM,
-    textTransform: 'uppercase', marginTop: 2,
+  cardBody: { fontSize: 13, fontWeight: '300', color: DIM, textAlign: 'center', lineHeight: 19 },
+
+  // Offsets come from the call site, which derives them from doorSize.
+  unlockSlot: { position: 'absolute' },
+  metaLine: { fontSize: 12.5, fontWeight: '300', color: MUTED, textAlign: 'center' },
+  // Softened rather than alarm-red: nothing here has gone wrong with the
+  // user's POWR, and this sits directly beneath a gold-lit door.
+  claimError: {
+    fontSize: 12.5, fontWeight: '300', color: 'rgba(240,160,160,0.92)',
+    textAlign: 'center', marginTop: 14, paddingHorizontal: 24, lineHeight: 18,
   },
-  heroBalanceRow: { flexDirection: 'row', alignItems: 'baseline', gap: 8, marginTop: 12 },
-  heroBalanceLabel: { fontSize: 9, fontWeight: '600', letterSpacing: 2, color: MUTED },
-  heroBalanceValue: {
-    fontSize: 20, fontWeight: '300', letterSpacing: 1, color: TEXT,
-    fontVariant: ['tabular-nums'],
+  timerSpaced: { marginTop: 22 },
+
+  railBlock: { alignSelf: 'stretch', marginTop: 24 },
+  railLabels: { flexDirection: 'row', alignItems: 'flex-start' },
+  railEnd: { flex: 1, gap: 2 },
+  railCap: { fontSize: 9, fontWeight: '700', letterSpacing: 1.3, color: MUTED },
+  railDate: { fontSize: 11, fontWeight: '300', color: DIM },
+
+  // A quiet footer link, not a gold call to action — nothing on this page
+  // should compete with the dial on the door.
+  termsRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 4, paddingVertical: 22,
   },
+  termsText: { fontSize: 13, fontWeight: '300', color: MUTED },
 
   sectionHeader: {
     fontSize: 10, fontWeight: '600', letterSpacing: 2, color: MUTED,
-    textTransform: 'uppercase', marginTop: 8, marginBottom: 10,
+    textTransform: 'uppercase', marginTop: 22, marginBottom: 10,
   },
 
   row: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
-    borderWidth: 1, borderColor: BORDER, borderRadius: 14,
-    backgroundColor: 'rgba(40,40,40,0.45)',
+    borderWidth: 1, borderColor: POT_BORDER, borderRadius: 14,
+    backgroundColor: POT_SURFACE,
     paddingHorizontal: 14, paddingVertical: 12, marginBottom: 8,
   },
-  rowIcon: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
+  rowIcon: {
+    width: 34, height: 34, borderRadius: 17, backgroundColor: ACCENT_DIM,
+    alignItems: 'center', justifyContent: 'center',
+  },
   rowBody: { flex: 1, gap: 2 },
   rowTitle: { fontSize: 13, fontWeight: '400', color: TEXT },
   rowSub: { fontSize: 11, fontWeight: '300', color: MUTED },
-  rowAmount: { fontSize: 15, fontWeight: '300', letterSpacing: 0.5 },
-
-  footerNote: {
-    fontSize: 11, fontWeight: '300', color: MUTED, lineHeight: 17,
-    textAlign: 'center', paddingHorizontal: 24, paddingTop: 18,
-  },
+  rowAmount: { fontSize: 15, fontWeight: '300', letterSpacing: 0.5, color: TEXT },
 
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 14, paddingBottom: 80 },
   statusText: { fontSize: 14, color: MUTED },
 
   infoBackdrop: {
-    flex: 1, backgroundColor: 'rgba(0,0,0,0.7)',
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.75)',
     alignItems: 'center', justifyContent: 'center', padding: 24,
   },
   infoCard: {
     alignSelf: 'stretch', maxWidth: 420,
-    backgroundColor: '#161616',
-    borderWidth: 1, borderColor: 'rgba(232,210,0,0.2)', borderRadius: 20,
+    backgroundColor: '#12171A',
+    borderWidth: 1, borderColor: 'rgba(232,210,0,0.25)', borderRadius: 20,
     padding: 22, gap: 14,
   },
-  infoDoorWrap: { alignItems: 'center', marginBottom: 2 },
-  infoTitle: { fontSize: 15, fontWeight: '500', color: TEXT, textAlign: 'center', marginBottom: 4 },
+  infoTitle: { fontSize: 16, fontWeight: '500', color: TEXT, textAlign: 'center', marginBottom: 4 },
   infoRow: { flexDirection: 'row', gap: 12, alignItems: 'flex-start' },
   infoIcon: {
-    width: 30, height: 30, borderRadius: 15,
+    width: 30, height: 30, borderRadius: 15, backgroundColor: ACCENT_DIM,
     alignItems: 'center', justifyContent: 'center', marginTop: 1,
   },
   infoRowBody: { flex: 1, gap: 2 },
@@ -667,26 +939,18 @@ const styles = StyleSheet.create({
   tierPillTier: { fontSize: 7, fontWeight: '700', letterSpacing: 1 },
   tierPillAmount: { fontSize: 12, fontWeight: '500', color: TEXT },
   infoBtn: {
-    marginTop: 6, backgroundColor: GOLD, borderRadius: 20,
+    marginTop: 6, backgroundColor: ACCENT, borderRadius: 20,
     paddingVertical: 12, alignItems: 'center',
   },
-  infoBtnText: { fontSize: 12, fontWeight: '700', letterSpacing: 0.8, color: '#0a0a0a', textTransform: 'uppercase' },
+  infoBtnText: {
+    fontSize: 12, fontWeight: '700', letterSpacing: 0.8, color: '#07090A',
+    textTransform: 'uppercase',
+  },
 
   devRearmBtn: {
     alignSelf: 'center', marginTop: 18,
     borderWidth: 1, borderColor: 'rgba(232,210,0,0.4)', borderRadius: 16,
     paddingVertical: 8, paddingHorizontal: 16, minWidth: 160, alignItems: 'center',
   },
-  devRearmText: { fontSize: 9, fontWeight: '700', letterSpacing: 1.5, color: GOLD },
-  devDesignLabel: {
-    fontSize: 8, fontWeight: '700', letterSpacing: 2, color: MUTED,
-    textAlign: 'center', marginTop: 20, marginBottom: 10,
-  },
-  devDesignRow: { flexDirection: 'row', gap: 8, justifyContent: 'center' },
-  devDesignCard: {
-    alignItems: 'center', gap: 6, paddingVertical: 10, paddingHorizontal: 6,
-    borderWidth: 1, borderColor: BORDER, borderRadius: 14, width: 76,
-  },
-  devDesignCardActive: { borderColor: 'rgba(232,210,0,0.5)', backgroundColor: 'rgba(232,210,0,0.05)' },
-  devDesignName: { fontSize: 8, fontWeight: '700', letterSpacing: 1.2, color: MUTED },
+  devRearmText: { fontSize: 9, fontWeight: '700', letterSpacing: 1.5, color: ACCENT },
 });

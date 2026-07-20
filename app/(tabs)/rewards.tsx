@@ -3,10 +3,14 @@ import MagicRings from '@/components/MagicRings';
 import { HeaderActions } from '@/components/HeaderActions';
 import { RewardHeroMedia } from '@/components/rewards/RewardHeroMedia';
 import { VaultTimer } from '@/components/rewards/VaultTimer';
+import { useQueryClient } from '@tanstack/react-query';
+
 import { usePoints } from '@/hooks/usePoints';
 import { useRollingNumber } from '@/hooks/useRollingNumber';
+import { useVaultAccess } from '@/hooks/useVaultAccess';
 import { fetchMyRedemptionSummary, fetchRewards, fetchSmartFeaturedReward, type Reward as ApiReward } from '@/lib/api/rewards';
 import { resolveContextualPlacements, pickHeroPlacement, comparePlacements, type ResolvedPlacement } from '@/lib/api/placements';
+import { fetchVaultContents } from '@/lib/api/vault';
 import { rewardHeroUri, rewardLogoUri } from '@/lib/storageImage';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -451,6 +455,14 @@ interface BalanceCardProps {
 
 function BalanceCard({ balance, todayEarned, loading }: BalanceCardProps) {
   const router = useRouter();
+  const queryClient = useQueryClient();
+  const vaultEnabled = useVaultAccess();
+  // Warms the Vault's deposits query on tap so /vault does not start its
+  // fetch from cold — see the comment on VaultTimer below.
+  const prefetchVault = useCallback(
+    () => queryClient.prefetchQuery({ queryKey: ['vault', 'contents'], queryFn: fetchVaultContents }),
+    [queryClient],
+  );
   // Rolls up when the balance increases (vault unlocks, session claims);
   // loads and spends snap silently.
   const displayBalance = useRollingNumber(balance, !loading);
@@ -472,9 +484,21 @@ function BalanceCard({ balance, todayEarned, loading }: BalanceCardProps) {
             </View>
           )}
         </View>
-        {/* Always visible — even empty, so the Vault is discoverable before
-            the first deposit banks. */}
-        <VaultTimer onPress={() => router.push('/vault')} />
+        {/* Visible to everyone IN THE ROLLOUT — even with an empty vault, so
+            it is discoverable before the first deposit banks. Users outside the
+            rollout keep banking POWR they cannot see yet; this widget is the
+            only entry point, so hiding it hides the feature.
+            Prefetching on press means the deposits query is usually already in
+            flight (often resolved) by the time /vault mounts, so its hero fills
+            in as the door appears rather than a second later. */}
+        {vaultEnabled && (
+          <VaultTimer
+            onPress={() => {
+              void prefetchVault();
+              router.push('/vault');
+            }}
+          />
+        )}
       </View>
     </View>
   );
