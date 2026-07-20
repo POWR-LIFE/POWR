@@ -327,14 +327,18 @@ function buildMessage(
       }
 
       case 'vault_ready': {
-        // Fired when an admin unlock event (or natural vesting via events)
-        // makes deposits claimable — the user still does the press-and-hold.
+        // Fired down two paths, both landing on the same moment: an admin
+        // unlock event pulling deposits forward, and the natural-maturity
+        // sweep (notify_matured_vault_deposits) catching a vest window that
+        // simply ran out. Either way the user still does the press-and-hold.
+        // ⚠ "the dial", not "the door" — the door is a display, and the dial
+        // beside it is the only control on that screen.
         const points = Math.max(0, Math.round(Number(payload.points ?? 0)));
         return {
           title: 'Your Vault is ready 🔓',
           body: points > 0
-            ? `${points.toLocaleString()} POWR has finished vesting — press and hold the door to unlock it.`
-            : 'Your Vault is ready — press and hold the door to unlock it.',
+            ? `${points.toLocaleString()} POWR has finished vesting — hold the dial to unlock it.`
+            : 'Your Vault is ready — hold the dial to unlock it.',
           data: { type, route: '/vault', points },
           sound: 'default',
           channelId: 'powr_rewards_v2',
@@ -610,6 +614,31 @@ Deno.serve(async (req: Request) => {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       });
+    }
+
+    // Vault rollout gate. A user outside the rollout has no Vault surface, so a
+    // vault push would deep-link them to a screen that bounces them straight
+    // back. Scoped to vault_* types ONLY — every other push is untouched by
+    // this block.
+    //
+    // ⚠ FAILS OPEN on any error. This is the shared push path for the whole
+    // app; an RPC hiccup must not silently swallow notifications. The rollout
+    // stages a launch, it protects nothing, so a stray push is a far cheaper
+    // failure than a mute nobody notices.
+    if (type.startsWith('vault_')) {
+      try {
+        const { data: hasVault, error: accessErr } = await supabase
+          .rpc('vault_has_access', { p_user: target_user_id });
+        if (!accessErr && hasVault === false) {
+          await logSkip(supabase, target_user_id, type, 'vault_rollout');
+          return new Response(JSON.stringify({ skipped: true, reason: 'vault_rollout' }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+      } catch (err) {
+        console.warn('[send-push] vault rollout check failed, allowing:', err);
+      }
     }
 
     // Check notification preferences. session_upgraded (the 40-min tier bonus)
