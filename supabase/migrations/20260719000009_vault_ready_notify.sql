@@ -19,15 +19,24 @@
 --    week is a genuinely new event and gets its own push, while the 15-minute
 --    cron re-reading the same matured row does not.
 --
---  * Gated users are SKIPPED AND LEFT UNSTAMPED. Below vault_unlock_min_level
---    the POWR is real but cannot leave, so "your Vault is ready, come and
---    unlock it" would be false. Leaving the stamp null means the push fires
---    later, on the first tick after they cross the threshold — which is the
---    moment it becomes true.
+--  * Gated users are SKIPPED AND LEFT UNSTAMPED, on BOTH gates:
+--
+--      - below vault_unlock_min_level, the POWR is real but cannot leave, so
+--        "your Vault is ready, come and unlock it" would be false;
+--      - outside vault_rollout, there is no Vault surface to send them to,
+--        and send-push-notification drops vault_* for them anyway.
+--
+--    In both cases leaving the stamp null means the push fires later, on the
+--    first tick after they qualify — which is the moment it becomes true.
+--    Checking the rollout HERE rather than relying on the push-path skip is
+--    the whole point: that skip happens after this sweep has stamped the row,
+--    so it would be permanent, and a user switched on at launch would never
+--    hear about POWR that matured while they were outside.
 --
 --  * Deposits pulled forward by an admin event are stamped by that path too
 --    (see the process_vault_unlock_events redefinition below), so the two
---    never double-notify. Events with notify = false stamp as well: the admin
+--    never double-notify — but again only for users who could have RECEIVED
+--    that event's push. Events with notify = false stamp as well: the admin
 --    chose silence, and this must not undo that choice a tick later.
 
 alter table public.vault_deposits
