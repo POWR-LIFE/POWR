@@ -6,7 +6,7 @@ import { Link } from 'react-router-dom';
 import { uploadPublicImage } from '../../lib/storage';
 import { validateHeroVideoUrl } from '../../lib/heroVideoUrl';
 import * as XLSX from 'xlsx';
-import { parseCodes, parseReconciliationCodes, uploadCodes, fetchCodeStats, fetchCodePool, fetchAllCodes, getCSVTemplate, buildScheme, isValidForScheme, getSchemeCSVTemplate, generateCodes, toggleCodeStatus, updateCodeExpiry, bulkUpdateExpiry } from '../../lib/promoCodes';
+import { parseCodes, parseReconciliationCodes, uploadCodes, fetchCodeStats, fetchCodePool, fetchAllCodes, fetchExpiryOutlook, getCSVTemplate, buildScheme, isValidForScheme, getSchemeCSVTemplate, generateCodes, toggleCodeStatus, updateCodeExpiry, bulkUpdateExpiry } from '../../lib/promoCodes';
 import BrandPortalAccess from '../../components/BrandPortalAccess';
 import BrandAccessPanel from '../../components/BrandAccessPanel';
 import BrandRewardLimit from '../../components/BrandRewardLimit';
@@ -161,6 +161,7 @@ export default function RewardManager() {
     const [imageUploading, setImageUploading] = useState(false);
     const [heroVideoUploading, setHeroVideoUploading] = useState(false);
     const [codeStats, setCodeStats] = useState(null);
+    const [expiryOutlook, setExpiryOutlook] = useState(null);
     const [codeWorkspaceMode, setCodeWorkspaceMode] = useState('manage');
     const [availableCodeCounts, setAvailableCodeCounts] = useState({});
     const [bulkCodesText, setBulkCodesText] = useState('');
@@ -256,9 +257,11 @@ export default function RewardManager() {
     };
 
     const refreshCodeStats = async (rewardId) => {
-        if (!rewardId) { setCodeStats(null); return; }
+        if (!rewardId) { setCodeStats(null); setExpiryOutlook(null); return; }
         try { setCodeStats(await fetchCodeStats(rewardId)); }
         catch { setCodeStats(null); }
+        try { setExpiryOutlook(await fetchExpiryOutlook(rewardId)); }
+        catch { setExpiryOutlook(null); }
     };
 
     const refreshCodePool = async (rewardId, page = 0, status = 'all', search = codeSearch) => {
@@ -1466,6 +1469,12 @@ export default function RewardManager() {
                                                     <span className="text-[#555555]">{codeStats.used} used</span>
                                                     <span className="text-[#999999]">{codeStats.expired} exp</span>
                                                 </div>
+                                            )}
+                                            {expiryOutlook?.expiringSoon > 0 && (
+                                                <span className="flex items-center gap-2 px-3 py-1.5 bg-[#F59E0B]/10 border border-[#F59E0B]/30 rounded-full text-[9px] uppercase tracking-[0.25em] text-[#B45309] font-black">
+                                                    <AlertTriangle size={11} />
+                                                    {expiryOutlook.expiringSoon} expire by {new Date(expiryOutlook.soonestExpiry).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} — bulk-extend below
+                                                </span>
                                             )}
                                         </div>
                                         <div className="flex items-center gap-3">

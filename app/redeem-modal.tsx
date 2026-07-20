@@ -48,6 +48,7 @@ interface UIReward {
   heroVideoUrl: string | null;
   url: string | null;
   integrationType: IntegrationType;
+  expiryDays: number;
 }
 
 function formatValue(r: Reward): string {
@@ -72,6 +73,7 @@ function toUIReward(r: Reward): UIReward {
     heroVideoUrl: r.hero_video_url ?? null,
     url: r.url || null,
     integrationType: r.integration_type,
+    expiryDays: r.code_expiry_days,
   };
 }
 
@@ -109,6 +111,9 @@ export default function RedeemModal() {
           .select('code, expires_at, status, checkout_url')
           .eq('reward_id', id)
           .eq('status', 'active')
+          // Lapsed codes stay status='active' in the ledger; don't count them
+          // as usable here (mirrors the wallet's Active tab).
+          .or(`expires_at.is.null,expires_at.gte.${new Date().toISOString()}`)
           .order('redeemed_at', { ascending: false }),
       ]);
 
@@ -347,7 +352,9 @@ function ConfirmView({ reward, balance, canAfford, remaining, submitting, error,
       </View>
 
       <Text style={styles.legalNote}>
-        Codes are single-use and valid for 30 days. POWR points are non-refundable once redeemed.
+        {reward.integrationType === 'AFFILIATE'
+          ? 'POWR points are non-refundable once redeemed.'
+          : `Codes are single-use and valid for ${reward.expiryDays} days from redemption. POWR points are non-refundable once redeemed.`}
       </Text>
     </View>
   );
