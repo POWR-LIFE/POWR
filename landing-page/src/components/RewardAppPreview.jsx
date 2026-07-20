@@ -15,20 +15,25 @@ import React, { useState } from 'react';
 //   • Redeem screen   → app/redeem-modal.tsx
 // ─────────────────────────────────────────────────────────────────────────────
 
-const GOLD = '#E8D200';
-const TEXT = '#F2F2F2';
-const DIM = 'rgba(255,255,255,0.55)';
-const MUTED = 'rgba(255,255,255,0.35)';
-const BORDER = 'rgba(255,255,255,0.08)';
-const FONT = "'Outfit', system-ui, sans-serif";
+// These tokens and the chrome below (Ion/StatusBar/PreviewBackground) are also
+// consumed by the admin Usage heatmap's interactive preview. Exported rather
+// than copied so the two previews cannot drift into showing different apps —
+// and so the Ionicons codepoints, which are private-use characters that do not
+// survive being retyped, have exactly one definition.
+export const GOLD = '#E8D200';
+export const TEXT = '#F2F2F2';
+export const DIM = 'rgba(255,255,255,0.55)';
+export const MUTED = 'rgba(255,255,255,0.35)';
+export const BORDER = 'rgba(255,255,255,0.08)';
+export const FONT = "'Outfit', system-ui, sans-serif";
 
 // Device geometry (true app pixels) → scaled to DISPLAY_W on screen.
-const BEZEL = 12;
-const DEVICE_W = 390, DEVICE_H = 844;       // iPhone logical resolution
+export const BEZEL = 12;
+export const DEVICE_W = 390, DEVICE_H = 844;  // iPhone logical resolution
 const PHONE_W = DEVICE_W + BEZEL * 2;         // 414
 const PHONE_H = DEVICE_H + BEZEL * 2;         // 868
-const STATUS_H = 50;                          // ~ safe-area top (insets.top)
-const TAB_H = 84;                             // _layout.tsx iOS tabBar height
+export const STATUS_H = 50;                   // ~ safe-area top (insets.top)
+export const TAB_H = 84;                      // _layout.tsx iOS tabBar height
 const DISPLAY_W = 300;                        // on-screen width (fits both columns)
 const SCALE = DISPLAY_W / PHONE_W;            // uniform downscale
 
@@ -44,7 +49,7 @@ function affordState(balance, pts) {
 
 // Exact Ionicons glyphs — same font (@expo/vector-icons Ionicons.ttf) and
 // codepoints the app renders. Font file lives at landing-page/public/Ionicons.ttf.
-const ION = {
+export const ION = {
   'home-outline': '',
   'bar-chart-outline': '',
   'trophy-outline': '',
@@ -60,7 +65,7 @@ const ION = {
   'checkmark': '',
 };
 
-function Ion({ name, size = 16, color = TEXT, style }) {
+export function Ion({ name, size = 16, color = TEXT, style }) {
   return (
     <span style={{ fontFamily: 'PreviewIonicons', fontSize: size, lineHeight: 1, color, fontStyle: 'normal', fontWeight: 'normal', display: 'inline-block', ...style }}>
       {ION[name]}
@@ -213,7 +218,7 @@ export default function RewardAppPreview(props) {
 }
 
 // ── Status bar ────────────────────────────────────────────────────────────────
-function StatusBar() {
+export function StatusBar() {
   return (
     <div style={{ height: STATUS_H, paddingTop: 14, paddingLeft: 30, paddingRight: 30, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
       <span style={{ fontSize: 15, fontWeight: 600, color: TEXT, letterSpacing: '0.5px' }}>9:41</span>
@@ -229,7 +234,7 @@ function StatusBar() {
 }
 
 // ── Geometric background (components/home/GeometricBackground.tsx) ───────────
-function PreviewBackground() {
+export function PreviewBackground() {
   const W = DEVICE_W, H = DEVICE_H;
   return (
     <div style={{ position: 'absolute', inset: 0, zIndex: 0, pointerEvents: 'none' }}>

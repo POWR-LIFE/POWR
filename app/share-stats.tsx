@@ -18,6 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { captureRef } from 'react-native-view-shot';
 
 import { ShareCard } from '@/components/share/ShareCard';
+import { tracked } from '@/lib/analytics';
 import { LEVEL_IMAGE, getLevelInfo } from '@/constants/levels';
 import { buildShareMessage, fetchAutoSummary, fetchChallengeSummary, fetchCheckInSummary, fetchLevelUpSummary, publishShareCard, type ShareSummary } from '@/lib/api/share';
 
@@ -299,7 +300,7 @@ export default function ShareStatsScreen() {
             <ActionButton
               icon="paper-plane"
               label="Share"
-              onPress={handleShare}
+              onPress={tracked('share_stats_send', handleShare)}
               loading={busy === 'share'}
               disabled={busy !== null}
               primary
@@ -307,7 +308,7 @@ export default function ShareStatsScreen() {
             <ActionButton
               icon="share-social-outline"
               label="Post"
-              onPress={handleSave}
+              onPress={tracked('share_stats_post', handleSave)}
               loading={busy === 'save'}
               disabled={busy !== null}
             />
