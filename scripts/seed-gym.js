@@ -1,6 +1,13 @@
-const SUPABASE_URL = 'https://wjvvujnicwkruaeibttt.supabase.co';
-const SERVICE_ROLE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndqdnZ1am5pY3drcnVhZWlidHR0Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MjE5NzU3NSwiZXhwIjoyMDg3NzczNTc1fQ.izEGydd3tqKmy2CBzWxe4jwrlGQ2kbEO9G_RqAfXu1U';
-const USER_ID = '234d49f3-d189-44b1-a874-063e724e4380';
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://wjvvujnicwkruaeibttt.supabase.co';
+const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!SERVICE_ROLE_KEY) {
+  console.error('Error: SUPABASE_SERVICE_ROLE_KEY environment variable is required.');
+  console.error('  export SUPABASE_SERVICE_ROLE_KEY=<your-service-role-key>');
+  process.exit(1);
+}
+
+const USER_ID = process.env.SEED_USER_ID || '234d49f3-d189-44b1-a874-063e724e4380';
 
 const headers = {
   apikey: SERVICE_ROLE_KEY,
