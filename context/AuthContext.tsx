@@ -7,7 +7,7 @@ import React, { createContext, useContext, useEffect, useRef, useState } from 'r
 import { Alert, AppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { supabase } from '@/lib/supabase';
+import { EMAIL_CONFIRM_REDIRECT, supabase } from '@/lib/supabase';
 import { claimDevice, confirmDeviceTransfer } from '@/lib/deviceLock';
 import { reportLocationPermission } from '@/lib/locationPermission';
 import TransferDeviceSheet from '@/components/TransferDeviceSheet';
@@ -19,7 +19,7 @@ type AuthContextType = {
     signInWithGoogle: () => Promise<{ error: string | null }>;
     signInWithApple: () => Promise<{ error: string | null }>;
     signInWithEmail: (email: string, password: string) => Promise<{ error: string | null }>;
-    signUpWithEmail: (email: string, password: string) => Promise<{ error: string | null; needsConfirmation?: boolean }>;
+    signUpWithEmail: (email: string, password: string) => Promise<{ error: string | null; needsConfirmation?: boolean; alreadyRegistered?: boolean }>;
     signOut: () => Promise<void>;
     markOnboardingComplete: () => Promise<{ error: string | null }>;
     updateUserMetadata: (data: Record<string, any>) => Promise<{ error: string | null }>;
@@ -389,9 +389,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const signUpWithEmail = async (
         email: string,
         password: string
-    ): Promise<{ error: string | null; needsConfirmation?: boolean }> => {
-        const { data, error } = await supabase.auth.signUp({ email, password });
+    ): Promise<{ error: string | null; needsConfirmation?: boolean; alreadyRegistered?: boolean }> => {
+        const { data, error } = await supabase.auth.signUp({
+            email,
+            password,
+            options: { emailRedirectTo: EMAIL_CONFIRM_REDIRECT },
+        });
         if (error) return { error: error.message };
+
+        // Signing up with an address that already has an account (commonly one
+        // created via Google/Apple) does NOT error — GoTrue returns a decoy user
+        // with an empty `identities` array and sends no email, so the response
+        // can't be used to enumerate accounts. Left untreated that looks exactly
+        // like "confirmation required" and strands the user on a check-your-inbox
+        // screen waiting for mail that will never arrive.
+        // Guarded on the absent session too: a real signup that somehow reported
+        // no identities would still be a real signup, and must not be diverted.
+        if (!data.session && data.user && (data.user.identities?.length ?? 0) === 0) {
+            return { error: null, alreadyRegistered: true };
+        }
+
         // Supabase returns a session immediately if email confirmation is disabled,
         // or a user with no session if confirmation is required.
         const needsConfirmation = !data.session;

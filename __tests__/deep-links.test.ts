@@ -31,6 +31,16 @@ describe('redirectSystemPath', () => {
     expect(redirect('powr://auth-callback?code=X')).toBe('/');
   });
 
+  // Signup confirmation emails go out as https://powr.life/app?to=signup-confirmed&code=…
+  // The smart-link page rewrites them to the scheme; both shapes must land on the
+  // route with the code intact, or the account can never be confirmed.
+  it('routes signup confirmation links to /signup-confirmed with the code', () => {
+    expect(redirect('https://powr.life/app?to=signup-confirmed&code=abc')).toBe(
+      '/signup-confirmed?code=abc',
+    );
+    expect(redirect('powr://signup-confirmed?code=abc')).toBe('/signup-confirmed?code=abc');
+  });
+
   it('treats empty and bare-scheme inputs as root', () => {
     expect(redirect('')).toBe('/');
     expect(redirect('/')).toBe('/');
