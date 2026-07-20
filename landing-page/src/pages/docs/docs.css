@@ -1,0 +1,11 @@
+/* style.css declares an unlayered `a { color: inherit }`. Tailwind v4 emits its
+   utilities inside @layer, and unlayered CSS beats every layer regardless of
+   specificity — so `text-[#8a7600]` on an <a> is silently dead across the site.
+   Inside the docs, hand the win back to the utility.
+
+   The attribute selector keeps this narrow: it matches only anchors that asked
+   for a text colour. An anchor with no text-* class is untouched and keeps
+   inheriting, so nothing falls through to the browser's default link blue. */
+.powr-docs a[class*="text-"] {
+    color: revert-layer;
+}

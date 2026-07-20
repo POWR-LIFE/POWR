@@ -2,9 +2,10 @@
 // Shopify, promo codes) — split out of the old single Developers page.
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeftRight, Check, ChevronDown, ChevronRight, Code2, LifeBuoy, Minus, Store, Ticket, TriangleAlert } from 'lucide-react';
+import { ArrowLeftRight, BookOpen, Check, ChevronDown, ChevronRight, Code2, LifeBuoy, Minus, Store, Ticket, TriangleAlert } from 'lucide-react';
 import { useToast } from '../../lib/toast';
 import { useAuth } from '../../App';
+import { DOCS_PATHS } from '../../lib/partnerApi';
 
 export const INPUT = "w-full h-14 px-5 bg-white border border-[#E6E6E1] rounded-2xl text-sm text-[#1A1A1A] placeholder-[#BBBBBB] focus:border-[#E8D200]/50 outline-none transition-all font-['Outfit']";
 export const BTN_DARK = 'h-11 px-8 bg-[#1A1A1A] text-white text-[10px] font-black uppercase tracking-[0.2em] rounded-full hover:bg-[#333] transition-all disabled:opacity-50';
@@ -271,6 +272,19 @@ export function ChangeMethodLink() {
             className="flex items-center gap-2 h-9 px-4 text-[9px] font-black uppercase tracking-[0.2em] bg-white border border-[#E6E6E1] rounded-full text-[#666] hover:border-[#1A1A1A]/30 hover:text-[#1A1A1A] transition-all">
             <ArrowLeftRight size={11} /> Change method
         </Link>
+    );
+}
+
+// Every method page carries a link to its own public guide, in the same slot,
+// so "how do I set this up" never depends on knowing the docs exist.
+export function GuideLink({ method, label }) {
+    const path = DOCS_PATHS[method];
+    if (!path) return null;
+    return (
+        <a href={path} target="_blank" rel="noreferrer"
+            className="flex items-center gap-2 h-11 px-6 bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.2em] rounded-full hover:brightness-95 transition-all">
+            <BookOpen size={14} /> {label ?? 'Setup guide'}
+        </a>
     );
 }
 

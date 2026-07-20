@@ -5,6 +5,7 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Code2, Compass, Store, Ticket } from 'lucide-react';
+import './docs.css';
 
 export const API_BASE = 'https://powr.life/api/partner/v1';
 
@@ -86,14 +87,16 @@ export function Callout({ tone = 'note', title, children }) {
 // Numbered setup steps — the docs mirror of the portal's SetupFlow, so the
 // page and the screen read as the same sequence.
 export function Steps({ children }) {
-    return <div className="my-6">{children}</div>;
+    // Drops the spine on the final step — it has nothing below to connect to.
+    // Reaching in from the parent keeps Step itself unaware of its position.
+    return <div className="my-6 [&>div:last-child>div:first-child]:hidden">{children}</div>;
 }
 
 export function Step({ n, title, children }) {
     return (
         <div className="flex gap-5 pb-8 last:pb-0 relative">
             {/* connecting spine */}
-            <div className="absolute left-[17px] top-10 bottom-0 w-[1px] bg-[#E6E6E1] last:hidden" />
+            <div className="absolute left-[17px] top-10 bottom-0 w-[1px] bg-[#E6E6E1]" />
             <span className="h-9 w-9 rounded-full bg-[#1A1A1A] text-white flex items-center justify-center text-[13px] font-black shrink-0 relative z-10">{n}</span>
             <div className="flex-1 min-w-0 pt-1">
                 <h3 className="text-[16px] font-bold tracking-tight text-[#1A1A1A] mb-2">{title}</h3>
@@ -145,7 +148,7 @@ export function NextUp({ to, label, detail }) {
 export function DocsLayout({ eyebrow, title, intro, toc = [], children }) {
     const { pathname } = useLocation();
     return (
-        <div className="min-h-screen bg-[#F4F4F1] font-['Outfit'] text-[#1A1A1A]">
+        <div className="powr-docs min-h-screen bg-[#F4F4F1] font-['Outfit'] text-[#1A1A1A]">
             <header className="sticky top-0 z-50 bg-[#F4F4F1]/80 backdrop-blur-xl border-b border-[#E6E6E1]">
                 <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between gap-4">
                     <Link to="/" className="flex items-center gap-3 shrink-0">
@@ -215,7 +218,7 @@ export function DocsLayout({ eyebrow, title, intro, toc = [], children }) {
 
                     <div className="pt-8 pb-20 border-t border-[#E6E6E1] mt-16">
                         <p className="text-[13px] text-[#777]">
-                            Stuck on something this page doesn't cover? Raise a ticket from{' '}
+                            Stuck on something this page doesn’t cover? Raise a ticket from{' '}
                             <a href="/partner/support" className="font-bold text-[#8a7600] hover:underline">Support</a> in the portal,
                             or email <a href="mailto:partners@powr.life" className="font-bold text-[#8a7600] hover:underline">partners@powr.life</a>.
                         </p>

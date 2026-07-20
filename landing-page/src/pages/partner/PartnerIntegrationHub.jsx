@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowRight, Check, ChevronRight } from 'lucide-react';
 import { useToast } from '../../lib/toast';
 import { useAuth } from '../../App';
-import { callPartnerApi, fetchMethodStatuses } from '../../lib/partnerApi';
+import { callPartnerApi, DOCS_PATHS, fetchMethodStatuses } from '../../lib/partnerApi';
 import { DELIVERY_METHODS } from './integrationShared';
 
 // Permanent opt-out of the first-run auto-redirect (per brand); the chooser
@@ -93,7 +93,17 @@ export default function PartnerIntegrationHub() {
                                 <span className="text-[9px] uppercase tracking-[0.3em] font-black text-[#CCC]">{`0${index + 1}`}</span>
                             </div>
                             <h2 className="text-2xl font-light tracking-tighter text-[#1A1A1A] mb-3">{method.label}</h2>
-                            <p className="text-[12px] text-[#999] leading-relaxed mb-6 flex-0">{method.tagline}</p>
+                            <p className="text-[12px] text-[#999] leading-relaxed mb-4 flex-0">{method.tagline}</p>
+                            {/* Read before you commit — the guide answers "is this me?"
+                                without making the partner pick a method to find out.
+                                Colour sits on the span: style.css's unlayered
+                                `a { color: inherit }` outranks text-* utilities on <a>. */}
+                            <a href={DOCS_PATHS[method.id]} target="_blank" rel="noreferrer"
+                                className="self-start mb-6 group/guide">
+                                <span className="text-[10px] uppercase tracking-[0.2em] font-black text-[#BBB] group-hover/guide:text-[#8a7600] transition-colors">
+                                    Read the guide →
+                                </span>
+                            </a>
 
                             <div className="space-y-2.5 mb-8">
                                 {method.beats.map(beat => (

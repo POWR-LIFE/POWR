@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Activity, BookOpen, Check, Eye, EyeOff, Plus, RefreshCw, Send, Trash2, TriangleAlert, Zap } from 'lucide-react';
+import { Activity, Check, Eye, EyeOff, Plus, RefreshCw, Send, Trash2, TriangleAlert, Zap } from 'lucide-react';
 import { useToast } from '../../lib/toast';
 import { useAuth } from '../../App';
 import {
@@ -7,7 +7,7 @@ import {
     callPartnerApi, fetchDeliveries, fetchEndpoints, fetchIntegration,
 } from '../../lib/partnerApi';
 import {
-    BTN_DARK, BTN_GHOST, ChangeMethodLink, CopyButton, FallbackPoolCard,
+    BTN_DARK, BTN_GHOST, ChangeMethodLink, CopyButton, FallbackPoolCard, GuideLink,
     HealthItem, INPUT, SectionCard, SetupFlow, timeAgo, WrongMethodNotice,
 } from './integrationShared';
 
@@ -539,10 +539,7 @@ export default function PartnerIntegrationApi() {
                     <h1 className="text-5xl font-light tracking-tighter text-[#1A1A1A]">API</h1>
                     <div className="flex items-center gap-3">
                         <ChangeMethodLink />
-                        <a href={DOCS_PATH} target="_blank" rel="noreferrer"
-                            className="flex items-center gap-2 h-11 px-6 bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.2em] rounded-full hover:brightness-95 transition-all">
-                            <BookOpen size={14} /> API Docs
-                        </a>
+                        <GuideLink method="api" label="API Docs" />
                     </div>
                 </div>
                 <p className="text-[12px] text-[#999] leading-relaxed mt-4 max-w-xl">

@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
 import { useAuth } from '../../App';
 import { callShopify } from '../../lib/partnerApi';
-import { BTN_DARK, BTN_GHOST, ChangeMethodLink, CopyButton, FallbackPoolCard, HealthItem, INPUT, SectionCard, SetupFlow, WrongMethodNotice } from './integrationShared';
+import { BTN_DARK, BTN_GHOST, ChangeMethodLink, CopyButton, FallbackPoolCard, GuideLink, HealthItem, INPUT, SectionCard, SetupFlow, WrongMethodNotice } from './integrationShared';
 
 export default function PartnerIntegrationShopify() {
     const toast = useToast();
@@ -334,7 +334,10 @@ export default function PartnerIntegrationShopify() {
                 </div>
                 <div className="flex items-end justify-between gap-6 flex-wrap">
                     <h1 className="text-5xl font-light tracking-tighter text-[#1A1A1A]">Shopify</h1>
-                    <ChangeMethodLink />
+                    <div className="flex items-center gap-3">
+                        <ChangeMethodLink />
+                        <GuideLink method="shopify" />
+                    </div>
                 </div>
                 <p className="text-[12px] text-[#999] leading-relaxed mt-4 max-w-xl">
                     The zero-effort integration: three steps and every redemption mints a fresh single-use
