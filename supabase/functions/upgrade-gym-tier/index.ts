@@ -170,12 +170,15 @@ Deno.serve(async (req) => {
   const currentStreak = streak?.current_streak ?? 0;
   const targetTotal = targetBase + gymStreakBonus(currentStreak, targetBase);
 
-  // Sum what was already earned (earn type only — includes baked-in streak bonus from original claim)
+  // Sum what was already earned for this session — BOTH rows. claim-points
+  // splits the award into a base 'earn' row and a separate 'streak' row;
+  // counting only 'earn' here re-paid the streak share inside the upgrade
+  // delta, a third copy of the same bonus.
   const { data: existing } = await supabase
     .from('point_transactions')
     .select('amount')
     .eq('session_id', session.id)
-    .eq('type', 'earn');
+    .in('type', ['earn', 'streak']);
 
   const alreadyEarned = (existing ?? []).reduce((sum: number, t: { amount: number }) => sum + t.amount, 0);
   const delta = targetTotal - alreadyEarned;
@@ -202,7 +205,9 @@ Deno.serve(async (req) => {
       .from('point_transactions')
       .select('amount')
       .eq('user_id', user.id)
-      .eq('type', 'earn')
+      // Streak rows spend the same daily cap as earn rows — same rule as
+      // claim-points' own headroom check.
+      .in('type', ['earn', 'streak'])
       .in('session_id', todaySessionIds);
     todayTotal = (todayTx ?? []).reduce((sum: number, t: { amount: number }) => sum + t.amount, 0);
   }

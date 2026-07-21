@@ -2,7 +2,7 @@ import { GeometricBackground } from '@/components/home/GeometricBackground';
 import MagicRings from '@/components/MagicRings';
 import { HeaderActions } from '@/components/HeaderActions';
 import { RewardHeroMedia } from '@/components/rewards/RewardHeroMedia';
-import { VaultTimer } from '@/components/rewards/VaultTimer';
+import { VaultWidget } from '@/components/rewards/VaultWidget';
 import { useQueryClient } from '@tanstack/react-query';
 
 import { usePoints } from '@/hooks/usePoints';
@@ -469,7 +469,7 @@ function BalanceCard({ balance, todayEarned, loading }: BalanceCardProps) {
   const queryClient = useQueryClient();
   const vaultEnabled = useVaultAccess();
   // Warms the Vault's deposits query on tap so /vault does not start its
-  // fetch from cold — see the comment on VaultTimer below.
+  // fetch from cold — see the comment on VaultWidget below.
   const prefetchVault = useCallback(
     () => queryClient.prefetchQuery({ queryKey: ['vault', 'contents'], queryFn: fetchVaultContents }),
     [queryClient],
@@ -503,7 +503,7 @@ function BalanceCard({ balance, todayEarned, loading }: BalanceCardProps) {
             flight (often resolved) by the time /vault mounts, so its hero fills
             in as the door appears rather than a second later. */}
         {vaultEnabled && (
-          <VaultTimer
+          <VaultWidget
             onPress={() => {
               void prefetchVault();
               router.push('/vault');

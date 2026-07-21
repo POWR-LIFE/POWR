@@ -322,8 +322,10 @@ Deno.serve(async (req) => {
     const jwt = authHeader.replace(/^Bearer\s+/i, '');
     const { data: { user: jwtUser }, error: authError } = await userClient.auth.getUser(jwt);
     if (authError || !jwtUser) {
+      // Detail stays in the server log only — an unauthenticated caller has no
+      // business reading why the token failed.
       console.error('Auth error:', authError);
-      return new Response(JSON.stringify({ error: 'Unauthorized', details: authError?.message }), { status: 401 });
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
     }
     user = jwtUser;
   }
@@ -504,9 +506,11 @@ Deno.serve(async (req) => {
     }
   }
 
-  // Check daily cap
+  // Check daily cap. The cap applies to the session's TOTAL award — base plus
+  // streak — so "already earned today" must count BOTH row types below: the
+  // bonus lives in its own 'streak' row so the ledger can show it, and summing
+  // only 'earn' rows here let streak rows ride past the cap uncounted.
   const cap = DAILY_CAPS[session.type as ActivityType];
-  const earned = Math.min(base + streakBonus, cap);
 
   // 9. Check how much already earned today for THIS activity type specifically.
   // point_transactions has no type column, so we resolve it via the session join.
@@ -526,7 +530,7 @@ Deno.serve(async (req) => {
       .from('point_transactions')
       .select('amount')
       .eq('user_id', user.id)
-      .eq('type', 'earn')
+      .in('type', ['earn', 'streak'])
       .in('session_id', todaySessionIds);
     todayTotal = (todayEarned ?? []).reduce((sum: number, t: { amount: number }) => sum + t.amount, 0);
   }
@@ -537,7 +541,13 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ error: 'Daily cap reached', cap }), { status: 422 });
   }
 
-  const finalAmount = Math.min(earned, isDevTestUser ? cap : remaining);
+  // ⚠ The earn row is BASE ONLY. It used to carry min(base + streakBonus, cap)
+  // while step 11 wrote the streak bonus AGAIN as its own row clamped only to
+  // the cap headroom — so any session with headroom left paid the bonus twice
+  // (gym ×1.2: an 18-pt earn row plus a 3-pt streak row for an intended 18).
+  // One value, one row: base here, the whole bonus in the streak row, and the
+  // daily cap enforced across the pair.
+  const baseCredited = Math.min(base, isDevTestUser ? cap : remaining);
 
   // 10. Insert point transaction (service role — bypasses RLS)
   const { data: tx, error: txError } = await supabase
@@ -545,7 +555,7 @@ Deno.serve(async (req) => {
     .insert({
       user_id: user.id,
       session_id: session.id,
-      amount: finalAmount,
+      amount: baseCredited,
       type: 'earn',
       description: `${session.type} session`,
       multiplier: streakBonus > 0 ? (base + streakBonus) / base : 1.0,
@@ -579,15 +589,16 @@ Deno.serve(async (req) => {
       })
       .eq('user_id', user.id);
 
-    // Insert streak bonus transaction if applicable. Clamp to the cap headroom
-    // LEFT AFTER the base earn row and guard on the clamped amount — the base
-    // row already carries min(base + streakBonus, cap), so when the streak
-    // multiplier alone fills the daily cap this would otherwise write a 0-pt
-    // (or, for cap-exempt dev users, negative) STREAK row that renders red in
-    // the ledger.
-    const streakAmount = Math.min(streakBonus, Math.max(0, remaining - finalAmount));
+    // The streak row carries the WHOLE bonus (the earn row above is base only),
+    // clamped to the headroom the base row left. Guard on the clamped amount —
+    // when the base row alone fills the daily cap this would otherwise write a
+    // 0-pt STREAK row that renders red in the ledger. Dev test users are
+    // cap-exempt on this leg just as they are on the base one.
+    const streakAmount = isDevTestUser
+      ? streakBonus
+      : Math.min(streakBonus, Math.max(0, remaining - baseCredited));
     if (streakAmount > 0) {
-      await supabase.from('point_transactions').insert({
+      const { error: streakErr } = await supabase.from('point_transactions').insert({
         user_id: user.id,
         session_id: session.id,
         amount: streakAmount,
@@ -595,8 +606,15 @@ Deno.serve(async (req) => {
         description: `${currentStreak}-day streak bonus`,
         multiplier: 1.0,
       });
+      // A failed insert must not count as credited — leaving streakCredited at
+      // 0 hands the un-paid bonus to the overflow calc below, which vaults it
+      // instead of letting it silently vanish.
+      if (streakErr) {
+        console.warn('[claim-points] streak insert failed:', streakErr);
+      } else {
+        streakCredited = streakAmount;
+      }
     }
-    streakCredited = Math.max(0, streakAmount);
   }
 
   // 11a. Vault the merit the daily cap clamped away. Only BONUS value ever
@@ -608,7 +626,7 @@ Deno.serve(async (req) => {
   // never fail a claim that already credited.
   const overflow = isManual || !vaultCapOverflowEnabled
     ? 0
-    : Math.max(0, base + streakBonus - finalAmount - streakCredited);
+    : Math.max(0, base + streakBonus - baseCredited - streakCredited);
   let vaulted = 0;
   if (overflow > 0) {
     const { error: vaultErr } = await supabase.from('vault_deposits').insert({
@@ -672,7 +690,7 @@ Deno.serve(async (req) => {
       body: JSON.stringify({
         target_user_id: user.id,
         type: 'session_completed',
-        payload: { session_id: session.id, earned: finalAmount },
+        payload: { session_id: session.id, earned: baseCredited + streakCredited },
       }),
     });
     const pushBody = await pushRes.json().catch(() => null);
@@ -746,7 +764,9 @@ Deno.serve(async (req) => {
   return new Response(
     JSON.stringify({
       ok: true,
-      earned: finalAmount,
+      // Total actually credited this claim (base row + streak row). The two
+      // are separate ledger rows now, but callers read one number.
+      earned: baseCredited + streakCredited,
       streak_bonus: streakBonus,
       vaulted,
       base,

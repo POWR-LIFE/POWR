@@ -270,7 +270,14 @@ export default function UserProfile() {
     const handleVaultGrant = async () => {
         const amt = parseInt(vgAmount, 10);
         if (!Number.isFinite(amt) || amt < 1) { toast.error('Enter a valid amount'); return; }
-        const vestDays = vgDays.trim() === '' ? null : Math.max(0, parseInt(vgDays, 10) || 0);
+        // Strict digits only — `parseInt || 0` turned junk into 0, and 0 means
+        // READY INSTANTLY here. A typo must be an error, not a payout.
+        const rawVest = vgDays.trim();
+        if (rawVest !== '' && !/^\d+$/.test(rawVest)) {
+            toast.error('Vest days must be a whole number — 0 releases instantly, blank uses the default');
+            return;
+        }
+        const vestDays = rawVest === '' ? null : parseInt(rawVest, 10);
         setVgLoading(true);
         const { data, error } = await supabase.rpc('admin_grant_vault_deposit', {
             p_amount: amt, p_user_ids: [userId], p_note: vgNote || null, p_vest_days: vestDays,
@@ -280,7 +287,22 @@ export default function UserProfile() {
         await logAction(adminUser.id, 'vault_grant', 'user', userId, {
             amount: amt, vest_days: data?.vest_days, note: vgNote, notify: vgNotify, batch_id: data?.batch_id,
         });
-        toast.success(`+${amt} POWR banked in the Vault · vests in ${data?.vest_days} day(s)${vgNotify ? ' · push sent' : ''}`);
+        // Say what is knowable about the push, not a blanket "push sent": the
+        // vault_granted kill-switch (pre-launch hold) silently drops it, and so
+        // does the rollout gate when this user cannot see a Vault yet.
+        let pushNote = '';
+        if (vgNotify) {
+            const [{ data: notifCfg }, { data: inRollout }] = await Promise.all([
+                supabase.from('notification_config').select('enabled').eq('type', 'vault_granted').maybeSingle(),
+                supabase.rpc('vault_has_access', { p_user: userId }),
+            ]);
+            pushNote = notifCfg?.enabled === false
+                ? ' · push HELD (vault_granted is disabled in Notifications)'
+                : inRollout === false
+                    ? ' · no push (user outside the Vault rollout)'
+                    : ' · push sent';
+        }
+        toast.success(`+${amt} POWR banked in the Vault · vests in ${data?.vest_days} day(s)${pushNote}`);
         setShowVaultGrant(false); setVgAmount(''); setVgDays(''); setVgNote(''); setVgNotify(true); setVgLoading(false);
         fetchData();
     };

@@ -211,7 +211,15 @@ export default function VaultManager() {
     const handleGrant = async () => {
         const amount = parseInt(grantAmount, 10);
         if (!Number.isFinite(amount) || amount < 1) { toast.error('Enter a valid amount'); return; }
-        const vestDays = grantVestDays.trim() === '' ? null : Math.max(0, parseInt(grantVestDays, 10) || 0);
+        // Strict digits only. `parseInt || 0` silently turned junk ("7x", "-3",
+        // "abc") into 0 — and 0 is not a safe default here, it means READY
+        // INSTANTLY. A typo must be an error, not an immediate payout.
+        const rawVest = grantVestDays.trim();
+        if (rawVest !== '' && !/^\d+$/.test(rawVest)) {
+            toast.error('Vest days must be a whole number — 0 releases instantly, blank uses the default');
+            return;
+        }
+        const vestDays = rawVest === '' ? null : parseInt(rawVest, 10);
 
         const params = {
             p_amount: amount, p_note: grantNote || null, p_vest_days: vestDays, p_notify: grantNotify,
@@ -246,13 +254,20 @@ export default function VaultManager() {
             // toast used to claim a push for all of them. Say what is actually
             // knowable here: the grant landed for everyone, the push only
             // reaches the people who can see a Vault.
+            // The kill-switch outranks the rollout: while vault_granted is
+            // disabled in admin → Notifications (the pre-launch hold),
+            // send-push drops every grant push before tokens or feed writes.
+            const { data: notifCfg } = await supabase
+                .from('notification_config').select('enabled').eq('type', 'vault_granted').maybeSingle();
             const pushNote = !grantNotify
                 ? ''
-                : rollout?.mode === 'all'
-                    ? ' · push sent'
-                    : rollout?.mode === 'none'
-                        ? ' · no push (Vault hidden from everyone)'
-                        : ' · push only to users in the rollout';
+                : notifCfg?.enabled === false
+                    ? ' · push HELD (vault_granted is disabled in Notifications)'
+                    : rollout?.mode === 'all'
+                        ? ' · push sent'
+                        : rollout?.mode === 'none'
+                            ? ' · no push (Vault hidden from everyone)'
+                            : ' · push only to users in the rollout';
             if (missing.length > 0) {
                 toast.error(`Granted to ${data?.granted_users}, but ${missing.length} email(s) not found: ${missing.join(', ')}`);
             } else {
