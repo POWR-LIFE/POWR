@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
 
 import { LevelIcon } from '@/components/LevelIcon';
@@ -114,9 +114,13 @@ export function VaultPotDoor({
   // showing the NEXT countdown, so the screen lands somewhere truthful.
   const openSeq = useRef(new Animated.Value(0)).current;
   const swing = useRef(new Animated.Value(0)).current;
+  // Flips once the reseal lands, so the countdown ring can hand back to the
+  // NEXT pot's fraction — one re-render, after the whole sequence is over.
+  const [resealed, setResealed] = useState(false);
   const wasOpen = useRef(open);
   useEffect(() => {
     if (open && !wasOpen.current) {
+      setResealed(false);
       openSeq.setValue(0);
       Animated.timing(openSeq, { toValue: 1, duration: 900, easing: Easing.out(Easing.cubic), useNativeDriver: false }).start();
       Animated.sequence([
@@ -129,11 +133,14 @@ export function VaultPotDoor({
         // drew them, and a door that shuts with its bolts still withdrawn is
         // just a closed door, not a locked one.
         Animated.timing(hold, { toValue: 0, duration: 520, easing: Easing.out(Easing.cubic), useNativeDriver: false }),
-      ]).start();
+      ]).start(({ finished }) => {
+        if (finished) setResealed(true);
+      });
     }
     if (!open) {
       openSeq.setValue(0);
       swing.setValue(0);
+      setResealed(false);
     }
     wasOpen.current = open;
   }, [open, openSeq, swing, hold]);
@@ -179,8 +186,11 @@ export function VaultPotDoor({
 
   // A matured deposit has run its window out, so the ring reads FULL. Passing
   // the raw fraction left a gap of unlit ticks on a door that was ready to
-  // open — the ring is the countdown, and the countdown has finished.
-  const ringProgress = ready || open ? 1 : vestProgress;
+  // open — the ring is the countdown, and the countdown has finished. But only
+  // until the RESEAL: the shut door faces us showing the NEXT countdown in the
+  // porthole, and a ring still pinned full against digits that are counting
+  // contradicts them — so it re-arms to the next pot's fraction.
+  const ringProgress = ready || (open && !resealed) ? 1 : vestProgress;
 
   return (
     <View style={{ width: size, height: size }}>
@@ -281,5 +291,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     opacity: 0.2,
   },
-  flash: { position: 'absolute', backgroundColor: '#D8F6FF' },
+  // Warm white-gold, not pure white — the flash belongs to the gold accent
+  // world. The icy #D8F6FF it replaced was a leftover of the abandoned cyan
+  // palette.
+  flash: { position: 'absolute', backgroundColor: '#FFF4C6' },
 });

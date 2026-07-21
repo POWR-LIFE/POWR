@@ -26,6 +26,9 @@ const DEFAULTS = {
     challenge_pool_milestone:  { title: 'Halfway there 🏁',                      body: 'Your group\'s hit 50% of "challenge" — N to go together.',            dynamic: true },
     challenge_completed:       { title: 'Challenge complete 🎉',                 body: '"Challenge" done — +N POWR.',                                         dynamic: true },
     challenge_expiring:        { title: 'Challenge ending soon ⏰',              body: '"Challenge" ends in Nh — finish your part to earn the group bonus.',  dynamic: true },
+    vault_granted:             { title: 'POWR banked in your Vault 🏦',          body: '[Note —] N POWR just landed in your Vault. It\'s already counting toward your level, and unlocks [date].', dynamic: true },
+    vault_ready:               { title: 'Your Vault is ready 🔓',                body: 'N POWR has finished vesting — hold the dial to unlock it.',           dynamic: true },
+    vault_unlocked:            { title: 'Vault unlocked ⚡',                     body: '+N POWR just vested into your balance. Spend it on something good.',  dynamic: true },
 };
 
 const CATEGORY_META = {

@@ -358,7 +358,7 @@ function buildMessage(
         // sums pending vault alongside the ledger) — worth saying, since the
         // spendable balance won't move until the door is opened.
         const detail = ready
-          ? 'is waiting in your Vault. Press and hold the door to unlock it.'
+          ? 'is waiting in your Vault. Hold the dial to unlock it.'
           : `just landed in your Vault. It's already counting toward your level, and unlocks ${formatVestDate(payload.vests_at)}.`;
 
         return {

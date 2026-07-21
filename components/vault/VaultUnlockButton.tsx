@@ -59,6 +59,12 @@ export function VaultUnlockButton({ progress, claiming, onPressIn, onPressOut }:
         // Generous slop: the visible dial is deliberately small, but the target
         // it accepts should not be.
         hitSlop={14}
+        // The gesture is invisible to a screen reader without this — the hint
+        // has to carry the "keep holding" part, which nothing visual does.
+        accessibilityRole="button"
+        accessibilityLabel="Unlock your Vault"
+        accessibilityHint="Press and hold until the ring fills to release your matured POWR"
+        accessibilityState={{ disabled: claiming, busy: claiming }}
         style={({ pressed }) => [styles.button, pressed && styles.buttonHeld]}
       >
         {/* Track + progress, concentric with the button so the fill reads as

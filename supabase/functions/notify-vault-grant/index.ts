@@ -56,12 +56,20 @@ Deno.serve(async (req: Request) => {
     });
   }
 
+  // Claim the batch atomically: stamp grant_notified_at and work from the rows
+  // the stamp returns. A replayed {batch_id} — a pg_net retry, a double-submit
+  // — then finds nothing left to claim and no-ops instead of re-pushing the
+  // whole audience. Stamp-first is the same policy as the maturity sweep: a
+  // push that fails after stamping is not retried, because a missed
+  // notification is a far smaller failure than a duplicate blast.
   const { data: rows, error } = await admin
     .from('vault_deposits')
-    .select('user_id, amount, vests_at, description')
-    .eq('grant_batch', batchId);
+    .update({ grant_notified_at: new Date().toISOString() })
+    .eq('grant_batch', batchId)
+    .is('grant_notified_at', null)
+    .select('user_id, amount, vests_at, description');
   if (error) {
-    console.error('[notify-vault-grant] batch read failed:', error);
+    console.error('[notify-vault-grant] batch claim failed:', error);
     return new Response(JSON.stringify({ error: error.message }), {
       status: 500, headers: { 'Content-Type': 'application/json' },
     });

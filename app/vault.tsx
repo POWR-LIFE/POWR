@@ -271,6 +271,34 @@ function VaultPotHero({
       : null;
   const effectiveUnlockAt = vaultDayAt ?? soonest?.vests_at ?? null;
 
+  // ── The vesting→READY flip has to happen LIVE ──
+  // Every gate above is computed from Date.now() at render time, so without a
+  // scheduled re-render the countdown reaches 00:00:00 and the screen simply
+  // freezes in the vesting state — the dial only appearing after a refocus or
+  // remount, which is a dead end at the feature's climactic moment. One timer
+  // to the earliest boundary re-renders AND refetches: maturity is also a
+  // server-side fact (stamps, grace dates) worth re-reading at the moment it
+  // becomes true. Only armed within a day of the boundary — a JS timeout can't
+  // be trusted across days anyway, and the focus-driven refetch covers any
+  // horizon longer than a single sitting.
+  const [, setMaturityTick] = useState(0);
+  const heroQueryClient = useQueryClient();
+  const nextBoundaryAt = pending
+    .map((d) => new Date(d.vests_at).getTime())
+    .concat(outlook?.nextUnlockAt ? [new Date(outlook.nextUnlockAt).getTime()] : [])
+    .filter((t) => t > Date.now())
+    .sort((a, b) => a - b)[0];
+  useEffect(() => {
+    if (!nextBoundaryAt) return;
+    const delay = nextBoundaryAt - Date.now();
+    if (delay > 26 * 3600 * 1000) return;
+    const id = setTimeout(() => {
+      setMaturityTick((t) => t + 1);
+      heroQueryClient.invalidateQueries({ queryKey: ['vault'] });
+    }, delay + 500);
+    return () => clearTimeout(id);
+  }, [nextBoundaryAt, heroQueryClient]);
+
   // Elapsed fraction of the soonest deposit's vest window — the rail's fill.
   let progress = 0;
   if (soonest && effectiveUnlockAt) {
@@ -501,9 +529,32 @@ function VaultPotHero({
 // ─── Rows ────────────────────────────────────────────────────────────────────
 
 /** Only ever renders a deposit that is still in the vault — see `sections`. */
-function DepositRow({ deposit }: { deposit: VaultDeposit }) {
+function DepositRow({
+  deposit,
+  vaultDayAt,
+  sealedMinLevel,
+}: {
+  deposit: VaultDeposit;
+  /** An announced unlock event pulls EVERY pending deposit forward, so each
+      row's date is the earlier of its own vests_at and the event — otherwise
+      the list contradicts the Vault Day card directly above it. */
+  vaultDayAt: string | null;
+  /** Level floor in force: matured POWR cannot leave, so a row must not
+      claim "Ready to unlock" while the door above says SEALED. */
+  sealedMinLevel: number | null;
+}) {
   const isLevel = deposit.source === 'level_up';
   const isGrant = deposit.source === 'admin_grant';
+
+  const effectiveAt =
+    vaultDayAt && new Date(vaultDayAt) < new Date(deposit.vests_at)
+      ? vaultDayAt
+      : deposit.vests_at;
+  const matured = new Date(effectiveAt).getTime() <= Date.now();
+  const status =
+    matured && sealedMinLevel != null
+      ? `Sealed until Level ${sealedMinLevel}`
+      : unlockCopy(effectiveAt);
 
   return (
     <View style={styles.row}>
@@ -517,7 +568,7 @@ function DepositRow({ deposit }: { deposit: VaultDeposit }) {
       <View style={styles.rowBody}>
         <Text style={styles.rowTitle} numberOfLines={1}>{depositLabel(deposit)}</Text>
         <Text style={styles.rowSub} numberOfLines={1}>
-          {unlockCopy(deposit.vests_at)} · {depositSub(deposit)}
+          {status} · {depositSub(deposit)}
         </Text>
       </View>
       <Text style={styles.rowAmount}>+{deposit.amount.toLocaleString()}</Text>
@@ -655,7 +706,13 @@ export default function VaultScreen() {
         <SectionList
           sections={sections}
           keyExtractor={(d) => d.id}
-          renderItem={({ item }) => <DepositRow deposit={item} />}
+          renderItem={({ item }) => (
+            <DepositRow
+              deposit={item}
+              vaultDayAt={outlook?.nextUnlockAt ?? null}
+              sealedMinLevel={isVaultGated(outlook ?? null) ? (outlook?.minLevel ?? null) : null}
+            />
+          )}
           renderSectionHeader={({ section }) => (
             <Text style={styles.sectionHeader}>{section.title}</Text>
           )}
