@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
 import { useAuth } from '../../App';
+import { levelFromEarned } from '../../lib/levels';
 import { User, Search, Users, Activity, Award, ChevronRight, Filter, MapPin, Star, UserPlus, Trash2, X, Eye, EyeOff, Watch } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
@@ -103,7 +104,7 @@ export default function UserManager() {
             // Calculate stats
             const total = profiles.length;
             const avgLevel = total > 0
-                ? (profiles.reduce((acc, u) => acc + (u.level || 1), 0) / total).toFixed(1)
+                ? (profiles.reduce((acc, u) => acc + levelFromEarned(u.total_earned), 0) / total).toFixed(1)
                 : 0;
 
             // Distinct users with a session in the last 24 h
@@ -183,7 +184,7 @@ export default function UserManager() {
             }
         }
 
-        if (filterMinLevel !== '' && (u.level || 1) < Number(filterMinLevel)) return false;
+        if (filterMinLevel !== '' && levelFromEarned(u.total_earned) < Number(filterMinLevel)) return false;
 
         return true;
     });
@@ -508,7 +509,7 @@ export default function UserManager() {
                                         <td className="px-6 py-5">
                                             <div className="flex items-center gap-4">
                                                 <span className="px-4 py-1.5 rounded-full bg-[#E8D200] text-[#080808] text-[9px] font-black uppercase tracking-[0.2em]">
-                                                    LVL {user.level || 1}
+                                                    LVL {levelFromEarned(user.total_earned)}
                                                 </span>
                                                 <span className="text-[9px] uppercase tracking-[0.2em] text-[#888888] font-black whitespace-nowrap">
                                                     {user.total_points ?? 0} PTS

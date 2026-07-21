@@ -3,6 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
 import { useAuth } from '../../App';
+import { levelFromEarned } from '../../lib/levels';
 import {
     Lock,
     User, Activity, Award, Calendar, Clock, MapPin,
@@ -688,6 +689,9 @@ export default function UserProfile() {
 
     const totalPoints = transactions.reduce((acc, t) => acc + t.amount, 0);
     const vaultPending = vaultDeposits.filter(d => !d.released_at).reduce((acc, d) => acc + d.amount, 0);
+    // Level basis = lifetime earned (positive ledger + pending vault) — matches
+    // get_my_points_summary.total_earned; profiles.level is dead, never read it.
+    const totalEarned = transactions.reduce((acc, t) => acc + (t.amount > 0 ? t.amount : 0), 0) + vaultPending;
 
     // Most recently seen token per platform (tokens are sorted updated_at desc).
     const latestTokenByPlatform = pushTokens.filter(
@@ -854,7 +858,7 @@ export default function UserProfile() {
                             )}
                         </div>
                         <div className="flex items-center flex-wrap gap-3">
-                            <span className="px-3 py-1 rounded-full bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.2em]">LVL {profile.level || 1}</span>
+                            <span className="px-3 py-1 rounded-full bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.2em]">LVL {levelFromEarned(totalEarned)}</span>
                             {locationState ? (
                                 <span
                                     title={`Live permission snapshot${locationCheckedAt ? ` · reported ${locationCheckedAt}` : ''}${accuracyLabel ? ` · fix accuracy ${accuracyLabel}` : ''}${reducedAccuracy ? ' · reduced accuracy: iOS Precise Location off / Android coarse-only — geofence check-ins cannot fire' : ''}`}
