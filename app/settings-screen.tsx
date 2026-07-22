@@ -30,6 +30,7 @@ import { getSessionUser, supabase } from '@/lib/supabase';
 import { getNotificationPreferences, updateNotificationPreferences } from '@/lib/api/notifications';
 import { cacheNearbyOfferPreference, isNearbyOfferEnabled } from '@/lib/notifications';
 import { requestBatteryOptimizationExemption } from '@/lib/batteryOptimization';
+import { openStorePage, runningVersion } from '@/lib/appUpdate';
 import { getAppVersion } from '@/lib/device';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
@@ -640,6 +641,12 @@ export default function SettingsScreen() {
             label="Permissions & Setup"
             sublabel="Fix location, notifications & health access"
             onPress={() => router.push('/permissions-help')}
+          />
+          <RowLink
+            icon="arrow-up-circle-outline"
+            label="Check for updates"
+            sublabel={`You're on v${runningVersion() ?? '?'}`}
+            onPress={() => openStorePage()}
           />
           <RowLink
             icon="help-circle-outline"

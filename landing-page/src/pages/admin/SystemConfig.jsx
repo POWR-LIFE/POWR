@@ -6,6 +6,7 @@ import { useAuth } from '../../App';
 import {
     Settings, Save, RotateCcw, Minus, Plus, Search, ExternalLink,
     Coins, MapPin, Vault, ShieldCheck, Smartphone, Store, Sparkles, SlidersHorizontal,
+    Rocket,
 } from 'lucide-react';
 
 const logAction = async (adminId, action, targetType, targetId, metadata = {}) => {
@@ -85,6 +86,11 @@ const GROUPS = [
         keys: ['device_transfer_max_per_30d', 'device_transfer_stale_days'],
     },
     {
+        id: 'release', title: 'App Release', icon: Rocket, accent: '#06B6D4',
+        blurb: 'Bump these when a release goes live on its store — the app shows an update banner to anyone running an older version. Also the version to type into a Broadcast "below version" nudge.',
+        keys: ['latest_ios_version', 'latest_android_version'],
+    },
+    {
         id: 'partner', title: 'Partner Portal', icon: Store, accent: '#EC4899',
         blurb: 'Feature flags for the brand-facing partner portal.',
         keys: ['partner_placements_enabled'],
@@ -115,6 +121,8 @@ const LABELS = {
     vault_bonus_legend: 'Legend bonus (lv 16–20)',
     device_transfer_max_per_30d: 'Max transfers per 30 days',
     device_transfer_stale_days: 'Stale-device threshold',
+    latest_ios_version: 'Latest App Store version',
+    latest_android_version: 'Latest Play Store version',
     partner_placements_enabled: 'Self-serve placements',
     weekly_challenges: 'Weekly challenges',
 };

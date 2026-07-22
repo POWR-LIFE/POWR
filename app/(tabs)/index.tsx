@@ -18,6 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ChallengeCard } from '@/components/home/ChallengeCard';
 import { TogetherSection } from '@/components/home/TogetherSection';
+import { UpdateBanner } from '@/components/home/UpdateBanner';
 import { RewardCard } from '@/components/home/RewardCard';
 import { LevelProgressRow } from '@/components/home/LevelProgressRow';
 import { LevelUpCelebration } from '@/components/LevelUpCelebration';
@@ -533,6 +534,7 @@ export default function HomeScreen() {
                         />
                     }
                 >
+                <UpdateBanner />
                 {__DEV__ && (
                     <View style={{ marginBottom: 12, borderWidth: 1, borderColor: '#ff0', borderRadius: 8, padding: 10, gap: 8 }}>
                         <Text style={{ color: '#ff0', fontSize: 10, fontWeight: '700', letterSpacing: 1 }}>⚠ DEV TOOLS</Text>
