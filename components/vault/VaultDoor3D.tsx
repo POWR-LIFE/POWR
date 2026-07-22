@@ -271,6 +271,10 @@ export function VaultDoor3D({ holdAnim, vestProgress, swingAnim, active = true, 
       initTaskRef.current?.cancel();
       initTaskRef.current = InteractionManager.runAfterInteractions(() => {
         if (unmountedRef.current) return;
+        // Hoisted above the try so the catch can dispose a renderer that was
+        // constructed before a LATER init step threw (the Copilot autofix had
+        // the right leak in mind but referenced a const scoped to the try).
+        let renderer: THREE.WebGLRenderer | null = null;
         try {
           const width = gl.drawingBufferWidth;
           const height = gl.drawingBufferHeight;
@@ -290,7 +294,7 @@ export function VaultDoor3D({ holdAnim, vestProgress, swingAnim, active = true, 
             clientHeight: height,
           };
 
-          const renderer = new THREE.WebGLRenderer({
+          renderer = new THREE.WebGLRenderer({
             canvas: fakeCanvas as unknown as HTMLCanvasElement,
             context: gl,
             alpha: true,
