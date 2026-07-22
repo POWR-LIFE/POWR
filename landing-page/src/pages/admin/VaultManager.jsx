@@ -20,6 +20,14 @@ const fmtDateTime = (iso) => new Date(iso).toLocaleString('en-GB', {
     day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
 });
 
+// datetime-local speaks naive local time; the stored value is UTC ISO.
+const toLocalInput = (iso) => {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    const p = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+};
+
 /**
  * Vault control room: economy snapshot + scheduled unlock events.
  *
@@ -57,6 +65,12 @@ export default function VaultManager() {
     const [rolloutExactLevels, setRolloutExactLevels] = useState('');
     const [rolloutActivities, setRolloutActivities] = useState([]);
     const [savingRollout, setSavingRollout] = useState(false);
+
+    // Scheduled launch (vault_launch_at) — the moment 'targeted' opens to
+    // everyone. Users outside the rollout see the app counting down to it.
+    const [liveLaunchAt, setLiveLaunchAt] = useState(null);
+    const [launchAtLocal, setLaunchAtLocal] = useState('');
+    const [savingLaunch, setSavingLaunch] = useState(false);
 
     // Grant form
     const [grantTarget, setGrantTarget] = useState('emails'); // 'emails' | 'all' | 'levels' | 'activities'
@@ -98,6 +112,8 @@ export default function VaultManager() {
                 setRolloutActivities(r.activities || []);
                 setRolloutExactLevels((r.levels || []).join(', '));
                 setRolloutTiers([]);
+                setLiveLaunchAt(r.launch_at || null);
+                setLaunchAtLocal(r.launch_at ? toLocalInput(r.launch_at) : '');
             }
 
             const s = statsRes.data || {};
@@ -154,6 +170,49 @@ export default function VaultManager() {
             toast.error(e.message || 'Failed to save rollout');
         } finally {
             setSavingRollout(false);
+        }
+    };
+
+    const handleSaveLaunch = async () => {
+        if (!launchAtLocal) { toast.error('Pick a launch date & time'); return; }
+        // Parse before anything else — a malformed value would otherwise throw
+        // (RangeError from toISOString) outside the try and skip the toast.
+        const parsed = new Date(launchAtLocal);
+        if (Number.isNaN(parsed.getTime())) { toast.error('That date didn’t parse — pick it again'); return; }
+        const iso = parsed.toISOString();
+        setSavingLaunch(true);
+        try {
+            const { error } = await supabase.rpc('admin_set_vault_launch', { p_launch_at: iso });
+            if (error) throw error;
+            // Past-date framing keys off the LIVE rollout mode, not the form's
+            // unsaved selection — and 'none' outranks a passed launch, so
+            // "open to everyone now" would be a lie under the kill switch.
+            toast.success(parsed <= new Date()
+                ? (rollout?.mode === 'none'
+                    ? 'Launch date is in the past, but rollout is Nobody — the kill switch still holds the doors'
+                    : 'Launch date is in the past — the Vault is open to everyone now')
+                : `Launch set — every Vault opens ${fmtDateTime(iso)}`);
+            await logAction(user.id, 'vault_launch_set', 'system_config', null, { launch_at: iso });
+            fetchAll();
+        } catch (e) {
+            toast.error(e.message || 'Failed to set launch');
+        } finally {
+            setSavingLaunch(false);
+        }
+    };
+
+    const handleClearLaunch = async () => {
+        setSavingLaunch(true);
+        try {
+            const { error } = await supabase.rpc('admin_set_vault_launch', { p_launch_at: null });
+            if (error) throw error;
+            toast.success('Launch cleared — no countdown shown in the app');
+            await logAction(user.id, 'vault_launch_cleared', 'system_config', null, { was: liveLaunchAt });
+            fetchAll();
+        } catch (e) {
+            toast.error(e.message || 'Failed to clear launch');
+        } finally {
+            setSavingLaunch(false);
         }
     };
 
@@ -443,6 +502,78 @@ export default function VaultManager() {
                         >
                             {savingRollout ? 'Saving…' : 'Save rollout'}
                         </button>
+                    </div>
+                </div>
+
+                {/* Scheduled launch — the countdown users outside the rollout
+                    see. Lives inside the rollout card because it is the
+                    rollout's end-date: when it passes, vault_has_access
+                    answers true for everyone with no admin at the switch. */}
+                <div className="mt-10 pt-8 border-t border-[#E6E6E1]">
+                    <div className="flex items-center gap-4 mb-6">
+                        <div className="w-12 h-12 rounded-2xl bg-[#F4F4F1] border border-[#E6E6E1] flex items-center justify-center">
+                            <CalendarClock size={18} className="text-[#8a7600]" />
+                        </div>
+                        <div>
+                            <div className="text-base font-bold text-[#222222]">Scheduled launch</div>
+                            <div className="text-[10px] text-[#666666] font-black uppercase tracking-[0.3em]">When every Vault opens — users see this counting down</div>
+                        </div>
+                        {liveLaunchAt && (
+                            <div className={`ml-auto px-4 py-2 rounded-full border ${new Date(liveLaunchAt) <= new Date() ? 'bg-[#10B981]/10 border-[#10B981]/30' : 'bg-[#F4F4F1] border-[#E6E6E1]'}`}>
+                                <span className={`text-[10px] font-black uppercase tracking-[0.2em] ${new Date(liveLaunchAt) <= new Date() ? 'text-[#10B981]' : 'text-[#555555]'}`}>
+                                    {new Date(liveLaunchAt) <= new Date() ? `Launched ${fmtDateTime(liveLaunchAt)}` : `Opens ${fmtDateTime(liveLaunchAt)}`}
+                                </span>
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="px-4 py-3 mb-6 bg-[#F4F4F1] border border-[#E6E6E1] rounded-xl">
+                        <p className="text-[11px] text-[#666666] leading-relaxed">
+                            Users the rollout hasn&apos;t reached see a <strong>coming soon</strong> Vault counting
+                            down to this moment — their already-banked POWR behind the sealed door. When it
+                            passes, every user&apos;s Vault opens automatically; no switch to flip. Flipping the
+                            rollout to &ldquo;Everyone&rdquo; afterwards is optional hygiene.
+                        </p>
+                    </div>
+
+                    {rolloutMode === 'none' && liveLaunchAt && (
+                        <div className="px-4 py-3 mb-6 bg-[#F43F5E]/5 border border-[#F43F5E]/30 rounded-xl">
+                            <p className="text-[11px] text-[#B91C1C] leading-relaxed font-bold">
+                                Rollout is set to Nobody, but a launch date is live: the app keeps counting down,
+                                and &ldquo;Nobody&rdquo; keeps the doors held shut past it. If the launch is off,
+                                clear the date too — a countdown that ends on a closed door is the worst outcome.
+                            </p>
+                        </div>
+                    )}
+
+                    <div className="grid lg:grid-cols-2 gap-8 items-end">
+                        <div>
+                            <label className="block text-[9px] uppercase tracking-[0.4em] text-[#888888] font-black mb-2">Opens at (your local time)</label>
+                            <input
+                                type="datetime-local"
+                                value={launchAtLocal}
+                                onChange={e => setLaunchAtLocal(e.target.value)}
+                                className="w-full h-12 px-4 bg-[#F4F4F1] border border-[#E6E6E1] rounded-xl font-mono text-sm text-[#1A1A1A] outline-none focus:border-[#E8D200]/60 transition-all"
+                            />
+                        </div>
+                        <div className="flex gap-3">
+                            <button
+                                onClick={handleSaveLaunch}
+                                disabled={savingLaunch}
+                                className="flex-1 h-12 rounded-xl bg-[#1A1A1A] text-white text-[10px] font-black uppercase tracking-[0.3em] hover:bg-[#333333] transition-all disabled:opacity-50"
+                            >
+                                {savingLaunch ? 'Saving…' : liveLaunchAt ? 'Update launch' : 'Set launch'}
+                            </button>
+                            {liveLaunchAt && (
+                                <button
+                                    onClick={handleClearLaunch}
+                                    disabled={savingLaunch}
+                                    className="h-12 px-6 rounded-xl bg-[#F4F4F1] border border-[#E6E6E1] text-[#888888] text-[10px] font-black uppercase tracking-[0.3em] hover:text-[#F43F5E] hover:border-[#F43F5E]/30 transition-all disabled:opacity-50"
+                                >
+                                    Clear
+                                </button>
+                            )}
+                        </div>
                     </div>
                 </div>
             </div>

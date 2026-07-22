@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 
-import { fetchVaultAccess } from '@/lib/api/vault';
+import { fetchVaultAccess, fetchVaultLaunchAt } from '@/lib/api/vault';
 
 /**
  * Is this user in the Vault rollout?
@@ -26,4 +26,24 @@ export function useVaultAccess(): boolean {
         staleTime: 30 * 60 * 1000,
     });
     return data !== false;
+}
+
+/**
+ * The scheduled launch (`vault_launch_at`), for users useVaultAccess says no
+ * to: an upcoming date turns the hard-hide into a COMING SOON countdown on
+ * both vault surfaces.
+ *
+ * `isPending` is exposed because the two queries race: access can resolve
+ * false while this one is still in flight, and the /vault route guard must
+ * not bounce a user it might be about to show the countdown to.
+ */
+export function useVaultLaunch(): { launchAt: string | null; isPending: boolean } {
+    const { data, isPending } = useQuery({
+        queryKey: ['vault', 'launch'],
+        queryFn: fetchVaultLaunchAt,
+        // Admin-pace, same as the rollout — but not longer: on launch morning
+        // a rescheduled date should reach an open app within the quarter hour.
+        staleTime: 15 * 60 * 1000,
+    });
+    return { launchAt: data ?? null, isPending };
 }

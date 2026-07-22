@@ -7,7 +7,7 @@ import { useQueryClient } from '@tanstack/react-query';
 
 import { usePoints } from '@/hooks/usePoints';
 import { useRollingNumber } from '@/hooks/useRollingNumber';
-import { useVaultAccess } from '@/hooks/useVaultAccess';
+import { useVaultAccess, useVaultLaunch } from '@/hooks/useVaultAccess';
 import { fetchMyRedemptionSummary, fetchRewards, fetchSmartFeaturedReward, type Reward as ApiReward } from '@/lib/api/rewards';
 import { resolveContextualPlacements, pickHeroPlacement, comparePlacements, type ResolvedPlacement } from '@/lib/api/placements';
 import { fetchVaultContents } from '@/lib/api/vault';
@@ -468,6 +468,12 @@ function BalanceCard({ balance, todayEarned, loading }: BalanceCardProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const vaultEnabled = useVaultAccess();
+  // Pre-launch: outside the rollout with a launch scheduled, the door shows
+  // dimmed with a day count instead of vanishing — /vault renders the
+  // matching COMING SOON countdown.
+  const { launchAt } = useVaultLaunch();
+  const launchInMs = launchAt ? new Date(launchAt).getTime() - Date.now() : 0;
+  const comingSoon = !vaultEnabled && launchInMs > 0;
   // Warms the Vault's deposits query on tap so /vault does not start its
   // fetch from cold — see the comment on VaultWidget below.
   const prefetchVault = useCallback(
@@ -502,8 +508,15 @@ function BalanceCard({ balance, todayEarned, loading }: BalanceCardProps) {
             Prefetching on press means the deposits query is usually already in
             flight (often resolved) by the time /vault mounts, so its hero fills
             in as the door appears rather than a second later. */}
-        {vaultEnabled && (
+        {(vaultEnabled || comingSoon) && (
           <VaultWidget
+            sublabel={
+              comingSoon
+                ? launchInMs > 86400000
+                  ? `IN ${Math.floor(launchInMs / 86400000)}D`
+                  : 'TODAY'
+                : undefined
+            }
             onPress={() => {
               void prefetchVault();
               router.push('/vault');

@@ -4,6 +4,7 @@ import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
 import { LevelIcon } from '@/components/LevelIcon';
 
 import { VaultDoor3D } from './VaultDoor3D';
+import { VaultPortholeCountdown } from './VaultPortholeCountdown';
 import { VaultReadout } from './VaultReadout';
 import { VaultRecess } from './VaultRecess';
 import { ACCENT, ACCENT_SOFT } from './potTokens';
@@ -72,6 +73,19 @@ export interface VaultPotDoorProps {
    * Animated listener — the gesture never re-renders React.
    */
   glowAnim?: Animated.Value;
+  /**
+   * Pre-launch: an ISO instant the doors open. When set, the porthole runs
+   * the COMING SOON countdown to it instead of showing contents — the one
+   * state where the time IS the contents. `amount`/`ready`/`loading` are
+   * ignored while this is set.
+   */
+  countdownTo?: string | null;
+  /**
+   * The level floor is in force: the porthole says SEALED and prices the
+   * open in POWR-to-level (VaultReadout's sealed branch) instead of showing
+   * contents. Ignored while `countdownTo` is set — pre-launch outranks it.
+   */
+  sealedGap?: { minLevel: number; toGo: number } | null;
 }
 
 export function VaultPotDoor({
@@ -84,6 +98,8 @@ export function VaultPotDoor({
   releasedAmount = null,
   level,
   glowAnim,
+  countdownTo = null,
+  sealedGap = null,
 }: VaultPotDoorProps) {
   const portholeSize = size * PORTHOLE_FRAC;
   const glowSize = size * GLOW_FRAC;
@@ -240,7 +256,17 @@ export function VaultPotDoor({
             },
           ]}
         >
-          <VaultReadout diameter={portholeSize} amount={amount} ready={ready} loading={loading} />
+          {countdownTo ? (
+            <VaultPortholeCountdown diameter={portholeSize} target={countdownTo} />
+          ) : (
+            <VaultReadout
+              diameter={portholeSize}
+              amount={amount}
+              ready={ready}
+              loading={loading}
+              sealed={sealedGap}
+            />
+          )}
         </Animated.View>
 
         {/* Payout flash over the porthole */}

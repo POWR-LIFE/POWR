@@ -9,6 +9,7 @@ import {
   Easing,
   Modal,
   Pressable,
+  ScrollView,
   SectionList,
   StyleSheet,
   Text,
@@ -24,6 +25,7 @@ import { UNLOCK_DIAL_SIZE, VaultUnlockButton } from '@/components/vault/VaultUnl
 import {
   ACCENT,
   ACCENT_DIM,
+  ACCENT_SOFT,
   DIM,
   MUTED,
   POT_BG,
@@ -35,7 +37,7 @@ import { LEVELS, TIER_META, VAULT_LEVEL_BONUS, getLevelInfo, type LevelTier } fr
 import { useAuth } from '@/context/AuthContext';
 import { usePoints } from '@/hooks/usePoints';
 import { useRollingNumber } from '@/hooks/useRollingNumber';
-import { useVaultAccess } from '@/hooks/useVaultAccess';
+import { useVaultAccess, useVaultLaunch } from '@/hooks/useVaultAccess';
 import {
   claimVaultDeposits,
   fetchVaultContents,
@@ -315,18 +317,21 @@ function VaultPotHero({
   // that takes it can never disagree; otherwise it is everything held.
   const portholeAmount = ready ? dueTotal : totalPending;
 
-  // ── The timer belongs to no single state ──
-  // If anything is still vesting there is a countdown to run, whatever else the
-  // screen is doing. It was first built inside the vesting branch, which meant
-  // it vanished the moment a deposit matured: READY showed the next unlock as a
-  // dead date, and a SEALED vault — which can sit there for weeks — showed
-  // nothing at all. The label carries the framing instead, so one timer serves
-  // every state.
+  // ── The timer belongs to every state EXCEPT the seal ──
+  // If anything is still vesting there is a countdown to run, whatever else
+  // the screen is doing — built inside the vesting branch it vanished the
+  // moment a deposit matured, leaving READY with a dead date. The one
+  // exception is the GATE: a ticking clock under a door that says SEALED
+  // promises an opening the date does not deliver (the deposit only MATURES
+  // then — below the floor nothing user-visible happens), and it competes
+  // with the porthole's actual condition, the level. A sealed vault shows no
+  // countdown; the moment the user crosses the floor it returns with its
+  // meaning intact. (Jamie's catch, pre-launch.)
   const timerLabel = vaultDayAt
     ? 'OPENS IN'
     : ready
       ? `${remainingVesting.toLocaleString()} POWR UNLOCKS IN`
-      : opened || gated
+      : opened
         ? 'NEXT UNLOCK IN'
         : 'UNLOCKS IN';
 
@@ -340,9 +345,10 @@ function VaultPotHero({
   // Plain vesting puts the timer straight under the door; every other state has
   // a card or a line above it that needs clearing first. READY only counts when
   // it actually renders its one line — with no grace window it renders nothing,
-  // and the timer would otherwise clear a block that isn't there.
+  // and the timer would otherwise clear a block that isn't there. (The gate
+  // isn't listed: a sealed vault renders no timer at all.)
   const hasStateBlock =
-    (ready && outlook?.autoReleaseAt != null) || gateGap != null || opened || vaultDayAt != null;
+    (ready && outlook?.autoReleaseAt != null) || opened || vaultDayAt != null;
 
   return (
     <View style={styles.hero}>
@@ -366,6 +372,7 @@ function VaultPotHero({
             releasedAmount={unlockedPoints}
             level={level}
             glowAnim={holdAnim}
+            sealedGap={gateGap ? { minLevel: gateGap.level, toGo: gateGap.toGo } : null}
           />
         </View>
 
@@ -435,30 +442,24 @@ function VaultPotHero({
             </Text>
           ) : null
         ) : gateGap ? (
-          /* SEALED. This branch must come before the vesting one: a gated user
-             whose POWR has all matured has no `soonest`, so without it the hero
-             would render nothing at all under the door — real value on the
-             screen with no explanation and a dial that does nothing. The gate
-             is also the one state where the dial is deliberately absent, so the
-             card has to carry the whole answer: what opens it, and how far. */
-          <View style={styles.card}>
-            <Text style={styles.cardLabel}>SEALED</Text>
-            <Text style={styles.cardHeadline}>LEVEL {gateGap.level}</Text>
-            <Text style={styles.cardBody}>
-              {dueTotal > 0
-                ? `${dueTotal.toLocaleString()} POWR has matured and is waiting. Reach Level ${gateGap.level} to open the Vault.`
-                : `Your Vault opens at Level ${gateGap.level}. Everything banked keeps vesting until then.`}
+          /* SEALED lives ON THE DOOR now — the porthole says SEALED and prices
+             the open in POWR-to-level (Jamie: no box under the vault; the
+             vault itself carries it). Down here, one quiet line for the fact
+             the porthole can't say. This branch must still come before the
+             vesting one: a gated user whose POWR has ALL matured has no
+             `soonest`, so without it nothing at all would render under the
+             door — real value on screen, sealed, with no explanation. */
+          dueTotal > 0 ? (
+            <Text style={[styles.metaLine, styles.metaIndent]}>
+              <Text style={styles.metaFigure}>{dueTotal.toLocaleString()} POWR</Text>
+              {' '}has matured and is waiting
             </Text>
-            {/* The reason this is not a punishment, said plainly — vaulted POWR
-                counts toward the level that frees it, so the vault is helping
-                the user out of the gate rather than holding them behind it.
-                Inside the card, not floating under it: the gate is one answer. */}
-            <Text style={styles.cardBody}>
-              {gateGap.toGo > 0
-                ? `${gateGap.toGo.toLocaleString()} POWR to go — everything in here counts toward it.`
-                : 'Everything in here counts toward your level.'}
-            </Text>
-          </View>
+          ) : (
+            /* The reason the gate is not a punishment: vaulted POWR counts
+               toward the level that frees it, so the vault is helping the
+               user out of the gate rather than holding them behind it. */
+            <Text style={styles.metaLine}>Everything in here counts toward your level</Text>
+          )
         ) : opened ? (
           <View style={styles.card}>
             <Text style={styles.cardLabel}>BALANCE</Text>
@@ -492,8 +493,9 @@ function VaultPotHero({
         {claimError && <Text style={styles.claimError}>{claimError}</Text>}
 
         {/* Outside the chain above, deliberately: every state that still has
-            something vesting gets the countdown, not just the plain one. */}
-        {!loading && !empty && effectiveUnlockAt && (
+            something vesting gets the countdown — except the seal, whose one
+            answer is the level (see timerLabel). */}
+        {!loading && !empty && !gated && effectiveUnlockAt && (
           <VaultTimer
             vestsAt={effectiveUnlockAt}
             startAt={soonest?.created_at ?? null}
@@ -576,6 +578,129 @@ function DepositRow({
   );
 }
 
+// ─── Coming soon ─────────────────────────────────────────────────────────────
+
+/**
+ * The pre-launch state: same sealed door, counting down to `vault_launch_at`
+ * instead of a vest. Shown to users the rollout hasn't reached while a launch
+ * is scheduled — the alternative was today's hard-hide, which reads as the
+ * feature not existing and then a balance appearing from nowhere on launch day.
+ *
+ * The DOOR carries the whole announcement: COMING SOON and the countdown run
+ * in the porthole (VaultPortholeCountdown via `countdownTo`). An announcement
+ * card + timer block used to sit under the door and were cut — Jamie: the
+ * vault itself should display it, not an extra text box. What survives below
+ * is only what the porthole can't say: the calendar date, the level floor,
+ * and the banked total — each one quiet line. No dial — there is nothing to
+ * hold for yet.
+ *
+ * The level floor is stated HERE, pre-launch, for readers it applies to —
+ * without it the countdown promises an opening that, for a user below the
+ * floor, reveals another lock on the day. Same rule as the info sheet: a
+ * user at or past the floor never hears about a restriction they aren't
+ * subject to. Level and floor both come off the outlook, the same basis the
+ * server enforces, so this line and the launch-day SEALED card can't
+ * disagree about who is gated.
+ */
+function VaultComingSoon({
+  launchAt,
+  banked,
+  loading,
+  level,
+  outlook,
+  bottomInset,
+  onInfo,
+}: {
+  launchAt: string;
+  /** Pending vault total from the points summary — the quiet line's figure. */
+  banked: number;
+  loading: boolean;
+  level: number;
+  /** Carries the level floor; null while loading or on failure (lines hide). */
+  outlook: VaultOutlook | null;
+  bottomInset: number;
+  onInfo: () => void;
+}) {
+  const { width } = useWindowDimensions();
+  const doorSize = Math.min(width - 32, 420);
+  const queryClient = useQueryClient();
+
+  // The moment the countdown lands, ask the server again — vault_has_access
+  // flips true as the timestamp passes, so this swaps the screen to the real
+  // vault live, without a reopen. Slightly late on purpose: refetching a beat
+  // early would cache a still-false answer. Hops of ≤23.5h rather than one
+  // timeout: setTimeout's int32 ceiling is ~24.8 days, and a screen left open
+  // across days must still fire at zero — the first cut only armed when
+  // mounted within a day of launch, so a long-lived mount sat at 00:00:00
+  // until some other refetch happened by.
+  useEffect(() => {
+    let id: ReturnType<typeof setTimeout> | undefined;
+    const arm = () => {
+      const ms = new Date(launchAt).getTime() - Date.now();
+      // Already passed: the guard/redirect path owns this state, not the timer.
+      if (ms <= 0) return;
+      id = setTimeout(() => {
+        if (new Date(launchAt).getTime() <= Date.now()) {
+          queryClient.invalidateQueries({ queryKey: ['vault', 'access'] });
+          queryClient.invalidateQueries({ queryKey: ['vault', 'launch'] });
+        } else {
+          arm();
+        }
+      }, Math.min(ms + 1500, 23.5 * 3600 * 1000));
+    };
+    arm();
+    return () => clearTimeout(id);
+  }, [launchAt, queryClient]);
+
+  return (
+    <ScrollView
+      style={styles.scroll}
+      contentContainerStyle={[styles.listContent, { paddingBottom: bottomInset + 40 }]}
+      showsVerticalScrollIndicator={false}
+    >
+      <View style={styles.hero}>
+        <VaultPotDoor size={doorSize} countdownTo={launchAt} level={level} />
+
+        <View style={styles.below}>
+          <Text style={styles.metaLine}>Opens {occasionDate(launchAt)}</Text>
+          {/* Only while the floor applies to this reader — see the docstring. */}
+          {isVaultGated(outlook) && (
+            <Text style={[styles.metaLine, styles.metaSpaced]}>
+              Unlocks at{' '}
+              <Text style={styles.metaFigure}>Level {outlook!.minLevel}</Text>
+              {' '}— you&apos;re Level {outlook!.currentLevel}
+            </Text>
+          )}
+          {/* Banked, not "empty": the economy has been running for this user
+              all along, and this line is the tease that makes the countdown
+              worth watching. Waits for the load — a zero it can't yet stand
+              behind is worse than a beat of silence. The tail is gate-aware:
+              "unlocks with the doors" is a false promise below the floor,
+              where the honest consolation is the SEALED card's — banked POWR
+              is itself the ladder to the level that frees it. */}
+          {!loading && banked > 0 && (
+            <Text style={[styles.metaLine, styles.metaSpaced]}>
+              <Text style={styles.metaFigure}>{banked.toLocaleString()} POWR</Text>
+              {' '}already banked
+              {isVaultGated(outlook)
+                ? ' — it all counts toward your level'
+                : ' — it unlocks with the doors'}
+            </Text>
+          )}
+        </View>
+      </View>
+
+      <Pressable
+        style={({ pressed }) => [styles.termsRow, pressed && { opacity: 0.6 }]}
+        onPress={onInfo}
+      >
+        <Text style={styles.termsText}>How the Vault works</Text>
+        <Ionicons name="chevron-forward" size={14} color={MUTED} />
+      </Pressable>
+    </ScrollView>
+  );
+}
+
 // ─── Screen ──────────────────────────────────────────────────────────────────
 
 export default function VaultScreen() {
@@ -622,10 +747,19 @@ export default function VaultScreen() {
   // deep-link straight here, and a link outlives the rollout state that created
   // it — so the screen has to check for itself rather than trusting that
   // whoever arrived was shown a door.
+  //
+  // A scheduled launch turns the bounce into the COMING SOON state instead:
+  // outside the rollout but counting down is a screen now, not a dead end.
+  // The guard waits for the launch query — access can resolve (false) first,
+  // and redirecting in that gap would bounce a user we were about to show the
+  // countdown to.
   const vaultEnabled = useVaultAccess();
+  const { launchAt, isPending: launchPending } = useVaultLaunch();
+  const launchUpcoming = !!launchAt && new Date(launchAt).getTime() > Date.now();
+  const comingSoon = !vaultEnabled && launchUpcoming;
   useEffect(() => {
-    if (!vaultEnabled) router.replace('/(tabs)/rewards');
-  }, [vaultEnabled, router]);
+    if (!vaultEnabled && !launchPending && !launchUpcoming) router.replace('/(tabs)/rewards');
+  }, [vaultEnabled, launchPending, launchUpcoming, router]);
 
   const { data, isPending, isError } = useQuery({
     queryKey: ['vault', 'contents'],
@@ -700,7 +834,30 @@ export default function VaultScreen() {
           parallel with the fetch, which is the whole speed-up. The door has
           nothing to say about the data anyway: it is a sealed vault until told
           otherwise. Keep this outside any data gate. */}
-      {isError ? (
+      {/* Coming soon outranks the error state: that error belongs to the
+          deposits query, which this state doesn't read — a fetch failure must
+          not blank a screen that only needs the launch date. */}
+      {comingSoon ? (
+        <VaultComingSoon
+          launchAt={launchAt!}
+          banked={vaultPending}
+          loading={pointsLoading}
+          level={getLevelInfo(totalEarned).current.level}
+          outlook={outlook ?? null}
+          bottomInset={insets.bottom}
+          onInfo={() => setInfoOpen(true)}
+        />
+      ) : !vaultEnabled ? (
+        /* Access says no and it isn't (yet) coming soon: either the launch
+           query is still deciding between COMING SOON and the bounce, or the
+           redirect effect is about to fire. Both are moments the vault
+           surface must NOT paint — access=false is exactly the population
+           the rollout hides it from, and the guard waiting on the launch
+           query widened this window beyond the single frame it used to be. */
+        <View style={styles.centered}>
+          <ActivityIndicator color={ACCENT} />
+        </View>
+      ) : isError ? (
         <View style={styles.centered}><Text style={styles.statusText}>Could not load your Vault.</Text></View>
       ) : (
         <SectionList
@@ -923,6 +1080,13 @@ const styles = StyleSheet.create({
   // Offsets come from the call site, which derives them from doorSize.
   unlockSlot: { position: 'absolute' },
   metaLine: { fontSize: 12.5, fontWeight: '300', color: MUTED, textAlign: 'center' },
+  // The quiet lines under a locked door (coming-soon stack, sealed state).
+  // The figure carries the gold so the eye lands on the POWR, not the
+  // sentence around it. metaSpaced = a line stacked under another; metaIndent
+  // = a first line that may wrap.
+  metaSpaced: { marginTop: 8, paddingHorizontal: 24, lineHeight: 18 },
+  metaIndent: { paddingHorizontal: 24, lineHeight: 18 },
+  metaFigure: { color: ACCENT_SOFT, fontWeight: '400' },
   // Softened rather than alarm-red: nothing here has gone wrong with the
   // user's POWR, and this sits directly beneath a gold-lit door.
   claimError: {

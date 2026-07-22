@@ -53,6 +53,15 @@ export interface VaultReadoutProps {
   ready?: boolean;
   /** Deposits still in flight — show nothing rather than claiming EMPTY. */
   loading?: boolean;
+  /**
+   * The level floor is in force for this user: the porthole says SEALED and
+   * prices the door open in POWR-to-level instead of showing contents — the
+   * card that used to carry this under the door is gone (Jamie: the vault
+   * itself should say it). Takes precedence over everything above: what is
+   * banked is listed below the door, and a sealed door's one message is what
+   * opens it.
+   */
+  sealed?: { minLevel: number; toGo: number } | null;
 }
 
 export function VaultReadout({
@@ -60,10 +69,31 @@ export function VaultReadout({
   amount = null,
   ready = false,
   loading = false,
+  sealed = null,
 }: VaultReadoutProps) {
   // Type scale, as fractions of the glass.
   const u = (f: number) => Math.round(diameter * f);
   const boxWidth = diameter * 0.8;
+
+  if (sealed) {
+    /* The LEVEL is the figure, not the gap. With the number set big in the
+       balance's slot, 24,880 read as what the user HAD in the vault — a
+       condition can't be misread as a holding, and "TO GO" pins the small
+       number as a distance. */
+    return (
+      <View style={[styles.stack, { width: boxWidth }]}>
+        <Text style={[styles.label, { fontSize: u(0.072) }]}>SEALED</Text>
+        <Text style={[styles.sealedFigure, { fontSize: u(0.165) }]}>
+          LEVEL {sealed.minLevel}
+        </Text>
+        {sealed.toGo > 0 && (
+          <Text style={[styles.sealedUnit, { fontSize: u(0.058) }]} numberOfLines={1}>
+            {sealed.toGo.toLocaleString()} POWR TO GO
+          </Text>
+        )}
+      </View>
+    );
+  }
 
   // Blank, not EMPTY: the door mounts before the deposits query resolves, and
   // an empty vault is a claim this component cannot yet make.
@@ -107,6 +137,13 @@ const styles = StyleSheet.create({
     includeFontPadding: false,
   },
   unit: { fontWeight: '400', letterSpacing: 2, color: ACCENT_SOFT, opacity: 0.8, marginTop: 1 },
+  // A WORD in the figure slot, not tabular digits — slight positive tracking
+  // reads as engraving where the number's -1 would just look cramped.
+  sealedFigure: { fontWeight: '200', letterSpacing: 1, color: ACCENT, includeFontPadding: false },
+  // Much tighter tracking than `unit`: "24,880 POWR TO GO" is four times the
+  // run of "POWR", and anything looser wraps "GO" onto its own line inside
+  // the glass (numberOfLines pins it regardless).
+  sealedUnit: { fontWeight: '400', letterSpacing: 0.6, color: ACCENT_SOFT, opacity: 0.8, marginTop: 2 },
 
   empty: { fontWeight: '300', letterSpacing: 2, color: MUTED },
 });
