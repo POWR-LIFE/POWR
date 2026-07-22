@@ -303,6 +303,19 @@ export function VaultDoor3D({ holdAnim, vestProgress, swingAnim, active = true, 
   const onContextCreate = useCallback(
 
     (gl: any) => {
+      // Present ONE TRANSPARENT FRAME immediately: until something has been
+      // presented, the native GL surface composites as an opaque BLACK SQUARE
+      // around the round loading cover (web canvases start transparent, so
+      // the QA rig never showed it — device-only, and the deferred build
+      // below stretches the window). Raw GL, no three needed, cosmetic only.
+      try {
+        gl.clearColor(0, 0, 0, 0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.endFrameEXP();
+      } catch {
+        // Nothing to do — the opacity gate on the canvas covers this too.
+      }
+
       // Deferred behind the push animation: on first open the build below is
       // heavy synchronous JS, and running it during the transition froze the
       // navigation mid-slide on device. Later opens hit the cache and the
@@ -381,10 +394,20 @@ export function VaultDoor3D({ holdAnim, vestProgress, swingAnim, active = true, 
   const ringBox = (ringR + ringStroke) * 2;
   const ringC = 2 * Math.PI * ringR;
 
+  // The canvas is invisible until the door has painted — the exact inverse
+  // of the cover's fade, so the two cross in the middle. Belt-and-braces
+  // with the transparent clear in onContextCreate: between them, no state of
+  // the native surface can ever show as a black square.
+  const canvasReveal = useRef(
+    staticFade.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }),
+  ).current;
+
   return (
     <View style={StyleSheet.absoluteFill}>
       {!glFailed && (
-        <GLView ref={glViewRef} style={StyleSheet.absoluteFill} onContextCreate={onContextCreate} />
+        <Animated.View style={[StyleSheet.absoluteFill, { opacity: canvasReveal }]}>
+          <GLView ref={glViewRef} style={StyleSheet.absoluteFill} onContextCreate={onContextCreate} />
+        </Animated.View>
       )}
       {/* The warm-up cover, faded out by drawFrame once live pixels exist.
           Two forms: a REVISIT shows the snapshot of the door's own last
