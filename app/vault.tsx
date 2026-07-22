@@ -9,6 +9,7 @@ import {
   Easing,
   Modal,
   Pressable,
+  ScrollView,
   SectionList,
   StyleSheet,
   Text,
@@ -24,6 +25,7 @@ import { UNLOCK_DIAL_SIZE, VaultUnlockButton } from '@/components/vault/VaultUnl
 import {
   ACCENT,
   ACCENT_DIM,
+  ACCENT_SOFT,
   DIM,
   MUTED,
   POT_BG,
@@ -35,7 +37,7 @@ import { LEVELS, TIER_META, VAULT_LEVEL_BONUS, getLevelInfo, type LevelTier } fr
 import { useAuth } from '@/context/AuthContext';
 import { usePoints } from '@/hooks/usePoints';
 import { useRollingNumber } from '@/hooks/useRollingNumber';
-import { useVaultAccess } from '@/hooks/useVaultAccess';
+import { useVaultAccess, useVaultLaunch } from '@/hooks/useVaultAccess';
 import {
   claimVaultDeposits,
   fetchVaultContents,
@@ -576,6 +578,118 @@ function DepositRow({
   );
 }
 
+// ─── Coming soon ─────────────────────────────────────────────────────────────
+
+/**
+ * The pre-launch state: same sealed door, counting down to `vault_launch_at`
+ * instead of a vest. Shown to users the rollout hasn't reached while a launch
+ * is scheduled — the alternative was today's hard-hide, which reads as the
+ * feature not existing and then a balance appearing from nowhere on launch day.
+ *
+ * The DOOR carries the whole announcement: COMING SOON and the countdown run
+ * in the porthole (VaultPortholeCountdown via `countdownTo`). An announcement
+ * card + timer block used to sit under the door and were cut — Jamie: the
+ * vault itself should display it, not an extra text box. What survives below
+ * is only what the porthole can't say: the calendar date, the level floor,
+ * and the banked total — each one quiet line. No dial — there is nothing to
+ * hold for yet.
+ *
+ * The level floor is stated HERE, pre-launch, for readers it applies to —
+ * without it the countdown promises an opening that, for a user below the
+ * floor, reveals another lock on the day. Same rule as the info sheet: a
+ * user at or past the floor never hears about a restriction they aren't
+ * subject to. Level and floor both come off the outlook, the same basis the
+ * server enforces, so this line and the launch-day SEALED card can't
+ * disagree about who is gated.
+ */
+function VaultComingSoon({
+  launchAt,
+  banked,
+  loading,
+  level,
+  outlook,
+  bottomInset,
+  onInfo,
+}: {
+  launchAt: string;
+  /** Pending vault total from the points summary — the quiet line's figure. */
+  banked: number;
+  loading: boolean;
+  level: number;
+  /** Carries the level floor; null while loading or on failure (lines hide). */
+  outlook: VaultOutlook | null;
+  bottomInset: number;
+  onInfo: () => void;
+}) {
+  const { width } = useWindowDimensions();
+  const doorSize = Math.min(width - 32, 420);
+  const queryClient = useQueryClient();
+
+  // The moment the countdown lands, ask the server again — vault_has_access
+  // flips true as the timestamp passes, so this swaps the screen to the real
+  // vault live, without a reopen. Slightly late on purpose: refetching a beat
+  // early would cache a still-false answer.
+  useEffect(() => {
+    const ms = new Date(launchAt).getTime() - Date.now();
+    // Beyond a day out there is nothing to arm (setTimeout's int32 ceiling is
+    // ~24.8d); any mount closer in re-arms.
+    if (ms <= 0 || ms > 24 * 3600 * 1000) return;
+    const id = setTimeout(() => {
+      queryClient.invalidateQueries({ queryKey: ['vault', 'access'] });
+      queryClient.invalidateQueries({ queryKey: ['vault', 'launch'] });
+    }, ms + 1500);
+    return () => clearTimeout(id);
+  }, [launchAt, queryClient]);
+
+  return (
+    <ScrollView
+      style={styles.scroll}
+      contentContainerStyle={[styles.listContent, { paddingBottom: bottomInset + 40 }]}
+      showsVerticalScrollIndicator={false}
+    >
+      <View style={styles.hero}>
+        <VaultPotDoor size={doorSize} countdownTo={launchAt} level={level} />
+
+        <View style={styles.below}>
+          <Text style={styles.metaLine}>Opens {occasionDate(launchAt)}</Text>
+          {/* Only while the floor applies to this reader — see the docstring. */}
+          {isVaultGated(outlook) && (
+            <Text style={[styles.metaLine, styles.soonBanked]}>
+              Unlocks at{' '}
+              <Text style={styles.soonBankedFigure}>Level {outlook!.minLevel}</Text>
+              {' '}— you&apos;re Level {outlook!.currentLevel}
+            </Text>
+          )}
+          {/* Banked, not "empty": the economy has been running for this user
+              all along, and this line is the tease that makes the countdown
+              worth watching. Waits for the load — a zero it can't yet stand
+              behind is worse than a beat of silence. The tail is gate-aware:
+              "unlocks with the doors" is a false promise below the floor,
+              where the honest consolation is the SEALED card's — banked POWR
+              is itself the ladder to the level that frees it. */}
+          {!loading && banked > 0 && (
+            <Text style={[styles.metaLine, styles.soonBanked]}>
+              <Text style={styles.soonBankedFigure}>{banked.toLocaleString()} POWR</Text>
+              {' '}already banked
+              {isVaultGated(outlook)
+                ? ' — it all counts toward your level'
+                : ' — it unlocks with the doors'}
+            </Text>
+          )}
+        </View>
+      </View>
+
+      <Pressable
+        style={({ pressed }) => [styles.termsRow, pressed && { opacity: 0.6 }]}
+        onPress={onInfo}
+      >
+        <Text style={styles.termsText}>How the Vault works</Text>
+        <Ionicons name="chevron-forward" size={14} color={MUTED} />
+      </Pressable>
+    </ScrollView>
+  );
+}
+
 // ─── Screen ──────────────────────────────────────────────────────────────────
 
 export default function VaultScreen() {
@@ -622,10 +736,19 @@ export default function VaultScreen() {
   // deep-link straight here, and a link outlives the rollout state that created
   // it — so the screen has to check for itself rather than trusting that
   // whoever arrived was shown a door.
+  //
+  // A scheduled launch turns the bounce into the COMING SOON state instead:
+  // outside the rollout but counting down is a screen now, not a dead end.
+  // The guard waits for the launch query — access can resolve (false) first,
+  // and redirecting in that gap would bounce a user we were about to show the
+  // countdown to.
   const vaultEnabled = useVaultAccess();
+  const { launchAt, isPending: launchPending } = useVaultLaunch();
+  const launchUpcoming = !!launchAt && new Date(launchAt).getTime() > Date.now();
+  const comingSoon = !vaultEnabled && launchUpcoming;
   useEffect(() => {
-    if (!vaultEnabled) router.replace('/(tabs)/rewards');
-  }, [vaultEnabled, router]);
+    if (!vaultEnabled && !launchPending && !launchUpcoming) router.replace('/(tabs)/rewards');
+  }, [vaultEnabled, launchPending, launchUpcoming, router]);
 
   const { data, isPending, isError } = useQuery({
     queryKey: ['vault', 'contents'],
@@ -700,7 +823,20 @@ export default function VaultScreen() {
           parallel with the fetch, which is the whole speed-up. The door has
           nothing to say about the data anyway: it is a sealed vault until told
           otherwise. Keep this outside any data gate. */}
-      {isError ? (
+      {/* Coming soon outranks the error state: that error belongs to the
+          deposits query, which this state doesn't read — a fetch failure must
+          not blank a screen that only needs the launch date. */}
+      {comingSoon ? (
+        <VaultComingSoon
+          launchAt={launchAt!}
+          banked={vaultPending}
+          loading={pointsLoading}
+          level={getLevelInfo(totalEarned).current.level}
+          outlook={outlook ?? null}
+          bottomInset={insets.bottom}
+          onInfo={() => setInfoOpen(true)}
+        />
+      ) : isError ? (
         <View style={styles.centered}><Text style={styles.statusText}>Could not load your Vault.</Text></View>
       ) : (
         <SectionList
@@ -923,6 +1059,10 @@ const styles = StyleSheet.create({
   // Offsets come from the call site, which derives them from doorSize.
   unlockSlot: { position: 'absolute' },
   metaLine: { fontSize: 12.5, fontWeight: '300', color: MUTED, textAlign: 'center' },
+  // Coming-soon's one line under the door. The figure carries the gold so the
+  // eye lands on the POWR, not the sentence around it.
+  soonBanked: { marginTop: 8, paddingHorizontal: 24, lineHeight: 18 },
+  soonBankedFigure: { color: ACCENT_SOFT, fontWeight: '400' },
   // Softened rather than alarm-red: nothing here has gone wrong with the
   // user's POWR, and this sits directly beneath a gold-lit door.
   claimError: {

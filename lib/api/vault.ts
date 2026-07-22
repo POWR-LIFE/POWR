@@ -117,6 +117,29 @@ export async function fetchVaultAccess(): Promise<boolean> {
 }
 
 /**
+ * When the Vault opens for everyone (`vault_launch_at`), or null when no
+ * launch is scheduled. The countdown target for the coming-soon state shown
+ * to users the rollout hasn't reached yet; server-side, vault_has_access
+ * answers true for everyone once this passes, so the clock and the door
+ * can't disagree.
+ *
+ * Plain select, not an RPC: the key is served by the authenticated
+ * vault-settings read policy like every other vault_* tunable. Null on any
+ * failure or junk value — the countdown is additive, and degrading means
+ * falling back to today's hard-hide, which is safe.
+ */
+export async function fetchVaultLaunchAt(): Promise<string | null> {
+    const { data, error } = await supabase
+        .from('system_config')
+        .select('value')
+        .eq('key', 'vault_launch_at')
+        .maybeSingle();
+    if (error || !data?.value) return null;
+    const iso = String(data.value).trim();
+    return iso && Number.isFinite(new Date(iso).getTime()) ? iso : null;
+}
+
+/**
  * Grace window + any scheduled unlock aimed at this user. Never throws: the
  * outlook only ever ADDS context to a screen that already works without it, so
  * a failure here degrades to the plain vesting view rather than an error state.
