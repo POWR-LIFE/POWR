@@ -229,6 +229,7 @@ export function VaultPotDoor({
         holdAnim={hold}
         vestProgress={ringProgress}
         swingAnim={swing}
+        size={size}
         onFirstFrame={() => setDoorReady(true)}
       />
 
