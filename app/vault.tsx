@@ -414,9 +414,11 @@ function VaultPotHero({
           flips a beat later — worse than a blank. */}
       <View style={styles.below}>
         {loading ? (
-          <View style={styles.heroLoading}>
-            <ActivityIndicator color={ACCENT} />
-          </View>
+          /* Say nothing — the door's LOADING circle is the screen's one
+             loading voice (a second spinner down here doubled it up, Jamie).
+             The gate itself stays: "Nothing vesting yet" against an
+             in-flight query is a claim the screen cannot make. */
+          null
         ) : empty ? (
           <>
             <Text style={styles.emptyTitle}>Nothing vesting yet</Text>
@@ -714,7 +716,9 @@ export default function VaultScreen() {
   // Dev-only unlock replay: dev_rearm_vault() reverses the released deposits
   // (and their payout rows) back to READY; the key bump remounts the hero so
   // its unlocked state resets and the hold can run again.
-  const isDevTestUser = DEV_TEST_EMAILS.has(user?.email ?? '');
+  // __DEV__ too, not just the account: release builds (preview/production)
+  // must never show the tool — the dev account is a real user out there.
+  const isDevTestUser = __DEV__ && DEV_TEST_EMAILS.has(user?.email ?? '');
   const [devKey, setDevKey] = useState(0);
   const [devRearming, setDevRearming] = useState(false);
 
@@ -1050,7 +1054,6 @@ const styles = StyleSheet.create({
   listContent: { paddingHorizontal: 16, paddingTop: 44, flexGrow: 1 },
 
   hero: { alignItems: 'center', paddingBottom: 4 },
-  heroLoading: { height: 96, alignItems: 'center', justifyContent: 'center' },
 
   // Everything under the door. One wrapper so each state's block sits the same
   // distance from the artwork without every branch carrying its own margin.
