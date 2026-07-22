@@ -6,6 +6,21 @@ import * as THREE from 'three';
 import { createVaultDoor, type VaultDoorModel } from './three/vaultDoorModel';
 
 /**
+ * The door, pre-rendered: same model, same camera (fov 22 @ z 7.3), same
+ * grade (exposure 1.1, light 1.0), sealed, ring unlit — baked full-frame so
+ * it lands exactly where the GL viewport draws. Painted ABOVE the GLView
+ * from the first frame and crossfaded out once the live render has actually
+ * drawn, so the first open of a session shows a door instantly instead of a
+ * blank square while the model builds. Also the GL-failure fallback — a
+ * photo of the real door beats the flat disc it replaces.
+ *
+ * ⚠ Re-bake after any door redesign (scratchpad doorshot harness / recipe in
+ * the vault memory) or the placeholder and the live door drift apart and the
+ * crossfade becomes visible.
+ */
+const DOOR_STATIC = require('@/assets/images/vault_door_static.png');
+
+/**
  * Built ONCE per app session, reused across every mount. The door is fully
  * deterministic (seeded PRNG — it must look identical every launch), and
  * building it — geometry plus several procedurally-generated noise textures —
@@ -65,6 +80,11 @@ export function VaultDoor3D({ holdAnim, vestProgress, swingAnim, active = true }
   // door rather than crash — the porthole readout, the dial and the payout are
   // all RN overlays that work fine without the render.
   const [glFailed, setGlFailed] = useState(false);
+  // The static stand-in fades out on the FIRST successfully drawn GL frame —
+  // not on init: shader compilation happens inside the first render call,
+  // and revealing the canvas before it would flash the blank we exist to hide.
+  const firstFramePaintedRef = useRef(false);
+  const staticFade = useRef(new Animated.Value(1)).current;
   const doorRef = useRef<VaultDoorModel | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -101,6 +121,14 @@ export function VaultDoor3D({ holdAnim, vestProgress, swingAnim, active = true }
       renderer.render(scene, camera);
       // Required: tells expo-gl to present the rendered frame
       gl.endFrameEXP();
+
+      // Live pixels exist: retire the static stand-in. JS driver on purpose —
+      // see the useNativeDriver warning in VaultPotDoor; this one-shot fade
+      // isn't worth an exception to the rule.
+      if (!firstFramePaintedRef.current) {
+        firstFramePaintedRef.current = true;
+        Animated.timing(staticFade, { toValue: 0, duration: 350, useNativeDriver: false }).start();
+      }
     } catch (err) {
       // A context lost mid-session (backgrounding, GPU reset) would otherwise
       // throw once per frame for as long as the loop runs.
@@ -253,37 +281,26 @@ export function VaultDoor3D({ holdAnim, vestProgress, swingAnim, active = true }
     [wake],
   );
 
-  if (glFailed) {
-    // Static stand-in: a dark steel disc with the porthole's ring, sized by the
-    // same fractions the scene projects to (disc r≈0.44, glass 0.367 — see
-    // VaultPotDoor/VaultRecess). Every functional element — readout, dial,
-    // flash — is an RN overlay painted above this by the parent.
-    return (
-      <View style={StyleSheet.absoluteFill} pointerEvents="none">
-        <View style={styles.fallbackDisc} />
-        <View style={styles.fallbackPorthole} />
-      </View>
-    );
-  }
-
-  return <GLView style={StyleSheet.absoluteFill} onContextCreate={onContextCreate} />;
+  return (
+    <View style={StyleSheet.absoluteFill}>
+      {!glFailed && <GLView style={StyleSheet.absoluteFill} onContextCreate={onContextCreate} />}
+      {/* The baked door sits ABOVE the canvas: opaque from the first frame
+          (so there is never a blank square while the model builds or shaders
+          compile), faded out by drawFrame once live pixels exist, and opaque
+          for good if GL fails — a photo of the real door is the fallback now,
+          which retired the hand-drawn disc that used to live here. Every
+          functional element — readout, dial, flash — is an RN overlay painted
+          above all of this by the parent. */}
+      <Animated.View
+        pointerEvents="none"
+        style={[StyleSheet.absoluteFill, { opacity: glFailed ? 1 : staticFade }]}
+      >
+        <Animated.Image
+          source={DOOR_STATIC}
+          style={StyleSheet.absoluteFill}
+          resizeMode="contain"
+        />
+      </Animated.View>
+    </View>
+  );
 }
-
-const styles = StyleSheet.create({
-  fallbackDisc: {
-    position: 'absolute',
-    left: '6%', right: '6%', top: '6%', bottom: '6%',
-    borderRadius: 9999,
-    backgroundColor: '#141a1f',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
-  },
-  fallbackPorthole: {
-    position: 'absolute',
-    left: '31.65%', top: '31.65%', width: '36.7%', height: '36.7%',
-    borderRadius: 9999,
-    backgroundColor: '#0a0d10',
-    borderWidth: 1,
-    borderColor: 'rgba(232,210,0,0.25)',
-  },
-});
