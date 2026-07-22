@@ -12,6 +12,20 @@
 // anisotropic turning marks, normalScale 0.08 -> 0.22). If a newer upstream
 // module is pasted in, RE-APPLY those two functions or the door goes back to
 // reading like flat dark plastic.
+//
+// ⚠ GRIT PASS (2026-07-21): the remaining gap to the reference render was
+// DEPTH, not material — the plates were only 2–9% relief on the door radius,
+// so nothing cast a shadow and every crevice was as bright as the face.
+// Three coordinated changes close it, and they depend on each other:
+//   1. GEOMETRY — ring plates are taller, the channel under them is deeper,
+//      the guide brackets arch higher and the bolts ride prouder (ARM_Z).
+//   2. SHADOW MAP — the key light casts real shadows (enabled in
+//      buildEnvironment, the one place handed a renderer). The taller
+//      geometry is what gives it something to draw.
+//   3. BAKED AO — aoRing() contact-shadow annuli hugging every wall/step
+//      junction, because a shadow map only darkens the sun side and AO is
+//      what makes crevices read dirty-dark from every angle.
+// Roll back any one of these alone and the door regresses to "flat disc".
 /**
  * createVaultDoor(THREE)
  * ------------------------------------------------------------------
@@ -48,8 +62,8 @@ export function createVaultDoor(THREE) {
 
   // ---- materials -----------------------------------------------------
   const baseEnvI = {
-    dark: 0.9, plate: 1.35, bright: 2.0, rivet: 1.35,
-    housing: 1.0, well: 0.45, hex: 0.4, glass: 1.7
+    dark: 0.9, plate: 1.35, bright: 1.7, rivet: 1.35,
+    housing: 1.0, well: 0.45, hex: 0.4, glass: 1.7, outer: 1.1
   };
   /**
    * BRUSHED STEEL — the large plates get real anisotropic specular, not just a
@@ -74,11 +88,15 @@ export function createVaultDoor(THREE) {
     anisotropyRotation: 0,
     ...params,
   }));
-  const steelDark = brushed({ name: 'SteelDark', color: 0x272c33, metalness: 0.72, roughness: 0.52, envMapIntensity: baseEnvI.dark, side: THREE.DoubleSide });
-  const steelPlate = brushed({ name: 'SteelPlate', color: 0x3d424b, metalness: 0.76, roughness: 0.40, envMapIntensity: baseEnvI.plate, side: THREE.DoubleSide });
-  const steelBright = brushed({ name: 'SteelBright', color: 0x373c43, metalness: 0.93, roughness: 0.29, envMapIntensity: baseEnvI.bright, anisotropy: 0.6 });
-  const steelRivet = M(new THREE.MeshStandardMaterial({ name: 'SteelRivet', color: 0x3e434a, metalness: 0.93, roughness: 0.35, envMapIntensity: baseEnvI.rivet }));
-  const housingMat = brushed({ name: 'Housing', color: 0x30353c, metalness: 0.80, roughness: 0.45, envMapIntensity: baseEnvI.housing });
+  const steelDark = brushed({ name: 'SteelDark', color: 0x2b2d30, metalness: 0.58, roughness: 0.56, envMapIntensity: baseEnvI.dark, side: THREE.DoubleSide });
+  const steelPlate = brushed({ name: 'SteelPlate', color: 0x3f4246, metalness: 0.62, roughness: 0.44, envMapIntensity: baseEnvI.plate, side: THREE.DoubleSide });
+  // GRIT: the outer band is CAST housing, darker and rougher than the machined
+  // mid band — the reference separates its rings tonally, and one shared plate
+  // material made the whole face a single flat grey.
+  const steelOuter = brushed({ name: 'SteelOuter', color: 0x33363a, metalness: 0.64, roughness: 0.54, envMapIntensity: baseEnvI.outer, side: THREE.DoubleSide });
+  const steelBright = brushed({ name: 'SteelBright', color: 0x35373a, metalness: 0.93, roughness: 0.29, envMapIntensity: baseEnvI.bright, anisotropy: 0.6 });
+  const steelRivet = M(new THREE.MeshStandardMaterial({ name: 'SteelRivet', color: 0x44474b, metalness: 0.93, roughness: 0.35, envMapIntensity: baseEnvI.rivet }));
+  const housingMat = brushed({ name: 'Housing', color: 0x323539, metalness: 0.68, roughness: 0.5, envMapIntensity: baseEnvI.housing });
   const wellMat = M(new THREE.MeshStandardMaterial({ name: 'Well', color: 0x0f0e0a, metalness: 0.45, roughness: 0.9, envMapIntensity: baseEnvI.well, side: THREE.DoubleSide }));
   const hexMat = M(new THREE.MeshStandardMaterial({ name: 'HexWell', color: 0x0d0b06, metalness: 0.3, roughness: 0.82, emissive: 0x6c5a10, emissiveIntensity: 0.85, envMapIntensity: baseEnvI.hex }));
   const glassMat = M(new THREE.MeshPhysicalMaterial({ name: 'Glass', color: 0x131109, metalness: 0.0, roughness: 0.08, transparent: true, opacity: 0.14, clearcoat: 1.0, clearcoatRoughness: 0.08, ior: 1.45, reflectivity: 0.5, envMapIntensity: 1.1, depthWrite: false }));
@@ -99,7 +117,7 @@ export function createVaultDoor(THREE) {
   const streakTex = makeStreakTex();
   const streakMat = M(new THREE.MeshBasicMaterial({ name: 'LockStreak', map: streakTex, color: GOLD, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false }));
 
-  const metalMats = [steelDark, steelPlate, steelBright, steelRivet, housingMat, wellMat, hexMat];
+  const metalMats = [steelDark, steelPlate, steelBright, steelRivet, housingMat, wellMat, hexMat, steelOuter];
 
   // ---- procedural textures (DataTexture; RN/expo-gl safe) ------------
   const hexTex = makeHexTex();
@@ -113,9 +131,12 @@ export function createVaultDoor(THREE) {
   // past this and the grain stops reading as a drawn finish and starts reading
   // as damage. Roughness variation plus the material's anisotropy do the work.
   const surf = makeSurfaceMaps();
-  for (const m of [steelDark, steelPlate, steelRivet, housingMat, steelBright]) {
+  for (const m of [steelDark, steelPlate, steelRivet, housingMat, steelBright, steelOuter]) {
     m.roughnessMap = surf.rough; m.normalMap = surf.normal; m.map = surf.albedo;
-    m.normalScale = new THREE.Vector2(0.42, 0.42); m.needsUpdate = true;
+    // 0.55 for the grit pass — past ~0.42 the grain starts reading as damage,
+    // which is exactly what "worn industrial" wants a hint of. If it ever
+    // reads as corrosion on device, this is the first dial to bring back.
+    m.normalScale = new THREE.Vector2(0.55, 0.55); m.needsUpdate = true;
   }
 
   // ---- root ----------------------------------------------------------
@@ -164,26 +185,33 @@ export function createVaultDoor(THREE) {
   leaf.add(disc(0.9, 0.02, -0.108, steelDark, 64));
 
   // recessed dark channel the segmented plates sit over (so seams read as gaps)
-  leaf.add(ring(0.58, 0.885, -0.035, -0.006, 0.01, steelDark, 'Channel', 96));
+  // GRIT: deeper floor — the visible strips either side of the mid band are
+  // now a real trench that the plate walls shadow into.
+  leaf.add(ring(0.58, 0.885, -0.055, -0.008, 0.01, steelDark, 'Channel', 96));
 
   // SEGMENTED boltwork band — 8 arc plates, seams fall at the arm/lock slots
-  leaf.add(arcRing(0.605, 0.85, 8, 4.5, -0.006, 0.022, 0.013, steelPlate, 'MidBand', Math.PI / 8));
+  // GRIT: plates ~2x taller and seams a shade wider so each segment reads as a
+  // separate slab of steel with a dark gap round it, not an engraved line.
+  leaf.add(arcRing(0.605, 0.85, 8, 5.2, -0.01, 0.038, 0.016, steelPlate, 'MidBand', Math.PI / 8));
 
   // SEGMENTED outer ring — 16 arc plates with bolts, over a continuous edge rim
-  leaf.add(arcRing(0.86, 0.95, 16, 3.4, 0.0, 0.056, 0.014, steelPlate, 'OuterSeg', Math.PI / 16));
-  leaf.add(ring(0.945, 0.995, 0.0, 0.046, 0.016, steelDark, 'OuterEdge', 96));
+  leaf.add(arcRing(0.86, 0.95, 16, 4.4, 0.0, 0.082, 0.018, steelOuter, 'OuterSeg', Math.PI / 16));
+  leaf.add(ring(0.945, 0.995, 0.0, 0.058, 0.016, steelDark, 'OuterEdge', 96));
 
-  // fine engraved seam groove between the bands
-  leaf.add((() => { const g = G(new THREE.TorusGeometry(0.855, 0.005, 6, 96)); const o = new THREE.Mesh(g, steelDark); o.position.z = 0.014; return o; })());
+  // engraved seam groove between the bands — thicker, so it survives the
+  // taller plates either side of it
+  leaf.add((() => { const g = G(new THREE.TorusGeometry(0.855, 0.007, 6, 96)); const o = new THREE.Mesh(g, steelDark); o.position.z = 0.02; return o; })());
 
   // ================================================================
   //  CAM RING (bezel around the porthole)  — named, movable via hook
   // ================================================================
   const camRing = new THREE.Group();
   camRing.name = 'CamRing';
-  camRing.add(ring(0.50, 0.62, 0.0, 0.088, 0.016, steelPlate, 'CamRingPlate', 96));
+  // GRIT: taller bezel — the porthole now sits at the bottom of a real well
+  // and the bezel wall throws a shadow onto the mid band beside it.
+  camRing.add(ring(0.50, 0.62, 0.0, 0.112, 0.016, steelOuter, 'CamRingPlate', 96));
   // cam-ring inner shoulder + a rim of small notches for a machined feel
-  camRing.add(ring(0.50, 0.535, 0.0, 0.05, 0.012, steelDark, 'CamRingInner', 96));
+  camRing.add(ring(0.50, 0.535, 0.0, 0.062, 0.012, steelDark, 'CamRingInner', 96));
   leaf.add(camRing);
 
   // ================================================================
@@ -214,7 +242,7 @@ export function createVaultDoor(THREE) {
     const dm = new THREE.Object3D(), c0 = new THREE.Color();
     for (let i = 0; i < TIMER_N; i++) {
       const a = Math.PI / 2 - i / TIMER_N * TAU;         // top, clockwise
-      dm.position.set(Math.cos(a) * 0.548, Math.sin(a) * 0.548, 0.093);
+      dm.position.set(Math.cos(a) * 0.548, Math.sin(a) * 0.548, 0.118);
       dm.rotation.z = a - Math.PI / 2;
       dm.updateMatrix(); timerRing.setMatrixAt(i, dm.matrix);
       timerRing.setColorAt(i, c0.setScalar(0.12));
@@ -226,7 +254,10 @@ export function createVaultDoor(THREE) {
   // ================================================================
   //  ARMS  (7 identical, shared geometry, evenly spaced, radius equal)
   // ================================================================
-  const ARM_Z = 0.036;
+  // GRIT: bolts ride high enough to clear the raised outer band (top 0.082)
+  // and skim the mid band (top 0.038) — proud hardware that casts a shadow,
+  // instead of shafts half-buried in the plate.
+  const ARM_Z = 0.092;
   const RETRACT = 0.10;           // inward travel at t=1
   // shared bolt geometry — a clean shaft that runs through the guide
   const gShaft = G(rotX(new THREE.CylinderGeometry(0.052, 0.052, 0.22, 24)));
@@ -241,8 +272,10 @@ export function createVaultDoor(THREE) {
   let armIndex = 0;
 
   // shared guide-bracket geometry (fixed; the bolt runs THROUGH it)
+  // GRIT: the bracket arches over the raised bolt line, so the cheeks are
+  // deeper and everything sits higher — see the per-part z's below.
   const gGuideBase = G(new THREE.BoxGeometry(0.15, 0.19, 0.03));
-  const gGuideCheek = G(new THREE.BoxGeometry(0.15, 0.03, 0.085));
+  const gGuideCheek = G(new THREE.BoxGeometry(0.15, 0.03, 0.11));
   const gGuideBridge = G(new THREE.BoxGeometry(0.12, 0.19, 0.03));
   const gGuideRing = G(rotX(new THREE.CylinderGeometry(0.075, 0.075, 0.04, 24))); // mouth collar around bolt
   const housings = new THREE.Group(); housings.name = 'Guides';
@@ -262,7 +295,10 @@ export function createVaultDoor(THREE) {
     const dome = new THREE.Mesh(gDome, steelBright); dome.position.set(0.94, 0, ARM_Z);
     const band = new THREE.Mesh(gBand, steelRivet); band.position.set(0.79, 0, ARM_Z);
     const inner = new THREE.Mesh(gInner, steelRivet); inner.position.set(0.735, 0, ARM_Z);
-    const sh = new THREE.Mesh(gArmShadow, shadowMat); sh.position.set(0.83, 0, 0.016); sh.renderOrder = -1;
+    // Contact shadow rides just above the mid band; the taller outer band
+    // depth-clips it automatically where the plates rise over it. Real cast
+    // shadows now do most of this work, so it stays subtle.
+    const sh = new THREE.Mesh(gArmShadow, shadowMat); sh.position.set(0.83, 0, 0.042); sh.renderOrder = -1;
     pivot.add(sh, inner, band, shaft, end, dome);
 
     leaf.add(pivot);
@@ -271,12 +307,15 @@ export function createVaultDoor(THREE) {
 
     // ---- fixed guide bracket the bolt slides through (outer end) ----
     const house = new THREE.Group();
-    const base = new THREE.Mesh(gGuideBase, steelDark); base.position.set(0, 0, 0.028);
-    const cheekL = new THREE.Mesh(gGuideCheek, housingMat); cheekL.position.set(0, 0.082, 0.07);
-    const cheekR = new THREE.Mesh(gGuideCheek, housingMat); cheekR.position.set(0, -0.082, 0.07);
-    const bridge = new THREE.Mesh(gGuideBridge, steelPlate); bridge.position.set(0, 0, 0.106);
+    const base = new THREE.Mesh(gGuideBase, steelDark); base.position.set(0, 0, 0.068);
+    const cheekL = new THREE.Mesh(gGuideCheek, housingMat); cheekL.position.set(0, 0.082, 0.112);
+    const cheekR = new THREE.Mesh(gGuideCheek, housingMat); cheekR.position.set(0, -0.082, 0.112);
+    const bridge = new THREE.Mesh(gGuideBridge, steelPlate); bridge.position.set(0, 0, 0.155);
     const ringMouth = new THREE.Mesh(gGuideRing, steelPlate); ringMouth.position.set(-0.075, 0, ARM_Z);
-    house.add(base, cheekL, cheekR, bridge, ringMouth);
+    // contact shadow pooling under the bracket on the outer band
+    const hsh = new THREE.Mesh(gArmShadow, shadowMat); hsh.position.set(0, 0, 0.0845);
+    hsh.scale.set(0.85, 1.5, 1); hsh.renderOrder = -1;
+    house.add(base, cheekL, cheekR, bridge, ringMouth, hsh);
     house.position.set(dir.x * 0.895, dir.y * 0.895, 0);
     house.rotation.z = ang;
     housings.add(house);
@@ -290,7 +329,8 @@ export function createVaultDoor(THREE) {
   // ================================================================
   const lock = new THREE.Group();
   lock.name = 'LockModule';
-  lock.position.set(0, -0.71, 0);
+  // GRIT: lifted so the housing stays proud of the taller mid band.
+  lock.position.set(0, -0.71, 0.024);
   // base + two concentric machined bezel rings + dark shoulder
   lock.add(disc(0.16, 0.05, 0.014, steelPlate, 56, 'LockHousing'));
   lock.add(ring(0.118, 0.16, 0.0, 0.072, 0.017, steelPlate, 'LockBezel', 64));
@@ -358,9 +398,9 @@ export function createVaultDoor(THREE) {
   // flanking domed bolts on the door body, either side of the lock
   for (const sx of [-0.215, 0.215]) {
     const socket = new THREE.Mesh(G(rotX(new THREE.CylinderGeometry(0.05, 0.055, 0.02, 20))), steelDark);
-    socket.position.set(sx, -0.71, 0.034);
+    socket.position.set(sx, -0.71, 0.054);
     const dome = new THREE.Mesh(G(new THREE.SphereGeometry(0.032, 16, 12)), steelBright);
-    dome.position.set(sx, -0.71, 0.05); dome.scale.z = 0.55;
+    dome.position.set(sx, -0.71, 0.07); dome.scale.z = 0.55;
     leaf.add(socket, dome);
   }
 
@@ -482,31 +522,112 @@ export function createVaultDoor(THREE) {
   // ================================================================
   //  RIVETS  (instanced) + GOLD INDICATOR TICKS
   // ================================================================
-  // a bolt on each outer segment + finer rivets
-  leaf.add(hexBolts(0.905, 16, 0.06));
-  leaf.add(makeRivets(0.575, 18, 0.052));
+  // a bolt on each outer segment + a ring of studs on the raised bezel
+  leaf.add(hexBolts(0.905, 16, 0.1));
+  // The rivet ring used to sit half-buried at z 0.052; on the taller cam ring
+  // that would have entombed it entirely, so it now studs the bezel top —
+  // which is also closer to the reference's inner ring of small bolts.
+  leaf.add(makeRivets(0.575, 18, 0.116));
 
   // gold ticks at the mid-angles BETWEEN slots, on the boltwork face
   const gTick = G(new THREE.BoxGeometry(0.014, 0.05, 0.01));
   for (let k = 0; k < 8; k++) {
     const ang = Math.PI / 2 - k * (Math.PI / 4) - Math.PI / 8;
     const t = new THREE.Mesh(gTick, goldMat);
-    t.position.set(Math.cos(ang) * 0.80, Math.sin(ang) * 0.80, 0.02);
+    t.position.set(Math.cos(ang) * 0.80, Math.sin(ang) * 0.80, 0.046);
     t.rotation.z = ang - Math.PI / 2;
     leaf.add(t);
   }
 
   // ================================================================
+  //  BAKED AO  (contact-shadow annuli in the crevices)
+  // ================================================================
+  // The shadow map only darkens the side facing away from the key light; what
+  // makes a crevice read GRIMY-dark from every angle is occlusion, and this
+  // flat-disc model has none — so it is baked here as black gradient annuli
+  // hugging each wall/step junction (same trick as the arm contact shadows,
+  // which predate this pass). Each ring peaks against its wall and fades to
+  // nothing before the next feature; where a taller plate overlaps one, the
+  // depth test clips it automatically, which is what keeps the seam gaps dark
+  // while the plate tops stay clean.
+  const aoRing = (rIn, rPeak, rOut, z, opacity, name) => {
+    const m = M(new THREE.MeshBasicMaterial({
+      name: name || 'AO', map: makeAOTex(rIn / rOut, rPeak / rOut),
+      color: 0x000000, transparent: true, opacity, depthWrite: false,
+    }));
+    const o = new THREE.Mesh(G(new THREE.CircleGeometry(rOut, 96)), m);
+    o.position.z = z; o.renderOrder = -1; if (name) o.name = name;
+    return o;
+  };
+  leaf.add(aoRing(0.545, 0.593, 0.65, -0.006, 0.85, 'AOChannelIn'));   // trench, inner strip
+  leaf.add(aoRing(0.81, 0.868, 0.925, -0.005, 0.85, 'AOChannelOut'));  // trench, outer strip
+  leaf.add(aoRing(0.60, 0.627, 0.75, 0.0405, 0.7, 'AOCamBase'));       // mid band vs bezel wall
+  leaf.add(aoRing(0.935, 0.955, 1.0, 0.0605, 0.7, 'AOOuterRim'));      // edge rim vs outer band
+  {
+    const lockAO = aoRing(0.125, 0.175, 0.28, 0.043, 0.6, 'AOLock');   // mid band vs lock housing
+    lockAO.position.set(0, -0.71, 0.043);
+    leaf.add(lockAO);
+  }
+  // Broad falloff toward the door's rim — the reference's face is brightest
+  // around the porthole and dies toward the edge. Floats above the tallest
+  // hardware and swings with the leaf; low opacity, it is a grade, not a hole.
+  leaf.add(aoRing(0.62, 1.0, 1.13, 0.2, 0.42, 'AOVignette'));
+
+  // ================================================================
+  //  SCORE LINES  (machined concentric grooves on the plate tops)
+  // ================================================================
+  // The reference scores every ring with fine dark circles — panel definition
+  // the broad faces here lacked. Thin dark tori sitting proud by less than
+  // their own radius, so they read as engraved grooves, not wires.
+  {
+    const score = (r, z) => {
+      const g = G(new THREE.TorusGeometry(r, 0.0045, 6, 96));
+      const o = new THREE.Mesh(g, steelDark); o.position.z = z; return o;
+    };
+    leaf.add(score(0.585, 0.1115));  // cam-ring bezel top
+    leaf.add(score(0.665, 0.039));   // mid band, inner
+    leaf.add(score(0.775, 0.039));   // mid band, outer
+    leaf.add(score(0.885, 0.083));   // outer band, inside the hex bolts
+  }
+
+  // ================================================================
   //  LIGHTS  (baked into the group so it reads without a host rig)
   // ================================================================
-  const keyL = new THREE.DirectionalLight(0xfff3e6, 3.6); keyL.name = 'KeyLight'; keyL.position.set(-3.5, 4.5, 5);
-  const fillL = new THREE.DirectionalLight(0x8fb4d8, 0.5); fillL.name = 'FillLight'; fillL.position.set(4.5, -2.5, 3);
-  const rimL = new THREE.DirectionalLight(0xbfe9ff, 2.3); rimL.name = 'RimLight'; rimL.position.set(-1.5, 2.5, -5);
-  const hemi = new THREE.HemisphereLight(0x3a4658, 0x05070a, 0.55); hemi.name = 'HemiLight';
+  // GRIT: harder, lower-angle key (longer shadows off the raised hardware) and
+  // less fill/ambient, so everything the key does not hit falls toward black —
+  // the reference is lit like a single hard lamp in a dark room, not a studio.
+  const keyL = new THREE.DirectionalLight(0xfff3e6, 4.5); keyL.name = 'KeyLight'; keyL.position.set(-4.2, 4.4, 3.4);
+  const fillL = new THREE.DirectionalLight(0xa9b4bb, 0.3); fillL.name = 'FillLight'; fillL.position.set(4.5, -2.5, 3);
+  const rimL = new THREE.DirectionalLight(0xd2e2ea, 2.1); rimL.name = 'RimLight'; rimL.position.set(-1.5, 2.5, -5);
+  const hemi = new THREE.HemisphereLight(0x42464b, 0x050708, 0.35); hemi.name = 'HemiLight';
   const kt = new THREE.Object3D(); group.add(kt); keyL.target = kt;
   const ft = new THREE.Object3D(); group.add(ft); fillL.target = ft;
   const rt = new THREE.Object3D(); group.add(rt); rimL.target = rt;
   group.add(keyL, fillL, rimL, hemi);
+
+  // GRIT: only the key light casts. The shadow map itself is switched on in
+  // buildEnvironment (the one place handed a renderer); everything here is
+  // renderer-independent and free when shadows are off.
+  keyL.castShadow = true;
+  keyL.shadow.mapSize.set(1024, 1024);
+  keyL.shadow.camera.left = -1.7; keyL.shadow.camera.right = 1.7;
+  keyL.shadow.camera.top = 1.7; keyL.shadow.camera.bottom = -1.7;
+  keyL.shadow.camera.near = 2; keyL.shadow.camera.far = 16;
+  // normalBias, not bias, does the acne suppression on all the small curved
+  // hardware; a big depth bias here made bolt shadows detach (peter-panning).
+  keyL.shadow.bias = -0.0002;
+  keyL.shadow.normalBias = 0.035;
+  keyL.shadow.radius = 3;
+  group.traverse(o => {
+    if (!o.isMesh && !o.isInstancedMesh) return;
+    const m = o.material;
+    // transparent = glass / glows / AO+contact shadows; intWall = the chamber,
+    // which must stay a lightless void; the timer ticks would pepper the
+    // porthole ledge with 60 tiny shadow dots.
+    if (!m || m.transparent || m === intWall || o === timerRing) return;
+    o.castShadow = true;
+    o.receiveShadow = true;
+  });
 
   // ================================================================
   //  API
@@ -575,8 +696,8 @@ export function createVaultDoor(THREE) {
   let curK = 1;
   function setLightIntensity(k) {
     curK = k;
-    keyL.intensity = 3.6 * k; fillL.intensity = 0.5 * k;
-    rimL.intensity = 2.3 * k; hemi.intensity = 0.55 * k;
+    keyL.intensity = 4.5 * k; fillL.intensity = 0.3 * k;
+    rimL.intensity = 2.1 * k; hemi.intensity = 0.35 * k;
     steelDark.envMapIntensity = baseEnvI.dark * k;
     steelPlate.envMapIntensity = baseEnvI.plate * k;
     steelBright.envMapIntensity = baseEnvI.bright * k;
@@ -585,11 +706,23 @@ export function createVaultDoor(THREE) {
     wellMat.envMapIntensity = baseEnvI.well * k;
     hexMat.envMapIntensity = baseEnvI.hex * k;
     glassMat.envMapIntensity = baseEnvI.glass * k;
+    steelOuter.envMapIntensity = baseEnvI.outer * k;
   }
 
   let envRT = null;
   function buildEnvironment(renderer) {
     if (!renderer || !THREE.PMREMGenerator) return null;
+    // GRIT: real cast shadows. Wired here because this is the only entry point
+    // that ever sees the renderer, and it runs before the first frame in every
+    // host (VaultDoor3D calls it straight after GL init). Guarded so a renderer
+    // without shadow support degrades to the pre-shadow look instead of
+    // throwing on the app's load path.
+    try {
+      renderer.shadowMap.enabled = true;
+      // NOT PCFSoftShadowMap: deprecated in r183 (warns + falls back to PCF);
+      // plain PCF also honours shadow.radius, which PCFSoft ignored.
+      renderer.shadowMap.type = THREE.PCFShadowMap;
+    } catch (e) { /* shadows are an enhancement, never a blocker */ }
     const pmrem = new THREE.PMREMGenerator(renderer);
     if (pmrem.compileEquirectangularShader) pmrem.compileEquirectangularShader();
     envRT = pmrem.fromEquirectangular(envSource);
@@ -661,11 +794,13 @@ export function createVaultDoor(THREE) {
     // machining. Pure anisotropic grain alone reads too clean and synthetic.
     for (let y = 0; y < s; y++) for (let x = 0; x < s; x++) {
       const u = x / s, v = y / s;
-      h[y * s + x] = vnoise(u, v, 3, 340) * 0.42     // primary drawn grain
-                   + vnoise(u, v, 7, 165) * 0.26     // secondary pass
-                   + vnoise(u, v, 150, 150) * 0.14   // cast/blasted speckle
-                   + vnoise(u, v, 44, 44) * 0.08     // coarser pitting
-                   + vnoise(u, v, 2, 78) * 0.10;     // slow banding, a polish pass
+      // GRIT: weights shifted from drawn grain toward the cast/blast octaves —
+      // the reference face is pitted first, machined second.
+      h[y * s + x] = vnoise(u, v, 3, 340) * 0.37     // primary drawn grain
+                   + vnoise(u, v, 7, 165) * 0.23     // secondary pass
+                   + vnoise(u, v, 150, 150) * 0.19   // cast/blasted speckle
+                   + vnoise(u, v, 44, 44) * 0.12     // coarser pitting
+                   + vnoise(u, v, 2, 78) * 0.09;     // slow banding, a polish pass
     }
 
     // ── WEAR ────────────────────────────────────────────────────────────────
@@ -681,16 +816,21 @@ export function createVaultDoor(THREE) {
     //  - SCRATCHES: sparse marks ACROSS the grain. Deliberately few and short —
     //    the map repeats 2x mirrored, so anything distinctive here shows up
     //    four times and starts reading as a pattern rather than as damage.
+    // GRIT: a coarse blotch octave on top — the reference's plates carry big
+    // soft patches of unevenness you can see at arm's length, not only the
+    // fine mottle. Coarse first so it dominates the swing.
     const mottle = new Float32Array(s * s);
     for (let y = 0; y < s; y++) for (let x = 0; x < s; x++) {
       const u = x / s, v = y / s;
-      mottle[y * s + x] = vnoise(u, v, 3.5, 3.5) * 0.6 + vnoise(u, v, 9, 9) * 0.4;
+      mottle[y * s + x] = vnoise(u, v, 1.7, 1.7) * 0.45
+                        + vnoise(u, v, 3.5, 3.5) * 0.33
+                        + vnoise(u, v, 9, 9) * 0.22;
     }
 
     // Deterministic PRNG: the door must look identical on every launch.
     let seed = 0x5eed;
     const rnd = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
-    const SCRATCHES = 26;
+    const SCRATCHES = 34;
     for (let n = 0; n < SCRATCHES; n++) {
       // Biased across the grain (grain runs along u, so angles near vertical),
       // but not perfectly perpendicular — real handling marks wander.
@@ -720,12 +860,13 @@ export function createVaultDoor(THREE) {
       // against duller ones — which is what a drawn finish physically is. The
       // mottle then swings the whole local patch duller or more burnished, so
       // the finish is uneven the way a used panel is.
-      const rc = Math.min(255, (0.44 + 0.46 * hv + 0.24 * mv) * 255) | 0;
+      const rc = Math.min(255, (0.36 + 0.54 * hv + 0.30 * mv) * 255) | 0;
       rd[i] = rd[i + 1] = rd[i + 2] = rc; rd[i + 3] = 255;
-      // Albedo: GREY ONLY, 0.80–1.0, multiplied over the material colour. Grime
-      // and handling darken steel unevenly without tinting it. Any colour here
-      // and the door reads as rusting.
-      const ac = ((0.80 + 0.20 * (0.35 + 0.65 * mv)) * 255) | 0;
+      // Albedo: GREY ONLY, and the swing is now WIDE (~0.69–1.0) — this is the
+      // dial that finally made the plates read as handled metal on a real GPU;
+      // the earlier 0.82 floor vanished into the tone mapping. Still strictly
+      // achromatic: any colour here and the door reads as rusting.
+      const ac = ((0.62 + 0.38 * (0.28 + 0.72 * mv)) * 255) | 0;
       ad[i] = ad[i + 1] = ad[i + 2] = ac; ad[i + 3] = 255;
       const dx = (at(x + 1, y) - at(x - 1, y)) * 1.0, dy = (at(x, y + 1) - at(x, y - 1)) * 1.0;
       let nx = -dx, ny = -dy, nz = 1; const l = Math.hypot(nx, ny, nz); nx /= l; ny /= l; nz /= l;
@@ -758,7 +899,17 @@ export function createVaultDoor(THREE) {
     }));
     geo.translate(0, 0, zLow);
     for (let i = 0; i < count; i++) {
-      const m = new THREE.Mesh(geo, mat); m.rotation.z = offset + i * step; grp.add(m);
+      // GRIT: every segment used to share one geometry, so all 8/16 plates
+      // showed the IDENTICAL grain, mottle and scratches — which the eye reads
+      // as a printed pattern, not wear. A per-segment UV shift makes each
+      // plate sample its own patch of the surface maps. Costs one small
+      // buffer clone per segment, built once.
+      const g2 = G(geo.clone());
+      const uv = g2.attributes.uv;
+      const du = (i * 0.371) % 1, dv = (i * 0.713) % 1;
+      for (let j = 0; j < uv.count; j++) uv.setXY(j, uv.getX(j) + du, uv.getY(j) + dv);
+      uv.needsUpdate = true;
+      const m = new THREE.Mesh(g2, mat); m.rotation.z = offset + i * step; grp.add(m);
     }
     return grp;
   }
@@ -820,6 +971,24 @@ export function createVaultDoor(THREE) {
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.needsUpdate = true;
     return T(tex);
+  }
+
+  /**
+   * Radial occlusion band for aoRing(): alpha 0 at innerFrac, 1 at peakFrac,
+   * 0 again at the disc edge, smoothstepped both sides so neither end draws a
+   * line. RGB is irrelevant (the material colour is black); alpha carries it.
+   */
+  function makeAOTex(innerFrac, peakFrac) {
+    const s = 128, data = new Uint8Array(s * s * 4), c = s / 2;
+    const ss = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+    for (let y = 0; y < s; y++) for (let x = 0; x < s; x++) {
+      const dx = (x - c) / c, dy = (y - c) / c, r = Math.hypot(dx, dy);
+      const a = r > 1 ? 0 : (r <= peakFrac ? ss(innerFrac, peakFrac, r) : 1 - ss(peakFrac, 1, r));
+      const i = (y * s + x) * 4; data[i] = data[i + 1] = data[i + 2] = 0; data[i + 3] = (a * 255) | 0;
+    }
+    const t = new THREE.DataTexture(data, s, s, THREE.RGBAFormat);
+    t.magFilter = THREE.LinearFilter; t.minFilter = THREE.LinearFilter;
+    t.needsUpdate = true; return T(t);
   }
 
   function makeSoftGlowTex() {    const s = 128, data = new Uint8Array(s * s * 4), c = s / 2;
@@ -931,6 +1100,7 @@ export function createVaultDoor(THREE) {
     const sA   = N(-0.85, 0.32, 0.42);   // sharp key strip
     const sB   = N( 0.78, 0.18, 0.35);   // sharp fill strip, opposite side
     const back = N( 0.10, 0.55, -0.88);  // cool rim so the silhouette reads
+    const front = N(-0.28, 0.38, 0.88);  // broad frontal softbox — lights the flat face
     for (let y = 0; y < h; y++) {
       const phi = ((y + 0.5) / h) * Math.PI, dy = Math.cos(phi), sp = Math.sin(phi);
       for (let x = 0; x < w; x++) {
@@ -941,14 +1111,16 @@ export function createVaultDoor(THREE) {
         let r = v * 1.00, g = v * 0.99, b = v * 0.98;
         const dc = Math.max(0, dot(dx,dy,dz, ceil[0],ceil[1],ceil[2]));
         const cb = Math.pow(dc, 4.0) * 2.5;  r += cb * 1.00; g += cb * 0.99; b += cb * 0.97;
+        const df = Math.max(0, dot(dx,dy,dz, front[0],front[1],front[2]));
+        const fb = Math.pow(df, 3.0) * 0.55; r += fb * 1.00; g += fb * 0.99; b += fb * 0.97;
         const band = Math.exp(-Math.pow(dy / 0.26, 2)) * Math.max(0, dz * 0.5 + 0.5);
-        const hb = band * 0.70;              r += hb * 1.00; g += hb * 0.98; b += hb * 0.95;
+        const hb = band * 0.78;              r += hb * 1.00; g += hb * 0.98; b += hb * 0.95;
         const da = Math.max(0, dot(dx,dy,dz, sA[0],sA[1],sA[2]));
         const ab = Math.pow(da, 90) * 26.0;  r += ab * 1.00; g += ab * 0.99; b += ab * 0.97;
         const db = Math.max(0, dot(dx,dy,dz, sB[0],sB[1],sB[2]));
-        const bb = Math.pow(db, 120) * 15.0; r += bb * 0.72; g += bb * 0.86; b += bb;
+        const bb = Math.pow(db, 120) * 15.0; r += bb * 0.86; g += bb * 0.93; b += bb;
         const dbk = Math.max(0, dot(dx,dy,dz, back[0],back[1],back[2]));
-        const kb = Math.pow(dbk, 10) * 1.6;  r += kb * 0.40; g += kb * 0.70; b += kb;
+        const kb = Math.pow(dbk, 10) * 1.6;  r += kb * 0.62; g += kb * 0.82; b += kb;
         const i = (y * w + x) * 4; data[i] = r; data[i+1] = g; data[i+2] = b; data[i+3] = 1;
       }
     }
