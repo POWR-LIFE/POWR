@@ -109,6 +109,18 @@ export function VaultPotDoor({
   const fallbackHold = useRef(new Animated.Value(0)).current;
   const hold = glowAnim ?? fallbackHold;
 
+  // The porthole contents wait for the DOOR. Until VaultDoor3D has drawn a
+  // frame (or declared failure), the loading circle owns the box — readout
+  // text landing on top of it read as clutter. The contents then fade in
+  // WITH the door instead of before it.
+  const [doorReady, setDoorReady] = useState(false);
+  const readoutReveal = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (doorReady) {
+      Animated.timing(readoutReveal, { toValue: 1, duration: 400, useNativeDriver: false }).start();
+    }
+  }, [doorReady, readoutReveal]);
+
   // ⚠ EVERY animation in this component must stay useNativeDriver: FALSE.
   // `hold` cannot be native-driven: native values do not fire JS listeners, and
   // VaultDoor3D listens to it to drive the arm retraction. Anything combined
@@ -213,7 +225,12 @@ export function VaultPotDoor({
       {/* Behind the GL view: the door has to sit IN this shadow, not on it. */}
       <VaultRecess size={size} />
 
-      <VaultDoor3D holdAnim={hold} vestProgress={ringProgress} swingAnim={swing} />
+      <VaultDoor3D
+        holdAnim={hold}
+        vestProgress={ringProgress}
+        swingAnim={swing}
+        onFirstFrame={() => setDoorReady(true)}
+      />
 
       {releasedAmount != null && (
         <Animated.View
@@ -253,6 +270,8 @@ export function VaultPotDoor({
               left: cx - portholeSize / 2,
               top: cy - portholeSize / 2,
               transform: [{ scale: readoutScale }],
+              // Held back until the door has painted — see doorReady above.
+              opacity: readoutReveal,
             },
           ]}
         >

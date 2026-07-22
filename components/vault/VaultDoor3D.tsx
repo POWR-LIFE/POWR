@@ -1,17 +1,17 @@
 import { GLView } from 'expo-gl';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, InteractionManager, StyleSheet, View } from 'react-native';
+import { Animated, InteractionManager, StyleSheet, Text, View } from 'react-native';
 import * as THREE from 'three';
 
 import { createVaultDoor, type VaultDoorModel } from './three/vaultDoorModel';
-import { ACCENT } from './potTokens';
+import { ACCENT_SOFT } from './potTokens';
 
-// ⚠ A full-frame BAKED RENDER of the door was tried as the warm-up cover and
-// rejected: pixel-perfect on web, it rendered as one oversized image on
-// device (Jamie). The loading treatment below — disc silhouette, porthole
-// ring, small gold spinner — is deliberately geometry-only: nothing about it
-// can scale wrong, and it says "loading" honestly instead of pretending the
-// door is already there. Don't re-propose the baked cover.
+// ⚠ Two warm-up covers were tried and rejected before this one (both Jamie):
+// a full-frame BAKED RENDER of the door (pixel-perfect on web, rendered as
+// one oversized image on device — don't re-propose), then a disc + porthole
+// ring + spinner ("two circles look horrible", and its spinner doubled up
+// with the hero's data spinner). What stands: ONE large circle with LOADING
+// centred in it, nothing else — geometry-only, so nothing can mis-scale.
 
 /**
  * Built ONCE per app session, reused across every mount. The door is fully
@@ -65,9 +65,16 @@ export interface VaultDoor3DProps {
   swingAnim: Animated.Value;
   /** Rendering is paused unless the door is on screen. */
   active?: boolean;
+  /**
+   * Fired once, when there is something to look at: the first successfully
+   * DRAWN frame — or the fallback, if GL fails. The parent holds the
+   * porthole readout back until then, so its text never sits on top of the
+   * LOADING circle; the contents fade in WITH the door.
+   */
+  onFirstFrame?: () => void;
 }
 
-export function VaultDoor3D({ holdAnim, vestProgress, swingAnim, active = true }: VaultDoor3DProps) {
+export function VaultDoor3D({ holdAnim, vestProgress, swingAnim, active = true, onFirstFrame }: VaultDoor3DProps) {
   // The whole 3D stack has only ever been verified on expo web; on a device
   // where expo-gl or the renderer throws, the screen must degrade to a static
   // door rather than crash — the porthole readout, the dial and the payout are
@@ -78,6 +85,10 @@ export function VaultDoor3D({ holdAnim, vestProgress, swingAnim, active = true }
   // and revealing the canvas before it would flash the blank we exist to hide.
   const firstFramePaintedRef = useRef(false);
   const staticFade = useRef(new Animated.Value(1)).current;
+  // Ref, not the prop, inside drawFrame — the render loop must never
+  // re-subscribe because a parent re-created its callback.
+  const onFirstFrameRef = useRef(onFirstFrame);
+  onFirstFrameRef.current = onFirstFrame;
   const doorRef = useRef<VaultDoorModel | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -121,6 +132,7 @@ export function VaultDoor3D({ holdAnim, vestProgress, swingAnim, active = true }
       if (!firstFramePaintedRef.current) {
         firstFramePaintedRef.current = true;
         Animated.timing(staticFade, { toValue: 0, duration: 350, useNativeDriver: false }).start();
+        onFirstFrameRef.current?.();
       }
     } catch (err) {
       // A context lost mid-session (backgrounding, GPU reset) would otherwise
@@ -180,6 +192,16 @@ export function VaultDoor3D({ holdAnim, vestProgress, swingAnim, active = true }
   useEffect(() => {
     if (active) wake(300);
   }, [active, wake]);
+
+  // A dead GL is as ready as this door will ever get: the parent's overlays
+  // (readout, dial) are the working surface over the fallback, so they must
+  // not stay held back waiting for a frame that will never draw.
+  useEffect(() => {
+    if (glFailed && !firstFramePaintedRef.current) {
+      firstFramePaintedRef.current = true;
+      onFirstFrameRef.current?.();
+    }
+  }, [glFailed]);
 
   // Deferred-init bookkeeping: the build is scheduled behind the push
   // animation, so an unmount can arrive before it has run at all.
@@ -277,23 +299,22 @@ export function VaultDoor3D({ holdAnim, vestProgress, swingAnim, active = true }
   return (
     <View style={StyleSheet.absoluteFill}>
       {!glFailed && <GLView style={StyleSheet.absoluteFill} onContextCreate={onContextCreate} />}
-      {/* The LOADING VAULT sits above the canvas: a dark disc + porthole ring
-          sized by the same fractions the scene projects to (disc r≈0.44,
-          glass 0.367 — see VaultPotDoor/VaultRecess) with a small gold
-          spinner, opaque from the first frame so there is never a blank
-          square while the model builds and shaders compile. drawFrame fades
-          it out once live pixels exist; it stays for good (minus the
-          spinner) if GL fails. Every functional element — readout, dial,
-          flash — is an RN overlay painted above this by the parent. */}
+      {/* The LOADING VAULT: one large circle — the door's silhouette, sized
+          by the fraction the scene projects to (disc r≈0.44) — with LOADING
+          centred in it and nothing else. Opaque from the first frame so
+          there is never a blank square while the model builds and shaders
+          compile; drawFrame fades it out once live pixels exist; it stays
+          (without the label) if GL fails. The parent holds the porthole
+          readout back until onFirstFrame, so no text ever lands on top of
+          this — see VaultPotDoor. */}
       <Animated.View
         pointerEvents="none"
         style={[StyleSheet.absoluteFill, { opacity: glFailed ? 1 : staticFade }]}
       >
         <View style={styles.loadingDisc} />
-        <View style={styles.loadingPorthole} />
         {!glFailed && (
-          <View style={styles.loadingSpinner}>
-            <ActivityIndicator size="small" color={ACCENT} />
+          <View style={styles.loadingCentre}>
+            <Text style={styles.loadingText}>LOADING</Text>
           </View>
         )}
       </Animated.View>
@@ -308,21 +329,14 @@ const styles = StyleSheet.create({
     borderRadius: 9999,
     backgroundColor: '#141a1f',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
+    borderColor: 'rgba(255,255,255,0.07)',
   },
-  loadingPorthole: {
-    position: 'absolute',
-    left: '31.65%', top: '31.65%', width: '36.7%', height: '36.7%',
-    borderRadius: 9999,
-    backgroundColor: '#0a0d10',
-    borderWidth: 1,
-    borderColor: 'rgba(232,210,0,0.25)',
-  },
-  // Under the porthole glass, low in it — the readout takes the centre the
-  // moment data lands, and the two must not sit on top of each other.
-  loadingSpinner: {
-    position: 'absolute',
-    left: 0, right: 0, top: '58%',
+  loadingCentre: {
+    ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
+    justifyContent: 'center',
   },
+  // The porthole-label voice (COMING SOON / SEALED): the door announces its
+  // own state, and right now the state is "forming".
+  loadingText: { fontSize: 11, fontWeight: '700', letterSpacing: 2.2, color: ACCENT_SOFT, opacity: 0.75 },
 });

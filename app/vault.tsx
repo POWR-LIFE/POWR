@@ -414,9 +414,11 @@ function VaultPotHero({
           flips a beat later — worse than a blank. */}
       <View style={styles.below}>
         {loading ? (
-          <View style={styles.heroLoading}>
-            <ActivityIndicator color={ACCENT} />
-          </View>
+          /* Say nothing — the door's LOADING circle is the screen's one
+             loading voice (a second spinner down here doubled it up, Jamie).
+             The gate itself stays: "Nothing vesting yet" against an
+             in-flight query is a claim the screen cannot make. */
+          null
         ) : empty ? (
           <>
             <Text style={styles.emptyTitle}>Nothing vesting yet</Text>
@@ -1052,7 +1054,6 @@ const styles = StyleSheet.create({
   listContent: { paddingHorizontal: 16, paddingTop: 44, flexGrow: 1 },
 
   hero: { alignItems: 'center', paddingBottom: 4 },
-  heroLoading: { height: 96, alignItems: 'center', justifyContent: 'center' },
 
   // Everything under the door. One wrapper so each state's block sits the same
   // distance from the artwork without every branch carrying its own margin.
