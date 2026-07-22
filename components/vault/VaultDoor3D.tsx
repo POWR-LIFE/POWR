@@ -1,9 +1,24 @@
 import { GLView } from 'expo-gl';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, StyleSheet, View } from 'react-native';
+import { Animated, InteractionManager, StyleSheet, View } from 'react-native';
 import * as THREE from 'three';
 
 import { createVaultDoor, type VaultDoorModel } from './three/vaultDoorModel';
+
+/**
+ * Built ONCE per app session, reused across every mount. The door is fully
+ * deterministic (seeded PRNG — it must look identical every launch), and
+ * building it — geometry plus several procedurally-generated noise textures —
+ * is the expensive half of this screen, all synchronous JS. Rebuilding it on
+ * every visit made opening /vault "take ages" on device, every time. What
+ * CANNOT be cached is anything bound to a GL context: the renderer and the
+ * PMREM environment (a render-target texture dies with its context), so
+ * buildEnvironment still runs per mount — that is the cheap part. The model's
+ * DataTextures carry CPU-side arrays, so three re-uploads them into each new
+ * context automatically. Corollary: the unmount cleanup must NOT dispose the
+ * cached model.
+ */
+let sharedDoor: VaultDoorModel | null = null;
 
 /**
  * The vault door as real 3D geometry.
@@ -145,10 +160,18 @@ export function VaultDoor3D({ holdAnim, vestProgress, swingAnim, active = true }
     if (active) wake(300);
   }, [active, wake]);
 
+  // Deferred-init bookkeeping: the build is scheduled behind the push
+  // animation, so an unmount can arrive before it has run at all.
+  const initTaskRef = useRef<{ cancel: () => void } | null>(null);
+  const unmountedRef = useRef(false);
+
   useEffect(
     () => () => {
+      unmountedRef.current = true;
+      initTaskRef.current?.cancel();
       if (frameRef.current != null) cancelAnimationFrame(frameRef.current);
-      doorRef.current?.dispose();
+      // ⚠ The door model is NOT disposed — it is the shared per-session cache
+      // (see sharedDoor). Only the per-context renderer goes.
       rendererRef.current?.dispose();
       doorRef.current = null;
       rendererRef.current = null;
@@ -159,62 +182,73 @@ export function VaultDoor3D({ holdAnim, vestProgress, swingAnim, active = true }
   const onContextCreate = useCallback(
 
     (gl: any) => {
-      try {
-      const width = gl.drawingBufferWidth;
-      const height = gl.drawingBufferHeight;
+      // Deferred behind the push animation: on first open the build below is
+      // heavy synchronous JS, and running it during the transition froze the
+      // navigation mid-slide on device. Later opens hit the cache and the
+      // deferral is imperceptible.
+      initTaskRef.current = InteractionManager.runAfterInteractions(() => {
+        if (unmountedRef.current) return;
+        try {
+          const width = gl.drawingBufferWidth;
+          const height = gl.drawingBufferHeight;
 
-      // Three.js expects a canvas. expo-gl hands us a bare context, so stand in
-      // a shim — Three reads the dimensions and attaches listeners but never
-      // touches style or the DOM. Same pattern as MagicRings; without it the
-      // renderer throws on construction.
-      const fakeCanvas = {
-        width,
-        height,
-        style: {},
-        addEventListener: () => {},
-        removeEventListener: () => {},
-        dispatchEvent: () => false,
-        clientWidth: width,
-        clientHeight: height,
-      };
+          // Three.js expects a canvas. expo-gl hands us a bare context, so
+          // stand in a shim — Three reads the dimensions and attaches
+          // listeners but never touches style or the DOM. Same pattern as
+          // MagicRings; without it the renderer throws on construction.
+          const fakeCanvas = {
+            width,
+            height,
+            style: {},
+            addEventListener: () => {},
+            removeEventListener: () => {},
+            dispatchEvent: () => false,
+            clientWidth: width,
+            clientHeight: height,
+          };
 
-      const renderer = new THREE.WebGLRenderer({
-        canvas: fakeCanvas as unknown as HTMLCanvasElement,
-        context: gl,
-        alpha: true,
+          const renderer = new THREE.WebGLRenderer({
+            canvas: fakeCanvas as unknown as HTMLCanvasElement,
+            context: gl,
+            alpha: true,
+          });
+          // The GL drawing buffer is already at native device resolution.
+          renderer.setPixelRatio(1);
+          // false = don't attempt to set canvas.style.width/height
+          renderer.setSize(width, height, false);
+          renderer.setClearColor(0x000000, 0);
+          renderer.outputColorSpace = THREE.SRGBColorSpace;
+          renderer.toneMapping = THREE.NeutralToneMapping;
+          renderer.toneMappingExposure = 1.1;
+
+          const scene = new THREE.Scene();
+          // Long lens, straight down -Z: the door reads head-on, matching the
+          // approved render rather than looking like a 3D viewport.
+          const camera = new THREE.PerspectiveCamera(22, width / height, 0.1, 100);
+          camera.position.set(0, 0, 7.3);
+          camera.lookAt(0, 0, 0);
+
+          // Session cache: only the very first open pays for the build. The
+          // environment is per-context and rebuilt every time (cheap);
+          // scene.add() re-parents the cached group out of the dead scene.
+          const door = sharedDoor ?? createVaultDoor(THREE);
+          sharedDoor = door;
+          door.buildEnvironment(renderer);
+          scene.add(door.group);
+          door.setTimer(vestRef.current);
+
+          rendererRef.current = renderer;
+          sceneRef.current = scene;
+          cameraRef.current = camera;
+          glRef.current = gl;
+          doorRef.current = door;
+
+          wake(600);
+        } catch (err) {
+          console.warn('[VaultDoor3D] GL init failed, using static fallback:', err);
+          setGlFailed(true);
+        }
       });
-      // The GL drawing buffer is already at native device resolution.
-      renderer.setPixelRatio(1);
-      // false = don't attempt to set canvas.style.width/height
-      renderer.setSize(width, height, false);
-      renderer.setClearColor(0x000000, 0);
-      renderer.outputColorSpace = THREE.SRGBColorSpace;
-      renderer.toneMapping = THREE.NeutralToneMapping;
-      renderer.toneMappingExposure = 1.1;
-
-      const scene = new THREE.Scene();
-      // Long lens, straight down -Z: the door reads head-on, matching the
-      // approved render rather than looking like a 3D viewport.
-      const camera = new THREE.PerspectiveCamera(22, width / height, 0.1, 100);
-      camera.position.set(0, 0, 7.3);
-      camera.lookAt(0, 0, 0);
-
-      const door = createVaultDoor(THREE);
-      door.buildEnvironment(renderer);
-      scene.add(door.group);
-      door.setTimer(vestRef.current);
-
-      rendererRef.current = renderer;
-      sceneRef.current = scene;
-      cameraRef.current = camera;
-      glRef.current = gl;
-      doorRef.current = door;
-
-      wake(600);
-      } catch (err) {
-        console.warn('[VaultDoor3D] GL init failed, using static fallback:', err);
-        setGlFailed(true);
-      }
     },
     [wake],
   );

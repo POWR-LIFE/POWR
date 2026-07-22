@@ -714,7 +714,9 @@ export default function VaultScreen() {
   // Dev-only unlock replay: dev_rearm_vault() reverses the released deposits
   // (and their payout rows) back to READY; the key bump remounts the hero so
   // its unlocked state resets and the hold can run again.
-  const isDevTestUser = DEV_TEST_EMAILS.has(user?.email ?? '');
+  // __DEV__ too, not just the account: release builds (preview/production)
+  // must never show the tool — the dev account is a real user out there.
+  const isDevTestUser = __DEV__ && DEV_TEST_EMAILS.has(user?.email ?? '');
   const [devKey, setDevKey] = useState(0);
   const [devRearming, setDevRearming] = useState(false);
 
