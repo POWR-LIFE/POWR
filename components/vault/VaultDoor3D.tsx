@@ -1,28 +1,21 @@
 import { GLView } from 'expo-gl';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, Image, InteractionManager, Platform, StyleSheet, Text, View } from 'react-native';
+import { Animated, InteractionManager, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 import * as THREE from 'three';
 
 import { createVaultDoor, type VaultDoorModel } from './three/vaultDoorModel';
 import { ACCENT, ACCENT_SOFT } from './potTokens';
 
-// ⚠ Warm-up covers tried and rejected before the current pair (all Jamie):
-// a full-frame BAKED RENDER of the door (pixel-perfect on web, one oversized
-// image on device — don't re-propose), a disc + porthole ring + spinner
-// ("two circles look horrible", spinner doubled the hero's data spinner),
-// then a bare disc saying LOADING (no sense of progress). What stands:
-//  - FIRST-EVER open: the disc with a gold PROGRESS RING + counting
-//    percentage. The build is one opaque synchronous call, so the count is
-//    staged toward 90% on a time model and snaps to 100 on the first real
-//    frame — perceived progress, honestly resolved.
-//  - REVISITS: no loading look at all — a SNAPSHOT of the door's own last
-//    rendered frame (captured on-device from the GL canvas, drawn at
-//    explicit pixel dimensions so the oversized-image failure mode cannot
-//    recur) covers the box while the fresh context warms underneath.
-
-/** Last rendered door frame, captured per session — the revisit cover. */
-let doorSnapshotUri: string | null = null;
+// ⚠ Warm-up covers tried and rejected before this one (all Jamie): a
+// full-frame BAKED RENDER of the door (one oversized image on device), a
+// disc + porthole ring + spinner ("two circles look horrible"), a bare disc
+// saying LOADING (no sense of progress), a disc behind the progress ring
+// plus an on-device SNAPSHOT of the door as a revisit cover ("that's not
+// working" — don't re-propose covers that imitate the door). The brief that
+// stands: OPEN → LOAD → SHOW. Loading is the gold progress ring with its
+// counting percentage on the TRANSPARENT background — no disc, no image,
+// nothing pretending to be the door — and the door fades in over it.
 
 /**
  * Built ONCE per app session, reused across every mount. The door is fully
@@ -76,17 +69,12 @@ export interface VaultDoor3DProps {
   swingAnim: Animated.Value;
   /** Rendering is paused unless the door is on screen. */
   active?: boolean;
-  /**
-   * The door box's side in dp. Sizes the progress ring, and gives the
-   * snapshot cover EXPLICIT dimensions — never absoluteFill on an image.
-   */
+  /** The door box's side in dp — sizes the progress ring. */
   size: number;
   /**
-   * Fired once, when there is something door-like to look at: the first
-   * successfully DRAWN frame, the snapshot cover on a revisit, or the
-   * fallback if GL fails. The parent holds the porthole readout back until
-   * then, so its text never sits on top of the loading circle; over a
-   * snapshot or live door it belongs immediately.
+   * Fired once, when there is something to look at: the first successfully
+   * DRAWN frame, or the fallback if GL fails. The parent holds the porthole
+   * readout back until then, so its text never sits over the progress ring.
    */
   onFirstFrame?: () => void;
 }
@@ -106,15 +94,9 @@ export function VaultDoor3D({ holdAnim, vestProgress, swingAnim, active = true, 
   // re-subscribe because a parent re-created its callback.
   const onFirstFrameRef = useRef(onFirstFrame);
   onFirstFrameRef.current = onFirstFrame;
-  // Frozen at mount: a snapshot arriving mid-warm-up must not swap covers.
-  const [snapshotUri] = useState(() => doorSnapshotUri);
   // Drives the progress percentage; flipped by drawFrame's first frame.
   const [glReady, setGlReady] = useState(false);
   const [pct, setPct] = useState(0);
-  const glViewRef = useRef<GLView>(null);
-  const snapshotWantedRef = useRef(false);
-  // drawFrame is declared before wake; the flag-setter above needs it late.
-  const wakeRef = useRef<((ms?: number) => void) | null>(null);
   const doorRef = useRef<VaultDoorModel | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -160,31 +142,6 @@ export function VaultDoor3D({ holdAnim, vestProgress, swingAnim, active = true, 
         setGlReady(true);
         Animated.timing(staticFade, { toValue: 0, duration: 350, useNativeDriver: false }).start();
         onFirstFrameRef.current?.();
-        // Ask for the revisit cover from a SETTLED frame: flag it and force a
-        // frame — the capture itself happens below, in the same task as a
-        // render, or the buffer reads back black.
-        setTimeout(() => {
-          snapshotWantedRef.current = true;
-          wakeRef.current?.(150);
-        }, 500);
-      }
-
-      // ⚠ NATIVE ONLY, initiated in the same task as the render above: expo-gl
-      // native reads its own framebuffer, but on web the browser invalidates
-      // the drawing buffer before the async readback and every capture came
-      // out BLACK (this expo-gl has no webglContextAttributes to preserve
-      // it) — a black cover is worse than the ring, so web keeps the ring.
-      // Fire-and-forget: on any failure the next visit shows the ring again.
-      if (snapshotWantedRef.current && firstFramePaintedRef.current) {
-        snapshotWantedRef.current = false;
-        if (Platform.OS !== 'web') {
-          glViewRef.current
-            ?.takeSnapshotAsync?.({ flip: true })
-            .then((snap: { uri?: unknown }) => {
-              if (snap?.uri) doorSnapshotUri = String(snap.uri);
-            })
-            .catch(() => {});
-        }
       }
     } catch (err) {
       // A context lost mid-session (backgrounding, GPU reset) would otherwise
@@ -212,7 +169,6 @@ export function VaultDoor3D({ holdAnim, vestProgress, swingAnim, active = true, 
     },
     [drawFrame],
   );
-  wakeRef.current = wake;
 
   // The gesture drives the mechanism without going through React state.
   useEffect(() => {
@@ -256,19 +212,11 @@ export function VaultDoor3D({ holdAnim, vestProgress, swingAnim, active = true, 
     }
   }, [glFailed]);
 
-  // A snapshot cover IS a door on screen: release the readout immediately —
-  // the hold-back exists to keep text off the loading circle, and there is
-  // no loading circle on a revisit.
-  useEffect(() => {
-    if (snapshotUri) onFirstFrameRef.current?.();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   // The percentage: the build is one opaque synchronous call, so progress is
   // a time model — quick out of the gate, easing toward 90, resolved to 100
-  // by the first real frame. Runs only for the ring (first-ever open).
+  // by the first real frame.
   useEffect(() => {
-    if (snapshotUri || glFailed) return;
+    if (glFailed) return;
     if (glReady) {
       setPct(100);
       return;
@@ -279,7 +227,7 @@ export function VaultDoor3D({ holdAnim, vestProgress, swingAnim, active = true, 
       setPct(Math.min(90, Math.round(90 * (1 - Math.exp(-t / 900)))));
     }, 90);
     return () => clearInterval(id);
-  }, [snapshotUri, glFailed, glReady]);
+  }, [glFailed, glReady]);
 
   // Deferred-init bookkeeping: the build is scheduled behind the push
   // animation, so an unmount can arrive before it has run at all.
@@ -406,57 +354,49 @@ export function VaultDoor3D({ holdAnim, vestProgress, swingAnim, active = true, 
     <View style={StyleSheet.absoluteFill}>
       {!glFailed && (
         <Animated.View style={[StyleSheet.absoluteFill, { opacity: canvasReveal }]}>
-          <GLView ref={glViewRef} style={StyleSheet.absoluteFill} onContextCreate={onContextCreate} />
+          <GLView style={StyleSheet.absoluteFill} onContextCreate={onContextCreate} />
         </Animated.View>
       )}
-      {/* The warm-up cover, faded out by drawFrame once live pixels exist.
-          Two forms: a REVISIT shows the snapshot of the door's own last
-          frame (explicit dimensions — never absoluteFill on an image); the
-          FIRST-EVER open shows the silhouette disc with the progress ring
-          and its counting percentage. The parent holds the porthole readout
-          back until onFirstFrame — see VaultPotDoor. */}
+      {/* OPEN → LOAD → SHOW. Loading is the progress ring + counting
+          percentage on the TRANSPARENT background — no disc, no image,
+          nothing pretending to be the door. Faded out by drawFrame once
+          live pixels exist; the parent holds the porthole readout back
+          until onFirstFrame — see VaultPotDoor. The silhouette disc
+          survives only as the GL-failure fallback, where the RN overlays
+          need something to sit on. */}
       <Animated.View
         pointerEvents="none"
         style={[StyleSheet.absoluteFill, { opacity: glFailed ? 1 : staticFade }]}
       >
-        {snapshotUri ? (
-          <Image
-            source={{ uri: snapshotUri }}
-            style={{ width: size, height: size }}
-            resizeMode="stretch"
-          />
+        {glFailed ? (
+          <View style={styles.fallbackDisc} />
         ) : (
-          <>
-            <View style={styles.loadingDisc} />
-            {!glFailed && (
+          <View style={styles.loadingCentre}>
+            <View style={{ width: ringBox, height: ringBox }}>
+              {/* Rotated so progress grows from 12 o'clock. */}
+              <Svg
+                width={ringBox}
+                height={ringBox}
+                style={{ transform: [{ rotate: '-90deg' }] }}
+              >
+                <Circle
+                  cx={ringBox / 2} cy={ringBox / 2} r={ringR}
+                  stroke="rgba(255,255,255,0.08)" strokeWidth={ringStroke} fill="none"
+                />
+                <Circle
+                  cx={ringBox / 2} cy={ringBox / 2} r={ringR}
+                  stroke={ACCENT} strokeWidth={ringStroke} fill="none"
+                  strokeLinecap="round"
+                  strokeDasharray={`${ringC}`}
+                  strokeDashoffset={ringC * (1 - pct / 100)}
+                />
+              </Svg>
               <View style={styles.loadingCentre}>
-                <View style={{ width: ringBox, height: ringBox }}>
-                  {/* Rotated so progress grows from 12 o'clock. */}
-                  <Svg
-                    width={ringBox}
-                    height={ringBox}
-                    style={{ transform: [{ rotate: '-90deg' }] }}
-                  >
-                    <Circle
-                      cx={ringBox / 2} cy={ringBox / 2} r={ringR}
-                      stroke="rgba(255,255,255,0.08)" strokeWidth={ringStroke} fill="none"
-                    />
-                    <Circle
-                      cx={ringBox / 2} cy={ringBox / 2} r={ringR}
-                      stroke={ACCENT} strokeWidth={ringStroke} fill="none"
-                      strokeLinecap="round"
-                      strokeDasharray={`${ringC}`}
-                      strokeDashoffset={ringC * (1 - pct / 100)}
-                    />
-                  </Svg>
-                  <View style={styles.loadingCentre}>
-                    <Text style={[styles.loadingPct, { fontSize: size * 0.085 }]}>{pct}%</Text>
-                    <Text style={styles.loadingText}>LOADING</Text>
-                  </View>
-                </View>
+                <Text style={[styles.loadingPct, { fontSize: size * 0.085 }]}>{pct}%</Text>
+                <Text style={styles.loadingText}>LOADING</Text>
               </View>
-            )}
-          </>
+            </View>
+          </View>
         )}
       </Animated.View>
     </View>
@@ -464,7 +404,7 @@ export function VaultDoor3D({ holdAnim, vestProgress, swingAnim, active = true, 
 }
 
 const styles = StyleSheet.create({
-  loadingDisc: {
+  fallbackDisc: {
     position: 'absolute',
     left: '6%', right: '6%', top: '6%', bottom: '6%',
     borderRadius: 9999,
