@@ -268,6 +268,7 @@ export function VaultDoor3D({ holdAnim, vestProgress, swingAnim, active = true, 
       // heavy synchronous JS, and running it during the transition froze the
       // navigation mid-slide on device. Later opens hit the cache and the
       // deferral is imperceptible.
+      initTaskRef.current?.cancel();
       initTaskRef.current = InteractionManager.runAfterInteractions(() => {
         if (unmountedRef.current) return;
         try {
