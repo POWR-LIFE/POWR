@@ -317,18 +317,21 @@ function VaultPotHero({
   // that takes it can never disagree; otherwise it is everything held.
   const portholeAmount = ready ? dueTotal : totalPending;
 
-  // ── The timer belongs to no single state ──
-  // If anything is still vesting there is a countdown to run, whatever else the
-  // screen is doing. It was first built inside the vesting branch, which meant
-  // it vanished the moment a deposit matured: READY showed the next unlock as a
-  // dead date, and a SEALED vault — which can sit there for weeks — showed
-  // nothing at all. The label carries the framing instead, so one timer serves
-  // every state.
+  // ── The timer belongs to every state EXCEPT the seal ──
+  // If anything is still vesting there is a countdown to run, whatever else
+  // the screen is doing — built inside the vesting branch it vanished the
+  // moment a deposit matured, leaving READY with a dead date. The one
+  // exception is the GATE: a ticking clock under a door that says SEALED
+  // promises an opening the date does not deliver (the deposit only MATURES
+  // then — below the floor nothing user-visible happens), and it competes
+  // with the porthole's actual condition, the level. A sealed vault shows no
+  // countdown; the moment the user crosses the floor it returns with its
+  // meaning intact. (Jamie's catch, pre-launch.)
   const timerLabel = vaultDayAt
     ? 'OPENS IN'
     : ready
       ? `${remainingVesting.toLocaleString()} POWR UNLOCKS IN`
-      : opened || gated
+      : opened
         ? 'NEXT UNLOCK IN'
         : 'UNLOCKS IN';
 
@@ -342,9 +345,10 @@ function VaultPotHero({
   // Plain vesting puts the timer straight under the door; every other state has
   // a card or a line above it that needs clearing first. READY only counts when
   // it actually renders its one line — with no grace window it renders nothing,
-  // and the timer would otherwise clear a block that isn't there.
+  // and the timer would otherwise clear a block that isn't there. (The gate
+  // isn't listed: a sealed vault renders no timer at all.)
   const hasStateBlock =
-    (ready && outlook?.autoReleaseAt != null) || gateGap != null || opened || vaultDayAt != null;
+    (ready && outlook?.autoReleaseAt != null) || opened || vaultDayAt != null;
 
   return (
     <View style={styles.hero}>
@@ -489,8 +493,9 @@ function VaultPotHero({
         {claimError && <Text style={styles.claimError}>{claimError}</Text>}
 
         {/* Outside the chain above, deliberately: every state that still has
-            something vesting gets the countdown, not just the plain one. */}
-        {!loading && !empty && effectiveUnlockAt && (
+            something vesting gets the countdown — except the seal, whose one
+            answer is the level (see timerLabel). */}
+        {!loading && !empty && !gated && effectiveUnlockAt && (
           <VaultTimer
             vestsAt={effectiveUnlockAt}
             startAt={soonest?.created_at ?? null}
