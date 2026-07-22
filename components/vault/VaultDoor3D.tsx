@@ -1,24 +1,17 @@
 import { GLView } from 'expo-gl';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, InteractionManager, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Animated, InteractionManager, StyleSheet, View } from 'react-native';
 import * as THREE from 'three';
 
 import { createVaultDoor, type VaultDoorModel } from './three/vaultDoorModel';
+import { ACCENT } from './potTokens';
 
-/**
- * The door, pre-rendered: same model, same camera (fov 22 @ z 7.3), same
- * grade (exposure 1.1, light 1.0), sealed, ring unlit — baked full-frame so
- * it lands exactly where the GL viewport draws. Painted ABOVE the GLView
- * from the first frame and crossfaded out once the live render has actually
- * drawn, so the first open of a session shows a door instantly instead of a
- * blank square while the model builds. Also the GL-failure fallback — a
- * photo of the real door beats the flat disc it replaces.
- *
- * ⚠ Re-bake after any door redesign (scratchpad doorshot harness / recipe in
- * the vault memory) or the placeholder and the live door drift apart and the
- * crossfade becomes visible.
- */
-const DOOR_STATIC = require('@/assets/images/vault_door_static.png');
+// ⚠ A full-frame BAKED RENDER of the door was tried as the warm-up cover and
+// rejected: pixel-perfect on web, it rendered as one oversized image on
+// device (Jamie). The loading treatment below — disc silhouette, porthole
+// ring, small gold spinner — is deliberately geometry-only: nothing about it
+// can scale wrong, and it says "loading" honestly instead of pretending the
+// door is already there. Don't re-propose the baked cover.
 
 /**
  * Built ONCE per app session, reused across every mount. The door is fully
@@ -80,7 +73,7 @@ export function VaultDoor3D({ holdAnim, vestProgress, swingAnim, active = true }
   // door rather than crash — the porthole readout, the dial and the payout are
   // all RN overlays that work fine without the render.
   const [glFailed, setGlFailed] = useState(false);
-  // The static stand-in fades out on the FIRST successfully drawn GL frame —
+  // The loading state fades out on the FIRST successfully drawn GL frame —
   // not on init: shader compilation happens inside the first render call,
   // and revealing the canvas before it would flash the blank we exist to hide.
   const firstFramePaintedRef = useRef(false);
@@ -122,7 +115,7 @@ export function VaultDoor3D({ holdAnim, vestProgress, swingAnim, active = true }
       // Required: tells expo-gl to present the rendered frame
       gl.endFrameEXP();
 
-      // Live pixels exist: retire the static stand-in. JS driver on purpose —
+      // Live pixels exist: retire the loading state. JS driver on purpose —
       // see the useNativeDriver warning in VaultPotDoor; this one-shot fade
       // isn't worth an exception to the rule.
       if (!firstFramePaintedRef.current) {
@@ -284,23 +277,52 @@ export function VaultDoor3D({ holdAnim, vestProgress, swingAnim, active = true }
   return (
     <View style={StyleSheet.absoluteFill}>
       {!glFailed && <GLView style={StyleSheet.absoluteFill} onContextCreate={onContextCreate} />}
-      {/* The baked door sits ABOVE the canvas: opaque from the first frame
-          (so there is never a blank square while the model builds or shaders
-          compile), faded out by drawFrame once live pixels exist, and opaque
-          for good if GL fails — a photo of the real door is the fallback now,
-          which retired the hand-drawn disc that used to live here. Every
-          functional element — readout, dial, flash — is an RN overlay painted
-          above all of this by the parent. */}
+      {/* The LOADING VAULT sits above the canvas: a dark disc + porthole ring
+          sized by the same fractions the scene projects to (disc r≈0.44,
+          glass 0.367 — see VaultPotDoor/VaultRecess) with a small gold
+          spinner, opaque from the first frame so there is never a blank
+          square while the model builds and shaders compile. drawFrame fades
+          it out once live pixels exist; it stays for good (minus the
+          spinner) if GL fails. Every functional element — readout, dial,
+          flash — is an RN overlay painted above this by the parent. */}
       <Animated.View
         pointerEvents="none"
         style={[StyleSheet.absoluteFill, { opacity: glFailed ? 1 : staticFade }]}
       >
-        <Animated.Image
-          source={DOOR_STATIC}
-          style={StyleSheet.absoluteFill}
-          resizeMode="contain"
-        />
+        <View style={styles.loadingDisc} />
+        <View style={styles.loadingPorthole} />
+        {!glFailed && (
+          <View style={styles.loadingSpinner}>
+            <ActivityIndicator size="small" color={ACCENT} />
+          </View>
+        )}
       </Animated.View>
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  loadingDisc: {
+    position: 'absolute',
+    left: '6%', right: '6%', top: '6%', bottom: '6%',
+    borderRadius: 9999,
+    backgroundColor: '#141a1f',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+  },
+  loadingPorthole: {
+    position: 'absolute',
+    left: '31.65%', top: '31.65%', width: '36.7%', height: '36.7%',
+    borderRadius: 9999,
+    backgroundColor: '#0a0d10',
+    borderWidth: 1,
+    borderColor: 'rgba(232,210,0,0.25)',
+  },
+  // Under the porthole glass, low in it — the readout takes the centre the
+  // moment data lands, and the two must not sit on top of each other.
+  loadingSpinner: {
+    position: 'absolute',
+    left: 0, right: 0, top: '58%',
+    alignItems: 'center',
+  },
+});
