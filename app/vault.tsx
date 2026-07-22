@@ -628,16 +628,27 @@ function VaultComingSoon({
   // The moment the countdown lands, ask the server again — vault_has_access
   // flips true as the timestamp passes, so this swaps the screen to the real
   // vault live, without a reopen. Slightly late on purpose: refetching a beat
-  // early would cache a still-false answer.
+  // early would cache a still-false answer. Hops of ≤23.5h rather than one
+  // timeout: setTimeout's int32 ceiling is ~24.8 days, and a screen left open
+  // across days must still fire at zero — the first cut only armed when
+  // mounted within a day of launch, so a long-lived mount sat at 00:00:00
+  // until some other refetch happened by.
   useEffect(() => {
-    const ms = new Date(launchAt).getTime() - Date.now();
-    // Beyond a day out there is nothing to arm (setTimeout's int32 ceiling is
-    // ~24.8d); any mount closer in re-arms.
-    if (ms <= 0 || ms > 24 * 3600 * 1000) return;
-    const id = setTimeout(() => {
-      queryClient.invalidateQueries({ queryKey: ['vault', 'access'] });
-      queryClient.invalidateQueries({ queryKey: ['vault', 'launch'] });
-    }, ms + 1500);
+    let id: ReturnType<typeof setTimeout> | undefined;
+    const arm = () => {
+      const ms = new Date(launchAt).getTime() - Date.now();
+      // Already passed: the guard/redirect path owns this state, not the timer.
+      if (ms <= 0) return;
+      id = setTimeout(() => {
+        if (new Date(launchAt).getTime() <= Date.now()) {
+          queryClient.invalidateQueries({ queryKey: ['vault', 'access'] });
+          queryClient.invalidateQueries({ queryKey: ['vault', 'launch'] });
+        } else {
+          arm();
+        }
+      }, Math.min(ms + 1500, 23.5 * 3600 * 1000));
+    };
+    arm();
     return () => clearTimeout(id);
   }, [launchAt, queryClient]);
 
@@ -836,6 +847,16 @@ export default function VaultScreen() {
           bottomInset={insets.bottom}
           onInfo={() => setInfoOpen(true)}
         />
+      ) : !vaultEnabled ? (
+        /* Access says no and it isn't (yet) coming soon: either the launch
+           query is still deciding between COMING SOON and the bounce, or the
+           redirect effect is about to fire. Both are moments the vault
+           surface must NOT paint — access=false is exactly the population
+           the rollout hides it from, and the guard waiting on the launch
+           query widened this window beyond the single frame it used to be. */
+        <View style={styles.centered}>
+          <ActivityIndicator color={ACCENT} />
+        </View>
       ) : isError ? (
         <View style={styles.centered}><Text style={styles.statusText}>Could not load your Vault.</Text></View>
       ) : (

@@ -175,13 +175,22 @@ export default function VaultManager() {
 
     const handleSaveLaunch = async () => {
         if (!launchAtLocal) { toast.error('Pick a launch date & time'); return; }
-        const iso = new Date(launchAtLocal).toISOString();
+        // Parse before anything else — a malformed value would otherwise throw
+        // (RangeError from toISOString) outside the try and skip the toast.
+        const parsed = new Date(launchAtLocal);
+        if (Number.isNaN(parsed.getTime())) { toast.error('That date didn’t parse — pick it again'); return; }
+        const iso = parsed.toISOString();
         setSavingLaunch(true);
         try {
             const { error } = await supabase.rpc('admin_set_vault_launch', { p_launch_at: iso });
             if (error) throw error;
-            toast.success(new Date(iso) <= new Date()
-                ? 'Launch date is in the past — the Vault is open to everyone now'
+            // Past-date framing keys off the LIVE rollout mode, not the form's
+            // unsaved selection — and 'none' outranks a passed launch, so
+            // "open to everyone now" would be a lie under the kill switch.
+            toast.success(parsed <= new Date()
+                ? (rollout?.mode === 'none'
+                    ? 'Launch date is in the past, but rollout is Nobody — the kill switch still holds the doors'
+                    : 'Launch date is in the past — the Vault is open to everyone now')
                 : `Launch set — every Vault opens ${fmtDateTime(iso)}`);
             await logAction(user.id, 'vault_launch_set', 'system_config', null, { launch_at: iso });
             fetchAll();
