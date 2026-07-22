@@ -60,6 +60,12 @@ Deno.serve(async (req: Request) => {
   if (audience.mode === 'users' && (audience.user_ids ?? []).filter(Boolean).length === 0) {
     return json({ error: 'No users selected' }, 400);
   }
+  if (audience.below_version != null && !/^\d+\.\d+\.\d+$/.test(String(audience.below_version).trim())) {
+    return json({ error: 'below_version must look like 1.4.11' }, 400);
+  }
+  if ((audience.platforms ?? []).some((p: string) => p !== 'ios' && p !== 'android')) {
+    return json({ error: 'platforms may only contain ios/android' }, 400);
+  }
   // dry_run only needs the audience count; a real send needs copy.
   if (!dryRun && (!title || !message)) {
     return json({ error: 'title and body are required' }, 400);

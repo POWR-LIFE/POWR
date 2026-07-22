@@ -20,12 +20,30 @@ export interface Audience {
   user_ids?: string[];
   user_type?: 'all' | 'pro' | 'normal'; // is_pro
   activities?: string[];                // matches profiles.activity_preferences (ANY of)
+  // Device-level filters — applied per token row, not per user, so someone with
+  // both an iPhone and an Android phone is only pushed on the targeted device.
+  platforms?: string[];                 // ('ios' | 'android')[]; empty/missing = both
+  below_version?: string;               // 'x.y.z' — only devices on an older app_version.
+  //                                       NULL app_version (pre-telemetry build) counts as older.
 }
 
 function chunk<T>(arr: T[], size: number): T[][] {
   const out: T[][] = [];
   for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
   return out;
+}
+
+// '1.4.11' or '1.4.11 (Expo Go)' → [1, 4, 11]; null when unparseable.
+export function parseVersion(v: string | null | undefined): number[] | null {
+  const m = String(v ?? '').match(/^(\d+)\.(\d+)\.(\d+)/);
+  return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
+}
+
+function versionBelow(a: number[], b: number[]): boolean {
+  for (let i = 0; i < 3; i++) {
+    if (a[i] !== b[i]) return a[i] < b[i];
+  }
+  return false; // equal is not below
 }
 
 // User ids whose stored profiles.timezone falls in `tz`'s bucket. NULL/''
@@ -103,11 +121,11 @@ export async function resolveRecipients(
   if (optErr) throw new Error(optErr.message);
   const excluded = new Set((optedOut ?? []).map((r) => r.user_id));
 
-  const allTokens: { user_id: string; expo_push_token: string }[] = [];
+  const allTokens: { user_id: string; expo_push_token: string; platform: string; app_version: string | null }[] = [];
   for (let from = 0; ; from += PAGE) {
     const { data, error } = await admin
       .from('user_push_tokens')
-      .select('user_id, expo_push_token')
+      .select('user_id, expo_push_token, platform, app_version')
       .range(from, from + PAGE - 1);
     if (error) throw new Error(error.message);
     if (!data || data.length === 0) break;
@@ -115,10 +133,21 @@ export async function resolveRecipients(
     if (data.length < PAGE) break;
   }
 
+  // Device-level filters. Unknown platform values simply match nothing — a
+  // malformed spec fails closed (0 recipients), never falls open to everyone.
+  const platforms = new Set((audience.platforms ?? []).filter(Boolean));
+  const belowV = parseVersion(audience.below_version);
+
   const seen = new Set<string>();
   return allTokens.filter((t) => {
     if (targetIds !== null && !targetIds.has(t.user_id)) return false;
     if (excluded.has(t.user_id)) return false;
+    if (platforms.size > 0 && !platforms.has(t.platform)) return false;
+    if (belowV) {
+      const v = parseVersion(t.app_version);
+      // Unparseable/NULL = last written by a pre-telemetry build — always "older".
+      if (v && !versionBelow(v, belowV)) return false;
+    }
     if (seen.has(t.expo_push_token)) return false;
     seen.add(t.expo_push_token);
     return true;
