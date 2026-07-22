@@ -9,13 +9,18 @@ export const activityLabel = (a) => ACTIVITY_LABEL[a] ?? a.charAt(0).toUpperCase
 
 // Human label for a stored audience spec (history + confirm dialogs).
 export const audienceLabel = (a) => {
-    if (!a || a.mode === 'all' || !a.mode) return 'Everyone';
-    if (a.mode === 'users') return `${a.user_ids?.length ?? 0} specific`;
+    // Device-level filters suffix every mode (platform / app-version targeting).
+    const device = [];
+    if (a?.platforms?.length) device.push(a.platforms.map((p) => (p === 'ios' ? 'iOS' : 'Android')).join(' + '));
+    if (a?.below_version) device.push(`below v${a.below_version}`);
+    const suffix = device.length ? ` · ${device.join(' · ')}` : '';
+    if (!a || a.mode === 'all' || !a.mode) return `Everyone${suffix}`;
+    if (a.mode === 'users') return `${a.user_ids?.length ?? 0} specific${suffix}`;
     const parts = [];
     if (a.user_type === 'pro') parts.push('Athletes');
     else if (a.user_type === 'normal') parts.push('Normal users');
     if (a.activities?.length) parts.push(a.activities.map(activityLabel).join(' / '));
-    return parts.join(' · ') || 'Everyone';
+    return (parts.join(' · ') || 'Everyone') + suffix;
 };
 
 // Hits the broadcast edge function (dry_run for live recipient counts).
@@ -47,14 +52,23 @@ export default function AudienceSelector({ onChange }) {
     const [search, setSearch]     = useState('');
     const [allUsers, setAllUsers] = useState(null);    // cached admin_get_users directory
 
+    // Device filters — orthogonal to mode; a user is only pushed on matching devices.
+    const [platform, setPlatform] = useState('all');   // all | ios | android
+    const [belowVersion, setBelowVersion] = useState(''); // 'x.y.z' or ''
+
     const [count, setCount]       = useState(null);
     const [checking, setChecking] = useState(false);
 
+    const belowValid = /^\d+\.\d+\.\d+$/.test(belowVersion.trim());
+
     const audience = useMemo(() => {
-        if (mode === 'segment') return { mode: 'segment', user_type: userType, activities };
-        if (mode === 'users')   return { mode: 'users', user_ids: picked.map((u) => u.id) };
-        return { mode: 'all' };
-    }, [mode, userType, activities, picked]);
+        const base = mode === 'segment' ? { mode: 'segment', user_type: userType, activities }
+                   : mode === 'users'   ? { mode: 'users', user_ids: picked.map((u) => u.id) }
+                   : { mode: 'all' };
+        if (platform !== 'all') base.platforms = [platform];
+        if (belowValid) base.below_version = belowVersion.trim();
+        return base;
+    }, [mode, userType, activities, picked, platform, belowVersion, belowValid]);
 
     // Refresh the recipient count whenever the audience spec changes (debounced).
     useEffect(() => {
@@ -218,6 +232,44 @@ export default function AudienceSelector({ onChange }) {
                     )}
                 </div>
             )}
+
+            {/* Device filters — apply on top of whichever mode is active */}
+            <div className="mt-4 pt-4 border-t border-[#F0F0EC] flex flex-wrap items-end gap-x-6 gap-y-3">
+                <div>
+                    <div className="text-xs font-medium text-[#999] mb-1.5">Platform</div>
+                    <div className="flex gap-1 p-1 rounded-lg bg-[#F4F4F1] w-fit">
+                        {[['all', 'All devices'], ['ios', 'iOS'], ['android', 'Android']].map(([v, l]) => (
+                            <button
+                                key={v}
+                                type="button"
+                                onClick={() => setPlatform(v)}
+                                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                                    platform === v ? 'bg-white text-[#111] shadow-sm' : 'text-[#777] hover:text-[#333]'
+                                }`}
+                            >
+                                {l}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+                <div>
+                    <div className="text-xs font-medium text-[#999] mb-1.5">
+                        On app version below <span className="text-[#BBB]">(optional — catches never-updated devices too)</span>
+                    </div>
+                    <input
+                        value={belowVersion}
+                        onChange={(e) => setBelowVersion(e.target.value)}
+                        placeholder="e.g. 1.4.11"
+                        className={`w-32 rounded-lg border bg-[#FAFAF8] px-3 py-1.5 text-sm text-[#111] focus:outline-none ${
+                            belowVersion.trim() && !belowValid
+                                ? 'border-[#E0A800]' : 'border-[#E6E6E1] focus:border-[#E8D200]'
+                        }`}
+                    />
+                    {belowVersion.trim() && !belowValid && (
+                        <div className="text-[11px] text-[#B58900] mt-1">Needs the full x.y.z form — ignored until then.</div>
+                    )}
+                </div>
+            </div>
 
             <div className="flex items-center gap-2 mt-4 text-sm text-[#666]">
                 <Users size={15} />
