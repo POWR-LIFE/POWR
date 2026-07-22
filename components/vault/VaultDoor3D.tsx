@@ -328,6 +328,7 @@ export function VaultDoor3D({ holdAnim, vestProgress, swingAnim, active = true, 
 
           wake(600);
         } catch (err) {
+          renderer?.dispose();
           console.warn('[VaultDoor3D] GL init failed, using static fallback:', err);
           setGlFailed(true);
         }
