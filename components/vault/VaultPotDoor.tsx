@@ -4,6 +4,7 @@ import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
 import { LevelIcon } from '@/components/LevelIcon';
 
 import { VaultDoor3D } from './VaultDoor3D';
+import { vaultProbe } from './vaultProbe';
 import { VaultPortholeCountdown } from './VaultPortholeCountdown';
 import { VaultReadout } from './VaultReadout';
 import { VaultRecess } from './VaultRecess';
@@ -117,6 +118,7 @@ export function VaultPotDoor({
   const readoutReveal = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     if (doorReady) {
+      vaultProbe('readout revealing (door reported ready)');
       Animated.timing(readoutReveal, { toValue: 1, duration: 400, useNativeDriver: false }).start();
     }
   }, [doorReady, readoutReveal]);

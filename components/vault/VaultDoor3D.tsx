@@ -1,10 +1,11 @@
 import { GLView } from 'expo-gl';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, InteractionManager, StyleSheet, Text, View } from 'react-native';
+import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 import * as THREE from 'three';
 
 import { createVaultDoor, type VaultDoorModel } from './three/vaultDoorModel';
+import { vaultProbe } from './vaultProbe';
 import { ACCENT, ACCENT_SOFT } from './potTokens';
 
 // ⚠ Warm-up covers tried and rejected before this one (all Jamie): a
@@ -54,6 +55,15 @@ let sharedDoor: VaultDoorModel | null = null;
 const SETTLE_MS = 900;
 /** Countdown ring only needs a nudge occasionally; it moves over days. */
 const TIMER_TICK_MS = 30000;
+/**
+ * Breathing room between mount and the ~5s Hermes-interpreted model build
+ * (measured on device, probe 2026-07-22). The build freezes the JS thread,
+ * and everything queued behind it starves — the screen's data queries used
+ * to resolve at +6.3s despite the network finishing in well under a second.
+ * This window lets the transition finish, the ring paint and count, and the
+ * data callbacks land, so the list is on screen BEFORE the freeze.
+ */
+const GRACE_MS = 800;
 
 export interface VaultDoor3DProps {
   /** Hold charge 0..1 — drives arm retraction directly. */
@@ -130,6 +140,7 @@ export function VaultDoor3D({ holdAnim, vestProgress, swingAnim, active = true, 
       // The chamber lights on the SWING: it should only be warm while there is
       // an open door to see it through.
       door.setChamberGlow(openValRef.current);
+      if (!firstFramePaintedRef.current) vaultProbe('first render() begins (shader compile inside)');
       renderer.render(scene, camera);
       // Required: tells expo-gl to present the rendered frame
       gl.endFrameEXP();
@@ -138,6 +149,7 @@ export function VaultDoor3D({ holdAnim, vestProgress, swingAnim, active = true, 
       // see the useNativeDriver warning in VaultPotDoor; this one-shot fade
       // isn't worth an exception to the rule.
       if (!firstFramePaintedRef.current) {
+        vaultProbe('first frame PRESENTED (door visible)');
         firstFramePaintedRef.current = true;
         setGlReady(true);
         Animated.timing(staticFade, { toValue: 0, duration: 350, useNativeDriver: false }).start();
@@ -229,15 +241,39 @@ export function VaultDoor3D({ holdAnim, vestProgress, swingAnim, active = true, 
     return () => clearInterval(id);
   }, [glFailed, glReady]);
 
-  // Deferred-init bookkeeping: the build is scheduled behind the push
-  // animation, so an unmount can arrive before it has run at all.
-  const initTaskRef = useRef<{ cancel: () => void } | null>(null);
+  // The arc ORBITS on the NATIVE thread, so the ring keeps visibly moving
+  // through the ~5s JS freeze of the model build — a parked percentage over
+  // an otherwise dead frame read as hung. The count parks (~55%) during the
+  // freeze; the motion says "still working". Isolated value, never combined
+  // with `hold`, so the native driver is safe here (the useNativeDriver
+  // warning in VaultPotDoor is about ITS graph).
+  const orbit = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (glReady || glFailed) return;
+    const loop = Animated.loop(
+      Animated.timing(orbit, {
+        toValue: 1,
+        duration: 1800,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      }),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [glReady, glFailed, orbit]);
+  const orbitSpin = useRef(
+    orbit.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }),
+  ).current;
+
+  // Deferred-init bookkeeping: the build is scheduled behind the grace
+  // window, so an unmount can arrive before it has run at all.
+  const initTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const unmountedRef = useRef(false);
 
   useEffect(
     () => () => {
       unmountedRef.current = true;
-      initTaskRef.current?.cancel();
+      if (initTimerRef.current != null) clearTimeout(initTimerRef.current);
       if (frameRef.current != null) cancelAnimationFrame(frameRef.current);
       // ⚠ The door model is NOT disposed — it is the shared per-session cache
       // (see sharedDoor). Only the per-context renderer goes.
@@ -264,12 +300,22 @@ export function VaultDoor3D({ holdAnim, vestProgress, swingAnim, active = true, 
         // Nothing to do — the opacity gate on the canvas covers this too.
       }
 
-      // Deferred behind the push animation: on first open the build below is
-      // heavy synchronous JS, and running it during the transition froze the
-      // navigation mid-slide on device. Later opens hit the cache and the
-      // deferral is imperceptible.
-      initTaskRef.current?.cancel();
-      initTaskRef.current = InteractionManager.runAfterInteractions(() => {
+      vaultProbe('GL context created; grace before build');
+      // ── The 800ms GRACE, measured not guessed ──
+      // The model build is ~5s of solid Hermes-interpreted JS on device (probe
+      // 2026-07-22), and anything queued behind it starves: the deposits and
+      // outlook queries used to resolve at +6.3s despite the network being
+      // done in well under a second. This window lets the push animation
+      // finish, the loading ring paint and count, and — critically — the data
+      // callbacks land, so the LIST and readout data are on screen BEFORE the
+      // freeze. InteractionManager was not enough: it cleared at +231ms.
+      if (initTimerRef.current != null) clearTimeout(initTimerRef.current);
+      initTimerRef.current = setTimeout(() => {
+        if (unmountedRef.current) return;
+        vaultProbe('grace over — build starting next frame');
+        // One painted frame between the state flip and the freeze, so the ring
+        // shows its parked percentage rather than an older frame.
+        requestAnimationFrame(() => {
         if (unmountedRef.current) return;
         // Hoisted above the try so the catch can dispose a renderer that was
         // constructed before a LATER init step threw (the Copilot autofix had
@@ -318,9 +364,12 @@ export function VaultDoor3D({ holdAnim, vestProgress, swingAnim, active = true, 
           // Session cache: only the very first open pays for the build. The
           // environment is per-context and rebuilt every time (cheap);
           // scene.add() re-parents the cached group out of the dead scene.
+          vaultProbe(sharedDoor ? 'model CACHE HIT' : 'createVaultDoor begins (cold)');
           const door = sharedDoor ?? createVaultDoor(THREE);
+          vaultProbe('model ready');
           sharedDoor = door;
           door.buildEnvironment(renderer);
+          vaultProbe('environment (PMREM) built');
           scene.add(door.group);
           door.setTimer(vestRef.current);
 
@@ -336,7 +385,8 @@ export function VaultDoor3D({ holdAnim, vestProgress, swingAnim, active = true, 
           console.warn('[VaultDoor3D] GL init failed, using static fallback:', err);
           setGlFailed(true);
         }
-      });
+        });
+      }, GRACE_MS);
     },
     [wake],
   );
@@ -379,24 +429,29 @@ export function VaultDoor3D({ holdAnim, vestProgress, swingAnim, active = true, 
         ) : (
           <View style={styles.loadingCentre}>
             <View style={{ width: ringBox, height: ringBox }}>
-              {/* Rotated so progress grows from 12 o'clock. */}
-              <Svg
-                width={ringBox}
-                height={ringBox}
-                style={{ transform: [{ rotate: '-90deg' }] }}
+              {/* Native-thread orbit — keeps moving through the JS freeze. */}
+              <Animated.View
+                style={[StyleSheet.absoluteFill, { transform: [{ rotate: orbitSpin }] }]}
               >
-                <Circle
-                  cx={ringBox / 2} cy={ringBox / 2} r={ringR}
-                  stroke="rgba(255,255,255,0.08)" strokeWidth={ringStroke} fill="none"
-                />
-                <Circle
-                  cx={ringBox / 2} cy={ringBox / 2} r={ringR}
-                  stroke={ACCENT} strokeWidth={ringStroke} fill="none"
-                  strokeLinecap="round"
-                  strokeDasharray={`${ringC}`}
-                  strokeDashoffset={ringC * (1 - pct / 100)}
-                />
-              </Svg>
+                {/* Rotated so progress grows from 12 o'clock. */}
+                <Svg
+                  width={ringBox}
+                  height={ringBox}
+                  style={{ transform: [{ rotate: '-90deg' }] }}
+                >
+                  <Circle
+                    cx={ringBox / 2} cy={ringBox / 2} r={ringR}
+                    stroke="rgba(255,255,255,0.08)" strokeWidth={ringStroke} fill="none"
+                  />
+                  <Circle
+                    cx={ringBox / 2} cy={ringBox / 2} r={ringR}
+                    stroke={ACCENT} strokeWidth={ringStroke} fill="none"
+                    strokeLinecap="round"
+                    strokeDasharray={`${ringC}`}
+                    strokeDashoffset={ringC * (1 - pct / 100)}
+                  />
+                </Svg>
+              </Animated.View>
               <View style={styles.loadingCentre}>
                 <Text style={[styles.loadingPct, { fontSize: size * 0.085 }]}>{pct}%</Text>
                 <Text style={styles.loadingText}>LOADING</Text>

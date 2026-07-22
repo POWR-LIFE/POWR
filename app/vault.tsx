@@ -19,6 +19,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import GeometricBackground from '@/components/GeometricBackground';
+import { vaultProbe, vaultProbeStart } from '@/components/vault/vaultProbe';
 import { VaultPotDoor } from '@/components/vault/VaultPotDoor';
 import { VaultTimer } from '@/components/vault/VaultTimer';
 import { UNLOCK_DIAL_SIZE, VaultUnlockButton } from '@/components/vault/VaultUnlockButton';
@@ -706,6 +707,11 @@ function VaultComingSoon({
 // ─── Screen ──────────────────────────────────────────────────────────────────
 
 export default function VaultScreen() {
+  // Dev-only load telemetry — stamped at first render, before the door mounts.
+  useState(() => {
+    vaultProbeStart();
+    return true;
+  });
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { vaultPending, balance, totalEarned, loading: pointsLoading } = usePoints();
@@ -770,6 +776,10 @@ export default function VaultScreen() {
     queryFn: fetchVaultContents,
   });
 
+  // Probe: when each data source lands, relative to mount.
+  useEffect(() => { if (!isPending) vaultProbe('deposits query resolved'); }, [isPending]);
+  useEffect(() => { if (!pointsLoading) vaultProbe('points summary resolved'); }, [pointsLoading]);
+
   // Grace window + any scheduled Vault Day. Short staleTime because an admin
   // scheduling an unlock is exactly the kind of change that should reach a
   // user who reopens the screen, not one that waits out an hour-long cache.
@@ -778,6 +788,7 @@ export default function VaultScreen() {
     queryFn: fetchVaultOutlook,
     staleTime: 60 * 1000,
   });
+  useEffect(() => { if (outlook) vaultProbe('outlook (sealed state) resolved'); }, [outlook]);
 
   // Live vault settings (system_config → vault_*) so the explainer copy and
   // tier pills stay honest when the admin knobs are tuned. Falls back to the
