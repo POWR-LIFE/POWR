@@ -368,6 +368,7 @@ function VaultPotHero({
             releasedAmount={unlockedPoints}
             level={level}
             glowAnim={holdAnim}
+            sealedGap={gateGap ? { minLevel: gateGap.level, toGo: gateGap.toGo } : null}
           />
         </View>
 
@@ -437,30 +438,24 @@ function VaultPotHero({
             </Text>
           ) : null
         ) : gateGap ? (
-          /* SEALED. This branch must come before the vesting one: a gated user
-             whose POWR has all matured has no `soonest`, so without it the hero
-             would render nothing at all under the door — real value on the
-             screen with no explanation and a dial that does nothing. The gate
-             is also the one state where the dial is deliberately absent, so the
-             card has to carry the whole answer: what opens it, and how far. */
-          <View style={styles.card}>
-            <Text style={styles.cardLabel}>SEALED</Text>
-            <Text style={styles.cardHeadline}>LEVEL {gateGap.level}</Text>
-            <Text style={styles.cardBody}>
-              {dueTotal > 0
-                ? `${dueTotal.toLocaleString()} POWR has matured and is waiting. Reach Level ${gateGap.level} to open the Vault.`
-                : `Your Vault opens at Level ${gateGap.level}. Everything banked keeps vesting until then.`}
+          /* SEALED lives ON THE DOOR now — the porthole says SEALED and prices
+             the open in POWR-to-level (Jamie: no box under the vault; the
+             vault itself carries it). Down here, one quiet line for the fact
+             the porthole can't say. This branch must still come before the
+             vesting one: a gated user whose POWR has ALL matured has no
+             `soonest`, so without it nothing at all would render under the
+             door — real value on screen, sealed, with no explanation. */
+          dueTotal > 0 ? (
+            <Text style={[styles.metaLine, styles.metaIndent]}>
+              <Text style={styles.metaFigure}>{dueTotal.toLocaleString()} POWR</Text>
+              {' '}has matured and is waiting
             </Text>
-            {/* The reason this is not a punishment, said plainly — vaulted POWR
-                counts toward the level that frees it, so the vault is helping
-                the user out of the gate rather than holding them behind it.
-                Inside the card, not floating under it: the gate is one answer. */}
-            <Text style={styles.cardBody}>
-              {gateGap.toGo > 0
-                ? `${gateGap.toGo.toLocaleString()} POWR to go — everything in here counts toward it.`
-                : 'Everything in here counts toward your level.'}
-            </Text>
-          </View>
+          ) : (
+            /* The reason the gate is not a punishment: vaulted POWR counts
+               toward the level that frees it, so the vault is helping the
+               user out of the gate rather than holding them behind it. */
+            <Text style={styles.metaLine}>Everything in here counts toward your level</Text>
+          )
         ) : opened ? (
           <View style={styles.card}>
             <Text style={styles.cardLabel}>BALANCE</Text>
@@ -654,9 +649,9 @@ function VaultComingSoon({
           <Text style={styles.metaLine}>Opens {occasionDate(launchAt)}</Text>
           {/* Only while the floor applies to this reader — see the docstring. */}
           {isVaultGated(outlook) && (
-            <Text style={[styles.metaLine, styles.soonBanked]}>
+            <Text style={[styles.metaLine, styles.metaSpaced]}>
               Unlocks at{' '}
-              <Text style={styles.soonBankedFigure}>Level {outlook!.minLevel}</Text>
+              <Text style={styles.metaFigure}>Level {outlook!.minLevel}</Text>
               {' '}— you&apos;re Level {outlook!.currentLevel}
             </Text>
           )}
@@ -668,8 +663,8 @@ function VaultComingSoon({
               where the honest consolation is the SEALED card's — banked POWR
               is itself the ladder to the level that frees it. */}
           {!loading && banked > 0 && (
-            <Text style={[styles.metaLine, styles.soonBanked]}>
-              <Text style={styles.soonBankedFigure}>{banked.toLocaleString()} POWR</Text>
+            <Text style={[styles.metaLine, styles.metaSpaced]}>
+              <Text style={styles.metaFigure}>{banked.toLocaleString()} POWR</Text>
               {' '}already banked
               {isVaultGated(outlook)
                 ? ' — it all counts toward your level'
@@ -1059,10 +1054,13 @@ const styles = StyleSheet.create({
   // Offsets come from the call site, which derives them from doorSize.
   unlockSlot: { position: 'absolute' },
   metaLine: { fontSize: 12.5, fontWeight: '300', color: MUTED, textAlign: 'center' },
-  // Coming-soon's one line under the door. The figure carries the gold so the
-  // eye lands on the POWR, not the sentence around it.
-  soonBanked: { marginTop: 8, paddingHorizontal: 24, lineHeight: 18 },
-  soonBankedFigure: { color: ACCENT_SOFT, fontWeight: '400' },
+  // The quiet lines under a locked door (coming-soon stack, sealed state).
+  // The figure carries the gold so the eye lands on the POWR, not the
+  // sentence around it. metaSpaced = a line stacked under another; metaIndent
+  // = a first line that may wrap.
+  metaSpaced: { marginTop: 8, paddingHorizontal: 24, lineHeight: 18 },
+  metaIndent: { paddingHorizontal: 24, lineHeight: 18 },
+  metaFigure: { color: ACCENT_SOFT, fontWeight: '400' },
   // Softened rather than alarm-red: nothing here has gone wrong with the
   // user's POWR, and this sits directly beneath a gold-lit door.
   claimError: {

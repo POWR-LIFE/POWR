@@ -53,6 +53,15 @@ export interface VaultReadoutProps {
   ready?: boolean;
   /** Deposits still in flight — show nothing rather than claiming EMPTY. */
   loading?: boolean;
+  /**
+   * The level floor is in force for this user: the porthole says SEALED and
+   * prices the door open in POWR-to-level instead of showing contents — the
+   * card that used to carry this under the door is gone (Jamie: the vault
+   * itself should say it). Takes precedence over everything above: what is
+   * banked is listed below the door, and a sealed door's one message is what
+   * opens it.
+   */
+  sealed?: { minLevel: number; toGo: number } | null;
 }
 
 export function VaultReadout({
@@ -60,10 +69,40 @@ export function VaultReadout({
   amount = null,
   ready = false,
   loading = false,
+  sealed = null,
 }: VaultReadoutProps) {
   // Type scale, as fractions of the glass.
   const u = (f: number) => Math.round(diameter * f);
   const boxWidth = diameter * 0.8;
+
+  if (sealed) {
+    return (
+      <View style={[styles.stack, { width: boxWidth }]}>
+        <Text style={[styles.label, { fontSize: u(0.072) }]}>SEALED</Text>
+        {sealed.toGo > 0 ? (
+          <>
+            <Text
+              style={[
+                styles.figure,
+                { fontSize: figureSize(sealed.toGo.toLocaleString(), boxWidth, u(0.3)) },
+              ]}
+            >
+              {sealed.toGo.toLocaleString()}
+            </Text>
+            <Text style={[styles.sealedUnit, { fontSize: u(0.066) }]}>
+              POWR TO LEVEL {sealed.minLevel}
+            </Text>
+          </>
+        ) : (
+          /* No gap to price (level table lookup failed) — state the condition
+             rather than showing a zero that reads as "free to open". */
+          <Text style={[styles.sealedUnit, { fontSize: u(0.072) }]}>
+            OPENS AT LEVEL {sealed.minLevel}
+          </Text>
+        )}
+      </View>
+    );
+  }
 
   // Blank, not EMPTY: the door mounts before the deposits query resolves, and
   // an empty vault is a claim this component cannot yet make.
@@ -107,6 +146,9 @@ const styles = StyleSheet.create({
     includeFontPadding: false,
   },
   unit: { fontWeight: '400', letterSpacing: 2, color: ACCENT_SOFT, opacity: 0.8, marginTop: 1 },
+  // Tighter tracking than `unit`: "POWR TO LEVEL 10" is four times the run of
+  // "POWR", and at letterSpacing 2 it kisses the bevel.
+  sealedUnit: { fontWeight: '400', letterSpacing: 1.2, color: ACCENT_SOFT, opacity: 0.8, marginTop: 1 },
 
   empty: { fontWeight: '300', letterSpacing: 2, color: MUTED },
 });

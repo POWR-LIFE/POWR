@@ -80,6 +80,12 @@ export interface VaultPotDoorProps {
    * ignored while this is set.
    */
   countdownTo?: string | null;
+  /**
+   * The level floor is in force: the porthole says SEALED and prices the
+   * open in POWR-to-level (VaultReadout's sealed branch) instead of showing
+   * contents. Ignored while `countdownTo` is set — pre-launch outranks it.
+   */
+  sealedGap?: { minLevel: number; toGo: number } | null;
 }
 
 export function VaultPotDoor({
@@ -93,6 +99,7 @@ export function VaultPotDoor({
   level,
   glowAnim,
   countdownTo = null,
+  sealedGap = null,
 }: VaultPotDoorProps) {
   const portholeSize = size * PORTHOLE_FRAC;
   const glowSize = size * GLOW_FRAC;
@@ -252,7 +259,13 @@ export function VaultPotDoor({
           {countdownTo ? (
             <VaultPortholeCountdown diameter={portholeSize} target={countdownTo} />
           ) : (
-            <VaultReadout diameter={portholeSize} amount={amount} ready={ready} loading={loading} />
+            <VaultReadout
+              diameter={portholeSize}
+              amount={amount}
+              ready={ready}
+              loading={loading}
+              sealed={sealedGap}
+            />
           )}
         </Animated.View>
 
