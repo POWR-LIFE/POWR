@@ -75,6 +75,19 @@ function unlockCopy(iso: string): string {
   return `Unlocks in ${days} days`;
 }
 
+/**
+ * The sealed vault's verb. Below the level floor a deposit finishing its vest
+ * window MATURES — it does not unlock; it waits, sealed, for the level. Rows
+ * that said "Unlocks in 59 days" to a Level 4 user were promising a payout
+ * date that does not exist (Jamie, cohort round 1).
+ */
+function matureCopy(iso: string): string {
+  const days = daysUntil(iso);
+  if (days === 0) return 'Matures today';
+  if (days === 1) return 'Matures tomorrow';
+  return `Matures in ${days} days`;
+}
+
 function shortDate(iso: string): string {
   return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 }
@@ -556,9 +569,14 @@ function DepositRow({
       ? vaultDayAt
       : deposit.vests_at;
   const matured = new Date(effectiveAt).getTime() <= Date.now();
+  // Below the floor the row must never say "unlocks" — maturing and
+  // unlocking are different events there: the vest window ends, the deposit
+  // waits sealed, and only the level opens it.
   const status =
-    matured && sealedMinLevel != null
-      ? `Sealed until Level ${sealedMinLevel}`
+    sealedMinLevel != null
+      ? matured
+        ? `Sealed until Level ${sealedMinLevel}`
+        : matureCopy(effectiveAt)
       : unlockCopy(effectiveAt);
 
   return (
