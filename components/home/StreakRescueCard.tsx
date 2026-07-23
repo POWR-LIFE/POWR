@@ -2,9 +2,21 @@ import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import type { StreakRescueOffer } from '@/hooks/useStreakRescue';
+import type { RescueRequirementType, StreakRescueOffer } from '@/hooks/useStreakRescue';
 
 const GOLD = '#E8D200';
+
+const UNIT_LABEL: Record<RescueRequirementType, [string, string]> = {
+  sessions:     ['session', 'sessions'],
+  gym_sessions: ['gym session', 'gym sessions'],
+  active_days:  ['active day', 'active days'],
+  steps:        ['step', 'steps'],
+};
+
+function unitFor(type: RescueRequirementType, n: number): string {
+  const [one, many] = UNIT_LABEL[type] ?? UNIT_LABEL.sessions;
+  return n === 1 ? one : many;
+}
 
 function formatRemaining(expiresAt: string): string {
   const ms = new Date(expiresAt).getTime() - Date.now();
@@ -30,6 +42,7 @@ export function StreakRescueCard({ rescue }: { rescue: StreakRescueOffer }) {
   }, [rescue.expiresAt]);
 
   const done = Math.min(rescue.sessionsDone, rescue.sessionsRequired);
+  const remainingCount = rescue.sessionsRequired - done;
   const pct = rescue.sessionsRequired > 0 ? done / rescue.sessionsRequired : 0;
 
   return (
@@ -37,15 +50,15 @@ export function StreakRescueCard({ rescue }: { rescue: StreakRescueOffer }) {
       <View style={styles.headerRow}>
         <View style={styles.titleWrap}>
           <Ionicons name="flame-outline" size={16} color={GOLD} />
-          <Text style={styles.title}>SAVE YOUR STREAK</Text>
+          <Text style={styles.title}>{(rescue.label || 'SAVE YOUR STREAK').toUpperCase()}</Text>
         </View>
         <Text style={styles.remaining}>{remaining.toUpperCase()}</Text>
       </View>
 
       <Text style={styles.body}>
         Your {rescue.lostStreak}-day streak isn&apos;t gone yet.{' '}
-        {rescue.sessionsRequired - done > 0
-          ? `${rescue.sessionsRequired - done} more session${rescue.sessionsRequired - done !== 1 ? 's' : ''} brings the whole thing back.`
+        {remainingCount > 0
+          ? `${remainingCount.toLocaleString()} more ${unitFor(rescue.requirementType, remainingCount)} brings the whole thing back.`
           : 'Rescue complete — your streak is restored.'}
       </Text>
 
@@ -53,7 +66,8 @@ export function StreakRescueCard({ rescue }: { rescue: StreakRescueOffer }) {
         <View style={[styles.progressFill, { width: `${Math.round(pct * 100)}%` }]} />
       </View>
       <Text style={styles.progressLabel}>
-        {done} / {rescue.sessionsRequired} SESSIONS
+        {done.toLocaleString()} / {rescue.sessionsRequired.toLocaleString()}{' '}
+        {unitFor(rescue.requirementType, rescue.sessionsRequired).toUpperCase()}
       </Text>
     </View>
   );

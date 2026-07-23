@@ -1,9 +1,15 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 
+export type RescueRequirementType = 'sessions' | 'gym_sessions' | 'active_days' | 'steps';
+
 export interface StreakRescueOffer {
     id: string;
     lostStreak: number;
+    /** Admin-authored challenge name, e.g. "Back on track". */
+    label: string | null;
+    requirementType: RescueRequirementType;
+    /** Required amount in the requirement's unit (sessions / days / steps). */
     sessionsRequired: number;
     sessionsDone: number;
     expiresAt: string;
@@ -23,7 +29,7 @@ export function useStreakRescue() {
             try {
                 const { data: row } = await supabase
                     .from('streak_rescues')
-                    .select('id, lost_streak, sessions_required, sessions_done, expires_at, status')
+                    .select('id, lost_streak, label, requirement_type, sessions_required, sessions_done, expires_at, status')
                     .eq('status', 'offered')
                     .gt('expires_at', new Date().toISOString())
                     .maybeSingle();
@@ -31,6 +37,8 @@ export function useStreakRescue() {
                 return {
                     id: row.id,
                     lostStreak: row.lost_streak,
+                    label: row.label ?? null,
+                    requirementType: (row.requirement_type ?? 'sessions') as RescueRequirementType,
                     sessionsRequired: row.sessions_required,
                     sessionsDone: row.sessions_done,
                     expiresAt: row.expires_at,
