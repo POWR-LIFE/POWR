@@ -10,6 +10,9 @@ export interface StreakRescueOffer {
      *  not only in the push (which a notifications-off user never sees). */
     state: 'offered' | 'saved';
     lostStreak: number;
+    /** The local calendar day (YYYY-MM-DD) that broke the chain — highlighted
+     *  in the StreakCard week strip while the offer is live. */
+    missedDay: string;
     /** Admin-authored challenge name, e.g. "Back on track". */
     label: string | null;
     requirementType: RescueRequirementType;
@@ -33,7 +36,7 @@ export function useStreakRescue() {
             try {
                 const { data: row } = await supabase
                     .from('streak_rescues')
-                    .select('id, lost_streak, label, requirement_type, sessions_required, sessions_done, expires_at, status, completed_at')
+                    .select('id, lost_streak, missed_day, label, requirement_type, sessions_required, sessions_done, expires_at, status, completed_at')
                     .in('status', ['offered', 'completed'])
                     .order('offered_at', { ascending: false })
                     .limit(1)
@@ -50,6 +53,7 @@ export function useStreakRescue() {
                     id: row.id,
                     state: isLiveOffer ? 'offered' : 'saved',
                     lostStreak: row.lost_streak,
+                    missedDay: String(row.missed_day ?? '').slice(0, 10),
                     label: row.label ?? null,
                     requirementType: (row.requirement_type ?? 'sessions') as RescueRequirementType,
                     sessionsRequired: row.sessions_required,

@@ -2,7 +2,7 @@ import { supabase } from '@/lib/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Easing, LayoutChangeEvent, Modal, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import ReAnimated, {
     Extrapolate,
@@ -25,7 +25,7 @@ import { LevelUpCelebration } from '@/components/LevelUpCelebration';
 import { GeometricBackground } from '@/components/home/GeometricBackground';
 import { StickyActivityIndicators } from '@/components/home/StickyActivityIndicators';
 import { StreakCard } from '@/components/home/StreakCard';
-import { StreakRescueCard } from '@/components/home/StreakRescueCard';
+import { StreakRescueModal } from '@/components/home/StreakRescueModal';
 import { WeeklyActivityBars, type WeeklyRingData } from '@/components/home/WeeklyActivityRings';
 import { WeeklyActivityCircles } from '@/components/home/WeeklyActivityRings';
 import { HeaderActions } from '@/components/HeaderActions';
@@ -115,6 +115,20 @@ export default function HomeScreen() {
     const { user } = useAuth();
     const { currentStreak, multiplier, refresh: refreshStreak } = useStreak();
     const { rescue } = useStreakRescue();
+
+    // Mon–Sun index of the rescue's missed day, when it falls inside the
+    // current week strip (an offer from last Sunday about last Saturday
+    // simply doesn't highlight — the strip only shows this week).
+    const rescueDayIndex = useMemo(() => {
+        if (!rescue || rescue.state !== 'offered' || !rescue.missedDay) return null;
+        const missed = new Date(`${rescue.missedDay}T12:00:00`);
+        const now = new Date();
+        const monday = new Date(now);
+        monday.setDate(now.getDate() - TODAY_INDEX);
+        monday.setHours(0, 0, 0, 0);
+        const idx = Math.floor((missed.getTime() - monday.getTime()) / 86400000);
+        return idx >= 0 && idx <= 6 ? idx : null;
+    }, [rescue]);
     const { recentItems, weekActiveDays, weeklyMetrics, dailyMetrics, refresh: refreshActivity } = useActivity();
     const { balance, totalEarned, weeklyEarned, refresh: refreshPoints } = usePoints();
     const { activeGeofence, sessionCompleted, clearSessionCompleted } = useActiveGeofence();
@@ -585,9 +599,13 @@ export default function HomeScreen() {
 
                 <HealthGapBanner />
 
-                {rescue && <StreakRescueCard rescue={rescue} />}
+                <StreakRescueModal rescue={rescue} />
 
                 <StreakCard
+                    rescueDayIndex={rescueDayIndex}
+                    rescueDone={rescue?.state === 'offered' ? rescue.sessionsDone : 0}
+                    rescueRequired={rescue?.state === 'offered' ? rescue.sessionsRequired : 0}
+                    rescueExpiresAt={rescue?.state === 'offered' ? rescue.expiresAt : null}
                     streak={currentStreak}
                     multiplier={multiplier}
                     activeDays={weekActiveDays}
