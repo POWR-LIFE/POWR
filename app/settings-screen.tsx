@@ -176,11 +176,13 @@ export default function SettingsScreen() {
       // The "Friend activity" switch fronts all the together push types.
       setNotifFriends(prefs.challenge_invite);
       setNotifWearable(prefs.wearable_session);
-      // "Streak alerts" fronts streak_at_risk + the rescue pair.
-      setNotifStreak(prefs.streak_rescue);
+      // Grouped switches initialise from the AND of every pref they front, so
+      // a mixed state (e.g. streak_at_risk off but streak_rescue on, set
+      // outside this screen) reads OFF — and flipping it ON re-enables the
+      // whole group, which is the predictable direction to be wrong in.
+      setNotifStreak(prefs.streak_at_risk && prefs.streak_rescue);
       setNotifLevelUp(prefs.level_up);
-      // "Daily nudges" fronts the whole nudge trio.
-      setNotifDailyNudge(prefs.step_goal_nudge);
+      setNotifDailyNudge(prefs.daily_reminder && prefs.step_goal_nudge && prefs.inactivity_nudge);
       // nearby_offer is now DB-backed; mirror to the local cache the
       // background task reads offline.
       setNotifNearby(prefs.nearby_offer);

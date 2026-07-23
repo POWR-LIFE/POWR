@@ -37,7 +37,14 @@ async function computeStreakFromSessions(): Promise<{ current: number; longest: 
 
     // Completed streak rescues bridge their missed day — the day counts as
     // active even though no session exists for it, restoring the full streak.
-    // RLS scopes the read to the signed-in user. Mirrors _shared/streak.ts.
+    // RLS scopes the read to the signed-in user.
+    //
+    // Same bridge-day CONCEPT as the server's _shared/streak.ts, but NOT the
+    // same day boundaries: this hook buckets sessions by device-local date,
+    // the server by UTC date — a pre-existing divergence (rare ±1-day edge
+    // near midnight for non-UTC users) deliberately left as-is here.
+    // missed_day is stored as the user's local date at offer time, which
+    // matches this hook's local bucketing.
     let bridgeDays: string[] = [];
     try {
         const { data: rescues } = await supabase

@@ -44,9 +44,10 @@ Deno.serve(async (req: Request) => {
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 
   const queue = [...(candidates ?? [])];
+  let cursor = 0;
   const workers = Array.from({ length: Math.min(CONCURRENCY, queue.length) }, async () => {
-    while (queue.length > 0) {
-      const c = queue.shift();
+    while (cursor < queue.length) {
+      const c = queue[cursor++];
       if (!c) break;
       try {
         const res = await fetch(`${supabaseUrl}/functions/v1/send-push-notification`, {

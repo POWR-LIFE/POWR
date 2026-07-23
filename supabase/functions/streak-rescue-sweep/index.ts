@@ -19,6 +19,7 @@
 // _window_hours, _sessions_required, _min_streak, _cooldown_days.
 
 import { createClient } from '@supabase/supabase-js';
+import { localDayStartUtc } from '../_shared/nudgeBudget.ts';
 
 // Local calendar day of an instant in an IANA zone, as YYYY-MM-DD.
 function localDay(d: Date, tz: string): string {
@@ -28,21 +29,6 @@ function localDay(d: Date, tz: string): string {
     }).format(d);
   } catch {
     return d.toISOString().slice(0, 10);
-  }
-}
-
-// UTC instant of local midnight today in tz (see _shared/nudgeBudget.ts).
-function localDayStartUtc(tz: string): Date {
-  try {
-    const ymd = localDay(new Date(), tz);
-    const guess = new Date(`${ymd}T00:00:00Z`);
-    const tzMs = new Date(guess.toLocaleString('en-US', { timeZone: tz })).getTime();
-    const utcMs = new Date(guess.toLocaleString('en-US', { timeZone: 'UTC' })).getTime();
-    return new Date(guess.getTime() - (tzMs - utcMs));
-  } catch {
-    const d = new Date();
-    d.setUTCHours(0, 0, 0, 0);
-    return d;
   }
 }
 
