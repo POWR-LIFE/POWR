@@ -401,6 +401,25 @@ verify_jwt = false
 # inside the function, mirroring resolve-shared-challenges.
 verify_jwt = false
 
+[functions.send-push-notification]
+# Called by edge functions (service-role bearer), pg_cron/DB triggers
+# (x-resolve-token via pg_net — which can't mint JWTs, hence platform JWT off),
+# and the client for its two self-receipts (user JWT, validated in-code with a
+# self-target + type allowlist). All three legs are authorized IN-FUNCTION;
+# an unmatched caller gets a 401.
+verify_jwt = false
+
+[functions.dispatch-daily-nudges]
+# Invoked by pg_cron every 15 min (no Supabase user JWT) — same x-resolve-token
+# gate as dispatch-scheduled-broadcasts. Fans streak_at_risk + daily_reminder
+# candidates into send-push-notification, which owns every per-user gate.
+verify_jwt = false
+
+[functions.streak-rescue-sweep]
+# Invoked by pg_cron hourly (no Supabase user JWT) — same x-resolve-token gate.
+# Offers/expires streak rescues; per-user push gates live in send-push.
+verify_jwt = false
+
 [functions.gym-visit-beacon]
 # Invoked by pg_cron every minute (no Supabase user JWT) — same x-resolve-token
 # gate as the other cron functions. It only ever sends a SILENT wake push; it
