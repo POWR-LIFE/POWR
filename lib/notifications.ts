@@ -21,7 +21,8 @@ export type NotificationType =
   | 'session_completed'
   | 'sleep_target_met'
   | 'nearby_offer'
-  | 'step_goal_nudge';
+  | 'step_goal_nudge'
+  | 'wearable_session_recorded';
 
 export interface PointsMilestoneOptions {
   pointsToUnlock?: number;
