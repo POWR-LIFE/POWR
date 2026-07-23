@@ -1,6 +1,9 @@
 // @ts-nocheck — Deno runtime, not Node. Types enforced at deploy time.
 import { createClient } from '@supabase/supabase-js';
 import { deliverExpoMessages } from '../_shared/expoPush.ts';
+import { streakFromSessions } from '../_shared/streak.ts';
+import { nudgeBudgetGate } from '../_shared/nudgeBudget.ts';
+import { levelDef } from '../_shared/levels.ts';
 
 type NotificationType =
   | 'daily_reminder'
@@ -13,6 +16,10 @@ type NotificationType =
   | 'sleep_target_met'
   | 'session_completed'
   | 'session_upgraded'
+  | 'wearable_session_recorded'
+  | 'level_up'
+  | 'streak_lost'
+  | 'streak_rescued'
   | 'vault_unlocked'
   | 'vault_ready'
   | 'vault_granted'
@@ -64,9 +71,14 @@ function categoryFor(type: NotificationType): 'social' | 'rewards' | 'activity' 
     case 'vault_ready':
     case 'vault_granted':
       return 'rewards';
+    case 'level_up':
+      return 'rewards';
     case 'session_completed':
     case 'session_upgraded':
     case 'sleep_target_met':
+    case 'wearable_session_recorded':
+    case 'streak_lost':
+    case 'streak_rescued':
       return 'activity';
     default:
       return 'system';
@@ -179,11 +191,18 @@ function buildMessage(
       }
 
       case 'reward_unlocked': {
-        const rewardName = (payload.reward_name as string) ?? 'a reward';
+        // Fired by the notify_reward_unlocks ledger trigger. count > 1 with no
+        // named reward = several crossed at once — lead with the count and let
+        // the wallet do the reveal; naming one of several undersells the rest.
+        const count = Math.max(1, Math.round(Number(payload.count ?? 1)));
+        const rewardName = ((payload.reward_name as string) ?? '').trim();
+        const multi = count > 1 && !rewardName;
         return {
-          title: "New reward unlocked 🎁",
-          body: `You've unlocked "${rewardName}". Redeem it before it expires.`,
-          data: { type, route: '/(tabs)/rewards', reward_id: payload.reward_id },
+          title: multi ? `${count} rewards unlocked 🎁` : 'New reward unlocked 🎁',
+          body: multi
+            ? `You've earned your way to ${count} rewards — take your pick.`
+            : `You've unlocked "${rewardName || 'a reward'}". It's ready when you are.`,
+          data: { type, route: '/(tabs)/rewards', reward_id: payload.reward_id, count },
           sound: 'default',
           channelId: 'powr_rewards_v2',
           priority: 'high',
@@ -309,6 +328,76 @@ function buildMessage(
           },
           sound: 'default',
           channelId: 'powr_rewards_v2',
+          priority: 'high',
+        };
+      }
+
+      case 'wearable_session_recorded': {
+        // Terra workout(s) landed server-side and earned points — the receipt
+        // the wearable-only crowd never had. One webhook batch = one push
+        // (count carries how many); the notification_config daily_cap (1)
+        // keeps later same-day syncs silent so backfills can't machine-gun.
+        const count = Math.max(1, Math.round(Number(payload.count ?? 1)));
+        const points = Math.max(0, Math.round(Number(payload.points ?? 0)));
+        const label = ((payload.activity_label as string) ?? '').trim();
+        const what = count > 1 ? `${count} workouts synced` : (label || 'Workout') + ' synced';
+        return {
+          title: 'Workout synced ⌚',
+          body: `${what}${points > 0 ? ` · +${points.toLocaleString()} POWR` : ''} — no phone needed, it just counted.`,
+          data: { type, route: '/(tabs)/progress', count, points },
+          sound: 'default',
+          channelId: 'powr_default_v2',
+        };
+      }
+
+      case 'level_up': {
+        // Fired by the vault_level_up_push ledger trigger — the same detection
+        // that banks the level-up vault bonus, so it fires however the points
+        // arrived (geofence, wearable, bonus) and even with the app closed.
+        const level = Math.max(1, Math.round(Number(payload.level ?? 1)));
+        const name = (levelDef(level)?.name ?? '').trim();
+        return {
+          title: `Level ${level} reached 🏅`,
+          body: name
+            ? `You're now ${name}. Every session got you here — keep going.`
+            : `You've leveled up. Every session got you here — keep going.`,
+          data: { type, route: '/(tabs)/index', level },
+          sound: 'default',
+          channelId: 'powr_rewards_v2',
+          priority: 'high',
+        };
+      }
+
+      case 'streak_lost': {
+        // The rescue offer, sent the morning after a streak dies — the single
+        // highest-churn moment there is. POWR's version of streak repair is
+        // earned with effort, not bought: N sessions inside the window brings
+        // the whole streak back.
+        const lost = Math.max(1, Math.round(Number(payload.lost_streak ?? 0)));
+        const required = Math.max(1, Math.round(Number(payload.sessions_required ?? 2)));
+        const hours = Math.max(1, Math.round(Number(payload.window_hours ?? 48)));
+        return {
+          title: `Your ${lost}-day streak ended 💔`,
+          body: `Win it back: ${required} session${required !== 1 ? 's' : ''} in the next ${hours}h restores the whole streak.`,
+          data: { type, route: '/(tabs)/index' },
+          sound: 'default',
+          channelId: 'powr_streak_v2',
+          priority: 'high',
+        };
+      }
+
+      case 'streak_rescued': {
+        // current_streak is recomputed server-side below (the bridge day is
+        // live by the time this sends), so "Day N" is the restored truth.
+        const streak = Math.max(0, Math.round(Number(payload.current_streak ?? 0)));
+        return {
+          title: 'Streak saved 🔥',
+          body: streak > 0
+            ? `You did the work — your streak is back on Day ${streak}. Protect it tonight.`
+            : 'You did the work — your streak is restored.',
+          data: { type, route: '/(tabs)/index', current_streak: streak || undefined },
+          sound: 'default',
+          channelId: 'powr_streak_v2',
           priority: 'high',
         };
       }
@@ -514,47 +603,9 @@ function applyNotifOverrides(
   };
 }
 
-// Consecutive distinct activity days ending today or yesterday, computed
-// straight from activity_sessions — the same basis the app's streak display
-// uses. We do NOT read user_streaks.current_streak: it's mutated by an
-// increment-based updater in claim-points that an out-of-order claim (e.g. a
-// backdated session) can transiently corrupt, and a push fires at claim time —
-// exactly when that value is most likely stale — so the number self-heals
-// seconds later but the notification already went out wrong. Recompute it.
-async function streakFromSessions(supabase: any, userId: string): Promise<number> {
-  const since = new Date();
-  since.setDate(since.getDate() - 90);
-
-  const { data: sessions } = await supabase
-    .from('activity_sessions')
-    .select('started_at')
-    .eq('user_id', userId)
-    .neq('verification', 'manual')
-    .gte('started_at', since.toISOString())
-    .order('started_at', { ascending: false });
-
-  const uniqueDays = [...new Set(
-    (sessions ?? []).map((s: { started_at: string }) => s.started_at.slice(0, 10)),
-  )].sort().reverse();
-
-  const todayStr = new Date().toISOString().slice(0, 10);
-  const yd = new Date();
-  yd.setDate(yd.getDate() - 1);
-  const yesterdayStr = yd.toISOString().slice(0, 10);
-
-  if (uniqueDays.length === 0 || (uniqueDays[0] !== todayStr && uniqueDays[0] !== yesterdayStr)) {
-    return 0;
-  }
-
-  let streak = 1;
-  for (let i = 1; i < uniqueDays.length; i++) {
-    const a = new Date(uniqueDays[i - 1]).getTime();
-    const b = new Date(uniqueDays[i]).getTime();
-    if (a - b === 86400000) streak++;
-    else break;
-  }
-  return streak;
-}
+// Streak recompute now lives in ../_shared/streak.ts (single copy shared with
+// claim-points, bridge-day aware for streak rescues). We still never read
+// user_streaks.current_streak here — see that module for why.
 
 // Record a gated (never-attempted) send in push_send_log so the admin panel can
 // show WHY a user got no push, not just that nothing arrived. Best-effort.
@@ -600,11 +651,51 @@ Deno.serve(async (req: Request) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     );
 
+    // ── Caller authorization ────────────────────────────────────────────────
+    // Deployed verify_jwt=false (pg_net DB triggers can't mint JWTs), so the
+    // gate lives here instead. Three ways in, everything else is a 401:
+    //   1. service-role bearer  — edge-function-to-edge-function (notifyPush,
+    //      claim-points, terra-webhook, the dispatchers…)
+    //   2. shared cron token    — pg_cron + DB triggers (x-resolve-token,
+    //      verified against Vault via verify_resolve_token)
+    //   3. a user's own JWT     — client invoke, but ONLY to notify itself
+    // Without this, any caller on the internet could push arbitrary copy to
+    // arbitrary users through the type gates below.
+    {
+      const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+      const bearer = (req.headers.get('authorization') ?? '').replace(/^Bearer\s+/i, '').trim();
+      let authorized = serviceKey.length > 0 && bearer === serviceKey;
+
+      if (!authorized) {
+        const cronToken = req.headers.get('x-resolve-token') ?? '';
+        if (cronToken) {
+          const { data: valid } = await supabase.rpc('verify_resolve_token', { p_token: cronToken });
+          authorized = valid === true;
+        }
+      }
+
+      // User JWTs may only fire the receipts the client legitimately sends
+      // for itself (the HealthKit/Health Connect sync path) — not arbitrary
+      // types with spoofed payloads.
+      const USER_CALLABLE: NotificationType[] = ['wearable_session_recorded', 'sleep_target_met'];
+      if (!authorized && bearer && USER_CALLABLE.includes(type)) {
+        const { data: userData } = await supabase.auth.getUser(bearer);
+        authorized = !!userData?.user?.id && userData.user.id === target_user_id;
+      }
+
+      if (!authorized) {
+        return new Response(JSON.stringify({ error: 'unauthorized' }), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+    }
+
     // Check admin-level notification config (global kill-switch + copy overrides).
     // Fetched once here; overrides are applied to every message built below.
     const { data: notifConfig } = await supabase
       .from('notification_config')
-      .select('enabled, title_override, body_override')
+      .select('enabled, title_override, body_override, class, daily_cap')
       .eq('type', type)
       .maybeSingle();
 
@@ -614,6 +705,24 @@ Deno.serve(async (req: Request) => {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       });
+    }
+
+    // Anti-bombardment budget: nudge-class types share one daily pool per
+    // user (local day), and any type can carry its own daily_cap (e.g. the
+    // wearable receipt caps at 1/day so Terra backfills can't machine-gun).
+    // Fails open — see _shared/nudgeBudget.ts.
+    {
+      const budgetSkip = await nudgeBudgetGate(
+        supabase, target_user_id, type,
+        notifConfig?.class ?? null, notifConfig?.daily_cap ?? null,
+      );
+      if (budgetSkip) {
+        await logSkip(supabase, target_user_id, type, budgetSkip);
+        return new Response(JSON.stringify({ skipped: true, reason: budgetSkip }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
     }
 
     // Vault rollout gate. A user outside the rollout has no Vault surface, so a
@@ -646,11 +755,17 @@ Deno.serve(async (req: Request) => {
     // user who muted session pushes doesn't get the upgrade one either.
     // vault_unlocked likewise rides points_milestone: both are "your points
     // moved" moments, and notification_preferences has no column for new types.
-    const prefColumn: NotificationType =
+    // wearable_session_recorded, level_up and streak_rescue have real columns
+    // (20260723000001); streak_lost/streak_rescued share the streak_rescue
+    // switch — one story, one toggle.
+    const prefColumn: string =
       type === 'session_upgraded' ? 'session_completed'
       : type === 'vault_unlocked' ? 'points_milestone'
       : type === 'vault_ready' ? 'points_milestone'
       : type === 'vault_granted' ? 'points_milestone'
+      : type === 'wearable_session_recorded' ? 'wearable_session'
+      : type === 'streak_lost' ? 'streak_rescue'
+      : type === 'streak_rescued' ? 'streak_rescue'
       : type;
     const { data: prefs } = await supabase
       .from('notification_preferences')
@@ -685,15 +800,35 @@ Deno.serve(async (req: Request) => {
     if (type === 'streak_at_risk') {
       const computedStreak = await streakFromSessions(supabase, target_user_id);
 
-      if (computedStreak === 0) {
-        await logSkip(supabase, target_user_id, type, 'no_active_streak');
-        return new Response(JSON.stringify({ skipped: true, reason: 'no_active_streak' }), {
+      // A 1–2 day "streak" at risk isn't worth an evening interruption —
+      // admin-tunable floor (system_config.streak_at_risk_min_streak).
+      let minStreak = 3;
+      try {
+        const { data: minRow } = await supabase
+          .from('system_config')
+          .select('value')
+          .eq('key', 'streak_at_risk_min_streak')
+          .maybeSingle();
+        minStreak = Math.max(1, parseInt(minRow?.value ?? '3', 10) || 3);
+      } catch { /* keep default */ }
+
+      if (computedStreak === 0 || computedStreak < minStreak) {
+        const reason = computedStreak === 0 ? 'no_active_streak' : 'below_min_streak';
+        await logSkip(supabase, target_user_id, type, reason);
+        return new Response(JSON.stringify({ skipped: true, reason }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
         });
       }
 
       payload = { ...payload, current_streak: computedStreak };
+    }
+
+    // The bridge day is live by the time the rescue-completion push sends, so
+    // the recompute here yields the RESTORED streak for the "Day N" copy.
+    if (type === 'streak_rescued') {
+      const computedStreak = await streakFromSessions(supabase, target_user_id);
+      if (computedStreak > 0) payload = { ...payload, current_streak: computedStreak };
     }
 
     // For points_milestone: derive a dynamic "within reach" payload from the

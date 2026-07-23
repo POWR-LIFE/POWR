@@ -10,6 +10,8 @@ import { reconcileRecentGymSessions } from '@/lib/health/gymReconcile';
 import { supabase } from '@/lib/supabase';
 import { ACTIVITIES, type ActivityType } from '@/constants/activities';
 import { logManualSession, saveHealthSnapshot } from '@/lib/api/activity';
+import { triggerServerNotification } from '@/lib/api/notifications';
+import { getSessionUser } from '@/lib/supabase';
 
 /** True if an ISO timestamp falls on the current local calendar day. */
 function isLocalToday(iso: string): boolean {
@@ -96,6 +98,20 @@ export function useHealthSync() {
 
         if (!isNew) continue;
 
+        // Same receipt Terra sleep gets server-side — HealthKit/Health Connect
+        // sync lands here instead, so fire it from the sync path. The server
+        // owns the gates (preference, 1/day cap, feed row); best-effort only.
+        if (points > 0) {
+          try {
+            const uid = (await getSessionUser())?.id;
+            if (uid) {
+              await triggerServerNotification(uid, 'sleep_target_met', {
+                hours: sleep.durationHours, points,
+              });
+            }
+          } catch { /* receipt must never break the sync */ }
+        }
+
         await saveHealthSnapshot({
           sleepDurationH: sleep.durationHours,
           sleepDeepH: sleep.deepHours,
@@ -150,6 +166,9 @@ export function useHealthSync() {
 
       // ── Workouts (every provider; today + backfill) ─────────────────────
       const workouts = weekHistory.flatMap(d => d.activities);
+      let receiptCount = 0;
+      let receiptPoints = 0;
+      let receiptLabel: string | null = null;
       for (const health of workouts) {
         const mappedType = mapHealthType(health.type);
         if (!mappedType) continue;
@@ -166,17 +185,24 @@ export function useHealthSync() {
           ? verificationFromProvenance(health.source, verificationSource)
           : verificationSource;
 
-        await logManualSession({
+        const workoutPoints = calculateBasePoints(mappedType, health.durationMin);
+        const isNewWorkout = await logManualSession({
           type: mappedType,
           duration_sec: health.durationMin * 60,
           distance_m: health.distanceM,
           hr_avg: today ? heartRate?.avg : undefined,
           started_at: health.startedAt,
-          points: calculateBasePoints(mappedType, health.durationMin),
+          points: workoutPoints,
           healthVerified: true,
           healthSource: activityVerification,
           rawActivityName: health.rawName ?? health.type,
         });
+
+        if (isNewWorkout && workoutPoints > 0) {
+          receiptCount++;
+          receiptPoints += workoutPoints;
+          receiptLabel = (health.rawName ?? health.type ?? '').trim() || mappedType;
+        }
 
         // Save full health snapshot for this session
         await saveHealthSnapshot({
@@ -224,16 +250,23 @@ export function useHealthSync() {
 
           const today = isLocalToday(act.startedAt);
           const actVerification = verificationFromProvenance(act.source, verificationSource);
-          await logManualSession({
+          const inferredPoints = calculateBasePoints(act.type, act.durationMin);
+          const isNewInferred = await logManualSession({
             type: act.type,
             duration_sec: act.durationMin * 60,
             distance_m: act.distanceM,
             hr_avg: today ? heartRate?.avg : undefined,
             started_at: act.startedAt,
-            points: calculateBasePoints(act.type, act.durationMin),
+            points: inferredPoints,
             healthVerified: true,
             healthSource: actVerification,
           });
+
+          if (isNewInferred && inferredPoints > 0) {
+            receiptCount++;
+            receiptPoints += inferredPoints;
+            receiptLabel = act.type;
+          }
 
           await saveHealthSnapshot({
             distanceM: act.distanceM,
@@ -248,6 +281,25 @@ export function useHealthSync() {
 
           console.log(`[HealthSync] Synced inferred ${act.type} ${act.startedAt} (${act.distanceM}m, ${act.avgSpeedKmh}km/h)`);
         }
+      }
+
+      // ── Workout-synced receipt ──────────────────────────────────────────
+      // Terra users get this from the webhook; HealthKit / Health Connect
+      // sessions land through THIS client path instead, so fire the same
+      // receipt here (one batched call per sync). The server owns every gate
+      // (wearable_session preference, 1/day cap, feed row) — a repeat sync
+      // later in the day just logs a type_daily_cap skip.
+      if (receiptCount > 0) {
+        try {
+          const uid = (await getSessionUser())?.id;
+          if (uid) {
+            await triggerServerNotification(uid, 'wearable_session_recorded', {
+              count: receiptCount,
+              points: receiptPoints,
+              activity_label: receiptCount === 1 ? receiptLabel : undefined,
+            });
+          }
+        } catch { /* receipt must never break the sync */ }
       }
 
       // ── Sleep sync (week backfill, same fetch) ──────────────────────────

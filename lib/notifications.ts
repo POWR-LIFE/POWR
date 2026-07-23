@@ -20,7 +20,9 @@ export type NotificationType =
   | 'inactivity_nudge'
   | 'session_completed'
   | 'sleep_target_met'
-  | 'nearby_offer';
+  | 'nearby_offer'
+  | 'step_goal_nudge'
+  | 'wearable_session_recorded';
 
 export interface PointsMilestoneOptions {
   pointsToUnlock?: number;
@@ -325,6 +327,43 @@ export async function notifyCheckInAvailable(partnerName: string, locationId: st
 // check-in reminder above and of the 25 m points geofence.
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Client-side nudge budget
+// ---------------------------------------------------------------------------
+// The server enforces "one nudge-class push per user per local day" via
+// push_send_log at the send-push chokepoint; locally-scheduled nudges
+// (nearby_offer, the within-reach milestone, step_goal_nudge) never pass
+// through it, so they share THIS pool instead — one local nudge per calendar
+// day, whichever fires first. The ONLY same-day re-consume allowed is
+// points_milestone re-claiming its own slot: within-reach cancels + reschedules
+// itself to stay fresh, and that refresh replaces the pending nudge rather
+// than adding one. Every other type gets no same-type exception — a second
+// nearby_offer for a different placement is a second nudge, and it's denied.
+
+const CLIENT_NUDGE_BUDGET_KEY = '@powr/client_nudge_budget';
+const RESCHEDULABLE_NUDGE: NotificationType = 'points_milestone';
+
+function localDayKey(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+export async function consumeClientNudgeBudget(type: NotificationType): Promise<boolean> {
+  try {
+    const raw = await AsyncStorage.getItem(CLIENT_NUDGE_BUDGET_KEY);
+    if (raw) {
+      const prev = JSON.parse(raw) as { day?: string; type?: string };
+      if (prev?.day === localDayKey()) {
+        return prev.type === type && type === RESCHEDULABLE_NUDGE;
+      }
+    }
+    await AsyncStorage.setItem(CLIENT_NUDGE_BUDGET_KEY, JSON.stringify({ day: localDayKey(), type }));
+    return true;
+  } catch {
+    return true; // budget plumbing must never mute notifications outright
+  }
+}
+
 const NEARBY_OFFER_PREF_KEY = '@powr/pref_nearby_offer';
 // Don't re-notify about the same placement within this window (a wake happens
 // ~every 15 min; without this the user would be pinged repeatedly in one visit).
@@ -370,6 +409,9 @@ export async function notifyNearbyOffer(opts: {
       if (Number.isFinite(lastFired) && Date.now() - lastFired < NEARBY_OFFER_COOLDOWN_MS) return false;
     }
   } catch { /* non-fatal — fall through and notify */ }
+
+  // Shares the one-local-nudge-per-day pool with within-reach + step goal.
+  if (!(await consumeClientNudgeBudget('nearby_offer'))) return false;
 
   const title = opts.brandName ? `${opts.brandName} is nearby` : 'A reward is nearby';
   await Notifications.scheduleNotificationAsync({
@@ -568,6 +610,10 @@ export async function scheduleRewardWithinReach(
   if (pointsToUnlock <= 0) return; // already unlocked — nothing to nudge
   const rewardName = data.reward_name?.trim();
 
+  // Shares the one-local-nudge-per-day pool (same-type re-consume is allowed,
+  // so the cancel-and-reschedule freshness path above keeps working).
+  if (!(await consumeClientNudgeBudget('points_milestone'))) return;
+
   const fireDate = withinReachFireDate();
   try {
     await AsyncStorage.setItem(WITHIN_REACH_FIRED_KEY, String(fireDate.getTime()));
@@ -649,6 +695,44 @@ export async function notifySleepTargetMet(hours: number, points: number) {
     },
     trigger: null, // immediate
   });
+}
+
+// ---------------------------------------------------------------------------
+// Step-goal nudge — the walkers' evening push (see lib/stepGoalNotifyTask.ts)
+// ---------------------------------------------------------------------------
+// For a walking-only user this IS their streak-at-risk moment: the day is
+// about to end unearned. Fired locally because only the device knows the live
+// step count. Budget + once-per-day + window logic live in the task; this
+// helper just presents.
+
+export async function notifyStepGoal(opts: {
+  stepsToNext: number;
+  bonusPoints: number;
+}): Promise<boolean> {
+  const perms = await Notifications.getPermissionsAsync().catch(() => null);
+  const allowed = perms?.granted
+    || perms?.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL;
+  if (!allowed) return false;
+
+  if (!(await consumeClientNudgeBudget('step_goal_nudge'))) return false;
+
+  const steps = Math.max(1, Math.round(opts.stepsToNext));
+  const pts = Math.max(1, Math.round(opts.bonusPoints));
+  // ~110 steps/min is a comfortable walking cadence — frame the ask as time.
+  const mins = Math.max(5, Math.round(steps / 110 / 5) * 5);
+
+  await Notifications.scheduleNotificationAsync({
+    identifier: 'powr-step_goal_nudge',
+    content: {
+      title: `${steps.toLocaleString()} steps to go 🚶`,
+      body: `A ${mins}-minute walk locks in +${pts} POWR before midnight.`,
+      data: { type: 'step_goal_nudge', route: '/(tabs)/index' } satisfies NotificationPayload,
+      sound: 'default',
+      ...(Platform.OS === 'android' && { channelId: CHANNEL_DEFAULT }),
+    },
+    trigger: null, // immediate
+  });
+  return true;
 }
 
 // ---------------------------------------------------------------------------

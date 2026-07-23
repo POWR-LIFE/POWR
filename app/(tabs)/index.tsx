@@ -25,6 +25,7 @@ import { LevelUpCelebration } from '@/components/LevelUpCelebration';
 import { GeometricBackground } from '@/components/home/GeometricBackground';
 import { StickyActivityIndicators } from '@/components/home/StickyActivityIndicators';
 import { StreakCard } from '@/components/home/StreakCard';
+import { StreakRescueCard } from '@/components/home/StreakRescueCard';
 import { WeeklyActivityBars, type WeeklyRingData } from '@/components/home/WeeklyActivityRings';
 import { WeeklyActivityCircles } from '@/components/home/WeeklyActivityRings';
 import { HeaderActions } from '@/components/HeaderActions';
@@ -42,6 +43,7 @@ import { useHealthData } from '@/hooks/useHealthData';
 import { useLevelUp } from '@/hooks/useLevelUp';
 import { usePoints } from '@/hooks/usePoints';
 import { useStreak } from '@/hooks/useStreak';
+import { useStreakRescue } from '@/hooks/useStreakRescue';
 import { fetchSmartFeaturedReward, type Reward } from '@/lib/api/rewards';
 import { fetchProfile } from '@/lib/api/user';
 import { applyDetectedActivitySwap, WEEKLY_SESSION_TARGET, WEEKLY_STEPS_TARGET } from '@/lib/weeklyActivities';
@@ -112,6 +114,7 @@ export default function HomeScreen() {
     const router = useRouter();
     const { user } = useAuth();
     const { currentStreak, multiplier, refresh: refreshStreak } = useStreak();
+    const { rescue } = useStreakRescue();
     const { recentItems, weekActiveDays, weeklyMetrics, dailyMetrics, refresh: refreshActivity } = useActivity();
     const { balance, totalEarned, weeklyEarned, refresh: refreshPoints } = usePoints();
     const { activeGeofence, sessionCompleted, clearSessionCompleted } = useActiveGeofence();
@@ -581,6 +584,8 @@ export default function HomeScreen() {
                 )}
 
                 <HealthGapBanner />
+
+                {rescue && <StreakRescueCard rescue={rescue} />}
 
                 <StreakCard
                     streak={currentStreak}

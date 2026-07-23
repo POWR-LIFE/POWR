@@ -96,6 +96,10 @@ function iconForActivity(item: ActivityItem): IconSpec {
     case 'session_completed': return { lib: 'ion', name: 'flame' };
     case 'session_upgraded': return { lib: 'ion', name: 'lock-open' };
     case 'sleep_target_met': return { lib: 'ion', name: 'moon' };
+    case 'wearable_session_recorded': return { lib: 'ion', name: 'watch' };
+    case 'level_up': return { lib: 'ion', name: 'trophy' };
+    case 'streak_lost': return { lib: 'ion', name: 'heart-dislike' };
+    case 'streak_rescued': return { lib: 'ion', name: 'bandage' };
     case 'announcement': return { lib: 'ion', name: 'megaphone' };
   }
   switch (item.category) {

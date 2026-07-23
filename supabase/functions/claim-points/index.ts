@@ -1,6 +1,7 @@
 // @ts-nocheck — Deno runtime, not Node. Types enforced at deploy time.
 import { createClient } from '@supabase/supabase-js';
 import { geofenceSupersedes } from '../_shared/sessionPriority.ts';
+import { streakFromSessions } from '../_shared/streak.ts';
 
 // ─────────────────────────────────────────────
 // Types
@@ -165,47 +166,9 @@ function calcStreakBonus(type: ActivityType, streak: number, base: number): numb
   return 0;
 }
 
-// Consecutive distinct activity days ending today or yesterday, computed from
-// activity_sessions — the same basis the app displays and send-push-notification
-// uses. The session being claimed already exists in the table, so this INCLUDES
-// today. Replaces an increment-based updater (current_streak + 1 / reset to 1,
-// keyed on last_activity_date) whose stored value an out-of-order or backdated
-// claim could corrupt — which then fed both the bonus multiplier here and the
-// "Day N" copy in the push. Recomputing from source makes the streak self-correct.
-async function streakFromSessions(supabase: any, userId: string): Promise<number> {
-  const since = new Date();
-  since.setDate(since.getDate() - 90);
-
-  const { data: sessions } = await supabase
-    .from('activity_sessions')
-    .select('started_at')
-    .eq('user_id', userId)
-    .neq('verification', 'manual')
-    .gte('started_at', since.toISOString())
-    .order('started_at', { ascending: false });
-
-  const uniqueDays = [...new Set(
-    (sessions ?? []).map((s: { started_at: string }) => s.started_at.slice(0, 10)),
-  )].sort().reverse();
-
-  const todayStr = new Date().toISOString().slice(0, 10);
-  const yd = new Date();
-  yd.setDate(yd.getDate() - 1);
-  const yesterdayStr = yd.toISOString().slice(0, 10);
-
-  if (uniqueDays.length === 0 || (uniqueDays[0] !== todayStr && uniqueDays[0] !== yesterdayStr)) {
-    return 0;
-  }
-
-  let streak = 1;
-  for (let i = 1; i < uniqueDays.length; i++) {
-    const a = new Date(uniqueDays[i - 1]).getTime();
-    const b = new Date(uniqueDays[i]).getTime();
-    if (a - b === 86400000) streak++;
-    else break;
-  }
-  return streak;
-}
+// Streak recompute now lives in ../_shared/streak.ts — single copy shared with
+// send-push-notification, bridge-day aware for streak rescues. The session
+// being claimed already exists in the table, so the recompute INCLUDES today.
 
 /**
  * Source-of-truth priority is geofence (0.94) > wearable/health (0.85) > manual
@@ -732,7 +695,7 @@ Deno.serve(async (req) => {
     const maxReachableCost = newBalance / WITHIN_REACH_PCT;
     const { data: target } = await supabase
       .from('rewards')
-      .select('title, powr_cost')
+      .select('id, title, powr_cost')
       .eq('active', true)
       .gt('powr_cost', newBalance)
       .lte('powr_cost', maxReachableCost)
@@ -741,6 +704,17 @@ Deno.serve(async (req) => {
       .maybeSingle();
 
     if (target) {
+      // Remember which reward we're steering the user toward, so the
+      // reward_unlocked push (ledger trigger) finishes the SAME story when
+      // several rewards unlock in one balance jump. Persisted regardless of
+      // the nudge preference below — it names the unlock, it never pushes.
+      await supabase.from('user_reward_targets').upsert({
+        user_id: user.id,
+        reward_id: target.id,
+        reward_name: target.title,
+        powr_cost: target.powr_cost,
+        named_at: new Date().toISOString(),
+      }, { onConflict: 'user_id' });
       // Respect the user's points_milestone preference — the client schedule
       // bypasses send-push-notification's server-side preference gate.
       const { data: pref } = await supabase

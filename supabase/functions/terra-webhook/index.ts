@@ -247,10 +247,44 @@ async function handleDeauth(supabase, payload): Promise<void> {
   }).eq('id', userId);
 }
 
+/**
+ * Fire-and-forget "workout synced" receipt after Terra awards land. One call
+ * per webhook batch (count/points aggregated); send-push's per-type daily cap
+ * (notification_config, 1/day) keeps later same-day syncs and backfill bursts
+ * silent, and its wearable_session preference + feed write do the rest.
+ * Best-effort: a push failure must never fail the webhook.
+ */
+async function notifyWearableReceipt(
+  userId: string, count: number, points: number, activityLabel: string | null,
+): Promise<void> {
+  try {
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    await fetch(`${supabaseUrl}/functions/v1/send-push-notification`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${serviceKey}`,
+      },
+      body: JSON.stringify({
+        target_user_id: userId,
+        type: 'wearable_session_recorded',
+        payload: { count, points, activity_label: activityLabel ?? undefined },
+      }),
+    });
+  } catch (err) {
+    console.warn('[terra-webhook] wearable receipt push failed:', err);
+  }
+}
+
 async function handleActivity(supabase, payload): Promise<void> {
   const userId = await resolveUserId(supabase, payload);
   if (!userId) return;
   const source = terraResourceToSource(payload?.user?.provider ?? '');
+
+  let awardedCount = 0;
+  let awardedPoints = 0;
+  let awardedLabel: string | null = null;
 
   for (const a of payload.data ?? []) {
     const meta = a.metadata ?? {};
@@ -308,7 +342,21 @@ async function handleActivity(supabase, payload): Promise<void> {
         source,
       });
       if (isToday(start)) await bumpStreak(supabase, userId);
+
+      if (points > 0) {
+        awardedCount++;
+        awardedPoints += points;
+        // Prefer the human name Terra sent ("Spin", "Functional Fitness"),
+        // fall back to the mapped POWR type. Only meaningful when count = 1.
+        awardedLabel = (meta.name ?? '').trim() || type;
+      }
     }
+  }
+
+  if (awardedCount > 0) {
+    await notifyWearableReceipt(
+      userId, awardedCount, awardedPoints, awardedCount === 1 ? awardedLabel : null,
+    );
   }
 }
 
@@ -362,6 +410,30 @@ async function handleSleep(supabase, payload): Promise<void> {
         duration_sec: Math.round(hours * 3600),
         source,
       });
+
+      // Sleep credit was previously silent — the sleep_target_met type had
+      // copy + a preference toggle but no sender. Fire it here where the
+      // points actually land; the type's daily_cap (1) absorbs replays.
+      if (points > 0) {
+        try {
+          const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+          const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+          await fetch(`${supabaseUrl}/functions/v1/send-push-notification`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${serviceKey}`,
+            },
+            body: JSON.stringify({
+              target_user_id: userId,
+              type: 'sleep_target_met',
+              payload: { hours, points },
+            }),
+          });
+        } catch (err) {
+          console.warn('[terra-webhook] sleep push failed:', err);
+        }
+      }
     }
   }
 }

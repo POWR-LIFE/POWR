@@ -159,6 +159,10 @@ export default function SettingsScreen() {
   const [notifFriends,    setNotifFriends]    = useState(meta.notif_friends ?? true);
   const [notifNews,       setNotifNews]       = useState(true);
   const [notifNearby,     setNotifNearby]     = useState(true);
+  const [notifWearable,   setNotifWearable]   = useState(true);
+  const [notifStreak,     setNotifStreak]     = useState(true);
+  const [notifLevelUp,    setNotifLevelUp]    = useState(true);
+  const [notifDailyNudge, setNotifDailyNudge] = useState(true);
   const [emailWeekly,     setEmailWeekly]     = useState(true);
   const [shareActivity,   setShareActivity]   = useState(meta.share_activity ?? true);
   const [togetherEnabled, setTogetherEnabled] = useState(meta.together_enabled ?? true);
@@ -171,10 +175,20 @@ export default function SettingsScreen() {
       setEmailWeekly(prefs.email_weekly_summary);
       // The "Friend activity" switch fronts all the together push types.
       setNotifFriends(prefs.challenge_invite);
+      setNotifWearable(prefs.wearable_session);
+      // Grouped switches initialise from the AND of every pref they front, so
+      // a mixed state (e.g. streak_at_risk off but streak_rescue on, set
+      // outside this screen) reads OFF — and flipping it ON re-enables the
+      // whole group, which is the predictable direction to be wrong in.
+      setNotifStreak(prefs.streak_at_risk && prefs.streak_rescue);
+      setNotifLevelUp(prefs.level_up);
+      setNotifDailyNudge(prefs.daily_reminder && prefs.step_goal_nudge && prefs.inactivity_nudge);
+      // nearby_offer is now DB-backed; mirror to the local cache the
+      // background task reads offline.
+      setNotifNearby(prefs.nearby_offer);
+      cacheNearbyOfferPreference(prefs.nearby_offer);
     });
   }, [user?.id]);
-  // Nearby-rewards push is stored locally (the background task reads it offline).
-  useEffect(() => { isNearbyOfferEnabled().then(setNotifNearby); }, []);
 
   // Persist a single metadata key when a toggle changes
   const persistMeta = async (key: string, value: boolean) => {
@@ -533,11 +547,56 @@ export default function SettingsScreen() {
             }}
           />
           <RowToggle
+            icon="watch-outline"
+            label="Workout sync"
+            sublabel="When a wearable workout lands and earns POWR"
+            value={notifWearable}
+            onValueChange={(v) => {
+              setNotifWearable(v);
+              if (user?.id) updateNotificationPreferences(user.id, { wearable_session: v });
+            }}
+          />
+          <RowToggle
+            icon="flame-outline"
+            label="Streak alerts"
+            sublabel="Evening warning when your streak's at risk, and rescue offers"
+            value={notifStreak}
+            onValueChange={(v) => {
+              setNotifStreak(v);
+              if (user?.id) updateNotificationPreferences(user.id, { streak_at_risk: v, streak_rescue: v });
+            }}
+          />
+          <RowToggle
+            icon="trophy-outline"
+            label="Level ups"
+            value={notifLevelUp}
+            onValueChange={(v) => {
+              setNotifLevelUp(v);
+              if (user?.id) updateNotificationPreferences(user.id, { level_up: v });
+            }}
+          />
+          <RowToggle
+            icon="walk-outline"
+            label="Daily nudges"
+            sublabel="Step-goal reminders and the odd get-moving prompt — never more than one a day"
+            value={notifDailyNudge}
+            onValueChange={(v) => {
+              setNotifDailyNudge(v);
+              if (user?.id) updateNotificationPreferences(user.id, {
+                daily_reminder: v, step_goal_nudge: v, inactivity_nudge: v,
+              });
+            }}
+          />
+          <RowToggle
             icon="location-outline"
             label="Nearby rewards"
             sublabel="A nudge when a reward is boosted where you are"
             value={notifNearby}
-            onValueChange={(v) => { setNotifNearby(v); cacheNearbyOfferPreference(v); }}
+            onValueChange={(v) => {
+              setNotifNearby(v);
+              cacheNearbyOfferPreference(v);
+              if (user?.id) updateNotificationPreferences(user.id, { nearby_offer: v });
+            }}
           />
           <RowToggle
             icon="people-outline"

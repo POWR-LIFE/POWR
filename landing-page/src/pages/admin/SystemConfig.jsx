@@ -6,7 +6,7 @@ import { useAuth } from '../../App';
 import {
     Settings, Save, RotateCcw, Minus, Plus, Search, ExternalLink,
     Coins, MapPin, Vault, ShieldCheck, Smartphone, Store, Sparkles, SlidersHorizontal,
-    Rocket,
+    Rocket, Flame,
 } from 'lucide-react';
 
 const logAction = async (adminId, action, targetType, targetId, metadata = {}) => {
@@ -76,6 +76,16 @@ const GROUPS = [
         ],
     },
     {
+        id: 'streaks', title: 'Streaks & Nudges', icon: Flame, accent: '#EF4444',
+        blurb: 'Streak-rescue challenge terms and the daily nudge budget. Per-type copy and kill-switches live on the Notifications page.',
+        keys: [
+            'streak_rescue_enabled', 'streak_rescue_window_hours',
+            'streak_rescue_sessions_required', 'streak_rescue_min_streak',
+            'streak_rescue_cooldown_days',
+            'nudge_daily_cap', 'streak_at_risk_min_streak',
+        ],
+    },
+    {
         id: 'trust', title: 'Trust & Safety', icon: ShieldCheck, accent: '#F97316',
         blurb: 'Fraud thresholds that auto-flag sessions for admin review.',
         keys: ['flagged_trust_threshold'],
@@ -119,6 +129,13 @@ const LABELS = {
     vault_bonus_athlete: 'Athlete bonus (lv 6–10)',
     vault_bonus_elite: 'Elite bonus (lv 11–15)',
     vault_bonus_legend: 'Legend bonus (lv 16–20)',
+    streak_rescue_enabled: 'Offer streak rescues',
+    streak_rescue_window_hours: 'Rescue window',
+    streak_rescue_sessions_required: 'Sessions to restore',
+    streak_rescue_min_streak: 'Minimum streak to qualify',
+    streak_rescue_cooldown_days: 'Cooldown between rescues',
+    nudge_daily_cap: 'Nudge pushes per day',
+    streak_at_risk_min_streak: 'Streak-warning minimum',
     device_transfer_max_per_30d: 'Max transfers per 30 days',
     device_transfer_stale_days: 'Stale-device threshold',
     latest_ios_version: 'Latest App Store version',
@@ -129,6 +146,12 @@ const LABELS = {
 
 // Unit suffix shown beside free-text numeric inputs (steppers carry their own).
 const UNITS = {
+    streak_rescue_window_hours: 'h',
+    streak_rescue_sessions_required: 'sessions',
+    streak_rescue_min_streak: 'days',
+    streak_rescue_cooldown_days: 'days',
+    nudge_daily_cap: '/ day',
+    streak_at_risk_min_streak: 'days',
     base_points_per_session: 'pts',
     max_daily_sessions: '/ day',
     streak_multiplier: '×',

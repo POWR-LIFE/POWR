@@ -58,6 +58,8 @@ export async function removePushToken(userId: string, expoPushToken: string) {
 // ---------------------------------------------------------------------------
 
 export interface NotificationPreferences {
+  /** Morning "time to move" reminder at the user's chosen local time. */
+  daily_reminder: boolean;
   streak_at_risk: boolean;
   weekly_challenge_expiry: boolean;
   reward_unlocked: boolean;
@@ -65,6 +67,16 @@ export interface NotificationPreferences {
   points_milestone: boolean;
   inactivity_nudge: boolean;
   sleep_target_met: boolean;
+  /** "Workout synced" receipt when a wearable session earns points server-side. */
+  wearable_session: boolean;
+  /** Level-up push (fires from the ledger, works with the app closed). */
+  level_up: boolean;
+  /** Streak rescue story: both the offer (streak_lost) and the save (streak_rescued). */
+  streak_rescue: boolean;
+  /** Client-scheduled evening "X steps to finish today's POWR" nudge. */
+  step_goal_nudge: boolean;
+  /** Location-triggered nearby reward offers (was AsyncStorage-only; now synced). */
+  nearby_offer: boolean;
   /** Product announcements broadcast from the admin panel (App Store 4.5.4 opt-out). */
   announcements: boolean;
   /** Email: Monday weekly summary recap. */
@@ -82,6 +94,7 @@ export interface NotificationPreferences {
 }
 
 export const DEFAULT_PREFERENCES: NotificationPreferences = {
+  daily_reminder: true,
   streak_at_risk: true,
   weekly_challenge_expiry: true,
   reward_unlocked: true,
@@ -89,6 +102,11 @@ export const DEFAULT_PREFERENCES: NotificationPreferences = {
   points_milestone: true,
   inactivity_nudge: true,
   sleep_target_met: true,
+  wearable_session: true,
+  level_up: true,
+  streak_rescue: true,
+  step_goal_nudge: true,
+  nearby_offer: true,
   announcements: true,
   email_weekly_summary: true,
   friend_request: true,
@@ -115,6 +133,7 @@ export async function getNotificationPreferences(
   if (!data) return DEFAULT_PREFERENCES;
 
   return {
+    daily_reminder: data.daily_reminder ?? true,
     streak_at_risk: data.streak_at_risk ?? true,
     weekly_challenge_expiry: data.weekly_challenge_expiry ?? true,
     reward_unlocked: data.reward_unlocked ?? true,
@@ -122,6 +141,12 @@ export async function getNotificationPreferences(
     points_milestone: data.points_milestone ?? true,
     inactivity_nudge: data.inactivity_nudge ?? true,
     sleep_target_met: data.sleep_target_met ?? true,
+    // ?? true keeps old builds working before migration 20260723000001 lands.
+    wearable_session: data.wearable_session ?? true,
+    level_up: data.level_up ?? true,
+    streak_rescue: data.streak_rescue ?? true,
+    step_goal_nudge: data.step_goal_nudge ?? true,
+    nearby_offer: data.nearby_offer ?? true,
     announcements: data.announcements ?? true,
     email_weekly_summary: data.email_weekly_summary ?? true,
     friend_request: data.friend_request ?? true,

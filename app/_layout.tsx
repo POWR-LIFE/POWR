@@ -27,6 +27,7 @@ import { registerWalkingSync } from '@/lib/health/walkingSync';
 import { ensureAndroidChannels } from '@/lib/notifications';
 import { useOtaUpdatePrompt } from '@/lib/otaUpdates';
 import { registerPlacementNotifyTask } from '@/lib/placementNotifyTask';
+import { registerStepGoalNotifyTask } from '@/lib/stepGoalNotifyTask';
 import { refreshGymDwellMinutes } from '@/lib/gymDwellConfig';
 import { supabase } from '@/lib/supabase';
 
@@ -76,6 +77,9 @@ function RootLayoutNav() {
   // coarse fix) — placements must reach users the points geofence never will.
   useEffect(() => {
     registerPlacementNotifyTask().catch(() => { /* non-fatal */ });
+    // Walkers' evening "X steps to finish today's POWR" nudge — same cadence,
+    // same permission footprint (health read only, no location).
+    registerStepGoalNotifyTask().catch(() => { /* non-fatal */ });
   }, []);
 
   // Pull the admin-tunable gym dwell threshold (system_config →
