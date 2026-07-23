@@ -5,6 +5,7 @@ import {
     Building2,
     CalendarDays,
     ChevronLeft, ChevronRight,
+    Flame,
     Gift,
     Inbox,
     LayoutDashboard,
@@ -72,6 +73,7 @@ import UserManager from './pages/admin/UserManager';
 import UserProfile from './pages/admin/UserProfile';
 import WeeklyChallenges from './pages/admin/WeeklyChallenges';
 import NotificationManager from './pages/admin/NotificationManager';
+import StreakRescue from './pages/admin/StreakRescue';
 import VaultManager from './pages/admin/VaultManager';
 import AthleteSignup from './pages/AthleteSignup';
 import LandingV2 from './landing/LandingV2';
@@ -291,6 +293,7 @@ const PATH_LABELS = {
     broadcast: 'Broadcast',
     campaigns: 'Campaigns',
     notifications: 'Notifications',
+    'streak-rescue': 'Streak Rescue',
     config: 'Config',
 };
 
@@ -892,6 +895,7 @@ const AdminLayout = ({ children }) => {
         { label: 'Broadcast',      path: '/admin/broadcast',      icon: Megaphone  },
         { label: 'Campaigns',      path: '/admin/campaigns',      icon: CalendarDays },
         { label: 'Notifications',  path: '/admin/notifications',  icon: Bell         },
+        { label: 'Streak Rescue',  path: '/admin/streak-rescue',  icon: Flame        },
         { label: 'Vault',          path: '/admin/vault',          icon: Lock         },
         { label: 'Config',         path: '/admin/config',         icon: Settings     },
     ];
@@ -1083,6 +1087,7 @@ export default function App() {
                     <Route path="/admin/broadcast" element={<ProtectedRoute><AdminLayout><Broadcast /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/campaigns" element={<ProtectedRoute><AdminLayout><Campaigns /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/notifications" element={<ProtectedRoute><AdminLayout><NotificationManager /></AdminLayout></ProtectedRoute>} />
+                    <Route path="/admin/streak-rescue" element={<ProtectedRoute><AdminLayout><StreakRescue /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/athletes" element={<ProtectedRoute><AdminLayout><AthleteApplications /></AdminLayout></ProtectedRoute>} />
                     <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>

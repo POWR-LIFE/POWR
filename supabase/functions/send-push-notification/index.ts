@@ -371,14 +371,16 @@ function buildMessage(
       case 'streak_lost': {
         // The rescue offer, sent the morning after a streak dies — the single
         // highest-churn moment there is. POWR's version of streak repair is
-        // earned with effort, not bought: N sessions inside the window brings
-        // the whole streak back.
+        // earned with effort, not bought. requirement_text comes from the
+        // admin-authored challenge template the sweep drew ("2 sessions",
+        // "15,000 steps", "1 gym session"…).
         const lost = Math.max(1, Math.round(Number(payload.lost_streak ?? 0)));
-        const required = Math.max(1, Math.round(Number(payload.sessions_required ?? 2)));
         const hours = Math.max(1, Math.round(Number(payload.window_hours ?? 48)));
+        const req = String(payload.requirement_text ?? '').trim() ||
+          `${Math.max(1, Math.round(Number(payload.sessions_required ?? 2)))} sessions`;
         return {
           title: `Your ${lost}-day streak ended 💔`,
-          body: `Win it back: ${required} session${required !== 1 ? 's' : ''} in the next ${hours}h restores the whole streak.`,
+          body: `Win it back: ${req} in the next ${hours}h restores the whole streak.`,
           data: { type, route: '/(tabs)/index' },
           sound: 'default',
           channelId: 'powr_streak_v2',

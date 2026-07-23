@@ -31,6 +31,16 @@ interface StreakCardProps {
   sessionMaxTier?: boolean;     // true once at the top tier (or daily cap reached)
   /** When provided, shows a share icon in the header */
   onShare?: () => void;
+  /** Live streak-rescue accents: the missed day glows in the week strip and a
+   *  one-line progress readout sits under the countdown. Deliberately quiet —
+   *  the loud moment is the one-shot StreakRescueModal, not this card. */
+  rescueDayIndex?: number | null;  // Mon–Sun index of the missed day, if in this week's strip
+  rescueDone?: number;
+  rescueRequired?: number;
+  rescueExpiresAt?: string | null;
+  /** Tapping the rescue readout re-opens the rescue modal — user-initiated,
+   *  so it doesn't violate the one-shot announcement rule. */
+  onRescuePress?: () => void;
 }
 
 const DAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
@@ -62,6 +72,11 @@ export function StreakCard({
   sessionUpgradeMinutes = 40,
   sessionMaxTier = false,
   onShare,
+  rescueDayIndex = null,
+  rescueDone = 0,
+  rescueRequired = 0,
+  rescueExpiresAt = null,
+  onRescuePress,
 }: StreakCardProps) {
   const streakWeeks = Math.floor(streak / 7);
   const weekDates = useMemo(() => {
@@ -179,23 +194,27 @@ export function StreakCard({
               const done = activeDays[i] ?? false;
               const isToday = i === todayIndex;
               const isFuture = i > todayIndex;
+              const isRescue = i === rescueDayIndex && !done;
               return (
                 <View key={i} style={styles.weekDayCol}>
                   <Text style={[
                     styles.weekDayName,
                     isToday && styles.weekDayNameToday,
                     isFuture && styles.weekDayNameFuture,
+                    isRescue && styles.weekDayNameRescue,
                   ]}>{day}</Text>
                   <View style={[
                     styles.weekDateCircle,
                     done && styles.weekDateCircleDone,
                     isToday && styles.weekDateCircleToday,
                     isFuture && styles.weekDateCircleFuture,
+                    isRescue && styles.weekDateCircleRescue,
                   ]}>
                     <Text style={[
                       styles.weekDateNumber,
                       done && styles.weekDateNumberDone,
                       isToday && styles.weekDateNumberToday,
+                      isRescue && styles.weekDateNumberRescue,
                     ]}>
                       {weekDates[i]}
                     </Text>
@@ -211,6 +230,29 @@ export function StreakCard({
           <Text style={styles.countdownTime}>{countdown}</Text>
           <Text style={styles.countdownLabel}>Resets midnight</Text>
         </View>
+
+        {/* Live rescue readout — one quiet line, the modal already announced it.
+            Shows whenever an offer is live, even when the missed day falls
+            outside this week's strip. */}
+        {rescueRequired > 0 && (
+          <Pressable
+            onPress={onRescuePress}
+            disabled={!onRescuePress}
+            hitSlop={8}
+            style={({ pressed }) => [styles.rescueRow, pressed && { opacity: 0.6 }]}
+          >
+            <Ionicons name="bandage-outline" size={11} color={ORANGE} />
+            <Text style={styles.rescueText}>
+              SAVE YOUR STREAK · {Math.min(rescueDone, rescueRequired)}/{rescueRequired}
+              {rescueExpiresAt
+                ? ` · ${Math.max(1, Math.floor((new Date(rescueExpiresAt).getTime() - Date.now()) / 3600_000))}H LEFT`
+                : ''}
+            </Text>
+            {onRescuePress && (
+              <Ionicons name="chevron-forward" size={11} color="rgba(249,115,22,0.6)" />
+            )}
+          </Pressable>
+        )}
 
         {/* Session active section */}
         {sessionActive && (
@@ -410,6 +452,33 @@ const styles = StyleSheet.create({
   },
   weekDateNumberToday: {
     color: '#ffffff',
+  },
+  // Rescue accents — the missed day "needs saving"
+  weekDayNameRescue: {
+    color: ORANGE,
+    opacity: 1,
+  },
+  weekDateCircleRescue: {
+    borderColor: ORANGE,
+    borderWidth: 1.5,
+    backgroundColor: 'rgba(249,115,22,0.15)',
+  },
+  weekDateNumberRescue: {
+    color: ORANGE,
+    fontWeight: '700',
+  },
+  rescueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 6,
+  },
+  rescueText: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 1,
+    color: ORANGE,
+    fontVariant: ['tabular-nums'],
   },
   // Countdown to midnight
   countdownRow: {

@@ -77,11 +77,9 @@ const GROUPS = [
     },
     {
         id: 'streaks', title: 'Streaks & Nudges', icon: Flame, accent: '#EF4444',
-        blurb: 'Streak-rescue challenge terms and the daily nudge budget. Per-type copy and kill-switches live on the Notifications page.',
+        blurb: 'Master rescue switch and the daily nudge budget. Rescue challenge design (what earns a streak back) lives on its own Streak Rescue page; per-type copy and kill-switches on Notifications.',
         keys: [
-            'streak_rescue_enabled', 'streak_rescue_window_hours',
-            'streak_rescue_sessions_required', 'streak_rescue_min_streak',
-            'streak_rescue_cooldown_days',
+            'streak_rescue_enabled', 'streak_rescue_min_streak', 'streak_rescue_cooldown_days',
             'nudge_daily_cap', 'streak_at_risk_min_streak',
         ],
     },
@@ -162,6 +160,10 @@ const UNITS = {
 // Keys whose value is edited elsewhere — link out instead of a raw text box.
 const MANAGED = {
     weekly_challenges: { to: '/admin/challenges', cta: 'Edit on Challenges' },
+    // Rescue eligibility is tuned on the dedicated page next to the challenge
+    // templates it applies to — one home for the whole feature.
+    streak_rescue_min_streak:    { to: '/admin/streak-rescue', cta: 'Edit on Streak Rescue' },
+    streak_rescue_cooldown_days: { to: '/admin/streak-rescue', cta: 'Edit on Streak Rescue' },
     // A JSON blob with cohort rules — it is read by a STABLE function on the
     // app-load path, so hand-editing it in a 128px text box is a good way to
     // black out the Vault. The Vault page has a real editor with validation.

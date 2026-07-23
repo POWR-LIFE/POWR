@@ -50,6 +50,17 @@ function intFromConfig(rows: Array<{ key: string; value: string }>, key: string,
   return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
+// Human phrasing of a challenge requirement, used in the streak_lost push.
+export function requirementText(type: string, count: number): string {
+  const n = count.toLocaleString();
+  switch (type) {
+    case 'gym_sessions': return `${n} gym session${count !== 1 ? 's' : ''}`;
+    case 'active_days':  return `${n} active day${count !== 1 ? 's' : ''}`;
+    case 'steps':        return `${n} steps`;
+    default:             return `${n} session${count !== 1 ? 's' : ''}`;
+  }
+}
+
 Deno.serve(async (req: Request) => {
   const admin = createClient(
     Deno.env.get('SUPABASE_URL')!,
@@ -62,23 +73,21 @@ Deno.serve(async (req: Request) => {
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-  const stats = { expired: 0, backstopCompleted: 0, candidates: 0, offered: 0, belowMin: 0 };
+  const stats = { expired: 0, backstopCompleted: 0, candidates: 0, offered: 0, belowMin: 0, noFeasible: 0 };
 
   // ── 1. Expire / backstop-complete overdue offers ───────────────────────────
   const { data: overdue } = await admin
     .from('streak_rescues')
-    .select('id, user_id, lost_streak, sessions_required, count_from')
+    .select('id, user_id, lost_streak, sessions_required, count_from, requirement_type')
     .eq('status', 'offered')
     .lte('expires_at', new Date().toISOString());
 
   for (const r of overdue ?? []) {
-    const { count } = await admin
-      .from('activity_sessions')
-      .select('id', { count: 'exact', head: true })
-      .eq('user_id', r.user_id)
-      .neq('verification', 'manual')
-      .gte('started_at', r.count_from);
-    const done = count ?? 0;
+    // Same counter the session trigger uses — one definition of "progress".
+    const { data: progress } = await admin.rpc('streak_rescue_requirement_progress', {
+      p_user: r.user_id, p_from: r.count_from, p_requirement: r.requirement_type ?? 'sessions',
+    });
+    const done = Number(progress ?? 0);
 
     if (done >= r.sessions_required) {
       const { data: won } = await admin
@@ -115,29 +124,37 @@ Deno.serve(async (req: Request) => {
   const { data: configRows } = await admin
     .from('system_config')
     .select('key, value')
-    .in('key', [
-      'streak_rescue_enabled', 'streak_rescue_window_hours',
-      'streak_rescue_sessions_required', 'streak_rescue_min_streak',
-    ]);
+    .in('key', ['streak_rescue_enabled', 'streak_rescue_min_streak']);
   const cfg = configRows ?? [];
   const enabled = (cfg.find((r) => r.key === 'streak_rescue_enabled')?.value ?? 'true') === 'true';
-  const windowHours = intFromConfig(cfg, 'streak_rescue_window_hours', 48);
-  const sessionsRequired = intFromConfig(cfg, 'streak_rescue_sessions_required', 2);
   const minStreak = intFromConfig(cfg, 'streak_rescue_min_streak', 3);
 
-  if (enabled) {
+  // Challenge design lives in /admin/streak-rescue: the sweep draws a random
+  // template from the ACTIVE set per offer and freezes its terms onto the
+  // rescue row. No active templates = no offers, by design.
+  const { data: challenges } = await admin
+    .from('streak_rescue_challenges')
+    .select('id, label, requirement_type, requirement_count, window_hours')
+    .eq('active', true);
+  const pool = challenges ?? [];
+  if (enabled && pool.length === 0) {
+    console.log('[streak-rescue-sweep] no active challenge templates — offering nothing');
+  }
+
+  if (enabled && pool.length > 0) {
     const { data: candidates, error } = await admin.rpc('streak_rescue_candidates');
     if (error) console.error('[streak-rescue-sweep] candidates rpc failed', error);
     stats.candidates = (candidates ?? []).length;
 
     for (const c of candidates ?? []) {
       // Size the lost streak: local active days over the last 90d, run ending
-      // at the day before yesterday (c.missed_day is yesterday-local).
+      // at the day before yesterday (c.missed_day is yesterday-local). type +
+      // steps ride along to establish how this user actually trains.
       const since = new Date();
       since.setDate(since.getDate() - 90);
       const { data: sessions } = await admin
         .from('activity_sessions')
-        .select('started_at')
+        .select('started_at, type, steps')
         .eq('user_id', c.user_id)
         .neq('verification', 'manual')
         .gte('started_at', since.toISOString());
@@ -154,14 +171,50 @@ Deno.serve(async (req: Request) => {
         continue;
       }
 
+      // FEASIBILITY MATCH before the draw: never offer a challenge this user
+      // can't realistically complete. A walking-only user must not draw a
+      // gym-session rescue; a gym user with no step tracking must not draw a
+      // steps target. Evidence is RECENT history (last 3 weeks, not the full
+      // 90-day window) — history isn't availability, and "went to a gym once
+      // in May, walks now" must not qualify for a gym rescue. Universal kinds
+      // (sessions / active_days) are satisfiable by ANY verified activity, so
+      // whatever a user still does — swim, walk, anything — completes them:
+      //   gym_sessions → a verified gym session in the last 21 days
+      //   steps        → step-carrying session data in the last 21 days
+      // Empty after filtering → fall back to the universal kinds; nothing
+      // universal active either → skip this user rather than set them up
+      // to fail (a rescue they can't do is a second disappointment).
+      const recentCutoff = Date.now() - 21 * 24 * 3600_000;
+      const recent = (sessions ?? []).filter(
+        (s: { started_at: string }) => new Date(s.started_at).getTime() >= recentCutoff,
+      );
+      const hasGym = recent.some((s: { type?: string }) => s.type === 'gym');
+      const hasSteps = recent.some((s: { steps?: number | null }) => (s.steps ?? 0) > 0);
+      const feasible = pool.filter((ch) =>
+        ch.requirement_type === 'gym_sessions' ? hasGym
+        : ch.requirement_type === 'steps' ? hasSteps
+        : true);
+      const drawPool = feasible.length > 0
+        ? feasible
+        : pool.filter((ch) => ch.requirement_type === 'sessions' || ch.requirement_type === 'active_days');
+      if (drawPool.length === 0) {
+        stats.noFeasible++;
+        continue;
+      }
+
+      const challenge = drawPool[Math.floor(Math.random() * drawPool.length)];
+
       const { data: offer, error: offerErr } = await admin
         .from('streak_rescues')
         .insert({
           user_id: c.user_id,
           lost_streak: lostStreak,
           missed_day: c.missed_day,
-          sessions_required: sessionsRequired,
-          expires_at: new Date(Date.now() + windowHours * 3600_000).toISOString(),
+          challenge_id: challenge.id,
+          label: challenge.label,
+          requirement_type: challenge.requirement_type,
+          sessions_required: challenge.requirement_count,
+          expires_at: new Date(Date.now() + challenge.window_hours * 3600_000).toISOString(),
           count_from: localDayStartUtc(c.tz).toISOString(),
         })
         .select('id')
@@ -180,8 +233,8 @@ Deno.serve(async (req: Request) => {
             type: 'streak_lost',
             payload: {
               lost_streak: lostStreak,
-              sessions_required: sessionsRequired,
-              window_hours: windowHours,
+              requirement_text: requirementText(challenge.requirement_type, challenge.requirement_count),
+              window_hours: challenge.window_hours,
             },
           }),
         });
