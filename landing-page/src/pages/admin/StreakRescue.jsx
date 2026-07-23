@@ -8,8 +8,14 @@ import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
 import { useAuth } from '../../App';
 
+// Best-effort: a failed audit insert must never surface as a failed save —
+// the primary write already succeeded by the time we log it.
 const logAction = async (adminId, action, targetType, targetId, metadata = {}) => {
-    await supabase.from('admin_audit_log').insert({ admin_id: adminId, action, target_type: targetType, target_id: targetId, metadata });
+    try {
+        await supabase.from('admin_audit_log').insert({ admin_id: adminId, action, target_type: targetType, target_id: targetId, metadata });
+    } catch (e) {
+        console.warn('audit log failed:', e);
+    }
 };
 
 // Requirement kinds the progress engine understands (streak_rescue_requirement_progress).
@@ -82,10 +88,15 @@ export default function StreakRescue() {
     const saveEligibility = async (key, value, label) => {
         const clean = String(parseInt(value, 10) || 0);
         if (parseInt(clean, 10) <= 0) { toast.error(`${label} must be a positive number`); return; }
-        const { error } = await supabase.from('system_config')
-            .update({ value: clean, updated_at: new Date().toISOString(), updated_by: user.id })
-            .eq('key', key);
-        if (error) { toast.error(`Failed to save ${label}`); return; }
+        // Upsert + returned row: a plain update against a missing key would
+        // "succeed" with 0 rows and toast a save that never happened.
+        const { data, error } = await supabase.from('system_config')
+            .upsert(
+                { key, value: clean, updated_at: new Date().toISOString(), updated_by: user.id },
+                { onConflict: 'key' },
+            )
+            .select('key');
+        if (error || !data?.length) { toast.error(`Failed to save ${label}`); return; }
         await logAction(user.id, 'update_config', 'system_config', key, { value: clean });
         toast.success(`${label} saved`);
     };
