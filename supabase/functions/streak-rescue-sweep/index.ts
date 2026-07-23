@@ -174,15 +174,22 @@ Deno.serve(async (req: Request) => {
       // FEASIBILITY MATCH before the draw: never offer a challenge this user
       // can't realistically complete. A walking-only user must not draw a
       // gym-session rescue; a gym user with no step tracking must not draw a
-      // steps target. Their own 90-day history is the evidence:
-      //   gym_sessions → they've logged at least one verified gym session
-      //   steps        → at least one session carries step data
-      //   sessions / active_days → universal, always feasible
+      // steps target. Evidence is RECENT history (last 3 weeks, not the full
+      // 90-day window) — history isn't availability, and "went to a gym once
+      // in May, walks now" must not qualify for a gym rescue. Universal kinds
+      // (sessions / active_days) are satisfiable by ANY verified activity, so
+      // whatever a user still does — swim, walk, anything — completes them:
+      //   gym_sessions → a verified gym session in the last 21 days
+      //   steps        → step-carrying session data in the last 21 days
       // Empty after filtering → fall back to the universal kinds; nothing
       // universal active either → skip this user rather than set them up
       // to fail (a rescue they can't do is a second disappointment).
-      const hasGym = (sessions ?? []).some((s: { type?: string }) => s.type === 'gym');
-      const hasSteps = (sessions ?? []).some((s: { steps?: number | null }) => (s.steps ?? 0) > 0);
+      const recentCutoff = Date.now() - 21 * 24 * 3600_000;
+      const recent = (sessions ?? []).filter(
+        (s: { started_at: string }) => new Date(s.started_at).getTime() >= recentCutoff,
+      );
+      const hasGym = recent.some((s: { type?: string }) => s.type === 'gym');
+      const hasSteps = recent.some((s: { steps?: number | null }) => (s.steps ?? 0) > 0);
       const feasible = pool.filter((ch) =>
         ch.requirement_type === 'gym_sessions' ? hasGym
         : ch.requirement_type === 'steps' ? hasSteps
