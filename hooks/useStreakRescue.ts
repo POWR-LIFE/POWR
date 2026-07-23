@@ -22,6 +22,68 @@ export interface StreakRescueOffer {
     expiresAt: string;
 }
 
+/** How long the celebratory 'saved' state stays visible after completion. */
+export const SAVED_VISIBLE_MS = 24 * 3600_000;
+
+/**
+ * Pure state derivation from a streak_rescues row — extracted so the
+ * offered/saved/expired boundaries are unit-testable without Supabase.
+ * Returns null when nothing should be surfaced.
+ */
+export function deriveRescueOffer(
+    row: {
+        id: string;
+        status: string;
+        lost_streak: number;
+        missed_day?: string | null;
+        label?: string | null;
+        requirement_type?: string | null;
+        sessions_required: number;
+        sessions_done: number;
+        expires_at: string;
+        completed_at?: string | null;
+    } | null,
+    nowMs: number,
+): StreakRescueOffer | null {
+    if (!row) return null;
+
+    const isLiveOffer = row.status === 'offered' && new Date(row.expires_at).getTime() > nowMs;
+    const isFreshSave = row.status === 'completed' && !!row.completed_at
+        && nowMs - new Date(row.completed_at).getTime() < SAVED_VISIBLE_MS;
+    if (!isLiveOffer && !isFreshSave) return null;
+
+    return {
+        id: row.id,
+        state: isLiveOffer ? 'offered' : 'saved',
+        lostStreak: row.lost_streak,
+        missedDay: String(row.missed_day ?? '').slice(0, 10),
+        label: row.label ?? null,
+        requirementType: (row.requirement_type ?? 'sessions') as RescueRequirementType,
+        sessionsRequired: row.sessions_required,
+        sessionsDone: row.sessions_done,
+        expiresAt: row.expires_at,
+    };
+}
+
+/**
+ * Mon–Sun index of the rescue's missed day when it falls inside the current
+ * week strip; null otherwise (the strip only shows this week). Pure for tests.
+ */
+export function rescueDayIndexFor(
+    missedDay: string | null | undefined,
+    todayIndex: number,
+    now: Date = new Date(),
+): number | null {
+    if (!missedDay) return null;
+    const missed = new Date(`${missedDay}T12:00:00`);
+    if (Number.isNaN(missed.getTime())) return null;
+    const monday = new Date(now);
+    monday.setDate(now.getDate() - todayIndex);
+    monday.setHours(0, 0, 0, 0);
+    const idx = Math.floor((missed.getTime() - monday.getTime()) / 86400000);
+    return idx >= 0 && idx <= 6 ? idx : null;
+}
+
 /**
  * The user's live streak-rescue offer, if any. Server-owned lifecycle: the
  * rescue sweep creates offers, a DB trigger advances sessions_done as
@@ -41,25 +103,7 @@ export function useStreakRescue() {
                     .order('offered_at', { ascending: false })
                     .limit(1)
                     .maybeSingle();
-                if (!row) return null;
-
-                const now = Date.now();
-                const isLiveOffer = row.status === 'offered' && new Date(row.expires_at).getTime() > now;
-                const isFreshSave = row.status === 'completed' && row.completed_at
-                    && now - new Date(row.completed_at).getTime() < 24 * 3600_000;
-                if (!isLiveOffer && !isFreshSave) return null;
-
-                return {
-                    id: row.id,
-                    state: isLiveOffer ? 'offered' : 'saved',
-                    lostStreak: row.lost_streak,
-                    missedDay: String(row.missed_day ?? '').slice(0, 10),
-                    label: row.label ?? null,
-                    requirementType: (row.requirement_type ?? 'sessions') as RescueRequirementType,
-                    sessionsRequired: row.sessions_required,
-                    sessionsDone: row.sessions_done,
-                    expiresAt: row.expires_at,
-                };
+                return deriveRescueOffer(row, Date.now());
             } catch {
                 return null; // table may predate this build
             }

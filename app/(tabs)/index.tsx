@@ -43,7 +43,7 @@ import { useHealthData } from '@/hooks/useHealthData';
 import { useLevelUp } from '@/hooks/useLevelUp';
 import { usePoints } from '@/hooks/usePoints';
 import { useStreak } from '@/hooks/useStreak';
-import { useStreakRescue } from '@/hooks/useStreakRescue';
+import { rescueDayIndexFor, useStreakRescue } from '@/hooks/useStreakRescue';
 import { fetchSmartFeaturedReward, type Reward } from '@/lib/api/rewards';
 import { fetchProfile } from '@/lib/api/user';
 import { applyDetectedActivitySwap, WEEKLY_SESSION_TARGET, WEEKLY_STEPS_TARGET } from '@/lib/weeklyActivities';
@@ -118,18 +118,12 @@ export default function HomeScreen() {
     const [rescueReopenNonce, setRescueReopenNonce] = useState(0);
 
     // Mon–Sun index of the rescue's missed day, when it falls inside the
-    // current week strip (an offer from last Sunday about last Saturday
+    // current week strip (an offer whose missed day is outside this week
     // simply doesn't highlight — the strip only shows this week).
-    const rescueDayIndex = useMemo(() => {
-        if (!rescue || rescue.state !== 'offered' || !rescue.missedDay) return null;
-        const missed = new Date(`${rescue.missedDay}T12:00:00`);
-        const now = new Date();
-        const monday = new Date(now);
-        monday.setDate(now.getDate() - TODAY_INDEX);
-        monday.setHours(0, 0, 0, 0);
-        const idx = Math.floor((missed.getTime() - monday.getTime()) / 86400000);
-        return idx >= 0 && idx <= 6 ? idx : null;
-    }, [rescue]);
+    const rescueDayIndex = useMemo(
+        () => (rescue?.state === 'offered' ? rescueDayIndexFor(rescue.missedDay, TODAY_INDEX) : null),
+        [rescue],
+    );
     const { recentItems, weekActiveDays, weeklyMetrics, dailyMetrics, refresh: refreshActivity } = useActivity();
     const { balance, totalEarned, weeklyEarned, refresh: refreshPoints } = usePoints();
     const { activeGeofence, sessionCompleted, clearSessionCompleted } = useActiveGeofence();
