@@ -14,8 +14,8 @@ const logAction = async (adminId, action, targetType, targetId, metadata = {}) =
 
 // Requirement kinds the progress engine understands (streak_rescue_requirement_progress).
 const REQUIREMENT_KINDS = [
-    { value: 'sessions',     label: 'Sessions (any activity)', unit: 'sessions',  icon: Activity,      hint: 'Any verified workout counts — gym, run, wearable, walking day. Offered to everyone.' },
-    { value: 'gym_sessions', label: 'Gym sessions',            unit: 'gym visits', icon: Dumbbell,     hint: 'Only verified gym sessions count. Only offered to users with gym history — walkers never draw it.' },
+    { value: 'sessions',     label: 'Sessions (any activity)', unit: 'sessions',  icon: Activity,      hint: 'Any verified workout counts — gym, run, wearable, walking day. Offered to everyone. Most types count once per day, so 2-in-48h ≈ two active days (or one day with two different activities).' },
+    { value: 'gym_sessions', label: 'Gym sessions',            unit: 'gym visits', icon: Dumbbell,     hint: 'Only verified gym sessions count — and gym caps at ONE per day, so the count means separate gym DAYS. Keep count ≤ the window in days or the challenge is impossible. Only offered to users with recent gym history.' },
     { value: 'active_days',  label: 'Active days',             unit: 'days',      icon: CalendarCheck, hint: 'Distinct days with at least one verified session. Offered to everyone.' },
     { value: 'steps',        label: 'Steps total',             unit: 'steps',     icon: Footprints,    hint: 'Steps summed across verified sessions. Only offered to users whose sessions carry step data.' },
 ];
@@ -98,6 +98,13 @@ export default function StreakRescue() {
         if (!label) { toast.error('Give the challenge a name'); return; }
         if (!count || count <= 0) { toast.error('Requirement must be a positive number'); return; }
         if (!windowH || windowH < 1 || windowH > 168) { toast.error('Window must be 1–168 hours'); return; }
+        // Gym sessions and active days accrue at most once per calendar day, so a
+        // count beyond the window's day span is literally impossible to complete.
+        const daySpan = Math.ceil(windowH / 24);
+        if ((draft.requirement_type === 'gym_sessions' || draft.requirement_type === 'active_days') && count > daySpan) {
+            toast.error(`Impossible challenge: ${count} ${draft.requirement_type === 'gym_sessions' ? 'gym days' : 'active days'} can't fit in a ${windowH}h window — max ${daySpan}`);
+            return;
+        }
 
         setSaving(true);
         const row = {
