@@ -38,6 +38,9 @@ interface StreakCardProps {
   rescueDone?: number;
   rescueRequired?: number;
   rescueExpiresAt?: string | null;
+  /** Tapping the rescue readout re-opens the rescue modal — user-initiated,
+   *  so it doesn't violate the one-shot announcement rule. */
+  onRescuePress?: () => void;
 }
 
 const DAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
@@ -73,6 +76,7 @@ export function StreakCard({
   rescueDone = 0,
   rescueRequired = 0,
   rescueExpiresAt = null,
+  onRescuePress,
 }: StreakCardProps) {
   const streakWeeks = Math.floor(streak / 7);
   const weekDates = useMemo(() => {
@@ -231,7 +235,12 @@ export function StreakCard({
             Shows whenever an offer is live, even when the missed day falls
             outside this week's strip. */}
         {rescueRequired > 0 && (
-          <View style={styles.rescueRow}>
+          <Pressable
+            onPress={onRescuePress}
+            disabled={!onRescuePress}
+            hitSlop={8}
+            style={({ pressed }) => [styles.rescueRow, pressed && { opacity: 0.6 }]}
+          >
             <Ionicons name="bandage-outline" size={11} color={ORANGE} />
             <Text style={styles.rescueText}>
               SAVE YOUR STREAK · {Math.min(rescueDone, rescueRequired)}/{rescueRequired}
@@ -239,7 +248,10 @@ export function StreakCard({
                 ? ` · ${Math.max(1, Math.floor((new Date(rescueExpiresAt).getTime() - Date.now()) / 3600_000))}H LEFT`
                 : ''}
             </Text>
-          </View>
+            {onRescuePress && (
+              <Ionicons name="chevron-forward" size={11} color="rgba(249,115,22,0.6)" />
+            )}
+          </Pressable>
         )}
 
         {/* Session active section */}

@@ -115,6 +115,7 @@ export default function HomeScreen() {
     const { user } = useAuth();
     const { currentStreak, multiplier, refresh: refreshStreak } = useStreak();
     const { rescue } = useStreakRescue();
+    const [rescueReopenNonce, setRescueReopenNonce] = useState(0);
 
     // Mon–Sun index of the rescue's missed day, when it falls inside the
     // current week strip (an offer from last Sunday about last Saturday
@@ -599,13 +600,14 @@ export default function HomeScreen() {
 
                 <HealthGapBanner />
 
-                <StreakRescueModal rescue={rescue} />
+                <StreakRescueModal rescue={rescue} reopenNonce={rescueReopenNonce} />
 
                 <StreakCard
                     rescueDayIndex={rescueDayIndex}
                     rescueDone={rescue?.state === 'offered' ? rescue.sessionsDone : 0}
                     rescueRequired={rescue?.state === 'offered' ? rescue.sessionsRequired : 0}
                     rescueExpiresAt={rescue?.state === 'offered' ? rescue.expiresAt : null}
+                    onRescuePress={() => setRescueReopenNonce(n => n + 1)}
                     streak={currentStreak}
                     multiplier={multiplier}
                     activeDays={weekActiveDays}

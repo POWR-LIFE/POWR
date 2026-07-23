@@ -30,7 +30,15 @@ function hoursLeft(expiresAt: string): number {
   return Math.max(1, Math.floor((new Date(expiresAt).getTime() - Date.now()) / 3600_000));
 }
 
-export function StreakRescueModal({ rescue }: { rescue: StreakRescueOffer | null }) {
+export function StreakRescueModal({
+  rescue,
+  reopenNonce = 0,
+}: {
+  rescue: StreakRescueOffer | null;
+  /** Increment to re-open on user request (tapping the StreakCard readout).
+   *  Bypasses the seen-marker — user-initiated is never nagging. */
+  reopenNonce?: number;
+}) {
   const [visible, setVisible] = useState(false);
 
   const seenKey = rescue ? `${SEEN_PREFIX}${rescue.id}/${rescue.state}` : null;
@@ -43,6 +51,10 @@ export function StreakRescueModal({ rescue }: { rescue: StreakRescueOffer | null
       .catch(() => { /* storage unreadable — stay quiet rather than nag */ });
     return () => { cancelled = true; };
   }, [seenKey]);
+
+  useEffect(() => {
+    if (reopenNonce > 0 && rescue) setVisible(true);
+  }, [reopenNonce]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const dismiss = () => {
     setVisible(false);
