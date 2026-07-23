@@ -35,6 +35,21 @@ async function computeStreakFromSessions(): Promise<{ current: number; longest: 
         .gte('started_at', since.toISOString())
         .order('started_at', { ascending: false });
 
+    // Completed streak rescues bridge their missed day — the day counts as
+    // active even though no session exists for it, restoring the full streak.
+    // RLS scopes the read to the signed-in user. Mirrors _shared/streak.ts.
+    let bridgeDays: string[] = [];
+    try {
+        const { data: rescues } = await supabase
+            .from('streak_rescues')
+            .select('missed_day')
+            .eq('status', 'completed')
+            .gte('missed_day', since.toISOString().slice(0, 10));
+        bridgeDays = (rescues ?? []).map(r => String(r.missed_day).slice(0, 10));
+    } catch {
+        // Table may predate this build — streak just computes without bridges.
+    }
+
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
@@ -45,16 +60,17 @@ async function computeStreakFromSessions(): Promise<{ current: number; longest: 
     let result: { current: number; longest: number };
     let lastActiveDate: string | null = null;
 
-    if (error || !data?.length) {
+    const sessionDays = (error ? [] : (data ?? [])).map(s => {
+        const d = new Date(s.started_at);
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    });
+
+    if (!sessionDays.length) {
         result = { current: 0, longest: 0 };
     } else {
-        // Build a sorted set of unique date strings (YYYY-MM-DD, local time)
-        const uniqueDays = [...new Set(
-            data.map(s => {
-                const d = new Date(s.started_at);
-                return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-            })
-        )].sort().reverse(); // most recent first
+        // Unique date strings (YYYY-MM-DD, local time) + rescue bridge days.
+        const uniqueDays = [...new Set([...sessionDays, ...bridgeDays])]
+            .sort().reverse(); // most recent first
 
         lastActiveDate = uniqueDays[0] ?? null;
 
