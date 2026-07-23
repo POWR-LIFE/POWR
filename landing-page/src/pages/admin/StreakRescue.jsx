@@ -14,10 +14,10 @@ const logAction = async (adminId, action, targetType, targetId, metadata = {}) =
 
 // Requirement kinds the progress engine understands (streak_rescue_requirement_progress).
 const REQUIREMENT_KINDS = [
-    { value: 'sessions',     label: 'Sessions (any activity)', unit: 'sessions',  icon: Activity,      hint: 'Any verified workout counts — gym, run, wearable, walking day' },
-    { value: 'gym_sessions', label: 'Gym sessions',            unit: 'gym visits', icon: Dumbbell,     hint: 'Only verified gym sessions count' },
-    { value: 'active_days',  label: 'Active days',             unit: 'days',      icon: CalendarCheck, hint: 'Distinct days with at least one verified session' },
-    { value: 'steps',        label: 'Steps total',             unit: 'steps',     icon: Footprints,    hint: 'Steps summed across verified sessions in the window' },
+    { value: 'sessions',     label: 'Sessions (any activity)', unit: 'sessions',  icon: Activity,      hint: 'Any verified workout counts — gym, run, wearable, walking day. Offered to everyone.' },
+    { value: 'gym_sessions', label: 'Gym sessions',            unit: 'gym visits', icon: Dumbbell,     hint: 'Only verified gym sessions count. Only offered to users with gym history — walkers never draw it.' },
+    { value: 'active_days',  label: 'Active days',             unit: 'days',      icon: CalendarCheck, hint: 'Distinct days with at least one verified session. Offered to everyone.' },
+    { value: 'steps',        label: 'Steps total',             unit: 'steps',     icon: Footprints,    hint: 'Steps summed across verified sessions. Only offered to users whose sessions carry step data.' },
 ];
 const kindMeta = (v) => REQUIREMENT_KINDS.find(k => k.value === v) ?? REQUIREMENT_KINDS[0];
 
@@ -163,8 +163,10 @@ export default function StreakRescue() {
                     </div>
                     <p className="text-xs text-[#888888] max-w-xl leading-relaxed">
                         When a qualifying streak dies, the morning sweep offers ONE challenge drawn at random from the
-                        active set below — complete it inside its window and the whole streak comes back. Terms are frozen
-                        onto each offer, so edits here never move goalposts mid-rescue. No active challenges = no offers.
+                        active set below — complete it inside its window and the whole streak comes back. The draw is
+                        matched to how each user actually trains (gym challenges need gym history, step challenges need
+                        step data; walkers fall back to the universal kinds). Terms are frozen onto each offer, so edits
+                        here never move goalposts mid-rescue. No active challenges = no offers.
                     </p>
                 </div>
                 <Link to="/admin/config"

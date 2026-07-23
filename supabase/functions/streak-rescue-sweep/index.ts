@@ -73,7 +73,7 @@ Deno.serve(async (req: Request) => {
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-  const stats = { expired: 0, backstopCompleted: 0, candidates: 0, offered: 0, belowMin: 0 };
+  const stats = { expired: 0, backstopCompleted: 0, candidates: 0, offered: 0, belowMin: 0, noFeasible: 0 };
 
   // ── 1. Expire / backstop-complete overdue offers ───────────────────────────
   const { data: overdue } = await admin
@@ -148,12 +148,13 @@ Deno.serve(async (req: Request) => {
 
     for (const c of candidates ?? []) {
       // Size the lost streak: local active days over the last 90d, run ending
-      // at the day before yesterday (c.missed_day is yesterday-local).
+      // at the day before yesterday (c.missed_day is yesterday-local). type +
+      // steps ride along to establish how this user actually trains.
       const since = new Date();
       since.setDate(since.getDate() - 90);
       const { data: sessions } = await admin
         .from('activity_sessions')
-        .select('started_at')
+        .select('started_at, type, steps')
         .eq('user_id', c.user_id)
         .neq('verification', 'manual')
         .gte('started_at', since.toISOString());
@@ -170,7 +171,31 @@ Deno.serve(async (req: Request) => {
         continue;
       }
 
-      const challenge = pool[Math.floor(Math.random() * pool.length)];
+      // FEASIBILITY MATCH before the draw: never offer a challenge this user
+      // can't realistically complete. A walking-only user must not draw a
+      // gym-session rescue; a gym user with no step tracking must not draw a
+      // steps target. Their own 90-day history is the evidence:
+      //   gym_sessions → they've logged at least one verified gym session
+      //   steps        → at least one session carries step data
+      //   sessions / active_days → universal, always feasible
+      // Empty after filtering → fall back to the universal kinds; nothing
+      // universal active either → skip this user rather than set them up
+      // to fail (a rescue they can't do is a second disappointment).
+      const hasGym = (sessions ?? []).some((s: { type?: string }) => s.type === 'gym');
+      const hasSteps = (sessions ?? []).some((s: { steps?: number | null }) => (s.steps ?? 0) > 0);
+      const feasible = pool.filter((ch) =>
+        ch.requirement_type === 'gym_sessions' ? hasGym
+        : ch.requirement_type === 'steps' ? hasSteps
+        : true);
+      const drawPool = feasible.length > 0
+        ? feasible
+        : pool.filter((ch) => ch.requirement_type === 'sessions' || ch.requirement_type === 'active_days');
+      if (drawPool.length === 0) {
+        stats.noFeasible++;
+        continue;
+      }
+
+      const challenge = drawPool[Math.floor(Math.random() * drawPool.length)];
 
       const { data: offer, error: offerErr } = await admin
         .from('streak_rescues')
