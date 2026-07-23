@@ -334,11 +334,14 @@ export async function notifyCheckInAvailable(partnerName: string, locationId: st
 // push_send_log at the send-push chokepoint; locally-scheduled nudges
 // (nearby_offer, the within-reach milestone, step_goal_nudge) never pass
 // through it, so they share THIS pool instead — one local nudge per calendar
-// day, whichever fires first. Re-consuming for the SAME type on the same day
-// is allowed (within-reach cancels + reschedules itself to stay fresh; that
-// refresh must not read as a second nudge).
+// day, whichever fires first. The ONLY same-day re-consume allowed is
+// points_milestone re-claiming its own slot: within-reach cancels + reschedules
+// itself to stay fresh, and that refresh replaces the pending nudge rather
+// than adding one. Every other type gets no same-type exception — a second
+// nearby_offer for a different placement is a second nudge, and it's denied.
 
 const CLIENT_NUDGE_BUDGET_KEY = '@powr/client_nudge_budget';
+const RESCHEDULABLE_NUDGE: NotificationType = 'points_milestone';
 
 function localDayKey(): string {
   const d = new Date();
@@ -350,7 +353,9 @@ export async function consumeClientNudgeBudget(type: NotificationType): Promise<
     const raw = await AsyncStorage.getItem(CLIENT_NUDGE_BUDGET_KEY);
     if (raw) {
       const prev = JSON.parse(raw) as { day?: string; type?: string };
-      if (prev?.day === localDayKey()) return prev.type === type;
+      if (prev?.day === localDayKey()) {
+        return prev.type === type && type === RESCHEDULABLE_NUDGE;
+      }
     }
     await AsyncStorage.setItem(CLIENT_NUDGE_BUDGET_KEY, JSON.stringify({ day: localDayKey(), type }));
     return true;

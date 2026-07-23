@@ -103,10 +103,15 @@ begin
     -- Only the transition winner sends the push (idempotent under races).
     if found then
       begin
-        -- send-push-notification is deployed verify_jwt=false; no token needed.
+        -- send-push-notification (verify_jwt=false) authorizes callers itself:
+        -- service-role bearer, the shared cron token, or a user JWT targeting
+        -- self. DB triggers authenticate with the cron token.
         perform net.http_post(
           url := 'https://wjvvujnicwkruaeibttt.supabase.co/functions/v1/send-push-notification',
-          headers := jsonb_build_object('Content-Type', 'application/json'),
+          headers := jsonb_build_object(
+            'Content-Type', 'application/json',
+            'x-resolve-token', (select decrypted_secret from vault.decrypted_secrets where name = 'shared_resolve_token')
+          ),
           body := jsonb_build_object(
             'target_user_id', new.user_id,
             'type', 'streak_rescued',

@@ -70,9 +70,14 @@ begin
   end if;
 
   begin
+    -- x-resolve-token authenticates this DB-triggered call to send-push (which
+    -- gates every caller: service-role, cron token, or self-targeting user JWT).
     perform net.http_post(
       url := 'https://wjvvujnicwkruaeibttt.supabase.co/functions/v1/send-push-notification',
-      headers := jsonb_build_object('Content-Type', 'application/json'),
+      headers := jsonb_build_object(
+        'Content-Type', 'application/json',
+        'x-resolve-token', (select decrypted_secret from vault.decrypted_secrets where name = 'shared_resolve_token')
+      ),
       body := jsonb_build_object(
         'target_user_id', new.user_id,
         'type', 'reward_unlocked',
@@ -115,7 +120,10 @@ as $$
 begin
   perform net.http_post(
     url := 'https://wjvvujnicwkruaeibttt.supabase.co/functions/v1/send-push-notification',
-    headers := jsonb_build_object('Content-Type', 'application/json'),
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'x-resolve-token', (select decrypted_secret from vault.decrypted_secrets where name = 'shared_resolve_token')
+    ),
     body := jsonb_build_object(
       'target_user_id', new.user_id,
       'type', 'level_up',

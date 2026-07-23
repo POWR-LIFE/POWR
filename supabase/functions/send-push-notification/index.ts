@@ -651,6 +651,46 @@ Deno.serve(async (req: Request) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     );
 
+    // ── Caller authorization ────────────────────────────────────────────────
+    // Deployed verify_jwt=false (pg_net DB triggers can't mint JWTs), so the
+    // gate lives here instead. Three ways in, everything else is a 401:
+    //   1. service-role bearer  — edge-function-to-edge-function (notifyPush,
+    //      claim-points, terra-webhook, the dispatchers…)
+    //   2. shared cron token    — pg_cron + DB triggers (x-resolve-token,
+    //      verified against Vault via verify_resolve_token)
+    //   3. a user's own JWT     — client invoke, but ONLY to notify itself
+    // Without this, any caller on the internet could push arbitrary copy to
+    // arbitrary users through the type gates below.
+    {
+      const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+      const bearer = (req.headers.get('authorization') ?? '').replace(/^Bearer\s+/i, '').trim();
+      let authorized = serviceKey.length > 0 && bearer === serviceKey;
+
+      if (!authorized) {
+        const cronToken = req.headers.get('x-resolve-token') ?? '';
+        if (cronToken) {
+          const { data: valid } = await supabase.rpc('verify_resolve_token', { p_token: cronToken });
+          authorized = valid === true;
+        }
+      }
+
+      // User JWTs may only fire the receipts the client legitimately sends
+      // for itself (the HealthKit/Health Connect sync path) — not arbitrary
+      // types with spoofed payloads.
+      const USER_CALLABLE: NotificationType[] = ['wearable_session_recorded', 'sleep_target_met'];
+      if (!authorized && bearer && USER_CALLABLE.includes(type)) {
+        const { data: userData } = await supabase.auth.getUser(bearer);
+        authorized = !!userData?.user?.id && userData.user.id === target_user_id;
+      }
+
+      if (!authorized) {
+        return new Response(JSON.stringify({ error: 'unauthorized' }), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+    }
+
     // Check admin-level notification config (global kill-switch + copy overrides).
     // Fetched once here; overrides are applied to every message built below.
     const { data: notifConfig } = await supabase
