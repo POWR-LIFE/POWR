@@ -45,6 +45,29 @@ export function StreakRescueCard({ rescue }: { rescue: StreakRescueOffer }) {
   const remainingCount = rescue.sessionsRequired - done;
   const pct = rescue.sessionsRequired > 0 ? done / rescue.sessionsRequired : 0;
 
+  // Completed within the last 24h: hold a celebratory state instead of just
+  // vanishing — the push is the announcement, this is the in-app applause
+  // (and the only applause for users with notifications off).
+  if (rescue.state === 'saved') {
+    return (
+      <View style={[styles.card, styles.cardSaved]}>
+        <View style={styles.headerRow}>
+          <View style={styles.titleWrap}>
+            <Ionicons name="flame" size={16} color={GOLD} />
+            <Text style={styles.title}>STREAK SAVED</Text>
+          </View>
+          <Text style={styles.remaining}>RESCUE COMPLETE</Text>
+        </View>
+        <Text style={styles.body}>
+          You did the work — your {rescue.lostStreak}-day streak is back and counting. Protect it tonight.
+        </Text>
+        <View style={styles.progressTrack}>
+          <View style={[styles.progressFill, { width: '100%' }]} />
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.card}>
       <View style={styles.headerRow}>
@@ -81,6 +104,10 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     borderWidth: 1,
     borderColor: 'rgba(232,210,0,0.35)',
+  },
+  cardSaved: {
+    borderColor: GOLD,
+    backgroundColor: '#161403',
   },
   headerRow: {
     flexDirection: 'row',
