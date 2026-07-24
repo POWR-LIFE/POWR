@@ -13,7 +13,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ActivityIcon } from '@/components/ActivityIcon';
 import GeometricBackground from '@/components/GeometricBackground';
+import LedgerFilterSheet, { LedgerFilterChip } from '@/components/ledger/LedgerFilterSheet';
 import { ACTIVITIES, type ActivityType } from '@/constants/activities';
+import { LEDGER_TYPE_META as TYPE_META } from '@/constants/ledgerTypeMeta';
 import { LEVELS } from '@/constants/levels';
 import { typography } from '@/constants/tokens';
 import {
@@ -21,6 +23,13 @@ import {
   fetchTransactionHistory,
   type PointTransaction,
 } from '@/lib/api/points';
+import {
+  buildLedgerFilters,
+  findLedgerFilter,
+  isTogether,
+  matchesLedgerFilter,
+  type LedgerFilterKey,
+} from '@/lib/ledgerFilters';
 import { deriveLevelUps, type LevelUpEvent } from '@/lib/levelHistory';
 
 // ─── Design tokens (match settings-screen) ───────────────────────────────────
@@ -34,16 +43,9 @@ const GREEN  = '#00CC66';
 const RED    = '#ef4444';
 const ORANGE = '#FF9944';
 
-// ─── Type metadata ────────────────────────────────────────────────────────────
-
-const TYPE_META: Record<PointTransaction['type'], { icon: string; color: string; fallbackLabel: string }> = {
-  earn:       { icon: 'flash',           color: GREEN,  fallbackLabel: 'Activity' },
-  bonus:      { icon: 'star',            color: GOLD,   fallbackLabel: 'Bonus' },
-  streak:     { icon: 'flame',           color: ORANGE, fallbackLabel: 'Streak Bonus' },
-  adjustment: { icon: 'swap-horizontal', color: DIM,    fallbackLabel: 'Adjustment' },
-  redeem:     { icon: 'bag-handle',      color: RED,    fallbackLabel: 'Reward Redeemed' },
-  penalty:    { icon: 'warning',         color: RED,    fallbackLabel: 'Penalty' },
-};
+// Row presentation per transaction type lives in constants/ledgerTypeMeta, shared
+// with the filter sheet so a bucket can't wear one icon in the picker and another
+// in the rows it selects.
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -70,6 +72,15 @@ function formatTime(iso: string): string {
 
 function formatAmount(amount: number): string {
   return `${amount > 0 ? '+' : ''}${Math.abs(amount).toLocaleString()}`;
+}
+
+/**
+ * Rows lean on colour to carry the sign, but the scoped summary has no such
+ * cue — a Rewards net has to read as -1,200, not 1,200.
+ */
+function formatSigned(amount: number): string {
+  const sign = amount < 0 ? '-' : amount > 0 ? '+' : '';
+  return `${sign}${Math.abs(amount).toLocaleString()}`;
 }
 
 /** A ledger line: a real transaction, or a derived level-up moment. */
@@ -117,17 +128,41 @@ function groupByDate(items: LedgerItem[]): Section[] {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function SummaryCard({ balance, totalEarned }: { balance: number; totalEarned: number }) {
+/**
+ * Account totals — until a filter narrows the list, at which point the card
+ * re-points at the slice on screen. Account balance is meaningless per-activity,
+ * whereas "how much has the gym ever paid me" is the question the filter was
+ * tapped to answer.
+ *
+ * The scoped caption names the bucket ("GYM ENTRIES"), so the filter state is
+ * legible from the content itself and not only from the header chip.
+ */
+function SummaryCard({
+  balance,
+  totalEarned,
+  scoped,
+}: {
+  balance: number;
+  totalEarned: number;
+  scoped: { count: number; net: number; label: string } | null;
+}) {
+  const left = scoped
+    ? { value: scoped.count.toLocaleString(), label: `${scoped.label} Entries` }
+    : { value: balance.toLocaleString(), label: 'Balance' };
+  const right = scoped
+    ? { value: formatSigned(scoped.net), label: 'POWR' }
+    : { value: totalEarned.toLocaleString(), label: 'Total Earned' };
+
   return (
     <View style={styles.summaryCard}>
       <View style={styles.summaryItem}>
-        <Text style={styles.summaryValue}>{balance.toLocaleString()}</Text>
-        <Text style={styles.summaryLabel}>Balance</Text>
+        <Text style={styles.summaryValue}>{left.value}</Text>
+        <Text style={styles.summaryLabel}>{left.label}</Text>
       </View>
       <View style={styles.summaryDivider} />
       <View style={styles.summaryItem}>
-        <Text style={styles.summaryValue}>{totalEarned.toLocaleString()}</Text>
-        <Text style={styles.summaryLabel}>Total Earned</Text>
+        <Text style={styles.summaryValue}>{right.value}</Text>
+        <Text style={styles.summaryLabel}>{right.label}</Text>
       </View>
     </View>
   );
@@ -139,11 +174,6 @@ function SectionHeader({ title }: { title: string }) {
       <Text style={styles.sectionHeaderText}>{title}</Text>
     </View>
   );
-}
-
-/** Together (shared-challenge) base + bonus rows — surfaced distinctly. */
-function isTogether(tx: PointTransaction): boolean {
-  return tx.source === 'shared_challenge' || tx.source === 'shared_challenge_bonus';
 }
 
 function TxIcon({ tx }: { tx: PointTransaction }) {
@@ -340,6 +370,8 @@ export default function PointsLedgerScreen() {
   const [vaultPending, setVaultPending] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [filter, setFilter] = useState<LedgerFilterKey>('all');
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -360,26 +392,60 @@ export default function PointsLedgerScreen() {
     })();
   }, []);
 
-  const sections = useMemo(
+  const filters = useMemo(() => buildLedgerFilters(transactions), [transactions]);
+
+  const sections = useMemo(() => {
     // Ledger reconstruction anchors on credits-only (canonical earned minus
     // still-vesting vault) — a vault level-up crossing has no ledger row to pin a
     // marker to, so feeding it the vault-inclusive total would drag every marker
-    // earlier than the transaction that actually crossed the boundary.
-    () => groupByDate(mergeLevelUps(transactions, deriveLevelUps(transactions, totalEarned - vaultPending))),
-    [transactions, totalEarned, vaultPending],
+    // earlier than the transaction that actually crossed the boundary. Derive
+    // from the FULL history: level-ups are a property of the whole timeline, so
+    // filtering first would rewrite where the boundaries fell.
+    const items = mergeLevelUps(transactions, deriveLevelUps(transactions, totalEarned - vaultPending));
+    const visible =
+      filter === 'all'
+        ? items
+        // Level-up markers drop out of a filtered slice — "Level 4" pinned inside
+        // a Gym-only list would claim the gym earned it, which it rarely did.
+        : items.filter((item) => item.kind === 'tx' && matchesLedgerFilter(item.tx, filter));
+    return groupByDate(visible);
+  }, [transactions, totalEarned, vaultPending, filter]);
+
+  const activeFilter = findLedgerFilter(filters, filter);
+
+  // If a refetch leaves the selected bucket with no rows it stops being offered,
+  // and holding the key would show an empty list under a chip naming a bucket
+  // that no longer exists. Fall back to the whole history.
+  useEffect(() => {
+    if (filter !== 'all' && !activeFilter) setFilter('all');
+  }, [filter, activeFilter]);
+
+  const scoped = useMemo(
+    () =>
+      activeFilter && activeFilter.key !== 'all'
+        ? { count: activeFilter.count, net: activeFilter.net, label: activeFilter.shortLabel }
+        : null,
+    [activeFilter],
   );
+
+  // A member whose whole history is one bucket has nothing to narrow to.
+  const canFilter = filters.length > 1;
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
       <GeometricBackground />
 
-      {/* Header */}
+      {/* Header — the filter lives in the slot the layout already reserved. */}
       <View style={styles.header}>
         <Pressable style={styles.backBtn} onPress={() => router.back()} hitSlop={8}>
           <Ionicons name="chevron-back" size={22} color={DIM} />
         </Pressable>
         <Text style={styles.headerTitle}>Points History</Text>
-        <View style={styles.headerSpacer} />
+        <View style={styles.headerAction}>
+          {!loading && !error && canFilter && (
+            <LedgerFilterChip active={activeFilter} onPress={() => setSheetOpen(true)} />
+          )}
+        </View>
       </View>
 
       {loading ? (
@@ -391,54 +457,72 @@ export default function PointsLedgerScreen() {
           <Text style={styles.statusText}>{error}</Text>
         </View>
       ) : (
-        <SectionList
-          sections={sections}
-          keyExtractor={(item) =>
-            item.kind === 'tx' ? item.tx.id : `levelup-${item.event.level}-${item.event.txId}`
-          }
-          renderSectionHeader={({ section }) => <SectionHeader title={section.title} />}
-          renderItem={({ item, index, section }) =>
-            item.kind === 'levelup' ? (
-              <LevelUpRow
-                event={item.event}
-                isFirst={index === 0}
-                isLast={index === section.data.length - 1}
-                onShare={() =>
-                  router.push({
-                    pathname: '/share-stats',
-                    params: { mode: 'level-up', asOf: item.event.createdAt },
-                  })
-                }
-              />
-            ) : (
-              <TransactionRow
-                tx={item.tx}
-                isFirst={index === 0}
-                isLast={index === section.data.length - 1}
-                onShare={
-                  isShareable(item.tx)
-                    ? () =>
-                        router.push({
-                          pathname: '/share-stats',
-                          params: { mode: 'check-in', sessionId: item.tx.session_id!, historical: '1' },
-                        })
-                    : undefined
-                }
-              />
-            )
-          }
-          ListHeaderComponent={
-            <SummaryCard balance={balance} totalEarned={totalEarned} />
-          }
-          ListEmptyComponent={
-            <View style={styles.centered}>
-              <Text style={styles.statusText}>No transactions yet.</Text>
-            </View>
-          }
-          contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 40 }]}
-          showsVerticalScrollIndicator={false}
-          stickySectionHeadersEnabled={false}
-        />
+        <>
+          <SectionList
+            // Remounting on filter change resets the scroll offset. Without it,
+            // switching filters deep in a long history strands you past the end
+            // of the shorter list you just asked for.
+            key={filter}
+            // Without an explicit flex basis the list's base size is its whole content
+            // height, which is what generated the negative free space that crushed the
+            // filter row above it. achievements.tsx gets this right; this screen didn't.
+            style={styles.list}
+            sections={sections}
+            keyExtractor={(item) =>
+              item.kind === 'tx' ? item.tx.id : `levelup-${item.event.level}-${item.event.txId}`
+            }
+            renderSectionHeader={({ section }) => <SectionHeader title={section.title} />}
+            renderItem={({ item, index, section }) =>
+              item.kind === 'levelup' ? (
+                <LevelUpRow
+                  event={item.event}
+                  isFirst={index === 0}
+                  isLast={index === section.data.length - 1}
+                  onShare={() =>
+                    router.push({
+                      pathname: '/share-stats',
+                      params: { mode: 'level-up', asOf: item.event.createdAt },
+                    })
+                  }
+                />
+              ) : (
+                <TransactionRow
+                  tx={item.tx}
+                  isFirst={index === 0}
+                  isLast={index === section.data.length - 1}
+                  onShare={
+                    isShareable(item.tx)
+                      ? () =>
+                          router.push({
+                            pathname: '/share-stats',
+                            params: { mode: 'check-in', sessionId: item.tx.session_id!, historical: '1' },
+                          })
+                      : undefined
+                  }
+                />
+              )
+            }
+            ListHeaderComponent={
+              <SummaryCard balance={balance} totalEarned={totalEarned} scoped={scoped} />
+            }
+            ListEmptyComponent={
+              <View style={styles.centered}>
+                <Text style={styles.statusText}>No transactions yet.</Text>
+              </View>
+            }
+            contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 40 }]}
+            showsVerticalScrollIndicator={false}
+            stickySectionHeadersEnabled={false}
+          />
+
+          <LedgerFilterSheet
+            visible={sheetOpen}
+            onClose={() => setSheetOpen(false)}
+            filters={filters}
+            active={filter}
+            onSelect={setFilter}
+          />
+        </>
       )}
     </View>
   );
@@ -472,8 +556,15 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     color: TEXT,
   },
-  headerSpacer: { width: 36 },
+  // Mirrors backBtn's width so the title stays optically centred whether or not
+  // the filter chip is showing.
+  headerAction: {
+    minWidth: 36,
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+  },
 
+  list: { flex: 1 },
   listContent: {
     paddingHorizontal: 12,
     paddingTop: 16,
