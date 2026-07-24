@@ -1,3 +1,10 @@
+import GeometricBackground from '@/components/GeometricBackground';
+import { fetchNearbyGyms, searchPartners, type Partner } from '@/context/GeofenceContext';
+import { createGymRequest } from '@/lib/api/gyms';
+import { setPreferredGym } from '@/lib/api/user';
+import { MAP_PROVIDER } from '@/lib/mapProvider';
+import { ONBOARDING_DOT_COUNT, dotIndexFor } from '@/lib/onboarding/flow';
+import { continueLabel, displayedGyms, gymMarkers, hasGymCoords, toggleSelection } from '@/lib/onboarding/gym';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import * as Location from 'expo-location';
@@ -18,13 +25,6 @@ import {
 } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import GeometricBackground from '@/components/GeometricBackground';
-import { fetchNearbyGyms, searchPartners, type Partner } from '@/context/GeofenceContext';
-import { createGymRequest } from '@/lib/api/gyms';
-import { setPreferredGym } from '@/lib/api/user';
-import { MAP_PROVIDER } from '@/lib/mapProvider';
-import { ONBOARDING_DOT_COUNT, dotIndexFor } from '@/lib/onboarding/flow';
-import { continueLabel, displayedGyms, gymMarkers, hasGymCoords, toggleSelection } from '@/lib/onboarding/gym';
 
 const GOLD = '#E8D200';
 const BG = '#0d0d0d';
@@ -330,7 +330,7 @@ export default function OnboardingGymScreen() {
                     {/* Request a gym */}
                     <Pressable style={styles.requestRow} onPress={openRequest}>
                         <Ionicons name="add-circle-outline" size={18} color={DIM} />
-                        <Text style={styles.requestText}>Can't find your gym? <Text style={styles.requestLink}>Request it</Text></Text>
+                        <Text style={styles.requestText}>Can't find your venue? <Text style={styles.requestLink}>Request it</Text></Text>
                     </Pressable>
                 </ScrollView>
             </Animated.View>
