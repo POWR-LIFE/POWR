@@ -19,12 +19,12 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import MapView, { Circle, Marker, Polyline } from 'react-native-maps';
+import MapView, { Circle, Marker, Polyline, type Region } from 'react-native-maps';
 import MapViewDirections from 'react-native-maps-directions';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { HeaderActions } from '@/components/HeaderActions';
 import { useActiveGeofence } from '@/hooks/useActiveGeofence';
-import { useGeofenceContext, searchPartners, type Partner, type Trainer, type DayKey, type OpeningHours } from '@/context/GeofenceContext';
+import { useGeofenceContext, searchPartners, fetchPartnersInArea, getPartnerGeometry, type PartnerGeoPoint, type Partner, type Trainer, type DayKey, type OpeningHours } from '@/context/GeofenceContext';
 import { createGymRequest } from '@/lib/api/gyms';
 import { MAP_PROVIDER } from '@/lib/mapProvider';
 import { getSessionUser, supabase } from '@/lib/supabase';
@@ -50,6 +50,19 @@ const DEFAULT_REGION = {
   latitudeDelta: 0.03,
   longitudeDelta: 0.03,
 };
+
+// ── Viewport loading & clustering ──
+// The geofence provider's partner set only tracks the USER's surroundings, so
+// the map fetches its own detail rows for wherever it is panned, merging them
+// into a session-lifetime pool. Cluster counts never need those fetches — they
+// come from the nationwide geometry cache (every partner location, on-device).
+const AREA_FETCH_DEBOUNCE_MS = 300;
+const AREA_MAX_SPAN_DEG      = 0.35; // beyond this zoom the view is cluster-only — skip detail fetches
+const AREA_RADIUS_MIN_DEG    = 0.03;
+const AREA_RADIUS_MAX_DEG    = 0.15; // provider's own nearby radius — never fetch bigger
+const AREA_FOOTPRINTS_MAX    = 16;   // fetched-coverage memory; old areas simply refetch
+const MAX_PIN_MARKERS        = 60;   // viewport density above this collapses into clusters
+const MAX_CLUSTER_MARKERS    = 40;
 
 const DARK_MAP_STYLE = [
   { elementType: 'geometry',                                    stylers: [{ color: '#1c1c1e' }] },
@@ -137,6 +150,119 @@ function getDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: numbe
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+// ─── Map clustering ───────────────────────────────────────────────────────────
+
+// Anything the map can place: a full Partner (hydrated) or a slim geometry
+// point (not yet fetched). `radius` is the geofence circle in metres.
+type GeoLike = { id: string; dbId: string; name: string; lat: number; lng: number; radius: number };
+
+type MapCluster = {
+  key: string;
+  lat: number; lng: number;   // centroid, where the bubble renders
+  count: number;
+  minLat: number; maxLat: number; minLng: number; maxLng: number;
+  single?: GeoLike;           // set when the cell holds exactly one point — render a pin, not a bubble
+};
+
+type ViewBounds = { minLat: number; maxLat: number; minLng: number; maxLng: number };
+
+function expandBounds(region: Region, factor: number): ViewBounds {
+  const halfLat = (region.latitudeDelta * factor) / 2;
+  const halfLng = (region.longitudeDelta * factor) / 2;
+  return {
+    minLat: region.latitude - halfLat,
+    maxLat: region.latitude + halfLat,
+    minLng: region.longitude - halfLng,
+    maxLng: region.longitude + halfLng,
+  };
+}
+
+function inBounds(b: ViewBounds, p: { lat: number; lng: number }): boolean {
+  return p.lat >= b.minLat && p.lat <= b.maxLat && p.lng >= b.minLng && p.lng <= b.maxLng;
+}
+
+// Buckets points into an ABSOLUTE lat/lng grid. The cell size derives from a
+// power-of-two-quantised zoom, so clusters keep identical keys/centroids while
+// panning within a zoom level and only regroup when the zoom bucket changes —
+// continuous cell sizes made bubbles drift on every pan tick (stashed WIP).
+function clusterGeoPoints(points: GeoLike[], longitudeDelta: number): MapCluster[] {
+  const bucket = Math.pow(2, Math.round(Math.log2(Math.max(longitudeDelta, 0.002))));
+  const cell   = Math.max(bucket / 2, 0.004);
+  const cells = new Map<string, { sumLat: number; sumLng: number; count: number; minLat: number; maxLat: number; minLng: number; maxLng: number; first: GeoLike }>();
+  for (const p of points) {
+    const key = `${Math.floor(p.lat / cell)}:${Math.floor(p.lng / cell)}`;
+    const acc = cells.get(key);
+    if (!acc) {
+      cells.set(key, { sumLat: p.lat, sumLng: p.lng, count: 1, minLat: p.lat, maxLat: p.lat, minLng: p.lng, maxLng: p.lng, first: p });
+    } else {
+      acc.sumLat += p.lat;
+      acc.sumLng += p.lng;
+      acc.count  += 1;
+      if (p.lat < acc.minLat) acc.minLat = p.lat;
+      if (p.lat > acc.maxLat) acc.maxLat = p.lat;
+      if (p.lng < acc.minLng) acc.minLng = p.lng;
+      if (p.lng > acc.maxLng) acc.maxLng = p.lng;
+    }
+  }
+  return [...cells.entries()].map(([key, a]) => ({
+    key,
+    lat: a.sumLat / a.count,
+    lng: a.sumLng / a.count,
+    count: a.count,
+    minLat: a.minLat, maxLat: a.maxLat, minLng: a.minLng, maxLng: a.maxLng,
+    single: a.count === 1 ? a.first : undefined,
+  }));
+}
+
+function formatClusterCount(count: number): string {
+  return count >= 1000 ? `${(count / 1000).toFixed(1)}k` : String(count);
+}
+
+// djb2 — collapses an overlay signature into a short stable key fragment.
+function hashString(s: string): string {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36);
+}
+
+// "PureGym Droitwich" → "PD", "Anytime" → "AN". Map-pin stand-in for partners
+// with no logo asset (most of the imported set — see the image backfill saga).
+function monogram(name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return '?';
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return (words[0][0] + words[1][0]).toUpperCase();
+}
+
+// Slim map stand-in for a partner whose full row hasn't been fetched yet — the
+// pin renders (name initials) immediately; the viewport fetch hydrates it.
+// `_synthetic` marks it so the overlay signature changes when hydration swaps
+// the real row in (same id — the remount would otherwise be skipped and a
+// frozen Android marker could keep showing the placeholder).
+function synthesizePartner(g: GeoLike): Partner {
+  const firstWord = g.name.split(' ')[0] ?? g.name;
+  const partner: Partner = {
+    id: g.id,
+    dbId: g.dbId,
+    name: g.name,
+    category: 'Gym',
+    status: 'Open now',
+    address: '',
+    area: '',
+    pts: 15,
+    distance: '',
+    logoText: firstWord.toUpperCase().slice(0, 10),
+    logoBg: 'dark',
+    logoLight: false,
+    lat: g.lat,
+    lng: g.lng,
+    geofenceRadius: g.radius,
+    isOpenNow: true,
+  };
+  (partner as any)._synthetic = true;
+  return partner;
+}
+
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function DiscoverScreen() {
@@ -174,6 +300,79 @@ export default function DiscoverScreen() {
   const [filtersVisible, setFiltersVisible] = useState(false);
   const [sortMenuVisible, setSortMenuVisible] = useState(false);
   const [mapRegion, setMapRegion] = useState<{ latitude: number; longitude: number; latitudeDelta: number; longitudeDelta: number }>(DEFAULT_REGION);
+
+  // Viewport loading: full partner rows fetched for panned-to areas, keyed by
+  // composite id and kept for the session. `geoPoints` is the nationwide slim
+  // geometry set that powers clusters + instant placeholder pins.
+  const [areaPartners, setAreaPartners] = useState<Record<string, Partner>>({});
+  const [areaFetching, setAreaFetching] = useState(false);
+  const [geoPoints, setGeoPoints] = useState<PartnerGeoPoint[] | null>(null);
+  const areaFootprintsRef = useRef<{ lat: number; lng: number; radiusDeg: number }[]>([]);
+  const areaDebounceRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const areaInFlightRef   = useRef(false);
+  const lastMapRegionRef  = useRef<Region | null>(null); // latest settled region — re-checked after each fetch
+
+  useEffect(() => {
+    let cancelled = false;
+    getPartnerGeometry()
+      .then(pts => { if (!cancelled && pts.length) setGeoPoints(pts); })
+      .catch(() => { /* clusters fall back to the hydrated pool */ });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => () => {
+    if (areaDebounceRef.current) clearTimeout(areaDebounceRef.current);
+  }, []);
+
+  /** Fetches full rows for the given viewport unless an earlier fetch already
+   *  covers it. Coverage is tracked as center+radius footprints in the same
+   *  raw-degree space the RPC's bounding box uses. */
+  const maybeFetchViewport = useCallback((r: Region) => {
+    const span = Math.max(r.latitudeDelta, r.longitudeDelta);
+    if (span > AREA_MAX_SPAN_DEG) return; // cluster-only zoom — geometry covers it
+    const covered = areaFootprintsRef.current.some(f =>
+      Math.abs(r.latitude - f.lat) + r.latitudeDelta / 2 <= f.radiusDeg &&
+      Math.abs(r.longitude - f.lng) + r.longitudeDelta / 2 <= f.radiusDeg,
+    );
+    if (covered || areaInFlightRef.current) return;
+    areaInFlightRef.current = true;
+    setAreaFetching(true);
+    const radiusDeg = Math.min(Math.max((span / 2) * 1.4, AREA_RADIUS_MIN_DEG), AREA_RADIUS_MAX_DEG);
+    let succeeded = false;
+    fetchPartnersInArea(r.latitude, r.longitude, radiusDeg)
+      .then(rows => {
+        succeeded = true;
+        areaFootprintsRef.current = [
+          ...areaFootprintsRef.current,
+          { lat: r.latitude, lng: r.longitude, radiusDeg },
+        ].slice(-AREA_FOOTPRINTS_MAX);
+        if (rows.length) {
+          setAreaPartners(prev => {
+            const next = { ...prev };
+            rows.forEach(p => { next[p.id] = p; });
+            return next;
+          });
+        }
+      })
+      .catch(() => { /* transient — the next pan retries */ })
+      .finally(() => {
+        areaInFlightRef.current = false;
+        setAreaFetching(false);
+        // The user may have panned on while this fetch was in flight (the
+        // in-flight guard dropped that request). Re-check the latest region;
+        // the coverage test terminates the recursion once it's covered. Only
+        // successful fetches chain, so a dead network can't retry-loop.
+        const latest = lastMapRegionRef.current;
+        if (succeeded && latest) maybeFetchViewport(latest);
+      });
+  }, []);
+
+  const handleRegionChangeComplete = useCallback((r: Region) => {
+    setMapRegion(r);
+    lastMapRegionRef.current = r;
+    if (areaDebounceRef.current) clearTimeout(areaDebounceRef.current);
+    areaDebounceRef.current = setTimeout(() => maybeFetchViewport(r), AREA_FETCH_DEBOUNCE_MS);
+  }, [maybeFetchViewport]);
 
   // Gym request (same flow as onboarding) — for gyms not yet on the platform
   const [requestVisible, setRequestVisible] = useState(false);
@@ -333,6 +532,13 @@ export default function DiscoverScreen() {
           // and map show their actual surroundings immediately.
           ensureCoverage({ latitude: loc.coords.latitude, longitude: loc.coords.longitude })
             .catch(() => { /* non-fatal */ });
+          // The provider fetch above covers 0.15° around the user — record it so
+          // the map's first regionChange doesn't immediately duplicate it.
+          areaFootprintsRef.current.push({
+            lat: loc.coords.latitude,
+            lng: loc.coords.longitude,
+            radiusDeg: AREA_RADIUS_MAX_DEG,
+          });
           const region = {
             latitude: loc.coords.latitude,
             longitude: loc.coords.longitude,
@@ -343,7 +549,7 @@ export default function DiscoverScreen() {
           mapRef.current?.animateToRegion(region, 800);
         }
       } finally {
-        // Map overlays are held back until this flips — see mapPartners.
+        // Map overlays are held back until this flips — see mapOverlay.
         setLocSettled(true);
       }
     })();
@@ -390,20 +596,125 @@ export default function DiscoverScreen() {
     return list;
   }, [partners, searchResults, openNowFilter, visitedFilter, visitedIds, maxDistanceMi, search, userLoc]);
 
-  // Map circles/markers must first mount already in final nearest-first order:
-  // inserting them into a live MKMapView after the location re-sort can
-  // silently fail to attach on iOS (react-native-maps #54/#1524) — gym shows
-  // in the list but its ring/pin never draws. So hold them until the location
-  // fix settles, and cap at the nearest 50 (plenty for the viewport, far
-  // cheaper than 200 logo markers).
-  const mapPartners = useMemo(() => {
-    if (!locSettled) return [];
-    return filtered.filter(p => isFinite(p.lat) && isFinite(p.lng)).slice(0, 50);
-  }, [filtered, locSettled]);
+  // ── Map overlay (viewport pins vs cluster bubbles) ──────────────────────────
 
-  // Remount native overlays when the set identity changes (search/sort/filter
-  // flips) rather than mutating a live set — same iOS attach issue as above.
-  const mapSetKey = `${searchResults !== null ? 's' : 'n'}-${sortMode}-${openNowFilter ? 1 : 0}-${visitedFilter ? 1 : 0}-${maxDistanceMi ?? 'any'}`;
+  // Hydrated pool: the provider's nearby set plus everything viewport fetches
+  // have loaded, keyed by composite id. Area rows get the same distance
+  // annotation the nearby set carries so the distance filter applies evenly.
+  const hydratedById = useMemo(() => {
+    const m = new Map<string, Partner>();
+    Object.values(areaPartners).forEach(p => {
+      if (userLoc) {
+        const miles = getDistanceMiles(userLoc.coords.latitude, userLoc.coords.longitude, p.lat, p.lng);
+        m.set(p.id, { ...p, distance: miles < 0.1 ? '< 0.1 mi' : `${miles.toFixed(1)} mi`, _distMi: miles } as Partner);
+      } else {
+        m.set(p.id, { ...p, _distMi: Infinity } as Partner);
+      }
+    });
+    partners.forEach(p => m.set(p.id, p));
+    return m;
+  }, [partners, areaPartners, userLoc]);
+
+  // What the map may place, honouring the active filters. The nationwide
+  // geometry set backs the default view so counts are true everywhere; server
+  // search results and filters needing data geometry lacks (open-now hours)
+  // narrow the source to hydrated rows instead.
+  const mapSource = useMemo((): GeoLike[] => {
+    const toGeo = (p: Partner): GeoLike => ({ id: p.id, dbId: p.dbId, name: p.name, lat: p.lat, lng: p.lng, radius: p.geofenceRadius });
+    if (searchResults !== null) return searchResults.map(toGeo);
+    const q = search.trim().toLowerCase();
+    if (openNowFilter || !geoPoints || geoPoints.length === 0) {
+      let list = [...hydratedById.values()];
+      if (openNowFilter) list = list.filter(p => p.isOpenNow);
+      if (visitedFilter) list = list.filter(p => visitedIds.has(p.dbId));
+      if (maxDistanceMi !== null && userLoc) list = list.filter(p => ((p as any)._distMi ?? Infinity) <= maxDistanceMi);
+      if (q) list = list.filter(p => p.name.toLowerCase().includes(q) || p.area.toLowerCase().includes(q) || p.category.toLowerCase().includes(q));
+      return list.map(toGeo);
+    }
+    let pts: GeoLike[] = geoPoints;
+    if (visitedFilter) pts = pts.filter(p => visitedIds.has(p.dbId));
+    if (maxDistanceMi !== null && userLoc) {
+      pts = pts.filter(p => getDistanceMiles(userLoc.coords.latitude, userLoc.coords.longitude, p.lat, p.lng) <= maxDistanceMi);
+    }
+    if (q) pts = pts.filter(p => p.name.toLowerCase().includes(q));
+    return pts;
+  }, [searchResults, geoPoints, hydratedById, openNowFilter, visitedFilter, visitedIds, maxDistanceMi, userLoc, search]);
+
+  // Quantised viewport: centre snapped to a half-viewport grid, deltas snapped
+  // to a power-of-two ladder. Overlay membership derives from THIS, not the raw
+  // region, so micro-pans change nothing and the marker set only has discrete
+  // identities. The 2.2× expansion below guarantees the snapped bounds always
+  // cover the real viewport (max snap error is ~0.25 span per axis).
+  const qLngDelta = Math.pow(2, Math.round(Math.log2(Math.max(mapRegion.longitudeDelta, 0.002))));
+  const qLatDelta = Math.pow(2, Math.round(Math.log2(Math.max(mapRegion.latitudeDelta, 0.002))));
+  const qLat = Math.round(mapRegion.latitude / (qLatDelta / 2)) * (qLatDelta / 2);
+  const qLng = Math.round(mapRegion.longitude / (qLngDelta / 2)) * (qLngDelta / 2);
+  const quantRegion = useMemo<Region>(
+    () => ({ latitude: qLat, longitude: qLng, latitudeDelta: qLatDelta, longitudeDelta: qLngDelta }),
+    [qLat, qLng, qLatDelta, qLngDelta],
+  );
+
+  // Map circles/markers must first mount already in final order: inserting into
+  // a live MKMapView can silently fail to attach on iOS (react-native-maps
+  // #54/#1524) — a pin that exists but never draws. So the whole overlay set is
+  // a pure function of (quantised viewport, data generation, filters), and
+  // mapSetKey below remounts it wholesale whenever that identity changes.
+  const mapOverlay = useMemo(() => {
+    // `sig` fingerprints the rendered content: pin ids (+ whether each is still
+    // a synthetic placeholder) and cluster cells/counts. mapSetKey derives from
+    // it, so the overlay only remounts when what's drawn actually differs.
+    const finish = (pins: Partner[], clusters: MapCluster[]) => ({
+      pins,
+      clusters,
+      sig: `${pins.map(p => `${p.id}${(p as any)._synthetic ? '~' : ''}`).join(',')}|${clusters.map(c => `${c.key}:${c.count}`).join(',')}`,
+    });
+    if (!locSettled) return finish([], []);
+    const view = expandBounds(quantRegion, 2.2);
+    const inView = mapSource.filter(p => isFinite(p.lat) && isFinite(p.lng) && inBounds(view, p));
+    const centerDist = (p: { lat: number; lng: number }) =>
+      Math.abs(p.lat - quantRegion.latitude) + Math.abs(p.lng - quantRegion.longitude);
+    if (inView.length <= MAX_PIN_MARKERS) {
+      return finish(inView.map(p => hydratedById.get(p.id) ?? synthesizePartner(p)), []);
+    }
+    const cells = clusterGeoPoints(inView, quantRegion.longitudeDelta);
+    const pins = cells
+      .filter(c => c.single)
+      .sort((a, b) => centerDist(a) - centerDist(b))
+      .slice(0, 20)
+      .map(c => hydratedById.get(c.single!.id) ?? synthesizePartner(c.single!));
+    const clusters = cells
+      .filter(c => !c.single)
+      .sort((a, b) => centerDist(a) - centerDist(b))
+      .slice(0, MAX_CLUSTER_MARKERS);
+    return finish(pins, clusters);
+  }, [locSettled, quantRegion, mapSource, hydratedById]);
+
+  // Remount native overlays when the drawn set changes rather than mutating a
+  // live set — same iOS attach issue as above. Keyed on the overlay CONTENT
+  // hash (not the pan grid), so panning across areas whose expanded membership
+  // is identical remounts nothing.
+  const mapSetKey = `${searchResults !== null ? 's' : 'n'}-${hashString(mapOverlay.sig)}`;
+
+  const zoomToCluster = useCallback((c: MapCluster) => {
+    mapRef.current?.animateToRegion({
+      latitude:       (c.minLat + c.maxLat) / 2,
+      longitude:      (c.minLng + c.maxLng) / 2,
+      latitudeDelta:  Math.max((c.maxLat - c.minLat) * 1.4, 0.012),
+      longitudeDelta: Math.max((c.maxLng - c.minLng) * 1.4, 0.012),
+    }, 450);
+  }, []);
+
+  // First open on a cold/outdated cache: the nationwide set is still building
+  // and the viewport has nothing hydrated to show yet.
+  const geometryPending = locSettled && geoPoints === null
+    && mapOverlay.pins.length === 0 && mapOverlay.clusters.length === 0;
+
+  // Only claim an area is genuinely empty when nothing narrows the view: with
+  // filters or a search active, an empty map is the filter's doing.
+  const showEmptyArea = locSettled && !areaFetching && geoPoints !== null
+    && mapOverlay.pins.length === 0 && mapOverlay.clusters.length === 0
+    && searchResults === null && !search.trim()
+    && !openNowFilter && !visitedFilter && maxDistanceMi === null;
 
   const sortLabel = sortMode === 'nearest' ? 'Nearest' : sortMode === 'pts' ? 'Most Points' : 'A–Z';
 
@@ -605,7 +916,7 @@ export default function DiscoverScreen() {
           showsTraffic={false}
           rotateEnabled={false}
           pitchEnabled={false}
-          onRegionChangeComplete={(r) => setMapRegion(r)}
+          onRegionChangeComplete={handleRegionChangeComplete}
           onPress={() => {
             setRoutePartner(null);
             setRouteSummary(null);
@@ -615,7 +926,7 @@ export default function DiscoverScreen() {
             setWalkingNavVisible(false);
           }}
         >
-          {mapPartners.map((partner) => (
+          {mapOverlay.pins.map((partner) => (
             <Circle
               key={`circle-${mapSetKey}-${partner.id}`}
               center={{ latitude: partner.lat, longitude: partner.lng }}
@@ -626,12 +937,20 @@ export default function DiscoverScreen() {
             />
           ))}
 
-          {mapPartners.map((partner) => (
+          {mapOverlay.pins.map((partner) => (
             <MapMarker
               key={`${mapSetKey}-${partner.id}`}
               partner={partner}
               isActive={partner.dbId === activeGeofence?.partnerId}
               isVisited={visitedIds.has(partner.dbId)}
+            />
+          ))}
+
+          {mapOverlay.clusters.map((cluster) => (
+            <ClusterMarker
+              key={`${mapSetKey}-cl-${cluster.key}`}
+              cluster={cluster}
+              onPress={() => zoomToCluster(cluster)}
             />
           ))}
 
@@ -663,6 +982,17 @@ export default function DiscoverScreen() {
         <View style={{ position: 'absolute', top: insets.top + 12, right: 16 }}>
           <HeaderActions />
         </View>
+
+        {(areaFetching || geometryPending) ? (
+          <View style={styles.mapStatusPill} pointerEvents="none">
+            <ActivityIndicator size="small" color={GOLD} />
+            <Text style={styles.mapStatusText}>{areaFetching ? 'Loading this area…' : 'Loading map…'}</Text>
+          </View>
+        ) : showEmptyArea ? (
+          <View style={styles.mapStatusPill} pointerEvents="none">
+            <Text style={styles.mapStatusText}>No partners in this area yet</Text>
+          </View>
+        ) : null}
 
         {routePartner && (
           <View style={styles.routeOverlay}>
@@ -1369,22 +1699,57 @@ export default function DiscoverScreen() {
 
 function MapMarker({ partner, isActive, isVisited }: { partner: Partner; isActive: boolean; isVisited?: boolean }) {
   const [imageReady, setImageReady] = useState(!partner.logoUrl);
+  // Android can snapshot a marker before its (text) child has laid out when
+  // tracksViewChanges is false from the very first frame — the pin then draws
+  // blank. Track briefly after mount, then freeze for perf.
+  const [settled, setSettled] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setSettled(true), 350);
+    return () => clearTimeout(t);
+  }, []);
 
   return (
     <Marker
       coordinate={{ latitude: partner.lat, longitude: partner.lng }}
       title={partner.name}
-      tracksViewChanges={!imageReady || isActive}
+      tracksViewChanges={!settled || !imageReady || isActive}
     >
       <PartnerPin partner={partner} isActive={isActive} isVisited={isVisited} onImageLoad={() => setImageReady(true)} />
     </Marker>
   );
 }
 
+// Zoomed-out group bubble. Deliberately FLAT (no elevation/shadow/overflow):
+// Android renders Marker children to a bitmap and elevation shadows square off
+// the borderRadius clip — the plain bordered circle below matches how
+// PartnerPin already draws cleanly on both platforms.
+function ClusterMarker({ cluster, onPress }: { cluster: MapCluster; onPress: () => void }) {
+  const size = cluster.count < 10 ? 40 : cluster.count < 50 ? 46 : 54;
+  return (
+    <Marker
+      coordinate={{ latitude: cluster.lat, longitude: cluster.lng }}
+      anchor={{ x: 0.5, y: 0.5 }}
+      tracksViewChanges={false}
+      onPress={onPress}
+    >
+      <View style={[styles.clusterBubble, { width: size, height: size, borderRadius: size / 2 }]}>
+        <Text style={[styles.clusterCount, cluster.count >= 1000 && { fontSize: 12 }]}>
+          {formatClusterCount(cluster.count)}
+        </Text>
+      </View>
+    </Marker>
+  );
+}
+
 function PartnerPin({ partner, isActive, isVisited, onImageLoad }: { partner: Partner; isActive?: boolean; isVisited?: boolean; onImageLoad?: () => void }) {
+  // No logo asset → black bubble with a white name monogram (Jamie's pick —
+  // the old fallback's dim 8px text was invisible against the dark map style).
+  const bubbleBg = partner.logoUrl
+    ? (partner.logoBg === 'white' ? '#FFFFFF' : partner.logoBg === 'black' ? '#000000' : '#1a1a1a')
+    : '#000000';
   return (
     <View style={styles.pinWrap}>
-      <View style={[styles.pinCircle, isActive && styles.pinCircleActive, { backgroundColor: partner.logoBg === 'white' ? '#FFFFFF' : partner.logoBg === 'black' ? '#000000' : '#1a1a1a' }]}>
+      <View style={[styles.pinCircle, isActive && styles.pinCircleActive, { backgroundColor: bubbleBg }]}>
         {partner.logoUrl ? (
           <Image
             source={{ uri: partner.logoUrl }}
@@ -1394,8 +1759,8 @@ function PartnerPin({ partner, isActive, isVisited, onImageLoad }: { partner: Pa
             onError={onImageLoad}
           />
         ) : (
-          <Text style={[styles.pinLogoFallback, partner.logoBg === 'white' && { color: '#000' }]} numberOfLines={1}>
-            {partner.logoText.split('\n')[0]}
+          <Text style={styles.pinMonogram} numberOfLines={1}>
+            {monogram(partner.name)}
           </Text>
         )}
       </View>
@@ -1786,7 +2151,33 @@ const styles = StyleSheet.create({
     borderWidth: 1.5, borderColor: BG,
   },
   pinLogoImage: { width: 26, height: 26 },
-  pinLogoFallback: { fontSize: 8, fontWeight: '700', color: '#fff', textAlign: 'center' },
+  pinMonogram: { fontSize: 12, fontWeight: '700', color: '#FFFFFF', textAlign: 'center', letterSpacing: 0.3 },
+
+  // Flat on purpose — see ClusterMarker.
+  clusterBubble: {
+    backgroundColor: '#141414',
+    borderWidth: 2,
+    borderColor: GOLD,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  clusterCount: { color: GOLD, fontWeight: '700', fontSize: 14, letterSpacing: 0.2 },
+
+  mapStatusPill: {
+    position: 'absolute',
+    alignSelf: 'center',
+    bottom: 24,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(20,20,20,0.85)',
+    borderWidth: 1,
+    borderColor: BORDER,
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  mapStatusText: { fontSize: 12, fontWeight: '400', color: DIM },
 
   scroll: { flex: 1 },
   content: { paddingHorizontal: 12, gap: 10, paddingTop: 10 },
