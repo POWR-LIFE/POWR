@@ -1,4 +1,13 @@
+import { HeaderActions } from '@/components/HeaderActions';
+import { GeometricBackground } from '@/components/home/GeometricBackground';
+import { fetchPartnersInArea, getPartnerGeometry, searchPartners, useGeofenceContext, type DayKey, type OpeningHours, type Partner, type PartnerGeoPoint, type Trainer } from '@/context/GeofenceContext';
+import { useActiveGeofence } from '@/hooks/useActiveGeofence';
+import { createGymRequest } from '@/lib/api/gyms';
+import { MAP_PROVIDER } from '@/lib/mapProvider';
+import { getSessionUser, supabase } from '@/lib/supabase';
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -17,18 +26,9 @@ import {
   UIManager,
   View,
 } from 'react-native';
-import { Image } from 'expo-image';
-import { LinearGradient } from 'expo-linear-gradient';
 import MapView, { Circle, Marker, Polyline, type Region } from 'react-native-maps';
 import MapViewDirections from 'react-native-maps-directions';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { HeaderActions } from '@/components/HeaderActions';
-import { useActiveGeofence } from '@/hooks/useActiveGeofence';
-import { useGeofenceContext, searchPartners, fetchPartnersInArea, getPartnerGeometry, type PartnerGeoPoint, type Partner, type Trainer, type DayKey, type OpeningHours } from '@/context/GeofenceContext';
-import { createGymRequest } from '@/lib/api/gyms';
-import { MAP_PROVIDER } from '@/lib/mapProvider';
-import { getSessionUser, supabase } from '@/lib/supabase';
-import { GeometricBackground } from '@/components/home/GeometricBackground';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 
@@ -1161,7 +1161,7 @@ export default function DiscoverScreen() {
             <Text style={styles.comingSoonPlus}>+</Text>
           </View>
           <View style={styles.comingSoonInfo}>
-            <Text style={styles.comingSoonTitle}>Can't find your gym?</Text>
+            <Text style={styles.comingSoonTitle}>Can't find your venue?</Text>
             <Text style={styles.comingSoonSub}>
               Request it and we'll work on adding it to POWR.
             </Text>
