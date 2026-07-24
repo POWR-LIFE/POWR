@@ -277,6 +277,30 @@ export async function fetchAutoSummary(): Promise<ShareSummary> {
 
 // ─── Internals ──────────────────────────────────────────────────────────────
 
+export type VaultDepositRow = { amount: number; released_at: string | null };
+
+/**
+ * Vault POWR still counting toward level for a share card — the vault half of
+ * the canonical earned basis (get_my_points_summary.total_earned).
+ *
+ * A deposit counts while unreleased. For a historical card (`asOf`), a deposit
+ * released AFTER the card's date was still unreleased then, so it counts; once
+ * released it lands in the ledger as a positive 'vault_release' row (already in
+ * the credits sum), so counting it here too would double it. `Math.max` guards
+ * against a stray non-positive amount.
+ */
+export function vaultTowardLevel(
+  deposits: VaultDepositRow[],
+  asOf?: Date | null,
+): number {
+  const asOfMs = asOf ? asOf.getTime() : null;
+  return deposits.reduce((sum, d) => {
+    const releasedByCardDate = d.released_at != null
+      && (asOfMs === null || new Date(d.released_at).getTime() <= asOfMs);
+    return releasedByCardDate ? sum : sum + Math.max(d.amount, 0);
+  }, 0);
+}
+
 async function fetchAggregates(
   userId: string,
   type: ActivityType | null,
@@ -368,18 +392,10 @@ async function fetchAggregates(
   const transactions = balanceRes.data ?? [];
   const creditsEarned = transactions.reduce((sum, t) => sum + Math.max(t.amount, 0), 0);
 
-  // A vault deposit counts toward level while unreleased. For a historical card
-  // (asOf), a deposit released after the card's date was still unreleased then,
-  // so it counts; once released it lands in the ledger as a positive
-  // 'vault_release' row (already summed above), so counting it here too would
-  // double it.
-  const asOfMs = asOf ? asOf.getTime() : null;
-  const vaultPending = ((vaultRes.data ?? []) as Array<{ amount: number; released_at: string | null }>)
-    .reduce((sum, d) => {
-      const releasedByCardDate = d.released_at != null
-        && (asOfMs === null || new Date(d.released_at).getTime() <= asOfMs);
-      return releasedByCardDate ? sum : sum + Math.max(d.amount, 0);
-    }, 0);
+  const vaultPending = vaultTowardLevel(
+    (vaultRes.data ?? []) as VaultDepositRow[],
+    asOf,
+  );
 
   return {
     pointsBalance: transactions.reduce((sum, t) => sum + t.amount, 0),
