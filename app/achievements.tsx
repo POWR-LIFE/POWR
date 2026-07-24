@@ -805,7 +805,12 @@ const styles = StyleSheet.create({
   },
 
   // ── Badges grid ────────────────────────────────────────────────────────────
-  filterScroll: { flexGrow: 0 },
+  // flexShrink:0, not just flexGrow:0. RNW gives every horizontal ScrollView
+  // flexShrink:1 AND overflow-y:hidden, so a shrinkable row gets squeezed until
+  // its own hidden edge shears the descenders off the pill labels. Nothing here
+  // is shrinking it today only because the grid below declares flex:1; this
+  // stops that from being load-bearing.
+  filterScroll: { flexGrow: 0, flexShrink: 0 },
   filterContent: {
     paddingHorizontal: 16,
     paddingVertical: 10,
