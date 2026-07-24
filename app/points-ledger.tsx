@@ -272,9 +272,11 @@ function TransactionRow({
         </Text>
         <Text style={styles.txUnit}>POWR</Text>
       </View>
-      {onShare && (
-        <Ionicons name="share-social-outline" size={14} color={MUTED} style={styles.txShareHint} />
-      )}
+      {/* Always reserved, icon or not — otherwise unshareable rows pull their
+          amount into this lane and the column stops lining up. */}
+      <View style={styles.txShareSlot}>
+        {onShare && <Ionicons name="share-social-outline" size={14} color={MUTED} />}
+      </View>
     </Pressable>
   );
 }
@@ -319,7 +321,9 @@ function LevelUpRow({
         </View>
         <Text style={styles.txTime}>{formatTime(event.createdAt)}</Text>
       </View>
-      <Ionicons name="share-social-outline" size={14} color={MUTED} style={styles.txShareHint} />
+      <View style={styles.txShareSlot}>
+        <Ionicons name="share-social-outline" size={14} color={MUTED} />
+      </View>
     </Pressable>
   );
 }
@@ -580,8 +584,11 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     gap: 1,
   },
-  txShareHint: {
-    marginLeft: 2,
+  txShareSlot: {
+    width: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
   },
   txAmount: {
     fontFamily: typography.stat.fontFamily,
