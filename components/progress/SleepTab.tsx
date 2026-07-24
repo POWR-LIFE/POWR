@@ -2,12 +2,16 @@ import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { DayCaption } from '@/components/progress/DayCaption';
+import PointsBreakdownSheet from '@/components/progress/PointsBreakdownSheet';
 import { useHealthData } from '@/hooks/useHealthData';
 import { useHealthProviders } from '@/hooks/useHealthProviders';
 import {
     fetchLastNightSleepDetail,
     fetchMonthlySleepData,
     fetchRecentSleepHistory,
+    localDateStr,
+    type DailySleepEntry,
     type DailySleepHistory,
     type LastNightSleepDetail,
     type MonthlySleepData,
@@ -342,7 +346,15 @@ function heatmapColor(hours: number): string {
   return HEATMAP_COLORS[5];
 }
 
-function SleepMonthView({ data }: { data: MonthlySleepData | null }) {
+function SleepMonthView({
+  data, onSelectDay,
+}: {
+  data: MonthlySleepData | null;
+  onSelectDay: (day: Date) => void;
+}) {
+  const [selected, setSelected] = useState<string | null>(null);
+  useEffect(() => { setSelected(null); }, [data]);
+
   if (!data) {
     return (
       <View style={styles.emptyState}>
@@ -375,9 +387,9 @@ function SleepMonthView({ data }: { data: MonthlySleepData | null }) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  // Build a lookup from entries
-  const lookup = new Map<string, number>();
-  for (const e of data.entries) lookup.set(e.date, e.hours);
+  // Keep the whole entry — the caption needs POWR, not just hours.
+  const lookup = new Map<string, DailySleepEntry>();
+  for (const e of data.entries) lookup.set(e.date, e);
 
   // Build rows
   const rows: { date: string; hours: number; inRange: boolean }[][] = [];
@@ -387,9 +399,12 @@ function SleepMonthView({ data }: { data: MonthlySleepData | null }) {
   while (cursor <= lastEntry || cursor <= today) {
     const row: { date: string; hours: number; inRange: boolean }[] = [];
     for (let col = 0; col < 7; col++) {
-      const dateKey = cursor.toISOString().split('T')[0];
+      // See WorkoutsTab: local-midnight cursor + toISOString shifted every cell
+      // one column right in UTC+ zones. Sleep has no day-tap yet, but the grid
+      // was mis-dated the same way.
+      const dateKey = localDateStr(cursor);
       const inRange = lookup.has(dateKey);
-      row.push({ date: dateKey, hours: lookup.get(dateKey) ?? 0, inRange });
+      row.push({ date: dateKey, hours: lookup.get(dateKey)?.hours ?? 0, inRange });
       cursor.setDate(cursor.getDate() + 1);
     }
     rows.push(row);
@@ -439,17 +454,48 @@ function SleepMonthView({ data }: { data: MonthlySleepData | null }) {
       {/* Grid rows */}
       {rows.map((row, ri) => (
         <View key={ri} style={styles.heatmapRow}>
-          {row.map((cell, ci) => (
-            <View key={ci} style={styles.heatmapCellCompact}>
-              {cell.inRange ? (
-                <View style={[styles.heatmapDot, { backgroundColor: heatmapColor(cell.hours) }]} />
-              ) : (
-                <View style={[styles.heatmapDot, { backgroundColor: 'transparent' }]} />
-              )}
-            </View>
-          ))}
+          {row.map((cell, ci) => {
+            const hasNight = cell.inRange && cell.hours > 0;
+            const Cell: any = hasNight ? Pressable : View;
+            return (
+              <Cell
+                key={ci}
+                style={styles.heatmapCellCompact}
+                {...(hasNight ? {
+                  onPress: () => setSelected(prev => (prev === cell.date ? null : cell.date)),
+                  hitSlop: 8,
+                  accessibilityRole: 'button',
+                  accessibilityLabel: `${cell.date} — see what you earned`,
+                } : {})}
+              >
+                {cell.inRange ? (
+                  <View style={[
+                    styles.heatmapDot,
+                    { backgroundColor: heatmapColor(cell.hours) },
+                    selected === cell.date && styles.heatmapDotSelected,
+                  ]} />
+                ) : (
+                  <View style={[styles.heatmapDot, { backgroundColor: 'transparent' }]} />
+                )}
+              </Cell>
+            );
+          })}
         </View>
       ))}
+
+      {selected && (() => {
+        const entry = lookup.get(selected);
+        const day = new Date(`${selected}T12:00:00`);
+        return (
+          <DayCaption
+            date={day}
+            sessions={0}
+            durationMin={Math.round((entry?.hours ?? 0) * 60)}
+            points={entry?.points ?? 0}
+            onPress={() => onSelectDay(day)}
+          />
+        );
+      })()}
 
       {/* Legend */}
       <View style={styles.heatmapLegend}>
@@ -479,6 +525,7 @@ export function SleepTab({
   sleepBedtimes: (string | null)[];
 }) {
   const [period, setPeriod] = useState<Period>('W');
+  const [selectedDay, setSelectedDay] = useState<Date | null>(null);
   const [dayData, setDayData] = useState<LastNightSleepDetail | null>(null);
   const [monthData, setMonthData] = useState<MonthlySleepData | null>(null);
   const [dayLoaded, setDayLoaded] = useState(false);
@@ -582,8 +629,17 @@ export function SleepTab({
         <SleepWeekView sleepHrs={sleepHrs} sleepBedtimes={sleepBedtimes} />
       )}
       {period === 'M' && (
-        <SleepMonthView data={monthData} />
+        <SleepMonthView data={monthData} onSelectDay={setSelectedDay} />
       )}
+
+      <PointsBreakdownSheet
+        visible={selectedDay !== null}
+        onClose={() => setSelectedDay(null)}
+        type="sleep"
+        period="D"
+        offset={0}
+        day={selectedDay}
+      />
     </View>
   );
 }
@@ -717,6 +773,10 @@ const styles = StyleSheet.create({
   },
   heatmapDot: {
     width: '100%', height: '100%', borderRadius: 4,
+  },
+  // Border, not colour: the heatmap already spends colour on sleep duration.
+  heatmapDotSelected: {
+    borderWidth: 1.5, borderColor: GOLD,
   },
   heatmapLegend: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',

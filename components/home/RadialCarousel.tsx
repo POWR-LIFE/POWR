@@ -11,6 +11,7 @@ import Animated, {
     useAnimatedStyle,
     useSharedValue
 } from 'react-native-reanimated';
+import { PointsInfoDot } from '@/components/progress/PointsBreakdownSheet';
 import { ProgressRadial } from './ProgressRadial';
 
 const { width: WINDOW_WIDTH } = Dimensions.get('window');
@@ -41,9 +42,11 @@ interface RadialCarouselProps {
   data: RadialData[];
   activeIndex: number;
   onChange: (index: number) => void;
+  /** Opens the "where it came from" breakdown for the active activity. */
+  onPointsInfo?: () => void;
 }
 
-export function RadialCarousel({ data, activeIndex, onChange }: RadialCarouselProps) {
+export function RadialCarousel({ data, activeIndex, onChange, onPointsInfo }: RadialCarouselProps) {
   const scrollX = useSharedValue(0);
   const flatListRef = useRef<FlatList<RadialData>>(null);
   // Keep activeIndex in a shared value so the worklet always sees the latest value
@@ -118,9 +121,15 @@ export function RadialCarousel({ data, activeIndex, onChange }: RadialCarouselPr
           earned nothing — a bare 0 next to a filled ring reads as a broken screen.
           The panel is absolutely positioned, so dropping it leaves the radial centred. */}
       {activePoints > 0 && (
-        <View style={styles.pointsPanel} pointerEvents="none">
+        // box-none, not none: the panel itself must stay transparent to touches
+        // so it never eats a carousel swipe, but the (i) inside it has to be
+        // tappable. Only the dot receives — everything else falls through.
+        <View style={styles.pointsPanel} pointerEvents={onPointsInfo ? 'box-none' : 'none'}>
           <Text style={styles.pointsNum} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5}>{activePoints}</Text>
-          <Text style={styles.pointsLbl}>{`POWR\nEARNED`}</Text>
+          <View style={styles.pointsLblRow} pointerEvents="box-none">
+            <Text style={styles.pointsLbl}>{`POWR\nEARNED`}</Text>
+            {onPointsInfo && <PointsInfoDot onPress={onPointsInfo} label="How you earned this POWR" />}
+          </View>
         </View>
       )}
 
@@ -248,6 +257,11 @@ const styles = StyleSheet.create({
     fontWeight: '100',
     color: GOLD,
     letterSpacing: -1,
+  },
+  // Two-line label sits beside its (i); centred as a pair under the number.
+  pointsLblRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   pointsLbl: {
     fontSize: 7,

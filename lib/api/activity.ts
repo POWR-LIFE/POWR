@@ -371,8 +371,15 @@ function todayMidnight(): string {
     return d.toISOString();
 }
 
-/** Returns a YYYY-MM-DD string in the device's local timezone. */
-function localDateStr(d: Date): string {
+/**
+ * Returns a YYYY-MM-DD string in the device's local timezone.
+ *
+ * Exported because the month heatmaps build their grid keys by stepping a
+ * local-midnight cursor: `toISOString()` there yields the PREVIOUS day anywhere
+ * east of Greenwich (local midnight BST = 23:00Z), which shifted every cell one
+ * column right of its real date.
+ */
+export function localDateStr(d: Date): string {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
@@ -678,6 +685,12 @@ export type WeekActivityData = {
     totalDurationMin: number;
     /** Session-linked points earned that week for this type */
     points: number;
+    /** Mon–Sun points (same total as `points`, split by day) */
+    pointsPerDay: number[];
+    /** Mon–Sun session durations in minutes */
+    durationPerDay: number[];
+    /** Mon–Sun session counts */
+    sessionsPerDay: number[];
     /** Mon–Sun step counts (walking only; zeros otherwise) */
     stepsPerDay: number[];
     totalSteps: number;
@@ -694,6 +707,9 @@ export async function fetchWeekActivityData(type: ActivityType, weekStart: Date)
         sessionCount: 0,
         totalDurationMin: 0,
         points: 0,
+        pointsPerDay: [0, 0, 0, 0, 0, 0, 0],
+        durationPerDay: [0, 0, 0, 0, 0, 0, 0],
+        sessionsPerDay: [0, 0, 0, 0, 0, 0, 0],
         stepsPerDay: [0, 0, 0, 0, 0, 0, 0],
         totalSteps: 0,
     };
@@ -714,14 +730,26 @@ export async function fetchWeekActivityData(type: ActivityType, weekStart: Date)
         .lt('started_at', end.toISOString());
     if (error) throw error;
 
-    const result = { ...empty, activeDays: [...empty.activeDays], stepsPerDay: [...empty.stepsPerDay] };
+    const result: WeekActivityData = {
+        ...empty,
+        activeDays: [...empty.activeDays],
+        pointsPerDay: [...empty.pointsPerDay],
+        durationPerDay: [...empty.durationPerDay],
+        sessionsPerDay: [...empty.sessionsPerDay],
+        stepsPerDay: [...empty.stepsPerDay],
+    };
     for (const s of (data ?? []) as Array<{ started_at: string; duration_sec: number | null; steps: number | null; point_transactions: { amount: number }[] }>) {
         const d = new Date(s.started_at).getDay();
         const idx = d === 0 ? 6 : d - 1; // Mon=0 … Sun=6
+        const pts = (s.point_transactions ?? []).reduce((sum, t) => sum + t.amount, 0);
+        const durMin = Math.round((s.duration_sec ?? 0) / 60);
         result.activeDays[idx] = true;
         result.sessionCount++;
-        result.totalDurationMin += Math.round((s.duration_sec ?? 0) / 60);
-        result.points += (s.point_transactions ?? []).reduce((sum, t) => sum + t.amount, 0);
+        result.sessionsPerDay[idx]++;
+        result.totalDurationMin += durMin;
+        result.durationPerDay[idx] += durMin;
+        result.points += pts;
+        result.pointsPerDay[idx] += pts;
         result.stepsPerDay[idx] += s.steps ?? 0;
         result.totalSteps += s.steps ?? 0;
     }
@@ -991,6 +1019,8 @@ export type DailySleepEntry = {
     date: string;         // YYYY-MM-DD
     hours: number;
     bedtime: string | null;
+    /** Session-linked points earned for that night. */
+    points: number;
 };
 
 export type MonthlySleepData = {
@@ -1016,7 +1046,7 @@ export async function fetchMonthlySleepData(): Promise<MonthlySleepData> {
 
     const { data, error } = await supabase
         .from('activity_sessions')
-        .select('started_at, duration_sec')
+        .select('started_at, duration_sec, point_transactions(amount)')
         .eq('user_id', uid)
         .eq('type', 'sleep')
         .gte('started_at', lookback.toISOString())
@@ -1024,9 +1054,13 @@ export async function fetchMonthlySleepData(): Promise<MonthlySleepData> {
     if (error) throw error;
 
     // Aggregate by date, applying evening → next-day attribution
-    const byDate = new Map<string, { hours: number; bedtime: string | null }>();
+    const byDate = new Map<string, { hours: number; bedtime: string | null; points: number }>();
 
-    for (const s of data ?? []) {
+    for (const s of (data ?? []) as Array<{
+        started_at: string;
+        duration_sec: number;
+        point_transactions: { amount: number }[] | null;
+    }>) {
         const d = new Date(s.started_at);
         const startHour = d.getHours();
         const assignDate = startHour >= 18
@@ -1036,17 +1070,21 @@ export async function fetchMonthlySleepData(): Promise<MonthlySleepData> {
         // Skip sessions outside the 30-day range
         if (assignDate < rangeStart) continue;
 
-        const dateKey = assignDate.toISOString().split('T')[0];
+        // localDateStr, not toISOString: a 00:30 bedtime in any UTC+ zone is the
+        // previous day in UTC, which filed that night under the wrong date.
+        const dateKey = localDateStr(assignDate);
         const durationH = Math.round((s.duration_sec / 3600) * 10) / 10;
+        const pts = (s.point_transactions ?? []).reduce((sum, t) => sum + t.amount, 0);
         const existing = byDate.get(dateKey);
 
         if (existing) {
             existing.hours += durationH;
+            existing.points += pts;
             if (!existing.bedtime || s.started_at < existing.bedtime) {
                 existing.bedtime = s.started_at;
             }
         } else {
-            byDate.set(dateKey, { hours: durationH, bedtime: s.started_at });
+            byDate.set(dateKey, { hours: durationH, bedtime: s.started_at, points: pts });
         }
     }
 
@@ -1055,12 +1093,13 @@ export async function fetchMonthlySleepData(): Promise<MonthlySleepData> {
     for (let i = 29; i >= 0; i--) {
         const d = new Date();
         d.setDate(d.getDate() - i);
-        const dateKey = d.toISOString().split('T')[0];
+        const dateKey = localDateStr(d);
         const val = byDate.get(dateKey);
         entries.push({
             date: dateKey,
             hours: val?.hours ?? 0,
             bedtime: val?.bedtime ?? null,
+            points: val?.points ?? 0,
         });
     }
 
@@ -1151,6 +1190,8 @@ export type DailyActivityEntry = {
     date: string;           // YYYY-MM-DD
     sessionCount: number;
     totalDurationMin: number;
+    /** Session-linked points earned that day for this type. */
+    points: number;
     steps: number | null;   // walking only
 };
 
@@ -1186,7 +1227,7 @@ export async function fetchMonthlyActivityData(type: ActivityType, end?: Date): 
 
     const { data, error } = await supabase
         .from('activity_sessions')
-        .select('started_at, duration_sec, steps')
+        .select('started_at, duration_sec, steps, point_transactions(amount)')
         .eq('user_id', uid)
         .eq('type', type)
         .gte('started_at', rangeStart.toISOString())
@@ -1195,20 +1236,29 @@ export async function fetchMonthlyActivityData(type: ActivityType, end?: Date): 
     if (error) throw error;
 
     // Aggregate by date
-    const byDate = new Map<string, { count: number; durationMin: number; steps: number }>();
+    const byDate = new Map<string, { count: number; durationMin: number; points: number; steps: number }>();
 
-    for (const s of data ?? []) {
+    for (const s of (data ?? []) as Array<{
+        started_at: string;
+        duration_sec: number | null;
+        steps: number | null;
+        point_transactions: { amount: number }[] | null;
+    }>) {
         const dateKey = new Date(s.started_at).toISOString().split('T')[0];
         const existing = byDate.get(dateKey);
         const durMin = Math.round((s.duration_sec ?? 0) / 60);
         const steps = s.steps ?? 0;
+        // Every row on the session counts, streak bonuses included — same rule as
+        // fetchWeeklyMetrics.pointsPerType, so the two agree.
+        const pts = (s.point_transactions ?? []).reduce((sum, t) => sum + t.amount, 0);
 
         if (existing) {
             existing.count++;
             existing.durationMin += durMin;
+            existing.points += pts;
             existing.steps += steps;
         } else {
-            byDate.set(dateKey, { count: 1, durationMin: durMin, steps });
+            byDate.set(dateKey, { count: 1, durationMin: durMin, points: pts, steps });
         }
     }
 
@@ -1223,6 +1273,7 @@ export async function fetchMonthlyActivityData(type: ActivityType, end?: Date): 
             date: dateKey,
             sessionCount: val?.count ?? 0,
             totalDurationMin: val?.durationMin ?? 0,
+            points: val?.points ?? 0,
             steps: type === 'walking' ? (val?.steps ?? 0) : null,
         });
     }

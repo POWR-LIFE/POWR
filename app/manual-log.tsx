@@ -94,6 +94,17 @@ function calcBasePoints(type: ActivityType, durationMins: number, steps: number)
     }
 }
 
+/**
+ * Types the picker offers. `calcBasePoints` has no branch for 'dance' or
+ * 'sleep', so both fall through to `default: return 0` — listing them advertised
+ * "up to 8 pts" / "up to 5 pts" on cards that could only ever pay nothing.
+ * Sleep is wearable-only by design (it carries hideFromPicker); dance has no
+ * tier table yet. Keep this derived from calcBasePoints' real coverage.
+ */
+const MANUAL_LOGGABLE: ActivityType[] = ACTIVITY_ORDER.filter(
+    type => type !== 'dance' && type !== 'sleep',
+);
+
 function calcManualPoints(type: ActivityType, durationMins: number, steps: number, healthVerified = false): number {
     const base = calcBasePoints(type, durationMins, steps);
     return Math.floor(base * (healthVerified ? 1.0 : 0.8));
@@ -297,7 +308,7 @@ function ActivityPicker({ onSelect }: { onSelect: (type: ActivityType) => void }
         >
             <Text style={styles.pickerLabel}>Pick your activity</Text>
             <View style={styles.pickerGrid}>
-                {ACTIVITY_ORDER.map(type => {
+                {MANUAL_LOGGABLE.map(type => {
                     const a = ACTIVITIES[type];
                     return (
                         <Pressable
