@@ -380,14 +380,19 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   useEffect(() => {
     // Foreground notification received — a friend request / challenge invite or a
     // feed-worthy event may have just landed, so re-pull both badge sources.
-    notificationListener.current = Notifications.addNotificationReceivedListener(() => {
-      refreshPendingActions();
-      refreshActivity();
-      // A push may also signal a server-side points/level change (level_up,
-      // reward_unlocked, session/wearable receipts). Nudge usePoints to refetch
-      // so the home "X pts to next level" readout can't lag the notification.
-      emitPointsChanged();
-    });
+notificationListener.current = Notifications.addNotificationReceivedListener((notification) => {
+  refreshPendingActions();
+  refreshActivity();
+
+  const type = (notification?.request?.content?.data as any)?.type as string | undefined;
+  const mayAffectPoints = type === 'level_up'
+    || type === 'reward_unlocked'
+    || type === 'points_milestone'
+    || type === 'session_completed'
+    || type === 'session_upgraded'
+    || type === 'wearable_session_recorded';
+  if (mayAffectPoints) emitPointsChanged();
+});
 
     // User tapped a notification
     responseListener.current = Notifications.addNotificationResponseReceivedListener(
