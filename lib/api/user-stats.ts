@@ -4,6 +4,10 @@ export type ActivityCount = { type: string; count: number };
 
 export type ProfileStats = {
     totalPoints: number;
+    /** Canonical lifetime-earned (positive ledger all types + pending vault) —
+     *  the basis the rest of the app derives level/tier from. Use this, not
+     *  totalPoints, for any level/tier computation. */
+    totalEarned: number;
     currentStreak: number;
     longestStreak: number;
     dailyPoints: number[]; // last 7 days, oldest → newest
@@ -13,6 +17,7 @@ export type ProfileStats = {
 
 const EMPTY_STATS: ProfileStats = {
     totalPoints: 0,
+    totalEarned: 0,
     currentStreak: 0,
     longestStreak: 0,
     dailyPoints: [0, 0, 0, 0, 0, 0, 0],
@@ -37,6 +42,7 @@ export async function fetchProfileStats(userId: string): Promise<ProfileStats> {
     if (!row) return EMPTY_STATS;
     return {
         totalPoints: row.total_points ?? 0,
+        totalEarned: Number(row.total_earned ?? row.total_points ?? 0),
         currentStreak: row.current_streak ?? 0,
         longestStreak: row.longest_streak ?? 0,
         dailyPoints: (row.daily_points ?? EMPTY_STATS.dailyPoints).map((n: any) => Number(n) || 0),

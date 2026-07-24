@@ -135,8 +135,13 @@ export function UserProfileSheet({ userId, myPoints, userPoints, relationship, o
     const diff = (userPoints ?? 0) - (myPoints ?? 0);
     const diffSign = diff > 0 ? '+' : '';
     const showComparison = userPoints !== undefined && myPoints !== undefined;
-    const profileTotalPoints = stats?.totalPoints ?? userPoints ?? 0;
-    const { current: computedLevel } = getLevelInfo(profileTotalPoints);
+    // Level/tier/ring derive from canonical lifetime-earned (positive ledger all
+    // types + pending vault) so the pill matches the home screen and the server
+    // level_up push. totalPoints (earn/adjustment only) would render a level too
+    // low for anyone holding streak/bonus/vault credit. userPoints is only a
+    // pre-load placeholder until stats resolves.
+    const profileLevelBasis = stats?.totalEarned ?? userPoints ?? 0;
+    const { current: computedLevel } = getLevelInfo(profileLevelBasis);
 
     const runFriendAction = async (
         action: 'request' | 'accept' | 'decline' | 'remove',
@@ -205,7 +210,7 @@ export function UserProfileSheet({ userId, myPoints, userPoints, relationship, o
                                 <AvatarWithRing
                                     avatarUrl={profile.avatar_url}
                                     initials={initials}
-                                    totalPoints={stats?.totalPoints ?? 0}
+                                    totalPoints={profileLevelBasis}
                                     overCover={!!profile.cover_url}
                                 />
                                 <View style={s.identity}>
@@ -217,7 +222,7 @@ export function UserProfileSheet({ userId, myPoints, userPoints, relationship, o
                                     ) : null}
                                     <View style={s.identityPills}>
                                         {profile.is_pro && <ProBadge size="sm" />}
-                                        <TierPill totalPoints={profileTotalPoints} />
+                                        <TierPill totalPoints={profileLevelBasis} />
                                         <View style={s.levelPill}>
                                             <Text style={s.levelText}>LVL {computedLevel.level}</Text>
                                         </View>

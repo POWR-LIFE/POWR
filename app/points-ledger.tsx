@@ -333,6 +333,7 @@ export default function PointsLedgerScreen() {
   const [transactions, setTransactions] = useState<PointTransaction[]>([]);
   const [balance, setBalance] = useState(0);
   const [totalEarned, setTotalEarned] = useState(0);
+  const [vaultPending, setVaultPending] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -346,6 +347,7 @@ export default function PointsLedgerScreen() {
         setTransactions(txs);
         setBalance(summary.balance);
         setTotalEarned(summary.totalEarned);
+        setVaultPending(summary.vaultPending);
       } catch {
         setError('Could not load history.');
       } finally {
@@ -355,8 +357,12 @@ export default function PointsLedgerScreen() {
   }, []);
 
   const sections = useMemo(
-    () => groupByDate(mergeLevelUps(transactions, deriveLevelUps(transactions, totalEarned))),
-    [transactions, totalEarned],
+    // Ledger reconstruction anchors on credits-only (canonical earned minus
+    // still-vesting vault) — a vault level-up crossing has no ledger row to pin a
+    // marker to, so feeding it the vault-inclusive total would drag every marker
+    // earlier than the transaction that actually crossed the boundary.
+    () => groupByDate(mergeLevelUps(transactions, deriveLevelUps(transactions, totalEarned - vaultPending))),
+    [transactions, totalEarned, vaultPending],
   );
 
   return (

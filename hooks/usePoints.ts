@@ -1,7 +1,9 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
+import { AppState, type AppStateStatus } from 'react-native';
 import { fetchPointsSummary } from '@/lib/api/points';
 import { onSessionCompleted } from '@/context/GeofenceContext';
+import { onPointsChanged } from '@/lib/pointsEvents';
 
 type PointsState = {
     balance: number;
@@ -34,6 +36,30 @@ export function usePoints(): PointsState {
         }),
         [queryClient],
     );
+
+    // Refresh when points may have changed outside the geofence path — a
+    // foreground push (level_up / reward_unlocked / session receipt) or a
+    // foreground health-sync earn. Without this the ['points'] cache only
+    // refreshed on a geofence claim, so a server-driven "You leveled up" push
+    // could arrive while the home readout still showed the cached "X pts to go".
+    useEffect(
+        () => onPointsChanged(() => {
+            queryClient.invalidateQueries({ queryKey: ['points'] });
+        }),
+        [queryClient],
+    );
+
+    // Safety net: refetch on foreground so points that changed while the app was
+    // backgrounded (a background health sync, a push received while away) are
+    // reconciled the moment the user returns, not on the next manual refresh.
+    useEffect(() => {
+        const sub = AppState.addEventListener('change', (next: AppStateStatus) => {
+            if (next === 'active') {
+                queryClient.invalidateQueries({ queryKey: ['points'] });
+            }
+        });
+        return () => sub.remove();
+    }, [queryClient]);
 
     return {
         balance: data?.balance ?? 0,

@@ -19,6 +19,7 @@ import { useAuth } from '@/context/AuthContext';
 // FCM dropped every silent wake (Sony/Android 12 field capture, 2026-07-13).
 import { registerBackgroundNotificationTask } from '@/lib/backgroundNotificationTask';
 import { isExpoGoClient } from '@/lib/device';
+import { emitPointsChanged } from '@/lib/pointsEvents';
 import {
   requestPermissionsAndGetToken,
   scheduleStreakAtRiskWarning,
@@ -379,10 +380,19 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   useEffect(() => {
     // Foreground notification received — a friend request / challenge invite or a
     // feed-worthy event may have just landed, so re-pull both badge sources.
-    notificationListener.current = Notifications.addNotificationReceivedListener(() => {
-      refreshPendingActions();
-      refreshActivity();
-    });
+notificationListener.current = Notifications.addNotificationReceivedListener((notification) => {
+  refreshPendingActions();
+  refreshActivity();
+
+  const type = (notification?.request?.content?.data as any)?.type as string | undefined;
+  const mayAffectPoints = type === 'level_up'
+    || type === 'reward_unlocked'
+    || type === 'points_milestone'
+    || type === 'session_completed'
+    || type === 'session_upgraded'
+    || type === 'wearable_session_recorded';
+  if (mayAffectPoints) emitPointsChanged();
+});
 
     // User tapped a notification
     responseListener.current = Notifications.addNotificationResponseReceivedListener(
