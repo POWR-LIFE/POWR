@@ -17,6 +17,7 @@ import { GeometricBackground } from '@/components/home/GeometricBackground';
 import { RadialCarousel } from '@/components/home/RadialCarousel';
 import { HeaderActions } from '@/components/HeaderActions';
 import { MovementTab } from '@/components/progress/MovementTab';
+import PointsBreakdownSheet from '@/components/progress/PointsBreakdownSheet';
 import { SleepTab } from '@/components/progress/SleepTab';
 import { WorkoutsTab } from '@/components/progress/WorkoutsTab';
 import { ACTIVITIES, type ActivityType } from '@/constants/activities';
@@ -55,7 +56,7 @@ export default function ProgressScreen() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const { weekActiveDays, weeklyMetrics, refresh: refreshActivity } = useActivity();
-  const { weeklyEarned, refresh: refreshPoints } = usePoints();
+  const { refresh: refreshPoints } = usePoints();
   const walking = useWalkingProgress();
   const [refreshing, setRefreshing] = useState(false);
 
@@ -151,6 +152,8 @@ export default function ProgressScreen() {
     : String(weeklyMetrics.totalSteps);
 
   const [activeTab, setActiveTab] = useState<string>(tab || '');
+  // Which activity's breakdown the radial's (i) opened, if any.
+  const [radialInfoFor, setRadialInfoFor] = useState<ActivityType | null>(null);
   const [period, setPeriod] = useState<Period>('M');
   // Lookback offset for the breakdown views: 0 = current day/week/month,
   // -1 = previous, … Resets when the period granularity changes.
@@ -238,6 +241,7 @@ export default function ProgressScreen() {
 
   const tabs = radialData.map(d => d.id);
   const activeIndex = tabs.indexOf(activeTab);
+  const radialActiveType = (tabs[activeIndex >= 0 ? activeIndex : 0] ?? 'gym') as ActivityType;
 
   const handleIndexChange = (index: number) => {
     const nextTab = tabs[index];
@@ -281,6 +285,7 @@ export default function ProgressScreen() {
           data={radialData}
           activeIndex={activeIndex >= 0 ? activeIndex : 0}
           onChange={handleIndexChange}
+          onPointsInfo={() => setRadialInfoFor(radialActiveType)}
         />
 
         {/* ── Breakdown Tabs ─────────────────────────────── */}
@@ -298,12 +303,22 @@ export default function ProgressScreen() {
           weeklyMetrics={weeklyMetrics}
           stepsF={stepsF}
           weekActiveDays={weekActiveDays}
-          weeklyEarned={weeklyEarned}
           sleepHrs={sleepHrs}
           sleepBedtimes={sleepBedtimes}
         />
 
       </ScrollView>
+
+      {/* The radial always shows the CURRENT WEEK (it reads weeklyMetrics and
+          ignores the D/W/M stepper), so its breakdown must be week-scoped too
+          or the sheet total wouldn't match the number that opened it. */}
+      <PointsBreakdownSheet
+        visible={radialInfoFor !== null}
+        onClose={() => setRadialInfoFor(null)}
+        type={radialInfoFor ?? 'gym'}
+        period="W"
+        offset={0}
+      />
     </View>
   );
 }
@@ -315,7 +330,7 @@ export default function ProgressScreen() {
 type BreakdownTabItem = { key: string; label: string };
 
 function BreakdownSection({
-  activeTab, activeIndex, onIndexChange, period, onPeriodChange, lookback, onLookbackChange, tabs, walking, weeklyMetrics, stepsF, weekActiveDays, weeklyEarned, sleepHrs, sleepBedtimes,
+  activeTab, activeIndex, onIndexChange, period, onPeriodChange, lookback, onLookbackChange, tabs, walking, weeklyMetrics, stepsF, weekActiveDays, sleepHrs, sleepBedtimes,
 }: {
   activeTab: string;
   activeIndex: number;
@@ -329,7 +344,6 @@ function BreakdownSection({
   weeklyMetrics: any;
   stepsF: string;
   weekActiveDays: boolean[];
-  weeklyEarned: number;
   sleepHrs: number[];
   sleepBedtimes: (string | null)[];
 }) {
@@ -453,7 +467,13 @@ function BreakdownSection({
                   type={key as ActivityType}
                   count={weeklyMetrics.perType[key] ?? 0}
                   weekActiveDays={weeklyMetrics.activeDaysPerType[key] ?? [false, false, false, false, false, false, false]}
-                  weeklyEarned={weeklyEarned}
+                  // Per-TYPE points for this week — not usePoints().weeklyEarned,
+                  // which is the all-activity total and made every activity's
+                  // POWR EARNED column read the same (inflated) number. The
+                  // past-week branch inside WorkoutsTab was already type-scoped,
+                  // so only the current week was wrong. Matches the radial above,
+                  // which has always used pointsPerType.
+                  weeklyEarned={weeklyMetrics.pointsPerType[key] ?? 0}
                   period={period}
                   onPeriodChange={onPeriodChange}
                   offset={lookback}

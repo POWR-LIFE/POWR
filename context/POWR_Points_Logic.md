@@ -240,7 +240,12 @@ POWR awards points (POWR) for verified physical activity across 8 activity types
 | Sports | 10 POWR |
 | Yoga / Pilates | 6 POWR |
 
-> **Note:** Daily caps apply to base POWR only. Streak multipliers and bonuses can push Gym earnings up to 30 POWR at a 3× streak.
+> **Note:** The daily cap covers base POWR **and** the streak bonus together — not
+> base only. `enforce_point_award_cap` sums `type='earn'` and `type='streak'` rows
+> for the day and clamps the total; anything above the cap is banked to the Vault
+> rather than paid to the spendable balance. So a 7- or 10-session gym streak does
+> not pay 40 or 60 POWR into the balance on the day — it pays 30, and the overflow
+> vaults. Verified against the deployed trigger, 2026-07-24.
 
 ---
 

@@ -1,0 +1,163 @@
+-- PROPOSED — NOT APPLIED. Rename to .sql to land it.
+--
+-- Closes the daily-cap bypass on the service-role write paths.
+--
+-- WHAT IS BROKEN
+-- `enforce_point_award_cap()` is a BEFORE INSERT ROW trigger and it DOES fire for
+-- every role — Postgres triggers always do. The bypass is the first branch of the
+-- function body:
+--     v_role := nullif(current_setting('request.jwt.claims', true),'')::json->>'role';
+--     IF v_role IS NULL OR v_role = 'service_role' THEN RETURN NEW; END IF;
+-- so terra-webhook, claim-points and upgrade-gym-tier (all service-role) skip the
+-- clamp. The native health sync does NOT — it writes with the user's JWT and is
+-- already capped.
+--
+-- Those three functions each do their own read-then-write cap check, which is not
+-- atomic, so concurrent deliveries double-award. Proven in prod:
+--   * session d0054b90 — 9 'earn' rows totalling 14 vs a walking cap of 5, while
+--     steps never moved off 6762. Hand-simulating the clamp yields 5.
+--   * session 9b9a1f33 — claim-points and upgrade-gym-tier each credited 30 twelve
+--     milliseconds apart: 60 vs a gym cap of 30.
+-- Blast radius is small: 54 excess points across 2 real users over 7 user-days.
+-- A further 610 belong to the DEV_TEST_EMAILS account and are deliberate.
+--
+-- WHAT THIS DOES
+-- Splits the function in two. The CLIENT-AUTHORISATION guards (type must be
+-- 'earn', session must exist and belong to the caller) stay gated behind the
+-- authenticated-role check — trusted server functions legitimately write 'streak'
+-- and 'bonus' rows and rows with no session, so applying those guards to them
+-- would reject every server write. The CLAMP now runs for every role, keyed on
+-- NEW.user_id rather than auth.uid() (which is NULL under the service role).
+--
+-- Earnings-neutral for anyone compliant: the clamp only ever reduces an award that
+-- would breach the cap, and a compliant user never reaches it.
+--
+-- ⚠ BEFORE DEPLOYING, TWO THINGS
+-- 1. The clamp's `RETURN NULL` drops the row SILENTLY. claim-points and
+--    upgrade-gym-tier will still return a credited amount to the client that the
+--    database discarded, so the UI would report points the ledger does not hold.
+--    Switch those to INSERT ... RETURNING and trust the returned row.
+-- 2. The `v_role IS NULL` arm also covers pg_cron and direct psql. Enumerate any
+--    cron job that writes 'earn' rows before landing this — they would start being
+--    clamped, which is probably correct but should be a decision, not a surprise.
+--
+-- NOT FIXED HERE: session d0054b90's nine awards are spaced ~hourly across 11
+-- hours on a static step count, which the millisecond read-modify-write race does
+-- NOT explain. This migration absorbs the symptom; the repeat-award path (terra-poll
+-- is the suspect) still needs finding.
+
+create or replace function public.enforce_point_award_cap()
+returns trigger
+language plpgsql
+security definer
+set search_path to 'public'
+as $function$
+DECLARE
+  v_role       text;
+  v_is_service boolean;
+  v_uid        uuid;
+  v_owner      uuid;
+  v_sess_user  uuid;
+  v_type       text;
+  v_started_at timestamptz;
+  v_day_start  timestamptz;
+  v_cap        int;
+  v_already    int;
+  v_remaining  int;
+BEGIN
+  v_role := nullif(current_setting('request.jwt.claims', true), '')::json ->> 'role';
+  v_is_service := (v_role IS NULL OR v_role = 'service_role');
+  v_uid := auth.uid();
+
+  -- Admin carve-out, unchanged.
+  IF v_uid IS NOT NULL AND EXISTS (SELECT 1 FROM admin_roles WHERE user_id = v_uid) THEN
+    RETURN NEW;
+  END IF;
+
+  -- ── Client-authorisation guards — clients only ──────────────────────────────
+  IF NOT v_is_service THEN
+    IF NEW.type <> 'earn' THEN
+      RAISE EXCEPTION 'point award rejected: clients may not insert % rows', NEW.type;
+    END IF;
+    IF NEW.session_id IS NULL THEN
+      RAISE EXCEPTION 'point award rejected: earn must reference an activity session';
+    END IF;
+  END IF;
+
+  -- ── The clamp — every role ──────────────────────────────────────────────────
+  -- Only session-linked 'earn' rows are capped. Streak, bonus, redeem, penalty and
+  -- adjustment rows pass through untouched, exactly as before.
+  IF NEW.type <> 'earn' OR NEW.session_id IS NULL THEN
+    RETURN NEW;
+  END IF;
+
+  SELECT user_id, type, started_at
+    INTO v_sess_user, v_type, v_started_at
+  FROM activity_sessions
+  WHERE id = NEW.session_id;
+
+  IF v_sess_user IS NULL THEN
+    -- A client referencing a missing session is an error; a server write is not
+    -- this trigger's business to reject.
+    IF v_is_service THEN RETURN NEW; END IF;
+    RAISE EXCEPTION 'point award rejected: session % not found', NEW.session_id;
+  END IF;
+
+  IF NOT v_is_service AND (v_sess_user <> v_uid OR NEW.user_id <> v_uid) THEN
+    RAISE EXCEPTION 'point award rejected: session does not belong to caller';
+  END IF;
+
+  v_owner := coalesce(NEW.user_id, v_sess_user);
+
+  -- Mirrors DEV_TEST_EMAILS in claim-points / upgrade-gym-tier, which bypass the
+  -- cap in app code. Without this the dev account's deliberate over-cap testing
+  -- would start being clamped by the database instead.
+  IF EXISTS (
+    SELECT 1 FROM auth.users u
+    WHERE u.id = v_owner
+      AND u.email = ANY (string_to_array(
+            coalesce(nullif(current_setting('powr.dev_test_emails', true), ''),
+                     'jamiemasonwright@gmail.com'), ','))
+  ) THEN
+    RETURN NEW;
+  END IF;
+
+  v_cap := CASE v_type
+    WHEN 'walking'  THEN 5
+    WHEN 'running'  THEN 10
+    WHEN 'cycling'  THEN 10
+    WHEN 'swimming' THEN 10
+    WHEN 'gym'      THEN 30
+    WHEN 'hiit'     THEN 10
+    WHEN 'sports'   THEN 10
+    WHEN 'yoga'     THEN 6
+    WHEN 'dance'    THEN 8
+    WHEN 'sleep'    THEN 5
+    ELSE 10
+  END;
+
+  v_day_start := date_trunc('day', v_started_at AT TIME ZONE 'UTC') AT TIME ZONE 'UTC';
+
+  SELECT coalesce(sum(pt.amount), 0)
+    INTO v_already
+  FROM point_transactions pt
+  JOIN activity_sessions s ON s.id = pt.session_id
+  WHERE pt.user_id = v_owner          -- was auth.uid(), NULL under service role
+    AND pt.type = 'earn'
+    AND s.type::text = v_type
+    AND s.started_at >= v_day_start
+    AND s.started_at <  v_day_start + interval '1 day';
+
+  v_remaining := v_cap - v_already;
+
+  IF v_remaining <= 0 OR NEW.amount <= 0 THEN
+    RETURN NULL;
+  END IF;
+
+  IF NEW.amount > v_remaining THEN
+    NEW.amount := v_remaining;
+  END IF;
+
+  RETURN NEW;
+END;
+$function$;

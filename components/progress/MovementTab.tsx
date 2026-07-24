@@ -2,6 +2,8 @@ import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { DayCaption, addDays } from '@/components/progress/DayCaption';
+import PointsBreakdownSheet, { PointsInfoDot } from '@/components/progress/PointsBreakdownSheet';
 import { TimeStepper } from '@/components/progress/TimeStepper';
 import { type useWalkingProgress } from '@/hooks/useWalkingProgress';
 import {
@@ -10,6 +12,8 @@ import {
     fetchTodayActivityDetail,
     fetchWeekActivityData,
     fetchWeeklyStepsPerDay,
+    localDateStr,
+    type DailyActivityEntry,
     type DailyWalkingHistory,
     type MonthlyActivityData,
     type TodayActivityDetail,
@@ -105,7 +109,7 @@ function HealthAccessHint({
 
 // ─── Day View ────────────────────────────────────────────────────────────────
 
-function MovementDayView({ walking, offset }: { walking: ReturnType<typeof useWalkingProgress>; offset: number }) {
+function MovementDayView({ walking, offset, onInfo }: { walking: ReturnType<typeof useWalkingProgress>; offset: number; onInfo: () => void }) {
   const isToday = offset === 0;
   const [pastDay, setPastDay] = useState<TodayActivityDetail | null>(null);
 
@@ -147,7 +151,10 @@ function MovementDayView({ walking, offset }: { walking: ReturnType<typeof useWa
         </View>
         <View style={styles.bigMetricDivider} />
         <View style={styles.bigMetric}>
-          <Text style={styles.bigMetricSup}>POWR EARNED</Text>
+          <View style={styles.bigMetricSupRow}>
+            <Text style={styles.bigMetricSup}>POWR EARNED</Text>
+            <PointsInfoDot onPress={onInfo} label="How you earned this walking POWR" />
+          </View>
           <Text style={[styles.bigMetricVal, { color: GOLD }]}>
             {dayPoints > 0 ? dayPoints : '—'}
           </Text>
@@ -207,15 +214,19 @@ function MovementDayView({ walking, offset }: { walking: ReturnType<typeof useWa
 // ─── Week View ───────────────────────────────────────────────────────────────
 
 function MovementWeekView({
-  walking, totalSteps, stepsF, weekActiveDays, offset,
+  walking, totalSteps, stepsF, weekActiveDays, offset, onInfo, onSelectDay,
 }: {
   walking: ReturnType<typeof useWalkingProgress>;
   totalSteps: number;
   stepsF: string;
   weekActiveDays: boolean[];
   offset: number;
+  onInfo: () => void;
+  onSelectDay: (day: Date) => void;
 }) {
   const isCurrent  = offset === 0;
+  const [selected, setSelected] = useState<number | null>(null);
+  useEffect(() => { setSelected(null); }, [offset]);
   const todaySteps = walking.stepsToday ?? 0;
   const todayPct   = Math.min(todaySteps / 10000, 1);
   const remaining  = Math.max(0, 10000 - todaySteps);
@@ -229,6 +240,11 @@ function MovementWeekView({
     setPastWeek(null);
     if (offset === 0) {
       fetchWeeklyStepsPerDay().then(s => { if (!cancelled) setWeekSteps(s); }).catch(() => {});
+      // Steps come from the live hook above, but the tappable bars also need the
+      // per-day POWR split, which only the session query carries.
+      fetchWeekActivityData('walking', weekAnchorMonday(0))
+        .then(d => { if (!cancelled) setPastWeek(d); })
+        .catch(() => {});
     } else {
       fetchWeekActivityData('walking', weekAnchorMonday(offset))
         .then(d => { if (!cancelled) { setWeekSteps(d.stepsPerDay); setPastWeek(d); } })
@@ -265,7 +281,10 @@ function MovementWeekView({
           </View>
         ) : (
           <View style={styles.bigMetric}>
-            <Text style={styles.bigMetricSup}>POWR EARNED</Text>
+            <View style={styles.bigMetricSupRow}>
+              <Text style={styles.bigMetricSup}>POWR EARNED</Text>
+              <PointsInfoDot onPress={onInfo} label="How you earned this walking POWR" />
+            </View>
             <Text style={[styles.bigMetricVal, { color: GOLD }]}>
               {(pastWeek?.points ?? 0) > 0 ? pastWeek!.points : '—'}
             </Text>
@@ -296,8 +315,20 @@ function MovementWeekView({
           const isFuture = isCurrent && i > TODAY_INDEX;
           const barPct  = isFuture ? 0 : Math.max(steps / maxSteps, steps > 0 ? 0.04 : 0);
           const barColor = isBest ? GOLD : isToday ? GREEN : `${GREEN}80`;
+          // Only days that actually recorded steps respond to a tap.
+          const hasData = !isFuture && steps > 0;
+          const Col: any = hasData ? Pressable : View;
           return (
-            <View key={i} style={styles.weekBarCol}>
+            <Col
+              key={i}
+              style={[styles.weekBarCol, selected === i && styles.weekBarColSelected]}
+              {...(hasData ? {
+                onPress: () => setSelected(prev => (prev === i ? null : i)),
+                hitSlop: 8,
+                accessibilityRole: 'button',
+                accessibilityLabel: `${DAY_LABELS[i]} — see what you earned`,
+              } : {})}
+            >
               <View style={styles.weekBarTrack}>
                 {!isFuture && barPct > 0 && (
                   <View style={[
@@ -306,7 +337,11 @@ function MovementWeekView({
                   ]} />
                 )}
               </View>
-              <Text style={[styles.weekBarLabel, isToday && { color: TEXT, fontWeight: '600' }]}>
+              <Text style={[
+                styles.weekBarLabel,
+                isToday && { color: TEXT, fontWeight: '600' },
+                selected === i && { color: GOLD, fontWeight: '600' },
+              ]}>
                 {day.charAt(0)}
               </Text>
               {steps > 0 && !isFuture && (
@@ -314,10 +349,20 @@ function MovementWeekView({
                   {formatSteps(steps)}
                 </Text>
               )}
-            </View>
+            </Col>
           );
         })}
       </View>
+
+      {selected !== null && (
+        <DayCaption
+          date={addDays(weekAnchorMonday(offset), selected)}
+          sessions={pastWeek?.sessionsPerDay[selected] ?? 0}
+          durationMin={0}
+          points={pastWeek?.pointsPerDay[selected] ?? 0}
+          onPress={() => onSelectDay(addDays(weekAnchorMonday(offset), selected))}
+        />
+      )}
 
       {hasBest && (
         <View style={styles.insightRow}>
@@ -355,7 +400,15 @@ function heatmapColor(steps: number): string {
   return HEATMAP_COLORS[5];
 }
 
-function MovementMonthView({ data }: { data: MonthlyActivityData | null }) {
+function MovementMonthView({
+  data, onSelectDay,
+}: {
+  data: MonthlyActivityData | null;
+  onSelectDay: (day: Date) => void;
+}) {
+  const [selected, setSelected] = useState<string | null>(null);
+  useEffect(() => { setSelected(null); }, [data]);
+
   if (!data) {
     return (
       <View style={styles.emptyState}>
@@ -384,8 +437,9 @@ function MovementMonthView({ data }: { data: MonthlyActivityData | null }) {
   const gridStart = new Date(firstDate);
   gridStart.setDate(gridStart.getDate() + mondayOffset);
 
-  const lookup = new Map<string, number>();
-  for (const e of data.entries) lookup.set(e.date, e.steps ?? 0);
+  // Keep the whole entry — the caption needs POWR, which the steps-only map dropped.
+  const lookup = new Map<string, DailyActivityEntry>();
+  for (const e of data.entries) lookup.set(e.date, e);
 
   const rows: { date: string; steps: number; inRange: boolean }[][] = [];
   let cursor = new Date(gridStart);
@@ -394,9 +448,11 @@ function MovementMonthView({ data }: { data: MonthlyActivityData | null }) {
   while (cursor <= lastEntry) {
     const row: { date: string; steps: number; inRange: boolean }[] = [];
     for (let col = 0; col < 7; col++) {
-      const dateKey = cursor.toISOString().split('T')[0];
+      // See WorkoutsTab: local-midnight cursor + toISOString shifted every cell
+      // one column right in UTC+ zones.
+      const dateKey = localDateStr(cursor);
       const inRange = lookup.has(dateKey);
-      row.push({ date: dateKey, steps: lookup.get(dateKey) ?? 0, inRange });
+      row.push({ date: dateKey, steps: lookup.get(dateKey)?.steps ?? 0, inRange });
       cursor.setDate(cursor.getDate() + 1);
     }
     rows.push(row);
@@ -442,17 +498,50 @@ function MovementMonthView({ data }: { data: MonthlyActivityData | null }) {
 
       {rows.map((row, ri) => (
         <View key={ri} style={styles.heatmapRow}>
-          {row.map((cell, ci) => (
-            <View key={ci} style={styles.heatmapCellCompact}>
-              {cell.inRange ? (
-                <View style={[styles.heatmapDot, { backgroundColor: heatmapColor(cell.steps) }]} />
-              ) : (
-                <View style={[styles.heatmapDot, { backgroundColor: 'transparent' }]} />
-              )}
-            </View>
-          ))}
+          {row.map((cell, ci) => {
+            const hasData = cell.inRange && cell.steps > 0;
+            const Cell: any = hasData ? Pressable : View;
+            return (
+              <Cell
+                key={ci}
+                style={styles.heatmapCellCompact}
+                {...(hasData ? {
+                  onPress: () => setSelected(prev => (prev === cell.date ? null : cell.date)),
+                  hitSlop: 8,
+                  accessibilityRole: 'button',
+                  accessibilityLabel: `${cell.date} — see what you earned`,
+                } : {})}
+              >
+                {cell.inRange ? (
+                  <View style={[
+                    styles.heatmapDot,
+                    { backgroundColor: heatmapColor(cell.steps) },
+                    selected === cell.date && styles.heatmapDotSelected,
+                  ]} />
+                ) : (
+                  <View style={[styles.heatmapDot, { backgroundColor: 'transparent' }]} />
+                )}
+              </Cell>
+            );
+          })}
         </View>
       ))}
+
+      {selected && (() => {
+        const entry = lookup.get(selected);
+        // Grid keys are UTC-dated via toISOString; parse at local noon so the
+        // caption can't show the neighbouring day west of Greenwich.
+        const day = new Date(`${selected}T12:00:00`);
+        return (
+          <DayCaption
+            date={day}
+            sessions={0}
+            durationMin={0}
+            points={entry?.points ?? 0}
+            onPress={() => onSelectDay(day)}
+          />
+        );
+      })()}
 
       <View style={styles.heatmapLegend}>
         <Text style={styles.heatmapLegendLabel}>Less</Text>
@@ -488,6 +577,8 @@ export function MovementTab({
 }) {
   const [monthData, setMonthData] = useState<MonthlyActivityData | null>(null);
   const [monthLoaded, setMonthLoaded] = useState(false);
+  const [infoOpen, setInfoOpen] = useState(false);
+  const [selectedDay, setSelectedDay] = useState<Date | null>(null);
 
   // Reset loaded state when the lookback offset changes
   useEffect(() => {
@@ -525,7 +616,7 @@ export function MovementTab({
       <TimeStepper period={period} offset={offset} onOffsetChange={onOffsetChange} />
 
       {period === 'D' && (
-        <MovementDayView walking={walking} offset={offset} />
+        <MovementDayView walking={walking} offset={offset} onInfo={() => setInfoOpen(true)} />
       )}
       {period === 'W' && (
         <MovementWeekView
@@ -534,11 +625,31 @@ export function MovementTab({
           stepsF={stepsF}
           weekActiveDays={weekActiveDays}
           offset={offset}
+          onInfo={() => setInfoOpen(true)}
+          onSelectDay={setSelectedDay}
         />
       )}
       {period === 'M' && (
-        <MovementMonthView data={monthData} />
+        <MovementMonthView data={monthData} onSelectDay={setSelectedDay} />
       )}
+
+      <PointsBreakdownSheet
+        visible={infoOpen}
+        onClose={() => setInfoOpen(false)}
+        type="walking"
+        period={period}
+        offset={offset}
+      />
+
+      {/* Same sheet pinned to one tapped day; separate state from the (i). */}
+      <PointsBreakdownSheet
+        visible={selectedDay !== null}
+        onClose={() => setSelectedDay(null)}
+        type="walking"
+        period="D"
+        offset={0}
+        day={selectedDay}
+      />
     </View>
   );
 }
@@ -593,6 +704,10 @@ const styles = StyleSheet.create({
   bigMetricSup: {
     fontSize: 8, fontWeight: '500', letterSpacing: 1.5,
     color: MUTED, textTransform: 'uppercase', marginBottom: 2,
+  },
+  // Holds the sup-label + its (i) — mirrors WorkoutsTab.
+  bigMetricSupRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
   },
   bigMetricVal: {
     fontSize: 44, fontWeight: '100', letterSpacing: -1.5, lineHeight: 46,
@@ -657,6 +772,10 @@ const styles = StyleSheet.create({
   heatmapDot: {
     width: '100%', height: '100%', borderRadius: 4,
   },
+  // Border, not colour: the heatmap already spends colour on step volume.
+  heatmapDotSelected: {
+    borderWidth: 1.5, borderColor: GOLD,
+  },
   heatmapLegend: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 4, marginTop: 4,
@@ -675,7 +794,9 @@ const styles = StyleSheet.create({
 
   // Week bar chart
   weekBarChart: {
-    flexDirection: 'row', alignItems: 'flex-end', gap: 4, height: 72,
+    // See WorkoutsTab's copy of this style — 'flex-end' collapsed the bars to 0
+    // on web (RN's Yoga errata masked it on native). Kept in sync deliberately.
+    flexDirection: 'row', alignItems: 'stretch', gap: 4, height: 72,
   },
   weekBarCol: {
     flex: 1, alignItems: 'center', gap: 4,
@@ -685,6 +806,12 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.05)',
     borderRadius: 4, overflow: 'hidden',
     justifyContent: 'flex-end',
+  },
+  // See WorkoutsTab: tint the column, not the track — a border inside a filled
+  // track is invisible on precisely the days worth selecting.
+  weekBarColSelected: {
+    backgroundColor: 'rgba(232,210,0,0.08)',
+    borderRadius: 6,
   },
   weekBarFill: {
     width: '100%', borderRadius: 4,
