@@ -21,5 +21,11 @@ export function onPointsChanged(listener: PointsChangedListener): () => void {
 }
 
 export function emitPointsChanged(): void {
-  _listeners.forEach((l) => l());
+  _listeners.forEach((l) => {
+    try {
+      l();
+    } catch (err) {
+      console.warn('[pointsEvents] points-changed listener threw:', err);
+    }
+  });
 }
