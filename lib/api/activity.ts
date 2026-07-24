@@ -1,5 +1,6 @@
 import { type ActivityType } from '@/constants/activities';
 import { getDeviceId } from '@/lib/device';
+import { emitPointsChanged } from '@/lib/pointsEvents';
 import { getSessionUser, supabase } from '@/lib/supabase';
 
 // ── Walking step-tier helpers (shared by manual-log + health sync) ─────────────
@@ -442,6 +443,9 @@ export async function logHealthWalkingSession(
             .from('point_transactions')
             .insert({ session_id: session.id, amount: points, type: 'earn', source: 'health_sync' });
         if (pErr) throw pErr;
+        // A foreground sync just earned points (and may have crossed a level) —
+        // refresh the shared ['points'] cache so the home readout catches up.
+        emitPointsChanged();
     }
     return session.id;
 }
@@ -463,6 +467,7 @@ export async function updateHealthWalkingSession(
         await supabase
             .from('point_transactions')
             .insert({ session_id: sessionId, amount: additionalPoints, type: 'earn', source: 'health_sync' });
+        emitPointsChanged();
     }
 }
 

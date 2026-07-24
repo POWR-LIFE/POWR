@@ -19,6 +19,7 @@ import { useAuth } from '@/context/AuthContext';
 // FCM dropped every silent wake (Sony/Android 12 field capture, 2026-07-13).
 import { registerBackgroundNotificationTask } from '@/lib/backgroundNotificationTask';
 import { isExpoGoClient } from '@/lib/device';
+import { emitPointsChanged } from '@/lib/pointsEvents';
 import {
   requestPermissionsAndGetToken,
   scheduleStreakAtRiskWarning,
@@ -382,6 +383,10 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     notificationListener.current = Notifications.addNotificationReceivedListener(() => {
       refreshPendingActions();
       refreshActivity();
+      // A push may also signal a server-side points/level change (level_up,
+      // reward_unlocked, session/wearable receipts). Nudge usePoints to refetch
+      // so the home "X pts to next level" readout can't lag the notification.
+      emitPointsChanged();
     });
 
     // User tapped a notification

@@ -102,11 +102,15 @@ export async function fetchEarnedAchievementCount(userId: string): Promise<numbe
     const row = Array.isArray(data) ? data[0] : data;
     if (!row) return 0;
 
-    const totalPoints = row.total_points ?? 0;
-    const { current } = getLevelInfo(totalPoints);
+    // Level (and points-threshold achievements) evaluate on canonical
+    // lifetime-earned — positive ledger all types + pending vault — matching the
+    // own-user path (which injects usePoints().totalEarned) and the home screen.
+    // total_points (earn/adjustment only) would under-count level-gated badges.
+    const totalEarned = Number(row.total_earned ?? row.total_points ?? 0);
+    const { current } = getLevelInfo(totalEarned);
 
     const stats: AchievementStats = {
-      totalPoints,
+      totalPoints: totalEarned,
       currentStreak: row.current_streak ?? 0,
       longestStreak: row.longest_streak ?? 0,
       level: current.level,

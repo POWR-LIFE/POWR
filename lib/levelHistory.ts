@@ -21,9 +21,13 @@ export interface LevelUpEvent {
  * Replays the newest-first transaction list oldest→newest and emits an event
  * wherever the cumulative earned total crosses a level boundary.
  *
- * `totalEarnedNow` (from get_my_points_summary — credits only) anchors the
- * starting point: the ledger fetch caps at 500 rows, so credits older than the
- * window are accounted for as a baseline rather than assumed to be zero.
+ * `totalEarnedNow` MUST be the credits-only lifetime earned (positive ledger,
+ * excluding still-vesting vault). It anchors the starting point: the ledger fetch
+ * caps at 500 rows, so credits older than the window are accounted for as a
+ * baseline rather than assumed to be zero. Pass the canonical total_earned MINUS
+ * vault_pending — a vault crossing has no ledger row to attach a marker to, so
+ * including vault here would push every marker earlier than the credit that
+ * actually crossed the boundary.
  */
 export function deriveLevelUps(
   newestFirst: PointTransaction[],

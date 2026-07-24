@@ -328,7 +328,14 @@ async function fetchAggregates(
     .select('amount');
   if (asOf) txQ.lte('created_at', asOf.toISOString());
 
-  const [profileRes, lifetimeRes, monthRes, streakRes, weekRes, balanceRes, authRes] = await Promise.all([
+  // Vault POWR still counting toward level (unreleased) — part of the canonical
+  // lifetime-earned basis. RLS scopes both reads to the signed-in member.
+  const vaultQ = supabase
+    .from('vault_deposits')
+    .select('amount, created_at, released_at');
+  if (asOf) vaultQ.lte('created_at', asOf.toISOString());
+
+  const [profileRes, lifetimeRes, monthRes, streakRes, weekRes, balanceRes, vaultRes, authRes] = await Promise.all([
     supabase
       .from('profiles')
       .select('display_name, username, avatar_url, cover_url, referral_code')
@@ -343,6 +350,7 @@ async function fetchAggregates(
       .maybeSingle(),
     weekQ,
     txQ,
+    vaultQ,
     getSessionUser(),
   ]);
 
@@ -354,13 +362,28 @@ async function fetchAggregates(
     weekActiveDays[d === 0 ? 6 : d - 1] = true;
   }
 
-  // Credits only, to match get_my_points_summary.total_earned — spends must not
-  // pull a member back down the level ladder.
+  // Level basis must match get_my_points_summary.total_earned = positive ledger
+  // (ALL types) + vault still counting toward level. Spends stay out of earned
+  // so redemptions can't pull a member back down the ladder.
   const transactions = balanceRes.data ?? [];
+  const creditsEarned = transactions.reduce((sum, t) => sum + Math.max(t.amount, 0), 0);
+
+  // A vault deposit counts toward level while unreleased. For a historical card
+  // (asOf), a deposit released after the card's date was still unreleased then,
+  // so it counts; once released it lands in the ledger as a positive
+  // 'vault_release' row (already summed above), so counting it here too would
+  // double it.
+  const asOfMs = asOf ? asOf.getTime() : null;
+  const vaultPending = ((vaultRes.data ?? []) as Array<{ amount: number; released_at: string | null }>)
+    .reduce((sum, d) => {
+      const releasedByCardDate = d.released_at != null
+        && (asOfMs === null || new Date(d.released_at).getTime() <= asOfMs);
+      return releasedByCardDate ? sum : sum + Math.max(d.amount, 0);
+    }, 0);
 
   return {
     pointsBalance: transactions.reduce((sum, t) => sum + t.amount, 0),
-    totalEarned: transactions.reduce((sum, t) => sum + Math.max(t.amount, 0), 0),
+    totalEarned: creditsEarned + vaultPending,
     lifetimeCount: lifetimeRes.count ?? 0,
     monthCount: monthRes.count ?? 0,
     currentStreak: streakRes.data?.current_streak ?? 0,
