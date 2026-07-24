@@ -97,7 +97,7 @@ const LOCATION_TRACKING_TASK = 'POWR_LOCATION_TRACKING';   // foreground-service
 const GEOFENCE_REARM_TASK    = 'POWR_GEOFENCE_BOOT_REARM'; // re-arms monitoring after reboot
 export const ACTIVE_GEOFENCE_KEY = '@powr/active_geofence'; // also read by lib/otaUpdates.ts to defer restarts mid-visit
 const PARTNER_MAP_KEY        = '@powr/partner_map';
-const PARTNER_MAP_META_KEY   = '@powr/partner_map_meta';   // { fetchedAt } — bump invalidates the in-context parse memo
+const PARTNER_MAP_META_KEY   = '@powr/partner_map_meta';   // { fetchedAt, v } — fetchedAt bump invalidates the in-context parse memo
 const ARM_META_KEY           = '@powr/geofence_arm_meta';  // centre + sentinel radius of the currently armed region set
 const SESSION_COMPLETED_KEY  = '@powr/session_completed';
 const PENDING_CLAIMS_KEY     = '@powr/pending_claims';
@@ -318,7 +318,11 @@ interface StoredGeofence {
 // fetchedAt so each JS context (app + headless task) memoizes the parse and only
 // re-reads when the cache was actually rewritten.
 
-interface PartnerMapMeta { fetchedAt: number }
+// Bump to force every device to rewrite its cache on next check, regardless of
+// TTL — v2 = the paginated fetch (v1 caches were truncated to 1000 partners).
+const PARTNER_MAP_VERSION = 2;
+
+interface PartnerMapMeta { fetchedAt: number; v?: number }
 
 let _partnerMapMemo: { fetchedAt: number; map: Record<string, PartnerMapEntry> } | null = null;
 
@@ -337,23 +341,67 @@ async function readPartnerMap(): Promise<Record<string, PartnerMapEntry> | null>
   }
 }
 
-async function writePartnerMap(map: Record<string, PartnerMapEntry>): Promise<void> {
+async function writePartnerMap(map: Record<string, PartnerMapEntry>, opts: { partial?: boolean } = {}): Promise<void> {
   const fetchedAt = Date.now();
   await AsyncStorage.setItem(PARTNER_MAP_KEY, JSON.stringify(map));
-  await AsyncStorage.setItem(PARTNER_MAP_META_KEY, JSON.stringify({ fetchedAt } satisfies PartnerMapMeta));
+  // A partial write (nearby-only fallback) is stamped v1 so it is immediately
+  // considered stale and upgraded to the full set at the next opportunity,
+  // while still being usable for local detection in the meantime.
+  await AsyncStorage.setItem(PARTNER_MAP_META_KEY, JSON.stringify({ fetchedAt, v: opts.partial ? 1 : PARTNER_MAP_VERSION } satisfies PartnerMapMeta));
   _partnerMapMemo = { fetchedAt, map };
+}
+
+/** True when the cached partner map is missing, from an older cache format, or
+ *  older than the TTL — i.e. it must not be trusted as the full nationwide set. */
+async function partnerMapIsStale(): Promise<boolean> {
+  try {
+    const metaRaw = await AsyncStorage.getItem(PARTNER_MAP_META_KEY);
+    if (!metaRaw) return true;
+    const meta = JSON.parse(metaRaw) as PartnerMapMeta;
+    if ((meta.v ?? 1) !== PARTNER_MAP_VERSION) return true;
+    return Date.now() - (meta.fetchedAt ?? 0) > PARTNER_CACHE_TTL_MS;
+  } catch {
+    return true;
+  }
 }
 
 /** Fetches geometry-only columns for every active partner and rewrites the
  *  cache. Kept lightweight (id/name/locations) so the payload stays small even
- *  at ~8k partners. */
+ *  at ~8k partners. PostgREST caps every response at 1000 rows (db-max-rows),
+ *  so this pages until a short page — without that, the "nationwide" cache
+ *  silently held an arbitrary 1000-partner subset once the dataset outgrew the
+ *  cap, and closed-app detection at the missing partners could never fire. */
 async function fetchAndCacheAllPartnerGeometry(): Promise<boolean> {
   try {
-    const { data, error } = await supabase
+    const PAGE = 1000;
+    const MAX_PAGES = 20; // runaway backstop (~20k locations)
+    // First page carries the exact total, so the remaining pages fetch in
+    // PARALLEL — sequential paging made a cold cache build take seconds.
+    const { data: first, error: firstErr, count } = await supabase
       .from('partners')
-      .select('id, name, locations')
-      .eq('active', true);
-    if (error || !data) return false;
+      .select('id, name, locations', { count: 'exact' })
+      .eq('active', true)
+      .order('id', { ascending: true }) // stable page boundaries
+      .range(0, PAGE - 1);
+    if (firstErr || !first) return false;
+    const pages = Math.min(Math.ceil((count ?? first.length) / PAGE), MAX_PAGES);
+    const rest = await Promise.all(
+      Array.from({ length: Math.max(0, pages - 1) }, (_, i) =>
+        supabase
+          .from('partners')
+          .select('id, name, locations')
+          .eq('active', true)
+          .order('id', { ascending: true })
+          .range((i + 1) * PAGE, (i + 2) * PAGE - 1),
+      ),
+    );
+    const data: any[] = [...first];
+    for (const r of rest) {
+      // A failed page would leave a silently truncated "nationwide" set — the
+      // exact bug this pagination exists to prevent. Keep the old cache instead.
+      if (r.error || !r.data) return false;
+      data.push(...r.data);
+    }
     const map: Record<string, PartnerMapEntry> = {};
     data.forEach((p: any) => {
       if (!p.locations) return;
@@ -1831,12 +1879,11 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
       setPartners(formatPartnerRows(data));
 
       // Opportunistic freshness: keep the nationwide geometry cache (the
-      // headless detectors' world view) no older than the TTL while the app
-      // is in use. Fire-and-forget — never blocks the UI list.
+      // headless detectors' world view) no older than the TTL — and rewrite it
+      // once if it predates the paginated fetch (v1 = truncated to 1000 rows).
+      // Fire-and-forget — never blocks the UI list.
       try {
-        const metaRaw = await AsyncStorage.getItem(PARTNER_MAP_META_KEY);
-        const fetchedAt = metaRaw ? ((JSON.parse(metaRaw) as PartnerMapMeta).fetchedAt ?? 0) : 0;
-        if (Date.now() - fetchedAt > PARTNER_CACHE_TTL_MS) {
+        if (await partnerMapIsStale()) {
           fetchAndCacheAllPartnerGeometry().catch(() => {});
         }
       } catch { /* non-fatal */ }
@@ -2137,7 +2184,7 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
         partners.forEach(p => {
           fallbackMap[p.id] = { name: p.name, dbId: p.dbId, lat: p.lat, lng: p.lng, radius: p.geofenceRadius };
         });
-        if (Object.keys(fallbackMap).length) await writePartnerMap(fallbackMap);
+        if (Object.keys(fallbackMap).length) await writePartnerMap(fallbackMap, { partial: true });
       }
 
       // Arm the nearest partner circles + travel sentinel around a fresh fix.
@@ -2270,4 +2317,59 @@ export async function fetchNearbyGyms(
   });
   if (error || !data) return [];
   return formatPartnerRows(data);
+}
+
+// ─── Viewport partner loading (Discover map) ─────────────────────────────────
+// Fetches full partner rows for an arbitrary map viewport — the provider's own
+// nearby set only ever tracks the USER's location, so a panned map needs its
+// own fetches. Radius is clamped to the provider's default (0.15°) so a single
+// call can never exceed the payload the app already pulls on every open.
+
+export async function fetchPartnersInArea(
+  lat: number,
+  lng: number,
+  radiusDeg: number,
+): Promise<Partner[]> {
+  const { data, error } = await supabase.rpc('nearby_partners', {
+    user_lat:   lat,
+    user_lng:   lng,
+    radius_deg: Math.min(Math.max(radiusDeg, 0.02), 0.15),
+  });
+  if (error || !data) return [];
+  return formatPartnerRows(data);
+}
+
+// Slim geometry point for map clustering — one entry per partner location,
+// sourced from the nationwide cache the headless geofence detectors maintain.
+export interface PartnerGeoPoint {
+  id:     string; // composite "${dbId}-${locationIndex}" — same key as Partner.id
+  dbId:   string;
+  name:   string;
+  lat:    number;
+  lng:    number;
+  radius: number;
+}
+
+/** Every active partner location as slim points (~8k) — the cluster source for
+ *  the Discover map, so zoomed-out counts cover the whole dataset without a
+ *  per-viewport fetch. Reads the nationwide geometry cache; (re)populates it
+ *  first when it is missing, partial, or from the truncated v1 format. Falls
+ *  back to whatever cache exists if the refetch fails (e.g. offline). */
+export async function getPartnerGeometry(): Promise<PartnerGeoPoint[]> {
+  let map = (await partnerMapIsStale()) ? null : await readPartnerMap();
+  if (!map) {
+    await fetchAndCacheAllPartnerGeometry().catch(() => {});
+    map = await readPartnerMap();
+  }
+  if (!map) return [];
+  return Object.entries(map)
+    .filter(([, e]) => e.lat != null && e.lng != null)
+    .map(([id, e]) => ({
+      id,
+      dbId:   e.dbId,
+      name:   e.name,
+      lat:    e.lat!,
+      lng:    e.lng!,
+      radius: e.radius ?? 100,
+    }));
 }
