@@ -4,8 +4,10 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { DayCaption, addDays } from '@/components/progress/DayCaption';
 import PointsBreakdownSheet, { PointsInfoDot } from '@/components/progress/PointsBreakdownSheet';
+import { StalePanel } from '@/components/progress/StalePanel';
 import { TimeStepper } from '@/components/progress/TimeStepper';
 import { ACTIVITIES, type ActivityType } from '@/constants/activities';
+import { useActivityRevision } from '@/hooks/useActivityRevision';
 import {
     fetchMonthlyActivityData,
     fetchRecentWorkoutHistory,
@@ -507,15 +509,26 @@ export function WorkoutsTab({
   const [infoOpen, setInfoOpen] = useState(false);
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
 
-  // Reset loaded state when type or lookback offset changes
+  // Invalidate on type/offset change, but KEEP the data: clearing it made the
+  // period view fall back to its "Loading…" placeholder, collapsing the panel
+  // from ~350px to ~105px and jumping the page on every arrow tap. The stale
+  // panel stays mounted (dimmed via StalePanel) until the new window lands.
+  // A slot is stale exactly when it holds data its guard says isn't loaded.
+  //
+  // revision is in the deps so a background earn refreshes these charts on the
+  // same signal that invalidates the radials above them — see
+  // lib/activityRevision. Without it the radials would move and the heatmap
+  // beside them would keep pre-claim numbers.
+  const revision = useActivityRevision();
   useEffect(() => {
     setDayLoaded(false);
     setWeekLoaded(false);
     setMonthLoaded(false);
-    setDayData(null);
-    setWeekData(null);
-    setMonthData(null);
-  }, [type, offset]);
+  }, [type, offset, revision]);
+
+  const dayStale = !dayLoaded && dayData !== null;
+  const weekStale = !weekLoaded && weekData !== null;
+  const monthStale = !monthLoaded && monthData !== null;
 
   // Load day data reactively
   useEffect(() => {
@@ -598,23 +611,29 @@ export function WorkoutsTab({
       <TimeStepper period={period} offset={offset} onOffsetChange={onOffsetChange} />
 
       {period === 'D' && (
-        <WorkoutDayView type={type} data={dayData} offset={offset} onInfo={() => setInfoOpen(true)} />
+        <StalePanel stale={dayStale}>
+          <WorkoutDayView type={type} data={dayData} offset={offset} onInfo={() => setInfoOpen(true)} />
+        </StalePanel>
       )}
       {period === 'W' && (
-        <WorkoutWeekView
-          type={type}
-          count={isCurrent ? count : weekData?.sessionCount ?? 0}
-          weekActiveDays={isCurrent ? weekActiveDays : weekData?.activeDays ?? [false, false, false, false, false, false, false]}
-          weeklyEarned={isCurrent ? weeklyEarned : weekData?.points ?? 0}
-          isCurrentWeek={isCurrent}
-          onInfo={() => setInfoOpen(true)}
-          weekStart={weekAnchorMonday(offset)}
-          perDay={weekData}
-          onSelectDay={setSelectedDay}
-        />
+        <StalePanel stale={weekStale}>
+          <WorkoutWeekView
+            type={type}
+            count={isCurrent ? count : weekData?.sessionCount ?? 0}
+            weekActiveDays={isCurrent ? weekActiveDays : weekData?.activeDays ?? [false, false, false, false, false, false, false]}
+            weeklyEarned={isCurrent ? weeklyEarned : weekData?.points ?? 0}
+            isCurrentWeek={isCurrent}
+            onInfo={() => setInfoOpen(true)}
+            weekStart={weekAnchorMonday(offset)}
+            perDay={weekData}
+            onSelectDay={setSelectedDay}
+          />
+        </StalePanel>
       )}
       {period === 'M' && (
-        <WorkoutMonthView type={type} data={monthData} onSelectDay={setSelectedDay} />
+        <StalePanel stale={monthStale}>
+          <WorkoutMonthView type={type} data={monthData} onSelectDay={setSelectedDay} />
+        </StalePanel>
       )}
 
       <PointsBreakdownSheet

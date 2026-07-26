@@ -1,4 +1,5 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useRef } from 'react';
 import {
     fetchDailyMetrics,
     fetchRecentSessions,
@@ -10,6 +11,7 @@ import {
 } from '@/lib/api/activity';
 import { type ActivityFeedItem } from '@/components/home/ActivityFeed';
 import { ACTIVITIES } from '@/constants/activities';
+import { useActivityRevision } from '@/hooks/useActivityRevision';
 import { formatRawActivityName } from '@/lib/rawActivityName';
 
 function formatDetail(session: ActivitySession): string {
@@ -56,6 +58,24 @@ const DEFAULT_METRICS: WeeklyMetrics = { gymVisits: 0, runs: 0, totalSteps: 0, s
 const DEFAULT_DAILY: DailyMetrics = { perType: {}, stepsToday: 0 };
 
 export function useActivity(): ActivityState {
+    const queryClient = useQueryClient();
+    const revision = useActivityRevision();
+
+    // Nothing invalidated ['activity'] anywhere in the app, and this query sets
+    // no refetchInterval — so a claim landing while Progress was open moved the
+    // points total and left the week rings, per-type counts and pointsPerType on
+    // their pre-claim values indefinitely. staleTime expiry alone never triggers
+    // a refetch; only mount, focus, or an explicit invalidate does.
+    //
+    // Compared against the revision seen at mount, so remounting a screen
+    // (Home <-> Progress) doesn't fire a redundant invalidate on every visit.
+    const seenRevision = useRef(revision);
+    useEffect(() => {
+        if (revision === seenRevision.current) return;
+        seenRevision.current = revision;
+        queryClient.invalidateQueries({ queryKey: ['activity'] });
+    }, [revision, queryClient]);
+
     const { data, isPending, error, refetch } = useQuery({
         queryKey: ['activity', 'overview'],
         queryFn: async () => {

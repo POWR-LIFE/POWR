@@ -1,9 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useRef } from 'react';
+import React from 'react';
 import {
     Animated,
     Modal,
-    PanResponder,
     Platform,
     Pressable,
     ScrollView,
@@ -15,6 +14,7 @@ import {
 import { ActivityIcon } from '@/components/ActivityIcon';
 import { ACTIVITIES } from '@/constants/activities';
 import { LEDGER_TYPE_META } from '@/constants/ledgerTypeMeta';
+import { useSheetDragDismiss } from '@/hooks/useSheetDragDismiss';
 import type { LedgerFilter, LedgerFilterKey } from '@/lib/ledgerFilters';
 
 const GOLD = '#E8D200';
@@ -85,37 +85,9 @@ export default function LedgerFilterSheet({
     active: LedgerFilterKey;
     onSelect: (key: LedgerFilterKey) => void;
 }) {
-    const dragY = useRef(new Animated.Value(0)).current;
-    // onClose is an inline arrow in the parent, so it changes identity every
-    // render while the PanResponder is created once — read it through a ref so
-    // the release handler never calls a stale closure.
-    const onCloseRef = useRef(onClose);
-    onCloseRef.current = onClose;
-
-    const pan = useRef(
-        PanResponder.create({
-            // Claim only a deliberate downward drag, never a tap or a sideways move.
-            onMoveShouldSetPanResponder: (_, g) => g.dy > 4 && Math.abs(g.dy) > Math.abs(g.dx),
-            onPanResponderMove: (_, g) => { if (g.dy > 0) dragY.setValue(g.dy); },
-            onPanResponderRelease: (_, g) => {
-                if (g.dy > 90 || g.vy > 0.8) {
-                    Animated.timing(dragY, {
-                        toValue: 700, duration: 160, useNativeDriver: true,
-                    }).start(() => onCloseRef.current());
-                } else {
-                    Animated.spring(dragY, {
-                        toValue: 0, useNativeDriver: true, bounciness: 0,
-                    }).start();
-                }
-            },
-        }),
-    ).current;
-
-    const dismiss = () => {
-        Animated.timing(dragY, {
-            toValue: 700, duration: 160, useNativeDriver: true,
-        }).start(() => onCloseRef.current());
-    };
+    // Pull-down-to-dismiss + animated close, shared with PointsBreakdownSheet
+    // (which held a byte-identical copy). See hooks/useSheetDragDismiss.
+    const { dragY, panHandlers, dismiss } = useSheetDragDismiss(onClose);
 
     const choose = (key: LedgerFilterKey) => {
         onSelect(key);
@@ -127,7 +99,6 @@ export default function LedgerFilterSheet({
     // absoluteFill Pressable — a lingering one silently eats every touch on the
     // screen behind it.
     if (!visible) return null;
-    dragY.setValue(0); // a drag-dismissed sheet must not reopen off-screen
 
     const all = filters.find((f) => f.group === 'all');
     const activities = filters.filter((f) => f.group === 'activity');
@@ -176,7 +147,7 @@ export default function LedgerFilterSheet({
                 <Pressable style={StyleSheet.absoluteFill} onPress={dismiss} />
                 <Animated.View style={[styles.sheet, { transform: [{ translateY: dragY }] }]}>
                     {/* Header owns the drag gesture; the body below keeps its scroll. */}
-                    <View style={styles.dragHeader} {...pan.panHandlers}>
+                    <View style={styles.dragHeader} {...panHandlers}>
                         <View style={styles.handle} />
                         <Text style={styles.eyebrow}>FILTER</Text>
                         <Text style={styles.headline}>What do you want to see?</Text>

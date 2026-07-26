@@ -1,9 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
     Animated,
     Modal,
-    PanResponder,
     Platform,
     Pressable,
     ScrollView,
@@ -13,6 +12,7 @@ import {
 } from 'react-native';
 
 import { ACTIVITIES, type ActivityType } from '@/constants/activities';
+import { useSheetDragDismiss } from '@/hooks/useSheetDragDismiss';
 import {
     breakdownWindow,
     fetchPointsBreakdown,
@@ -64,42 +64,22 @@ export default function PointsBreakdownSheet({
     const [data, setData] = useState<PointsBreakdown | null>(null);
     const [failed, setFailed] = useState(false);
 
-    // Drag-to-dismiss. The app has no bottom-sheet library — every sheet is
-    // hand-rolled on RN <Modal>, so the 40x4 handle is decorative everywhere and
-    // pulling it does nothing. Wire it here with a PanResponder rather than take
-    // on a dependency; only the header claims the gesture, so the body ScrollView
-    // still scrolls normally.
-    const dragY = useRef(new Animated.Value(0)).current;
-    // onClose changes identity every render (inline arrow in the parents), and
-    // the PanResponder is created once — read it through a ref so the release
-    // handler never calls a stale closure.
-    const onCloseRef = useRef(onClose);
-    onCloseRef.current = onClose;
-
-    const pan = useRef(
-        PanResponder.create({
-            // Claim only a deliberate downward drag, never a tap or a sideways move.
-            onMoveShouldSetPanResponder: (_, g) => g.dy > 4 && Math.abs(g.dy) > Math.abs(g.dx),
-            onPanResponderMove: (_, g) => { if (g.dy > 0) dragY.setValue(g.dy); },
-            onPanResponderRelease: (_, g) => {
-                if (g.dy > 90 || g.vy > 0.8) {
-                    // Carry on from wherever the finger left it, then unmount.
-                    Animated.timing(dragY, {
-                        toValue: 700, duration: 160, useNativeDriver: true,
-                    }).start(() => onCloseRef.current());
-                } else {
-                    Animated.spring(dragY, {
-                        toValue: 0, useNativeDriver: true, bounciness: 0,
-                    }).start();
-                }
-            },
-        }),
-    ).current;
+    /**
+     * Pull-down-to-dismiss + the animated close, shared with LedgerFilterSheet
+     * (which held a byte-identical copy). See hooks/useSheetDragDismiss.
+     *
+     * `dismiss` is why Close doesn't feel sluggish: the delay was never the
+     * Modal, it's that `onClose` sets state on ProgressScreen / WorkoutsTab and
+     * re-renders the carousel and every breakdown page before the sheet visually
+     * moves, so the tap looked ignored (worst in dev builds). The 160ms
+     * slide-away runs first, on the UI thread, and the re-render happens behind
+     * it. Both exits — the button and the drag — go through it, so they match.
+     */
+    const { dragY, panHandlers, dismiss } = useSheetDragDismiss(onClose);
 
     useEffect(() => {
         if (!visible) return;
         let cancelled = false;
-        dragY.setValue(0); // a drag-dismissed sheet must not reopen off-screen
         setData(null);
         setFailed(false);
 
@@ -115,23 +95,7 @@ export default function PointsBreakdownSheet({
         // day is compared by time value: callers build a fresh Date each render,
         // so depending on the object identity would refetch on every render.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [visible, type, period, offset, dragY, day ? day.getTime() : null]);
-
-    /**
-     * Animate the sheet out FIRST, then tell the parent. Both exits — the button
-     * and the drag — go through here, so they feel identical.
-     *
-     * This is what fixes the sluggish Close. The delay was never the Modal: it is
-     * that `onClose` sets state on ProgressScreen / WorkoutsTab, which re-renders
-     * the carousel and every breakdown page before the sheet visually moves, so
-     * the tap looked ignored (worst in dev builds). Now the 160ms slide-away runs
-     * immediately on the UI thread and the re-render happens behind it.
-     */
-    const dismiss = () => {
-        Animated.timing(dragY, {
-            toValue: 700, duration: 160, useNativeDriver: true,
-        }).start(() => onCloseRef.current());
-    };
+    }, [visible, type, period, offset, day ? day.getTime() : null]);
 
     // Keep the early return: RN's Modal is NOT guaranteed to unrender on
     // visible=false (react-native-web notably does not), and the backdrop is an
@@ -164,7 +128,7 @@ export default function PointsBreakdownSheet({
                 <Pressable style={StyleSheet.absoluteFill} onPress={dismiss} />
                 <Animated.View style={[styles.sheet, { transform: [{ translateY: dragY }] }]}>
                     {/* Header owns the drag gesture; the body below keeps its scroll. */}
-                    <View style={styles.dragHeader} {...pan.panHandlers}>
+                    <View style={styles.dragHeader} {...panHandlers}>
                         <View style={styles.handle} />
 
                         <Text style={styles.eyebrow}>WHERE IT CAME FROM</Text>
@@ -202,9 +166,15 @@ export default function PointsBreakdownSheet({
                                     <Text style={styles.groupDate}>
                                         {formatSessionDate(group.startedAt)}
                                     </Text>
+                                    {/* Source label stays a quiet chip; the metric is
+                                        the thing worth reading, so it gets its own size. */}
                                     <Text style={styles.groupMeta}>
                                         {verificationLabel(group.verification)}
-                                        {group.durationMin > 0 ? ` · ${formatDuration(group.durationMin)}` : ''}
+                                        {sessionMetrics(type, group).length > 0 && (
+                                            <Text style={styles.groupMetric}>
+                                                {'  '}{sessionMetrics(type, group).join(' · ')}
+                                            </Text>
+                                        )}
                                     </Text>
                                 </View>
                                 {group.rows.map(row => (
@@ -237,8 +207,7 @@ export default function PointsBreakdownSheet({
                                     <View key={s.id} style={styles.ledgerRow}>
                                         <Ionicons name="remove" size={11} color={MUTED} />
                                         <Text style={[styles.ledgerLabel, { color: MUTED }]} numberOfLines={2}>
-                                            {formatSessionDate(s.startedAt)}
-                                            {s.durationMin > 0 ? ` · ${formatDuration(s.durationMin)}` : ''}
+                                            {[formatSessionDate(s.startedAt), ...sessionMetrics(type, s)].join(' · ')}
                                         </Text>
                                         <Text style={[styles.ledgerAmount, { color: MUTED }]}>0</Text>
                                     </View>
@@ -309,6 +278,8 @@ type SessionGroup = {
     sessionId: string;
     startedAt: string;
     durationMin: number;
+    steps: number | null;
+    distanceM: number | null;
     verification: string;
     rows: PointsLedgerRow[];
 };
@@ -324,6 +295,8 @@ function groupBySession(rows: PointsLedgerRow[]): SessionGroup[] {
                 sessionId: row.sessionId,
                 startedAt: row.sessionStartedAt,
                 durationMin: row.sessionDurationMin,
+                steps: row.sessionSteps,
+                distanceM: row.sessionDistanceM,
                 verification: row.verification,
                 rows: [],
             };
@@ -360,6 +333,40 @@ function formatDuration(mins: number): string {
         return m > 0 ? `${h}h ${m}m` : `${h}h`;
     }
     return `${mins}m`;
+}
+
+function formatDistance(metres: number): string {
+    // Sub-kilometre efforts are real (pool lengths average ~830 m in prod), so
+    // don't round them all to "0.8 km".
+    return metres >= 1000 ? `${(metres / 1000).toFixed(1)} km` : `${Math.round(metres)} m`;
+}
+
+/**
+ * What the session actually recorded, next to what it paid — the "8,156 steps"
+ * or "7.1 km" that makes a +2 legible instead of arbitrary.
+ *
+ * Which fields exist varies by source, not by activity: walking carries steps on
+ * 97% of sessions but distance on 3%, running the reverse, and gym/yoga/sleep
+ * only ever have duration. So this prints whatever the row holds rather than
+ * assuming a per-type shape, and leads with the metric the points came from —
+ * steps for walking, duration everywhere else.
+ */
+function sessionMetrics(
+    type: ActivityType,
+    session: { durationMin: number; steps: number | null; distanceM: number | null },
+): string[] {
+    const duration = session.durationMin > 0 ? formatDuration(session.durationMin) : null;
+    const steps = session.steps && session.steps > 0
+        ? `${session.steps.toLocaleString()} steps`
+        : null;
+    const distance = session.distanceM && session.distanceM > 0
+        ? formatDistance(session.distanceM)
+        : null;
+
+    const parts = type === 'walking'
+        ? [steps, distance, duration]
+        : [duration, distance, steps];
+    return parts.filter((p): p is string => p !== null);
 }
 
 /** Sentence-case noun for prose, vs verificationLabel's chip-style title. */
@@ -569,6 +576,13 @@ const styles = StyleSheet.create({
         fontSize: 9,
         fontWeight: '300',
         color: MUTED,
+    },
+    // Sits inside groupMeta but reads at the ledger's own weight — a number the
+    // user opened the sheet to find shouldn't be dimmer than the rows it explains.
+    groupMetric: {
+        fontSize: 11.5,
+        fontWeight: '400',
+        color: DIM,
     },
     ledgerRow: {
         flexDirection: 'row',

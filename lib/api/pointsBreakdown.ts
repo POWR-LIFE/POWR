@@ -29,6 +29,9 @@ export type PointsLedgerRow = {
     sessionId: string;
     sessionStartedAt: string;
     sessionDurationMin: number;
+    /** What the session actually recorded — null when the source didn't report it. */
+    sessionSteps: number | null;
+    sessionDistanceM: number | null;
     verification: string;
 };
 
@@ -36,6 +39,8 @@ export type UnpaidSession = {
     id: string;
     startedAt: string;
     durationMin: number;
+    steps: number | null;
+    distanceM: number | null;
     verification: string;
 };
 
@@ -123,6 +128,8 @@ type SessionRow = {
     id: string;
     started_at: string;
     duration_sec: number | null;
+    steps: number | null;
+    distance_m: number | null;
     verification: string;
     point_transactions:
         | { id: string; amount: number; type: string; description: string | null; source: string | null; created_at: string }[]
@@ -146,7 +153,7 @@ export async function fetchPointsBreakdown(
 
     const { data, error } = await supabase
         .from('activity_sessions')
-        .select('id, started_at, duration_sec, verification, point_transactions(id, amount, type, description, source, created_at)')
+        .select('id, started_at, duration_sec, steps, distance_m, verification, point_transactions(id, amount, type, description, source, created_at)')
         .eq('user_id', user.id)
         .eq('type', type)
         .gte('started_at', start.toISOString())
@@ -171,6 +178,8 @@ export async function fetchPointsBreakdown(
                 id: s.id,
                 startedAt: s.started_at,
                 durationMin,
+                steps: s.steps,
+                distanceM: s.distance_m,
                 verification: s.verification,
             });
             continue;
@@ -186,6 +195,8 @@ export async function fetchPointsBreakdown(
                 sessionId: s.id,
                 sessionStartedAt: s.started_at,
                 sessionDurationMin: durationMin,
+                sessionSteps: s.steps,
+                sessionDistanceM: s.distance_m,
                 verification: s.verification,
             });
         }

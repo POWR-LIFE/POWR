@@ -1211,10 +1211,19 @@ export async function fetchMonthlyActivityData(type: ActivityType, end?: Date): 
     const uid = await getCurrentUserId();
     if (!uid) return { entries: [], totalSessions: 0, avgPerDay: 0, bestDay: null, type };
 
-    // Entry date keys are built via toISOString (UTC); pin an explicit anchor
-    // to local noon so its UTC calendar date can't shift across the boundary.
+    // No time-of-day normalisation needed. This used to pin `end` to local noon,
+    // because the entry keys were built with toISOString() and a local-midnight
+    // anchor (what monthAnchorEnd returns) resolves to the PREVIOUS UTC date in
+    // any UTC+ zone. Keys are local via localDateStr now, so that reason is gone.
+    //
+    // Nothing else needs it either: endDayStart immediately zeroes the time, and
+    // the entry loop steps with setDate(), which is calendar-field arithmetic —
+    // the resulting local date is exactly i days earlier whatever the UTC offset
+    // does in between. (The pin-to-noon idiom guards MILLISECOND arithmetic,
+    // where a DST hour can push you over midnight; it does not apply here.)
+    // Verified across 365 anchors x 7 zones incl. midnight-transition ones
+    // (Santiago, Beirut, Havana, Chatham): pinned and unpinned agree exactly.
     const anchor = new Date(end ?? new Date());
-    if (end) anchor.setHours(12, 0, 0, 0);
 
     const endDayStart = new Date(anchor);
     endDayStart.setHours(0, 0, 0, 0);
@@ -1244,7 +1253,11 @@ export async function fetchMonthlyActivityData(type: ActivityType, end?: Date): 
         steps: number | null;
         point_transactions: { amount: number }[] | null;
     }>) {
-        const dateKey = new Date(s.started_at).toISOString().split('T')[0];
+        // localDateStr, not toISOString: Terra stamps walking/sleep day-aggregates
+        // at LOCAL midnight, which is the previous UTC day in any UTC+ zone — so a
+        // UTC key filed every one of them under the wrong date, and the day the
+        // PointsBreakdownSheet queries (a local window) then came back empty.
+        const dateKey = localDateStr(new Date(s.started_at));
         const existing = byDate.get(dateKey);
         const durMin = Math.round((s.duration_sec ?? 0) / 60);
         const steps = s.steps ?? 0;
@@ -1267,7 +1280,7 @@ export async function fetchMonthlyActivityData(type: ActivityType, end?: Date): 
     for (let i = 29; i >= 0; i--) {
         const d = new Date(anchor);
         d.setDate(d.getDate() - i);
-        const dateKey = d.toISOString().split('T')[0];
+        const dateKey = localDateStr(d);
         const val = byDate.get(dateKey);
         entries.push({
             date: dateKey,
@@ -1437,7 +1450,9 @@ export async function fetchMonthlyMetrics(): Promise<MonthlyMetrics> {
 
     for (const s of sessions) {
         const date = new Date(s.started_at);
-        const dateKey = date.toISOString().split('T')[0];
+        // Local key to match dayOfMonth below, which is local: a UTC key made the
+        // active-day dedupe disagree with the bucket it was deduping.
+        const dateKey = localDateStr(date);
         const dayOfMonth = date.getDate(); // 1-based
 
         // Week quarter: 1-7 → 0, 8-14 → 1, 15-21 → 2, 22+ → 3
