@@ -133,6 +133,13 @@ function Footer() {
     { label: 'Privacy Policy', href: '/privacy' },
     { label: 'Cookie Policy', href: '/cookies' },
   ];
+  /* Second tier: brand/partner audience. Deliberately subordinate to the links
+     above — a consumer never needs these, a brand scrolls looking for them. */
+  const brandLinks = [
+    { label: 'Partner Login', href: '/partner/login' },
+    { label: 'Integration Docs', href: '/docs' },
+    { label: 'partners@powr.life', href: 'mailto:partners@powr.life' },
+  ];
   return (
     <footer style={{ borderTop: `1px solid ${pg.border}`, padding: '40px clamp(18px, 3vw, 28px)' }}>
       <div className="powr-footer-inner">
@@ -142,6 +149,14 @@ function Footer() {
         </div>
         <div className="powr-footer-links">
           {links.map((l) => (
+            <a key={l.label} className="powr-footer-link" href={l.href}>{l.label}</a>
+          ))}
+        </div>
+      </div>
+      <div className="powr-footer-sub">
+        <div className="powr-footer-links">
+          <span className="powr-footer-label">For Brands</span>
+          {brandLinks.map((l) => (
             <a key={l.label} className="powr-footer-link" href={l.href}>{l.label}</a>
           ))}
         </div>
@@ -225,10 +240,15 @@ function GlobalStyles() {
       .powr-footer-links { display: flex; gap: 24px; flex-wrap: wrap; }
       .powr-footer-link { font-size: 13px; color: ${pg.textSec}; font-weight: 300; text-decoration: none; transition: color 0.2s; }
       .powr-footer-link:hover { color: ${pg.accent}; }
+      .powr-footer-sub { max-width: 1200px; margin: 24px auto 0; padding-top: 20px; border-top: 1px solid ${pg.border}; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px 24px; }
+      .powr-footer-sub .powr-footer-link { font-size: 12px; opacity: 0.72; }
+      .powr-footer-sub .powr-footer-link:hover { opacity: 1; }
+      .powr-footer-label { font-size: 10px; color: ${pg.textSec}; font-weight: 500; letter-spacing: 0.18em; text-transform: uppercase; opacity: 0.6; }
       @media (max-width: 768px) {
         .powr-footer-inner { flex-direction: column; text-align: center; gap: 16px; }
         .powr-footer-brand { flex-direction: column; gap: 8px; }
         .powr-footer-links { justify-content: center; gap: 14px 18px; }
+        .powr-footer-sub { flex-direction: column; text-align: center; gap: 14px; }
       }
     `}</style>
   );
