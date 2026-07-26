@@ -6,6 +6,7 @@ import { DayCaption, addDays } from '@/components/progress/DayCaption';
 import PointsBreakdownSheet, { PointsInfoDot } from '@/components/progress/PointsBreakdownSheet';
 import { StalePanel } from '@/components/progress/StalePanel';
 import { TimeStepper } from '@/components/progress/TimeStepper';
+import { useActivityRevision } from '@/hooks/useActivityRevision';
 import { type useWalkingProgress } from '@/hooks/useWalkingProgress';
 import {
     fetchMonthlyActivityData,
@@ -116,6 +117,10 @@ function HealthAccessHint({
 function MovementDayView({ walking, offset, onInfo }: { walking: ReturnType<typeof useWalkingProgress>; offset: number; onInfo: () => void }) {
   const isToday = offset === 0;
   const [pastDay, setPastDay] = useState<TodayActivityDetail | null>(null);
+  // Today's figures come from the walking hook, which already reloads on
+  // foreground; revision covers the past-day and history reads beside them so
+  // the whole panel moves together — see lib/activityRevision.
+  const revision = useActivityRevision();
 
   useEffect(() => {
     if (offset === 0) { setPastDay(null); return; }
@@ -124,7 +129,7 @@ function MovementDayView({ walking, offset, onInfo }: { walking: ReturnType<type
       .then(r => { if (!cancelled) setPastDay(r); })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [offset]);
+  }, [offset, revision]);
 
   // stepsToday already falls back to the day's synced session (Terra top-up /
   // earlier sync) when the live health read is unavailable — show it even when
@@ -138,7 +143,7 @@ function MovementDayView({ walking, offset, onInfo }: { walking: ReturnType<type
 
   useEffect(() => {
     fetchRecentWalkingHistory(5, offset === 0 ? undefined : dayAnchor(offset)).then(setHistory).catch(() => {});
-  }, [offset]);
+  }, [offset, revision]);
 
   return (
     <View style={styles.tabPanel}>
@@ -238,6 +243,9 @@ function MovementWeekView({
   const [weekSteps, setWeekSteps] = useState<number[]>([0, 0, 0, 0, 0, 0, 0]);
   const [pastWeek, setPastWeek] = useState<WeekActivityData | null>(null);
   const [weekLoaded, setWeekLoaded] = useState(false);
+  // These are the "day bars" that must not disagree with the radials — see
+  // lib/activityRevision.
+  const revision = useActivityRevision();
 
   useEffect(() => {
     let cancelled = false;
@@ -258,7 +266,7 @@ function MovementWeekView({
         .catch(() => { if (!cancelled) setWeekLoaded(true); });
     }
     return () => { cancelled = true; };
-  }, [offset]);
+  }, [offset, revision]);
 
   // Sync today's live step count into the fetched array (current week only)
   const displaySteps = weekSteps.map((s, i) =>
@@ -592,9 +600,13 @@ export function MovementTab({
   // Invalidate on offset change, but KEEP monthData: clearing it dropped
   // MovementMonthView to its "Loading monthly walking data..." placeholder,
   // collapsing the panel and jumping the page on every arrow tap. See StalePanel.
+  //
+  // revision refreshes the heatmap on the same signal that invalidates the
+  // radials — see lib/activityRevision.
+  const revision = useActivityRevision();
   useEffect(() => {
     setMonthLoaded(false);
-  }, [offset]);
+  }, [offset, revision]);
 
   // Load month data reactively
   useEffect(() => {

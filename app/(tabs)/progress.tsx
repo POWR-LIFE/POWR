@@ -26,6 +26,7 @@ import { useActivity } from '@/hooks/useActivity';
 import { useHealthData } from '@/hooks/useHealthData';
 import { useHealthProviders } from '@/hooks/useHealthProviders';
 import { usePoints } from '@/hooks/usePoints';
+import { bumpActivityRevision } from '@/lib/activityRevision';
 import { useWalkingProgress } from '@/hooks/useWalkingProgress';
 import { fetchWeeklySleepHours } from '@/lib/api/activity';
 import { fetchProfile } from '@/lib/api/user';
@@ -116,6 +117,11 @@ export default function ProgressScreen() {
         refreshProviders(),
         loadSleep(),
       ]);
+      // None of the above reaches the breakdown charts — their D/W/M data is
+      // component state in WorkoutsTab/MovementTab, so pulling to refresh
+      // visibly reloaded the radials and left the heatmap untouched. Bumping the
+      // revision resets their guards on the same signal a background earn uses.
+      bumpActivityRevision();
     } finally {
       setRefreshing(false);
     }

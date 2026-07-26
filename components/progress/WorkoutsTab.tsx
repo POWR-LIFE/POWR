@@ -7,6 +7,7 @@ import PointsBreakdownSheet, { PointsInfoDot } from '@/components/progress/Point
 import { StalePanel } from '@/components/progress/StalePanel';
 import { TimeStepper } from '@/components/progress/TimeStepper';
 import { ACTIVITIES, type ActivityType } from '@/constants/activities';
+import { useActivityRevision } from '@/hooks/useActivityRevision';
 import {
     fetchMonthlyActivityData,
     fetchRecentWorkoutHistory,
@@ -513,11 +514,17 @@ export function WorkoutsTab({
   // from ~350px to ~105px and jumping the page on every arrow tap. The stale
   // panel stays mounted (dimmed via StalePanel) until the new window lands.
   // A slot is stale exactly when it holds data its guard says isn't loaded.
+  //
+  // revision is in the deps so a background earn refreshes these charts on the
+  // same signal that invalidates the radials above them — see
+  // lib/activityRevision. Without it the radials would move and the heatmap
+  // beside them would keep pre-claim numbers.
+  const revision = useActivityRevision();
   useEffect(() => {
     setDayLoaded(false);
     setWeekLoaded(false);
     setMonthLoaded(false);
-  }, [type, offset]);
+  }, [type, offset, revision]);
 
   const dayStale = !dayLoaded && dayData !== null;
   const weekStale = !weekLoaded && weekData !== null;
