@@ -99,7 +99,6 @@ export default function LedgerFilterSheet({
     // absoluteFill Pressable — a lingering one silently eats every touch on the
     // screen behind it.
     if (!visible) return null;
-    reset(); // a drag-dismissed sheet must not reopen off-screen
 
     const all = filters.find((f) => f.group === 'all');
     const activities = filters.filter((f) => f.group === 'activity');
@@ -143,7 +142,7 @@ export default function LedgerFilterSheet({
     };
 
     return (
-        <Modal visible transparent animationType="slide" onRequestClose={dismiss}>
+        <Modal visible transparent animationType="slide" onRequestClose={dismiss} onShow={reset}>
             <View style={styles.backdrop}>
                 <Pressable style={StyleSheet.absoluteFill} onPress={dismiss} />
                 <Animated.View style={[styles.sheet, { transform: [{ translateY: dragY }] }]}>
