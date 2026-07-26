@@ -1211,8 +1211,8 @@ export async function fetchMonthlyActivityData(type: ActivityType, end?: Date): 
     const uid = await getCurrentUserId();
     if (!uid) return { entries: [], totalSessions: 0, avgPerDay: 0, bestDay: null, type };
 
-    // Entry date keys are built via toISOString (UTC); pin an explicit anchor
-    // to local noon so its UTC calendar date can't shift across the boundary.
+    // Anchor pinned to local noon so the day arithmetic below can't slip across a
+    // DST boundary. (Keys themselves are local via localDateStr, not UTC.)
     const anchor = new Date(end ?? new Date());
     if (end) anchor.setHours(12, 0, 0, 0);
 
@@ -1244,7 +1244,11 @@ export async function fetchMonthlyActivityData(type: ActivityType, end?: Date): 
         steps: number | null;
         point_transactions: { amount: number }[] | null;
     }>) {
-        const dateKey = new Date(s.started_at).toISOString().split('T')[0];
+        // localDateStr, not toISOString: Terra stamps walking/sleep day-aggregates
+        // at LOCAL midnight, which is the previous UTC day in any UTC+ zone — so a
+        // UTC key filed every one of them under the wrong date, and the day the
+        // PointsBreakdownSheet queries (a local window) then came back empty.
+        const dateKey = localDateStr(new Date(s.started_at));
         const existing = byDate.get(dateKey);
         const durMin = Math.round((s.duration_sec ?? 0) / 60);
         const steps = s.steps ?? 0;
@@ -1267,7 +1271,7 @@ export async function fetchMonthlyActivityData(type: ActivityType, end?: Date): 
     for (let i = 29; i >= 0; i--) {
         const d = new Date(anchor);
         d.setDate(d.getDate() - i);
-        const dateKey = d.toISOString().split('T')[0];
+        const dateKey = localDateStr(d);
         const val = byDate.get(dateKey);
         entries.push({
             date: dateKey,
@@ -1437,7 +1441,9 @@ export async function fetchMonthlyMetrics(): Promise<MonthlyMetrics> {
 
     for (const s of sessions) {
         const date = new Date(s.started_at);
-        const dateKey = date.toISOString().split('T')[0];
+        // Local key to match dayOfMonth below, which is local: a UTC key made the
+        // active-day dedupe disagree with the bucket it was deduping.
+        const dateKey = localDateStr(date);
         const dayOfMonth = date.getDate(); // 1-based
 
         // Week quarter: 1-7 → 0, 8-14 → 1, 15-21 → 2, 22+ → 3
