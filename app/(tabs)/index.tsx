@@ -114,7 +114,7 @@ export default function HomeScreen() {
     const router = useRouter();
     const { user } = useAuth();
     const { currentStreak, multiplier, refresh: refreshStreak } = useStreak();
-    const { rescue } = useStreakRescue();
+    const { rescue, refresh: refreshRescue } = useStreakRescue();
     const [rescueReopenNonce, setRescueReopenNonce] = useState(0);
 
     // Mon–Sun index of the rescue's missed day, when it falls inside the
@@ -254,13 +254,17 @@ export default function HomeScreen() {
                 refreshPoints(),
                 refreshActivity(),
                 refreshStreak(),
+                // Pull-to-refresh is what a user does when they expect the app
+                // to have noticed something — a rescue they just completed is
+                // top of that list.
+                refreshRescue(),
                 loadFeaturedReward(),
             ];
             await Promise.all(tasks);
         } finally {
             setRefreshing(false);
         }
-    }, [refreshActivity, refreshPoints, refreshStreak, loadFeaturedReward]);
+    }, [refreshActivity, refreshPoints, refreshStreak, refreshRescue, loadFeaturedReward]);
 
     // New user detection: no points earned and no recent activity
     const isNewUser = totalEarned === 0 && recentItems.length === 0;
@@ -594,7 +598,11 @@ export default function HomeScreen() {
 
                 <HealthGapBanner />
 
-                <StreakRescueModal rescue={rescue} reopenNonce={rescueReopenNonce} />
+                <StreakRescueModal
+                    rescue={rescue}
+                    reopenNonce={rescueReopenNonce}
+                    deferred={!!pendingLevelUp || sessionModalVisible}
+                />
 
                 <StreakCard
                     rescueDayIndex={rescueDayIndex}
