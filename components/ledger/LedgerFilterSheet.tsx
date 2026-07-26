@@ -87,7 +87,7 @@ export default function LedgerFilterSheet({
 }) {
     // Pull-down-to-dismiss + animated close, shared with PointsBreakdownSheet
     // (which held a byte-identical copy). See hooks/useSheetDragDismiss.
-    const { dragY, panHandlers, dismiss } = useSheetDragDismiss(onClose);
+    const { dragY, backdropOpacity, panHandlers, dismiss } = useSheetDragDismiss(onClose, visible);
 
     const choose = (key: LedgerFilterKey) => {
         onSelect(key);
@@ -142,8 +142,15 @@ export default function LedgerFilterSheet({
     };
 
     return (
-        <Modal visible transparent animationType="slide" onRequestClose={dismiss}>
+        // animationType="none" on purpose — see PointsBreakdownSheet: Modal's own
+        // "slide" drags the scrim off-screen with the sheet as a second dark
+        // rectangle. The hook slides the sheet and fades the scrim separately.
+        <Modal visible transparent animationType="none" onRequestClose={dismiss}>
             <View style={styles.backdrop}>
+                <Animated.View
+                    pointerEvents="none"
+                    style={[StyleSheet.absoluteFill, styles.scrim, { opacity: backdropOpacity }]}
+                />
                 <Pressable style={StyleSheet.absoluteFill} onPress={dismiss} />
                 <Animated.View style={[styles.sheet, { transform: [{ translateY: dragY }] }]}>
                     {/* Header owns the drag gesture; the body below keeps its scroll. */}
@@ -232,8 +239,12 @@ export function LedgerFilterChip({
 const styles = StyleSheet.create({
     backdrop: {
         flex: 1,
-        backgroundColor: 'rgba(0,0,0,0.6)',
         justifyContent: 'flex-end',
+    },
+    // Its own layer, never a parent of the sheet: a fading ancestor would take
+    // the sheet's opacity with it.
+    scrim: {
+        backgroundColor: 'rgba(0,0,0,0.6)',
     },
     sheet: {
         backgroundColor: CARD_BG,

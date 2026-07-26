@@ -71,11 +71,11 @@ export default function PointsBreakdownSheet({
      * `dismiss` is why Close doesn't feel sluggish: the delay was never the
      * Modal, it's that `onClose` sets state on ProgressScreen / WorkoutsTab and
      * re-renders the carousel and every breakdown page before the sheet visually
-     * moves, so the tap looked ignored (worst in dev builds). The 160ms
-     * slide-away runs first, on the UI thread, and the re-render happens behind
-     * it. Both exits — the button and the drag — go through it, so they match.
+     * moves, so the tap looked ignored (worst in dev builds). The 200ms exit
+     * runs first, on the UI thread, and the re-render happens behind it. Both
+     * exits — the button and the drag — go through it, so they match.
      */
-    const { dragY, panHandlers, dismiss } = useSheetDragDismiss(onClose);
+    const { dragY, backdropOpacity, panHandlers, dismiss } = useSheetDragDismiss(onClose, visible);
 
     useEffect(() => {
         if (!visible) return;
@@ -120,11 +120,16 @@ export default function PointsBreakdownSheet({
     const unpaid = showUnpaid ? data?.unpaid ?? [] : [];
 
     return (
-        // animationType drives the slide-IN only; the exit is our own translateY
-        // (see dismiss), which has already carried the sheet off-screen by the
-        // time this unmounts.
-        <Modal visible transparent animationType="slide" onRequestClose={dismiss}>
+        // animationType="none" on purpose: Modal's own "slide" moves the entire
+        // container, so the scrim rode down the screen behind the sheet as a
+        // second dark rectangle on close. The hook drives both halves instead —
+        // the sheet slides, the scrim fades.
+        <Modal visible transparent animationType="none" onRequestClose={dismiss}>
             <View style={styles.backdrop}>
+                <Animated.View
+                    pointerEvents="none"
+                    style={[StyleSheet.absoluteFill, styles.scrim, { opacity: backdropOpacity }]}
+                />
                 <Pressable style={StyleSheet.absoluteFill} onPress={dismiss} />
                 <Animated.View style={[styles.sheet, { transform: [{ translateY: dragY }] }]}>
                     {/* Header owns the drag gesture; the body below keeps its scroll. */}
@@ -478,8 +483,12 @@ function rulesFor(type: ActivityType): string[] {
 const styles = StyleSheet.create({
     backdrop: {
         flex: 1,
-        backgroundColor: 'rgba(0,0,0,0.6)',
         justifyContent: 'flex-end',
+    },
+    // Its own layer, never a parent of the sheet: a fading ancestor would take
+    // the sheet's opacity with it.
+    scrim: {
+        backgroundColor: 'rgba(0,0,0,0.6)',
     },
     sheet: {
         backgroundColor: CARD_BG,
