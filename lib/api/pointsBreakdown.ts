@@ -11,9 +11,9 @@
 
 import { type ActivityType } from '@/constants/activities';
 import {
-    MONTH_WINDOW_DAYS,
     dayAnchor,
     monthAnchorEnd,
+    monthAnchorStart,
     weekAnchorMonday,
     type LookbackPeriod,
 } from '@/lib/progressLookback';
@@ -75,11 +75,10 @@ export function breakdownWindow(period: LookbackPeriod, offset: number): { start
         end.setDate(end.getDate() + 7);
         return { start, end };
     }
-    // M is a trailing 30-day window ending on the anchor day (inclusive).
-    const endDay = monthAnchorEnd(offset);
-    const start = new Date(endDay);
-    start.setDate(start.getDate() - (MONTH_WINDOW_DAYS - 1));
-    const end = new Date(endDay);
+    // M is the calendar month the view is anchored to — the current month runs
+    // to today, past months to their final day.
+    const start = monthAnchorStart(offset);
+    const end = new Date(monthAnchorEnd(offset));
     end.setDate(end.getDate() + 1);
     return { start, end };
 }

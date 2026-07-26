@@ -1,6 +1,7 @@
 import { type ActivityType } from '@/constants/activities';
 import { getDeviceId } from '@/lib/device';
 import { emitPointsChanged } from '@/lib/pointsEvents';
+import { dayAnchor, monthAnchorEnd, monthAnchorStart, weekAnchorMonday } from '@/lib/progressLookback';
 import { getSessionUser, supabase } from '@/lib/supabase';
 
 // ── Walking step-tier helpers (shared by manual-log + health sync) ─────────────
@@ -831,19 +832,19 @@ export type DailySleepHistory = {
 };
 
 /**
- * Returns the last `days` nights of sleep data (excluding tonight),
- * aggregated by date.
+ * Returns the `days` nights of sleep data before `before` (default today, which
+ * is excluded — it already appears in the big metric above the list), aggregated
+ * by date. Mirrors fetchRecentWorkoutHistory.
  */
-export async function fetchRecentSleepHistory(days = 5): Promise<DailySleepHistory[]> {
+export async function fetchRecentSleepHistory(days = 5, before?: Date): Promise<DailySleepHistory[]> {
     const uid = await getCurrentUserId();
     if (!uid) return [];
 
-    const rangeStart = new Date();
-    rangeStart.setDate(rangeStart.getDate() - days);
-    rangeStart.setHours(0, 0, 0, 0);
-
-    const todayStart = new Date();
+    const todayStart = new Date(before ?? new Date());
     todayStart.setHours(0, 0, 0, 0);
+
+    const rangeStart = new Date(todayStart);
+    rangeStart.setDate(rangeStart.getDate() - days);
 
     const { data, error } = await supabase
         .from('activity_sessions')
@@ -863,7 +864,7 @@ export async function fetchRecentSleepHistory(days = 5): Promise<DailySleepHisto
 
     const result: DailySleepHistory[] = [];
     for (let i = days; i >= 1; i--) {
-        const d = new Date();
+        const d = new Date(todayStart);
         d.setDate(d.getDate() - i);
         const dateKey = localDateStr(d);
         result.push({ date: dateKey, hours: byDate.get(dateKey) ?? 0 });
@@ -894,16 +895,14 @@ export async function fetchTodayWalkingPoints(): Promise<number> {
 }
 
 /** Returns Mon–Sun sleep hours for the current week from synced activity sessions. */
-export async function fetchWeeklySleepHours(): Promise<{ hours: number[]; bedtimes: (string | null)[] }> {
+export async function fetchWeeklySleepHours(
+    monday: Date = weekAnchorMonday(0),
+): Promise<{ hours: number[]; bedtimes: (string | null)[] }> {
     const uid = await getCurrentUserId();
     if (!uid) return { hours: [0, 0, 0, 0, 0, 0, 0], bedtimes: [null, null, null, null, null, null, null] };
 
-    const now = new Date();
-    const dayOfWeek = now.getDay(); // 0=Sun
-    const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-    const monday = new Date(now);
-    monday.setDate(now.getDate() + mondayOffset);
-    monday.setHours(0, 0, 0, 0);
+    const weekEnd = new Date(monday);
+    weekEnd.setDate(weekEnd.getDate() + 7);
 
     // Look back 2 days before Monday (Saturday midnight) because sleep sessions
     // are stored with bedtime as started_at. Evening bedtimes (e.g. Sunday 10pm)
@@ -913,12 +912,19 @@ export async function fetchWeeklySleepHours(): Promise<{ hours: number[]; bedtim
     const lookback = new Date(monday);
     lookback.setDate(lookback.getDate() - 2);
 
+    // Upper bound matters now that `monday` can be a PAST week: without it every
+    // later session still came back, and assignDate.getDay() folded them into the
+    // same seven slots — a past week would show hours it never had.
+    const fetchTo = new Date(weekEnd);
+    fetchTo.setDate(fetchTo.getDate() + 1);
+
     const { data, error } = await supabase
         .from('activity_sessions')
         .select('started_at, duration_sec')
         .eq('user_id', uid)
         .eq('type', 'sleep')
         .gte('started_at', lookback.toISOString())
+        .lt('started_at', fetchTo.toISOString())
         .order('started_at', { ascending: true });
     if (error) throw error;
 
@@ -935,8 +941,8 @@ export async function fetchWeeklySleepHours(): Promise<{ hours: number[]; bedtim
             ? new Date(d.getTime() + 86400000) // next day
             : d;
 
-        // Skip sessions that map to days before the current week
-        if (assignDate < monday) continue;
+        // Skip sessions that map outside the anchored week
+        if (assignDate < monday || assignDate >= weekEnd) continue;
 
         const day = assignDate.getDay();
         const idx = day === 0 ? 6 : day - 1;
@@ -954,7 +960,7 @@ export async function fetchWeeklySleepHours(): Promise<{ hours: number[]; bedtim
 
 // ── Sleep detail: Day view ──────────────────────────────────────────────────
 
-export type LastNightSleepDetail = {
+export type SleepDayDetail = {
     totalHours: number;
     bedtime: string;      // ISO timestamp
     wakeTime: string;      // ISO timestamp
@@ -965,24 +971,37 @@ export type LastNightSleepDetail = {
 };
 
 /**
- * Fetches last night's sleep session with stage breakdown.
- * "Last night" = the most recent sleep whose bedtime is after yesterday 6pm.
+ * Fetches the sleep session attributed to a given day, with stage breakdown.
+ * `offset` counts days back from today: 0 = last night, -1 = the night before.
+ *
+ * The night "belonging" to day D is the most recent sleep whose bedtime falls in
+ * [D-1 6pm, D 6pm) — the same 6pm evening-attribution rule the week and month
+ * views bucket by, so all three agree on which night a date refers to.
  */
-export async function fetchLastNightSleepDetail(): Promise<LastNightSleepDetail | null> {
+export async function fetchSleepDayDetail(offset = 0): Promise<SleepDayDetail | null> {
     const uid = await getCurrentUserId();
     if (!uid) return null;
 
-    const yesterday6pm = new Date();
-    yesterday6pm.setDate(yesterday6pm.getDate() - 1);
-    yesterday6pm.setHours(18, 0, 0, 0);
+    const day = dayAnchor(offset);
 
-    // 1. Get the most recent sleep session from yesterday evening onward
+    const windowStart = new Date(day);
+    windowStart.setDate(windowStart.getDate() - 1);
+    windowStart.setHours(18, 0, 0, 0);
+
+    // Bounded at both ends: unbounded, stepping back to an earlier night still
+    // returned the newest session in the table, so every past day showed last
+    // night's sleep.
+    const windowEnd = new Date(day);
+    windowEnd.setHours(18, 0, 0, 0);
+
+    // 1. Get the most recent sleep session in that window
     const { data: session, error } = await supabase
         .from('activity_sessions')
         .select('id, started_at, ended_at, duration_sec')
         .eq('user_id', uid)
         .eq('type', 'sleep')
-        .gte('started_at', yesterday6pm.toISOString())
+        .gte('started_at', windowStart.toISOString())
+        .lt('started_at', windowEnd.toISOString())
         .order('started_at', { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -993,11 +1012,16 @@ export async function fetchLastNightSleepDetail(): Promise<LastNightSleepDetail 
 
     // 2. Look up stage breakdown from health_snapshots in the same window.
     //    session_id FK isn't reliably set for sleep rows, so match by time window.
+    //    The user_id filter is load-bearing, not redundant with RLS: admin read
+    //    policies on this table are broad enough that without it an admin's own
+    //    Progress page rendered whichever user's sleep stages sorted newest.
     const { data: snapshot } = await supabase
         .from('health_snapshots')
         .select('sleep_deep_h, sleep_rem_h, sleep_light_h, source')
+        .eq('user_id', uid)
         .eq('activity_type', 'sleep')
-        .gte('created_at', yesterday6pm.toISOString())
+        .gte('created_at', windowStart.toISOString())
+        .lt('created_at', windowEnd.toISOString())
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -1030,26 +1054,37 @@ export type MonthlySleepData = {
     worstNight: DailySleepEntry | null;
 };
 
-/** Fetches 30 days of sleep data for the month heatmap view. */
-export async function fetchMonthlySleepData(): Promise<MonthlySleepData> {
+/**
+ * Fetches a calendar month of sleep data for the month heatmap view. `offset`
+ * counts months back from now: 0 = this month (running to today), -1 = last
+ * month. Entry count varies between 1 and 31 — callers must not assume 30.
+ */
+export async function fetchMonthlySleepData(offset = 0): Promise<MonthlySleepData> {
     const uid = await getCurrentUserId();
     if (!uid) return { entries: [], avgHours: 0, bestNight: null, worstNight: null };
 
-    // Look back 32 days to cover the full 30-day window + evening-attribution offset
-    const lookback = new Date();
-    lookback.setDate(lookback.getDate() - 32);
-    lookback.setHours(0, 0, 0, 0);
+    const rangeStart = monthAnchorStart(offset);
+    const rangeEndDay = monthAnchorEnd(offset);
+    const rangeEndExclusive = new Date(rangeEndDay);
+    rangeEndExclusive.setDate(rangeEndExclusive.getDate() + 1);
 
-    const rangeStart = new Date();
-    rangeStart.setDate(rangeStart.getDate() - 29);
-    rangeStart.setHours(0, 0, 0, 0);
+    // Evening attribution shifts a session forward a day, so the query has to
+    // straddle both edges of the month: a 22:00 start on the last day of the
+    // PREVIOUS month lands on the 1st, and a 22:00 start on this month's last
+    // day lands outside it. Fetch a day either side, then filter by assignDate.
+    const fetchFrom = new Date(rangeStart);
+    fetchFrom.setDate(fetchFrom.getDate() - 1);
+
+    const fetchTo = new Date(rangeEndDay);
+    fetchTo.setDate(fetchTo.getDate() + 2);
 
     const { data, error } = await supabase
         .from('activity_sessions')
         .select('started_at, duration_sec, point_transactions(amount)')
         .eq('user_id', uid)
         .eq('type', 'sleep')
-        .gte('started_at', lookback.toISOString())
+        .gte('started_at', fetchFrom.toISOString())
+        .lt('started_at', fetchTo.toISOString())
         .order('started_at', { ascending: true });
     if (error) throw error;
 
@@ -1067,8 +1102,11 @@ export async function fetchMonthlySleepData(): Promise<MonthlySleepData> {
             ? new Date(d.getTime() + 86400000)
             : d;
 
-        // Skip sessions outside the 30-day range
-        if (assignDate < rangeStart) continue;
+        // Skip nights whose attributed day falls outside the month. The upper
+        // bound is the EXCLUSIVE next midnight, not rangeEndDay: assignDate
+        // keeps its clock time, so a 23:00 night on the final day would sort
+        // after that day's midnight and get dropped.
+        if (assignDate < rangeStart || assignDate >= rangeEndExclusive) continue;
 
         // localDateStr, not toISOString: a 00:30 bedtime in any UTC+ zone is the
         // previous day in UTC, which filed that night under the wrong date.
@@ -1088,12 +1126,13 @@ export async function fetchMonthlySleepData(): Promise<MonthlySleepData> {
         }
     }
 
-    // Build the 30-entry array
+    // Build one entry per night in the month, oldest first. Rebuilt per step
+    // rather than walked with a mutating cursor — see fetchMonthlyActivityData
+    // for why a setDate() walk loses the last day in midnight-DST zones.
+    const dayCount = rangeEndDay.getDate();
     const entries: DailySleepEntry[] = [];
-    for (let i = 29; i >= 0; i--) {
-        const d = new Date();
-        d.setDate(d.getDate() - i);
-        const dateKey = localDateStr(d);
+    for (let i = 0; i < dayCount; i++) {
+        const dateKey = localDateStr(new Date(rangeStart.getFullYear(), rangeStart.getMonth(), 1 + i));
         const val = byDate.get(dateKey);
         entries.push({
             date: dateKey,
@@ -1204,32 +1243,28 @@ export type MonthlyActivityData = {
 };
 
 /**
- * Fetches a 30-day window of activity data for a given type (heatmap +
- * summary). The window ends on `end` (default today).
+ * Fetches a calendar month of activity data for a given type (heatmap +
+ * summary). `offset` counts months back from now: 0 = this month (which runs to
+ * today, not to the 31st), -1 = last month, and so on. Entry count therefore
+ * varies between 1 and 31 — callers must not assume 30.
  */
-export async function fetchMonthlyActivityData(type: ActivityType, end?: Date): Promise<MonthlyActivityData> {
+export async function fetchMonthlyActivityData(type: ActivityType, offset = 0): Promise<MonthlyActivityData> {
     const uid = await getCurrentUserId();
     if (!uid) return { entries: [], totalSessions: 0, avgPerDay: 0, bestDay: null, type };
 
-    // No time-of-day normalisation needed. This used to pin `end` to local noon,
-    // because the entry keys were built with toISOString() and a local-midnight
-    // anchor (what monthAnchorEnd returns) resolves to the PREVIOUS UTC date in
-    // any UTC+ zone. Keys are local via localDateStr now, so that reason is gone.
+    // No time-of-day normalisation needed. The anchors used to be pinned to local
+    // noon, because the entry keys were built with toISOString() and a
+    // local-midnight anchor resolves to the PREVIOUS UTC date in any UTC+ zone.
+    // Keys are local via localDateStr now, so that reason is gone.
     //
-    // Nothing else needs it either: endDayStart immediately zeroes the time, and
-    // the entry loop steps with setDate(), which is calendar-field arithmetic —
-    // the resulting local date is exactly i days earlier whatever the UTC offset
-    // does in between. (The pin-to-noon idiom guards MILLISECOND arithmetic,
-    // where a DST hour can push you over midnight; it does not apply here.)
-    // Verified across 365 anchors x 7 zones incl. midnight-transition ones
-    // (Santiago, Beirut, Havana, Chatham): pinned and unpinned agree exactly.
-    const anchor = new Date(end ?? new Date());
-
-    const endDayStart = new Date(anchor);
-    endDayStart.setHours(0, 0, 0, 0);
-
-    const rangeStart = new Date(endDayStart);
-    rangeStart.setDate(rangeStart.getDate() - 29);
+    // Nothing else needs it either: the anchors are already at local midnight,
+    // and the entry loop below rebuilds each day from calendar fields rather
+    // than doing millisecond arithmetic. (The pin-to-noon idiom guards
+    // MILLISECOND arithmetic, where a DST hour can push you over midnight; it
+    // does not apply here.) Verified across every month of 2023-2026 in 9 zones
+    // incl. midnight-transition ones (Santiago, Beirut, Havana, Chatham).
+    const rangeStart = monthAnchorStart(offset);
+    const endDayStart = monthAnchorEnd(offset);
 
     const rangeEnd = new Date(endDayStart);
     rangeEnd.setDate(rangeEnd.getDate() + 1);
@@ -1275,12 +1310,19 @@ export async function fetchMonthlyActivityData(type: ActivityType, end?: Date): 
         }
     }
 
-    // Build the 30-entry array
+    // Build one entry per day in the month, oldest first.
+    //
+    // Rebuilt from (y, m, 1 + i) each step rather than walked with a mutating
+    // setDate() cursor. In zones where DST springs forward AT midnight
+    // (Santiago, Havana, Beirut) local midnight does not exist on that day, so
+    // the cursor normalises to 01:00 and CARRIES that time forward — a
+    // `cursor <= endDayStart` test then trips a day early and drops the last day
+    // of the month from the heatmap. rangeStart is always the 1st, so the day
+    // count is just the end day's date.
+    const dayCount = endDayStart.getDate();
     const entries: DailyActivityEntry[] = [];
-    for (let i = 29; i >= 0; i--) {
-        const d = new Date(anchor);
-        d.setDate(d.getDate() - i);
-        const dateKey = localDateStr(d);
+    for (let i = 0; i < dayCount; i++) {
+        const dateKey = localDateStr(new Date(rangeStart.getFullYear(), rangeStart.getMonth(), 1 + i));
         const val = byDate.get(dateKey);
         entries.push({
             date: dateKey,

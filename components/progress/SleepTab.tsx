@@ -4,20 +4,24 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { DayCaption } from '@/components/progress/DayCaption';
 import PointsBreakdownSheet from '@/components/progress/PointsBreakdownSheet';
+import { StalePanel } from '@/components/progress/StalePanel';
+import { TimeStepper } from '@/components/progress/TimeStepper';
 import { useHealthData } from '@/hooks/useHealthData';
 import { useHealthProviders } from '@/hooks/useHealthProviders';
 import {
-    fetchLastNightSleepDetail,
     fetchMonthlySleepData,
     fetchRecentSleepHistory,
+    fetchSleepDayDetail,
+    fetchWeeklySleepHours,
     localDateStr,
     type DailySleepEntry,
     type DailySleepHistory,
-    type LastNightSleepDetail,
     type MonthlySleepData,
+    type SleepDayDetail,
 } from '@/lib/api/activity';
 import { getProvider } from '@/lib/health/providers';
 import { ProviderAuthExpiredError } from '@/lib/health/providers/types';
+import { dayAnchor, monthLabel, rangeLabel, weekAnchorMonday } from '@/lib/progressLookback';
 
 // ─── Design tokens (match progress.tsx) ──────────────────────────────────────
 
@@ -28,6 +32,8 @@ const MUTED  = 'rgba(255,255,255,0.25)';
 const DIM    = 'rgba(255,255,255,0.5)';
 
 const DAY_LABELS  = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const EMPTY_WEEK_HRS: number[] = [0, 0, 0, 0, 0, 0, 0];
+const EMPTY_WEEK_BEDTIMES: (string | null)[] = [null, null, null, null, null, null, null];
 const TODAY_INDEX = new Date().getDay() === 0 ? 6 : new Date().getDay() - 1;
 const SLEEP_BAR_H = 56;
 
@@ -85,12 +91,19 @@ function avgBedtimeFromTimestamps(bedtimes: (string | null)[]): string {
 
 // ─── Day View ────────────────────────────────────────────────────────────────
 
-function SleepDayView({ data, authExpired }: { data: LastNightSleepDetail | null; authExpired?: boolean }) {
+function SleepDayView({
+  data, offset, authExpired,
+}: {
+  data: SleepDayDetail | null;
+  offset: number;
+  authExpired?: boolean;
+}) {
   const [history, setHistory] = useState<DailySleepHistory[]>([]);
+  const isToday = offset === 0;
 
   useEffect(() => {
-    fetchRecentSleepHistory(5).then(setHistory).catch(() => {});
-  }, []);
+    fetchRecentSleepHistory(5, isToday ? undefined : dayAnchor(offset)).then(setHistory).catch(() => {});
+  }, [offset, isToday]);
 
   const hasHistory = history.some(d => d.hours > 0);
 
@@ -108,7 +121,9 @@ function SleepDayView({ data, authExpired }: { data: LastNightSleepDetail | null
             </>
           ) : (
             <>
-              <Text style={styles.emptyText}>No sleep data for last night.</Text>
+              <Text style={styles.emptyText}>
+                No sleep data for {isToday ? 'last night' : rangeLabel('D', offset)}.
+              </Text>
               <Text style={styles.emptySubtext}>Sleep will appear once synced from your wearable.</Text>
             </>
           )}
@@ -117,7 +132,7 @@ function SleepDayView({ data, authExpired }: { data: LastNightSleepDetail | null
         {hasHistory && (
           <>
             <View style={styles.tabSep} />
-            <Text style={styles.tabSubLabel}>RECENT NIGHTS</Text>
+            <Text style={styles.tabSubLabel}>{isToday ? 'RECENT NIGHTS' : 'PREVIOUS NIGHTS'}</Text>
             {history.map(night => (
               <SleepHistoryRow key={night.date} night={night} />
             ))}
@@ -201,7 +216,7 @@ function SleepDayView({ data, authExpired }: { data: LastNightSleepDetail | null
       {hasHistory && (
         <>
           <View style={styles.tabSep} />
-          <Text style={styles.tabSubLabel}>RECENT NIGHTS</Text>
+          <Text style={styles.tabSubLabel}>{isToday ? 'RECENT NIGHTS' : 'PREVIOUS NIGHTS'}</Text>
           {history.map(night => (
             <SleepHistoryRow key={night.date} night={night} />
           ))}
@@ -233,7 +248,16 @@ function SleepHistoryRow({ night }: { night: DailySleepHistory }) {
 
 // ─── Week View (existing chart, moved verbatim) ──────────────────────────────
 
-function SleepWeekView({ sleepHrs, sleepBedtimes }: { sleepHrs: number[]; sleepBedtimes: (string | null)[] }) {
+function SleepWeekView({
+  sleepHrs, sleepBedtimes, isCurrentWeek,
+}: {
+  sleepHrs: number[];
+  sleepBedtimes: (string | null)[];
+  isCurrentWeek: boolean;
+}) {
+  // A past week has no "today" column to highlight — TODAY_INDEX is the current
+  // weekday, so using it unguarded would accent an arbitrary bar.
+  const todayIndex = isCurrentWeek ? TODAY_INDEX : -1;
   const daysWithSleep = sleepHrs.filter(h => h > 0).length;
   const avg = daysWithSleep > 0
     ? (sleepHrs.reduce((s, v) => s + v, 0) / daysWithSleep).toFixed(1)
@@ -276,10 +300,10 @@ function SleepWeekView({ sleepHrs, sleepBedtimes }: { sleepHrs: number[]; sleepB
 
       <View style={styles.tabSep} />
 
-      <Text style={styles.tabSubLabel}>NIGHTLY SLEEP</Text>
+      <Text style={styles.tabSubLabel}>{isCurrentWeek ? 'THIS WEEK' : 'NIGHTLY SLEEP'}</Text>
       <View style={styles.sleepChart}>
         {sleepHrs.map((hrs, i) => {
-          const isToday = i === TODAY_INDEX;
+          const isToday = i === todayIndex;
           const fillH   = hrs > 0 ? Math.round((hrs / 10) * SLEEP_BAR_H) : 0;
           const isBest  = hasBest && i === bestIdx;
           return (
@@ -347,11 +371,14 @@ function heatmapColor(hours: number): string {
 }
 
 function SleepMonthView({
-  data, onSelectDay,
+  data, offset, onSelectDay,
 }: {
   data: MonthlySleepData | null;
+  offset: number;
   onSelectDay: (day: Date) => void;
 }) {
+  // "This Month" / "June" — see WorkoutMonthView.
+  const label = monthLabel(offset);
   const [selected, setSelected] = useState<string | null>(null);
   useEffect(() => { setSelected(null); }, [data]);
 
@@ -370,7 +397,9 @@ function SleepMonthView({
     return (
       <View style={styles.emptyState}>
         <Ionicons name="moon-outline" size={28} color={MUTED} />
-        <Text style={styles.emptyText}>No sleep data in the last 30 days.</Text>
+        <Text style={styles.emptyText}>
+          No sleep data {offset === 0 ? 'this month' : `in ${label}`}.
+        </Text>
         <Text style={styles.emptySubtext}>Sleep will appear once synced from your wearable.</Text>
       </View>
     );
@@ -440,7 +469,7 @@ function SleepMonthView({
       <View style={styles.tabSep} />
 
       {/* Heatmap */}
-      <Text style={styles.tabSubLabel}>30-DAY SLEEP</Text>
+      <Text style={styles.tabSubLabel}>{label.toUpperCase()}</Text>
 
       {/* Day-of-week headers */}
       <View style={styles.heatmapRow}>
@@ -525,12 +554,42 @@ export function SleepTab({
   sleepBedtimes: (string | null)[];
 }) {
   const [period, setPeriod] = useState<Period>('W');
+  const [offset, setOffset] = useState(0);
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
-  const [dayData, setDayData] = useState<LastNightSleepDetail | null>(null);
+  const [dayData, setDayData] = useState<SleepDayDetail | null>(null);
+  const [weekData, setWeekData] = useState<{ hours: number[]; bedtimes: (string | null)[] } | null>(null);
   const [monthData, setMonthData] = useState<MonthlySleepData | null>(null);
   const [dayLoaded, setDayLoaded] = useState(false);
+  const [weekLoaded, setWeekLoaded] = useState(false);
   const [monthLoaded, setMonthLoaded] = useState(false);
   const [authExpired, setAuthExpired] = useState(false);
+
+  const isCurrent = offset === 0;
+
+  // Reset the stepper when switching D/W/M — an offset means a different span
+  // per period, so carrying -3 from D into M would silently jump three months
+  // back. Matches handlePeriodChange in progress.tsx.
+  const handlePeriodChange = (p: Period) => {
+    setPeriod(p);
+    setOffset(0);
+  };
+
+  // Invalidate on offset change but KEEP the data, so StalePanel can hold the
+  // previous panel on screen instead of collapsing it. See MovementTab.
+  useEffect(() => {
+    setDayLoaded(false);
+    setWeekLoaded(false);
+    setMonthLoaded(false);
+  }, [offset]);
+
+  // Dim only while REPLACING a panel that already has data — on a cold load
+  // there is nothing to hold on screen, so the placeholder should render plain.
+  const dayStale = !dayLoaded && dayData !== null;
+  // isCurrent short-circuits: the current week never fetches (it comes from
+  // props), so weekLoaded stays false, and without this guard stepping back and
+  // then returning left the live week dimmed and untappable for good.
+  const weekStale = !isCurrent && !weekLoaded && weekData !== null;
+  const monthStale = !monthLoaded && monthData !== null;
 
   const health = useHealthData();
   const { activeId } = useHealthProviders();
@@ -544,10 +603,13 @@ export function SleepTab({
     (async () => {
       try {
         // 1. Try the DB first (synced sessions)
-        let result = await fetchLastNightSleepDetail();
+        let result = await fetchSleepDayDetail(offset);
 
-        // 2. If the DB has nothing, try fetching live from the active provider
-        if (!result) {
+        // 2. If the DB has nothing, try fetching live from the active provider.
+        //    Only for the current day: the provider APIs return LAST NIGHT and
+        //    nothing else, so using them on a stepped-back day would present
+        //    last night's sleep as that day's.
+        if (!result && isCurrent) {
           const canFetchLive = isNativeProvider ? health.isAuthorized : !!activeId;
           if (canFetchLive) {
             let lastNight = null;
@@ -592,7 +654,33 @@ export function SleepTab({
     })();
 
     return () => { cancelled = true; };
-  }, [period, activeId, isNativeProvider, health.isAuthorized]);
+  }, [period, offset, isCurrent, activeId, isNativeProvider, health.isAuthorized]);
+
+  // Load Week data reactively. The current week comes from props (the parent
+  // already fetched it, and tops it up with a live on-device read); past weeks
+  // are fetched here against their Monday anchor.
+  useEffect(() => {
+    if (period !== 'W' || weekLoaded || isCurrent) return;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const result = await fetchWeeklySleepHours(weekAnchorMonday(offset));
+        if (!cancelled) {
+          setWeekData(result);
+          setWeekLoaded(true);
+        }
+      } catch (err) {
+        console.error('[SleepTab] Error loading week data:', err);
+        if (!cancelled) {
+          setWeekData(null);
+          setWeekLoaded(true);
+        }
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [period, weekLoaded, isCurrent, offset]);
 
   // Load Month data reactively
   useEffect(() => {
@@ -601,7 +689,7 @@ export function SleepTab({
 
     (async () => {
       try {
-        const result = await fetchMonthlySleepData();
+        const result = await fetchMonthlySleepData(offset);
         if (!cancelled) {
           setMonthData(result);
           setMonthLoaded(true);
@@ -616,20 +704,31 @@ export function SleepTab({
     })();
 
     return () => { cancelled = true; };
-  }, [period, monthLoaded]);
+  }, [period, monthLoaded, offset]);
 
   return (
     <View style={styles.tabPanel}>
-      <PillToggle value={period} onChange={setPeriod} />
+      <PillToggle value={period} onChange={handlePeriodChange} />
+      <TimeStepper period={period} offset={offset} onOffsetChange={setOffset} />
 
       {period === 'D' && (
-        <SleepDayView data={dayData} authExpired={authExpired} />
+        <StalePanel stale={dayStale}>
+          <SleepDayView data={dayData} offset={offset} authExpired={authExpired} />
+        </StalePanel>
       )}
       {period === 'W' && (
-        <SleepWeekView sleepHrs={sleepHrs} sleepBedtimes={sleepBedtimes} />
+        <StalePanel stale={weekStale}>
+          <SleepWeekView
+            sleepHrs={isCurrent ? sleepHrs : weekData?.hours ?? EMPTY_WEEK_HRS}
+            sleepBedtimes={isCurrent ? sleepBedtimes : weekData?.bedtimes ?? EMPTY_WEEK_BEDTIMES}
+            isCurrentWeek={isCurrent}
+          />
+        </StalePanel>
       )}
       {period === 'M' && (
-        <SleepMonthView data={monthData} onSelectDay={setSelectedDay} />
+        <StalePanel stale={monthStale}>
+          <SleepMonthView data={monthData} offset={offset} onSelectDay={setSelectedDay} />
+        </StalePanel>
       )}
 
       <PointsBreakdownSheet
