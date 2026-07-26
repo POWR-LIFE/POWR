@@ -20,7 +20,7 @@ import {
     type TodayActivityDetail,
     type WeekActivityData,
 } from '@/lib/api/activity';
-import { dayAnchor, monthAnchorEnd, weekAnchorMonday } from '@/lib/progressLookback';
+import { dayAnchor, monthLabel, weekAnchorMonday } from '@/lib/progressLookback';
 
 // ─── Design tokens (match progress.tsx) ──────────────────────────────────────
 
@@ -323,12 +323,16 @@ function heatmapColorForType(count: number, colour: string): string {
 }
 
 function WorkoutMonthView({
-  type, data, onSelectDay,
+  type, data, offset, onSelectDay,
 }: {
   type: ActivityType;
   data: MonthlyActivityData | null;
+  offset: number;
   onSelectDay: (day: Date) => void;
 }) {
+  // "This Month" / "June" — the window is a calendar month, so every label the
+  // panel shows has to name it rather than say "30 days".
+  const label = monthLabel(offset);
   const config = ACTIVITIES[type];
   const [selected, setSelected] = useState<string | null>(null);
   useEffect(() => { setSelected(null); }, [type, data]);
@@ -348,7 +352,9 @@ function WorkoutMonthView({
     return (
       <View style={styles.emptyState}>
         <Ionicons name={config.icon as any} size={28} color={MUTED} />
-        <Text style={styles.emptyText}>No {config.label.toLowerCase()} sessions in 30 days.</Text>
+        <Text style={styles.emptyText}>
+          No {config.label.toLowerCase()} sessions {offset === 0 ? 'this month' : `in ${label}`}.
+        </Text>
         <Text style={styles.emptySubtext}>Sessions will appear here once logged.</Text>
       </View>
     );
@@ -394,7 +400,7 @@ function WorkoutMonthView({
           <Text style={[styles.bigMetricVal, { color: config.colour, fontSize: 30, lineHeight: 32 }]}>
             {data.totalSessions}
           </Text>
-          <Text style={styles.bigMetricMax}>in 30 days</Text>
+          <Text style={styles.bigMetricMax}>{offset === 0 ? 'this month' : `in ${label}`}</Text>
           <View style={styles.metricBar}>
             <View style={[styles.metricBarFill, { width: `${Math.round(Math.min(data.totalSessions / 20, 1) * 100)}%` as any, backgroundColor: config.colour }]} />
           </View>
@@ -413,7 +419,7 @@ function WorkoutMonthView({
 
       <View style={styles.tabSep} />
 
-      <Text style={styles.tabSubLabel}>30-DAY ACTIVITY</Text>
+      <Text style={styles.tabSubLabel}>{label.toUpperCase()}</Text>
 
       <View style={styles.heatmapRow}>
         {DAY_LABELS.map(d => (
@@ -588,7 +594,7 @@ export function WorkoutsTab({
 
     (async () => {
       try {
-        const result = await fetchMonthlyActivityData(type, offset === 0 ? undefined : monthAnchorEnd(offset));
+        const result = await fetchMonthlyActivityData(type, offset);
         if (!cancelled) {
           setMonthData(result);
           setMonthLoaded(true);
@@ -632,7 +638,7 @@ export function WorkoutsTab({
       )}
       {period === 'M' && (
         <StalePanel stale={monthStale}>
-          <WorkoutMonthView type={type} data={monthData} onSelectDay={setSelectedDay} />
+          <WorkoutMonthView type={type} data={monthData} offset={offset} onSelectDay={setSelectedDay} />
         </StalePanel>
       )}
 

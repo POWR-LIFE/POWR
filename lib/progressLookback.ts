@@ -5,10 +5,11 @@
 
 export type LookbackPeriod = 'D' | 'W' | 'M';
 
-/** The M view is a trailing window, not a calendar month — one step = 30 days. */
-export const MONTH_WINDOW_DAYS = 30;
-
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const MONTHS_FULL = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December',
+];
 
 function localMidnight(base: Date): Date {
     const d = new Date(base);
@@ -33,11 +34,28 @@ export function weekAnchorMonday(offset: number): Date {
     return monday;
 }
 
-/** Final day (local midnight) of the 30-day window the M view is anchored to. */
+/** First day (local midnight) of the calendar month the M view is anchored to. */
+export function monthAnchorStart(offset: number): Date {
+    const now = new Date();
+    // Built from (year, month, 1) rather than setMonth() on today's date: on the
+    // 31st, setMonth(-1) overflows ("Jun 31" → Jul 1) and lands on the wrong
+    // month entirely. The constructor normalises out-of-range months for free,
+    // so offset -7 in January correctly rolls back into the previous year.
+    return new Date(now.getFullYear(), now.getMonth() + offset, 1);
+}
+
+/**
+ * Last day (local midnight, inclusive) of the calendar month the M view is
+ * anchored to. The CURRENT month stops at today rather than running to the
+ * 31st, so the heatmap doesn't render cells for days that haven't happened yet.
+ */
 export function monthAnchorEnd(offset: number): Date {
-    const d = localMidnight(new Date());
-    d.setDate(d.getDate() + offset * MONTH_WINDOW_DAYS);
-    return d;
+    const today = localMidnight(new Date());
+    // Day 0 of the following month = the last day of this one, which is how we
+    // avoid hardcoding month lengths or a leap-year table.
+    const lastDay = monthAnchorStart(offset + 1);
+    lastDay.setDate(0);
+    return lastDay > today ? today : lastDay;
 }
 
 function shortDate(d: Date): string {
@@ -50,6 +68,17 @@ function shortRange(start: Date, end: Date): string {
         return `${shortDate(start)} – ${end.getDate()}`;
     }
     return `${shortDate(start)} – ${shortDate(end)}`;
+}
+
+/**
+ * Human label for a calendar month, e.g. "This Month", "June", "June 2025".
+ * The year is only shown once it differs from the current one.
+ */
+export function monthLabel(offset: number): string {
+    if (offset === 0) return 'This Month';
+    const start = monthAnchorStart(offset);
+    const year = start.getFullYear() !== new Date().getFullYear() ? ` ${start.getFullYear()}` : '';
+    return `${MONTHS_FULL[start.getMonth()]}${year}`;
 }
 
 /** Human label for the stepper, e.g. "This Week", "Jun 16 – 22", "Tue Jul 8". */
@@ -68,9 +97,5 @@ export function rangeLabel(period: LookbackPeriod, offset: number): string {
         end.setDate(end.getDate() + 6);
         return shortRange(start, end);
     }
-    if (offset === 0) return 'Last 30 Days';
-    const end = monthAnchorEnd(offset);
-    const start = new Date(end);
-    start.setDate(start.getDate() - (MONTH_WINDOW_DAYS - 1));
-    return shortRange(start, end);
+    return monthLabel(offset);
 }

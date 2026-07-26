@@ -21,7 +21,7 @@ import {
     type TodayActivityDetail,
     type WeekActivityData,
 } from '@/lib/api/activity';
-import { dayAnchor, monthAnchorEnd, weekAnchorMonday } from '@/lib/progressLookback';
+import { dayAnchor, monthLabel, weekAnchorMonday } from '@/lib/progressLookback';
 
 // ─── Design tokens (match progress.tsx) ──────────────────────────────────────
 
@@ -418,11 +418,14 @@ function heatmapColor(steps: number): string {
 }
 
 function MovementMonthView({
-  data, onSelectDay,
+  data, offset, onSelectDay,
 }: {
   data: MonthlyActivityData | null;
+  offset: number;
   onSelectDay: (day: Date) => void;
 }) {
+  // "This Month" / "June" — see WorkoutMonthView.
+  const label = monthLabel(offset);
   const [selected, setSelected] = useState<string | null>(null);
   useEffect(() => { setSelected(null); }, [data]);
 
@@ -441,7 +444,9 @@ function MovementMonthView({
     return (
       <View style={styles.emptyState}>
         <Ionicons name="footsteps-outline" size={28} color={MUTED} />
-        <Text style={styles.emptyText}>No walking data in the last 30 days.</Text>
+        <Text style={styles.emptyText}>
+          No walking data {offset === 0 ? 'this month' : `in ${label}`}.
+        </Text>
         <Text style={styles.emptySubtext}>Steps will appear once synced from Health.</Text>
       </View>
     );
@@ -503,7 +508,7 @@ function MovementMonthView({
 
       <View style={styles.tabSep} />
 
-      <Text style={styles.tabSubLabel}>30-DAY STEPS</Text>
+      <Text style={styles.tabSubLabel}>{label.toUpperCase()}</Text>
 
       <View style={styles.heatmapRow}>
         {DAY_LABELS.map(d => (
@@ -615,7 +620,7 @@ export function MovementTab({
 
     (async () => {
       try {
-        const result = await fetchMonthlyActivityData('walking', offset === 0 ? undefined : monthAnchorEnd(offset));
+        const result = await fetchMonthlyActivityData('walking', offset);
         if (!cancelled) {
           setMonthData(result);
           setMonthLoaded(true);
@@ -653,7 +658,7 @@ export function MovementTab({
       )}
       {period === 'M' && (
         <StalePanel stale={!monthLoaded && monthData !== null}>
-          <MovementMonthView data={monthData} onSelectDay={setSelectedDay} />
+          <MovementMonthView data={monthData} offset={offset} onSelectDay={setSelectedDay} />
         </StalePanel>
       )}
 
