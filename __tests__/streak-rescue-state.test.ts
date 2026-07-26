@@ -1,4 +1,6 @@
-import { deriveRescueOffer, rescueDayIndexFor, SAVED_VISIBLE_MS } from '@/hooks/useStreakRescue';
+// Imported from lib, not the hook: the hook reaches the native task-manager
+// chain via the activity-revision bus, which a pure derivation test must not need.
+import { deriveRescueOffer, rescueDayIndexFor, SAVED_VISIBLE_MS } from '@/lib/streakRescue';
 
 const NOW = new Date('2026-07-23T10:00:00Z').getTime();
 const HOUR = 3600_000;
@@ -35,7 +37,7 @@ describe('deriveRescueOffer', () => {
         expect(deriveRescueOffer(row, NOW)).toBeNull();
     });
 
-    it('surfaces a completed rescue as the saved state within the 24h window', () => {
+    it('surfaces a completed rescue as the saved state within the visible window', () => {
         const row = {
             ...baseRow,
             status: 'completed',
@@ -45,7 +47,19 @@ describe('deriveRescueOffer', () => {
         expect(deriveRescueOffer(row, NOW)?.state).toBe('saved');
     });
 
-    it('retires the saved state after 24h', () => {
+    it('still celebrates a save the user was not present for — completion is a server event', () => {
+        // Completed Friday morning by a Terra backfill, app next opened Saturday
+        // lunchtime. At the old 24h window this user got nothing, ever.
+        const row = {
+            ...baseRow,
+            status: 'completed',
+            sessions_done: 2,
+            completed_at: new Date(NOW - 30 * HOUR).toISOString(),
+        };
+        expect(deriveRescueOffer(row, NOW)?.state).toBe('saved');
+    });
+
+    it('retires the saved state once the window is past', () => {
         const row = {
             ...baseRow,
             status: 'completed',
