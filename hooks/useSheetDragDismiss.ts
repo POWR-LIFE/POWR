@@ -52,16 +52,13 @@ export function useSheetDragDismiss(onClose: () => void) {
             onShouldBlockNativeResponder: () => true,
             onPanResponderRelease: (_, g) => {
                 if (g.dy > 90 || g.vy > 0.8) {
-                    // Carry on from wherever the finger left it, then unmount.
-                    Animated.timing(dragY, {
-                        toValue: 700, duration: 160, useNativeDriver: true,
-                    }).start(() => onCloseRef.current());
+                    dismiss();
                 } else {
                     Animated.spring(dragY, {
                         toValue: 0, useNativeDriver: true, bounciness: 0,
                     }).start();
                 }
-            },
+            }
             // A cancelled gesture (call, notification shade) must not strand the
             // sheet mid-drag.
             onPanResponderTerminate: () => {
