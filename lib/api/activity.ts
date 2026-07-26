@@ -1211,10 +1211,19 @@ export async function fetchMonthlyActivityData(type: ActivityType, end?: Date): 
     const uid = await getCurrentUserId();
     if (!uid) return { entries: [], totalSessions: 0, avgPerDay: 0, bestDay: null, type };
 
-    // Anchor pinned to local noon so the day arithmetic below can't slip across a
-    // DST boundary. (Keys themselves are local via localDateStr, not UTC.)
+    // No time-of-day normalisation needed. This used to pin `end` to local noon,
+    // because the entry keys were built with toISOString() and a local-midnight
+    // anchor (what monthAnchorEnd returns) resolves to the PREVIOUS UTC date in
+    // any UTC+ zone. Keys are local via localDateStr now, so that reason is gone.
+    //
+    // Nothing else needs it either: endDayStart immediately zeroes the time, and
+    // the entry loop steps with setDate(), which is calendar-field arithmetic —
+    // the resulting local date is exactly i days earlier whatever the UTC offset
+    // does in between. (The pin-to-noon idiom guards MILLISECOND arithmetic,
+    // where a DST hour can push you over midnight; it does not apply here.)
+    // Verified across 365 anchors x 7 zones incl. midnight-transition ones
+    // (Santiago, Beirut, Havana, Chatham): pinned and unpinned agree exactly.
     const anchor = new Date(end ?? new Date());
-    if (end) anchor.setHours(12, 0, 0, 0);
 
     const endDayStart = new Date(anchor);
     endDayStart.setHours(0, 0, 0, 0);
