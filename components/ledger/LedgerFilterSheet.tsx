@@ -87,7 +87,7 @@ export default function LedgerFilterSheet({
 }) {
     // Pull-down-to-dismiss + animated close, shared with PointsBreakdownSheet
     // (which held a byte-identical copy). See hooks/useSheetDragDismiss.
-    const { dragY, panHandlers, dismiss, reset } = useSheetDragDismiss(onClose);
+    const { dragY, panHandlers, dismiss } = useSheetDragDismiss(onClose);
 
     const choose = (key: LedgerFilterKey) => {
         onSelect(key);
@@ -142,7 +142,7 @@ export default function LedgerFilterSheet({
     };
 
     return (
-        <Modal visible transparent animationType="slide" onRequestClose={dismiss} onShow={reset}>
+        <Modal visible transparent animationType="slide" onRequestClose={dismiss}>
             <View style={styles.backdrop}>
                 <Pressable style={StyleSheet.absoluteFill} onPress={dismiss} />
                 <Animated.View style={[styles.sheet, { transform: [{ translateY: dragY }] }]}>

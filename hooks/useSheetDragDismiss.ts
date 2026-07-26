@@ -30,11 +30,27 @@ export function useSheetDragDismiss(onClose: () => void) {
     const onCloseRef = useRef(onClose);
     onCloseRef.current = onClose;
 
-    /** Slide the sheet away, THEN tell the parent. */
+    /**
+     * Slide the sheet away, THEN tell the parent, THEN rearm.
+     *
+     * The rearm is why no open-time reset is needed. These sheets are rendered
+     * with visible=false rather than unmounted, so dragY survives a close — left
+     * at 700 it would render the next open 700px down, i.e. off-screen. Zeroing
+     * it here happens after the parent has already stopped rendering the sheet,
+     * so it is invisible, and the value is always clean before the next paint.
+     *
+     * Resetting at OPEN time can't do that: during render it is a side effect in
+     * render, and from Modal's onShow it is too late — react-native-web fires
+     * onShow from its animationEnd callback, so the sheet would sit off-screen
+     * for the whole slide-in and then pop into place.
+     */
     const dismiss = () => {
         Animated.timing(dragY, {
             toValue: 700, duration: 160, useNativeDriver: true,
-        }).start(() => onCloseRef.current());
+        }).start(() => {
+            onCloseRef.current();
+            dragY.setValue(0);
+        });
     };
 
     const pan = useRef(
@@ -58,7 +74,7 @@ export function useSheetDragDismiss(onClose: () => void) {
                         toValue: 0, useNativeDriver: true, bounciness: 0,
                     }).start();
                 }
-            }
+            },
             // A cancelled gesture (call, notification shade) must not strand the
             // sheet mid-drag.
             onPanResponderTerminate: () => {
@@ -76,7 +92,5 @@ export function useSheetDragDismiss(onClose: () => void) {
         panHandlers: pan.panHandlers,
         /** Animated close — use for Close buttons and onRequestClose too. */
         dismiss,
-        /** Call when the sheet opens: a drag-dismissed sheet must not reopen off-screen. */
-        reset: () => dragY.setValue(0),
     };
 }

@@ -75,12 +75,11 @@ export default function PointsBreakdownSheet({
      * slide-away runs first, on the UI thread, and the re-render happens behind
      * it. Both exits — the button and the drag — go through it, so they match.
      */
-    const { dragY, panHandlers, dismiss, reset } = useSheetDragDismiss(onClose);
+    const { dragY, panHandlers, dismiss } = useSheetDragDismiss(onClose);
 
     useEffect(() => {
         if (!visible) return;
         let cancelled = false;
-        reset(); // a drag-dismissed sheet must not reopen off-screen
         setData(null);
         setFailed(false);
 
@@ -96,7 +95,7 @@ export default function PointsBreakdownSheet({
         // day is compared by time value: callers build a fresh Date each render,
         // so depending on the object identity would refetch on every render.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [visible, type, period, offset, dragY, day ? day.getTime() : null]);
+    }, [visible, type, period, offset, day ? day.getTime() : null]);
 
     // Keep the early return: RN's Modal is NOT guaranteed to unrender on
     // visible=false (react-native-web notably does not), and the backdrop is an
