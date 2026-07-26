@@ -81,7 +81,10 @@ function HealthAccessHint({
   steps: number;
   remaining: number;
 }) {
-  if (!walking.isAuthorized) {
+  // isAvailable first, mirroring WalkingProgressCard: with no health platform
+  // present (Expo Go, web, Health Connect not installed) requestPermissions()
+  // can only return false, so the prompt would be a dead-end tap.
+  if (walking.isAvailable && !walking.isAuthorized) {
     return (
       <Pressable
         style={styles.insightRow}
