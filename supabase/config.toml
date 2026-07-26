@@ -502,6 +502,15 @@ verify_jwt = false
 # user JWT) — same x-resolve-token gate as the cron functions.
 verify_jwt = false
 
+[functions.submit-support-ticket]
+# Backs the signed-out support form on powr.life/support. There is no user and
+# the site's publishable key is not a JWT, so platform verification is off —
+# same posture as partner-reward-submission. There is no credential to check:
+# the endpoint is deliberately open and defends itself with strict field
+# validation, a honeypot, and a per-email throttle. Worst case for an abuser is
+# junk rows in support_tickets; it cannot read or award anything.
+verify_jwt = false
+
 [edge_runtime]
 enabled = true
 # Supported request policies: `oneshot`, `per_worker`.
