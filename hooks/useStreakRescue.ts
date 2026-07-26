@@ -1,88 +1,22 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useRef } from 'react';
+
+import { useActivityRevision } from '@/hooks/useActivityRevision';
+import { deriveRescueOffer, type StreakRescueOffer } from '@/lib/streakRescue';
 import { supabase } from '@/lib/supabase';
 
-export type RescueRequirementType = 'sessions' | 'gym_sessions' | 'active_days' | 'steps';
-
-export interface StreakRescueOffer {
-    id: string;
-    /** 'offered' = challenge in progress; 'saved' = completed within the last
-     *  24h — the card holds a celebratory state so the win is visible in-app,
-     *  not only in the push (which a notifications-off user never sees). */
-    state: 'offered' | 'saved';
-    lostStreak: number;
-    /** The local calendar day (YYYY-MM-DD) that broke the chain — highlighted
-     *  in the StreakCard week strip while the offer is live. */
-    missedDay: string;
-    /** Admin-authored challenge name, e.g. "Back on track". */
-    label: string | null;
-    requirementType: RescueRequirementType;
-    /** Required amount in the requirement's unit (sessions / days / steps). */
-    sessionsRequired: number;
-    sessionsDone: number;
-    expiresAt: string;
-}
-
-/** How long the celebratory 'saved' state stays visible after completion. */
-export const SAVED_VISIBLE_MS = 24 * 3600_000;
-
-/**
- * Pure state derivation from a streak_rescues row — extracted so the
- * offered/saved/expired boundaries are unit-testable without Supabase.
- * Returns null when nothing should be surfaced.
- */
-export function deriveRescueOffer(
-    row: {
-        id: string;
-        status: string;
-        lost_streak: number;
-        missed_day?: string | null;
-        label?: string | null;
-        requirement_type?: string | null;
-        sessions_required: number;
-        sessions_done: number;
-        expires_at: string;
-        completed_at?: string | null;
-    } | null,
-    nowMs: number,
-): StreakRescueOffer | null {
-    if (!row) return null;
-
-    const isLiveOffer = row.status === 'offered' && new Date(row.expires_at).getTime() > nowMs;
-    const isFreshSave = row.status === 'completed' && !!row.completed_at
-        && nowMs - new Date(row.completed_at).getTime() < SAVED_VISIBLE_MS;
-    if (!isLiveOffer && !isFreshSave) return null;
-
-    return {
-        id: row.id,
-        state: isLiveOffer ? 'offered' : 'saved',
-        lostStreak: row.lost_streak,
-        missedDay: String(row.missed_day ?? '').slice(0, 10),
-        label: row.label ?? null,
-        requirementType: (row.requirement_type ?? 'sessions') as RescueRequirementType,
-        sessionsRequired: row.sessions_required,
-        sessionsDone: row.sessions_done,
-        expiresAt: row.expires_at,
-    };
-}
-
-/**
- * Mon–Sun index of the rescue's missed day when it falls inside the current
- * week strip; null otherwise (the strip only shows this week). Pure for tests.
- */
-export function rescueDayIndexFor(
-    missedDay: string | null | undefined,
-    todayIndex: number,
-    now: Date = new Date(),
-): number | null {
-    if (!missedDay) return null;
-    const missed = new Date(`${missedDay}T12:00:00`);
-    if (Number.isNaN(missed.getTime())) return null;
-    const monday = new Date(now);
-    monday.setDate(now.getDate() - todayIndex);
-    monday.setHours(0, 0, 0, 0);
-    const idx = Math.floor((missed.getTime() - monday.getTime()) / 86400000);
-    return idx >= 0 && idx <= 6 ? idx : null;
-}
+// Pure state derivation (types, SAVED_VISIBLE_MS, deriveRescueOffer,
+// rescueDayIndexFor) lives in lib/streakRescue so it stays testable without the
+// native import chain this hook pulls in. Re-exported so call sites are
+// unchanged.
+export {
+    deriveRescueOffer,
+    rescueDayIndexFor,
+    SAVED_VISIBLE_MS,
+    type RescueRequirementType,
+    type StreakRescueOffer,
+    type StreakRescueRow,
+} from '@/lib/streakRescue';
 
 /**
  * The user's live streak-rescue offer, if any. Server-owned lifecycle: the
@@ -92,6 +26,25 @@ export function rescueDayIndexFor(
  */
 export function useStreakRescue() {
     const queryClient = useQueryClient();
+    const revision = useActivityRevision();
+
+    // Nothing in the app invalidated ['streakRescue'] and this query sets no
+    // refetchInterval, so the ONLY refresh paths were a cold mount and a
+    // foreground return with the data already 60s stale. Completion is a server
+    // event — the DB trigger flips the row inside the session INSERT — so the
+    // moment it most needs to refetch is precisely the moment the user is
+    // standing in the gym with the app open and nothing tells the client.
+    // The revision bus already fires on session-completed, points-changed and
+    // every foreground, which is exactly the set of events that can complete a
+    // rescue. Compared against the revision seen at mount so remounting Home
+    // doesn't fire a redundant invalidate on every visit.
+    const seenRevision = useRef(revision);
+    useEffect(() => {
+        if (revision === seenRevision.current) return;
+        seenRevision.current = revision;
+        queryClient.invalidateQueries({ queryKey: ['streakRescue'] });
+    }, [revision, queryClient]);
+
     const { data, isPending, refetch } = useQuery({
         queryKey: ['streakRescue'],
         queryFn: async (): Promise<StreakRescueOffer | null> => {
