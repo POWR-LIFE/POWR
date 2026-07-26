@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { DayCaption, addDays } from '@/components/progress/DayCaption';
 import PointsBreakdownSheet, { PointsInfoDot } from '@/components/progress/PointsBreakdownSheet';
+import { StalePanel } from '@/components/progress/StalePanel';
 import { TimeStepper } from '@/components/progress/TimeStepper';
 import { type useWalkingProgress } from '@/hooks/useWalkingProgress';
 import {
@@ -236,22 +237,25 @@ function MovementWeekView({
 
   const [weekSteps, setWeekSteps] = useState<number[]>([0, 0, 0, 0, 0, 0, 0]);
   const [pastWeek, setPastWeek] = useState<WeekActivityData | null>(null);
+  const [weekLoaded, setWeekLoaded] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    setWeekSteps([0, 0, 0, 0, 0, 0, 0]);
-    setPastWeek(null);
+    // Deliberately NOT clearing weekSteps/pastWeek here: zeroing the array
+    // collapsed every bar to 0px for one round trip on each arrow tap. The old
+    // week stays up — dimmed, see StalePanel below — until the new one lands.
+    setWeekLoaded(false);
     if (offset === 0) {
       fetchWeeklyStepsPerDay().then(s => { if (!cancelled) setWeekSteps(s); }).catch(() => {});
       // Steps come from the live hook above, but the tappable bars also need the
       // per-day POWR split, which only the session query carries.
       fetchWeekActivityData('walking', weekAnchorMonday(0))
-        .then(d => { if (!cancelled) setPastWeek(d); })
-        .catch(() => {});
+        .then(d => { if (!cancelled) { setPastWeek(d); setWeekLoaded(true); } })
+        .catch(() => { if (!cancelled) setWeekLoaded(true); });
     } else {
       fetchWeekActivityData('walking', weekAnchorMonday(offset))
-        .then(d => { if (!cancelled) { setWeekSteps(d.stepsPerDay); setPastWeek(d); } })
-        .catch(() => {});
+        .then(d => { if (!cancelled) { setWeekSteps(d.stepsPerDay); setPastWeek(d); setWeekLoaded(true); } })
+        .catch(() => { if (!cancelled) setWeekLoaded(true); });
     }
     return () => { cancelled = true; };
   }, [offset]);
@@ -269,6 +273,7 @@ function MovementWeekView({
   const hasBest  = displaySteps[bestIdx] > 0;
 
   return (
+    <StalePanel stale={!weekLoaded && pastWeek !== null}>
     <View style={styles.tabPanel}>
       <View style={styles.bigMetricRow}>
         {isCurrent ? (
@@ -380,6 +385,7 @@ function MovementWeekView({
         <HealthAccessHint walking={walking} steps={todaySteps} remaining={remaining} />
       )}
     </View>
+    </StalePanel>
   );
 }
 
@@ -583,10 +589,11 @@ export function MovementTab({
   const [infoOpen, setInfoOpen] = useState(false);
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
 
-  // Reset loaded state when the lookback offset changes
+  // Invalidate on offset change, but KEEP monthData: clearing it dropped
+  // MovementMonthView to its "Loading monthly walking data..." placeholder,
+  // collapsing the panel and jumping the page on every arrow tap. See StalePanel.
   useEffect(() => {
     setMonthLoaded(false);
-    setMonthData(null);
   }, [offset]);
 
   // Load month data reactively
@@ -633,7 +640,9 @@ export function MovementTab({
         />
       )}
       {period === 'M' && (
-        <MovementMonthView data={monthData} onSelectDay={setSelectedDay} />
+        <StalePanel stale={!monthLoaded && monthData !== null}>
+          <MovementMonthView data={monthData} onSelectDay={setSelectedDay} />
+        </StalePanel>
       )}
 
       <PointsBreakdownSheet
