@@ -845,6 +845,7 @@ const AdminLayout = ({ children }) => {
     const [pendingAthletes, setPendingAthletes] = useState(0);
     const [pendingSubmissions, setPendingSubmissions] = useState(0);
     const [pendingGymRequests, setPendingGymRequests] = useState(0);
+    const [openTickets, setOpenTickets] = useState(0);
     const [collapsed, setCollapsed] = useState(() => localStorage.getItem('admin_sidebar') === '1');
 
     const toggleSidebar = () => setCollapsed(c => {
@@ -869,6 +870,13 @@ const AdminLayout = ({ children }) => {
             .select('id', { count: 'exact', head: true })
             .eq('status', 'pending')
             .then(({ count }) => setPendingGymRequests(count ?? 0));
+        // Anything not yet resolved/closed still needs a human — matches the
+        // open + in_progress pair the Overview dashboard counts.
+        supabase
+            .from('support_tickets')
+            .select('id', { count: 'exact', head: true })
+            .in('status', ['open', 'in_progress'])
+            .then(({ count }) => setOpenTickets(count ?? 0));
     }, [location.pathname]);
 
     const navItems = [
@@ -891,7 +899,7 @@ const AdminLayout = ({ children }) => {
         { label: 'Performance', path: '/admin/performance', icon: Activity      },
         { label: 'Redemptions', path: '/admin/redemptions', icon: Gift          },
         { label: 'Audit Log',   path: '/admin/audit',       icon: ScrollText    },
-        { label: 'Support',     path: '/admin/support',     icon: MessageSquare },
+        { label: 'Support',     path: '/admin/support',     icon: MessageSquare, badge: openTickets },
         { label: 'Broadcast',      path: '/admin/broadcast',      icon: Megaphone  },
         { label: 'Campaigns',      path: '/admin/campaigns',      icon: CalendarDays },
         { label: 'Notifications',  path: '/admin/notifications',  icon: Bell         },
