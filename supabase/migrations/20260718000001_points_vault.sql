@@ -275,7 +275,12 @@ select cron.schedule(
     url := 'https://wjvvujnicwkruaeibttt.supabase.co/functions/v1/release-vault-deposits',
     headers := jsonb_build_object(
       'Content-Type', 'application/json',
-      'x-vault-token', 'bcd9d7154baa751cd283705ad2a4ca507b4e8b81e281fb83'
+      -- Was a hardcoded x-vault-token literal, which leaked to the public repo
+      -- (GitGuardian 34903903). Redacted here and superseded by
+      -- 20260727120000_cron_tokens_to_vault.sql, which re-points this job at
+      -- the Vault-backed shared token; on a fresh replay this line already
+      -- creates the job in its final form.
+      'x-resolve-token', (select decrypted_secret from vault.decrypted_secrets where name = 'shared_resolve_token')
     ),
     body := '{}'::jsonb
   )
