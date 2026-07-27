@@ -1,8 +1,14 @@
 // @ts-nocheck — Deno runtime, not Node. Types enforced at deploy time.
 //
 // Vault cron tick. Invoked by the `vault-release-sweep` pg_cron job every
-// 15 minutes (see 20260718000001_points_vault.sql), guarded by the
-// x-vault-token shared secret which lives only in the cron job's headers.
+// 15 minutes (see 20260718000001_points_vault.sql), gated by the shared
+// x-resolve-token cron secret via the verify_resolve_token RPC (Vault) — the
+// same gate every other cron-invoked function uses. It previously used a
+// bespoke x-vault-token hardcoded both here and in the cron job; that literal
+// leaked to the public repo (GitGuardian 34903903), and anyone holding it
+// could force the sweep on demand — crediting deposits ahead of the grace
+// window and firing real vault_ready / vault_unlocked pushes. Vault-backed
+// tokens rotate with `vault.update_secret` alone: no redeploy, no 403 window.
 //
 // Three phases, all idempotent:
 //   1. Admin unlock events — process_vault_unlock_events() pulls targeted
@@ -23,8 +29,6 @@
 // them as already announced and cannot double-push the same maturity.
 import { createClient } from '@supabase/supabase-js';
 
-const VAULT_TOKEN = 'bcd9d7154baa751cd283705ad2a4ca507b4e8b81e281fb83';
-
 async function sendPush(userId: string, type: string, payload: Record<string, unknown>): Promise<boolean> {
   try {
     const res = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/send-push-notification`, {
@@ -44,12 +48,15 @@ async function sendPush(userId: string, type: string, payload: Record<string, un
 
 Deno.serve(async (req) => {
   if (req.method !== 'POST') return new Response('method not allowed', { status: 405 });
-  if (req.headers.get('x-vault-token') !== VAULT_TOKEN) return new Response('forbidden', { status: 403 });
 
   const supabase = createClient(
     Deno.env.get('SUPABASE_URL')!,
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
   );
+
+  const token = req.headers.get('x-resolve-token') ?? '';
+  const { data: valid } = await supabase.rpc('verify_resolve_token', { p_token: token });
+  if (valid !== true) return new Response('forbidden', { status: 403 });
 
   // ── Phase 1: admin unlock events ──
   let readyUsers = 0;

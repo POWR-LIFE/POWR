@@ -390,6 +390,45 @@ allow_dynamic_registration = false
 # HMAC check inside the function.
 verify_jwt = false
 
+[functions.terra-poll]
+# Invoked by pg_cron every 30 min (no Supabase user JWT) — same x-resolve-token
+# gate (verify_resolve_token, Vault) as the other cron functions. Was a bespoke
+# hardcoded x-poll-token until 2026-07-27. This stanza did not exist before, so
+# a CLI redeploy would silently have flipped the live function to the platform
+# default (verify_jwt=true) and 403'd every poll — pin it explicitly.
+verify_jwt = false
+
+[functions.notify-waitlist]
+# Invoked by the notify-slack-on-waitlist trigger via pg_net (no Supabase user
+# JWT). Security rests on the in-code gate: x-resolve-token (verify_resolve_token)
+# or a service-role bearer read from the environment. Until 2026-07-27 this ran
+# verify_jwt=true with no in-code auth at all, satisfied by the leaked
+# service_role JWT baked into the trigger definition.
+verify_jwt = false
+
+[functions.notify-new-user]
+# Invoked by the new-users trigger on public.profiles via pg_net (no Supabase
+# user JWT). Security rests on the in-function x-webhook-secret check against
+# DB_WEBHOOK_SECRET, which the trigger now sends from Vault.
+verify_jwt = false
+
+[functions.resolve-shared-challenges]
+# Invoked by pg_cron every 15 min (no Supabase user JWT) — same x-resolve-token
+# gate (verify_resolve_token) as the other cron functions. Live is already
+# false; without this stanza a CLI redeploy would flip it to the platform
+# default and 403 every tick.
+verify_jwt = false
+
+[functions.partner-reward-submission]
+# Called by the partner portal's public submission flow before any partner
+# session exists — authorisation happens inside the function.
+verify_jwt = false
+
+[functions.send-email]
+# Server-to-server mail relay, called by other edge functions and DB triggers
+# rather than by a logged-in user.
+verify_jwt = false
+
 [functions.samsung-health-oauth]
 # OAuth broker called during onboarding before the user has a session —
 # security rests on the PKCE code_verifier + one-time code from Samsung.
@@ -427,8 +466,9 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.release-vault-deposits]
-# Invoked by pg_cron every 15 minutes (no Supabase user JWT) — gated by the
-# x-vault-token shared secret inside the function, mirroring terra-poll.
+# Invoked by pg_cron every 15 minutes (no Supabase user JWT) — same
+# x-resolve-token gate (verify_resolve_token, Vault) as the other cron
+# functions. Was a bespoke hardcoded x-vault-token until 2026-07-27.
 verify_jwt = false
 
 [functions.notify-vault-grant]

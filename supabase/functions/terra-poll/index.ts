@@ -17,13 +17,17 @@
 //     Terra's auto-push gets fixed, this loop converges to a no-op.
 //
 // Security: verify_jwt=false (pg_net is not a Supabase user); access is gated
-// by the x-poll-token shared secret, which lives only in the cron job's
-// definition and here.
+// by the shared x-resolve-token cron secret, validated through the
+// verify_resolve_token RPC against Vault — the same gate every other
+// cron-invoked function uses. It previously used a bespoke x-poll-token
+// hardcoded both here and in the cron job; that literal leaked to the public
+// repo (GitGuardian 33876862), and a hardcoded constant cannot be rotated
+// without a redeploy. Vault can: both sides read it live, so
+// `vault.update_secret` rotates the gate with no deploy and no 403 window.
 import { createClient } from '@supabase/supabase-js';
 
 const DEV_ID = Deno.env.get('TERRA_DEV_ID')!;
 const API_KEY = Deno.env.get('TERRA_API_KEY')!;
-const POLL_TOKEN = '06190b613be962a04476271cb6dc8c7fbb0a13758edd178b';
 
 /** No sleep/activity webhook data for this long ⇒ ask Terra to resend the
  *  recent window. Set just ABOVE the 30-min cron cadence: a connection that
@@ -44,8 +48,6 @@ const STALE_RESOURCES = ['sleep', 'activity'];
  *  deliberately does NOT stamp last_event_at on daily deliveries, so this
  *  unconditional request can't mask a broken sleep/activity push. */
 const ALWAYS_RESOURCES = ['daily'];
-/** Everything the debug passthrough fetches. */
-const RESOURCES = [...STALE_RESOURCES, ...ALWAYS_RESOURCES];
 /** Safety cap per run; the cron retries every 30 min so backlog drains fast. */
 const MAX_CONNECTIONS_PER_RUN = 100;
 
@@ -55,33 +57,22 @@ function isoDate(d: Date): string {
 
 Deno.serve(async (req) => {
   if (req.method !== 'POST') return new Response('method not allowed', { status: 405 });
-  if (req.headers.get('x-poll-token') !== POLL_TOKEN) return new Response('forbidden', { status: 403 });
-
-  // Debug passthrough: { debug_user_id } fetches synchronously (to_webhook=false)
-  // and returns Terra's raw responses, so provider-side failures (which are
-  // swallowed by the async to_webhook=true path) become visible.
-  const body = await req.json().catch(() => ({}));
-  if (body?.debug_user_id) {
-    const start = isoDate(new Date(Date.now() - 2 * 24 * 60 * 60 * 1000));
-    const end = isoDate(new Date(Date.now() + 24 * 60 * 60 * 1000));
-    const out: Record<string, string> = {};
-    for (const r of RESOURCES) {
-      const url = `https://api.tryterra.co/v2/${r}?user_id=${encodeURIComponent(body.debug_user_id)}`
-        + `&start_date=${start}&end_date=${end}&to_webhook=false`;
-      try {
-        const res = await fetch(url, { headers: { 'dev-id': DEV_ID, 'x-api-key': API_KEY } });
-        out[r] = `${res.status} ${(await res.text().catch(() => '')).slice(0, 6000)}`;
-      } catch (e) {
-        out[r] = `threw: ${e?.message ?? e}`;
-      }
-    }
-    return new Response(JSON.stringify(out), { headers: { 'Content-Type': 'application/json' } });
-  }
 
   const supabase = createClient(
     Deno.env.get('SUPABASE_URL')!,
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
   );
+
+  const token = req.headers.get('x-resolve-token') ?? '';
+  const { data: valid } = await supabase.rpc('verify_resolve_token', { p_token: token });
+  if (valid !== true) return new Response('forbidden', { status: 403 });
+
+  // NB: a { debug_user_id } passthrough used to live here — it fetched Terra
+  // with to_webhook=false and returned the RAW provider response (6000 chars of
+  // sleep/activity) for any terra_user_id the caller named. Behind a leaked
+  // token that was an arbitrary-user health-data read, so it is gone rather
+  // than re-gated. Reach for the Terra dashboard or a local script holding
+  // TERRA_DEV_ID/TERRA_API_KEY if you need that visibility again.
 
   const { data: conns, error } = await supabase
     .from('terra_connections')

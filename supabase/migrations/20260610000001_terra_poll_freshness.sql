@@ -36,7 +36,12 @@ select cron.schedule(
     url := 'https://wjvvujnicwkruaeibttt.supabase.co/functions/v1/terra-poll',
     headers := jsonb_build_object(
       'Content-Type', 'application/json',
-      'x-poll-token', '06190b613be962a04476271cb6dc8c7fbb0a13758edd178b'
+      -- Was a hardcoded x-poll-token literal, which leaked to the public repo
+      -- (GitGuardian 33876862). Redacted here and superseded by
+      -- 20260727120000_cron_tokens_to_vault.sql, which re-points this job at
+      -- the Vault-backed shared token; on a fresh replay this line already
+      -- creates the job in its final form.
+      'x-resolve-token', (select decrypted_secret from vault.decrypted_secrets where name = 'shared_resolve_token')
     ),
     body := '{}'::jsonb
   )
