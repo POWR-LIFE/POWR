@@ -521,8 +521,14 @@ export default function PartnerIntegrationApi() {
             id: 'verify',
             title: 'Verify the integration',
             detail: 'Fire a signed test at everything you\'ve wired up and watch it come back green.',
-            summary: keyUsed ? 'Verified — your server is making live API calls.' : 'All test calls passed.',
-            done: keyUsed || connTestPassed,
+            // A key that has been called proves the key works, not that the
+            // integration does — step 1 tells partners to GET /ping, which
+            // used to tick this step while a broken webhook went unnoticed.
+            // Only a passed test or a genuinely delivered webhook counts.
+            summary: connTestPassed
+                ? 'All test calls passed.'
+                : `Verified — webhook delivered ${timeAgo(lastDelivered?.delivered_at)}.`,
+            done: connTestPassed || !!lastDelivered,
             render: renderVerify,
         },
     ];

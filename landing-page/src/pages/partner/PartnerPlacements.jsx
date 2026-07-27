@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
 import { Plus, Trash2, MapPin, ChevronLeft, Grid3x3, Sparkles, Eye, Footprints, Gift, Bell, Check, Circle } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
@@ -19,6 +19,7 @@ const blankForm = () => ({
     id: null,
     campaign_name: '',
     reward_id: '',
+    reward_fallback: null,
     center_lat: DEFAULT_CENTER.lat,
     center_lng: DEFAULT_CENTER.lng,
     cells: new Set(), // keys "z,x,y"
@@ -59,6 +60,9 @@ export default function PartnerPlacements() {
     const [cellCounts, setCellCounts] = useState({});
     const [stats, setStats] = useState({});
     const [rewards, setRewards] = useState([]);
+    // Tracked apart from the list itself so a rewards fetch that fails still
+    // settles the wizard instead of leaving it to speak for an empty array.
+    const [rewardsState, setRewardsState] = useState('loading'); // loading | ready | error
     const [form, setForm] = useState(null);
     const [step, setStep] = useState(0);
 
@@ -75,7 +79,8 @@ export default function PartnerPlacements() {
         ]);
         if (pl.error) toast.error('Failed to load placements');
         else setPlacements(pl.data || []);
-        if (rew.data) setRewards(rew.data);
+        if (rew.error) setRewardsState('error');
+        else { setRewards(rew.data || []); setRewardsState('ready'); }
 
         const ids = (pl.data || []).map((p) => p.id);
         if (ids.length) {
@@ -108,6 +113,10 @@ export default function PartnerPlacements() {
             id: p.id,
             campaign_name: p.campaign_name ?? '',
             reward_id: p.reward_id,
+            // The picker only knows what is live today, so keep the joined
+            // title: a reward switched off since this draft was written must
+            // still name itself rather than read back as nothing.
+            reward_fallback: p.rewards?.title ? { id: p.reward_id, title: p.rewards.title } : null,
             center_lat: center.lat,
             center_lng: center.lng,
             cells,
@@ -260,6 +269,13 @@ export default function PartnerPlacements() {
     if (form) {
         const labelCls = 'block text-[10px] uppercase tracking-[0.3em] font-black text-[#666] mb-3';
         const chip = (on) => `px-3.5 py-2 rounded-full text-[10px] font-black uppercase tracking-[0.15em] border transition ${on ? 'bg-[#E8D200] border-[#E8D200] text-[#080808]' : 'bg-white border-[#E6E6E1] text-[#888] hover:border-[#CCC]'}`;
+        // A lapsed reward stays selectable and named, marked for what it is.
+        const lapsed = form.reward_fallback && !rewards.some((r) => r.id === form.reward_fallback.id)
+            ? { ...form.reward_fallback, inactive: true }
+            : null;
+        const rewardChoices = lapsed ? [...rewards, lapsed] : rewards;
+        const rewardLabel = (r) => (r.inactive ? `${r.title} (inactive)` : r.title);
+        const chosenReward = rewardChoices.find((r) => r.id === form.reward_id);
         return (
             <form onSubmit={(e) => { e.preventDefault(); submitForReview(); }} className="py-10 animate-in fade-in slide-in-from-bottom-6 duration-700">
                 <button type="button" onClick={() => setForm(null)} className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.3em] text-[#999] hover:text-[#8a7600] transition-colors mb-8">
@@ -329,7 +345,7 @@ export default function PartnerPlacements() {
                             </div>
                             {step === 2 && (
                                 <dl className="border-t border-[#E6E6E1] pt-5 grid gap-4 text-sm">
-                                    <div><dt className="text-[10px] uppercase tracking-[0.2em] text-[#AAA] font-black">Reward</dt><dd className="text-[#222] font-semibold mt-1">{rewardById(form.reward_id)?.title || 'Not chosen'}</dd></div>
+                                    <div><dt className="text-[10px] uppercase tracking-[0.2em] text-[#AAA] font-black">Reward</dt><dd className="text-[#222] font-semibold mt-1">{chosenReward ? rewardLabel(chosenReward) : 'Not chosen'}</dd></div>
                                     <div><dt className="text-[10px] uppercase tracking-[0.2em] text-[#AAA] font-black">Area</dt><dd className="text-[#222] font-semibold mt-1">{form.cells.size ? `${form.cells.size} selected square${form.cells.size === 1 ? '' : 's'}` : 'Not chosen'}</dd></div>
                                     <div><dt className="text-[10px] uppercase tracking-[0.2em] text-[#AAA] font-black">Timing</dt><dd className="text-[#222] font-semibold mt-1">{form.starts_on || form.ends_on ? `${form.starts_on || 'Open'} to ${form.ends_on || 'Open'}` : 'Always on'}</dd></div>
                                 </dl>
@@ -347,14 +363,18 @@ export default function PartnerPlacements() {
                         </div>
                         <div>
                             <label className={labelCls}>Reward *</label>
-                            <select value={form.reward_id} onChange={(e) => setField({ reward_id: e.target.value })}
-                                className="w-full h-14 px-5 bg-[#F4F4F1] border border-[#E6E6E1] rounded-2xl text-sm text-[#1A1A1A] focus:border-[#E8D200]/50 outline-none transition-all">
+                            <select value={form.reward_id} onChange={(e) => setField({ reward_id: e.target.value })} disabled={rewardsState === 'loading'}
+                                className="w-full h-14 px-5 bg-[#F4F4F1] border border-[#E6E6E1] rounded-2xl text-sm text-[#1A1A1A] focus:border-[#E8D200]/50 outline-none transition-all disabled:opacity-50">
                                 <option value="">Choose a reward…</option>
-                                {rewards.map((r) => <option key={r.id} value={r.id}>{r.title}</option>)}
+                                {rewardChoices.map((r) => <option key={r.id} value={r.id}>{rewardLabel(r)}</option>)}
                             </select>
-                            {rewards.length === 0 && (
+                            {rewardsState === 'loading' ? (
+                                <p className="text-[11px] text-[#BBB] mt-2 font-medium">Checking which of your rewards are live…</p>
+                            ) : rewardsState === 'error' ? (
+                                <p className="text-[11px] text-[#BBB] mt-2 font-medium">Your rewards failed to load — refresh the page to try again.</p>
+                            ) : rewards.length === 0 ? (
                                 <p className="text-[11px] text-[#BBB] mt-2 font-medium">You have no live rewards yet — add one under My Rewards first.</p>
-                            )}
+                            ) : null}
                         </div>
                         </>}
 
@@ -455,7 +475,7 @@ export default function PartnerPlacements() {
                         Boost one of your rewards for members in a place, at the times that matter.
                     </p>
                 </div>
-                <button onClick={openCreate} className="flex items-center gap-3 h-12 px-7 bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.2em] rounded-full transition-all hover:translate-y-[-2px] shadow-lg shadow-[#E8D200]/20">
+                <button onClick={openCreate} disabled={loading} className="flex items-center gap-3 h-12 px-7 bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.2em] rounded-full transition-all hover:translate-y-[-2px] shadow-lg shadow-[#E8D200]/20 disabled:opacity-40 disabled:hover:translate-y-0">
                     <Plus size={15} /> New Placement
                 </button>
             </div>
@@ -466,14 +486,27 @@ export default function PartnerPlacements() {
                     <span className="text-[10px] uppercase tracking-[0.6em] text-[#666] font-black">Loading…</span>
                 </div>
             ) : placements.length === 0 ? (
-                <div className="py-28 text-center border border-dashed border-[#E0E0DB] rounded-3xl bg-white/40">
-                    <MapPin size={32} className="text-[#E6E6E1] mx-auto mb-4" />
-                    <p className="text-[10px] uppercase tracking-[0.4em] text-[#CCC] font-black mb-2">No placements yet</p>
-                    <p className="text-xs text-[#BBB] mb-6">Pick a reward and paint the area where it should shine.</p>
-                    <button onClick={openCreate} className="h-11 px-8 bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.2em] rounded-full hover:translate-y-[-2px] transition-all shadow-lg shadow-[#E8D200]/15">
-                        Create your first placement
-                    </button>
-                </div>
+                // A placement only ever boosts a live reward, so without one the
+                // wizard is a dead end — send them to get a reward live first.
+                rewardsState === 'ready' && rewards.length === 0 ? (
+                    <div className="py-28 text-center border border-dashed border-[#E0E0DB] rounded-3xl bg-white/40">
+                        <Gift size={32} className="text-[#E6E6E1] mx-auto mb-4" />
+                        <p className="text-[10px] uppercase tracking-[0.4em] text-[#CCC] font-black mb-2">No live rewards to boost</p>
+                        <p className="text-xs text-[#BBB] mb-6 max-w-sm mx-auto leading-relaxed">A placement puts one of your live rewards in front of members in a place. Get a reward live first, then come back and paint its area.</p>
+                        <Link to="/partner/rewards" className="inline-flex items-center h-11 px-8 bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.2em] rounded-full hover:translate-y-[-2px] transition-all shadow-lg shadow-[#E8D200]/15">
+                            Go to my rewards
+                        </Link>
+                    </div>
+                ) : (
+                    <div className="py-28 text-center border border-dashed border-[#E0E0DB] rounded-3xl bg-white/40">
+                        <MapPin size={32} className="text-[#E6E6E1] mx-auto mb-4" />
+                        <p className="text-[10px] uppercase tracking-[0.4em] text-[#CCC] font-black mb-2">No placements yet</p>
+                        <p className="text-xs text-[#BBB] mb-6">Pick a reward and paint the area where it should shine.</p>
+                        <button onClick={openCreate} className="h-11 px-8 bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.2em] rounded-full hover:translate-y-[-2px] transition-all shadow-lg shadow-[#E8D200]/15">
+                            Create your first placement
+                        </button>
+                    </div>
+                )
             ) : (
                 <div className="grid gap-3">
                     {placements.map((p) => {

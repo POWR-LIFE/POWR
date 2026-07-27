@@ -81,8 +81,13 @@ export default function PartnerSettings() {
                 className="flex items-center justify-between gap-6 bg-white border border-[#E6E6E1] rounded-3xl p-8 mb-6 hover:border-[#E8D200]/40 transition-all group">
                 <div>
                     <h2 className="text-[10px] uppercase tracking-[0.5em] font-black text-[#BBBBBB] mb-3">Delivery Method</h2>
-                    <div className="text-sm font-bold text-[#1A1A1A]">
-                        {methodMeta(deliveryMethod)?.label ?? 'Not chosen yet'}
+                    {/* undefined means the resolve is still in flight (or fell
+                        over); only an explicit null means nothing was ever
+                        chosen — a live partner must never read "Not chosen yet". */}
+                    <div className={`text-sm font-bold ${deliveryMethod === undefined ? 'text-[#BBB]' : 'text-[#1A1A1A]'}`}>
+                        {deliveryMethod === undefined
+                            ? 'Checking…'
+                            : (methodMeta(deliveryMethod)?.label ?? 'Not chosen yet')}
                     </div>
                     <p className="text-[10px] text-[#BBB] mt-1.5">How codes reach members when they redeem — view status or switch method.</p>
                 </div>

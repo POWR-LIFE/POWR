@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Ticket, Upload, FileText, Download, X, ChevronDown, Check, Search, CalendarClock, Edit2, AlertTriangle, RefreshCw } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { supabase } from '../../lib/supabase';
@@ -43,10 +44,14 @@ export default function PartnerPromoCodes() {
     const [rewards, setRewards] = useState([]);
     const [availByReward, setAvailByReward] = useState({});
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState(false);
     const [selectedId, setSelectedId] = useState(null);
 
     // Code-pool state for the selected reward
     const [codeStats, setCodeStats] = useState(null);
+    // Tracked separately from the counts themselves so a failed count still
+    // settles the page instead of holding it on the loading state forever.
+    const [statsLoaded, setStatsLoaded] = useState(false);
     const [codeWorkspaceMode, setCodeWorkspaceMode] = useState('manage');
     const [schemeExample, setSchemeExample] = useState('');
     const [generateCount, setGenerateCount] = useState(100);
@@ -113,12 +118,20 @@ export default function PartnerPromoCodes() {
 
     const fetchRewards = async () => {
         setLoading(true);
+        setLoadError(false);
         // Code pools only apply to digital, non-affiliate rewards (mirrors admin gating).
-        const { data } = await supabase
+        const { data, error } = await supabase
             .from('rewards')
             .select('id, title, image_url, active, reward_kind, integration_type')
             .ilike('brand_name', brand)
             .order('created_at', { ascending: false });
+        // A dropped request or an RLS refusal must not read as "you have no
+        // rewards" — a stocked brand would be told to go and create one.
+        if (error) {
+            setLoadError(true);
+            setLoading(false);
+            return;
+        }
         const eligible = (data ?? []).filter(
             r => r.reward_kind !== 'physical' && r.integration_type !== 'AFFILIATE'
         );
@@ -162,6 +175,7 @@ export default function PartnerPromoCodes() {
         } catch {
             setExpiryOutlook(null);
         }
+        setStatsLoaded(true);
     };
 
     const refreshCodePool = async (rewardId, page = 0, status = codePoolStatus, search = codeSearch) => {
@@ -192,6 +206,10 @@ export default function PartnerPromoCodes() {
         setBulkExpiry('');
         setEditingExpiryId(null);
         setExpiryOutlook(null);
+        // Drop the outgoing reward's counts, or an empty pool wears the
+        // previous one's totals until the new ones land.
+        setCodeStats(null);
+        setStatsLoaded(false);
         setCodeWorkspaceMode('manage');
         // Reuse the scheme hint shared with the admin manager.
         const savedScheme = localStorage.getItem(`powr_scheme_${reward.id}`);
@@ -421,6 +439,10 @@ export default function PartnerPromoCodes() {
     const poolTotal = codeStats
         ? codeStats.available + codeStats.reserved + codeStats.used + codeStats.expired
         : 0;
+    // Rows in the pool prove nothing — only codes a member could actually be
+    // handed count as loaded, so a used-up or date-lapsed pool still asks to
+    // be topped up rather than reading as ready to go live.
+    const availableCodes = codeStats?.available ?? 0;
     const stageSteps = [
         {
             label: 'Pick a reward',
@@ -429,17 +451,17 @@ export default function PartnerPromoCodes() {
         },
         {
             label: 'Load codes',
-            done: poolTotal > 0,
-            hint: 'Generate a batch right here or upload the codes from your store — either takes under a minute.',
+            done: availableCodes > 0,
+            hint: poolTotal > 0
+                ? 'The pool has run dry — every code is used or expired. Add a fresh batch so members can keep redeeming.'
+                : 'Generate a batch right here or upload the codes from your store — either takes under a minute.',
         },
         {
             label: 'Members redeem',
-            done: poolTotal > 0 && (codeStats?.available ?? 0) > 0 && !!selectedReward?.active,
-            hint: !selectedReward?.active && poolTotal > 0
-                ? 'Codes are ready — once this reward goes live in the app, members draw from the pool automatically.'
-                : poolTotal > 0 && (codeStats?.available ?? 0) === 0
-                    ? 'The pool has run dry — top it up so members can keep redeeming.'
-                    : 'POWR hands a code to each member automatically when they redeem — nothing else to set up.',
+            done: availableCodes > 0 && !!selectedReward?.active,
+            hint: selectedReward?.active
+                ? 'POWR hands a code to each member automatically when they redeem — nothing else to set up.'
+                : 'Codes are ready — once this reward goes live in the app, members draw from the pool automatically.',
         },
     ];
 
@@ -478,18 +500,47 @@ export default function PartnerPromoCodes() {
                 )}
             </div>
 
-            {rewards.length === 0 ? (
+            {loadError ? (
+                <div className="bg-white border border-[#E6E6E1] rounded-3xl py-20 text-center">
+                    <AlertTriangle size={26} className="text-[#DDDDDD] mx-auto mb-4" />
+                    <p className="text-[11px] uppercase tracking-[0.4em] text-[#CCCCCC] font-black">Couldn't load your rewards</p>
+                    <p className="text-xs text-[#BBBBBB] mt-2">Your code pools are safe — the list just didn't come back this time.</p>
+                    <button
+                        type="button"
+                        onClick={fetchRewards}
+                        className="mt-6 inline-flex items-center gap-2 h-10 px-6 bg-white border border-[#E6E6E1] rounded-full text-[10px] font-black uppercase tracking-[0.2em] text-[#666] hover:border-[#E8D200]/40 hover:text-[#8a7600] transition-all"
+                    >
+                        <RefreshCw size={12} /> Try again
+                    </button>
+                </div>
+            ) : rewards.length === 0 ? (
                 <div className="bg-white border border-[#E6E6E1] rounded-3xl py-20 text-center">
                     <Ticket size={28} className="text-[#E6E6E1] mx-auto mb-4" />
                     <p className="text-[11px] uppercase tracking-[0.4em] text-[#BBBBBB] font-black">No digital rewards yet</p>
-                    <p className="text-[11px] text-[#CCCCCC] font-black mt-2">Create a digital reward first — its code pool will appear here.</p>
+                    <p className="text-xs text-[#BBBBBB] mt-2">Code pools hang off a digital reward — create one and its pool appears here.</p>
+                    <Link
+                        to="/partner/rewards"
+                        className="mt-6 inline-flex items-center h-10 px-6 bg-[#E8D200] text-[#080808] text-[9px] font-black uppercase tracking-[0.2em] rounded-full hover:brightness-95 transition-all"
+                    >
+                        Create a reward
+                    </Link>
                 </div>
             ) : (
                 <>
-                    <StageStrip
-                        steps={stageSteps}
-                        doneHint="This reward is live — POWR hands a code to each member automatically. Reconcile used codes or top up the pool anytime below."
-                    />
+                    {/* The counts are a second round-trip after the reward
+                        list, so hold the strip rather than paint step 2 as
+                        un-started to a brand with a full pool. */}
+                    {statsLoaded ? (
+                        <StageStrip
+                            steps={stageSteps}
+                            doneHint="This reward is live — POWR hands a code to each member automatically. Reconcile used codes or top up the pool anytime below."
+                        />
+                    ) : (
+                        <div className="mb-8 p-5 px-6 bg-white border border-[#E6E6E1] rounded-3xl flex items-center gap-3">
+                            <div className="w-5 h-5 border border-[#E8D200]/20 border-t-[#E8D200] rounded-full animate-spin" />
+                            <span className="text-[10px] uppercase tracking-[0.4em] text-[#BBBBBB] font-black">Checking this pool</span>
+                        </div>
+                    )}
 
                     {/* Reward selector — dropdown */}
                     <div className="mb-8 relative max-w-2xl" ref={selectorRef}>
@@ -560,13 +611,18 @@ export default function PartnerPromoCodes() {
                                     <div className="flex items-center gap-4">
                                         <Ticket size={16} className="text-[#8a7600]" />
                                         <span className="text-[10px] uppercase tracking-[0.4em] text-[#333333] font-black">Code Pool</span>
-                                        {codeStats && (
+                                        {statsLoaded ? (codeStats && (
                                             <div className="flex items-center gap-5 ml-2 text-[10px] uppercase tracking-[0.3em] font-black">
                                                 <span className="text-[#10B981]">{codeStats.available} avail</span>
                                                 <span className="text-[#8a7600]">{codeStats.reserved} reserved</span>
                                                 <span className="text-[#555555]">{codeStats.used} used</span>
                                                 <span className="text-[#999999]">{codeStats.expired} exp</span>
                                             </div>
+                                        )) : (
+                                            <span className="flex items-center gap-2 ml-2 text-[10px] uppercase tracking-[0.3em] text-[#BBBBBB] font-black">
+                                                <span className="w-3 h-3 border border-[#E8D200]/20 border-t-[#E8D200] rounded-full animate-spin" />
+                                                Counting
+                                            </span>
                                         )}
                                         {expiryOutlook?.expiringSoon > 0 && (
                                             <span className="flex items-center gap-2 px-3 py-1.5 bg-[#F59E0B]/10 border border-[#F59E0B]/30 rounded-full text-[9px] uppercase tracking-[0.25em] text-[#B45309] font-black">

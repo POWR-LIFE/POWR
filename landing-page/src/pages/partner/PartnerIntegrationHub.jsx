@@ -17,20 +17,38 @@ export default function PartnerIntegrationHub() {
     const { partnerData, deliveryMethod, updateDeliveryMethod } = useAuth();
     const brand = partnerData?.brand_name;
 
-    // First-run = no method chosen (and none inferable server-side).
-    const firstRun = deliveryMethod === null;
-
     const [statuses, setStatuses] = useState(null); // { api, shopify, manual } status lines
+    const [statusesLoaded, setStatusesLoaded] = useState(false);
     const [choosing, setChoosing] = useState(null);
 
+    // Loaded is tracked apart from the payload so a failed fetch still
+    // settles the page instead of leaving every dot unreadable.
     const fetchStatuses = useCallback(async () => {
         if (!brand) return;
-        setStatuses(await fetchMethodStatuses(brand));
+        setStatusesLoaded(false);
+        try { setStatuses(await fetchMethodStatuses(brand)); }
+        catch { /* dots stay neutral rather than claiming "not set up" */ }
+        finally { setStatusesLoaded(true); }
     }, [brand]);
 
     useEffect(() => { fetchStatuses(); }, [fetchStatuses]);
 
+    // deliveryMethod is tri-state — undefined until the resolve lands, and
+    // permanently so if it fails. The header copy, the button labels and the
+    // current-method badge all hinge on it, so hold the page until it is
+    // known, then read the framing off what is actually connected: a brand
+    // wired up nowhere has nothing to switch away from.
+    const firstRun = deliveryMethod === null
+        || (deliveryMethod === undefined && !DELIVERY_METHODS.some(m => statuses?.[m.id]?.configured));
+    const resolved = deliveryMethod !== undefined || statusesLoaded;
+
     if (!partnerData) return null;
+
+    if (!resolved) return (
+        <div className="py-16 flex items-center justify-center">
+            <div className="w-8 h-8 border-2 border-[#E8D200]/20 border-t-[#E8D200] rounded-full animate-spin" />
+        </div>
+    );
 
     const choose = async (method) => {
         if (deliveryMethod === method.id) { navigate(method.path); return; }
@@ -118,7 +136,16 @@ export default function PartnerIntegrationHub() {
 
                             <div className="mt-auto">
                                 <div className="flex items-center gap-2.5 mb-5">
-                                    <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${status?.configured ? 'bg-emerald-500' : 'bg-[#D5D5D0]'}`} />
+                                    {/* Amber is a warning, so it belongs only to
+                                        the method this brand actually picked —
+                                        the other two are roads not taken, not
+                                        unfinished work. */}
+                                    <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${
+                                        !statuses ? 'bg-[#D5D5D0]'
+                                        : status?.configured ? 'bg-emerald-500'
+                                        : deliveryMethod === method.id ? 'bg-amber-400'
+                                        : 'bg-[#D5D5D0]'
+                                    }`} />
                                     <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[#AAA] truncate">
                                         {status?.line ?? '…'}
                                     </span>
