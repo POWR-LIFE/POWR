@@ -241,6 +241,9 @@ export default function PartnerRewards() {
                 supabase.from('reward_submissions').select('*').ilike('brand_name', brand).order('created_at', { ascending: false }),
                 supabase.from('brand_reward_limits').select('reward_limit').eq('brand_key', (brand ?? '').trim().toLowerCase()),
             ]);
+            if (r.error) throw r.error;
+            if (s.error) throw s.error;
+            if (lim.error) throw lim.error;
             setRewards(r.data ?? []);
             setSubmissions(s.data ?? []);
             setRewardLimit(lim.data?.[0]?.reward_limit ?? DEFAULT_REWARD_LIMIT);
