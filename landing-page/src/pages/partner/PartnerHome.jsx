@@ -566,7 +566,7 @@ export default function PartnerHome() {
                             {claims.length > 0 && (
                                 <div className="mt-7 pt-4 border-t border-[#E6E6E1]">
                                     <span className="text-[9px] uppercase tracking-[0.4em] font-black text-[#BBBBBB]">
-                                        Last 30 days{truncated ? ' · your most recent 1,000 claims' : ''}
+                                        Last 30 days{truncated ? ' · showing up to 1,000 claims' : ''}
                                     </span>
                                     <div className="relative h-[26px] mt-4">
                                         <div className="absolute left-0 right-0 bottom-[6px] h-[1px] bg-[#DEDED8]" />
