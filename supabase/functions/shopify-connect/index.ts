@@ -548,6 +548,18 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Has the full loop ever run for this brand — a code minted through the
+    // Shopify rails that came back marked used? The portal used to answer
+    // this from component state, so proof evaporated on every reload. Only
+    // PARTNER_API codes are minted (pool uploads can't prove minting), and
+    // 'used' is only ever set by the orders webhook reconciling a real spend.
+    const { count: provenCount } = await admin
+      .from('redemption_codes')
+      .select('id, rewards!inner(brand_name)', { count: 'exact', head: true })
+      .eq('source', 'PARTNER_API')
+      .eq('status', 'used')
+      .ilike('rewards.brand_name', brand);
+
     return json({
       ok: true,
       connected: shop?.status === 'connected',
@@ -556,6 +568,7 @@ Deno.serve(async (req) => {
       scopes: shop?.scopes ?? null,
       connected_at: shop?.connected_at ?? null,
       mappings: mappings ?? [],
+      loop_proven: (provenCount ?? 0) > 0,
       health,
     });
   }

@@ -84,6 +84,11 @@ export default function PartnerSupport() {
         }
     };
 
+    // A ticket row existing tells us nothing about whether anyone is waiting:
+    // the admin inbox resolves a ticket the moment it replies, so the count
+    // that matters is the one still sitting with us.
+    const awaiting = tickets.filter(t => t.status === 'open' || t.status === 'in_progress').length;
+
     return (
         <div className="py-16 animate-in fade-in slide-in-from-bottom-6 duration-700 max-w-[1160px]">
             {/* Header */}
@@ -176,11 +181,15 @@ export default function PartnerSupport() {
             <div className="bg-white border border-[#E6E6E1] rounded-3xl p-8">
                 <div className="flex items-center justify-between mb-6">
                     <h2 className="text-[10px] uppercase tracking-[0.5em] font-black text-[#BBBBBB]">Your Tickets</h2>
-                    {tickets.length > 0 && (
+                    {awaiting > 0 ? (
                         <span className="text-[9px] uppercase tracking-[0.3em] font-black text-[#999] bg-[#F4F4F1] border border-[#E6E6E1] rounded-full px-3 py-1">
-                            {tickets.filter(t => t.status === 'open' || t.status === 'in_progress').length} awaiting reply
+                            {awaiting} awaiting reply
                         </span>
-                    )}
+                    ) : tickets.length > 0 ? (
+                        <span className="text-[9px] uppercase tracking-[0.3em] font-black text-[#16A34A] bg-green-500/10 border border-green-500/30 rounded-full px-3 py-1">
+                            All caught up
+                        </span>
+                    ) : null}
                 </div>
 
                 {loading ? (

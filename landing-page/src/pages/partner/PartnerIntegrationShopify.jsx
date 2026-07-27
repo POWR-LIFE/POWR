@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Activity, CheckCircle2, RefreshCw } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Activity, CheckCircle2, RefreshCw, Ticket } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
 import { useAuth } from '../../App';
@@ -18,6 +19,7 @@ export default function PartnerIntegrationShopify() {
     const [brandRewards, setBrandRewards] = useState([]);
     const [mappingBusy, setMappingBusy] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [statusError, setStatusError] = useState(null);
 
     // Connection self-test: mint one labelled code, then watch it flip to
     // 'used' when it's spent at the store's checkout.
@@ -44,25 +46,35 @@ export default function PartnerIntegrationShopify() {
     useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current); }, []);
 
     // Shopify connection state + the brand's rewards (for discount mapping).
+    // allSettled so one transient failure can't blank the whole page. A
+    // failed status stays unknown rather than becoming "not connected" — a
+    // cold edge function must never send a live store back through OAuth.
     const refresh = useCallback(async () => {
         if (!brand) return;
-        try {
-            const [status, { data: rewards }] = await Promise.all([
-                callShopify('status', brand),
-                supabase.from('rewards')
-                    .select('id, title, active, integration_type')
-                    .ilike('brand_name', brand)
-                    .order('created_at', { ascending: false }),
-            ]);
-            setShopify(status);
-            setBrandRewards(rewards ?? []);
-            if (status?.connected) {
-                const d = await callShopify('list_discounts', brand);
-                setDiscounts(d.discounts ?? []);
+        const [statusRes, rewardsRes] = await Promise.allSettled([
+            callShopify('status', brand),
+            supabase.from('rewards')
+                .select('id, title, active, integration_type')
+                .ilike('brand_name', brand)
+                .order('created_at', { ascending: false }),
+        ]);
+        if (rewardsRes.status === 'fulfilled') setBrandRewards(rewardsRes.value.data ?? []);
+        if (statusRes.status === 'rejected') {
+            console.error('shopify status failed', statusRes.reason);
+            setStatusError(statusRes.reason?.message ?? 'network error');
+            toast.error("Couldn't reach Shopify — your store's connection is unchanged, retry in a moment");
+        } else {
+            setShopify(statusRes.value);
+            setStatusError(null);
+            if (statusRes.value?.connected) {
+                try {
+                    const d = await callShopify('list_discounts', brand);
+                    setDiscounts(d.discounts ?? []);
+                } catch (err) {
+                    console.error('shopify discounts failed', err);
+                    setDiscounts(null);
+                }
             }
-        } catch (err) {
-            setShopify((prev) => prev ?? { connected: false });
-            console.error('shopify status failed', err);
         }
         setLoading(false);
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -138,15 +150,42 @@ export default function PartnerIntegrationShopify() {
 
     const connected = !!shopify?.connected;
     const mappings = shopify?.mappings ?? [];
+    // Never reached Shopify at all — distinct from a store we know is
+    // disconnected, and the difference decides what we tell the partner.
+    const statusUnknown = !shopify && !!statusError;
+
+    // Only cloneable template discounts can back minting. With none of them
+    // and nothing already mapped, the reward rows would be a column of dead
+    // selects, so the step names the missing piece instead.
+    const cloneableDiscounts = (discounts ?? []).filter(d => d.cloneable);
+    const noDiscountsToPick = discounts !== null && cloneableDiscounts.length === 0 && mappings.length === 0;
 
     // Mapping deliberately includes NOT-yet-live rewards: partners (and app
     // reviewers) wire up delivery BEFORE a reward goes live in the app, so
     // members can never hit a live-but-unmapped reward. Live ones sort first.
     const mappableRewards = [...brandRewards].sort((a, b) => Number(b.active) - Number(a.active));
 
+    // A live reward with no discount behind it cannot mint, so step 2 is only
+    // finished once every one of them is covered — "1 of 5 mapped" was
+    // ticking the step and collapsing the four rows still to do.
+    const liveRewards = brandRewards.filter(r => r.active);
+    const unmappedLive = liveRewards.filter(r => !mappings.some(m => m.reward_id === r.id));
+    const mappedLiveCount = liveRewards.length - unmappedLive.length;
+
     // ── Step contents ─────────────────────────────────────────────
 
-    const renderConnect = () => !connected ? (
+    const renderConnect = () => statusUnknown ? (
+        <div className="p-5 bg-amber-500/10 border border-amber-500/30 rounded-2xl">
+            <p className="text-[11px] font-bold text-amber-600 leading-relaxed">
+                Couldn't reach Shopify just now, so we can't show your store's status. Nothing has
+                changed at your end — if you were connected, you still are, and minting carries on.
+            </p>
+            <button type="button" className={BTN_GHOST + ' mt-4'}
+                onClick={() => { setLoading(true); refresh(); }}>
+                <span className="flex items-center gap-1.5"><RefreshCw size={11} /> Retry</span>
+            </button>
+        </div>
+    ) : !connected ? (
         <>
             {shopify?.status === 'uninstalled' && (
                 <div className="mb-6 p-4 bg-amber-500/10 border border-amber-500/30 rounded-2xl text-[11px] font-bold text-amber-600">
@@ -196,11 +235,44 @@ export default function PartnerIntegrationShopify() {
     );
 
     const renderMappings = () => !connected ? (
-        <p className="text-[12px] text-[#AAA]">Connect your store first — your Shopify discounts will appear here to choose from.</p>
+        <p className="text-[12px] text-[#AAA]">{statusUnknown
+            ? 'Waiting on your store — retry in step 1 and your Shopify discounts will appear here to choose from.'
+            : 'Connect your store first — your Shopify discounts will appear here to choose from.'}</p>
     ) : (
         <>
+            {discounts === null && (
+                <div className="mb-6 p-4 bg-amber-500/10 border border-amber-500/30 rounded-2xl flex items-center justify-between gap-4 flex-wrap">
+                    <p className="text-[11px] font-bold text-amber-600 leading-relaxed flex-1 min-w-[240px]">
+                        Couldn't load the discounts in your store, so the pickers below stay locked. Any
+                        mapping you already have keeps minting.
+                    </p>
+                    <button type="button" className={BTN_GHOST + ' shrink-0'} onClick={refresh}>
+                        <span className="flex items-center gap-1.5"><RefreshCw size={11} /> Retry</span>
+                    </button>
+                </div>
+            )}
             {mappableRewards.length === 0 ? (
-                <p className="text-[12px] text-[#AAA]">No rewards yet — create one in My Rewards and it appears here. It doesn't need to be live in the app to wire up minting.</p>
+                <div className="flex items-center justify-between gap-6 flex-wrap">
+                    <p className="text-[12px] text-[#AAA] leading-relaxed max-w-xl">
+                        No rewards yet — create one in My Rewards and it appears here. It doesn't need to be live in the app to wire up minting.
+                    </p>
+                    <Link to="/partner/rewards" className={BTN_GHOST + ' flex items-center shrink-0'}>
+                        Create a reward
+                    </Link>
+                </div>
+            ) : noDiscountsToPick ? (
+                <div className="py-16 text-center">
+                    <Ticket size={26} className="text-[#E6E6E1] mx-auto mb-4" />
+                    <p className="text-[10px] uppercase tracking-[0.4em] text-[#CCCCCC] font-black">No discounts to clone</p>
+                    <p className="text-xs text-[#BBBBBB] mt-3 leading-relaxed max-w-sm mx-auto">
+                        We couldn't find a discount in your store that POWR can copy. Create one in
+                        Shopify — percentage or fixed amount off, no code needed — then refresh and it
+                        appears here for every reward.
+                    </p>
+                    <button type="button" className={BTN_GHOST + ' mt-6'} onClick={refresh}>
+                        <span className="flex items-center gap-1.5"><RefreshCw size={11} /> Refresh</span>
+                    </button>
+                </div>
             ) : (
                 <div className="space-y-3">
                     {mappableRewards.map((r) => {
@@ -227,7 +299,7 @@ export default function PartnerIntegrationShopify() {
                                     className="h-11 px-4 bg-white border border-[#E6E6E1] rounded-xl text-[12px] text-[#1A1A1A] outline-none focus:border-[#E8D200]/50 max-w-[240px]"
                                 >
                                     <option value="">No minting</option>
-                                    {(discounts ?? []).filter(d => d.cloneable).map(d => (
+                                    {cloneableDiscounts.map(d => (
                                         <option key={d.gid} value={d.gid}>{d.title}</option>
                                     ))}
                                     {/* A mapping can point at a discount the picker hides
@@ -243,16 +315,18 @@ export default function PartnerIntegrationShopify() {
                     })}
                 </div>
             )}
-            <p className="text-[10px] text-[#BBB] mt-4 leading-relaxed">
-                Create the template discount in Shopify (percentage or fixed amount) — POWR clones it
-                into a single-use code per redemption. Codes confirm as used automatically when spent
-                at your checkout.
-            </p>
+            {!noDiscountsToPick && (
+                <p className="text-[10px] text-[#BBB] mt-4 leading-relaxed">
+                    Create the template discount in Shopify (percentage or fixed amount) — POWR clones it
+                    into a single-use code per redemption. Codes confirm as used automatically when spent
+                    at your checkout.
+                </p>
+            )}
         </>
     );
 
     const renderTest = () => !connected ? (
-        <p className="text-[12px] text-[#AAA]">Connect your store first.</p>
+        <p className="text-[12px] text-[#AAA]">{statusUnknown ? 'Waiting on your store — retry in step 1.' : 'Connect your store first.'}</p>
     ) : mappings.length === 0 ? (
         <p className="text-[12px] text-[#AAA]">Map a reward to a discount in step 2 first.</p>
     ) : (
@@ -308,9 +382,13 @@ export default function PartnerIntegrationShopify() {
         {
             id: 'map',
             title: 'Pick a discount for each reward',
-            detail: 'Create a template discount in Shopify, then choose it here — POWR clones it into a fresh single-use code per redemption.',
-            summary: `${mappings.length} reward${mappings.length === 1 ? '' : 's'} minting from your discounts`,
-            done: connected && mappings.length > 0,
+            detail: connected && unmappedLive.length > 0
+                ? `${unmappedLive.length} live reward${unmappedLive.length === 1 ? '' : 's'} still ${unmappedLive.length === 1 ? 'has' : 'have'} no discount behind ${unmappedLive.length === 1 ? 'it' : 'them'} — pick one for each below.`
+                : 'Create a template discount in Shopify, then choose it here — POWR clones it into a fresh single-use code per redemption.',
+            summary: liveRewards.length > 0
+                ? `${mappedLiveCount} of ${liveRewards.length} live reward${liveRewards.length === 1 ? '' : 's'} minting from your discounts`
+                : `${mappings.length} reward${mappings.length === 1 ? '' : 's'} minting from your discounts`,
+            done: connected && mappings.length > 0 && unmappedLive.length === 0,
             render: renderMappings,
         },
         {
@@ -318,7 +396,10 @@ export default function PartnerIntegrationShopify() {
             title: 'Test the full loop',
             detail: 'Mint a real test code and spend it at your own checkout — proves minting and order tracking end to end.',
             summary: 'Full loop proven — minted, spent at checkout, confirmed back to POWR.',
-            done: testCode?.status === 'used',
+            // Server-derived so the proof survives a reload; the local test
+            // code still counts for the moment it flips, before the next
+            // status refresh catches up.
+            done: testCode?.status === 'used' || !!shopify?.loop_proven,
             optional: 'Recommended',
             render: renderTest,
         },
@@ -353,7 +434,19 @@ export default function PartnerIntegrationShopify() {
                    otherwise. Sticky works because PartnerLayout's main is the
                    scroll container (same trick as the API page's rail). */}
             <aside className="xl:order-2 xl:w-[340px] xl:shrink-0 xl:sticky xl:top-6">
-            {!loading && (
+            {/* An unreachable status tells us nothing about the store, so the
+                rail says exactly that rather than reporting three 'off' rows
+                as if the integration were idle. */}
+            {!loading && statusUnknown && (
+                <SectionCard icon={Activity} title="Store Health">
+                    <HealthItem
+                        state="warn"
+                        label="Store connection"
+                        detail="Couldn't reach Shopify just now — retry in step 1 to see your store's health."
+                    />
+                </SectionCard>
+            )}
+            {!loading && !statusUnknown && (
                 <SectionCard icon={Activity} title="Store Health">
                     <HealthItem
                         state={!connected ? 'off' : shopify.health && !shopify.health.token_ok ? 'warn' : 'ok'}

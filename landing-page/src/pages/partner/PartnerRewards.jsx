@@ -164,6 +164,12 @@ export default function PartnerRewards() {
 
     const brand = partnerData?.brand_name;
 
+    // The rewards, the submissions and the brand's cap all arrive together in
+    // fetchAll, so nothing on this page can assert a number until it lands —
+    // the tab counts, the N/N counter and the phone rail would otherwise show
+    // the empty defaults ("0/2 rewards") and then snap to the truth.
+    const ready = !!brand && !loading;
+
     // Live validation for the open form. errors is keyed by field; a step is
     // "complete" when none of its required fields have an error.
     const errors = fieldErrors(form);
@@ -181,6 +187,9 @@ export default function PartnerRewards() {
     ).length;
     const rewardCount = rewards.length + pendingNewCount;
     const atLimit = rewardCount >= rewardLimit;
+
+    // Nothing live doesn't mean nothing done — a brand can be waiting on us.
+    const reviewCount = submissions.filter(s => s.status === 'pending').length;
 
     // The previewed item: while the form is open, the phone mirrors the form
     // live; otherwise it shows the clicked row in the active tab (or first row).
@@ -222,17 +231,24 @@ export default function PartnerRewards() {
         if (formOpen) { setStepIndex(0); setShowErrors(false); setLastSavedAt(null); }
     }, [formOpen]);
 
+    // Settled in a finally so a failed fetch still releases the page instead of
+    // pinning every surface on its loading state forever.
     const fetchAll = async () => {
         setLoading(true);
-        const [r, s, lim] = await Promise.all([
-            supabase.from('rewards').select('*').ilike('brand_name', brand).order('created_at', { ascending: false }),
-            supabase.from('reward_submissions').select('*').ilike('brand_name', brand).order('created_at', { ascending: false }),
-            supabase.from('brand_reward_limits').select('reward_limit').eq('brand_key', (brand ?? '').trim().toLowerCase()),
-        ]);
-        setRewards(r.data ?? []);
-        setSubmissions(s.data ?? []);
-        setRewardLimit(lim.data?.[0]?.reward_limit ?? DEFAULT_REWARD_LIMIT);
-        setLoading(false);
+        try {
+            const [r, s, lim] = await Promise.all([
+                supabase.from('rewards').select('*').ilike('brand_name', brand).order('created_at', { ascending: false }),
+                supabase.from('reward_submissions').select('*').ilike('brand_name', brand).order('created_at', { ascending: false }),
+                supabase.from('brand_reward_limits').select('reward_limit').eq('brand_key', (brand ?? '').trim().toLowerCase()),
+            ]);
+            setRewards(r.data ?? []);
+            setSubmissions(s.data ?? []);
+            setRewardLimit(lim.data?.[0]?.reward_limit ?? DEFAULT_REWARD_LIMIT);
+        } catch (e) {
+            console.error('[PartnerRewards]', e);
+        } finally {
+            setLoading(false);
+        }
     };
 
     // Rewards with a change request already in review (block duplicate edit requests)
@@ -809,39 +825,71 @@ export default function PartnerRewards() {
                             className={`h-10 px-6 rounded-[1.5rem] text-[10px] font-black uppercase tracking-[0.2em] transition-all flex items-center gap-2 ${tab === t.key ? 'bg-[#E8D200] text-[#080808]' : 'text-[#555] hover:text-[#222]'}`}
                         >
                             {t.label}
-                            <span className={`px-2 py-0.5 rounded-full text-[9px] font-black ${tab === t.key ? 'bg-[#1A1A1A]/10' : 'bg-[#F4F4F1]'}`}>{t.count}</span>
+                            <span className={`px-2 py-0.5 rounded-full text-[9px] font-black ${tab === t.key ? 'bg-[#1A1A1A]/10' : 'bg-[#F4F4F1]'}`}>{ready ? t.count : '—'}</span>
                         </button>
                     ))}
                 </div>
+                {/* The count, the cap and which job the button does all come
+                    from the same fetch — showing any of them early tells an
+                    at-limit brand it can submit, and the wizard then refuses. */}
                 <div className="flex items-center gap-4">
-                    <span className={`text-[10px] font-black uppercase tracking-[0.2em] ${atLimit ? 'text-[#8a7600]' : 'text-[#BBB]'}`}>
-                        {rewardCount}/{rewardLimit} rewards{atLimit ? ' · limit reached' : ''}
-                    </span>
-                    <button
-                        onClick={openNew}
-                        className="flex items-center gap-3 h-12 px-7 bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.2em] rounded-full transition-all hover:translate-y-[-2px] shadow-lg shadow-[#E8D200]/20"
-                    >
-                        {atLimit ? <><Mail size={15} /> Request More</> : <><Plus size={15} /> Submit Reward</>}
-                    </button>
+                    {ready ? (
+                        <>
+                            <span className={`text-[10px] font-black uppercase tracking-[0.2em] ${atLimit ? 'text-[#8a7600]' : 'text-[#BBB]'}`}>
+                                {rewardCount}/{rewardLimit} rewards{atLimit ? ' · limit reached' : ''}
+                            </span>
+                            <button
+                                onClick={openNew}
+                                className="flex items-center gap-3 h-12 px-7 bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.2em] rounded-full transition-all hover:translate-y-[-2px] shadow-lg shadow-[#E8D200]/20"
+                            >
+                                {atLimit ? <><Mail size={15} /> Request More</> : <><Plus size={15} /> Submit Reward</>}
+                            </button>
+                        </>
+                    ) : (
+                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[#BBB]">Checking your rewards…</span>
+                    )}
                 </div>
             </div>
 
             {/* Content */}
             <div className="bg-white border border-[#E6E6E1] rounded-3xl overflow-hidden">
-                {loading ? (
+                {!ready ? (
                     <div className="flex items-center justify-center py-24">
                         <div className="w-8 h-8 border-2 border-[#E8D200]/20 border-t-[#E8D200] rounded-full animate-spin" />
                     </div>
                 ) : tab === 'live' ? (
                     rewards.length === 0 ? (
-                        <div className="py-24 text-center">
-                            <Award size={32} className="text-[#E6E6E1] mx-auto mb-4" />
-                            <p className="text-[10px] uppercase tracking-[0.4em] text-[#CCCCCC] font-black mb-2">No live rewards yet</p>
-                            <p className="text-xs text-[#BBBBBB] mb-6">Submit a reward and our team will review and publish it.</p>
-                            <button onClick={openNew} className="h-11 px-8 bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.2em] rounded-full hover:translate-y-[-2px] transition-all shadow-lg shadow-[#E8D200]/15">
-                                Submit Your First Reward
-                            </button>
-                        </div>
+                        /* A brand waiting on approval has already done the thing
+                           the first-run panel asks for, and its submissions may
+                           have filled the cap — so the prompt would only open the
+                           limit modal. Tell it where its work actually is. */
+                        submissions.length > 0 ? (
+                            <div className="py-24 text-center">
+                                <Clock size={32} className="text-[#E6E6E1] mx-auto mb-4" />
+                                <p className="text-[10px] uppercase tracking-[0.4em] text-[#CCCCCC] font-black mb-2">
+                                    {reviewCount > 0 ? 'With POWR for review' : 'Nothing live yet'}
+                                </p>
+                                <p className="text-xs text-[#BBBBBB] mb-6">
+                                    {reviewCount > 0
+                                        ? `${reviewCount} submission${reviewCount === 1 ? '' : 's'} in review — approved rewards appear here.`
+                                        : 'Your work in progress sits on the Submissions tab — finish it and send it for review.'}
+                                </p>
+                                <button onClick={() => setTab('submissions')} className="h-10 px-6 bg-white border border-[#E6E6E1] rounded-full text-[10px] font-black uppercase tracking-[0.2em] text-[#666] hover:border-[#E8D200]/40 hover:text-[#8a7600] transition-all">
+                                    View submissions
+                                </button>
+                            </div>
+                        ) : (
+                            <div className="py-24 text-center">
+                                <Award size={32} className="text-[#E6E6E1] mx-auto mb-4" />
+                                <p className="text-[10px] uppercase tracking-[0.4em] text-[#CCCCCC] font-black mb-2">No live rewards yet</p>
+                                <p className="text-xs text-[#BBBBBB] mb-6">Submit a reward and our team will review and publish it.</p>
+                                {!atLimit && (
+                                    <button onClick={openNew} className="h-11 px-8 bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.2em] rounded-full hover:translate-y-[-2px] transition-all shadow-lg shadow-[#E8D200]/15">
+                                        Submit Your First Reward
+                                    </button>
+                                )}
+                            </div>
+                        )
                     ) : (
                         <table className="w-full text-left border-collapse">
                             <thead>
@@ -970,9 +1018,33 @@ export default function PartnerRewards() {
             {/* Sticky phone preview — mirrors the form while editing, else the selected row */}
             <div className="hidden lg:block self-start sticky top-6">
                 <div>
-                    {preview ? (
+                    {/* "Select a reward" is only true once we know there are
+                        rows to select — before that it's a guess, and for a
+                        brand with none it's an instruction it can't follow. */}
+                    {!ready ? (
+                        <div className="border-2 border-dashed border-[#E6E6E1] rounded-3xl p-12 flex items-center justify-center">
+                            <div className="w-8 h-8 border-2 border-[#E8D200]/20 border-t-[#E8D200] rounded-full animate-spin" />
+                        </div>
+                    ) : preview ? (
                         <RewardAppPreview key={formOpen ? 'form' : `${tab}-${selectedItem?.id}`} pageTheme="light" {...preview} />
+                    ) : rewards.length + submissions.length === 0 ? (
+                        <div className="border-2 border-dashed border-[#E6E6E1] rounded-3xl p-12 text-center">
+                            <Eye size={24} className="text-[#DDDDDD] mx-auto mb-4" />
+                            <p className="text-[10px] uppercase tracking-[0.4em] text-[#CCCCCC] font-black leading-relaxed mb-3">
+                                Nothing to preview yet
+                            </p>
+                            <p className="text-[11px] text-[#BBBBBB] leading-relaxed mb-6">
+                                Rewards appear here exactly as members see them in the app.
+                            </p>
+                            {!atLimit && (
+                                <button type="button" onClick={openNew} className="inline-flex items-center gap-2 h-10 px-6 bg-white border border-[#E6E6E1] rounded-full text-[10px] font-black uppercase tracking-[0.2em] text-[#666] hover:border-[#E8D200]/40 hover:text-[#8a7600] transition-all">
+                                    <Plus size={13} /> Submit a reward
+                                </button>
+                            )}
+                        </div>
                     ) : (
+                        // The brand does have rows — this tab just has none of
+                        // them, so the instruction is still the right one.
                         <div className="border-2 border-dashed border-[#E6E6E1] rounded-3xl p-12 text-center">
                             <Eye size={24} className="text-[#DDDDDD] mx-auto mb-4" />
                             <p className="text-[10px] uppercase tracking-[0.4em] text-[#CCCCCC] font-black leading-relaxed">

@@ -1,15 +1,18 @@
 import React, { useEffect, useState } from 'react';
-import { Gift, TrendingUp, BarChart3 } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Gift, TrendingUp, BarChart3, ChevronRight } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../App';
 
 const fmt = (n) => (n ?? 0).toLocaleString();
 
 export default function PartnerRedemptions() {
-    const { partnerData } = useAuth();
+    const { partnerData, deliveryMethod } = useAuth();
     const [redemptions, setRedemptions] = useState([]);
     const [rewards, setRewards] = useState([]);
+    const [everRedeemed, setEverRedeemed] = useState(false);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState(false);
     const [range, setRange] = useState('30'); // days
 
     const brand = partnerData?.brand_name;
@@ -21,38 +24,62 @@ export default function PartnerRedemptions() {
 
     const fetchData = async () => {
         setLoading(true);
+        setLoadError(false);
         const since = new Date();
         since.setDate(since.getDate() - Number(range));
 
-        // Reward ids first — supabase-js .in() needs a concrete array
-        const { data: rwds } = await supabase
-            .from('rewards')
-            .select('id, title, powr_cost, active')
-            .ilike('brand_name', brand);
-        const rewardIds = (rwds ?? []).map(r => r.id);
+        try {
+            // Reward ids first — supabase-js .in() needs a concrete array.
+            // It resolves rather than throws on a query error, so the error
+            // has to be raised by hand: an RLS or PostgREST failure returns
+            // no rows, and silently reads as "this brand has no rewards".
+            const { data: rwds, error: rwdsError } = await supabase
+                .from('rewards')
+                .select('id, title, powr_cost, active')
+                .ilike('brand_name', brand);
+            if (rwdsError) throw rwdsError;
+            const rewardIds = (rwds ?? []).map(r => r.id);
 
-        const { data: redems } = rewardIds.length
-            ? await supabase
-                .from('redemptions')
-                .select('id, redeemed_at, reward_id, rewards(title)')
-                .in('reward_id', rewardIds)
-                .gte('redeemed_at', since.toISOString())
-                .order('redeemed_at', { ascending: false })
-                .limit(200)
-            : { data: [] };
+            // The selected window can hide a brand's entire history, so
+            // "have they ever redeemed" is a separate unbounded probe — it
+            // decides first-run, which the range must never fake.
+            const [redems, ever] = rewardIds.length
+                ? await Promise.all([
+                    supabase
+                        .from('redemptions')
+                        .select('id, redeemed_at, reward_id, rewards(title)')
+                        .in('reward_id', rewardIds)
+                        .gte('redeemed_at', since.toISOString())
+                        .order('redeemed_at', { ascending: false })
+                        .limit(200),
+                    supabase
+                        .from('redemptions')
+                        .select('id')
+                        .in('reward_id', rewardIds)
+                        .limit(1),
+                ])
+                : [{ data: [] }, { data: [] }];
 
-        setRewards(rwds ?? []);
-        setRedemptions(redems ?? []);
-        setLoading(false);
+            setRewards(rwds ?? []);
+            setRedemptions(redems.data ?? []);
+            setEverRedeemed((ever.data ?? []).length > 0);
+        } catch (e) {
+            console.error('[PartnerRedemptions]', e);
+            setLoadError(true);
+        } finally {
+            setLoading(false);
+        }
     };
 
-    // Aggregate by reward
+    // Aggregate by reward — rewards nobody claimed are dropped rather than
+    // padding the chart with empty bars.
     const byReward = rewards.map(r => ({
         ...r,
         count: redemptions.filter(x => x.reward_id === r.id).length,
-    })).sort((a, b) => b.count - a.count);
+    })).filter(r => r.count > 0).sort((a, b) => b.count - a.count);
 
     const total = redemptions.length;
+    const activeCount = rewards.filter(r => r.active).length;
 
     // Group by day for the last N days
     const dayBuckets = {};
@@ -67,6 +94,18 @@ export default function PartnerRedemptions() {
         { value: '30', label: 'Last 30 days' },
         { value: '90', label: 'Last 90 days' },
     ];
+    // Named window, so an empty panel says which stretch of time it means
+    const rangeLabel = (RANGE_OPTIONS.find(o => o.value === range)?.label ?? `Last ${range} days`).toLowerCase();
+
+    // Both the figures and the delivery method have to land before anything
+    // is decided — a grid of zeros that turns into an empty state reads as
+    // broken.
+    const ready = !loading && deliveryMethod !== undefined;
+    // Analytics earn their place once there is something to measure: a live
+    // reward, or a redemption at some point in the brand's history. Counting
+    // rows in the selected window instead would show a brand with two years
+    // of claims a "create your first reward" page for picking Last 7 days.
+    const firstRun = ready && !loadError && activeCount === 0 && !everRedeemed;
 
     return (
         <div className="py-16 animate-in fade-in slide-in-from-bottom-6 duration-700">
@@ -79,18 +118,62 @@ export default function PartnerRedemptions() {
                     </div>
                     <h1 className="text-5xl font-light tracking-tighter text-[#1A1A1A]">Redemptions</h1>
                 </div>
-                <select
-                    value={range}
-                    onChange={e => setRange(e.target.value)}
-                    className="h-12 px-6 bg-white border border-[#E6E6E1] rounded-2xl text-[11px] font-black uppercase tracking-[0.2em] text-[#555] outline-none focus:border-[#E8D200]/30 cursor-pointer"
-                >
-                    {RANGE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
+                {/* Nothing to narrow down before the first reward is live */}
+                {!firstRun && (
+                    <select
+                        value={range}
+                        onChange={e => setRange(e.target.value)}
+                        className="h-12 px-6 bg-white border border-[#E6E6E1] rounded-2xl text-[11px] font-black uppercase tracking-[0.2em] text-[#555] outline-none focus:border-[#E8D200]/30 cursor-pointer"
+                    >
+                        {RANGE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </select>
+                )}
             </div>
 
-            {loading ? (
+            {!ready ? (
                 <div className="flex items-center justify-center py-32">
                     <div className="w-8 h-8 border-2 border-[#8B5CF6]/20 border-t-[#8B5CF6] rounded-full animate-spin" />
+                </div>
+            ) : loadError ? (
+                <div className="bg-white border border-[#E6E6E1] rounded-3xl py-16 px-8 text-center">
+                    <BarChart3 size={28} className="text-[#E6E6E1] mx-auto mb-5" />
+                    <p className="text-[10px] uppercase tracking-[0.4em] text-[#CCCCCC] font-black">Couldn't load your figures</p>
+                    <p className="text-xs text-[#BBBBBB] mt-3 max-w-sm mx-auto leading-relaxed">
+                        Something went wrong fetching your redemptions. Nothing on your account has changed.
+                    </p>
+                    <button
+                        type="button"
+                        onClick={fetchData}
+                        className="mt-8 h-10 px-6 bg-white border border-[#E6E6E1] rounded-full text-[10px] font-black uppercase tracking-[0.2em] text-[#666] hover:border-[#E8D200]/40 hover:text-[#8a7600] transition-all"
+                    >
+                        Try again
+                    </button>
+                </div>
+            ) : firstRun ? (
+                <div className="bg-white border border-[#E6E6E1] rounded-3xl py-16 px-8 text-center">
+                    <Gift size={28} className="text-[#E6E6E1] mx-auto mb-5" />
+                    <p className="text-[10px] uppercase tracking-[0.4em] text-[#CCCCCC] font-black">No redemptions to report</p>
+                    <p className="text-xs text-[#BBBBBB] mt-3 max-w-sm mx-auto leading-relaxed">
+                        {rewards.length === 0
+                            ? 'You have not created a reward yet. Once one is live, every member claim lands here with daily totals and a breakdown by reward.'
+                            : 'None of your rewards are live yet, so there is nothing for members to claim. Your figures start building the moment one is approved.'}
+                    </p>
+                    <div className="flex flex-wrap items-center justify-center gap-3 mt-8">
+                        <Link
+                            to="/partner/rewards"
+                            className="inline-flex items-center gap-2 h-10 px-6 bg-[#E8D200] text-[#080808] text-[9px] font-black uppercase tracking-[0.2em] rounded-full hover:brightness-95 transition-all"
+                        >
+                            {rewards.length === 0 ? 'Create your first reward' : 'View my rewards'} <ChevronRight size={12} />
+                        </Link>
+                        {deliveryMethod === null && (
+                            <Link
+                                to="/partner/integration"
+                                className="inline-flex items-center h-10 px-6 bg-white border border-[#E6E6E1] rounded-full text-[10px] font-black uppercase tracking-[0.2em] text-[#666] hover:border-[#E8D200]/40 hover:text-[#8a7600] transition-all"
+                            >
+                                Choose delivery method
+                            </Link>
+                        )}
+                    </div>
                 </div>
             ) : (
                 <>
@@ -117,7 +200,7 @@ export default function PartnerRedemptions() {
                                 <BarChart3 size={18} className="text-[#E8D200]" />
                                 <span className="text-[10px] uppercase tracking-[0.4em] font-black text-[#BBBBBB]">Rewards</span>
                             </div>
-                            <div className="text-4xl font-light tracking-tighter text-[#1A1A1A]">{rewards.filter(r => r.active).length}</div>
+                            <div className="text-4xl font-light tracking-tighter text-[#1A1A1A]">{activeCount}</div>
                             <div className="text-[10px] uppercase tracking-[0.3em] text-[#BBB] font-black mt-1">live</div>
                         </div>
                     </div>
@@ -162,7 +245,22 @@ export default function PartnerRedemptions() {
                         {redemptions.length === 0 ? (
                             <div className="py-16 text-center">
                                 <Gift size={28} className="text-[#E6E6E1] mx-auto mb-4" />
-                                <p className="text-[10px] uppercase tracking-[0.4em] text-[#CCCCCC] font-black">No redemptions in this period</p>
+                                <p className="text-[10px] uppercase tracking-[0.4em] text-[#CCCCCC] font-black">No redemptions in the {rangeLabel}</p>
+                                <p className="text-xs text-[#BBBBBB] mt-3 max-w-sm mx-auto leading-relaxed">
+                                    {activeCount > 0
+                                        ? 'Your live rewards are still in the app — claims will appear here as members make them. Widen the range to see older activity.'
+                                        : 'You have nothing live at the moment, so there is nothing for members to claim.'}
+                                </p>
+                                <Link
+                                    to="/partner/rewards"
+                                    className={`inline-flex items-center gap-2 h-10 px-6 mt-8 rounded-full text-[9px] font-black uppercase tracking-[0.2em] transition-all ${
+                                        activeCount > 0
+                                            ? 'bg-white border border-[#E6E6E1] text-[#666] hover:border-[#E8D200]/40 hover:text-[#8a7600]'
+                                            : 'bg-[#E8D200] text-[#080808] hover:brightness-95'
+                                    }`}
+                                >
+                                    {activeCount > 0 ? 'View my rewards' : 'Get a reward live'} <ChevronRight size={12} />
+                                </Link>
                             </div>
                         ) : (
                             <div className="overflow-x-auto">

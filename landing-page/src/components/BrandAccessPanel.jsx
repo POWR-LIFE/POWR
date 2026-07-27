@@ -16,7 +16,12 @@ export default function BrandAccessPanel({ brandName, partnerView = false, selfU
     const toast = useToast();
     const [users, setUsers] = useState([]);
     const [invites, setInvites] = useState([]);
-    const [loading, setLoading] = useState(false);
+    // Starts loading: the list is fetched on mount, and an empty team is a
+    // claim we can only make once the round-trip has actually succeeded
+    // (`loaded` is tracked apart from the payload so a failure settles the
+    // panel into a retry rather than into "no users").
+    const [loading, setLoading] = useState(true);
+    const [loaded, setLoaded] = useState(false);
     const [creatingLink, setCreatingLink] = useState(false);
     const [removingId, setRemovingId] = useState(null);
     const [copiedId, setCopiedId] = useState(null);
@@ -27,13 +32,15 @@ export default function BrandAccessPanel({ brandName, partnerView = false, selfU
     const setupUrl = (token) => `${window.location.origin}/partner/setup/${token}`;
 
     const fetchAccess = async (b) => {
-        if (!b) { setUsers([]); setInvites([]); return; }
+        if (!b) { setUsers([]); setInvites([]); setLoading(false); return; }
         setLoading(true);
+        setLoaded(false);
         try {
             const data = await invokeFn('manage-partner-user', { action: 'list', brand_name: b });
             if (!data?.ok) throw new Error(data?.error ?? 'Failed to load');
             setUsers(data.users ?? []);
             setInvites(data.invites ?? []);
+            setLoaded(true);
         } catch (err) {
             toast.error(err.message);
         } finally {
@@ -193,6 +200,20 @@ export default function BrandAccessPanel({ brandName, partnerView = false, selfU
                 {loading ? (
                     <div className="flex items-center justify-center py-8">
                         <div className="w-6 h-6 border-2 border-[#E8D200]/20 border-t-[#E8D200] rounded-full animate-spin" />
+                    </div>
+                ) : !loaded ? (
+                    <div className="py-8 text-center border border-dashed border-[#E6E6E1] rounded-2xl">
+                        <p className="text-[10px] uppercase tracking-[0.4em] text-[#CCCCCC] font-black">
+                            {partnerView ? "Couldn't load your team" : "Couldn't load portal users"}
+                        </p>
+                        <p className="text-[11px] text-[#BBBBBB] mt-2">We couldn't reach the server just then — nothing has changed.</p>
+                        <button
+                            type="button"
+                            onClick={() => fetchAccess(brandName)}
+                            className="inline-flex items-center justify-center h-10 px-6 mt-4 bg-white border border-[#E6E6E1] rounded-full text-[10px] font-black uppercase tracking-[0.2em] text-[#666] hover:border-[#E8D200]/40 hover:text-[#8a7600] transition-all"
+                        >
+                            Try again
+                        </button>
                     </div>
                 ) : (
                     <>
