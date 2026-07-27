@@ -406,6 +406,29 @@ verify_jwt = false
 # service_role JWT baked into the trigger definition.
 verify_jwt = false
 
+[functions.notify-new-user]
+# Invoked by the new-users trigger on public.profiles via pg_net (no Supabase
+# user JWT). Security rests on the in-function x-webhook-secret check against
+# DB_WEBHOOK_SECRET, which the trigger now sends from Vault.
+verify_jwt = false
+
+[functions.resolve-shared-challenges]
+# Invoked by pg_cron every 15 min (no Supabase user JWT) — same x-resolve-token
+# gate (verify_resolve_token) as the other cron functions. Live is already
+# false; without this stanza a CLI redeploy would flip it to the platform
+# default and 403 every tick.
+verify_jwt = false
+
+[functions.partner-reward-submission]
+# Called by the partner portal's public submission flow before any partner
+# session exists — authorisation happens inside the function.
+verify_jwt = false
+
+[functions.send-email]
+# Server-to-server mail relay, called by other edge functions and DB triggers
+# rather than by a logged-in user.
+verify_jwt = false
+
 [functions.samsung-health-oauth]
 # OAuth broker called during onboarding before the user has a session —
 # security rests on the PKCE code_verifier + one-time code from Samsung.
