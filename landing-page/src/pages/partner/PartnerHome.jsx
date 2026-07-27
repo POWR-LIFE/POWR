@@ -74,9 +74,21 @@ export default function PartnerHome() {
                 // supabase-js resolves rather than throws on a query error, so
                 // every error is raised by hand — otherwise an RLS failure
                 // returns no rows and reads as "this brand has nothing".
+                const [rewardRes, subRes, limitRes] = await Promise.all([
+                    supabase.from('rewards')
+                        .select('id, title, active, reward_kind, integration_type, promo_code, brand_name, description, partner_blurb, offer, value_label, discount_type, discount_value, powr_cost, image_url, hero_image_url, hero_video_url, created_at')
+                        .ilike('brand_name', brand)
+                        .order('created_at', { ascending: false }),
+                    supabase.from('reward_submissions')
+                        .select('id, title, status, partner_feedback, updated_at')
+                        .ilike('brand_name', brand),
+                    supabase.from('brand_reward_limits')
+                        .select('reward_limit').eq('brand_key', brand.trim().toLowerCase()),
+                ]);
                 if (rewardRes.error) throw rewardRes.error;
                 if (subRes.error) throw subRes.error;
                 if (limitRes.error) throw limitRes.error;
+
                 const rewardRows = rewardRes.data ?? [];
                 const rewardIds = rewardRows.map(r => r.id);
 
