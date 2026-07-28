@@ -845,6 +845,7 @@ const AdminLayout = ({ children }) => {
     const [pendingAthletes, setPendingAthletes] = useState(0);
     const [pendingSubmissions, setPendingSubmissions] = useState(0);
     const [pendingGymRequests, setPendingGymRequests] = useState(0);
+    const [pendingSlotRequests, setPendingSlotRequests] = useState(0);
     const [openTickets, setOpenTickets] = useState(0);
     const [collapsed, setCollapsed] = useState(() => localStorage.getItem('admin_sidebar') === '1');
 
@@ -870,6 +871,11 @@ const AdminLayout = ({ children }) => {
             .select('id', { count: 'exact', head: true })
             .eq('status', 'pending')
             .then(({ count }) => setPendingGymRequests(count ?? 0));
+        supabase
+            .from('featured_slot_requests')
+            .select('id', { count: 'exact', head: true })
+            .eq('status', 'pending')
+            .then(({ count }) => setPendingSlotRequests(count ?? 0));
         // Anything not yet resolved/closed still needs a human — matches the
         // open + in_progress pair the Overview dashboard counts.
         supabase
@@ -885,7 +891,7 @@ const AdminLayout = ({ children }) => {
         { label: 'Gym Requests',path: '/admin/gym-requests',       icon: Building2,      badge: pendingGymRequests },
         { label: 'Rewards',     path: '/admin/rewards',            icon: Award           },
         { label: 'Submissions', path: '/admin/reward-submissions', icon: Inbox,          badge: pendingSubmissions },
-        { label: 'Featured',    path: '/admin/featured',           icon: Star            },
+        { label: 'Featured',    path: '/admin/featured',           icon: Star,           badge: pendingSlotRequests },
         { label: 'Placements',  path: '/admin/placements',         icon: MapPin          },
         { label: 'Challenges',  path: '/admin/challenges',         icon: Target          },
         { label: 'Users',       path: '/admin/users',              icon: Users           },
