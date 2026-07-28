@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
-import { Plus, Trash2, MapPin, ChevronLeft, Grid3x3, Sparkles, Eye, Footprints, Gift, Bell, Check, Circle } from 'lucide-react';
+import { Plus, Trash2, MapPin, ChevronLeft, Grid3x3, Sparkles, Eye, Footprints, Gift, Bell, Check, Circle, HelpCircle, X } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
 import { useAuth } from '../../App';
 import PlacementGridMap from '../../components/PlacementGridMap';
+import PlacementExplainer from '../../components/PlacementExplainer';
 import {
     ACTIVITIES, DOW, DEFAULT_CENTER, GOLD, RED,
     cellKey, parseKey, tileNW, tileBounds, boundsIntersect, buildWeekMask, mergeCells,
@@ -65,6 +66,9 @@ export default function PartnerPlacements() {
     const [rewardsState, setRewardsState] = useState('loading'); // loading | ready | error
     const [form, setForm] = useState(null);
     const [step, setStep] = useState(0);
+    // The explainer carries itself in the zero state; with campaigns on the page
+    // it's on demand, so the list stays the point of the screen.
+    const [showHow, setShowHow] = useState(false);
 
     const fetchData = async () => {
         if (!brand) return;
@@ -75,7 +79,7 @@ export default function PartnerPlacements() {
                 .select('id, campaign_name, status, review_note, active, reward_id, starts_at, ends_at, active_days, active_hour_start, active_hour_end, target_activities, max_impressions_per_user_per_day, created_at, rewards!inner(title, brand_name, image_url)')
                 .ilike('rewards.brand_name', brand)
                 .order('created_at', { ascending: false }),
-            supabase.from('rewards').select('id, title, image_url').ilike('brand_name', brand).eq('active', true).order('title'),
+            supabase.from('rewards').select('id, title, image_url, powr_cost').ilike('brand_name', brand).eq('active', true).order('title'),
         ]);
         if (pl.error) toast.error('Failed to load placements');
         else setPlacements(pl.data || []);
@@ -474,6 +478,12 @@ export default function PartnerPlacements() {
                     <p className="text-[#888] text-[11px] max-w-xl font-black uppercase tracking-[0.35em] leading-relaxed">
                         Boost one of your rewards for members in a place, at the times that matter.
                     </p>
+                    {placements.length > 0 && (
+                        <button onClick={() => setShowHow((v) => !v)} className="flex items-center gap-2 mt-5 text-[10px] font-black uppercase tracking-[0.2em] text-[#999] hover:text-[#8a7600] transition-colors">
+                            {showHow ? <X size={13} /> : <HelpCircle size={13} />}
+                            {showHow ? 'Hide' : 'How placements work'}
+                        </button>
+                    )}
                 </div>
                 <button onClick={openCreate} disabled={loading} className="flex items-center gap-3 h-12 px-7 bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.2em] rounded-full transition-all hover:translate-y-[-2px] shadow-lg shadow-[#E8D200]/20 disabled:opacity-40 disabled:hover:translate-y-0">
                     <Plus size={15} /> New Placement
@@ -486,29 +496,43 @@ export default function PartnerPlacements() {
                     <span className="text-[10px] uppercase tracking-[0.6em] text-[#666] font-black">Loading…</span>
                 </div>
             ) : placements.length === 0 ? (
-                // A placement only ever boosts a live reward, so without one the
-                // wizard is a dead end — send them to get a reward live first.
-                rewardsState === 'ready' && rewards.length === 0 ? (
-                    <div className="py-28 text-center border border-dashed border-[#E0E0DB] rounded-3xl bg-white/40">
-                        <Gift size={32} className="text-[#E6E6E1] mx-auto mb-4" />
-                        <p className="text-[10px] uppercase tracking-[0.4em] text-[#CCC] font-black mb-2">No live rewards to boost</p>
-                        <p className="text-xs text-[#BBB] mb-6 max-w-sm mx-auto leading-relaxed">A placement puts one of your live rewards in front of members in a place. Get a reward live first, then come back and paint its area.</p>
-                        <Link to="/partner/rewards" className="inline-flex items-center h-11 px-8 bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.2em] rounded-full hover:translate-y-[-2px] transition-all shadow-lg shadow-[#E8D200]/15">
-                            Go to my rewards
-                        </Link>
-                    </div>
-                ) : (
-                    <div className="py-28 text-center border border-dashed border-[#E0E0DB] rounded-3xl bg-white/40">
-                        <MapPin size={32} className="text-[#E6E6E1] mx-auto mb-4" />
-                        <p className="text-[10px] uppercase tracking-[0.4em] text-[#CCC] font-black mb-2">No placements yet</p>
-                        <p className="text-xs text-[#BBB] mb-6">Pick a reward and paint the area where it should shine.</p>
-                        <button onClick={openCreate} className="h-11 px-8 bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.2em] rounded-full hover:translate-y-[-2px] transition-all shadow-lg shadow-[#E8D200]/15">
-                            Create your first placement
-                        </button>
-                    </div>
-                )
+                // Nothing to list yet, so the page has to explain the product
+                // instead of just naming it — the explainer IS the zero state.
+                <div className="space-y-4">
+                    <PlacementExplainer brandName={brand} rewardTitle={rewards[0]?.title} logoUrl={rewards[0]?.image_url} points={rewards[0]?.powr_cost} />
+                    {/* A placement only ever boosts a live reward, so without one
+                        the wizard is a dead end — send them to get one live first. */}
+                    {rewardsState === 'ready' && rewards.length === 0 ? (
+                        <div className="flex flex-wrap items-center gap-6 bg-white border border-[#E6E6E1] rounded-3xl px-8 py-7">
+                            <Gift size={24} className="text-[#8a7600] shrink-0" />
+                            <div className="flex-1 min-w-[240px]">
+                                <p className="text-sm font-bold text-[#1A1A1A]">One thing first — you need a live reward</p>
+                                <p className="text-xs text-[#999] mt-1 leading-relaxed">A placement always boosts a reward you already run. Get one live, then come back and paint its area.</p>
+                            </div>
+                            <Link to="/partner/rewards" className="inline-flex items-center h-11 px-8 bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.2em] rounded-full hover:translate-y-[-2px] transition-all shadow-lg shadow-[#E8D200]/15">
+                                Go to my rewards
+                            </Link>
+                        </div>
+                    ) : (
+                        <div className="flex flex-wrap items-center gap-6 bg-white border border-[#E6E6E1] rounded-3xl px-8 py-7">
+                            <MapPin size={24} className="text-[#8a7600] shrink-0" />
+                            <div className="flex-1 min-w-[240px]">
+                                <p className="text-sm font-bold text-[#1A1A1A]">Ready when you are</p>
+                                <p className="text-xs text-[#999] mt-1 leading-relaxed">Pick a reward, paint the area where it should shine, choose the hours. You can save a draft and come back.</p>
+                            </div>
+                            <button onClick={openCreate} className="h-11 px-8 bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.2em] rounded-full hover:translate-y-[-2px] transition-all shadow-lg shadow-[#E8D200]/15">
+                                Create your first placement
+                            </button>
+                        </div>
+                    )}
+                </div>
             ) : (
                 <div className="grid gap-3">
+                    {showHow && (
+                        <div className="mb-5 animate-in fade-in slide-in-from-top-2 duration-500">
+                            <PlacementExplainer brandName={brand} rewardTitle={rewards[0]?.title} logoUrl={rewards[0]?.image_url} points={rewards[0]?.powr_cost} />
+                        </div>
+                    )}
                     {placements.map((p) => {
                         const r = p.rewards || rewardById(p.reward_id);
                         const editable = p.status === 'draft' || p.status === 'rejected';
