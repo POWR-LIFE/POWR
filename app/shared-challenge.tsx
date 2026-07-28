@@ -319,7 +319,12 @@ export default function SharedChallengeDetail() {
   // active with unanswered invites still on it (the accept window elapsed and
   // it started with whoever was in), and deriving this from "is anyone still
   // invited?" would show a running challenge as "Not started" for its whole run.
-  const forming = !challenge.endsAt;
+  //
+  // Gated on !challengeOver because a challenge cancelled BEFORE it started
+  // never gets an endsAt — so the clock test alone reads it as forming and the
+  // hero tag offers an accept countdown on a dead challenge. Terminal beats
+  // forming: nothing that has ended is still waiting to begin.
+  const forming = !challengeOver && !challenge.endsAt;
 
   // The flip side of the progress the cards above show: what's STILL to be
   // done. Pooled = the group's gap to the shared target; parallel = YOUR gap
@@ -461,13 +466,25 @@ export default function SharedChallengeDetail() {
               </View>
             ) : null}
             <View style={styles.tag}>
-              <Ionicons name={forming ? 'hourglass-outline' : 'time-outline'} size={11} color={SECONDARY} />
-              {!forming && challenge.endsAt ? (
+              <Ionicons
+                name={challengeOver ? 'flag-outline' : forming ? 'hourglass-outline' : 'time-outline'}
+                size={11}
+                color={SECONDARY}
+              />
+              {/* A challenge cancelled before it ever started has no endsAt, and
+                  `expiresIn` renders a null endsAt as "Not started" — so a
+                  terminal challenge needs its own label rather than falling
+                  through to the live/forming wording. */}
+              {challengeOver ? (
+                <Text style={styles.tagText}>
+                  {challenge.status === 'cancelled' ? 'Cancelled' : 'Ended'}
+                </Text>
+              ) : challenge.endsAt ? (
                 <Countdown endsAt={challenge.endsAt} style={[styles.tagText, { textTransform: 'none' }]} />
-              ) : forming && challenge.acceptBy ? (
+              ) : challenge.acceptBy ? (
                 <Countdown endsAt={challenge.acceptBy} suffix=" to accept" style={[styles.tagText, { textTransform: 'none' }]} />
               ) : (
-                <Text style={styles.tagText}>{forming ? 'Not started' : challenge.expiresIn}</Text>
+                <Text style={styles.tagText}>Not started</Text>
               )}
             </View>
           </View>

@@ -103,5 +103,10 @@ as $function$
   order by c.created_at desc;
 $function$;
 
-revoke all on function public.get_my_shared_challenges() from anon;
+-- `from public, anon`, not just anon: Postgres grants EXECUTE to PUBLIC by
+-- default, and anon is a member of PUBLIC — so revoking anon alone leaves the
+-- function reachable unauthenticated through the PUBLIC grant. Prod already has
+-- an explicit ACL (create-or-replace preserves it), but a fresh apply would get
+-- the default. Matches the convention used by every other migration here.
+revoke all on function public.get_my_shared_challenges() from public, anon;
 grant execute on function public.get_my_shared_challenges() to authenticated;

@@ -97,7 +97,7 @@ async function notifyAccepted(supabase: any, challengeId: string, accepterId: st
 async function cancelChallenge(
   supabase: any,
   challengeId: string,
-  live: { user_id: string }[],
+  live: { user_id: string; state: string }[],
   title: string,
   /** The person who caused it — they just tapped the button, so don't push at
    *  them about their own action. */
@@ -111,7 +111,10 @@ async function cancelChallenge(
     .select('id')
     .maybeSingle();
   if (!cancelled) return false;
-  for (const p of live.filter((p) => p.user_id !== actorId)) {
+  // Committed heads only, and never the actor. A ghosted invitee never joined,
+  // so "your challenge was cancelled" is noise about something they were never
+  // in — same exclusion tryStartForming already applies on its cancel path.
+  for (const p of live.filter((p) => p.state !== 'invited' && p.user_id !== actorId)) {
     await notifyPush(p.user_id, 'challenge_ended', {
       challenge_id: challengeId, title, outcome: 'cancelled',
     });
