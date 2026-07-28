@@ -131,7 +131,7 @@ export default function SharedChallengeDetail() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const params = useLocalSearchParams<{ challenge?: string; id?: string }>();
-  const { acceptInvite, declineInvite, leaveChallenge, inviteToChallenge, fetchById, getById, bonusConfig, loading, error, refresh, friends, search, sendRequest } = useSharedChallenges();
+  const { acceptInvite, declineInvite, leaveChallenge, cancelChallenge, inviteToChallenge, fetchById, getById, bonusConfig, loading, error, refresh, friends, search, sendRequest } = useSharedChallenges();
   const [showInvite, setShowInvite] = useState(false);
   const [retrying, setRetrying] = useState(false);
   // Tap a participant to view their profile / add them. Relationship is unknown
@@ -315,8 +315,11 @@ export default function SharedChallengeDetail() {
                     : "Time's up — nobody finished this one.",
                 tone: MUTED,
               };
-  // Forming until everyone's accepted — the clock (endsAt) only runs after that.
-  const forming = participants.some((p) => p.state === 'invited');
+  // Read "has it started?" off the CLOCK, not the roster: a challenge can go
+  // active with unanswered invites still on it (the accept window elapsed and
+  // it started with whoever was in), and deriving this from "is anyone still
+  // invited?" would show a running challenge as "Not started" for its whole run.
+  const forming = !challenge.endsAt;
 
   // The flip side of the progress the cards above show: what's STILL to be
   // done. Pooled = the group's gap to the shared target; parallel = YOUR gap
@@ -354,6 +357,10 @@ export default function SharedChallengeDetail() {
   // challenge for BOTH people (dropping below two live members cancels it).
   // Confirm first, and make the consequence explicit. `willCancelForAll` is true
   // when the creator cancels, or when leaving would drop the group under two.
+  // The creator's path is a genuinely different server action: `leave` only ever
+  // moves your own row, so it kept the promise "this ends it for everyone" only
+  // by accident, when the group happened to be small enough for
+  // cancelIfTooThin to fire.
   const willCancelForAll = isCreator || participants.length <= 2;
   const confirmLeave = () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
@@ -370,7 +377,8 @@ export default function SharedChallengeDetail() {
         style: 'destructive',
         onPress: () => {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          leaveChallenge(challenge.id);
+          if (isCreator) cancelChallenge(challenge.id);
+          else leaveChallenge(challenge.id);
           router.back();
         },
       },
@@ -489,7 +497,7 @@ export default function SharedChallengeDetail() {
                   <Text style={[styles.remainTime, { color: MUTED }]}>—</Text>
                 )}
                 <Text style={styles.remainColLabel}>
-                  {!forming && challenge.endsAt ? 'time left' : 'starts when everyone’s in'}
+                  {!forming && challenge.endsAt ? 'time left' : 'starts once enough are in'}
                 </Text>
               </View>
             </View>

@@ -36,7 +36,10 @@ Deno.serve(async (req) => {
     .eq('status', 'forming')
     .lte('accept_by', nowIso);
   for (const c of stale ?? []) {
-    const outcome = await tryStartForming(supabase, c.id);
+    // These are past accept_by by definition (the query filters on it), so
+    // outstanding invites count as non-answers — otherwise one ghosted invite
+    // parks the challenge in 'forming' forever.
+    const outcome = await tryStartForming(supabase, c.id, true);
     if (outcome === 'started') stats.started++;
     else if (outcome === 'cancelled') stats.cancelled++;
   }
@@ -55,9 +58,28 @@ Deno.serve(async (req) => {
       if (r.newlyCompleted) stats.settled++;
       const endedP = ch.ends_at && Date.parse(ch.ends_at) <= Date.now();
       if (!r.completed && endedP && !ch.settled_at) {
-        await supabase.from('shared_challenges')
+        const { data: expiredClaim } = await supabase.from('shared_challenges')
           .update({ status: 'expired', settled_at: nowIso })
-          .eq('id', ch.id).is('settled_at', null);
+          .eq('id', ch.id).is('settled_at', null)
+          .select('id')
+          .maybeSingle();
+        // Tell the group it's over. Contributors got no points and no word at
+        // all before this — the last thing they'd heard was the 6h "ending
+        // soon" nudge. Guarded on the claim so a second tick can't re-announce.
+        if (expiredClaim) {
+          const { data: roster } = await supabase
+            .from('shared_challenge_participants')
+            .select('user_id')
+            .eq('challenge_id', ch.id)
+            .not('state', 'in', '(declined,left,invited)');
+          for (const p of roster ?? []) {
+            await notifyPush(p.user_id, 'challenge_ended', {
+              challenge_id: ch.id,
+              title: ch.template?.title ?? 'your challenge',
+              outcome: 'pool_missed',
+            });
+          }
+        }
       } else if (!r.completed && !endedP && ch.ends_at && !ch.expiring_notified) {
         const remaining = Date.parse(ch.ends_at) - Date.now();
         if (remaining > 0 && remaining <= EXPIRING_THRESHOLD_MS) {
@@ -65,7 +87,9 @@ Deno.serve(async (req) => {
             .from('shared_challenge_participants')
             .select('user_id')
             .eq('challenge_id', ch.id)
-            .not('state', 'in', '(declined,left)');
+            // Not the ghosts: a challenge can start with unanswered invites, and
+            // nudging someone to finish something they never joined is noise.
+            .not('state', 'in', '(declined,left,invited)');
           for (const p of laggers ?? []) {
             await notifyPush(p.user_id, 'challenge_expiring', {
               challenge_id: ch.id, title: ch.template?.title ?? 'your challenge',
@@ -105,22 +129,51 @@ Deno.serve(async (req) => {
         .maybeSingle();
       if (!claim) continue; // someone else settled it
 
-      const { data: finishers } = await supabase
+      // The whole roster, so we can tell the people who DIDN'T finish that it's
+      // over — the settlement loop below only ever touched finishers.
+      const { data: roster } = await supabase
         .from('shared_challenge_participants')
-        .select('user_id, bonus_awarded')
+        .select('user_id, completed, bonus_awarded')
         .eq('challenge_id', ch.id)
-        .eq('completed', true);
-      const completerCount = finishers?.length ?? 0;
+        .not('state', 'in', '(declined,left,invited)');
+
+      // Finishers must exclude anyone who walked out. Every other roster query
+      // in this file filters state; this one didn't, so a quitter who'd already
+      // finished was still paid the togetherness bonus for a group they left —
+      // and inflated everyone else's co-completer count with a head that isn't
+      // there.
+      const finishers = (roster ?? []).filter((p: any) => p.completed);
+      const completerCount = finishers.length;
 
       // Nobody finished their part → the challenge flopped. Mark it expired
       // (not completed) so it reads correctly and skips the celebration window.
       if (completerCount === 0) {
         await supabase.from('shared_challenges').update({ status: 'expired' }).eq('id', ch.id);
+        for (const p of roster ?? []) {
+          await notifyPush(p.user_id, 'challenge_ended', {
+            challenge_id: ch.id,
+            title: ch.template?.title ?? 'your challenge',
+            outcome: 'expired',
+          });
+        }
         stats.settled++;
         continue;
       }
 
-      for (const f of finishers ?? []) {
+      // The people who tried and fell short. Previously they were never told
+      // the challenge had ended at all — the loop below iterates finishers only,
+      // so a non-finisher's last word on it was the "ending soon" nudge.
+      for (const p of (roster ?? []).filter((r: any) => !r.completed)) {
+        await notifyPush(p.user_id, 'challenge_ended', {
+          challenge_id: ch.id,
+          title: ch.template?.title ?? 'your challenge',
+          outcome: 'missed',
+          finishers: completerCount,
+          roster: (roster ?? []).length,
+        });
+      }
+
+      for (const f of finishers) {
         const coCompleters = completerCount - 1; // everyone else who finished
         const bonus = groupBonus(coCompleters, { perHead: ch.bonus_per_head, maxBonus: ch.bonus_max });
         if (bonus > 0 && (f.bonus_awarded ?? 0) === 0) {
