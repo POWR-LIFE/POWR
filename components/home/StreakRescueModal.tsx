@@ -50,6 +50,7 @@ export function StreakRescueModal({
   rescue,
   reopenNonce = 0,
   deferred = false,
+  onVisibleChange,
 }: {
   rescue: StreakRescueOffer | null;
   /** Increment to re-open on user request (tapping the StreakCard readout).
@@ -61,8 +62,17 @@ export function StreakRescueModal({
    *  up at the same instant. Hold, don't drop: the announcement is only marked
    *  seen on dismissal, so it presents as soon as this clears. */
   deferred?: boolean;
+  /** Reports presentation state upward so sibling modals can defer to this one.
+   *  This modal owns its own visibility (seen-markers, settle delay), so a
+   *  parent has no other way to know it's about to take the screen — and two
+   *  siblings that both arm a 700ms timer on the same app-open would otherwise
+   *  present in the same commit, which is the collision `deferred` exists to
+   *  prevent. */
+  onVisibleChange?: (visible: boolean) => void;
 }) {
   const [visible, setVisible] = useState(false);
+
+  useEffect(() => { onVisibleChange?.(visible); }, [visible]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Banked progress joins the key on countable challenges, so crossing 1-of-2
   // re-announces exactly once ("just 1 left") instead of the user having to tap

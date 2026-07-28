@@ -62,6 +62,38 @@ test('parallel goals read target + unit from goalTarget/goalRule', () => {
     expect(input.unit).toBe('qualifying days');
 });
 
+test('honours the server bonus config over BONUS_DEFAULTS', () => {
+    // The server settles from the challenge's own snapshotted per-head/max. If
+    // the card falls back to defaults (perHead 5) it brags a number that was
+    // never banked — 35 instead of 42.
+    const input = buildSharedChallengeShareInput(challenge(), { perHead: 12, maxBonus: 30 });
+    expect(input.points).toBe(42);
+});
+
+test('respects the bonus cap from the server config', () => {
+    const withFour = challenge({
+        participants: [
+            participant('me', { isSelf: true }),
+            participant('f1'),
+            participant('f2'),
+            participant('f3'),
+        ],
+    });
+    // 3 co-completers × 12 = 36, capped at 20 → 30 + 20.
+    expect(buildSharedChallengeShareInput(withFour, { perHead: 12, maxBonus: 20 }).points).toBe(50);
+});
+
+test('the challenge’s own snapshot beats the live global config', () => {
+    // The server settles from the challenge row's bonus_per_head/bonus_max,
+    // taken at creation. If an admin retunes the global config mid-flight, the
+    // card must still brag the number that was actually banked.
+    const input = buildSharedChallengeShareInput(
+        challenge({ bonusPerHead: 5, bonusMax: 30 }),
+        { perHead: 50, maxBonus: 500 }, // global config, retuned since creation
+    );
+    expect(input.points).toBe(35);
+});
+
 test('pooled goals read the shared pool instead', () => {
     const input = buildSharedChallengeShareInput(
         challenge({ pool: { target: 100000, total: 104220, unit: 'steps' }, goalTarget: undefined }),

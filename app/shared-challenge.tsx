@@ -9,11 +9,10 @@ import GeometricBackground from '@/components/GeometricBackground';
 import { Avatar } from '@/components/social/Avatar';
 import { Countdown } from '@/components/social/Countdown';
 import { InvitePeopleSheet } from '@/components/social/InvitePeopleSheet';
-import { SharedChallengeCelebration } from '@/components/social/SharedChallengeCelebration';
 import { UserProfileSheet } from '@/components/UserProfileSheet';
 import { fontFamily } from '@/constants/tokens';
 import { durationLabel, useSharedChallenges } from '@/hooks/useSharedChallenges';
-import { earnedPoints, maxBonusForGroup } from '@/lib/social/bonus';
+import { challengeBonusConfig, earnedPoints, maxBonusForGroup } from '@/lib/social/bonus';
 import { dailyMilestoneHint, progressUnit } from '@/lib/social/challengeProgress';
 import { buildSharedChallengeShareInput } from '@/lib/social/share';
 import type { IconSpec, Participant, SharedChallenge } from '@/lib/social/types';
@@ -133,7 +132,6 @@ export default function SharedChallengeDetail() {
   const router = useRouter();
   const params = useLocalSearchParams<{ challenge?: string; id?: string }>();
   const { acceptInvite, declineInvite, leaveChallenge, inviteToChallenge, fetchById, getById, bonusConfig, loading, error, refresh, friends, search, sendRequest } = useSharedChallenges();
-  const [showCelebration, setShowCelebration] = useState(false);
   const [showInvite, setShowInvite] = useState(false);
   const [retrying, setRetrying] = useState(false);
   // Tap a participant to view their profile / add them. Relationship is unknown
@@ -248,8 +246,12 @@ export default function SharedChallengeDetail() {
 
   // What YOU'RE on track for: bonus scales with OTHER finishers (co-completers).
   const coCompleters = others.filter((p) => p.completed).length;
-  const current = earnedPoints(template.basePoints, coCompleters, bonusConfig);
-  const potential = template.basePoints + maxBonusForGroup(accepted.length, bonusConfig);
+  // The challenge's own snapshot wins over the live global config — the server
+  // settles from the snapshot, so anything else previews a number that wasn't
+  // banked whenever the config has been retuned mid-flight.
+  const cfg = challengeBonusConfig(challenge, bonusConfig);
+  const current = earnedPoints(template.basePoints, coCompleters, cfg);
+  const potential = template.basePoints + maxBonusForGroup(accepted.length, cfg);
 
   // Sort: you first, then done, then in-progress, then invited.
   const order = (p: Participant) =>
@@ -263,6 +265,56 @@ export default function SharedChallengeDetail() {
   // outcome and its share.
   const challengeOver =
     challenge.status === 'completed' || challenge.status === 'expired' || challenge.status === 'cancelled';
+  // The three terminal states are three different stories and only one of them
+  // is a win. Collapsing them (as this screen used to) offers "Share result" to
+  // someone whose challenge was cancelled before it ever ran.
+  //
+  // "Paid" and "won" are deliberately separate. Base points are banked the
+  // moment YOU finish your part (sharedChallengeEval.ts), so someone who
+  // finished before a co-participant walked out and cancelled the challenge
+  // keeps their points — telling them "nothing was awarded" would be a lie.
+  // Only a settled 'completed' challenge is a result worth bragging about.
+  const selfPaid = !!self?.completed;
+  const won = challenge.status === 'completed' && selfPaid;
+  const neverJoined = self?.state === 'invited' || self?.state === 'declined';
+  const outcome = !challengeOver
+    ? null
+    : neverJoined
+      ? { line: 'This one finished before you joined.', tone: MUTED }
+      : challenge.status === 'cancelled'
+        ? {
+            line: selfPaid
+              ? 'Cancelled before the end — you keep what you’d already earned.'
+              : 'Challenge cancelled before it finished.',
+            tone: MUTED,
+          }
+        : challenge.status === 'expired'
+          ? {
+              /* Server semantics: parallel expires only when zero people
+                 finished; pooled expires when the shared total fell short. */
+              line: pooled
+                ? 'Time ran out before the group reached the target.'
+                : 'Time ran out — nobody finished this one.',
+              tone: MUTED,
+            }
+          : won
+            ? {
+                line: coCompleters > 0
+                  ? `You and ${coCompleters} ${coCompleters === 1 ? 'other' : 'others'} finished. +${current.total} earned.`
+                  : `You finished. +${current.total} earned.`,
+                tone: GREEN,
+              }
+            : {
+                /* A completed challenge you didn't win. Pooled settles the
+                   instant the group hits target — often with time still on the
+                   clock — so "time's up" would be plainly wrong there. */
+                line: pooled
+                  ? 'The group hit the target without you this time.'
+                  : finished.length > 0
+                    ? `Time's up — ${finished.length} of ${accepted.length} finished. You didn't make this one.`
+                    : "Time's up — nobody finished this one.",
+                tone: MUTED,
+              };
   // Forming until everyone's accepted — the clock (endsAt) only runs after that.
   const forming = participants.some((p) => p.state === 'invited');
 
@@ -325,6 +377,7 @@ export default function SharedChallengeDetail() {
     ]);
   };
 
+  // "Join me" — only meaningful while the challenge can still be joined.
   const handleShare = async () => {
     const url = `https://powr.life/app?challenge=${challenge.id}`;
     try {
@@ -333,6 +386,19 @@ export default function SharedChallengeDetail() {
     } catch {
       /* dismissed */
     }
+  };
+
+  // The finished-challenge brag is a share CARD, not the invite link — the
+  // terminal state used to reuse handleShare, which sent people an invitation
+  // to a challenge that had already ended.
+  const shareResultCard = () => {
+    router.push({
+      pathname: '/share-stats',
+      params: {
+        mode: 'challenge',
+        challenge: JSON.stringify(buildSharedChallengeShareInput(challenge, bonusConfig)),
+      },
+    });
   };
 
   return (
@@ -344,9 +410,21 @@ export default function SharedChallengeDetail() {
           <Ionicons name="chevron-back" size={20} color={DIM} />
         </Pressable>
         <Text style={styles.headerTitle}>TOGETHER</Text>
-        <Pressable onPress={handleShare} hitSlop={12} style={styles.headerBtn} accessibilityRole="button" accessibilityLabel="Share challenge">
-          <Ionicons name="share-outline" size={18} color={DIM} />
-        </Pressable>
+        {/* Live: the "join me" invite. Won: the result card. Lost or cancelled:
+            nothing worth sharing, so the slot just holds the layout. */}
+        {challengeOver && !won ? (
+          <View style={styles.headerBtn} />
+        ) : (
+          <Pressable
+            onPress={won ? shareResultCard : handleShare}
+            hitSlop={12}
+            style={styles.headerBtn}
+            accessibilityRole="button"
+            accessibilityLabel={won ? 'Share challenge result' : 'Share challenge invite'}
+          >
+            <Ionicons name="share-outline" size={18} color={DIM} />
+          </Pressable>
+        )}
       </View>
 
       <ScrollView
@@ -438,15 +516,26 @@ export default function SharedChallengeDetail() {
             </View>
             <Text style={styles.bonusHint}>
               {poolPct >= 1
-                ? `Target smashed — everyone who chipped in earns +${template.basePoints}${maxBonusForGroup(accepted.length, bonusConfig) > 0 ? ` plus up to +${maxBonusForGroup(accepted.length, bonusConfig)} bonus` : ''}.`
-                : `Add to the total to win. Everyone who contributes earns +${template.basePoints}, and the bonus grows with each friend who chips in — up to +${maxBonusForGroup(accepted.length, bonusConfig)}.`}
+                ? `Target smashed — everyone who chipped in earns +${template.basePoints}${maxBonusForGroup(accepted.length, cfg) > 0 ? ` plus up to +${maxBonusForGroup(accepted.length, cfg)} bonus` : ''}.`
+                /* The clock's stopped — inviting more contributions would be
+                   asking for something that can't happen. Cancelled and expired
+                   are different endings, and saying "fell short before time ran
+                   out" on a cancellation contradicts the verdict below. */
+                : challenge.status === 'cancelled'
+                  ? 'Cancelled before the group got there.'
+                  : challengeOver
+                    ? 'Time ran out before the group reached the target.'
+                    : `Add to the total to win. Everyone who contributes earns +${template.basePoints}, and the bonus grows with each friend who chips in — up to +${maxBonusForGroup(accepted.length, cfg)}.`}
             </Text>
           </View>
         )}
 
         {/* Bonus breakdown (solo co-op only) — one compact line; the "left to
-            do" card below carries the visual weight now. */}
-        {!pooled && (
+            do" card below carries the visual weight now. Hidden once the
+            challenge is over and you weren't paid: the card headlines a gold
+            "= 40" that you never received, directly above a line saying nothing
+            was awarded. */}
+        {!pooled && !(challengeOver && !selfPaid) && (
         <View style={[styles.bonusCard, styles.compactCard]}>
           <View style={styles.pNameRow}>
             <Text style={styles.sectionLabel}>YOUR POINTS</Text>
@@ -461,10 +550,19 @@ export default function SharedChallengeDetail() {
             </Text>
           </View>
           <Text style={[styles.bonusHint, styles.bonusHintCompact]}>
-            {coCompleters > 0
-              ? `${coCompleters} ${coCompleters === 1 ? 'friend has' : 'friends have'} finished — your bonus grows with each one.`
-              : 'Your bonus grows each time a friend finishes.'}
-            {potential > current.total ? ` Up to ${potential} if everyone finishes.` : ''}
+            {challengeOver
+              /* Settled: this is what was banked, not what could still grow.
+                 A cancellation still pays out whatever you'd already finished,
+                 so it gets its own line rather than the settled one. */
+              ? challenge.status === 'cancelled'
+                ? 'Banked when you finished your part, before the cancellation.'
+                : 'Final — banked when the challenge settled.'
+              : <>
+                  {coCompleters > 0
+                    ? `${coCompleters} ${coCompleters === 1 ? 'friend has' : 'friends have'} finished — your bonus grows with each one.`
+                    : 'Your bonus grows each time a friend finishes.'}
+                  {potential > current.total ? ` Up to ${potential} if everyone finishes.` : ''}
+                </>}
           </Text>
         </View>
         )}
@@ -503,7 +601,7 @@ export default function SharedChallengeDetail() {
             <Text style={styles.invitePrompt}>
               {challenge.pendingInviteFromName ?? 'A friend'} invited you. Finish together for{' '}
               <Text style={{ color: GOLD, fontFamily: fontFamily.semiBold }}>
-                up to +{maxBonusForGroup(accepted.length, bonusConfig)} bonus
+                up to +{maxBonusForGroup(accepted.length, cfg)} bonus
               </Text>
               .
             </Text>
@@ -533,19 +631,28 @@ export default function SharedChallengeDetail() {
             </Pressable>
           </>
         ) : challengeOver ? (
-          /* Finished (completed/expired/cancelled) — outcome is read-only; the
-             only live action is sharing the result. */
-          <View style={styles.actionRow}>
-            <Pressable
-              style={[styles.actionBtn, styles.actionGhost]}
-              onPress={handleShare}
-              accessibilityRole="button"
-              accessibilityLabel="Share challenge result"
-            >
-              <Ionicons name="share-outline" size={15} color={SECONDARY} />
-              <Text style={styles.actionGhostText}>Share result</Text>
-            </Pressable>
-          </View>
+          /* Finished — read-only. The verdict is stated plainly, and only a win
+             gets a share button: it publishes a "challenge complete" brag card,
+             so offering it on an expired or cancelled challenge would put a
+             boast on a loss. */
+          <>
+            {outcome && (
+              <Text style={[styles.outcomeLine, { color: outcome.tone }]}>{outcome.line}</Text>
+            )}
+            {won && (
+              <View style={styles.actionRow}>
+                <Pressable
+                  style={[styles.actionBtn, styles.actionGhost]}
+                  onPress={shareResultCard}
+                  accessibilityRole="button"
+                  accessibilityLabel="Share challenge result"
+                >
+                  <Ionicons name="share-outline" size={15} color={SECONDARY} />
+                  <Text style={styles.actionGhostText}>Share result</Text>
+                </Pressable>
+              </View>
+            )}
+          </>
         ) : (
           <>
             {/* Grow the group. Only the creator can invite people straight into
@@ -585,33 +692,7 @@ export default function SharedChallengeDetail() {
           </>
         )}
 
-        {/* Preview the completion celebration (mock-only; remove with backend). */}
-        {__DEV__ && (
-          <Pressable style={styles.devPreview} onPress={() => setShowCelebration(true)}>
-            <Ionicons name="play" size={12} color={MUTED} />
-            <Text style={styles.devPreviewText}>Preview celebration</Text>
-          </Pressable>
-        )}
       </ScrollView>
-
-      {showCelebration && (
-        <SharedChallengeCelebration
-          challenge={challenge}
-          onDone={() => setShowCelebration(false)}
-          // The completion brag is a share CARD; the header share stays the
-          // plain-text "join me" invite.
-          onShare={() => {
-            setShowCelebration(false);
-            router.push({
-              pathname: '/share-stats',
-              params: {
-                mode: 'challenge',
-                challenge: JSON.stringify(buildSharedChallengeShareInput(challenge)),
-              },
-            });
-          }}
-        />
-      )}
 
       <InvitePeopleSheet
         visible={showInvite}
@@ -716,7 +797,9 @@ const styles = StyleSheet.create({
   acceptBtn: { backgroundColor: GOLD, borderRadius: 100, paddingVertical: 15, alignItems: 'center' },
   acceptText: { fontFamily: fontFamily.bold, fontSize: 13, color: '#0a0a0a', letterSpacing: 0.5 },
 
-  // dev-only preview
-  devPreview: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, marginTop: 4, opacity: 0.5 },
-  devPreviewText: { fontFamily: fontFamily.regular, fontSize: 11, color: MUTED, letterSpacing: 0.3 },
+  // terminal-state verdict — one plain sentence above the (win-only) share
+  outcomeLine: {
+    fontFamily: fontFamily.regular, fontSize: 13.5, lineHeight: 20,
+    textAlign: 'center', paddingHorizontal: 8, marginBottom: 2,
+  },
 });

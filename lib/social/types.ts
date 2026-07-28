@@ -129,4 +129,19 @@ export interface SharedChallenge {
    * else's view are untouched; Home just stops showing the card.
    */
   dismissedAt?: string | null;
+  /**
+   * When the server settled the challenge — the moment the group bonus was
+   * actually banked, stamped by the resolve cron (parallel, at `endsAt`) or by
+   * the pooled evaluator (the instant the pool hits target). This, not
+   * `status`, is the signal that the outcome is final: it's what
+   * useChallengeSettled keys the one-shot celebration on. Null while live.
+   */
+  settledAt?: string | null;
+  /**
+   * The bonus tuning this challenge was created under, snapshotted on the row.
+   * The server settles from these, so any client-side preview must use them
+   * too — the global config can be retuned mid-flight. See challengeBonusConfig.
+   */
+  bonusPerHead?: number | null;
+  bonusMax?: number | null;
 }

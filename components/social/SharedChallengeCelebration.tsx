@@ -14,7 +14,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { fontFamily } from '@/constants/tokens';
-import { earnedPoints } from '@/lib/social/bonus';
+import { challengeBonusConfig, earnedPoints, type BonusConfig } from '@/lib/social/bonus';
 import type { SharedChallenge } from '@/lib/social/types';
 import { Avatar } from './Avatar';
 
@@ -86,26 +86,46 @@ function BurstRing({ delay, color, opacity }: { delay: number; color: string; op
 export interface SharedChallengeCelebrationProps {
   challenge: SharedChallenge;
   totalBalance?: number;
+  /** Global bonus tuning, used only as a fallback for challenges with no
+   *  snapshot of their own. Without any config at all the maths falls back to
+   *  BONUS_DEFAULTS, and the celebration can count up to a number that was
+   *  never banked. */
+  bonusConfig?: Partial<BonusConfig>;
+  /** The challenge itself has settled — the group bonus is final and already
+   *  awarded, rather than a running estimate that grows as friends finish. */
+  settled?: boolean;
   onDone: () => void;
   onShare?: () => void;
 }
 
 /**
- * Full-screen overlay shown when the user completes their part of a shared
- * challenge. Reveals the group: avatars of everyone who finished + the
- * base + group-bonus = total breakdown (the §6a payoff), with the total
- * counting up. Mirrors the solo ChallengeCard celebration, group-flavoured.
+ * Full-screen overlay for a shared-challenge win. Reveals the group: avatars
+ * of everyone who finished + the base + group-bonus = total breakdown (the
+ * §6a payoff), with the total counting up. Mirrors the solo ChallengeCard
+ * celebration, group-flavoured.
+ *
+ * Two moments use it. `settled=false` is "you finished YOUR part" — fires
+ * mid-challenge, and the bonus shown is still growing. `settled=true` is the
+ * challenge itself resolving, where the number is final and already banked.
  */
 export function SharedChallengeCelebration({
   challenge,
   totalBalance = 0,
+  bonusConfig,
+  settled = false,
   onDone,
   onShare,
 }: SharedChallengeCelebrationProps) {
   const { template, participants } = challenge;
   const finishers = participants.filter((p) => p.completed || p.isSelf);
   const coCompleters = participants.filter((p) => !p.isSelf && p.completed).length;
-  const breakdown = earnedPoints(template.basePoints, coCompleters);
+  // The challenge's own snapshot wins over the live global config — that's what
+  // the server settled from.
+  const breakdown = earnedPoints(
+    template.basePoints,
+    coCompleters,
+    challengeBonusConfig(challenge, bonusConfig),
+  );
 
   const glow = useSharedValue(0.08);
   const emblemScale = useSharedValue(0);
@@ -159,9 +179,18 @@ export function SharedChallengeCelebration({
   const actionsStyle = useAnimatedStyle(() => ({ opacity: actionsA.value, transform: [{ translateY: (1 - actionsA.value) * 12 }] }));
 
   const others = coCompleters;
-  const subtitle =
-    others > 0
-      ? `You + ${others} ${others === 1 ? 'friend' : 'friends'} finished together`
+  const friendWord = others === 1 ? 'friend' : 'friends';
+  // Settled copy has to stop promising a bonus that can no longer grow — the
+  // clock is done and the points are already in the balance.
+  const title = settled
+    ? `${template.title} — that's a wrap.`
+    : `${template.title} — done together.`;
+  const subtitle = settled
+    ? others > 0
+      ? `You + ${others} ${friendWord} finished — bonus banked`
+      : 'You finished it — points banked'
+    : others > 0
+      ? `You + ${others} ${friendWord} finished together`
       : 'You finished — bonus grows as friends finish';
 
   return (
@@ -177,7 +206,7 @@ export function SharedChallengeCelebration({
         <Animated.View style={[styles.halo, haloStyle]} />
         <Ionicons name="checkmark-sharp" size={42} color={GOLD} />
       </Animated.View>
-      <Animated.Text style={[styles.title, titleStyle]}>{template.title} — done together.</Animated.Text>
+      <Animated.Text style={[styles.title, titleStyle]}>{title}</Animated.Text>
       <Animated.Text style={[styles.subtitle, titleStyle]}>{subtitle}</Animated.Text>
 
       {/* Finisher avatars */}
@@ -210,7 +239,13 @@ export function SharedChallengeCelebration({
 
       <Animated.View style={[styles.divider, actionsStyle]} />
       <Animated.Text style={[styles.total, actionsStyle]}>
-        Total balance <Text style={styles.totalNum}>{(totalBalance + breakdown.total).toLocaleString()} pts</Text>
+        {/* Settled awards were banked by the cron before this screen ever
+            loaded, so the fetched balance already contains them — adding the
+            breakdown again would show the user a total they don't have. */}
+        Total balance{' '}
+        <Text style={styles.totalNum}>
+          {(settled ? totalBalance : totalBalance + breakdown.total).toLocaleString()} pts
+        </Text>
       </Animated.Text>
 
       <Animated.View style={[styles.actions, actionsStyle]}>

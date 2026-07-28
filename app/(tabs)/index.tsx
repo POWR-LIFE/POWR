@@ -210,6 +210,10 @@ export default function HomeScreen() {
     const health = useHealthData();
 
     const [sessionModalVisible, setSessionModalVisible] = useState(false);
+    // StreakRescueModal owns its own presentation, so it reports upward — the
+    // Together celebration defers to it rather than racing it to the same
+    // 700ms mark and losing one of the two <Modal>s on iOS.
+    const [rescueVisible, setRescueVisible] = useState(false);
     const [elapsedStr, setElapsedStr] = useState('0m 00s');
     const [activePrefs, setActivePrefs] = useState<ActivityType[]>(['gym', 'running', 'walking']);
     const [profileName, setProfileName] = useState<string | null>(null);
@@ -602,6 +606,7 @@ export default function HomeScreen() {
                     rescue={rescue}
                     reopenNonce={rescueReopenNonce}
                     deferred={!!pendingLevelUp || sessionModalVisible}
+                    onVisibleChange={setRescueVisible}
                 />
 
                 <StreakCard
@@ -645,7 +650,11 @@ export default function HomeScreen() {
                 {/* Shared "together" challenges — the social hero band. Sits above
                     the steady weekly grid; collapses to a slim CTA when empty so
                     the weekly card reads as the hero for users with no friends yet. */}
-                {user?.user_metadata?.together_enabled !== false && <TogetherSection />}
+                {user?.user_metadata?.together_enabled !== false && (
+                    <TogetherSection
+                        deferred={!!pendingLevelUp || sessionModalVisible || rescueVisible}
+                    />
+                )}
 
                 <Text style={styles.sectionLabel}>CHALLENGE</Text>
                 <ChallengeCard
