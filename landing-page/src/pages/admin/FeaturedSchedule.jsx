@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Plus, Trash2, Star, X } from 'lucide-react';
+import { Plus, Trash2, Star, X, Inbox, Check } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
 import FeaturedCalendar from '../../components/FeaturedCalendar';
@@ -58,6 +58,7 @@ export default function FeaturedSchedule() {
     const toast = useToast();
     const [schedule, setSchedule] = useState([]);
     const [rewards, setRewards] = useState([]);
+    const [requests, setRequests] = useState([]);
     const [loading, setLoading] = useState(true);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [formData, setFormData] = useState(EMPTY_FORM);
@@ -65,12 +66,15 @@ export default function FeaturedSchedule() {
     const [month, setMonth] = useState(() => atMidnight(new Date()));
     const [selectedSlot, setSelectedSlot] = useState(null);
     const [confirmDelete, setConfirmDelete] = useState(false);
+    const [reviewing, setReviewing] = useState(null);   // pending request under review
+    const [reviewNote, setReviewNote] = useState('');
+    const [deciding, setDeciding] = useState(false);
 
     useEffect(() => { fetchData(); }, []);
 
     const fetchData = async () => {
         setLoading(true);
-        const [sched, rew] = await Promise.all([
+        const [sched, rew, reqs] = await Promise.all([
             supabase
                 .from('featured_reward_schedule')
                 .select('id, reward_id, starts_at, ends_at, rewards(title, brand_name, brand_color, image_url, partners(name, logo_url))')
@@ -80,11 +84,65 @@ export default function FeaturedSchedule() {
                 .select('id, title, brand_name, partners(name, logo_url)')
                 .eq('active', true)
                 .order('title'),
+            supabase
+                .from('featured_slot_requests')
+                .select('id, brand_name, reward_id, requested_start, requested_end, note, created_at, rewards(title, brand_name, brand_color, image_url)')
+                .eq('status', 'pending')
+                .order('requested_start', { ascending: true }),
         ]);
         if (sched.error) toast.error('Failed to load schedule');
         else setSchedule(sched.data || []);
         if (rew.data) setRewards(rew.data);
+        if (reqs.error) toast.error('Failed to load slot requests');
+        else setRequests(reqs.data || []);
         setLoading(false);
+    };
+
+    // Approval is transactional server-side: it writes the schedule row, marks
+    // the request approved, and declines everyone else waiting on that week.
+    const approveRequest = async (request) => {
+        setDeciding(true);
+        const { error } = await supabase.rpc('approve_featured_slot_request', {
+            p_request_id: request.id,
+            p_reviewer_notes: reviewNote.trim() || null,
+        });
+        setDeciding(false);
+        if (error) {
+            toast.error(error.message || 'Could not approve that request');
+            return;
+        }
+        toast.success(`${request.brand_name} scheduled`);
+        setReviewing(null);
+        setReviewNote('');
+        fetchData();
+    };
+
+    const declineRequest = async (request) => {
+        setDeciding(true);
+        const { data: { user } } = await supabase.auth.getUser();
+        const { error } = await supabase
+            .from('featured_slot_requests')
+            .update({
+                status: 'declined',
+                reviewer_notes: reviewNote.trim() || null,
+                reviewed_by: user?.id ?? null,
+                reviewed_at: new Date().toISOString(),
+            })
+            .eq('id', request.id);
+        setDeciding(false);
+        if (error) {
+            toast.error('Could not decline that request');
+            return;
+        }
+        toast.success('Request declined');
+        setReviewing(null);
+        setReviewNote('');
+        fetchData();
+    };
+
+    const openReview = (request) => {
+        setReviewing(request);
+        setReviewNote('');
     };
 
     const openCreate = (startDate) => {
@@ -140,17 +198,32 @@ export default function FeaturedSchedule() {
         return r.partners?.name || r.brand_name || r.title || row.reward_id;
     };
 
-    // Map schedule rows → the shape FeaturedCalendar expects.
-    const slots = useMemo(() => schedule.map(s => ({
-        id: s.id,
-        reward_id: s.reward_id,
-        starts_at: s.starts_at,
-        ends_at: s.ends_at,
-        label: rewardLabel(s),
-        brand_name: s.rewards?.brand_name || s.rewards?.partners?.name || null,
-        brandColor: s.rewards?.brand_color || null,
-        logo: s.rewards?.image_url || s.rewards?.partners?.logo_url || null,
-    })), [schedule]);
+    // Map schedule rows → the shape FeaturedCalendar expects, then lay the
+    // pending brand requests over the top as dashed ghosts so a week can be
+    // approved in the context of what is already booked around it.
+    const slots = useMemo(() => ([
+        ...schedule.map(s => ({
+            id: s.id,
+            reward_id: s.reward_id,
+            starts_at: s.starts_at,
+            ends_at: s.ends_at,
+            label: rewardLabel(s),
+            brand_name: s.rewards?.brand_name || s.rewards?.partners?.name || null,
+            brandColor: s.rewards?.brand_color || null,
+            logo: s.rewards?.image_url || s.rewards?.partners?.logo_url || null,
+        })),
+        ...requests.map(r => ({
+            id: `req-${r.id}`,
+            requestId: r.id,
+            ghost: true,
+            starts_at: r.requested_start,
+            ends_at: r.requested_end,
+            label: `${r.brand_name} (requested)`,
+            brand_name: r.brand_name,
+            brandColor: r.rewards?.brand_color || null,
+            logo: r.rewards?.image_url || null,
+        })),
+    ]), [schedule, requests]);
 
     const current = schedule.find(s => isActive(s.starts_at, s.ends_at));
 
@@ -192,6 +265,47 @@ export default function FeaturedSchedule() {
                 </div>
             )}
 
+            {/* Brand requests waiting on a decision */}
+            {!loading && requests.length > 0 && (
+                <div className="mb-10 bg-white border border-[#E6E6E1] rounded-3xl p-8">
+                    <div className="flex items-center gap-3 mb-6">
+                        <Inbox size={15} className="text-[#8a7600]" />
+                        <h2 className="text-[10px] uppercase tracking-[0.5em] font-black text-[#BBBBBB]">
+                            Requested Weeks · {requests.length}
+                        </h2>
+                    </div>
+                    <div className="space-y-3">
+                        {requests.map(r => (
+                            <button
+                                key={r.id}
+                                onClick={() => openReview(r)}
+                                className="w-full border border-[#E6E6E1] rounded-2xl p-5 flex items-center gap-5 text-left hover:border-[#E8D200]/40 hover:bg-[#FAFAF8] transition-all"
+                            >
+                                <div className="w-11 h-11 rounded-2xl bg-[#111111] border border-white/10 flex items-center justify-center shrink-0 overflow-hidden">
+                                    {r.rewards?.image_url
+                                        ? <img src={r.rewards.image_url} alt="" className="w-full h-full object-contain p-1.5" />
+                                        : <span className="text-sm font-black text-white">{(r.brand_name || '?')[0]?.toUpperCase()}</span>}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <div className="text-[13px] font-bold text-[#1A1A1A] truncate mb-1">{r.brand_name} — {r.rewards?.title || 'Reward'}</div>
+                                    <div className="text-[9px] uppercase tracking-[0.3em] text-[#BBBBBB] font-black">
+                                        {formatWindow(r.requested_start, r.requested_end)}
+                                    </div>
+                                </div>
+                                {schedule.some(s => new Date(r.requested_start) < new Date(s.ends_at) && new Date(r.requested_end) > new Date(s.starts_at)) && (
+                                    <span className="text-[9px] uppercase tracking-[0.3em] font-black text-[#999999] bg-[#EFEFEC] border border-[#E6E6E1] rounded-full px-3 py-1 shrink-0">
+                                        Clashes
+                                    </span>
+                                )}
+                                <span className="text-[9px] uppercase tracking-[0.3em] font-black text-[#8a7600] bg-[#E8D200]/10 border border-[#E8D200]/30 rounded-full px-3 py-1 shrink-0">
+                                    Review
+                                </span>
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            )}
+
             {loading ? (
                 <div className="flex flex-col items-center justify-center py-48 gap-6">
                     <div className="w-12 h-12 border-2 border-[#E8D200]/20 border-t-[#E8D200] rounded-full animate-spin" />
@@ -205,10 +319,17 @@ export default function FeaturedSchedule() {
                         onPrevMonth={() => goMonth(-1)}
                         onNextMonth={() => goMonth(1)}
                         onDayClick={(day) => openCreate(day)}
-                        onSlotClick={(slot) => { setSelectedSlot(slot); setConfirmDelete(false); }}
+                        onSlotClick={(slot) => {
+                            if (slot.ghost) {
+                                openReview(requests.find(r => r.id === slot.requestId) || null);
+                                return;
+                            }
+                            setSelectedSlot(slot);
+                            setConfirmDelete(false);
+                        }}
                     />
                     <p className="mt-5 text-[10px] uppercase tracking-[0.3em] text-[#AAAAAA] font-black">
-                        Click any day to schedule a slot · click a band to view or remove it
+                        Click any day to schedule a slot · solid bands are booked · dashed bands are brand requests
                     </p>
                 </>
             )}
@@ -243,6 +364,67 @@ export default function FeaturedSchedule() {
                                 <Trash2 size={14} /> Remove Slot
                             </button>
                         )}
+                    </div>
+                </div>
+            )}
+
+            {/* Request review */}
+            {reviewing && (
+                <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm p-8 animate-in fade-in duration-200" onClick={() => setReviewing(null)}>
+                    <div className="bg-[#F4F4F1] border border-[#E6E6E1] rounded-3xl w-full max-w-lg p-10" onClick={e => e.stopPropagation()}>
+                        <div className="flex items-start justify-between mb-8">
+                            <div className="min-w-0">
+                                <div className="text-[9px] uppercase tracking-[0.4em] text-[#8a7600] font-black mb-2">Slot request</div>
+                                <div className="text-xl font-light tracking-tight text-[#1A1A1A]">{reviewing.brand_name}</div>
+                                <div className="text-[13px] text-[#666666] mt-1">{reviewing.rewards?.title || 'Reward'}</div>
+                                <div className="text-[10px] uppercase tracking-[0.2em] text-[#888888] font-black mt-2">
+                                    {formatWindow(reviewing.requested_start, reviewing.requested_end)}
+                                </div>
+                            </div>
+                            <button onClick={() => setReviewing(null)} className="w-10 h-10 bg-white border border-[#E6E6E1] rounded-2xl flex items-center justify-center text-[#666] hover:text-[#1A1A1A] transition-all shrink-0">
+                                <X size={16} />
+                            </button>
+                        </div>
+
+                        {reviewing.note && (
+                            <div className="mb-6 border-l-2 border-[#E8D200] pl-5 py-3 bg-[#E8D200]/5 rounded-r-xl pr-4">
+                                <div className="text-[9px] uppercase tracking-[0.4em] text-[#8a7600] font-black mb-2">Their note</div>
+                                <p className="text-[13px] text-[#333333] leading-relaxed whitespace-pre-wrap">{reviewing.note}</p>
+                            </div>
+                        )}
+
+                        <div className="mb-8">
+                            <div className="text-[10px] uppercase tracking-[0.4em] text-[#999999] font-black mb-3">
+                                Reply to the brand <span className="text-[#CCCCCC]">(optional — shown on their portal)</span>
+                            </div>
+                            <textarea
+                                rows={3}
+                                value={reviewNote}
+                                onChange={e => setReviewNote(e.target.value)}
+                                placeholder="Why this week works, or what to try instead…"
+                                className="w-full bg-white border border-[#E6E6E1] rounded-2xl p-4 text-sm text-[#1A1A1A] placeholder-[#BBBBBB] focus:border-[#E8D200]/50 outline-none resize-none transition-all"
+                            />
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                            <button
+                                onClick={() => approveRequest(reviewing)}
+                                disabled={deciding}
+                                className="flex-1 h-12 flex items-center justify-center gap-3 bg-[#E8D200] text-[#080808] text-[10px] font-black uppercase tracking-[0.3em] rounded-full transition-all hover:translate-y-[-2px] shadow-lg shadow-[#E8D200]/20 disabled:opacity-50 disabled:translate-y-0"
+                            >
+                                <Check size={14} /> Approve & Schedule
+                            </button>
+                            <button
+                                onClick={() => declineRequest(reviewing)}
+                                disabled={deciding}
+                                className="flex-1 h-12 bg-white text-[#999999] text-[10px] font-black uppercase tracking-[0.3em] rounded-full border border-[#E6E6E1] hover:text-red-500 hover:border-red-500/20 transition-all disabled:opacity-50"
+                            >
+                                Decline
+                            </button>
+                        </div>
+                        <p className="mt-5 text-[10px] uppercase tracking-[0.25em] text-[#BBBBBB] font-black leading-relaxed">
+                            Approving books the week and declines any other brand waiting on those days.
+                        </p>
                     </div>
                 </div>
             )}

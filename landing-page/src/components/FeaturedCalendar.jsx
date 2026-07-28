@@ -9,6 +9,9 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 //
 // Slots are end-exclusive: a window of 9 Jun 00:00 → 16 Jun 00:00 covers
 // Jun 9–15 inclusive (the "week of 9 Jun").
+//
+// A slot carrying `ghost: true` is a *request*, not a booking — it draws
+// dashed and hollow so it can never be mistaken for a confirmed week.
 
 const MS_DAY = 86_400_000;
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -104,6 +107,7 @@ export default function FeaturedCalendar({
     onNextMonth,
     onSlotClick,
     onDayClick,
+    canClickDay = null,   // (day) => bool — lets a page grey out days it can't accept
     readOnly = false,
     highlightBrand = null,
 }) {
@@ -181,7 +185,7 @@ export default function FeaturedCalendar({
                                 {days.map((day, di) => {
                                     const inMonth = day.getMonth() === month.getMonth();
                                     const isToday = stripTime(day).getTime() === todayKey;
-                                    const clickable = !readOnly && inMonth;
+                                    const clickable = !readOnly && inMonth && (!canClickDay || canClickDay(day));
                                     return (
                                         <div
                                             key={di}
@@ -231,22 +235,25 @@ export default function FeaturedCalendar({
                                         key={key}
                                         type="button"
                                         onClick={onClick}
-                                        title={seg.label}
+                                        title={seg.ghost ? `${seg.label} — requested` : seg.label}
                                         className={[
-                                            'absolute flex items-center justify-center rounded-xl bg-[#1A1A1A] overflow-hidden z-10',
+                                            'absolute flex items-center justify-center rounded-xl overflow-hidden z-10',
+                                            seg.ghost ? 'bg-white border-2 border-dashed' : 'bg-[#1A1A1A]',
                                             onSlotClick ? 'cursor-pointer hover:scale-[1.03] transition-transform' : 'cursor-default',
-                                            isMine ? 'ring-2 ring-[#E8D200]' : 'border border-white/10',
+                                            isMine && !seg.ghost ? 'ring-2 ring-[#E8D200]' : '',
+                                            !isMine && !seg.ghost ? 'border border-white/10' : '',
                                         ].join(' ')}
                                         style={{
                                             left: `calc(${(col / 7) * 100}% + ${BADGE_INSET}px)`,
                                             width: `calc(${(1 / 7) * 100}% - ${2 * BADGE_INSET}px)`,
                                             top: DAY_NUM_H + seg.lane * LANE_H + BADGE_INSET,
                                             height: LANE_H - 2 * BADGE_INSET,
+                                            ...(seg.ghost ? { borderColor: fill, opacity: 0.85 } : null),
                                         }}
                                     >
                                         {seg.logo
-                                            ? <img src={seg.logo} alt={seg.label} className="w-full h-full object-contain p-1.5" />
-                                            : <span className="text-sm font-black text-white">{(seg.label || '?')[0]?.toUpperCase()}</span>}
+                                            ? <img src={seg.logo} alt={seg.label} className={`w-full h-full object-contain p-1.5 ${seg.ghost ? 'opacity-70' : ''}`} />
+                                            : <span className="text-sm font-black" style={{ color: seg.ghost ? fill : '#FFFFFF' }}>{(seg.label || '?')[0]?.toUpperCase()}</span>}
                                     </button>
                                 );
 
@@ -261,10 +268,13 @@ export default function FeaturedCalendar({
                                                     position: 'absolute',
                                                     left: `${lineLeft}%`,
                                                     width: `${lineRight - lineLeft}%`,
-                                                    top: laneCenter - 4,
-                                                    height: 8,
-                                                    background: fill,
+                                                    top: laneCenter - (seg.ghost ? 3 : 4),
+                                                    height: seg.ghost ? 6 : 8,
+                                                    background: seg.ghost
+                                                        ? `repeating-linear-gradient(90deg, ${fill} 0 7px, transparent 7px 14px)`
+                                                        : fill,
                                                     borderRadius: 9999,
+                                                    ...(seg.ghost ? { opacity: 0.9 } : null),
                                                 }}
                                             />
                                         )}
