@@ -31,6 +31,27 @@ export const BONUS_DEFAULTS: BonusConfig = { perHead: 5, maxBonus: 30 };
 const cfgOf = (cfg?: Partial<BonusConfig>): BonusConfig => ({ ...BONUS_DEFAULTS, ...cfg });
 
 /**
+ * The config a SPECIFIC challenge was created under.
+ *
+ * This matters because the server settles from the challenge row's own
+ * snapshot (`bonus_per_head` / `bonus_max`, taken at creation), not from the
+ * live `shared_challenge_config` row. A client reading the global config shows
+ * a different number than was banked for every challenge that was already
+ * running when the config was retuned. Always prefer the snapshot; fall back
+ * to the global config only for rows that predate it.
+ */
+export function challengeBonusConfig(
+  challenge: { bonusPerHead?: number | null; bonusMax?: number | null },
+  fallback?: Partial<BonusConfig>,
+): Partial<BonusConfig> {
+  return {
+    ...fallback,
+    ...(typeof challenge.bonusPerHead === 'number' ? { perHead: challenge.bonusPerHead } : {}),
+    ...(typeof challenge.bonusMax === 'number' ? { maxBonus: challenge.bonusMax } : {}),
+  };
+}
+
+/**
  * Bonus points earned for a given number of co-completers.
  * `coCompleters` = participants EXCLUDING you who individually met their part.
  * Always ≥ 0 and ≤ maxBonus.

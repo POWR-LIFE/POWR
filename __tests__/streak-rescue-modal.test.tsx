@@ -172,6 +172,26 @@ describe('StreakRescueModal', () => {
     expect(screen.getByText('Back on track')).toBeTruthy();
   });
 
+  it('reports presentation upward so sibling modals can defer to it', async () => {
+    // The Together celebration arms its own 700ms timer on app-open. Without
+    // this signal both would present in the same commit and iOS would drop one.
+    const onVisibleChange = jest.fn();
+    render(<StreakRescueModal rescue={offer} onVisibleChange={onVisibleChange} />);
+
+    expect(onVisibleChange).toHaveBeenLastCalledWith(false);
+    await waitFor(() => expect(onVisibleChange).toHaveBeenLastCalledWith(true));
+
+    fireEvent.press(screen.getByText("LET'S GO"));
+    await waitFor(() => expect(onVisibleChange).toHaveBeenLastCalledWith(false));
+  });
+
+  it('reports nothing visible while deferred', async () => {
+    const onVisibleChange = jest.fn();
+    render(<StreakRescueModal rescue={offer} deferred onVisibleChange={onVisibleChange} />);
+    await new Promise((r) => setTimeout(r, PAST_SETTLE));
+    expect(onVisibleChange).not.toHaveBeenCalledWith(true);
+  });
+
   it('renders nothing without a rescue', () => {
     render(<StreakRescueModal rescue={null} />);
     expect(screen.queryByText("LET'S GO")).toBeNull();

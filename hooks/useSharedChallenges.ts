@@ -155,6 +155,9 @@ function mapChallengeRow(row: any): SharedChallenge {
     goalTarget,
     goalRule,
     dismissedAt: row.dismissed_at ?? null,
+    settledAt: row.settled_at ?? null,
+    bonusPerHead: row.bonus_per_head ?? null,
+    bonusMax: row.bonus_max ?? null,
   };
 }
 

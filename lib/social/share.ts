@@ -1,5 +1,5 @@
 import type { ChallengeShareInput } from '@/lib/api/share';
-import { earnedPoints } from '@/lib/social/bonus';
+import { challengeBonusConfig, earnedPoints, type BonusConfig } from '@/lib/social/bonus';
 import { progressUnit } from '@/lib/social/challengeProgress';
 import type { SharedChallenge } from '@/lib/social/types';
 
@@ -8,11 +8,22 @@ import type { SharedChallenge } from '@/lib/social/types';
  * challenge-card input — the same card solo weekly challenges use. Points are
  * the member's full breakdown (base + group bonus), matching the number the
  * completion celebration counts up to.
+ *
+ * `bonusConfig` is the global tuning, used only as a fallback — the challenge's
+ * own snapshot wins, since that's what the server settled from. Without either,
+ * the card brags a BONUS_DEFAULTS figure that may not be what was banked.
  */
-export function buildSharedChallengeShareInput(challenge: SharedChallenge): ChallengeShareInput {
+export function buildSharedChallengeShareInput(
+  challenge: SharedChallenge,
+  bonusConfig?: Partial<BonusConfig>,
+): ChallengeShareInput {
   const { template, participants, pool, goalTarget, goalRule } = challenge;
   const coCompleters = participants.filter((p) => !p.isSelf && p.completed).length;
-  const { total } = earnedPoints(template.basePoints, coCompleters);
+  const { total } = earnedPoints(
+    template.basePoints,
+    coCompleters,
+    challengeBonusConfig(challenge, bonusConfig),
+  );
 
   const displayGoal = pool?.target ?? goalTarget ?? 1;
   const unit = pool?.unit ?? progressUnit(goalRule) ?? '';

@@ -1,9 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Dimensions, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { fontFamily } from '@/constants/tokens';
+import { useChallengeSettled } from '@/hooks/useChallengeSettled';
 import { useSharedChallenges } from '@/hooks/useSharedChallenges';
 import { usePoints } from '@/hooks/usePoints';
 import { useNotifications } from '@/context/NotificationsContext';
@@ -27,8 +28,19 @@ const SCREEN_W = Dimensions.get('window').width;
 const CAROUSEL_GAP = 12;
 const NEXT_PEEK = 22;
 
+// Beat before presenting, matching StreakRescueModal. Keeps the overlay from
+// mounting into Home's first paint (where RN occasionally drops the
+// presentation) and gives the settled-challenge refetch a moment to land.
+const SETTLE_MS = 700;
+
 export interface TogetherSectionProps {
   onOpenChallenge?: (challenge: SharedChallenge) => void;
+  /** Another modal owns the screen. Two RN <Modal>s presented at once means one
+   *  of them silently never appears on iOS — and a challenge settling awards
+   *  points, so the level-up celebration is exactly the modal most likely to be
+   *  up at the same instant. Hold, don't drop: the celebration is only marked
+   *  seen on dismissal, so it presents as soon as this clears. */
+  deferred?: boolean;
 }
 
 /**
@@ -36,10 +48,12 @@ export interface TogetherSectionProps {
  * doorway into the /challenges browse page (which owns discovery + creation).
  * Reads from useSharedChallenges. See docs/shared-challenges-scope.md.
  */
-export function TogetherSection({ onOpenChallenge }: TogetherSectionProps) {
+export function TogetherSection({ onOpenChallenge, deferred = false }: TogetherSectionProps) {
   const router = useRouter();
   const {
     loading,
+    error,
+    all,
     active,
     pendingInvites,
     openChallenges,
@@ -60,7 +74,7 @@ export function TogetherSection({ onOpenChallenge }: TogetherSectionProps) {
     clearCelebration,
     refresh,
   } = useSharedChallenges();
-  const { balance } = usePoints();
+  const { balance, refresh: refreshPoints } = usePoints();
   const { refreshPendingActions } = useNotifications();
 
   // Home keeps its own useSharedChallenges instance; with no shared store it can
@@ -84,11 +98,53 @@ export function TogetherSection({ onOpenChallenge }: TogetherSectionProps) {
   };
   const goToChallenges = () => router.push('/challenges');
 
-  // Celebration fires when the user completes their part — driven by the hook so
-  // the real trigger is a backend completion event setting `newlyCompletedId`.
-  const celebrated = newlyCompletedId
-    ? active.find((c) => c.id === newlyCompletedId) ?? null
-    : null;
+  // Two celebration triggers, one overlay. `newlyCompletedId` is "you finished
+  // YOUR part" — fires mid-challenge off a backend completion event. `settled`
+  // is the challenge itself resolving, which for a parallel challenge lands up
+  // to 72h later and is the moment the group bonus actually exists. Settlement
+  // wins when both are pending: it's the final word, and the one whose number
+  // was really banked.
+  // `loading || error`, not just `loading`: load() flips loading to false on the
+  // RPC error path while deliberately leaving `all` untouched, so a failed first
+  // fetch would otherwise seed the account off an empty list — marking it
+  // initialised with nothing seen, and then announcing the whole 3-day
+  // settlement backlog as brand new on the first successful refresh.
+  const { pending: settledChallenge, ack: ackSettled } = useChallengeSettled(all, loading || error);
+  const celebrated = settledChallenge
+    ?? (newlyCompletedId ? active.find((c) => c.id === newlyCompletedId) ?? null : null);
+  const isSettled = !!settledChallenge;
+
+  // Keyed on the id, not the challenge object: `all` is replaced wholesale on
+  // every refetch, so an object-identity dep would restart the timer on each
+  // load and the overlay might never reach its own delay.
+  const celebratedId = celebrated?.id ?? null;
+  const [celebrationVisible, setCelebrationVisible] = useState(false);
+  useEffect(() => {
+    if (!celebratedId) { setCelebrationVisible(false); return; }
+    // Gate the transition to visible only — never yank an overlay the user is
+    // already reading if something else goes pending mid-read.
+    if (deferred) return;
+    // The settled overlay prints the balance as-is, on the basis that the award
+    // already landed. Nothing invalidates the points cache when a challenge
+    // settles, so ask for a refetch now; the prop is live, so the figure
+    // corrects itself as soon as the query returns.
+    if (isSettled) refreshPoints();
+    const timer = setTimeout(() => setCelebrationVisible(true), SETTLE_MS);
+    return () => clearTimeout(timer);
+  }, [celebratedId, deferred, isSettled, refreshPoints]);
+
+  const dismissCelebration = useCallback(() => {
+    setCelebrationVisible(false);
+    // Settlement is acked durably (AsyncStorage); the per-part flag is session
+    // state on the challenges hook. Clear BOTH every time: a pooled challenge
+    // settles the instant your contribution completes the pool, so both
+    // triggers fire for the same id and acking only the winner leaves
+    // `newlyCompletedId` set — the overlay would re-present later in the
+    // session, with the wrong non-settled copy.
+    if (isSettled) ackSettled();
+    clearCelebration();
+  }, [isSettled, ackSettled, clearCelebration]);
+
   const [bandWidth, setBandWidth] = useState(0);
 
   const cardWidth = (bandWidth || SCREEN_W - 20) - CAROUSEL_GAP - NEXT_PEEK;
@@ -250,16 +306,28 @@ export function TogetherSection({ onOpenChallenge }: TogetherSectionProps) {
         onCreate={createChallenge}
       />
 
-      <Modal visible={!!celebrated} transparent animationType="fade" onRequestClose={clearCelebration}>
+      <Modal
+        visible={celebrationVisible && !!celebrated}
+        transparent
+        animationType="fade"
+        onRequestClose={dismissCelebration}
+      >
         {celebrated && (
           <SharedChallengeCelebration
+            /* Remount per challenge: the entry animations and the points
+               count-up run once on mount, so swapping the challenge underneath
+               a visible overlay would leave the headline frozen on the previous
+               one's total. */
+            key={celebrated.id}
             challenge={celebrated}
             totalBalance={balance}
-            onDone={clearCelebration}
+            bonusConfig={bonusConfig}
+            settled={isSettled}
+            onDone={dismissCelebration}
             onShare={() => {
-              // Snapshot before clearing — clearCelebration nulls `celebrated`.
-              const input = buildSharedChallengeShareInput(celebrated);
-              clearCelebration(); // the Modal would otherwise cover the pushed screen
+              // Snapshot before dismissing — dismissal nulls `celebrated`.
+              const input = buildSharedChallengeShareInput(celebrated, bonusConfig);
+              dismissCelebration(); // the Modal would otherwise cover the pushed screen
               router.push({
                 pathname: '/share-stats',
                 params: { mode: 'challenge', challenge: JSON.stringify(input) },
