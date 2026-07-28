@@ -608,7 +608,7 @@ export default function SettingsScreen() {
               if (user?.id) updateNotificationPreferences(user.id, {
                 friend_request: v, friend_accepted: v, challenge_invite: v, challenge_accepted: v,
                 challenge_started: v, challenge_friend_finished: v, challenge_pool_milestone: v,
-                challenge_completed: v, challenge_expiring: v,
+                challenge_completed: v, challenge_expiring: v, challenge_ended: v,
               });
             }}
           />

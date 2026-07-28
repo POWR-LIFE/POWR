@@ -35,7 +35,14 @@ export async function evaluatePooledChallenge(supabase: any, challenge: any): Pr
     .from('shared_challenge_participants')
     .select('user_id, state')
     .eq('challenge_id', challenge.id)
-    .not('state', 'in', '(declined,left)');
+    // 'invited' is excluded as well as declined/left. A challenge can now go
+    // active with unanswered invites still on the roster (tryStartForming's
+    // deadlineElapsed path), and a ghost is not a participant: their ordinary
+    // daily activity must not feed the pool, must not earn them base + bonus,
+    // and must not raise everyone else's co-contributor count by a head that
+    // never joined. They keep the right to accept late — respond-shared-challenge
+    // allows accepting an active challenge — and start counting from then.
+    .not('state', 'in', '(declined,left,invited)');
 
   // Compute each participant's contribution over the challenge window.
   const contribs: { user_id: string; contribution: number }[] = [];

@@ -15,6 +15,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { useFriends } from '@/hooks/useFriends';
+import { isTerminal } from '@/lib/social/status';
 import type {
   ChallengeTemplate,
   Friend,
@@ -138,8 +139,10 @@ function mapChallengeRow(row: any): SharedChallenge {
     kind: row.kind ?? 'parallel',
     // The UI derives "forming" from a participant still being `invited`; DB
     // 'forming' maps to the client's 'active' so the card renders either way.
-    // Terminal statuses map through truthfully — the list RPC never returns
-    // expired/cancelled, but the by-id fallback (old notification links) can.
+    // Terminal statuses map through truthfully. The list RPC now returns all
+    // three for 3 days after they settle, so a loss gets the same closure a win
+    // does instead of vanishing; the by-id fallback still resolves older ones
+    // from notification links.
     status: row.status === 'completed' || row.status === 'expired' || row.status === 'cancelled'
       ? row.status
       : 'active',
@@ -193,6 +196,11 @@ export interface UseSharedChallenges {
   acceptInvite: (challengeId: string) => Promise<void>;
   declineInvite: (challengeId: string) => Promise<void>;
   leaveChallenge: (challengeId: string) => Promise<void>;
+  /** Creator-only: end a live challenge for EVERYONE. `leaveChallenge` only
+   *  ever moves your own row, so it is not the same thing — the detail screen's
+   *  "Cancel challenge" button used to call it and quietly leave the rest of
+   *  the group running. */
+  cancelChallenge: (challengeId: string) => Promise<void>;
   /** Creator-only: pull more friends into a forming/active challenge. Returns
    *  the count actually (re)invited, or throws on a rejected request. */
   inviteToChallenge: (challengeId: string, userIds: string[]) => Promise<number>;
@@ -256,17 +264,27 @@ export function useSharedChallenges(): UseSharedChallenges {
   useEffect(() => { loadConfig(); }, [loadConfig]);
   useEffect(() => { load(); }, [load]);
 
+  // An unanswered invite is only pending while the challenge can still be
+  // joined. Terminal challenges now linger in the list for 3 days, so without
+  // the status check a challenge that expired while you ignored the invite
+  // would keep offering you an Accept button (which the server rejects).
   const pendingInvites = useMemo(
-    () => all.filter((c) => c.participants.some((p) => p.isSelf && p.state === 'invited')),
+    () => all.filter(
+      (c) => !isTerminal(c.status) && c.participants.some((p) => p.isSelf && p.state === 'invited'),
+    ),
     [all],
   );
   // Home surface: everything you're committed to, minus settled cards you've
   // dismissed. `all` (and so getById / the detail screen) keeps them — dismissal
   // is a display preference, not data removal.
+  //
+  // Every terminal status is dismissible, not just the winning one: the list RPC
+  // now lingers expired/cancelled challenges for the same 3 days, so a loss you
+  // don't want to look at needs the same (X) a win has.
   const active = useMemo(
     () => all.filter(
       (c) => !c.participants.some((p) => p.isSelf && p.state === 'invited')
-        && !(c.status === 'completed' && c.dismissedAt),
+        && !(isTerminal(c.status) && c.dismissedAt),
     ),
     [all],
   );
@@ -316,7 +334,7 @@ export function useSharedChallenges(): UseSharedChallenges {
     await load();
   }, [utcOffsetMinutes, load]);
 
-  const respond = useCallback(async (challengeId: string, action: 'accept' | 'decline' | 'leave' | 'dismiss') => {
+  const respond = useCallback(async (challengeId: string, action: 'accept' | 'decline' | 'leave' | 'dismiss' | 'cancel') => {
     const { error } = await supabase.functions.invoke('respond-shared-challenge', {
       body: { challenge_id: challengeId, action },
     });
@@ -327,6 +345,7 @@ export function useSharedChallenges(): UseSharedChallenges {
   const acceptInvite = useCallback((id: string) => respond(id, 'accept'), [respond]);
   const declineInvite = useCallback((id: string) => respond(id, 'decline'), [respond]);
   const leaveChallenge = useCallback((id: string) => respond(id, 'leave'), [respond]);
+  const cancelChallenge = useCallback((id: string) => respond(id, 'cancel'), [respond]);
   const dismissChallenge = useCallback((id: string) => respond(id, 'dismiss'), [respond]);
 
   // Durable by-id lookup for challenges the list RPC no longer returns
@@ -367,7 +386,7 @@ export function useSharedChallenges(): UseSharedChallenges {
     loading, error, all, active, pendingInvites, openChallenges, openCount, cap, atCap,
     friends, search, sendRequest, templates, bonusConfig,
     selfId: user?.id ?? null,
-    getById, createChallenge, acceptInvite, declineInvite, leaveChallenge, inviteToChallenge,
+    getById, createChallenge, acceptInvite, declineInvite, leaveChallenge, cancelChallenge, inviteToChallenge,
     dismissChallenge, fetchById, completeChallenge,
     newlyCompletedId, clearCelebration, refresh: load,
   };

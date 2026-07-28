@@ -86,6 +86,7 @@ function iconForActivity(item: ActivityItem): IconSpec {
   switch (item.type) {
     case 'challenge_completed': return { lib: 'mc', name: 'trophy' };
     case 'challenge_expiring': return { lib: 'ion', name: 'time-outline' };
+    case 'challenge_ended': return { lib: 'ion', name: 'close-circle-outline' };
     case 'challenge_friend_finished': return { lib: 'mc', name: 'flag-checkered' };
     case 'challenge_pool_milestone': return { lib: 'ion', name: 'trending-up' };
     case 'challenge_started': return { lib: 'ion', name: 'flame' };

@@ -7,6 +7,11 @@
 //             with whoever's left, or cancel).
 //   leave   — drop a challenge you'd accepted; frees a slot. Cancels the
 //             challenge if it falls below 2 live members.
+//   cancel  — CREATOR-ONLY: end it for everyone, now. Distinct from `leave`,
+//             which only ever moved the caller's own row: the app's "Cancel
+//             challenge" button promised "this ends it for everyone" but sent
+//             `leave`, so with 3+ members live the creator silently dropped out
+//             and everyone else carried on.
 //   invite  — CREATOR-ONLY: pull more of the creator's friends into an existing
 //             challenge (forming OR active). Late joiners inherit the running
 //             clock as-is — no personal extension. The clock is untouched.
@@ -22,7 +27,7 @@ const json = (body: unknown, status = 200) =>
 
 const MAX_GROUP = 6; // creator + up to 5 others (mirrors create-shared-challenge)
 
-type Action = 'accept' | 'decline' | 'leave' | 'invite' | 'dismiss';
+type Action = 'accept' | 'decline' | 'leave' | 'invite' | 'dismiss' | 'cancel';
 
 /** How many live, unfinished challenges already occupy a slot for this user. */
 async function openCount(supabase: any, userId: string): Promise<number> {
@@ -84,15 +89,52 @@ async function notifyAccepted(supabase: any, challengeId: string, accepterId: st
 }
 
 /** If a forming challenge dropped below 2 live members, cancel it. */
-async function cancelIfTooThin(supabase: any, challengeId: string) {
+/**
+ * Flip a live challenge to cancelled and tell everyone still in it. Stamps
+ * settled_at so it lingers on Home for the same 3 days a win does, rather than
+ * vanishing the instant it dies.
+ */
+async function cancelChallenge(
+  supabase: any,
+  challengeId: string,
+  live: { user_id: string; state: string }[],
+  title: string,
+  /** The person who caused it — they just tapped the button, so don't push at
+   *  them about their own action. */
+  actorId?: string,
+) {
+  const { data: cancelled } = await supabase
+    .from('shared_challenges')
+    .update({ status: 'cancelled', settled_at: new Date().toISOString() })
+    .eq('id', challengeId)
+    .in('status', ['forming', 'active'])
+    .select('id')
+    .maybeSingle();
+  if (!cancelled) return false;
+  // Committed heads only, and never the actor. A ghosted invitee never joined,
+  // so "your challenge was cancelled" is noise about something they were never
+  // in — same exclusion tryStartForming already applies on its cancel path.
+  for (const p of live.filter((p) => p.state !== 'invited' && p.user_id !== actorId)) {
+    await notifyPush(p.user_id, 'challenge_ended', {
+      challenge_id: challengeId, title, outcome: 'cancelled',
+    });
+  }
+  return true;
+}
+
+async function cancelIfTooThin(supabase: any, challengeId: string, title: string) {
   const { data: parts } = await supabase
     .from('shared_challenge_participants')
-    .select('state')
+    .select('user_id, state')
     .eq('challenge_id', challengeId);
   const live = (parts ?? []).filter((p: any) => p.state !== 'declined' && p.state !== 'left');
-  if (live.length < 2) {
-    await supabase.from('shared_challenges').update({ status: 'cancelled' })
-      .eq('id', challengeId).in('status', ['forming', 'active']);
+  // Only COMMITTED heads count toward "is there still a group here?". Since a
+  // challenge can start with unanswered invites on the roster, counting those
+  // as live would keep a one-person challenge running on the strength of
+  // someone who never replied.
+  const committed = live.filter((p: any) => p.state !== 'invited');
+  if (committed.length < 2) {
+    await cancelChallenge(supabase, challengeId, live, title);
   }
 }
 
@@ -133,6 +175,14 @@ Deno.serve(async (req) => {
   switch (action) {
     case 'accept': {
       if (me.state !== 'invited') return json({ ok: true, state: me.state }); // already answered
+      // You can't join something that's already over. Previously unreachable
+      // from the UI because the list RPC dropped terminal challenges on sight;
+      // now that losses linger for 3 days, a stale invite card is a real path
+      // here — and tryStartForming would no-op, leaving the row 'accepted' on a
+      // dead challenge.
+      if (challenge.status !== 'forming' && challenge.status !== 'active') {
+        return json({ error: 'This challenge has already finished', code: 'NOT_LIVE' }, 409);
+      }
       const cap = await capFromConfig(supabase);
       if (await openCount(supabase, user.id) >= cap) {
         return json({ error: 'Challenge slots full — finish or drop one first', code: 'AT_CAP' }, 409);
@@ -166,9 +216,27 @@ Deno.serve(async (req) => {
       if (challenge.status === 'forming') {
         await tryStartForming(supabase, challenge_id);
       } else {
-        await cancelIfTooThin(supabase, challenge_id);
+        await cancelIfTooThin(supabase, challenge_id, challenge.template?.title ?? 'your challenge');
       }
       return json({ ok: true, state: 'left' });
+    }
+
+    case 'cancel': {
+      if (challenge.creator_id !== user.id) {
+        return json({ error: 'Only the creator can cancel this challenge', code: 'NOT_CREATOR' }, 403);
+      }
+      if (challenge.status !== 'forming' && challenge.status !== 'active') {
+        return json({ error: 'This challenge has already finished', code: 'NOT_LIVE' }, 409);
+      }
+      const { data: parts } = await supabase
+        .from('shared_challenge_participants')
+        .select('user_id, state')
+        .eq('challenge_id', challenge_id);
+      const live = (parts ?? []).filter((p: any) => p.state !== 'declined' && p.state !== 'left');
+      const done = await cancelChallenge(
+        supabase, challenge_id, live, challenge.template?.title ?? 'your challenge', user.id,
+      );
+      return json({ ok: true, state: me.state, cancelled: done });
     }
 
     case 'dismiss': {

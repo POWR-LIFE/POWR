@@ -91,6 +91,9 @@ export interface NotificationPreferences {
   challenge_pool_milestone: boolean;
   challenge_completed: boolean;
   challenge_expiring: boolean;
+  /** The only bad-news type: a challenge that expired, came up short, or was
+   *  cancelled. Grouped under the same "Friend activity" toggle as the rest. */
+  challenge_ended: boolean;
 }
 
 export const DEFAULT_PREFERENCES: NotificationPreferences = {
@@ -118,6 +121,7 @@ export const DEFAULT_PREFERENCES: NotificationPreferences = {
   challenge_pool_milestone: true,
   challenge_completed: true,
   challenge_expiring: true,
+  challenge_ended: true,
 };
 
 export async function getNotificationPreferences(
@@ -158,6 +162,7 @@ export async function getNotificationPreferences(
     challenge_pool_milestone: data.challenge_pool_milestone ?? true,
     challenge_completed: data.challenge_completed ?? true,
     challenge_expiring: data.challenge_expiring ?? true,
+    challenge_ended: data.challenge_ended ?? true,
   };
 }
 

@@ -5,7 +5,8 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withDelay, withTiming } from 'react-native-reanimated';
 
 import { fontFamily } from '@/constants/tokens';
-import { groupBonus } from '@/lib/social/bonus';
+import { challengeBonusConfig, groupBonus } from '@/lib/social/bonus';
+import { isTerminal } from '@/lib/social/status';
 import type { IconSpec, SharedChallenge } from '@/lib/social/types';
 import { Avatar } from './Avatar';
 import { Countdown } from './Countdown';
@@ -88,17 +89,27 @@ export interface SharedChallengeCardProps {
 export function SharedChallengeCard({ challenge, index = 0, atCap = false, onPress, onAccept, onDecline, onDismiss }: SharedChallengeCardProps) {
   const { template, participants } = challenge;
   // The settled card's job (show the outcome, share it) is done once you've
-  // seen it — the (X) lets you clear it before the 3-day auto-expiry.
-  const dismissible = challenge.status === 'completed' && !!onDismiss;
+  // seen it — the (X) lets you clear it before the 3-day auto-expiry. Losses
+  // linger the same 3 days as wins, so they get the same (X): a bad ending you
+  // can't clear off Home is worse than one that never appeared.
+  const dismissible = isTerminal(challenge.status) && !!onDismiss;
 
   const self = participants.find((p) => p.isSelf);
   const others = participants.filter((p) => !p.isSelf);
 
   // Live bonus you're on track for — scales with OTHER finishers (co-completers).
+  // Read from the challenge's own snapshot: the server settles from that, not
+  // from the live global config.
   const coCompleters = others.filter((p) => p.completed).length;
-  const liveBonus = groupBonus(coCompleters);
+  const liveBonus = groupBonus(coCompleters, challengeBonusConfig(challenge));
 
   const isPendingInvite = self?.state === 'invited';
+  // Terminal cards now linger on Home for 3 days whatever the ending, so the
+  // card needs a face for a loss. Without one it keeps rendering a progress
+  // track and a "+N bonus" for something that already ended badly.
+  const terminal = isTerminal(challenge.status);
+  const selfPaid = !!self?.completed;
+  const wonIt = challenge.status === 'completed' && selfPaid;
   const selfPct = Math.round(Math.min(self?.progress ?? 0, 1) * 100);
   const selfDone = !!self?.completed;
   // Prefer a concrete "1 / 3" count (goal has a numeric target); fall back to "%".
@@ -115,15 +126,35 @@ export function SharedChallengeCard({ challenge, index = 0, atCap = false, onPre
   const showMomentum =
     !pooled && !selfDone && !!mom && mom.current > 0 && mom.current < mom.target;
 
-  // Timer rule: the clock only runs once EVERYONE has accepted. While anyone's
-  // invite is outstanding the challenge is "forming" — no countdown yet.
+  const outcomeLine = !terminal
+    ? null
+    : challenge.status === 'cancelled'
+      ? 'Cancelled before it finished'
+      : challenge.status === 'expired'
+        ? (pooled ? 'Time ran out — target missed' : 'Time ran out — nobody finished')
+        : wonIt
+          ? `You finished  ·  +${template.basePoints + liveBonus} earned`
+          : pooled
+            /* Pooled settles the instant the group hits target, often with time
+               still on the clock, so "time's up" would be wrong here. */
+            ? 'The group hit the target without you'
+            : 'Time’s up — you didn’t finish this one';
+
+  // Timer rule: read "has it started?" off the CLOCK, not the roster. A
+  // challenge can now go active with unanswered invites still on it (the accept
+  // window elapsed and it started with whoever was in), so deriving this from
+  // "is anyone still invited?" left a running challenge showing "Not started"
+  // with no countdown for its entire run. endsAt is null while forming and set
+  // exactly when the clock starts, which is the authoritative signal.
   const invitedOthers = others.filter((p) => p.state === 'invited');
-  const forming = invitedOthers.length > 0;
-  const running = !forming && !!challenge.endsAt;
+  const running = !!challenge.endsAt;
+  const forming = !running;
   const waitingLabel =
-    invitedOthers.length === 1
-      ? `Waiting on ${invitedOthers[0].friend.displayName.split(' ')[0]}`
-      : `Waiting on ${invitedOthers.length} to accept`;
+    invitedOthers.length === 0
+      ? 'Waiting to start'
+      : invitedOthers.length === 1
+        ? `Waiting on ${invitedOthers[0].friend.displayName.split(' ')[0]}`
+        : `Waiting on ${invitedOthers.length} to accept`;
 
   // Mount entry — fade + rise, staggered by index (matches the solo card feel).
   const enter = useSharedValue(0);
@@ -156,10 +187,15 @@ export function SharedChallengeCard({ challenge, index = 0, atCap = false, onPre
             )}
           </View>
           <View style={styles.headerRight}>
-            <View style={styles.points}>
-              <Text style={styles.pointsValue}>+{template.basePoints}</Text>
-              <Text style={styles.pointsLabel}>pts</Text>
-            </View>
+            {/* The reward chip is an advert for what's on offer. On a challenge
+                that ended without paying you, it's advertising something you
+                didn't get, right above a line saying so. */}
+            {!(terminal && !selfPaid) && (
+              <View style={styles.points}>
+                <Text style={styles.pointsValue}>+{template.basePoints}</Text>
+                <Text style={styles.pointsLabel}>pts</Text>
+              </View>
+            )}
             {dismissible && (
               <Pressable
                 hitSlop={10}
@@ -183,7 +219,10 @@ export function SharedChallengeCard({ challenge, index = 0, atCap = false, onPre
           <Text style={styles.goal} numberOfLines={1}>{template.goal}</Text>
         </View>
 
-        {isPendingInvite ? (
+        {/* Terminal wins over the invite branch: an unanswered invite to a
+            challenge that has since ended must never render Accept/Decline,
+            which the server now rejects outright. */}
+        {isPendingInvite && !terminal ? (
           <>
             <Text style={styles.inviteLine} numberOfLines={1}>
               <Text style={styles.inviteFrom}>{challenge.pendingInviteFromName ?? 'A friend'}</Text>
@@ -212,6 +251,22 @@ export function SharedChallengeCard({ challenge, index = 0, atCap = false, onPre
               </Pressable>
             </View>
           </>
+        ) : terminal ? (
+          /* Finished, one way or the other — the verdict replaces the progress
+             track and the bonus/timer footer, both of which read as live. */
+          <View style={styles.outcomeBlock}>
+            <Ionicons
+              name={wonIt ? 'checkmark-circle' : 'close-circle-outline'}
+              size={15}
+              color={wonIt ? GREEN : MUTED}
+            />
+            <Text
+              style={[styles.outcomeText, wonIt && { color: GREEN }]}
+              numberOfLines={2}
+            >
+              {outcomeLine}
+            </Text>
+          </View>
         ) : (
           <>
             {/* Your progress */}
@@ -309,6 +364,10 @@ const styles = StyleSheet.create({
   goal: { fontFamily: fontFamily.light, fontSize: 12, color: SECONDARY },
 
   // your progress
+  // terminal verdict — replaces the progress track + footer on a finished card
+  outcomeBlock: { flexDirection: 'row', alignItems: 'center', gap: 7, paddingVertical: 2 },
+  outcomeText: { flex: 1, fontFamily: fontFamily.regular, fontSize: 12.5, color: SECONDARY, lineHeight: 17 },
+
   progressBlock: { gap: 8 },
   progressMeta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   progressLabel: { fontFamily: fontFamily.medium, fontSize: 10, letterSpacing: 1.5, color: FAINT, textTransform: 'uppercase' },

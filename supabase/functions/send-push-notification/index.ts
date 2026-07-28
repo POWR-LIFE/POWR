@@ -32,14 +32,15 @@ type NotificationType =
   | 'challenge_friend_finished'
   | 'challenge_pool_milestone'
   | 'challenge_completed'
-  | 'challenge_expiring';
+  | 'challenge_expiring'
+  | 'challenge_ended';
 
 // The together feature has a master opt-out (user_metadata.together_enabled).
 // These types are suppressed entirely when a user has turned it off.
 const TOGETHER_TYPES: NotificationType[] = [
   'friend_request', 'friend_accepted', 'challenge_invite', 'challenge_accepted',
   'challenge_started', 'challenge_friend_finished', 'challenge_pool_milestone',
-  'challenge_completed', 'challenge_expiring',
+  'challenge_completed', 'challenge_expiring', 'challenge_ended',
 ];
 
 // Types that should NOT land in the in-app "Recent" feed. The two live-actionable
@@ -64,6 +65,7 @@ function categoryFor(type: NotificationType): 'social' | 'rewards' | 'activity' 
     case 'challenge_pool_milestone':
     case 'challenge_completed':
     case 'challenge_expiring':
+    case 'challenge_ended':
       return 'social';
     case 'reward_unlocked':
     case 'points_milestone':
@@ -569,6 +571,45 @@ function buildMessage(
           sound: 'default',
           channelId: 'powr_rewards_v2',
           priority: 'high',
+        };
+      }
+
+      // The only bad-news type in the Together set. Four endings, one type —
+      // the outcome drives the copy so there's a single preference toggle and
+      // a single config row to reason about.
+      //
+      // Tone matters here: this lands on someone who committed to something
+      // with friends and didn't get it, often after a "time's running out"
+      // nudge that was previously the last thing they ever heard. State what
+      // happened, don't scold, and leave a door open. Normal priority — a loss
+      // shouldn't ding like a win.
+      case 'challenge_ended': {
+        const title = (payload.title as string) || 'Your challenge';
+        const outcome = String(payload.outcome ?? 'expired');
+        const finishers = Math.max(0, Math.round(Number(payload.finishers ?? 0)));
+        const roster = Math.max(0, Math.round(Number(payload.roster ?? 0)));
+        const body =
+          outcome === 'cancelled'
+            ? `"${title}" was cancelled before it finished.`
+            : outcome === 'pool_missed'
+              ? `"${title}" ended — the group came up short of the target this time.`
+              : outcome === 'missed'
+                ? roster > 0
+                  ? `"${title}" finished without you — ${finishers} of ${roster} made it.`
+                  : `"${title}" finished without you this time.`
+                : `"${title}" ended — nobody finished this one.`;
+        return {
+          title: outcome === 'cancelled' ? 'Challenge cancelled' : 'Challenge over',
+          body,
+          data: {
+            type,
+            route: `/shared-challenge?id=${payload.challenge_id}`,
+            challenge_id: payload.challenge_id,
+            outcome,
+          },
+          sound: 'default',
+          channelId: 'powr_default_v2',
+          priority: 'normal',
         };
       }
 
