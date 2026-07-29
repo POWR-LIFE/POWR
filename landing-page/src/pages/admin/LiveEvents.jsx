@@ -579,7 +579,7 @@ function LifecyclePanel({
                         <Btn icon={Copy} label="Copy" onClick={onCopyPromoUrl} />
                         <a
                             href={`https://powr.life/promo/${ev.slug}?k=${ev.display_token}`}
-                            target="_blank" rel="noreferrer"
+                            target="_blank" rel="noopener noreferrer"
                             className="inline-flex items-center gap-2 h-10 px-4 rounded-xl border text-[10.5px] font-bold uppercase tracking-[0.18em] transition-all bg-[#F4F4F1] border-[#E6E6E1] text-[#555555] hover:text-[#1A1A1A] hover:border-[#D8D8D2]"
                         >
                             <ExternalLink size={13} /> Preview
