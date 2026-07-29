@@ -1,11 +1,13 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
 import { useAuth } from '../../App';
+import { Link } from 'react-router-dom';
 import {
     PartyPopper, Plus, Copy, Save, Trash2, Search, X, Check,
     CalendarClock, Eye, EyeOff, Lock, Flag, Trophy, Archive,
     Link2, RefreshCw, AlertTriangle, Rocket, Undo2,
+    Gauge, Download, UserX, UserCheck, ShieldAlert,
 } from 'lucide-react';
 
 const logAction = async (adminId, action, targetType, targetId, metadata = {}) => {
@@ -89,6 +91,12 @@ export default function LiveEvents() {
     const [acting, setActing] = useState(null);   // lifecycle action in flight
     const [counts, setCounts] = useState({ participants: 0, results: 0 });
     const [venueName, setVenueName] = useState(null);
+    const [ops, setOps] = useState(null);          // admin_get_event_ops payload
+    const [standings, setStandings] = useState(null); // through-blur board rows
+    const [dqRows, setDqRows] = useState([]);      // disqualified users (off-board)
+    const [dqBusy, setDqBusy] = useState(null);    // user_id of DQ action in flight
+    const [anticheat, setAnticheat] = useState(null); // admin_get_event_anticheat payload
+    const lastOpsEventId = useRef(null);           // guards against showing event A's ops data under event B
 
     const selected = useMemo(() => events.find(e => e.id === selectedId) ?? null, [events, selectedId]);
     const dirty = useMemo(() => {
@@ -99,9 +107,16 @@ export default function LiveEvents() {
     useEffect(() => { fetchEvents(); }, []);
 
     useEffect(() => {
-        if (!selected) { setForm(null); setVenueName(null); return; }
+        if (!selected) { setForm(null); setVenueName(null); setOps(null); setStandings(null); setDqRows([]); setAnticheat(null); lastOpsEventId.current = null; return; }
         setForm(editableFields(selected));
+        // Switching events must never show the previous event's ops data while
+        // the new fetch is in flight; same-event refreshes keep what's there.
+        if (selected.id !== lastOpsEventId.current) {
+            lastOpsEventId.current = selected.id;
+            setOps(null); setStandings(null); setDqRows([]); setAnticheat(null);
+        }
         fetchCounts(selected.id);
+        fetchOps(selected.id);
         if (selected.venue_partner_id) {
             supabase.from('partners').select('name').eq('id', selected.venue_partner_id).single()
                 .then(({ data }) => setVenueName(data?.name ?? null));
@@ -124,6 +139,68 @@ export default function LiveEvents() {
             supabase.from('live_event_results').select('*', { count: 'exact', head: true }).eq('event_id', eventId),
         ]);
         setCounts({ participants: p.count ?? 0, results: r.count ?? 0 });
+    };
+
+    // Ops dashboard data: counts/funnel + the through-blur standings. Admin
+    // RPCs see the board at any status, hidden or not — this is the list
+    // whoever hands out prizes reads from.
+    const fetchOps = async (eventId) => {
+        // A failed report must read as "no report", never as the previous
+        // one — stale vetting signals are worse than none.
+        setAnticheat(null);
+        const [opsRes, boardRes, acRes, dqRes] = await Promise.all([
+            supabase.rpc('admin_get_event_ops', { p_event_id: eventId }),
+            supabase.rpc('admin_get_event_leaderboard', { p_event_id: eventId }),
+            supabase.rpc('admin_get_event_anticheat', { p_event_id: eventId }),
+            // Disqualified users drop out of the scorer (that's the point), so
+            // the requalify path needs its own list.
+            supabase.from('live_event_participants')
+                .select('user_id, disqualified_at, profiles:user_id (display_name, username)')
+                .eq('event_id', eventId)
+                .not('disqualified_at', 'is', null),
+        ]);
+        if (!opsRes.error) setOps(opsRes.data);
+        if (!boardRes.error) setStandings(boardRes.data?.standings ?? []);
+        if (!acRes.error) setAnticheat(acRes.data);
+        if (!dqRes.error) {
+            setDqRows((dqRes.data ?? []).map(r => ({
+                user_id: r.user_id,
+                disqualified_at: r.disqualified_at,
+                display_name: r.profiles?.display_name ?? null,
+                username: r.profiles?.username ?? null,
+            })));
+        }
+    };
+
+    const disqualify = async (ev, row, disqualified) => {
+        const verb = disqualified ? 'Disqualify' : 'Requalify';
+        if (!window.confirm(`${verb} ${row.display_name ?? row.username ?? 'this member'} ${disqualified ? 'from' : 'for'} this event? Event-scoped only — their points are untouched.${disqualified && counts.results > 0 ? ' Re-settle afterwards so the frozen results drop them too.' : ''}`)) return;
+        setDqBusy(row.user_id);
+        const { error } = await supabase.rpc('admin_disqualify_from_event', {
+            p_event_id: ev.id, p_user_id: row.user_id, p_disqualified: disqualified,
+        });
+        setDqBusy(null);
+        if (error) { toast.error(error.message); return; }
+        await logAction(user.id, disqualified ? 'live_event_disqualify' : 'live_event_requalify', 'live_event', ev.id, { target_user: row.user_id });
+        toast.success(`${row.display_name ?? row.username ?? 'Member'} ${disqualified ? 'disqualified' : 'requalified'}`);
+        fetchOps(ev.id);
+        fetchCounts(ev.id);
+    };
+
+    const exportCsv = (ev) => {
+        const header = 'rank,name,username,points,last_counted,sessions,geofence,wearable,manual,flagged,disqualified';
+        const q = (s) => `"${String(s ?? '').replace(/"/g, '""')}"`;
+        const lines = (standings ?? []).map(r => [
+            r.rank, q(r.display_name ?? ''), q(r.username ?? ''), r.points,
+            q(r.last_counted_tx_at ?? ''), r.sessions_in_window, r.geofence_sessions,
+            r.wearable_sessions, r.manual_sessions, r.flagged_sessions, r.disqualified,
+        ].join(','));
+        const blob = new Blob([[header, ...lines].join('\n')], { type: 'text/csv' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `${ev.slug}-standings.csv`;
+        a.click();
+        URL.revokeObjectURL(a.href);
     };
 
     // ── Create / duplicate / save ─────────────────────────────
@@ -335,6 +412,20 @@ export default function LiveEvents() {
                         onDuplicate={() => duplicateEvent(selected)}
                     />
 
+                    {selected.status !== 'draft' && (
+                        <OpsPanel
+                            ev={selected}
+                            ops={ops}
+                            standings={standings}
+                            dqRows={dqRows}
+                            dqBusy={dqBusy}
+                            anticheat={anticheat}
+                            resultsCount={counts.results}
+                            onDisqualify={(row, dq) => disqualify(selected, row, dq)}
+                            onExportCsv={() => exportCsv(selected)}
+                        />
+                    )}
+
                     <EditorPanel
                         form={form}
                         setForm={setForm}
@@ -459,6 +550,306 @@ function LifecyclePanel({
                 </div>
             </div>
         </section>
+    );
+}
+
+// ─── Ops panel (ticket 6) ────────────────────────────────────────
+// Through-blur standings + vetting signals + invite funnel. This is
+// the list read out at prize handover — visible to admins whatever
+// the board's public state.
+
+function OpsPanel({ ev, ops, standings, dqRows, dqBusy, anticheat, resultsCount, onDisqualify, onExportCsv }) {
+    const rows = standings ?? [];
+    const fmtTime = (iso) => iso
+        ? new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+        : '—';
+
+    const Stat = ({ label, value, accent }) => (
+        <div className="rounded-2xl border border-[#E6E6E1] bg-[#FAFAF8] px-5 py-4">
+            <div className="text-2xl font-light tracking-tight" style={{ color: accent ?? '#1A1A1A' }}>{value ?? '—'}</div>
+            <div className="text-[9px] font-black uppercase tracking-[0.25em] text-[#999999] mt-1">{label}</div>
+        </div>
+    );
+
+    return (
+        <section>
+            <div className="flex items-center gap-4 mb-4 px-1">
+                <div className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 border bg-[#0EA5E9]/10 border-[#0EA5E9]/25">
+                    <Gauge size={18} className="text-[#0EA5E9]" />
+                </div>
+                <div className="min-w-0 flex-1">
+                    <h2 className="text-lg font-bold text-[#1A1A1A] tracking-tight">Ops — live standings & vetting</h2>
+                    <p className="text-[12px] text-[#888888] leading-snug">
+                        Admin view sees through the blur at any status. Wearable data lags 30–90 min behind
+                        reality — late scores are normal, not suspicious.
+                    </p>
+                </div>
+                <button
+                    onClick={onExportCsv}
+                    disabled={rows.length === 0}
+                    className="inline-flex items-center gap-2 h-10 px-4 rounded-xl bg-[#F4F4F1] border border-[#E6E6E1] text-[10.5px] font-bold uppercase tracking-[0.18em] text-[#555555] hover:text-[#1A1A1A] transition-all disabled:opacity-40 shrink-0"
+                >
+                    <Download size={13} /> Export CSV
+                </button>
+            </div>
+
+            <div className="bg-white border border-[#E6E6E1] rounded-3xl p-7 space-y-7">
+                {/* Counts */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                    <Stat label="Eligible" value={ops?.eligible_count} />
+                    <Stat label={ev.scope === 'opt_in' ? 'Joined' : 'Participants'} value={ops?.participant_count} />
+                    <Stat label="Disqualified" value={ops?.disqualified_count} accent={ops?.disqualified_count > 0 ? '#F43F5E' : undefined} />
+                    <Stat label="On the board" value={rows.length} />
+                    <Stat label="Frozen results" value={ops?.results_count} />
+                    <Stat label="Invite conversions" value={ops?.converted_count} accent="#10B981" />
+                </div>
+
+                {/* Standings + vetting signals */}
+                {rows.length === 0 ? (
+                    <p className="text-[13px] text-[#999999]">No scores on the board yet.</p>
+                ) : (
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-[13px]">
+                            <thead>
+                                <tr className="text-[9px] font-black uppercase tracking-[0.2em] text-[#999999] border-b border-[#F0F0EC]">
+                                    <th className="text-left py-2 pr-3">#</th>
+                                    <th className="text-left py-2 pr-3">Member</th>
+                                    <th className="text-right py-2 pr-3">Points</th>
+                                    <th className="text-left py-2 pr-3">Last counted</th>
+                                    <th className="text-right py-2 pr-3">Sessions</th>
+                                    <th className="text-left py-2 pr-3">Mix G/W/M</th>
+                                    <th className="text-left py-2 pr-3">Signals</th>
+                                    <th className="text-right py-2">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-[#F6F6F3]">
+                                {rows.map((r) => {
+                                    const manualHeavy = r.sessions_in_window > 0 && r.manual_sessions / r.sessions_in_window >= 0.5;
+                                    return (
+                                        <tr key={r.user_id} className={r.disqualified ? 'opacity-45' : ''}>
+                                            <td className="py-2.5 pr-3 font-mono text-[#888888]">{r.rank}</td>
+                                            <td className="py-2.5 pr-3">
+                                                {/* One click into the existing review surface — rejection
+                                                    there writes penalty rows, which now lower event scores. */}
+                                                <Link to={`/admin/users/${r.user_id}`} className="font-semibold text-[#1A1A1A] hover:underline">
+                                                    {r.display_name ?? r.username ?? 'POWR member'}
+                                                </Link>
+                                                {r.username && <span className="text-[#AAAAAA] ml-2">@{r.username}</span>}
+                                            </td>
+                                            <td className="py-2.5 pr-3 text-right font-mono font-semibold">{r.points}</td>
+                                            <td className="py-2.5 pr-3 text-[#888888]">{fmtTime(r.last_counted_tx_at)}</td>
+                                            <td className="py-2.5 pr-3 text-right font-mono">{r.sessions_in_window}</td>
+                                            <td className="py-2.5 pr-3 font-mono text-[#888888]">
+                                                {r.geofence_sessions}/{r.wearable_sessions}/{r.manual_sessions}
+                                            </td>
+                                            <td className="py-2.5 pr-3">
+                                                <div className="flex items-center gap-1.5 flex-wrap">
+                                                    {r.flagged_sessions > 0 && (
+                                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#F43F5E]/10 border border-[#F43F5E]/25 text-[#F43F5E] text-[9px] font-black uppercase tracking-[0.12em]">
+                                                            <ShieldAlert size={10} /> {r.flagged_sessions} flagged
+                                                        </span>
+                                                    )}
+                                                    {manualHeavy && (
+                                                        <span className="px-2 py-0.5 rounded-full bg-[#F97316]/10 border border-[#F97316]/25 text-[#B45309] text-[9px] font-black uppercase tracking-[0.12em]">
+                                                            manual-heavy
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </td>
+                                            <td className="py-2.5 text-right">
+                                                <button
+                                                    onClick={() => onDisqualify(r, true)}
+                                                    disabled={dqBusy === r.user_id}
+                                                    className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border text-[9.5px] font-bold uppercase tracking-[0.12em] transition-all disabled:opacity-40 bg-[#F43F5E]/10 border-[#F43F5E]/25 text-[#F43F5E] hover:bg-[#F43F5E]/15"
+                                                >
+                                                    <UserX size={11} /> Disqualify
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                        {resultsCount > 0 && (
+                            <p className="text-[11px] text-[#B45309] mt-3 flex items-center gap-1.5">
+                                <AlertTriangle size={12} />
+                                Results are already frozen — after any disqualification, Re-settle so the snapshot drops them too.
+                            </p>
+                        )}
+                    </div>
+                )}
+
+                {/* Disqualified — off the board by definition, so the requalify
+                    path lives here rather than in the standings table. */}
+                {(dqRows ?? []).length > 0 && (
+                    <div className="border-t border-[#F0F0EC] pt-6">
+                        <div className="text-[10px] font-black uppercase tracking-[0.25em] text-[#F43F5E] mb-3">
+                            Disqualified — {dqRows.length}
+                        </div>
+                        <div className="space-y-2">
+                            {dqRows.map((r) => (
+                                <div key={r.user_id} className="flex items-center gap-4">
+                                    <Link to={`/admin/users/${r.user_id}`} className="font-semibold text-[13px] text-[#1A1A1A] hover:underline">
+                                        {r.display_name ?? r.username ?? 'POWR member'}
+                                    </Link>
+                                    <span className="text-[11px] text-[#999999]">
+                                        since {new Date(r.disqualified_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                                    </span>
+                                    <button
+                                        onClick={() => onDisqualify(r, false)}
+                                        disabled={dqBusy === r.user_id}
+                                        className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border text-[9.5px] font-bold uppercase tracking-[0.12em] bg-[#F4F4F1] border-[#E6E6E1] text-[#555555] hover:text-[#1A1A1A] transition-all disabled:opacity-40"
+                                    >
+                                        <UserCheck size={11} /> Requalify
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {/* Anti-cheat report (ticket 7) — signals, not verdicts. */}
+                <AntiCheatReport report={anticheat} />
+
+                {/* Invite funnel */}
+                <div className="border-t border-[#F0F0EC] pt-6">
+                    <div className="text-[10px] font-black uppercase tracking-[0.25em] text-[#888888] mb-3">
+                        Invite funnel — {ops?.converted_count ?? 0} converted · {ops?.pending_referrals ?? 0} signups pending
+                    </div>
+                    {(ops?.funnel ?? []).length === 0 ? (
+                        <p className="text-[13px] text-[#999999]">No invites yet.</p>
+                    ) : (
+                        <table className="w-full max-w-2xl text-[13px]">
+                            <thead>
+                                <tr className="text-[9px] font-black uppercase tracking-[0.2em] text-[#999999] border-b border-[#F0F0EC]">
+                                    <th className="text-left py-2 pr-3">Referrer</th>
+                                    <th className="text-right py-2 pr-3">Signups</th>
+                                    <th className="text-right py-2 pr-3">Pending</th>
+                                    <th className="text-right py-2 pr-3">Converted</th>
+                                    <th className="text-left py-2 pl-3">Milestone</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-[#F6F6F3]">
+                                {ops.funnel.map((f) => (
+                                    <tr key={f.referrer_id}>
+                                        <td className="py-2 pr-3 font-semibold text-[#1A1A1A]">{f.referrer_name}</td>
+                                        <td className="py-2 pr-3 text-right font-mono">{f.signups}</td>
+                                        <td className="py-2 pr-3 text-right font-mono text-[#999999]">{f.pending}</td>
+                                        <td className="py-2 pr-3 text-right font-mono font-semibold text-[#10B981]">{f.converted}</td>
+                                        <td className="py-2 pl-3">
+                                            {f.milestone_paid && (
+                                                <span className="px-2 py-0.5 rounded-full bg-[#E8D200]/15 border border-[#E8D200]/40 text-[#8a7600] text-[9px] font-black uppercase tracking-[0.12em]">
+                                                    paid
+                                                </span>
+                                            )}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    )}
+                </div>
+            </div>
+        </section>
+    );
+}
+
+// ─── Anti-cheat report (ticket 7) ────────────────────────────────
+// Four event-window signals, each with innocent explanations — the
+// human decides. Anything found links into the user's admin profile
+// where SessionReview rejection (penalty rows) lowers event scores.
+
+function AntiCheatReport({ report }) {
+    if (!report) return null;
+    const groups = [
+        {
+            key: 'mirrored_sessions',
+            title: 'Mirrored wearable sessions',
+            blurb: 'Near-identical workouts (same type, start ±5 min, duration ±60 s) on two accounts, 2+ times — the shape of one watch synced to two accounts. Also what two friends training together looks like.',
+            rows: (report.mirrored_sessions ?? []).map((m, i) => (
+                <div key={i} className="flex items-center gap-2 text-[13px]">
+                    <Link to={`/admin/users/${m.user_a?.user_id}`} className="font-semibold text-[#1A1A1A] hover:underline">{m.user_a?.name}</Link>
+                    <span className="text-[#999999]">×</span>
+                    <Link to={`/admin/users/${m.user_b?.user_id}`} className="font-semibold text-[#1A1A1A] hover:underline">{m.user_b?.name}</Link>
+                    <span className="text-[#999999]">— {m.mirrored} matching sessions</span>
+                </div>
+            )),
+        },
+        {
+            key: 'shared_devices',
+            title: 'Shared devices',
+            blurb: 'One device writing sessions for 2+ accounts inside the window.',
+            rows: (report.shared_devices ?? []).map((d) => (
+                <div key={d.device_id} className="flex items-center gap-2 text-[13px] flex-wrap">
+                    <code className="text-[11px] font-mono text-[#999999] bg-[#F4F4F1] border border-[#EAEAE5] rounded px-1.5 py-0.5">{String(d.device_id).slice(0, 12)}…</code>
+                    {(d.users ?? []).map((u, i) => (
+                        <span key={u.user_id} className="flex items-center gap-1">
+                            {i > 0 && <span className="text-[#999999]">·</span>}
+                            <Link to={`/admin/users/${u.user_id}`} className="font-semibold text-[#1A1A1A] hover:underline">{u.name}</Link>
+                            <span className="text-[#999999]">({u.sessions})</span>
+                        </span>
+                    ))}
+                </div>
+            )),
+        },
+        {
+            key: 'short_bursts',
+            title: 'Short-session bursts',
+            blurb: '3+ sub-15-minute wearable sessions in one day (walking/sleep excluded) — wearables pay flat per session, so tiny bursts are the farm shape.',
+            rows: (report.short_bursts ?? []).map((b, i) => (
+                <div key={i} className="flex items-center gap-2 text-[13px]">
+                    <Link to={`/admin/users/${b.user_id}`} className="font-semibold text-[#1A1A1A] hover:underline">{b.name}</Link>
+                    {/* b.day is a date-only string; suffix a local midnight so the
+                        calendar day doesn't shift for admins west of UTC. */}
+                    <span className="text-[#999999]">— {b.short_sessions} short sessions on {new Date(`${b.day}T00:00:00`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}</span>
+                </div>
+            )),
+        },
+        {
+            key: 'manual_heavy',
+            title: 'Manual-heavy scores',
+            blurb: 'Board users whose event score is ≥40% manual logs (points-weighted, ≥20 pts).',
+            rows: (report.manual_heavy ?? []).map((m) => (
+                <div key={m.user_id} className="flex items-center gap-2 text-[13px]">
+                    <span className="font-mono text-[#999999]">#{m.rank}</span>
+                    <Link to={`/admin/users/${m.user_id}`} className="font-semibold text-[#1A1A1A] hover:underline">{m.name}</Link>
+                    <span className="text-[#999999]">— {m.manual_points} of {m.points} pts manual ({Math.round(m.share * 100)}%)</span>
+                </div>
+            )),
+        },
+    ];
+    const totalHits = groups.reduce((n, g) => n + g.rows.length, 0);
+
+    return (
+        <div className="border-t border-[#F0F0EC] pt-6">
+            <div className="flex items-center gap-2.5 mb-1">
+                <ShieldAlert size={14} className={totalHits > 0 ? 'text-[#F97316]' : 'text-[#10B981]'} />
+                <span className="text-[10px] font-black uppercase tracking-[0.25em] text-[#888888]">
+                    Anti-cheat report — {totalHits > 0 ? `${totalHits} signal${totalHits === 1 ? '' : 's'}` : 'all clear'}
+                </span>
+            </div>
+            <p className="text-[11.5px] text-[#999999] mb-4 max-w-3xl">
+                Signals, not verdicts — each has innocent explanations. Rejecting sessions in a user's
+                review writes penalty rows, which lower their event score; Disqualify above removes them
+                from this event entirely.
+            </p>
+            <div className="grid gap-5 lg:grid-cols-2">
+                {groups.map((g) => (
+                    <div key={g.key} className="rounded-2xl border border-[#EFEFEA] bg-[#FBFBF9] p-4">
+                        <div className="flex items-center gap-2 mb-1">
+                            <span className="text-[12.5px] font-bold text-[#1A1A1A]">{g.title}</span>
+                            {g.rows.length > 0
+                                ? <span className="text-[10px] font-black text-[#F97316]">{g.rows.length}</span>
+                                : <Check size={13} className="text-[#10B981]" />}
+                        </div>
+                        <p className="text-[11px] text-[#999999] leading-snug mb-2.5">{g.blurb}</p>
+                        {g.rows.length === 0
+                            ? <p className="text-[12px] text-[#AAAAAA]">Nothing found.</p>
+                            : <div className="space-y-1.5">{g.rows}</div>}
+                    </div>
+                ))}
+            </div>
+        </div>
     );
 }
 
