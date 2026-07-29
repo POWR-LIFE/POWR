@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
 import { useAuth } from '../../App';
 import { levelFromEarned } from '../../lib/levels';
-import { User, Search, Users, Activity, Award, ChevronRight, Filter, MapPin, Star, UserPlus, Trash2, X, Eye, EyeOff, Watch } from 'lucide-react';
+import { User, Search, Users, Activity, Award, ChevronRight, Filter, MapPin, Star, UserPlus, Trash2, X, Eye, EyeOff, Watch, Smartphone } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 // Full connectable provider list — mirrors lib/health/providers/index.ts in the app
@@ -33,6 +33,16 @@ const PROVIDER_LABELS = {
 };
 const providerLabel = (p) => PROVIDER_LABELS[p] || p;
 
+// Native phone integrations — a connection here proves HealthKit/Health Connect
+// permission, NOT a wearable. Everything else in the list is a genuine
+// wearable/fitness-service link.
+const NATIVE_PROVIDERS = new Set(['apple-health', 'health-connect', 'samsung-health']);
+
+// seen_devices carries provenance labels stamped by the app (lib/health/dataSource.ts):
+// "Apple Watch", "Garmin", "Oura", "Fitness band", ... vs plain "iPhone"/"Phone".
+const PHONE_DEVICE_TOKENS = new Set(['iPhone', 'Phone']);
+const isWearableDevice = (d) => !PHONE_DEVICE_TOKENS.has(d);
+
 const ACTIVITY_TYPES = ['walking', 'running', 'cycling', 'swimming', 'gym', 'hiit', 'sports', 'yoga', 'sleep', 'dance'];
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -56,7 +66,7 @@ export default function UserManager() {
     const [stats, setStats] = useState({ total: 0, avgLevel: 0, activeToday: 0 });
 
     // Filters
-    const [filterDevice, setFilterDevice] = useState('all');       // all | none | <provider>
+    const [filterDevice, setFilterDevice] = useState('all');       // all | none | seen-wearable | phone-only | <provider>
     const [filterActivity, setFilterActivity] = useState('all');   // all | none | <type>
     const [activityOnly, setActivityOnly] = useState(false);       // exclusively that activity
     const [filterTier, setFilterTier] = useState('all');           // all | pro | standard
@@ -131,6 +141,14 @@ export default function UserManager() {
     const knownProviders = [...new Set([...Object.keys(PROVIDER_LABELS), ...Object.keys(providerCounts)])]
         .sort((a, b) => providerLabel(a).localeCompare(providerLabel(b)));
 
+    // Provenance-based counts — who has actually produced wearable-sourced
+    // samples, regardless of which provider chip they carry.
+    const wearableSeenCount = users.filter(u => (u.seen_devices || []).some(isWearableDevice)).length;
+    const phoneOnlyCount = users.filter(u => {
+        const d = u.seen_devices || [];
+        return d.length > 0 && !d.some(isWearableDevice);
+    }).length;
+
     const activeFilterCount = [
         filterDevice !== 'all',
         filterActivity !== 'all',
@@ -156,8 +174,11 @@ export default function UserManager() {
         }
 
         const providers = u.connected_providers || [];
+        const devices = u.seen_devices || [];
         if (filterDevice === 'none' && providers.length > 0) return false;
-        if (filterDevice !== 'all' && filterDevice !== 'none' && !providers.includes(filterDevice)) return false;
+        if (filterDevice === 'seen-wearable' && !devices.some(isWearableDevice)) return false;
+        if (filterDevice === 'phone-only' && (devices.length === 0 || devices.some(isWearableDevice))) return false;
+        if (!['all', 'none', 'seen-wearable', 'phone-only'].includes(filterDevice) && !providers.includes(filterDevice)) return false;
 
         const types = u.activity_types || [];
         if (filterActivity === 'none' && types.length > 0) return false;
@@ -351,6 +372,8 @@ export default function UserManager() {
                                 className="w-full h-12 px-4 bg-[#F4F4F1] border border-[#E6E6E1] rounded-xl text-[11px] font-black uppercase tracking-[0.15em] text-[#1A1A1A] outline-none focus:border-[#E8D200]/40 transition-all"
                             >
                                 <option value="all">All</option>
+                                <option value="seen-wearable">Wearable seen ({wearableSeenCount})</option>
+                                <option value="phone-only">Phone data only ({phoneOnlyCount})</option>
                                 {knownProviders.map(p => (
                                     <option key={p} value={p}>{providerLabel(p)} ({providerCounts[p] || 0})</option>
                                 ))}
@@ -517,17 +540,35 @@ export default function UserManager() {
                                             </div>
                                         </td>
                                         <td className="px-6 py-5">
-                                            {(user.connected_providers || []).length > 0 ? (
-                                                <div className="flex flex-wrap gap-1.5 max-w-[180px]">
-                                                    {user.connected_providers.map(p => (
-                                                        <span key={p} className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#F4F4F1] border border-[#E6E6E1] text-[8px] font-black uppercase tracking-[0.15em] text-[#555555] whitespace-nowrap">
-                                                            <Watch size={9} className="text-[#8a7600]" /> {providerLabel(p)}
-                                                        </span>
-                                                    ))}
-                                                </div>
-                                            ) : (
-                                                <span className="text-[9px] uppercase tracking-[0.3em] text-[#BBBBBB] font-black">None</span>
-                                            )}
+                                            <div className="flex flex-col gap-2 max-w-[200px]">
+                                                {(user.connected_providers || []).length > 0 ? (
+                                                    <div className="flex flex-wrap gap-1.5">
+                                                        {user.connected_providers.map(p => (
+                                                            <span key={p} className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#F4F4F1] border border-[#E6E6E1] text-[8px] font-black uppercase tracking-[0.15em] text-[#555555] whitespace-nowrap">
+                                                                {NATIVE_PROVIDERS.has(p)
+                                                                    ? <Smartphone size={9} className="text-[#999999]" />
+                                                                    : <Watch size={9} className="text-[#8a7600]" />} {providerLabel(p)}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                ) : (
+                                                    <span className="text-[9px] uppercase tracking-[0.3em] text-[#BBBBBB] font-black">None</span>
+                                                )}
+                                                {(user.seen_devices || []).length > 0 && (
+                                                    <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+                                                        {user.seen_devices.map(d => (
+                                                            <span
+                                                                key={d}
+                                                                className={`flex items-center gap-1 text-[8px] font-black uppercase tracking-[0.15em] whitespace-nowrap ${
+                                                                    isWearableDevice(d) ? 'text-[#8a7600]' : 'text-[#AAAAAA]'
+                                                                }`}
+                                                            >
+                                                                {isWearableDevice(d) ? <Watch size={9} /> : <Smartphone size={9} />}{d}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
                                         </td>
                                         <td className="px-6 py-5">
                                             {(user.activity_types || []).length > 0 ? (
