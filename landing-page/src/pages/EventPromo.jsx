@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { QRCodeSVG } from 'qrcode.react';
 import { LOGO_SRC } from '../landing/LogoMorph';
 import { storageImage } from '../lib/storage';
+import MediaVideo from '../components/MediaVideo';
 
 /**
  * Shareable event promo page — powr.life/promo/<slug>.
@@ -201,7 +202,7 @@ function Shell({ media, children }) {
         >
             {/* Background media (video or image), covered + scrimmed for legibility */}
             {media && (isVideo ? (
-                <video
+                <MediaVideo
                     src={media}
                     referrerPolicy="no-referrer"
                     autoPlay
@@ -223,7 +224,7 @@ function Shell({ media, children }) {
                     className="absolute inset-0"
                     style={{
                         background:
-                            'linear-gradient(180deg, rgba(8,8,8,0.55) 0%, rgba(8,8,8,0.25) 38%, rgba(8,8,8,0.45) 68%, rgba(8,8,8,0.88) 100%)',
+                            'linear-gradient(180deg, rgba(8,8,8,0.55) 0%, rgba(8,8,8,0.25) 38%, rgba(8,8,8,0.5) 62%, rgba(8,8,8,0.9) 80%, rgba(8,8,8,0.97) 100%)',
                     }}
                 />
             ) : (
