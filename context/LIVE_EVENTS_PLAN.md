@@ -13,7 +13,7 @@ first configured event. Nothing event-specific is hardcoded.
 - **Points week**: leaderboard counts only points earned inside the event window.
   Balances, levels and the vault are untouched — this is a windowed sum, never a reset.
   Comms must say "only points earned that week count", never "reset".
-- **Window**: Mon 00:00 → Thu 23:59:59 **Europe/London** (stored timestamptz).
+- **Window**: Mon 00:00 → Fri 00:00:00 **Europe/London** (stored timestamptz; treat `window_end_at` as exclusive).
 - **Eligibility**: account created before the window opens (admin-tunable cutoff).
 - **Thursday lock**: at `lock_at` the board freezes and **hides** — server stops
   returning scores, not a client-side blur. It stays hidden through Friday until after
