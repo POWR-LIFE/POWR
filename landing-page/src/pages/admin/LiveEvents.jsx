@@ -11,6 +11,8 @@ import {
     Megaphone, Upload, ExternalLink,
 } from 'lucide-react';
 import { storageImage, uploadPublicImage } from '../../lib/storage';
+import { validateHeroVideoUrl } from '../../lib/heroVideoUrl';
+import MediaVideo from '../../components/MediaVideo';
 
 const logAction = async (adminId, action, targetType, targetId, metadata = {}) => {
     await supabase.from('admin_audit_log').insert({ admin_id: adminId, action, target_type: targetType, target_id: targetId, metadata });
@@ -916,21 +918,7 @@ function EditorPanel({ form, setForm, dirty, saving, onSave, onDiscard, venueNam
                     </p>
                 </div>
                 {dirty && !locked && (
-                    <div className="flex items-center gap-2 shrink-0">
-                        <button
-                            onClick={onDiscard}
-                            className="h-10 px-4 rounded-xl bg-[#F4F4F1] border border-[#E6E6E1] text-[10.5px] font-bold uppercase tracking-[0.18em] text-[#666666] hover:text-[#1A1A1A] transition-all"
-                        >
-                            Discard
-                        </button>
-                        <button
-                            onClick={onSave}
-                            disabled={saving}
-                            className="inline-flex items-center gap-2 h-10 px-5 rounded-xl bg-[#10B981] text-white text-[10.5px] font-bold uppercase tracking-[0.18em] hover:bg-[#0EA271] transition-all disabled:opacity-50"
-                        >
-                            <Save size={13} /> {saving ? 'Saving…' : 'Save changes'}
-                        </button>
-                    </div>
+                    <SaveBar saving={saving} onSave={onSave} onDiscard={onDiscard} className="shrink-0" />
                 )}
             </div>
 
@@ -1057,7 +1045,31 @@ function EditorPanel({ form, setForm, dirty, saving, onSave, onDiscard, venueNam
                     </Group>
                 </div>
             </fieldset>
+
+            {dirty && !locked && (
+                <SaveBar saving={saving} onSave={onSave} onDiscard={onDiscard} className="justify-end mt-4 px-1" />
+            )}
         </section>
+    );
+}
+
+function SaveBar({ saving, onSave, onDiscard, className = '' }) {
+    return (
+        <div className={`flex items-center gap-2 ${className}`}>
+            <button
+                onClick={onDiscard}
+                className="h-10 px-4 rounded-xl bg-[#F4F4F1] border border-[#E6E6E1] text-[10.5px] font-bold uppercase tracking-[0.18em] text-[#666666] hover:text-[#1A1A1A] transition-all"
+            >
+                Discard
+            </button>
+            <button
+                onClick={onSave}
+                disabled={saving}
+                className="inline-flex items-center gap-2 h-10 px-5 rounded-xl bg-[#10B981] text-white text-[10.5px] font-bold uppercase tracking-[0.18em] hover:bg-[#0EA271] transition-all disabled:opacity-50"
+            >
+                <Save size={13} /> {saving ? 'Saving…' : 'Save changes'}
+            </button>
+        </div>
     );
 }
 
@@ -1283,7 +1295,7 @@ function PromoMediaField({ value, onChange }) {
             {value && (
                 <div className="w-full max-w-md rounded-xl overflow-hidden border border-[#E6E6E1] bg-[#080808]">
                     {PROMO_VIDEO_EXT.test(value) ? (
-                        <video src={value} muted loop autoPlay playsInline className="w-full h-32 object-cover" />
+                        <MediaVideo src={value} muted loop autoPlay playsInline className="w-full h-32 object-cover" />
                     ) : (
                         <img src={storageImage(value, 960)} alt="Promo background preview" className="w-full h-32 object-cover" />
                     )}
