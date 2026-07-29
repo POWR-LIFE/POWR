@@ -40,25 +40,34 @@ begin
   -- still-pending signups (they can convert into it until the
   -- deadline). "Codes shared" isn't a tracked signal — signups are
   -- the top of the funnel we can actually see.
-  select jsonb_agg(row order by (row->>'converted')::int desc, (row->>'signups')::int desc)
+  select jsonb_agg(jsonb_build_object(
+           'referrer_id',    s.referrer_id,
+           'referrer_name',  s.referrer_name,
+           'signups',        s.signups,
+           'converted',      s.converted,
+           'pending',        s.pending,
+           'milestone_paid', s.milestone_paid
+         ) order by s.converted desc, s.signups desc)
     into v_funnel
     from (
-      select jsonb_build_object(
-               'referrer_id',    r.referrer_id,
-               'referrer_name',  coalesce(p.display_name, p.username, 'POWR member'),
-               'signups',        count(*),
-               'converted',      count(*) filter (where r.event_id = p_event_id and r.converted_at is not null),
-               'pending',        count(*) filter (where r.converted_at is null),
-               'milestone_paid', exists (select 1 from public.live_event_invite_milestones m
-                                          where m.event_id = p_event_id and m.referrer_id = r.referrer_id)
-             ) as row
-        from public.referrals r
-        join public.profiles p on p.id = r.referrer_id
-       where r.converted_at is null
-          or r.event_id = p_event_id
-       group by r.referrer_id, p.display_name, p.username
-       limit 100
-    ) t;
+      select
+        r.referrer_id,
+        coalesce(p.display_name, p.username, 'POWR member') as referrer_name,
+        count(*)                                           as signups,
+        count(*) filter (where r.event_id = p_event_id and r.converted_at is not null) as converted,
+        count(*) filter (where r.converted_at is null)      as pending,
+        exists (
+          select 1 from public.live_event_invite_milestones m
+           where m.event_id = p_event_id and m.referrer_id = r.referrer_id
+        ) as milestone_paid
+      from public.referrals r
+      join public.profiles p on p.id = r.referrer_id
+      where r.converted_at is null
+         or r.event_id = p_event_id
+      group by r.referrer_id, p.display_name, p.username
+      order by converted desc, signups desc
+      limit 100
+    ) s;
 
   return jsonb_build_object(
     'eligible_count', (
