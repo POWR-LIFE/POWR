@@ -22,16 +22,24 @@ export default function MediaVideo({ src, ...rest }) {
         }
         let hls;
         let cancelled = false;
-        import('hls.js').then(({ default: Hls }) => {
-            if (cancelled || !ref.current) return;
-            if (Hls.isSupported()) {
-                hls = new Hls({ enableWorker: true });
-                hls.loadSource(src);
-                hls.attachMedia(video);
-            } else {
+        import('hls.js')
+            .then(({ default: Hls }) => {
+                if (cancelled || !ref.current) return;
+                if (Hls.isSupported()) {
+                    // Ensure we're not trying to play a previous non-MSE src.
+                    video.removeAttribute('src');
+                    video.load();
+                    hls = new Hls({ enableWorker: true });
+                    hls.attachMedia(video);
+                    hls.loadSource(src);
+                } else {
+                    video.src = src;
+                }
+            })
+            .catch(() => {
+                if (cancelled || !ref.current) return;
                 video.src = src;
-            }
-        });
+            });
         return () => {
             cancelled = true;
             hls?.destroy();
