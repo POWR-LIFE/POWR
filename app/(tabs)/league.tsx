@@ -26,9 +26,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { HeaderActions } from '@/components/HeaderActions';
 import { ComingSoon } from '@/components/ComingSoon';
+import { EventInviteCard } from '@/components/league/EventInviteCard';
 import { ProBadge } from '@/components/ui/ProBadge';
 import { UserProfileSheet } from '@/components/UserProfileSheet';
 import { usePoints } from '@/hooks/usePoints';
+import { useLiveEvent } from '@/hooks/useLiveEvent';
 import { useAuth } from '@/context/AuthContext';
 import { fetchLeaderboard, type LeaderboardEntry, type LeaderboardMetric } from '@/lib/api/leaderboard';
 
@@ -85,6 +87,8 @@ export default function LeagueScreen() {
   const { weeklyEarned, totalEarned } = usePoints();
   const myPoints = metric === 'weekly' ? weeklyEarned : totalEarned;
 
+  const { event: activeEvent, invites, join: joinEvent, joining } = useLiveEvent();
+
   // Load leaderboard data when metric changes (only when live)
   useEffect(() => {
     if (!LEAGUE_LIVE) return;
@@ -137,11 +141,29 @@ export default function LeagueScreen() {
       </View>
 
       {!LEAGUE_LIVE ? (
-        <ComingSoon
-          eyebrow="KEEP MOVING"
-          title="The league is waiting for you."
-          subtitle="Train consistently to unlock weekly podiums and rankings."
-        />
+        /* Event mode: when an event is configured the tab carries the event +
+           invite card (ticket 3); the event leaderboard itself lands with
+           ticket 5. No event → the original teaser. */
+        activeEvent ? (
+          <ScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
+            showsVerticalScrollIndicator={false}
+          >
+            <EventInviteCard
+              event={activeEvent}
+              invites={invites}
+              onJoin={joinEvent}
+              joining={joining}
+            />
+          </ScrollView>
+        ) : (
+          <ComingSoon
+            eyebrow="KEEP MOVING"
+            title="The league is waiting for you."
+            subtitle="Train consistently to unlock weekly podiums and rankings."
+          />
+        )
       ) : (
         <>
           {/* Standard / Pro tab bar */}
