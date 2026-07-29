@@ -49,7 +49,17 @@ export default function LiveBoard() {
             try {
                 const res = await fetch(`${FN_BASE}?slug=${encodeURIComponent(slug)}&k=${encodeURIComponent(token)}`);
                 if (!alive) return;
-                if (res.status === 404 || res.status === 400) { setInvalid(true); return; }
+                if (res.status === 404 || res.status === 400) {
+                    // Hard invalidation: a regenerated token or archived event
+                    // must blank the screen NOW, not leave the last standings
+                    // up behind a "reconnecting" note — token rotation is the
+                    // access kill-switch. (Polling continues, so a restored
+                    // event recovers on its own.)
+                    setInvalid(true);
+                    setBoard(null);
+                    setLastOkAt(0);
+                    return;
+                }
                 if (!res.ok) return; // transient — keep last data
                 const data = await res.json();
                 setBoard(data);
@@ -72,7 +82,7 @@ export default function LiveBoard() {
 
     const stale = board && lastOkAt > 0 && now - lastOkAt > STALE_MS;
 
-    if (invalid && !board) return <Shell><CenterNote big="This screen link isn’t valid" small="Ask the POWR team for a fresh display URL." /></Shell>;
+    if (invalid) return <Shell><CenterNote big="This screen link isn’t valid" small="Ask the POWR team for a fresh display URL." /></Shell>;
     if (!board) return <Shell><CenterNote big="POWR" small="Connecting…" pulse /></Shell>;
 
     return (
@@ -242,7 +252,7 @@ function LiveStandings({ board }) {
             <div className="flex-[2] min-w-0 flex flex-col justify-center gap-1.5">
                 {top10.map((row) => (
                     <motion.div
-                        key={nameOf(row) + row.rank}
+                        key={row.key ?? nameOf(row) + row.rank}
                         layout
                         transition={{ type: 'spring', stiffness: 120, damping: 18 }}
                         className={`flex items-center gap-6 rounded-2xl px-7 ${row.rank === 1 ? 'py-4 bg-white/[0.06] border border-[#E8D200]/30' : 'py-2.5 bg-white/[0.02]'}`}
@@ -289,7 +299,7 @@ function LiveStandings({ board }) {
                         <AnimatePresence mode="popLayout">
                             {restPage.map((row) => (
                                 <motion.div
-                                    key={nameOf(row) + row.rank}
+                                    key={row.key ?? nameOf(row) + row.rank}
                                     initial={{ opacity: 0, x: 24 }}
                                     animate={{ opacity: 1, x: 0 }}
                                     exit={{ opacity: 0, x: -24 }}

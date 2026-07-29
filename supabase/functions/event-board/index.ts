@@ -45,6 +45,20 @@ type ProfileBits = {
   avatar_url: string | null;
 };
 
+// The display animates rank changes, so each row needs an identity that is
+// stable across polls — but user ids must not leave the server. A truncated
+// hash scoped to the event is stable, non-reversible, and useless anywhere
+// else.
+async function displayKey(eventId: string, userId: string): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(`${eventId}:${userId}`),
+  );
+  return Array.from(new Uint8Array(digest).slice(0, 6))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
 // Keyed by id, but the returned bits deliberately exclude it — this endpoint
 // is public and user ids have no business on a TV feed.
 async function profilesById(ids: string[]): Promise<Map<string, ProfileBits>> {
@@ -68,9 +82,13 @@ Deno.serve(async (req: Request) => {
   const token = url.searchParams.get("k")?.trim();
   if (!slug || !token) return json(400, { error: "missing_params" });
 
+  // Explicit column list: this is a public endpoint holding a service-role
+  // client — the select doubles as the contract of what it may ever expose.
   const { data: ev } = await admin
     .from("live_events")
-    .select("*")
+    .select(
+      "id, name, slug, status, window_start_at, window_end_at, lock_at, prizes, board_size, hidden, revealed_at, display_token",
+    )
     .eq("slug", slug)
     .single();
 
@@ -105,12 +123,13 @@ Deno.serve(async (req: Request) => {
       state: "revealed",
       revealed_at: ev.revealed_at,
       settled: ev.status === "settled",
-      results: (rows ?? []).map((r) => ({
+      results: await Promise.all((rows ?? []).map(async (r) => ({
+        key: await displayKey(ev.id, r.user_id),
         rank: r.rank,
         points: r.final_points,
         prize_label: r.prize_label,
         ...(profiles.get(r.user_id) ?? { display_name: null, username: null, avatar_url: null }),
-      })),
+      }))),
     });
   }
 
@@ -140,10 +159,11 @@ Deno.serve(async (req: Request) => {
   return json(200, {
     ...base,
     state: "live",
-    standings: top.map((r: { rank: number; score: number; user_id: string }) => ({
+    standings: await Promise.all(top.map(async (r: { rank: number; score: number; user_id: string }) => ({
+      key: await displayKey(ev.id, r.user_id),
       rank: r.rank,
       points: r.score,
       ...(profiles.get(r.user_id) ?? { display_name: null, username: null, avatar_url: null }),
-    })),
+    }))),
   });
 });
