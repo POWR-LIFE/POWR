@@ -60,6 +60,34 @@ export type InviteProgress = {
     } | null;
 };
 
+export type EventBoardEntry = {
+    rank: number;
+    user_id: string;
+    display_name: string | null;
+    username: string | null;
+    avatar_url: string | null;
+    is_pro: boolean;
+    points: number;
+    prize_label?: string | null;
+};
+
+export type EventLeaderboard = {
+    event_id: string;
+    status: LiveEvent['status'];
+    is_locked: boolean;
+    /** Present only while the board is live and visible — absence IS the blur. */
+    standings?: EventBoardEntry[];
+    /** Present only after reveal: the frozen winners snapshot. */
+    results?: EventBoardEntry[];
+    viewer: LiveEventViewer & { rank?: number; points?: number; prize_label?: string | null };
+};
+
+export async function fetchEventLeaderboard(eventId: string): Promise<EventLeaderboard | null> {
+    const { data, error } = await supabase.rpc('get_event_leaderboard', { p_event_id: eventId });
+    if (error) return null;
+    return (data as EventLeaderboard | null) ?? null;
+}
+
 export async function fetchActiveLiveEvent(): Promise<LiveEvent | null> {
     const { data, error } = await supabase.rpc('get_active_live_event');
     if (error) return null;

@@ -2,8 +2,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
     fetchActiveLiveEvent,
+    fetchEventLeaderboard,
     fetchInviteProgress,
     joinLiveEvent,
+    type EventLeaderboard,
     type InviteProgress,
     type LiveEvent,
 } from '@/lib/api/liveEvents';
@@ -29,6 +31,17 @@ export function useLiveEvent() {
         enabled: !!eventQuery.data,
     });
 
+    // The board is server-driven state — standings while live and visible,
+    // nothing score-shaped while locked, frozen results after reveal. ~60s
+    // poll while the tab is mounted (spec §5); no realtime infra needed.
+    const boardQuery = useQuery<EventLeaderboard | null>({
+        queryKey: ['liveEventBoard', eventQuery.data?.id],
+        queryFn: () => fetchEventLeaderboard(eventQuery.data!.id),
+        enabled: !!eventQuery.data && eventQuery.data.status !== 'scheduled',
+        refetchInterval: 60_000,
+        staleTime: 30_000,
+    });
+
     const joinMutation = useMutation({
         mutationFn: (eventId: string) => joinLiveEvent(eventId),
         onSuccess: () => {
@@ -40,11 +53,14 @@ export function useLiveEvent() {
         event: eventQuery.data ?? null,
         loading: eventQuery.isPending,
         invites: inviteQuery.data ?? null,
+        board: boardQuery.data ?? null,
+        boardLoading: boardQuery.isPending,
         join: (eventId: string) => joinMutation.mutateAsync(eventId),
         joining: joinMutation.isPending,
         refresh: () => {
             void queryClient.invalidateQueries({ queryKey: ['liveEvent'] });
             void queryClient.invalidateQueries({ queryKey: ['liveEventInvites'] });
+            void queryClient.invalidateQueries({ queryKey: ['liveEventBoard'] });
         },
     };
 }
