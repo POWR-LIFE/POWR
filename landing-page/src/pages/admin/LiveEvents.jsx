@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
 import { useAuth } from '../../App';
@@ -95,6 +95,8 @@ export default function LiveEvents() {
     const [standings, setStandings] = useState(null); // through-blur board rows
     const [dqRows, setDqRows] = useState([]);      // disqualified users (off-board)
     const [dqBusy, setDqBusy] = useState(null);    // user_id of DQ action in flight
+    const [anticheat, setAnticheat] = useState(null); // admin_get_event_anticheat payload
+    const lastOpsEventId = useRef(null);           // guards against showing event A's ops data under event B
 
     const selected = useMemo(() => events.find(e => e.id === selectedId) ?? null, [events, selectedId]);
     const dirty = useMemo(() => {
@@ -105,8 +107,14 @@ export default function LiveEvents() {
     useEffect(() => { fetchEvents(); }, []);
 
     useEffect(() => {
-        if (!selected) { setForm(null); setVenueName(null); setOps(null); setStandings(null); setDqRows([]); return; }
+        if (!selected) { setForm(null); setVenueName(null); setOps(null); setStandings(null); setDqRows([]); setAnticheat(null); lastOpsEventId.current = null; return; }
         setForm(editableFields(selected));
+        // Switching events must never show the previous event's ops data while
+        // the new fetch is in flight; same-event refreshes keep what's there.
+        if (selected.id !== lastOpsEventId.current) {
+            lastOpsEventId.current = selected.id;
+            setOps(null); setStandings(null); setDqRows([]); setAnticheat(null);
+        }
         fetchCounts(selected.id);
         fetchOps(selected.id);
         if (selected.venue_partner_id) {
@@ -137,9 +145,13 @@ export default function LiveEvents() {
     // RPCs see the board at any status, hidden or not — this is the list
     // whoever hands out prizes reads from.
     const fetchOps = async (eventId) => {
-        const [opsRes, boardRes, dqRes] = await Promise.all([
+        // A failed report must read as "no report", never as the previous
+        // one — stale vetting signals are worse than none.
+        setAnticheat(null);
+        const [opsRes, boardRes, acRes, dqRes] = await Promise.all([
             supabase.rpc('admin_get_event_ops', { p_event_id: eventId }),
             supabase.rpc('admin_get_event_leaderboard', { p_event_id: eventId }),
+            supabase.rpc('admin_get_event_anticheat', { p_event_id: eventId }),
             // Disqualified users drop out of the scorer (that's the point), so
             // the requalify path needs its own list.
             supabase.from('live_event_participants')
@@ -149,6 +161,7 @@ export default function LiveEvents() {
         ]);
         if (!opsRes.error) setOps(opsRes.data);
         if (!boardRes.error) setStandings(boardRes.data?.standings ?? []);
+        if (!acRes.error) setAnticheat(acRes.data);
         if (!dqRes.error) {
             setDqRows((dqRes.data ?? []).map(r => ({
                 user_id: r.user_id,
@@ -406,6 +419,7 @@ export default function LiveEvents() {
                             standings={standings}
                             dqRows={dqRows}
                             dqBusy={dqBusy}
+                            anticheat={anticheat}
                             resultsCount={counts.results}
                             onDisqualify={(row, dq) => disqualify(selected, row, dq)}
                             onExportCsv={() => exportCsv(selected)}
@@ -544,7 +558,7 @@ function LifecyclePanel({
 // the list read out at prize handover — visible to admins whatever
 // the board's public state.
 
-function OpsPanel({ ev, ops, standings, dqRows, dqBusy, resultsCount, onDisqualify, onExportCsv }) {
+function OpsPanel({ ev, ops, standings, dqRows, dqBusy, anticheat, resultsCount, onDisqualify, onExportCsv }) {
     const rows = standings ?? [];
     const fmtTime = (iso) => iso
         ? new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
@@ -694,6 +708,9 @@ function OpsPanel({ ev, ops, standings, dqRows, dqBusy, resultsCount, onDisquali
                     </div>
                 )}
 
+                {/* Anti-cheat report (ticket 7) — signals, not verdicts. */}
+                <AntiCheatReport report={anticheat} />
+
                 {/* Invite funnel */}
                 <div className="border-t border-[#F0F0EC] pt-6">
                     <div className="text-[10px] font-black uppercase tracking-[0.25em] text-[#888888] mb-3">
@@ -734,6 +751,105 @@ function OpsPanel({ ev, ops, standings, dqRows, dqBusy, resultsCount, onDisquali
                 </div>
             </div>
         </section>
+    );
+}
+
+// ─── Anti-cheat report (ticket 7) ────────────────────────────────
+// Four event-window signals, each with innocent explanations — the
+// human decides. Anything found links into the user's admin profile
+// where SessionReview rejection (penalty rows) lowers event scores.
+
+function AntiCheatReport({ report }) {
+    if (!report) return null;
+    const groups = [
+        {
+            key: 'mirrored_sessions',
+            title: 'Mirrored wearable sessions',
+            blurb: 'Near-identical workouts (same type, start ±5 min, duration ±60 s) on two accounts, 2+ times — the shape of one watch synced to two accounts. Also what two friends training together looks like.',
+            rows: (report.mirrored_sessions ?? []).map((m, i) => (
+                <div key={i} className="flex items-center gap-2 text-[13px]">
+                    <Link to={`/admin/users/${m.user_a?.user_id}`} className="font-semibold text-[#1A1A1A] hover:underline">{m.user_a?.name}</Link>
+                    <span className="text-[#999999]">×</span>
+                    <Link to={`/admin/users/${m.user_b?.user_id}`} className="font-semibold text-[#1A1A1A] hover:underline">{m.user_b?.name}</Link>
+                    <span className="text-[#999999]">— {m.mirrored} matching sessions</span>
+                </div>
+            )),
+        },
+        {
+            key: 'shared_devices',
+            title: 'Shared devices',
+            blurb: 'One device writing sessions for 2+ accounts inside the window.',
+            rows: (report.shared_devices ?? []).map((d) => (
+                <div key={d.device_id} className="flex items-center gap-2 text-[13px] flex-wrap">
+                    <code className="text-[11px] font-mono text-[#999999] bg-[#F4F4F1] border border-[#EAEAE5] rounded px-1.5 py-0.5">{String(d.device_id).slice(0, 12)}…</code>
+                    {(d.users ?? []).map((u, i) => (
+                        <span key={u.user_id} className="flex items-center gap-1">
+                            {i > 0 && <span className="text-[#999999]">·</span>}
+                            <Link to={`/admin/users/${u.user_id}`} className="font-semibold text-[#1A1A1A] hover:underline">{u.name}</Link>
+                            <span className="text-[#999999]">({u.sessions})</span>
+                        </span>
+                    ))}
+                </div>
+            )),
+        },
+        {
+            key: 'short_bursts',
+            title: 'Short-session bursts',
+            blurb: '3+ sub-15-minute wearable sessions in one day (walking/sleep excluded) — wearables pay flat per session, so tiny bursts are the farm shape.',
+            rows: (report.short_bursts ?? []).map((b, i) => (
+                <div key={i} className="flex items-center gap-2 text-[13px]">
+                    <Link to={`/admin/users/${b.user_id}`} className="font-semibold text-[#1A1A1A] hover:underline">{b.name}</Link>
+                    {/* b.day is a date-only string; suffix a local midnight so the
+                        calendar day doesn't shift for admins west of UTC. */}
+                    <span className="text-[#999999]">— {b.short_sessions} short sessions on {new Date(`${b.day}T00:00:00`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}</span>
+                </div>
+            )),
+        },
+        {
+            key: 'manual_heavy',
+            title: 'Manual-heavy scores',
+            blurb: 'Board users whose event score is ≥40% manual logs (points-weighted, ≥20 pts).',
+            rows: (report.manual_heavy ?? []).map((m) => (
+                <div key={m.user_id} className="flex items-center gap-2 text-[13px]">
+                    <span className="font-mono text-[#999999]">#{m.rank}</span>
+                    <Link to={`/admin/users/${m.user_id}`} className="font-semibold text-[#1A1A1A] hover:underline">{m.name}</Link>
+                    <span className="text-[#999999]">— {m.manual_points} of {m.points} pts manual ({Math.round(m.share * 100)}%)</span>
+                </div>
+            )),
+        },
+    ];
+    const totalHits = groups.reduce((n, g) => n + g.rows.length, 0);
+
+    return (
+        <div className="border-t border-[#F0F0EC] pt-6">
+            <div className="flex items-center gap-2.5 mb-1">
+                <ShieldAlert size={14} className={totalHits > 0 ? 'text-[#F97316]' : 'text-[#10B981]'} />
+                <span className="text-[10px] font-black uppercase tracking-[0.25em] text-[#888888]">
+                    Anti-cheat report — {totalHits > 0 ? `${totalHits} signal${totalHits === 1 ? '' : 's'}` : 'all clear'}
+                </span>
+            </div>
+            <p className="text-[11.5px] text-[#999999] mb-4 max-w-3xl">
+                Signals, not verdicts — each has innocent explanations. Rejecting sessions in a user's
+                review writes penalty rows, which lower their event score; Disqualify above removes them
+                from this event entirely.
+            </p>
+            <div className="grid gap-5 lg:grid-cols-2">
+                {groups.map((g) => (
+                    <div key={g.key} className="rounded-2xl border border-[#EFEFEA] bg-[#FBFBF9] p-4">
+                        <div className="flex items-center gap-2 mb-1">
+                            <span className="text-[12.5px] font-bold text-[#1A1A1A]">{g.title}</span>
+                            {g.rows.length > 0
+                                ? <span className="text-[10px] font-black text-[#F97316]">{g.rows.length}</span>
+                                : <Check size={13} className="text-[#10B981]" />}
+                        </div>
+                        <p className="text-[11px] text-[#999999] leading-snug mb-2.5">{g.blurb}</p>
+                        {g.rows.length === 0
+                            ? <p className="text-[12px] text-[#AAAAAA]">Nothing found.</p>
+                            : <div className="space-y-1.5">{g.rows}</div>}
+                    </div>
+                ))}
+            </div>
+        </div>
     );
 }
 
