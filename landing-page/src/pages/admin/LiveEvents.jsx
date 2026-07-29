@@ -1285,7 +1285,7 @@ function PromoMediaField({ value, onChange }) {
                     {PROMO_VIDEO_EXT.test(value) ? (
                         <video src={value} muted loop autoPlay playsInline className="w-full h-32 object-cover" />
                     ) : (
-                        <img src={value} alt="Promo background preview" className="w-full h-32 object-cover" />
+                        <img src={storageImage(value, 960)} alt="Promo background preview" className="w-full h-32 object-cover" />
                     )}
                 </div>
             )}
