@@ -72,7 +72,8 @@ Deno.serve(async (req: Request) => {
     if (partner) venue = { name: partner.name, logo_url: partner.logo_url, logo_bg: partner.logo_bg };
   }
 
-  return json(200, {
+  const cacheControl = previewOk ? "no-store" : "public, max-age=60";
+  return new Response(JSON.stringify({
     name: ev.name,
     slug: ev.slug,
     status: ev.status,
@@ -83,5 +84,12 @@ Deno.serve(async (req: Request) => {
     media_url: ev.promo_media_url,
     venue,
     generated_at: new Date().toISOString(),
+  }), {
+    status: 200,
+    headers: {
+      ...CORS,
+      "Content-Type": "application/json",
+      "Cache-Control": cacheControl,
+    },
   });
 });
