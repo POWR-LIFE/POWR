@@ -83,12 +83,13 @@ export default function LeagueScreen() {
   const [selectedUserPoints, setSelectedUserPoints] = useState<number | undefined>(undefined);
   const indicatorX = useSharedValue(0);
 
-  const { tab } = useLocalSearchParams<{ tab?: string }>();
+  const { tab, event: eventSlug } = useLocalSearchParams<{ tab?: string; event?: string }>();
 
   const { weeklyEarned, totalEarned } = usePoints();
   const myPoints = metric === 'weekly' ? weeklyEarned : totalEarned;
 
-  const { event: activeEvent, invites, board: eventBoard, join: joinEvent, joining } = useLiveEvent();
+  const { event: activeEvent, invites, board: eventBoard, join: joinEvent, joining } =
+    useLiveEvent(typeof eventSlug === 'string' ? eventSlug : undefined);
 
   // Load leaderboard data when metric changes (only when live)
   useEffect(() => {

@@ -94,6 +94,13 @@ export async function fetchActiveLiveEvent(): Promise<LiveEvent | null> {
     return (data as LiveEvent | null) ?? null;
 }
 
+/** A specific event by slug (promo-page QR deep link). Draft/archived → null. */
+export async function fetchLiveEventBySlug(slug: string): Promise<LiveEvent | null> {
+    const { data, error } = await supabase.rpc('get_live_event', { p_slug: slug });
+    if (error) return null;
+    return (data as LiveEvent | null) ?? null;
+}
+
 export async function fetchInviteProgress(): Promise<InviteProgress | null> {
     const { data, error } = await supabase.rpc('get_my_invite_progress');
     if (error) return null;

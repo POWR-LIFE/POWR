@@ -4,6 +4,7 @@ import {
     fetchActiveLiveEvent,
     fetchEventLeaderboard,
     fetchInviteProgress,
+    fetchLiveEventBySlug,
     joinLiveEvent,
     type EventLeaderboard,
     type InviteProgress,
@@ -14,13 +15,24 @@ import {
  * The current live event (or null when none is configured) plus the viewer's
  * invite progress. Event config changes server-side take effect on refetch —
  * nothing about an event is baked into the app.
+ *
+ * `slug` (from a promo-page QR deep link) pins a specific event so someone
+ * registering for several upcoming events lands on the one they scanned;
+ * an unknown/ended slug falls back to the active event rather than a
+ * dead end.
  */
-export function useLiveEvent() {
+export function useLiveEvent(slug?: string) {
     const queryClient = useQueryClient();
 
     const eventQuery = useQuery<LiveEvent | null>({
-        queryKey: ['liveEvent'],
-        queryFn: fetchActiveLiveEvent,
+        queryKey: ['liveEvent', slug ?? 'active'],
+        queryFn: async () => {
+            if (slug) {
+                const pinned = await fetchLiveEventBySlug(slug);
+                if (pinned) return pinned;
+            }
+            return fetchActiveLiveEvent();
+        },
         staleTime: 60_000,
     });
 
