@@ -10,8 +10,7 @@ import {
     Gauge, Download, UserX, UserCheck, ShieldAlert,
     Megaphone, Upload, ExternalLink,
 } from 'lucide-react';
-import { uploadPublicImage } from '../../lib/storage';
-import { validateHeroVideoUrl } from '../../lib/heroVideoUrl';
+import { storageImage, uploadPublicImage } from '../../lib/storage';
 
 const logAction = async (adminId, action, targetType, targetId, metadata = {}) => {
     await supabase.from('admin_audit_log').insert({ admin_id: adminId, action, target_type: targetType, target_id: targetId, metadata });
