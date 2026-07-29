@@ -75,11 +75,10 @@ per-path values in comms. See `project_earn_path_divergence` memory / POWR_Point
 ```sql
 live_events (
   id uuid PK, slug text UNIQUE, name text, venue_partner_id uuid NULL,
-  status text CHECK (draft|scheduled|live|locked|revealed|settled|archived),
+  status text CHECK (status IN ('draft','scheduled','live','locked','revealed','settled','archived')),
   window_start_at timestamptz, window_end_at timestamptz,
   eligibility_cutoff_at timestamptz,          -- signup before this to compete
-  scope text CHECK (global|opt_in),           -- D1
-  -- scoring knobs
+  scope text CHECK (scope IN ('global','opt_in')),           -- D1
   included_activities text[],                 -- default all minus sleep
   count_manual bool DEFAULT true,
   count_streak bool DEFAULT false,
