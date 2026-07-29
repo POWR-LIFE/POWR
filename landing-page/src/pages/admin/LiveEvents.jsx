@@ -8,11 +8,13 @@ import {
     CalendarClock, Eye, EyeOff, Lock, Flag, Trophy, Archive,
     Link2, RefreshCw, AlertTriangle, Rocket, Undo2,
     Gauge, Download, UserX, UserCheck, ShieldAlert,
-    Megaphone, Upload, ExternalLink,
+    Megaphone, Upload, ExternalLink, QrCode,
 } from 'lucide-react';
+import { QRCodeCanvas } from 'qrcode.react';
 import { storageImage, uploadPublicImage } from '../../lib/storage';
 import { validateHeroVideoUrl } from '../../lib/heroVideoUrl';
 import MediaVideo from '../../components/MediaVideo';
+import { eventRegisterUrl } from '../../lib/eventRegisterUrl';
 
 const logAction = async (adminId, action, targetType, targetId, metadata = {}) => {
     await supabase.from('admin_audit_log').insert({ admin_id: adminId, action, target_type: targetType, target_id: targetId, metadata });
@@ -593,8 +595,57 @@ function LifecyclePanel({
                         works. Media and headline are set in Configuration below.
                     </p>
                 </div>
+
+                {/* Registration QR */}
+                <div className="border-t border-[#F0F0EC] pt-6">
+                    <div className="flex items-center gap-2 mb-2">
+                        <QrCode size={13} className="text-[#888888]" />
+                        <span className="text-[10px] font-black uppercase tracking-[0.25em] text-[#888888]">Registration QR</span>
+                    </div>
+                    <RegistrationQr slug={ev.slug} />
+                    <p className="text-[11px] text-[#999999] mt-2 leading-relaxed">
+                        The same code the promo page shows — unique to this event
+                        (<span className="font-mono">?event={ev.slug}</span>), so scanners land on this event&apos;s card in
+                        the app. The download is a 1024px PNG for posters and socials. Regenerating the display token
+                        does NOT change this code, but changing the slug does — re-download after a slug change.
+                    </p>
+                </div>
             </div>
         </section>
+    );
+}
+
+// High-res canvas styled down for preview; download reads the same canvas,
+// so the PNG is always exactly what's shown.
+function RegistrationQr({ slug }) {
+    const boxRef = useRef(null);
+    const download = () => {
+        const canvas = boxRef.current?.querySelector('canvas');
+        if (!canvas) return;
+        const a = document.createElement('a');
+        a.href = canvas.toDataURL('image/png');
+        a.download = `${slug}-registration-qr.png`;
+        a.click();
+    };
+    return (
+        <div className="flex items-center gap-4 flex-wrap">
+            <div ref={boxRef} className="bg-white border border-[#EAEAE5] rounded-xl p-2.5 shrink-0">
+                <QRCodeCanvas
+                    value={eventRegisterUrl(slug)}
+                    size={1024}
+                    fgColor="#0a0a0a"
+                    bgColor="#FFFFFF"
+                    level="M"
+                    style={{ width: 96, height: 96, display: 'block' }}
+                />
+            </div>
+            <button
+                onClick={download}
+                className="inline-flex items-center gap-2 h-10 px-4 rounded-xl border text-[10.5px] font-bold uppercase tracking-[0.18em] transition-all bg-[#F4F4F1] border-[#E6E6E1] text-[#555555] hover:text-[#1A1A1A] hover:border-[#D8D8D2]"
+            >
+                <Download size={13} /> Download PNG
+            </button>
+        </div>
     );
 }
 

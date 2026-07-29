@@ -5,6 +5,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { LOGO_SRC } from '../landing/LogoMorph';
 import { storageImage } from '../lib/storage';
 import MediaVideo from '../components/MediaVideo';
+import { eventRegisterUrl } from '../lib/eventRegisterUrl';
 
 /**
  * Shareable event promo page — powr.life/promo/<slug>.
@@ -23,11 +24,6 @@ import MediaVideo from '../components/MediaVideo';
 
 const GOLD = '#E8D200';
 const FN_BASE = `${import.meta.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/event-promo`;
-// Per-event QR: app.html forwards params beyond `to` into the deep link, so
-// this becomes powr://league?event=<slug> — the League tab shows that event
-// specifically (a user can hold registrations for several upcoming events).
-const registerUrl = (slug) =>
-    `https://powr.life/app?to=league&event=${encodeURIComponent(slug)}`;
 
 const VIDEO_EXT = /\.(mp4|m3u8|webm|mov)(\?|#|$)/i;
 
@@ -171,7 +167,7 @@ export default function EventPromo() {
                 <div className="flex flex-col items-center gap-3 -mb-1">
                     <div className="bg-white rounded-2xl p-2.5 sm:p-3 shadow-[0_8px_40px_rgba(0,0,0,0.5)]">
                         <QRCodeSVG
-                            value={registerUrl(slug)}
+                            value={eventRegisterUrl(slug)}
                             size={128}
                             fgColor="#0a0a0a"
                             bgColor="#FFFFFF"
