@@ -25,6 +25,7 @@ import {
     Zap,
     ArrowUpRight,
     ArrowDownRight,
+    PartyPopper,
 } from 'lucide-react';
 import { createContext, useContext, useEffect, useState } from 'react';
 import { Link, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
@@ -75,6 +76,7 @@ import WeeklyChallenges from './pages/admin/WeeklyChallenges';
 import NotificationManager from './pages/admin/NotificationManager';
 import StreakRescue from './pages/admin/StreakRescue';
 import VaultManager from './pages/admin/VaultManager';
+import LiveEvents from './pages/admin/LiveEvents';
 import AthleteSignup from './pages/AthleteSignup';
 import LandingV2 from './landing/LandingV2';
 import CookiePolicy from './pages/CookiePolicy';
@@ -294,6 +296,7 @@ const PATH_LABELS = {
     campaigns: 'Campaigns',
     notifications: 'Notifications',
     'streak-rescue': 'Streak Rescue',
+    events: 'Live Events',
     config: 'Config',
 };
 
@@ -910,6 +913,7 @@ const AdminLayout = ({ children }) => {
         { label: 'Campaigns',      path: '/admin/campaigns',      icon: CalendarDays },
         { label: 'Notifications',  path: '/admin/notifications',  icon: Bell         },
         { label: 'Streak Rescue',  path: '/admin/streak-rescue',  icon: Flame        },
+        { label: 'Live Events',    path: '/admin/events',         icon: PartyPopper  },
         { label: 'Vault',          path: '/admin/vault',          icon: Lock         },
         { label: 'Config',         path: '/admin/config',         icon: Settings     },
     ];
@@ -1102,6 +1106,7 @@ export default function App() {
                     <Route path="/admin/campaigns" element={<ProtectedRoute><AdminLayout><Campaigns /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/notifications" element={<ProtectedRoute><AdminLayout><NotificationManager /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/streak-rescue" element={<ProtectedRoute><AdminLayout><StreakRescue /></AdminLayout></ProtectedRoute>} />
+                    <Route path="/admin/events" element={<ProtectedRoute><AdminLayout><LiveEvents /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/athletes" element={<ProtectedRoute><AdminLayout><AthleteApplications /></AdminLayout></ProtectedRoute>} />
                     <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
