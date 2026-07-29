@@ -203,6 +203,7 @@ function Shell({ media, children }) {
             {media && (isVideo ? (
                 <video
                     src={media}
+                    referrerPolicy="no-referrer"
                     autoPlay
                     muted
                     loop
