@@ -332,7 +332,7 @@ function EventBoardSection({
     );
   }
 
-  const isWinners = !!board.results;
+  const isWinners = board.results != null;
   const entries = asEntries(board.results ?? board.standings);
   const top3 = entries.slice(0, 3);
   const restRows = entries.slice(entries.length >= 3 ? 3 : 0);
