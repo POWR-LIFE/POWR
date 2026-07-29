@@ -72,6 +72,21 @@ export default function OnboardingAchievementScreen() {
     const [showCodeInput, setShowCodeInput] = useState(false);
     const [inviteCode, setInviteCode] = useState('');
 
+    // A code captured from an invite link (AuthContext stores it as
+    // pending_referral_code) used to apply silently on submit; surface it in
+    // the input instead so the user sees the attribution happening — invite
+    // conversion is the live-events funnel and must not be invisible.
+    useEffect(() => {
+        AsyncStorage.getItem('pending_referral_code')
+            .then(deepCode => {
+                if (deepCode) {
+                    setInviteCode(deepCode.toUpperCase());
+                    setShowCodeInput(true);
+                }
+            })
+            .catch(() => {});
+    }, []);
+
     // Parse sync results from route params (0 = skipped / no data)
     const streakDays = parseInt(params.streakDays ?? '0', 10) || 0;
     const totalSessions = parseInt(params.totalSessions ?? '0', 10) || 0;
@@ -294,7 +309,7 @@ export default function OnboardingAchievementScreen() {
                     onPress={() => setShowCodeInput(v => !v)}
                     style={styles.codeToggle}
                 >
-                    <Text style={styles.codeToggleText}>Have an invite code?</Text>
+                    <Text style={styles.codeToggleText}>Have an invite code? You’ll both earn POWR</Text>
                     <Ionicons
                         name={showCodeInput ? 'chevron-up' : 'chevron-down'}
                         size={13}
@@ -332,10 +347,16 @@ export default function OnboardingAchievementScreen() {
 
                         const { data, error: refErr } = await supabase.rpc('process_referral', { p_referral_code: code });
                         await AsyncStorage.removeItem('pending_referral_code').catch(() => {});
-                        const result = (data ?? null) as { success?: boolean; error?: string; reward?: number } | null;
+                        const result = (data ?? null) as { success?: boolean; error?: string; status?: string } | null;
 
                         if (!refErr && result?.success) {
-                            Alert.alert('Invite code applied 🎉', `You earned +${result.reward ?? 20} POWR!`, [{ text: 'Nice', onPress: goHome }]);
+                            // Rewards pay on CONVERSION (first verified workout), not at
+                            // code entry — see referral_conversion_check.
+                            Alert.alert(
+                                'Invite code applied 🎉',
+                                'You and your friend both earn POWR once you log your first verified workout. Time to move!',
+                                [{ text: 'Let’s go', onPress: goHome }],
+                            );
                         } else {
                             const reason = result?.error ?? 'network';
                             const messages: Record<string, string> = {
