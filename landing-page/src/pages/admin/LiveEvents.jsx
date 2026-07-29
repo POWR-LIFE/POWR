@@ -253,8 +253,9 @@ export default function LiveEvents() {
         if (form.promo_media_url) {
             // Same rule as reward heroes: direct files only, never a
             // YouTube/Vimeo-style page link (images sail through).
-            const { error: mediaError } = validateHeroVideoUrl(form.promo_media_url);
+            const { error: mediaError, warn: mediaWarn } = validateHeroVideoUrl(form.promo_media_url);
             if (mediaError) { toast.error(mediaError); return; }
+            if (mediaWarn) toast.info(mediaWarn);
         }
         setSaving(true);
         const payload = { ...form, slug: slugify(form.slug) };
