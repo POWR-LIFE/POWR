@@ -85,10 +85,18 @@ begin
              where lp.event_id = v_event.id and lp.user_id = p.id))
          )
     ),
-    'participant_count', (
-      select count(*) from public.live_event_participants lp
-       where lp.event_id = v_event.id and lp.disqualified_at is null
-    ),
+    'participant_count',
+      case
+        when v_event.scope = 'opt_in' then (
+          select count(*) from public.live_event_participants lp
+           where lp.event_id = v_event.id and lp.disqualified_at is null
+        )
+        else (
+          -- Global-scope has no join rows; count actual scorers instead.
+          select count(*) from public._live_event_scores(v_event.id) s
+           where s.score <> 0
+        )
+      end,
     'disqualified_count', (
       select count(*) from public.live_event_participants lp
        where lp.event_id = v_event.id and lp.disqualified_at is not null
