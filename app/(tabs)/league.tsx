@@ -33,6 +33,7 @@ import { usePoints } from '@/hooks/usePoints';
 import { useLiveEvent } from '@/hooks/useLiveEvent';
 import { useAuth } from '@/context/AuthContext';
 import { fetchLeaderboard, type LeaderboardEntry, type LeaderboardMetric } from '@/lib/api/leaderboard';
+import type { EventBoardEntry, EventLeaderboard, LiveEvent } from '@/lib/api/liveEvents';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -87,7 +88,7 @@ export default function LeagueScreen() {
   const { weeklyEarned, totalEarned } = usePoints();
   const myPoints = metric === 'weekly' ? weeklyEarned : totalEarned;
 
-  const { event: activeEvent, invites, join: joinEvent, joining } = useLiveEvent();
+  const { event: activeEvent, invites, board: eventBoard, join: joinEvent, joining } = useLiveEvent();
 
   // Load leaderboard data when metric changes (only when live)
   useEffect(() => {
@@ -145,18 +146,27 @@ export default function LeagueScreen() {
            invite card (ticket 3); the event leaderboard itself lands with
            ticket 5. No event → the original teaser. */
         activeEvent ? (
-          <ScrollView
-            style={{ flex: 1 }}
-            contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
-            showsVerticalScrollIndicator={false}
-          >
-            <EventInviteCard
-              event={activeEvent}
-              invites={invites}
-              onJoin={joinEvent}
-              joining={joining}
+          <>
+            <ScrollView
+              style={{ flex: 1 }}
+              contentContainerStyle={{ paddingBottom: insets.bottom + 24, gap: 8 }}
+              showsVerticalScrollIndicator={false}
+            >
+              <EventInviteCard
+                event={activeEvent}
+                invites={invites}
+                onJoin={joinEvent}
+                joining={joining}
+              />
+              <EventBoardSection event={activeEvent} board={eventBoard} onPressUser={openUserSheet} />
+            </ScrollView>
+            <UserProfileSheet
+              userId={selectedUserId}
+              myPoints={myPoints}
+              userPoints={selectedUserPoints}
+              onClose={() => { setSelectedUserId(null); setSelectedUserPoints(undefined); }}
             />
-          </ScrollView>
+          </>
         ) : (
           <ComingSoon
             eyebrow="KEEP MOVING"
@@ -271,6 +281,137 @@ export default function LeagueScreen() {
             userPoints={selectedUserPoints}
             onClose={() => { setSelectedUserId(null); setSelectedUserPoints(undefined); }}
           />
+        </>
+      )}
+    </View>
+  );
+}
+
+// ─── EventBoardSection ────────────────────────────────────────────────────────
+// The event-mode board (ticket 5). Server-driven: standings exist only while
+// the board is live and visible, nothing score-shaped arrives while locked
+// (that absence IS the blur — never fill it client-side), and after Reveal the
+// frozen live_event_results snapshot renders as the winners card.
+
+const asEntries = (rows: EventBoardEntry[] | undefined): LeaderboardEntry[] =>
+  (rows ?? []).map(r => ({
+    user_id: r.user_id,
+    display_name: r.display_name,
+    username: r.username,
+    avatar_url: r.avatar_url,
+    level: 0,
+    is_pro: r.is_pro,
+    points: r.points,
+    rank: r.rank,
+  }));
+
+function EventBoardSection({
+  event,
+  board,
+  onPressUser,
+}: {
+  event: LiveEvent;
+  board: EventLeaderboard | null;
+  onPressUser: (e: LeaderboardEntry) => void;
+}) {
+  // Pre-week: the invite card above already carries the countdown.
+  if (event.status === 'scheduled' || !board) return null;
+
+  const viewer = board.viewer ?? { eligible: false, joined: false, disqualified: false };
+
+  // Locked and not yet revealed: suspense, no scores anywhere.
+  if (!board.standings && !board.results) {
+    return (
+      <View style={styles.eventLockedCard}>
+        <Text style={styles.eventLockedEmoji}>🔒</Text>
+        <Text style={styles.eventLockedTitle}>Scores are locked</Text>
+        <Text style={styles.eventLockedSub}>
+          The final standings are being verified — winners are announced in person at the event.
+        </Text>
+      </View>
+    );
+  }
+
+  const isWinners = !!board.results;
+  const entries = asEntries(board.results ?? board.standings);
+  const top3 = entries.slice(0, 3);
+  const restRows = entries.slice(entries.length >= 3 ? 3 : 0);
+  const prizeWinners = (board.results ?? []).filter(r => r.prize_label).slice(0, 3);
+
+  return (
+    <View style={{ gap: 8 }}>
+      {/* Your rank — server-computed; outside the visible board it still shows */}
+      {viewer.rank != null && (
+        <View style={styles.eventYouCard}>
+          <View>
+            <Text style={styles.eventYouLabel}>{isWinners ? 'YOUR FINAL RANK' : 'YOUR RANK'}</Text>
+            <View style={styles.heroRankRow}>
+              <Text style={styles.heroRankHash}>#</Text>
+              <Text style={styles.eventYouRank}>{viewer.rank}</Text>
+            </View>
+          </View>
+          <View style={{ alignItems: 'flex-end', gap: 2 }}>
+            <Text style={styles.heroPts}>{(viewer.points ?? 0).toLocaleString()}</Text>
+            <Text style={styles.heroPtsLabel}>PTS THIS WEEK</Text>
+            {isWinners && viewer.prize_label && (
+              <Text style={styles.eventYouPrize}>🏆 {viewer.prize_label}</Text>
+            )}
+          </View>
+        </View>
+      )}
+
+      {entries.length === 0 ? (
+        <View style={styles.emptyState}>
+          <Text style={styles.emptyText}>No points on the board yet — first verified workout opens the scoring.</Text>
+        </View>
+      ) : (
+        <>
+          {top3.length >= 3 && (
+            <>
+              <View style={styles.sectionRow}>
+                <Text style={styles.sectionLabel}>{isWinners ? 'WINNERS' : 'TOP 3'}</Text>
+                <View style={styles.sectionLine} />
+              </View>
+              <RealPodium entries={top3} onPress={onPressUser} />
+            </>
+          )}
+
+          {isWinners && prizeWinners.length > 0 && (
+            <View style={styles.eventPrizeCard}>
+              {prizeWinners.map(r => (
+                <View key={r.rank} style={styles.eventPrizeRow}>
+                  <Text style={styles.eventPrizeRank}>
+                    {r.rank === 1 ? '🥇' : r.rank === 2 ? '🥈' : '🥉'}
+                  </Text>
+                  <Text style={styles.eventPrizeName} numberOfLines={1}>
+                    {r.display_name ?? r.username ?? 'POWR member'}
+                  </Text>
+                  <Text style={styles.eventPrizeLabel} numberOfLines={1}>{r.prize_label}</Text>
+                </View>
+              ))}
+            </View>
+          )}
+
+          {restRows.length > 0 && (
+            <>
+              <View style={styles.sectionRow}>
+                <Text style={styles.sectionLabel}>{isWinners ? 'FINAL STANDINGS' : 'STANDINGS'}</Text>
+                <View style={styles.sectionLine} />
+              </View>
+              <View style={[styles.standingsCard, { marginHorizontal: 10 }]}>
+                {restRows.map((entry, idx, arr) => (
+                  <Pressable
+                    key={entry.user_id}
+                    onPress={() => onPressUser(entry)}
+                    style={({ pressed }) => [pressed && { opacity: 0.6 }]}
+                  >
+                    <RealLeaderRow entry={entry} isMe={false} showPro={false} />
+                    {idx < arr.length - 1 && <View style={styles.rowDivider} />}
+                  </Pressable>
+                ))}
+              </View>
+            </>
+          )}
         </>
       )}
     </View>
@@ -958,4 +1099,38 @@ const styles = StyleSheet.create({
   ladderPtsMe: { color: GOLD, fontWeight: '600' },
   ladderDivider: { height: 1, backgroundColor: 'rgba(255,255,255,0.04)', marginHorizontal: 12 },
 
+  // ── Event board (ticket 5)
+  eventLockedCard: {
+    marginHorizontal: 14, marginTop: 8,
+    borderRadius: 18, backgroundColor: CARD_BG,
+    borderWidth: 1, borderColor: BORDER,
+    paddingVertical: 36, paddingHorizontal: 24,
+    alignItems: 'center', gap: 8,
+  },
+  eventLockedEmoji: { fontSize: 40 },
+  eventLockedTitle: { fontSize: 20, fontWeight: '300', color: TEXT, letterSpacing: -0.3 },
+  eventLockedSub: { fontSize: 12, fontWeight: '300', color: DIM, textAlign: 'center', lineHeight: 18, maxWidth: 300 },
+
+  eventYouCard: {
+    marginHorizontal: 14, marginTop: 4,
+    borderRadius: 18,
+    backgroundColor: 'rgba(232,210,0,0.06)',
+    borderWidth: 1, borderColor: 'rgba(232,210,0,0.22)',
+    paddingHorizontal: 18, paddingVertical: 14,
+    flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between',
+  },
+  eventYouLabel: { fontSize: 8, fontWeight: '800', color: GOLD, opacity: 0.6, letterSpacing: 2.5, marginBottom: 4 },
+  eventYouRank: { fontSize: 40, fontWeight: '100', color: GOLD, letterSpacing: -2, lineHeight: 42 },
+  eventYouPrize: { fontSize: 12, fontWeight: '500', color: GOLD, marginTop: 4 },
+
+  eventPrizeCard: {
+    marginHorizontal: 14,
+    borderRadius: 14, backgroundColor: CARD_BG,
+    borderWidth: 1, borderColor: BORDER,
+    paddingVertical: 10, paddingHorizontal: 16, gap: 8,
+  },
+  eventPrizeRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  eventPrizeRank: { fontSize: 16 },
+  eventPrizeName: { fontSize: 13, fontWeight: '400', color: TEXT, maxWidth: 120 },
+  eventPrizeLabel: { flex: 1, fontSize: 12, fontWeight: '300', color: DIM, textAlign: 'right' },
 });
