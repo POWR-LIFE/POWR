@@ -92,13 +92,19 @@ Deno.serve(async (req: Request) => {
     .eq("slug", slug)
     .single();
 
-  // Draft/archived events don't exist as far as any screen is concerned,
-  // and a bad token gets the same shape as a bad slug — no probing which
-  // slugs are real.
-  if (!ev || ev.status === "draft" || ev.status === "archived") {
+  // Archived events don't exist as far as any screen is concerned, and a
+  // bad token gets the same shape as a bad slug — no probing which slugs
+  // are real.
+  if (!ev || ev.status === "archived") {
     return json(404, { error: "not_found" });
   }
   if (ev.display_token !== token) return json(404, { error: "not_found" });
+
+  // Draft + valid token = the admin styling the screen before the event is
+  // announced: render the countdown rather than a dead link. Without the
+  // token a draft stays invisible exactly as before, and nothing
+  // score-shaped exists on a draft to leak.
+  const isDraft = ev.status === "draft";
 
   const base = {
     name: ev.name,
@@ -142,7 +148,7 @@ Deno.serve(async (req: Request) => {
   // server — this is the blur.
   if (effectiveLocked) return json(200, { ...base, state: "locked" });
 
-  if (ev.status === "scheduled") return json(200, { ...base, state: "countdown" });
+  if (isDraft || ev.status === "scheduled") return json(200, { ...base, state: "countdown" });
 
   // Live board: standings from the single scoring definition.
   const { data: scores, error } = await admin.rpc("_live_event_scores", { p_event_id: ev.id });

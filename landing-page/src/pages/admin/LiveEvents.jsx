@@ -568,6 +568,28 @@ function LifecyclePanel({
                         Runs the venue screen full-screen — the token grants display access only and never sees through
                         a locked board. Regenerating kills any previously shared link. The /live route ships separately.
                     </p>
+                    <div className="flex items-center gap-2 mt-3 flex-wrap">
+                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[#AAAAAA]">Preview the screen:</span>
+                        {[
+                            ['countdown', 'Countdown'],
+                            ['live', 'Live board'],
+                            ['locked', 'Locked'],
+                            ['reveal', 'Reveal'],
+                            ['settled', 'Winners'],
+                        ].map(([state, label]) => (
+                            <a
+                                key={state}
+                                href={`https://powr.life/live/${ev.slug}?k=${ev.display_token}&preview=${state}`}
+                                target="_blank" rel="noopener noreferrer"
+                                className="inline-flex items-center h-7 px-3 rounded-lg border text-[10px] font-bold uppercase tracking-[0.15em] transition-all bg-[#F4F4F1] border-[#E6E6E1] text-[#666666] hover:text-[#1A1A1A] hover:border-[#D8D8D2]"
+                            >
+                                {label}
+                            </a>
+                        ))}
+                        <span className="text-[10px] text-[#AAAAAA]">
+                            — sample standings, works while the event is a draft. The reveal replays on refresh.
+                        </span>
+                    </div>
                 </div>
 
                 {/* Promo page URL */}

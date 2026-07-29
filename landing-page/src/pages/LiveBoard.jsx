@@ -24,6 +24,43 @@ const POLL_MS = 12_000;
 const STALE_MS = 45_000;
 const FN_BASE = `${import.meta.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/event-board`;
 
+// ?preview=<state> re-renders the last good payload as any state with
+// obviously-sample standings — the admin's way to see every screen of the
+// night (incl. the staged reveal) before the event exists publicly. It only
+// works past the token gate (the fn must answer first), and the PREVIEW
+// badge + fake names keep a stray screenshot from reading as real scores.
+const PREVIEW_STATES = ['countdown', 'live', 'locked', 'reveal', 'settled'];
+const SAMPLE_NAMES = [
+    'Alex P.', 'Jordan R.', 'Sam T.', 'Charlie M.', 'Taylor B.', 'Morgan K.',
+    'Riley S.', 'Casey D.', 'Jamie W.', 'Drew H.', 'Robin F.', 'Quinn L.',
+    'Avery N.', 'Skyler J.', 'Reese C.', 'Rowan G.', 'Emerson V.', 'Finley O.',
+    'Harper E.', 'Kendall A.', 'Logan I.', 'Marley U.', 'Noel Y.', 'Parker Z.',
+];
+const sampleRows = (n) =>
+    SAMPLE_NAMES.slice(0, n).map((name, i) => ({
+        key: `preview-${i}`,
+        rank: i + 1,
+        points: 940 - i * 37 - (i % 3) * 11,
+        display_name: name,
+        username: null,
+        avatar_url: null,
+    }));
+
+function applyPreview(board, preview) {
+    const withPrize = (row) => ({
+        ...row,
+        prize_label: board.prizes?.find((p) => p.rank === row.rank)?.label ?? null,
+    });
+    switch (preview) {
+        case 'countdown': return { ...board, state: 'countdown' };
+        case 'live':      return { ...board, state: 'live', standings: sampleRows(24) };
+        case 'locked':    return { ...board, state: 'locked' };
+        case 'reveal':    return { ...board, state: 'revealed', settled: false, results: sampleRows(10).map(withPrize) };
+        case 'settled':   return { ...board, state: 'revealed', settled: true, results: sampleRows(10).map(withPrize) };
+        default:          return board;
+    }
+}
+
 const fmtDay = (iso) =>
     new Date(iso).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
 
@@ -36,6 +73,8 @@ export default function LiveBoard() {
     const { slug } = useParams();
     const [params] = useSearchParams();
     const token = params.get('k') ?? '';
+    const previewParam = params.get('preview');
+    const preview = PREVIEW_STATES.includes(previewParam) ? previewParam : null;
 
     const [board, setBoard] = useState(null);   // last good payload
     const [invalid, setInvalid] = useState(false);
@@ -85,16 +124,23 @@ export default function LiveBoard() {
     if (invalid) return <Shell><CenterNote big="This screen link isn’t valid" small="Ask the POWR team for a fresh display URL." /></Shell>;
     if (!board) return <Shell><CenterNote big="POWR" small="Connecting…" pulse /></Shell>;
 
+    const shown = preview ? applyPreview(board, preview) : board;
+
     return (
         <Shell>
-            <Header board={board} stale={stale} />
+            <Header board={shown} stale={stale && !preview} />
             <div className="flex-1 min-h-0 flex flex-col">
-                {board.state === 'countdown' && <Countdown board={board} now={now} />}
-                {board.state === 'live' && <LiveStandings board={board} />}
-                {board.state === 'locked' && <LockedSuspense />}
-                {board.state === 'revealed' && <Reveal board={board} />}
+                {shown.state === 'countdown' && <Countdown board={shown} now={now} />}
+                {shown.state === 'live' && <LiveStandings board={shown} />}
+                {shown.state === 'locked' && <LockedSuspense />}
+                {shown.state === 'revealed' && <Reveal key={preview ?? 'real'} board={shown} />}
             </div>
             <Footer />
+            {preview && (
+                <div className="pointer-events-none absolute top-6 right-14 rounded-full border border-amber-400/50 bg-amber-400/10 px-4 py-1.5 text-[12px] font-black uppercase tracking-[0.3em] text-amber-300">
+                    Preview — sample data
+                </div>
+            )}
         </Shell>
     );
 }
