@@ -1,10 +1,72 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Gift, TrendingUp, BarChart3, ChevronRight } from 'lucide-react';
+import { Gift, TrendingUp, BarChart3, ChevronRight, Check, Copy } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { useToast } from '../../lib/toast';
 import { useAuth } from '../../App';
 
 const fmt = (n) => (n ?? 0).toLocaleString();
+
+// Every row used to read "Claimed" regardless of what had happened to it, so a
+// refunded or lapsed code looked as good as a live one.
+//
+// Two columns, not one. Whether a member still holds a claim lives on the
+// redemption; whether the brand has accepted the code lives on the code, since
+// reconciliation only ever touches redemption_codes.status. "Used" therefore
+// has to come off the join or it can never be shown at all. (Reading that
+// column was unsafe until migration 20260729000001 — the pre-July-2026 redeem
+// flow flipped codes to 'used' at claim time, so it recorded members taking
+// codes rather than brands accepting them.)
+//
+// Nothing transitions redemptions.status to 'expired' server-side either — the
+// app derives it from expires_at — so mirror that or a dead code reads as
+// claimable.
+const STATUS = {
+    claimed:  { label: 'Claimed',  dot: '#10B981' },
+    used:     { label: 'Used',     dot: '#0EA5E9' },
+    expired:  { label: 'Expired',  dot: '#F43F5E' },
+    refunded: { label: 'Refunded', dot: '#CCCCCC' },
+};
+
+// Used outranks expiry: a code the brand honoured stays honoured once its
+// window lapses.
+const displayStatus = (r) => {
+    if (r.status === 'refunded') return 'refunded';
+    if (r.status === 'used' || r.redemption_codes?.status === 'used') return 'used';
+    if (r.status === 'expired') return 'expired';
+    if (r.expires_at && new Date(r.expires_at) < new Date()) return 'expired';
+    return 'claimed';
+};
+
+// The whole point of showing the code is pasting it into the brand's own till
+// or back office, so the cell is the copy control — a button per row would
+// crowd a 50-row table.
+function CodeCell({ code }) {
+    const toast = useToast();
+    const [copied, setCopied] = useState(false);
+    if (!code) return <span className="text-sm text-[#CCC]">—</span>;
+    return (
+        <button
+            type="button"
+            title="Copy code"
+            onClick={async () => {
+                try {
+                    await navigator.clipboard.writeText(code);
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 1500);
+                } catch {
+                    toast.error('Could not copy — select it manually');
+                }
+            }}
+            className="group/code inline-flex items-center gap-2 font-mono text-xs text-[#8a7600] bg-white border border-[#E6E6E1] px-3 py-1 rounded-lg uppercase tracking-[0.2em] hover:border-[#E8D200]/50 transition-colors"
+        >
+            {code}
+            {copied
+                ? <Check size={11} className="text-[#10B981]" />
+                : <Copy size={11} className="text-[#CCC] group-hover/code:text-[#8a7600] transition-colors" />}
+        </button>
+    );
+}
 
 export default function PartnerRedemptions() {
     const { partnerData, deliveryMethod } = useAuth();
@@ -47,7 +109,7 @@ export default function PartnerRedemptions() {
                 ? await Promise.all([
                     supabase
                         .from('redemptions')
-                        .select('id, redeemed_at, reward_id, rewards(title)')
+                        .select('id, redeemed_at, reward_id, code, status, expires_at, rewards(title), redemption_codes!redemptions_code_id_fkey(status)')
                         .in('reward_id', rewardIds)
                         .gte('redeemed_at', since.toISOString())
                         .order('redeemed_at', { ascending: false })
@@ -267,7 +329,7 @@ export default function PartnerRedemptions() {
                                 <table className="w-full text-left border-collapse">
                                     <thead>
                                         <tr className="bg-[#F4F4F1] border-b border-[#E6E6E1]">
-                                            {['Date & Time', 'Reward', ''].map(h => (
+                                            {['Date & Time', 'Reward', 'Code', ''].map(h => (
                                                 <th key={h} className="px-8 py-4 text-[10px] font-black uppercase tracking-[0.4em] text-[#888]">{h}</th>
                                             ))}
                                         </tr>
@@ -279,11 +341,17 @@ export default function PartnerRedemptions() {
                                                     {new Date(r.redeemed_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
                                                 </td>
                                                 <td className="px-8 py-4 text-sm font-bold text-[#222]">{r.rewards?.title ?? '—'}</td>
+                                                <td className="px-8 py-4"><CodeCell code={r.code} /></td>
                                                 <td className="px-8 py-4">
-                                                    <div className="flex items-center gap-2 justify-end">
-                                                        <div className="h-1.5 w-1.5 rounded-full bg-[#10B981]" />
-                                                        <span className="text-[9px] uppercase tracking-[0.3em] text-[#BBB] font-black">Claimed</span>
-                                                    </div>
+                                                    {(() => {
+                                                        const s = STATUS[displayStatus(r)];
+                                                        return (
+                                                            <div className="flex items-center gap-2 justify-end">
+                                                                <div className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: s.dot }} />
+                                                                <span className="text-[9px] uppercase tracking-[0.3em] text-[#BBB] font-black">{s.label}</span>
+                                                            </div>
+                                                        );
+                                                    })()}
                                                 </td>
                                             </tr>
                                         ))}
