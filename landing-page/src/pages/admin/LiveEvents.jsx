@@ -8,7 +8,10 @@ import {
     CalendarClock, Eye, EyeOff, Lock, Flag, Trophy, Archive,
     Link2, RefreshCw, AlertTriangle, Rocket, Undo2,
     Gauge, Download, UserX, UserCheck, ShieldAlert,
+    Megaphone, Upload, ExternalLink,
 } from 'lucide-react';
+import { uploadPublicImage } from '../../lib/storage';
+import { validateHeroVideoUrl } from '../../lib/heroVideoUrl';
 
 const logAction = async (adminId, action, targetType, targetId, metadata = {}) => {
     await supabase.from('admin_audit_log').insert({ admin_id: adminId, action, target_type: targetType, target_id: targetId, metadata });
@@ -77,6 +80,8 @@ const editableFields = (ev) => ({
     conversion_verifications: ev.conversion_verifications,
     conversion_activities: ev.conversion_activities,
     prizes: ev.prizes ?? [],
+    promo_media_url: ev.promo_media_url,
+    promo_headline: ev.promo_headline,
 });
 
 export default function LiveEvents() {
@@ -245,6 +250,12 @@ export default function LiveEvents() {
         if (new Date(form.window_end_at) <= new Date(form.window_start_at)) {
             toast.error('Window end must be after window start'); return;
         }
+        if (form.promo_media_url) {
+            // Same rule as reward heroes: direct files only, never a
+            // YouTube/Vimeo-style page link (images sail through).
+            const { error: mediaError } = validateHeroVideoUrl(form.promo_media_url);
+            if (mediaError) { toast.error(mediaError); return; }
+        }
         setSaving(true);
         const payload = { ...form, slug: slugify(form.slug) };
         const { error } = await supabase.from('live_events').update(payload).eq('id', selected.id);
@@ -309,6 +320,11 @@ export default function LiveEvents() {
     const copyDisplayUrl = async (ev) => {
         await navigator.clipboard.writeText(`https://powr.life/live/${ev.slug}?k=${ev.display_token}`);
         toast.success('Display URL copied');
+    };
+
+    const copyPromoUrl = async (ev) => {
+        await navigator.clipboard.writeText(`https://powr.life/promo/${ev.slug}`);
+        toast.success('Promo URL copied');
     };
 
     // ── Render ────────────────────────────────────────────────
@@ -408,6 +424,7 @@ export default function LiveEvents() {
                         onMarkSettled={() => setStatus(selected, 'settled', {}, 'Wrap up? The event moves to its final settled state.')}
                         onArchive={() => setStatus(selected, 'archived', {}, 'Archive this event? It disappears from the app entirely.')}
                         onCopyUrl={() => copyDisplayUrl(selected)}
+                        onCopyPromoUrl={() => copyPromoUrl(selected)}
                         onRegenToken={() => regenerateToken(selected)}
                         onDuplicate={() => duplicateEvent(selected)}
                     />
@@ -449,7 +466,7 @@ function LifecyclePanel({
     ev, counts, acting,
     onSchedule, onUnschedule, onGoLive, onLock, onToggleHidden,
     onSettle, onReveal, onMarkSettled, onArchive,
-    onCopyUrl, onRegenToken, onDuplicate,
+    onCopyUrl, onCopyPromoUrl, onRegenToken, onDuplicate,
 }) {
     const meta = STATUS_META[ev.status];
     const pastLock = ev.lock_at && new Date(ev.lock_at) <= new Date();
@@ -546,6 +563,32 @@ function LifecyclePanel({
                     <p className="text-[11px] text-[#999999] mt-2 leading-relaxed">
                         Runs the venue screen full-screen — the token grants display access only and never sees through
                         a locked board. Regenerating kills any previously shared link. The /live route ships separately.
+                    </p>
+                </div>
+
+                {/* Promo page URL */}
+                <div className="border-t border-[#F0F0EC] pt-6">
+                    <div className="flex items-center gap-2 mb-2">
+                        <Megaphone size={13} className="text-[#888888]" />
+                        <span className="text-[10px] font-black uppercase tracking-[0.25em] text-[#888888]">Promo page URL</span>
+                    </div>
+                    <div className="flex items-center gap-3 flex-wrap">
+                        <code className="text-[12px] font-mono text-[#555555] bg-[#F4F4F1] border border-[#EAEAE5] rounded-lg px-3 py-2 select-all break-all">
+                            https://powr.life/promo/{ev.slug}
+                        </code>
+                        <Btn icon={Copy} label="Copy" onClick={onCopyPromoUrl} />
+                        <a
+                            href={`https://powr.life/promo/${ev.slug}?k=${ev.display_token}`}
+                            target="_blank" rel="noreferrer"
+                            className="inline-flex items-center gap-2 h-10 px-4 rounded-xl border text-[10.5px] font-bold uppercase tracking-[0.18em] transition-all bg-[#F4F4F1] border-[#E6E6E1] text-[#555555] hover:text-[#1A1A1A] hover:border-[#D8D8D2]"
+                        >
+                            <ExternalLink size={13} /> Preview
+                        </a>
+                    </div>
+                    <p className="text-[11px] text-[#999999] mt-2 leading-relaxed">
+                        The shareable send-out page — background media, venue logo, registration QR, POWR logo. Public
+                        (no token) from the moment the event is scheduled; while it's a draft only the Preview link
+                        works. Media and headline are set in Configuration below.
                     </p>
                 </div>
             </div>
@@ -999,6 +1042,19 @@ function EditorPanel({ form, setForm, dirty, saving, onSave, onDiscard, venueNam
                     <Group title="Prizes" blurb="Labels only — attached to ranks at Settle and read out on the night.">
                         <PrizeEditor prizes={form.prizes} onChange={v => set({ prizes: v })} />
                     </Group>
+
+                    {/* Promo page */}
+                    <Group title="Promo page" blurb="The shareable send-out page (URL in Lifecycle above). Venue logo comes from the venue partner; the QR sends people into the app to register.">
+                        <Field label="Background media" hint="A video (.mp4/.webm) or image behind the whole page. Blank = dark brand look.">
+                            <PromoMediaField
+                                value={form.promo_media_url}
+                                onChange={v => set({ promo_media_url: v })}
+                            />
+                        </Field>
+                        <Field label="Headline" hint="Optional line under the event name — e.g. what's at stake. Blank = name + dates only.">
+                            <TextInput value={form.promo_headline} onChange={v => set({ promo_headline: v || null })} />
+                        </Field>
+                    </Group>
                 </div>
             </fieldset>
         </section>
@@ -1172,6 +1228,67 @@ function PrizeEditor({ prizes, onChange }) {
             >
                 <Plus size={13} /> Add prize
             </button>
+        </div>
+    );
+}
+
+// URL field + direct upload for the promo background. Uploads land in the
+// reward-images bucket (the one admins already have storage policies for)
+// under event-promo/. The preview renders whatever the page would: video
+// extensions get a muted looping <video>, anything else an <img>.
+const PROMO_VIDEO_EXT = /\.(mp4|m3u8|webm|mov)(\?|#|$)/i;
+
+function PromoMediaField({ value, onChange }) {
+    const toast = useToast();
+    const [uploading, setUploading] = useState(false);
+
+    const handleFile = async (e) => {
+        const file = e.target.files?.[0];
+        e.target.value = '';
+        if (!file) return;
+        if (file.size > 80 * 1024 * 1024) { toast.error('Keep promo media under 80MB'); return; }
+        setUploading(true);
+        try {
+            const url = await uploadPublicImage('reward-images', file, 'event-promo');
+            onChange(url);
+            toast.success('Media uploaded — save to apply');
+        } catch (err) {
+            toast.error(err.message ?? 'Upload failed');
+        } finally {
+            setUploading(false);
+        }
+    };
+
+    return (
+        <div className="space-y-3">
+            <div className="flex items-center gap-2 flex-wrap">
+                <input
+                    type="text"
+                    value={value ?? ''}
+                    onChange={e => onChange(e.target.value.trim() || null)}
+                    placeholder="https://…/promo.mp4 or image URL"
+                    className="w-full max-w-md h-11 px-4 bg-[#F4F4F1] border border-[#E6E6E1] rounded-xl text-sm font-mono text-[#1A1A1A] placeholder:text-[#AAAAAA] outline-none focus:border-[#10B981]/40 transition-all"
+                />
+                <label className={`inline-flex items-center gap-2 h-11 px-4 rounded-xl border text-[10.5px] font-bold uppercase tracking-[0.18em] transition-all cursor-pointer bg-[#F4F4F1] border-[#E6E6E1] text-[#555555] hover:text-[#1A1A1A] hover:border-[#D8D8D2] ${uploading ? 'opacity-50 pointer-events-none' : ''}`}>
+                    <Upload size={13} /> {uploading ? 'Uploading…' : 'Upload'}
+                    <input
+                        type="file"
+                        accept="image/*,video/mp4,video/webm,video/quicktime"
+                        className="hidden"
+                        onChange={handleFile}
+                        disabled={uploading}
+                    />
+                </label>
+            </div>
+            {value && (
+                <div className="w-full max-w-md rounded-xl overflow-hidden border border-[#E6E6E1] bg-[#080808]">
+                    {PROMO_VIDEO_EXT.test(value) ? (
+                        <video src={value} muted loop autoPlay playsInline className="w-full h-32 object-cover" />
+                    ) : (
+                        <img src={value} alt="Promo background preview" className="w-full h-32 object-cover" />
+                    )}
+                </div>
+            )}
         </div>
     );
 }
