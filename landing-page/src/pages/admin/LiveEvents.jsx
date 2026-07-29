@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
 import { useAuth } from '../../App';
@@ -96,6 +96,7 @@ export default function LiveEvents() {
     const [dqRows, setDqRows] = useState([]);      // disqualified users (off-board)
     const [dqBusy, setDqBusy] = useState(null);    // user_id of DQ action in flight
     const [anticheat, setAnticheat] = useState(null); // admin_get_event_anticheat payload
+    const lastOpsEventId = useRef(null);           // guards against showing event A's ops data under event B
 
     const selected = useMemo(() => events.find(e => e.id === selectedId) ?? null, [events, selectedId]);
     const dirty = useMemo(() => {
@@ -106,8 +107,14 @@ export default function LiveEvents() {
     useEffect(() => { fetchEvents(); }, []);
 
     useEffect(() => {
-        if (!selected) { setForm(null); setVenueName(null); setOps(null); setStandings(null); setDqRows([]); setAnticheat(null); return; }
+        if (!selected) { setForm(null); setVenueName(null); setOps(null); setStandings(null); setDqRows([]); setAnticheat(null); lastOpsEventId.current = null; return; }
         setForm(editableFields(selected));
+        // Switching events must never show the previous event's ops data while
+        // the new fetch is in flight; same-event refreshes keep what's there.
+        if (selected.id !== lastOpsEventId.current) {
+            lastOpsEventId.current = selected.id;
+            setOps(null); setStandings(null); setDqRows([]); setAnticheat(null);
+        }
         fetchCounts(selected.id);
         fetchOps(selected.id);
         if (selected.venue_partner_id) {
@@ -138,6 +145,9 @@ export default function LiveEvents() {
     // RPCs see the board at any status, hidden or not — this is the list
     // whoever hands out prizes reads from.
     const fetchOps = async (eventId) => {
+        // A failed report must read as "no report", never as the previous
+        // one — stale vetting signals are worse than none.
+        setAnticheat(null);
         const [opsRes, boardRes, acRes, dqRes] = await Promise.all([
             supabase.rpc('admin_get_event_ops', { p_event_id: eventId }),
             supabase.rpc('admin_get_event_leaderboard', { p_event_id: eventId }),
@@ -789,7 +799,9 @@ function AntiCheatReport({ report }) {
             rows: (report.short_bursts ?? []).map((b, i) => (
                 <div key={i} className="flex items-center gap-2 text-[13px]">
                     <Link to={`/admin/users/${b.user_id}`} className="font-semibold text-[#1A1A1A] hover:underline">{b.name}</Link>
-                    <span className="text-[#999999]">— {b.short_sessions} short sessions on {new Date(b.day).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}</span>
+                    {/* b.day is a date-only string; suffix a local midnight so the
+                        calendar day doesn't shift for admins west of UTC. */}
+                    <span className="text-[#999999]">— {b.short_sessions} short sessions on {new Date(`${b.day}T00:00:00`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}</span>
                 </div>
             )),
         },
