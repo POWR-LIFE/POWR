@@ -83,6 +83,7 @@ import CookiePolicy from './pages/CookiePolicy';
 import DeleteAccount from './pages/DeleteAccount';
 import PartnerRewardSubmit from './pages/PartnerRewardSubmit';
 import PrivacyPolicy from './pages/PrivacyPolicy';
+import LiveBoard from './pages/LiveBoard';
 import SupportPage from './pages/SupportPage';
 import TermsOfService from './pages/TermsOfService';
 
@@ -1059,6 +1060,7 @@ export default function App() {
                     <Route path="/support" element={<SupportPage />} />
                     <Route path="/delete-account" element={<DeleteAccount />} />
                     <Route path="/athlete/:token" element={<AthleteSignup />} />
+                    <Route path="/live/:slug" element={<LiveBoard />} />
                     <Route path="/partner-reward/:token" element={<PartnerRewardSubmit />} />
                     <Route path="/partner/login" element={<PartnerLogin />} />
                     <Route path="/partner/setup/:token" element={<PartnerSetup />} />
