@@ -96,6 +96,11 @@ export interface SharedChallengeCelebrationProps {
   settled?: boolean;
   onDone: () => void;
   onShare?: () => void;
+  /** Recreate this challenge with the same crew. Only passed on the settled
+   *  overlay — mid-challenge there is nothing to re-run yet — and it takes the
+   *  primary slot when present: the moment the number banks is the moment the
+   *  next round is easiest to start. */
+  onRematch?: () => void;
 }
 
 /**
@@ -115,6 +120,7 @@ export function SharedChallengeCelebration({
   settled = false,
   onDone,
   onShare,
+  onRematch,
 }: SharedChallengeCelebrationProps) {
   const { template, participants } = challenge;
   const finishers = participants.filter((p) => p.completed || p.isSelf);
@@ -249,13 +255,35 @@ export function SharedChallengeCelebration({
       </Animated.Text>
 
       <Animated.View style={[styles.actions, actionsStyle]}>
-        <Pressable style={styles.btnDone} onPress={onDone}>
-          <Text style={styles.btnDoneText}>Done</Text>
-        </Pressable>
-        <Pressable style={styles.btnShare} onPress={onShare}>
-          <Ionicons name="share-outline" size={14} color={MUTED} />
-          <Text style={styles.btnShareText}>Share</Text>
-        </Pressable>
+        {onRematch ? (
+          <>
+            <Pressable style={[styles.btnDone, styles.btnDoneRow]} onPress={onRematch}>
+              <Ionicons name="refresh" size={14} color="#0a0a0a" />
+              <Text style={styles.btnDoneText}>Run it back</Text>
+            </Pressable>
+            <Pressable style={styles.btnGhost} onPress={onDone}>
+              <Text style={styles.btnGhostText}>Done</Text>
+            </Pressable>
+            <Pressable
+              style={styles.btnIcon}
+              onPress={onShare}
+              accessibilityRole="button"
+              accessibilityLabel="Share"
+            >
+              <Ionicons name="share-outline" size={15} color={MUTED} />
+            </Pressable>
+          </>
+        ) : (
+          <>
+            <Pressable style={styles.btnDone} onPress={onDone}>
+              <Text style={styles.btnDoneText}>Done</Text>
+            </Pressable>
+            <Pressable style={styles.btnShare} onPress={onShare}>
+              <Ionicons name="share-outline" size={14} color={MUTED} />
+              <Text style={styles.btnShareText}>Share</Text>
+            </Pressable>
+          </>
+        )}
       </Animated.View>
     </View>
   );
@@ -303,7 +331,11 @@ const styles = StyleSheet.create({
 
   actions: { flexDirection: 'row', gap: 8, marginTop: 22, alignSelf: 'stretch' },
   btnDone: { flex: 1, paddingVertical: 14, backgroundColor: GOLD, borderRadius: 12, alignItems: 'center' },
+  btnDoneRow: { flexDirection: 'row', justifyContent: 'center', gap: 6 },
   btnDoneText: { fontFamily: fontFamily.bold, fontSize: 13, color: '#0a0a0a', letterSpacing: 0.5 },
   btnShare: { paddingVertical: 14, paddingHorizontal: 18, borderWidth: 1, borderColor: BORDER, borderRadius: 12, flexDirection: 'row', alignItems: 'center', gap: 6 },
   btnShareText: { fontFamily: fontFamily.regular, fontSize: 13, color: MUTED },
+  btnGhost: { paddingVertical: 14, paddingHorizontal: 16, borderWidth: 1, borderColor: BORDER, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  btnGhostText: { fontFamily: fontFamily.regular, fontSize: 13, color: SECONDARY },
+  btnIcon: { width: 46, borderWidth: 1, borderColor: BORDER, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
 });

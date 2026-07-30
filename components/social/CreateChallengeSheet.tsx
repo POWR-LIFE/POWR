@@ -1,6 +1,6 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Dimensions,
   KeyboardAvoidingView,
@@ -60,6 +60,10 @@ export interface CreateChallengeSheetProps {
   onCreate: (input: { templateId: string; friendIds: string[] }) => void | Promise<unknown>;
   /** Preselect this template when the sheet opens (e.g. tapped from the browse carousel). */
   initialTemplateId?: string | null;
+  /** Preselect these friends when the sheet opens — rematch passes the old
+   *  crew, the default entry points pass your last crew. Ids not in the
+   *  current friends list are dropped silently. */
+  initialFriendIds?: string[] | null;
   /** Group-bonus config (admin-configurable) for the live "+X each" preview. */
   bonusConfig?: { perHead: number; maxBonus: number };
   /** Every concurrency slot is full — show the "finish or drop one" state instead. */
@@ -81,6 +85,7 @@ export function CreateChallengeSheet({
   onClose,
   onCreate,
   initialTemplateId,
+  initialFriendIds,
   bonusConfig,
   plateFull = false,
   openCount = 0,
@@ -106,6 +111,20 @@ export function CreateChallengeSheet({
   useEffect(() => {
     if (visible && initialTemplateId) setTemplateId(initialTemplateId);
   }, [visible, initialTemplateId]);
+
+  // Seed the invite list while the sheet is open, re-applying as the friends
+  // list loads in (it can land AFTER the sheet opens, and the seed filters
+  // against it) — but never once the user has touched the selection: going
+  // solo by deselecting everyone must stick.
+  const touched = useRef(false);
+  useEffect(() => {
+    if (!visible) { touched.current = false; return; }
+    if (touched.current) return;
+    const valid = (initialFriendIds ?? [])
+      .filter((id) => friends.some((f) => f.id === id && f.togetherEnabled !== false))
+      .slice(0, MAX_GROUP - 1);
+    setSelected(new Set(valid));
+  }, [visible, initialFriendIds, friends]);
 
   // Debounced username search. The RPC already excludes you and anyone you're
   // already connected to, so every result is someone you can request. Mirrors
@@ -133,6 +152,7 @@ export function CreateChallengeSheet({
   const atGroupCap = selected.size >= MAX_GROUP - 1;
 
   const toggleFriend = (id: string) => {
+    touched.current = true;
     Haptics.selectionAsync();
     setSelected((prev) => {
       const next = new Set(prev);
@@ -172,8 +192,14 @@ export function CreateChallengeSheet({
     onClose();
   };
 
+  // Zero friends is a real choice now — a solo start at base points, upgradable
+  // mid-run via the detail screen's invite. The one shape that genuinely needs
+  // company is a pooled team total.
+  const soloStart = selected.size === 0;
+  const canSend = !!template && (!soloStart || template.mode !== 'pooled');
+
   const handleSend = async () => {
-    if (!template || selected.size === 0 || submitting) return;
+    if (!template || !canSend || submitting) return;
     setSubmitting(true);
     try {
       await onCreate({ templateId: template.id, friendIds: [...selected] });
@@ -199,8 +225,6 @@ export function CreateChallengeSheet({
       /* user dismissed share sheet */
     }
   };
-
-  const canSend = !!template && selected.size > 0;
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={handleClose}>
@@ -410,7 +434,7 @@ export function CreateChallengeSheet({
               <View style={styles.durationLine}>
                 <Ionicons name="time-outline" size={13} color={SECONDARY} />
                 <Text style={styles.durationLineText}>
-                  Runs for {durationLabel(template.durationHours)} — clock starts when everyone’s in
+                  Runs for {durationLabel(template.durationHours)} — clock starts {soloStart && canSend ? 'right away' : 'when everyone’s in'}
                 </Text>
               </View>
             ) : null}
@@ -493,9 +517,11 @@ export function CreateChallengeSheet({
           <View style={styles.footer}>
             <View style={styles.summaryRow}>
               <Text style={styles.summaryText}>
-                {selected.size === 0
-                  ? 'Select friends to invite'
-                  : `${selected.size} ${selected.size === 1 ? 'friend' : 'friends'} · group of ${groupSize}`}
+                {!soloStart
+                  ? `${selected.size} ${selected.size === 1 ? 'friend' : 'friends'} · group of ${groupSize}`
+                  : canSend
+                    ? 'Going solo — invite friends anytime for a bonus'
+                    : 'A team total needs at least one friend'}
               </Text>
               {projectedBonus > 0 && (
                 <View style={styles.bonusPill}>
@@ -513,13 +539,18 @@ export function CreateChallengeSheet({
               style={[styles.sendBtn, (!canSend || submitting) && styles.sendBtnDisabled]}
             >
               <Text style={[styles.sendText, (!canSend || submitting) && styles.sendTextDisabled]}>
-                {submitting ? 'Sending…' : 'Send invites'}
+                {submitting ? (soloStart ? 'Starting…' : 'Sending…') : soloStart ? 'Start solo' : 'Send invites'}
               </Text>
               {canSend && !submitting && <Ionicons name="arrow-forward" size={16} color="#0a0a0a" />}
             </Pressable>
 
-            {/* Timing is admin-set; the clock just starts once everyone's accepted. */}
-            <Text style={styles.timingNote}>The challenge starts when everyone joins.</Text>
+            {/* Timing is admin-set; a group's clock starts once everyone's accepted,
+                a solo run starts on the spot. */}
+            <Text style={styles.timingNote}>
+              {soloStart && canSend
+                ? 'Starts the moment you tap — no waiting on anyone.'
+                : 'The challenge starts when everyone joins.'}
+            </Text>
           </View>
             </>
           )}

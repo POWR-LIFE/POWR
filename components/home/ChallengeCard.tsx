@@ -1,9 +1,7 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  LayoutChangeEvent,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -19,8 +17,11 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
 import { fontFamily } from '@/constants/tokens';
 import type { ChallengeCardData } from '@/hooks/useWeeklyChallenge';
+import { selectWeeklyBoard } from '@/lib/weeklyChallengeSelection';
 
 // ─── Palette ───────────────────────────────────────────────────────────────
 
@@ -34,14 +35,8 @@ const FAINT = '#444444';
 const CARD_BG = '#111111';
 const BORDER = '#222222';
 
-/** Tier pill — coloured text + border over a faint tint. */
-const TIER_STYLE: Record<string, { color: string; bg: string; border: string }> = {
-  easy: { color: GREEN, bg: 'rgba(0,204,102,0.08)', border: 'rgba(0,204,102,0.35)' },
-  medium: { color: GOLD, bg: 'rgba(232,210,0,0.08)', border: 'rgba(232,210,0,0.35)' },
-  hard: { color: ORANGE, bg: 'rgba(255,92,0,0.08)', border: 'rgba(255,92,0,0.35)' },
-};
-
-const DAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+/** Tier → accent for the points figure (difficulty at a glance, no pill). */
+const TIER_COLOR: Record<string, string> = { easy: GREEN, medium: GOLD, hard: ORANGE };
 
 // ─── Icons ───────────────────────────────────────────────────────────────────
 
@@ -54,100 +49,87 @@ function CatIcon({ spec, size, color }: { spec: IconSpec; size: number; color: s
   return <Ionicons name={spec.name as any} size={size} color={color} />;
 }
 
-// ─── Category pill ────────────────────────────────────────────────────────────
+// ─── Row bits ─────────────────────────────────────────────────────────────────
 
-function CategoryPill({
-  challenge,
-  active,
-  onPress,
-}: {
-  challenge: ChallengeCardData;
-  active: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable onPress={onPress} style={[styles.pill, active && styles.pillOn]}>
-      <CatIcon spec={challenge.icon} size={13} color={active ? CARD_BG : MUTED} />
-      <Text style={[styles.pillText, active && styles.pillTextOn]}>{challenge.categoryLabel}</Text>
-      {challenge.completed && (
-        <Ionicons name="checkmark-circle" size={12} color={active ? CARD_BG : GREEN} />
-      )}
-    </Pressable>
-  );
+/** Compact figure for row readouts (35,000 → "35k"); small values verbatim. */
+function fmtNum(n: number): string {
+  if (n >= 1000) return `${(n / 1000).toFixed(n % 1000 === 0 ? 0 : 1)}k`;
+  return String(Math.round(n));
 }
 
-// ─── Day dashes ───────────────────────────────────────────────────────────────
-// Seven dashes (Mon–Sun) for overall weekly activity across ALL challenges;
-// gold marks a day the user was active in any category. (The circular dots below
-// show the same week filtered to this challenge's category.)
-
-function DayDashes({ streak }: { streak: boolean[] }) {
-  return (
-    <View style={styles.dashes}>
-      {DAYS.map((_, i) => (
-        <View key={i} style={[styles.dash, streak[i] && styles.dashDone]} />
-      ))}
-    </View>
-  );
-}
-
-// ─── Progress bar with shimmer ────────────────────────────────────────────────
-
-function ProgressBar({ fraction, complete }: { fraction: number; complete: boolean }) {
+function RowBar({ fraction, complete }: { fraction: number; complete: boolean }) {
   const widthPct = useSharedValue(0);
-  const [trackW, setTrackW] = useState(0);
-  const shimmerX = useSharedValue(-120);
-
   useEffect(() => {
     widthPct.value = withTiming(fraction, { duration: 800, easing: Easing.out(Easing.cubic) });
   }, [fraction, widthPct]);
-
-  useEffect(() => {
-    if (trackW <= 0 || complete) return;
-    shimmerX.value = -120;
-    shimmerX.value = withRepeat(withTiming(trackW + 120, { duration: 2500, easing: Easing.linear }), -1, false);
-    return () => cancelAnimation(shimmerX);
-  }, [trackW, complete, shimmerX]);
-
   const fillStyle = useAnimatedStyle(() => ({ width: `${widthPct.value * 100}%` }));
-  const shimmerStyle = useAnimatedStyle(() => ({ transform: [{ translateX: shimmerX.value }] }));
-
   return (
-    <View style={styles.barBg} onLayout={(e: LayoutChangeEvent) => setTrackW(e.nativeEvent.layout.width)}>
-      <Animated.View style={[styles.barFill, complete && styles.barFillDone, fillStyle]}>
-        {!complete && <Animated.View style={[styles.barShine, shimmerStyle]} />}
-      </Animated.View>
+    <View style={styles.rowBarBg}>
+      <Animated.View style={[styles.rowBarFill, complete && styles.rowBarFillDone, fillStyle]} />
     </View>
   );
 }
 
-// ─── Day dots (weekly streak) ─────────────────────────────────────────────────
-// Circle-per-day with the weekday letter inside, matching the profile screen:
-// done → gold border + ✓; today → white border; future → dimmed.
+function ChallengeRow({
+  challenge,
+  index,
+  last,
+  onShare,
+}: {
+  challenge: ChallengeCardData;
+  index: number;
+  last: boolean;
+  onShare?: (challenge: ChallengeCardData) => void;
+}) {
+  const complete = challenge.completed || challenge.fraction >= 1;
+  const tierColor = TIER_COLOR[challenge.tier] ?? GOLD;
 
-function DayDots({ streak, todayIndex }: { streak: boolean[]; todayIndex: number }) {
+  // Mount entry — fade + rise. A freshly revealed challenge (slot refill after
+  // a clear) mounts new and slides in; rows that merely re-order stay put.
+  const enter = useSharedValue(0);
+  useEffect(() => {
+    enter.value = withDelay(index * 70, withTiming(1, { duration: 380, easing: Easing.out(Easing.cubic) }));
+  }, [enter, index]);
+  const enterStyle = useAnimatedStyle(() => ({
+    opacity: enter.value,
+    transform: [{ translateY: (1 - enter.value) * 8 }],
+  }));
+
   return (
-    <View style={styles.daysRow}>
-      {DAYS.map((label, i) => {
-        const done = streak[i];
-        const isToday = i === todayIndex;
-        const isFuture = i > todayIndex;
-        return (
-          <View
-            key={i}
-            style={[
-              styles.dayDot,
-              done && styles.dayDotDone,
-              isToday && styles.dayDotToday,
-              isFuture && styles.dayDotFuture,
-            ]}
-          >
-            {done && !isFuture && <Text style={styles.dayDotCheck}>✓</Text>}
-            <Text style={[styles.dayDotLabel, done && styles.dayDotLabelDone]}>{label}</Text>
+    <Animated.View style={[styles.row, !last && styles.rowDivider, enterStyle]}>
+      <View style={[styles.rowIcon, complete && styles.rowIconDone]}>
+        <CatIcon spec={challenge.icon} size={14} color={complete ? GREEN : SECONDARY} />
+      </View>
+      <View style={styles.rowBody}>
+        <View style={styles.rowTop}>
+          <Text style={styles.rowTitle} numberOfLines={1}>{challenge.title}</Text>
+          <View style={styles.rowRight}>
+            {complete ? (
+              <>
+                <Ionicons name="checkmark-circle" size={14} color={GREEN} />
+                {!!onShare && (
+                  <Pressable
+                    hitSlop={10}
+                    onPress={() => onShare(challenge)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Share ${challenge.title}`}
+                  >
+                    <Ionicons name="share-outline" size={14} color={MUTED} />
+                  </Pressable>
+                )}
+              </>
+            ) : (
+              <Text style={styles.rowReadout}>
+                {fmtNum(challenge.displayValue)}/{fmtNum(challenge.displayGoal)}
+                <Text style={styles.rowUnit}> {challenge.unit}</Text>
+              </Text>
+            )}
+            <Text style={[styles.rowPts, { color: complete ? GREEN : tierColor }]}>+{challenge.points}</Text>
           </View>
-        );
-      })}
-    </View>
+        </View>
+        <RowBar fraction={challenge.fraction} complete={complete} />
+      </View>
+    </Animated.View>
   );
 }
 
@@ -322,111 +304,110 @@ function Celebration({
 interface ChallengeCardProps {
   challenges: ChallengeCardData[];
   totalBalance?: number;
-  /** Fires from the celebration + footer share controls with the completed challenge. */
+  /** Fires from the celebration + completed-row share controls with the challenge. */
   onShare?: (challenge: ChallengeCardData) => void;
-  /** When set, auto-selects that challenge and plays the celebration once. */
+  /** When set, plays the completion celebration for that challenge once. */
   celebrateId?: string | null;
 }
 
+/** Last-known category relevance — read on mount, written whenever this week
+ *  has signal. Bridges the Monday reset, when every score is zero and the
+ *  slots would otherwise open on arbitrary catalog order. */
+const ORDER_KEY = '@powr/weekly_category_order';
+
+/**
+ * "This week" board — the auto weekly challenges as one compact card, run as
+ * two SLOTS + a hidden queue: nobody has ever cleared all five, and a wall of
+ * unfinished bars reads as failure. Clearing a slot reveals the next
+ * challenge (the refill beat is the hook), finished ones stack below as
+ * receipts. Display-only — all five still evaluate and award server-side, so
+ * a hidden challenge finished through normal activity pops in already-done.
+ * Deliberately quieter than the Together band above: no avatars, no per-row
+ * day tracking, just goal → progress → points. Completion swaps the rows for
+ * the celebration in-flow, so the card grows to fit it.
+ */
 export function ChallengeCard({ challenges, totalBalance = 0, onShare, celebrateId }: ChallengeCardProps) {
-  const [activeIdx, setActiveIdx] = useState(0);
   const [celebratingId, setCelebratingId] = useState<string | null>(null);
   const dismissed = useRef<Set<string>>(new Set());
 
-  // When a fresh completion arrives, jump to it and play the celebration once.
+  // When a fresh completion arrives, play the celebration once.
   useEffect(() => {
     if (!celebrateId || dismissed.current.has(celebrateId)) return;
-    const idx = challenges.findIndex((c) => c.id === celebrateId);
-    if (idx >= 0) {
-      setActiveIdx(idx);
-      setCelebratingId(celebrateId);
-    }
+    if (challenges.some((c) => c.id === celebrateId)) setCelebratingId(celebrateId);
   }, [celebrateId, challenges]);
 
-  const cardA = useSharedValue(1);
+  // Stored relevance is loaded once and NOT live-updated from this session's
+  // derived order — feeding it back would let a mid-session score change
+  // silently swap a visible slot. This session ranks on live momentum; the
+  // persisted order only seats next Monday's empty board.
+  const [storedOrder, setStoredOrder] = useState<string[] | null>(null);
   useEffect(() => {
-    cardA.value = 0;
-    cardA.value = withTiming(1, { duration: 350, easing: Easing.out(Easing.cubic) });
-  }, [activeIdx, cardA]);
-  const cardStyle = useAnimatedStyle(() => ({ opacity: cardA.value, transform: [{ translateY: (1 - cardA.value) * 10 }] }));
+    AsyncStorage.getItem(ORDER_KEY).then((raw) => {
+      if (!raw) return;
+      try { setStoredOrder(JSON.parse(raw)); } catch { /* corrupt = ignore */ }
+    });
+  }, []);
+
+  const board = useMemo(() => selectWeeklyBoard(challenges, storedOrder), [challenges, storedOrder]);
+
+  const persistedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!board.derivedOrder) return;
+    const s = JSON.stringify(board.derivedOrder);
+    if (persistedRef.current === s) return;
+    persistedRef.current = s;
+    AsyncStorage.setItem(ORDER_KEY, s).catch(() => {});
+  }, [board.derivedOrder]);
+
+  const enter = useSharedValue(0);
+  useEffect(() => {
+    enter.value = withTiming(1, { duration: 350, easing: Easing.out(Easing.cubic) });
+  }, [enter]);
+  const enterStyle = useAnimatedStyle(() => ({ opacity: enter.value, transform: [{ translateY: (1 - enter.value) * 10 }] }));
 
   if (!challenges.length) return null;
-  const active = challenges[Math.min(activeIdx, challenges.length - 1)];
-  const tier = TIER_STYLE[active.tier] ?? TIER_STYLE.medium;
-  const complete = active.completed || active.fraction >= 1;
-  const celebrating = celebratingId === active.id;
+  const celebrating = celebratingId ? challenges.find((c) => c.id === celebratingId) : undefined;
+
+  // Goals on top, receipts underneath.
+  const rows = [...board.active, ...board.done];
+  const allClear = board.done.length === challenges.length;
+  const weekPts = challenges.reduce((sum, c) => sum + c.points, 0);
+  const hasFooter = board.hiddenCount > 0 || allClear;
 
   return (
     <View>
-      {/* Category pills */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.catScroll}>
-        {challenges.map((c, i) => (
-          <CategoryPill key={c.id} challenge={c} active={i === activeIdx} onPress={() => setActiveIdx(i)} />
-        ))}
-      </ScrollView>
+      {/* Section header — sibling of TOGETHER's, with the shared weekly clock
+          (every row resets at the same moment, so it's said once up here). */}
+      <View style={styles.sectionRow}>
+        <View style={styles.sectionTitleRow}>
+          <Text style={styles.sectionLabel}>THIS WEEK</Text>
+          {board.done.length > 0 && (
+            <Text style={styles.sectionCount}>{board.done.length}/{challenges.length}</Text>
+          )}
+        </View>
+        <Text style={styles.sectionMeta}>{challenges[0].expiresIn}</Text>
+      </View>
 
-      {/* Card — the celebration replaces the content in flow (not an absolute
-          overlay) so the card grows to fit it instead of clipping. */}
-      <Animated.View style={[styles.card, celebrating && styles.cardCelebrating, cardStyle]}>
+      <Animated.View style={[styles.card, !!celebrating && styles.cardCelebrating, enterStyle]}>
         {celebrating ? (
           <Celebration
-            challenge={active}
+            challenge={celebrating}
             totalBalance={totalBalance}
-            onShare={() => onShare?.(active)}
-            onDone={() => { dismissed.current.add(active.id); setCelebratingId(null); }}
+            onShare={() => onShare?.(celebrating)}
+            onDone={() => { dismissed.current.add(celebrating.id); setCelebratingId(null); }}
           />
         ) : (
           <>
-            <DayDashes streak={active.overallStreak} />
-
-            {/* Badge row + points */}
-            <View style={styles.header}>
-              <View style={styles.tags}>
-                <View style={styles.tag}>
-                  <Text style={styles.tagText}>WEEKLY</Text>
-                </View>
-                <View style={[styles.tag, { borderColor: tier.border, backgroundColor: tier.bg }]}>
-                  <Text style={[styles.tagText, { color: tier.color }]}>{active.tier.toUpperCase()}</Text>
-                </View>
-              </View>
-              <View style={styles.points}>
-                <Text style={styles.pointsValue}>+{active.points}</Text>
-                <Text style={styles.pointsLabel}>pts</Text>
-              </View>
-            </View>
-
-            {/* Title + description */}
-            <View style={styles.titleWrap}>
-              <Text style={styles.chTitle}>{active.title}</Text>
-              <Text style={styles.chDesc}>{active.description}</Text>
-            </View>
-
-            {/* Progress */}
-            <View style={styles.progSection}>
-              <View style={styles.progMeta}>
-                <Text style={styles.progLabel}>{active.unit}</Text>
-                <Text style={styles.progValue}>
-                  {active.displayValue.toLocaleString()} / {active.displayGoal.toLocaleString()}
-                </Text>
-              </View>
-              <ProgressBar fraction={active.fraction} complete={complete} />
-            </View>
-
-            {/* Weekly streak */}
-            <DayDots streak={active.streak} todayIndex={active.todayIndex} />
-
-            {/* Time remaining */}
-            <View style={styles.timeRow}>
-              <Text style={styles.timeLeft}>{active.expiresIn}</Text>
-            </View>
-
-            {/* Share — only once the challenge is complete and there's a card to share */}
-            {complete && (
-              <Pressable style={styles.btnShare} onPress={() => onShare?.(active)}>
-                <Ionicons name="share-social-outline" size={13} color={SECONDARY} />
-                <Text style={styles.btnShareText}>Share challenge</Text>
-              </Pressable>
-            )}
+            {rows.map((c, i) => (
+              <ChallengeRow key={c.id} challenge={c} index={i} last={i === rows.length - 1 && !hasFooter} onShare={onShare} />
+            ))}
+            {board.hiddenCount > 0 ? (
+              <Text style={styles.queueHint}>
+                {board.hiddenCount} more unlock{board.hiddenCount === 1 ? 's' : ''} as you clear these
+              </Text>
+            ) : allClear ? (
+              <Text style={styles.clearedLine}>Week cleared · {weekPts} pts banked</Text>
+            ) : null}
           </>
         )}
       </Animated.View>
@@ -435,71 +416,64 @@ export function ChallengeCard({ challenges, totalBalance = 0, onShare, celebrate
 }
 
 const styles = StyleSheet.create({
-  catScroll: { gap: 8, paddingBottom: 14, paddingRight: 16 },
-  pill: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingHorizontal: 16, paddingVertical: 8, borderRadius: 100,
-    borderWidth: 1, borderColor: BORDER, backgroundColor: 'transparent',
+  // section header — mirrors TogetherSection's sectionRow so the two bands read
+  // as siblings
+  sectionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+    paddingTop: 16,
+    marginTop: 8,
+    marginBottom: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(255,255,255,0.07)',
   },
-  pillOn: { backgroundColor: GOLD, borderColor: GOLD },
-  pillText: { fontFamily: fontFamily.medium, fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: MUTED },
-  pillTextOn: { color: CARD_BG },
+  sectionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  sectionLabel: {
+    fontFamily: fontFamily.medium,
+    fontSize: 9,
+    letterSpacing: 2,
+    color: TEXT,
+    textTransform: 'uppercase',
+  },
+  sectionCount: { fontFamily: fontFamily.semiBold, fontSize: 10, color: SECONDARY },
+  sectionMeta: { fontFamily: fontFamily.regular, fontSize: 11, color: FAINT },
 
-  card: { backgroundColor: CARD_BG, borderRadius: 22, borderWidth: 1, borderColor: BORDER, padding: 20, overflow: 'hidden', position: 'relative' },
-  cardCelebrating: { padding: 0, backgroundColor: '#080808' },
+  card: { backgroundColor: CARD_BG, borderRadius: 22, borderWidth: 1, borderColor: BORDER, paddingHorizontal: 16, overflow: 'hidden', position: 'relative' },
+  cardCelebrating: { paddingHorizontal: 0, backgroundColor: '#080808' },
 
-  // day dashes (overall weekly activity, Mon–Sun)
-  dashes: { flexDirection: 'row', gap: 6, alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
-  dash: { width: 20, height: 3, borderRadius: 2, backgroundColor: BORDER },
-  dashDone: { backgroundColor: GOLD },
-
-  // header
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 },
-  tags: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  tag: { borderWidth: 1, borderColor: BORDER, borderRadius: 100, paddingHorizontal: 10, paddingVertical: 4 },
-  tagText: { fontFamily: fontFamily.medium, fontSize: 10, letterSpacing: 1.2, color: SECONDARY, textTransform: 'uppercase' },
-  points: { alignItems: 'flex-end' },
-  pointsValue: { fontFamily: fontFamily.extraLight, fontSize: 30, color: GOLD, lineHeight: 30, letterSpacing: -0.5 },
-  pointsLabel: { fontFamily: fontFamily.medium, fontSize: 9, letterSpacing: 2, color: FAINT, textTransform: 'uppercase', marginTop: 3 },
-
-  // title
-  titleWrap: { marginBottom: 16 },
-  chTitle: { fontFamily: fontFamily.light, fontSize: 28, color: TEXT, letterSpacing: -0.3, lineHeight: 32 },
-  chDesc: { fontFamily: fontFamily.light, fontSize: 13, color: SECONDARY, marginTop: 6, lineHeight: 18 },
-
-  // progress
-  progSection: { marginBottom: 16 },
-  progMeta: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
-  progLabel: { fontFamily: fontFamily.medium, fontSize: 10, letterSpacing: 2, color: FAINT, textTransform: 'uppercase' },
-  progValue: { fontFamily: fontFamily.regular, fontSize: 12, color: SECONDARY },
-  barBg: { height: 3, backgroundColor: BORDER, borderRadius: 3, overflow: 'hidden' },
-  barFill: { height: 3, borderRadius: 3, backgroundColor: GOLD, overflow: 'hidden' },
-  barFillDone: { backgroundColor: GREEN },
-  barShine: { position: 'absolute', top: 0, width: 60, height: '100%', backgroundColor: 'rgba(255,255,255,0.25)' },
-
-  // day dots (weekday letter inside the circle — matches profile screen)
-  daysRow: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 4, marginBottom: 14 },
-  dayDot: {
-    width: 36, height: 36, borderRadius: 18,
+  // rows
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 13 },
+  rowDivider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(255,255,255,0.07)' },
+  rowIcon: {
+    width: 30, height: 30, borderRadius: 15,
+    backgroundColor: 'rgba(255,255,255,0.05)',
     alignItems: 'center', justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)',
-    gap: 1,
   },
-  dayDotDone: { backgroundColor: 'transparent', borderColor: GOLD },
-  dayDotToday: { borderWidth: 1.5, borderColor: '#ffffff' },
-  dayDotFuture: { opacity: 0.35 },
-  dayDotCheck: { fontSize: 9, color: GOLD, lineHeight: 10 },
-  dayDotLabel: { fontSize: 8, color: 'rgba(255,255,255,0.4)', lineHeight: 9 },
-  dayDotLabelDone: { color: '#ffffff' },
+  rowIconDone: { backgroundColor: 'rgba(0,204,102,0.08)' },
+  rowBody: { flex: 1, gap: 8 },
+  rowTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  rowTitle: { flex: 1, fontFamily: fontFamily.regular, fontSize: 14, color: TEXT, letterSpacing: -0.2 },
+  rowRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  rowReadout: { fontFamily: fontFamily.regular, fontSize: 11, color: SECONDARY },
+  rowUnit: { color: MUTED, fontSize: 10 },
+  rowPts: { fontFamily: fontFamily.semiBold, fontSize: 12, letterSpacing: 0.2, minWidth: 34, textAlign: 'right' },
+  rowBarBg: { height: 3, backgroundColor: BORDER, borderRadius: 3, overflow: 'hidden' },
+  rowBarFill: { height: 3, borderRadius: 3, backgroundColor: GOLD },
+  rowBarFillDone: { backgroundColor: GREEN },
 
-  // time row
-  timeRow: { borderTopWidth: 1, borderTopColor: BORDER, paddingTop: 10, alignItems: 'flex-end', marginBottom: 2 },
-  timeLeft: { fontFamily: fontFamily.regular, fontSize: 11, color: FAINT },
-
-  // share
-  btnShare: { marginTop: 10, paddingVertical: 12, borderRadius: 100, borderWidth: 1, borderColor: BORDER, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
-  btnShareText: { fontFamily: fontFamily.medium, fontSize: 12, letterSpacing: 1.5, color: SECONDARY, textTransform: 'uppercase' },
+  // queue footer — the chain's promise of more, or the completionist payoff
+  queueHint: {
+    fontFamily: fontFamily.regular, fontSize: 10.5, color: MUTED,
+    textAlign: 'center', paddingVertical: 11, letterSpacing: 0.3,
+    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(255,255,255,0.07)',
+  },
+  clearedLine: {
+    fontFamily: fontFamily.semiBold, fontSize: 11.5, color: GOLD,
+    textAlign: 'center', paddingVertical: 12, letterSpacing: 0.4,
+    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(255,255,255,0.07)',
+  },
 
   // celebration
   cel: { alignSelf: 'stretch', borderRadius: 22, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24, paddingVertical: 32, overflow: 'hidden' },
