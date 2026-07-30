@@ -133,12 +133,19 @@ async function cancelIfTooThin(supabase: any, challengeId: string, title: string
   // as live would keep a one-person challenge running on the strength of
   // someone who never replied.
   const committed = live.filter((p: any) => p.state !== 'invited');
-  if (committed.length < 2) {
+  // A solo-start run was viable at one from day one, so it only dies when
+  // EVERYONE is gone (the creator leaving). Without this, inviting a friend
+  // into your live solo run and having them later leave would cancel a
+  // challenge that was never below its starting strength.
+  const { data: ch } = await supabase
+    .from('shared_challenges').select('solo_start').eq('id', challengeId).maybeSingle();
+  const minCommitted = ch?.solo_start ? 1 : 2;
+  if (committed.length < minCommitted) {
     await cancelChallenge(supabase, challengeId, live, title);
   }
 }
 
-Deno.serve(async (req) => {
+const handler = async (req) => {
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
 
   const authHeader = req.headers.get('Authorization');
@@ -352,6 +359,21 @@ Deno.serve(async (req) => {
     default:
       return json({ error: 'Unknown action' }, 400);
   }
+};
+
+// CORS wrapper — native apps never preflight, but expo web does: without an
+// OPTIONS branch and ACAO on every response the browser can neither send the
+// call nor read its result. Mirrors the admin-* functions' pattern.
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
+  const res = await handler(req);
+  const headers = new Headers(res.headers);
+  for (const [k, v] of Object.entries(corsHeaders)) headers.set(k, v);
+  return new Response(res.body, { status: res.status, headers });
 });
 
 async function capFromConfig(supabase: any): Promise<number> {

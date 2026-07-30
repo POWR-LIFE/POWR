@@ -113,6 +113,41 @@ export function getChallengeById(id: string, catalog: Challenge[] = CATALOG): Ch
   return catalog.find((c) => c.id === id) ?? null;
 }
 
+// ── Rotation (mirror of shared/weeklyChallenges.js) ─────────────────────────
+export const CATEGORY_ORDER = ['gym', 'walking', 'running', 'cycling', 'multi'];
+
+export function weekNumber(isoWeek: string): number {
+  const m = /^(\d+)-W(\d+)$/.exec(isoWeek || '');
+  if (!m) return 0;
+  return parseInt(m[1], 10) * 53 + parseInt(m[2], 10);
+}
+
+/** The week's 5 active challenges — one per category, rotation by week number. */
+export function getActiveChallengesForWeek(isoWeek: string, catalog: Challenge[] = CATALOG): Challenge[] {
+  const wn = weekNumber(isoWeek);
+  const active: Challenge[] = [];
+  for (const cat of CATEGORY_ORDER) {
+    const list = catalog.filter((c) => c.category === cat && c.supported !== false);
+    if (list.length === 0) continue;
+    active.push(list[wn % list.length]);
+  }
+  return active;
+}
+
+/** Admin catalog override (system_config.weekly_challenges) → catalog, else bundled. */
+export function parseChallengeCatalog(value: unknown): Challenge[] {
+  if (!value) return CATALOG;
+  try {
+    const parsed = typeof value === 'string' ? JSON.parse(value) : value;
+    if (Array.isArray(parsed) && parsed.length && parsed.every((c) => c && c.id && c.category && c.rule)) {
+      return parsed as Challenge[];
+    }
+  } catch {
+    /* fall through */
+  }
+  return CATALOG;
+}
+
 // ── Evaluator (mirror of shared/challengeRules.js) ───────────────────────────
 const MAIN_CATEGORIES = ['gym', 'walking', 'running', 'cycling'];
 

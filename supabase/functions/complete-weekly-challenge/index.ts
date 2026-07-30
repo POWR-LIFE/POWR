@@ -14,7 +14,7 @@ interface CompleteRequest {
   target?: 'current' | 'previous'; // which week to evaluate; defaults to current
 }
 
-Deno.serve(async (req) => {
+const handler = async (req) => {
   if (req.method !== 'POST') {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405 });
   }
@@ -176,4 +176,19 @@ Deno.serve(async (req) => {
     JSON.stringify({ ok: true, completed: true, already_completed: false, points_awarded: points, challenge_id }),
     { status: 200, headers: { 'Content-Type': 'application/json' } },
   );
+};
+
+// CORS wrapper — native apps never preflight, but expo web does: without an
+// OPTIONS branch and ACAO on every response the browser can neither send the
+// call nor read its result. Mirrors the admin-* functions' pattern.
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
+  const res = await handler(req);
+  const headers = new Headers(res.headers);
+  for (const [k, v] of Object.entries(corsHeaders)) headers.set(k, v);
+  return new Response(res.body, { status: res.status, headers });
 });

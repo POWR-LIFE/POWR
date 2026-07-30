@@ -13,7 +13,7 @@ import { evaluatePooledChallenge } from '../_shared/sharedChallengePooled.ts';
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 
-Deno.serve(async (req) => {
+const handler = async (req) => {
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
 
   const authHeader = req.headers.get('Authorization');
@@ -67,4 +67,19 @@ Deno.serve(async (req) => {
     progress: result.progress,
     points_awarded: result.newlyCompleted ? challenge.base_points : 0,
   });
+};
+
+// CORS wrapper — native apps never preflight, but expo web does: without an
+// OPTIONS branch and ACAO on every response the browser can neither send the
+// call nor read its result. Mirrors the admin-* functions' pattern.
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
+  const res = await handler(req);
+  const headers = new Headers(res.headers);
+  for (const [k, v] of Object.entries(corsHeaders)) headers.set(k, v);
+  return new Response(res.body, { status: res.status, headers });
 });

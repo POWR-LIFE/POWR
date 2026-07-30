@@ -5,6 +5,12 @@
 // everyone accepts (status 'forming', accept_by ticking) — see
 // respond-shared-challenge for the start. Template + derived rule + bonus config
 // are SNAPSHOTTED so later admin edits never mutate a live challenge.
+//
+// Zero friend_ids = a SOLO start (parallel templates only — a pooled team total
+// is definitionally a group). Solo runs skip 'forming' entirely: nobody to wait
+// for, so they go straight to 'active' with the clock running, at base points
+// (the together bonus needs co-completers). Friends can be pulled in mid-run
+// via respond-shared-challenge's `invite`.
 import { createClient } from '@supabase/supabase-js';
 import { pooledRule, templateRule } from '../_shared/sharedChallenges.ts';
 import { notifyPush } from '../_shared/notify.ts';
@@ -15,7 +21,7 @@ const json = (body: unknown, status = 200) =>
 const HOUR_MS = 3_600_000;
 const MAX_GROUP = 6; // creator + up to 5 friends (UI cap)
 
-Deno.serve(async (req) => {
+const handler = async (req) => {
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
 
   const authHeader = req.headers.get('Authorization');
@@ -42,8 +48,8 @@ Deno.serve(async (req) => {
   const friendIds = [...new Set((body.friend_ids || []).map((s) => String(s).toLowerCase()))]
     .filter((id) => id && id !== user.id.toLowerCase());
   if (!templateId) return json({ error: 'Missing template_id' }, 400);
-  if (friendIds.length < 1) return json({ error: 'Invite at least one friend' }, 400);
   if (friendIds.length > MAX_GROUP - 1) return json({ error: `Groups are capped at ${MAX_GROUP}` }, 400);
+  const solo = friendIds.length === 0;
 
   // 1. Config (bonus + timer options + cap), snapshotted onto the challenge.
   const { data: cfg } = await supabase
@@ -66,6 +72,7 @@ Deno.serve(async (req) => {
     .eq('id', templateId).maybeSingle();
   if (!tmpl || tmpl.active === false) return json({ error: 'Unknown or inactive template' }, 404);
   const isPooled = tmpl.mode === 'pooled';
+  if (solo && isPooled) return json({ error: 'A team total needs at least one friend' }, 400);
   const rule = isPooled ? pooledRule(tmpl.category, tmpl.measure || {}) : templateRule(tmpl.category, tmpl.measure || {});
 
   // A day-based goal ("10,000 steps a day, 4 days", "check in on 7 different
@@ -114,8 +121,12 @@ Deno.serve(async (req) => {
     return json({ error: 'Challenge slots full — finish or drop one first', code: 'AT_CAP' }, 409);
   }
 
-  // 5. Create the challenge (forming) + participants (creator accepted, friends invited).
-  const nowIso = new Date().toISOString();
+  // 5. Create the challenge + participants (creator accepted, friends invited).
+  //    Group → 'forming' with the accept window ticking. Solo → 'active' on the
+  //    spot with the clock already running; solo_start also relaxes the
+  //    too-thin cancel rule (a run that was viable at 1 stays viable at 1).
+  const nowMs = Date.now();
+  const nowIso = new Date(nowMs).toISOString();
   const { data: challenge, error: cErr } = await supabase
     .from('shared_challenges')
     .insert({
@@ -129,9 +140,12 @@ Deno.serve(async (req) => {
       rule,
       category: tmpl.category,
       base_points: tmpl.base_points,
-      status: 'forming',
+      status: solo ? 'active' : 'forming',
+      solo_start: solo,
       duration_hours: durationHours,
-      accept_by: new Date(Date.now() + acceptWindowHours * HOUR_MS).toISOString(),
+      ...(solo
+        ? { starts_at: nowIso, ends_at: new Date(nowMs + durationHours * HOUR_MS).toISOString(), accept_by: null }
+        : { accept_by: new Date(nowMs + acceptWindowHours * HOUR_MS).toISOString() }),
       bonus_per_head: perHead,
       bonus_max: maxBonus,
       utc_offset_minutes: Number.isFinite(body.utc_offset_minutes) ? body.utc_offset_minutes : 0,
@@ -162,4 +176,19 @@ Deno.serve(async (req) => {
   }
 
   return json({ ok: true, challenge_id: challenge.id });
+};
+
+// CORS wrapper — native apps never preflight, but expo web does: without an
+// OPTIONS branch and ACAO on every response the browser can neither send the
+// call nor read its result. Mirrors the admin-* functions' pattern.
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
+  const res = await handler(req);
+  const headers = new Headers(res.headers);
+  for (const [k, v] of Object.entries(corsHeaders)) headers.set(k, v);
+  return new Response(res.body, { status: res.status, headers });
 });
