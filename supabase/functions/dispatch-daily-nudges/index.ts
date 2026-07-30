@@ -39,6 +39,7 @@ import {
 } from '../_shared/challenges.ts';
 
 const CONCURRENCY = 10;
+const escapeLike = (value: string) => value.replace(/[\\%_]/g, '\\$&');
 
 /** Human progress readout per rule shape — mirrors the client card's units. */
 function progressText(rule: any, category: string, progress: number, target: number): string {
@@ -186,13 +187,14 @@ Deno.serve(async (req: Request) => {
         // 70%-stuck challenge would otherwise re-nudge every evening. The body
         // template quotes the title, which makes the send log the dedup index.
         if (c.kind === 'challenge_within_reach') {
+          const titlePattern = `%"${escapeLike(best.ch.title)}"%`;
           const { data: prior } = await admin.from('push_send_log')
             .select('id')
             .eq('user_id', c.user_id)
             .eq('type', 'challenge_within_reach')
             .neq('status', 'skipped')
             .gte('created_at', weekStart)
-            .like('body', `%"${best.ch.title}"%`)
+            .like('body', titlePattern)
             .limit(1);
           if ((prior ?? []).length > 0) { stats.wk_skipped++; continue; }
         }

@@ -211,11 +211,11 @@ export async function scheduleWeeklyChallengeExpiryWarning(
   await Notifications.scheduleNotificationAsync({
     identifier: `powr-weekly_challenge_expiry-${expiresAt.getTime()}`,
     content: {
-      title: "Challenge ending soon ⏰",
+      title: "Last day ⏳",
       body: `"${challengeName}" expires in 24 hours. Don't miss your bonus POWR points.`,
       data: {
         type: 'weekly_challenge_expiry',
-        route: '/(tabs)/progress',
+        route: '/(tabs)/index',
       } satisfies NotificationPayload,
       sound: 'default',
       ...(Platform.OS === 'android' && { channelId: CHANNEL_DEFAULT }),

@@ -342,10 +342,19 @@ export function ChallengeCard({ challenges, totalBalance = 0, onShare, celebrate
   // persisted order only seats next Monday's empty board.
   const [storedOrder, setStoredOrder] = useState<string[] | null>(null);
   useEffect(() => {
-    AsyncStorage.getItem(ORDER_KEY).then((raw) => {
-      if (!raw) return;
-      try { setStoredOrder(JSON.parse(raw)); } catch { /* corrupt = ignore */ }
-    });
+    AsyncStorage.getItem(ORDER_KEY)
+      .then((raw) => {
+        if (!raw) return;
+        try {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed) && parsed.every((id) => typeof id === 'string')) {
+            setStoredOrder(parsed);
+          }
+        } catch {
+          /* corrupt = ignore */
+        }
+      })
+      .catch(() => {});
   }, []);
 
   const board = useMemo(() => selectWeeklyBoard(challenges, storedOrder), [challenges, storedOrder]);

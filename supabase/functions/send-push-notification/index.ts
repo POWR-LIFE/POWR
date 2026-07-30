@@ -160,6 +160,10 @@ function buildMessage(
   payload: Record<string, unknown>,
   token: string,
 ): ExpoMessage {
+  const safePoints = (() => {
+    const points = Number(payload.points ?? 0);
+    return Number.isFinite(points) ? Math.max(0, Math.round(points)) : 0;
+  })();
   const base: Omit<ExpoMessage, 'to'> = (() => {
     switch (type) {
       case 'daily_reminder':
@@ -187,13 +191,12 @@ function buildMessage(
       case 'weekly_challenge_expiry': {
         const name = (payload.challenge_name as string) ?? 'Weekly Challenge';
         const progress = ((payload.progress_text as string) ?? '').trim();
-        const pts = Math.max(0, Math.round(Number(payload.points ?? 0)));
         return {
           title: "Last day ⏳",
           // With a progress payload (the board nudge) the message is specific;
           // without one (legacy senders) fall back to the generic line.
           body: progress
-            ? `"${name}" ends tonight — you're at ${progress}.${pts > 0 ? ` +${pts} pts if you land it.` : ''}`
+            ? `"${name}" ends tonight — you're at ${progress}.${safePoints > 0 ? ` +${safePoints} pts if you land it.` : ''}`
             : `"${name}" expires in 24 hours. Don't miss your bonus POWR points.`,
           data: { type, route: '/(tabs)/index' }, // the weekly board lives on Home
           sound: 'default',
@@ -203,10 +206,9 @@ function buildMessage(
       case 'challenge_within_reach': {
         const name = (payload.challenge_name as string) ?? 'Your weekly challenge';
         const progress = ((payload.progress_text as string) ?? '').trim();
-        const pts = Math.max(0, Math.round(Number(payload.points ?? 0)));
         return {
           title: "Within reach 🎯",
-          body: `"${name}" is at ${progress || 'nearly done'} — finish it${pts > 0 ? ` for +${pts} pts` : ''}.`,
+          body: `"${name}" is at ${progress || 'nearly done'} — finish it${safePoints > 0 ? ` for +${safePoints} pts` : ''}.`,
           data: { type, route: '/(tabs)/index' },
           sound: 'default',
           channelId: 'powr_default_v2',
