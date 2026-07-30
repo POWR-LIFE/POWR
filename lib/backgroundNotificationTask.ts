@@ -24,29 +24,61 @@ import * as TaskManager from 'expo-task-manager';
 
 export const BACKGROUND_NOTIFICATION_TASK = 'POWR_BACKGROUND_NOTIFICATION';
 
+/** The one payload marker that says a wake is ours. Kept next to extractData so
+ *  the matcher and the guard can never drift apart. */
+const VISIT_CHECK_TYPE = 'gym_visit_check';
+
 interface VisitCheckData {
   type?: string;
   stage?: 'dwell' | 'upgrade';
   visit_id?: string;
 }
 
-/** Digs the data payload out of the platform-specific notification shapes. */
-function extractData(raw: unknown): VisitCheckData {
-  const body = raw as {
-    data?: VisitCheckData;                                   // Android (FCM data-only)
-    notification?: { data?: VisitCheckData; request?: { content?: { data?: VisitCheckData } } };
-    request?: { content?: { data?: VisitCheckData } };       // iOS (UNNotification)
-    body?: VisitCheckData;
-  } | null;
+/** Digs the data payload out of the platform-specific notification shapes.
+ *
+ *  ⚠ A `??` chain was the wrong tool here and cost us the entire iOS wake path.
+ *  `??` takes the first candidate that EXISTS, not the first that is OURS.
+ *  expo-notifications' BackgroundEventTransformer wraps the APNs userInfo as
+ *    { data: { body: <our payload>, dataString, scopeKey, experienceId, projectId },
+ *      aps, notification }
+ *  (node_modules/expo-notifications/ios/EXNotifications/Notifications/Background/
+ *  BackgroundEventTransformer.swift + its Spec). So `raw.data` MATCHED — but it is
+ *  the envelope, not the payload, and carries no `type`. The task ran and returned
+ *  at the type guard below on every single wake: ~200 iOS wakes from 2026-07-13
+ *  onward, ZERO confirmed_* rows, while Android sailed through the same line
+ *  because its DIRECT FCM message puts our keys at `raw.data` verbatim.
+ *
+ *  So: gather every candidate shape and pick the first that actually looks like
+ *  ours, rather than the first that happens to be non-null. */
+export function extractData(raw: unknown): VisitCheckData {
+  const body = raw as Record<string, any> | null | undefined;
 
-  return (
-    body?.data ??
-    body?.body ??
-    body?.notification?.data ??
-    body?.notification?.request?.content?.data ??
-    body?.request?.content?.data ??
-    {}
-  ) as VisitCheckData;
+  const candidates: unknown[] = [
+    body?.data?.body,                                    // iOS (Expo APNs envelope, transformed)
+    body?.data,                                          // Android (FCM data-only, keys at top level)
+    body?.body,
+    body?.notification?.data,
+    body?.notification?.request?.content?.data,
+    body?.request?.content?.data,                        // iOS UNNotification (foreground shape)
+  ];
+
+  // The transformer also mirrors the payload as a JSON string for parity with
+  // Android. Parse it as a last resort so a future envelope reshuffle can't
+  // silently break the wake path the same way twice.
+  const dataString = body?.data?.dataString ?? body?.dataString;
+  if (typeof dataString === 'string') {
+    try {
+      candidates.push(JSON.parse(dataString));
+    } catch { /* not JSON — ignore */ }
+  }
+
+  for (const candidate of candidates) {
+    if (candidate && typeof candidate === 'object'
+        && (candidate as VisitCheckData).type === VISIT_CHECK_TYPE) {
+      return candidate as VisitCheckData;
+    }
+  }
+  return {};
 }
 
 TaskManager.defineTask(BACKGROUND_NOTIFICATION_TASK, async ({ data, error }) => {
@@ -56,7 +88,7 @@ TaskManager.defineTask(BACKGROUND_NOTIFICATION_TASK, async ({ data, error }) => 
   }
   try {
     const payload = extractData(data);
-    if (payload?.type !== 'gym_visit_check') return; // not ours — ignore quietly
+    if (payload?.type !== VISIT_CHECK_TYPE) return; // not ours — ignore quietly
 
     const stage = payload.stage === 'upgrade' ? 'upgrade' : 'dwell';
     console.log(`[BackgroundNotification] Visit check (${stage}) — verifying presence.`);

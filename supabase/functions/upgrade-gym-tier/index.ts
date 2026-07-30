@@ -127,16 +127,27 @@ Deno.serve(async (req) => {
 
   // Admin-tunable upgrade-tier threshold (system_config → gym_upgrade_minutes,
   // default 40). Keep in sync with claim-points calcBasePoints — this is the
-  // authoritative gate; the client timer/copy read the same row.
+  // authoritative gate; the client timer/copy read the same row. Vault config is
+  // read alongside: the cap-clamped share of the upgrade banks into the Vault
+  // (same model as claim-points 11a) instead of silently evaporating.
   let upgradeMin = 40;
+  let vaultVestDays = 60;
+  let vaultCapOverflowEnabled = true;
   {
     const { data: cfg } = await supabase
       .from('system_config')
-      .select('value')
-      .eq('key', 'gym_upgrade_minutes')
-      .maybeSingle();
-    const parsed = parseInt(cfg?.value ?? '', 10);
-    if (Number.isFinite(parsed) && parsed > 0) upgradeMin = parsed;
+      .select('key, value')
+      .in('key', ['gym_upgrade_minutes', 'vault_vest_days', 'vault_cap_overflow_enabled']);
+    for (const row of cfg ?? []) {
+      if (row.key === 'vault_cap_overflow_enabled') {
+        vaultCapOverflowEnabled = String(row.value ?? '').trim().toLowerCase() !== 'false';
+        continue;
+      }
+      const parsed = parseInt(row.value ?? '', 10);
+      if (!Number.isFinite(parsed) || parsed <= 0) continue;
+      if (row.key === 'gym_upgrade_minutes') upgradeMin = parsed;
+      if (row.key === 'vault_vest_days') vaultVestDays = parsed;
+    }
   }
 
   if (actualMins < upgradeMin) {
@@ -180,8 +191,18 @@ Deno.serve(async (req) => {
     .eq('session_id', session.id)
     .in('type', ['earn', 'streak']);
 
+  // …and what was already BANKED for it. claim-points vaults the cap-clamped
+  // share of the initial award (11a); leaving those deposits out of the delta
+  // would pay that same merit a second time here — the vault-flavoured cousin
+  // of the "third copy of the streak bonus" bug the earn/streak sum above fixed.
+  const { data: existingVault } = await supabase
+    .from('vault_deposits')
+    .select('amount')
+    .eq('session_id', session.id);
+
   const alreadyEarned = (existing ?? []).reduce((sum: number, t: { amount: number }) => sum + t.amount, 0);
-  const delta = targetTotal - alreadyEarned;
+  const alreadyVaulted = (existingVault ?? []).reduce((sum: number, t: { amount: number }) => sum + t.amount, 0);
+  const delta = targetTotal - alreadyEarned - alreadyVaulted;
 
   if (delta <= 0) {
     await markVisitUpgraded();
@@ -212,43 +233,89 @@ Deno.serve(async (req) => {
     todayTotal = (todayTx ?? []).reduce((sum: number, t: { amount: number }) => sum + t.amount, 0);
   }
 
-  const remaining = 30 - todayTotal;
-  if (!isDevTestUser && remaining <= 0) {
+  // The daily cap gates SPENDABLE credit only. The clamped share of the upgrade
+  // is real, location-proven merit and banks into the Vault (mirrors claim-points
+  // 11a) — before this, a capped user's upgrade 422'd here and the delta silently
+  // evaporated, which for a 3× streak was most of the tier's value. FIELD-CAUGHT
+  // 2026-07-30: an 83-min iOS session claimed at the 15 tier mid-session had its
+  // relayed exit upgrade (delta 15) dropped at this line with "Daily cap reached".
+  const headroom = isDevTestUser ? delta : Math.max(0, 30 - todayTotal);
+  const finalDelta = Math.min(delta, headroom);
+  const vaultAmount = isDevTestUser || !vaultCapOverflowEnabled ? 0 : delta - finalDelta;
+
+  if (finalDelta <= 0 && vaultAmount <= 0) {
+    // Vault switched off and no headroom — the pre-vault behaviour, unchanged.
     return new Response(JSON.stringify({ error: 'Daily cap reached' }), { status: 422 });
   }
 
-  const finalDelta = Math.min(delta, isDevTestUser ? delta : remaining);
+  let txId: string | null = null;
+  if (finalDelta > 0) {
+    const { data: tx, error: txError } = await supabase
+      .from('point_transactions')
+      .insert({
+        user_id: user.id,
+        session_id: session.id,
+        amount: finalDelta,
+        type: 'earn',
+        // The "(Xmin)" suffix is parsed by the ledger's "+X MIN" badge, and the
+        // (session_id, description) unique index dedupes concurrent upgrades —
+        // the threshold rarely changes mid-session, so the string stays stable.
+        description: `gym session upgrade (${upgradeMin}min)`,
+        multiplier: 1.0,
+      })
+      .select()
+      .single();
 
-  const { data: tx, error: txError } = await supabase
-    .from('point_transactions')
-    .insert({
+    if (txError) {
+      // 23505 = unique violation on (session_id, description) — a concurrent upgrade
+      // already inserted the 'gym session upgrade (Xmin)' row. The delta check above
+      // is not atomic, so two simultaneous calls can both compute a positive delta;
+      // the DB index is the backstop. Treat the loser as a no-op success — the
+      // winner also owns the vault leg, so the loser must not fall through to it.
+      if ((txError as { code?: string }).code === '23505') {
+        await markVisitUpgraded();
+        return new Response(JSON.stringify({ ok: true, delta: 0, message: 'Upgrade already recorded' }), { status: 200 });
+      }
+      console.error('[upgrade-gym-tier] Transaction insert failed:', txError);
+      return new Response(JSON.stringify({ error: 'Failed to record upgrade' }), { status: 500 });
+    }
+    txId = tx.id;
+  }
+
+  // Bank the clamped share. Its own (session_id, description) arbiter
+  // (vault_deposits_session_desc_uidx) makes the vault-only path — which has no
+  // earn-row arbiter to lose — idempotent too: 23505 = already banked, no-op.
+  // Best-effort beyond that: a vault failure must never fail an upgrade whose
+  // spendable share is already saved (claim-points' stance).
+  let vaulted = 0;
+  if (vaultAmount > 0) {
+    const { error: vaultErr } = await supabase.from('vault_deposits').insert({
       user_id: user.id,
       session_id: session.id,
-      amount: finalDelta,
-      type: 'earn',
-      // The "(Xmin)" suffix is parsed by the ledger's "+X MIN" badge, and the
-      // (session_id, description) unique index dedupes concurrent upgrades —
-      // the threshold rarely changes mid-session, so the string stays stable.
-      description: `gym session upgrade (${upgradeMin}min)`,
-      multiplier: 1.0,
-    })
-    .select()
-    .single();
-
-  if (txError) {
-    // 23505 = unique violation on (session_id, description) — a concurrent upgrade
-    // already inserted the 'gym session upgrade (Xmin)' row. The delta check above
-    // is not atomic, so two simultaneous calls can both compute a positive delta;
-    // the DB index is the backstop. Treat the loser as a no-op success.
-    if ((txError as { code?: string }).code === '23505') {
-      await markVisitUpgraded();
-      return new Response(JSON.stringify({ ok: true, delta: 0, message: 'Upgrade already recorded' }), { status: 200 });
+      amount: vaultAmount,
+      source: 'cap_overflow',
+      description: `gym session upgrade (${upgradeMin}min) · over the daily cap`,
+      vests_at: new Date(Date.now() + vaultVestDays * 24 * 60 * 60 * 1000).toISOString(),
+    });
+    if (vaultErr) {
+      if ((vaultErr as { code?: string }).code !== '23505') {
+        console.warn('[upgrade-gym-tier] vault deposit failed:', vaultErr);
+      }
+    } else {
+      vaulted = vaultAmount;
     }
-    console.error('[upgrade-gym-tier] Transaction insert failed:', txError);
-    return new Response(JSON.stringify({ error: 'Failed to record upgrade' }), { status: 500 });
   }
 
   await markVisitUpgraded();
+
+  if (finalDelta <= 0) {
+    // Vault-only outcome: nothing spendable changed, so no "+X" push — the
+    // deposit surfaces in the ledger/vault UI with the rest of the banked merit.
+    return new Response(
+      JSON.stringify({ ok: true, delta: 0, vaulted, message: 'Upgrade banked to vault (daily cap reached)' }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    );
+  }
 
   // Push the 40-min tier bonus. Until now this path was silent — only the
   // initial claim (claim-points) notified — so the "stay 40m to unlock +X"
@@ -284,7 +351,7 @@ Deno.serve(async (req) => {
   }
 
   return new Response(
-    JSON.stringify({ ok: true, delta: finalDelta, transaction_id: tx.id, earned: finalDelta, push_delivered: pushDelivered }),
+    JSON.stringify({ ok: true, delta: finalDelta, vaulted, transaction_id: txId, earned: finalDelta, push_delivered: pushDelivered }),
     { status: 200, headers: { 'Content-Type': 'application/json' } },
   );
 });
