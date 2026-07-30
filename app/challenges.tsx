@@ -8,6 +8,7 @@ import GeometricBackground from '@/components/GeometricBackground';
 import { ChallengeTemplateCard } from '@/components/social/ChallengeTemplateCard';
 import { CreateChallengeSheet } from '@/components/social/CreateChallengeSheet';
 import { fontFamily } from '@/constants/tokens';
+import { lastCrew } from '@/lib/social/crew';
 import { useSharedChallenges } from '@/hooks/useSharedChallenges';
 
 // ─── Palette ──────────────────────────────────────────────────────────────────
@@ -17,7 +18,7 @@ const TEXT = '#F2F2F2';
 const SECONDARY = '#888888';
 const DIM = 'rgba(255,255,255,0.5)';
 
-type ChallengesTab = 'solo' | 'together';
+type ChallengesTab = 'parallel' | 'pooled';
 
 /**
  * Challenges browse page — the discovery surface for shared ("together")
@@ -41,11 +42,16 @@ export default function ChallengesScreen() {
     atCap,
     createChallenge,
     leaveChallenge,
+    all,
+    selfId,
   } = useSharedChallenges();
+
+  // Same default as Home's sheet: your last crew is one Send away.
+  const defaultCrew = useMemo(() => lastCrew(all, selfId), [all, selfId]);
 
   const [sheetVisible, setSheetVisible] = useState(false);
   const [presetTemplateId, setPresetTemplateId] = useState<string | null>(null);
-  const [tab, setTab] = useState<ChallengesTab>('solo');
+  const [tab, setTab] = useState<ChallengesTab>('parallel');
 
   const openCreate = (templateId: string) => {
     setPresetTemplateId(templateId);
@@ -53,14 +59,16 @@ export default function ChallengesScreen() {
   };
 
   // Split by mode into tabs — either list can grow large, so they don't share a
-  // scroll. Solo = each does their own part; Together = effort pools to one total.
-  const solo = useMemo(() => templates.filter((t) => t.mode !== 'pooled'), [templates]);
-  const together = useMemo(() => templates.filter((t) => t.mode === 'pooled'), [templates]);
-  const activeList = tab === 'solo' ? solo : together;
+  // scroll. "Solo" is reserved for genuinely-alone starts, so the parallel mode
+  // is labelled by its shape instead: side by side = each does their own part;
+  // team total = effort pools to one number.
+  const parallel = useMemo(() => templates.filter((t) => t.mode !== 'pooled'), [templates]);
+  const pooled = useMemo(() => templates.filter((t) => t.mode === 'pooled'), [templates]);
+  const activeList = tab === 'parallel' ? parallel : pooled;
 
   const TABS: { key: ChallengesTab; label: string; sub: string }[] = [
-    { key: 'solo', label: 'Solo', sub: 'Each of you does your own part.' },
-    { key: 'together', label: 'Together', sub: 'Pool your effort toward one shared goal.' },
+    { key: 'parallel', label: 'Side by side', sub: 'Each of you does your own part.' },
+    { key: 'pooled', label: 'Team total', sub: 'Pool your effort toward one shared goal.' },
   ];
   const activeSub = TABS.find((t) => t.key === tab)?.sub ?? '';
 
@@ -100,7 +108,7 @@ export default function ChallengesScreen() {
         </View>
       )}
 
-      {/* Solo / Together tabs — each list scrolls on its own. */}
+      {/* Side by side / Team total tabs — each list scrolls on its own. */}
       <View style={styles.tabBar}>
         {TABS.map((t) => {
           const isActive = t.key === tab;
@@ -130,7 +138,7 @@ export default function ChallengesScreen() {
           <Text style={styles.muted}>Loading…</Text>
         ) : activeList.length === 0 ? (
           <Text style={styles.muted}>
-            {tab === 'solo' ? 'No solo challenges right now.' : 'No together challenges right now.'}
+            {tab === 'parallel' ? 'No side-by-side challenges right now.' : 'No team-total challenges right now.'}
           </Text>
         ) : (
           activeList.map((t, i) => (
@@ -148,6 +156,7 @@ export default function ChallengesScreen() {
         visible={sheetVisible}
         templates={templates}
         initialTemplateId={presetTemplateId}
+        initialFriendIds={defaultCrew}
         friends={friends}
         search={search}
         sendRequest={sendRequest}
@@ -182,7 +191,7 @@ const styles = StyleSheet.create({
   intro: { fontFamily: fontFamily.light, fontSize: 13, color: SECONDARY, lineHeight: 18 },
   muted: { fontFamily: fontFamily.light, fontSize: 14, color: SECONDARY, textAlign: 'center', paddingVertical: 24 },
 
-  // Solo / Together tabs
+  // Side by side / Team total tabs
   tabBar: {
     flexDirection: 'row',
     marginHorizontal: 16, marginBottom: 4,

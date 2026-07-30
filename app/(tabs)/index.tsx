@@ -656,7 +656,6 @@ export default function HomeScreen() {
                     />
                 )}
 
-                <Text style={styles.sectionLabel}>CHALLENGE</Text>
                 <ChallengeCard
                     challenges={weeklyChallenges}
                     totalBalance={balance}
@@ -934,18 +933,6 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     letterSpacing: 1.5,
     color: GOLD,
-    textTransform: 'uppercase',
-  },
-  sectionLabel: {
-    paddingHorizontal: 14,
-    paddingTop: 16,
-    marginTop: 8,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(255,255,255,0.07)',
-    fontSize: 9,
-    fontWeight: '500',
-    letterSpacing: 2,
-    color: TEXT_PRIMARY,
     textTransform: 'uppercase',
   },
 

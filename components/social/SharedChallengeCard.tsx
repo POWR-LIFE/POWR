@@ -79,6 +79,10 @@ export interface SharedChallengeCardProps {
   /** Clear a settled card off Home (per-user). Renders the (X) only on
    *  completed challenges — live ones use leave/cancel on the detail screen. */
   onDismiss?: (challenge: SharedChallenge) => void;
+  /** Recreate this challenge with the same crew — rendered on every terminal
+   *  card. A loss is the highest-volume entry point back in (most challenges
+   *  fail), so the ending must never be a dead end. */
+  onRematch?: (challenge: SharedChallenge) => void;
 }
 
 /**
@@ -86,7 +90,7 @@ export interface SharedChallengeCardProps {
  * The full picture (everyone's progress, the bonus maths, tier) lives on the
  * detail screen (app/shared-challenge.tsx), one tap away.
  */
-export function SharedChallengeCard({ challenge, index = 0, atCap = false, onPress, onAccept, onDecline, onDismiss }: SharedChallengeCardProps) {
+export function SharedChallengeCard({ challenge, index = 0, atCap = false, onPress, onAccept, onDecline, onDismiss, onRematch }: SharedChallengeCardProps) {
   const { template, participants } = challenge;
   // The settled card's job (show the outcome, share it) is done once you've
   // seen it — the (X) lets you clear it before the 3-day auto-expiry. Losses
@@ -131,7 +135,10 @@ export function SharedChallengeCard({ challenge, index = 0, atCap = false, onPre
     : challenge.status === 'cancelled'
       ? 'Cancelled before it finished'
       : challenge.status === 'expired'
-        ? (pooled ? 'Time ran out — target missed' : 'Time ran out — nobody finished')
+        ? (pooled
+          ? 'Time ran out — target missed'
+          /* A solo run has no "nobody" — it was only ever you. */
+          : participants.length === 1 ? 'Time ran out — you didn’t finish' : 'Time ran out — nobody finished')
         : wonIt
           ? `You finished  ·  +${template.basePoints + liveBonus} earned`
           : pooled
@@ -254,18 +261,31 @@ export function SharedChallengeCard({ challenge, index = 0, atCap = false, onPre
         ) : terminal ? (
           /* Finished, one way or the other — the verdict replaces the progress
              track and the bonus/timer footer, both of which read as live. */
-          <View style={styles.outcomeBlock}>
-            <Ionicons
-              name={wonIt ? 'checkmark-circle' : 'close-circle-outline'}
-              size={15}
-              color={wonIt ? GREEN : MUTED}
-            />
-            <Text
-              style={[styles.outcomeText, wonIt && { color: GREEN }]}
-              numberOfLines={2}
-            >
-              {outcomeLine}
-            </Text>
+          <View style={styles.outcomeArea}>
+            <View style={styles.outcomeBlock}>
+              <Ionicons
+                name={wonIt ? 'checkmark-circle' : 'close-circle-outline'}
+                size={15}
+                color={wonIt ? GREEN : MUTED}
+              />
+              <Text
+                style={[styles.outcomeText, wonIt && { color: GREEN }]}
+                numberOfLines={2}
+              >
+                {outcomeLine}
+              </Text>
+            </View>
+            {!!onRematch && (
+              <Pressable
+                style={styles.rematchBtn}
+                onPress={() => { Haptics.selectionAsync(); onRematch(challenge); }}
+                accessibilityRole="button"
+                accessibilityLabel={`Run ${template.title} back`}
+              >
+                <Ionicons name="refresh" size={13} color={GOLD} />
+                <Text style={styles.rematchText}>Run it back</Text>
+              </Pressable>
+            )}
           </View>
         ) : (
           <>
@@ -365,8 +385,15 @@ const styles = StyleSheet.create({
 
   // your progress
   // terminal verdict — replaces the progress track + footer on a finished card
+  outcomeArea: { gap: 10 },
   outcomeBlock: { flexDirection: 'row', alignItems: 'center', gap: 7, paddingVertical: 2 },
   outcomeText: { flex: 1, fontFamily: fontFamily.regular, fontSize: 12.5, color: SECONDARY, lineHeight: 17 },
+  rematchBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    borderRadius: 100, paddingVertical: 9,
+    borderWidth: 1, borderColor: 'rgba(232,210,0,0.35)', backgroundColor: 'rgba(232,210,0,0.06)',
+  },
+  rematchText: { fontFamily: fontFamily.semiBold, fontSize: 12, color: GOLD, letterSpacing: 0.3 },
 
   progressBlock: { gap: 8 },
   progressMeta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },

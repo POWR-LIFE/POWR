@@ -9,6 +9,7 @@ type NotificationType =
   | 'daily_reminder'
   | 'streak_at_risk'
   | 'weekly_challenge_expiry'
+  | 'challenge_within_reach'
   | 'reward_unlocked'
   | 'check_in_reminder'
   | 'points_milestone'
@@ -116,6 +117,7 @@ const TTL_SECONDS: Partial<Record<NotificationType, number>> = {
   check_in_reminder:       15 * 60,      // only useful while still in the gym
   streak_at_risk:          6 * 60 * 60,  // must land before midnight
   weekly_challenge_expiry: 12 * 60 * 60,
+  challenge_within_reach:  6 * 60 * 60,  // "you're close tonight" is stale by morning
   daily_reminder:          6 * 60 * 60,
   inactivity_nudge:        12 * 60 * 60,
 };
@@ -158,6 +160,10 @@ function buildMessage(
   payload: Record<string, unknown>,
   token: string,
 ): ExpoMessage {
+  const safePoints = (() => {
+    const points = Number(payload.points ?? 0);
+    return Number.isFinite(points) ? Math.max(0, Math.round(points)) : 0;
+  })();
   const base: Omit<ExpoMessage, 'to'> = (() => {
     switch (type) {
       case 'daily_reminder':
@@ -184,11 +190,29 @@ function buildMessage(
 
       case 'weekly_challenge_expiry': {
         const name = (payload.challenge_name as string) ?? 'Weekly Challenge';
+        const progress = ((payload.progress_text as string) ?? '').trim();
         return {
-          title: "Challenge ending soon ⏰",
-          body: `"${name}" expires in 24 hours. Don't miss your bonus POWR points.`,
-          data: { type, route: '/(tabs)/progress' },
+          title: "Last day ⏳",
+          // With a progress payload (the board nudge) the message is specific;
+          // without one (legacy senders) fall back to the generic line.
+          body: progress
+            ? `"${name}" ends tonight — you're at ${progress}.${safePoints > 0 ? ` +${safePoints} pts if you land it.` : ''}`
+            : `"${name}" expires in 24 hours. Don't miss your bonus POWR points.`,
+          data: { type, route: '/(tabs)/index' }, // the weekly board lives on Home
           sound: 'default',
+        };
+      }
+
+      case 'challenge_within_reach': {
+        const name = (payload.challenge_name as string) ?? 'Your weekly challenge';
+        const progress = ((payload.progress_text as string) ?? '').trim();
+        return {
+          title: "Within reach 🎯",
+          body: `"${name}" is at ${progress || 'nearly done'} — finish it${safePoints > 0 ? ` for +${safePoints} pts` : ''}.`,
+          data: { type, route: '/(tabs)/index' },
+          sound: 'default',
+          channelId: 'powr_default_v2',
+          priority: 'normal',
         };
       }
 
@@ -597,7 +621,10 @@ function buildMessage(
                 ? roster > 0
                   ? `"${title}" finished without you — ${finishers} of ${roster} made it.`
                   : `"${title}" finished without you this time.`
-                : `"${title}" ended — nobody finished this one.`;
+                /* A solo run has no "nobody" — it was only ever you. */
+                : roster === 1
+                  ? `"${title}" ended — time ran out on this one.`
+                  : `"${title}" ended — nobody finished this one.`;
         return {
           title: outcome === 'cancelled' ? 'Challenge cancelled' : 'Challenge over',
           body,
@@ -802,7 +829,8 @@ Deno.serve(async (req: Request) => {
     // (20260723000001); streak_lost/streak_rescued share the streak_rescue
     // switch — one story, one toggle.
     const prefColumn: string =
-      type === 'session_upgraded' ? 'session_completed'
+      type === 'challenge_within_reach' ? 'weekly_challenge_expiry' // one weekly-challenge-nudges toggle
+      : type === 'session_upgraded' ? 'session_completed'
       : type === 'vault_unlocked' ? 'points_milestone'
       : type === 'vault_ready' ? 'points_milestone'
       : type === 'vault_granted' ? 'points_milestone'

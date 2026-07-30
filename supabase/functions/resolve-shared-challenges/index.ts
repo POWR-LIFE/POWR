@@ -154,6 +154,8 @@ Deno.serve(async (req) => {
             challenge_id: ch.id,
             title: ch.template?.title ?? 'your challenge',
             outcome: 'expired',
+            // Lets the copy drop "nobody finished" when it was only ever you.
+            roster: (roster ?? []).length,
           });
         }
         stats.settled++;

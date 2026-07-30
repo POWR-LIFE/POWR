@@ -1,10 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Dimensions, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { fontFamily } from '@/constants/tokens';
 import { useChallengeSettled } from '@/hooks/useChallengeSettled';
+import { lastCrew, rematchCrew } from '@/lib/social/crew';
 import { useSharedChallenges } from '@/hooks/useSharedChallenges';
 import { usePoints } from '@/hooks/usePoints';
 import { useNotifications } from '@/context/NotificationsContext';
@@ -73,6 +74,7 @@ export function TogetherSection({ onOpenChallenge, deferred = false }: TogetherS
     newlyCompletedId,
     clearCelebration,
     refresh,
+    selfId,
   } = useSharedChallenges();
   const { balance, refresh: refreshPoints } = usePoints();
   const { refreshPendingActions } = useNotifications();
@@ -92,11 +94,27 @@ export function TogetherSection({ onOpenChallenge, deferred = false }: TogetherS
   // the quick path; the header button opens the full /challenges browse page.
   const [sheetVisible, setSheetVisible] = useState(false);
   const [presetTemplateId, setPresetTemplateId] = useState<string | null>(null);
-  const openCreate = (templateId: string) => {
+  const [presetFriendIds, setPresetFriendIds] = useState<string[] | null>(null);
+  const openCreate = (templateId: string | null, friendIds?: string[]) => {
     setPresetTemplateId(templateId);
+    setPresetFriendIds(friendIds ?? null);
     setSheetVisible(true);
   };
   const goToChallenges = () => router.push('/challenges');
+
+  // Default preselection: the crew from your last created challenge, so the
+  // usual partners are one Send away. An explicit rematch overrides it.
+  const defaultCrew = useMemo(() => lastCrew(all, selfId), [all, selfId]);
+
+  // "Run it back" — reopen the create sheet primed with the ended challenge's
+  // template + crew. One confirm instead of a silent recreate: the sheet
+  // already owns every edge (slots full, template retired, a friend gone),
+  // and it lets you swap out the one who ghosted. A retired template falls
+  // back to the generic picker with the crew kept.
+  const handleRematch = useCallback((challenge: SharedChallenge) => {
+    const templateStillLive = templates.some((t) => t.id === challenge.template.id);
+    openCreate(templateStillLive ? challenge.template.id : null, rematchCrew(challenge));
+  }, [templates]);
 
   // Two celebration triggers, one overlay. `newlyCompletedId` is "you finished
   // YOUR part" — fires mid-challenge off a backend completion event. `settled`
@@ -256,6 +274,7 @@ export function TogetherSection({ onOpenChallenge, deferred = false }: TogetherS
           onAccept={(ch) => handleAccept(ch.id)}
           onDecline={(ch) => handleDecline(ch.id)}
           onDismiss={(ch) => void dismissChallenge(ch.id)}
+          onRematch={handleRematch}
         />
       ) : (
         /* Carousel — keeps the hero band one card tall however many you're in.
@@ -282,6 +301,7 @@ export function TogetherSection({ onOpenChallenge, deferred = false }: TogetherS
                   onAccept={(ch) => handleAccept(ch.id)}
                   onDecline={(ch) => handleDecline(ch.id)}
                   onDismiss={(ch) => void dismissChallenge(ch.id)}
+                  onRematch={handleRematch}
                 />
               </View>
             ))}
@@ -293,6 +313,7 @@ export function TogetherSection({ onOpenChallenge, deferred = false }: TogetherS
         visible={sheetVisible}
         templates={templates}
         initialTemplateId={presetTemplateId}
+        initialFriendIds={presetFriendIds ?? defaultCrew}
         friends={friends}
         search={search}
         sendRequest={sendRequest}
@@ -324,6 +345,15 @@ export function TogetherSection({ onOpenChallenge, deferred = false }: TogetherS
             bonusConfig={bonusConfig}
             settled={isSettled}
             onDone={dismissCelebration}
+            /* Settled only: mid-challenge the run is still going, so there is
+               nothing to re-run yet. Snapshot → dismiss → open after a beat:
+               two RN Modals up at once means one silently never presents, so
+               the create sheet must wait for this overlay's fade-out. */
+            onRematch={isSettled ? () => {
+              const finished = celebrated;
+              dismissCelebration();
+              setTimeout(() => handleRematch(finished), 500);
+            } : undefined}
             onShare={() => {
               // Snapshot before dismissing — dismissal nulls `celebrated`.
               const input = buildSharedChallengeShareInput(celebrated, bonusConfig);
