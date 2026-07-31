@@ -219,35 +219,35 @@ const styles = StyleSheet.create({
         paddingVertical: 6,
     },
     venueLogo: {
-        width: 76,
-        height: 26,
+        width: 64,
+        height: 22,
     },
     venueLogoLarge: {
-        width: 96,
-        height: 34,
+        width: 80,
+        height: 28,
     },
     // The line runs the width of the gym logo above it.
     lockupDivider: {
-        width: 76,
+        width: 64,
         height: 1,
         backgroundColor: 'rgba(255,255,255,0.45)',
     },
     lockupDividerLarge: {
-        width: 96,
+        width: 80,
     },
     // The bundled mark is a square canvas with its own padding — negative
     // margins trim it so the visible mark aligns with the row, not the canvas.
     powrMark: {
-        width: 44,
-        height: 44,
-        marginVertical: -7,
-        marginHorizontal: -6,
+        width: 62,
+        height: 62,
+        marginVertical: -11,
+        marginHorizontal: -9,
     },
     powrMarkLarge: {
-        width: 60,
-        height: 60,
-        marginVertical: -10,
-        marginHorizontal: -8,
+        width: 88,
+        height: 88,
+        marginVertical: -16,
+        marginHorizontal: -13,
     },
     name: {
         fontSize: 26,
