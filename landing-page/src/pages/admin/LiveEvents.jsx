@@ -8,7 +8,7 @@ import {
     CalendarClock, Eye, EyeOff, Lock, Flag, Trophy, Archive,
     Link2, RefreshCw, AlertTriangle, Rocket, Undo2,
     Gauge, Download, UserX, UserCheck, ShieldAlert,
-    Megaphone, Upload, ExternalLink, QrCode, Smartphone,
+    Megaphone, Upload, ExternalLink, QrCode, Smartphone, Users,
 } from 'lucide-react';
 import { QRCodeCanvas } from 'qrcode.react';
 import { storageImage, uploadPublicImage } from '../../lib/storage';
@@ -104,6 +104,7 @@ export default function LiveEvents() {
     const [dqRows, setDqRows] = useState([]);      // disqualified users (off-board)
     const [dqBusy, setDqBusy] = useState(null);    // user_id of DQ action in flight
     const [anticheat, setAnticheat] = useState(null); // admin_get_event_anticheat payload
+    const [registrations, setRegistrations] = useState(null); // admin_get_event_registrations payload
     const lastOpsEventId = useRef(null);           // guards against showing event A's ops data under event B
 
     const selected = useMemo(() => events.find(e => e.id === selectedId) ?? null, [events, selectedId]);
@@ -115,16 +116,17 @@ export default function LiveEvents() {
     useEffect(() => { fetchEvents(); }, []);
 
     useEffect(() => {
-        if (!selected) { setForm(null); setVenueName(null); setOps(null); setStandings(null); setDqRows([]); setAnticheat(null); lastOpsEventId.current = null; return; }
+        if (!selected) { setForm(null); setVenueName(null); setOps(null); setStandings(null); setDqRows([]); setAnticheat(null); setRegistrations(null); lastOpsEventId.current = null; return; }
         setForm(editableFields(selected));
         // Switching events must never show the previous event's ops data while
         // the new fetch is in flight; same-event refreshes keep what's there.
         if (selected.id !== lastOpsEventId.current) {
             lastOpsEventId.current = selected.id;
-            setOps(null); setStandings(null); setDqRows([]); setAnticheat(null);
+            setOps(null); setStandings(null); setDqRows([]); setAnticheat(null); setRegistrations(null);
         }
         fetchCounts(selected.id);
         fetchOps(selected.id);
+        fetchRegistrations(selected.id);
         if (selected.venue_partner_id) {
             supabase.from('partners').select('name').eq('id', selected.venue_partner_id).single()
                 .then(({ data }) => setVenueName(data?.name ?? null));
@@ -147,6 +149,14 @@ export default function LiveEvents() {
             supabase.from('live_event_results').select('*', { count: 'exact', head: true }).eq('event_id', eventId),
         ]);
         setCounts({ participants: p.count ?? 0, results: r.count ?? 0 });
+    };
+
+    // Roster + invite pipeline + bonus ledger — works at ANY status, drafts
+    // included, so preview test runs are inspectable end-to-end.
+    const fetchRegistrations = async (eventId) => {
+        const { data, error } = await supabase.rpc('admin_get_event_registrations', { p_event_id: eventId });
+        if (error) { console.error(error); setRegistrations(null); return; }
+        setRegistrations(data);
     };
 
     // Ops dashboard data: counts/funnel + the through-blur standings. Admin
@@ -448,6 +458,12 @@ export default function LiveEvents() {
                         onSetPreview={(enabled, emails) => setPreview(selected, enabled, emails)}
                     />
 
+                    <RegistrationsPanel
+                        ev={selected}
+                        data={registrations}
+                        onRefresh={() => fetchRegistrations(selected.id)}
+                    />
+
                     {selected.status !== 'draft' && (
                         <OpsPanel
                             ev={selected}
@@ -476,6 +492,174 @@ export default function LiveEvents() {
                 </div>
             )}
         </div>
+    );
+}
+
+// ─── Registrations & invites ─────────────────────────────────────
+// Who registered + the invite pipeline + the actual bonus ledger rows,
+// at any status (drafts included) — this is where a preview test run is
+// checked against how the reward mechanics are supposed to pay out.
+
+function RegistrationsPanel({ ev, data, onRefresh }) {
+    const fmtTime = (iso) => iso
+        ? new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+        : '—';
+    const participants = data?.participants ?? [];
+    const referrals = data?.referrals ?? [];
+    const milestones = data?.milestones ?? [];
+    const ledger = data?.bonus_ledger ?? [];
+
+    const SOURCE_LABEL = {
+        referral_sent:     'Referrer bonus',
+        referral_received: 'New-member bonus',
+        invite_milestone:  'Milestone bonus',
+    };
+
+    const Head = ({ cols }) => (
+        <thead>
+            <tr className="text-[9px] font-black uppercase tracking-[0.2em] text-[#999999] border-b border-[#F0F0EC]">
+                {cols.map(([label, cls]) => <th key={label} className={`py-2 pr-3 ${cls ?? 'text-left'}`}>{label}</th>)}
+            </tr>
+        </thead>
+    );
+
+    return (
+        <section>
+            <div className="flex items-center gap-4 mb-4 px-1">
+                <div className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 border bg-[#8B5CF6]/10 border-[#8B5CF6]/25">
+                    <Users size={18} className="text-[#8B5CF6]" />
+                </div>
+                <div className="min-w-0 flex-1">
+                    <h2 className="text-lg font-bold text-[#1A1A1A] tracking-tight">Registrations & invites</h2>
+                    <p className="text-[12px] text-[#888888] leading-snug">
+                        The raw roster and the invite reward trail — pays +{ev.invite_bonus_points} to each side per
+                        converted invite, +{ev.invite_milestone_bonus} at {ev.invite_milestone_n} conversions.
+                        Works while the event is a draft, so preview test runs show up here.
+                    </p>
+                </div>
+                <button
+                    onClick={onRefresh}
+                    className="inline-flex items-center gap-2 h-10 px-4 rounded-xl bg-[#F4F4F1] border border-[#E6E6E1] text-[10.5px] font-bold uppercase tracking-[0.18em] text-[#555555] hover:text-[#1A1A1A] transition-all shrink-0"
+                >
+                    <RefreshCw size={13} /> Refresh
+                </button>
+            </div>
+
+            <div className="bg-white border border-[#E6E6E1] rounded-3xl p-7 space-y-7">
+                {/* Roster */}
+                <div>
+                    <div className="text-[10px] font-black uppercase tracking-[0.25em] text-[#888888] mb-2">
+                        Registered ({participants.length})
+                    </div>
+                    {participants.length === 0 ? (
+                        <p className="text-[13px] text-[#999999]">Nobody has registered yet.</p>
+                    ) : (
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-[13px]">
+                                <Head cols={[['Member'], ['Email'], ['Joined'], ['Status']]} />
+                                <tbody className="divide-y divide-[#F6F6F3]">
+                                    {participants.map((p) => (
+                                        <tr key={p.user_id} className={p.disqualified_at ? 'opacity-45' : ''}>
+                                            <td className="py-2.5 pr-3 font-medium text-[#1A1A1A]">
+                                                {p.name}
+                                                {p.username && <span className="text-[#999999] font-normal"> @{p.username}</span>}
+                                            </td>
+                                            <td className="py-2.5 pr-3 font-mono text-[12px] text-[#888888]">{p.email ?? '—'}</td>
+                                            <td className="py-2.5 pr-3 text-[#888888]">{fmtTime(p.joined_at)}</td>
+                                            <td className="py-2.5 pr-3">
+                                                {p.disqualified_at
+                                                    ? <span className="text-[#F43F5E] text-[11px] font-bold uppercase tracking-wide">DQ</span>
+                                                    : <span className="text-[#10B981] text-[11px] font-bold uppercase tracking-wide">In</span>}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </div>
+
+                {/* Invite pipeline */}
+                <div className="border-t border-[#F0F0EC] pt-6">
+                    <div className="text-[10px] font-black uppercase tracking-[0.25em] text-[#888888] mb-2">
+                        Invite pipeline ({referrals.length})
+                    </div>
+                    {referrals.length === 0 ? (
+                        <p className="text-[13px] text-[#999999]">
+                            No invites yet — conversions attributed to this event and still-pending signups will appear here.
+                        </p>
+                    ) : (
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-[13px]">
+                                <Head cols={[['Referrer'], ['Invited'], ['Signed up'], ['Converted'], ['Attribution']]} />
+                                <tbody className="divide-y divide-[#F6F6F3]">
+                                    {referrals.map((r, i) => (
+                                        <tr key={i}>
+                                            <td className="py-2.5 pr-3 font-medium text-[#1A1A1A]">{r.referrer_name}</td>
+                                            <td className="py-2.5 pr-3 text-[#555555]">
+                                                {r.referred_name}
+                                                {r.referred_email && <span className="font-mono text-[11px] text-[#AAAAAA]"> {r.referred_email}</span>}
+                                            </td>
+                                            <td className="py-2.5 pr-3 text-[#888888]">{fmtTime(r.created_at)}</td>
+                                            <td className="py-2.5 pr-3">
+                                                {r.converted_at
+                                                    ? <span className="text-[#10B981]">{fmtTime(r.converted_at)}</span>
+                                                    : <span className="text-[#999999]">pending</span>}
+                                            </td>
+                                            <td className="py-2.5 pr-3">
+                                                {r.attributed
+                                                    ? <span className="inline-flex items-center h-5 px-2 rounded-md bg-[#8B5CF6]/10 border border-[#8B5CF6]/25 text-[#8B5CF6] text-[9px] font-black uppercase tracking-[0.15em]">This event</span>
+                                                    : <span className="text-[11px] text-[#AAAAAA]">—</span>}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                    {milestones.length > 0 && (
+                        <p className="text-[12px] text-[#555555] mt-3">
+                            Milestones paid: {milestones.map((m) => `${m.referrer_name} (+${m.points_paid} at ${m.converted_count})`).join(' · ')}
+                        </p>
+                    )}
+                </div>
+
+                {/* Bonus ledger */}
+                <div className="border-t border-[#F0F0EC] pt-6">
+                    <div className="text-[10px] font-black uppercase tracking-[0.25em] text-[#888888] mb-2">
+                        Invite bonus ledger — latest {ledger.length} across all events
+                    </div>
+                    {ledger.length === 0 ? (
+                        <p className="text-[13px] text-[#999999]">No invite bonus transactions yet, ever.</p>
+                    ) : (
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-[13px]">
+                                <Head cols={[['When'], ['Member'], ['Type'], ['Points', 'text-right'], ['Description']]} />
+                                <tbody className="divide-y divide-[#F6F6F3]">
+                                    {ledger.map((t, i) => (
+                                        <tr key={i}>
+                                            <td className="py-2.5 pr-3 text-[#888888] whitespace-nowrap">{fmtTime(t.created_at)}</td>
+                                            <td className="py-2.5 pr-3 font-medium text-[#1A1A1A]">
+                                                {t.name}
+                                                {t.email && <span className="font-mono text-[11px] text-[#AAAAAA]"> {t.email}</span>}
+                                            </td>
+                                            <td className="py-2.5 pr-3 text-[#555555]">{SOURCE_LABEL[t.source] ?? t.source}</td>
+                                            <td className="py-2.5 pr-3 text-right font-mono text-[#10B981]">+{t.amount}</td>
+                                            <td className="py-2.5 pr-3 text-[#888888]">{t.description}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                    <p className="text-[11px] text-[#999999] mt-2 leading-relaxed">
+                        Point transactions aren&apos;t tagged with an event, so this feed is global — during a test run
+                        your rows are the newest. Conversion requires a {(ev.conversion_verifications ?? []).join(' or ') || 'verified'}
+                        {' '}session; manual never converts.
+                    </p>
+                </div>
+            </div>
+        </section>
     );
 }
 

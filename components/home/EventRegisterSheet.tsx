@@ -5,7 +5,7 @@ import React from 'react';
 import { Alert, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { joinLiveEvent, type LiveEvent } from '@/lib/api/liveEvents';
+import { joinLiveEvent, resetLiveEventPreview, type LiveEvent } from '@/lib/api/liveEvents';
 import { eventDateRange } from '@/lib/liveEventDisplay';
 
 const GOLD = '#E8D200';
@@ -48,6 +48,23 @@ export function EventRegisterSheet({ event, visible, onClose }: EventRegisterShe
         },
     });
 
+    // Preview only: un-register so the flow can be run again. The card stays
+    // on Home in preview after joining precisely so this is reachable.
+    const resetMutation = useMutation({
+        mutationFn: () => resetLiveEventPreview(event.id),
+        onSuccess: (viewer) => {
+            if (!viewer || viewer.joined) {
+                Alert.alert('Couldn’t reset', 'Something went wrong — please try again.');
+                return;
+            }
+            Haptics.selectionAsync().catch(() => {});
+            void queryClient.invalidateQueries({ queryKey: ['liveEvent'] });
+            onClose();
+        },
+    });
+
+    const registered = event.viewer.joined;
+
     return (
         <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
             <View style={styles.backdrop}>
@@ -75,26 +92,42 @@ export function EventRegisterSheet({ event, visible, onClose }: EventRegisterShe
                     )}
 
                     <Text style={styles.note}>
-                        Everyone starts from zero — only points earned during the event window count.
+                        {registered
+                            ? 'You’re registered. This is a preview — reset to run the registration flow again.'
+                            : 'Everyone starts from zero — only points earned during the event window count.'}
                     </Text>
 
-                    <Pressable
-                        style={({ pressed }) => [styles.joinBtn, (pressed || joinMutation.isPending) && { opacity: 0.85 }]}
-                        disabled={joinMutation.isPending}
-                        onPress={() => {
-                            Haptics.selectionAsync().catch(() => {});
-                            joinMutation.mutate();
-                        }}
-                        accessibilityRole="button"
-                        accessibilityLabel="Register for the event"
-                    >
-                        <Text style={styles.joinBtnText}>
-                            {joinMutation.isPending ? 'REGISTERING…' : 'COUNT ME IN'}
-                        </Text>
-                    </Pressable>
+                    {registered ? (
+                        <Pressable
+                            style={({ pressed }) => [styles.resetBtn, (pressed || resetMutation.isPending) && { opacity: 0.85 }]}
+                            disabled={resetMutation.isPending}
+                            onPress={() => resetMutation.mutate()}
+                            accessibilityRole="button"
+                            accessibilityLabel="Reset test registration"
+                        >
+                            <Text style={styles.resetBtnText}>
+                                {resetMutation.isPending ? 'RESETTING…' : 'RESET TEST REGISTRATION'}
+                            </Text>
+                        </Pressable>
+                    ) : (
+                        <Pressable
+                            style={({ pressed }) => [styles.joinBtn, (pressed || joinMutation.isPending) && { opacity: 0.85 }]}
+                            disabled={joinMutation.isPending}
+                            onPress={() => {
+                                Haptics.selectionAsync().catch(() => {});
+                                joinMutation.mutate();
+                            }}
+                            accessibilityRole="button"
+                            accessibilityLabel="Register for the event"
+                        >
+                            <Text style={styles.joinBtnText}>
+                                {joinMutation.isPending ? 'REGISTERING…' : 'COUNT ME IN'}
+                            </Text>
+                        </Pressable>
+                    )}
 
                     <Pressable style={styles.skipButton} onPress={onClose} accessibilityRole="button">
-                        <Text style={styles.skipLabel}>Not now</Text>
+                        <Text style={styles.skipLabel}>{registered ? 'Close' : 'Not now'}</Text>
                     </Pressable>
                 </View>
             </View>
@@ -145,6 +178,15 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     joinBtnText: { fontSize: 12, fontWeight: '800', color: '#0a0a0a', letterSpacing: 1.5 },
+    resetBtn: {
+        marginTop: 20,
+        borderRadius: 100,
+        borderWidth: 1,
+        borderColor: 'rgba(232,210,0,0.6)',
+        paddingVertical: 14,
+        alignItems: 'center',
+    },
+    resetBtnText: { fontSize: 12, fontWeight: '800', color: GOLD, letterSpacing: 1.5 },
     skipButton: { alignItems: 'center', paddingVertical: 14 },
     skipLabel: { fontSize: 13, fontWeight: '400', color: DIM },
 });

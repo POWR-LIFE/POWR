@@ -42,7 +42,12 @@ export function LiveEventCard() {
     if (event.status !== 'scheduled' && event.status !== 'live') return null;
     if (event.is_locked) return null;
     if (event.scope !== 'opt_in') return null;
-    if (!event.viewer.eligible || event.viewer.joined || event.viewer.disqualified) return null;
+    if (!event.viewer.eligible || event.viewer.disqualified) return null;
+    // Registered users lose the card — except in preview, where it stays so
+    // the flow can be reset and re-run (the sheet offers the reset).
+    if (event.viewer.joined && !event.is_preview) return null;
+
+    const registered = event.viewer.joined;
 
     const media = event.promo_media_url;
     const videoUrl = isVideoUrl(media) ? media : null;
@@ -58,7 +63,9 @@ export function LiveEventCard() {
                 onPress={() => setSheetOpen(true)}
                 style={({ pressed }) => [pressed && { opacity: 0.92 }]}
                 accessibilityRole="button"
-                accessibilityLabel={`Live event: ${event.name}. Tap to register.`}
+                accessibilityLabel={registered
+                    ? `Live event: ${event.name}. Registered — tap to reset the preview.`
+                    : `Live event: ${event.name}. Tap to register.`}
             >
                 <View style={styles.card}>
                     <View style={styles.heroContainer}>
@@ -76,17 +83,12 @@ export function LiveEventCard() {
                         />
 
                         <View style={styles.topRow}>
-                            <View style={styles.eyebrowChip}>
-                                <Text style={styles.eyebrowText}>LIVE EVENT</Text>
-                            </View>
-                            {event.is_preview && (
-                                <View style={styles.previewChip}>
-                                    <Text style={styles.previewText}>PREVIEW</Text>
-                                </View>
-                            )}
-                            <View style={styles.statusChip}>
-                                {event.status === 'live' && <View style={styles.liveDot} />}
-                                <Text style={styles.statusText}>{eventStatusChip(event)}</Text>
+                            <Text style={styles.eyebrowText}>LIVE EVENT</Text>
+                            <View style={[styles.statusChip, event.is_preview && styles.statusChipPreview]}>
+                                {event.status === 'live' && !event.is_preview && <View style={styles.liveDot} />}
+                                <Text style={[styles.statusText, event.is_preview && styles.statusTextPreview]}>
+                                    {event.is_preview ? `PREVIEW · ${eventStatusChip(event)}` : eventStatusChip(event)}
+                                </Text>
                             </View>
                         </View>
 
@@ -103,8 +105,10 @@ export function LiveEventCard() {
                                 <Text style={styles.subline} numberOfLines={2}>
                                     {event.promo_headline ?? eventDateRange(event)}
                                 </Text>
-                                <View style={styles.registerPill}>
-                                    <Text style={styles.registerText}>REGISTER</Text>
+                                <View style={[styles.registerPill, registered && styles.registeredPill]}>
+                                    <Text style={[styles.registerText, registered && styles.registeredText]}>
+                                        {registered ? 'REGISTERED' : 'REGISTER'}
+                                    </Text>
                                 </View>
                             </View>
                         </View>
@@ -139,20 +143,15 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         alignItems: 'center',
     },
-    eyebrowChip: {
-        backgroundColor: 'rgba(0,0,0,0.4)',
-        paddingHorizontal: 10,
-        paddingVertical: 6,
-        borderRadius: 12,
+    eyebrowText: {
+        fontSize: 9,
+        fontWeight: '800',
+        color: GOLD,
+        letterSpacing: 2.5,
+        textShadowColor: 'rgba(0,0,0,0.6)',
+        textShadowOffset: { width: 0, height: 1 },
+        textShadowRadius: 4,
     },
-    eyebrowText: { fontSize: 9, fontWeight: '800', color: GOLD, letterSpacing: 2 },
-    previewChip: {
-        backgroundColor: GOLD,
-        paddingHorizontal: 10,
-        paddingVertical: 6,
-        borderRadius: 12,
-    },
-    previewText: { fontSize: 9, fontWeight: '800', color: '#0a0a0a', letterSpacing: 2 },
     statusChip: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -162,8 +161,10 @@ const styles = StyleSheet.create({
         paddingVertical: 6,
         borderRadius: 12,
     },
+    statusChipPreview: { backgroundColor: GOLD },
     liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: GOLD },
     statusText: { fontSize: 9, fontWeight: '700', color: TEXT_PRIMARY, letterSpacing: 1.5 },
+    statusTextPreview: { color: '#0a0a0a', fontWeight: '800' },
 
     bottomSection: {
         position: 'absolute',
@@ -210,4 +211,10 @@ const styles = StyleSheet.create({
         paddingVertical: 9,
     },
     registerText: { fontSize: 10, fontWeight: '800', color: '#0a0a0a', letterSpacing: 1.5 },
+    registeredPill: {
+        backgroundColor: 'transparent',
+        borderWidth: 1,
+        borderColor: 'rgba(232,210,0,0.6)',
+    },
+    registeredText: { color: GOLD },
 });

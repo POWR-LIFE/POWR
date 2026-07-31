@@ -123,6 +123,15 @@ export async function fetchInviteProgress(): Promise<InviteProgress | null> {
     return (data as InviteProgress | null) ?? null;
 }
 
+/** Preview drafts only: remove own registration so the flow can be re-tested.
+ *  The server hard-rejects anything that isn't a draft the caller previews —
+ *  there is deliberately no general "leave event" path. */
+export async function resetLiveEventPreview(eventId: string): Promise<LiveEventViewer | null> {
+    const { data, error } = await supabase.rpc('reset_live_event_preview', { p_event_id: eventId });
+    if (error) return null;
+    return (data as LiveEventViewer | null) ?? null;
+}
+
 /** Opt-in scope only; server re-checks eligibility. Returns the updated viewer state. */
 export async function joinLiveEvent(eventId: string): Promise<LiveEventViewer | null> {
     const { data, error } = await supabase.rpc('join_live_event', { p_event_id: eventId });
