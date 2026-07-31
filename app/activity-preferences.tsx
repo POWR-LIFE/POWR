@@ -37,9 +37,15 @@ const MAX_PICKS = 2;
 function initialSelections(meta: Record<string, any> | undefined): ActivitySelection[] {
   const stored = meta?.activity_selections;
   if (Array.isArray(stored) && stored.length > 0) {
-    return stored
-      .filter((s: any) => s && typeof s.slug === 'string' && typeof s.bucket === 'string')
-      .slice(0, MAX_PICKS);
+    const valid = stored.filter(
+      (s: any) =>
+        s &&
+        typeof s.slug === 'string' &&
+        typeof s.bucket === 'string' &&
+        typeof s.label === 'string' &&
+        s.label.length > 0,
+    );
+    if (valid.length > 0) return valid.slice(0, MAX_PICKS);
   }
   const buckets: ActivityType[] = meta?.activity_preferences ?? ['gym', 'running', 'walking'];
   return buckets

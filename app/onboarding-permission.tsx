@@ -5,7 +5,7 @@ import { ONBOARDING_DOT_COUNT, dotIndexFor } from '@/lib/onboarding/flow';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Animated, AppState, Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -101,12 +101,12 @@ export default function OnboardingPermissionScreen() {
 
     // Award the bonus (fire-and-forget; idempotent on server) and move to the
     // background-location priming page.
-    const finishGrant = () => {
+    const finishGrant = useCallback(() => {
         awardBonus('location_permission').catch((e) =>
             console.warn('Failed to award location bonus', e)
         );
         router.push(NEXT_SCREEN);
-    };
+    }, [router]);
 
     // Denied mode sends the user to system settings; when they come back with
     // location granted, award the bonus and move along.
@@ -118,7 +118,7 @@ export default function OnboardingPermissionScreen() {
             if (status === 'granted') finishGrant();
         });
         return () => sub.remove();
-    }, [mode]);
+    }, [mode, finishGrant]);
 
     const handleAllowLocation = async () => {
         if (requesting) return;

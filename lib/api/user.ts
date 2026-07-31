@@ -250,17 +250,27 @@ export async function updateActivitySelections(
     const user = await getSessionUser();
     if (!user) return { error: 'Not authenticated' };
 
-    const buckets = ['gym', ...selections.map(s => s.bucket)]
+    // Normalise before persisting: exactly {slug,label,bucket} per entry (no
+    // extra fields into user_metadata), drop anything malformed.
+    const clean = selections
+        .filter(s =>
+            s &&
+            typeof s.slug === 'string' && s.slug.length > 0 &&
+            typeof s.label === 'string' && s.label.length > 0 &&
+            typeof s.bucket === 'string' && s.bucket.length > 0)
+        .map(s => ({ slug: s.slug, label: s.label, bucket: s.bucket }));
+
+    const buckets = ['gym', ...clean.map(s => s.bucket)]
         .filter((b, i, arr) => arr.indexOf(b) === i);
 
     const { error: dbError } = await supabase
         .from('profiles')
-        .update({ activity_preferences: buckets, activity_selections: selections })
+        .update({ activity_preferences: buckets, activity_selections: clean })
         .eq('id', user.id);
     if (dbError) return { error: dbError.message };
 
     const { error: authError } = await supabase.auth.updateUser({
-        data: { activity_preferences: buckets, activity_selections: selections },
+        data: { activity_preferences: buckets, activity_selections: clean },
     });
     if (authError) return { error: authError.message };
 

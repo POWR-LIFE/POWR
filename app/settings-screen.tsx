@@ -153,9 +153,14 @@ export default function SettingsScreen() {
   // Prefer the concrete catalog picks ("Padel, Boxing"); legacy bucket-only
   // users fall back to bucket short labels.
   const savedPrefs: ActivityType[] = user?.user_metadata?.activity_preferences ?? ['gym', 'running', 'walking'];
-  const savedSelections: { label: string }[] | undefined = user?.user_metadata?.activity_selections;
-  const activityFocusValue = Array.isArray(savedSelections) && savedSelections.length > 0
-    ? ['Gym', ...savedSelections.map(s => s.label)].join(', ')
+  const savedSelections = user?.user_metadata?.activity_selections;
+  const selectionLabels = Array.isArray(savedSelections)
+    ? savedSelections
+        .map((s: any) => s?.label)
+        .filter((l: any): l is string => typeof l === 'string' && l.length > 0)
+    : [];
+  const activityFocusValue = selectionLabels.length > 0
+    ? ['Gym', ...selectionLabels].join(', ')
     : savedPrefs.map(t => ACTIVITIES[t]?.labelShort ?? t).join(', ');
 
   // Notification & privacy prefs — initialise from saved user_metadata
