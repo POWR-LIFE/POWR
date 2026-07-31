@@ -119,7 +119,7 @@ export function LiveEventCard() {
                                 {uploadedLogo ? (
                                     <ExpoImage
                                         source={{ uri: uploadedLogo }}
-                                        style={large ? styles.venueLogoLarge : styles.venueLogo}
+                                        style={large ? styles.uploadedLogoLarge : styles.uploadedLogo}
                                         contentFit="contain"
                                     />
                                 ) : (
@@ -241,17 +241,26 @@ const styles = StyleSheet.create({
     },
     // The bundled mark is a square canvas with its own padding — negative
     // margins trim it so the visible mark aligns with the row, not the canvas.
+    // The POWR side leads the lockup — noticeably bigger than the gym mark.
+    uploadedLogo: {
+        width: 88,
+        height: 32,
+    },
+    uploadedLogoLarge: {
+        width: 112,
+        height: 40,
+    },
     powrMark: {
-        width: 62,
-        height: 62,
-        marginVertical: -11,
-        marginHorizontal: -9,
+        width: 64,
+        height: 64,
+        marginVertical: -12,
+        marginHorizontal: -10,
     },
     powrMarkLarge: {
-        width: 88,
-        height: 88,
-        marginVertical: -16,
-        marginHorizontal: -13,
+        width: 90,
+        height: 90,
+        marginVertical: -17,
+        marginHorizontal: -14,
     },
     name: {
         fontSize: 26,
