@@ -66,6 +66,7 @@ const editableFields = (ev) => ({
     name: ev.name,
     slug: ev.slug,
     logo_url: ev.logo_url,
+    logo_only: ev.logo_only,
     venue_partner_id: ev.venue_partner_id,
     window_start_at: ev.window_start_at,
     window_end_at: ev.window_end_at,
@@ -1279,6 +1280,9 @@ function EditorPanel({ form, setForm, dirty, saving, onSave, onDiscard, venueNam
                         </Field>
                         <Field label="Logo" hint="Sits above the name on the app's event card, on a white chip. Blank = venue partner's logo if one is linked, else the POWR mark.">
                             <EventLogoField value={form.logo_url} onChange={v => set({ logo_url: v })} />
+                        </Field>
+                        <Field label="Logo only" hint="Hide the name on the app card — the logo alone carries the identity, shown larger. The name is still used everywhere else.">
+                            <Toggle on={form.logo_only} onFlip={() => set({ logo_only: !form.logo_only })} />
                         </Field>
                         <Field label="Venue partner" hint="Optional — links the event to a gym/venue.">
                             <VenuePicker

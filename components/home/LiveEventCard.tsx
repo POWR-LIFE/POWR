@@ -100,12 +100,18 @@ export function LiveEventCard() {
                             <View style={[styles.logoWrap, chipLogo && styles.logoChip]}>
                                 <ExpoImage
                                     source={logoUri ? { uri: logoUri } : require('@/assets/images/powrlogotext.png')}
-                                    style={logoUri ? styles.logoImage : styles.powrLogo}
+                                    style={logoUri
+                                        ? (event.logo_only ? styles.logoImageLarge : styles.logoImage)
+                                        : (event.logo_only ? styles.powrLogoLarge : styles.powrLogo)}
                                     contentFit="contain"
                                 />
                             </View>
 
-                            <Text style={styles.name} numberOfLines={1}>{event.name}</Text>
+                            {/* logo_only: the mark IS the identity (name stays in the
+                                a11y label and the register sheet). */}
+                            {!event.logo_only && (
+                                <Text style={styles.name} numberOfLines={1}>{event.name}</Text>
+                            )}
 
                             <View style={styles.bottomRow}>
                                 <Text style={styles.subline} numberOfLines={2}>
@@ -192,6 +198,10 @@ const styles = StyleSheet.create({
         width: 76,
         height: 34,
     },
+    logoImageLarge: {
+        width: 128,
+        height: 54,
+    },
     // The bundled wordmark is a square canvas with its own padding — the chip
     // dimensions would shrink it to a speck, so it gets a square box instead.
     powrLogo: {
@@ -199,6 +209,12 @@ const styles = StyleSheet.create({
         height: 46,
         marginBottom: -8,
         marginLeft: -6,
+    },
+    powrLogoLarge: {
+        width: 76,
+        height: 76,
+        marginBottom: -14,
+        marginLeft: -10,
     },
     name: {
         fontSize: 26,
