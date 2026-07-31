@@ -57,7 +57,7 @@ function fmtNum(n: number): string {
   return String(Math.round(n));
 }
 
-function RowBar({ fraction, complete }: { fraction: number; complete: boolean }) {
+function RowBar({ fraction, complete, segments }: { fraction: number; complete: boolean; segments?: number }) {
   const widthPct = useSharedValue(0);
   useEffect(() => {
     widthPct.value = withTiming(fraction, { duration: 800, easing: Easing.out(Easing.cubic) });
@@ -66,6 +66,10 @@ function RowBar({ fraction, complete }: { fraction: number; complete: boolean })
   return (
     <View style={styles.rowBarBg}>
       <Animated.View style={[styles.rowBarFill, complete && styles.rowBarFillDone, fillStyle]} />
+      {!!segments && segments >= 2 &&
+        Array.from({ length: segments - 1 }, (_, i) => (
+          <View key={i} style={[styles.rowBarNotch, { left: `${((i + 1) / segments) * 100}%` }]} />
+        ))}
     </View>
   );
 }
@@ -127,7 +131,7 @@ function ChallengeRow({
             <Text style={[styles.rowPts, { color: complete ? GREEN : tierColor }]}>+{challenge.points}</Text>
           </View>
         </View>
-        <RowBar fraction={challenge.fraction} complete={complete} />
+        <RowBar fraction={challenge.fraction} complete={complete} segments={challenge.segments} />
       </View>
     </Animated.View>
   );
@@ -489,6 +493,7 @@ const styles = StyleSheet.create({
   rowPts: { fontFamily: fontFamily.semiBold, fontSize: 12, letterSpacing: 0.2, minWidth: 34, textAlign: 'right' },
   rowBarBg: { height: 3, backgroundColor: BORDER, borderRadius: 3, overflow: 'hidden' },
   rowBarFill: { height: 3, borderRadius: 3, backgroundColor: GOLD },
+  rowBarNotch: { position: 'absolute', top: 0, bottom: 0, width: 2, marginLeft: -1, backgroundColor: CARD_BG },
   rowBarFillDone: { backgroundColor: GREEN },
 
   // queue footer — the chain's promise of more, or the completionist payoff
