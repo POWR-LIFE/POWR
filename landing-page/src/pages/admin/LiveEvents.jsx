@@ -8,7 +8,7 @@ import {
     CalendarClock, Eye, EyeOff, Lock, Flag, Trophy, Archive,
     Link2, RefreshCw, AlertTriangle, Rocket, Undo2,
     Gauge, Download, UserX, UserCheck, ShieldAlert,
-    Megaphone, Upload, ExternalLink, QrCode,
+    Megaphone, Upload, ExternalLink, QrCode, Smartphone,
 } from 'lucide-react';
 import { QRCodeCanvas } from 'qrcode.react';
 import { storageImage, uploadPublicImage } from '../../lib/storage';
@@ -283,6 +283,20 @@ export default function LiveEvents() {
         fetchEvents();
     };
 
+    // In-app test preview: instant write, deliberately outside the Save
+    // payload (like status/hidden) so it can't be reverted by a stale edit.
+    const setPreview = async (ev, enabled, emails) => {
+        setActing('preview');
+        const { error } = await supabase.from('live_events')
+            .update({ preview_enabled: enabled, preview_emails: emails })
+            .eq('id', ev.id);
+        setActing(null);
+        if (error) { toast.error(error.message); return; }
+        await logAction(user.id, 'live_event_preview', 'live_event', ev.id, { enabled, emails });
+        toast.success(enabled ? `In-app preview ON for ${emails.length} account${emails.length === 1 ? '' : 's'}` : 'In-app preview off');
+        fetchEvents();
+    };
+
     const toggleHidden = async (ev) => {
         setActing('hidden');
         const { error } = await supabase.from('live_events').update({ hidden: !ev.hidden }).eq('id', ev.id);
@@ -431,6 +445,7 @@ export default function LiveEvents() {
                         onCopyPromoUrl={() => copyPromoUrl(selected)}
                         onRegenToken={() => regenerateToken(selected)}
                         onDuplicate={() => duplicateEvent(selected)}
+                        onSetPreview={(enabled, emails) => setPreview(selected, enabled, emails)}
                     />
 
                     {selected.status !== 'draft' && (
@@ -464,13 +479,82 @@ export default function LiveEvents() {
     );
 }
 
+// ─── In-app test preview ─────────────────────────────────────────
+// While the event is a draft, the listed app accounts (and ONLY them)
+// see the real home card + register flow, with the status simulated as
+// scheduled/live from the window. Everyone else sees nothing — this is
+// how you check the card in Expo Go before pressing Schedule.
+
+function PreviewBlock({ ev, acting, onSetPreview }) {
+    // Resync the input from the saved list only when it actually changes
+    // (event switch or a save) — never clobber in-progress typing on
+    // unrelated refetches.
+    const savedEmails = (ev.preview_emails ?? []).join(', ');
+    const [emailsText, setEmailsText] = useState(savedEmails);
+    useEffect(() => { setEmailsText(savedEmails); }, [ev.id, savedEmails]);
+
+    const parsed = emailsText.split(/[,\s]+/).map(e => e.trim().toLowerCase()).filter(Boolean);
+    const invalid = parsed.filter(e => !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e));
+
+    return (
+        <div className="border-t border-[#F0F0EC] pt-6">
+            <div className="flex items-center gap-2 mb-2">
+                <Smartphone size={13} className="text-[#888888]" />
+                <span className="text-[10px] font-black uppercase tracking-[0.25em] text-[#888888]">In-app test preview</span>
+                {ev.preview_enabled && (
+                    <span className="inline-flex items-center h-5 px-2 rounded-md bg-[#E8D200]/15 border border-[#E8D200]/40 text-[#8a7600] text-[9px] font-black uppercase tracking-[0.15em]">
+                        On · {(ev.preview_emails ?? []).length}
+                    </span>
+                )}
+            </div>
+            <div className="flex items-center gap-3 flex-wrap">
+                <input
+                    value={emailsText}
+                    onChange={e => setEmailsText(e.target.value)}
+                    placeholder="tester@email.com, another@email.com"
+                    className="flex-1 min-w-[260px] h-10 px-3 rounded-xl border border-[#E6E6E1] bg-[#FAFAF8] text-[12px] font-mono text-[#555555] focus:outline-none focus:border-[#1A1A1A]"
+                />
+                <button
+                    onClick={() => onSetPreview(!ev.preview_enabled, parsed)}
+                    disabled={!!acting || (!ev.preview_enabled && (parsed.length === 0 || invalid.length > 0))}
+                    className={`inline-flex items-center gap-2 h-10 px-4 rounded-xl border text-[10.5px] font-bold uppercase tracking-[0.18em] transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
+                        ev.preview_enabled
+                            ? 'bg-[#F43F5E]/10 border-[#F43F5E]/25 text-[#F43F5E] hover:bg-[#F43F5E]/15'
+                            : 'bg-[#E8D200]/15 border-[#E8D200]/40 text-[#8a7600] hover:bg-[#E8D200]/25'
+                    }`}
+                >
+                    <Smartphone size={13} /> {ev.preview_enabled ? 'Disable preview' : 'Enable preview'}
+                </button>
+                {ev.preview_enabled && (
+                    <button
+                        onClick={() => onSetPreview(true, parsed)}
+                        disabled={!!acting || parsed.length === 0 || invalid.length > 0}
+                        className="inline-flex items-center gap-2 h-10 px-4 rounded-xl border text-[10.5px] font-bold uppercase tracking-[0.18em] transition-all disabled:opacity-40 disabled:cursor-not-allowed bg-[#F4F4F1] border-[#E6E6E1] text-[#555555] hover:text-[#1A1A1A] hover:border-[#D8D8D2]"
+                    >
+                        <Check size={13} /> Update emails
+                    </button>
+                )}
+            </div>
+            {invalid.length > 0 && (
+                <p className="text-[11px] text-[#F43F5E] mt-2">Not an email: {invalid.join(', ')}</p>
+            )}
+            <p className="text-[11px] text-[#999999] mt-2 leading-relaxed">
+                Only the accounts listed here see this draft in the app — the home card, register sheet and League
+                tab behave exactly as if the event were scheduled (or live once the window opens), with a PREVIEW
+                badge. Everyone else sees nothing until you press Schedule. Test registrations are real join rows;
+                they carry over if you launch, or vanish if you delete the draft.
+            </p>
+        </div>
+    );
+}
+
 // ─── Lifecycle panel ─────────────────────────────────────────────
 
 function LifecyclePanel({
     ev, counts, acting,
     onSchedule, onUnschedule, onGoLive, onLock, onToggleHidden,
     onSettle, onReveal, onMarkSettled, onArchive,
-    onCopyUrl, onCopyPromoUrl, onRegenToken, onDuplicate,
+    onCopyUrl, onCopyPromoUrl, onRegenToken, onDuplicate, onSetPreview,
 }) {
     const meta = STATUS_META[ev.status];
     const pastLock = ev.lock_at && new Date(ev.lock_at) <= new Date();
@@ -550,6 +634,9 @@ function LifecyclePanel({
                     )}
                     <Btn icon={Copy} label="Duplicate" onClick={onDuplicate} />
                 </div>
+
+                {/* In-app test preview — draft only; scheduling makes it moot */}
+                {ev.status === 'draft' && <PreviewBlock ev={ev} acting={acting} onSetPreview={onSetPreview} />}
 
                 {/* Display URL */}
                 <div className="border-t border-[#F0F0EC] pt-6">

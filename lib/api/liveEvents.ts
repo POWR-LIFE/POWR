@@ -48,6 +48,9 @@ export type LiveEvent = {
     promo_headline: string | null;
     promo_media_url: string | null;
     venue: LiveEventVenue | null;
+    /** True when this is a draft served only to the admin-listed preview
+     *  accounts (status is simulated as scheduled/live for them). */
+    is_preview?: boolean;
     viewer: LiveEventViewer;
 };
 

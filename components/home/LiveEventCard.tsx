@@ -79,6 +79,11 @@ export function LiveEventCard() {
                             <View style={styles.eyebrowChip}>
                                 <Text style={styles.eyebrowText}>LIVE EVENT</Text>
                             </View>
+                            {event.is_preview && (
+                                <View style={styles.previewChip}>
+                                    <Text style={styles.previewText}>PREVIEW</Text>
+                                </View>
+                            )}
                             <View style={styles.statusChip}>
                                 {event.status === 'live' && <View style={styles.liveDot} />}
                                 <Text style={styles.statusText}>{eventStatusChip(event)}</Text>
@@ -141,6 +146,13 @@ const styles = StyleSheet.create({
         borderRadius: 12,
     },
     eyebrowText: { fontSize: 9, fontWeight: '800', color: GOLD, letterSpacing: 2 },
+    previewChip: {
+        backgroundColor: GOLD,
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        borderRadius: 12,
+    },
+    previewText: { fontSize: 9, fontWeight: '800', color: '#0a0a0a', letterSpacing: 2 },
     statusChip: {
         flexDirection: 'row',
         alignItems: 'center',
