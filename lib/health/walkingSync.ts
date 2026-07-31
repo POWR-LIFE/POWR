@@ -12,6 +12,7 @@ import { Platform } from 'react-native';
 
 import {
     getTodayHealthWalkingSession,
+    getWalkingDaySummary,
     logHealthWalkingSession,
     updateHealthWalkingSession,
     stepTierPoints,
@@ -381,9 +382,11 @@ async function _syncWalkingNowImpl(): Promise<void> {
 // opened on — and iOS background fetch is throttled hard, especially when the app
 // is force-quit — never gets a walking session, even though the phone's pedometer
 // keeps writing those steps to HealthKit / Health Connect forever. This catches
-// those days up: for each recent day with no session yet, read that day's total
-// from the native store and record it. Idempotent — the per-day unique index
-// no-ops days already present (logHealthWalkingSession returns null on conflict).
+// those days up: for each recent day, read that day's total from the native store
+// and record it — inserting missed days, and TOPPING UP days whose row went stale
+// because the last sync of the day ran mid-morning and the app never reopened
+// (the row otherwise freezes at that partial count forever). Idempotent: steps
+// only ever go up, and point top-ups award only the tier delta under that day's cap.
 
 // Run once per JS context: cheap to repeat (the unique index dedups), but no need
 // to re-scan a week of history on every foreground. Reset on failure so a later
@@ -419,14 +422,33 @@ export async function backfillWalkingDays(daysBack = 7): Promise<void> {
             const steps = await getStepsInRange(dayStart, dayEnd);
             if (steps <= 0) continue;
 
+            const { session, dayPoints } = await getWalkingDaySummary(
+                dayStart.toISOString(), dayEnd.toISOString(),
+            );
+            const capRemaining = Math.max(0, WALKING_DAILY_CAP - dayPoints);
+
+            if (session) {
+                // Day synced at least once but stopped early — top the stale row
+                // up to the store's full-day total. Steps only ever go up; points
+                // award only the tier delta, under that day's remaining cap.
+                if (steps <= session.steps) continue;
+                const additional = Math.min(
+                    Math.max(0, stepTierPoints(steps) - session.points),
+                    capRemaining,
+                );
+                await updateHealthWalkingSession(session.id, steps, additional, dayEnd.toISOString());
+                console.log(`[walkingSync] topped up ${localDateKey(dayStart)}: ${steps} steps (+${additional} pts)`);
+                continue;
+            }
+
             // No run-window subtraction here: the affected population is phone-only
             // (a wearable cloud push would have topped these days up server-side),
             // so there are no inferred runs to double-pay against. Cap as usual.
-            const points = Math.min(stepTierPoints(steps), WALKING_DAILY_CAP);
+            const points = Math.min(stepTierPoints(steps), capRemaining);
             const sessionId = await logHealthWalkingSession(
                 steps, points, verification, dayStart.toISOString(), dayEnd.toISOString(),
             );
-            if (!sessionId) continue; // day already recorded — unique index conflict
+            if (!sessionId) continue; // raced — the day appeared since the summary read
 
             await saveHealthSnapshot({ sessionId, steps, activityType: 'walking', source });
             console.log(`[walkingSync] backfilled ${localDateKey(dayStart)}: ${steps} steps → ${points} pts`);

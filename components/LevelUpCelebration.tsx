@@ -242,6 +242,8 @@ export interface LevelUpCelebrationProps {
   totalEarned?: number;
   onDone: () => void;
   onShare?: () => void;
+  /** "Challenge friends" — carry the high into starting a together challenge. */
+  onChallenge?: () => void;
 }
 
 /**
@@ -250,7 +252,7 @@ export interface LevelUpCelebrationProps {
  * name and tier. One-shot — mount it when useLevelUp reports a pending
  * level-up, unmount via onDone.
  */
-export function LevelUpCelebration({ fromLevel, toLevel, fromXp, totalEarned, onDone, onShare }: LevelUpCelebrationProps) {
+export function LevelUpCelebration({ fromLevel, toLevel, fromXp, totalEarned, onDone, onShare, onChallenge }: LevelUpCelebrationProps) {
   const fromDef: LevelDef = LEVELS.find(l => l.level === fromLevel) ?? LEVELS[0];
   const toDef: LevelDef = LEVELS.find(l => l.level === toLevel) ?? LEVELS[LEVELS.length - 1];
   const accent = toDef.textColor === '#FFFFFF' ? GOLD : toDef.textColor;
@@ -502,6 +504,11 @@ export function LevelUpCelebration({ fromLevel, toLevel, fromXp, totalEarned, on
           <Pressable style={[styles.btnContinue, { backgroundColor: GOLD }]} onPress={onDone}>
             <Text style={styles.btnContinueText}>Continue</Text>
           </Pressable>
+          {onChallenge && (
+            <Pressable style={styles.btnShare} onPress={onChallenge}>
+              <Text style={[styles.btnShareText, { color: GOLD }]}>Challenge friends</Text>
+            </Pressable>
+          )}
           {onShare && (
             <Pressable style={styles.btnShare} onPress={onShare}>
               <Text style={styles.btnShareText}>Share</Text>

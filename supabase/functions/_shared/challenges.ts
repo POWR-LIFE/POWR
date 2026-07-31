@@ -52,7 +52,7 @@ export const CATALOG: Challenge[] = [
   { id: 'gym-weekend', category: 'gym', tier: 'easy', title: 'Weekend Warrior', description: 'Check in on a Saturday or Sunday this week.', points: 15, rule: { kind: 'session_count', category: 'gym', dayOfWeek: [SAT, SUN], target: 1 } },
   { id: 'gym-4-from-7', category: 'gym', tier: 'medium', title: '4 From 7', description: 'Check in 4 times this week.', points: 40, rule: { kind: 'session_count', category: 'gym', target: 4 } },
   { id: 'gym-early-doors', category: 'gym', tier: 'medium', title: 'Early Doors', description: 'Check in before 8am, 3 times this week.', points: 40, rule: { kind: 'session_count', category: 'gym', beforeHour: 8, target: 3 } },
-  { id: 'gym-lunchtime', category: 'gym', tier: 'medium', title: 'Lunchtime Grind', description: 'Check in between 12pm and 2pm, 3 times this week.', points: 40, rule: { kind: 'session_count', category: 'gym', hourWindow: [12, 14], target: 3 } },
+  { id: 'gym-lunchtime', category: 'gym', tier: 'medium', title: 'Lunch Hours', description: 'Check in between 12pm and 2pm, 3 times this week.', points: 40, rule: { kind: 'session_count', category: 'gym', hourWindow: [12, 14], target: 3 } },
   { id: 'gym-no-days-off', category: 'gym', tier: 'medium', title: 'No Days Off', description: 'Check in 5 times this week.', points: 50, rule: { kind: 'session_count', category: 'gym', target: 5 } },
   { id: 'gym-perfect-week', category: 'gym', tier: 'hard', title: 'Perfect Week', description: 'Check in every day for 7 consecutive days.', points: 75, rule: { kind: 'distinct_days', category: 'gym', target: 7 } },
   { id: 'gym-double-day', category: 'gym', tier: 'hard', title: 'Double Day', description: 'Check in twice in one day, 2 times this week.', points: 70, supported: false, rule: { kind: 'same_day_count', category: 'gym', perDay: 2, target: 2 } },
@@ -178,6 +178,26 @@ export interface EvalContext {
   sessions: { category: string | null; type: string; dateKey: string; dow: number; hour: number; distance_m: number; steps: number; duration_sec: number }[];
   dailySteps: Map<string, { steps: number; dow: number }>;
   stepWindows: Map<string, { morning: number; midday: number; evening: number }>;
+}
+
+// Walking rows are DAY BUCKETS timestamped at local midnight of the day they
+// summarize (client walkingSync and terra-webhook handleDaily both follow this
+// convention), so filtering sessions by `started_at >= starts_at` silently drops
+// the ENTIRE start day's steps whenever a challenge goes active mid-day. Fetch
+// from the local midnight of the start day instead, and admit the pre-start rows
+// only for walking — precisely-timestamped sessions (gym, runs, rides) keep the
+// strict clock, because only day-granularity data gets day-granularity leniency.
+export function challengeSessionWindow(startsAtISO: string, utcOffsetMinutes: number): {
+  fetchStartISO: string;
+  admits: (s: { type?: string; started_at: string }) => boolean;
+} {
+  const startMs = Date.parse(startsAtISO);
+  const offsetMs = utcOffsetMinutes * 60_000;
+  const dayStartMs = Math.floor((startMs + offsetMs) / 86_400_000) * 86_400_000 - offsetMs;
+  return {
+    fetchStartISO: new Date(dayStartMs).toISOString(),
+    admits: (s) => s.type === 'walking' || Date.parse(s.started_at) >= startMs,
+  };
 }
 
 export function buildContext(rawSessions: RawSession[], utcOffsetMinutes: number, stepWindowRows: StepWindowRow[] = []): EvalContext {

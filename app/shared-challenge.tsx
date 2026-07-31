@@ -14,6 +14,8 @@ import { fontFamily } from '@/constants/tokens';
 import { durationLabel, useSharedChallenges } from '@/hooks/useSharedChallenges';
 import { challengeBonusConfig, earnedPoints, maxBonusForGroup } from '@/lib/social/bonus';
 import { dailyMilestoneHint, progressUnit } from '@/lib/social/challengeProgress';
+import { fetchChallengeInviteUrl } from '@/lib/social/inviteLinks';
+import { pacerState } from '@/lib/social/pacer';
 import { buildSharedChallengeShareInput } from '@/lib/social/share';
 import type { IconSpec, Participant, SharedChallenge } from '@/lib/social/types';
 
@@ -265,6 +267,13 @@ export default function SharedChallengeDetail() {
   // outcome and its share.
   const challengeOver =
     challenge.status === 'completed' || challenge.status === 'expired' || challenge.status === 'cancelled';
+
+  // Solo run → the Pacer rides along in the participants list: an explicitly
+  // non-human pace line (elapsed window fraction), never a fake friend.
+  const soloRun = !pooled && others.length === 0;
+  const pacer = soloRun && !challengeOver && !self?.completed
+    ? pacerState(challenge.startsAt, challenge.endsAt, self?.progress ?? 0)
+    : null;
   // The three terminal states are three different stories and only one of them
   // is a win. Collapsing them (as this screen used to) offers "Share result" to
   // someone whose challenge was cancelled before it ever ran.
@@ -390,12 +399,19 @@ export default function SharedChallengeDetail() {
     ]);
   };
 
-  // "Join me" — only meaningful while the challenge can still be joined.
+  // "Join me" — only meaningful while the challenge can still be joined. The
+  // creator shares the REAL invite link (powr.life/c/<token> — tapping it joins
+  // the challenge and friends you, even from a fresh install); everyone else
+  // falls back to a plain app link, since the token is creator-only.
   const handleShare = async () => {
-    const url = `https://powr.life/app?challenge=${challenge.id}`;
+    const inviteUrl = isCreator ? await fetchChallengeInviteUrl(challenge.id) : null;
+    const url = inviteUrl ?? 'https://powr.life/app';
     try {
       const runLength = challenge.durationHours ? ` in ${durationLabel(challenge.durationHours)}` : '';
-      await Share.share({ message: `Join my POWR challenge "${template.title}" — ${template.goal}${runLength}. ${url}`, url });
+      await Share.share({
+        message: `Join my POWR challenge "${template.title}" — ${template.goal}${runLength}. ${inviteUrl ? 'Tap to join: ' : ''}${url}`,
+        url,
+      });
     } catch {
       /* dismissed */
     }
@@ -541,7 +557,7 @@ export default function SharedChallengeDetail() {
             </View>
             <Text style={styles.bonusHint}>
               {poolPct >= 1
-                ? `Target smashed — everyone who chipped in earns +${template.basePoints}${maxBonusForGroup(accepted.length, cfg) > 0 ? ` plus up to +${maxBonusForGroup(accepted.length, cfg)} bonus` : ''}.`
+                ? `Target hit — everyone who chipped in earns +${template.basePoints}${maxBonusForGroup(accepted.length, cfg) > 0 ? ` plus up to +${maxBonusForGroup(accepted.length, cfg)} bonus` : ''}.`
                 /* The clock's stopped — inviting more contributions would be
                    asking for something that can't happen. Cancelled and expired
                    are different endings, and saying "fell short before time ran
@@ -617,6 +633,24 @@ export default function SharedChallengeDetail() {
                 onPress={p.isSelf ? undefined : () => setSheetUserId(p.friend.id)}
               />
             ))}
+            {pacer && (
+              <View style={styles.pacerRow} accessibilityLabel={`Pacer at ${pacer.pct} percent — ${pacer.ahead ? 'you are ahead' : 'the pacer is ahead'}`}>
+                <View style={styles.pacerBadge}>
+                  <Ionicons name="flash" size={13} color={SECONDARY} />
+                </View>
+                <View style={{ flex: 1, gap: 5 }}>
+                  <View style={styles.pacerMeta}>
+                    <Text style={styles.pacerName}>Pacer</Text>
+                    <Text style={[styles.pacerStatus, pacer.ahead ? { color: GOLD } : { color: SECONDARY }]}>
+                      {pacer.ahead ? "You're ahead" : 'Ahead of you'}
+                    </Text>
+                  </View>
+                  <View style={styles.pacerTrack}>
+                    <View style={[styles.pacerFill, { width: `${pacer.pct}%` }]} />
+                  </View>
+                </View>
+              </View>
+            )}
           </View>
         </View>
 
@@ -792,6 +826,19 @@ const styles = StyleSheet.create({
 
   // participant list
   listCard: { backgroundColor: CARD_BG, borderRadius: 18, borderWidth: 1, borderColor: BORDER, padding: 18 },
+
+  // Pacer pseudo-row (solo runs) — mirrors ParticipantRow's shape but stays
+  // visibly non-human: grey flash badge, no avatar, muted pace bar.
+  pacerRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  pacerBadge: {
+    width: 30, height: 30, borderRadius: 15, borderWidth: 1, borderColor: BORDER,
+    backgroundColor: 'rgba(255,255,255,0.04)', alignItems: 'center', justifyContent: 'center',
+  },
+  pacerMeta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  pacerName: { fontFamily: fontFamily.medium, fontSize: 12, letterSpacing: 1, color: SECONDARY, textTransform: 'uppercase' },
+  pacerStatus: { fontFamily: fontFamily.semiBold, fontSize: 11 },
+  pacerTrack: { height: 4, backgroundColor: BORDER, borderRadius: 2, overflow: 'hidden' },
+  pacerFill: { height: 4, borderRadius: 2, backgroundColor: MUTED },
   listHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   listCount: { fontFamily: fontFamily.regular, fontSize: 12, color: SECONDARY },
   pRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },

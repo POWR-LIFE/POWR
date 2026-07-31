@@ -227,7 +227,7 @@ export const JOURNEY_SECTIONS: SectionDef[] = [
           { id: 'l-058', title: 'Heavy Lifter',    subtitle: 'Complete 20 strength sessions',          xpReward: 70, icon: 'barbell-outline' },
           { id: 'l-059', title: 'HIIT Master',     subtitle: 'Do 10 HIIT workouts',                    xpReward: 65, icon: 'flash-outline' },
           { id: 'l-060', title: 'Circuit King',     subtitle: 'Complete 5 circuit training sessions',  xpReward: 60, icon: 'repeat-outline' },
-          { id: 'l-061', title: 'Core Crusher',    subtitle: '15 dedicated core workouts',              xpReward: 55, icon: 'body-outline' },
+          { id: 'l-061', title: 'Core Discipline', subtitle: '15 dedicated core workouts',              xpReward: 55, icon: 'body-outline' },
         ],
       },
       {

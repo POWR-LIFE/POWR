@@ -8,7 +8,7 @@
 // + at-end). On reaching the target: every contributor (>0) earns base + a group
 // bonus scaling with the number of OTHER contributors, settled once (settled_at
 // claim guards against double-pay).
-import { buildContext } from './challenges.ts';
+import { buildContext, challengeSessionWindow } from './challenges.ts';
 import { groupBonus, poolContribution } from './sharedChallenges.ts';
 import { notifyPush } from './notify.ts';
 
@@ -26,10 +26,11 @@ export async function evaluatePooledChallenge(supabase: any, challenge: any): Pr
     return { completed: false, newlyCompleted: false, poolTotal: 0, target };
   }
 
-  const windowStart = challenge.starts_at;
   const endMs = challenge.ends_at ? Date.parse(challenge.ends_at) : Date.now();
   const windowEnd = new Date(Math.min(Date.now(), endMs)).toISOString();
   const offset = challenge.utc_offset_minutes ?? 0;
+  // Start-day walking buckets count (see challengeSessionWindow).
+  const window = challengeSessionWindow(challenge.starts_at, offset);
 
   const { data: parts } = await supabase
     .from('shared_challenge_participants')
@@ -51,9 +52,9 @@ export async function evaluatePooledChallenge(supabase: any, challenge: any): Pr
       .from('activity_sessions')
       .select('type, started_at, duration_sec, distance_m, steps, verification')
       .eq('user_id', p.user_id)
-      .gte('started_at', windowStart)
+      .gte('started_at', window.fetchStartISO)
       .lte('started_at', windowEnd);
-    const ctx = buildContext(sessions ?? [], offset, []);
+    const ctx = buildContext((sessions ?? []).filter(window.admits), offset, []);
     let dailyStepsTotal = 0;
     for (const v of ctx.dailySteps.values()) dailyStepsTotal += v.steps;
     contribs.push({ user_id: p.user_id, contribution: poolContribution(rule, ctx.sessions, dailyStepsTotal) });

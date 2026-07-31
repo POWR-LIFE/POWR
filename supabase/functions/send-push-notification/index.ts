@@ -261,7 +261,7 @@ function buildMessage(
           title: hasWithinReach ? 'Reward within reach' : `${points.toLocaleString()} POWR points 🏆`,
           body: hasWithinReach
             ? `You're close. ${pointsToUnlock.toLocaleString()} pts to unlock your ${rewardName || 'next'} reward.`
-            : "You're crushing it. Check your rewards — something new might be waiting.",
+            : 'All earned. Check your rewards — something new might be waiting.',
           data: {
             type,
             route: '/(tabs)/rewards',

@@ -39,7 +39,7 @@ export function pointsMilestoneEmail(data: PointsMilestoneData): { subject: stri
           <td style="background-color:#080808;padding:44px 40px 40px;text-align:center;border-bottom:1px solid #111111;">
             <span style="display:block;font-size:64px;font-weight:200;color:#E8D200;letter-spacing:-3px;line-height:1;font-family:Arial,Helvetica,sans-serif;">${data.points.toLocaleString()}</span>
             <span style="display:block;margin-top:6px;font-size:11px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:#E8D200;font-family:Arial,Helvetica,sans-serif;opacity:0.5;">POWR points</span>
-            <h1 style="margin:20px 0 6px;font-size:28px;font-weight:200;letter-spacing:-0.5px;line-height:1.2;color:#F2F2F2;font-family:Arial,Helvetica,sans-serif;">You're crushing it,&nbsp;${firstName}.</h1>
+            <h1 style="margin:20px 0 6px;font-size:28px;font-weight:200;letter-spacing:-0.5px;line-height:1.2;color:#F2F2F2;font-family:Arial,Helvetica,sans-serif;">Every point earned,&nbsp;${firstName}.</h1>
             <p style="margin:12px 0 0;font-size:15px;font-weight:300;color:#555555;line-height:1.7;font-family:Arial,Helvetica,sans-serif;">That's a real milestone. Check your rewards —<br>something new might be waiting for you.</p>
           </td>
         </tr>
@@ -89,7 +89,7 @@ Every move counts.
 https://powr.life`;
 
   return {
-    subject: `${data.points.toLocaleString()} POWR points. You're crushing it.`,
+    subject: `${data.points.toLocaleString()} POWR points. Every one earned.`,
     html,
     text,
   };

@@ -149,6 +149,7 @@ function mapChallengeRow(row: any): SharedChallenge {
     creatorId: row.creator_id,
     participants,
     expiresIn: humanizeRemaining(row.ends_at),
+    startsAt: row.starts_at,
     endsAt: row.ends_at,
     acceptBy: row.accept_by,
     durationHours: row.duration_hours,

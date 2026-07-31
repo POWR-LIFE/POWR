@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { PENDING_JOIN_KEY } from '@/lib/social/inviteLinks';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -113,6 +114,21 @@ export default function HomeScreen() {
     const insets = useSafeAreaInsets();
     const router = useRouter();
     const { user } = useAuth();
+
+    // A challenge invite link tapped before sign-in parked its token
+    // (join-challenge stashes it and routes to auth); now that a session
+    // exists, redeem it straight back into the join flow — install → sign up →
+    // land in the friend's challenge, without tapping the link twice.
+    useEffect(() => {
+        if (!user) return;
+        (async () => {
+            const t = await AsyncStorage.getItem(PENDING_JOIN_KEY).catch(() => null);
+            if (!t) return;
+            await AsyncStorage.removeItem(PENDING_JOIN_KEY).catch(() => {});
+            router.push({ pathname: '/join-challenge', params: { token: t } });
+        })();
+    }, [user, router]);
+
     const { currentStreak, multiplier, refresh: refreshStreak } = useStreak();
     const { rescue, refresh: refreshRescue } = useStreakRescue();
     const [rescueReopenNonce, setRescueReopenNonce] = useState(0);
@@ -657,6 +673,7 @@ export default function HomeScreen() {
                 )}
 
                 <ChallengeCard
+                    onTogether={(c) => router.push({ pathname: '/challenges', params: { create: '1', category: c.category } })}
                     challenges={weeklyChallenges}
                     totalBalance={balance}
                     celebrateId={newlyCompletedId}
@@ -816,6 +833,10 @@ export default function HomeScreen() {
                     onShare={() => {
                         ackLevelUp();
                         router.push({ pathname: '/share-stats', params: { mode: 'level-up' } });
+                    }}
+                    onChallenge={() => {
+                        ackLevelUp();
+                        router.push({ pathname: '/challenges', params: { create: '1' } });
                     }}
                 />
             )}

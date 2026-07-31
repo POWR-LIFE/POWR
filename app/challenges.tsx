@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import React, { useMemo, useState } from 'react';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -8,7 +8,7 @@ import GeometricBackground from '@/components/GeometricBackground';
 import { ChallengeTemplateCard } from '@/components/social/ChallengeTemplateCard';
 import { CreateChallengeSheet } from '@/components/social/CreateChallengeSheet';
 import { fontFamily } from '@/constants/tokens';
-import { lastCrew } from '@/lib/social/crew';
+import { lastCrew, starterCrew } from '@/lib/social/crew';
 import { useSharedChallenges } from '@/hooks/useSharedChallenges';
 
 // ─── Palette ──────────────────────────────────────────────────────────────────
@@ -48,6 +48,8 @@ export default function ChallengesScreen() {
 
   // Same default as Home's sheet: your last crew is one Send away.
   const defaultCrew = useMemo(() => lastCrew(all, selfId), [all, selfId]);
+  // Faces + bonus pitch on the browse cards (usual crew, or first friends).
+  const starter = useMemo(() => starterCrew(friends, defaultCrew), [friends, defaultCrew]);
 
   const [sheetVisible, setSheetVisible] = useState(false);
   const [presetTemplateId, setPresetTemplateId] = useState<string | null>(null);
@@ -57,6 +59,29 @@ export default function ChallengesScreen() {
     setPresetTemplateId(templateId);
     setSheetVisible(true);
   };
+
+  // Deep-link create: other surfaces (weekly-challenge celebration, level-up,
+  // notifications) push `/challenges?create=1[&template=…|&category=…][&crew=a,b]`
+  // to land straight in a prefilled create sheet. One-shot: waits for templates,
+  // then opens once — back-navigation must not re-trigger it.
+  const params = useLocalSearchParams<{ create?: string; template?: string; category?: string; crew?: string }>();
+  const autoOpened = useRef(false);
+  useEffect(() => {
+    if (autoOpened.current || params.create !== '1' || templates.length === 0) return;
+    autoOpened.current = true;
+    const byId = typeof params.template === 'string' && templates.some((t) => t.id === params.template)
+      ? params.template : null;
+    const byCategory = !byId && typeof params.category === 'string'
+      ? (templates.find((t) => t.category === params.category && t.mode !== 'pooled')?.id
+          ?? templates.find((t) => t.category === params.category)?.id ?? null)
+      : null;
+    setPresetTemplateId(byId ?? byCategory);
+    setSheetVisible(true);
+  }, [params.create, params.template, params.category, templates]);
+  const paramCrew = useMemo(
+    () => (typeof params.crew === 'string' && params.crew.length > 0 ? params.crew.split(',') : null),
+    [params.crew],
+  );
 
   // Split by mode into tabs — either list can grow large, so they don't share a
   // scroll. "Solo" is reserved for genuinely-alone starts, so the parallel mode
@@ -146,6 +171,8 @@ export default function ChallengesScreen() {
               key={t.id}
               template={t}
               index={i}
+              crew={starter}
+              bonusConfig={bonusConfig}
               onPress={(tpl) => openCreate(tpl.id)}
             />
           ))
@@ -156,7 +183,7 @@ export default function ChallengesScreen() {
         visible={sheetVisible}
         templates={templates}
         initialTemplateId={presetTemplateId}
-        initialFriendIds={defaultCrew}
+        initialFriendIds={paramCrew ?? (defaultCrew.length > 0 ? defaultCrew : starter.map((f) => f.id))}
         friends={friends}
         search={search}
         sendRequest={sendRequest}
