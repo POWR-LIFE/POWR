@@ -1,9 +1,15 @@
-import { ACTIVITY_LIST, ACTIVITIES, type ActivityType } from '@/constants/activities';
-import { updateActivityPreferences } from '@/lib/api/user';
+import { ACTIVITIES, type ActivityType } from '@/constants/activities';
+import {
+  genericEntryForBucket,
+  toSelection,
+  type ActivitySelection,
+} from '@/constants/activityCatalog';
+import { updateActivitySelections } from '@/lib/api/user';
 import { useAuth } from '@/context/AuthContext';
 import { useHealthProviders } from '@/hooks/useHealthProviders';
-import { supportedActivitiesFor, type HealthProviderId } from '@/lib/health/providers';
+import { supportedActivitiesFor, WEARABLE_PROVIDERS, type HealthProviderId } from '@/lib/health/providers';
 import { ActivityIcon } from '@/components/ActivityIcon';
+import ActivityCatalogPicker from '@/components/ActivityCatalogPicker';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
@@ -17,15 +23,40 @@ const CARD_BG = 'rgba(40,40,40,0.85)';
 const BORDER = 'rgba(255,255,255,0.08)';
 const DIM = 'rgba(255,255,255,0.5)';
 const TEXT_COLOR = '#F2F2F2';
-const MAX_SELECTED = 3;
 
 // Gym is the core of POWR (geofence-verified) — always selected, never removable.
+// The user picks 2 specific catalog activities to go with it.
 const LOCKED: ActivityType = 'gym';
+const MAX_PICKS = 2;
 
-const ORDERED_ACTIVITIES = [
-  ACTIVITIES.gym,
-  ...ACTIVITY_LIST.filter(a => a.type !== 'gym' && !a.hideFromPicker),
-];
+/**
+ * Initial picks: prefer stored concrete selections; legacy bucket-only users
+ * (pre-catalog) get their buckets mapped to the closest catalog entry so the
+ * screen shows something sensible to edit.
+ */
+function initialSelections(meta: Record<string, any> | undefined): ActivitySelection[] {
+  const stored = meta?.activity_selections;
+  if (Array.isArray(stored) && stored.length > 0) {
+    const valid = stored.filter(
+      (s: any) =>
+        s &&
+        typeof s.slug === 'string' &&
+        typeof s.bucket === 'string' &&
+        typeof s.label === 'string' &&
+        s.label.length > 0,
+    );
+    if (valid.length > 0) return valid.slice(0, MAX_PICKS);
+  }
+  const buckets: ActivityType[] = meta?.activity_preferences ?? ['gym', 'running', 'walking'];
+  return buckets
+    .filter(b => b !== LOCKED)
+    .slice(0, MAX_PICKS)
+    .map(b => {
+      const entry = genericEntryForBucket(b);
+      return entry ? toSelection(entry) : null;
+    })
+    .filter((s): s is ActivitySelection => s !== null);
+}
 
 export default function ActivityPreferencesScreen() {
   const router = useRouter();
@@ -37,41 +68,29 @@ export default function ActivityPreferencesScreen() {
     () => providers.rows.filter(r => !!r.connection).map(r => r.meta.id),
     [providers.rows],
   );
-  const supported = useMemo(() => supportedActivitiesFor(connectedIds), [connectedIds]);
+  // Auto = phone baseline + connected-wearable capabilities. Native health is
+  // deliberately excluded — without a watch it can't produce sports/dance/swim
+  // workouts, so counting it would over-promise (see onboarding-activities).
+  const supported = useMemo(
+    () => supportedActivitiesFor(connectedIds.filter(id => WEARABLE_PROVIDERS.includes(id))),
+    [connectedIds],
+  );
 
-  // Guarantee gym is one of the (max 3) selected, even for users whose saved
-  // prefs predate the gym lock — keep gym + their first 2 other choices.
-  const [selected, setSelected] = useState<Set<ActivityType>>(() => {
-    const saved: ActivityType[] =
-      user?.user_metadata?.activity_preferences ?? ['gym', 'running', 'walking'];
-    const others = saved.filter(t => t !== LOCKED).slice(0, MAX_SELECTED - 1);
-    return new Set<ActivityType>([LOCKED, ...others]);
-  });
+  const [selections, setSelections] = useState<ActivitySelection[]>(
+    () => initialSelections(user?.user_metadata),
+  );
   const [saving, setSaving] = useState(false);
 
-  const toggleActivity = (type: ActivityType) => {
-    if (type === LOCKED) return; // gym is locked in — can't be deselected
-    setSelected(prev => {
-      const next = new Set(prev);
-      if (next.has(type)) {
-        next.delete(type);
-      } else if (next.size < MAX_SELECTED) {
-        next.add(type);
-      }
-      return next;
-    });
-  };
-
   const handleSave = async () => {
-    if (selected.size !== MAX_SELECTED) return;
+    if (selections.length !== MAX_PICKS) return;
     setSaving(true);
-    await updateActivityPreferences(Array.from(selected));
+    await updateActivitySelections(selections);
     setSaving(false);
     router.back();
   };
 
-  const canSave = selected.size === MAX_SELECTED;
-  const remaining = MAX_SELECTED - selected.size;
+  const canSave = selections.length === MAX_PICKS;
+  const remaining = MAX_PICKS - selections.length;
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -94,79 +113,39 @@ export default function ActivityPreferencesScreen() {
         </Text>
         <Text style={styles.body}>
           {connectedIds.length > 0
-            ? 'Gym stays locked in — pick 2 more. We\'ll auto-track what your wearable supports.'
-            : 'Gym stays locked in — pick 2 more. Most others need manual logging without a wearable.'}
+            ? 'Gym stays locked in — pick your 2. We\'ll auto-track what your devices support.'
+            : 'Gym stays locked in — pick your 2. Most others need manual logging without a wearable.'}
         </Text>
       </View>
 
-      {/* Grid */}
-      <View style={styles.gridWrap}>
+      {/* Picker */}
+      <View style={styles.listWrap}>
         <ScrollView
-          contentContainerStyle={styles.grid}
+          contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
         >
-        {ORDERED_ACTIVITIES.map(activity => {
-          const isLocked = activity.type === LOCKED;
-          const isActive = selected.has(activity.type);
-          const isAutoTracked = supported.has(activity.type);
-          const isDisabled = !isActive && selected.size >= MAX_SELECTED;
+          {/* Gym: locked in, full width — not one of the choices */}
+          <View style={styles.gymBanner}>
+            <View style={styles.gymBannerIcon}>
+              <ActivityIcon activity={ACTIVITIES[LOCKED]} size={20} color="#FFFFFF" active />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.gymBannerTitle}>Gym</Text>
+              <Text style={styles.gymBannerSub}>Geofence-verified check-ins — locked in</Text>
+            </View>
+            <View style={styles.lockCircle}>
+              <Ionicons name="lock-closed" size={12} color={GOLD} />
+            </View>
+          </View>
 
-          return (
-            <Pressable
-              key={activity.type}
-              style={[
-                styles.card,
-                isActive && styles.cardActive,
-                isLocked && styles.cardLocked,
-                isDisabled && styles.cardDisabled,
-                !isAutoTracked && !isActive && styles.cardManual,
-              ]}
-              onPress={() => toggleActivity(activity.type)}
-            >
-              <View style={styles.cardTop}>
-                <View style={[styles.iconWrap, isActive && styles.iconWrapActive]}>
-                  <ActivityIcon
-                    activity={activity}
-                    size={20}
-                    color={isActive ? GOLD : 'rgba(255,255,255,0.4)'}
-                    active={isActive}
-                  />
-                </View>
-                {isLocked ? (
-                  <View style={styles.lockCircle}>
-                    <Ionicons name="lock-closed" size={12} color={GOLD} />
-                  </View>
-                ) : (
-                  <View style={[styles.checkCircle, isActive && styles.checkCircleActive]}>
-                    {isActive && <Ionicons name="checkmark" size={13} color="#FFFFFF" />}
-                  </View>
-                )}
-              </View>
-
-              <Text style={[styles.cardLabel, isActive && styles.cardLabelActive]} numberOfLines={1}>
-                {activity.label}
-              </Text>
-
-              <View style={styles.badgeRow}>
-                <View style={[styles.ptsBadge, isActive && styles.ptsBadgeActive]}>
-                  <Text style={[styles.ptsText, isActive && styles.ptsTextActive]}>
-                    {activity.dailyCap} PTS
-                  </Text>
-                </View>
-                <View style={[styles.wearableBadge, isActive && styles.wearableBadgeActive]}>
-                  <Ionicons
-                    name={isAutoTracked ? 'flash-outline' : 'create-outline'}
-                    size={9}
-                    color={isActive ? GOLD : 'rgba(255,255,255,0.35)'}
-                  />
-                  <Text style={[styles.wearableText, isActive && styles.wearableTextActive]}>
-                    {isAutoTracked ? 'AUTO' : 'MANUAL'}
-                  </Text>
-                </View>
-              </View>
-            </Pressable>
-          );
-        })}
+          <ActivityCatalogPicker
+            selections={selections}
+            onChange={setSelections}
+            maxPicks={MAX_PICKS}
+            autoBuckets={supported}
+            onConnectWearable={() => router.push('/wearables')}
+          />
         </ScrollView>
       </View>
 
@@ -174,7 +153,7 @@ export default function ActivityPreferencesScreen() {
       <View style={[styles.bottom, { paddingBottom: insets.bottom + 24 }]}>
         {remaining > 0 && (
           <Text style={styles.hint}>
-            Select {remaining} more {remaining === 1 ? 'activity' : 'activities'}
+            Pick {remaining} more {remaining === 1 ? 'activity' : 'activities'}
           </Text>
         )}
         <Pressable
@@ -209,96 +188,49 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 16, fontWeight: '400', letterSpacing: 0.5, color: TEXT_COLOR },
   headerSpacer: { width: 36 },
 
-  intro: { paddingHorizontal: 28, marginBottom: 20 },
+  intro: { paddingHorizontal: 28, marginBottom: 16 },
   headline: { color: TEXT_COLOR, fontSize: 36, fontWeight: '200', letterSpacing: -1, lineHeight: 42, marginBottom: 8 },
   headlineGold: { color: GOLD, fontWeight: '700' },
   body: { color: 'rgba(255,255,255,0.4)', fontSize: 14, fontWeight: '300', lineHeight: 20 },
 
-  gridWrap: {
+  listWrap: {
     flex: 1,
   },
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-    gap: 10,
-    alignContent: 'flex-start',
+  listContent: {
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+    gap: 14,
   },
 
-  card: {
-    width: '47%',
-    backgroundColor: CARD_BG,
-    borderWidth: 1,
-    borderColor: 'rgba(232,210,0,0.15)',
-    borderRadius: 16,
+  gymBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
     padding: 14,
-    gap: 8,
-  },
-  cardActive: {
-    backgroundColor: 'transparent',
-    borderColor: 'rgba(255,255,255,0.6)',
-  },
-  cardLocked: {
-    borderColor: 'rgba(232,210,0,0.45)',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(232,210,0,0.35)',
     backgroundColor: 'rgba(232,210,0,0.05)',
   },
-  cardDisabled: { opacity: 0.35 },
-  cardManual: { opacity: 0.6 },
-
-  cardTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  gymBannerIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.08)',
     alignItems: 'center',
+    justifyContent: 'center',
   },
-
-  iconWrap: {
-    width: 36, height: 36, borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderWidth: 1, borderColor: 'rgba(232,210,0,0.30)',
-    alignItems: 'center', justifyContent: 'center',
+  gymBannerTitle: {
+    color: TEXT_COLOR,
+    fontSize: 14,
+    fontWeight: '600',
+    letterSpacing: -0.2,
   },
-  iconWrapActive: {
-    backgroundColor: 'transparent',
-    borderColor: 'rgba(255,255,255,0.8)',
-  },
-
-  cardLabel: { color: 'rgba(255,255,255,0.5)', fontSize: 14, fontWeight: '600', letterSpacing: -0.2 },
-  cardLabelActive: { color: TEXT_COLOR },
-
-  badgeRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-
-  ptsBadge: {
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2,
-  },
-  ptsBadgeActive: {
-    backgroundColor: 'rgba(232,210,0,0.12)',
-    borderWidth: 1, borderColor: 'rgba(232,210,0,0.25)',
-  },
-  ptsText: { fontSize: 9, fontWeight: '700', letterSpacing: 0.5, color: 'rgba(255,255,255,0.25)' },
-  ptsTextActive: { color: GOLD },
-
-  wearableBadge: {
-    flexDirection: 'row', alignItems: 'center', gap: 3,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2,
-  },
-  wearableBadgeActive: {
-    backgroundColor: 'rgba(232,210,0,0.12)',
-    borderWidth: 1, borderColor: 'rgba(232,210,0,0.25)',
-  },
-  wearableText: { fontSize: 8, fontWeight: '700', letterSpacing: 0.5, color: 'rgba(255,255,255,0.35)' },
-  wearableTextActive: { color: GOLD },
-
-  checkCircle: {
-    width: 24, height: 24, borderRadius: 12,
-    borderWidth: 1.5, borderColor: 'rgba(232,210,0,0.25)',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  checkCircleActive: {
-    backgroundColor: 'transparent',
-    borderColor: 'rgba(255,255,255,0.8)',
+  gymBannerSub: {
+    color: 'rgba(255,255,255,0.4)',
+    fontSize: 11,
+    fontWeight: '300',
+    marginTop: 1,
   },
   lockCircle: {
     width: 24, height: 24, borderRadius: 12,

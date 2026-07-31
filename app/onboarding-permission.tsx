@@ -5,8 +5,8 @@ import { ONBOARDING_DOT_COUNT, dotIndexFor } from '@/lib/onboarding/flow';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
-import { Alert, Animated, Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Alert, Animated, AppState, Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const GOLD = '#E8D200';
@@ -62,6 +62,12 @@ export default function OnboardingPermissionScreen() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
     const [requesting, setRequesting] = useState(false);
+    // 'denied' = the OS dialog is burned (denied with canAskAgain false) — the
+    // CTA has to deep-link to system settings instead of re-firing the dialog.
+    const [mode, setMode] = useState<'ask' | 'denied'>('ask');
+    // The escape link stays hidden until an ask has actually failed — untouched
+    // users see no way past this screen except the permission dialog.
+    const [attempted, setAttempted] = useState(false);
 
     const contentFade = useRef(new Animated.Value(0)).current;
     const buttonsFade = useRef(new Animated.Value(0)).current;
@@ -72,14 +78,17 @@ export default function OnboardingPermissionScreen() {
             // Award the one-time signup bonus (idempotent — server deduplicates per user)
             awardBonus('signup').catch(() => {});
 
-            const { status } = await Location.getForegroundPermissionsAsync();
-            if (status === 'granted') {
+            const fg = await Location.getForegroundPermissionsAsync();
+            if (fg.status === 'granted') {
                 // Award bonus idempotently (server deduplicates) and advance —
                 // straight past the background page if that's already granted too.
                 awardBonus('location_permission').catch(() => {});
                 const { status: bg } = await Location.getBackgroundPermissionsAsync();
                 router.replace(bg === 'granted' ? SKIP_SCREEN : NEXT_SCREEN);
                 return;
+            }
+            if (fg.status === 'denied' && fg.canAskAgain === false) {
+                setMode('denied');
             }
             // Permission not yet granted — show the screen
             Animated.sequence([
@@ -92,15 +101,33 @@ export default function OnboardingPermissionScreen() {
 
     // Award the bonus (fire-and-forget; idempotent on server) and move to the
     // background-location priming page.
-    const finishGrant = () => {
+    const finishGrant = useCallback(() => {
         awardBonus('location_permission').catch((e) =>
             console.warn('Failed to award location bonus', e)
         );
         router.push(NEXT_SCREEN);
-    };
+    }, [router]);
+
+    // Denied mode sends the user to system settings; when they come back with
+    // location granted, award the bonus and move along.
+    useEffect(() => {
+        if (mode !== 'denied') return;
+        const sub = AppState.addEventListener('change', async (next) => {
+            if (next !== 'active') return;
+            const { status } = await Location.getForegroundPermissionsAsync();
+            if (status === 'granted') finishGrant();
+        });
+        return () => sub.remove();
+    }, [mode, finishGrant]);
 
     const handleAllowLocation = async () => {
         if (requesting) return;
+        if (mode === 'denied') {
+            // The real dialog can't fire — the AppState listener above advances
+            // once the user returns from settings with location granted.
+            Linking.openSettings();
+            return;
+        }
         setRequesting(true);
 
         try {
@@ -109,14 +136,10 @@ export default function OnboardingPermissionScreen() {
             const res = await Location.requestForegroundPermissionsAsync();
 
             if (res.status !== 'granted') {
-                Alert.alert(
-                    'Location Required',
-                    'To earn while you move, POWR needs location access. You can also skip for now.',
-                    [
-                        { text: 'Cancel', style: 'cancel', onPress: () => setRequesting(false) },
-                        { text: 'Skip', onPress: () => router.push(SKIP_SCREEN) }
-                    ]
-                );
+                // Stay on the page — the escape link is visible now, and if the
+                // dialog is burned the CTA flips to OPEN SETTINGS.
+                setAttempted(true);
+                if (res.canAskAgain === false) setMode('denied');
                 return;
             }
 
@@ -152,7 +175,7 @@ export default function OnboardingPermissionScreen() {
             finishGrant();
         } catch (error) {
             console.error('Error requesting location permission:', error);
-            router.push(SKIP_SCREEN);
+            setAttempted(true);
         } finally {
             setRequesting(false);
         }
@@ -205,7 +228,11 @@ export default function OnboardingPermissionScreen() {
                     disabled={requesting}
                 >
                     <Text style={styles.primaryLabel}>
-                        {requesting ? 'REQUESTING...' : Platform.OS === 'ios' ? 'ALLOW WHILE USING' : 'ALLOW LOCATION'}
+                        {requesting
+                            ? 'REQUESTING...'
+                            : mode === 'denied'
+                              ? 'OPEN SETTINGS'
+                              : Platform.OS === 'ios' ? 'ALLOW WHILE USING' : 'ALLOW LOCATION'}
                     </Text>
                     {!requesting && (
                         <View style={styles.bonusBadge}>
@@ -214,12 +241,14 @@ export default function OnboardingPermissionScreen() {
                     )}
                 </Pressable>
 
-                <Pressable
-                    style={styles.skipButton}
-                    onPress={() => router.push(SKIP_SCREEN)}
-                >
-                    <Text style={styles.skipLabel}>Skip for now</Text>
-                </Pressable>
+                {(attempted || mode === 'denied') && (
+                    <Pressable
+                        style={styles.skipButton}
+                        onPress={() => router.push(SKIP_SCREEN)}
+                    >
+                        <Text style={styles.skipLabel}>Continue without location</Text>
+                    </Pressable>
+                )}
             </Animated.View>
         </View>
     );

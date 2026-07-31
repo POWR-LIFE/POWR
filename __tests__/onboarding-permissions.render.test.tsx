@@ -11,7 +11,7 @@
 
 import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import React from 'react';
-import { Animated, Linking } from 'react-native';
+import { Alert, Animated, Linking } from 'react-native';
 
 // RN's Easing.bezier is broken under jest in this repo (`_bezier is not a
 // function` the moment any timing animation starts), so neutralise the Animated
@@ -129,12 +129,36 @@ describe('OnboardingPermissionScreen (foreground location)', () => {
         expect(awardBonus).toHaveBeenCalledWith('location_permission');
     });
 
-    it('skips past both location pages straight to the gym step', async () => {
+    it('hides the escape until an ask fails, then continues straight to gym', async () => {
+        asMock(Location.requestForegroundPermissionsAsync).mockResolvedValue({
+            status: 'denied',
+            canAskAgain: true,
+        });
         render(<OnboardingPermissionScreen />);
         await waitFor(() => expect(Location.getForegroundPermissionsAsync).toHaveBeenCalled());
 
-        fireEvent.press(screen.getByText('Skip for now'));
+        // No skip affordance before an attempt — the dialog is the only way on.
+        expect(screen.queryByText(/Skip|Continue without/)).toBeNull();
+
+        fireEvent.press(screen.getByText('ALLOW WHILE USING'));
+        fireEvent.press(await screen.findByText('Continue without location'));
         expect(mockRouter.push).toHaveBeenCalledWith('/onboarding-gym');
+    });
+
+    it('flips the CTA to Settings when the dialog is burned, and shows the escape', async () => {
+        asMock(Location.getForegroundPermissionsAsync).mockResolvedValue({
+            status: 'denied',
+            canAskAgain: false,
+        });
+        const openSettings = jest.spyOn(Linking, 'openSettings').mockResolvedValue();
+
+        render(<OnboardingPermissionScreen />);
+        fireEvent.press(await screen.findByText('OPEN SETTINGS'));
+
+        await waitFor(() => expect(openSettings).toHaveBeenCalled());
+        expect(Location.requestForegroundPermissionsAsync).not.toHaveBeenCalled();
+        expect(screen.getByText('Continue without location')).toBeTruthy();
+        openSettings.mockRestore();
     });
 
     it('auto-forwards when foreground is already granted: to background page, or gym if that is granted too', async () => {
@@ -175,13 +199,25 @@ describe('OnboardingPermissionBackgroundScreen ("all the time")', () => {
         await waitFor(() => expect(mockRouter.replace).toHaveBeenCalledWith('/onboarding-gym'));
     });
 
-    it('is skippable without touching the OS request', async () => {
+    it('shows no skip affordance before an ask — the OS flow is the only way on', async () => {
         render(<OnboardingPermissionBackgroundScreen />);
         await waitFor(() => expect(Location.getBackgroundPermissionsAsync).toHaveBeenCalled());
 
-        fireEvent.press(screen.getByText('Skip for now'));
-        expect(mockRouter.push).toHaveBeenCalledWith('/onboarding-gym');
+        expect(screen.queryByText(/Skip|Continue without/)).toBeNull();
         expect(Location.requestBackgroundPermissionsAsync).not.toHaveBeenCalled();
+    });
+
+    it('on iOS deny, offers the Later/Settings alert instead of an inline skip', async () => {
+        asMock(Location.requestBackgroundPermissionsAsync).mockResolvedValue({ status: 'denied' });
+        const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+
+        render(<OnboardingPermissionBackgroundScreen />);
+        await waitFor(() => expect(Location.getBackgroundPermissionsAsync).toHaveBeenCalled());
+
+        fireEvent.press(screen.getByText('SET TO ALWAYS'));
+        await waitFor(() => expect(alertSpy).toHaveBeenCalled());
+        expect(mockRouter.push).not.toHaveBeenCalled();
+        alertSpy.mockRestore();
     });
 });
 
@@ -212,14 +248,22 @@ describe('OnboardingNotificationsScreen', () => {
         expect(mockRequestPermissions).toHaveBeenCalled();
     });
 
-    it('still advances when the user denies the OS dialog, and starts the re-ask cool-off', async () => {
+    it('stays put on deny, starts the re-ask cool-off and reveals the escape', async () => {
+        mockParams = { activeDays: '4' };
         mockRequestPermissions.mockResolvedValue(false);
         render(<OnboardingNotificationsScreen />);
         await waitFor(() => expect(Notifications.getPermissionsAsync).toHaveBeenCalled());
 
         fireEvent.press(screen.getByText('ENABLE ALERTS'));
-        await waitFor(() => expect(mockRouter.push).toHaveBeenCalled());
-        expect(recordOnboardingDeclined).toHaveBeenCalled();
+        await waitFor(() => expect(recordOnboardingDeclined).toHaveBeenCalled());
+        expect(mockRouter.push).not.toHaveBeenCalled();
+
+        // The escape forwards health-sync params untouched.
+        fireEvent.press(await screen.findByText('Continue without alerts'));
+        expect(mockRouter.push).toHaveBeenCalledWith({
+            pathname: '/onboarding-achievement',
+            params: { activeDays: '4' },
+        });
     });
 
     it('auto-forwards (and still registers the token) when permission is already granted', async () => {
@@ -247,23 +291,19 @@ describe('OnboardingNotificationsScreen', () => {
 
         await waitFor(() => expect(openSettings).toHaveBeenCalled());
         // Never tries the dead OS dialog; the user has to come back from
-        // settings (AppState listener) or skip.
+        // settings (AppState listener) or take the escape, which is visible
+        // in denied mode.
         expect(mockRequestPermissions).not.toHaveBeenCalled();
         expect(mockRouter.push).not.toHaveBeenCalled();
+        expect(screen.getByText('Continue without alerts')).toBeTruthy();
         openSettings.mockRestore();
     });
 
-    it('is skippable, forwards params untouched and records the decline for the re-ask', async () => {
-        mockParams = { activeDays: '4' };
+    it('hides the skip affordance until an ask fails', async () => {
         render(<OnboardingNotificationsScreen />);
         await waitFor(() => expect(Notifications.getPermissionsAsync).toHaveBeenCalled());
 
-        fireEvent.press(screen.getByText('Skip for now'));
-        expect(mockRouter.push).toHaveBeenCalledWith({
-            pathname: '/onboarding-achievement',
-            params: { activeDays: '4' },
-        });
+        expect(screen.queryByText(/Skip|Continue without/)).toBeNull();
         expect(mockRequestPermissions).not.toHaveBeenCalled();
-        expect(recordOnboardingDeclined).toHaveBeenCalled();
     });
 });

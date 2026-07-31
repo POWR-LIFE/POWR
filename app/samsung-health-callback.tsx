@@ -77,7 +77,7 @@ export default function SamsungHealthCallback() {
             setStatus('success');
             const returnTo = await SecureStore.getItemAsync('oauth.returnTo');
             await SecureStore.deleteItemAsync('oauth.returnTo');
-            setTimeout(() => router.replace(returnTo === 'settings' ? '/settings-screen' : '/onboarding-health'), 600);
+            setTimeout(() => router.replace(returnTo === 'settings' ? '/settings-screen' : '/onboarding-wearables'), 600);
         })();
     }, [code, state, error]);
 

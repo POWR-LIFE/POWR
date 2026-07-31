@@ -1,47 +1,49 @@
-import { ACTIVITY_LIST, ACTIVITIES, type ActivityType } from '@/constants/activities';
-import { updateActivityPreferences } from '@/lib/api/user';
+import { ACTIVITIES, type ActivityType } from '@/constants/activities';
+import { type ActivitySelection } from '@/constants/activityCatalog';
+import { updateActivitySelections } from '@/lib/api/user';
 import { ActivityIcon } from '@/components/ActivityIcon';
+import ActivityCatalogPicker from '@/components/ActivityCatalogPicker';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import GeometricBackground from '@/components/GeometricBackground';
 import { useHealthProviders } from '@/hooks/useHealthProviders';
-import { supportedActivitiesFor, type HealthProviderId } from '@/lib/health/providers';
+import { supportedActivitiesFor, WEARABLE_PROVIDERS, type HealthProviderId } from '@/lib/health/providers';
 
 const GOLD = '#E8D200';
 const BG = '#0d0d0d';
-const CARD_BG = 'rgba(40,40,40,0.85)';
-const MAX_SELECTED = 3;
 const FONT_LIGHT = 'Outfit_300Light';
-const FONT_MEDIUM = 'Outfit_500Medium';
 const FONT_SEMIBOLD = 'Outfit_600SemiBold';
 const FONT_BOLD = 'Outfit_700Bold';
 
-// Activities in display order: gym first (highest scoring), then walk → cycle → run, then the rest
-const PINNED: ActivityType[] = ['gym', 'walking', 'cycling', 'running'];
-const ORDERED_ACTIVITIES = [
-  ...PINNED.map(t => ACTIVITIES[t]),
-  ...ACTIVITY_LIST.filter(a => !PINNED.includes(a.type) && !a.hideFromPicker),
-];
-
 // Gym is the core of POWR (geofence-verified check-ins) — it's always selected
-// and cannot be deselected. The user picks the remaining 2 of 3 slots.
+// and cannot be deselected. It renders as a full-width locked banner above the
+// picker; the user picks 2 specific activities (Padel, Boxing, Zumba…) from
+// the catalog, each mapping to a scoring bucket under the hood.
 const LOCKED: ActivityType = 'gym';
+const MAX_PICKS = 2;
 
 export default function OnboardingActivitiesScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ streakDays?: string; totalSessions?: string; activeDays?: string }>();
   const providers = useHealthProviders();
-  const [selected, setSelected] = useState<Set<ActivityType>>(new Set([LOCKED]));
+  const [selections, setSelections] = useState<ActivitySelection[]>([]);
 
   const connectedIds = useMemo<HealthProviderId[]>(
     () => providers.rows.filter(r => !!r.connection).map(r => r.meta.id),
     [providers.rows],
   );
-  const supported = useMemo(() => supportedActivitiesFor(connectedIds), [connectedIds]);
+  // Honest trackability: auto = the phone baseline + what a connected WEARABLE
+  // covers. Native health alone is deliberately excluded — Apple Health / Health
+  // Connect only contain sports/dance/swim workouts when a watch (or another
+  // app) writes them, so counting native as "tracks everything" would wrongly
+  // promise auto-tracking to phone-only users.
+  const supported = useMemo(
+    () => supportedActivitiesFor(connectedIds.filter(id => WEARABLE_PROVIDERS.includes(id))),
+    [connectedIds],
+  );
 
   const headerFade = useRef(new Animated.Value(0)).current;
   const listFade = useRef(new Animated.Value(0)).current;
@@ -55,35 +57,15 @@ export default function OnboardingActivitiesScreen() {
     ]).start();
   }, []);
 
-  const toggleActivity = (type: ActivityType) => {
-    if (type === LOCKED) return; // gym is locked in — can't be deselected
-    setSelected(prev => {
-      const next = new Set(prev);
-      if (next.has(type)) {
-        next.delete(type);
-      } else if (next.size < MAX_SELECTED) {
-        next.add(type);
-      }
-      return next;
-    });
-  };
-
   const handleContinue = () => {
     // Persist in the background — the next screen doesn't read preferences, so
-    // don't block the transition on 3 sequential network round-trips.
-    updateActivityPreferences(Array.from(selected)).catch(() => {});
-    router.push({
-      pathname: '/onboarding-notifications',
-      params: {
-        ...(params.streakDays ? { streakDays: params.streakDays } : {}),
-        ...(params.totalSessions ? { totalSessions: params.totalSessions } : {}),
-        ...(params.activeDays ? { activeDays: params.activeDays } : {}),
-      },
-    });
+    // don't block the transition on the network round-trips.
+    updateActivitySelections(selections).catch(() => {});
+    router.push('/onboarding-health');
   };
 
-  const canContinue = selected.size === MAX_SELECTED;
-  const remaining = MAX_SELECTED - selected.size;
+  const canContinue = selections.length === MAX_PICKS;
+  const remaining = MAX_PICKS - selections.length;
 
   return (
     <View style={styles.container}>
@@ -95,7 +77,7 @@ export default function OnboardingActivitiesScreen() {
             if (router.canGoBack()) {
               router.back();
             } else {
-              router.replace('/onboarding-health');
+              router.replace('/onboarding-wearables');
             }
           }}
           hitSlop={24}
@@ -104,90 +86,47 @@ export default function OnboardingActivitiesScreen() {
         </Pressable>
 
       <Animated.View style={[styles.header, { paddingTop: insets.top + 56, opacity: headerFade }]}>
-        <Text style={styles.eyebrow}>STEP 4 OF 5</Text>
+        <Text style={styles.eyebrow}>NEARLY THERE</Text>
         <Text style={styles.headline}>Pick your movements</Text>
         <Text style={styles.subhead}>
-          Gym stays locked in — it's how POWR verifies you were there. Pick 2 more.
+          Gym is your core — pick the 2 other ways you actually move.
         </Text>
       </Animated.View>
 
-      <Animated.View style={[styles.gridWrap, { opacity: listFade }]}>
+      <Animated.View style={[styles.listWrap, { opacity: listFade }]}>
         <ScrollView
-          contentContainerStyle={styles.grid}
+          contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
         >
-        {ORDERED_ACTIVITIES.map(activity => {
-          const isLocked = activity.type === LOCKED;
-          const isActive = selected.has(activity.type);
-          const isAutoTracked = supported.has(activity.type);
-          const isDisabled = !isActive && selected.size >= MAX_SELECTED;
+          {/* Gym: locked in, full width — not one of the choices */}
+          <View style={styles.gymBanner}>
+            <View style={styles.gymBannerIcon}>
+              <ActivityIcon activity={ACTIVITIES[LOCKED]} size={20} color="#FFFFFF" active />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.gymBannerTitle}>Gym</Text>
+              <Text style={styles.gymBannerSub}>Geofence-verified check-ins — locked in</Text>
+            </View>
+            <View style={styles.lockCircle}>
+              <Ionicons name="lock-closed" size={12} color={GOLD} />
+            </View>
+          </View>
 
-          return (
-            <Pressable
-              key={activity.type}
-              style={[
-                styles.card,
-                isActive && styles.cardActive,
-                isLocked && styles.cardLocked,
-                isDisabled && styles.cardDisabled,
-                !isAutoTracked && !isActive && styles.cardManual,
-              ]}
-              onPress={() => toggleActivity(activity.type)}
-            >
-              {/* Top row: icon + check (or lock for gym) */}
-              <View style={styles.cardTop}>
-                <View style={[styles.iconWrap, isActive && styles.iconWrapActive]}>
-                  <ActivityIcon
-                    activity={activity}
-                    size={20}
-                    color={isActive ? '#FFFFFF' : 'rgba(255,255,255,0.4)'}
-                    active={isActive}
-                  />
-                </View>
-                {isLocked ? (
-                  <View style={styles.lockCircle}>
-                    <Ionicons name="lock-closed" size={12} color={GOLD} />
-                  </View>
-                ) : (
-                  <View style={[styles.checkCircle, isActive && styles.checkCircleActive]}>
-                    {isActive && <Ionicons name="checkmark" size={13} color="#FFFFFF" />}
-                  </View>
-                )}
-              </View>
-
-              {/* Label */}
-              <Text style={[styles.cardLabel, isActive && styles.cardLabelActive]} numberOfLines={1}>
-                {activity.label}
-              </Text>
-
-              {/* Badges */}
-              <View style={styles.badgeRow}>
-                <View style={[styles.ptsBadge, isActive && styles.ptsBadgeActive]}>
-                  <Text style={[styles.ptsText, isActive && styles.ptsTextActive]}>
-                    {activity.dailyCap} PTS
-                  </Text>
-                </View>
-                <View style={[styles.wearableBadge, isActive && styles.wearableBadgeActive]}>
-                  <Ionicons
-                    name={isAutoTracked ? 'flash-outline' : 'create-outline'}
-                    size={9}
-                    color={isActive ? GOLD : 'rgba(255,255,255,0.35)'}
-                  />
-                  <Text style={[styles.wearableText, isActive && styles.wearableTextActive]}>
-                    {isAutoTracked ? 'AUTO' : 'MANUAL'}
-                  </Text>
-                </View>
-              </View>
-            </Pressable>
-          );
-        })}
+          <ActivityCatalogPicker
+            selections={selections}
+            onChange={setSelections}
+            maxPicks={MAX_PICKS}
+            autoBuckets={supported}
+            onConnectWearable={() => router.push('/onboarding-wearables')}
+          />
         </ScrollView>
       </Animated.View>
 
       <Animated.View style={[styles.bottom, { paddingBottom: insets.bottom + 24, opacity: buttonFade }]}>
         {remaining > 0 && (
           <Text style={styles.hint}>
-            Select {remaining} more {remaining === 1 ? 'activity' : 'activities'}
+            Pick {remaining} more {remaining === 1 ? 'activity' : 'activities'}
           </Text>
         )}
         <Pressable
@@ -208,135 +147,51 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: BG },
   backButton: { position: 'absolute', left: 16, zIndex: 20, padding: 4 },
 
-  header: { paddingHorizontal: 28, marginBottom: 20 },
+  header: { paddingHorizontal: 28, marginBottom: 16 },
   eyebrow: { color: 'rgba(255,255,255,0.22)', fontSize: 10, fontWeight: '600', letterSpacing: 2.5, marginBottom: 6 },
   headline: { color: '#F2F2F2', fontSize: 36, fontFamily: FONT_LIGHT, fontWeight: '200', letterSpacing: -1, lineHeight: 42, marginBottom: 8 },
-  headlineGold: { color: GOLD, fontWeight: '700' },
   subhead: { color: 'rgba(255,255,255,0.4)', fontSize: 13, fontFamily: FONT_LIGHT, fontWeight: '300', lineHeight: 18 },
-  body: { color: 'rgba(255,255,255,0.4)', fontSize: 14, fontWeight: '300', lineHeight: 20 },
 
-  gridWrap: {
+  listWrap: {
     flex: 1,
   },
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-    gap: 10,
-    alignContent: 'flex-start',
+  listContent: {
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+    gap: 14,
   },
 
-  card: {
-    width: '47%',
-    backgroundColor: CARD_BG,
-    borderWidth: 0,
-    borderColor: 'transparent',
-    borderRadius: 16,
+  gymBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
     padding: 14,
-    gap: 8,
-  },
-  cardActive: {
-    backgroundColor: 'rgba(255,255,255,0.03)',
-  },
-  cardLocked: {
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: 'rgba(232,210,0,0.35)',
     backgroundColor: 'rgba(232,210,0,0.05)',
   },
-  cardDisabled: {
-    opacity: 0.35,
-  },
-  cardManual: {
-    opacity: 0.6,
-  },
-
-  cardTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-
-  iconWrap: {
+  gymBannerIcon: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: 'rgba(255,255,255,0.08)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  iconWrapActive: {
-    backgroundColor: 'transparent',
-  },
-
-  cardLabel: {
-    color: 'rgba(255,255,255,0.5)',
+  gymBannerTitle: {
+    color: '#F2F2F2',
     fontSize: 14,
     fontFamily: FONT_SEMIBOLD,
     fontWeight: '600',
     letterSpacing: -0.2,
   },
-  cardLabelActive: {
-    color: '#F2F2F2',
-  },
-
-  badgeRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-
-  ptsBadge: {
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderRadius: 4,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-  },
-  ptsBadgeActive: {
-    backgroundColor: 'rgba(255,255,255,0.10)',
-  },
-  ptsText: {
-    fontSize: 9,
-    fontFamily: FONT_BOLD,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-    color: 'rgba(255,255,255,0.35)',
-  },
-  ptsTextActive: {
-    color: 'rgba(255,255,255,0.75)',
-  },
-
-  wearableBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderRadius: 4,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-  },
-  wearableBadgeActive: {
-    backgroundColor: 'rgba(255,255,255,0.10)',
-  },
-  wearableText: {
-    fontSize: 8,
-    fontFamily: FONT_BOLD,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-    color: 'rgba(255,255,255,0.35)',
-  },
-  wearableTextActive: {
-    color: 'rgba(255,255,255,0.75)',
-  },
-
-  checkCircle: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.25)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  checkCircleActive: {
-    backgroundColor: 'transparent',
-    borderColor: 'rgba(255,255,255,0.8)',
+  gymBannerSub: {
+    color: 'rgba(255,255,255,0.4)',
+    fontSize: 11,
+    fontFamily: FONT_LIGHT,
+    fontWeight: '300',
+    marginTop: 1,
   },
   lockCircle: {
     width: 24,

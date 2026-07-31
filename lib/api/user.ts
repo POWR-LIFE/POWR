@@ -240,6 +240,44 @@ export async function updateActivityPreferences(
 }
 
 /**
+ * Persists the user's concrete activity picks (Padel, Boxing…) AND the derived
+ * scoring buckets, keeping every legacy consumer of activity_preferences
+ * working. Gym is always prepended to the buckets (it's the locked slot).
+ */
+export async function updateActivitySelections(
+    selections: { slug: string; label: string; bucket: string }[]
+): Promise<{ error: string | null }> {
+    const user = await getSessionUser();
+    if (!user) return { error: 'Not authenticated' };
+
+    // Normalise before persisting: exactly {slug,label,bucket} per entry (no
+    // extra fields into user_metadata), drop anything malformed.
+    const clean = selections
+        .filter(s =>
+            s &&
+            typeof s.slug === 'string' && s.slug.length > 0 &&
+            typeof s.label === 'string' && s.label.length > 0 &&
+            typeof s.bucket === 'string' && s.bucket.length > 0)
+        .map(s => ({ slug: s.slug, label: s.label, bucket: s.bucket }));
+
+    const buckets = ['gym', ...clean.map(s => s.bucket)]
+        .filter((b, i, arr) => arr.indexOf(b) === i);
+
+    const { error: dbError } = await supabase
+        .from('profiles')
+        .update({ activity_preferences: buckets, activity_selections: clean })
+        .eq('id', user.id);
+    if (dbError) return { error: dbError.message };
+
+    const { error: authError } = await supabase.auth.updateUser({
+        data: { activity_preferences: buckets, activity_selections: clean },
+    });
+    if (authError) return { error: authError.message };
+
+    return { error: null };
+}
+
+/**
  * Uploads a local file URI to Supabase Storage under avatars/<userId>/<timestamp>.jpg
  * and returns the public URL, or an error string.
  *

@@ -64,6 +64,10 @@ export default function OnboardingPermissionBackgroundScreen() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
     const [requesting, setRequesting] = useState(false);
+    // The escape link stays hidden until an ask has actually failed — untouched
+    // users see no way past this screen except granting "Always". (iOS deny is
+    // handled by the Later/Open Settings alert in handleAllowBackground.)
+    const [attempted, setAttempted] = useState(false);
 
     const contentFade = useRef(new Animated.Value(0)).current;
     const buttonsFade = useRef(new Animated.Value(0)).current;
@@ -124,37 +128,44 @@ export default function OnboardingPermissionBackgroundScreen() {
                 console.warn('Background permission request failed', e);
             }
 
-            // iOS: if "Always" wasn't granted, guide the user to fix it in Settings.
-            // Without "Always", iOS won't wake the app for geofence events when it's
-            // killed — the "You're in" notification will never fire.
-            if (Platform.OS === 'ios' && !bgGranted) {
-                Alert.alert(
-                    'Enable "Always" for gym check-ins',
-                    'To detect gym arrivals when POWR is closed, set location to "Always" in Settings › Privacy & Security › Location Services › POWR.',
-                    [
-                        {
-                            text: 'Later',
-                            onPress: () => {
-                                recordLocationOnboardingDeclined().catch(() => {});
-                                router.push(NEXT_SCREEN);
+            if (!bgGranted) {
+                // iOS: if "Always" wasn't granted, guide the user to fix it in Settings.
+                // Without "Always", iOS won't wake the app for geofence events when it's
+                // killed — the "You're in" notification will never fire.
+                if (Platform.OS === 'ios') {
+                    Alert.alert(
+                        'Enable "Always" for gym check-ins',
+                        'To detect gym arrivals when POWR is closed, set location to "Always" in Settings › Privacy & Security › Location Services › POWR.',
+                        [
+                            {
+                                text: 'Later',
+                                onPress: () => {
+                                    recordLocationOnboardingDeclined().catch(() => {});
+                                    router.push(NEXT_SCREEN);
+                                },
                             },
-                        },
-                        {
-                            text: 'Open Settings',
-                            onPress: () => {
-                                Linking.openSettings();
-                                router.push(NEXT_SCREEN);
+                            {
+                                text: 'Open Settings',
+                                onPress: () => {
+                                    Linking.openSettings();
+                                    router.push(NEXT_SCREEN);
+                                },
                             },
-                        },
-                    ],
-                );
+                        ],
+                    );
+                    return;
+                }
+                // Android: came back from the settings radio list without picking
+                // "Allow all the time" — stay on the page; the CTA re-opens the
+                // list and the escape link is visible now.
+                setAttempted(true);
                 return;
             }
 
             await continueViaBatteryPrompt();
         } catch (error) {
             console.error('Error requesting background location:', error);
-            router.push(NEXT_SCREEN);
+            setAttempted(true);
         } finally {
             setRequesting(false);
         }
@@ -219,15 +230,17 @@ export default function OnboardingPermissionBackgroundScreen() {
                     </Text>
                 </Pressable>
 
-                <Pressable
-                    style={styles.skipButton}
-                    onPress={() => {
-                        recordLocationOnboardingDeclined().catch(() => {});
-                        router.push(NEXT_SCREEN);
-                    }}
-                >
-                    <Text style={styles.skipLabel}>Skip for now</Text>
-                </Pressable>
+                {attempted && (
+                    <Pressable
+                        style={styles.skipButton}
+                        onPress={() => {
+                            recordLocationOnboardingDeclined().catch(() => {});
+                            router.push(NEXT_SCREEN);
+                        }}
+                    >
+                        <Text style={styles.skipLabel}>Continue without allowing</Text>
+                    </Pressable>
+                )}
             </Animated.View>
         </View>
     );
