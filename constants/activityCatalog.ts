@@ -18,7 +18,7 @@
 import { type ActivityType } from './activities';
 
 export interface CatalogActivity {
-    /** Stable id, snake/kebab-free lowercase. Never rename once shipped. */
+    /** Stable lowercase id (hyphens allowed, no spaces). Never rename once shipped. */
     slug: string;
     label: string;
     /** The scoring bucket this activity counts as. */
