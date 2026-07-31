@@ -52,10 +52,14 @@ export function LiveEventCard() {
     const media = event.promo_media_url;
     const videoUrl = isVideoUrl(media) ? media : null;
     const imageUrl = videoUrl ? null : media;
-    const logoUri = storageImage(event.venue?.logo_url, 512, 512);
-    // Promo-page convention: only logos marked 'dark' sit on the artwork raw;
-    // everything else gets a white chip so light-on-transparent marks survive.
-    const chipLogo = !!logoUri && event.venue?.logo_bg !== 'dark';
+    // Identity mark: per-event upload wins, then the venue partner's logo,
+    // then the bundled POWR wordmark — the card never goes markless.
+    const uploadedLogo = storageImage(event.logo_url, 512, 512);
+    const logoUri = uploadedLogo ?? storageImage(event.venue?.logo_url, 512, 512);
+    // Promo-page convention: only venue logos marked 'dark' sit on the artwork
+    // raw; everything else gets a white chip so any mark survives. Uploads are
+    // always chipped (no bg metadata); the white POWR wordmark sits raw.
+    const chipLogo = !!logoUri && (!!uploadedLogo || event.venue?.logo_bg !== 'dark');
 
     return (
         <>
@@ -93,11 +97,13 @@ export function LiveEventCard() {
                         </View>
 
                         <View style={styles.bottomSection}>
-                            {logoUri && (
-                                <View style={[styles.logoWrap, chipLogo && styles.logoChip]}>
-                                    <ExpoImage source={{ uri: logoUri }} style={styles.logoImage} contentFit="contain" />
-                                </View>
-                            )}
+                            <View style={[styles.logoWrap, chipLogo && styles.logoChip]}>
+                                <ExpoImage
+                                    source={logoUri ? { uri: logoUri } : require('@/assets/images/powrlogotext.png')}
+                                    style={logoUri ? styles.logoImage : styles.powrLogo}
+                                    contentFit="contain"
+                                />
+                            </View>
 
                             <Text style={styles.name} numberOfLines={1}>{event.name}</Text>
 
@@ -185,6 +191,14 @@ const styles = StyleSheet.create({
     logoImage: {
         width: 76,
         height: 34,
+    },
+    // The bundled wordmark is a square canvas with its own padding — the chip
+    // dimensions would shrink it to a speck, so it gets a square box instead.
+    powrLogo: {
+        width: 46,
+        height: 46,
+        marginBottom: -8,
+        marginLeft: -6,
     },
     name: {
         fontSize: 26,

@@ -65,6 +65,7 @@ const fmtDT = (iso) => iso
 const editableFields = (ev) => ({
     name: ev.name,
     slug: ev.slug,
+    logo_url: ev.logo_url,
     venue_partner_id: ev.venue_partner_id,
     window_start_at: ev.window_start_at,
     window_end_at: ev.window_end_at,
@@ -1276,6 +1277,9 @@ function EditorPanel({ form, setForm, dirty, saving, onSave, onDiscard, venueNam
                         <Field label="Slug" hint="In the display URL; lowercase-kebab.">
                             <TextInput value={form.slug} onChange={v => set({ slug: v })} mono />
                         </Field>
+                        <Field label="Logo" hint="Sits above the name on the app's event card, on a white chip. Blank = venue partner's logo if one is linked, else the POWR mark.">
+                            <EventLogoField value={form.logo_url} onChange={v => set({ logo_url: v })} />
+                        </Field>
                         <Field label="Venue partner" hint="Optional — links the event to a gym/venue.">
                             <VenuePicker
                                 venueId={form.venue_partner_id}
@@ -1584,6 +1588,55 @@ function PrizeEditor({ prizes, onChange }) {
             >
                 <Plus size={13} /> Add prize
             </button>
+        </div>
+    );
+}
+
+// Image-only upload for the card's identity logo. Same bucket story as promo
+// media (reward-images — the one admins already have storage policies for),
+// under event-logos/. The preview mirrors the app card: a white chip, so a
+// light-on-transparent mark is judged the way athletes will see it.
+function EventLogoField({ value, onChange }) {
+    const toast = useToast();
+    const [uploading, setUploading] = useState(false);
+
+    const handleFile = async (e) => {
+        const file = e.target.files?.[0];
+        e.target.value = '';
+        if (!file) return;
+        if (file.size > 5 * 1024 * 1024) { toast.error('Keep the logo under 5MB'); return; }
+        setUploading(true);
+        try {
+            const url = await uploadPublicImage('reward-images', file, 'event-logos');
+            onChange(url);
+            toast.success('Logo uploaded — save to apply');
+        } catch (err) {
+            toast.error(err.message ?? 'Upload failed');
+        } finally {
+            setUploading(false);
+        }
+    };
+
+    return (
+        <div className="flex items-center gap-3 flex-wrap">
+            <label className={`inline-flex items-center gap-2 h-11 px-4 rounded-xl border text-[10.5px] font-bold uppercase tracking-[0.18em] transition-all cursor-pointer bg-[#F4F4F1] border-[#E6E6E1] text-[#555555] hover:text-[#1A1A1A] hover:border-[#D8D8D2] ${uploading ? 'opacity-50 pointer-events-none' : ''}`}>
+                <Upload size={13} /> {uploading ? 'Uploading…' : value ? 'Replace' : 'Upload'}
+                <input type="file" accept="image/*" className="hidden" onChange={handleFile} disabled={uploading} />
+            </label>
+            {value && (
+                <>
+                    <span className="inline-flex items-center px-3 py-2 rounded-[10px] bg-white border border-[#E6E6E1]">
+                        <img src={storageImage(value, 152)} alt="Event logo preview" className="h-[34px] w-[76px] object-contain" />
+                    </span>
+                    <button
+                        type="button" aria-label="Remove logo"
+                        onClick={() => onChange(null)}
+                        className="w-9 h-9 rounded-lg bg-[#F4F4F1] border border-[#E6E6E1] flex items-center justify-center text-[#999999] hover:text-[#1A1A1A] transition-all"
+                    >
+                        <X size={13} />
+                    </button>
+                </>
+            )}
         </div>
     );
 }
