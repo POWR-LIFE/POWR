@@ -20,9 +20,9 @@ import { useNotifications } from '@/context/NotificationsContext';
 import { buildSharedChallengeShareInput } from '@/lib/social/share';
 import { supabase } from '@/lib/supabase';
 import type { SharedChallenge } from '@/lib/social/types';
-import { Avatar } from '@/components/social/Avatar';
 import { CreateChallengeSheet } from '@/components/social/CreateChallengeSheet';
 import { ChallengeTemplateCard } from '@/components/social/ChallengeTemplateCard';
+import { FriendPulseCard } from '@/components/social/FriendPulseCard';
 import { SharedChallengeCard } from '@/components/social/SharedChallengeCard';
 import { SharedChallengeCelebration } from '@/components/social/SharedChallengeCelebration';
 
@@ -46,23 +46,15 @@ const SETTLE_MS = 700;
 
 // ── Friend pulse ("Elliot just did a gym session — challenge him") ────────────
 // The strongest possible create-prompt is a friend's real, fresh workout:
-// social proof and a target in one line. Sourced from
+// social proof and a target in one card. Sourced from
 // get_friends_recent_activity (accepted friends' latest sensor-verified
 // session inside the window); names/faces come from the friends list the
 // section already holds. WHO gets featured — and how often — is decided by
 // lib/social/friendPulse (history-weighted ranking + cool-offs), with the
-// pacing state persisted here.
+// pacing state persisted here. Rendered as a full FriendPulseCard slide in
+// the carousel, not a footnote under it.
 
 const PULSE_PACING_KEY = '@powr/friend_pulse_pacing';
-
-const PULSE_NOUN: Record<string, string> = { gym: 'a gym session', running: 'a run', cycling: 'a ride' };
-
-function pulseLine(p: PulseCandidate): string {
-  const name = p.friend.displayName.split(' ')[0] || p.friend.username;
-  const noun = PULSE_NOUN[p.type] ?? 'a workout';
-  const ageH = (Date.now() - Date.parse(p.startedAt)) / 3_600_000;
-  return `${name} ${ageH <= 3 ? 'just did' : 'recently did'} ${noun}`;
-}
 
 export interface TogetherSectionProps {
   onOpenChallenge?: (challenge: SharedChallenge) => void;
@@ -209,6 +201,18 @@ export function TogetherSection({ onOpenChallenge, deferred = false }: TogetherS
     setPulse(null);
     persistPacing({ ...(pulsePacing ?? { lastSuggestedAt: {} }), rowDismissedAt: Date.now() });
   }, [pulsePacing, persistPacing]);
+
+  // The pulse rides the carousel as a full card. Hidden at the cap — its tap
+  // would dead-end on a full plate.
+  const pulseVisible = !!pulse && !atCap;
+  const pulseCard = pulseVisible && pulse ? (
+    <FriendPulseCard
+      pulse={pulse}
+      bonusConfig={bonusConfig}
+      onPress={() => openCreate(pulseTemplateId, [pulse.friend.id])}
+      onDismiss={dismissPulse}
+    />
+  ) : null;
 
   // Challenge the pulsing friend in their own discipline when a template fits.
   const pulseTemplateId = useMemo(() => {
@@ -367,6 +371,11 @@ export function TogetherSection({ onOpenChallenge, deferred = false }: TogetherS
                 snapToAlignment="start"
                 disableIntervalMomentum
               >
+                {/* A friend's fresh workout leads the browse band — the most
+                    personal reason to start is worth more than any template. */}
+                {pulseCard && (
+                  <View style={{ width: cardWidth, marginRight: CAROUSEL_GAP }}>{pulseCard}</View>
+                )}
                 {templates.map((t, i) => (
                   <View
                     key={t.id}
@@ -387,7 +396,7 @@ export function TogetherSection({ onOpenChallenge, deferred = false }: TogetherS
             </View>
           </>
         )
-      ) : ordered.length === 1 ? (
+      ) : ordered.length === 1 && !pulseCard ? (
         <SharedChallengeCard
           challenge={ordered[0]}
           index={0}
@@ -413,7 +422,7 @@ export function TogetherSection({ onOpenChallenge, deferred = false }: TogetherS
             {ordered.map((c, i) => (
               <View
                 key={c.id}
-                style={{ width: cardWidth, marginRight: i === ordered.length - 1 ? 0 : CAROUSEL_GAP }}
+                style={{ width: cardWidth, marginRight: i === ordered.length - 1 && !pulseCard ? 0 : CAROUSEL_GAP }}
               >
                 <SharedChallengeCard
                   challenge={c}
@@ -427,36 +436,11 @@ export function TogetherSection({ onOpenChallenge, deferred = false }: TogetherS
                 />
               </View>
             ))}
+            {/* The pulse rides behind your live challenges — present, never
+                ahead of the commitments you've already made. */}
+            {pulseCard && <View style={{ width: cardWidth }}>{pulseCard}</View>}
           </ScrollView>
         </View>
-      )}
-
-      {/* Friend pulse — a fresh workout by a friend not already challenging
-          with you. Hidden at the cap (the tap would dead-end on a full plate). */}
-      {pulse && !atCap && (
-        <Pressable
-          style={styles.pulseRow}
-          onPress={() => openCreate(pulseTemplateId, [pulse.friend.id])}
-          accessibilityRole="button"
-          accessibilityLabel={`${pulseLine(pulse)} — challenge them`}
-        >
-          <Avatar friend={pulse.friend} size={26} />
-          <Text style={styles.pulseText} numberOfLines={2}>
-            {pulseLine(pulse)}.
-          </Text>
-          <View style={styles.pulseCta}>
-            <Text style={styles.pulseCtaText}>Challenge</Text>
-            <Ionicons name="arrow-forward" size={12} color={GOLD} />
-          </View>
-          <Pressable
-            hitSlop={10}
-            onPress={dismissPulse}
-            accessibilityRole="button"
-            accessibilityLabel="Dismiss suggestion"
-          >
-            <Ionicons name="close" size={14} color={SECONDARY} />
-          </Pressable>
-        </Pressable>
       )}
 
       <CreateChallengeSheet
@@ -568,16 +552,6 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.light, fontSize: 12.5, color: SECONDARY,
     paddingHorizontal: 14, marginBottom: 12, lineHeight: 17,
   },
-
-  // friend-pulse prompt row
-  pulseRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    backgroundColor: CARD_BG, borderRadius: 14, borderWidth: 1, borderColor: BORDER,
-    paddingVertical: 10, paddingHorizontal: 12, marginTop: 10,
-  },
-  pulseText: { flex: 1, fontFamily: fontFamily.light, fontSize: 12, color: TEXT, lineHeight: 16 },
-  pulseCta: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  pulseCtaText: { fontFamily: fontFamily.medium, fontSize: 11.5, color: GOLD, letterSpacing: 0.2 },
 
   // loading skeleton
   skeleton: {
