@@ -143,6 +143,42 @@ export function getChallengeById(id, catalog = CATALOG) {
   return catalog.find((c) => c.id === id) || null;
 }
 
+/**
+ * Personalized week: the rotation's picks filtered to the user's relevant
+ * categories (multi always counts — it accrues from any activity), with the
+ * freed slots refilled by FURTHER challenges from those same categories so the
+ * week still holds five goals — a gym+walking user gets a second gym and
+ * walking goal instead of running/cycling filler. Relevance = onboarding
+ * activity buckets ∪ categories actually logged that week; callers with no
+ * signal (cold start) get the full rotation unchanged. Deterministic per week:
+ * refills advance through each category's list from the rotation's own index.
+ */
+export function getPersonalizedChallengesForWeek(isoWeek, relevantCategories, catalog = CATALOG) {
+  const full = getActiveChallengesForWeek(isoWeek, catalog);
+  const cats = CATEGORY_ORDER.filter(
+    (c) => c === 'multi' || (relevantCategories || []).includes(c),
+  );
+  if (cats.length <= 1 || cats.length >= CATEGORY_ORDER.length) return full;
+
+  const wn = weekNumber(isoWeek);
+  const active = full.filter((c) => cats.includes(c.category));
+  const used = new Set(active.map((c) => c.id));
+  const lists = cats.map((cat) => catalog.filter((c) => c.category === cat && c.supported !== false));
+  const maxLen = Math.max(0, ...lists.map((l) => l.length));
+  for (let offset = 1; offset < maxLen && active.length < full.length; offset++) {
+    for (const list of lists) {
+      if (active.length >= full.length) break;
+      if (list.length === 0) continue;
+      const pick = list[(wn + offset) % list.length];
+      if (!used.has(pick.id)) {
+        used.add(pick.id);
+        active.push(pick);
+      }
+    }
+  }
+  return active;
+}
+
 // ── Admin-managed weekly challenge (display format, stored in system_config) ───
 
 const CHALLENGE_DEFAULTS = {

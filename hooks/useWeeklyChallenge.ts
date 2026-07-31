@@ -3,12 +3,13 @@ import { useFocusEffect } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 // challengeRules.js is CommonJS — import the namespace for interop.
-import { buildContext, evaluateChallenge } from '@/shared/challengeRules';
+import { buildContext, categoryOf, evaluateChallenge } from '@/shared/challengeRules';
 import {
   CATALOG,
   CATEGORY_META,
-  getActiveChallengesForWeek,
+  getChallengeById,
   getISOWeek,
+  getPersonalizedChallengesForWeek,
   nextSundayMidnight,
   parseChallengeCatalog,
   computeExpiresIn,
@@ -148,10 +149,7 @@ export function useWeeklyChallenges(): WeeklyChallengesState {
     } catch {
       /* fall back to bundled */
     }
-    const baseActive = getActiveChallengesForWeek(challengeWeek, catalog);
-
-    // Apply per-week category overrides stored in system_config.challenge_week_overrides.
-    let active = baseActive;
+    // Per-week category overrides stored in system_config.challenge_week_overrides.
     let allOv: Record<string, Record<string, string>> | null = null;
     try {
       const { data: ovData } = await supabase
@@ -161,19 +159,66 @@ export function useWeeklyChallenges(): WeeklyChallengesState {
         .maybeSingle();
       if (ovData?.value) {
         allOv = typeof ovData.value === 'string' ? JSON.parse(ovData.value) : ovData.value;
-        active = applyOverrides(baseActive, allOv?.[challengeWeek], catalog as any[]);
       }
     } catch {
       /* use auto rotation */
     }
 
-    // 2. This week's sessions + step windows (only if a step_window challenge is active).
+    // 2. This week's sessions + completions — fetched before the active set is
+    //    chosen, because both feed personalization.
     const weekStart = localMondayAsUTC(utcOffsetMinutes);
-    const { data: sessions } = await supabase
-      .from('activity_sessions')
-      .select('type, started_at, duration_sec, distance_m, steps, verification')
-      .gte('started_at', weekStart)
-      .order('started_at', { ascending: true });
+    const [{ data: sessions }, { data: completions }, { data: { session: authSession } }] =
+      await Promise.all([
+        supabase
+          .from('activity_sessions')
+          .select('type, started_at, duration_sec, distance_m, steps, verification')
+          .gte('started_at', weekStart)
+          .order('started_at', { ascending: true }),
+        supabase
+          .from('user_challenge_completions')
+          .select('challenge_id')
+          .eq('challenge_week', challengeWeek),
+        supabase.auth.getSession(),
+      ]);
+    const completedIds = new Set((completions ?? []).map((c) => c.challenge_id));
+
+    // 3. The user's week: relevance = onboarding activity buckets ∪ categories
+    //    actually logged this week, so stale picks can't hide real behavior and
+    //    a mid-week new activity adds its challenge rather than replacing one.
+    let buckets: string[] = [];
+    if (authSession) {
+      try {
+        const { data: prof } = await supabase
+          .from('profiles')
+          .select('activity_preferences')
+          .eq('id', authSession.user.id)
+          .maybeSingle();
+        if (Array.isArray(prof?.activity_preferences)) buckets = prof.activity_preferences;
+      } catch {
+        /* behavior-only relevance */
+      }
+    }
+    const sessionCats = new Set<string>();
+    for (const s of sessions ?? []) {
+      if (s.verification === 'manual') continue;
+      const cat = categoryOf(s.type);
+      if (cat) sessionCats.add(cat);
+    }
+    let active = applyOverrides(
+      getPersonalizedChallengesForWeek(challengeWeek, [...new Set([...buckets, ...sessionCats])], catalog),
+      allOv?.[challengeWeek],
+      catalog as any[],
+    );
+    // A per-category override can collapse two same-category picks into one id.
+    active = active.filter((c, i) => active.findIndex((x) => x.id === c.id) === i);
+    // Anything already completed this week stays on the board as a receipt even
+    // if personalization would no longer select it.
+    for (const id of completedIds) {
+      if (!active.some((c) => c.id === id)) {
+        const found = getChallengeById(id, catalog as any[]);
+        if (found) active.push(found);
+      }
+    }
 
     let stepWindowRows: any[] = [];
     if (active.some((c) => c.rule.kind === 'step_window')) {
@@ -186,13 +231,6 @@ export function useWeeklyChallenges(): WeeklyChallengesState {
 
     const ctx = buildContext(sessions ?? [], utcOffsetMinutes, stepWindowRows);
 
-    // 3. Existing completions this week.
-    const { data: completions } = await supabase
-      .from('user_challenge_completions')
-      .select('challenge_id')
-      .eq('challenge_week', challengeWeek);
-    const completedIds = new Set((completions ?? []).map((c) => c.challenge_id));
-
     // 4. Evaluate each active challenge; award any newly met.
     let newlyCompletedId: string | null = null;
     const cards: ChallengeCardData[] = [];
@@ -204,7 +242,6 @@ export function useWeeklyChallenges(): WeeklyChallengesState {
       if (met && !completed && !awarding.current.has(c.id)) {
         awarding.current.add(c.id);
         try {
-          const { data: { session: authSession } } = await supabase.auth.getSession();
           if (authSession) {
             const { data: result, error } = await supabase.functions.invoke('complete-weekly-challenge', {
               body: { challenge_id: c.id, utc_offset_minutes: utcOffsetMinutes },
@@ -258,12 +295,6 @@ export function useWeeklyChallenges(): WeeklyChallengesState {
       try {
         const lastSwept = await AsyncStorage.getItem(PREV_WEEK_SWEEP_KEY);
         if (lastSwept !== prevWeek) {
-          const prevActive = applyOverrides(
-            getActiveChallengesForWeek(prevWeek, catalog),
-            allOv?.[prevWeek],
-            catalog as any[],
-          );
-
           const { data: prevCompletions, error: pcErr } = await supabase
             .from('user_challenge_completions')
             .select('challenge_id')
@@ -271,19 +302,33 @@ export function useWeeklyChallenges(): WeeklyChallengesState {
           if (pcErr) throw pcErr;
           const prevCompleted = new Set((prevCompletions ?? []).map((c) => c.challenge_id));
 
-          let anyFailed = false;
-          // Skip the heavier session fetch when every prev-week challenge is recorded.
-          if (prevActive.some((c) => !prevCompleted.has(c.id))) {
-            const prevWeekStart = localMondayAsUTC(utcOffsetMinutes, Date.now() - 7 * 86400000);
-            const prevWeekEnd = weekStart; // this week's Monday — exclusive upper bound
-            const { data: prevSessions, error: psErr } = await supabase
-              .from('activity_sessions')
-              .select('type, started_at, duration_sec, distance_m, steps, verification')
-              .gte('started_at', prevWeekStart)
-              .lt('started_at', prevWeekEnd)
-              .order('started_at', { ascending: true });
-            if (psErr) throw psErr;
+          // The personalized set depends on that week's sessions, so they're
+          // fetched up front (the sweep runs at most once a week per device).
+          const prevWeekStart = localMondayAsUTC(utcOffsetMinutes, Date.now() - 7 * 86400000);
+          const prevWeekEnd = weekStart; // this week's Monday — exclusive upper bound
+          const { data: prevSessions, error: psErr } = await supabase
+            .from('activity_sessions')
+            .select('type, started_at, duration_sec, distance_m, steps, verification')
+            .gte('started_at', prevWeekStart)
+            .lt('started_at', prevWeekEnd)
+            .order('started_at', { ascending: true });
+          if (psErr) throw psErr;
 
+          const prevCats = new Set<string>();
+          for (const s of prevSessions ?? []) {
+            if (s.verification === 'manual') continue;
+            const cat = categoryOf(s.type);
+            if (cat) prevCats.add(cat);
+          }
+          let prevActive = applyOverrides(
+            getPersonalizedChallengesForWeek(prevWeek, [...new Set([...buckets, ...prevCats])], catalog),
+            allOv?.[prevWeek],
+            catalog as any[],
+          );
+          prevActive = prevActive.filter((c, i) => prevActive.findIndex((x) => x.id === c.id) === i);
+
+          let anyFailed = false;
+          if (prevActive.some((c) => !prevCompleted.has(c.id))) {
             let prevStepRows: any[] = [];
             if (prevActive.some((c) => c.rule.kind === 'step_window')) {
               const { data: windows } = await supabase
@@ -295,7 +340,6 @@ export function useWeeklyChallenges(): WeeklyChallengesState {
             }
 
             const prevCtx = buildContext(prevSessions ?? [], utcOffsetMinutes, prevStepRows);
-            const { data: { session: authSession } } = await supabase.auth.getSession();
             for (const c of prevActive) {
               if (prevCompleted.has(c.id)) continue;
               if (!evaluateChallenge(c.rule, prevCtx).met) continue;

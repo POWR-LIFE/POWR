@@ -134,6 +134,42 @@ export function getActiveChallengesForWeek(isoWeek: string, catalog: Challenge[]
   return active;
 }
 
+/**
+ * Personalized week (mirror of shared/weeklyChallenges.js): rotation picks
+ * filtered to the user's relevant categories (multi always counts), freed
+ * slots refilled with further challenges from those categories. Cold start
+ * (≤ just multi, or everything relevant) returns the full rotation.
+ */
+export function getPersonalizedChallengesForWeek(
+  isoWeek: string,
+  relevantCategories: string[],
+  catalog: Challenge[] = CATALOG,
+): Challenge[] {
+  const full = getActiveChallengesForWeek(isoWeek, catalog);
+  const cats = CATEGORY_ORDER.filter(
+    (c) => c === 'multi' || (relevantCategories || []).includes(c),
+  );
+  if (cats.length <= 1 || cats.length >= CATEGORY_ORDER.length) return full;
+
+  const wn = weekNumber(isoWeek);
+  const active = full.filter((c) => cats.includes(c.category));
+  const used = new Set(active.map((c) => c.id));
+  const lists = cats.map((cat) => catalog.filter((c) => c.category === cat && c.supported !== false));
+  const maxLen = Math.max(0, ...lists.map((l) => l.length));
+  for (let offset = 1; offset < maxLen && active.length < full.length; offset++) {
+    for (const list of lists) {
+      if (active.length >= full.length) break;
+      if (list.length === 0) continue;
+      const pick = list[(wn + offset) % list.length];
+      if (!used.has(pick.id)) {
+        used.add(pick.id);
+        active.push(pick);
+      }
+    }
+  }
+  return active;
+}
+
 /** Admin catalog override (system_config.weekly_challenges) → catalog, else bundled. */
 export function parseChallengeCatalog(value: unknown): Challenge[] {
   if (!value) return CATALOG;
@@ -151,7 +187,7 @@ export function parseChallengeCatalog(value: unknown): Challenge[] {
 // ── Evaluator (mirror of shared/challengeRules.js) ───────────────────────────
 const MAIN_CATEGORIES = ['gym', 'walking', 'running', 'cycling'];
 
-function categoryOf(type: string): string | null {
+export function categoryOf(type: string): string | null {
   switch (type) {
     case 'gym': return 'gym';
     case 'walking': return 'walking';
