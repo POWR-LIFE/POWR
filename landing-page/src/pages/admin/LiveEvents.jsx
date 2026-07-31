@@ -1278,10 +1278,10 @@ function EditorPanel({ form, setForm, dirty, saving, onSave, onDiscard, venueNam
                         <Field label="Slug" hint="In the display URL; lowercase-kebab.">
                             <TextInput value={form.slug} onChange={v => set({ slug: v })} mono />
                         </Field>
-                        <Field label="Logo" hint="Sits above the name on the app's event card, on a white chip. Blank = venue partner's logo if one is linked, else the POWR mark.">
+                        <Field label="Logo" hint="The POWR side of the card's partnership lockup (venue logo · line · this). Upload a WHITE mark on a transparent background — it sits straight on the artwork, no chip. Blank = the white POWR mark.">
                             <EventLogoField value={form.logo_url} onChange={v => set({ logo_url: v })} />
                         </Field>
-                        <Field label="Logo only" hint="Hide the name on the app card — the logo alone carries the identity, shown larger. The name is still used everywhere else.">
+                        <Field label="Logo only" hint="Hide the name on the app card — the lockup alone carries the identity, shown larger. The name is still used everywhere else.">
                             <Toggle on={form.logo_only} onFlip={() => set({ logo_only: !form.logo_only })} />
                         </Field>
                         <Field label="Venue partner" hint="Optional — links the event to a gym/venue.">
@@ -1596,10 +1596,11 @@ function PrizeEditor({ prizes, onChange }) {
     );
 }
 
-// Image-only upload for the card's identity logo. Same bucket story as promo
-// media (reward-images — the one admins already have storage policies for),
-// under event-logos/. The preview mirrors the app card: a white chip, so a
-// light-on-transparent mark is judged the way athletes will see it.
+// Image-only upload for the POWR side of the card's partnership lockup. Same
+// bucket story as promo media (reward-images — the one admins already have
+// storage policies for), under event-logos/. The preview mirrors the app
+// card: a DARK tile, because the mark sits raw on the artwork — a white
+// upload judged on a white background looks like a blank block (it did).
 function EventLogoField({ value, onChange }) {
     const toast = useToast();
     const [uploading, setUploading] = useState(false);
@@ -1629,8 +1630,8 @@ function EventLogoField({ value, onChange }) {
             </label>
             {value && (
                 <>
-                    <span className="inline-flex items-center px-3 py-2 rounded-[10px] bg-white border border-[#E6E6E1]">
-                        <img src={storageImage(value, 152)} alt="Event logo preview" className="h-[34px] w-[76px] object-contain" />
+                    <span className="inline-flex items-center px-3 py-2 rounded-[10px] bg-[#141414] border border-[#E6E6E1]">
+                        <img src={storageImage(value, 168)} alt="Event logo preview" className="h-[30px] w-[84px] object-contain" />
                     </span>
                     <button
                         type="button" aria-label="Remove logo"

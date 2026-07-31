@@ -7,12 +7,16 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { EventRegisterSheet } from '@/components/home/EventRegisterSheet';
 import { RewardHeroMedia } from '@/components/rewards/RewardHeroMedia';
 import { fetchActiveLiveEvent, type LiveEvent } from '@/lib/api/liveEvents';
-import { eventDateRange, eventStatusChip, isVideoUrl } from '@/lib/liveEventDisplay';
+import { eventStatusChip, isVideoUrl, shortDate } from '@/lib/liveEventDisplay';
 import { storageImage } from '@/lib/storageImage';
 
 const GOLD = '#E8D200';
 const TEXT_PRIMARY = '#F2F2F2';
 const DIM = 'rgba(255,255,255,0.55)';
+
+// The default POWR side of the lockup. Hosted (not bundled) so the standard
+// mark can be swapped in storage without shipping an update.
+const POWR_MARK_URL = 'https://auth.powr.life/storage/v1/object/public/landing-page-assets/powr_transparent.png';
 
 /**
  * The home-screen sell for whatever live event is coming up: promo video/image
@@ -52,14 +56,16 @@ export function LiveEventCard() {
     const media = event.promo_media_url;
     const videoUrl = isVideoUrl(media) ? media : null;
     const imageUrl = videoUrl ? null : media;
-    // Identity mark: per-event upload wins, then the venue partner's logo,
-    // then the bundled POWR wordmark — the card never goes markless.
+    // Identity = partnership lockup: venue logo · divider · POWR side. The
+    // POWR side is the uploaded event logo when one exists (white mark on a
+    // transparent background — it sits RAW on the artwork, never chipped),
+    // else the bundled white POWR mark. No venue → the POWR side stands alone.
+    const venueLogo = storageImage(event.venue?.logo_url, 512, 512);
+    // Promo-page convention: venue logos marked 'dark' sit on the artwork raw;
+    // everything else gets a white chip so dark-on-transparent marks survive.
+    const chipVenue = !!venueLogo && event.venue?.logo_bg !== 'dark';
     const uploadedLogo = storageImage(event.logo_url, 512, 512);
-    const logoUri = uploadedLogo ?? storageImage(event.venue?.logo_url, 512, 512);
-    // Promo-page convention: only venue logos marked 'dark' sit on the artwork
-    // raw; everything else gets a white chip so any mark survives. Uploads are
-    // always chipped (no bg metadata); the white POWR wordmark sits raw.
-    const chipLogo = !!logoUri && (!!uploadedLogo || event.venue?.logo_bg !== 'dark');
+    const large = event.logo_only;
 
     return (
         <>
@@ -97,25 +103,44 @@ export function LiveEventCard() {
                         </View>
 
                         <View style={styles.bottomSection}>
-                            <View style={[styles.logoWrap, chipLogo && styles.logoChip]}>
-                                <ExpoImage
-                                    source={logoUri ? { uri: logoUri } : require('@/assets/images/powrlogotext.png')}
-                                    style={logoUri
-                                        ? (event.logo_only ? styles.logoImageLarge : styles.logoImage)
-                                        : (event.logo_only ? styles.powrLogoLarge : styles.powrLogo)}
-                                    contentFit="contain"
-                                />
+                            <View style={styles.lockupRow}>
+                                {venueLogo && (
+                                    <>
+                                        <View style={chipVenue && styles.venueChip}>
+                                            <ExpoImage
+                                                source={{ uri: venueLogo }}
+                                                style={large ? styles.venueLogoLarge : styles.venueLogo}
+                                                contentFit="contain"
+                                            />
+                                        </View>
+                                        <View style={[styles.lockupDivider, large && styles.lockupDividerLarge]} />
+                                    </>
+                                )}
+                                {uploadedLogo ? (
+                                    <ExpoImage
+                                        source={{ uri: uploadedLogo }}
+                                        style={large ? styles.venueLogoLarge : styles.venueLogo}
+                                        contentFit="contain"
+                                    />
+                                ) : (
+                                    <ExpoImage
+                                        source={{ uri: POWR_MARK_URL }}
+                                        style={large ? styles.powrMarkLarge : styles.powrMark}
+                                        contentFit="contain"
+                                    />
+                                )}
                             </View>
 
-                            {/* logo_only: the mark IS the identity (name stays in the
+                            {/* logo_only: the lockup IS the identity (name stays in the
                                 a11y label and the register sheet). */}
                             {!event.logo_only && (
                                 <Text style={styles.name} numberOfLines={1}>{event.name}</Text>
                             )}
 
                             <View style={styles.bottomRow}>
+                                {/* Start date only — the register sheet carries the full window. */}
                                 <Text style={styles.subline} numberOfLines={2}>
-                                    {event.promo_headline ?? eventDateRange(event)}
+                                    {event.promo_headline ?? shortDate(event.window_start_at)}
                                 </Text>
                                 <View style={[styles.registerPill, registered && styles.registeredPill]}>
                                     <Text style={[styles.registerText, registered && styles.registeredText]}>
@@ -185,36 +210,48 @@ const styles = StyleSheet.create({
         bottom: 14,
         gap: 8,
     },
-    logoWrap: {
+    lockupRow: {
+        flexDirection: 'column',
+        alignItems: 'flex-start',
+        gap: 8,
         alignSelf: 'flex-start',
     },
-    logoChip: {
+    venueChip: {
         backgroundColor: '#FFFFFF',
         borderRadius: 10,
         paddingHorizontal: 8,
         paddingVertical: 6,
     },
-    logoImage: {
-        width: 76,
-        height: 34,
+    venueLogo: {
+        width: 64,
+        height: 22,
     },
-    logoImageLarge: {
-        width: 128,
-        height: 54,
+    venueLogoLarge: {
+        width: 80,
+        height: 28,
     },
-    // The bundled wordmark is a square canvas with its own padding — the chip
-    // dimensions would shrink it to a speck, so it gets a square box instead.
-    powrLogo: {
-        width: 46,
-        height: 46,
-        marginBottom: -8,
-        marginLeft: -6,
+    // The line runs the width of the gym logo above it.
+    lockupDivider: {
+        width: 64,
+        height: 1,
+        backgroundColor: 'rgba(255,255,255,0.45)',
     },
-    powrLogoLarge: {
-        width: 76,
-        height: 76,
-        marginBottom: -14,
-        marginLeft: -10,
+    lockupDividerLarge: {
+        width: 80,
+    },
+    // The bundled mark is a square canvas with its own padding — negative
+    // margins trim it so the visible mark aligns with the row, not the canvas.
+    powrMark: {
+        width: 62,
+        height: 62,
+        marginVertical: -11,
+        marginHorizontal: -9,
+    },
+    powrMarkLarge: {
+        width: 88,
+        height: 88,
+        marginVertical: -16,
+        marginHorizontal: -13,
     },
     name: {
         fontSize: 26,

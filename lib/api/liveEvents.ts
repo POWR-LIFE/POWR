@@ -30,10 +30,11 @@ export type LiveEvent = {
     id: string;
     slug: string;
     name: string;
-    /** Optional uploaded card logo. Card precedence: this → venue logo →
-     *  bundled POWR wordmark, so the identity block always carries a mark. */
+    /** Optional uploaded logo for the POWR side of the card's partnership
+     *  lockup (venue logo · divider · this). White-on-transparent expected —
+     *  it renders raw on the artwork. Null = the bundled white POWR mark. */
     logo_url: string | null;
-    /** Hide the name text on the card — the logo alone (rendered larger)
+    /** Hide the name text on the card — the lockup alone (rendered larger)
      *  carries the identity. The name still exists for sheets/boards/a11y. */
     logo_only: boolean;
     status: 'scheduled' | 'live' | 'locked' | 'revealed' | 'settled';
