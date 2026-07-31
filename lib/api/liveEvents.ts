@@ -18,6 +18,14 @@ export type LiveEventViewer = {
 
 export type LiveEventPrize = { rank: number; label: string };
 
+/** Venue branding for promo surfaces. `logo_bg` is 'white' | 'dark' — chip the
+ *  logo on anything ≠ 'dark' (matches the landing promo page's convention). */
+export type LiveEventVenue = {
+    name: string;
+    logo_url: string | null;
+    logo_bg: string | null;
+};
+
 export type LiveEvent = {
     id: string;
     slug: string;
@@ -35,6 +43,14 @@ export type LiveEvent = {
     invite_milestone_n: number;
     invite_milestone_bonus: number;
     conversion_deadline_at: string | null;
+    /** Marketing fields set in the admin editor's "Promo page" group — shared
+     *  with powr.life/promo/<slug> so one upload feeds every surface. */
+    promo_headline: string | null;
+    promo_media_url: string | null;
+    venue: LiveEventVenue | null;
+    /** True when this is a draft served only to the admin-listed preview
+     *  accounts (status is simulated as scheduled/live for them). */
+    is_preview?: boolean;
     viewer: LiveEventViewer;
 };
 
@@ -105,6 +121,15 @@ export async function fetchInviteProgress(): Promise<InviteProgress | null> {
     const { data, error } = await supabase.rpc('get_my_invite_progress');
     if (error) return null;
     return (data as InviteProgress | null) ?? null;
+}
+
+/** Preview drafts only: remove own registration so the flow can be re-tested.
+ *  The server hard-rejects anything that isn't a draft the caller previews —
+ *  there is deliberately no general "leave event" path. */
+export async function resetLiveEventPreview(eventId: string): Promise<LiveEventViewer | null> {
+    const { data, error } = await supabase.rpc('reset_live_event_preview', { p_event_id: eventId });
+    if (error) return null;
+    return (data as LiveEventViewer | null) ?? null;
 }
 
 /** Opt-in scope only; server re-checks eligibility. Returns the updated viewer state. */

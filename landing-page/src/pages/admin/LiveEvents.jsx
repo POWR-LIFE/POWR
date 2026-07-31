@@ -8,7 +8,7 @@ import {
     CalendarClock, Eye, EyeOff, Lock, Flag, Trophy, Archive,
     Link2, RefreshCw, AlertTriangle, Rocket, Undo2,
     Gauge, Download, UserX, UserCheck, ShieldAlert,
-    Megaphone, Upload, ExternalLink, QrCode,
+    Megaphone, Upload, ExternalLink, QrCode, Smartphone, Users,
 } from 'lucide-react';
 import { QRCodeCanvas } from 'qrcode.react';
 import { storageImage, uploadPublicImage } from '../../lib/storage';
@@ -104,6 +104,7 @@ export default function LiveEvents() {
     const [dqRows, setDqRows] = useState([]);      // disqualified users (off-board)
     const [dqBusy, setDqBusy] = useState(null);    // user_id of DQ action in flight
     const [anticheat, setAnticheat] = useState(null); // admin_get_event_anticheat payload
+    const [registrations, setRegistrations] = useState(null); // admin_get_event_registrations payload
     const lastOpsEventId = useRef(null);           // guards against showing event A's ops data under event B
 
     const selected = useMemo(() => events.find(e => e.id === selectedId) ?? null, [events, selectedId]);
@@ -115,16 +116,17 @@ export default function LiveEvents() {
     useEffect(() => { fetchEvents(); }, []);
 
     useEffect(() => {
-        if (!selected) { setForm(null); setVenueName(null); setOps(null); setStandings(null); setDqRows([]); setAnticheat(null); lastOpsEventId.current = null; return; }
+        if (!selected) { setForm(null); setVenueName(null); setOps(null); setStandings(null); setDqRows([]); setAnticheat(null); setRegistrations(null); lastOpsEventId.current = null; return; }
         setForm(editableFields(selected));
         // Switching events must never show the previous event's ops data while
         // the new fetch is in flight; same-event refreshes keep what's there.
         if (selected.id !== lastOpsEventId.current) {
             lastOpsEventId.current = selected.id;
-            setOps(null); setStandings(null); setDqRows([]); setAnticheat(null);
+            setOps(null); setStandings(null); setDqRows([]); setAnticheat(null); setRegistrations(null);
         }
         fetchCounts(selected.id);
         fetchOps(selected.id);
+        fetchRegistrations(selected.id);
         if (selected.venue_partner_id) {
             supabase.from('partners').select('name').eq('id', selected.venue_partner_id).single()
                 .then(({ data }) => setVenueName(data?.name ?? null));
@@ -147,6 +149,14 @@ export default function LiveEvents() {
             supabase.from('live_event_results').select('*', { count: 'exact', head: true }).eq('event_id', eventId),
         ]);
         setCounts({ participants: p.count ?? 0, results: r.count ?? 0 });
+    };
+
+    // Roster + invite pipeline + bonus ledger — works at ANY status, drafts
+    // included, so preview test runs are inspectable end-to-end.
+    const fetchRegistrations = async (eventId) => {
+        const { data, error } = await supabase.rpc('admin_get_event_registrations', { p_event_id: eventId });
+        if (error) { console.error(error); setRegistrations(null); return; }
+        setRegistrations(data);
     };
 
     // Ops dashboard data: counts/funnel + the through-blur standings. Admin
@@ -280,6 +290,20 @@ export default function LiveEvents() {
         if (error) { toast.error(error.message); return; }
         await logAction(user.id, 'live_event_status', 'live_event', ev.id, { from: ev.status, to: status });
         toast.success(`Event → ${STATUS_META[status].label}`);
+        fetchEvents();
+    };
+
+    // In-app test preview: instant write, deliberately outside the Save
+    // payload (like status/hidden) so it can't be reverted by a stale edit.
+    const setPreview = async (ev, enabled, emails) => {
+        setActing('preview');
+        const { error } = await supabase.from('live_events')
+            .update({ preview_enabled: enabled, preview_emails: emails })
+            .eq('id', ev.id);
+        setActing(null);
+        if (error) { toast.error(error.message); return; }
+        await logAction(user.id, 'live_event_preview', 'live_event', ev.id, { enabled, emails });
+        toast.success(enabled ? `In-app preview ON for ${emails.length} account${emails.length === 1 ? '' : 's'}` : 'In-app preview off');
         fetchEvents();
     };
 
@@ -431,6 +455,13 @@ export default function LiveEvents() {
                         onCopyPromoUrl={() => copyPromoUrl(selected)}
                         onRegenToken={() => regenerateToken(selected)}
                         onDuplicate={() => duplicateEvent(selected)}
+                        onSetPreview={(enabled, emails) => setPreview(selected, enabled, emails)}
+                    />
+
+                    <RegistrationsPanel
+                        ev={selected}
+                        data={registrations}
+                        onRefresh={() => fetchRegistrations(selected.id)}
                     />
 
                     {selected.status !== 'draft' && (
@@ -464,13 +495,250 @@ export default function LiveEvents() {
     );
 }
 
+// ─── Registrations & invites ─────────────────────────────────────
+// Who registered + the invite pipeline + the actual bonus ledger rows,
+// at any status (drafts included) — this is where a preview test run is
+// checked against how the reward mechanics are supposed to pay out.
+
+function RegistrationsPanel({ ev, data, onRefresh }) {
+    const fmtTime = (iso) => iso
+        ? new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+        : '—';
+    const participants = data?.participants ?? [];
+    const referrals = data?.referrals ?? [];
+    const milestones = data?.milestones ?? [];
+    const ledger = data?.bonus_ledger ?? [];
+
+    const SOURCE_LABEL = {
+        referral_sent:     'Referrer bonus',
+        referral_received: 'New-member bonus',
+        invite_milestone:  'Milestone bonus',
+    };
+
+    const Head = ({ cols }) => (
+        <thead>
+            <tr className="text-[9px] font-black uppercase tracking-[0.2em] text-[#999999] border-b border-[#F0F0EC]">
+                {cols.map(([label, cls]) => <th key={label} className={`py-2 pr-3 ${cls ?? 'text-left'}`}>{label}</th>)}
+            </tr>
+        </thead>
+    );
+
+    return (
+        <section>
+            <div className="flex items-center gap-4 mb-4 px-1">
+                <div className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 border bg-[#8B5CF6]/10 border-[#8B5CF6]/25">
+                    <Users size={18} className="text-[#8B5CF6]" />
+                </div>
+                <div className="min-w-0 flex-1">
+                    <h2 className="text-lg font-bold text-[#1A1A1A] tracking-tight">Registrations & invites</h2>
+                    <p className="text-[12px] text-[#888888] leading-snug">
+                        The raw roster and the invite reward trail — pays +{ev.invite_bonus_points} to each side per
+                        converted invite, +{ev.invite_milestone_bonus} at {ev.invite_milestone_n} conversions.
+                        Works while the event is a draft, so preview test runs show up here.
+                    </p>
+                </div>
+                <button
+                    onClick={onRefresh}
+                    className="inline-flex items-center gap-2 h-10 px-4 rounded-xl bg-[#F4F4F1] border border-[#E6E6E1] text-[10.5px] font-bold uppercase tracking-[0.18em] text-[#555555] hover:text-[#1A1A1A] transition-all shrink-0"
+                >
+                    <RefreshCw size={13} /> Refresh
+                </button>
+            </div>
+
+            <div className="bg-white border border-[#E6E6E1] rounded-3xl p-7 space-y-7">
+                {/* Roster */}
+                <div>
+                    <div className="text-[10px] font-black uppercase tracking-[0.25em] text-[#888888] mb-2">
+                        Registered ({participants.length})
+                    </div>
+                    {participants.length === 0 ? (
+                        <p className="text-[13px] text-[#999999]">Nobody has registered yet.</p>
+                    ) : (
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-[13px]">
+                                <Head cols={[['Member'], ['Email'], ['Joined'], ['Status']]} />
+                                <tbody className="divide-y divide-[#F6F6F3]">
+                                    {participants.map((p) => (
+                                        <tr key={p.user_id} className={p.disqualified_at ? 'opacity-45' : ''}>
+                                            <td className="py-2.5 pr-3 font-medium text-[#1A1A1A]">
+                                                {p.name}
+                                                {p.username && <span className="text-[#999999] font-normal"> @{p.username}</span>}
+                                            </td>
+                                            <td className="py-2.5 pr-3 font-mono text-[12px] text-[#888888]">{p.email ?? '—'}</td>
+                                            <td className="py-2.5 pr-3 text-[#888888]">{fmtTime(p.joined_at)}</td>
+                                            <td className="py-2.5 pr-3">
+                                                {p.disqualified_at
+                                                    ? <span className="text-[#F43F5E] text-[11px] font-bold uppercase tracking-wide">DQ</span>
+                                                    : <span className="text-[#10B981] text-[11px] font-bold uppercase tracking-wide">In</span>}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </div>
+
+                {/* Invite pipeline */}
+                <div className="border-t border-[#F0F0EC] pt-6">
+                    <div className="text-[10px] font-black uppercase tracking-[0.25em] text-[#888888] mb-2">
+                        Invite pipeline ({referrals.length})
+                    </div>
+                    {referrals.length === 0 ? (
+                        <p className="text-[13px] text-[#999999]">
+                            No invites yet — conversions attributed to this event and still-pending signups will appear here.
+                        </p>
+                    ) : (
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-[13px]">
+                                <Head cols={[['Referrer'], ['Invited'], ['Signed up'], ['Converted'], ['Attribution']]} />
+                                <tbody className="divide-y divide-[#F6F6F3]">
+                                    {referrals.map((r, i) => (
+                                        <tr key={i}>
+                                            <td className="py-2.5 pr-3 font-medium text-[#1A1A1A]">{r.referrer_name}</td>
+                                            <td className="py-2.5 pr-3 text-[#555555]">
+                                                {r.referred_name}
+                                                {r.referred_email && <span className="font-mono text-[11px] text-[#AAAAAA]"> {r.referred_email}</span>}
+                                            </td>
+                                            <td className="py-2.5 pr-3 text-[#888888]">{fmtTime(r.created_at)}</td>
+                                            <td className="py-2.5 pr-3">
+                                                {r.converted_at
+                                                    ? <span className="text-[#10B981]">{fmtTime(r.converted_at)}</span>
+                                                    : <span className="text-[#999999]">pending</span>}
+                                            </td>
+                                            <td className="py-2.5 pr-3">
+                                                {r.attributed
+                                                    ? <span className="inline-flex items-center h-5 px-2 rounded-md bg-[#8B5CF6]/10 border border-[#8B5CF6]/25 text-[#8B5CF6] text-[9px] font-black uppercase tracking-[0.15em]">This event</span>
+                                                    : <span className="text-[11px] text-[#AAAAAA]">—</span>}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                    {milestones.length > 0 && (
+                        <p className="text-[12px] text-[#555555] mt-3">
+                            Milestones paid: {milestones.map((m) => `${m.referrer_name} (+${m.points_paid} at ${m.converted_count})`).join(' · ')}
+                        </p>
+                    )}
+                </div>
+
+                {/* Bonus ledger */}
+                <div className="border-t border-[#F0F0EC] pt-6">
+                    <div className="text-[10px] font-black uppercase tracking-[0.25em] text-[#888888] mb-2">
+                        Invite bonus ledger — latest {ledger.length} across all events
+                    </div>
+                    {ledger.length === 0 ? (
+                        <p className="text-[13px] text-[#999999]">No invite bonus transactions yet, ever.</p>
+                    ) : (
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-[13px]">
+                                <Head cols={[['When'], ['Member'], ['Type'], ['Points', 'text-right'], ['Description']]} />
+                                <tbody className="divide-y divide-[#F6F6F3]">
+                                    {ledger.map((t, i) => (
+                                        <tr key={i}>
+                                            <td className="py-2.5 pr-3 text-[#888888] whitespace-nowrap">{fmtTime(t.created_at)}</td>
+                                            <td className="py-2.5 pr-3 font-medium text-[#1A1A1A]">
+                                                {t.name}
+                                                {t.email && <span className="font-mono text-[11px] text-[#AAAAAA]"> {t.email}</span>}
+                                            </td>
+                                            <td className="py-2.5 pr-3 text-[#555555]">{SOURCE_LABEL[t.source] ?? t.source}</td>
+                                            <td className="py-2.5 pr-3 text-right font-mono text-[#10B981]">+{t.amount}</td>
+                                            <td className="py-2.5 pr-3 text-[#888888]">{t.description}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                    <p className="text-[11px] text-[#999999] mt-2 leading-relaxed">
+                        Point transactions aren&apos;t tagged with an event, so this feed is global — during a test run
+                        your rows are the newest. Conversion requires a {(ev.conversion_verifications ?? []).join(' or ') || 'verified'}
+                        {' '}session; manual never converts.
+                    </p>
+                </div>
+            </div>
+        </section>
+    );
+}
+
+// ─── In-app test preview ─────────────────────────────────────────
+// While the event is a draft, the listed app accounts (and ONLY them)
+// see the real home card + register flow, with the status simulated as
+// scheduled/live from the window. Everyone else sees nothing — this is
+// how you check the card in Expo Go before pressing Schedule.
+
+function PreviewBlock({ ev, acting, onSetPreview }) {
+    // Resync the input from the saved list only when it actually changes
+    // (event switch or a save) — never clobber in-progress typing on
+    // unrelated refetches.
+    const savedEmails = (ev.preview_emails ?? []).join(', ');
+    const [emailsText, setEmailsText] = useState(savedEmails);
+    useEffect(() => { setEmailsText(savedEmails); }, [ev.id, savedEmails]);
+
+    const parsed = emailsText.split(/[,\s]+/).map(e => e.trim().toLowerCase()).filter(Boolean);
+    const invalid = parsed.filter(e => !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e));
+
+    return (
+        <div className="border-t border-[#F0F0EC] pt-6">
+            <div className="flex items-center gap-2 mb-2">
+                <Smartphone size={13} className="text-[#888888]" />
+                <span className="text-[10px] font-black uppercase tracking-[0.25em] text-[#888888]">In-app test preview</span>
+                {ev.preview_enabled && (
+                    <span className="inline-flex items-center h-5 px-2 rounded-md bg-[#E8D200]/15 border border-[#E8D200]/40 text-[#8a7600] text-[9px] font-black uppercase tracking-[0.15em]">
+                        On · {(ev.preview_emails ?? []).length}
+                    </span>
+                )}
+            </div>
+            <div className="flex items-center gap-3 flex-wrap">
+                <input
+                    value={emailsText}
+                    onChange={e => setEmailsText(e.target.value)}
+                    placeholder="tester@email.com, another@email.com"
+                    className="flex-1 min-w-[260px] h-10 px-3 rounded-xl border border-[#E6E6E1] bg-[#FAFAF8] text-[12px] font-mono text-[#555555] focus:outline-none focus:border-[#1A1A1A]"
+                />
+                <button
+                    onClick={() => onSetPreview(!ev.preview_enabled, parsed)}
+                    disabled={!!acting || (!ev.preview_enabled && (parsed.length === 0 || invalid.length > 0))}
+                    className={`inline-flex items-center gap-2 h-10 px-4 rounded-xl border text-[10.5px] font-bold uppercase tracking-[0.18em] transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
+                        ev.preview_enabled
+                            ? 'bg-[#F43F5E]/10 border-[#F43F5E]/25 text-[#F43F5E] hover:bg-[#F43F5E]/15'
+                            : 'bg-[#E8D200]/15 border-[#E8D200]/40 text-[#8a7600] hover:bg-[#E8D200]/25'
+                    }`}
+                >
+                    <Smartphone size={13} /> {ev.preview_enabled ? 'Disable preview' : 'Enable preview'}
+                </button>
+                {ev.preview_enabled && (
+                    <button
+                        onClick={() => onSetPreview(true, parsed)}
+                        disabled={!!acting || parsed.length === 0 || invalid.length > 0}
+                        className="inline-flex items-center gap-2 h-10 px-4 rounded-xl border text-[10.5px] font-bold uppercase tracking-[0.18em] transition-all disabled:opacity-40 disabled:cursor-not-allowed bg-[#F4F4F1] border-[#E6E6E1] text-[#555555] hover:text-[#1A1A1A] hover:border-[#D8D8D2]"
+                    >
+                        <Check size={13} /> Update emails
+                    </button>
+                )}
+            </div>
+            {invalid.length > 0 && (
+                <p className="text-[11px] text-[#F43F5E] mt-2">Not an email: {invalid.join(', ')}</p>
+            )}
+            <p className="text-[11px] text-[#999999] mt-2 leading-relaxed">
+                Only the accounts listed here see this draft in the app — the home card, register sheet and League
+                tab behave exactly as if the event were scheduled (or live once the window opens), with a PREVIEW
+                badge. Everyone else sees nothing until you press Schedule. Test registrations are real join rows;
+                they carry over if you launch, or vanish if you delete the draft.
+            </p>
+        </div>
+    );
+}
+
 // ─── Lifecycle panel ─────────────────────────────────────────────
 
 function LifecyclePanel({
     ev, counts, acting,
     onSchedule, onUnschedule, onGoLive, onLock, onToggleHidden,
     onSettle, onReveal, onMarkSettled, onArchive,
-    onCopyUrl, onCopyPromoUrl, onRegenToken, onDuplicate,
+    onCopyUrl, onCopyPromoUrl, onRegenToken, onDuplicate, onSetPreview,
 }) {
     const meta = STATUS_META[ev.status];
     const pastLock = ev.lock_at && new Date(ev.lock_at) <= new Date();
@@ -550,6 +818,9 @@ function LifecyclePanel({
                     )}
                     <Btn icon={Copy} label="Duplicate" onClick={onDuplicate} />
                 </div>
+
+                {/* In-app test preview — draft only; scheduling makes it moot */}
+                {ev.status === 'draft' && <PreviewBlock ev={ev} acting={acting} onSetPreview={onSetPreview} />}
 
                 {/* Display URL */}
                 <div className="border-t border-[#F0F0EC] pt-6">

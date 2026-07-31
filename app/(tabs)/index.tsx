@@ -20,6 +20,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ChallengeCard } from '@/components/home/ChallengeCard';
 import { TogetherSection } from '@/components/home/TogetherSection';
 import { UpdateBanner } from '@/components/home/UpdateBanner';
+import { LiveEventCard } from '@/components/home/LiveEventCard';
 import { RewardCard } from '@/components/home/RewardCard';
 import { LevelProgressRow } from '@/components/home/LevelProgressRow';
 import { LevelUpCelebration } from '@/components/LevelUpCelebration';
@@ -671,6 +672,11 @@ export default function HomeScreen() {
                         deferred={!!pendingLevelUp || sessionModalVisible || rescueVisible}
                     />
                 )}
+
+                {/* Upcoming live event — the registration sell. Renders nothing
+                    unless there's an opt-in event the viewer can still join;
+                    once registered the event lives on the League tab instead. */}
+                <LiveEventCard />
 
                 <ChallengeCard
                     onTogether={(c) => router.push({ pathname: '/challenges', params: { create: '1', category: c.category } })}
