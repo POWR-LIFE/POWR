@@ -14,6 +14,10 @@ const GOLD = '#E8D200';
 const TEXT_PRIMARY = '#F2F2F2';
 const DIM = 'rgba(255,255,255,0.55)';
 
+// The default POWR side of the lockup. Hosted (not bundled) so the standard
+// mark can be swapped in storage without shipping an update.
+const POWR_MARK_URL = 'https://auth.powr.life/storage/v1/object/public/landing-page-assets/powr_transparent.png';
+
 /**
  * The home-screen sell for whatever live event is coming up: promo video/image
  * background, venue logo, dates — tap to register. Entirely driven by
@@ -120,7 +124,7 @@ export function LiveEventCard() {
                                     />
                                 ) : (
                                     <ExpoImage
-                                        source={require('@/assets/images/powr_transparent.png')}
+                                        source={{ uri: POWR_MARK_URL }}
                                         style={large ? styles.powrMarkLarge : styles.powrMark}
                                         contentFit="contain"
                                     />
