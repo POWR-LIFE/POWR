@@ -31,10 +31,11 @@
 import { createClient } from '@supabase/supabase-js';
 import {
   buildContext,
+  categoryOf,
   evaluateChallenge,
-  getActiveChallengesForWeek,
   getISOWeek,
   getLocalMondayAsUTC,
+  getPersonalizedChallengesForWeek,
   parseChallengeCatalog,
 } from '../_shared/challenges.ts';
 
@@ -138,7 +139,31 @@ Deno.serve(async (req: Request) => {
         const challengeWeek = getISOWeek(new Date(Date.now() + offm * 60000));
         const weekStart = getLocalMondayAsUTC(offm);
 
-        let active = getActiveChallengesForWeek(challengeWeek, catalog);
+        const [{ data: sessions }, { data: completions }, { data: prof }] = await Promise.all([
+          admin.from('activity_sessions')
+            .select('type, started_at, duration_sec, distance_m, steps, verification')
+            .eq('user_id', c.user_id).gte('started_at', weekStart),
+          admin.from('user_challenge_completions')
+            .select('challenge_id')
+            .eq('user_id', c.user_id).eq('challenge_week', challengeWeek),
+          admin.from('profiles')
+            .select('activity_preferences')
+            .eq('id', c.user_id).maybeSingle(),
+        ]);
+        const completedIds = new Set((completions ?? []).map((r) => r.challenge_id));
+
+        // Same relevance rule as the client board (useWeeklyChallenge):
+        // onboarding buckets ∪ categories logged this week — nudging a goal
+        // the user's board doesn't show would read as broken.
+        const relevant = new Set<string>(
+          Array.isArray(prof?.activity_preferences) ? prof.activity_preferences : [],
+        );
+        for (const s of sessions ?? []) {
+          if (s.verification === 'manual') continue;
+          const cat = categoryOf(s.type);
+          if (cat) relevant.add(cat);
+        }
+        let active = getPersonalizedChallengesForWeek(challengeWeek, [...relevant], catalog);
         const ov = weekOverrides?.[challengeWeek];
         if (ov) {
           active = active.map((ch) => {
@@ -146,17 +171,8 @@ Deno.serve(async (req: Request) => {
             const found = ovId ? catalog.find((x) => x.id === ovId) : null;
             return found ?? ch;
           });
+          active = active.filter((ch, i) => active.findIndex((x) => x.id === ch.id) === i);
         }
-
-        const [{ data: sessions }, { data: completions }] = await Promise.all([
-          admin.from('activity_sessions')
-            .select('type, started_at, duration_sec, distance_m, steps, verification')
-            .eq('user_id', c.user_id).gte('started_at', weekStart),
-          admin.from('user_challenge_completions')
-            .select('challenge_id')
-            .eq('user_id', c.user_id).eq('challenge_week', challengeWeek),
-        ]);
-        const completedIds = new Set((completions ?? []).map((r) => r.challenge_id));
 
         let stepWindows: any[] = [];
         if (active.some((ch) => !completedIds.has(ch.id) && ch.rule.kind === 'step_window')) {
