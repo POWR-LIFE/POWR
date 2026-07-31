@@ -442,9 +442,15 @@ async function iosGetCaloriesToday(): Promise<CalorieSummary | null> {
 
 // ── Android (Health Connect via react-native-health-connect) ─────────────────
 
-export type HealthConnectStatus = 'available' | 'needs_install' | 'unsupported';
+export type HealthConnectStatus = 'available' | 'needs_install' | 'unsupported' | 'module_missing';
 
 export async function androidHealthConnectStatus(): Promise<HealthConnectStatus> {
+    // Expo Go has no health-connect native module — every call below throws
+    // regardless of what's installed on the device, so don't misread that as
+    // "Health Connect isn't installed" and send the user to the Play Store.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const Constants = require('expo-constants').default;
+    if (Constants?.executionEnvironment === 'storeClient') return 'module_missing';
     try {
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         const { initialize, getSdkStatus, SdkAvailabilityStatus } = require('react-native-health-connect');

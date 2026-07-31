@@ -1,30 +1,27 @@
 import GeometricBackground from '@/components/GeometricBackground';
+import HealthDataScene from '@/components/onboarding/HealthDataScene';
 import { ONBOARDING_DOT_COUNT, dotIndexFor } from '@/lib/onboarding/flow';
 import { androidHealthConnectStatus, useHealthData } from '@/hooks/useHealthData';
 import { useHealthProviders } from '@/hooks/useHealthProviders';
 import { syncHistoricalHealthData, type DaySyncResult } from '@/lib/api/onboardingSync';
-import { getNativeProviderId, type HealthProviderId } from '@/lib/health/providers';
+import { getNativeProviderId } from '@/lib/health/providers';
 import { recordHealthOnboardingDeclined } from '@/lib/healthPrompt';
+import { awardBonus } from '@/lib/api/points';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, Dimensions, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Animated, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const GOLD = '#E8D200';
 const BG = '#0d0d0d';
-const CARD_BG = 'rgba(40,40,40,0.85)';
 const BORDER = 'rgba(255,255,255,0.08)';
 const FONT_LIGHT = 'Outfit_300Light';
 const FONT_REGULAR = 'Outfit_400Regular';
 const FONT_MEDIUM = 'Outfit_500Medium';
 const FONT_SEMIBOLD = 'Outfit_600SemiBold';
 const FONT_BOLD = 'Outfit_700Bold';
-
-const GRID_GAP = 8;
-const GRID_PAD = 24;
-const CARD_W = Math.floor((Dimensions.get('window').width - GRID_PAD * 2 - GRID_GAP * 2) / 3);
 
 interface HealthSource {
     id: string;
@@ -36,32 +33,11 @@ interface HealthSource {
     platforms?: ('ios' | 'android')[];
 }
 
+// Wearables moved to their own onboarding step (/onboarding-wearables) — this
+// screen is now solely the phone-health baseline everyone should have.
 const HEALTH_SOURCES: HealthSource[] = [
     { id: 'apple-health',    name: 'Apple Health',    color: '#FF3B30', native: true,  platforms: ['ios'] },
     { id: 'health-connect',  name: 'Health Connect',  color: '#4285F4', native: true,  platforms: ['android'] },
-    // Cloud wearables via Terra (all connect through the same authenticateUser flow).
-    { id: 'whoop',           name: 'Whoop',           color: '#44D62C' },
-    { id: 'oura',            name: 'Oura',            color: '#8E8E93' },
-    { id: 'polar',           name: 'Polar',           color: '#D90011' },
-    { id: 'garmin',          name: 'Garmin',          color: '#007CC3' },
-    { id: 'fitbit',          name: 'Fitbit',          color: '#00B0B9' },
-    { id: 'strava',          name: 'Strava',          color: '#FC4C02' },
-    { id: 'huawei',          name: 'Huawei Health',   color: '#CF0A2C' },
-    { id: 'withings',        name: 'Withings',        color: '#00B0A0' },
-    { id: 'peloton',         name: 'Peloton',         color: '#E0002D' },
-    { id: 'zepp',            name: 'Zepp',            color: '#FF6D00' },
-    { id: 'technogym',       name: 'Technogym',       color: '#E2001A' },
-    { id: 'coros',           name: 'Coros',           color: '#232323' },
-    { id: 'suunto',          name: 'Suunto',          color: '#1B1B1B' },
-    { id: 'wahoo',           name: 'Wahoo',           color: '#0096D6' },
-    { id: 'zwift',           name: 'Zwift',           color: '#FC6719' },
-    { id: 'concept2',        name: 'Concept2',        color: '#002D62' },
-    { id: 'ifit',            name: 'iFit',            color: '#00B14F' },
-    { id: 'underarmour',     name: 'Under Armour',    color: '#1D1D1D' },
-    // Samsung Health is SDK-only on Terra (no direct OAuth) — shown alongside the
-    // wearables for consistency, but tapping it routes through Health Connect via an
-    // explainer sheet (see handleConnect). Android only.
-    { id: 'samsung-health',  name: 'Samsung Health',  color: '#1428A0', platforms: ['android'] },
 ];
 
 function getVisibleSources(): HealthSource[] {
@@ -69,6 +45,8 @@ function getVisibleSources(): HealthSource[] {
     return HEALTH_SOURCES.filter(s => !s.platforms || s.platforms.includes(os as 'ios' | 'android'));
 }
 
+// The full logo map stays: the primary-source picker below lists ANY connected
+// provider, including wearables connected on the earlier onboarding step.
 const BASE = 'https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/partner-logos';
 const BRAND_LOGOS: Record<string, string> = {
     'apple-health':  `${BASE}/apple.png`,
@@ -104,42 +82,10 @@ function BrandIcon({ id, size = 24 }: { id: string; size?: number }) {
             />
         );
     }
-    switch (id) {
-        case 'health-connect':
-            return <MaterialCommunityIcons name="heart-pulse" size={22} color="#fff" />;
-        case 'samsung-health':
-            return <MaterialCommunityIcons name="cellphone" size={22} color="#fff" />;
-        case 'oura':
-            return <MaterialCommunityIcons name="ring" size={20} color="#fff" />;
-        case 'huawei':
-            return <MaterialCommunityIcons name="watch-variant" size={20} color="#fff" />;
-        case 'withings':
-            return <MaterialCommunityIcons name="scale-bathroom" size={20} color="#fff" />;
-        case 'peloton':
-            return <MaterialCommunityIcons name="bike" size={22} color="#fff" />;
-        case 'zepp':
-            return <MaterialCommunityIcons name="watch-variant" size={20} color="#fff" />;
-        case 'technogym':
-            return <MaterialCommunityIcons name="dumbbell" size={20} color="#fff" />;
-        case 'coros':
-            return <MaterialCommunityIcons name="run" size={22} color="#fff" />;
-        case 'suunto':
-            return <MaterialCommunityIcons name="watch-variant" size={20} color="#fff" />;
-        case 'wahoo':
-            return <MaterialCommunityIcons name="bike" size={22} color="#fff" />;
-        case 'zwift':
-            return <MaterialCommunityIcons name="bike" size={22} color="#fff" />;
-        case 'concept2':
-            return <MaterialCommunityIcons name="rowing" size={20} color="#fff" />;
-        case 'ifit':
-            return <MaterialCommunityIcons name="run" size={22} color="#fff" />;
-        case 'underarmour':
-            return <MaterialCommunityIcons name="run" size={22} color="#fff" />;
-        case 'strava':
-            return <MaterialCommunityIcons name="run" size={22} color="#fff" />;
-        default:
-            return <MaterialCommunityIcons name="heart-pulse" size={20} color="#fff" />;
+    if (id === 'health-connect') {
+        return <MaterialCommunityIcons name="heart-pulse" size={22} color="#fff" />;
     }
+    return <MaterialCommunityIcons name="watch-variant" size={20} color="#fff" />;
 }
 
 function StepDots({ current }: { current: number }) {
@@ -340,48 +286,49 @@ export default function OnboardingHealthScreen() {
 
     async function handleConnect(source: HealthSource) {
         console.log('[Onboarding] handleConnect:', source.id,
-            'native:', source.native,
             'isAvailable:', health.isAvailable,
             'isAuthorized:', health.isAuthorized,
             'requesting:', health.requesting);
-        // Samsung Health has no direct OAuth (SDK-only on Terra) — it shares data via
-        // Health Connect. Show the explainer sheet, which then connects Health Connect.
-        if (source.id === 'samsung-health') {
-            setShowSamsungSheet(true);
-            return;
-        }
-        if (source.native) {
-            if (health.isAuthorized) return; // already connected
-            // On Android, check Health Connect is actually installed first.
-            if (Platform.OS === 'android' && source.id === 'health-connect') {
-                const status = await androidHealthConnectStatus();
-                if (status === 'needs_install') {
-                    setShowHealthConnectInstall(true);
-                    return;
-                }
-                if (status === 'unsupported') {
-                    setShowHealthConnectInstall(true);
-                    return;
-                }
+        if (health.isAuthorized) return; // already connected
+        // On Android, check Health Connect is actually installed first.
+        if (Platform.OS === 'android' && source.id === 'health-connect') {
+            const status = await androidHealthConnectStatus();
+            // Expo Go can't load the native module at all — installing Health
+            // Connect wouldn't help, so say what's actually wrong (dev-only).
+            if (status === 'module_missing') {
+                Alert.alert(
+                    'Development build needed',
+                    'Health Connect isn’t available in Expo Go — run a development build to test this.',
+                );
+                return;
             }
-            const result = await health.requestPermissions();
-            console.log('[Onboarding] requestPermissions result:', result);
-            // Persist the connection on the user profile so settings + sync see it.
-            if (result) {
-                const nativeId = getNativeProviderId();
-                if (nativeId) {
-                    try { await providers.connect(nativeId); }
-                    catch (e) { console.warn('[Onboarding] persist provider failed:', e); }
-                }
+            if (status === 'needs_install' || status === 'unsupported') {
+                setShowHealthConnectInstall(true);
+                return;
             }
-            return;
         }
-        // All non-native sources are Terra-backed cloud wearables — connect opens
-        // the provider's auth in a system browser and returns via /terra-callback
-        // (which navigates back here and refreshes provider state on focus).
-        try { await providers.connect(source.id as HealthProviderId); }
-        catch (e) { console.warn(`[Onboarding] ${source.id} connect failed:`, e); }
+        const result = await health.requestPermissions();
+        console.log('[Onboarding] requestPermissions result:', result);
+        // Persist the connection on the user profile so settings + sync see it.
+        if (result) {
+            const nativeId = getNativeProviderId();
+            if (nativeId) {
+                try { await providers.connect(nativeId); }
+                catch (e) { console.warn('[Onboarding] persist provider failed:', e); }
+            }
+        }
     }
+
+    // One-time +20 POWR for connecting phone health data. Idempotent server-side,
+    // and effect-driven so the Samsung-sheet path (which authorises Health Connect
+    // back on the wearables step) still earns it when this screen mounts connected.
+    const healthBonusFired = useRef(false);
+    useEffect(() => {
+        if (health.isAuthorized && !healthBonusFired.current) {
+            healthBonusFired.current = true;
+            awardBonus('health_connection').catch(() => {});
+        }
+    }, [health.isAuthorized]);
 
     async function handleContinue() {
         // If health is connected and we haven't synced yet, trigger the sync
@@ -402,9 +349,9 @@ export default function OnboardingHealthScreen() {
                 // Brief pause to let the user see the completed state
                 await new Promise(resolve => setTimeout(resolve, 1200));
 
-                // Navigate to activities with sync results — they get forwarded to achievement
+                // Navigate to notifications with sync results — they get forwarded to achievement
                 router.push({
-                    pathname: '/onboarding-activities',
+                    pathname: '/onboarding-notifications',
                     params: {
                         streakDays: String(result.streakDays),
                         totalSessions: String(result.totalSessions),
@@ -414,7 +361,7 @@ export default function OnboardingHealthScreen() {
             } catch (err) {
                 console.error('[Onboarding] Sync failed:', err);
                 // On failure, still navigate — just without sync data
-                router.push('/onboarding-activities');
+                router.push('/onboarding-notifications');
             } finally {
                 setSyncing(false);
             }
@@ -424,7 +371,7 @@ export default function OnboardingHealthScreen() {
         // If already synced or no health connected, navigate directly
         if (syncResult) {
             router.push({
-                pathname: '/onboarding-activities',
+                pathname: '/onboarding-notifications',
                 params: {
                     streakDays: String(syncResult.streakDays),
                     totalSessions: String(syncResult.totalSessions),
@@ -432,14 +379,25 @@ export default function OnboardingHealthScreen() {
                 },
             });
         } else {
-            router.push('/onboarding-activities');
+            router.push('/onboarding-notifications');
         }
     }
 
-    const [showSkipModal, setShowSkipModal] = useState(false);
     const [showHealthConnectInstall, setShowHealthConnectInstall] = useState(false);
     const [showPrimaryPicker, setShowPrimaryPicker] = useState(false);
-    const [showSamsungSheet, setShowSamsungSheet] = useState(false);
+
+    // The primary CTA is CONNECT until health access is granted — CONTINUE only
+    // appears once connected. The quiet escape link is revealed only after a
+    // connect attempt fails (denied / burned dialog / no native health layer —
+    // the CTA marks the attempt either way), so nobody can dead-end here but
+    // untouched users see no way to skip.
+    const nativeSource = visibleSources[0] ?? null;
+    const mustConnect = !!nativeSource && !health.isAuthorized;
+    const [attemptedConnect, setAttemptedConnect] = useState(false);
+
+    // A wearable connected on the earlier onboarding step changes the pitch:
+    // the phone isn't a duplicate of the watch, it's the steps/baseline layer.
+    const hasWearable = providers.rows.some(r => !!r.connection && !r.meta.native);
 
     // Smart default for primary: dedicated wearables first, then phone health.
     const PROVIDER_PRIORITY = ['fitbit', 'strava', 'whoop', 'oura', 'garmin', 'polar', 'coros', 'suunto', 'wahoo', 'huawei', 'zepp', 'withings', 'peloton', 'technogym', 'zwift', 'concept2', 'ifit', 'underarmour', 'apple-health', 'health-connect'] as const;
@@ -471,7 +429,7 @@ export default function OnboardingHealthScreen() {
                     if (router.canGoBack()) {
                         router.back();
                     } else {
-                        router.replace('/onboarding-permission');
+                        router.replace('/onboarding-activities');
                     }
                 }}
                 hitSlop={24}
@@ -482,11 +440,18 @@ export default function OnboardingHealthScreen() {
 
             {/* Header */}
             <Animated.View style={[styles.header, { paddingTop: insets.top + 72, opacity: headerFade }]}>
-                <Text style={styles.eyebrow}>{showSyncProgress ? 'ALMOST THERE' : 'CONNECT YOUR APPS'}</Text>
+                <Text style={styles.eyebrow}>{showSyncProgress ? 'ALMOST THERE' : 'YOUR BASELINE'}</Text>
                 <Text style={styles.headline}>
-                    {showSyncProgress ? 'Pulling in ' : 'Every move '}
-                    <Text style={styles.headlineGold}>{showSyncProgress ? 'your history.' : 'counts automatically.'}</Text>
+                    {showSyncProgress ? 'Pulling in ' : 'This is how POWR '}
+                    <Text style={styles.headlineGold}>{showSyncProgress ? 'your history.' : 'counts your movement.'}</Text>
                 </Text>
+                {!showSyncProgress && (
+                    <Text style={styles.subhead}>
+                        {hasWearable
+                            ? 'Your watch covers workouts — your phone covers steps. You need both to earn everything.'
+                            : 'Steps, workouts and sleep flow in from your phone, so every move earns automatically.'}
+                    </Text>
+                )}
             </Animated.View>
 
             {/* Source list OR sync progress */}
@@ -518,169 +483,28 @@ export default function OnboardingHealthScreen() {
             ) : (
                 <ScrollView
                     style={styles.list}
-                    contentContainerStyle={styles.listContent}
+                    contentContainerStyle={[styles.listContent, styles.listContentCentered]}
                     showsVerticalScrollIndicator={false}
                 >
-                    {(() => {
-                        const phoneSources = visibleSources.filter(s => s.native);
-                        const wearableSources = visibleSources.filter(s => !s.native);
-
-                        const renderRow = (source: HealthSource, i: number) => {
-                            const providerRow = providers.rows.find(r => r.meta.id === source.id);
-                            // Any non-native source is Terra-backed; connected once its
-                            // connection (with terra_user_id) is on the profile.
-                            const oauthConnected = !source.native && !!providerRow?.connection;
-                            const isConnected = isNativeConnected(source) || oauthConnected;
-                            const isPrimary = providerRow?.isActive ?? false;
-                            const isComingSoon = false; // all listed sources are now supported (native + Terra)
-                            return (
-                                <Animated.View
-                                    key={source.id}
-                                    style={{
-                                        opacity: rowAnims[i] ?? 1,
-                                        transform: [{
-                                            translateY: (rowAnims[i] ?? new Animated.Value(1)).interpolate({
-                                                inputRange: [0, 1],
-                                                outputRange: [14, 0],
-                                            }),
-                                        }],
-                                    }}
-                                >
-                                    <Pressable
-                                        style={[
-                                            styles.sourceRow,
-                                            isConnected && styles.sourceRowConnected,
-                                            isComingSoon && styles.sourceRowDisabled,
-                                        ]}
-                                        onPress={() => handleConnect(source)}
-                                        disabled={isComingSoon || health.requesting}
-
-                                    >
-                                        <View style={[
-                                            styles.sourceIcon,
-                                            BRAND_LOGOS[source.id] && styles.sourceIconWhite,
-                                            isComingSoon && { opacity: 0.4 },
-                                        ]}>
-                                            <BrandIcon id={source.id} />
-                                        </View>
-                                        <View style={styles.sourceInfo}>
-                                            <Text style={[styles.sourceName, isComingSoon && { opacity: 0.4 }]}>
-                                                {source.name}
-                                            </Text>
-                                            {isConnected && isPrimary && (
-                                                <View style={[styles.pointsBadge, { alignSelf: 'flex-start', marginTop: 3 }]}>
-                                                    <Text style={styles.pointsBadgeText}>PRIMARY · 2× PTS</Text>
-                                                </View>
-                                            )}
-                                            {isComingSoon && (
-                                                <Text style={styles.comingSoonLabel}>Coming soon</Text>
-                                            )}
-                                            {source.id === 'apple-health' && !isConnected && (
-                                                <Text style={styles.sourceHint}>
-                                                    Apple Watch + any app that writes to Apple Health
-                                                </Text>
-                                            )}
-                                            {source.id === 'health-connect' && !isConnected && (
-                                                <Text style={styles.sourceHint}>
-                                                    Google Fit, Galaxy &amp; Pixel Watch &amp; more
-                                                </Text>
-                                            )}
-                                            {source.native && isConnected && stepsToday !== null && (
-                                                <Text style={styles.stepsLabel}>
-                                                    {stepsToday.toLocaleString()} steps today
-                                                </Text>
-                                            )}
-                                            {source.id === 'apple-health' && isConnected && stepsToday === null && (
-                                                <Text style={styles.sourceHint}>
-                                                    Apple Watch + any app that writes to Apple Health
-                                                </Text>
-                                            )}
-                                            {source.id === 'health-connect' && isConnected && stepsToday === null && (
-                                                <Text style={styles.sourceHint}>
-                                                    Google Fit, Galaxy &amp; Pixel Watch &amp; more
-                                                </Text>
-                                            )}
-                                        </View>
-                                        {isConnected ? (
-                                            <View style={styles.connectedPill}>
-                                                <MaterialCommunityIcons name="check" size={11} color="#FFFFFF" style={{ marginRight: 3 }} />
-                                                <Text style={[styles.pillLabel, { color: '#FFFFFF' }]}>CONNECTED</Text>
-                                            </View>
-                                        ) : isComingSoon ? (
-                                            <View style={styles.comingSoonPill}>
-                                                <Text style={[styles.pillLabel, { color: 'rgba(255,255,255,0.2)' }]}>SOON</Text>
-                                            </View>
-                                        ) : (
-                                            <View style={styles.connectPill}>
-                                                <Text style={[styles.pillLabel, { color: '#FFFFFF' }]}>
-                                                    {health.requesting ? '...' : 'CONNECT'}
-                                                </Text>
-                                            </View>
-                                        )}
-                                    </Pressable>
-                                </Animated.View>
-                            );
-                        };
-
-                        const renderCard = (source: HealthSource, i: number) => {
-                            const providerRow = providers.rows.find(r => r.meta.id === source.id);
-                            const oauthConnected = !source.native && !!providerRow?.connection;
-                            // Samsung Health routes through Health Connect, so it reads as
-                            // connected whenever the native health platform is authorised.
-                            const isConnected = isNativeConnected(source) || oauthConnected
-                                || (source.id === 'samsung-health' && health.isAuthorized);
-                            return (
-                                <Animated.View
-                                    key={source.id}
-                                    style={{
-                                        opacity: rowAnims[i] ?? 1,
-                                        transform: [{
-                                            translateY: (rowAnims[i] ?? new Animated.Value(1)).interpolate({
-                                                inputRange: [0, 1],
-                                                outputRange: [14, 0],
-                                            }),
-                                        }],
-                                    }}
-                                >
-                                    <Pressable
-                                        style={[styles.wearableCard, isConnected && styles.wearableCardConnected]}
-                                        onPress={() => handleConnect(source)}
-                                        disabled={health.requesting}
-                                    >
-                                        <View style={[styles.cardLogoWrap, BRAND_LOGOS[source.id] && styles.cardLogoWrapWhite]}>
-                                            <BrandIcon id={source.id} size={Math.round(CARD_W * 0.44)} />
-                                        </View>
-                                        <Text style={styles.cardName} numberOfLines={1}>{source.name}</Text>
-                                        {isConnected && (
-                                            <View style={styles.cardCheckBadge}>
-                                                <MaterialCommunityIcons name="check" size={10} color="#fff" />
-                                            </View>
-                                        )}
-                                    </Pressable>
-                                </Animated.View>
-                            );
-                        };
-
-                        let idx = 0;
-                        return (
-                            <>
-                                {phoneSources.length > 0 && (
-                                    <>
-                                        <Text style={styles.sectionHeading}>ON YOUR PHONE</Text>
-                                        {phoneSources.map(s => renderRow(s, idx++))}
-                                    </>
-                                )}
-                                {wearableSources.length > 0 && (
-                                    <>
-                                        <Text style={[styles.sectionHeading, { marginTop: 18 }]}>WEARABLES</Text>
-                                        <View style={styles.wearableGrid}>
-                                            {wearableSources.map(s => renderCard(s, idx++))}
-                                        </View>
-                                    </>
-                                )}
-                            </>
-                        );
-                    })()}
+                    {nativeSource && (
+                        <Animated.View
+                            style={{
+                                opacity: rowAnims[0] ?? 1,
+                                transform: [{
+                                    translateY: (rowAnims[0] ?? new Animated.Value(1)).interpolate({
+                                        inputRange: [0, 1],
+                                        outputRange: [14, 0],
+                                    }),
+                                }],
+                            }}
+                        >
+                            <HealthDataScene
+                                platform={nativeSource.id as 'apple-health' | 'health-connect'}
+                                stepsToday={stepsToday}
+                                connected={isNativeConnected(nativeSource)}
+                            />
+                        </Animated.View>
+                    )}
                 </ScrollView>
             )}
 
@@ -690,98 +514,51 @@ export default function OnboardingHealthScreen() {
 
                 <Pressable
                     style={[styles.primaryButton, syncing && { opacity: 0.7 }]}
-                    onPress={handleContinue}
-                    disabled={syncing}
+                    onPress={() => {
+                        if (mustConnect && nativeSource) {
+                            setAttemptedConnect(true);
+                            handleConnect(nativeSource);
+                        } else {
+                            handleContinue();
+                        }
+                    }}
+                    disabled={syncing || health.requesting}
                 >
                     {syncing ? (
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                             <ActivityIndicator size="small" color="#0a0a0a" />
                             <Text style={styles.primaryLabel}>SYNCING YOUR DATA…</Text>
                         </View>
+                    ) : mustConnect ? (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                            <Text style={styles.primaryLabel}>
+                                {health.requesting ? 'CONNECTING…' : `CONNECT ${Platform.OS === 'ios' ? 'APPLE HEALTH' : 'HEALTH CONNECT'}`}
+                            </Text>
+                            {!health.requesting && (
+                                <View style={styles.bonusBadge}>
+                                    <Text style={styles.bonusLabel}>+20 POWR</Text>
+                                </View>
+                            )}
+                        </View>
                     ) : (
                         <Text style={styles.primaryLabel}>CONTINUE</Text>
                     )}
                 </Pressable>
 
-                {!syncing && !syncComplete && (
+                {mustConnect && attemptedConnect && !health.requesting && !syncing && !syncComplete && (
                     <Pressable
                         style={styles.skipButton}
-                        onPress={() => setShowSkipModal(true)}
+                        onPress={() => {
+                            // Starts the HealthPrimeSheet cool-off so the Home
+                            // re-ask doesn't pitch the same person twice in a day.
+                            recordHealthOnboardingDeclined().catch(() => {});
+                            router.push('/onboarding-notifications');
+                        }}
                     >
-                        <Text style={styles.skipLabel}>Skip — connect later in settings</Text>
+                        <Text style={styles.skipLabel}>Continue without connecting</Text>
                     </Pressable>
                 )}
             </Animated.View>
-
-            {/* Skip confirmation modal */}
-            <Modal
-                visible={showSkipModal}
-                animationType="slide"
-                transparent
-                onRequestClose={() => setShowSkipModal(false)}
-            >
-                <View style={skipModalStyles.overlay}>
-                    <View style={[skipModalStyles.sheet, { paddingBottom: insets.bottom + 24 }]}>
-                        <View style={skipModalStyles.handle} />
-
-                        <View style={skipModalStyles.iconRow}>
-                            <View style={skipModalStyles.iconWrap}>
-                                <Ionicons name="information-circle" size={24} color={GOLD} />
-                            </View>
-                        </View>
-
-                        <Text style={skipModalStyles.title}>You'll miss out on</Text>
-
-                        <View style={skipModalStyles.benefits}>
-                            <View style={skipModalStyles.benefitRow}>
-                                <Ionicons name="footsteps" size={16} color={GOLD} />
-                                <View style={skipModalStyles.benefitInfo}>
-                                    <Text style={skipModalStyles.benefitTitle}>Auto step tracking</Text>
-                                    <Text style={skipModalStyles.benefitDesc}>Earn points passively just by walking</Text>
-                                </View>
-                            </View>
-                            <View style={skipModalStyles.benefitRow}>
-                                <Ionicons name="shield-checkmark" size={16} color={GOLD} />
-                                <View style={skipModalStyles.benefitInfo}>
-                                    <Text style={skipModalStyles.benefitTitle}>2× verified workout points</Text>
-                                    <Text style={skipModalStyles.benefitDesc}>Health-verified sessions earn double</Text>
-                                </View>
-                            </View>
-                            <View style={skipModalStyles.benefitRow}>
-                                <Ionicons name="analytics" size={16} color={GOLD} />
-                                <View style={skipModalStyles.benefitInfo}>
-                                    <Text style={skipModalStyles.benefitTitle}>Sleep & recovery insights</Text>
-                                    <Text style={skipModalStyles.benefitDesc}>Track your full wellness picture</Text>
-                                </View>
-                            </View>
-                        </View>
-
-                        <Text style={skipModalStyles.reassurance}>
-                            You can still earn points through gym check-ins and manual logging. Connect health data anytime from Settings.
-                        </Text>
-
-                        <Pressable
-                            style={({ pressed }) => [skipModalStyles.connectBtn, pressed && { opacity: 0.8 }]}
-                            onPress={() => setShowSkipModal(false)}
-                        >
-                            <Text style={skipModalStyles.connectBtnText}>CONNECT NOW</Text>
-                        </Pressable>
-
-                        <Pressable
-                            style={skipModalStyles.skipBtn}
-                            onPress={() => {
-                                // Starts the HealthPrimeSheet cool-off so the Home
-                                // re-ask doesn't pitch the same person twice in a day.
-                                recordHealthOnboardingDeclined().catch(() => {});
-                                setShowSkipModal(false);
-                                router.push('/onboarding-activities');
-                            }}
-                        >
-                            <Text style={skipModalStyles.skipBtnText}>Continue without connecting</Text>
-                        </Pressable>
-                    </View>
-                </View>
-            </Modal>
 
             {/* Health Connect install prompt (Android only) */}
             <Modal
@@ -814,64 +591,6 @@ export default function OnboardingHealthScreen() {
                         </Pressable>
                         <Pressable style={skipModalStyles.skipBtn} onPress={() => setShowHealthConnectInstall(false)}>
                             <Text style={skipModalStyles.skipBtnText}>Not now</Text>
-                        </Pressable>
-                    </View>
-                </View>
-            </Modal>
-
-            {/* Samsung Health explainer (Android) — connects via Health Connect */}
-            <Modal
-                visible={showSamsungSheet}
-                animationType="slide"
-                transparent
-                onRequestClose={() => setShowSamsungSheet(false)}
-            >
-                <View style={skipModalStyles.overlay}>
-                    <View style={[skipModalStyles.sheet, { paddingBottom: insets.bottom + 24 }]}>
-                        <View style={skipModalStyles.handle} />
-                        <View style={skipModalStyles.iconRow}>
-                            <View style={skipModalStyles.iconWrap}>
-                                <MaterialCommunityIcons name="heart-pulse" size={24} color={GOLD} />
-                            </View>
-                        </View>
-                        <Text style={skipModalStyles.title}>Connect Samsung Health</Text>
-                        <Text style={skipModalStyles.reassurance}>
-                            Samsung Health shares your workouts, steps &amp; sleep through Health Connect. Two quick steps:
-                        </Text>
-                        <View style={skipModalStyles.benefits}>
-                            <View style={skipModalStyles.benefitRow}>
-                                <Ionicons name="link" size={16} color={GOLD} />
-                                <View style={skipModalStyles.benefitInfo}>
-                                    <Text style={skipModalStyles.benefitTitle}>1. Connect Health Connect</Text>
-                                    <Text style={skipModalStyles.benefitDesc}>POWR reads your data from Health Connect</Text>
-                                </View>
-                            </View>
-                            <View style={skipModalStyles.benefitRow}>
-                                <Ionicons name="toggle" size={16} color={GOLD} />
-                                <View style={skipModalStyles.benefitInfo}>
-                                    <Text style={skipModalStyles.benefitTitle}>2. Turn on sharing in Samsung Health</Text>
-                                    <Text style={skipModalStyles.benefitDesc}>Samsung Health → Settings → Health Connect → allow</Text>
-                                </View>
-                            </View>
-                        </View>
-                        <Pressable
-                            style={({ pressed }) => [skipModalStyles.connectBtn, pressed && { opacity: 0.8 }]}
-                            onPress={() => {
-                                setShowSamsungSheet(false);
-                                const hc = HEALTH_SOURCES.find(s => s.id === 'health-connect');
-                                if (hc) handleConnect(hc);
-                            }}
-                        >
-                            <Text style={skipModalStyles.connectBtnText}>CONNECT HEALTH CONNECT</Text>
-                        </Pressable>
-                        <Pressable
-                            style={skipModalStyles.skipBtn}
-                            onPress={() => {
-                                Linking.openURL('market://details?id=com.sec.android.app.shealth')
-                                    .catch(() => Linking.openURL('https://play.google.com/store/apps/details?id=com.sec.android.app.shealth'));
-                            }}
-                        >
-                            <Text style={skipModalStyles.skipBtnText}>Open Samsung Health</Text>
                         </Pressable>
                     </View>
                 </View>
@@ -970,35 +689,36 @@ const styles = StyleSheet.create({
         marginBottom: 8,
     },
     headlineGold: { color: GOLD, fontFamily: FONT_SEMIBOLD, fontWeight: '700' },
+    subhead: {
+        color: 'rgba(255,255,255,0.4)',
+        fontSize: 13,
+        fontFamily: FONT_LIGHT,
+        fontWeight: '300',
+        lineHeight: 18,
+        marginBottom: 12,
+    },
+    bonusBadge: {
+        backgroundColor: 'rgba(0,0,0,0.18)',
+        borderRadius: 10,
+        paddingHorizontal: 8,
+        paddingVertical: 3,
+    },
+    bonusLabel: {
+        color: '#0a0a0a',
+        fontSize: 9,
+        fontFamily: FONT_BOLD,
+        fontWeight: '700',
+        letterSpacing: 0.5,
+    },
     list: { flex: 1 },
     listContent: { paddingHorizontal: 24, gap: 6, paddingBottom: 8 },
-    sectionHeading: {
-        color: 'rgba(255,255,255,0.35)',
-        fontSize: 10,
-        fontFamily: FONT_SEMIBOLD,
-        fontWeight: '600',
-        letterSpacing: 2,
-        textTransform: 'uppercase',
-        marginTop: 4,
-        marginBottom: 2,
-    },
-    sourceRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: CARD_BG,
-        borderWidth: 1,
-        borderColor: BORDER,
-        borderRadius: 14,
-        paddingVertical: 9,
-        paddingHorizontal: 12,
-        gap: 10,
-    },
-    sourceRowConnected: {
-        borderColor: 'rgba(232,210,0,0.3)',
-        backgroundColor: 'rgba(232,210,0,0.04)',
-    },
-    sourceRowDisabled: {
-        opacity: 0.55,
+    // With a single hero card, the idle state is short — centre it in the space
+    // between header and CTA instead of hugging the header. (Still a ScrollView
+    // so cramped screens scroll; sync progress stays top-aligned.)
+    listContentCentered: {
+        flexGrow: 1,
+        justifyContent: 'center',
+        paddingBottom: 32,
     },
     sourceIcon: {
         width: 36,
@@ -1021,85 +741,6 @@ const styles = StyleSheet.create({
         top: -60,
         right: -80,
         opacity: 0.03,
-    },
-    sourceInfo: { flex: 1 },
-    sourceNameRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 6,
-        marginBottom: 2,
-    },
-    sourceName: {
-        color: '#F2F2F2',
-        fontSize: 14,
-        fontFamily: FONT_MEDIUM,
-        fontWeight: '500',
-    },
-    sourceHint: {
-        color: 'rgba(255,255,255,0.3)',
-        fontSize: 11,
-        fontFamily: FONT_LIGHT,
-        fontWeight: '300',
-        marginTop: 1,
-    },
-    stepsLabel: {
-        color: GOLD,
-        fontSize: 11,
-        fontFamily: FONT_MEDIUM,
-        fontWeight: '500',
-        marginTop: 2,
-    },
-    comingSoonLabel: {
-        color: 'rgba(255,255,255,0.25)',
-        fontSize: 10,
-        fontWeight: '400',
-        letterSpacing: 0.3,
-        marginTop: 1,
-    },
-    pointsBadge: {
-        backgroundColor: 'rgba(232,210,0,0.12)',
-        borderWidth: 1,
-        borderColor: 'rgba(232,210,0,0.25)',
-        borderRadius: 4,
-        paddingHorizontal: 5,
-        paddingVertical: 2,
-    },
-    pointsBadgeText: {
-        color: GOLD,
-        fontSize: 8,
-        fontFamily: FONT_BOLD,
-        fontWeight: '700',
-        letterSpacing: 0.8,
-    },
-    connectPill: {
-        paddingHorizontal: 12,
-        paddingVertical: 6,
-        borderRadius: 20,
-        borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.8)',
-    },
-    comingSoonPill: {
-        paddingHorizontal: 10,
-        paddingVertical: 6,
-        borderRadius: 20,
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.08)',
-    },
-    connectedPill: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: 10,
-        paddingVertical: 6,
-        borderRadius: 20,
-        borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.8)',
-        backgroundColor: 'transparent',
-    },
-    pillLabel: {
-        fontSize: 9,
-        fontFamily: FONT_BOLD,
-        fontWeight: '700',
-        letterSpacing: 1.5,
     },
     bottom: { paddingHorizontal: 24 },
     primaryButton: {
@@ -1124,56 +765,6 @@ const styles = StyleSheet.create({
         fontFamily: FONT_LIGHT,
         fontWeight: '300',
         letterSpacing: 0.2,
-    },
-    wearableGrid: {
-        flexDirection: 'row',
-        flexWrap: 'wrap',
-        gap: GRID_GAP,
-    },
-    wearableCard: {
-        width: CARD_W,
-        paddingVertical: 14,
-        alignItems: 'center',
-        backgroundColor: 'transparent',
-        borderWidth: 1,
-        borderColor: 'transparent',
-        borderRadius: 16,
-        gap: 8,
-    },
-    wearableCardConnected: {
-        borderColor: 'rgba(232,210,0,0.35)',
-        backgroundColor: 'rgba(232,210,0,0.04)',
-    },
-    cardLogoWrap: {
-        width: CARD_W * 0.56,
-        height: CARD_W * 0.56,
-        borderRadius: 12,
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: 'rgba(255,255,255,0.06)',
-    },
-    cardLogoWrapWhite: {
-        backgroundColor: '#FFFFFF',
-    },
-    cardName: {
-        color: 'rgba(255,255,255,0.65)',
-        fontSize: 10,
-        fontFamily: FONT_MEDIUM,
-        fontWeight: '500',
-        letterSpacing: 0.2,
-        textAlign: 'center',
-        paddingHorizontal: 4,
-    },
-    cardCheckBadge: {
-        position: 'absolute',
-        top: 7,
-        right: 7,
-        width: 18,
-        height: 18,
-        borderRadius: 9,
-        backgroundColor: GOLD,
-        alignItems: 'center',
-        justifyContent: 'center',
     },
 });
 
@@ -1218,29 +809,6 @@ const skipModalStyles = StyleSheet.create({
         color: '#F2F2F2',
         letterSpacing: -0.5,
         textAlign: 'center',
-    },
-    benefits: {
-        gap: 14,
-    },
-    benefitRow: {
-        flexDirection: 'row',
-        alignItems: 'flex-start',
-        gap: 12,
-        paddingVertical: 2,
-    },
-    benefitInfo: {
-        flex: 1,
-        gap: 2,
-    },
-    benefitTitle: {
-        fontSize: 14,
-        fontWeight: '400',
-        color: '#F2F2F2',
-    },
-    benefitDesc: {
-        fontSize: 11,
-        fontWeight: '300',
-        color: 'rgba(255,255,255,0.4)',
     },
     reassurance: {
         fontSize: 12,

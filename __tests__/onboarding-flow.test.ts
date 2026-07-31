@@ -13,18 +13,24 @@ import {
 } from '@/lib/onboarding/flow';
 
 describe('onboarding flow order', () => {
-    it('is the expected 9-step sequence, account → achievement', () => {
+    it('is the expected 10-step sequence, account → achievement', () => {
         expect(ONBOARDING_STEPS).toEqual([
             '/onboarding-account',
             '/onboarding-profile',
             '/onboarding-permission',
             '/onboarding-permission-background',
             '/onboarding-gym',
-            '/onboarding-health',
+            '/onboarding-wearables',
             '/onboarding-activities',
+            '/onboarding-health',
             '/onboarding-notifications',
             '/onboarding-achievement',
         ]);
+    });
+
+    it('pitches wearables early and phone health late, on separate steps', () => {
+        expect(dotIndexFor('/onboarding-wearables')).toBe(dotIndexFor('/onboarding-gym') + 1);
+        expect(nextRoute('/onboarding-health')).toBe('/onboarding-notifications');
     });
 
     it('places the new profile + gym steps right after sign-in / permission', () => {
@@ -41,7 +47,7 @@ describe('onboarding flow order', () => {
     });
 
     it('asks for notifications on a primed page right before the finale', () => {
-        expect(nextRoute('/onboarding-activities')).toBe('/onboarding-notifications');
+        expect(nextRoute('/onboarding-activities')).toBe('/onboarding-health');
         expect(nextRoute('/onboarding-notifications')).toBe('/onboarding-achievement');
     });
 
@@ -51,7 +57,7 @@ describe('onboarding flow order', () => {
 
     it('has one progress dot per step', () => {
         expect(ONBOARDING_DOT_COUNT).toBe(ONBOARDING_STEPS.length);
-        expect(ONBOARDING_DOT_COUNT).toBe(9);
+        expect(ONBOARDING_DOT_COUNT).toBe(10);
     });
 });
 
@@ -76,7 +82,7 @@ describe('nextRoute', () => {
         expect(nextRoute('/onboarding-account')).toBe('/onboarding-profile');
         expect(nextRoute('/onboarding-permission')).toBe('/onboarding-permission-background');
         expect(nextRoute('/onboarding-permission-background')).toBe('/onboarding-gym');
-        expect(nextRoute('/onboarding-gym')).toBe('/onboarding-health');
+        expect(nextRoute('/onboarding-gym')).toBe('/onboarding-wearables');
     });
 
     it('chains all the way through the flow then stops', () => {

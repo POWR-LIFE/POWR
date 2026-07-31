@@ -157,11 +157,11 @@ describe('OnboardingGymScreen', () => {
         expect(await screen.findByText('Thanks!')).toBeTruthy();
     });
 
-    it('advances to the health step when continuing/skipping', async () => {
+    it('advances to the wearables step when continuing/skipping', async () => {
         render(<OnboardingGymScreen />);
         await screen.findByText('PureGym Shoreditch');
 
         fireEvent.press(screen.getByText('SKIP FOR NOW'));
-        expect(mockRouter.push).toHaveBeenCalledWith('/onboarding-health');
+        expect(mockRouter.push).toHaveBeenCalledWith('/onboarding-wearables');
     });
 });

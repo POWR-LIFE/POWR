@@ -60,6 +60,9 @@ export default function OnboardingNotificationsScreen() {
     // 'denied' = the OS dialog is burned (Android 13 two-strike, or toggled
     // off in settings) — the CTA has to deep-link to system settings instead.
     const [mode, setMode] = useState<'ask' | 'denied'>('ask');
+    // The escape link stays hidden until an ask has actually failed — untouched
+    // users see no way past this screen except the permission dialog.
+    const [attempted, setAttempted] = useState(false);
 
     // Health-sync results ride through this screen to the achievement finale.
     const params = useLocalSearchParams<{ streakDays?: string; totalSessions?: string; activeDays?: string }>();
@@ -127,14 +130,25 @@ export default function OnboardingNotificationsScreen() {
             // Fires the real OS dialog (previewed by the mock above) and, on
             // grant, registers this device's push token.
             const granted = await requestPermissions();
+            if (granted) {
+                advance();
+                return;
+            }
             // A deny starts the re-ask cool-off (NotificationPrimeSheet picks
-            // this up at the first value moment).
-            if (!granted) recordOnboardingDeclined().catch(() => {});
+            // this up at the first value moment) and stays on the page — the
+            // escape link is visible now, and if the dialog is burned the CTA
+            // flips to OPEN SETTINGS.
+            recordOnboardingDeclined().catch(() => {});
+            setAttempted(true);
+            const perm = await Notifications.getPermissionsAsync();
+            if (perm.status === 'denied' && perm.canAskAgain === false) {
+                setMode('denied');
+            }
         } catch (error) {
             console.warn('Error requesting notification permission:', error);
+            setAttempted(true);
         } finally {
             setRequesting(false);
-            advance();
         }
     };
 
@@ -198,12 +212,14 @@ export default function OnboardingNotificationsScreen() {
                     </Text>
                 </Pressable>
 
-                <Pressable
-                    style={styles.skipButton}
-                    onPress={handleSkip}
-                >
-                    <Text style={styles.skipLabel}>Skip for now</Text>
-                </Pressable>
+                {(attempted || mode === 'denied') && (
+                    <Pressable
+                        style={styles.skipButton}
+                        onPress={handleSkip}
+                    >
+                        <Text style={styles.skipLabel}>Continue without alerts</Text>
+                    </Pressable>
+                )}
             </Animated.View>
         </View>
     );

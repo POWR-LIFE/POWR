@@ -36,7 +36,7 @@ const FONT_REGULAR = 'Outfit_400Regular';
 const FONT_MEDIUM = 'Outfit_500Medium';
 const FONT_SEMIBOLD = 'Outfit_600SemiBold';
 
-const NEXT_SCREEN = '/onboarding-health';
+const NEXT_SCREEN = '/onboarding-wearables';
 
 const DEFAULT_REGION = {
     latitude: 51.5074,

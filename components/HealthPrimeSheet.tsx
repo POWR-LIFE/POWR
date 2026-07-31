@@ -12,6 +12,7 @@ import {
     useHealthData,
 } from '@/hooks/useHealthData';
 import { getStepsToday, syncWalkingNow } from '@/lib/health/walkingSync';
+import { awardBonus } from '@/lib/api/points';
 import {
     detectHealthPromptMode,
     getHealthPromptState,
@@ -64,6 +65,9 @@ export default function HealthPrimeSheet() {
 
     const finishConnected = useCallback(() => {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        // Same one-time bonus as the onboarding step — idempotent server-side, so
+        // users who skipped onboarding still earn it when they connect from here.
+        awardBonus('health_connection').catch(() => {});
         syncWalkingNow().catch(() => {});
         setMode('hidden');
     }, []);

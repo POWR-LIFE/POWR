@@ -107,5 +107,5 @@ async function returnHome(router: ReturnType<typeof useRouter>, failed: boolean)
     const returnTo = await SecureStore.getItemAsync('oauth.returnTo');
     await SecureStore.deleteItemAsync('oauth.returnTo');
     // Linger on failure so the reason is readable before bouncing back.
-    setTimeout(() => router.replace(returnTo === 'settings' ? '/settings-screen' : '/onboarding-health'), failed ? 4000 : 600);
+    setTimeout(() => router.replace(returnTo === 'settings' ? '/settings-screen' : '/onboarding-wearables'), failed ? 4000 : 600);
 }

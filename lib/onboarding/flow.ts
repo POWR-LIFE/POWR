@@ -14,8 +14,9 @@ export const ONBOARDING_STEPS = [
     '/onboarding-permission',
     '/onboarding-permission-background',
     '/onboarding-gym',
-    '/onboarding-health',
+    '/onboarding-wearables',
     '/onboarding-activities',
+    '/onboarding-health',
     '/onboarding-notifications',
     '/onboarding-achievement',
 ] as const;
