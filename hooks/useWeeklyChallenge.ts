@@ -31,6 +31,8 @@ export interface ChallengeCardData {
   unit: string;
   /** Show the per-step dot row (only for small count/day goals). */
   showDots: boolean;
+  /** Bar sections for discrete goals (one per unit); unset = continuous bar. */
+  segments?: number;
   /** Completed (recorded in user_challenge_completions) this week. */
   completed: boolean;
   expiresIn: string;
@@ -54,6 +56,9 @@ const COUNT_NOUN: Record<string, string> = {
 /** Derive display value/goal/unit + dot visibility from a rule + raw progress. */
 function formatProgress(rule: any, category: string, progress: number, target: number) {
   const fraction = target > 0 ? Math.min(progress / target, 1) : 0;
+  // Every rule kind except the metric sums reports integer counts, so the bar
+  // can break into one section per unit. Sums (70k steps, 20 km) stay continuous.
+  const segments = target >= 2 && target <= 12 ? target : undefined;
   switch (rule.kind) {
     case 'weekly_sum':
     case 'weekend_sum':
@@ -65,13 +70,13 @@ function formatProgress(rule: any, category: string, progress: number, target: n
     case 'distinct_days':
     case 'spaced_days':
     case 'step_window':
-      return { fraction, displayValue: progress, displayGoal: target, unit: 'days', showDots: target <= 7 };
+      return { fraction, displayValue: progress, displayGoal: target, unit: 'days', showDots: target <= 7, segments };
     case 'distinct_categories':
-      return { fraction, displayValue: progress, displayGoal: target, unit: 'categories', showDots: true };
+      return { fraction, displayValue: progress, displayGoal: target, unit: 'categories', showDots: true, segments };
     case 'same_day_combo':
-      return { fraction, displayValue: progress, displayGoal: target, unit: 'days', showDots: true };
+      return { fraction, displayValue: progress, displayGoal: target, unit: 'days', showDots: true, segments };
     default:
-      return { fraction, displayValue: progress, displayGoal: target, unit: COUNT_NOUN[category] ?? 'sessions', showDots: target <= 7 };
+      return { fraction, displayValue: progress, displayGoal: target, unit: COUNT_NOUN[category] ?? 'sessions', showDots: target <= 7, segments };
   }
 }
 
