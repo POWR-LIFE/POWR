@@ -12,7 +12,7 @@
 // flip of base_awarded (false → true) so a client + cron race can't both award.
 // The group BONUS is NOT awarded here — it's settled once at challenge end from
 // the final co-completer count (see resolve-shared-challenges).
-import { buildContext, evaluateChallenge, evaluateMomentum } from './challenges.ts';
+import { buildContext, challengeSessionWindow, evaluateChallenge, evaluateMomentum } from './challenges.ts';
 import { notifyPush } from './notify.ts';
 
 export interface ParticipantEvalResult {
@@ -42,7 +42,9 @@ export async function evaluateParticipant(
 
   // The qualifying window is the challenge's own clock — [starts_at, ends_at],
   // capped at now — NOT the ISO week. "Do the goal within the challenge."
-  const windowStart = challenge.starts_at;
+  // Fetched from the start day's local midnight so the day-bucketed walking row
+  // for the start day isn't dropped (see challengeSessionWindow).
+  const window = challengeSessionWindow(challenge.starts_at, utcOffsetMinutes);
   const endMs = challenge.ends_at ? Date.parse(challenge.ends_at) : Date.now();
   const windowEnd = new Date(Math.min(Date.now(), endMs)).toISOString();
 
@@ -50,7 +52,7 @@ export async function evaluateParticipant(
     .from('activity_sessions')
     .select('type, started_at, duration_sec, distance_m, steps, verification')
     .eq('user_id', userId)
-    .gte('started_at', windowStart)
+    .gte('started_at', window.fetchStartISO)
     .lte('started_at', windowEnd)
     .order('started_at', { ascending: true });
 
@@ -60,12 +62,12 @@ export async function evaluateParticipant(
       .from('daily_step_windows')
       .select('date, before_9am, midday_12_14, after_6pm')
       .eq('user_id', userId)
-      .gte('date', windowStart.slice(0, 10))
+      .gte('date', challenge.starts_at.slice(0, 10))
       .lte('date', windowEnd.slice(0, 10));
     stepWindows = windows ?? [];
   }
 
-  const ctx = buildContext(sessions ?? [], utcOffsetMinutes, stepWindows);
+  const ctx = buildContext((sessions ?? []).filter(window.admits), utcOffsetMinutes, stepWindows);
   const { progress, target, met } = evaluateChallenge(challenge.rule, ctx);
   const frac = target > 0 ? Math.max(0, Math.min(1, progress / target)) : met ? 1 : 0;
   // "So far today" figure (e.g. 2,567 / 10,000 steps) for goals where a day is

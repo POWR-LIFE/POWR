@@ -29,17 +29,19 @@ Deno.serve(async (req) => {
   const nowIso = new Date().toISOString();
   const stats = { started: 0, cancelled: 0, awarded: 0, settled: 0, nudged: 0 };
 
-  // ── 1. Forming challenges whose accept window has elapsed ──────────────────
-  const { data: stale } = await supabase
+  // ── 1. Forming challenges: start any with ≥2 in; cancel dead ones at the
+  //      accept deadline. Sweeping ALL forming rows (not just deadline-elapsed)
+  //      backstops an accept whose start event was missed — and activated every
+  //      pre-existing forming challenge when start-on-second-accept shipped. ───
+  const { data: forming } = await supabase
     .from('shared_challenges')
-    .select('id')
-    .eq('status', 'forming')
-    .lte('accept_by', nowIso);
-  for (const c of stale ?? []) {
-    // These are past accept_by by definition (the query filters on it), so
-    // outstanding invites count as non-answers — otherwise one ghosted invite
-    // parks the challenge in 'forming' forever.
-    const outcome = await tryStartForming(supabase, c.id, true);
+    .select('id, accept_by')
+    .eq('status', 'forming');
+  for (const c of forming ?? []) {
+    // Past accept_by, outstanding invites count as non-answers — otherwise one
+    // ghosted invite parks the challenge in 'forming' forever.
+    const elapsed = !!c.accept_by && Date.parse(c.accept_by) <= Date.now();
+    const outcome = await tryStartForming(supabase, c.id, elapsed);
     if (outcome === 'started') stats.started++;
     else if (outcome === 'cancelled') stats.cancelled++;
   }

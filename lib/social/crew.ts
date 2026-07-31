@@ -1,4 +1,4 @@
-import type { SharedChallenge } from './types';
+import type { Friend, SharedChallenge } from './types';
 
 /**
  * Who to preselect when re-running `challenge`: everyone who actually joined
@@ -31,4 +31,19 @@ export function lastCrew(all: SharedChallenge[], selfId: string | null): string[
     .filter((c) => c.creatorId === selfId && c.participants.some((p) => !p.isSelf))
     .sort((a, b) => recency(b) - recency(a));
   return mine.length ? rematchCrew(mine[0]) : [];
+}
+
+/**
+ * The crew to PITCH on the empty-state starter cards (and preselect when one is
+ * tapped): your usual crew when you have one, otherwise your first invitable
+ * friends — so someone who has never created a challenge still sees real faces
+ * and a concrete bonus instead of an abstract feature. Only accepted,
+ * together-enabled friends qualify (the pitch must never name someone the
+ * create sheet would then refuse to invite).
+ */
+export function starterCrew(friends: Friend[], lastCrewIds: string[], max = 3): Friend[] {
+  const invitable = friends.filter((f) => f.status === 'accepted' && f.togetherEnabled !== false);
+  const byId = new Map(invitable.map((f) => [f.id, f]));
+  const usual = lastCrewIds.map((id) => byId.get(id)).filter((f): f is Friend => !!f);
+  return (usual.length > 0 ? usual : invitable).slice(0, max);
 }

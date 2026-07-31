@@ -242,7 +242,7 @@ export default function OnboardingGymScreen() {
                 <Text style={styles.headline}>
                     Your <Text style={styles.headlineGold}>home gym.</Text>
                 </Text>
-                <Text style={styles.sub}>Set it now to earn faster — or skip and add it later.</Text>
+                <Text style={styles.sub}>Set it now to earn faster — or add it later.</Text>
 
                 {/* Map */}
                 <View style={styles.mapWrap}>

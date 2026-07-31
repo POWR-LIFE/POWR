@@ -62,8 +62,8 @@ function getStreakPill(streak: number) {
   if (streak < 3)    return { label: 'SHOWING UP',   dotColor: 'rgba(255,255,255,0.55)' };
   if (streak < 7)    return { label: 'BUILDING',     dotColor: '#4ade80' };
   if (streak < 14)   return { label: 'ON A ROLL',    dotColor: '#22c55e' };
-  if (streak < 21)   return { label: 'ON FIRE',      dotColor: ORANGE };
-  if (streak < 30)   return { label: 'UNSTOPPABLE',  dotColor: '#ef4444' };
+  if (streak < 21)   return { label: 'LOCKED IN',    dotColor: ORANGE };
+  if (streak < 30)   return { label: 'RELENTLESS',   dotColor: '#ef4444' };
   return               { label: 'LEGENDARY',    dotColor: GOLD };
 }
 

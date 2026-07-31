@@ -359,7 +359,7 @@ export function weeklySummaryEmail(data: WeeklySummaryData): { subject: string; 
         <tr>
           <td class="sec" style="background-color:#0a0a0a;padding:30px 40px;border-bottom:1px solid #161616;">
             ${sectionLabel("Challenges completed")}
-            <span style="display:block;margin-top:10px;font-size:30px;font-weight:200;color:#F2F2F2;letter-spacing:-1px;line-height:1;font-family:Arial,Helvetica,sans-serif;">${challengeCount} ${challengeCount === 1 ? "challenge" : "challenges"} <span style="color:#666666;">smashed</span></span>
+            <span style="display:block;margin-top:10px;font-size:30px;font-weight:200;color:#F2F2F2;letter-spacing:-1px;line-height:1;font-family:Arial,Helvetica,sans-serif;">${challengeCount} ${challengeCount === 1 ? "challenge" : "challenges"} <span style="color:#666666;">completed</span></span>
             ${chips ? `<div style="margin-top:14px;">${chips}${more}</div>` : ""}
           </td>
         </tr>`;

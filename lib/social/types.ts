@@ -98,6 +98,8 @@ export interface SharedChallenge {
    * this is null/undefined while the challenge is still "forming" (someone's
    * invite is outstanding). Once set, the UI shows a live countdown to it.
    */
+  /** When the qualifying window opened (challenge creation) — null while forming. */
+  startsAt?: string | null;
   endsAt?: string | null;
   /**
    * ISO accept deadline — how long invitees have to respond. Stops a forming

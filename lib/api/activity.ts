@@ -406,6 +406,40 @@ export async function getTodayHealthWalkingSession(): Promise<HealthWalkingSessi
 }
 
 /**
+ * The health-sync walking session (if any) for one local day, plus the total
+ * walking points already earned that day across ALL walking sources — the
+ * per-day figure the daily cap is enforced against. Used by the backfill to
+ * top up days that synced partially and then never again.
+ */
+export async function getWalkingDaySummary(
+    dayStartIso: string,
+    dayEndIso: string,
+): Promise<{ session: HealthWalkingSession | null; dayPoints: number }> {
+    const uid = await getCurrentUserId();
+    if (!uid) return { session: null, dayPoints: 0 };
+    const { data } = await supabase
+        .from('activity_sessions')
+        .select('id, steps, trust_score, point_transactions(amount, type)')
+        .eq('user_id', uid)
+        .eq('type', 'walking')
+        .gte('started_at', dayStartIso)
+        .lt('started_at', dayEndIso);
+
+    let session: HealthWalkingSession | null = null;
+    let dayPoints = 0;
+    for (const row of (data ?? []) as Array<{ id: string; steps: number | null; trust_score: number | string | null; point_transactions?: { amount: number; type: string }[] }>) {
+        const earned = (row.point_transactions ?? [])
+            .filter(t => t.type === 'earn')
+            .reduce((s, t) => s + t.amount, 0);
+        dayPoints += earned;
+        if (Number(row.trust_score) === 0.9) {
+            session = { id: row.id, steps: row.steps ?? 0, points: earned };
+        }
+    }
+    return { session, dayPoints };
+}
+
+/**
  * Creates a new health-auto-synced walking session and awards initial points.
  * `verification` reflects the data source — 'wearable' for dedicated wearables,
  * 'health' for native phone sync (the default). See `verificationForProvider`.
@@ -463,11 +497,13 @@ export async function updateHealthWalkingSession(
     sessionId: string,
     steps: number,
     additionalPoints: number,
+    endedAt?: string,
 ): Promise<void> {
-    const now = new Date().toISOString();
+    // A past-day top-up passes that day's end so ended_at stays inside its day.
+    const end = endedAt ?? new Date().toISOString();
     const { error } = await supabase
         .from('activity_sessions')
-        .update({ steps, ended_at: now })
+        .update({ steps, ended_at: end })
         .eq('id', sessionId);
     if (error) console.warn('[walkingSync] session update failed:', error.message);
 

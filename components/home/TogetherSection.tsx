@@ -1,16 +1,26 @@
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Dimensions, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { fontFamily } from '@/constants/tokens';
 import { useChallengeSettled } from '@/hooks/useChallengeSettled';
-import { lastCrew, rematchCrew } from '@/lib/social/crew';
+import { lastCrew, rematchCrew, starterCrew } from '@/lib/social/crew';
+import {
+  buildPulseHistory,
+  rankFriendPulse,
+  sameLocalDay,
+  type PulseCandidate,
+  type PulsePacing,
+} from '@/lib/social/friendPulse';
 import { useSharedChallenges } from '@/hooks/useSharedChallenges';
 import { usePoints } from '@/hooks/usePoints';
 import { useNotifications } from '@/context/NotificationsContext';
 import { buildSharedChallengeShareInput } from '@/lib/social/share';
+import { supabase } from '@/lib/supabase';
 import type { SharedChallenge } from '@/lib/social/types';
+import { Avatar } from '@/components/social/Avatar';
 import { CreateChallengeSheet } from '@/components/social/CreateChallengeSheet';
 import { ChallengeTemplateCard } from '@/components/social/ChallengeTemplateCard';
 import { SharedChallengeCard } from '@/components/social/SharedChallengeCard';
@@ -33,6 +43,26 @@ const NEXT_PEEK = 22;
 // mounting into Home's first paint (where RN occasionally drops the
 // presentation) and gives the settled-challenge refetch a moment to land.
 const SETTLE_MS = 700;
+
+// ── Friend pulse ("Elliot just did a gym session — challenge him") ────────────
+// The strongest possible create-prompt is a friend's real, fresh workout:
+// social proof and a target in one line. Sourced from
+// get_friends_recent_activity (accepted friends' latest sensor-verified
+// session inside the window); names/faces come from the friends list the
+// section already holds. WHO gets featured — and how often — is decided by
+// lib/social/friendPulse (history-weighted ranking + cool-offs), with the
+// pacing state persisted here.
+
+const PULSE_PACING_KEY = '@powr/friend_pulse_pacing';
+
+const PULSE_NOUN: Record<string, string> = { gym: 'a gym session', running: 'a run', cycling: 'a ride' };
+
+function pulseLine(p: PulseCandidate): string {
+  const name = p.friend.displayName.split(' ')[0] || p.friend.username;
+  const noun = PULSE_NOUN[p.type] ?? 'a workout';
+  const ageH = (Date.now() - Date.parse(p.startedAt)) / 3_600_000;
+  return `${name} ${ageH <= 3 ? 'just did' : 'recently did'} ${noun}`;
+}
 
 export interface TogetherSectionProps {
   onOpenChallenge?: (challenge: SharedChallenge) => void;
@@ -105,6 +135,88 @@ export function TogetherSection({ onOpenChallenge, deferred = false }: TogetherS
   // Default preselection: the crew from your last created challenge, so the
   // usual partners are one Send away. An explicit rematch overrides it.
   const defaultCrew = useMemo(() => lastCrew(all, selfId), [all, selfId]);
+
+  // The crew pitched on the empty-state starter cards — usual crew, or first
+  // invitable friends for someone who has never created one.
+  const starter = useMemo(() => starterCrew(friends, defaultCrew), [friends, defaultCrew]);
+
+  // Pacing state (per-friend last-featured + row dismissal) — loaded before the
+  // pulse can render so a cooled-off friend never flashes in and vanishes.
+  const [pulsePacing, setPulsePacing] = useState<PulsePacing | null>(null);
+  useEffect(() => {
+    AsyncStorage.getItem(PULSE_PACING_KEY)
+      .then((raw) => {
+        let parsed: PulsePacing = { lastSuggestedAt: {} };
+        if (raw) {
+          try {
+            const p = JSON.parse(raw);
+            if (p && typeof p === 'object') {
+              parsed = { lastSuggestedAt: p.lastSuggestedAt ?? {}, rowDismissedAt: p.rowDismissedAt };
+            }
+          } catch { /* corrupt = start fresh */ }
+        }
+        setPulsePacing(parsed);
+      })
+      .catch(() => setPulsePacing({ lastSuggestedAt: {} }));
+  }, []);
+  const persistPacing = useCallback((next: PulsePacing) => {
+    setPulsePacing(next);
+    AsyncStorage.setItem(PULSE_PACING_KEY, JSON.stringify(next)).catch(() => {});
+  }, []);
+
+  // Friend workout worth prompting on. Hard filters here (opted-out friends,
+  // anyone already alongside you in — or invited to — a live challenge);
+  // relevance + fatigue rules in rankFriendPulse: together-history with you
+  // outranks raw recency, recent decliners sit out a week, the same friend
+  // features at most once per few days, and dismissal silences the row.
+  // Best-effort: any failure just hides it.
+  const [pulse, setPulse] = useState<PulseCandidate | null>(null);
+  useFocusEffect(useCallback(() => {
+    if (!pulsePacing) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await supabase.rpc('get_friends_recent_activity', { p_hours: 24 });
+        if (cancelled || !Array.isArray(data)) return;
+        const engaged = new Set(
+          active.flatMap((c) => c.participants.filter((p) => !p.isSelf).map((p) => p.friend.id)),
+        );
+        const byId = new Map(friends.map((f) => [f.id, f]));
+        const candidates = data
+          .map((r: any) => ({ friend: byId.get(r.friend_id), type: r.activity_type as string, startedAt: r.started_at as string }))
+          .filter((r): r is PulseCandidate => !!r.friend && r.friend.togetherEnabled !== false && !engaged.has(r.friend.id));
+        const best = rankFriendPulse(candidates, buildPulseHistory(all, selfId), pulsePacing);
+        setPulse(best);
+        // Stamp the feature (once per local day) so the cool-off has a clock to
+        // run from; re-stamping within the same day would be a no-op loop.
+        if (best) {
+          const last = pulsePacing.lastSuggestedAt[best.friend.id];
+          if (!last || !sameLocalDay(last, Date.now())) {
+            persistPacing({
+              ...pulsePacing,
+              lastSuggestedAt: { ...pulsePacing.lastSuggestedAt, [best.friend.id]: Date.now() },
+            });
+          }
+        }
+      } catch {
+        /* row simply doesn't show */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [friends, active, all, selfId, pulsePacing, persistPacing]));
+
+  const dismissPulse = useCallback(() => {
+    setPulse(null);
+    persistPacing({ ...(pulsePacing ?? { lastSuggestedAt: {} }), rowDismissedAt: Date.now() });
+  }, [pulsePacing, persistPacing]);
+
+  // Challenge the pulsing friend in their own discipline when a template fits.
+  const pulseTemplateId = useMemo(() => {
+    if (!pulse) return null;
+    return templates.find((t) => t.category === pulse.type && t.mode !== 'pooled')?.id
+      ?? templates.find((t) => t.category === pulse.type)?.id
+      ?? null;
+  }, [pulse, templates]);
 
   // "Run it back" — reopen the create sheet primed with the ended challenge's
   // template + crew. One confirm instead of a silent recreate: the sheet
@@ -242,7 +354,9 @@ export function TogetherSection({ onOpenChallenge, deferred = false }: TogetherS
              the active-challenges carousel below. */
           <>
             <Text style={styles.browseIntro}>
-              Take one on with friends — everyone earns a growing bonus.
+              {starter.length > 0
+                ? `Take one on together — +${bonusConfig.perHead} bonus each for every friend who finishes, up to +${bonusConfig.maxBonus}.`
+                : 'Take one on with friends — everyone earns a growing bonus.'}
             </Text>
             <View onLayout={(e) => setBandWidth(e.nativeEvent.layout.width)}>
               <ScrollView
@@ -258,7 +372,15 @@ export function TogetherSection({ onOpenChallenge, deferred = false }: TogetherS
                     key={t.id}
                     style={{ width: cardWidth, marginRight: i === templates.length - 1 ? 0 : CAROUSEL_GAP }}
                   >
-                    <ChallengeTemplateCard template={t} index={i} onPress={(tpl) => openCreate(tpl.id)} />
+                    <ChallengeTemplateCard
+                      template={t}
+                      index={i}
+                      crew={starter}
+                      bonusConfig={bonusConfig}
+                      /* Preselect the faces on the card — the pitch and the sheet
+                         must agree, or the tap feels like a bait-and-switch. */
+                      onPress={(tpl) => openCreate(tpl.id, starter.map((f) => f.id))}
+                    />
                   </View>
                 ))}
               </ScrollView>
@@ -307,6 +429,34 @@ export function TogetherSection({ onOpenChallenge, deferred = false }: TogetherS
             ))}
           </ScrollView>
         </View>
+      )}
+
+      {/* Friend pulse — a fresh workout by a friend not already challenging
+          with you. Hidden at the cap (the tap would dead-end on a full plate). */}
+      {pulse && !atCap && (
+        <Pressable
+          style={styles.pulseRow}
+          onPress={() => openCreate(pulseTemplateId, [pulse.friend.id])}
+          accessibilityRole="button"
+          accessibilityLabel={`${pulseLine(pulse)} — challenge them`}
+        >
+          <Avatar friend={pulse.friend} size={26} />
+          <Text style={styles.pulseText} numberOfLines={2}>
+            {pulseLine(pulse)}.
+          </Text>
+          <View style={styles.pulseCta}>
+            <Text style={styles.pulseCtaText}>Challenge</Text>
+            <Ionicons name="arrow-forward" size={12} color={GOLD} />
+          </View>
+          <Pressable
+            hitSlop={10}
+            onPress={dismissPulse}
+            accessibilityRole="button"
+            accessibilityLabel="Dismiss suggestion"
+          >
+            <Ionicons name="close" size={14} color={SECONDARY} />
+          </Pressable>
+        </Pressable>
       )}
 
       <CreateChallengeSheet
@@ -418,6 +568,16 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.light, fontSize: 12.5, color: SECONDARY,
     paddingHorizontal: 14, marginBottom: 12, lineHeight: 17,
   },
+
+  // friend-pulse prompt row
+  pulseRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: CARD_BG, borderRadius: 14, borderWidth: 1, borderColor: BORDER,
+    paddingVertical: 10, paddingHorizontal: 12, marginTop: 10,
+  },
+  pulseText: { flex: 1, fontFamily: fontFamily.light, fontSize: 12, color: TEXT, lineHeight: 16 },
+  pulseCta: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  pulseCtaText: { fontFamily: fontFamily.medium, fontSize: 11.5, color: GOLD, letterSpacing: 0.2 },
 
   // loading skeleton
   skeleton: {

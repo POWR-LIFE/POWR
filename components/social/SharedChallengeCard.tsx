@@ -6,6 +6,7 @@ import Animated, { Easing, useAnimatedStyle, useSharedValue, withDelay, withTimi
 
 import { fontFamily } from '@/constants/tokens';
 import { challengeBonusConfig, groupBonus } from '@/lib/social/bonus';
+import { pacerState } from '@/lib/social/pacer';
 import { isTerminal } from '@/lib/social/status';
 import type { IconSpec, SharedChallenge } from '@/lib/social/types';
 import { Avatar } from './Avatar';
@@ -129,6 +130,13 @@ export function SharedChallengeCard({ challenge, index = 0, atCap = false, onPre
   const mom = self?.momentum;
   const showMomentum =
     !pooled && !selfDone && !!mom && mom.current > 0 && mom.current < mom.target;
+
+  // Solo run → race the Pacer: the elapsed-time fraction is the pace to beat.
+  // Explicitly a pace line, never a fake person (labelled PACER, pays nothing).
+  const solo = !pooled && others.length === 0;
+  const pacer = solo && !terminal && !selfDone
+    ? pacerState(challenge.startsAt, challenge.endsAt, self?.progress ?? 0)
+    : null;
 
   const outcomeLine = !terminal
     ? null
@@ -310,6 +318,22 @@ export function SharedChallengeCard({ challenge, index = 0, atCap = false, onPre
                   {momentumText(mom!)}
                 </Text>
               )}
+              {!forming && pacer && (
+                <View style={styles.pacerBlock}>
+                  <View style={styles.progressMeta}>
+                    <View style={styles.pacerLabelRow}>
+                      <Ionicons name="flash" size={9} color={SECONDARY} />
+                      <Text style={styles.pacerLabel}>Pacer</Text>
+                    </View>
+                    <Text style={[styles.pacerStatus, pacer.ahead ? { color: GOLD } : { color: SECONDARY }]}>
+                      {pacer.ahead ? "You're ahead" : 'Pacer’s ahead'}
+                    </Text>
+                  </View>
+                  <View style={styles.track}>
+                    <View style={[styles.pacerFill, { width: `${pacer.pct}%` }]} />
+                  </View>
+                </View>
+              )}
             </View>
 
             {/* Bonus + the timer (live countdown once running, else "waiting on N") */}
@@ -403,6 +427,14 @@ const styles = StyleSheet.create({
   momentumLabel: { fontFamily: fontFamily.medium, color: FAINT, textTransform: 'uppercase', letterSpacing: 1, fontSize: 9 },
   track: { height: 4, backgroundColor: BORDER, borderRadius: 2, overflow: 'hidden' },
   fill: { height: 4, borderRadius: 2, backgroundColor: GOLD },
+
+  // Pacer strip (solo runs) — deliberately quieter than "your part": thin grey
+  // pace bar, tiny label, ahead/behind readout is the only colour.
+  pacerBlock: { gap: 5, marginTop: 2 },
+  pacerLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  pacerLabel: { fontFamily: fontFamily.medium, fontSize: 9, letterSpacing: 1.5, color: FAINT, textTransform: 'uppercase' },
+  pacerStatus: { fontFamily: fontFamily.semiBold, fontSize: 10.5 },
+  pacerFill: { height: 4, borderRadius: 2, backgroundColor: MUTED },
 
   // footer
   footer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },

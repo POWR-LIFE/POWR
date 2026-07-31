@@ -204,11 +204,16 @@ function Celebration({
   totalBalance,
   onDone,
   onShare,
+  onTogether,
 }: {
   challenge: ChallengeCardData;
   totalBalance: number;
   onDone: () => void;
   onShare?: () => void;
+  /** "Run it together" — reissue this win as a shared challenge. The moment of
+   *  finishing solo is peak confidence, which is exactly when a social rematch
+   *  converts. */
+  onTogether?: () => void;
 }) {
   const emblemScale = useSharedValue(0);
   const emblemRot = useSharedValue(-15);
@@ -290,6 +295,12 @@ function Celebration({
         <Pressable style={styles.celBtnDone} onPress={onDone}>
           <Text style={styles.celBtnDoneText}>Done</Text>
         </Pressable>
+        {!!onTogether && (
+          <Pressable style={styles.celBtnShare} onPress={onTogether}>
+            <Ionicons name="people-outline" size={13} color={GOLD} />
+            <Text style={[styles.celBtnShareText, { color: GOLD }]}>Run it together</Text>
+          </Pressable>
+        )}
         <Pressable style={styles.celBtnShare} onPress={onShare}>
           <Ionicons name="share-outline" size={13} color={SECONDARY} />
           <Text style={styles.celBtnShareText}>Share</Text>
@@ -308,6 +319,9 @@ interface ChallengeCardProps {
   onShare?: (challenge: ChallengeCardData) => void;
   /** When set, plays the completion celebration for that challenge once. */
   celebrateId?: string | null;
+  /** Celebration "Run it together" — dismisses, then hands over the finished
+   *  challenge so the caller can open a matching shared challenge. */
+  onTogether?: (challenge: ChallengeCardData) => void;
 }
 
 /** Last-known category relevance — read on mount, written whenever this week
@@ -326,7 +340,7 @@ const ORDER_KEY = '@powr/weekly_category_order';
  * day tracking, just goal → progress → points. Completion swaps the rows for
  * the celebration in-flow, so the card grows to fit it.
  */
-export function ChallengeCard({ challenges, totalBalance = 0, onShare, celebrateId }: ChallengeCardProps) {
+export function ChallengeCard({ challenges, totalBalance = 0, onShare, celebrateId, onTogether }: ChallengeCardProps) {
   const [celebratingId, setCelebratingId] = useState<string | null>(null);
   const dismissed = useRef<Set<string>>(new Set());
 
@@ -404,6 +418,11 @@ export function ChallengeCard({ challenges, totalBalance = 0, onShare, celebrate
             totalBalance={totalBalance}
             onShare={() => onShare?.(celebrating)}
             onDone={() => { dismissed.current.add(celebrating.id); setCelebratingId(null); }}
+            onTogether={onTogether ? () => {
+              dismissed.current.add(celebrating.id);
+              setCelebratingId(null);
+              onTogether(celebrating);
+            } : undefined}
           />
         ) : (
           <>

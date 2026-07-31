@@ -482,6 +482,12 @@ verify_jwt = false
 # there is nothing to authorise.
 verify_jwt = false
 
+[functions.challenge-invite-og]
+# Same crawler contract as share-card-og, for challenge invite links
+# (powr.life/c/<token>): title + goal + creator name for one unguessable token.
+# Joining itself happens in respond-shared-challenge under a real user JWT.
+verify_jwt = false
+
 [functions.claim-points]
 # Called by the app with a user JWT (validated in-code), AND by relay_gym_claim
 # via pg_net with x-resolve-token + an explicit user id — the background claim

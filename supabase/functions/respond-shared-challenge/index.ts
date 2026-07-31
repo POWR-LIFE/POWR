@@ -1,8 +1,9 @@
 // @ts-nocheck — Deno runtime, not Node. Types enforced at deploy time.
 //
 // The invitee/participant side of a shared challenge:
-//   accept  — commit to it (enforces the concurrency cap). When the last invite
-//             lands, the clock starts (tryStartForming).
+//   accept  — commit to it (enforces the concurrency cap). The FIRST accept
+//             starts the challenge (creator + one = enough; tryStartForming);
+//             later accepts join the running clock.
 //   decline — drop a pending invite. May resolve the forming challenge (start
 //             with whoever's left, or cancel).
 //   leave   — drop a challenge you'd accepted; frees a slot. Cancels the
@@ -18,6 +19,12 @@
 //   dismiss — clear a FINISHED challenge off your own Home surface (per-user
 //             display flag; the challenge itself is untouched). Live challenges
 //             can't be dismissed — leave/cancel covers wanting out of those.
+//   join    — enter via an invite LINK (powr.life/c/<token>), no prior invite
+//             row needed. The token is the credential: whoever holds it may
+//             join while the challenge is forming/active (group + slot caps
+//             still apply) and is auto-friended with the creator — this is the
+//             share-link recruitment loop. Runs BEFORE the participant check,
+//             because a link-joiner isn't a participant yet.
 import { createClient } from '@supabase/supabase-js';
 import { tryStartForming } from '../_shared/sharedChallengeLifecycle.ts';
 import { notifyPush } from '../_shared/notify.ts';
@@ -27,7 +34,7 @@ const json = (body: unknown, status = 200) =>
 
 const MAX_GROUP = 6; // creator + up to 5 others (mirrors create-shared-challenge)
 
-type Action = 'accept' | 'decline' | 'leave' | 'invite' | 'dismiss' | 'cancel';
+type Action = 'accept' | 'decline' | 'leave' | 'invite' | 'dismiss' | 'cancel' | 'join';
 
 /** How many live, unfinished challenges already occupy a slot for this user. */
 async function openCount(supabase: any, userId: string): Promise<number> {
@@ -86,6 +93,100 @@ async function notifyAccepted(supabase: any, challengeId: string, accepterId: st
       total_count: live.length,
     });
   }
+}
+
+/**
+ * Join via invite link. The token IS the credential — it only ever leaves the
+ * server through get_challenge_invite_token (creator-only), so holding it
+ * means the creator shared it with you. Joining also seeds the friend graph:
+ * the whole point of the link is recruiting people who aren't friends (or
+ * users) yet, and a challenge-mate you can't rematch afterwards is a dead end.
+ */
+async function joinByToken(supabase: any, user: any, token?: string) {
+  if (!token || typeof token !== 'string') return json({ error: 'Missing invite token' }, 400);
+
+  const { data: challenge } = await supabase
+    .from('shared_challenges')
+    .select('id, status, creator_id, template')
+    .eq('invite_token', token)
+    .maybeSingle();
+  if (!challenge) return json({ error: 'Invite link not recognised', code: 'BAD_TOKEN' }, 404);
+  if (challenge.status !== 'forming' && challenge.status !== 'active') {
+    return json({ error: 'This challenge has already finished', code: 'NOT_LIVE' }, 409);
+  }
+  if (challenge.creator_id === user.id) {
+    return json({ ok: true, challenge_id: challenge.id, state: 'creator' });
+  }
+
+  // A block in either direction kills the link (rows are canonical low<high).
+  const [lo, hi] = [user.id, challenge.creator_id].sort();
+  const { data: edge } = await supabase
+    .from('friendships')
+    .select('status')
+    .eq('user_id', lo)
+    .eq('friend_id', hi)
+    .maybeSingle();
+  if (edge?.status === 'blocked') {
+    return json({ error: 'You can’t join this challenge', code: 'BLOCKED' }, 403);
+  }
+
+  const { data: roster } = await supabase
+    .from('shared_challenge_participants')
+    .select('user_id, state')
+    .eq('challenge_id', challenge.id);
+  const mine = (roster ?? []).find((p: any) => p.user_id === user.id);
+  if (mine && (mine.state === 'accepted' || mine.state === 'completed')) {
+    return json({ ok: true, challenge_id: challenge.id, state: mine.state }); // already in
+  }
+
+  // Group cap counts this joiner only if they aren't already a live head.
+  const liveCount = (roster ?? []).filter((p: any) => p.state !== 'declined' && p.state !== 'left').length;
+  const newHead = !mine || mine.state === 'declined' || mine.state === 'left';
+  if (newHead && liveCount >= MAX_GROUP) {
+    return json({ error: `Groups are capped at ${MAX_GROUP}`, code: 'GROUP_FULL' }, 409);
+  }
+  const cap = await capFromConfig(supabase);
+  if (await openCount(supabase, user.id) >= cap) {
+    return json({ error: 'Challenge slots full — finish or drop one first', code: 'AT_CAP' }, 409);
+  }
+
+  if (!edge) {
+    const { error: fErr } = await supabase.from('friendships').insert({
+      user_id: lo, friend_id: hi, status: 'accepted', requested_by: challenge.creator_id,
+    });
+    // 23505 = a concurrent request/join already created the edge — fine.
+    if (fErr && fErr.code !== '23505') console.error('[respond-shared-challenge] join friendship insert failed:', fErr);
+  } else if (edge.status === 'pending') {
+    await supabase.from('friendships').update({ status: 'accepted' })
+      .eq('user_id', lo).eq('friend_id', hi);
+  }
+
+  const nowIso = new Date().toISOString();
+  if (mine) {
+    // invited/declined/left → straight to accepted, cleared of any prior stint
+    // (same reset the re-invite path applies).
+    await supabase.from('shared_challenge_participants')
+      .update({
+        state: 'accepted', invited_by: challenge.creator_id, joined_at: nowIso,
+        completed: false, completed_at: null, progress: 0,
+        base_awarded: false, bonus_awarded: 0,
+      })
+      .eq('challenge_id', challenge.id).eq('user_id', user.id);
+  } else {
+    const { error: insErr } = await supabase.from('shared_challenge_participants').insert({
+      challenge_id: challenge.id, user_id: user.id, state: 'accepted',
+      invited_by: challenge.creator_id, joined_at: nowIso,
+    });
+    if (insErr && insErr.code !== '23505') {
+      console.error('[respond-shared-challenge] join insert failed:', insErr);
+      return json({ error: 'Failed to join' }, 500);
+    }
+  }
+
+  const outcome = await tryStartForming(supabase, challenge.id);
+  // 'waiting' = already active (late join) — tell the group someone came in.
+  if (outcome === 'waiting') await notifyAccepted(supabase, challenge.id, user.id);
+  return json({ ok: true, challenge_id: challenge.id, state: 'accepted', challenge: outcome });
 }
 
 /** If a forming challenge dropped below 2 live members, cancel it. */
@@ -158,14 +259,20 @@ const handler = async (req) => {
   const { data: { user }, error: authError } = await userClient.auth.getUser();
   if (authError || !user) return json({ error: 'Unauthorized' }, 401);
 
-  let body: { challenge_id: string; action: Action; target_user_ids?: string[] };
+  let body: { challenge_id?: string; action: Action; target_user_ids?: string[]; invite_token?: string };
   try {
     body = await req.json();
   } catch {
     return json({ error: 'Invalid JSON' }, 400);
   }
   const { challenge_id, action } = body;
-  if (!challenge_id || !action) return json({ error: 'Missing challenge_id or action' }, 400);
+  if (!action) return json({ error: 'Missing action' }, 400);
+
+  // Link-join is addressed by token, not challenge_id, and the caller is not a
+  // participant yet — so it cannot flow through the lookup below.
+  if (action === 'join') return joinByToken(supabase, user, body.invite_token);
+
+  if (!challenge_id) return json({ error: 'Missing challenge_id or action' }, 400);
 
   const { data: challenge } = await supabase
     .from('shared_challenges').select('id, status, creator_id, template').eq('id', challenge_id).maybeSingle();
@@ -198,8 +305,9 @@ const handler = async (req) => {
         .update({ state: 'accepted', joined_at: new Date().toISOString() })
         .eq('challenge_id', challenge_id).eq('user_id', user.id);
       const outcome = await tryStartForming(supabase, challenge_id);
-      // If it didn't start (still waiting on other invitees), let everyone
-      // already in know this person joined. When it DID start, the
+      // 'waiting' here means the challenge was ALREADY active (late joiner) —
+      // a first accept on a forming challenge always starts it now. Let everyone
+      // in know this person joined. When this accept DID start it, the
       // challenge_started push already reached them — don't double up.
       if (outcome === 'waiting') await notifyAccepted(supabase, challenge_id, user.id);
       return json({ ok: true, state: 'accepted', challenge: outcome });

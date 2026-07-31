@@ -544,12 +544,12 @@ export function CreateChallengeSheet({
               {canSend && !submitting && <Ionicons name="arrow-forward" size={16} color="#0a0a0a" />}
             </Pressable>
 
-            {/* Timing is admin-set; a group's clock starts once everyone's accepted,
-                a solo run starts on the spot. */}
+            {/* Timing is admin-set; a group's clock starts on the first accept
+                (activity since creation counts), a solo run starts on the spot. */}
             <Text style={styles.timingNote}>
               {soloStart && canSend
-                ? 'Starts the moment you tap — no waiting on anyone.'
-                : 'The challenge starts when everyone joins.'}
+                ? 'Starts the moment you tap — you’ll be racing the Pacer.'
+                : 'Starts as soon as one friend joins — everything from now counts.'}
             </Text>
           </View>
             </>
