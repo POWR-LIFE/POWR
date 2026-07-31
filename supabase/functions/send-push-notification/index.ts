@@ -369,7 +369,7 @@ function buildMessage(
         const what = count > 1 ? `${count} workouts synced` : (label || 'Workout') + ' synced';
         return {
           title: 'Workout synced ⌚',
-          body: `${what}${points > 0 ? ` · +${points.toLocaleString()} POWR` : ''} — no phone needed, it just counted.`,
+          body: `${what}${points > 0 ? ` · +${points.toLocaleString()} POWR points` : ''}. No phone needed, it just counted.`,
           data: { type, route: '/(tabs)/progress', count, points },
           sound: 'default',
           channelId: 'powr_default_v2',
