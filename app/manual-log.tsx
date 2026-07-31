@@ -1,7 +1,7 @@
 import { ActivityIcon } from '@/components/ActivityIcon';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import GeometricBackground from '@/components/GeometricBackground';
 import {
     ActivityIndicator,
@@ -17,6 +17,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ACTIVITIES, ACTIVITY_ORDER, type ActivityType } from '@/constants/activities';
+import { useAuth } from '@/context/AuthContext';
 import { tracked } from '@/lib/analytics';
 import { logManualSession } from '@/lib/api/activity';
 import { useHealthData, type VerifyResult } from '@/hooks/useHealthData';
@@ -89,20 +90,27 @@ function calcBasePoints(type: ActivityType, durationMins: number, steps: number)
             if (durationMins < 60) return 5;
             return 6;
         }
+        case 'dance': {
+            // Mirrors claim-points' dance tiers (the server is what actually pays).
+            if (durationMins < 20) return 0;
+            if (durationMins < 30) return 5;
+            if (durationMins < 45) return 6;
+            if (durationMins < 60) return 7;
+            return 8;
+        }
         default:
             return 0;
     }
 }
 
 /**
- * Types the picker offers. `calcBasePoints` has no branch for 'dance' or
- * 'sleep', so both fall through to `default: return 0` — listing them advertised
- * "up to 8 pts" / "up to 5 pts" on cards that could only ever pay nothing.
- * Sleep is wearable-only by design (it carries hideFromPicker); dance has no
- * tier table yet. Keep this derived from calcBasePoints' real coverage.
+ * Types the picker offers: everything except sleep, which is wearable-only by
+ * design (it carries hideFromPicker). Every listed type must have a branch in
+ * `calcBasePoints` — a missing branch silently advertises points that can
+ * never pay (that's how dance was broken until its tier table landed).
  */
 const MANUAL_LOGGABLE: ActivityType[] = ACTIVITY_ORDER.filter(
-    type => type !== 'dance' && type !== 'sleep',
+    type => type !== 'sleep',
 );
 
 function calcManualPoints(type: ActivityType, durationMins: number, steps: number, healthVerified = false): number {
@@ -120,6 +128,7 @@ function getMinimumNote(type: ActivityType): string {
         case 'hiit':     return 'Minimum 20 min to qualify';
         case 'sports':   return 'Minimum 30 min to qualify';
         case 'yoga':     return 'Minimum 20 min to qualify';
+        case 'dance':    return 'Minimum 20 min to qualify';
         default:         return 'Complete the activity to qualify';
     }
 }
@@ -169,6 +178,24 @@ export default function ManualLogScreen() {
     );
 
     const activity = selectedType ? ACTIVITIES[selectedType] : null;
+
+    // The user's concrete catalog picks ("Padel" over 'sports') personalise the
+    // picker card, the step-2 header and the stored raw_activity_name — so a
+    // manual log reads as the thing they actually did, not its scoring bucket.
+    const { user } = useAuth();
+    const selectionLabelByBucket = useMemo(() => {
+        const map: Partial<Record<ActivityType, string>> = {};
+        const sels = user?.user_metadata?.activity_selections;
+        if (Array.isArray(sels)) {
+            for (const s of sels) {
+                if (s?.bucket && typeof s.label === 'string' && ACTIVITIES[s.bucket as ActivityType]) {
+                    map[s.bucket as ActivityType] = s.label;
+                }
+            }
+        }
+        return map;
+    }, [user]);
+    const labelFor = (type: ActivityType) => selectionLabelByBucket[type] ?? ACTIVITIES[type].label;
 
     // ── Handlers ──────────────────────────────────────────────────────────────
 
@@ -227,6 +254,9 @@ export default function ManualLogScreen() {
                 points: previewPoints,
                 started_at,
                 healthVerified,
+                // Their concrete pick (e.g. "Padel") — history/review then shows
+                // the real activity, not the scoring bucket.
+                rawActivityName: selectionLabelByBucket[selectedType],
             });
             router.back();
         } catch (e) {
@@ -260,13 +290,13 @@ export default function ManualLogScreen() {
                     <Ionicons name="chevron-back" size={22} color={TEXT} />
                 </Pressable>
                 <Text style={styles.headerTitle}>
-                    {step === 1 ? 'Log Activity' : activity?.label ?? ''}
+                    {step === 1 ? 'Log Activity' : selectedType ? labelFor(selectedType) : ''}
                 </Text>
                 <View style={styles.headerRight} />
             </View>
 
             {step === 1 ? (
-                <ActivityPicker onSelect={handleSelectType} />
+                <ActivityPicker onSelect={handleSelectType} labelFor={labelFor} />
             ) : (
                 <DetailsForm
                     activity={activity!}
@@ -299,7 +329,13 @@ export default function ManualLogScreen() {
 
 // ─── Step 1: Activity Picker ───────────────────────────────────────────────────
 
-function ActivityPicker({ onSelect }: { onSelect: (type: ActivityType) => void }) {
+function ActivityPicker({
+    onSelect,
+    labelFor,
+}: {
+    onSelect: (type: ActivityType) => void;
+    labelFor: (type: ActivityType) => string;
+}) {
     return (
         <ScrollView
             style={{ flex: 1 }}
@@ -319,7 +355,7 @@ function ActivityPicker({ onSelect }: { onSelect: (type: ActivityType) => void }
                             {/* colour accent bar */}
                             <View style={[styles.activityCardBar, { backgroundColor: a.colour }]} />
                             <ActivityIcon activity={a} size={28} color={a.colour} />
-                            <Text style={styles.activityCardLabel}>{a.label}</Text>
+                            <Text style={styles.activityCardLabel}>{labelFor(type)}</Text>
                             <Text style={styles.activityCardTag}>{a.tag}</Text>
                             <View style={styles.activityCardCap}>
                                 <Text style={styles.activityCardCapText}>up to {a.dailyCap} pts</Text>

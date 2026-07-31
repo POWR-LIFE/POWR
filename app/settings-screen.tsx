@@ -149,8 +149,14 @@ export default function SettingsScreen() {
     }
   }, [notifStatus, requestPermissions, refreshPermissionStatuses]);
 
-  // Activity preferences (saved in user_metadata, edited on dedicated screen)
+  // Activity preferences (saved in user_metadata, edited on dedicated screen).
+  // Prefer the concrete catalog picks ("Padel, Boxing"); legacy bucket-only
+  // users fall back to bucket short labels.
   const savedPrefs: ActivityType[] = user?.user_metadata?.activity_preferences ?? ['gym', 'running', 'walking'];
+  const savedSelections: { label: string }[] | undefined = user?.user_metadata?.activity_selections;
+  const activityFocusValue = Array.isArray(savedSelections) && savedSelections.length > 0
+    ? ['Gym', ...savedSelections.map(s => s.label)].join(', ')
+    : savedPrefs.map(t => ACTIVITIES[t]?.labelShort ?? t).join(', ');
 
   // Notification & privacy prefs — initialise from saved user_metadata
   const meta = user?.user_metadata ?? {};
@@ -297,7 +303,7 @@ export default function SettingsScreen() {
           <RowLink
             icon="fitness-outline"
             label="Activity Focus"
-            value={savedPrefs.map(t => ACTIVITIES[t]?.labelShort ?? t).join(', ')}
+            value={activityFocusValue}
             onPress={() => router.push('/activity-preferences')}
             isLast
           />
