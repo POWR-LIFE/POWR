@@ -18,6 +18,14 @@ export type LiveEventViewer = {
 
 export type LiveEventPrize = { rank: number; label: string };
 
+/** Venue branding for promo surfaces. `logo_bg` is 'white' | 'dark' — chip the
+ *  logo on anything ≠ 'dark' (matches the landing promo page's convention). */
+export type LiveEventVenue = {
+    name: string;
+    logo_url: string | null;
+    logo_bg: string | null;
+};
+
 export type LiveEvent = {
     id: string;
     slug: string;
@@ -35,6 +43,11 @@ export type LiveEvent = {
     invite_milestone_n: number;
     invite_milestone_bonus: number;
     conversion_deadline_at: string | null;
+    /** Marketing fields set in the admin editor's "Promo page" group — shared
+     *  with powr.life/promo/<slug> so one upload feeds every surface. */
+    promo_headline: string | null;
+    promo_media_url: string | null;
+    venue: LiveEventVenue | null;
     viewer: LiveEventViewer;
 };
 
