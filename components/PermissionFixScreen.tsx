@@ -265,7 +265,7 @@ export default function PermissionFixScreen({
                 }
                 // The rest stay open — the AppState listener closes them once
                 // the grant actually lands, or the user backs out themselves.
-                if (kind === 'notifications') await Linking.openSettings();
+                if (kind === 'notifications') await Linking.openSettings().catch(() => {});
                 else await openAppLocationSettings();
                 return;
             }
