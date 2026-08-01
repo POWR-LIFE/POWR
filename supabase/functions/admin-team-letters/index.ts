@@ -180,7 +180,7 @@ Deno.serve(async (req: Request) => {
   }
 
   let currentLetter = letter;
-  if (letter.status !== "sent") {
+  if (!["sent", "sending"].includes(letter.status)) {
     try {
       currentLetter = await generateReport(admin, letter, user.id);
     } catch (error) {
