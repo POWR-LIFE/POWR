@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -15,12 +16,18 @@ const TEXT_MUTED = 'rgba(255,255,255,0.4)';
  * mount. One-tap CTA fixes it in place; the "×" hides it for the day.
  */
 export function HealthGapBanner() {
-    const { hasGap, copy, resolve, dismiss } = useHealthGap();
+    const { gap, hasGap, copy, resolve, dismiss } = useHealthGap();
+    const router = useRouter();
     const [busy, setBusy] = useState(false);
 
     if (!hasGap || !copy) return null;
 
+    const isWearable = gap === 'wearable_silent';
+
     const onResolve = async () => {
+        // A silent wearable is fixed on the Wearables screen (reconnect), not by
+        // an OS permission call — so this kind routes instead of calling resolve.
+        if (isWearable) { router.push('/wearables'); return; }
         setBusy(true);
         try { await resolve(); } finally { setBusy(false); }
     };
@@ -29,7 +36,7 @@ export function HealthGapBanner() {
         <View style={styles.card}>
             <View style={styles.row}>
                 <View style={styles.iconWrap}>
-                    <Ionicons name="pulse" size={16} color={GOLD} />
+                    <Ionicons name={isWearable ? 'watch-outline' : 'pulse'} size={16} color={GOLD} />
                 </View>
                 <View style={styles.text}>
                     <Text style={styles.title}>{copy.title}</Text>

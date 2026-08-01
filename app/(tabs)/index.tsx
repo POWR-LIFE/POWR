@@ -31,6 +31,7 @@ import { StreakRescueModal } from '@/components/home/StreakRescueModal';
 import { WeeklyActivityBars, type WeeklyRingData } from '@/components/home/WeeklyActivityRings';
 import { WeeklyActivityCircles } from '@/components/home/WeeklyActivityRings';
 import { HeaderActions } from '@/components/HeaderActions';
+import { WearableChip } from '@/components/WearableChip';
 import { HealthGapBanner } from '@/components/HealthGapBanner';
 import NotificationPrimeSheet from '@/components/NotificationPrimeSheet';
 import LocationPrimeSheet from '@/components/LocationPrimeSheet';
@@ -530,7 +531,13 @@ export default function HomeScreen() {
                     <Text style={styles.greeting}>{balance.toLocaleString()}</Text>
                     <Text style={styles.pointsLabel}>pts</Text>
                 </View>
-                <HeaderActions />
+                <View style={styles.headerRight}>
+                    {/* Renders null unless the viewer has a live wearable. Sits
+                        left of the shared bell/avatar cluster so it reads as
+                        status rather than another action. */}
+                    <WearableChip />
+                    <HeaderActions />
+                </View>
             </View>
 
 
@@ -864,6 +871,18 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 10,
+  },
+  headerRight: {
+    // 7, not 12, so the gaps look equal rather than measure equal. The glyph
+    // buttons are 32-wide boxes around 22px icons (5px of dead space per side);
+    // the avatar is a filled 36 with none. So HeaderActions' internal gap of 12
+    // renders as 17px of optical space (12 + 5 + 0) between bell and avatar,
+    // while 12 here would render as 22px (12 + 5 + 5) between the two glyphs.
+    // 7 + 5 + 5 = 17 matches. Kept local to the home header so the other tabs'
+    // bell/avatar spacing is untouched.
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
   },
   greeting: {
     fontSize: 28,
