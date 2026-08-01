@@ -15,8 +15,10 @@
 -- stale row's day. The device is the only party that knows when the user actually
 -- arrived, so it should have to agree.
 --
--- least() ignores NULL, so a caller that passes no p_entry_at gets EXACTLY the old
--- behaviour. That keeps every client on the current OTA working unchanged.
+-- LEAST() in Postgres propagates NULL, so the function guards the apply with an
+-- IS NOT NULL check. A caller that passes no p_entry_at gets EXACTLY the old
+-- behaviour (elapsed derived from the visit row's started_at only), keeping every
+-- client on the current OTA working unchanged.
 --
 -- Deliberately NOT refusing on "different UTC day": legitimate long and overnight
 -- sessions already exist in prod (a 407-minute same-day relay upgrade among them),
