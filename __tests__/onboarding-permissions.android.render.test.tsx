@@ -201,28 +201,38 @@ describe('background location screen on Android', () => {
         expect(Location.requestBackgroundPermissionsAsync).toHaveBeenCalled();
     });
 
-    it('offers the battery-optimization exemption once, then continues to gym', async () => {
+    it('offers the battery-optimization exemption once on its primed page, then continues to gym', async () => {
         asMock(hasPromptedBatteryOptimization).mockResolvedValue(false);
-        const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
 
         render(<OnboardingPermissionBackgroundScreen />);
         await waitFor(() => expect(Location.getBackgroundPermissionsAsync).toHaveBeenCalled());
 
         fireEvent.press(screen.getByText('ALLOW ALL THE TIME'));
-        await waitFor(() =>
-            expect(alertSpy).toHaveBeenCalledWith(
-                'Keep earning when POWR is closed',
-                expect.any(String),
-                expect.any(Array),
-            ),
-        );
 
-        // Press "Allow" in the battery explainer
-        const buttons = alertSpy.mock.calls[0][2] as Array<{ text: string; onPress?: () => void }>;
-        await buttons.find((b) => b.text === 'Allow')!.onPress!();
-        expect(requestBatteryOptimizationExemption).toHaveBeenCalled();
-        expect(mockRouter.push).toHaveBeenCalledWith('/onboarding-gym');
-        alertSpy.mockRestore();
+        // The primed page takes over — the same surface every other permission
+        // in the journey gets, not a system alert.
+        expect(await screen.findByText('ALLOW UNRESTRICTED')).toBeTruthy();
+        expect(screen.getByText('sleep on it.')).toBeTruthy();
+        expect(screen.getByText('Ignore battery optimisations?')).toBeTruthy();
+        // It owns the moment — the journey waits for an answer.
+        expect(mockRouter.push).not.toHaveBeenCalled();
+
+        fireEvent.press(screen.getByText('ALLOW UNRESTRICTED'));
+        await waitFor(() => expect(requestBatteryOptimizationExemption).toHaveBeenCalled());
+        await waitFor(() => expect(mockRouter.push).toHaveBeenCalledWith('/onboarding-gym'));
+    });
+
+    it('continues to gym when the battery page is skipped with "Not now"', async () => {
+        asMock(hasPromptedBatteryOptimization).mockResolvedValue(false);
+
+        render(<OnboardingPermissionBackgroundScreen />);
+        await waitFor(() => expect(Location.getBackgroundPermissionsAsync).toHaveBeenCalled());
+
+        fireEvent.press(screen.getByText('ALLOW ALL THE TIME'));
+        fireEvent.press(await screen.findByText('Not now'));
+
+        await waitFor(() => expect(mockRouter.push).toHaveBeenCalledWith('/onboarding-gym'));
+        expect(requestBatteryOptimizationExemption).not.toHaveBeenCalled();
     });
 });
 
