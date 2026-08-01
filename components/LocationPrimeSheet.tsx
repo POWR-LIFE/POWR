@@ -10,6 +10,7 @@ import { useActiveGeofence } from '@/hooks/useActiveGeofence';
 import { reportLocationPermission } from '@/lib/locationPermission';
 import {
     getLocationPromptState,
+    hasReachedLocationValueMoment,
     isWhileUsingOnly,
     recordLocationPromptDismissed,
     recordLocationPromptShown,
@@ -17,7 +18,6 @@ import {
 } from '@/lib/locationPrompt';
 import {
     getNotificationPromptState,
-    hasAnyCompletedSession,
     shouldShowNotificationPrompt,
 } from '@/lib/notificationPrompt';
 
@@ -27,10 +27,11 @@ const BORDER = '#222222';
 
 /**
  * The primed background-location re-ask, shown on Home at the value moment: the
- * user has banked a session but is on "While Using", so POWR can't check them
- * in from their pocket — the whole passive-earning loop is silently off. Mirrors
- * NotificationPrimeSheet (same chrome, pacing shape and settings-return dance);
- * reuses the onboarding background scene so it reads as one continuous story.
+ * user has shown they mean it (a banked session, or a return on a later day)
+ * but is on "While Using", so POWR can't check them in from their pocket — the
+ * whole passive-earning loop is silently off. Mirrors NotificationPrimeSheet
+ * (same chrome, pacing shape and settings-return dance); reuses the onboarding
+ * background scene so it reads as one continuous story.
  *
  * Two modes:
  *  - 'ask'    — the OS "Always/Allow all the time" upgrade is still reachable;
@@ -72,8 +73,13 @@ export default function LocationPrimeSheet() {
             const state = await getLocationPromptState();
             if (!shouldShowLocationPrompt(state, Date.now())) return;
 
-            // The value moment: only ask users who are actually using POWR at a gym.
-            if (!(await hasAnyCompletedSession(user.id))) return;
+            // The value moment: they banked a session, or they simply came back
+            // on a later day. Not "banked a session" alone any more — a While
+            // Using user can be sessionless precisely BECAUSE they're on While
+            // Using: no passive check-in, so no session row, so the gate stays
+            // shut and they're never asked to fix the thing breaking them.
+            // (Production: 3 of the 7 While Using users had no session at all.)
+            if (!(await hasReachedLocationValueMoment(user.id))) return;
 
             // Yield to NotificationPrimeSheet — it shares this mount and value
             // moment, and two stacked slide-up sheets is a bad first impression.
