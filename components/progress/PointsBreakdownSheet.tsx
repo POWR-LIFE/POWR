@@ -18,7 +18,9 @@ import {
     fetchPointsBreakdown,
     type PointsBreakdown,
     type PointsLedgerRow,
+    type SessionVitals,
 } from '@/lib/api/pointsBreakdown';
+import { sleepDayWindow } from '@/lib/api/activity';
 import { getGymDwellMinutes, getGymUpgradeMinutes } from '@/lib/gymDwellConfig';
 import { rangeLabel, type LookbackPeriod } from '@/lib/progressLookback';
 
@@ -28,6 +30,18 @@ const BORDER = '#222222';
 const TEXT = '#F2F2F2';
 const MUTED = 'rgba(255,255,255,0.25)';
 const DIM = 'rgba(255,255,255,0.45)';
+/**
+ * The one accent in the stats row, on the heart glyph only. Heart rate is the
+ * marquee number here and the rose makes it findable at a glance; every other
+ * glyph stays neutral ink so GOLD keeps meaning "POWR" alone.
+ *
+ * Validated against this sheet's surface (#141414 + the tile's 2.5% white):
+ * contrast passes ≥3:1, and against GOLD it separates by ΔE 27.8 normal /
+ * 18.1 deutan / 20.9 tritan — comfortably clear of the 15 floor, so the two
+ * never read as the same colour. Rose + orange was the first attempt and FAILED
+ * at ΔE 12.5; don't reintroduce a second warm hue here.
+ */
+const HEART = '#FB7185';
 
 /**
  * "Where did this number come from?" for the POWR EARNED metric on Progress.
@@ -83,7 +97,11 @@ export default function PointsBreakdownSheet({
         setData(null);
         setFailed(false);
 
-        const { start, end } = day ? singleDayWindow(day) : breakdownWindow(period, offset);
+        // Sleep runs on its own clock — see sleepDayWindow. Using the plain
+        // midnight window here opened the wrong night for any evening bedtime.
+        const { start, end } = day
+            ? (type === 'sleep' ? sleepDayWindow(day) : singleDayWindow(day))
+            : breakdownWindow(period, offset);
         fetchPointsBreakdown(type, start, end)
             .then(result => { if (!cancelled) setData(result); })
             .catch(err => {
@@ -173,15 +191,14 @@ export default function PointsBreakdownSheet({
                                     </Text>
                                     {/* Source label stays a quiet chip; the metric is
                                         the thing worth reading, so it gets its own size. */}
+                                    {/* Naming the actual device beats "Wearable":
+                                        it tells the user which app to check the
+                                        numbers below against. */}
                                     <Text style={styles.groupMeta}>
-                                        {verificationLabel(group.verification)}
-                                        {sessionMetrics(type, group).length > 0 && (
-                                            <Text style={styles.groupMetric}>
-                                                {'  '}{sessionMetrics(type, group).join(' · ')}
-                                            </Text>
-                                        )}
+                                        {verificationLabel(group.verification, group.vitals?.source)}
                                     </Text>
                                 </View>
+                                <SessionStatsRow type={type} session={group} />
                                 {group.rows.map(row => (
                                     <View key={row.id} style={styles.ledgerRow}>
                                         <Ionicons
@@ -212,7 +229,11 @@ export default function PointsBreakdownSheet({
                                     <View key={s.id} style={styles.ledgerRow}>
                                         <Ionicons name="remove" size={11} color={MUTED} />
                                         <Text style={[styles.ledgerLabel, { color: MUTED }]} numberOfLines={2}>
-                                            {[formatSessionDate(s.startedAt), ...sessionMetrics(type, s)].join(' · ')}
+                                            {[
+                                                formatSessionDate(s.startedAt),
+                                                ...sessionMetrics(type, s),
+                                                ...vitalsMetrics(s.vitals),
+                                            ].join(' · ')}
                                         </Text>
                                         <Text style={[styles.ledgerAmount, { color: MUTED }]}>0</Text>
                                     </View>
@@ -223,6 +244,16 @@ export default function PointsBreakdownSheet({
                                     counted by a check-in or your device.
                                 </Text>
                             </View>
+                        )}
+
+                        {/* Deliberately not "connect a wearable" — most people seeing
+                            this already have one; what's missing is a wearable-tracked
+                            version of THIS session. */}
+                        {showVitalsPrompt(type, groups) && (
+                            <Text style={styles.vitalsPrompt}>
+                                Heart rate and calories show here when a wearable tracks
+                                the session.
+                            </Text>
                         )}
 
                         <View style={styles.rulesBlock}>
@@ -268,7 +299,315 @@ export function PointsInfoDot({ onPress, label }: { onPress: () => void; label: 
     );
 }
 
+/**
+ * What the session actually was, as a row of stat tiles — time and distance
+ * alongside the heart rate and burn the user would otherwise open their watch
+ * app to read.
+ *
+ * A KPI row of tiles, deliberately not a chart: these are a handful of single
+ * scalars with no series and no time axis, and the number IS the story. There is
+ * no meter here either — a meter needs a real limit to fill against, and we
+ * don't know anyone's max heart rate, so a gauge would be inventing its own
+ * scale.
+ *
+ * Colour carries meaning or it isn't used: the heart is the one accent (it's the
+ * marquee number and reads instantly), every other glyph is neutral ink, and
+ * GOLD stays reserved for POWR amounts so the currency keeps its hue. Values
+ * wear text tokens, never an accent.
+ *
+ * Vitals tiles are absent for day-wide sources — `vitals` arrives null for those
+ * (see DAY_WIDE_VITAL_SOURCES in lib/api/pointsBreakdown.ts), so a HealthKit
+ * session can't show the day's average heart rate under a HIIT workout. Time and
+ * distance still render, which is why gym and manual sessions get a tile row too.
+ */
+function SessionStatsRow({
+    type,
+    session,
+}: {
+    type: ActivityType;
+    session: { durationMin: number; steps: number | null; distanceM: number | null; vitals: SessionVitals | null };
+}) {
+    const tiles = sessionStats(type, session);
+    if (tiles.length === 0) return null;
+
+    return (
+        <View style={styles.statsRow}>
+            {tiles.map(tile => (
+                <View key={tile.key} style={styles.statTile}>
+                    <View style={styles.statHead}>
+                        <Ionicons name={tile.icon} size={11} color={tile.tint ?? MUTED} />
+                        <Text style={styles.statLabel}>{tile.label}</Text>
+                    </View>
+                    <Text style={styles.statValue}>
+                        {tile.value}
+                        {tile.unit && <Text style={styles.statUnit}> {tile.unit}</Text>}
+                    </Text>
+                </View>
+            ))}
+        </View>
+    );
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/** 'whoop' → 'Whoop'. Falls back to title-casing an unknown provider slug. */
+function providerLabel(source: string): string {
+    switch (source) {
+        case 'whoop':        return 'Whoop';
+        case 'garmin':       return 'Garmin';
+        case 'fitbit':       return 'Fitbit';
+        case 'oura':         return 'Oura';
+        case 'polar':        return 'Polar';
+        case 'strava':       return 'Strava';
+        case 'peloton':      return 'Peloton';
+        case 'coros':        return 'Coros';
+        case 'suunto':       return 'Suunto';
+        case 'wahoo':        return 'Wahoo';
+        case 'withings':     return 'Withings';
+        case 'zwift':        return 'Zwift';
+        case 'underarmour':  return 'Under Armour';
+        case 'healthkit':    return 'Apple Health';
+        case 'health_connect': return 'Health Connect';
+        default:
+            return source.charAt(0).toUpperCase() + source.slice(1).replace(/_/g, ' ');
+    }
+}
+
+type StatTile = {
+    key: string;
+    icon: 'time-outline' | 'navigate-outline' | 'footsteps-outline' | 'heart'
+        | 'flame-outline' | 'speedometer-outline' | 'trending-up-outline'
+        | 'flash-outline' | 'repeat-outline' | 'pulse-outline' | 'moon-outline';
+    label: string;
+    value: string;
+    unit?: string;
+    /** Accent for the glyph only. Reserved for heart rate — see SessionStatsRow. */
+    tint?: string;
+};
+
+/**
+ * Plausible speed range (km/h) per activity, outside which a derived pace is
+ * treated as garbage rather than shown.
+ *
+ * Duration doesn't always describe the effort: prod holds gym sessions of 8-12
+ * HOURS (a check-in that never closed) and swims whose duration covers the whole
+ * pool visit, which derive a pace near zero — 9 sessions in the last 90 days sit
+ * under 1 km/h. Printing "58:20 /km" under a run is worse than printing nothing,
+ * the same rule the heart rate follows.
+ *
+ * Only activities where pace MEANS something appear here: a stray distance on a
+ * gym or HIIT session must not produce a pace tile.
+ */
+const PACE_BANDS: Partial<Record<ActivityType, [min: number, max: number]>> = {
+    running: [3, 30],
+    walking: [1.5, 10],
+    cycling: [3, 80],
+    swimming: [0.5, 8],
+};
+
+/** Seconds → "6:04". */
+function clockFromSeconds(totalSec: number): string {
+    const mins = Math.floor(totalSec / 60);
+    const secs = Math.round(totalSec % 60);
+    return secs === 60 ? `${mins + 1}:00` : `${mins}:${String(secs).padStart(2, '0')}`;
+}
+
+/**
+ * Pace (or speed, for cycling) derived from distance ÷ duration.
+ *
+ * Derived rather than ingested on purpose: it needs no new Terra fields and no
+ * schema change, so it works on every historic session the moment this ships —
+ * 73 of 108 runs and 14 of 15 swims in the last 90 days can show one.
+ *
+ * Units follow what each sport actually uses: min/km for running and walking,
+ * min/100m for swimming, km/h for cycling.
+ */
+function paceTile(
+    type: ActivityType,
+    distanceM: number | null,
+    durationMin: number,
+): StatTile | null {
+    const band = PACE_BANDS[type];
+    if (!band || !distanceM || distanceM <= 0 || durationMin <= 0) return null;
+
+    const kmh = (distanceM / 1000) / (durationMin / 60);
+    if (kmh < band[0] || kmh > band[1]) return null;
+
+    const base = { key: 'pace', icon: 'speedometer-outline' as const };
+
+    if (type === 'cycling') {
+        return { ...base, label: 'SPEED', value: kmh.toFixed(1), unit: 'km/h' };
+    }
+    if (type === 'swimming') {
+        // Swimmers read per-100m, not per-km.
+        return { ...base, label: 'PACE', value: clockFromSeconds(360 / kmh), unit: '/100m' };
+    }
+    return { ...base, label: 'PACE', value: clockFromSeconds(3600 / kmh), unit: '/km' };
+}
+
+/**
+ * Which tiles are worth showing for each activity, in reading order.
+ *
+ * A tile still only renders if the session HAS that field — this decides what's
+ * MEANINGFUL, which is a different question. Steps on a swim, climb on a rowing
+ * machine or pace on a yoga class are noise even when a provider reports them,
+ * and prod bears that out: running carries steps on 1 session in 108, so
+ * printing a steps tile there was clutter dressed as detail.
+ *
+ * Order leads with what defines the activity — steps for a walk, distance for a
+ * run, stages for a night's sleep — then intensity, then output.
+ */
+const TILES_BY_ACTIVITY: Record<ActivityType, string[]> = {
+    walking:  ['steps', 'distance', 'time', 'pace', 'climb', 'hr', 'kcal'],
+    running:  ['time', 'distance', 'pace', 'climb', 'hr', 'hrmax', 'kcal', 'hard'],
+    cycling:  ['time', 'distance', 'pace', 'climb', 'hr', 'hrmax', 'power', 'kcal'],
+    swimming: ['time', 'distance', 'pace', 'laps', 'hr', 'kcal'],
+    // Indoor efforts: no distance worth trusting, so intensity is the whole story.
+    gym:      ['time', 'hr', 'hrmax', 'kcal', 'hard'],
+    hiit:     ['time', 'hr', 'hrmax', 'kcal', 'hard'],
+    sports:   ['time', 'hr', 'hrmax', 'kcal', 'hard'],
+    dance:    ['time', 'hr', 'kcal'],
+    yoga:     ['time', 'hr', 'kcal'],
+    // Sleep's story is entirely its stages; heart rate and burn mean nothing here.
+    sleep:    ['time', 'deep', 'rem', 'light'],
+};
+
+/**
+ * The session as stat tiles, filtered and ordered by what the activity is.
+ *
+ * Which fields EXIST varies by source rather than activity — walking carries
+ * steps on 97% of sessions but distance on 3%, running the reverse, and gym only
+ * ever has duration — so each tile is built defensively and simply omitted when
+ * its field is absent. TILES_BY_ACTIVITY then decides which of the survivors are
+ * worth a reader's attention.
+ */
+function sessionStats(
+    type: ActivityType,
+    session: { durationMin: number; steps: number | null; distanceM: number | null; vitals: SessionVitals | null },
+): StatTile[] {
+    const { vitals } = session;
+
+    const duration: StatTile | null = session.durationMin > 0
+        ? { key: 'time', icon: 'time-outline', label: 'TIME', value: formatDuration(session.durationMin) }
+        : null;
+
+    const steps: StatTile | null = session.steps && session.steps > 0
+        ? { key: 'steps', icon: 'footsteps-outline', label: 'STEPS', value: session.steps.toLocaleString() }
+        : null;
+
+    const distance: StatTile | null = session.distanceM && session.distanceM > 0
+        ? {
+            key: 'distance',
+            icon: 'navigate-outline',
+            label: 'DISTANCE',
+            // Sub-kilometre efforts are real (pool lengths average ~830 m in
+            // prod), so they keep metres rather than rounding to "0.8 km".
+            ...(session.distanceM >= 1000
+                ? { value: (session.distanceM / 1000).toFixed(1), unit: 'km' }
+                : { value: `${Math.round(session.distanceM)}`, unit: 'm' }),
+        }
+        : null;
+
+    const hrAvg: StatTile | null = vitals?.hrAvg != null && vitals.hrAvg > 0
+        ? { key: 'hr', icon: 'heart', label: 'AVG HR', value: `${Math.round(vitals.hrAvg)}`, unit: 'bpm', tint: HEART }
+        : null;
+
+    // Its own tile rather than a "avg · 167 max" suffix, so both read at tile
+    // size. Terra sends no max for most providers, so this is usually absent.
+    const hrMax: StatTile | null = vitals?.hrMax != null && vitals.hrMax > 0
+        ? { key: 'hrmax', icon: 'heart', label: 'MAX HR', value: `${Math.round(vitals.hrMax)}`, unit: 'bpm', tint: HEART }
+        : null;
+
+    const calories: StatTile | null = vitals?.caloriesActive != null && vitals.caloriesActive > 0
+        ? {
+            key: 'kcal',
+            icon: 'flame-outline',
+            label: 'ACTIVE',
+            value: Math.round(vitals.caloriesActive).toLocaleString(),
+            unit: 'kcal',
+        }
+        : null;
+
+    const pace = paceTile(type, session.distanceM, session.durationMin);
+
+    // Provider extras. Each is absent unless that device actually reported it —
+    // Whoop sends no elevation, only bike computers send power — so these are
+    // sparse by nature and simply don't render when missing.
+    const x = vitals?.extras ?? {};
+
+    const elevation: StatTile | null = x.elevationGainM != null && x.elevationGainM >= 1
+        ? { key: 'elev', icon: 'trending-up-outline', label: 'CLIMB', value: `${Math.round(x.elevationGainM)}`, unit: 'm' }
+        : null;
+
+    const power: StatTile | null = x.avgWatts != null && x.avgWatts > 0
+        ? { key: 'power', icon: 'flash-outline', label: 'POWER', value: `${Math.round(x.avgWatts)}`, unit: 'w' }
+        : null;
+
+    const laps: StatTile | null = x.swimLaps != null && x.swimLaps > 0
+        ? { key: 'laps', icon: 'repeat-outline', label: 'LAPS', value: `${Math.round(x.swimLaps)}` }
+        : null;
+
+    const hardMinutes: StatTile | null = x.highIntensityMin != null && x.highIntensityMin > 0
+        ? { key: 'hard', icon: 'pulse-outline', label: 'HARD', value: `${Math.round(x.highIntensityMin)}`, unit: 'min' }
+        : null;
+
+    // Sleep stages, shown in the same h/m form as duration so the four read as
+    // one set. Present on every provider — 926 nights carry them.
+    const stage = (key: string, label: string, hours: number | null | undefined): StatTile | null =>
+        hours != null && hours > 0
+            ? { key, icon: 'moon-outline', label, value: formatDuration(Math.round(hours * 60)) }
+            : null;
+
+    const byKey: Record<string, StatTile | null> = {
+        time: duration,
+        distance,
+        pace,
+        steps,
+        climb: elevation,
+        laps,
+        power,
+        hr: hrAvg,
+        hrmax: hrMax,
+        kcal: calories,
+        hard: hardMinutes,
+        deep: stage('deep', 'DEEP', vitals?.sleepDeepH),
+        rem: stage('rem', 'REM', vitals?.sleepRemH),
+        light: stage('light', 'LIGHT', vitals?.sleepLightH),
+    };
+
+    return (TILES_BY_ACTIVITY[type] ?? ['time'])
+        .map(key => byKey[key])
+        .filter((t): t is StatTile => t != null);
+}
+
+/** Compact vitals for a single muted line — "142 bpm", "354 kcal". */
+function vitalsMetrics(vitals: SessionVitals | null): string[] {
+    if (!vitals) return [];
+    const out: string[] = [];
+    if (vitals.hrAvg != null && vitals.hrAvg > 0) out.push(`${Math.round(vitals.hrAvg)} bpm`);
+    if (vitals.caloriesActive != null && vitals.caloriesActive > 0) {
+        out.push(`${Math.round(vitals.caloriesActive).toLocaleString()} kcal`);
+    }
+    return out;
+}
+
+/**
+ * Only mention vitals to someone who trained, got none, and COULD have.
+ *
+ * Never on an empty sheet (nothing to enrich), never on walking or sleep (daily
+ * aggregates with no per-effort heart rate), and — the non-obvious one — never
+ * for a gym check-in. A geofence session can't ever carry vitals: terra-webhook
+ * drops the wearable workout that overlaps a check-in so the same hour isn't
+ * paid twice (overlapsGeofenceGym), so the wearable's version of that session is
+ * never stored. Prompting there asks the user for something the system won't do,
+ * and lands in front of people already wearing a Whoop.
+ */
+function showVitalsPrompt(type: ActivityType, groups: SessionGroup[]): boolean {
+    if (type === 'walking' || type === 'sleep') return false;
+    if (groups.length === 0) return false;
+    if (!groups.every(g => g.vitals === null)) return false;
+    return groups.some(g => g.verification !== 'geofence');
+}
 
 /** Local-midnight to next local-midnight around `day`. */
 function singleDayWindow(day: Date): { start: Date; end: Date } {
@@ -286,6 +625,7 @@ type SessionGroup = {
     steps: number | null;
     distanceM: number | null;
     verification: string;
+    vitals: SessionVitals | null;
     rows: PointsLedgerRow[];
 };
 
@@ -303,6 +643,7 @@ function groupBySession(rows: PointsLedgerRow[]): SessionGroup[] {
                 steps: row.sessionSteps,
                 distanceM: row.sessionDistanceM,
                 verification: row.verification,
+                vitals: row.vitals,
                 rows: [],
             };
             index.set(row.sessionId, group);
@@ -434,7 +775,13 @@ function summaryLine(
         : lead;
 }
 
-function verificationLabel(verification: string): string {
+/**
+ * The chip above a session's stats. Prefers the device that measured it —
+ * "Whoop" is both more specific than "Wearable" and tells the user which app to
+ * check these numbers against.
+ */
+function verificationLabel(verification: string, source?: string | null): string {
+    if (source) return providerLabel(source);
     switch (verification) {
         case 'geofence': return 'Gym check-in';
         case 'wearable': return 'Wearable';
@@ -586,12 +933,58 @@ const styles = StyleSheet.create({
         fontWeight: '300',
         color: MUTED,
     },
-    // Sits inside groupMeta but reads at the ledger's own weight — a number the
-    // user opened the sheet to find shouldn't be dimmer than the rows it explains.
-    groupMetric: {
-        fontSize: 11.5,
-        fontWeight: '400',
+    // Sits between the session header and its ledger rows: what the effort was,
+    // before what it paid. No surface of its own — the tiles float on the sheet,
+    // held together by the grid rather than a box, which keeps the panel from
+    // reading as a second card stacked inside the first.
+    //
+    // A fixed 4-up grid, not content-width tiles with gaps: percentage columns
+    // line up vertically across wrapped rows, so 8 tiles read as 4×2 instead of a
+    // ragged flow. It wraps rather than truncating — hiding a metric the user
+    // opened this sheet to find would be the worst outcome.
+    statsRow: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        rowGap: 18,
+        marginTop: 4,
+        marginBottom: 16,
+    },
+    statTile: {
+        width: '25%',
+        gap: 4,
+        paddingRight: 8,
+    },
+    statHead: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+    },
+    statLabel: {
+        fontSize: 8,
+        fontWeight: '500',
+        letterSpacing: 1,
+        color: MUTED,
+        textTransform: 'uppercase',
+    },
+    // Proportional figures on purpose: tabular-nums gives every digit a '0' width,
+    // which reads loose at display size. These are standalone values, not a column.
+    statValue: {
+        fontSize: 18,
+        fontWeight: '300',
+        letterSpacing: -0.5,
+        color: TEXT,
+    },
+    statUnit: {
+        fontSize: 10,
+        fontWeight: '300',
         color: DIM,
+    },
+    vitalsPrompt: {
+        fontSize: 11,
+        fontWeight: '300',
+        lineHeight: 17,
+        color: MUTED,
+        marginBottom: 14,
     },
     ledgerRow: {
         flexDirection: 'row',

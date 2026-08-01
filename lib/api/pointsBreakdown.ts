@@ -19,6 +19,51 @@ import {
 } from '@/lib/progressLookback';
 import { getSessionUser, supabase } from '@/lib/supabase';
 
+/**
+ * Per-effort vitals from the linked health_snapshots row — the heart rate and
+ * calorie burn the user would otherwise open their watch app to find.
+ *
+ * Null fields mean "not reported for this session", never zero. A null `source`
+ * means no snapshot is linked at all.
+ */
+export type SessionVitals = {
+    hrAvg: number | null;
+    hrMax: number | null;
+    caloriesActive: number | null;
+    /** Provider that measured it — 'whoop', 'garmin', … Powers the attribution. */
+    source: string | null;
+    /**
+     * Sleep stage hours. NOT subject to the day-wide-source rule that gates heart
+     * rate: a night's stages are genuinely per-session on every provider, which
+     * is why fetchSleepDayDetail has always trusted HealthKit's.
+     */
+    sleepDeepH: number | null;
+    sleepRemH: number | null;
+    sleepLightH: number | null;
+    /**
+     * Bounded per-workout extras the provider sent — elevation, power, swim laps
+     * and so on. Every key is optional: providers fill very different subsets, so
+     * read defensively and render only what's present.
+     */
+    extras: SessionExtras;
+};
+
+/**
+ * Optional per-workout metrics from health_snapshots.extras. All fields absent
+ * unless that provider sent them, so treat every one as missing by default.
+ */
+export type SessionExtras = {
+    elevationGainM?: number;
+    avgWatts?: number;
+    maxWatts?: number;
+    swimLaps?: number;
+    poolLengthM?: number;
+    floors?: number;
+    highIntensityMin?: number;
+    hrMin?: number;
+    hrvRmssd?: number;
+};
+
 export type PointsLedgerRow = {
     id: string;
     amount: number;
@@ -33,6 +78,7 @@ export type PointsLedgerRow = {
     sessionSteps: number | null;
     sessionDistanceM: number | null;
     verification: string;
+    vitals: SessionVitals | null;
 };
 
 export type UnpaidSession = {
@@ -42,6 +88,7 @@ export type UnpaidSession = {
     steps: number | null;
     distanceM: number | null;
     verification: string;
+    vitals: SessionVitals | null;
 };
 
 export type PointsBreakdown = {
@@ -123,6 +170,62 @@ function labelFor(
     }
 }
 
+/**
+ * Sources whose heart-rate and calorie figures are DAY-WIDE, not per-workout.
+ *
+ * The native sync path has no per-workout accessor: it reads getHeartRateToday()
+ * / getCaloriesToday() once and stamps that same figure onto every session it
+ * writes that day (hooks/useHealthSync.ts). So a HIIT session comes back reading
+ * the day's average, not the effort. Measured in prod: 25 of 34 multi-workout
+ * HealthKit days carry an IDENTICAL hr_avg across every session, and median
+ * "running" HR is 80 bpm against Whoop's 142. Terra providers send a genuine
+ * per-workout summary, so they're safe to show.
+ *
+ * `verification` is NOT a usable discriminator: verificationFromProvenance()
+ * marks an Apple-Watch-sourced HealthKit workout as 'wearable' while its HR is
+ * still the day-wide number. Only the snapshot's `source` records how the figure
+ * was actually measured, which is why this gates on that.
+ *
+ * Remove a source from this set once it gains a real per-workout read — see the
+ * HealthKit follow-up (HKStatisticsQuery over each workout's own time range).
+ */
+const DAY_WIDE_VITAL_SOURCES = new Set(['healthkit', 'health_connect']);
+
+type SnapshotRow = {
+    source: string | null;
+    hr_avg: number | null;
+    hr_max: number | null;
+    calories_active: number | null;
+    sleep_deep_h: number | null;
+    sleep_rem_h: number | null;
+    sleep_light_h: number | null;
+    extras: Record<string, unknown> | null;
+};
+
+/** Reads a numeric key out of the extras bag, ignoring anything malformed. */
+function extraNum(extras: Record<string, unknown> | null, key: string): number | undefined {
+    const v = extras?.[key];
+    return typeof v === 'number' && Number.isFinite(v) ? v : undefined;
+}
+
+/**
+ * Maps the extras bag to a typed shape. Snake_case in the column (it's written
+ * by the Deno webhook) and camelCase out, so callers don't straddle both.
+ */
+function extrasFrom(extras: Record<string, unknown> | null): SessionExtras {
+    return {
+        elevationGainM: extraNum(extras, 'elevation_gain_m'),
+        avgWatts: extraNum(extras, 'avg_watts'),
+        maxWatts: extraNum(extras, 'max_watts'),
+        swimLaps: extraNum(extras, 'swim_laps'),
+        poolLengthM: extraNum(extras, 'pool_length_m'),
+        floors: extraNum(extras, 'floors'),
+        highIntensityMin: extraNum(extras, 'high_intensity_min'),
+        hrMin: extraNum(extras, 'hr_min'),
+        hrvRmssd: extraNum(extras, 'hrv_rmssd'),
+    };
+}
+
 type SessionRow = {
     id: string;
     started_at: string;
@@ -130,10 +233,58 @@ type SessionRow = {
     steps: number | null;
     distance_m: number | null;
     verification: string;
+    health_snapshots: SnapshotRow[] | null;
     point_transactions:
         | { id: string; amount: number; type: string; description: string | null; source: string | null; created_at: string }[]
         | null;
 };
+
+/**
+ * Vitals for a session, or null when there is nothing trustworthy to show.
+ *
+ * Returns null rather than zeroes when the snapshot is missing or day-wide: a
+ * wrong heart rate under a workout is worse than no heart rate, because the user
+ * can check it against the watch that measured it.
+ */
+function vitalsFrom(snapshots: SnapshotRow[] | null): SessionVitals | null {
+    const rows = snapshots ?? [];
+    const carries = (s: SnapshotRow) => s.hr_avg != null || s.calories_active != null
+        || s.extras != null || s.sleep_deep_h != null;
+    const isDayWide = (s: SnapshotRow) => s.source != null && DAY_WIDE_VITAL_SOURCES.has(s.source);
+
+    // A session has at most one linked snapshot in practice. Where history left
+    // two, prefer one from a per-workout source — otherwise a stray HealthKit row
+    // would shadow the Whoop row beside it and lose its heart rate. The day-wide
+    // fallback still matters though: it may be the only row carrying sleep stages.
+    const snap = rows.find(s => carries(s) && !isDayWide(s))
+        ?? rows.find(carries)
+        ?? rows[0];
+    if (!snap) return null;
+
+    // The gate is per-FIELD, not per-snapshot. Heart rate and calories from a
+    // native sync are the day's figures stamped on every session, so they're
+    // dropped — but the same row's sleep stages are a real per-night breakdown
+    // and are kept. Gating the whole row would throw away good data with bad.
+    const dayWide = snap.source != null && DAY_WIDE_VITAL_SOURCES.has(snap.source);
+
+    const vitals: SessionVitals = {
+        hrAvg: dayWide ? null : snap.hr_avg,
+        hrMax: dayWide ? null : snap.hr_max,
+        caloriesActive: dayWide ? null : snap.calories_active,
+        sleepDeepH: snap.sleep_deep_h,
+        sleepRemH: snap.sleep_rem_h,
+        sleepLightH: snap.sleep_light_h,
+        source: snap.source,
+        extras: dayWide ? {} : extrasFrom(snap.extras),
+    };
+
+    // Nothing survived the gate — render no attribution rather than an empty row.
+    const hasAnything = vitals.hrAvg != null || vitals.hrMax != null
+        || vitals.caloriesActive != null || vitals.sleepDeepH != null
+        || vitals.sleepRemH != null || vitals.sleepLightH != null
+        || Object.values(vitals.extras).some(v => v !== undefined);
+    return hasAnything ? vitals : null;
+}
 
 /**
  * Every point transaction attached to a session of `type` inside the window,
@@ -152,7 +303,7 @@ export async function fetchPointsBreakdown(
 
     const { data, error } = await supabase
         .from('activity_sessions')
-        .select('id, started_at, duration_sec, steps, distance_m, verification, point_transactions(id, amount, type, description, source, created_at)')
+        .select('id, started_at, duration_sec, steps, distance_m, verification, health_snapshots(source, hr_avg, hr_max, calories_active, sleep_deep_h, sleep_rem_h, sleep_light_h, extras), point_transactions(id, amount, type, description, source, created_at)')
         .eq('user_id', user.id)
         .eq('type', type)
         .gte('started_at', start.toISOString())
@@ -168,6 +319,7 @@ export async function fetchPointsBreakdown(
 
     for (const s of sessions) {
         const durationMin = Math.round((s.duration_sec ?? 0) / 60);
+        const vitals = vitalsFrom(s.health_snapshots);
         const txs = [...(s.point_transactions ?? [])].sort((a, b) =>
             a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0,
         );
@@ -180,6 +332,7 @@ export async function fetchPointsBreakdown(
                 steps: s.steps,
                 distanceM: s.distance_m,
                 verification: s.verification,
+                vitals,
             });
             continue;
         }
@@ -197,6 +350,7 @@ export async function fetchPointsBreakdown(
                 sessionSteps: s.steps,
                 sessionDistanceM: s.distance_m,
                 verification: s.verification,
+                vitals,
             });
         }
     }

@@ -22,6 +22,7 @@ import {
 } from '../_shared/points.ts';
 import { verifyTerraSignature } from '../_shared/terraSignature.ts';
 import { DATA_TYPES, extractDeviceFreshness, freshnessPatch } from '../_shared/deviceFreshness.ts';
+import { activityExtras } from '../_shared/terraExtras.ts';
 
 const SIGNING_SECRET = Deno.env.get('TERRA_SIGNING_SECRET')!;
 
@@ -53,23 +54,29 @@ async function resolveUserId(supabase, payload): Promise<string | null> {
 /** Insert a session + award points; idempotent via the per-type-per-day unique index.
  *  point_transactions.user_id is NOT NULL (defaults to auth.uid(), which is null under
  *  the service role) so it must be set explicitly from the session row. */
-async function insertSession(supabase, row, points: number): Promise<boolean> {
+/**
+ * Returns the new session's id, or null when nothing was written. The id is
+ * returned so the caller can stamp it onto the health_snapshots row — that link
+ * is what lets the Progress day sheet read a session's heart rate and calories
+ * back (see supabase/migrations/20260801110000_*).
+ */
+async function insertSession(supabase, row, points: number): Promise<string | null> {
   const { data: session, error } = await supabase
     .from('activity_sessions')
     .insert(row)
     .select('id')
     .single();
   if (error) {
-    if (error.code === '23505') return false; // already have this type for the day
+    if (error.code === '23505') return null; // already have this type for the day
     console.error('[terra-webhook] session insert failed:', error.message);
-    return false;
+    return null;
   }
   if (points > 0) {
     await supabase.from('point_transactions').insert({
       user_id: row.user_id, session_id: session.id, amount: points, type: 'earn', source: 'health_sync',
     });
   }
-  return true;
+  return session.id as string;
 }
 
 /** Marks today as an active streak day for the user. Mirrors updateStreakForToday in lib/api/activity.ts. */
@@ -312,7 +319,9 @@ async function handleActivity(supabase, payload): Promise<void> {
 
     const distanceM = a.distance_data?.summary?.distance_meters;
     const hrAvg = a.heart_rate_data?.summary?.avg_hr_bpm;
+    const hrMax = a.heart_rate_data?.summary?.max_hr_bpm;
     const points = calculateBasePoints(type, durMin);
+    const extras = activityExtras(a);
 
     const inserted = await insertSession(supabase, {
       user_id: userId,
@@ -334,13 +343,16 @@ async function handleActivity(supabase, payload): Promise<void> {
       await supersedeManualOverlaps(supabase, userId, type, startMs, endMs);
       await supabase.from('health_snapshots').insert({
         user_id: userId,
+        session_id: inserted,
         distance_m: distanceM != null ? Math.round(distanceM) : null,
         hr_avg: hrAvg != null ? Math.round(hrAvg) : null,
+        hr_max: hrMax != null ? Math.round(hrMax) : null,
         calories_active: a.calories_data?.total_burned_calories != null
           ? Math.round(a.calories_data.total_burned_calories) : null,
         activity_type: type,
         duration_sec: durSec,
         source,
+        extras,
       });
       if (isToday(start)) await bumpStreak(supabase, userId);
 
@@ -403,6 +415,7 @@ async function handleSleep(supabase, payload): Promise<void> {
     if (inserted) {
       await supabase.from('health_snapshots').insert({
         user_id: userId,
+        session_id: inserted,
         sleep_duration_h: hours,
         sleep_deep_h: deepH ?? null,
         sleep_rem_h: remH ?? null,
