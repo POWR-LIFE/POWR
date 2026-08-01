@@ -24,7 +24,13 @@ import { createClient } from '@supabase/supabase-js';
 import { deliverExpoMessages } from '../_shared/expoPush.ts';
 import { sendFcmDataMessage } from '../_shared/fcmV1.ts';
 
-const MAX_NUDGES = 4;                    // per stage — then leave it to the exit path
+// Budgets are PER STAGE and live in their own columns (nudge_count /
+// nudge_count_upgrade). They used to share `nudge_count`, which silently handed the
+// upgrade stage whatever the dwell stage didn't spend — usually 7 — and made the
+// "per stage" comment a lie. Total exposure 9 ≈ the old effective 8, so this is not
+// a material change against Apple's ~2-3 background pushes/hour guidance.
+const MAX_NUDGES_DWELL = 4;              // then leave it to the exit path
+const MAX_NUDGES_UPGRADE = 5;            // the weaker leg — one more attempt than dwell
 const NUDGE_BACKOFF_MS = 5 * 60 * 1000;  // don't re-wake a silent device more than every 5 min
 
 async function thresholds(admin): Promise<{ dwellMin: number; upgradeMin: number }> {
@@ -50,16 +56,17 @@ async function dueVisits(admin, stage: 'dwell' | 'upgrade', minutes: number) {
 
   let q = admin
     .from('gym_visits')
-    .select('id, user_id, partner_id, started_at, nudge_count, last_nudge_at')
+    .select('id, user_id, partner_id, started_at, nudge_count, nudge_count_upgrade, last_nudge_at')
     .is('ended_at', null)
     .lte('started_at', thresholdAt)
-    .lt('nudge_count', stage === 'dwell' ? MAX_NUDGES : MAX_NUDGES * 2)
     .or(`last_nudge_at.is.null,last_nudge_at.lt.${backoffAt}`)
     .limit(200);
 
+  // Each stage counts against its OWN column, so a dwell stage that burns its
+  // budget no longer eats into the upgrade stage's.
   q = stage === 'dwell'
-    ? q.eq('status', 'open').is('claimed_session_id', null)
-    : q.eq('status', 'claimed').is('upgraded_at', null);
+    ? q.eq('status', 'open').is('claimed_session_id', null).lt('nudge_count', MAX_NUDGES_DWELL)
+    : q.eq('status', 'claimed').is('upgraded_at', null).lt('nudge_count_upgrade', MAX_NUDGES_UPGRADE);
 
   const { data, error } = await q;
   if (error) {
@@ -96,11 +103,34 @@ Deno.serve(async (req: Request) => {
 
       if (!tokens || tokens.length === 0) {
         // No device to wake. The exit path still claims when they leave.
+        //
+        // This branch used to `continue` before the counter update below, so
+        // nudge_count stayed 0 and last_nudge_at stayed null — meaning dueVisits
+        // re-selected the visit EVERY MINUTE for its whole life. Visit 77736089
+        // produced 722 nudge_failed rows (05:18 → 17:19, one per minute), 28.5% of
+        // every gym_visit_events row ever written.
+        //
+        // Touching last_nudge_at hands the visit to the 5-minute backoff without
+        // spending wake budget: a token can still appear later (the user opens the
+        // app mid-session and registers), and burning the budget on four token-less
+        // minutes would guarantee they never get woken when it does.
         stats.no_token++;
-        await admin.from('gym_visit_events').insert({
-          visit_id: visit.id, user_id: visit.user_id,
-          event: 'nudge_failed', detail: { stage, reason: 'no_tokens' },
-        });
+        await admin.rpc('touch_gym_visit_nudge', { p_visit_id: visit.id });
+
+        // One row per visit per stage is enough to diagnose; the rest was noise.
+        const { count: alreadyLogged } = await admin
+          .from('gym_visit_events')
+          .select('id', { count: 'exact', head: true })
+          .eq('visit_id', visit.id)
+          .eq('event', 'nudge_failed')
+          .eq('detail->>stage', stage);
+
+        if (!alreadyLogged) {
+          await admin.from('gym_visit_events').insert({
+            visit_id: visit.id, user_id: visit.user_id,
+            event: 'nudge_failed', detail: { stage, reason: 'no_tokens' },
+          });
+        }
         continue;
       }
 
@@ -171,10 +201,16 @@ Deno.serve(async (req: Request) => {
       }
       stats.sent += result.queued + sentDirect;
 
-      await admin
-        .from('gym_visits')
-        .update({ nudge_count: (visit.nudge_count ?? 0) + 1, last_nudge_at: new Date().toISOString() })
-        .eq('id', visit.id);
+      // Atomic: `set nudge_count = nudge_count + 1` is evaluated by the database
+      // against the current row under a row lock. The old read-modify-write off the
+      // stale SELECT let two overlapping ticks both write N+1 — visit 67458ff7
+      // logged two nudge_sent rows BOTH stamped `attempt 1`, and 5 dwell nudges
+      // against a cap of 4. The RPC also stamps last_nudge_at, so the backoff and
+      // the counter can never disagree.
+      const { data: attempt } = await admin.rpc('record_gym_visit_nudge', {
+        p_visit_id: visit.id,
+        p_stage: stage,
+      });
 
       await admin.from('gym_visit_events').insert({
         visit_id: visit.id, user_id: visit.user_id,
@@ -184,7 +220,7 @@ Deno.serve(async (req: Request) => {
           queued: result.queued,
           failed: result.failed + failedDirect,
           fcm_direct: sentDirect,
-          attempt: (visit.nudge_count ?? 0) + 1,
+          attempt: attempt ?? null,
         },
       });
     }

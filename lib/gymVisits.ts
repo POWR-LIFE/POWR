@@ -36,14 +36,54 @@ export async function openGymVisit(
   }
 }
 
+/** Records that a silent wake actually reached JS, BEFORE any GPS work.
+ *
+ *  Without this the only evidence of a wake was confirmed_inside/confirmed_outside —
+ *  written by the very RPC being observed, and only after runVisitCheck has taken a
+ *  fix. So "the task never ran" and "the task ran and the round-trip failed" were
+ *  indistinguishable, which is how a dead iOS wake path survived 17 days and 175
+ *  pushes. `wake_received` present + `confirmed_*` absent now means the round-trip
+ *  failed; both absent means the push never woke us.
+ *
+ *  ⚠ Do NOT read `detail->>'via' = 'relay'` as a wake marker — claim-points stamps
+ *  that on any x-resolve-token call, including the ordinary client dwell machine.
+ *
+ *  Fire-and-forget by contract: the wake has ~10 s mid-Doze and one guaranteed
+ *  round-trip, and that round-trip belongs to confirmGymVisit, not to telemetry. */
+export async function logGymWakeReceived(
+  visitId: string,
+  stage: 'dwell' | 'upgrade',
+  detail: Record<string, unknown> = {},
+): Promise<void> {
+  try {
+    const { error } = await withNetworkTimeout(supabase.rpc('log_gym_wake_received', {
+      p_visit_id: visitId,
+      p_stage:    stage,
+      p_detail:   detail,
+    }), 'log_gym_wake_received');
+    if (error) throw error;
+  } catch (err) {
+    console.warn('[GymVisit] logGymWakeReceived failed:', err);
+  }
+}
+
 /** Reports what the device actually SAW when the server woke it. `inside` is the
- *  device's verdict from a real GPS fix — the only thing that can unlock a credit. */
+ *  device's verdict from a real GPS fix — the only thing that can unlock a credit.
+ *
+ *  Returns whether the round-trip landed. It still never throws — a wake must not
+ *  be able to crash the task — but the caller can no longer confuse "confirmed" with
+ *  "swallowed an error", which was the second half of the blind spot above. */
 export async function confirmGymVisit(
   visitId: string,
   inside: boolean,
   detail: Record<string, unknown> = {},
   requestCredit = false,
-): Promise<void> {
+  /** The DEVICE's own entry time. The server otherwise derives the dwell decision
+   *  solely from the visit row's started_at, so a device bound to a row that began
+   *  long before its real check-in could credit immediately. Both clocks must now
+   *  agree (`least()` server-side); omitting it keeps the old behaviour exactly. */
+  entryAtMs?: number,
+): Promise<{ ok: boolean; triggered?: string | null }> {
   try {
     // v2 lets this single round-trip ALSO ask the server to credit the visit
     // (claim or upgrade, decided server-side from visit status + elapsed +
@@ -55,14 +95,24 @@ export async function confirmGymVisit(
       p_inside:         inside,
       p_detail:         detail,
       p_request_credit: requestCredit,
+      p_entry_at:       entryAtMs ? new Date(entryAtMs).toISOString() : null,
     }), 'confirm_gym_visit');
     if (error) throw error;
     const triggered = (data as { triggered?: string | null } | null)?.triggered;
+    const declined = (data as { declined?: string | null } | null)?.declined;
     if (triggered) {
       console.log(`[GymVisit] Server credit trigger fired from confirm: ${triggered}.`);
+    } else if (declined) {
+      // Not an error: the session was already credited by another path. The server
+      // now advances the visit anyway so the beacon stops nudging a resolved visit.
+      console.log(`[GymVisit] Server declined credit (${declined}) — visit resolved.`);
     }
+    return { ok: true, triggered };
   } catch (err) {
-    console.warn('[GymVisit] confirmGymVisit failed:', err);
+    // Loud: a wake that reached JS but failed its one round-trip used to be
+    // indistinguishable from a wake that never arrived. Pair with wake_received.
+    console.error('[GymVisit] confirmGymVisit FAILED — wake answered nothing:', err);
+    return { ok: false };
   }
 }
 

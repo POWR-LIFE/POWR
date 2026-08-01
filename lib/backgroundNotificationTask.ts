@@ -93,10 +93,23 @@ TaskManager.defineTask(BACKGROUND_NOTIFICATION_TASK, async ({ data, error }) => 
     const stage = payload.stage === 'upgrade' ? 'upgrade' : 'dwell';
     console.log(`[BackgroundNotification] Visit check (${stage}) — verifying presence.`);
 
+    // FIRST, before any GPS work: record that the push actually reached JS. This is
+    // the only thing that separates "the wake never arrived" from "the wake arrived
+    // and the round-trip failed" — see log_gym_wake_received. Awaited but
+    // non-throwing; it is one cheap RPC and the answer is worthless without it.
+    if (payload.visit_id) {
+      const { logGymWakeReceived } = await import('@/lib/gymVisits');
+      await logGymWakeReceived(payload.visit_id, stage, { source: 'background_task' });
+    }
+
     // Imported lazily: this task is registered at module load in a headless context,
     // and GeofenceContext pulls in the whole geofence engine.
     const { runVisitCheck } = await import('@/context/GeofenceContext');
-    await runVisitCheck(stage);
+    // The server's own visit_id is passed through so runVisitCheck can reconcile it
+    // against the device's stored one. Discarding it is how four wakes for live
+    // visit 793e434a were answered into the DEAD visit 2fa4e05d (2026-07-16), which
+    // then burned its whole nudge budget answering for a visit that had exited.
+    await runVisitCheck(stage, payload.visit_id);
   } catch (err) {
     console.warn('[BackgroundNotification] visit check failed:', err);
   }
