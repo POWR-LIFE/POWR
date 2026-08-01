@@ -13,9 +13,38 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Application from 'expo-application';
 import * as IntentLauncher from 'expo-intent-launcher';
-import { Linking, Platform } from 'react-native';
+import { AppState, Linking, Platform } from 'react-native';
 
 const PROMPTED_KEY = '@powr/battery_opt_prompted';
+
+/**
+ * Fires an intent and reports whether anything actually came up on screen.
+ *
+ * REQUEST_IGNORE_BATTERY_OPTIMIZATIONS is silently dropped by Android when the
+ * app is *already* exempt, and some OEMs drop it outright — startActivityAsync
+ * resolves happily either way, so its return value can't be trusted. There's no
+ * API to query the exemption, but there is an observable proxy: a real dialog or
+ * settings page puts POWR in the background. If we never left the foreground,
+ * nothing was shown and the caller must try a different screen — otherwise the
+ * button looks dead to the user.
+ */
+async function launchAndConfirm(action: string, pkg: string): Promise<boolean> {
+  let backgrounded = false;
+  const sub = AppState.addEventListener('change', (state) => {
+    if (state !== 'active') backgrounded = true;
+  });
+  try {
+    await IntentLauncher.startActivityAsync(action, { data: `package:${pkg}` });
+    // AppState events can land just after the promise settles; give them a beat.
+    await new Promise((r) => setTimeout(r, 350));
+    return backgrounded;
+  } catch {
+    // Intent unavailable, permission missing from this binary, or OEM refusal.
+    return false;
+  } finally {
+    sub.remove();
+  }
+}
 
 /**
  * Sends the user to a screen where they can exempt POWR from battery optimization.
@@ -28,38 +57,32 @@ const PROMPTED_KEY = '@powr/battery_opt_prompted';
 export async function requestBatteryOptimizationExemption(): Promise<boolean> {
   if (Platform.OS !== 'android') return false;
 
-  // 1. Direct "Allow POWR to ignore battery optimization?" dialog. Requires the
-  //    REQUEST_IGNORE_BATTERY_OPTIMIZATIONS permission + the expo-intent-launcher
-  //    native module — both only present after a native rebuild. Reading
-  //    applicationId is itself a native call, so it stays inside the try.
+  // Reading applicationId is itself a native call, so guard it. Note this is the
+  // *running* package — under Expo Go that's host.exp.exponent, so in dev the
+  // exemption applies to Expo Go (which is the process running the location
+  // task anyway); in a real build it's POWR.
+  let pkg: string | null = null;
   try {
-    const pkg = Application.applicationId;
-    if (pkg) {
-      await IntentLauncher.startActivityAsync(
-        'android.settings.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS',
-        { data: `package:${pkg}` },
-      );
-      return true;
-    }
+    pkg = Application.applicationId;
   } catch {
-    // Permission/module missing from the running binary, or OEM blocks the dialog.
+    // expo-application not linked in this binary.
   }
 
-  // 2. POWR's own App-info page (Battery → Unrestricted lives here). Unlike the
-  //    one-tap dialog above — which shows NOTHING when the app is already exempt —
-  //    this always opens a visible, actionable screen, so the button never feels
-  //    dead when step 1 silently no-ops or isn't available in this binary.
-  try {
-    const pkg = Application.applicationId;
-    if (pkg) {
-      await IntentLauncher.startActivityAsync(
-        'android.settings.APPLICATION_DETAILS_SETTINGS',
-        { data: `package:${pkg}` },
-      );
+  if (pkg) {
+    // 1. Direct "Allow POWR to ignore battery optimization?" dialog. Requires the
+    //    REQUEST_IGNORE_BATTERY_OPTIMIZATIONS permission + the expo-intent-launcher
+    //    native module — both only present after a native rebuild. Silently does
+    //    nothing when already exempt, hence the launchAndConfirm check.
+    if (await launchAndConfirm('android.settings.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS', pkg)) {
       return true;
     }
-  } catch {
-    // expo-intent-launcher not linked in this build, or intent unavailable.
+
+    // 2. POWR's own App-info page (Battery → Unrestricted lives here). Always a
+    //    visible, actionable screen, so the button never feels dead when step 1
+    //    no-ops or isn't available in this binary.
+    if (await launchAndConfirm('android.settings.APPLICATION_DETAILS_SETTINGS', pkg)) {
+      return true;
+    }
   }
 
   // 3. Last resort: POWR's own system settings page (core RN — present in EVERY
