@@ -78,6 +78,7 @@ $function$;
 revoke all on function public.record_gym_visit_nudge(uuid, text) from public;
 revoke all on function public.record_gym_visit_nudge(uuid, text) from anon;
 revoke all on function public.record_gym_visit_nudge(uuid, text) from authenticated;
+grant execute on function public.record_gym_visit_nudge(uuid, text) to service_role;
 
 -- ---------------------------------------------------------------------------
 -- Touch-only variant for the no-token path (see gym-visit-beacon D7). It must NOT
