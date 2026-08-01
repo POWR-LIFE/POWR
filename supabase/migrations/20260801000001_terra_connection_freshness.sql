@@ -15,7 +15,7 @@
 -- uploaded — and falling back to payload receipt time when a provider omits
 -- device_data (Strava does).
 --
--- `device_name` powers the chip subtitle ("Forerunner 265 · synced 2h ago").
+-- `device_name` is collected for future UI (e.g. a device-model subtitle on the Wearables screen), and may be null when the provider omits device_data.
 -- =============================================================
 
 alter table public.terra_connections
