@@ -19,18 +19,18 @@ const STATUS = {
 const fieldClass = 'w-full rounded-lg border border-[#E6E6E1] bg-white px-3 py-2.5 text-sm text-[#1A1A1A] outline-none focus:border-[#E8D200] disabled:bg-[#F4F4F1] disabled:text-[#888888]';
 
 const dateKey = (date) => [
-    date.getFullYear(),
-    String(date.getMonth() + 1).padStart(2, '0'),
-    String(date.getDate()).padStart(2, '0'),
+    date.getUTCFullYear(),
+    String(date.getUTCMonth() + 1).padStart(2, '0'),
+    String(date.getUTCDate()).padStart(2, '0'),
 ].join('-');
 
 function currentWeek() {
     const now = new Date();
-    const mondayOffset = (now.getDay() + 6) % 7;
-    const start = new Date(now);
-    start.setDate(now.getDate() - mondayOffset);
+    const mondayOffset = (now.getUTCDay() + 6) % 7;
+    const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    start.setUTCDate(start.getUTCDate() - mondayOffset);
     const end = new Date(start);
-    end.setDate(start.getDate() + 6);
+    end.setUTCDate(start.getUTCDate() + 6);
     return { start: dateKey(start), end: dateKey(end) };
 }
 
