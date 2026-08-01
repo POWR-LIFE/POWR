@@ -263,7 +263,7 @@ select jsonb_build_object(
   ),
   'trend', coalesce((
     select jsonb_agg(jsonb_build_object(
-      'date', d.day::date,
+      'date', (d.day at time zone 'UTC')::date,
       'workouts', (select count(*) from activity_sessions s where s.started_at >= d.day and s.started_at < d.day + interval '1 day' and s.type::text not in ('sleep', 'walking') and not coalesce(s.flagged, false)),
       'app_sessions', (select count(distinct e.session_id) from app_events e where e.created_at >= d.day and e.created_at < d.day + interval '1 day')
     ) order by d.day)
