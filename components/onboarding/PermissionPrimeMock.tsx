@@ -17,7 +17,8 @@ const GOLD = '#E8D200';
 export type PermissionMockKind =
     | 'location-foreground'
     | 'location-background'
-    | 'notifications';
+    | 'notifications'
+    | 'battery';
 
 interface MockOption {
     label: string;
@@ -108,6 +109,18 @@ function specFor(kind: PermissionMockKind): MockSpec {
                           { label: 'Don’t allow' },
                       ],
                   };
+        // Android-only: the REQUEST_IGNORE_BATTERY_OPTIMIZATIONS dialog. iOS has
+        // no equivalent, so this kind is never reached there.
+        case 'battery':
+            return {
+                title: 'Ignore battery optimisations?',
+                message: 'Let POWR always run in the background? This may use more battery.',
+                layout: 'alert',
+                options: [
+                    { label: 'Allow', highlighted: true },
+                    { label: 'Deny' },
+                ],
+            };
     }
 }
 

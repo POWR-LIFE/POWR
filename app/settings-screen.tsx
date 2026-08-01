@@ -20,8 +20,8 @@ import type { HealthProviderId } from '@/lib/health/providers/types';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import * as SecureStore from 'expo-secure-store';
+import PermissionFixScreen, { type PermissionFixKind } from '@/components/PermissionFixScreen';
 import { useAuth } from '@/context/AuthContext';
-import { useNotifications } from '@/context/NotificationsContext';
 import { androidOpenHealthConnectSettings, useHealthData } from '@/hooks/useHealthData';
 import { useHealthProviders } from '@/hooks/useHealthProviders';
 import { HealthProviderNotImplementedError } from '@/lib/health/providers';
@@ -29,7 +29,6 @@ import { ACTIVITIES, type ActivityType } from '@/constants/activities';
 import { getSessionUser, supabase } from '@/lib/supabase';
 import { getNotificationPreferences, updateNotificationPreferences } from '@/lib/api/notifications';
 import { cacheNearbyOfferPreference, isNearbyOfferEnabled } from '@/lib/notifications';
-import { requestBatteryOptimizationExemption } from '@/lib/batteryOptimization';
 import { openStorePage, runningVersion } from '@/lib/appUpdate';
 import { getAppVersion } from '@/lib/device';
 
@@ -43,6 +42,8 @@ const TEXT    = '#F2F2F2';
 const MUTED   = 'rgba(255,255,255,0.25)';
 const DIM     = 'rgba(255,255,255,0.5)';
 const RED     = '#ef4444';
+const AMBER   = '#fbbf24';
+const GREEN   = '#4ade80';
 
 // Real version + build + OTA update id (short), so support conversations match
 // what the admin panel shows. Module-level: it can only change via a reload.
@@ -57,9 +58,12 @@ export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { signOut, user, updateUserMetadata } = useAuth();
-  const { requestPermissions } = useNotifications();
 
   const [isAdmin, setIsAdmin] = React.useState(false);
+  // Which permission the priming screen is currently coaching, if any. Every
+  // permission row opens it instead of an OS alert — same layout, scenes and
+  // copy as onboarding, so the user is shown the screen they're about to land on.
+  const [permissionFix, setPermissionFix] = useState<PermissionFixKind | null>(null);
   const health = useHealthData();
   const providers = useHealthProviders();
 
@@ -122,32 +126,12 @@ export default function SettingsScreen() {
     useCallback(() => { refreshPermissionStatuses(); }, [refreshPermissionStatuses]),
   );
 
-  // Banner tap when notifications are off. If we've never asked ('undetermined')
-  // the app hasn't registered — fire the OS dialog (which also registers the push
-  // token, so a Notifications row finally appears in iOS settings). If the user
-  // already denied it, the OS won't show the dialog again, so send them to
-  // Settings with an explanation rather than a page that has nothing to toggle.
-  const handleEnableNotifications = useCallback(async () => {
-    if (notifStatus === 'undetermined') {
-      const granted = await requestPermissions();
-      if (!granted) {
-        // They dismissed/denied the dialog — the permission is now 'denied', so
-        // the only remaining path is the system settings app.
-        Alert.alert(
-          'Notifications off',
-          'To get gym check-ins and reward alerts, turn on Notifications for POWR in Settings.',
-          [
-            { text: 'Not now', style: 'cancel' },
-            { text: 'Open Settings', onPress: () => Linking.openSettings() },
-          ],
-        );
-      }
-      refreshPermissionStatuses();
-    } else {
-      // 'denied' — iOS won't re-prompt, so Settings is the only lever.
-      Linking.openSettings();
-    }
-  }, [notifStatus, requestPermissions, refreshPermissionStatuses]);
+  // Closing the priming screen re-reads the statuses, so a grant made from it (or
+  // from the settings trip it kicked off) lands on the rows immediately.
+  const closePermissionFix = useCallback(() => {
+    setPermissionFix(null);
+    refreshPermissionStatuses();
+  }, [refreshPermissionStatuses]);
 
   // Activity preferences (saved in user_metadata, edited on dedicated screen).
   // Prefer the concrete catalog picks ("Padel, Boxing"); legacy bucket-only
@@ -429,84 +413,64 @@ export default function SettingsScreen() {
         {/* ── Other connections ─────────────────────────────── */}
         <SectionLabel label="Connections" />
         <View style={styles.card}>
-          {/* Location services for gym check-in */}
+          {/* Location is TWO separate grants and the app needs both: the
+              foreground one verifies you're at the gym, the background one is
+              what lets that happen with POWR closed. They were one row, which
+              hid a missing "Always" behind the word "Limited" — so each grant
+              now gets its own row and its own status. */}
           <RowLink
             icon="location-outline"
-            label="Location Services"
+            label="Location"
+            sublabel="Verify sessions at partner gyms"
             value={
-              locationStatus === 'granted' && preciseGranted === false
-                ? 'Approximate'
-                : locationStatus === 'granted' && bgLocationGranted === false
-                  ? 'Limited'
-                  : locationStatus === 'granted'
-                    ? 'Enabled'
-                    : locationStatus === 'denied'
-                      ? 'Denied'
-                      : 'Not set up'
+              locationStatus !== 'granted'
+                ? (locationStatus === 'denied' ? 'Denied' : 'Not set up')
+                : preciseGranted === false
+                  ? 'Approximate'
+                  : 'Enabled'
             }
             valueColor={
-              locationStatus === 'granted' && (bgLocationGranted === false || preciseGranted === false)
-                ? RED
-                : locationStatus === 'granted'
-                  ? '#4ade80'
-                  : locationStatus === 'denied'
-                    ? RED
-                    : undefined
+              locationStatus !== 'granted'
+                ? (locationStatus === 'denied' ? RED : undefined)
+                : preciseGranted === false
+                  ? AMBER
+                  : GREEN
             }
-            onPress={async () => {
-              if (locationStatus === 'granted' && preciseGranted === false) {
-                Alert.alert(
-                  'Turn on Precise location',
-                  'POWR verifies you\'re really at the gym — approximate location can\'t do that, so sessions won\'t count. In settings, turn on "Use precise location" for POWR.',
-                  [
-                    { text: 'Cancel', style: 'cancel' },
-                    { text: 'Open Settings', onPress: () => Linking.openSettings() },
-                  ],
-                );
-              } else if (locationStatus === 'granted' && bgLocationGranted === false) {
-                Alert.alert(
-                  Platform.OS === 'ios' ? 'Enable "Always" Location' : 'Enable "Allow all the time"',
-                  Platform.OS === 'ios'
-                    ? 'POWR can\'t detect gym arrivals when the app is closed unless location is set to "Always". Go to Settings › Privacy & Security › Location Services › POWR, then select "Always".'
-                    : 'POWR can\'t detect gym arrivals when the app is closed unless location is set to "Allow all the time".',
-                  [
-                    { text: 'Cancel', style: 'cancel' },
-                    { text: 'Open Settings', onPress: () => Linking.openSettings() },
-                  ],
-                );
-              } else if (locationStatus === 'granted') {
-                Alert.alert(
-                  'Disable Location?',
-                  'Without location access you won\'t be able to earn points at geofenced venues and partner gyms.',
-                  [
-                    { text: 'Cancel', style: 'cancel' },
-                    { text: 'Open Settings', onPress: () => Linking.openSettings() },
-                  ],
-                );
-              } else if (locationStatus === 'denied') {
-                Linking.openSettings();
-              } else {
-                const { status } = await Location.requestForegroundPermissionsAsync();
-                setLocationStatus(status === 'granted' ? 'granted' : 'denied');
-              }
+            onPress={() => {
+              setPermissionFix(
+                locationStatus !== 'granted'
+                  ? 'location'
+                  // Approximate accuracy silently voids every session, so it's
+                  // the gap worth coaching before anything else.
+                  : preciseGranted === false
+                    ? 'location-precise'
+                    : 'location-ok',
+              );
             }}
+          />
+          <RowLink
+            icon="navigate-outline"
+            label="Background location"
+            sublabel="Check you in while POWR is closed"
+            value={
+              bgLocationGranted
+                ? (Platform.OS === 'ios' ? 'Always' : 'All the time')
+                : locationStatus === 'granted'
+                  ? 'While using'
+                  : 'Off'
+            }
+            valueColor={bgLocationGranted ? GREEN : locationStatus === 'granted' ? AMBER : RED}
+            // The OS won't grant background before foreground, so an ungranted
+            // foreground sends them there first rather than to a dead request.
+            onPress={() => setPermissionFix(locationStatus === 'granted' ? 'location-background' : 'location')}
             isLast={Platform.OS !== 'android'}
           />
           {Platform.OS === 'android' && (
             <RowLink
               icon="battery-charging-outline"
               label="Background activity"
-              sublabel="Detect gym arrivals while POWR is closed"
-              onPress={() => {
-                Alert.alert(
-                  'Background activity',
-                  "To detect gym arrivals while POWR is closed, allow it to run without battery restrictions. You'll be taken to the system battery settings.",
-                  [
-                    { text: 'Cancel', style: 'cancel' },
-                    { text: 'Open Settings', onPress: () => { requestBatteryOptimizationExemption(); } },
-                  ],
-                );
-              }}
+              sublabel="Stop Android sleeping the check-in watch"
+              onPress={() => setPermissionFix('battery')}
               isLast
             />
           )}
@@ -516,24 +480,31 @@ export default function SettingsScreen() {
             Connect a health source to verify workouts and earn points from walking &amp; sleep.
           </Text>
         )}
-        {locationStatus !== 'granted' && (
+        {locationStatus !== 'granted' ? (
           <Text style={styles.sectionHint}>
             Location is required to earn points at geofenced venues and partner gyms.
           </Text>
-        )}
+        ) : bgLocationGranted === false ? (
+          <Text style={styles.sectionHint}>
+            Without background location POWR can only check you in while the app is open.
+          </Text>
+        ) : null}
 
         {/* ── Notifications ─────────────────────────────────── */}
         <SectionLabel label="Notifications" />
         {notifGranted === false && (
-          <Pressable onPress={handleEnableNotifications} style={styles.notifWarnBanner}>
-            <Ionicons name="notifications-off-outline" size={18} color={RED} style={{ marginTop: 1 }} />
+          <Pressable onPress={() => setPermissionFix('notifications')} style={styles.notifWarnBanner}>
+            <Ionicons name="notifications-off-outline" size={18} color={GOLD} style={{ marginTop: 1 }} />
             <View style={{ flex: 1 }}>
+              {/* Only the headline and the action carry the accent — an all-red
+                  block reads as one undifferentiated wall and hides the ask. */}
               <Text style={styles.notifWarnText}>
-                Notifications are off, so gym check-ins and reward alerts won’t reach you. The
-                switches below have no effect until you turn them on.
+                <Text style={styles.notifWarnStrong}>Notifications are off.</Text> Gym check-ins and
+                reward alerts won’t reach you, and the switches below do nothing until you turn
+                them on.
               </Text>
               <Text style={styles.notifWarnCta}>
-                {notifStatus === 'undetermined' ? 'Turn on notifications' : 'Open Settings'} ›
+                {notifStatus === 'undetermined' ? 'Turn on notifications' : 'Show me how'} ›
               </Text>
             </View>
           </Pressable>
@@ -762,6 +733,8 @@ export default function SettingsScreen() {
           </Pressable>
         </View>
       </ScrollView>
+
+      <PermissionFixScreen kind={permissionFix} onClose={closePermissionFix} />
     </View>
   );
 }
@@ -1222,9 +1195,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 10,
     alignItems: 'flex-start',
-    backgroundColor: 'rgba(239,68,68,0.08)',
+    backgroundColor: 'rgba(232,210,0,0.07)',
     borderWidth: 1,
-    borderColor: 'rgba(239,68,68,0.25)',
+    borderColor: 'rgba(232,210,0,0.22)',
     borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 10,
@@ -1232,14 +1205,18 @@ const styles = StyleSheet.create({
   },
   notifWarnText: {
     fontSize: 12,
-    fontWeight: '400',
+    fontWeight: '300',
     lineHeight: 17,
-    color: RED,
+    color: 'rgba(255,255,255,0.5)',
+  },
+  notifWarnStrong: {
+    fontWeight: '600',
+    color: GOLD,
   },
   notifWarnCta: {
     fontSize: 12,
     fontWeight: '700',
-    color: RED,
+    color: GOLD,
     marginTop: 6,
   },
 

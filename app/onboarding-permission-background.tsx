@@ -5,12 +5,12 @@ import { useEffect, useRef, useState } from 'react';
 import { Animated, Linking, Platform, Pressable, StyleSheet, Text, View, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import GeometricBackground from '@/components/GeometricBackground';
+import PermissionFixScreen from '@/components/PermissionFixScreen';
 import PermissionPrimeScene from '@/components/onboarding/PermissionPrimeScene';
 import { ONBOARDING_DOT_COUNT, dotIndexFor } from '@/lib/onboarding/flow';
 import {
     hasPromptedBatteryOptimization,
     markBatteryOptimizationPrompted,
-    requestBatteryOptimizationExemption,
 } from '@/lib/batteryOptimization';
 import { recordLocationOnboardingDeclined } from '@/lib/locationPrompt';
 
@@ -68,6 +68,8 @@ export default function OnboardingPermissionBackgroundScreen() {
     // users see no way past this screen except granting "Always". (iOS deny is
     // handled by the Later/Open Settings alert in handleAllowBackground.)
     const [attempted, setAttempted] = useState(false);
+    // The battery-exemption page, shown over this step once "Always" is granted.
+    const [showBattery, setShowBattery] = useState(false);
 
     const contentFade = useRef(new Animated.Value(0)).current;
     const buttonsFade = useRef(new Animated.Value(0)).current;
@@ -89,25 +91,14 @@ export default function OnboardingPermissionBackgroundScreen() {
     }, []);
 
     // Android: ask the user to exempt POWR from battery optimization so arrival
-    // detection keeps working when the app is fully closed. One-time, gated
-    // behind our own explainer. Navigation continues either way.
+    // detection keeps working when the app is fully closed. One-time, and shown
+    // on the same primed page every other permission in this journey gets rather
+    // than a system alert — it sits inside this step, so the flow length (and
+    // the step dots) are unchanged. Navigation continues either way.
     const continueViaBatteryPrompt = async () => {
         if (Platform.OS === 'android' && !(await hasPromptedBatteryOptimization())) {
             await markBatteryOptimizationPrompted();
-            Alert.alert(
-                'Keep earning when POWR is closed',
-                'To detect when you arrive at a gym while the app is closed, allow POWR to run without battery restrictions on the next screen.',
-                [
-                    { text: 'Not now', style: 'cancel', onPress: () => router.push(NEXT_SCREEN) },
-                    {
-                        text: 'Allow',
-                        onPress: async () => {
-                            await requestBatteryOptimizationExemption();
-                            router.push(NEXT_SCREEN);
-                        },
-                    },
-                ],
-            );
+            setShowBattery(true);
             return;
         }
         router.push(NEXT_SCREEN);
@@ -242,6 +233,16 @@ export default function OnboardingPermissionBackgroundScreen() {
                     </Pressable>
                 )}
             </Animated.View>
+
+            {/* Allowed, skipped or backed out — every exit continues the journey,
+                matching the alert this replaced. */}
+            <PermissionFixScreen
+                kind={showBattery ? 'battery' : null}
+                onClose={() => {
+                    setShowBattery(false);
+                    router.push(NEXT_SCREEN);
+                }}
+            />
         </View>
     );
 }

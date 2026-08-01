@@ -81,21 +81,37 @@ function NotificationHero() {
     );
 }
 
-export default function PermissionPrimeScene({ kind }: { kind: PermissionMockKind }) {
+/**
+ * `dialog={false}` drops the OS mock and leaves just the hero — for the case
+ * where nothing is about to pop (e.g. the permission is already granted and
+ * we're only explaining what it buys).
+ */
+export default function PermissionPrimeScene({
+    kind,
+    dialog = true,
+}: {
+    kind: PermissionMockKind;
+    dialog?: boolean;
+}) {
     return (
         <View style={styles.scene}>
             {kind === 'location-foreground' ? (
                 <MapHero />
-            ) : kind === 'location-background' ? (
+            ) : kind === 'location-background' || kind === 'battery' ? (
+                // Battery shares the background story: the app is closed and the
+                // check-in still lands — which is exactly what the OEM killing
+                // POWR in the background takes away.
                 <LockScreenHero />
             ) : (
                 <NotificationHero />
             )}
 
             {/* The OS dialog, popping over the app */}
-            <View style={styles.dialog}>
-                <PermissionPrimeMock kind={kind} />
-            </View>
+            {dialog ? (
+                <View style={styles.dialog}>
+                    <PermissionPrimeMock kind={kind} />
+                </View>
+            ) : null}
         </View>
     );
 }
