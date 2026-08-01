@@ -8,6 +8,9 @@ alter table public.team_letters
   add column generated_at timestamptz,
   add column generation_version integer not null default 1;
 
+create index if not exists activity_sessions_started_at_idx
+  on public.activity_sessions (started_at desc);
+
 create or replace function public.team_letter_report_metric(
   p_key text,
   p_label text,
