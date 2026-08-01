@@ -80,12 +80,15 @@ begin
   exception when others then v_upgrade_min := 40;
   end;
 
-  -- BOTH clocks must agree the threshold has passed. least() ignores NULL, so an
-  -- older client that sends no p_entry_at behaves exactly as before.
-  v_elapsed_min := least(
-    extract(epoch from (now() - v_visit.started_at)) / 60,
-    extract(epoch from (now() - p_entry_at)) / 60
-  );
+  -- BOTH clocks must agree the threshold has passed. For older clients that send no
+  -- p_entry_at, fall back to the visit row's started_at (legacy behaviour).
+  v_elapsed_min := extract(epoch from (now() - v_visit.started_at)) / 60;
+  if p_entry_at is not null then
+    v_elapsed_min := least(
+      v_elapsed_min,
+      extract(epoch from (now() - p_entry_at)) / 60
+    );
+  end if;
 
   if v_visit.status = 'open' and v_elapsed_min >= v_dwell_min then
     select id into v_session_id
