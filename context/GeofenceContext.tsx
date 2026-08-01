@@ -106,6 +106,10 @@ const VISIT_TICK_KEY         = '@powr/last_visit_tick';   // throttle for the st
 // The in-gym stream heartbeat is a checkpoint, not a firehose: the stream ticks
 // every 60 s, but we only need enough resolution to answer "is it alive at all?"
 const VISIT_TICK_INTERVAL_MS = 5 * 60 * 1000;
+// Synchronous in-context companion to VISIT_TICK_KEY. See heartbeatVisitStream:
+// an AsyncStorage-only throttle cannot survive a burst of location callbacks
+// because the read and the write straddle an await.
+let _lastTickAtMs = 0;
 
 // How long a started claim attempt may go without a persisted outcome before the
 // dwell machine assumes it died and re-queues it. Attempts normally settle within
@@ -308,6 +312,13 @@ interface StoredGeofence {
                              // the recorded duration stays the true session length
   visitId?:         string;  // server-side beacon record; lets the server wake this
                              // device at the dwell/upgrade thresholds (see lib/gymVisits)
+  userId?:          string;  // who this session belongs to. Sign-out did not clear
+                             // geofence state and this blob carried no owner, so a
+                             // session opened by one account could be finalized —
+                             // and its exit-claim outbox replayed — under whoever
+                             // signed in next. Two prod sessions (9decdee4 /
+                             // bb50a5f3, different users) share raw_gps
+                             // entryTimestamp 1785473225472 on one device.
 }
 
 // ─── Partner geometry cache (nationwide) ─────────────────────────────────────
@@ -951,11 +962,30 @@ async function flushPendingClaims(): Promise<void> {
   }
   if (!queue.length) return;
 
+  // Whose queue is this? The outbox is replayed on login, so without an owner check
+  // an entry banked by the previous account is claimed by whoever signs in next —
+  // a real cross-account credit path, not just cosmetic state bleed. Entries
+  // written before this field existed have no userId and stay claimable by the
+  // current user, which is the old behaviour and the safe direction for a device
+  // that has only ever had one account.
+  let currentUserId: string | null = null;
+  try {
+    const { data: { user } } = await withNetworkTimeout(supabase.auth.getUser(), 'auth.getUser');
+    currentUserId = user?.id ?? null;
+  } catch { /* offline — fall through and treat ownership as unknown */ }
+
   const remaining: StoredGeofence[] = [];
   for (const entry of queue) {
     // Drop entries too old to be meaningful (also avoids odd tier math).
     if (entry.endedAtMs && Date.now() - entry.endedAtMs > PENDING_CLAIM_MAX_AGE_MS) {
       console.log('[Geofence] Dropping stale pending claim (>24h).');
+      continue;
+    }
+    if (entry.userId && currentUserId && entry.userId !== currentUserId) {
+      // Not ours to claim. Keep it: the rightful owner may sign back in on this
+      // device, and dropping it would silently destroy a real unclaimed session.
+      console.log('[Geofence] Pending claim belongs to another account — leaving it queued.');
+      remaining.push(entry);
       continue;
     }
     const { outcome } = await recordDwellSession(entry);
@@ -1134,6 +1164,17 @@ async function setActiveAndNotify(regionId: string, entry: PartnerMapEntry): Pro
   if (await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY)) return;
   if (await gymAlreadyLoggedToday()) return;
   const entryTimestamp = Date.now();
+
+  // Stamp the owner so a session can never be finalized — or its exit-claim
+  // replayed — under a different account after a sign-out/switch. Best-effort:
+  // check-in can race auth (field 2026-07-14), and an unowned record behaves
+  // exactly as it did before rather than blocking a real check-in.
+  let ownerId: string | undefined;
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    ownerId = session?.user?.id;
+  } catch { /* unauthenticated or offline — leave unstamped */ }
+
   await AsyncStorage.setItem(
     ACTIVE_GEOFENCE_KEY,
     JSON.stringify({
@@ -1144,6 +1185,7 @@ async function setActiveAndNotify(regionId: string, entry: PartnerMapEntry): Pro
       latitude:       entry.lat,
       longitude:      entry.lng,
       radius:         entry.radius,
+      userId:         ownerId,
     }),
   );
   console.log(`[Geofence] Location task: entered "${entry.name}".`);
@@ -1247,6 +1289,102 @@ async function recordExitAndClaim(claimEntry: StoredGeofence): Promise<'resolved
  * a headless task interruption from losing both the live session and its claim.
  * A native EXIT may only end its matching active region. */
 export async function finalizeActiveGeofence(expectedRegionId?: string): Promise<boolean> {
+  // Re-entrancy lease, taken SYNCHRONOUSLY before the first await.
+  //
+  // The `if (!raw) return true` gate below is not a mutex: ACTIVE_GEOFENCE_KEY is
+  // read at the top and only removed ~30 lines later, and `await getItem` alone
+  // yields the microtask queue — so every concurrent invocation (the headless
+  // location task fires one per fix, and foreground + headless contexts both run
+  // it) sails through. Visit 54b70cb6 logged 31 `exit` rows in 1.4 s with
+  // client-stamped ended_at spanning 21 ms, and 194 `upgraded` rows in 10.1 s —
+  // 70% of every upgrade event in the table. Beyond the noise, the resulting RPC
+  // backlog delayed the NEXT visit's open_gym_visit by ~70 s.
+  //
+  // Must be in-memory and synchronous: an AsyncStorage lock has the identical
+  // read-then-write race it is trying to prevent — VISIT_TICK_KEY proves that
+  // (451 of 1,044 stream_tick rows are redundant burst rows). Mirrors
+  // _recordingInFlight, including stealing a lease older than the stale window so
+  // a hung request can never livelock the exit.
+  const heldSince = _finalizeInFlight;
+  if (heldSince != null && Date.now() - heldSince < STALE_CLAIM_LOCK_MS) {
+    console.log('[Geofence] finalizeActiveGeofence already in flight — skipping duplicate exit.');
+    return false;
+  }
+  if (heldSince != null) {
+    console.warn('[Geofence] finalize lease is stale — presuming the attempt dead and taking over.');
+  }
+  const myFinalizeStamp = Date.now();
+  _finalizeInFlight = myFinalizeStamp;
+  try {
+    return await finalizeActiveGeofenceInner(expectedRegionId);
+  } finally {
+    // Fenced: only the holder clears, so a stolen-from zombie can't release the
+    // lease out from under whoever took it over.
+    if (_finalizeInFlight === myFinalizeStamp) _finalizeInFlight = null;
+  }
+}
+
+let _finalizeInFlight: number | null = null;
+
+/** Tears down per-account geofence state at sign-out.
+ *
+ *  Neither AuthContext's SIGNED_OUT branch nor signOut() cleared any of this, and
+ *  StoredGeofence carried no owner — so an active session and, more seriously, the
+ *  exit-claim outbox survived an account switch and were replayed under whoever
+ *  signed in next (flushPendingClaims had only a 24 h age cut). Two prod sessions
+ *  belonging to different users share one raw_gps entryTimestamp on one device.
+ *
+ *  ⚠ The active session is CLEARED, but the pending-claim outbox is deliberately
+ *  NOT. Those entries are finished gym sessions that have not been paid yet —
+ *  deleting them destroys real points, and signing out is not a forfeit. Instead
+ *  every unstamped entry is backfilled with the departing user's id, so the
+ *  ownership fence in flushPendingClaims can keep them for that account and hand
+ *  them back when they sign in again. That closes the same cross-account hole
+ *  without the data loss.
+ *
+ *  Closes the beacon first so the server stops waking a device whose session is
+ *  over. That RPC needs auth, so call this BEFORE the token is gone where possible;
+ *  it is best-effort either way, and the 12 h backstop still closes the visit. */
+export async function clearGeofenceStateOnSignOut(departingUserId?: string): Promise<void> {
+  try {
+    const raw = await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY);
+    const active: StoredGeofence | null = raw ? JSON.parse(raw) : null;
+    if (active?.visitId) {
+      const { closeGymVisit } = await import('@/lib/gymVisits');
+      await closeGymVisit(active.visitId, Date.now()).catch(() => {});
+    }
+  } catch { /* best-effort */ }
+
+  // Stand the dwell stream down too — otherwise a signed-out device keeps burning
+  // battery on time-driven location updates for a session nobody owns.
+  try {
+    await setLocationStreamMode(visitStreamMode(Platform.OS, { sessionActive: false, approaching: false }));
+  } catch { /* non-fatal */ }
+
+  await AsyncStorage.removeItem(ACTIVE_GEOFENCE_KEY).catch(() => {});
+  await AsyncStorage.removeItem(VISIT_TICK_KEY).catch(() => {});
+  _lastTickAtMs = 0;
+
+  // Backfill ownership on anything banked before the stamp existed (or before the
+  // check-in could resolve a session), so it can never be replayed by the next
+  // account to sign in on this device.
+  if (departingUserId) {
+    try {
+      const rawQueue = await AsyncStorage.getItem(PENDING_CLAIMS_KEY);
+      if (rawQueue) {
+        const queue = JSON.parse(rawQueue) as StoredGeofence[];
+        if (Array.isArray(queue) && queue.some(e => !e.userId)) {
+          const owned = queue.map(e => (e.userId ? e : { ...e, userId: departingUserId }));
+          await AsyncStorage.setItem(PENDING_CLAIMS_KEY, JSON.stringify(owned));
+        }
+      }
+    } catch { /* non-fatal — the age cut still bounds exposure */ }
+  }
+
+  console.log('[Geofence] Cleared active session on sign-out; pending claims kept for their owner.');
+}
+
+async function finalizeActiveGeofenceInner(expectedRegionId?: string): Promise<boolean> {
   let raw: string | null;
   try {
     raw = await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY);
@@ -1326,7 +1464,10 @@ export async function finalizeActiveGeofence(expectedRegionId?: string): Promise
  *  iOS app force-quit — Apple does not deliver background pushes to a user-terminated
  *  app), nothing is credited here and the existing EXIT path claims later, exactly as
  *  it does today. No fix, no credit. */
-export async function runVisitCheck(stage: 'dwell' | 'upgrade'): Promise<void> {
+export async function runVisitCheck(
+  stage: 'dwell' | 'upgrade',
+  serverVisitId?: string,
+): Promise<void> {
   await primeGymDwellMinutes();
 
   const raw = await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY);
@@ -1334,6 +1475,33 @@ export async function runVisitCheck(stage: 'dwell' | 'upgrade'): Promise<void> {
   if (!active) {
     console.log('[Geofence] Visit check: no active session — ignoring.');
     return;
+  }
+
+  // RECONCILE against the server's own visit id, which rides on the wake payload.
+  // The device's stored id was previously the only input, and it can go stale while
+  // a live visit is being nudged: on 2026-07-16 the exit closed 2fa4e05d at
+  // 07:30:46, a fresh visit 793e434a opened 4 s later, and all FOUR of the new
+  // visit's nudges were answered 0.6-0.9 s later by confirms written to the DEAD
+  // row — 100 minutes of it. 793e434a recorded zero confirms and burned its entire
+  // nudge budget. The server is the authority on which visit it is asking about, so
+  // answer for THAT one and repair local state.
+  //
+  // The presence verdict below is still computed from `active`'s geometry, which is
+  // correct: it answers "am I inside the gym I checked into", and since the
+  // one-live-visit invariant (2026-07-30) plus the reuse bound (2026-08-01) hold,
+  // a user has at most one live visit and it is this session's.
+  const visitId = serverVisitId ?? active.visitId;
+  const visitMismatch = !!serverVisitId && !!active.visitId && serverVisitId !== active.visitId;
+  if (visitMismatch) {
+    console.warn(
+      `[Geofence] Visit check: stored visit ${active.visitId} != server ${serverVisitId} — answering for the server's.`,
+    );
+    try {
+      const current = raw ? JSON.parse(raw) as StoredGeofence : null;
+      if (current && current.visitId === active.visitId) {
+        await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...current, visitId: serverVisitId }));
+      }
+    } catch { /* best-effort repair — never block the wake's one round-trip */ }
   }
 
   let coords: Location.LocationObjectCoords | null = null;
@@ -1355,9 +1523,9 @@ export async function runVisitCheck(stage: 'dwell' | 'upgrade'): Promise<void> {
   // No fix = no proof = no credit. Leave the visit open; the server will nudge
   // again, and failing that the exit path still resolves it.
   if (!coords) {
-    if (active.visitId) {
+    if (visitId) {
       const { confirmGymVisit } = await import('@/lib/gymVisits');
-      await confirmGymVisit(active.visitId, false, { stage, reason: 'no_fix' });
+      await confirmGymVisit(visitId, false, { stage, reason: 'no_fix', visit_mismatch: visitMismatch });
     }
     return;
   }
@@ -1371,16 +1539,17 @@ export async function runVisitCheck(stage: 'dwell' | 'upgrade'): Promise<void> {
     inside = distance <= active.radius + LOCATION_EXIT_HYSTERESIS_M;
   }
 
-  if (active.visitId) {
+  if (visitId) {
     const { confirmGymVisit } = await import('@/lib/gymVisits');
     // requestCredit on an inside confirm: this one round-trip both proves
     // presence AND has the server relay the claim/upgrade (confirm_gym_visit_v2)
     // — the wake window fits ~one round-trip and the local chain below starves.
-    await confirmGymVisit(active.visitId, inside, {
+    await confirmGymVisit(visitId, inside, {
       stage,
       distance_m: distance != null ? Math.round(distance) : null,
       accuracy_m: coords.accuracy != null ? Math.round(coords.accuracy) : null,
-    }, inside);
+      visit_mismatch: visitMismatch,
+    }, inside, active.entryTimestamp);
   }
 
   if (inside) {
@@ -1494,9 +1663,24 @@ async function advanceActiveSession(active: StoredGeofence, staleLockMs?: number
  *  Throttled + best-effort: it must never delay or break the dwell machine. */
 async function heartbeatVisitStream(active: StoredGeofence, coords: Location.LocationObjectCoords): Promise<void> {
   try {
-    const last = Number((await AsyncStorage.getItem(VISIT_TICK_KEY)) ?? 0);
-    if (Date.now() - last < VISIT_TICK_INTERVAL_MS) return;
-    await AsyncStorage.setItem(VISIT_TICK_KEY, String(Date.now()));
+    // Claim the window SYNCHRONOUSLY, before any await. The old read-modify-write
+    // across `await getItem` let every callback in a burst read the same stale
+    // value and all pass: 451 of 1,044 stream_tick rows are redundant burst rows,
+    // worst cases 109 ticks in 4.04 s (visit 81ff3551) and 67 in 1.30 s. That also
+    // broke the promise in this function's own docstring — the heartbeat is
+    // awaited ahead of advanceActiveSession, so a burst delayed the dwell machine
+    // it swears never to delay.
+    const now = Date.now();
+    if (now - _lastTickAtMs < VISIT_TICK_INTERVAL_MS) return;
+    _lastTickAtMs = now;
+
+    // In-memory alone can't dedupe across JS contexts (the headless location task
+    // and the UI both run this), and a fresh context starts at 0 — so the
+    // persisted value is still the cross-context floor. It just no longer has to
+    // win a race it structurally cannot win.
+    const persisted = Number((await AsyncStorage.getItem(VISIT_TICK_KEY)) ?? 0);
+    if (now - persisted < VISIT_TICK_INTERVAL_MS) return;
+    await AsyncStorage.setItem(VISIT_TICK_KEY, String(now));
 
     if (!active.visitId) {
       // Late-open. openGymVisit fires exactly once, at check-in — but check-in can

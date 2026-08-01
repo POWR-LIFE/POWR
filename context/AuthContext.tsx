@@ -209,6 +209,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         });
 
         const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+            // Captured BEFORE sessionUserRef is overwritten below: by the time the
+            // SIGNED_OUT branch runs, `session` is null and the departing user's id
+            // is otherwise unrecoverable — and the geofence cleanup needs it to
+            // stamp ownership on their unclaimed sessions.
+            const departingUserId = sessionUserRef.current;
             setSession(session);
             sessionUserRef.current = session?.user?.id ?? null;
             if (session && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION')) {
@@ -229,6 +234,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             // rendering placeholders ("?" avatar, "You" name). Send them back to the login
             // screen, and if another device kicked them out, say so.
             if (event === 'SIGNED_OUT') {
+                // Geofence state is per-account and used to survive a sign-out: the
+                // active session and the exit-claim outbox both carried no owner, so
+                // the next account to sign in on this device inherited them. Fire
+                // and forget — nothing here may delay the navigation below.
+                import('@/context/GeofenceContext')
+                    .then(({ clearGeofenceStateOnSignOut }) => clearGeofenceStateOnSignOut(departingUserId ?? undefined))
+                    .catch(() => { /* non-fatal */ });
+
                 const wasForced = forcedSignOutRef.current;
                 const wasDeviceLocked = deviceLockedRef.current;
                 const lockReason = deviceLockReasonRef.current;

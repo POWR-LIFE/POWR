@@ -96,6 +96,11 @@ Deno.serve(async (req) => {
         .eq('id', body.visit_id)
         .eq('user_id', user.id)
         .is('upgraded_at', null)
+        // Never resurrect a visit that has already ended. Without this, a late
+        // relay flips a closed/abandoned row back to 'upgraded' — 10 rows now carry
+        // 'upgraded' with ended_at set, which is part of why `status` stopped
+        // meaning anything. A finished visit needs no upgrade nudges stopped.
+        .is('ended_at', null)
         .select('id');
       if ((marked ?? []).length > 0) {
         await supabase.from('gym_visit_events').insert({
