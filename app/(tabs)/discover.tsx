@@ -585,8 +585,9 @@ export default function DiscoverScreen() {
         // permanently burn the permission the whole product runs on. The ask
         // now only happens behind PermissionFixScreen, off a CTA the user chose
         // to press.
-        const { status } = await Location.getForegroundPermissionsAsync();
-        if (status === 'granted') {
+        const fg = await Location.getForegroundPermissionsAsync().catch(() => null);
+        if (!fg) return;
+        if (fg.status === 'granted') {
           await acquireUserFix();
           return;
         }
