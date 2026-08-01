@@ -601,7 +601,7 @@ export default function DiscoverScreen() {
         // path above must reach here, including the ones that no longer ask.
         setLocSettled(true);
       }
-    })();
+    })().catch(() => { /* treat any native error as "do nothing"; locSettled already set in finally */ });
     // Mount-only, as before: a permission probe, not a subscription.
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1128,7 +1128,10 @@ export default function DiscoverScreen() {
           {showLocationBanner && (
             <Pressable
               style={({ pressed }) => [styles.locationBanner, pressed && { opacity: 0.75 }]}
-              onPress={() => setLocationFixVisible(true)}
+              onPress={() => {
+                recordForegroundPromptShown().catch(() => { /* pacing is best-effort */ });
+                setLocationFixVisible(true);
+              }}
             >
               <Ionicons name="location-outline" size={16} color={GOLD} />
               <Text style={styles.locationBannerText}>
