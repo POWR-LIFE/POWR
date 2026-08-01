@@ -249,7 +249,7 @@ type SessionRow = {
 function vitalsFrom(snapshots: SnapshotRow[] | null): SessionVitals | null {
     const rows = snapshots ?? [];
     const carries = (s: SnapshotRow) => s.hr_avg != null || s.calories_active != null
-        || s.extras != null || s.sleep_deep_h != null;
+        || s.extras != null || s.sleep_deep_h != null || s.sleep_rem_h != null || s.sleep_light_h != null;
     const isDayWide = (s: SnapshotRow) => s.source != null && DAY_WIDE_VITAL_SOURCES.has(s.source);
 
     // A session has at most one linked snapshot in practice. Where history left
@@ -279,10 +279,15 @@ function vitalsFrom(snapshots: SnapshotRow[] | null): SessionVitals | null {
     };
 
     // Nothing survived the gate — render no attribution rather than an empty row.
-    const hasAnything = vitals.hrAvg != null || vitals.hrMax != null
-        || vitals.caloriesActive != null || vitals.sleepDeepH != null
-        || vitals.sleepRemH != null || vitals.sleepLightH != null
-        || Object.values(vitals.extras).some(v => v !== undefined);
+    // Treat 0 the same as null: the contract says "null means not reported, never
+    // zero", and the UI suppresses every tile when its value is <= 0, so a zero
+    // surviving here would surface an attribution chip with nothing beneath it.
+    const hasAnything = (vitals.hrAvg != null && vitals.hrAvg !== 0) || (vitals.hrMax != null && vitals.hrMax !== 0)
+        || (vitals.caloriesActive != null && vitals.caloriesActive !== 0)
+        || (vitals.sleepDeepH != null && vitals.sleepDeepH !== 0)
+        || (vitals.sleepRemH != null && vitals.sleepRemH !== 0)
+        || (vitals.sleepLightH != null && vitals.sleepLightH !== 0)
+        || Object.values(vitals.extras).some(v => v !== undefined && v !== 0);
     return hasAnything ? vitals : null;
 }
 

@@ -208,20 +208,25 @@ export function useHealthSync() {
         // Save full health snapshot for this session. sessionId is what lets the
         // Progress day sheet read these vitals back — without it the row is
         // orphaned (see supabase/migrations/20260801110000_*).
-        await saveHealthSnapshot({
-          sessionId: workoutSessionId ?? undefined,
-          steps: health.steps,
-          distanceM: health.distanceM,
-          hrAvg: today ? heartRate?.avg : undefined,
-          hrMax: today ? heartRate?.max : undefined,
-          hrResting: today ? heartRate?.resting : undefined,
-          caloriesActive: today ? calories?.active : undefined,
-          caloriesTotal: today ? calories?.total : undefined,
-          activityType: health.type,
-          durationSec: health.durationMin * 60,
-          source,
-          sourceDetail: health.source ? sourceLabel(health.source) : undefined,
-        });
+        // Only write when a session was actually created; logManualSession returns
+        // null for already-synced sessions and overlap-suppressed ones, and an
+        // orphaned snapshot (session_id NULL) accumulates duplicates across runs.
+        if (workoutSessionId != null) {
+          await saveHealthSnapshot({
+            sessionId: workoutSessionId,
+            steps: health.steps,
+            distanceM: health.distanceM,
+            hrAvg: today ? heartRate?.avg : undefined,
+            hrMax: today ? heartRate?.max : undefined,
+            hrResting: today ? heartRate?.resting : undefined,
+            caloriesActive: today ? calories?.active : undefined,
+            caloriesTotal: today ? calories?.total : undefined,
+            activityType: health.type,
+            durationSec: health.durationMin * 60,
+            source,
+            sourceDetail: health.source ? sourceLabel(health.source) : undefined,
+          });
+        }
 
         console.log(`[HealthSync] Synced ${mappedType} from ${health.startedAt}`);
       }
@@ -272,17 +277,19 @@ export function useHealthSync() {
             receiptLabel = act.type;
           }
 
-          await saveHealthSnapshot({
-            sessionId: inferredSessionId ?? undefined,
-            distanceM: act.distanceM,
-            hrAvg: today ? heartRate?.avg : undefined,
-            hrMax: today ? heartRate?.max : undefined,
-            hrResting: today ? heartRate?.resting : undefined,
-            activityType: act.type,
-            durationSec: act.durationMin * 60,
-            source,
-            sourceDetail: act.source ? sourceLabel(act.source) : undefined,
-          });
+          if (inferredSessionId != null) {
+            await saveHealthSnapshot({
+              sessionId: inferredSessionId,
+              distanceM: act.distanceM,
+              hrAvg: today ? heartRate?.avg : undefined,
+              hrMax: today ? heartRate?.max : undefined,
+              hrResting: today ? heartRate?.resting : undefined,
+              activityType: act.type,
+              durationSec: act.durationMin * 60,
+              source,
+              sourceDetail: act.source ? sourceLabel(act.source) : undefined,
+            });
+          }
 
           console.log(`[HealthSync] Synced inferred ${act.type} ${act.startedAt} (${act.distanceM}m, ${act.avgSpeedKmh}km/h)`);
         }

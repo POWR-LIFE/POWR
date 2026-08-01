@@ -18,7 +18,7 @@ alter table public.health_snapshots
     add column if not exists extras jsonb;
 
 comment on column public.health_snapshots.extras is
-    'Bounded per-workout metrics from the provider: elevation_gain_m, hr_min, '
-    'hrv_rmssd, avg_watts, max_watts, swim_laps, swim_strokes, pool_length_m, '
-    'floors, high_intensity_min, moderate_intensity_min, hr_zones[]. '
+    'Bounded per-workout metrics from the provider: elevation_gain_m, elevation_loss_m, '
+    'steps, hr_min, hrv_rmssd, avg_watts, max_watts, swim_laps, swim_strokes, pool_length_m, '
+    'floors, net_calories, high_intensity_min, moderate_intensity_min, hr_zones[]. '
     'Scalars + the short hr_zones array only — never sample series.';

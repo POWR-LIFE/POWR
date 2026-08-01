@@ -27,6 +27,7 @@ set extras = nullif(
     '{}'::jsonb
 )
 where extras is not null
+  and source = 'garmin'
   and exists (
       select 1 from jsonb_each(extras) as e where e.value = to_jsonb(0)
   );
