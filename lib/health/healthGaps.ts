@@ -20,9 +20,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Linking, Platform } from 'react-native';
 
 import { androidRequestPermissions, androidOpenHealthConnectSettings } from '@/hooks/useHealthData';
+import { wearableSilentCopy, type WearableFreshness } from '@/lib/health/wearableStatus';
 
 export type HealthGapKind =
     | 'none'
+    | 'wearable_silent'               // connected wearable has delivered nothing for days
     | 'android_exercise_permission'   // grant POWR Health Connect workout read (1 tap)
     | 'workouts_missing';             // worn device active but workout isn't coming through
 
@@ -38,6 +40,11 @@ export type HealthGapSignals = {
     hadCapturedWorkoutToday: boolean;
     /** Active energy today (kcal) — proxy for "did real work", filters out rest days. */
     activeEnergyToday: number;
+    /**
+     * Server-confirmed freshness of the user's live Terra wearable
+     * (lib/health/wearableStatus.ts). 'none' when they have no wearable.
+     */
+    wearableFreshness: WearableFreshness;
 };
 
 /** Active kcal above which we assume a genuine workout happened, not just walking. Tunable. */
@@ -49,6 +56,19 @@ export const WORKOUT_ENERGY_HINT = 400;
  * wins over the softer energy-based heuristic.
  */
 export function detectHealthGap(s: HealthGapSignals): HealthGapKind {
+    // Checked before BOTH the web and nativeConnected gates, deliberately:
+    //  • not web-gated, because unlike every other kind here this one is pure
+    //    server state (terra_connections) rather than a native health API — it's
+    //    equally true and equally actionable on web, and it keeps the loud path
+    //    QA-verifiable on expo web.
+    //  • not nativeConnected-gated, because a wearable user need not have the
+    //    phone health store connected at all, and gating on it would hide the
+    //    exact case we care most about.
+    // Ranked first because it's server-confirmed fact (the connection has
+    // delivered nothing) rather than inference from today's numbers — and
+    // because five silent weeks beats a missing toggle.
+    if (s.wearableFreshness === 'silent') return 'wearable_silent';
+
     if (s.platform === 'web' || !s.nativeConnected) return 'none';
 
     // Highest precision: we can literally read that the workout scope is ungranted.
@@ -69,8 +89,16 @@ export function detectHealthGap(s: HealthGapSignals): HealthGapKind {
 
 export type HealthGapCopy = { title: string; body: string; cta: string };
 
-export function gapCopy(kind: HealthGapKind): HealthGapCopy | null {
+/** Extra detail the wearable copy needs; ignored by the other kinds. */
+export type HealthGapContext = {
+    providerName?: string | null;
+    hoursSinceSync?: number | null;
+};
+
+export function gapCopy(kind: HealthGapKind, ctx: HealthGapContext = {}): HealthGapCopy | null {
     switch (kind) {
+        case 'wearable_silent':
+            return wearableSilentCopy(ctx.providerName ?? 'Your wearable', ctx.hoursSinceSync ?? null);
         case 'android_exercise_permission':
             return {
                 title: 'Turn on workout tracking',
@@ -100,6 +128,9 @@ export function gapCopy(kind: HealthGapKind): HealthGapCopy | null {
  */
 export async function resolveHealthGap(kind: HealthGapKind): Promise<boolean> {
     try {
+        // 'wearable_silent' is deliberately absent: its remedy is navigation to
+        // /wearables, and this module stays router-free so it can be unit-tested
+        // without a nav tree. HealthGapBanner routes that kind itself.
         if (kind === 'android_exercise_permission') {
             return await androidRequestPermissions();
         }

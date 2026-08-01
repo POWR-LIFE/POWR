@@ -21,6 +21,7 @@ import {
   terraResourceToSource,
 } from '../_shared/points.ts';
 import { verifyTerraSignature } from '../_shared/terraSignature.ts';
+import { DATA_TYPES, extractDeviceFreshness, freshnessPatch } from '../_shared/deviceFreshness.ts';
 
 const SIGNING_SECRET = Deno.env.get('TERRA_SIGNING_SECRET')!;
 
@@ -543,6 +544,17 @@ Deno.serve(async (req) => {
     if (['activity', 'sleep', 'body'].includes(payload.type) && payload.user?.user_id) {
       await supabase.from('terra_connections')
         .update({ last_event_at: new Date().toISOString() })
+        .eq('terra_user_id', payload.user.user_id);
+    }
+
+    // User-facing freshness (powers the home wearable chip + the stale-wearable
+    // banner). Unlike last_event_at above, this DOES include 'daily' — otherwise
+    // a provider with no sleep/activity data (Strava) would read as silent while
+    // syncing fine. Never stamped by auth/deauth: a connection that only ever
+    // authed has delivered nothing and must read as "never synced".
+    if (DATA_TYPES.has(payload.type) && payload.user?.user_id) {
+      await supabase.from('terra_connections')
+        .update(freshnessPatch(extractDeviceFreshness(payload)))
         .eq('terra_user_id', payload.user.user_id);
     }
 

@@ -15,6 +15,7 @@ const base: HealthGapSignals = {
     wearablePresent: true,
     hadCapturedWorkoutToday: false,
     activeEnergyToday: WORKOUT_ENERGY_HINT + 100,
+    wearableFreshness: 'none',
 };
 
 describe('detectHealthGap — quiet by default', () => {
@@ -58,6 +59,52 @@ describe('detectHealthGap — Android exercise permission', () => {
         expect(detectHealthGap({
             ...base, platform: 'android', androidExerciseGranted: true,
             hadCapturedWorkoutToday: true,
+        })).toBe('none');
+    });
+});
+
+describe('detectHealthGap — silent wearable', () => {
+    it('flags a wearable that has gone silent', () => {
+        expect(detectHealthGap({ ...base, wearableFreshness: 'silent' })).toBe('wearable_silent');
+    });
+
+    it('does NOT flag merely stale — that is the chip’s job, not the banner’s', () => {
+        // 24–48h of quiet is an ordinary off-wrist night; interrupting for it
+        // would nag every user who takes a rest day.
+        expect(detectHealthGap({
+            ...base, wearableFreshness: 'stale', hadCapturedWorkoutToday: true,
+        })).toBe('none');
+    });
+
+    it('fires even when the phone health store is not connected', () => {
+        // The regression guard for the nativeConnected gate: a wearable-only user
+        // is exactly who this banner exists for.
+        expect(detectHealthGap({
+            ...base, nativeConnected: false, wearableFreshness: 'silent',
+        })).toBe('wearable_silent');
+    });
+
+    it('outranks the Android permission gap (five silent weeks beats a toggle)', () => {
+        expect(detectHealthGap({
+            ...base, platform: 'android', androidExerciseGranted: false,
+            wearableFreshness: 'silent',
+        })).toBe('wearable_silent');
+    });
+
+    it('fires on web too — it is server state, not a native health API', () => {
+        // The only kind that survives the web gate. Everything else here needs
+        // HealthKit/Health Connect, which don't exist on web.
+        expect(detectHealthGap({
+            ...base, platform: 'web', wearableFreshness: 'silent',
+        })).toBe('wearable_silent');
+        expect(detectHealthGap({
+            ...base, platform: 'web', wearableFreshness: 'fresh',
+        })).toBe('none');
+    });
+
+    it('says none for a user with no wearable at all', () => {
+        expect(detectHealthGap({
+            ...base, wearableFreshness: 'none', hadCapturedWorkoutToday: true,
         })).toBe('none');
     });
 });
