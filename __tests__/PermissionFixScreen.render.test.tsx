@@ -243,7 +243,7 @@ describe('PermissionFixScreen — location-precise', () => {
         });
         appState('active');
 
-        await new Promise((r) => setTimeout(r, 50));
+        await waitFor(() => expect(Location.getForegroundPermissionsAsync).toHaveBeenCalled());
         expect(onClose).not.toHaveBeenCalled();
     });
 
