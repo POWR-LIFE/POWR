@@ -1,5 +1,6 @@
 // @ts-nocheck — Deno runtime, not Node. Types enforced at deploy time.
 import { createClient } from '@supabase/supabase-js';
+import { recordedGymDurationSec, MAX_GYM_SESSION_SEC } from '../_shared/gymDuration.ts';
 
 function gymStreakBonus(streak: number, base: number): number {
   if (streak >= 10) return Math.floor(base * 3.0) - base;
@@ -113,22 +114,16 @@ Deno.serve(async (req) => {
     }
   };
 
-  // Loose sanity backstop on a recorded gym dwell — keep in sync with GeofenceContext.
-  // A 40-min upgrade firing late (app reopened hours later, or a delayed EXIT)
-  // must not overwrite duration_sec with an impossible entry→now wall-clock.
-  // 12 h covers all-day events; the client reconciles the true length against GPS
-  // presence + the health store. The 40-min tier GATE below still uses real
-  // entry→now elapsed (anti-abuse), independent of this display backstop.
-  const MAX_GYM_SESSION_SEC = 12 * 60 * 60; // 12 h backstop
-
-  // Update session to actual elapsed time (capped)
+  // ELIGIBILITY input — real entry→now wall clock, capped by the shared 12 h
+  // backstop (keep in sync with GeofenceContext). Unchanged: this is the
+  // anti-abuse gate and it must not be softened by the presence clamp below.
   const now = new Date();
   const startedMs = new Date(session.started_at).getTime();
-  const actualDurationSec = Math.min(
+  const elapsedSec = Math.min(
     Math.round((now.getTime() - startedMs) / 1000),
     MAX_GYM_SESSION_SEC,
   );
-  const actualMins = Math.floor(actualDurationSec / 60);
+  const actualMins = Math.floor(elapsedSec / 60);
 
   // Admin-tunable upgrade-tier threshold (system_config → gym_upgrade_minutes,
   // default 40). Keep in sync with claim-points calcBasePoints — this is the
@@ -155,25 +150,60 @@ Deno.serve(async (req) => {
     }
   }
 
+  // ── What we STORE is not what we GATE on. See _shared/gymDuration.ts for the
+  // rule and why it takes the weakest bound. Read the presence checkpoint BEFORE
+  // markVisitUpgraded() can stamp last_confirmed_at = now() further down.
+  let presenceSec: number | null = null;
+  {
+    let visitQuery = supabase
+      .from('gym_visits')
+      .select('last_confirmed_at')
+      .eq('user_id', user.id)
+      .not('last_confirmed_at', 'is', null)
+      .limit(1);
+    visitQuery = body.visit_id
+      ? visitQuery.eq('id', body.visit_id)
+      : visitQuery.eq('claimed_session_id', session.id);
+    const { data: visit } = await visitQuery.maybeSingle();
+    if (visit?.last_confirmed_at) {
+      const sec = Math.round((new Date(visit.last_confirmed_at).getTime() - startedMs) / 1000);
+      if (sec > 0) presenceSec = sec;
+    }
+  }
+
+  const recordedSec = recordedGymDurationSec({
+    elapsedSec,
+    presenceSec,
+    recordedSec: session.duration_sec,
+    upgradeMin,
+  });
+
   if (actualMins < upgradeMin) {
     // DEV-TEST-ONLY override: when DEV_MIN_UPGRADE_SEC is set, a dev-test account can
     // upgrade to the upgrade tier at a lower threshold (test without a real full
     // dwell). Gated on isDevTestUser so a real user can NEVER upgrade early even if
     // the env var is left set in production — the env var alone is not enough.
     const devMinUpgradeSec = parseInt(Deno.env.get('DEV_MIN_UPGRADE_SEC') ?? '0', 10);
-    if (!isDevTestUser || devMinUpgradeSec <= 0 || actualDurationSec < devMinUpgradeSec) {
+    if (!isDevTestUser || devMinUpgradeSec <= 0 || elapsedSec < devMinUpgradeSec) {
       return new Response(JSON.stringify({ error: `Session has not reached the ${upgradeMin}-min tier` }), { status: 422 });
     }
-    console.log(`[DEV] Allowing tier upgrade for short session (${actualDurationSec}s >= ${devMinUpgradeSec}s dev threshold)`);
+    console.log(`[DEV] Allowing tier upgrade for short session (${elapsedSec}s >= ${devMinUpgradeSec}s dev threshold)`);
   }
 
-  // Derive ended_at from the capped duration so the row stays internally consistent
-  // (started_at + duration). When uncapped this equals `now`, as before.
-  const endedAt = new Date(startedMs + actualDurationSec * 1000);
-  await supabase
-    .from('activity_sessions')
-    .update({ ended_at: endedAt.toISOString(), duration_sec: actualDurationSec })
-    .eq('id', session.id);
+  // Derive ended_at from the recorded duration so the row stays internally
+  // consistent (started_at + duration). Only write when it actually changes —
+  // a converged retry then costs no write at all.
+  if (recordedSec !== session.duration_sec) {
+    const endedAt = new Date(startedMs + recordedSec * 1000);
+    await supabase
+      .from('activity_sessions')
+      .update({ ended_at: endedAt.toISOString(), duration_sec: recordedSec })
+      .eq('id', session.id);
+    console.log(
+      `[upgrade-gym-tier] duration ${session.duration_sec}s → ${recordedSec}s ` +
+      `(elapsed ${elapsedSec}s, presence ${presenceSec ?? 'none'})`,
+    );
+  }
 
   // Calculate target earnings at the upgrade tier including streak multiplier
   const targetBase = 20;
