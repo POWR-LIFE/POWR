@@ -15,10 +15,20 @@
 -- stale row's day. The device is the only party that knows when the user actually
 -- arrived, so it should have to agree.
 --
--- LEAST() in Postgres propagates NULL, so the function guards the apply with an
--- IS NOT NULL check. A caller that passes no p_entry_at gets EXACTLY the old
--- behaviour (elapsed derived from the visit row's started_at only), keeping every
--- client on the current OTA working unchanged.
+-- ⚠ Postgres LEAST() IGNORES NULL — it is one of the few SQL functions that does
+-- not propagate it. The result is NULL only when EVERY argument is NULL. Verified
+-- on this instance (PG 17.6): `least(5, null) = 5`, `least(null, null) = null`.
+-- So a bare `least(row_elapsed, entry_elapsed)` was already correct here.
+--
+-- The explicit IS NOT NULL guard below is kept anyway, because it states the intent
+-- outright — "only tighten the gate when the device actually told us something" —
+-- rather than resting on a quirk that reads like a bug to anyone scanning it.
+-- The two forms are exactly equivalent; do not "fix" either one into the other on
+-- the belief that LEAST is NULL-propagating.
+--
+-- Either way a caller that passes no p_entry_at gets EXACTLY the old behaviour
+-- (elapsed derived from the visit row's started_at alone), which is what keeps
+-- every client on the current OTA working unchanged.
 --
 -- Deliberately NOT refusing on "different UTC day": legitimate long and overnight
 -- sessions already exist in prod (a 407-minute same-day relay upgrade among them),
