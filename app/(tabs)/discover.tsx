@@ -1,14 +1,23 @@
 import { HeaderActions } from '@/components/HeaderActions';
 import { GeometricBackground } from '@/components/home/GeometricBackground';
+import PermissionFixScreen from '@/components/PermissionFixScreen';
 import { fetchPartnersInArea, getPartnerGeometry, searchPartners, useGeofenceContext, type DayKey, type OpeningHours, type Partner, type PartnerGeoPoint, type Trainer } from '@/context/GeofenceContext';
 import { useActiveGeofence } from '@/hooks/useActiveGeofence';
 import { createGymRequest } from '@/lib/api/gyms';
+import {
+  getLocationPromptState,
+  isForegroundMissing,
+  recordForegroundPromptDismissed,
+  recordForegroundPromptShown,
+  shouldShowForegroundPrompt,
+} from '@/lib/locationPrompt';
 import { MAP_PROVIDER } from '@/lib/mapProvider';
 import { getSessionUser, supabase } from '@/lib/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
+import { useFocusEffect } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -273,6 +282,7 @@ export default function DiscoverScreen() {
   const [locationGranted, setLocationGranted] = useState(false);
   const [userLoc, setUserLoc] = useState<Location.LocationObject | null>(null);
   const [locSettled, setLocSettled] = useState(false); // permission answered + first fix obtained (or unavailable)
+  const [locationFixVisible, setLocationFixVisible] = useState(false);
 
   // Filter state
   const [openNowFilter, setOpenNowFilter] = useState(false);
@@ -513,47 +523,112 @@ export default function DiscoverScreen() {
     });
   }, [rawPartners, userLoc, sortMode]);
 
+  /** Everything that happens once foreground location is actually granted:
+   *  first fix, provider coverage, map centring. Split out of the mount effect
+   *  because a grant can now also land later — from the primed recovery screen
+   *  — and the map should fill in there and then rather than waiting for the
+   *  user to bounce off the tab and back to re-run mount. */
+  const acquireUserFix = useCallback(async () => {
+    setLocationGranted(true);
+    let loc;
+    try {
+      loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+    } catch {
+      loc = await Location.getLastKnownPositionAsync().catch(() => null);
+    }
+    if (!loc) return;
+    setUserLoc(loc);
+    // If this fresh fix is far from where the provider last fetched
+    // (user travelled), re-fetch the nearby set right now so the list
+    // and map show their actual surroundings immediately.
+    ensureCoverage({ latitude: loc.coords.latitude, longitude: loc.coords.longitude })
+      .catch(() => { /* non-fatal */ });
+    // The provider fetch above covers 0.15° around the user — record it so
+    // the map's first regionChange doesn't immediately duplicate it.
+    areaFootprintsRef.current.push({
+      lat: loc.coords.latitude,
+      lng: loc.coords.longitude,
+      radiusDeg: AREA_RADIUS_MAX_DEG,
+    });
+    const region = {
+      latitude: loc.coords.latitude,
+      longitude: loc.coords.longitude,
+      latitudeDelta: 0.02,
+      longitudeDelta: 0.02,
+    };
+    setMapRegion(region);
+    mapRef.current?.animateToRegion(region, 800);
+  }, [ensureCoverage]);
+
+  /** Closing the primed screen means one of two things and they must not be
+   *  conflated. PermissionFixScreen closes ITSELF off its AppState listener the
+   *  moment the grant lands, so a granted permission here is a success, not a
+   *  dismissal: don't spend one of the capped prompts, just pick up the fix the
+   *  mount effect skipped. Anything else is the user backing out. */
+  const closeLocationFix = useCallback(async () => {
+    setLocationFixVisible(false);
+    const fg = await Location.getForegroundPermissionsAsync().catch(() => null);
+    if (fg?.status === 'granted') {
+      await acquireUserFix();
+      return;
+    }
+    recordForegroundPromptDismissed().catch(() => { /* pacing is best-effort */ });
+  }, [acquireUserFix]);
+
   useEffect(() => {
     (async () => {
       try {
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status !== 'granted') return;
-        setLocationGranted(true);
-        let loc;
-        try {
-          loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-        } catch {
-          loc = await Location.getLastKnownPositionAsync().catch(() => null);
+        // READ, never request. This used to be a bare
+        // requestForegroundPermissionsAsync() on mount: a cold, unprimed OS
+        // dialog fired at someone who opened a tab to look at a map. On iOS one
+        // "Don't Allow" sets canAskAgain:false forever, so that one-shot could
+        // permanently burn the permission the whole product runs on. The ask
+        // now only happens behind PermissionFixScreen, off a CTA the user chose
+        // to press.
+        const fg = await Location.getForegroundPermissionsAsync().catch(() => null);
+        if (!fg) return;
+        if (fg.status === 'granted') {
+          await acquireUserFix();
+          return;
         }
-        if (loc) {
-          setUserLoc(loc);
-          // If this fresh fix is far from where the provider last fetched
-          // (user travelled), re-fetch the nearby set right now so the list
-          // and map show their actual surroundings immediately.
-          ensureCoverage({ latitude: loc.coords.latitude, longitude: loc.coords.longitude })
-            .catch(() => { /* non-fatal */ });
-          // The provider fetch above covers 0.15° around the user — record it so
-          // the map's first regionChange doesn't immediately duplicate it.
-          areaFootprintsRef.current.push({
-            lat: loc.coords.latitude,
-            lng: loc.coords.longitude,
-            radiusDeg: AREA_RADIUS_MAX_DEG,
-          });
-          const region = {
-            latitude: loc.coords.latitude,
-            longitude: loc.coords.longitude,
-            latitudeDelta: 0.02,
-            longitudeDelta: 0.02,
-          };
-          setMapRegion(region);
-          mapRef.current?.animateToRegion(region, 800);
-        }
+        const missing = await isForegroundMissing();
+        if (missing !== true) return; // null = native error; never take the screen over on a blip
+        const state = await getLocationPromptState();
+        if (!shouldShowForegroundPrompt(state, Date.now())) return;
+        recordForegroundPromptShown().catch(() => { /* pacing is best-effort */ });
+        setLocationFixVisible(true);
       } finally {
-        // Map overlays are held back until this flips — see mapOverlay.
+        // Map overlays are held back until this flips — see mapOverlay. Every
+        // path above must reach here, including the ones that no longer ask.
         setLocSettled(true);
       }
-    })();
-  }, []);
+    })().catch(() => { /* treat any native error as "do nothing"; locSettled already set in finally */ });
+    // Mount-only, as before: a permission probe, not a subscription.
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ...but the mount probe alone now leaves a visible lie on screen. A grant can
+  // land entirely outside this tab — Settings › Location opens the same primed
+  // screen, and the system settings app is always one swipe away — and neither
+  // remounts Discover. Before this change nothing here asserted anything about
+  // the permission, so the stale flag was invisible; the banner below states it
+  // outright, so it has to stay true. Same on-focus re-read the settings screen
+  // already uses for its permission rows.
+  const locationGrantedRef = useRef(locationGranted);
+  locationGrantedRef.current = locationGranted;
+  useFocusEffect(
+    useCallback(() => {
+      // Only the flip to granted is interesting. Re-acquiring unconditionally
+      // would fire a fresh GPS fix every time the user touched the tab bar.
+      if (locationGrantedRef.current) return;
+      let cancelled = false;
+      (async () => {
+        const fg = await Location.getForegroundPermissionsAsync().catch(() => null);
+        if (cancelled || fg?.status !== 'granted') return;
+        await acquireUserFix();
+      })();
+      return () => { cancelled = true; };
+    }, [acquireUserFix]),
+  );
 
   // Debounced DB search — fires when user types, bypasses the nearby-only local list
   useEffect(() => {
@@ -715,6 +790,12 @@ export default function DiscoverScreen() {
     && mapOverlay.pins.length === 0 && mapOverlay.clusters.length === 0
     && searchResults === null && !search.trim()
     && !openNowFilter && !visitedFilter && maxDistanceMi === null;
+
+  // Location is off (locSettled guarantees we've actually looked, so this never
+  // flashes on a cold open). The pacing on the primed screen deliberately gives
+  // up after two dismissals — this row is what's left, and the only route back
+  // for a user whose OS dialog is already burned.
+  const showLocationBanner = locSettled && !locationGranted;
 
   const sortLabel = sortMode === 'nearest' ? 'Nearest' : sortMode === 'pts' ? 'Most Points' : 'A–Z';
 
@@ -1038,6 +1119,30 @@ export default function DiscoverScreen() {
       >
         {/* ── Sticky header: filters + search + tabs ─────────── */}
         <View style={styles.listHeader}>
+          {/* Quiet, permanent way back into the location grant. It leads the
+              sticky header rather than living in the scrolling list so it stays
+              reachable at any scroll position, and it sits directly under the
+              map — the surface it explains. Everything above it is degraded
+              without location (no blue dot, no radius circles) and everything
+              below it is too (no distances, "Nearest" sorts by nothing). One
+              tappable line, no dismiss, no alert colours. */}
+          {showLocationBanner && (
+            <Pressable
+              style={({ pressed }) => [styles.locationBanner, pressed && { opacity: 0.75 }]}
+              onPress={() => {
+                recordForegroundPromptShown().catch(() => { /* pacing is best-effort */ });
+                setLocationFixVisible(true);
+              }}
+            >
+              <Ionicons name="location-outline" size={16} color={GOLD} />
+              <Text style={styles.locationBannerText}>
+                <Text style={styles.locationBannerStrong}>Location is off.</Text> Turn it on for
+                distances, directions and automatic check-ins.
+              </Text>
+              <Ionicons name="chevron-forward" size={14} color={GOLD} />
+            </Pressable>
+          )}
+
           {/* Filter chips */}
           <ScrollView
             horizontal
@@ -1691,6 +1796,11 @@ export default function DiscoverScreen() {
           </Pressable>
         </KeyboardAvoidingView>
       </Modal>
+
+      {/* Primed foreground-location recovery — the only place this screen asks.
+          It picks ask-vs-settings from live state itself, so a burned dialog
+          coaches the user to the right settings row instead of dead-ending. */}
+      <PermissionFixScreen kind={locationFixVisible ? 'location' : null} onClose={closeLocationFix} />
     </View>
   );
 }
@@ -2191,6 +2301,20 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: 'rgba(255,255,255,0.06)',
   },
+
+  locationBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(232,210,0,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(232,210,0,0.18)',
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  locationBannerText: { flex: 1, fontSize: 12, fontWeight: '300', lineHeight: 17, color: DIM },
+  locationBannerStrong: { fontWeight: '600', color: GOLD },
 
   filterRow: { flexDirection: 'row', gap: 8 },
   filterChip: {

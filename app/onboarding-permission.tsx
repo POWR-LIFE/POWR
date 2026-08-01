@@ -1,6 +1,7 @@
 import GeometricBackground from '@/components/GeometricBackground';
 import PermissionPrimeScene from '@/components/onboarding/PermissionPrimeScene';
 import { awardBonus } from '@/lib/api/points';
+import { recordLocationOnboardingDeclined } from '@/lib/locationPrompt';
 import { ONBOARDING_DOT_COUNT, dotIndexFor } from '@/lib/onboarding/flow';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
@@ -244,7 +245,16 @@ export default function OnboardingPermissionScreen() {
                 {(attempted || mode === 'denied') && (
                     <Pressable
                         style={styles.skipButton}
-                        onPress={() => router.push(SKIP_SCREEN)}
+                        onPress={() => {
+                            // Skipping here jumps straight to the gym step, so the
+                            // background page — the only other thing that records a
+                            // decline — never runs. Without this stamp the cool-off
+                            // that keeps Discover from re-asking in the same sitting
+                            // has nothing to read, and someone who just said no gets
+                            // the primed screen again minutes later.
+                            recordLocationOnboardingDeclined().catch(() => {});
+                            router.push(SKIP_SCREEN);
+                        }}
                     >
                         <Text style={styles.skipLabel}>Continue without location</Text>
                     </Pressable>

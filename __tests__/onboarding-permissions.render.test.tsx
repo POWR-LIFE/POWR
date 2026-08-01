@@ -85,9 +85,14 @@ jest.mock('@/lib/notificationPrompt', () => ({
     recordOnboardingDeclined: jest.fn().mockResolvedValue(undefined),
 }));
 
+jest.mock('@/lib/locationPrompt', () => ({
+    recordLocationOnboardingDeclined: jest.fn().mockResolvedValue(undefined),
+}));
+
 import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
 import { awardBonus } from '@/lib/api/points';
+import { recordLocationOnboardingDeclined } from '@/lib/locationPrompt';
 import { recordOnboardingDeclined } from '@/lib/notificationPrompt';
 import OnboardingPermissionScreen from '@/app/onboarding-permission';
 import OnboardingPermissionBackgroundScreen from '@/app/onboarding-permission-background';
@@ -143,6 +148,10 @@ describe('OnboardingPermissionScreen (foreground location)', () => {
         fireEvent.press(screen.getByText('ALLOW WHILE USING'));
         fireEvent.press(await screen.findByText('Continue without location'));
         expect(mockRouter.push).toHaveBeenCalledWith('/onboarding-gym');
+        // Skipping here bypasses the background page, so this is the only chance
+        // to stamp the decline. Without it Discover's cool-off reads a null and
+        // re-asks the same user minutes later.
+        expect(recordLocationOnboardingDeclined).toHaveBeenCalled();
     });
 
     it('flips the CTA to Settings when the dialog is burned, and shows the escape', async () => {
