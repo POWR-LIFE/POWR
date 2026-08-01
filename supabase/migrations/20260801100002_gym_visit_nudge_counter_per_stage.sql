@@ -101,3 +101,4 @@ $function$;
 revoke all on function public.touch_gym_visit_nudge(uuid) from public;
 revoke all on function public.touch_gym_visit_nudge(uuid) from anon;
 revoke all on function public.touch_gym_visit_nudge(uuid) from authenticated;
+grant execute on function public.touch_gym_visit_nudge(uuid) to service_role;
