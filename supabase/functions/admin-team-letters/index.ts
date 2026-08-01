@@ -146,11 +146,12 @@ Deno.serve(async (req: Request) => {
   const { data: { user }, error: authError } = await userClient.auth.getUser();
   if (authError || !user) return json({ error: "Unauthorized" }, 401);
 
-  const { data: adminRole } = await admin
+  const { data: adminRole, error: adminRoleError } = await admin
     .from("admin_roles")
     .select("user_id")
     .eq("user_id", user.id)
     .maybeSingle();
+  if (adminRoleError) return json({ error: adminRoleError.message }, 500);
   if (!adminRole) return json({ error: "Admin access required" }, 403);
 
   const body = await req.json().catch(() => ({} as Record<string, unknown>));
