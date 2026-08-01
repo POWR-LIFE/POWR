@@ -161,7 +161,16 @@ export type ManualSessionParams = {
 /** Max unverified manual logs allowed per calendar day (across all types). */
 const DAILY_MANUAL_CAP = 1;
 
-export async function logManualSession(params: ManualSessionParams): Promise<boolean> {
+/**
+ * Records a session. Returns the new session's id, or null when nothing was
+ * written (already synced, or superseded by a higher-trust source).
+ *
+ * The id is returned so callers can pass it to `saveHealthSnapshot` as
+ * `sessionId` — that link is what lets the Progress day sheet show a session's
+ * heart rate and calories. Callers that only care whether a row was created can
+ * keep testing truthiness.
+ */
+export async function logManualSession(params: ManualSessionParams): Promise<string | null> {
     // ended_at is the activity's true end (start + duration), NOT the moment we
     // happen to sync it. Using `now` made backfilled health sessions span hours/
     // days of wall-clock (e.g. a sleep "ending" at sync time, days after the
@@ -200,7 +209,7 @@ export async function logManualSession(params: ManualSessionParams): Promise<boo
         });
         if (overlapsCheckIn) {
             console.log(`[activity] skipping health-synced ${params.type} ${params.started_at} — overlaps geofence check-in`);
-            return false;
+            return null;
         }
     }
 
@@ -284,7 +293,7 @@ export async function logManualSession(params: ManualSessionParams): Promise<boo
         .single();
     if (sessionError) {
         // Session for this type/day already exists — skip silently
-        if (sessionError.code === '23505') return false;
+        if (sessionError.code === '23505') return null;
         throw sessionError;
     }
 
@@ -308,7 +317,7 @@ export async function logManualSession(params: ManualSessionParams): Promise<boo
         await updateStreakForToday();
     }
 
-    return true;
+    return session.id as string;
 }
 
 export async function fetchWeeklyMetrics(): Promise<WeeklyMetrics> {
@@ -933,9 +942,15 @@ export async function fetchTodayWalkingPoints(): Promise<number> {
 /** Returns Mon–Sun sleep hours for the current week from synced activity sessions. */
 export async function fetchWeeklySleepHours(
     monday: Date = weekAnchorMonday(0),
-): Promise<{ hours: number[]; bedtimes: (string | null)[] }> {
+): Promise<{ hours: number[]; bedtimes: (string | null)[]; points: number[] }> {
     const uid = await getCurrentUserId();
-    if (!uid) return { hours: [0, 0, 0, 0, 0, 0, 0], bedtimes: [null, null, null, null, null, null, null] };
+    if (!uid) {
+        return {
+            hours: [0, 0, 0, 0, 0, 0, 0],
+            bedtimes: [null, null, null, null, null, null, null],
+            points: [0, 0, 0, 0, 0, 0, 0],
+        };
+    }
 
     const weekEnd = new Date(monday);
     weekEnd.setDate(weekEnd.getDate() + 7);
@@ -956,7 +971,7 @@ export async function fetchWeeklySleepHours(
 
     const { data, error } = await supabase
         .from('activity_sessions')
-        .select('started_at, duration_sec')
+        .select('started_at, duration_sec, point_transactions(amount)')
         .eq('user_id', uid)
         .eq('type', 'sleep')
         .gte('started_at', lookback.toISOString())
@@ -967,6 +982,11 @@ export async function fetchWeeklySleepHours(
     // Map each session to its weekday (Mon=0 … Sun=6)
     const hours: number[] = [0, 0, 0, 0, 0, 0, 0];
     const bedtimes: (string | null)[] = [null, null, null, null, null, null, null];
+    // Points are bucketed HERE, beside the hours, using the same assignDate — so
+    // the tappable bar's caption can never disagree with the bar above it. The
+    // generic fetchWeekActivityData buckets on raw started_at and would put an
+    // evening bedtime's POWR on the day before the bar showing its hours.
+    const points: number[] = [0, 0, 0, 0, 0, 0, 0];
 
     for (const s of data ?? []) {
         const d = new Date(s.started_at);
@@ -984,6 +1004,9 @@ export async function fetchWeeklySleepHours(
         const idx = day === 0 ? 6 : day - 1;
         const durationH = Math.round((s.duration_sec / 3600) * 10) / 10;
         hours[idx] += durationH;
+        for (const t of ((s as unknown as { point_transactions: { amount: number }[] | null }).point_transactions ?? [])) {
+            points[idx] += t.amount ?? 0;
+        }
 
         // Track bedtime (earliest start for that night)
         if (!bedtimes[idx] || s.started_at < bedtimes[idx]!) {
@@ -991,7 +1014,26 @@ export async function fetchWeeklySleepHours(
         }
     }
 
-    return { hours, bedtimes };
+    return { hours, bedtimes, points };
+}
+
+/**
+ * The window a sleep "day" actually covers: 18:00 the previous evening through
+ * 18:00 that day.
+ *
+ * Sleep is stored with BEDTIME as started_at, and both sleep views attribute an
+ * evening bedtime to the morning you wake — 11pm Monday is Tuesday's sleep (see
+ * fetchWeeklySleepHours / fetchMonthlySleepData, which both shift at hour 18).
+ * A plain midnight-to-midnight window disagrees with that on every evening
+ * bedtime, i.e. almost every night: tapping Tuesday would open the night that
+ * STARTED Tuesday evening, which the chart is showing as Wednesday.
+ */
+export function sleepDayWindow(day: Date): { start: Date; end: Date } {
+    const end = new Date(day);
+    end.setHours(18, 0, 0, 0);
+    const start = new Date(end);
+    start.setDate(start.getDate() - 1);
+    return { start, end };
 }
 
 // ── Sleep detail: Day view ──────────────────────────────────────────────────

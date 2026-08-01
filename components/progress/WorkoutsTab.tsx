@@ -3,6 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { DayCaption, addDays } from '@/components/progress/DayCaption';
+import { MonthHeatmap } from '@/components/progress/MonthHeatmap';
 import PointsBreakdownSheet, { PointsInfoDot } from '@/components/progress/PointsBreakdownSheet';
 import { StalePanel } from '@/components/progress/StalePanel';
 import { TimeStepper } from '@/components/progress/TimeStepper';
@@ -421,47 +422,15 @@ function WorkoutMonthView({
 
       <Text style={styles.tabSubLabel}>{label.toUpperCase()}</Text>
 
-      <View style={styles.heatmapRow}>
-        {DAY_LABELS.map(d => (
-          <View key={d} style={styles.heatmapCellCompact}>
-            <Text style={styles.heatmapHeaderText}>{d.charAt(0)}</Text>
-          </View>
-        ))}
-      </View>
-
-      {rows.map((row, ri) => (
-        <View key={ri} style={styles.heatmapRow}>
-          {row.map((cell, ci) => {
-            // Only days that actually earned something respond to a tap.
-            const hasData = cell.inRange && cell.count > 0;
-            const Cell: any = hasData ? Pressable : View;
-            return (
-              <Cell
-                key={ci}
-                style={styles.heatmapCellCompact}
-                {...(hasData ? {
-                  // Cells are ~50x26 — below the touch minimum vertically, so the
-                  // slop does the work rather than a taller, sparser grid.
-                  onPress: () => setSelected(prev => (prev === cell.date ? null : cell.date)),
-                  hitSlop: 8,
-                  accessibilityRole: 'button',
-                  accessibilityLabel: `${cell.date} — see what you earned`,
-                } : {})}
-              >
-                {cell.inRange ? (
-                  <View style={[
-                    styles.heatmapDot,
-                    { backgroundColor: heatmapColorForType(cell.count, config.colour) },
-                    selected === cell.date && styles.heatmapDotSelected,
-                  ]} />
-                ) : (
-                  <View style={[styles.heatmapDot, { backgroundColor: 'transparent' }]} />
-                )}
-              </Cell>
-            );
-          })}
-        </View>
-      ))}
+      <MonthHeatmap
+        rows={rows.map(row => row.map(c => ({ date: c.date, inRange: c.inRange, value: c.count })))}
+        fill={count => heatmapColorForType(count, config.colour)}
+        // Two states only, so this is a clean binary: a filled day is full brand
+        // colour and needs dark ink; an empty one is near-black and needs light.
+        isSolid={count => count > 0}
+        selected={selected}
+        onSelect={setSelected}
+      />
 
       {selected && (() => {
         const entry = lookup.get(selected);
@@ -765,40 +734,6 @@ const styles = StyleSheet.create({
   powrLabel: { fontSize: 10, fontWeight: '500', letterSpacing: 1.2, color: MUTED, textTransform: 'uppercase' },
   powrValue: { fontSize: 16, fontWeight: '200', color: GOLD, letterSpacing: -0.5 },
 
-  // Month heatmap
-  heatmapRow: {
-    flexDirection: 'row', gap: 4,
-  },
-  heatmapCell: {
-    flex: 1, aspectRatio: 1,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  heatmapCellCompact: {
-    flex: 1, height: 26,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  heatmapHeaderText: {
-    fontSize: 9, fontWeight: '400', color: MUTED,
-  },
-  heatmapDot: {
-    width: '100%', height: '100%', borderRadius: 4,
-  },
-  // Selection has to be a BORDER: these charts already spend their two other
-  // emphasis signals — full-vs-80%-alpha means "today" and gold means "best" —
-  // so re-using either would collide. Matches tokens' card.activeBorder.
-  heatmapDotSelected: {
-    borderWidth: 1.5, borderColor: GOLD,
-  },
-  heatmapLegend: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 4, marginTop: 4,
-  },
-  heatmapLegendDot: {
-    width: 10, height: 10, borderRadius: 2,
-  },
-  heatmapLegendLabel: {
-    fontSize: 9, fontWeight: '400', color: MUTED,
-  },
 
   // Insight
   insightRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },

@@ -87,7 +87,7 @@ export function useHealthSync() {
 
         const points = calculateSleepPoints(sleep.durationHours, sleep.deepHours, sleep.remHours);
 
-        const isNew = await logManualSession({
+        const sleepSessionId = await logManualSession({
           type: 'sleep',
           duration_sec: Math.round(sleep.durationHours * 3600),
           started_at: sleep.startedAt,
@@ -96,7 +96,7 @@ export function useHealthSync() {
           healthSource: verificationSource,
         });
 
-        if (!isNew) continue;
+        if (!sleepSessionId) continue;
 
         // Same receipt Terra sleep gets server-side — HealthKit/Health Connect
         // sync lands here instead, so fire it from the sync path. The server
@@ -113,6 +113,7 @@ export function useHealthSync() {
         }
 
         await saveHealthSnapshot({
+          sessionId: sleepSessionId,
           sleepDurationH: sleep.durationHours,
           sleepDeepH: sleep.deepHours,
           sleepRemH: sleep.remHours,
@@ -186,7 +187,7 @@ export function useHealthSync() {
           : verificationSource;
 
         const workoutPoints = calculateBasePoints(mappedType, health.durationMin);
-        const isNewWorkout = await logManualSession({
+        const workoutSessionId = await logManualSession({
           type: mappedType,
           duration_sec: health.durationMin * 60,
           distance_m: health.distanceM,
@@ -198,26 +199,34 @@ export function useHealthSync() {
           rawActivityName: health.rawName ?? health.type,
         });
 
-        if (isNewWorkout && workoutPoints > 0) {
+        if (workoutSessionId && workoutPoints > 0) {
           receiptCount++;
           receiptPoints += workoutPoints;
           receiptLabel = (health.rawName ?? health.type ?? '').trim() || mappedType;
         }
 
-        // Save full health snapshot for this session
-        await saveHealthSnapshot({
-          steps: health.steps,
-          distanceM: health.distanceM,
-          hrAvg: today ? heartRate?.avg : undefined,
-          hrMax: today ? heartRate?.max : undefined,
-          hrResting: today ? heartRate?.resting : undefined,
-          caloriesActive: today ? calories?.active : undefined,
-          caloriesTotal: today ? calories?.total : undefined,
-          activityType: health.type,
-          durationSec: health.durationMin * 60,
-          source,
-          sourceDetail: health.source ? sourceLabel(health.source) : undefined,
-        });
+        // Save full health snapshot for this session. sessionId is what lets the
+        // Progress day sheet read these vitals back — without it the row is
+        // orphaned (see supabase/migrations/20260801110000_*).
+        // Only write when a session was actually created; logManualSession returns
+        // null for already-synced sessions and overlap-suppressed ones, and an
+        // orphaned snapshot (session_id NULL) accumulates duplicates across runs.
+        if (workoutSessionId != null) {
+          await saveHealthSnapshot({
+            sessionId: workoutSessionId,
+            steps: health.steps,
+            distanceM: health.distanceM,
+            hrAvg: today ? heartRate?.avg : undefined,
+            hrMax: today ? heartRate?.max : undefined,
+            hrResting: today ? heartRate?.resting : undefined,
+            caloriesActive: today ? calories?.active : undefined,
+            caloriesTotal: today ? calories?.total : undefined,
+            activityType: health.type,
+            durationSec: health.durationMin * 60,
+            source,
+            sourceDetail: health.source ? sourceLabel(health.source) : undefined,
+          });
+        }
 
         console.log(`[HealthSync] Synced ${mappedType} from ${health.startedAt}`);
       }
@@ -251,7 +260,7 @@ export function useHealthSync() {
           const today = isLocalToday(act.startedAt);
           const actVerification = verificationFromProvenance(act.source, verificationSource);
           const inferredPoints = calculateBasePoints(act.type, act.durationMin);
-          const isNewInferred = await logManualSession({
+          const inferredSessionId = await logManualSession({
             type: act.type,
             duration_sec: act.durationMin * 60,
             distance_m: act.distanceM,
@@ -262,22 +271,25 @@ export function useHealthSync() {
             healthSource: actVerification,
           });
 
-          if (isNewInferred && inferredPoints > 0) {
+          if (inferredSessionId && inferredPoints > 0) {
             receiptCount++;
             receiptPoints += inferredPoints;
             receiptLabel = act.type;
           }
 
-          await saveHealthSnapshot({
-            distanceM: act.distanceM,
-            hrAvg: today ? heartRate?.avg : undefined,
-            hrMax: today ? heartRate?.max : undefined,
-            hrResting: today ? heartRate?.resting : undefined,
-            activityType: act.type,
-            durationSec: act.durationMin * 60,
-            source,
-            sourceDetail: act.source ? sourceLabel(act.source) : undefined,
-          });
+          if (inferredSessionId != null) {
+            await saveHealthSnapshot({
+              sessionId: inferredSessionId,
+              distanceM: act.distanceM,
+              hrAvg: today ? heartRate?.avg : undefined,
+              hrMax: today ? heartRate?.max : undefined,
+              hrResting: today ? heartRate?.resting : undefined,
+              activityType: act.type,
+              durationSec: act.durationMin * 60,
+              source,
+              sourceDetail: act.source ? sourceLabel(act.source) : undefined,
+            });
+          }
 
           console.log(`[HealthSync] Synced inferred ${act.type} ${act.startedAt} (${act.distanceM}m, ${act.avgSpeedKmh}km/h)`);
         }

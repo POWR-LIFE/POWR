@@ -2,7 +2,8 @@ import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { DayCaption } from '@/components/progress/DayCaption';
+import { DayCaption, addDays } from '@/components/progress/DayCaption';
+import { HeatmapLegend, MonthHeatmap } from '@/components/progress/MonthHeatmap';
 import PointsBreakdownSheet from '@/components/progress/PointsBreakdownSheet';
 import { StalePanel } from '@/components/progress/StalePanel';
 import { TimeStepper } from '@/components/progress/TimeStepper';
@@ -249,15 +250,28 @@ function SleepHistoryRow({ night }: { night: DailySleepHistory }) {
 // ─── Week View (existing chart, moved verbatim) ──────────────────────────────
 
 function SleepWeekView({
-  sleepHrs, sleepBedtimes, isCurrentWeek,
+  sleepHrs, sleepBedtimes, isCurrentWeek, weekStart, perDayPoints, onSelectDay,
 }: {
   sleepHrs: number[];
   sleepBedtimes: (string | null)[];
   isCurrentWeek: boolean;
+  /** Local-midnight Monday of the week on screen — bars are offsets from here. */
+  weekStart: Date;
+  /** Mon=0…Sun=6 POWR, bucketed by the same wake-day rule as `sleepHrs`. */
+  perDayPoints: number[] | null;
+  onSelectDay: (day: Date) => void;
 }) {
   // A past week has no "today" column to highlight — TODAY_INDEX is the current
   // weekday, so using it unguarded would accent an arbitrary bar.
   const todayIndex = isCurrentWeek ? TODAY_INDEX : -1;
+
+  // Which bar is selected, as a Mon=0 index — matching WorkoutsTab rather than
+  // the month grid's date-keyed state, because a bar only knows its offset.
+  const [selected, setSelected] = useState<number | null>(null);
+  // Compare by time value: the parent builds a fresh Date each render, so
+  // depending on the object identity would clear the selection every render.
+  const weekKey = weekStart.getTime();
+  useEffect(() => { setSelected(null); }, [weekKey]);
   const daysWithSleep = sleepHrs.filter(h => h > 0).length;
   const avg = daysWithSleep > 0
     ? (sleepHrs.reduce((s, v) => s + v, 0) / daysWithSleep).toFixed(1)
@@ -306,8 +320,21 @@ function SleepWeekView({
           const isToday = i === todayIndex;
           const fillH   = hrs > 0 ? Math.round((hrs / 10) * SLEEP_BAR_H) : 0;
           const isBest  = hasBest && i === bestIdx;
+          // Only nights that actually recorded sleep respond to a tap — a blank
+          // bar that reacts teaches people the chart isn't interactive.
+          const hasNight = hrs > 0;
+          const Col: any = hasNight ? Pressable : View;
           return (
-            <View key={i} style={styles.sleepBarCol}>
+            <Col
+              key={i}
+              style={[styles.sleepBarCol, selected === i && styles.sleepBarColSelected]}
+              {...(hasNight ? {
+                onPress: () => setSelected(prev => (prev === i ? null : i)),
+                hitSlop: 8,
+                accessibilityRole: 'button',
+                accessibilityLabel: `${DAY_LABELS[i]} — see what you earned`,
+              } : {})}
+            >
               <Text style={[styles.sleepBarHrs, isToday && { color: INDIGO }, isBest && { color: GOLD }]}>
                 {hrs > 0 ? (hrs % 1 === 0 ? `${hrs}h` : `${hrs.toFixed(1)}h`) : '—'}
               </Text>
@@ -319,13 +346,27 @@ function SleepWeekView({
                   ]} />
                 )}
               </View>
-              <Text style={[styles.sleepBarDay, isToday && { color: TEXT, fontWeight: '600' }]}>
+              <Text style={[
+                styles.sleepBarDay,
+                isToday && { color: TEXT, fontWeight: '600' },
+                selected === i && { color: GOLD, fontWeight: '600' },
+              ]}>
                 {DAY_LABELS[i].charAt(0)}
               </Text>
-            </View>
+            </Col>
           );
         })}
       </View>
+
+      {selected !== null && (
+        <DayCaption
+          date={addDays(weekStart, selected)}
+          sessions={0}
+          durationMin={Math.round((sleepHrs[selected] ?? 0) * 60)}
+          points={perDayPoints?.[selected] ?? 0}
+          onPress={() => onSelectDay(addDays(weekStart, selected))}
+        />
+      )}
 
       {hasBest && (
         <View style={styles.insightRow}>
@@ -471,46 +512,14 @@ function SleepMonthView({
       {/* Heatmap */}
       <Text style={styles.tabSubLabel}>{label.toUpperCase()}</Text>
 
-      {/* Day-of-week headers */}
-      <View style={styles.heatmapRow}>
-        {DAY_LABELS.map(d => (
-          <View key={d} style={styles.heatmapCellCompact}>
-            <Text style={styles.heatmapHeaderText}>{d.charAt(0)}</Text>
-          </View>
-        ))}
-      </View>
-
-      {/* Grid rows */}
-      {rows.map((row, ri) => (
-        <View key={ri} style={styles.heatmapRow}>
-          {row.map((cell, ci) => {
-            const hasNight = cell.inRange && cell.hours > 0;
-            const Cell: any = hasNight ? Pressable : View;
-            return (
-              <Cell
-                key={ci}
-                style={styles.heatmapCellCompact}
-                {...(hasNight ? {
-                  onPress: () => setSelected(prev => (prev === cell.date ? null : cell.date)),
-                  hitSlop: 8,
-                  accessibilityRole: 'button',
-                  accessibilityLabel: `${cell.date} — see what you earned`,
-                } : {})}
-              >
-                {cell.inRange ? (
-                  <View style={[
-                    styles.heatmapDot,
-                    { backgroundColor: heatmapColor(cell.hours) },
-                    selected === cell.date && styles.heatmapDotSelected,
-                  ]} />
-                ) : (
-                  <View style={[styles.heatmapDot, { backgroundColor: 'transparent' }]} />
-                )}
-              </Cell>
-            );
-          })}
-        </View>
-      ))}
+      <MonthHeatmap
+        rows={rows.map(row => row.map(c => ({ date: c.date, inRange: c.inRange, value: c.hours })))}
+        fill={heatmapColor}
+        // 7h+ is where the indigo goes near-solid and light ink stops reading.
+        isSolid={hours => hours >= 7}
+        selected={selected}
+        onSelect={setSelected}
+      />
 
       {selected && (() => {
         const entry = lookup.get(selected);
@@ -526,14 +535,7 @@ function SleepMonthView({
         );
       })()}
 
-      {/* Legend */}
-      <View style={styles.heatmapLegend}>
-        <Text style={styles.heatmapLegendLabel}>Less</Text>
-        {HEATMAP_COLORS.map((c, i) => (
-          <View key={i} style={[styles.heatmapLegendDot, { backgroundColor: c }]} />
-        ))}
-        <Text style={styles.heatmapLegendLabel}>More</Text>
-      </View>
+      <HeatmapLegend colours={HEATMAP_COLORS} />
     </View>
   );
 }
@@ -558,6 +560,11 @@ export function SleepTab({
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
   const [dayData, setDayData] = useState<SleepDayDetail | null>(null);
   const [weekData, setWeekData] = useState<{ hours: number[]; bedtimes: (string | null)[] } | null>(null);
+  // Per-day POWR behind the tappable week bars, bucketed by the SAME wake-day
+  // rule as the hours (see fetchWeeklySleepHours), so a bar's caption can't
+  // disagree with the bar. Fetched for the current week too — the parent supplies
+  // hours live but not points, and every bar has to be tappable.
+  const [weekPoints, setWeekPoints] = useState<number[] | null>(null);
   const [monthData, setMonthData] = useState<MonthlySleepData | null>(null);
   const [dayLoaded, setDayLoaded] = useState(false);
   const [weekLoaded, setWeekLoaded] = useState(false);
@@ -682,6 +689,21 @@ export function SleepTab({
     return () => { cancelled = true; };
   }, [period, weekLoaded, isCurrent, offset]);
 
+  // Per-day POWR for the week bars' caption. Separate from the hours fetch
+  // above because that one skips the current week (the parent supplies it live)
+  // while this is needed for every week, including the current one.
+  useEffect(() => {
+    if (period !== 'W') return;
+    let cancelled = false;
+    setWeekPoints(null);
+
+    fetchWeeklySleepHours(weekAnchorMonday(offset))
+      .then(d => { if (!cancelled) setWeekPoints(d.points); })
+      .catch(err => console.error('[SleepTab] Error loading week sleep points:', err));
+
+    return () => { cancelled = true; };
+  }, [period, offset]);
+
   // Load Month data reactively
   useEffect(() => {
     if (period !== 'M' || monthLoaded) return;
@@ -722,6 +744,9 @@ export function SleepTab({
             sleepHrs={isCurrent ? sleepHrs : weekData?.hours ?? EMPTY_WEEK_HRS}
             sleepBedtimes={isCurrent ? sleepBedtimes : weekData?.bedtimes ?? EMPTY_WEEK_BEDTIMES}
             isCurrentWeek={isCurrent}
+            weekStart={weekAnchorMonday(offset)}
+            perDayPoints={weekPoints}
+            onSelectDay={setSelectedDay}
           />
         </StalePanel>
       )}
@@ -837,6 +862,12 @@ const styles = StyleSheet.create({
   sleepChart: {
     flexDirection: 'row', alignItems: 'flex-end', gap: 4,
   },
+  // Tint the whole COLUMN, not the bar track: a border inside a filled track is
+  // invisible on exactly the nights worth selecting. Mirrors MovementTab.
+  sleepBarColSelected: {
+    backgroundColor: 'rgba(232,210,0,0.08)',
+    borderRadius: 6,
+  },
   sleepBarCol: {
     flex: 1, alignItems: 'center', gap: 4,
   },
@@ -855,38 +886,6 @@ const styles = StyleSheet.create({
     fontSize: 9, fontWeight: '400', color: MUTED,
   },
 
-  // Month heatmap
-  heatmapRow: {
-    flexDirection: 'row', gap: 4,
-  },
-  heatmapCell: {
-    flex: 1, aspectRatio: 1,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  heatmapCellCompact: {
-    flex: 1, height: 26,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  heatmapHeaderText: {
-    fontSize: 9, fontWeight: '400', color: MUTED,
-  },
-  heatmapDot: {
-    width: '100%', height: '100%', borderRadius: 4,
-  },
-  // Border, not colour: the heatmap already spends colour on sleep duration.
-  heatmapDotSelected: {
-    borderWidth: 1.5, borderColor: GOLD,
-  },
-  heatmapLegend: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 4, marginTop: 4,
-  },
-  heatmapLegendDot: {
-    width: 10, height: 10, borderRadius: 2,
-  },
-  heatmapLegendLabel: {
-    fontSize: 9, fontWeight: '400', color: MUTED,
-  },
 
   // Insight
   insightRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
