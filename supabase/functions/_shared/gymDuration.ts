@@ -55,7 +55,9 @@ export interface GymDurationInputs {
  * on the EXIT path, so this value is a fallback, not the authority.
  */
 export function recordedGymDurationSec(input: GymDurationInputs): number {
-  const elapsedSec = Math.min(Math.max(0, Math.round(input.elapsedSec)), MAX_GYM_SESSION_SEC);
+  const elapsedSec = Number.isFinite(input.elapsedSec)
+    ? Math.min(Math.max(0, Math.round(input.elapsedSec)), MAX_GYM_SESSION_SEC)
+    : MAX_GYM_SESSION_SEC;
 
   const evidence = [input.presenceSec, input.recordedSec].filter(
     (v): v is number => v != null && Number.isFinite(v) && v > 0,

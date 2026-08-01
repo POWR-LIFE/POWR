@@ -160,6 +160,7 @@ Deno.serve(async (req) => {
       .select('last_confirmed_at')
       .eq('user_id', user.id)
       .not('last_confirmed_at', 'is', null)
+      .order('last_confirmed_at', { ascending: false })
       .limit(1);
     visitQuery = body.visit_id
       ? visitQuery.eq('id', body.visit_id)
