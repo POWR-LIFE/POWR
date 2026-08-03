@@ -632,7 +632,7 @@ async function tracedStep<T>(
     console.log(`[Geofence] wake-step ← ${label} (${ms}ms)`);
     return result;
   } finally {
-    if (timer) clearTimeout(timer);
+    if (timer !== undefined) clearTimeout(timer);
   }
 }
 

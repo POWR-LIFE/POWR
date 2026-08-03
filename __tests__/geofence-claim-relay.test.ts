@@ -269,3 +269,49 @@ describe('the wake handler is cached-fix-first', () => {
     expect(getFix).toHaveBeenCalled();
   });
 });
+
+const LAST_STREAM_FIX_KEY = '@powr/last_stream_fix';
+const STREAM_FIX_MAX_AGE_MS = 5 * 60 * 1000;
+
+describe('the wake handler prefers the stream-persisted fix (stream-fix-first)', () => {
+  it('uses a fresh stream fix without calling expo-location at all', async () => {
+    await seedVisit({ sessionRecorded: true, sessionId: 'session-abc', tierUpgraded: true });
+    await AsyncStorage.setItem(LAST_STREAM_FIX_KEY, JSON.stringify({
+      latitude: GYM.lat,
+      longitude: GYM.lng,
+      accuracy: 15,
+      at: Date.now() - 30_000, // 30 s old — well within STREAM_FIX_MAX_AGE_MS
+    }));
+
+    await runVisitCheck('dwell');
+
+    expect(getCached).not.toHaveBeenCalled();
+    expect(getFix).not.toHaveBeenCalled();
+  });
+
+  it('falls back to lastKnown when the stream fix is stale', async () => {
+    await seedVisit({ sessionRecorded: true, sessionId: 'session-abc', tierUpgraded: true });
+    await AsyncStorage.setItem(LAST_STREAM_FIX_KEY, JSON.stringify({
+      latitude: GYM.lat,
+      longitude: GYM.lng,
+      accuracy: 15,
+      at: Date.now() - (STREAM_FIX_MAX_AGE_MS + 10_000), // older than the cutoff
+    }));
+    getCached.mockResolvedValue({ coords: { latitude: GYM.lat, longitude: GYM.lng, accuracy: 20 } });
+
+    await runVisitCheck('dwell');
+
+    expect(getCached).toHaveBeenCalled();
+  });
+
+  it('falls back to lastKnown when the stream fix is absent', async () => {
+    await seedVisit({ sessionRecorded: true, sessionId: 'session-abc', tierUpgraded: true });
+    // No LAST_STREAM_FIX_KEY in AsyncStorage (cleared by beforeEach).
+    getCached.mockResolvedValue({ coords: { latitude: GYM.lat, longitude: GYM.lng, accuracy: 20 } });
+
+    await runVisitCheck('dwell');
+
+    expect(getCached).toHaveBeenCalled();
+    expect(getFix).not.toHaveBeenCalled();
+  });
+});
