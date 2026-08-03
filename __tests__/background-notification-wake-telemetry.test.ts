@@ -115,6 +115,19 @@ describe('background wake task telemetry + visit threading', () => {
     expect(mockRunVisitCheck).not.toHaveBeenCalled();
   });
 
+  // THE REGRESSION THIS FILE NOW EXISTS FOR. Awaiting this telemetry ate every wake
+  // for three days: the row reached the database in ~1 s while the client-side
+  // promise never settled, so runVisitCheck was never entered — 0 breadcrumbs across
+  // every wake of four field sessions (2026-08-03). Ordering below is still pinned;
+  // what must never come back is WAITING on it.
+  it('runs the presence check even if the wake telemetry never settles', async () => {
+    mockLogWakeReceived.mockImplementationOnce(() => new Promise<void>(() => { /* never settles */ }));
+
+    await capturedTask({ data: iosWake('dwell', VISIT) });
+
+    expect(mockRunVisitCheck).toHaveBeenCalledWith('dwell', VISIT);
+  });
+
   it('never throws when the presence check fails — a wake must not crash the task', async () => {
     mockRunVisitCheck.mockRejectedValueOnce(new Error('no fix'));
 

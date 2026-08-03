@@ -110,10 +110,15 @@ TaskManager.defineTask(BACKGROUND_NOTIFICATION_TASK, async ({ data, error }) => 
     // "Fire-and-forget by contract: the wake has ~10 s mid-Doze and one guaranteed
     // round-trip, and that round-trip belongs to confirmGymVisit, not to telemetry" —
     // and this caller was the one place that ignored it. Honour it: fire, don't wait.
+    // Await the IMPORT (cheap, local, and proven to resolve — the RPC below did
+    // execute on every stalled wake), but never the RPC. That keeps the invocation
+    // strictly ordered before the presence check, which is the invariant the wake
+    // telemetry tests pin, while removing the await that actually hung. Chaining
+    // off the import instead would have made the ordering depend on which dynamic
+    // import settles first — near-certain in practice, not guaranteed.
     if (payload.visit_id) {
-      const visitId = payload.visit_id;
-      void import('@/lib/gymVisits')
-        .then(({ logGymWakeReceived }) => logGymWakeReceived(visitId, stage, { source: 'background_task' }))
+      const { logGymWakeReceived } = await import('@/lib/gymVisits');
+      void logGymWakeReceived(payload.visit_id, stage, { source: 'background_task' })
         .catch(() => { /* telemetry must never cost the wake its round-trip */ });
     }
 
