@@ -114,13 +114,58 @@ Deno.serve(async (req) => {
     }
   };
 
-  // ELIGIBILITY input — real entry→now wall clock, capped by the shared 12 h
-  // backstop (keep in sync with GeofenceContext). Unchanged: this is the
-  // anti-abuse gate and it must not be softened by the presence clamp below.
   const now = new Date();
   const startedMs = new Date(session.started_at).getTime();
+
+  // The visit carries the two facts this function needs and the session row does
+  // not: when the device last PROVED presence, and whether the visit is over.
+  // Read once, before markVisitUpgraded() can stamp last_confirmed_at = now().
+  let presenceSec: number | null = null;
+  let visitEndSec: number | null = null;
+  {
+    let visitQuery = supabase
+      .from('gym_visits')
+      .select('last_confirmed_at, ended_at')
+      .eq('user_id', user.id)
+      // nullsFirst:false — a DESC order puts NULLs first in Postgres, which would
+      // pick an unconfirmed duplicate over the row that actually has evidence.
+      .order('last_confirmed_at', { ascending: false, nullsFirst: false })
+      .limit(1);
+    visitQuery = body.visit_id
+      ? visitQuery.eq('id', body.visit_id)
+      : visitQuery.eq('claimed_session_id', session.id);
+    const { data: visit, error: visitError } = await visitQuery.maybeSingle();
+    if (visitError) {
+      console.error('[upgrade-gym-tier] gym_visits lookup failed:', visitError);
+      return new Response(JSON.stringify({ error: 'Failed to verify visit state' }), { status: 500 });
+    }
+    if (visit?.last_confirmed_at) {
+      const sec = Math.round((new Date(visit.last_confirmed_at).getTime() - startedMs) / 1000);
+      if (sec > 0) presenceSec = sec;
+    }
+    if (visit?.ended_at) {
+      const sec = Math.round((new Date(visit.ended_at).getTime() - startedMs) / 1000);
+      if (sec > 0) visitEndSec = sec;
+    }
+  }
+
+  // ELIGIBILITY input — "did they stay past the tier?".
+  //
+  // While the visit is LIVE that question is open, so entry→now is the honest
+  // answer and the behaviour is unchanged. Once the visit has ENDED the answer is
+  // known and fixed, and entry→now is simply wrong: it keeps growing forever, so
+  // a 32-minute visit would eventually cross the 40-minute gate on its own. That
+  // is the phantom upgrade the single-shot retry design was protecting against,
+  // and it is why gym-visit-beacon could not retry the bonus after the exit.
+  // Bounding the gate by the visit's real length is what makes that retry safe
+  // (see the companion change in gym-visit-beacon dueVisits).
+  //
+  // Deliberately NOT bounded by session.duration_sec: this function overwrites
+  // that column a few lines below, so gating on it would be circular — and it can
+  // legitimately be short (the too_short row written mid-session).
   const elapsedSec = Math.min(
     Math.round((now.getTime() - startedMs) / 1000),
+    visitEndSec ?? Number.MAX_SAFE_INTEGER,
     MAX_GYM_SESSION_SEC,
   );
   const actualMins = Math.floor(elapsedSec / 60);
@@ -151,27 +196,8 @@ Deno.serve(async (req) => {
   }
 
   // ── What we STORE is not what we GATE on. See _shared/gymDuration.ts for the
-  // rule and why it takes the weakest bound. Read the presence checkpoint BEFORE
-  // markVisitUpgraded() can stamp last_confirmed_at = now() further down.
-  let presenceSec: number | null = null;
-  {
-    let visitQuery = supabase
-      .from('gym_visits')
-      .select('last_confirmed_at')
-      .eq('user_id', user.id)
-      .not('last_confirmed_at', 'is', null)
-      .order('last_confirmed_at', { ascending: false })
-      .limit(1);
-    visitQuery = body.visit_id
-      ? visitQuery.eq('id', body.visit_id)
-      : visitQuery.eq('claimed_session_id', session.id);
-    const { data: visit } = await visitQuery.maybeSingle();
-    if (visit?.last_confirmed_at) {
-      const sec = Math.round((new Date(visit.last_confirmed_at).getTime() - startedMs) / 1000);
-      if (sec > 0) presenceSec = sec;
-    }
-  }
-
+  // rule and why it takes the weakest bound. presenceSec was read above, before
+  // markVisitUpgraded() could stamp last_confirmed_at = now().
   const recordedSec = recordedGymDurationSec({
     elapsedSec,
     presenceSec,

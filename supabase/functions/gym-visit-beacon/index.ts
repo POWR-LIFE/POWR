@@ -32,6 +32,11 @@ import { sendFcmDataMessage } from '../_shared/fcmV1.ts';
 const MAX_NUDGES_DWELL = 4;              // then leave it to the exit path
 const MAX_NUDGES_UPGRADE = 5;            // the weaker leg — one more attempt than dwell
 const NUDGE_BACKOFF_MS = 5 * 60 * 1000;  // don't re-wake a silent device more than every 5 min
+// How far back the upgrade stage will keep retrying after a visit has ended. The
+// bonus is worth chasing past the exit (that is the whole point of this change),
+// but not indefinitely — a device that has ignored 5 nudges across a day is not
+// going to answer, and the backfill migration covers anything older.
+const UPGRADE_RETRY_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 async function thresholds(admin): Promise<{ dwellMin: number; upgradeMin: number }> {
   const { data } = await admin
@@ -57,7 +62,6 @@ async function dueVisits(admin, stage: 'dwell' | 'upgrade', minutes: number) {
   let q = admin
     .from('gym_visits')
     .select('id, user_id, partner_id, started_at, nudge_count, nudge_count_upgrade, last_nudge_at')
-    .is('ended_at', null)
     .lte('started_at', thresholdAt)
     .or(`last_nudge_at.is.null,last_nudge_at.lt.${backoffAt}`)
     .limit(200);
@@ -65,8 +69,36 @@ async function dueVisits(admin, stage: 'dwell' | 'upgrade', minutes: number) {
   // Each stage counts against its OWN column, so a dwell stage that burns its
   // budget no longer eats into the upgrade stage's.
   q = stage === 'dwell'
-    ? q.eq('status', 'open').is('claimed_session_id', null).lt('nudge_count', MAX_NUDGES_DWELL)
-    : q.eq('status', 'claimed').is('upgraded_at', null).lt('nudge_count_upgrade', MAX_NUDGES_UPGRADE);
+    // A dwell claim genuinely requires the user to still be inside — the device
+    // must take a fresh fix and confirm the radius — so a visit that has ended is
+    // correctly out of scope here.
+    ? q.is('ended_at', null)
+       .eq('status', 'open').is('claimed_session_id', null)
+       .lt('nudge_count', MAX_NUDGES_DWELL)
+    // The UPGRADE does not: it asks "did they stay past the tier?", which is a
+    // question about a window that is already over. Requiring `ended_at is null`
+    // here made the bonus unretryable the instant the user walked out — and since
+    // the claim fires at 30 min and the tier is 40, the eligible window is at most
+    // 10 minutes wide. Measured 2026-08-03: 17 of 39 claimed visits ended within
+    // 10 minutes of the claim, so the beacon never got a single chance at them,
+    // and only 26 of 62 sessions >= 2h ever received the bonus. The client's own
+    // exit-path attempt is single-shot too — the durable claim queue deliberately
+    // skips the upgrade (GeofenceContext.tsx:898) — so one failed background call
+    // lost the bonus permanently.
+    //
+    // Keyed on claimed_session_id rather than status='claimed': the exit moves the
+    // row to 'closed'/'abandoned', and post-beacon prod holds ZERO visits sitting
+    // in 'claimed'. The FACT that a session was claimed is what matters; `status`
+    // has not been a reliable label since it started carrying exit state.
+    //
+    // Safe to retry late ONLY because upgrade-gym-tier now gates on the visit's
+    // real length once it has ended, instead of an ever-growing now - started_at
+    // (see this PR's companion change). Without that, a 32-minute visit would
+    // eventually cross the 40-minute gate on its own — the exact phantom upgrade
+    // the single-shot design was protecting against.
+    : q.not('claimed_session_id', 'is', null).is('upgraded_at', null)
+       .gte('started_at', new Date(Date.now() - UPGRADE_RETRY_WINDOW_MS).toISOString())
+       .lt('nudge_count_upgrade', MAX_NUDGES_UPGRADE);
 
   const { data, error } = await q;
   if (error) {
