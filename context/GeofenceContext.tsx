@@ -571,6 +571,13 @@ async function setLocationStreamMode(mode: StreamMode): Promise<void> {
     if (started) await Location.stopLocationUpdatesAsync(LOCATION_TRACKING_TASK).catch(() => {});
     await Location.startLocationUpdatesAsync(LOCATION_TRACKING_TASK, opts);
   } catch (err) {
+    // Swallowed by design — a stream that won't start must not break detection.
+    // But it was swallowed SILENTLY, and on Android 12+ this is the expected
+    // outcome of trying to start a foreground-service-backed stream from a
+    // background context: the stream then never runs and the check-in never
+    // happens, with nothing anywhere saying so. Report it; pollForCheckIn is
+    // what actually keeps the check-in working when this fires.
+    logRegionEvent('stream', 'stream_start_failed', { mode, error: String(err) });
     console.warn('[Geofence] setLocationStreamMode failed:', mode, err);
   }
 }
@@ -579,12 +586,62 @@ async function setLocationStreamMode(mode: StreamMode): Promise<void> {
  *  gymVisits surface so a headless context only pulls it in when it fires. */
 function logRegionEvent(
   regionId: string,
-  event: 'enter' | 'exit' | 'approach_stream_on' | 'checked_in',
+  event: 'enter' | 'exit' | 'approach_stream_on' | 'checked_in' | 'stream_start_failed',
   detail: Record<string, unknown> = {},
 ): void {
   void import('@/lib/gymVisits')
     .then(({ logGeofenceRegionEvent }) => logGeofenceRegionEvent(regionId, event, detail))
     .catch(() => { /* telemetry must never break a crossing */ });
+}
+
+/** Actively finds the 25 m crossing after a region ENTER, instead of waiting for
+ *  the approach stream to deliver it.
+ *
+ *  THE BUG THIS FIXES (2026-08-03): the ENTER branch only escalated the location
+ *  stream and then waited — so a check-in required that stream to be alive and
+ *  delivering. It very often is not. On Android 12+ a foreground-service-backed
+ *  stream CANNOT be started from a background context (the OS refuses), and
+ *  setLocationStreamMode swallows that failure by design, so the stream silently
+ *  stays dead; on iOS the baseline stream is fully off, so everything rides on one
+ *  event. Result: neither platform re-checked in while backgrounded, and both only
+ *  did so when the app was opened.
+ *
+ *  A one-shot position read needs NO foreground service and no running task, which
+ *  is exactly why it works where the stream does not. The native region fires at
+ *  the 120 m wake ring, so the user is typically still walking in — hence a short
+ *  series of reads rather than a single one, stopping the moment a session starts.
+ *
+ *  It cannot check anyone in from 120 m away: every fix goes to
+ *  evaluateLocationFix, the same and only authority that starts a session, which
+ *  re-applies the true 25 m radius, the accuracy gate and the once-per-day guard.
+ *  Bounded in both directions — a fixed attempt count and a per-read timeout — so
+ *  it can never become the kind of unbounded wait that froze the wake path. */
+const CHECKIN_POLL_ATTEMPTS   = 6;
+const CHECKIN_POLL_INTERVAL_MS = 15 * 1000;   // ~90 s of cover: a 120 m walk-in at normal pace
+const CHECKIN_POLL_FIX_TIMEOUT_MS = 8 * 1000;
+
+async function pollForCheckIn(regionId: string): Promise<void> {
+  for (let attempt = 0; attempt < CHECKIN_POLL_ATTEMPTS; attempt++) {
+    try {
+      // Someone got there first (the stream, or a previous pass) — done.
+      if (await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY)) {
+        if (attempt > 0) logRegionEvent(regionId, 'checked_in', { via: 'enter_poll', attempt });
+        return;
+      }
+
+      const cached = await Location.getLastKnownPositionAsync({ maxAge: 30_000 }).catch(() => null);
+      const fix = cached ?? await Promise.race([
+        Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }).catch(() => null),
+        new Promise<null>(resolve => setTimeout(() => resolve(null), CHECKIN_POLL_FIX_TIMEOUT_MS)),
+      ]);
+      if (fix) await evaluateLocationFix(fix.coords);
+    } catch (err) {
+      console.warn('[Geofence] Check-in poll pass failed:', err);
+    }
+    if (attempt < CHECKIN_POLL_ATTEMPTS - 1) {
+      await new Promise(resolve => setTimeout(resolve, CHECKIN_POLL_INTERVAL_MS));
+    }
+  }
 }
 
 /** Periodic safety net for a MISSED CHECK-IN.
@@ -2028,6 +2085,13 @@ TaskManager.defineTask(GEOFENCE_TASK_NAME, async ({ data, error }) => {
     // block on a GPS fix here: iOS's region-wake window is tight, and starting
     // the stream promptly matters more than confirming an (uncommon) already-inside.
     await enterApproach(regionId);
+
+    // ...then find the crossing ourselves rather than trusting the stream to
+    // deliver it. The stream is exactly what fails in the background (see
+    // pollForCheckIn), and waiting on it is why neither platform re-checked in
+    // on 2026-08-03. Awaited so the OS keeps this task alive for the walk-in;
+    // it exits early the moment a session starts.
+    await pollForCheckIn(regionId);
 
   } else if (eventType === Location.GeofencingEventType.Exit) {
     logRegionEvent(regionId, 'exit');
