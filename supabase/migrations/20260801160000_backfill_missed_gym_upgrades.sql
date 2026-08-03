@@ -35,8 +35,8 @@
 -- applied explicitly below, against the SESSION's UTC day.
 --
 -- Net effect: 43 points across 8 users. 19 of the 29 sessions were already at
--- the daily cap on their own day, so they pay 0 — had the upgrade fired at the
--- time it would have been clamped identically. NOT vaulting the clamped share
+-- the daily cap on their own day and are excluded from the insert — had the
+-- upgrade fired at the time it would have been clamped identically. NOT vaulting the clamped share
 -- (which upgrade-gym-tier would have done) is a deliberate omission: the vault
 -- feeds level progression and is out of scope for a corrective backfill.
 --
@@ -68,8 +68,9 @@ target as (
           where t.session_id = s.id and t.description ilike '%upgrade%'
       )
 ),
--- Gym points already credited on each target session's own UTC day. Mirrors the
--- trigger's accounting: 'earn' and 'streak' rows both spend the daily cap.
+-- Gym points already credited on each target session's own UTC day. Matches the
+-- accounting used by claim-points and upgrade-gym-tier: 'earn' and 'streak'
+-- rows both spend the daily cap.
 already as (
     select t.id, t.user_id, t.day_start,
            coalesce((
