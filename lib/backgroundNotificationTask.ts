@@ -93,18 +93,45 @@ TaskManager.defineTask(BACKGROUND_NOTIFICATION_TASK, async ({ data, error }) => 
     const stage = payload.stage === 'upgrade' ? 'upgrade' : 'dwell';
     console.log(`[BackgroundNotification] Visit check (${stage}) — verifying presence.`);
 
-    // FIRST, before any GPS work: record that the push actually reached JS. This is
-    // the only thing that separates "the wake never arrived" from "the wake arrived
-    // and the round-trip failed" — see log_gym_wake_received. Awaited but
-    // non-throwing; it is one cheap RPC and the answer is worthless without it.
+    // Record that the push reached JS — but NEVER await it.
+    //
+    // ⚠ THIS AWAIT WAS EATING EVERY WAKE. Field 2026-08-03, four sessions across a
+    // full day: `wake_received` landed server-side within a second on EVERY wake,
+    // and runVisitCheck was never entered — not once, not on any platform. Its very
+    // first breadcrumb never printed while the location task kept logging every 60 s
+    // beside it, so the JS context was alive and this await simply never resolved.
+    // The row reaches the database and the client-side promise hangs: the request is
+    // delivered, the response never settles. withNetworkTimeout cannot save it either
+    // — RN drives setTimeout off the UI frame clock, so mid-Doze its 30 s race can
+    // itself freeze (a 30 s timeout still pending 16 minutes later, 2026-07-14).
+    //
+    // So the telemetry added on 2026-08-01 to diagnose the dead wake path became the
+    // thing killing it. Its own contract in lib/gymVisits.ts always said so —
+    // "Fire-and-forget by contract: the wake has ~10 s mid-Doze and one guaranteed
+    // round-trip, and that round-trip belongs to confirmGymVisit, not to telemetry" —
+    // and this caller was the one place that ignored it. Honour it: fire, don't wait.
+    // Await the IMPORT (cheap, local, and proven to resolve — the RPC below did
+    // execute on every stalled wake), but never the RPC. That keeps the invocation
+    // strictly ordered before the presence check, which is the invariant the wake
+    // telemetry tests pin, while removing the await that actually hung. Chaining
+    // off the import instead would have made the ordering depend on which dynamic
+    // import settles first — near-certain in practice, not guaranteed.
     if (payload.visit_id) {
       const { logGymWakeReceived } = await import('@/lib/gymVisits');
-      await logGymWakeReceived(payload.visit_id, stage, { source: 'background_task' });
+      void logGymWakeReceived(payload.visit_id, stage, { source: 'background_task' })
+        .catch(() => { /* telemetry must never cost the wake its round-trip */ });
     }
 
     // Imported lazily: this task is registered at module load in a headless context,
     // and GeofenceContext pulls in the whole geofence engine.
+    //
+    // Bracketed by breadcrumbs because it is the ONLY other await between the wake
+    // arriving and runVisitCheck starting. If wakes still stall after the change
+    // above, the missing 'engine ready' line convicts this import instead — no more
+    // inferring which call hung.
+    console.log('[BackgroundNotification] loading geofence engine…');
     const { runVisitCheck } = await import('@/context/GeofenceContext');
+    console.log('[BackgroundNotification] geofence engine ready — running visit check.');
     // The server's own visit_id is passed through so runVisitCheck can reconcile it
     // against the device's stored one. Discarding it is how four wakes for live
     // visit 793e434a were answered into the DEAD visit 2fa4e05d (2026-07-16), which
