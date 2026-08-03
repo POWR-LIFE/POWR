@@ -1,0 +1,60 @@
+diff --git a/node_modules/expo-notifications/android/.gradle/9.2.0/checksums/checksums.lock b/node_modules/expo-notifications/android/.gradle/9.2.0/checksums/checksums.lock
+new file mode 100644
+index 0000000..21c1f25
+Binary files /dev/null and b/node_modules/expo-notifications/android/.gradle/9.2.0/checksums/checksums.lock differ
+diff --git a/node_modules/expo-notifications/android/.gradle/9.2.0/fileChanges/last-build.bin b/node_modules/expo-notifications/android/.gradle/9.2.0/fileChanges/last-build.bin
+new file mode 100644
+index 0000000..f76dd23
+Binary files /dev/null and b/node_modules/expo-notifications/android/.gradle/9.2.0/fileChanges/last-build.bin differ
+diff --git a/node_modules/expo-notifications/android/.gradle/9.2.0/fileHashes/fileHashes.bin b/node_modules/expo-notifications/android/.gradle/9.2.0/fileHashes/fileHashes.bin
+new file mode 100644
+index 0000000..4f5b253
+Binary files /dev/null and b/node_modules/expo-notifications/android/.gradle/9.2.0/fileHashes/fileHashes.bin differ
+diff --git a/node_modules/expo-notifications/android/.gradle/9.2.0/fileHashes/fileHashes.lock b/node_modules/expo-notifications/android/.gradle/9.2.0/fileHashes/fileHashes.lock
+new file mode 100644
+index 0000000..7882056
+Binary files /dev/null and b/node_modules/expo-notifications/android/.gradle/9.2.0/fileHashes/fileHashes.lock differ
+diff --git a/node_modules/expo-notifications/android/.gradle/9.2.0/gc.properties b/node_modules/expo-notifications/android/.gradle/9.2.0/gc.properties
+new file mode 100644
+index 0000000..e69de29
+diff --git a/node_modules/expo-notifications/android/.gradle/buildOutputCleanup/buildOutputCleanup.lock b/node_modules/expo-notifications/android/.gradle/buildOutputCleanup/buildOutputCleanup.lock
+new file mode 100644
+index 0000000..1b0492e
+Binary files /dev/null and b/node_modules/expo-notifications/android/.gradle/buildOutputCleanup/buildOutputCleanup.lock differ
+diff --git a/node_modules/expo-notifications/android/.gradle/buildOutputCleanup/cache.properties b/node_modules/expo-notifications/android/.gradle/buildOutputCleanup/cache.properties
+new file mode 100644
+index 0000000..a9a42a7
+--- /dev/null
++++ b/node_modules/expo-notifications/android/.gradle/buildOutputCleanup/cache.properties
+@@ -0,0 +1,2 @@
++#Sat Jul 11 17:45:31 BST 2026
++gradle.version=9.2.0
+diff --git a/node_modules/expo-notifications/android/.gradle/vcs-1/gc.properties b/node_modules/expo-notifications/android/.gradle/vcs-1/gc.properties
+new file mode 100644
+index 0000000..e69de29
+diff --git a/node_modules/expo-notifications/android/src/main/java/expo/modules/notifications/notifications/background/BackgroundRemoteNotificationTaskConsumer.java b/node_modules/expo-notifications/android/src/main/java/expo/modules/notifications/notifications/background/BackgroundRemoteNotificationTaskConsumer.java
+index 07807aa..2da0d4b 100644
+--- a/node_modules/expo-notifications/android/src/main/java/expo/modules/notifications/notifications/background/BackgroundRemoteNotificationTaskConsumer.java
++++ b/node_modules/expo-notifications/android/src/main/java/expo/modules/notifications/notifications/background/BackgroundRemoteNotificationTaskConsumer.java
+@@ -122,7 +122,20 @@ public class BackgroundRemoteNotificationTaskConsumer extends TaskConsumer imple
+   }
+ 
+   public void executeTask(@NonNull Bundle bundle) {
+-    mTask.execute(bundle, null);
++    // POWR patch — mTask is null between didUnregister() and the next
++    // didRegister(), the window every unregister -> register rebind opens.
++    // An FCM message delivered inside that window NPE'd on the whole process:
++    // field 2026-08-03, the app was killed by its OWN "Session recorded" push
++    // arriving 2 s after app-open, while the foreground rebind was in flight.
++    // Upstream already null-checks mTask in scheduleJob() and didExecuteJob();
++    // this path was simply missed. Dropping one wake is recoverable (the server
++    // re-nudges, and the exit/app-open backstops still claim) — crashing is not.
++    TaskInterface task = mTask;
++    if (task == null) {
++      Log.w("expo-notifications", "Background remote notification dropped: no task bound.");
++      return;
++    }
++    task.execute(bundle, null);
+   }
+ 
+   //endregion
