@@ -113,32 +113,35 @@ function dayStartUTC(iso: string): string {
  * the SAME time spent at the gym, so we suppress the wearable entry to avoid
  * double-counting (a Whoop "strength" session, a spin-class "cycling", etc., all
  * defer to the gym check-in). See project_terra_wearable_aggregator / the
- * wearable-sync duplicate item. Returns true when the window overlaps and the
- * wearable session should be dropped.
+ * wearable-sync duplicate item. Returns the ID of the check-in that outranks
+ * this window, or null when nothing overlaps. The caller stamps that id onto the
+ * suppressed_workouts record so the loss is attributable to a specific check-in
+ * rather than just asserted.
  */
-async function overlapsGeofenceGym(
+async function overlappingGeofenceGym(
   supabase, userId: string, startMs: number, endMs: number,
-): Promise<boolean> {
+): Promise<string | null> {
   // Bound the query by day (±1d) for index use, then check exact overlap in JS.
   const windowStart = new Date(startMs - 24 * 60 * 60 * 1000).toISOString();
   const windowEnd = new Date(endMs + 24 * 60 * 60 * 1000).toISOString();
   const { data } = await supabase
     .from('activity_sessions')
-    .select('started_at, ended_at, duration_sec')
+    .select('id, started_at, ended_at, duration_sec')
     .eq('user_id', userId)
     .eq('type', 'gym')
     .eq('verification', 'geofence')
     .gte('started_at', windowStart)
-    .lte('started_at', windowEnd);
-  if (!data) return false;
+    .lte('started_at', windowEnd)
+    .order('started_at', { ascending: false });
+  if (!data) return null;
   for (const g of data) {
     const gStart = new Date(g.started_at).getTime();
     const gEnd = g.ended_at
       ? new Date(g.ended_at).getTime()
       : gStart + (g.duration_sec ?? 0) * 1000;
-    if (startMs < gEnd && endMs > gStart) return true; // half-open overlap
+    if (startMs < gEnd && endMs > gStart) return g.id as string; // half-open overlap
   }
-  return false;
+  return null;
 }
 
 /**
@@ -308,26 +311,60 @@ async function handleActivity(supabase, payload): Promise<void> {
     if (durSec <= 0) continue;
     const durMin = durSec / 60;
 
-    // Gym geofence wins: if this wearable workout overlaps a geofence gym check-in,
-    // it's the same time at the gym — drop it so we don't double-count points.
-    const startMs = new Date(start).getTime();
-    const endMs = end ? new Date(end).getTime() : startMs + durSec * 1000;
-    if (await overlapsGeofenceGym(supabase, userId, startMs, endMs)) {
-      console.log(`[terra-webhook] suppressing ${type} (${Math.round(durMin)}m) — overlaps geofence gym session`);
-      continue;
-    }
-
     const distanceM = a.distance_data?.summary?.distance_meters;
     const hrAvg = a.heart_rate_data?.summary?.avg_hr_bpm;
     const hrMax = a.heart_rate_data?.summary?.max_hr_bpm;
     const points = calculateBasePoints(type, durMin);
     const extras = activityExtras(a);
 
+    // Gym geofence wins: if this wearable workout overlaps a geofence gym check-in,
+    // it's the same time at the gym — it must not be paid a second time.
+    //
+    // It is still a real workout the user did, so RECORD it rather than dropping
+    // it on the floor. This used to be a bare `continue` + console.log: no row, no
+    // points, no trace, nothing the user or an admin could ever see. Deliberately
+    // NOT an activity_sessions row — every challenge evaluator counts sessions
+    // through one builder that would treat it as an independent workout and pay
+    // out unearned points (see the migration for the full reasoning). The audit
+    // table is inert: nothing counts it, nothing pays from it.
+    const startMs = new Date(start).getTime();
+    const endMs = end ? new Date(end).getTime() : startMs + durSec * 1000;
+    const winner = await overlappingGeofenceGym(supabase, userId, startMs, endMs);
+    if (winner) {
+      console.log(`[terra-webhook] suppressing ${type} (${Math.round(durMin)}m) — overlaps geofence gym session ${winner}`);
+      // Idempotent on (user_id, type, started_at): terra-poll replays a ~2-day
+      // window, so the same suppression arrives repeatedly. Never let a failure
+      // here cost us the rest of the payload.
+      const { error: suppressErr } = await supabase
+        .from('suppressed_workouts')
+        .upsert({
+          user_id: userId,
+          winner_session_id: winner,
+          type,
+          started_at: start,
+          ended_at: end ? end : new Date(startMs + durSec * 1000).toISOString(),
+          duration_sec: durSec,
+          distance_m: distanceM != null ? Math.round(distanceM) : null,
+          hr_avg: hrAvg != null ? Math.round(hrAvg) : null,
+          hr_max: hrMax != null ? Math.round(hrMax) : null,
+          calories_active: a.calories_data?.total_burned_calories != null
+            ? Math.round(a.calories_data.total_burned_calories) : null,
+          source,
+          raw_activity_name: (meta.name ?? '').trim().slice(0, 80) || null,
+          reason: 'overlaps_geofence_gym',
+          would_have_earned: points,
+        }, { onConflict: 'user_id,type,started_at' });
+      if (suppressErr) {
+        console.error('[terra-webhook] suppressed_workouts write failed:', suppressErr.message);
+      }
+      continue;
+    }
+
     const inserted = await insertSession(supabase, {
       user_id: userId,
       type,
       started_at: start,
-      ended_at: end ?? new Date(new Date(start).getTime() + durSec * 1000).toISOString(),
+      ended_at: end ? end : new Date(new Date(start).getTime() + durSec * 1000).toISOString(),
       duration_sec: durSec,
       distance_m: distanceM != null ? Math.round(distanceM) : null,
       hr_avg: hrAvg != null ? Math.round(hrAvg) : null,
