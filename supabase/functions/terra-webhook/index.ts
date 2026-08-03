@@ -131,7 +131,8 @@ async function overlappingGeofenceGym(
     .eq('type', 'gym')
     .eq('verification', 'geofence')
     .gte('started_at', windowStart)
-    .lte('started_at', windowEnd);
+    .lte('started_at', windowEnd)
+    .order('started_at', { ascending: false });
   if (!data) return null;
   for (const g of data) {
     const gStart = new Date(g.started_at).getTime();
@@ -341,7 +342,7 @@ async function handleActivity(supabase, payload): Promise<void> {
           winner_session_id: winner,
           type,
           started_at: start,
-          ended_at: end ?? new Date(startMs + durSec * 1000).toISOString(),
+          ended_at: end ? end : new Date(startMs + durSec * 1000).toISOString(),
           duration_sec: durSec,
           distance_m: distanceM != null ? Math.round(distanceM) : null,
           hr_avg: hrAvg != null ? Math.round(hrAvg) : null,
@@ -363,7 +364,7 @@ async function handleActivity(supabase, payload): Promise<void> {
       user_id: userId,
       type,
       started_at: start,
-      ended_at: end ?? new Date(new Date(start).getTime() + durSec * 1000).toISOString(),
+      ended_at: end ? end : new Date(new Date(start).getTime() + durSec * 1000).toISOString(),
       duration_sec: durSec,
       distance_m: distanceM != null ? Math.round(distanceM) : null,
       hr_avg: hrAvg != null ? Math.round(hrAvg) : null,
