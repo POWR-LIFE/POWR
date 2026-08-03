@@ -131,14 +131,39 @@ TaskManager.defineTask(BACKGROUND_NOTIFICATION_TASK, async ({ data, error }) => 
  *
  *  The unregister may reject when nothing was registered yet — ignore it and
  *  register anyway. Call this on every UI mount AND every return-to-foreground:
- *  those are the earliest moments a live context can steal the binding back. */
-export async function registerBackgroundNotificationTask(): Promise<void> {
-  try {
-    await Notifications.unregisterTaskAsync(BACKGROUND_NOTIFICATION_TASK).catch(() => {});
-    await Notifications.registerTaskAsync(BACKGROUND_NOTIFICATION_TASK);
-    console.log('[BackgroundNotification] task registered.');
-  } catch (err) {
-    // Unsupported in Expo Go — the geofence engine's own paths still work there.
-    console.warn('[BackgroundNotification] registration failed:', err);
+ *  those are the earliest moments a live context can steal the binding back.
+ *
+ *  ⚠ ONCE PER JS CONTEXT, and that bound is load-bearing — not an optimisation.
+ *  unregister → register leaves the NATIVE consumer's task reference null for
+ *  the gap between the two calls, and an FCM message arriving in that gap used
+ *  to take down the entire process (see the patched null guard in
+ *  expo-notifications' BackgroundRemoteNotificationTaskConsumer; field
+ *  2026-08-03, the app was crashed by its own "Session recorded" push 2 s after
+ *  app-open). Foreground is exactly when a queued push lands, so rebinding on
+ *  EVERY foreground reopened that window at the worst possible moment, over and
+ *  over. Module state dies with the JS context, so "once per context" still
+ *  rebinds after every OTA reload or headless-born start — which is the whole
+ *  point of the 2026-07-17 fix — while a context that already owns the binding
+ *  stops re-taking it from itself. The native guard and this bound are
+ *  belt-and-braces: either alone stops the crash. */
+let _bindOnce: Promise<void> | null = null;
+
+export function registerBackgroundNotificationTask(): Promise<void> {
+  // Concurrent callers (UI mount racing an immediate foreground event) share the
+  // one in-flight rebind rather than starting a second unregister mid-register.
+  if (!_bindOnce) {
+    _bindOnce = (async () => {
+      try {
+        await Notifications.unregisterTaskAsync(BACKGROUND_NOTIFICATION_TASK).catch(() => {});
+        await Notifications.registerTaskAsync(BACKGROUND_NOTIFICATION_TASK);
+        console.log('[BackgroundNotification] task registered.');
+      } catch (err) {
+        // Unsupported in Expo Go — the geofence engine's own paths still work there.
+        // Clear the latch so a real retry is still possible after a transient failure.
+        _bindOnce = null;
+        console.warn('[BackgroundNotification] registration failed:', err);
+      }
+    })();
   }
+  return _bindOnce;
 }

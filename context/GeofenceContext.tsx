@@ -102,6 +102,7 @@ const ARM_META_KEY           = '@powr/geofence_arm_meta';  // centre + sentinel 
 const SESSION_COMPLETED_KEY  = '@powr/session_completed';
 const PENDING_CLAIMS_KEY     = '@powr/pending_claims';
 const VISIT_TICK_KEY         = '@powr/last_visit_tick';   // throttle for the stream heartbeat
+const LAST_STREAM_FIX_KEY    = '@powr/last_stream_fix';   // newest fix the location stream delivered — the wake path's fallback presence proof
 
 // The in-gym stream heartbeat is a checkpoint, not a firehose: the stream ticks
 // every 60 s, but we only need enough resolution to answer "is it alive at all?"
@@ -574,6 +575,52 @@ async function setLocationStreamMode(mode: StreamMode): Promise<void> {
   }
 }
 
+/** Fire-and-forget region telemetry, lazily imported like the rest of the
+ *  gymVisits surface so a headless context only pulls it in when it fires. */
+function logRegionEvent(
+  regionId: string,
+  event: 'enter' | 'exit' | 'approach_stream_on' | 'checked_in',
+  detail: Record<string, unknown> = {},
+): void {
+  void import('@/lib/gymVisits')
+    .then(({ logGeofenceRegionEvent }) => logGeofenceRegionEvent(regionId, event, detail))
+    .catch(() => { /* telemetry must never break a crossing */ });
+}
+
+/** Periodic safety net for a MISSED CHECK-IN.
+ *
+ *  2026-08-03: after a walk-out and walk-back-in, NEITHER platform re-checked in
+ *  while backgrounded — both only did so when the app was opened, despite the
+ *  regions still being armed (their exits landed server-side). The two candidate
+ *  causes need different long-term fixes (Android cannot restart its
+ *  foreground-service-backed stream from the background — see the Android 12
+ *  restriction; iOS drops its stream to fully off at baseline, so it depends
+ *  entirely on the OS delivering region ENTER), but they share one remedy: stop
+ *  depending on a single event, and re-check presence on a timer the OS already
+ *  services for us.
+ *
+ *  This cannot fabricate a session: it hands the fix to evaluateLocationFix, the
+ *  same and only authority that starts one, which re-applies the true 25 m radius
+ *  and the once-per-day guard. A missed check-in is otherwise unrecoverable in the
+ *  background — with no visit row the beacon has nothing to nudge, so the silent
+ *  wakes we fixed today can never rescue it. */
+async function sweepForMissedCheckIn(): Promise<void> {
+  try {
+    if (await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY)) return; // already checked in
+    const { status } = await Location.getBackgroundPermissionsAsync()
+      .catch(() => ({ status: 'denied' as Location.PermissionStatus }));
+    if (status !== 'granted') return;
+
+    // Cheap sources only — this runs on the OS's schedule, not in a wake window,
+    // but an unbounded acquisition here would hang exactly like the wake path did.
+    const cached = await Location.getLastKnownPositionAsync({ maxAge: 10 * 60_000 }).catch(() => null);
+    if (!cached) return;
+    await evaluateLocationFix(cached.coords);
+  } catch (err) {
+    console.warn('[Geofence] Missed check-in sweep failed:', err);
+  }
+}
+
 /** Enters the approach ring for a gym: escalate to the high-accuracy stream so
  *  evaluateLocationFix can catch the precise 25 m crossing. No session/notification
  *  is started here — that's evaluateLocationFix's job, at the true radius. */
@@ -582,6 +629,11 @@ async function enterApproach(regionId: string): Promise<void> {
     await AsyncStorage.setItem(APPROACH_STATE_KEY, JSON.stringify({ regionId, since: Date.now() }));
   } catch { /* non-fatal */ }
   await setLocationStreamMode('approach');
+  // Pairs with the 'enter' row: this one landing means the OS delivered ENTER
+  // *and* we got the high-accuracy stream running, so any missing check-in after
+  // this point is the stream failing to produce an inside fix — not a missed
+  // region event. Two rows, two distinct failure modes, no guessing.
+  logRegionEvent(regionId, 'approach_stream_on');
   console.log(`[Geofence] Approach ring "${regionId}" — high-accuracy stream on.`);
 }
 
@@ -633,6 +685,15 @@ const STALE_CLAIM_LOCK_MS = 2 * 60 * 1000;
 // wake is doomed (its radio window is gone), and the wake's own ~10 s window
 // must not be wasted honouring it. See runVisitCheck.
 const WAKE_STALE_CLAIM_LOCK_MS = 15 * 1000;
+
+// How old the stream's persisted fix may be before the wake path stops treating
+// it as presence proof. Generous next to the 60 s getLastKnownPositionAsync
+// window because it is the fallback, not the first choice — but far short of the
+// 30-min dwell threshold, so it can never stand in for having actually been here.
+const STREAM_FIX_MAX_AGE_MS = 5 * 60 * 1000;
+// Hard bound on a from-scratch GPS acquisition inside a wake window. The FCM
+// window is ~10 s; anything slower than this has already lost the round-trip.
+const FIX_ACQUIRE_TIMEOUT_MS = 8 * 1000;
 
 // Minimum spacing between foreground tier-upgrade attempts. The upgrade branch
 // re-runs on the 10 s scheduleDwellTimer poll, and a server-side rejection
@@ -1505,6 +1566,7 @@ export async function runVisitCheck(
   }
 
   let coords: Location.LocationObjectCoords | null = null;
+  let fixSource = 'none';
   try {
     // Cached-first: the dwell stream delivers a fix roughly every 60 s while
     // checked in, so a ≤60 s-old fix is normally available and is as real a
@@ -1513,12 +1575,44 @@ export async function runVisitCheck(
     // wake grants mid-Doze, which starved the claim chain that follows (field
     // 2026-07-14: the one wake whose confirm reused a fresh stream fix answered
     // in <1 s; the fresh-GPS ones took 20 s+). "No fix, no credit" is unchanged.
+    //
+    // ⚠ NOTHING HERE MAY BLOCK INDEFINITELY. getCurrentPositionAsync takes no
+    // timeout and simply never settles on a dozing device: on 2026-08-03 all
+    // FOUR wakes of a locked-phone session reached JS, logged "verifying
+    // presence", and then died right here — no verdict, no error, for 20
+    // minutes — while the rest of the JS context kept running. The four confirms
+    // all landed in the same second the app was foregrounded, proving the calls
+    // were frozen rather than failed. A wake gets ONE round-trip; spending it on
+    // an unbounded GPS acquisition forfeits it.
     const cached = await Location.getLastKnownPositionAsync({ maxAge: 60_000 }).catch(() => null);
-    const fix = cached ?? await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-    coords = fix?.coords ?? null;
+    if (cached) {
+      coords = cached.coords;
+      fixSource = 'last_known';
+    } else {
+      // The stream's own newest fix, persisted by LOCATION_TRACKING_TASK. No
+      // acquisition, no waiting — and during a checked-in session it is usually
+      // seconds old, because that same stream is what keeps the dwell machine alive.
+      const stored = await AsyncStorage.getItem(LAST_STREAM_FIX_KEY).catch(() => null);
+      let streamFix: { latitude: number; longitude: number; accuracy: number | null; at: number } | null = null;
+      try { streamFix = stored ? JSON.parse(stored) : null; } catch { /* corrupted value — fall through to fresh acquisition */ }
+      if (streamFix && Date.now() - streamFix.at <= STREAM_FIX_MAX_AGE_MS) {
+        coords = { latitude: streamFix.latitude, longitude: streamFix.longitude, accuracy: streamFix.accuracy } as Location.LocationObjectCoords;
+        fixSource = 'stream_cache';
+      } else {
+        // Last resort only. Bounded so a hang costs us this wake, not the
+        // round-trip: losing the race reports no_fix and the server re-nudges.
+        const fresh = await Promise.race([
+          Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }).catch(() => null),
+          new Promise<null>(resolve => setTimeout(() => resolve(null), FIX_ACQUIRE_TIMEOUT_MS)),
+        ]);
+        coords = fresh?.coords ?? null;
+        fixSource = fresh ? 'acquired' : 'timeout';
+      }
+    }
   } catch (err) {
     console.warn('[Geofence] Visit check: could not get a fix:', err);
   }
+  console.log(`[Geofence] Visit check (${stage}): fix source = ${fixSource}.`);
 
   // No fix = no proof = no credit. Leave the visit open; the server will nudge
   // again, and failing that the exit path still resolves it.
@@ -1838,6 +1932,20 @@ TaskManager.defineTask(LOCATION_TRACKING_TASK, async ({ data, error }) => {
   const { locations } = (data ?? {}) as { locations?: Location.LocationObject[] };
   console.log(`[Geofence] Location task fired: ${locations?.length ?? 0} fix(es).`);
   if (!locations || locations.length === 0) return;
+  // Persist the newest fix for the wake path. A silent wake must never block on
+  // GPS acquisition (see runVisitCheck), and the stream is already delivering a
+  // fix roughly every 60 s throughout a checked-in session — so the presence
+  // proof the wake needs is nearly always already in hand. Written before the
+  // dwell work below so a throw down there can't cost us the fix.
+  try {
+    const newest = locations[locations.length - 1];
+    await AsyncStorage.setItem(LAST_STREAM_FIX_KEY, JSON.stringify({
+      latitude:  newest.coords.latitude,
+      longitude: newest.coords.longitude,
+      accuracy:  newest.coords.accuracy ?? null,
+      at:        newest.timestamp ?? Date.now(),
+    }));
+  } catch { /* best-effort — the wake falls back to its other sources */ }
   try {
     // Headless context: load the last-persisted admin dwell threshold from
     // storage before any dwell decision (foreground refreshes it on launch).
@@ -1854,6 +1962,7 @@ TaskManager.defineTask(GEOFENCE_REARM_TASK, async () => {
   try {
     await flushPendingClaims();
     await rearmGeofencingFromCache();
+    await sweepForMissedCheckIn();
     return BackgroundFetch.BackgroundFetchResult.NewData;
   } catch {
     return BackgroundFetch.BackgroundFetchResult.Failed;
@@ -1897,8 +2006,16 @@ TaskManager.defineTask(GEOFENCE_TASK_NAME, async ({ data, error }) => {
   }
 
   if (eventType === Location.GeofencingEventType.Enter) {
+    // Log BEFORE the active-session guard and before any stream work: this row is
+    // the only proof the OS delivered the ENTER at all. Without it, "no region
+    // event" and "region event we then failed to act on" are the same silence —
+    // the trap that hid the dead iOS wake path for 17 days (see
+    // logGeofenceRegionEvent / log_gym_wake_received).
+    const alreadyActive = (await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY)) != null;
+    logRegionEvent(regionId, 'enter', { already_active: alreadyActive });
+
     // Don't overwrite an already-active session.
-    if (await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY)) {
+    if (alreadyActive) {
       console.log('[Geofence] Enter ignored — session already active.');
       return;
     }
@@ -1913,6 +2030,7 @@ TaskManager.defineTask(GEOFENCE_TASK_NAME, async ({ data, error }) => {
     await enterApproach(regionId);
 
   } else if (eventType === Location.GeofencingEventType.Exit) {
+    logRegionEvent(regionId, 'exit');
     // Left the approach ring — return the stream to baseline whether or not a
     // session was active (also covers "walked up but never checked in"). A
     // neighboring approach-ring exit must not stop tracking an active gym.

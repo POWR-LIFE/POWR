@@ -67,6 +67,34 @@ export async function logGymWakeReceived(
   }
 }
 
+/** Records that a native region crossing reached JS — the check-in path's
+ *  equivalent of logGymWakeReceived, and for the same reason.
+ *
+ *  The ENTER branch of the geofence task made no server calls at all, so when a
+ *  backgrounded device failed to check in (2026-08-03: BOTH platforms, after a
+ *  walk-out/walk-back-in) there was no way to tell "the OS never delivered the
+ *  region ENTER" from "ENTER fired and the approach stream never produced an
+ *  inside fix". Those need completely different fixes, so guessing was not an
+ *  option. Fire-and-forget by contract: a region wake is a tight window, and
+ *  telemetry must never spend the budget the check-in needs. */
+export async function logGeofenceRegionEvent(
+  regionId: string,
+  event: 'enter' | 'exit' | 'approach_stream_on' | 'checked_in',
+  detail: Record<string, unknown> = {},
+): Promise<void> {
+  try {
+    const { error } = await withNetworkTimeout(supabase.rpc('log_geofence_region_event', {
+      p_region_id: regionId,
+      p_event:     event,
+      p_platform:  Platform.OS,
+      p_detail:    detail,
+    }), 'log_geofence_region_event');
+    if (error) throw error;
+  } catch (err) {
+    console.warn('[GymVisit] logGeofenceRegionEvent failed:', err);
+  }
+}
+
 /** Reports what the device actually SAW when the server woke it. `inside` is the
  *  device's verdict from a real GPS fix — the only thing that can unlock a credit.
  *
