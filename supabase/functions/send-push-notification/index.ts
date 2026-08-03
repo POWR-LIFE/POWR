@@ -17,6 +17,7 @@ type NotificationType =
   | 'sleep_target_met'
   | 'session_completed'
   | 'session_upgraded'
+  | 'session_ready_to_record'
   | 'wearable_session_recorded'
   | 'level_up'
   | 'streak_lost'
@@ -51,7 +52,7 @@ const TOGETHER_TYPES: NotificationType[] = [
 const FEED_EXCLUDED: Set<NotificationType> = new Set([
   'friend_request', 'challenge_invite',
   'daily_reminder', 'inactivity_nudge', 'check_in_reminder',
-  'streak_at_risk', 'weekly_challenge_expiry',
+  'streak_at_risk', 'weekly_challenge_expiry', 'session_ready_to_record',
 ]);
 
 // Coarse bucket the client renders an icon/accent from.
@@ -78,6 +79,7 @@ function categoryFor(type: NotificationType): 'social' | 'rewards' | 'activity' 
       return 'rewards';
     case 'session_completed':
     case 'session_upgraded':
+    case 'session_ready_to_record':
     case 'sleep_target_met':
     case 'wearable_session_recorded':
     case 'streak_lost':
@@ -115,6 +117,7 @@ interface ExpoMessage {
 // they always arrive, however delayed.
 const TTL_SECONDS: Partial<Record<NotificationType, number>> = {
   check_in_reminder:       15 * 60,      // only useful while still in the gym
+  session_ready_to_record: 30 * 60,      // a "still in the gym?" ask goes stale fast
   streak_at_risk:          6 * 60 * 60,  // must land before midnight
   weekly_challenge_expiry: 12 * 60 * 60,
   challenge_within_reach:  6 * 60 * 60,  // "you're close tonight" is stale by morning
@@ -241,6 +244,20 @@ function buildMessage(
           body: "You're in. Every minute counts.",
           data: { type, route: '/(tabs)/index', location_id: payload.location_id },
           sound: 'default',
+        };
+      }
+
+      // The beacon's VISIBLE fallback: sent only when a visit has crossed the
+      // dwell threshold and the silent wakes have gone unanswered, so opening
+      // the app is now the only path to the claim. Fired by gym-visit-beacon;
+      // the tap foregrounds the app and the pending-claim backstop finishes.
+      case 'session_ready_to_record': {
+        return {
+          title: 'POWR',
+          body: "You've hit 30 minutes. Open POWR to record this session.",
+          data: { type, route: '/(tabs)/index', visit_id: payload.visit_id, stage: payload.stage },
+          sound: 'default',
+          priority: 'high',
         };
       }
 
@@ -831,6 +848,7 @@ Deno.serve(async (req: Request) => {
     const prefColumn: string =
       type === 'challenge_within_reach' ? 'weekly_challenge_expiry' // one weekly-challenge-nudges toggle
       : type === 'session_upgraded' ? 'session_completed'
+      : type === 'session_ready_to_record' ? 'session_completed' // same story: "your session's points"
       : type === 'vault_unlocked' ? 'points_milestone'
       : type === 'vault_ready' ? 'points_milestone'
       : type === 'vault_granted' ? 'points_milestone'
