@@ -61,8 +61,6 @@ begin
   if v_user is null then return; end if;
   insert into public.geofence_region_events (user_id, region_id, event, platform, detail)
   values (v_user, left(coalesce(p_region_id, ''), 200), left(coalesce(p_event, 'unknown'), 40), p_platform, coalesce(p_detail, '{}'::jsonb));
-exception when others then
-  return;
 end;
 $function$;
 

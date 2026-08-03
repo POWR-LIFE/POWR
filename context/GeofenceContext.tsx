@@ -575,9 +575,6 @@ async function setLocationStreamMode(mode: StreamMode): Promise<void> {
   }
 }
 
-/** Enters the approach ring for a gym: escalate to the high-accuracy stream so
- *  evaluateLocationFix can catch the precise 25 m crossing. No session/notification
- *  is started here — that's evaluateLocationFix's job, at the true radius. */
 /** Fire-and-forget region telemetry, lazily imported like the rest of the
  *  gymVisits surface so a headless context only pulls it in when it fires. */
 function logRegionEvent(
@@ -624,6 +621,9 @@ async function sweepForMissedCheckIn(): Promise<void> {
   }
 }
 
+/** Enters the approach ring for a gym: escalate to the high-accuracy stream so
+ *  evaluateLocationFix can catch the precise 25 m crossing. No session/notification
+ *  is started here — that's evaluateLocationFix's job, at the true radius. */
 async function enterApproach(regionId: string): Promise<void> {
   try {
     await AsyncStorage.setItem(APPROACH_STATE_KEY, JSON.stringify({ regionId, since: Date.now() }));
@@ -1593,7 +1593,8 @@ export async function runVisitCheck(
       // acquisition, no waiting — and during a checked-in session it is usually
       // seconds old, because that same stream is what keeps the dwell machine alive.
       const stored = await AsyncStorage.getItem(LAST_STREAM_FIX_KEY).catch(() => null);
-      const streamFix = stored ? JSON.parse(stored) as { latitude: number; longitude: number; accuracy: number | null; at: number } : null;
+      let streamFix: { latitude: number; longitude: number; accuracy: number | null; at: number } | null = null;
+      try { streamFix = stored ? JSON.parse(stored) : null; } catch { /* corrupted value — fall through to fresh acquisition */ }
       if (streamFix && Date.now() - streamFix.at <= STREAM_FIX_MAX_AGE_MS) {
         coords = { latitude: streamFix.latitude, longitude: streamFix.longitude, accuracy: streamFix.accuracy } as Location.LocationObjectCoords;
         fixSource = 'stream_cache';
