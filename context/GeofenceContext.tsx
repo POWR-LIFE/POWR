@@ -616,30 +616,43 @@ function logRegionEvent(
  *  re-applies the true 25 m radius, the accuracy gate and the once-per-day guard.
  *  Bounded in both directions — a fixed attempt count and a per-read timeout — so
  *  it can never become the kind of unbounded wait that froze the wake path. */
-const CHECKIN_POLL_ATTEMPTS   = 6;
-const CHECKIN_POLL_INTERVAL_MS = 15 * 1000;   // ~90 s of cover: a 120 m walk-in at normal pace
-const CHECKIN_POLL_FIX_TIMEOUT_MS = 8 * 1000;
+// Mutable so tests can drive the poll without real 15 s waits: the geofence task
+// AWAITS this (deliberately — that is what keeps the OS holding the task open for
+// the walk-in), so a suite that fires an ENTER event would otherwise block for the
+// full ~90 s and blow Jest's timeout. Overriding here beats branching on NODE_ENV
+// inside the loop, which would mean the code under test is not the code that ships.
+export const CHECKIN_POLL = {
+  attempts:      6,
+  intervalMs:    15 * 1000,   // ~90 s of cover: a 120 m walk-in at normal pace
+  fixTimeoutMs:   8 * 1000,
+};
 
 async function pollForCheckIn(regionId: string): Promise<void> {
-  for (let attempt = 0; attempt < CHECKIN_POLL_ATTEMPTS; attempt++) {
+  for (let attempt = 0; attempt < CHECKIN_POLL.attempts; attempt++) {
     try {
       // Someone got there first (the stream, or a previous pass) — done.
-      if (await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY)) {
-        if (attempt > 0) logRegionEvent(regionId, 'checked_in', { via: 'enter_poll', attempt });
-        return;
-      }
+      if (await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY)) return;
 
       const cached = await Location.getLastKnownPositionAsync({ maxAge: 30_000 }).catch(() => null);
       const fix = cached ?? await Promise.race([
         Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }).catch(() => null),
-        new Promise<null>(resolve => setTimeout(() => resolve(null), CHECKIN_POLL_FIX_TIMEOUT_MS)),
+        new Promise<null>(resolve => setTimeout(() => resolve(null), CHECKIN_POLL.fixTimeoutMs)),
       ]);
-      if (fix) await evaluateLocationFix(fix.coords);
+      if (fix) {
+        await evaluateLocationFix(fix.coords);
+        // Re-check immediately rather than at the top of the next pass: that cost a
+        // whole interval of the task's life and one redundant position read every
+        // time the poll actually succeeded — which is the common case.
+        if (await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY)) {
+          logRegionEvent(regionId, 'checked_in', { via: 'enter_poll', attempt });
+          return;
+        }
+      }
     } catch (err) {
       console.warn('[Geofence] Check-in poll pass failed:', err);
     }
-    if (attempt < CHECKIN_POLL_ATTEMPTS - 1) {
-      await new Promise(resolve => setTimeout(resolve, CHECKIN_POLL_INTERVAL_MS));
+    if (attempt < CHECKIN_POLL.attempts - 1) {
+      await new Promise(resolve => setTimeout(resolve, CHECKIN_POLL.intervalMs));
     }
   }
 }

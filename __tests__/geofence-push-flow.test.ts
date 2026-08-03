@@ -15,7 +15,14 @@
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppState } from 'react-native';
-import { ACTIVE_GEOFENCE_KEY } from '@/context/GeofenceContext';
+import { ACTIVE_GEOFENCE_KEY, CHECKIN_POLL } from '@/context/GeofenceContext';
+
+// The ENTER branch awaits pollForCheckIn — deliberately, so the OS holds the task
+// open while the user walks the last stretch to the 25 m radius. Drive it with zero
+// waits here: the behaviour under test is the check-in decision, not the pacing,
+// and the real ~90 s would blow Jest's timeout.
+CHECKIN_POLL.intervalMs = 0;
+CHECKIN_POLL.fixTimeoutMs = 0;
 
 const GEOFENCE_TASK_NAME = 'GEOFENCE_CHECK_IN';
 const LOCATION_TRACKING_TASK = 'POWR_LOCATION_TRACKING';
