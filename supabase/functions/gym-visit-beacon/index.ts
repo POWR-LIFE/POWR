@@ -37,9 +37,6 @@ const NUDGE_BACKOFF_MS = 5 * 60 * 1000;  // don't re-wake a silent device more t
 // but not indefinitely — a device that has ignored 5 nudges across a day is not
 // going to answer, and the backfill migration covers anything older.
 const UPGRADE_RETRY_WINDOW_MS = 24 * 60 * 60 * 1000;
-// From which silent-wake attempt the dwell stage escalates to a VISIBLE push.
-// Attempt 1 gets the full 5-min backoff to answer before we bother the user.
-const VISIBLE_FALLBACK_FROM_ATTEMPT = 2;
 
 async function thresholds(admin): Promise<{ dwellMin: number; upgradeMin: number }> {
   const { data } = await admin
@@ -111,72 +108,6 @@ async function dueVisits(admin, stage: 'dwell' | 'upgrade', minutes: number) {
   return data ?? [];
 }
 
-// A silent wake the device never answers is invisible to the user: no wake → no
-// claim → no "Session recorded" push — the visit dies in total silence. Fleet
-// 07-20→08-03: of 16 real-user visits the dwell stage nudged, exactly ONE ever
-// landed a wake_received (iOS suspends a locked app; content-available delivery
-// is best-effort by contract). From the second unanswered attempt onward,
-// escalate ONCE per visit to a VISIBLE push: the OS displays it with no app
-// involvement, and the tap foregrounds the app, whose pending-claim backstop
-// completes the credit. Dwell stage only — its visits are still open, so "open
-// POWR to record this session" is honest; the upgrade stage may be chasing a
-// visit whose user left hours ago (see dueVisits), where it would be a lie.
-async function maybeSendVisibleFallback(admin, visit, attempt: number | null): Promise<boolean> {
-  if ((attempt ?? 0) < VISIBLE_FALLBACK_FROM_ATTEMPT) return false;
-
-  // The device is answering wakes — the silent chain is alive; let it finish.
-  const { count: woke } = await admin
-    .from('gym_visit_events')
-    .select('id', { count: 'exact', head: true })
-    .eq('visit_id', visit.id)
-    .eq('event', 'wake_received');
-  if (woke) return false;
-
-  // Once per visit, ever. (No stage key needed: this only runs for dwell.)
-  const { count: already } = await admin
-    .from('gym_visit_events')
-    .select('id', { count: 'exact', head: true })
-    .eq('visit_id', visit.id)
-    .eq('event', 'visible_nudge_sent');
-  if (already) return false;
-
-  // Through send-push-notification rather than deliverExpoMessages directly, so
-  // the user's session_completed mute and the push log apply like any other push.
-  let outcome = null;
-  try {
-    const res = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/send-push-notification`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
-      },
-      body: JSON.stringify({
-        target_user_id: visit.user_id,
-        type: 'session_ready_to_record',
-        payload: { visit_id: visit.id, stage: 'dwell' },
-      }),
-    });
-    if (!res.ok) return false; // leave unmarked — the next silent attempt retries
-    outcome = await res.json().catch(() => null);
-  } catch (err) {
-    console.error('[gym-visit-beacon] visible fallback send failed', err);
-    return false;
-  }
-
-  // A deliberate skip (user muted session pushes) counts as handled — retrying
-  // would just re-ask a question the user has answered. No ticket and no skip
-  // means the send genuinely failed; stay unmarked so the next attempt retries.
-  const landed = outcome?.skipped === true || Number(outcome?.result?.queued ?? 0) > 0;
-  if (!landed) return false;
-
-  await admin.from('gym_visit_events').insert({
-    visit_id: visit.id, user_id: visit.user_id,
-    event: 'visible_nudge_sent',
-    detail: { stage: 'dwell', attempt, skipped: outcome?.skipped === true },
-  });
-  return true;
-}
-
 Deno.serve(async (req: Request) => {
   const admin = createClient(
     Deno.env.get('SUPABASE_URL')!,
@@ -189,7 +120,7 @@ Deno.serve(async (req: Request) => {
   if (valid !== true) return new Response('forbidden', { status: 403 });
 
   const { dwellMin, upgradeMin } = await thresholds(admin);
-  const stats = { dwell: 0, upgrade: 0, sent: 0, no_token: 0, visible: 0 };
+  const stats = { dwell: 0, upgrade: 0, sent: 0, no_token: 0 };
 
   for (const stage of ['dwell', 'upgrade'] as const) {
     const visits = await dueVisits(admin, stage, stage === 'dwell' ? dwellMin : upgradeMin);
@@ -324,10 +255,6 @@ Deno.serve(async (req: Request) => {
           attempt: attempt ?? null,
         },
       });
-
-      if (stage === 'dwell' && await maybeSendVisibleFallback(admin, visit, attempt)) {
-        stats.visible++;
-      }
     }
   }
 
