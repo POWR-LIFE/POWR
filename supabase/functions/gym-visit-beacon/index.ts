@@ -207,8 +207,14 @@ Deno.serve(async (req: Request) => {
         }
         if (outcome.ok) sentDirect++; else failedDirect++;
         if (outcome.unregistered) {
-          // Token is dead at the platform — prune, mirroring the Expo receipts path.
-          await admin.from('user_push_tokens').delete().eq('device_token', t.device_token);
+          // The native token is dead or mismatched at the platform. Clear ONLY
+          // device_token so the row's Expo token keeps the device reachable on
+          // the fallback path — BadDeviceToken can be an environment/topic
+          // mismatch (a sandbox token from a dev build against the production
+          // host), and deleting the whole row would silence visible pushes too.
+          // Expo's own receipt pruning stays the authority for removing rows
+          // whose Expo token is confirmed dead.
+          await admin.from('user_push_tokens').update({ device_token: null }).eq('device_token', t.device_token);
         }
         // Same per-user forensics the Expo path gets, one row per send. A 200
         // here = accepted by Apple/Google themselves (stronger than an Expo
