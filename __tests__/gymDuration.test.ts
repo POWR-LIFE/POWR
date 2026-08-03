@@ -160,6 +160,35 @@ describe('recordedGymDurationSec', () => {
     });
   });
 
+  describe('late retries after the visit ended', () => {
+    // gym-visit-beacon now retries the upgrade for up to 24h after a visit ends.
+    // upgrade-gym-tier bounds its gate by the visit's real length so a short visit
+    // can never drift over the tier; these cover what the clamp then STORES.
+    it('a retry hours after the exit still records the real length', () => {
+      // Visit ended at 52 min; beacon retries 6h later. elapsedSec arrives already
+      // bounded by the visit end, so the clamp sees a truthful ceiling.
+      expect(recordedGymDurationSec({
+        elapsedSec: 52 * MIN,
+        presenceSec: 52 * MIN,
+        recordedSec: 52 * MIN,
+        upgradeMin: UPGRADE_MIN,
+      })).toBe(52 * MIN);
+    });
+
+    it('repeated beacon retries converge on one value', () => {
+      let stored = 47 * MIN;
+      for (let attempt = 0; attempt < 5; attempt++) {
+        stored = recordedGymDurationSec({
+          elapsedSec: 47 * MIN,   // bounded by visit end, so constant across retries
+          presenceSec: 47 * MIN,
+          recordedSec: stored,
+          upgradeMin: UPGRADE_MIN,
+        });
+      }
+      expect(stored).toBe(47 * MIN);
+    });
+  });
+
   describe('the reason shrinking is safe', () => {
     it('never returns less than the tier being paid for when time allows', () => {
       // A row must stay consistent with its own tier: a session paid the 40-min
