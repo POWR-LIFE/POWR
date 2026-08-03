@@ -609,29 +609,32 @@ Deno.serve(async (req) => {
     }
   }
 
-  // 11b. A relayed claim can't rely on the client to mark the visit (the device
-  // may be frozen in Doze until it next wakes) — record claim progress on the
-  // beacon here so dwell nudges stop and the upgrade timer starts on time.
-  // Mirrors mark_gym_visit_progress; the status='open' guard keeps it idempotent
-  // against the client's own later mark.
-  if (viaRelay && body.visit_id) {
+  // 11b. ANY successful claim must mark the beacon's visit — not just the relay
+  // path. The client's own mark_gym_visit_progress round-trip is the least
+  // reliable call in the chain: it runs after the claim, in whatever remains of
+  // a background execution window (field 2026-08-03: a direct claim landed at
+  // t+31 min while its visit stayed 'open' and collected dwell nudges for
+  // another hour). Direct claims don't carry a visit_id, so fall back to the
+  // caller's open visit at the session's partner. The status='open' guard keeps
+  // it idempotent against the client's own later mark.
+  if (body.visit_id || session.partner_id) {
     try {
       const nowIso = new Date().toISOString();
-      const { data: marked } = await supabase
+      let mark = supabase
         .from('gym_visits')
         .update({ status: 'claimed', claimed_session_id: session.id, claimed_at: nowIso, last_confirmed_at: nowIso })
-        .eq('id', body.visit_id)
         .eq('user_id', user.id)
-        .eq('status', 'open')
-        .select('id');
-      if ((marked ?? []).length > 0) {
+        .eq('status', 'open');
+      mark = body.visit_id ? mark.eq('id', body.visit_id) : mark.eq('partner_id', session.partner_id);
+      const { data: marked } = await mark.select('id');
+      for (const row of marked ?? []) {
         await supabase.from('gym_visit_events').insert({
-          visit_id: body.visit_id, user_id: user.id, event: 'claimed',
-          detail: { session_id: session.id, via: 'relay' },
+          visit_id: row.id, user_id: user.id, event: 'claimed',
+          detail: { session_id: session.id, via: viaRelay ? 'relay' : 'direct' },
         });
       }
     } catch (visitErr) {
-      console.warn('[claim-points] relay visit mark failed:', visitErr);
+      console.warn('[claim-points] visit mark failed:', visitErr);
     }
   }
 

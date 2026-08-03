@@ -23,6 +23,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { deliverExpoMessages } from '../_shared/expoPush.ts';
 import { sendFcmDataMessage } from '../_shared/fcmV1.ts';
+import { sendApnsBackgroundPush } from '../_shared/apnsV1.ts';
 
 // Budgets are PER STAGE and live in their own columns (nudge_count /
 // nudge_count_upgrade). They used to share `nudge_count`, which silently handed the
@@ -166,14 +167,17 @@ Deno.serve(async (req: Request) => {
         continue;
       }
 
-      // ANDROID goes DIRECT via FCM v1: Expo-routed data-only pushes are never
-      // delivered to a backgrounded Android app (field matrix 2026-07-13/14 —
-      // visible pushes fine, silent wakes never), while a direct HIGH-priority
-      // FCM data message reaches the background task in ~1 s AND grants the app
-      // the execution window the woken claim chain needs. iOS stays on Expo:
-      // _contentAvailable wakes proved end-to-end same day (claim 3 s after the
-      // t+30 wake). If FCM credentials are missing/broken the Android rows fall
-      // back to Expo — unsetting the secret is the rollback switch.
+      // BOTH platforms go DIRECT when a native token is stored. Android via FCM
+      // v1 since 2026-07-14 (Expo-routed data-only pushes were never delivered
+      // to a backgrounded app; direct HIGH-priority FCM reaches the background
+      // task in ~1 s and grants the execution window the claim chain needs).
+      // iOS via APNs since 2026-08-03 for the same reason with the same
+      // evidence shape: fleet 07-20→08-03 landed ONE wake_received across 16
+      // dwell-nudged real-user visits while Expo reported every send accepted.
+      // Direct APNs uses the documented background-push attributes
+      // (apns-push-type: background, priority 5) and returns Apple's per-device
+      // verdict. Missing/broken credentials fall back to Expo — unsetting
+      // FCM_SERVICE_ACCOUNT / APNS_AUTH_KEY is the per-platform rollback switch.
       const payload = { type: 'gym_visit_check', visit_id: visit.id, stage };
       const TTL_SEC = 10 * 60; // pointless to deliver a presence check long after the fact
       let sentDirect = 0;
@@ -181,36 +185,48 @@ Deno.serve(async (req: Request) => {
       const viaExpo = [];
 
       for (const t of tokens) {
-        if (t.platform !== 'android' || !t.device_token) {
+        if (!t.device_token || (t.platform !== 'android' && t.platform !== 'ios')) {
           viaExpo.push(t);
           continue;
         }
-        const outcome = await sendFcmDataMessage(t.device_token, {
-          ...payload,
-          // Expo's envelope nests the payload under `body`; mirroring it keeps
-          // the client task's extractData working whichever shape it receives.
-          body: JSON.stringify(payload),
-        }, TTL_SEC);
+        const outcome = t.platform === 'android'
+          ? await sendFcmDataMessage(t.device_token, {
+              ...payload,
+              // Expo's envelope nests the payload under `body`; mirroring it keeps
+              // the client task's extractData working whichever shape it receives.
+              body: JSON.stringify(payload),
+            }, TTL_SEC)
+          // extractData (post-PR #275) picks the first candidate shape whose
+          // type matches, so top-level keys on the APNs payload parse the same
+          // way the direct-FCM shape does.
+          : await sendApnsBackgroundPush(t.device_token, payload, TTL_SEC);
 
         if (outcome.unavailable) {
-          viaExpo.push(t); // no FCM credentials — old path, unchanged behaviour
+          viaExpo.push(t); // no credentials for this platform — old path, unchanged behaviour
           continue;
         }
         if (outcome.ok) sentDirect++; else failedDirect++;
         if (outcome.unregistered) {
-          // Token is dead at the platform — prune, mirroring the Expo receipts path.
-          await admin.from('user_push_tokens').delete().eq('device_token', t.device_token);
+          // The native token is dead or mismatched at the platform. Clear ONLY
+          // device_token so the row's Expo token keeps the device reachable on
+          // the fallback path — BadDeviceToken can be an environment/topic
+          // mismatch (a sandbox token from a dev build against the production
+          // host), and deleting the whole row would silence visible pushes too.
+          // Expo's own receipt pruning stays the authority for removing rows
+          // whose Expo token is confirmed dead.
+          await admin.from('user_push_tokens').update({ device_token: null }).eq('device_token', t.device_token);
         }
-        // Same per-user forensics the Expo path gets, one row per send. FCM 200
-        // = accepted by the platform (stronger than an Expo ticket).
+        // Same per-user forensics the Expo path gets, one row per send. A 200
+        // here = accepted by Apple/Google themselves (stronger than an Expo
+        // ticket). ticket_id: FCM message name or APNs apns-id.
         await admin.from('push_send_log').insert({
           user_id: visit.user_id,
           type: `gym_visit_check_${stage}`,
           expo_push_token: t.device_token,
           status: outcome.ok ? 'accepted' : 'rejected',
-          ticket_id: outcome.messageName ?? null,
+          ticket_id: outcome.messageName ?? outcome.apnsId ?? null,
           error: outcome.ok ? null : outcome.error,
-        }).then(({ error }) => { if (error) console.error('[gym-visit-beacon] fcm log insert failed', error); });
+        }).then(({ error }) => { if (error) console.error('[gym-visit-beacon] direct log insert failed', error); });
       }
 
       let result = { queued: 0, failed: 0 };
