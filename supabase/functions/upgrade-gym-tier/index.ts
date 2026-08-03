@@ -134,7 +134,11 @@ Deno.serve(async (req) => {
     visitQuery = body.visit_id
       ? visitQuery.eq('id', body.visit_id)
       : visitQuery.eq('claimed_session_id', session.id);
-    const { data: visit } = await visitQuery.maybeSingle();
+    const { data: visit, error: visitError } = await visitQuery.maybeSingle();
+    if (visitError) {
+      console.error('[upgrade-gym-tier] gym_visits lookup failed:', visitError);
+      return new Response(JSON.stringify({ error: 'Failed to verify visit state' }), { status: 500 });
+    }
     if (visit?.last_confirmed_at) {
       const sec = Math.round((new Date(visit.last_confirmed_at).getTime() - startedMs) / 1000);
       if (sec > 0) presenceSec = sec;
