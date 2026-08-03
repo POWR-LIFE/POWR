@@ -594,6 +594,48 @@ function logRegionEvent(
     .catch(() => { /* telemetry must never break a crossing */ });
 }
 
+// ─── Wake-path tracing ────────────────────────────────────────────────────────
+// Every await inside a wake is a suspect until proven otherwise, and we have now
+// twice inferred the guilty call instead of proving it (2026-08-03, twice). So the
+// wake path records a breadcrumb BEFORE each step and a duration after, and ships
+// the whole trace to the server on the confirm round-trip — which means the answer
+// arrives for iOS too, where there are no device logs to read at all.
+//
+// The bound is best-effort by nature: RN drives setTimeout off the UI frame clock,
+// so under Doze the race itself can fail to fire (field 2026-07-14: a 30 s timeout
+// still pending 16 minutes later). That is exactly why the BEFORE breadcrumb
+// matters — if the timer never fires, the last breadcrumb still names the call that
+// hung. Belt and braces: the bound usually saves the wake, the breadcrumb always
+// identifies the culprit.
+type WakeTrace = Record<string, number | string>;
+
+async function tracedStep<T>(
+  label: string,
+  trace: WakeTrace,
+  work: () => Promise<T>,
+  timeoutMs: number,
+): Promise<T | null> {
+  console.log(`[Geofence] wake-step → ${label}`);
+  trace.at = label;                       // survives a freeze: last value = where we died
+  const startedAt = Date.now();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const result = await Promise.race([
+      Promise.resolve()
+        .then(work)
+        .catch((err) => { trace[`${label}_err`] = String(err).slice(0, 120); return null; }),
+      new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), timeoutMs); }),
+    ]);
+    const ms = Date.now() - startedAt;
+    trace[label] = ms;
+    if (result === null && ms >= timeoutMs) trace[`${label}_timeout`] = 1;
+    console.log(`[Geofence] wake-step ← ${label} (${ms}ms)`);
+    return result;
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
 /** Actively finds the 25 m crossing after a region ENTER, instead of waiting for
  *  the approach stream to deliver it.
  *
@@ -764,6 +806,9 @@ const STREAM_FIX_MAX_AGE_MS = 5 * 60 * 1000;
 // Hard bound on a from-scratch GPS acquisition inside a wake window. The FCM
 // window is ~10 s; anything slower than this has already lost the round-trip.
 const FIX_ACQUIRE_TIMEOUT_MS = 8 * 1000;
+// Bound for the cheap steps (a storage read, a cached-location read). Any of these
+// taking longer than this is not slow, it is hung — and the wake has to move on.
+const STEP_TIMEOUT_MS = 3 * 1000;
 
 // Minimum spacing between foreground tier-upgrade attempts. The upgrade branch
 // re-runs on the 10 s scheduleDwellTimer poll, and a server-side rejection
@@ -1599,9 +1644,10 @@ export async function runVisitCheck(
   stage: 'dwell' | 'upgrade',
   serverVisitId?: string,
 ): Promise<void> {
-  await primeGymDwellMinutes();
+  const trace: WakeTrace = { stage };
+  await tracedStep('prime_config', trace, () => primeGymDwellMinutes(), STEP_TIMEOUT_MS);
 
-  const raw = await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY);
+  const raw = await tracedStep('read_active', trace, () => AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY), STEP_TIMEOUT_MS);
   const active: StoredGeofence | null = raw ? JSON.parse(raw) : null;
   if (!active) {
     console.log('[Geofence] Visit check: no active session — ignoring.');
@@ -1637,51 +1683,45 @@ export async function runVisitCheck(
 
   let coords: Location.LocationObjectCoords | null = null;
   let fixSource = 'none';
-  try {
-    // Cached-first: the dwell stream delivers a fix roughly every 60 s while
-    // checked in, so a ≤60 s-old fix is normally available and is as real a
-    // presence proof as a fresh acquisition. Acquiring GPS from scratch takes
-    // ~20 s indoors — longer than the ~10 s execution window a high-priority FCM
-    // wake grants mid-Doze, which starved the claim chain that follows (field
-    // 2026-07-14: the one wake whose confirm reused a fresh stream fix answered
-    // in <1 s; the fresh-GPS ones took 20 s+). "No fix, no credit" is unchanged.
-    //
-    // ⚠ NOTHING HERE MAY BLOCK INDEFINITELY. getCurrentPositionAsync takes no
-    // timeout and simply never settles on a dozing device: on 2026-08-03 all
-    // FOUR wakes of a locked-phone session reached JS, logged "verifying
-    // presence", and then died right here — no verdict, no error, for 20
-    // minutes — while the rest of the JS context kept running. The four confirms
-    // all landed in the same second the app was foregrounded, proving the calls
-    // were frozen rather than failed. A wake gets ONE round-trip; spending it on
-    // an unbounded GPS acquisition forfeits it.
-    const cached = await Location.getLastKnownPositionAsync({ maxAge: 60_000 }).catch(() => null);
+
+  // ORDER MATTERS, and it is the opposite of what it was.
+  //
+  // The stream's persisted fix comes FIRST because it needs nothing from the
+  // location subsystem — just a storage read. Everything else here calls into
+  // expo-location, and on 2026-08-03 that subsystem demonstrably refused to serve
+  // this app from a background context: startLocationUpdatesAsync came back
+  // "Foreground service cannot be started when the application is in the
+  // background", and every one of the four wakes that evening froze in this block
+  // before reaching the log below. AsyncStorage was NOT the problem — the location
+  // task used it 58 times in the same window — and neither was the network, since
+  // log_gym_wake_received landed in about a second on all four wakes. That leaves
+  // the location calls, so they are now the fallback rather than the first choice.
+  //
+  // This costs nothing in accuracy: while checked in, the stream delivers a fix
+  // every ~60 s, so its cached fix is typically fresher than the ~10 s wake window
+  // could acquire anyway. "No fix, no credit" is unchanged — a stale or missing
+  // cache still falls through to a real acquisition, and failing that reports no_fix.
+  const stored = await tracedStep('read_stream_fix', trace, () => AsyncStorage.getItem(LAST_STREAM_FIX_KEY), STEP_TIMEOUT_MS);
+  let streamFix: { latitude: number; longitude: number; accuracy: number | null; at: number } | null = null;
+  try { streamFix = stored ? JSON.parse(stored) : null; } catch { /* corrupted value — fall through */ }
+
+  if (streamFix && Date.now() - streamFix.at <= STREAM_FIX_MAX_AGE_MS) {
+    coords = { latitude: streamFix.latitude, longitude: streamFix.longitude, accuracy: streamFix.accuracy } as Location.LocationObjectCoords;
+    fixSource = 'stream_cache';
+    trace.stream_fix_age_s = Math.round((Date.now() - streamFix.at) / 1000);
+  } else {
+    trace.stream_fix_age_s = streamFix ? Math.round((Date.now() - streamFix.at) / 1000) : 'absent';
+    const cached = await tracedStep('last_known', trace, () => Location.getLastKnownPositionAsync({ maxAge: 60_000 }), STEP_TIMEOUT_MS);
     if (cached) {
       coords = cached.coords;
       fixSource = 'last_known';
     } else {
-      // The stream's own newest fix, persisted by LOCATION_TRACKING_TASK. No
-      // acquisition, no waiting — and during a checked-in session it is usually
-      // seconds old, because that same stream is what keeps the dwell machine alive.
-      const stored = await AsyncStorage.getItem(LAST_STREAM_FIX_KEY).catch(() => null);
-      let streamFix: { latitude: number; longitude: number; accuracy: number | null; at: number } | null = null;
-      try { streamFix = stored ? JSON.parse(stored) : null; } catch { /* corrupted value — fall through to fresh acquisition */ }
-      if (streamFix && Date.now() - streamFix.at <= STREAM_FIX_MAX_AGE_MS) {
-        coords = { latitude: streamFix.latitude, longitude: streamFix.longitude, accuracy: streamFix.accuracy } as Location.LocationObjectCoords;
-        fixSource = 'stream_cache';
-      } else {
-        // Last resort only. Bounded so a hang costs us this wake, not the
-        // round-trip: losing the race reports no_fix and the server re-nudges.
-        const fresh = await Promise.race([
-          Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }).catch(() => null),
-          new Promise<null>(resolve => setTimeout(() => resolve(null), FIX_ACQUIRE_TIMEOUT_MS)),
-        ]);
-        coords = fresh?.coords ?? null;
-        fixSource = fresh ? 'acquired' : 'timeout';
-      }
+      const fresh = await tracedStep('acquire', trace, () => Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }), FIX_ACQUIRE_TIMEOUT_MS);
+      coords = fresh?.coords ?? null;
+      fixSource = fresh ? 'acquired' : 'timeout';
     }
-  } catch (err) {
-    console.warn('[Geofence] Visit check: could not get a fix:', err);
   }
+  trace.fix_source = fixSource;
   console.log(`[Geofence] Visit check (${stage}): fix source = ${fixSource}.`);
 
   // No fix = no proof = no credit. Leave the visit open; the server will nudge
@@ -1689,7 +1729,7 @@ export async function runVisitCheck(
   if (!coords) {
     if (visitId) {
       const { confirmGymVisit } = await import('@/lib/gymVisits');
-      await confirmGymVisit(visitId, false, { stage, reason: 'no_fix', visit_mismatch: visitMismatch });
+      await confirmGymVisit(visitId, false, { stage, reason: 'no_fix', visit_mismatch: visitMismatch, trace });
     }
     return;
   }
@@ -1708,11 +1748,15 @@ export async function runVisitCheck(
     // requestCredit on an inside confirm: this one round-trip both proves
     // presence AND has the server relay the claim/upgrade (confirm_gym_visit_v2)
     // — the wake window fits ~one round-trip and the local chain below starves.
+    // The trace rides along on the round-trip we are already making, so the
+    // per-step timings land in gym_visit_events.detail with zero extra network
+    // cost — and, crucially, they arrive for iOS too, where there is no logcat.
     await confirmGymVisit(visitId, inside, {
       stage,
       distance_m: distance != null ? Math.round(distance) : null,
       accuracy_m: coords.accuracy != null ? Math.round(coords.accuracy) : null,
       visit_mismatch: visitMismatch,
+      trace,
     }, inside, active.entryTimestamp);
   }
 
