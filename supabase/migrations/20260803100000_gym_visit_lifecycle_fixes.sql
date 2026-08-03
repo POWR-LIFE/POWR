@@ -25,18 +25,31 @@
 -- Still deliberately NOT adding `and status = 'open'` (see 20260801100000 §5):
 -- credited rows would then keep ended_at null forever and permanently occupy the
 -- live slot, which is worse than a mislabelled status.
-select cron.alter_job(
-  8,
-  command := $cron$
-  update public.gym_visits
-     set status = 'abandoned',
-         close_reason = coalesce(close_reason, 'abandoned_12h'),
-         ended_at = coalesce(ended_at, last_confirmed_at, started_at + interval '12 hours')
-   where ended_at is null
-     and started_at < now() - interval '12 hours'
-     and coalesce(last_confirmed_at, started_at) < now() - interval '30 minutes'
-  $cron$
-);
+do $job$
+declare v_jobid int;
+begin
+  select jobid into v_jobid
+    from cron.job
+   where jobname = 'abandon-stale-gym-visits';
+
+  if v_jobid is null then
+    raise exception 'cron job abandon-stale-gym-visits not found';
+  end if;
+
+  perform cron.alter_job(
+    v_jobid,
+    command := $cron$
+    update public.gym_visits
+       set status = 'abandoned',
+           close_reason = coalesce(close_reason, 'abandoned_12h'),
+           ended_at = coalesce(last_confirmed_at, started_at + interval '12 hours')
+     where ended_at is null
+       and started_at < now() - interval '12 hours'
+       and coalesce(last_confirmed_at, started_at) < now() - interval '30 minutes'
+    $cron$
+  );
+end
+$job$;
 
 -- ---------------------------------------------------------------------------
 -- 2. open_gym_visit — the 4h ceiling was meant as a backstop, not a rule
