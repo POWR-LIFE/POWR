@@ -79,7 +79,8 @@ export async function logGymWakeReceived(
  *  telemetry must never spend the budget the check-in needs. */
 export async function logGeofenceRegionEvent(
   regionId: string,
-  event: 'enter' | 'exit' | 'approach_stream_on' | 'checked_in' | 'stream_start_failed',
+  event: 'enter' | 'exit' | 'approach_stream_on' | 'checked_in' | 'stream_start_failed'
+    | 'armed' | 'sentinel_exit' | 'rearm_skipped',
   detail: Record<string, unknown> = {},
 ): Promise<void> {
   try {

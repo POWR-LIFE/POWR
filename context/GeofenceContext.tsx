@@ -440,6 +440,68 @@ async function fetchAndCacheAllPartnerGeometry(): Promise<boolean> {
   }
 }
 
+// ─── Arm-fix acquisition ──────────────────────────────────────────────────────
+// The armed set is only as good as the fix it is centred on, and arming tolerates
+// staleness far better than inaccuracy: nearest-N membership shifts over km, so a
+// ten-minute-old fix from the right place beats a fresh one from the wrong town.
+// 2026-08-04 field failure: the startup arm read Accuracy.Low — "city level",
+// served from cell/IP positioning — which placed a stationary user 13 km away.
+// Their own gym ranked #65 in a nearest-49 cut, the whole day's watch list
+// covered the wrong town, and no later fix could correct it. Every source here is
+// therefore screened to ≤ ARM_FIX_MAX_ACCURACY_M, and the one live read is
+// bounded so a background caller can never hang on GPS acquisition (the wake-path
+// lesson — see runVisitCheck).
+const ARM_FIX_MAX_ACCURACY_M = 1_000;
+const ARM_FIX_MAX_AGE_MS     = 10 * 60_000;
+const ARM_FIX_TIMEOUT_MS     = 8_000;
+
+export interface ArmFix { latitude: number; longitude: number; src: 'stream_cache' | 'last_known' | 'live' }
+
+export async function getArmFix(): Promise<ArmFix | null> {
+  // 1. The stream's own persisted fix — free, and fresh whenever the stream lives.
+  try {
+    const raw = await AsyncStorage.getItem(LAST_STREAM_FIX_KEY);
+    if (raw) {
+      const f = JSON.parse(raw) as { latitude?: number; longitude?: number; accuracy?: number | null; at?: number };
+      if (
+        typeof f?.latitude === 'number' && typeof f?.longitude === 'number' &&
+        Date.now() - (f.at ?? 0) <= ARM_FIX_MAX_AGE_MS &&
+        (f.accuracy == null || f.accuracy <= ARM_FIX_MAX_ACCURACY_M)
+      ) {
+        return { latitude: f.latitude, longitude: f.longitude, src: 'stream_cache' };
+      }
+    }
+  } catch { /* fall through to the OS sources */ }
+
+  // 2. The OS cache — no acquisition, so it cannot hang. requiredAccuracy screens
+  // out exactly the city-level answers that caused the 2026-08-04 phantom arm.
+  const lastKnown = await Location.getLastKnownPositionAsync({
+    maxAge:           ARM_FIX_MAX_AGE_MS,
+    requiredAccuracy: ARM_FIX_MAX_ACCURACY_M,
+  }).catch(() => null);
+  if (lastKnown) {
+    return { latitude: lastKnown.coords.latitude, longitude: lastKnown.coords.longitude, src: 'last_known' };
+  }
+
+  // 3. A live Balanced read, raced against a bound. The bound is best-effort (RN
+  // timers can freeze under Doze), but background callers only reach this branch
+  // right after the OS computed a fix to fire a region crossing — so source 2
+  // all but always answers first.
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const fresh = await Promise.race([
+      Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }).catch(() => null),
+      new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), ARM_FIX_TIMEOUT_MS); }),
+    ]);
+    if (fresh && (fresh.coords.accuracy == null || fresh.coords.accuracy <= ARM_FIX_MAX_ACCURACY_M)) {
+      return { latitude: fresh.coords.latitude, longitude: fresh.coords.longitude, src: 'live' };
+    }
+    return null;
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
 // ─── Native region arming ─────────────────────────────────────────────────────
 // Arms the nearest (MAX_REGIONS - 1) partner circles plus one large "sentinel"
 // region centred on the user. The sentinel is the travel fix: leaving it means
@@ -545,6 +607,15 @@ async function armNativeRegions(
       await AsyncStorage.removeItem(ARM_META_KEY).catch(() => {});
     }
     console.log(`[Geofence] Armed ${regions.length} region(s)${fix ? ' around current fix' : ' (no fix — unsorted)'}.`);
+    // Server-visible arm fingerprint. 2026-08-04: a phantom-centred arm was only
+    // reconstructable from the initial-trigger EXIT burst — this row states the
+    // centre outright, so "armed around the wrong place" is one query away.
+    logRegionEvent('arm', 'armed', {
+      n:          regions.length,
+      lat:        fix ? Number(fix.latitude.toFixed(4)) : null,
+      lng:        fix ? Number(fix.longitude.toFixed(4)) : null,
+      sentinel_m: meta ? Math.round(meta.sentinelRadius) : null,
+    });
   } catch (err) {
     console.warn('[Geofence] Failed to arm native regions:', err);
   }
@@ -557,27 +628,76 @@ async function armNativeRegions(
  *  always-on Android baseline; 'off' = fully stopped (iOS baseline). Restart is
  *  how expo-location changes accuracy on a running task. Best-effort — a failure
  *  leaves detection working (worst case: the stream stays at its prior mode). */
-async function setLocationStreamMode(mode: StreamMode): Promise<void> {
+// Last mode the stream was successfully started in. Module state answers within
+// this JS context; the persisted key answers for a context that just booted
+// (headless task, cold start) so IT doesn't restart a stream that is already
+// running in the mode it wants.
+const STREAM_MODE_KEY = '@powr/stream_mode';
+let _streamModeInProcess: StreamMode | null = null;
+
+function streamOptsFor(mode: StreamMode | null): Location.LocationTaskOptions {
+  return mode === 'approach' ? APPROACH_LOCATION_OPTIONS
+    :    mode === 'dwell'    ? DWELL_LOCATION_OPTIONS
+    :                          LOCATION_UPDATE_OPTIONS;
+}
+
+async function recordStreamMode(mode: StreamMode): Promise<void> {
+  _streamModeInProcess = mode;
+  await AsyncStorage.setItem(STREAM_MODE_KEY, mode).catch(() => {});
+}
+
+// Exported for tests: the same-mode no-op and the restore-on-refused-start are
+// regression-pinned directly (__tests__/geofence-arm-fix.test.ts).
+export async function setLocationStreamMode(mode: StreamMode): Promise<void> {
   if (Platform.OS === 'web') return;
   try {
     const started = await Location.hasStartedLocationUpdatesAsync(LOCATION_TRACKING_TASK).catch(() => false);
     if (mode === 'off') {
       if (started) await Location.stopLocationUpdatesAsync(LOCATION_TRACKING_TASK).catch(() => {});
+      await recordStreamMode('off');
       return;
     }
-    const opts = mode === 'approach' ? APPROACH_LOCATION_OPTIONS
-      : mode === 'dwell'             ? DWELL_LOCATION_OPTIONS
-      :                                LOCATION_UPDATE_OPTIONS;
+
+    // Already running in the requested mode → leave it alone. The switch below
+    // is a stop→start, and on Android 12+ the start can be REFUSED from a
+    // background context — so a redundant "switch" turns a live stream into no
+    // stream. 2026-08-04: the baseline stream died mid-morning on exactly this
+    // and stayed dead until app-open, taking drift re-arm and stream check-in
+    // with it.
+    let current: StreamMode | null = _streamModeInProcess
+      ?? ((await AsyncStorage.getItem(STREAM_MODE_KEY).catch(() => null)) as StreamMode | null);
+    // On first run after an upgrade STREAM_MODE_KEY may not yet exist while the
+    // native stream is already running.  Infer the mode from persisted session /
+    // approach state so we avoid an unnecessary stop→start that can trigger the
+    // Android 12+ background-start refusal.
+    if (current === null && started) {
+      const sessionActive = (await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY).catch(() => null)) != null;
+      const approaching   = (await AsyncStorage.getItem(APPROACH_STATE_KEY).catch(() => null)) != null;
+      current = visitStreamMode(Platform.OS, { sessionActive, approaching });
+    }
+    if (started && current === mode) return;
+
     if (started) await Location.stopLocationUpdatesAsync(LOCATION_TRACKING_TASK).catch(() => {});
-    await Location.startLocationUpdatesAsync(LOCATION_TRACKING_TASK, opts);
+    try {
+      await Location.startLocationUpdatesAsync(LOCATION_TRACKING_TASK, streamOptsFor(mode));
+      await recordStreamMode(mode);
+    } catch (err) {
+      // The start was refused and the old stream is already stopped — restore it,
+      // so "couldn't switch modes" never degrades into "no stream at all".
+      let restored = false;
+      if (started) {
+        restored = await Location.startLocationUpdatesAsync(LOCATION_TRACKING_TASK, streamOptsFor(current))
+          .then(() => true)
+          .catch(() => false);
+      }
+      if (!restored) _streamModeInProcess = null;
+      // Report it; pollForCheckIn is what actually keeps the check-in working
+      // when this fires.
+      logRegionEvent('stream', 'stream_start_failed', { mode, restored, error: String(err).slice(0, 120) });
+      console.warn('[Geofence] setLocationStreamMode failed:', mode, err);
+    }
   } catch (err) {
-    // Swallowed by design — a stream that won't start must not break detection.
-    // But it was swallowed SILENTLY, and on Android 12+ this is the expected
-    // outcome of trying to start a foreground-service-backed stream from a
-    // background context: the stream then never runs and the check-in never
-    // happens, with nothing anywhere saying so. Report it; pollForCheckIn is
-    // what actually keeps the check-in working when this fires.
-    logRegionEvent('stream', 'stream_start_failed', { mode, error: String(err) });
+    logRegionEvent('stream', 'stream_start_failed', { mode, error: String(err).slice(0, 120) });
     console.warn('[Geofence] setLocationStreamMode failed:', mode, err);
   }
 }
@@ -586,7 +706,8 @@ async function setLocationStreamMode(mode: StreamMode): Promise<void> {
  *  gymVisits surface so a headless context only pulls it in when it fires. */
 function logRegionEvent(
   regionId: string,
-  event: 'enter' | 'exit' | 'approach_stream_on' | 'checked_in' | 'stream_start_failed',
+  event: 'enter' | 'exit' | 'approach_stream_on' | 'checked_in' | 'stream_start_failed'
+    | 'armed' | 'sentinel_exit' | 'rearm_skipped',
   detail: Record<string, unknown> = {},
 ): void {
   void import('@/lib/gymVisits')
@@ -1941,7 +2062,17 @@ async function evaluateLocationFix(coords: Location.LocationObjectCoords): Promi
     return;
   }
 
-  if (isCoarse) return; // ENTER detection needs a trusted position.
+  if (isCoarse) {
+    // ENTER detection needs a trusted position — but ARM drift is km-scale, so a
+    // fix good to ≤1 km can still prove the armed set is centred on the wrong
+    // town. 2026-08-04: after a city-level fix mis-centred the arm by 13 km,
+    // every indoor fix was >100 m and returned HERE, so nothing could ever
+    // correct it. armNativeRegions itself no-ops inside the sentinel envelope.
+    if (coords.accuracy != null && coords.accuracy <= ARM_FIX_MAX_ACCURACY_M) {
+      await armNativeRegions({ latitude: coords.latitude, longitude: coords.longitude });
+    }
+    return;
+  }
 
   if (active) {
     // Still inside the active circle? If geometry is missing (older active state),
@@ -2001,9 +2132,11 @@ async function rearmGeofencingFromCache(): Promise<void> {
   // Only (re)arm when monitoring is actually down (fresh boot). While alive,
   // the sentinel/drift logic owns re-targeting.
   if (!(await Location.hasStartedGeofencingAsync(GEOFENCE_TASK_NAME).catch(() => false))) {
-    const lastKnown = await Location.getLastKnownPositionAsync().catch(() => null);
+    // Accuracy-screened: an unqualified last-known here can be any age and any
+    // accuracy — the same class of wrong-town centre as the 2026-08-04 arm.
+    const fix = await getArmFix();
     await armNativeRegions(
-      lastKnown ? { latitude: lastKnown.coords.latitude, longitude: lastKnown.coords.longitude } : null,
+      fix ? { latitude: fix.latitude, longitude: fix.longitude } : null,
       { force: true },
     );
   }
@@ -2012,6 +2145,7 @@ async function rearmGeofencingFromCache(): Promise<void> {
     try {
       if (!(await Location.hasStartedLocationUpdatesAsync(LOCATION_TRACKING_TASK).catch(() => false))) {
         await Location.startLocationUpdatesAsync(LOCATION_TRACKING_TASK, LOCATION_UPDATE_OPTIONS);
+        await recordStreamMode('passive');
       }
     } catch (err) {
       console.warn('[Geofence] Boot re-arm location stream failed:', err);
@@ -2108,12 +2242,20 @@ TaskManager.defineTask(GEOFENCE_TASK_NAME, async ({ data, error }) => {
   if (regionId === SENTINEL_REGION_ID) {
     if (eventType === Location.GeofencingEventType.Exit) {
       // The user left the armed envelope (iOS relaunches a terminated app for
-      // exactly this). Re-arm around wherever they are now. The OS just
-      // computed a fix to detect the crossing, so last-known is fresh.
-      const lastKnown = await Location.getLastKnownPositionAsync({ maxAge: 10 * 60_000 }).catch(() => null);
-      const fix = lastKnown ?? await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Low }).catch(() => null);
+      // exactly this). Re-arm around wherever they are now. Log FIRST: this
+      // branch failing silently is how the 2026-08-04 phantom-centred arm
+      // survived a 13 km drive — "the OS never fired the exit" and "the exit
+      // fired and re-arming died" were the same silence. The fix acquisition is
+      // accuracy-screened and bounded (getArmFix): the old path here fell back
+      // to an UNBOUNDED city-level read — both halves of that killed us.
+      logRegionEvent(SENTINEL_REGION_ID, 'sentinel_exit');
+      const fix = await getArmFix();
       if (fix) {
-        await armNativeRegions({ latitude: fix.coords.latitude, longitude: fix.coords.longitude });
+        await armNativeRegions({ latitude: fix.latitude, longitude: fix.longitude });
+      } else {
+        // No trusted position → DON'T re-arm around a guess. The current set
+        // stays live and the next qualifying fix re-arms via the drift path.
+        logRegionEvent(SENTINEL_REGION_ID, 'rearm_skipped', { reason: 'no_trusted_fix' });
       }
     }
     return;
@@ -2613,10 +2755,15 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
         if (Object.keys(fallbackMap).length) await writePartnerMap(fallbackMap, { partial: true });
       }
 
-      // Arm the nearest partner circles + travel sentinel around a fresh fix.
-      const userPos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Low }).catch(() => null);
+      // Arm the nearest partner circles + travel sentinel around a TRUSTWORTHY
+      // fix. This used to be a single Accuracy.Low read — city-level, served
+      // from cell/IP positioning — which on 2026-08-04 placed a stationary user
+      // 13 km away and built the whole watch list around the wrong town (their
+      // own gym missed the nearest-49 cut at rank 65). getArmFix screens every
+      // source to ≤1 km and never hangs.
+      const userPos = await getArmFix();
       await armNativeRegions(
-        userPos ? { latitude: userPos.coords.latitude, longitude: userPos.coords.longitude } : null,
+        userPos ? { latitude: userPos.latitude, longitude: userPos.longitude } : null,
         { force: true },
       );
       setIsMonitoring(true);
@@ -2655,6 +2802,7 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
               :                resumeMode === 'approach' ? APPROACH_LOCATION_OPTIONS
               :                                            LOCATION_UPDATE_OPTIONS;
             await Location.startLocationUpdatesAsync(LOCATION_TRACKING_TASK, resumeOpts);
+            await recordStreamMode(resumeMode);
             console.log(`[Geofence] Foreground-service location stream started (${resumeMode}).`);
           }
           _locationStreamEnsuredThisProcess = true;
