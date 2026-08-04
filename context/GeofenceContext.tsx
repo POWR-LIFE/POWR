@@ -621,7 +621,10 @@ async function armNativeRegions(
     // move (new sentinel centre) always re-arms even if the venue set repeats.
     const signature =
       `${fix ? `${fix.latitude.toFixed(3)},${fix.longitude.toFixed(3)}` : 'nofix'}|` +
-      regions.map(r => `${r.identifier}:${Math.round(r.radius ?? 0)}`).join('|');
+      [...regions]
+        .sort((a, b) => a.identifier.localeCompare(b.identifier))
+        .map(r => `${r.identifier}:${r.latitude.toFixed(4)},${r.longitude.toFixed(4)}:${Math.round(r.radius ?? 0)}:${r.notifyOnEnter ? 1 : 0}${r.notifyOnExit ? 1 : 0}`)
+        .join('|');
     if (running && signature === _lastArmSignature) {
       console.log('[Geofence] Arm skipped — region set unchanged.');
       return;
