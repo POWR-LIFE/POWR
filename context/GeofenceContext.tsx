@@ -132,6 +132,15 @@ const PARTNER_CACHE_TTL_MS  = 24 * 60 * 60 * 1000;
 // service so arrival/dwell/exit detection survives the app being swiped away or
 // fully closed; on iOS it backs up native region monitoring. Balanced accuracy +
 // 60 s / 50 m throttling keeps battery reasonable for a passive always-on stream.
+// killServiceOnDestroy on every foreground-service config: when the user swipes
+// the app away, Android destroys the React runtime but the foreground service
+// kept the PROCESS alive — leaving a zombie that natively "handles" every
+// location/geofence delivery while the dead JS side executes nothing
+// (2026-08-04 field: 8 stream fixes reached TaskService during a walk, zero
+// reached JS, no check-in; only a cold start heals). With the service dying on
+// swipe, the process dies too, and the next geofence event / FCM wake / job
+// relaunches a FRESH headless JS context — the resurrection path that actually
+// works. Normal backgrounding (no swipe) keeps the service and stream running.
 const LOCATION_UPDATE_OPTIONS: Location.LocationTaskOptions = {
   accuracy:                         Location.Accuracy.Balanced,
   timeInterval:                     60_000,
@@ -143,6 +152,7 @@ const LOCATION_UPDATE_OPTIONS: Location.LocationTaskOptions = {
     notificationTitle: 'POWR is tracking your workouts',
     notificationBody:  'Detecting when you arrive at partner gyms.',
     notificationColor: '#facc15',
+    killServiceOnDestroy: true,
   },
 };
 
@@ -173,6 +183,7 @@ export const DWELL_LOCATION_OPTIONS: Location.LocationTaskOptions = {
     notificationTitle: 'POWR is tracking your workouts',
     notificationBody:  "You're checked in — your session is being timed.",
     notificationColor: '#facc15',
+    killServiceOnDestroy: true,   // see LOCATION_UPDATE_OPTIONS — zombie prevention
   },
 };
 
@@ -203,6 +214,7 @@ const APPROACH_LOCATION_OPTIONS: Location.LocationTaskOptions = {
     notificationTitle: 'POWR is checking you in',
     notificationBody:  "You're near a partner gym — confirming your arrival.",
     notificationColor: '#facc15',
+    killServiceOnDestroy: true,   // see LOCATION_UPDATE_OPTIONS — zombie prevention
   },
 };
 
@@ -518,6 +530,10 @@ interface ArmMeta {
   armedAt:        number;
 }
 
+// Signature of the last region set actually handed to the OS (this JS context).
+// Guards against back-to-back duplicate arms — see armNativeRegions.
+let _lastArmSignature: string | null = null;
+
 async function armNativeRegions(
   fix: { latitude: number; longitude: number } | null,
   opts: { force?: boolean } = {},
@@ -595,12 +611,36 @@ async function armNativeRegions(
   }
 
   try {
-    // Stop first so we always start with a fresh region set (also avoids
-    // internal sync issues in Expo Go).
-    if (await Location.hasStartedGeofencingAsync(GEOFENCE_TASK_NAME).catch(() => false)) {
+    const running = await Location.hasStartedGeofencingAsync(GEOFENCE_TASK_NAME).catch(() => false);
+
+    // Same-set dedupe: two arms for an identical set buy nothing and cost a full
+    // native re-registration. 2026-08-04: the startup flow armed twice 91 s
+    // apart; the second registration CANCELLED the first's delivery
+    // PendingIntent, dropping its queued initial-trigger events — including the
+    // ENTER for the user's own gym. Centre is part of the signature so a real
+    // move (new sentinel centre) always re-arms even if the venue set repeats.
+    const signature =
+      `${fix ? `${fix.latitude.toFixed(3)},${fix.longitude.toFixed(3)}` : 'nofix'}|` +
+      [...regions]
+        .sort((a, b) => a.identifier.localeCompare(b.identifier))
+        .map(r => `${r.identifier}:${r.latitude.toFixed(4)},${r.longitude.toFixed(4)}:${Math.round(r.radius ?? 0)}:${r.notifyOnEnter ? 1 : 0}${r.notifyOnExit ? 1 : 0}`)
+        .join('|');
+    if (running && signature === _lastArmSignature) {
+      console.log('[Geofence] Arm skipped — region set unchanged.');
+      return;
+    }
+
+    // NO stop-first in production. stopGeofencingAsync unregisters the task,
+    // which tears down the native consumer and cancels its PendingIntent —
+    // in-flight events die with it. startGeofencingAsync on a live task swaps
+    // the options on the SAME consumer (remove-then-add, one fence generation),
+    // which is all a re-arm needs. Expo Go keeps the historical stop-first
+    // (internal sync quirk in the dev client).
+    if (__DEV__ && running) {
       await Location.stopGeofencingAsync(GEOFENCE_TASK_NAME).catch(() => {});
     }
     await Location.startGeofencingAsync(GEOFENCE_TASK_NAME, regions);
+    _lastArmSignature = signature;
     if (meta) {
       await AsyncStorage.setItem(ARM_META_KEY, JSON.stringify(meta));
     } else {
