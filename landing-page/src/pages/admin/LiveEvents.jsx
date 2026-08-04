@@ -84,6 +84,9 @@ const editableFields = (ev) => ({
     conversion_deadline_at: ev.conversion_deadline_at,
     conversion_verifications: ev.conversion_verifications,
     conversion_activities: ev.conversion_activities,
+    entry_gate_n: ev.entry_gate_n,
+    entry_gate_counting: ev.entry_gate_counting,
+    entry_gate_since: ev.entry_gate_since,
     prizes: ev.prizes ?? [],
     promo_media_url: ev.promo_media_url,
     promo_headline: ev.promo_headline,
@@ -1375,6 +1378,26 @@ function EditorPanel({ form, setForm, dirty, saving, onSave, onDiscard, venueNam
                         </Field>
                         <Field label="Conversion deadline" hint="Blank = window end.">
                             <DateTimeInput value={form.conversion_deadline_at} onChange={v => set({ conversion_deadline_at: v })} clearable />
+                        </Field>
+                    </Group>
+
+                    {/* Entry gate */}
+                    <Group title="Entry gate" blurb="Refer-to-compete: users need this many referrals to appear on the leaderboard or see live standings. Joining stays open and revealed results stay public — the gate is the board, not the guest list.">
+                        <Field label="Referrals required" hint="0 = no gate.">
+                            <NumberInput value={form.entry_gate_n} onChange={v => set({ entry_gate_n: v })} min={0} max={50} unit="friends" />
+                        </Field>
+                        <Field label="What counts" hint="Signups can be met before the window opens; conversions need each friend's first verified workout.">
+                            <div className="flex gap-2">
+                                <Chip active={form.entry_gate_counting === 'signups'} onClick={() => set({ entry_gate_counting: 'signups' })}>
+                                    Signups (code entered)
+                                </Chip>
+                                <Chip active={form.entry_gate_counting === 'conversions'} onClick={() => set({ entry_gate_counting: 'conversions' })}>
+                                    Conversions (first verified workout)
+                                </Chip>
+                            </div>
+                        </Field>
+                        <Field label="Counting from" hint="Referrals before this moment don't count. Blank = every referral.">
+                            <DateTimeInput value={form.entry_gate_since} onChange={v => set({ entry_gate_since: v })} clearable />
                         </Field>
                     </Group>
 

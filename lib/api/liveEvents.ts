@@ -10,10 +10,22 @@ import { supabase } from '@/lib/supabase';
  * the payload, by design. Don't try to fill the gap client-side.
  */
 
+/** Referral entry-gate progress. 'signups' counts friends who entered the
+ *  viewer's code at onboarding; 'conversions' counts those whose first
+ *  verified workout has landed. */
+export type LiveEventGate = {
+    required: number;
+    counting: 'signups' | 'conversions';
+    count: number;
+    met: boolean;
+};
+
 export type LiveEventViewer = {
     eligible: boolean;
     joined: boolean;
     disqualified: boolean;
+    /** Null/absent when the event has no entry gate. */
+    gate?: LiveEventGate | null;
 };
 
 export type LiveEventPrize = { rank: number; label: string };
@@ -80,6 +92,11 @@ export type InviteProgress = {
         milestone_bonus: number;
         converted_for_event: number;
         milestone_paid: boolean;
+        entry_gate_n: number;
+        entry_gate_counting: 'signups' | 'conversions';
+        gate_count: number;
+        /** True when the event has no gate too — safe to key copy on directly. */
+        gate_met: boolean;
     } | null;
 };
 
@@ -98,6 +115,10 @@ export type EventLeaderboard = {
     event_id: string;
     status: LiveEvent['status'];
     is_locked: boolean;
+    /** True while the board is live but this viewer hasn't met the referral
+     *  entry gate — the payload carries nothing score-shaped, same discipline
+     *  as the locked blur. viewer.gate has their progress. */
+    is_gated?: boolean;
     /** Present only while the board is live and visible — absence IS the blur. */
     standings?: EventBoardEntry[];
     /** Present only after reveal: the frozen winners snapshot. */

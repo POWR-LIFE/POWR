@@ -94,7 +94,10 @@ export function EventRegisterSheet({ event, visible, onClose }: EventRegisterShe
                     <Text style={styles.note}>
                         {registered
                             ? 'You’re registered. This is a preview — reset to run the registration flow again.'
-                            : 'Everyone starts from zero — only points earned during the event window count.'}
+                            : 'Everyone starts from zero — only points earned during the event window count.' +
+                              (event.viewer.gate
+                                  ? ` To get on the leaderboard, ${event.viewer.gate.required} friends need to sign up with your code — the League tab has your share link.`
+                                  : '')}
                     </Text>
 
                     {registered ? (

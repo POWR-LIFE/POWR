@@ -320,6 +320,26 @@ function EventBoardSection({
 
   const viewer = board.viewer ?? { eligible: false, joined: false, disqualified: false };
 
+  // Live, but this viewer hasn't met the referral entry gate — the server sent
+  // nothing score-shaped (is_gated). The invite card above carries the share
+  // tools; this card says what the blur is and how far they've got.
+  const gate = viewer.gate;
+  if (board.is_gated && gate) {
+    return (
+      <View style={styles.eventLockedCard}>
+        <Text style={styles.eventLockedEmoji}>🔐</Text>
+        <Text style={styles.eventLockedTitle}>
+          {`${Math.min(gate.count, gate.required)} of ${gate.required} friends in`}
+        </Text>
+        <Text style={styles.eventLockedSub}>
+          {gate.counting === 'conversions'
+            ? `The leaderboard unlocks when ${gate.required} friends sign up with your code and log their first verified workout — share it above.`
+            : `The leaderboard unlocks when ${gate.required} friends sign up with your code — share it above.`}
+        </Text>
+      </View>
+    );
+  }
+
   // Locked and not yet revealed: suspense, no scores anywhere.
   if (!board.standings && !board.results) {
     return (
