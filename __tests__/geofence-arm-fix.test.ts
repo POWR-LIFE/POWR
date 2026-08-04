@@ -36,7 +36,6 @@ const PARTNER_MAP_KEY = '@powr/partner_map';
 const PARTNER_MAP_META_KEY = '@powr/partner_map_meta';
 const ARM_META_KEY = '@powr/geofence_arm_meta';
 const LAST_STREAM_FIX_KEY = '@powr/last_stream_fix';
-const STREAM_MODE_KEY = '@powr/stream_mode';
 
 // A small nationwide-ish map: one gym at the user's real location, a cluster in
 // a "town" ~13 km away (the phantom arm centred here on 2026-08-04).
@@ -98,7 +97,7 @@ jest.mock('@/lib/supabase', () => ({
   supabase: {
     auth: {
       getSession: jest.fn().mockResolvedValue({
-        data: { session: { user: { id: 'user-1', email: 'jamiemasonwright@gmail.com' } } },
+        data: { session: { user: { id: 'user-1', email: 'test@example.com' } } },
         error: null,
       }),
     },

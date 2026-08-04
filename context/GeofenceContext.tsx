@@ -664,8 +664,17 @@ export async function setLocationStreamMode(mode: StreamMode): Promise<void> {
     // stream. 2026-08-04: the baseline stream died mid-morning on exactly this
     // and stayed dead until app-open, taking drift re-arm and stream check-in
     // with it.
-    const current = _streamModeInProcess
+    let current: StreamMode | null = _streamModeInProcess
       ?? ((await AsyncStorage.getItem(STREAM_MODE_KEY).catch(() => null)) as StreamMode | null);
+    // On first run after an upgrade STREAM_MODE_KEY may not yet exist while the
+    // native stream is already running.  Infer the mode from persisted session /
+    // approach state so we avoid an unnecessary stop→start that can trigger the
+    // Android 12+ background-start refusal.
+    if (current === null && started) {
+      const sessionActive = (await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY).catch(() => null)) != null;
+      const approaching   = (await AsyncStorage.getItem(APPROACH_STATE_KEY).catch(() => null)) != null;
+      current = visitStreamMode(Platform.OS, { sessionActive, approaching });
+    }
     if (started && current === mode) return;
 
     if (started) await Location.stopLocationUpdatesAsync(LOCATION_TRACKING_TASK).catch(() => {});
