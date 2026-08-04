@@ -4,13 +4,25 @@ import { motion, useMotionValue, useMotionValueEvent, useScroll } from 'framer-m
 /**
  * Shared-element logo: one fixed <img> that sits over the hero's logo slot
  * at the top of the page, then travels and shrinks into the nav's brand
- * slot as the user scrolls, replacing the "POWR." wordmark there.
+ * slot as the user scrolls, replacing the wordmark there.
  *
  * Both slots are invisible placeholders measured from the DOM:
  *  - #powr-hero-logo-slot (Hero.jsx) — start rect, document coordinates
  *  - #powr-nav-logo-slot (NavBrand below) — end rect, viewport coordinates
  */
-export const LOGO_SRC = 'https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/landing-page-assets/powrlogotext.png?v=1.1';
+/**
+ * The mark, white on transparency. Every logo on the marketing site reads from
+ * here — hero, nav, both footers, the partners page.
+ *
+ * Swapped 2026-08-04 from `powrlogotext.png` (same mark with a small "OWR" set
+ * under the right stroke). It is a safe drop-in because the two share an ink
+ * aspect ratio (1.43 vs 1.42) and near-identical padding inside their square
+ * canvases, so nothing that sizes this by height needed touching. Any FUTURE
+ * replacement must be checked the same way — this is sized by height in a
+ * dozen places, and a different ink-to-canvas ratio silently shrinks or
+ * enlarges the logo everywhere at once.
+ */
+export const LOGO_SRC = 'https://auth.powr.life/storage/v1/object/public/landing-page-assets/powr_transparent.png';
 
 const EASE = [0.16, 1, 0.3, 1];
 

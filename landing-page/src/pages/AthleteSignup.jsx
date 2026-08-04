@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { LOGO_SRC } from '../landing/LogoMorph';
 import { supabase } from '../lib/supabase';
 
 const ACTIVITY_OPTIONS = [
@@ -46,7 +47,7 @@ function Shell({ children }) {
         <div className="max-w-7xl mx-auto px-8 h-16 flex items-center justify-between">
           <Link to="/">
             <img
-              src="https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/landing-page-assets/powrlogotext.png?v=1.1"
+              src={LOGO_SRC}
               alt="POWR"
               className="h-7"
             />
