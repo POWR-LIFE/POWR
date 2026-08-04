@@ -79,6 +79,78 @@ async function insertSession(supabase, row, points: number): Promise<string | nu
   return session.id as string;
 }
 
+/**
+ * Heal a partial-first truncation. A watch that syncs MID-workout delivers an
+ * in-progress fragment first; insertSession writes it, and when the finished
+ * workout arrives the per-type-per-day unique index rejects it — so the
+ * fragment stood forever (a 34-minute run stored as 2 minutes, 0 pts) and no
+ * re-delivery could ever fix it, because unlike handleDaily's steps merge the
+ * activity path had no update-on-conflict. On a 23505 the caller lands here:
+ * look up the day's row and, when the incoming delivery is LONGER, rewrite the
+ * row as the complete workout and pay the points difference at the new
+ * duration.
+ *
+ * A genuinely different second session of the same type that day also lands
+ * here and — when not longer than what we hold — stays dropped: one paid
+ * session per type per day is deliberate (points caps). Preferring the longest
+ * telling of the day keeps that rule while never letting a fragment win.
+ *
+ * Returns { deltaPoints } when the row was upgraded, else null.
+ */
+async function upgradeTruncatedSession(supabase, {
+  userId, type, start, endedAt, durSec, distanceM, hrAvg, hrMax, caloriesActive, extras, rawName,
+}): Promise<{ deltaPoints: number } | null> {
+  const bucketStart = dayStartUTC(start);
+  const bucketEnd = new Date(new Date(bucketStart).getTime() + 24 * 60 * 60 * 1000).toISOString();
+  // The unique index guarantees at most one row in this bucket, so the lookup
+  // mirrors the index exactly and insert-vs-lookup can never disagree.
+  const { data: existing } = await supabase
+    .from('activity_sessions')
+    .select('id, duration_sec')
+    .eq('user_id', userId)
+    .eq('type', type)
+    .eq('trust_score', 0.85)
+    .gte('started_at', bucketStart)
+    .lt('started_at', bucketEnd)
+    .maybeSingle();
+  if (!existing || durSec <= (existing.duration_sec ?? 0)) return null;
+
+  const oldPoints = calculateBasePoints(type, (existing.duration_sec ?? 0) / 60);
+  const newPoints = calculateBasePoints(type, durSec / 60);
+
+  // Missing metrics on the incoming delivery keep whatever the fragment had —
+  // never null out a reading we already learned.
+  const patch: Record<string, unknown> = { started_at: start, ended_at: endedAt, duration_sec: durSec };
+  if (distanceM != null) patch.distance_m = Math.round(distanceM);
+  if (hrAvg != null) patch.hr_avg = Math.round(hrAvg);
+  if (rawName) patch.raw_activity_name = rawName;
+  const { error } = await supabase.from('activity_sessions').update(patch).eq('id', existing.id);
+  if (error) {
+    console.error('[terra-webhook] session upgrade failed:', error.message);
+    return null;
+  }
+
+  const deltaPoints = Math.max(0, newPoints - oldPoints);
+  if (deltaPoints > 0) {
+    await supabase.from('point_transactions').insert({
+      user_id: userId, session_id: existing.id, amount: deltaPoints, type: 'earn', source: 'health_sync',
+    });
+  }
+
+  const snapPatch: Record<string, unknown> = { duration_sec: durSec };
+  if (distanceM != null) snapPatch.distance_m = Math.round(distanceM);
+  if (hrAvg != null) snapPatch.hr_avg = Math.round(hrAvg);
+  if (hrMax != null) snapPatch.hr_max = Math.round(hrMax);
+  if (caloriesActive != null) snapPatch.calories_active = caloriesActive;
+  if (extras != null) snapPatch.extras = extras;
+  await supabase.from('health_snapshots').update(snapPatch)
+    .eq('session_id', existing.id)
+    .eq('activity_type', type);
+
+  console.log(`[terra-webhook] upgraded truncated ${type}: ${existing.duration_sec}s → ${durSec}s (+${deltaPoints} pts)`);
+  return { deltaPoints };
+}
+
 /** Marks today as an active streak day for the user. Mirrors updateStreakForToday in lib/api/activity.ts. */
 async function bumpStreak(supabase, userId: string): Promise<void> {
   const { data: streak } = await supabase
@@ -314,6 +386,9 @@ async function handleActivity(supabase, payload): Promise<void> {
     const distanceM = a.distance_data?.summary?.distance_meters;
     const hrAvg = a.heart_rate_data?.summary?.avg_hr_bpm;
     const hrMax = a.heart_rate_data?.summary?.max_hr_bpm;
+    const caloriesActive = a.calories_data?.total_burned_calories != null
+      ? Math.round(a.calories_data.total_burned_calories) : null;
+    const rawName = (meta.name ?? '').trim().slice(0, 80) || null;
     const points = calculateBasePoints(type, durMin);
     const extras = activityExtras(a);
 
@@ -347,10 +422,9 @@ async function handleActivity(supabase, payload): Promise<void> {
           distance_m: distanceM != null ? Math.round(distanceM) : null,
           hr_avg: hrAvg != null ? Math.round(hrAvg) : null,
           hr_max: hrMax != null ? Math.round(hrMax) : null,
-          calories_active: a.calories_data?.total_burned_calories != null
-            ? Math.round(a.calories_data.total_burned_calories) : null,
+          calories_active: caloriesActive,
           source,
-          raw_activity_name: (meta.name ?? '').trim().slice(0, 80) || null,
+          raw_activity_name: rawName,
           reason: 'overlaps_geofence_gym',
           would_have_earned: points,
         }, { onConflict: 'user_id,type,started_at' });
@@ -360,18 +434,19 @@ async function handleActivity(supabase, payload): Promise<void> {
       continue;
     }
 
+    const endedAt = end ? end : new Date(new Date(start).getTime() + durSec * 1000).toISOString();
     const inserted = await insertSession(supabase, {
       user_id: userId,
       type,
       started_at: start,
-      ended_at: end ? end : new Date(new Date(start).getTime() + durSec * 1000).toISOString(),
+      ended_at: endedAt,
       duration_sec: durSec,
       distance_m: distanceM != null ? Math.round(distanceM) : null,
       hr_avg: hrAvg != null ? Math.round(hrAvg) : null,
       verification: 'wearable',
       trust_score: 0.85,
       device_id: null,
-      raw_activity_name: (meta.name ?? '').trim().slice(0, 80) || null,
+      raw_activity_name: rawName,
     }, points);
 
     if (inserted) {
@@ -384,8 +459,7 @@ async function handleActivity(supabase, payload): Promise<void> {
         distance_m: distanceM != null ? Math.round(distanceM) : null,
         hr_avg: hrAvg != null ? Math.round(hrAvg) : null,
         hr_max: hrMax != null ? Math.round(hrMax) : null,
-        calories_active: a.calories_data?.total_burned_calories != null
-          ? Math.round(a.calories_data.total_burned_calories) : null,
+        calories_active: caloriesActive,
         activity_type: type,
         duration_sec: durSec,
         source,
@@ -399,6 +473,22 @@ async function handleActivity(supabase, payload): Promise<void> {
         // Prefer the human name Terra sent ("Spin", "Functional Fitness"),
         // fall back to the mapped POWR type. Only meaningful when count = 1.
         awardedLabel = (meta.name ?? '').trim() || type;
+      }
+    } else {
+      // 23505: the day already holds a wearable session of this type — either
+      // Terra re-delivering the same workout, or the complete version of a
+      // fragment written mid-workout. If it's longer, heal the row.
+      const upgraded = await upgradeTruncatedSession(supabase, {
+        userId, type, start, endedAt, durSec, distanceM, hrAvg, hrMax, caloriesActive, extras, rawName,
+      });
+      if (upgraded) {
+        // The window grew — a manual log it now overlaps is superseded too.
+        await supersedeManualOverlaps(supabase, userId, type, startMs, endMs);
+        if (upgraded.deltaPoints > 0) {
+          awardedCount++;
+          awardedPoints += upgraded.deltaPoints;
+          awardedLabel = (meta.name ?? '').trim() || type;
+        }
       }
     }
   }
