@@ -60,23 +60,25 @@ async function resolveUserId(supabase, payload): Promise<string | null> {
  * is what lets the Progress day sheet read a session's heart rate and calories
  * back (see supabase/migrations/20260801110000_*).
  */
-async function insertSession(supabase, row, points: number): Promise<string | null> {
+type InsertSessionResult = { id: string } | { conflict: true } | { error: true };
+
+async function insertSession(supabase, row, points: number): Promise<InsertSessionResult> {
   const { data: session, error } = await supabase
     .from('activity_sessions')
     .insert(row)
     .select('id')
     .single();
   if (error) {
-    if (error.code === '23505') return null; // already have this type for the day
+    if (error.code === '23505') return { conflict: true };
     console.error('[terra-webhook] session insert failed:', error.message);
-    return null;
+    return { error: true };
   }
   if (points > 0) {
     await supabase.from('point_transactions').insert({
       user_id: row.user_id, session_id: session.id, amount: points, type: 'earn', source: 'health_sync',
     });
   }
-  return session.id as string;
+  return { id: session.id as string };
 }
 
 /**
@@ -132,9 +134,13 @@ async function upgradeTruncatedSession(supabase, {
 
   const deltaPoints = Math.max(0, newPoints - oldPoints);
   if (deltaPoints > 0) {
-    await supabase.from('point_transactions').insert({
+    const { error: txError } = await supabase.from('point_transactions').insert({
       user_id: userId, session_id: existing.id, amount: deltaPoints, type: 'earn', source: 'health_sync',
     });
+    if (txError) {
+      console.error('[terra-webhook] delta points insert failed:', txError.message);
+      return null;
+    }
   }
 
   const snapPatch: Record<string, unknown> = { duration_sec: durSec };
@@ -143,9 +149,12 @@ async function upgradeTruncatedSession(supabase, {
   if (hrMax != null) snapPatch.hr_max = Math.round(hrMax);
   if (caloriesActive != null) snapPatch.calories_active = caloriesActive;
   if (extras != null) snapPatch.extras = extras;
-  await supabase.from('health_snapshots').update(snapPatch)
+  const { error: snapError } = await supabase.from('health_snapshots').update(snapPatch)
     .eq('session_id', existing.id)
     .eq('activity_type', type);
+  if (snapError) {
+    console.error('[terra-webhook] snapshot upgrade failed:', snapError.message);
+  }
 
   console.log(`[terra-webhook] upgraded truncated ${type}: ${existing.duration_sec}s → ${durSec}s (+${deltaPoints} pts)`);
   return { deltaPoints };
@@ -435,7 +444,7 @@ async function handleActivity(supabase, payload): Promise<void> {
     }
 
     const endedAt = end ? end : new Date(new Date(start).getTime() + durSec * 1000).toISOString();
-    const inserted = await insertSession(supabase, {
+    const result = await insertSession(supabase, {
       user_id: userId,
       type,
       started_at: start,
@@ -449,7 +458,8 @@ async function handleActivity(supabase, payload): Promise<void> {
       raw_activity_name: rawName,
     }, points);
 
-    if (inserted) {
+    if ('id' in result) {
+      const inserted = result.id;
       // Wearable outranks manual: remove any overlapping manual session of this
       // type and reverse its points (geofence already handled above).
       await supersedeManualOverlaps(supabase, userId, type, startMs, endMs);
@@ -474,7 +484,7 @@ async function handleActivity(supabase, payload): Promise<void> {
         // fall back to the mapped POWR type. Only meaningful when count = 1.
         awardedLabel = (meta.name ?? '').trim() || type;
       }
-    } else {
+    } else if ('conflict' in result) {
       // 23505: the day already holds a wearable session of this type — either
       // Terra re-delivering the same workout, or the complete version of a
       // fragment written mid-workout. If it's longer, heal the row.
@@ -528,7 +538,7 @@ async function handleSleep(supabase, payload): Promise<void> {
       ? asleep.duration_light_sleep_state_seconds / 3600 : undefined;
     const points = calculateSleepPoints(hours, deepH, remH);
 
-    const inserted = await insertSession(supabase, {
+    const sleepResult = await insertSession(supabase, {
       user_id: userId,
       type: 'sleep',
       started_at: start,
@@ -539,7 +549,8 @@ async function handleSleep(supabase, payload): Promise<void> {
       device_id: null,
     }, points);
 
-    if (inserted) {
+    if ('id' in sleepResult) {
+      const inserted = sleepResult.id;
       await supabase.from('health_snapshots').insert({
         user_id: userId,
         session_id: inserted,
