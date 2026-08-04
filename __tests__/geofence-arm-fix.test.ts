@@ -27,7 +27,7 @@
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
-import { getArmFix, setLocationStreamMode } from '@/context/GeofenceContext';
+import { DWELL_LOCATION_OPTIONS, getArmFix, setLocationStreamMode } from '@/context/GeofenceContext';
 
 const GEOFENCE_TASK_NAME = 'GEOFENCE_CHECK_IN';
 const LOCATION_TRACKING_TASK = 'POWR_LOCATION_TRACKING';
@@ -136,6 +136,13 @@ beforeEach(async () => {
   await AsyncStorage.clear();
   await AsyncStorage.setItem(PARTNER_MAP_KEY, JSON.stringify({ 'partner-home-0': HOME_GYM, ...TOWN_GYMS }));
   await AsyncStorage.setItem(PARTNER_MAP_META_KEY, JSON.stringify({ fetchedAt: Date.now() }));
+  // Production shape: __DEV__ keeps the Expo Go stop-first quirk, which would
+  // mask the no-teardown assertions below.
+  (globalThis as any).__DEV__ = false;
+});
+
+afterEach(() => {
+  (globalThis as any).__DEV__ = true;
 });
 
 describe('getArmFix — the arm centre must be trustworthy', () => {
@@ -247,6 +254,51 @@ describe('coarse-fix drift re-arm — a mis-centred set must be correctable', ()
     await driveLocationFix({ latitude: 52.13, longitude: -1.76, accuracy: 5_000 });
 
     expect(mockLocation.startGeofencingAsync).not.toHaveBeenCalled();
+  });
+});
+
+describe('re-arm hygiene — one fence generation, no teardown, no duplicates', () => {
+  const seedPhantomMeta = () => AsyncStorage.setItem(ARM_META_KEY, JSON.stringify({
+    centerLat: PHANTOM_CENTER.lat, centerLng: PHANTOM_CENTER.lng,
+    sentinelRadius: 5_000, armedAt: Date.now() - 10 * 60_000,
+  }));
+  // Away from every venue (no ENTER side effects), far outside the phantom sentinel.
+  const SPOT = { latitude: 52.15, longitude: -1.75, accuracy: 30 };
+
+  it('an identical set at the same spot is never re-registered, and a re-arm never tears the task down', async () => {
+    await seedPhantomMeta();
+    await driveLocationFix(SPOT);
+    expect(mockLocation.startGeofencingAsync).toHaveBeenCalledTimes(1);
+
+    // Drift fires again for the same spot (meta reset to the phantom): the set
+    // and centre are unchanged, so nothing must reach the OS. 2026-08-04: the
+    // duplicate registration cancelled the in-flight initial-trigger events.
+    await seedPhantomMeta();
+    await driveLocationFix(SPOT);
+    expect(mockLocation.startGeofencingAsync).toHaveBeenCalledTimes(1);
+
+    // A genuinely new centre re-arms — still without stopGeofencingAsync, which
+    // unregisters the consumer and cancels the delivery PendingIntent.
+    await seedPhantomMeta();
+    await driveLocationFix({ latitude: 52.10, longitude: -1.85, accuracy: 30 });
+    expect(mockLocation.startGeofencingAsync).toHaveBeenCalledTimes(2);
+    expect(mockLocation.stopGeofencingAsync).not.toHaveBeenCalled();
+  });
+});
+
+describe('killServiceOnDestroy — a swiped-away app must die, not zombify', () => {
+  it('every stream profile kills its foreground service with the task', async () => {
+    // The dwell profile is exported — assert it directly.
+    expect((DWELL_LOCATION_OPTIONS.foregroundService as any)?.killServiceOnDestroy).toBe(true);
+
+    // The approach and baseline profiles via the mode switcher's start calls.
+    mockLocation.hasStartedLocationUpdatesAsync.mockResolvedValue(false);
+    await setLocationStreamMode('approach');
+    await setLocationStreamMode('passive');
+    for (const call of mockLocation.startLocationUpdatesAsync.mock.calls as any[][]) {
+      expect(call[1]?.foregroundService?.killServiceOnDestroy).toBe(true);
+    }
+    expect(mockLocation.startLocationUpdatesAsync.mock.calls.length).toBeGreaterThanOrEqual(2);
   });
 });
 
