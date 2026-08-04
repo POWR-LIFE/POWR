@@ -1,6 +1,6 @@
 {
   "name": "powr",
-  "main": "expo-router/entry",
+  "main": "index.ts",
   "version": "1.4.9",
   "scripts": {
     "start": "expo start",
