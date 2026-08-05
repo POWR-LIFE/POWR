@@ -121,7 +121,66 @@ Deno.serve(async (req: Request) => {
   if (valid !== true) return new Response('forbidden', { status: 403 });
 
   const { dwellMin, upgradeMin } = await thresholds(admin);
-  const stats = { dwell: 0, upgrade: 0, sent: 0, no_token: 0 };
+  const stats = { dwell: 0, upgrade: 0, sent: 0, no_token: 0, announced: 0 };
+
+  // ANNOUNCE: the "You're in" banner as a visible push, Android only.
+  //
+  // Headless Android check-ins cannot display a local notification (the
+  // schedule call silently no-ops without a UI context — client bug class
+  // known since 2026-07-14), so any android visit the client has NOT marked
+  // announced within the grace window gets the banner from here instead, over
+  // the same visible-push path as "Session recorded". The grace window gives a
+  // foreground check-in's instant local banner time to mark the visit (the
+  // client stamps mark_gym_visit_announced after a successful display), so
+  // nobody gets both.
+  //
+  // iOS is excluded: its headless local banner works (force-quit relaunch
+  // displayed one on 2026-08-05), and a frozen-network iOS visit has no row
+  // here to announce until app-open anyway — announcing THAT hours later would
+  // be noise, not feedback.
+  {
+    const ANNOUNCE_GRACE_MS = 90 * 1000;        // let a foreground local banner mark first
+    const ANNOUNCE_WINDOW_MS = 15 * 60 * 1000;  // a check-in banner 15+ min late is noise
+    const { data: due, error: announceErr } = await admin
+      .from('gym_visits')
+      .select('id, user_id, partners(name)')
+      .eq('platform', 'android')
+      .is('announced_at', null)
+      .is('ended_at', null)
+      .lte('started_at', new Date(Date.now() - ANNOUNCE_GRACE_MS).toISOString())
+      .gte('started_at', new Date(Date.now() - ANNOUNCE_WINDOW_MS).toISOString())
+      .limit(50);
+    if (announceErr) console.error('[gym-visit-beacon] announce scan failed', announceErr);
+
+    for (const visit of due ?? []) {
+      // Stamp FIRST (conditionally, so a racing client mark wins): a crash
+      // between send and stamp must not double-banner on the next tick.
+      const { data: stamped } = await admin
+        .from('gym_visits')
+        .update({ announced_at: new Date().toISOString() })
+        .eq('id', visit.id)
+        .is('announced_at', null)
+        .select('id');
+      if (!stamped || stamped.length === 0) continue; // client marked in the meantime
+
+      const { data: tokens } = await admin
+        .from('user_push_tokens')
+        .select('expo_push_token')
+        .eq('user_id', visit.user_id);
+      if (!tokens || tokens.length === 0) continue;
+
+      const gymName = (visit as { partners?: { name?: string } | null }).partners?.name ?? 'your gym';
+      const result = await deliverExpoMessages(admin, tokens.map(({ expo_push_token }) => ({
+        to: expo_push_token,
+        // Mirrors the client's local banner copy — same moment, same voice.
+        title: 'POWR',
+        body: `You're in at ${gymName}. Every minute counts.`,
+        data: { type: 'check_in_reminder', route: '/(tabs)/index' },
+        priority: 'high',
+      })), { userId: visit.user_id, type: 'gym_checkin_announce' });
+      if (result.queued > 0) stats.announced++;
+    }
+  }
 
   for (const stage of ['dwell', 'upgrade'] as const) {
     const visits = await dueVisits(admin, stage, stage === 'dwell' ? dwellMin : upgradeMin);

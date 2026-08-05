@@ -22,7 +22,8 @@ export type NotificationType =
   | 'sleep_target_met'
   | 'nearby_offer'
   | 'step_goal_nudge'
-  | 'wearable_session_recorded';
+  | 'wearable_session_recorded'
+  | 'session_mark';
 
 export interface PointsMilestoneOptions {
   pointsToUnlock?: number;
@@ -283,20 +284,27 @@ async function isCheckInReminderEnabled(): Promise<boolean> {
 const CHECK_IN_COOLDOWN_MS = 30 * 60 * 1000;
 const CHECK_IN_LAST_FIRED_PREFIX = '@powr/check_in_last_fired/';
 
-export async function notifyCheckInAvailable(partnerName: string, locationId: string) {
-  if (!(await isCheckInReminderEnabled())) return;
+/** Returns whether the banner was actually scheduled — the caller uses this to
+ *  tell the server "already announced locally, don't send the push copy".
+ *  false = suppressed (pref off, no permission, cooldown) OR failed; either way
+ *  the server-side announce is the right fallback on Android. */
+export async function notifyCheckInAvailable(partnerName: string, locationId: string): Promise<boolean> {
+  if (!(await isCheckInReminderEnabled())) return false;
 
   const permissions = await Notifications.getPermissionsAsync().catch(() => null);
   const allowed = permissions?.granted
     || permissions?.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL;
-  if (!allowed) return;
+  if (!allowed) return false;
 
   const cooldownKey = `${CHECK_IN_LAST_FIRED_PREFIX}${locationId}`;
   try {
     const lastFiredRaw = await AsyncStorage.getItem(cooldownKey);
     if (lastFiredRaw) {
       const lastFired = parseInt(lastFiredRaw, 10);
-      if (Number.isFinite(lastFired) && Date.now() - lastFired < CHECK_IN_COOLDOWN_MS) return;
+      // Within cooldown = the user has already been told recently. Report true
+      // so the caller doesn't trigger a server push the cooldown exists to
+      // prevent.
+      if (Number.isFinite(lastFired) && Date.now() - lastFired < CHECK_IN_COOLDOWN_MS) return true;
     }
   } catch { /* non-fatal — fall through and notify */ }
 
@@ -319,6 +327,102 @@ export async function notifyCheckInAvailable(partnerName: string, locationId: st
   // Stamp only after scheduling succeeds; otherwise a transient local-notification
   // failure would suppress the next legitimate entry alert for 30 minutes.
   await AsyncStorage.setItem(cooldownKey, String(Date.now())).catch(() => {});
+  return true;
+}
+
+// ---------------------------------------------------------------------------
+// Session mark notifications — iOS swiped-away only.
+//
+// Apple never delivers background pushes to a force-quit app, so the beacon's
+// at-the-mark wakes (and therefore the server's "Session recorded" push) cannot
+// reach a swiped-away iPhone mid-session. But iOS DOES deliver SCHEDULED local
+// notifications regardless of app state (field-proven 2026-08-05: a force-quit
+// relaunch displayed the check-in banner). So at check-in — a moment we are
+// provably awake — we pre-schedule the 30/40-minute banners for the times the
+// thresholds will pass. Honesty is kept by the region-EXIT relaunch (also
+// proven 2026-08-05), which cancels any mark the user left before reaching.
+// The points themselves still settle through the usual claim paths; these
+// banners announce the outcome at the moment it becomes true.
+//
+// Android never schedules these: its background pushes are reliable and carry
+// the real points/streak copy.
+// ---------------------------------------------------------------------------
+
+const SESSION_MARK_ID_PREFIX = 'powr-session_mark-';
+
+export async function scheduleSessionMarkNotifications(opts: {
+  visitId: string;
+  partnerName: string;
+  entryTimestampMs: number;
+  dwellMinutes: number;
+  upgradeMinutes: number;
+}): Promise<void> {
+  if (Platform.OS !== 'ios') return;
+
+  const permissions = await Notifications.getPermissionsAsync().catch(() => null);
+  const allowed = permissions?.granted
+    || permissions?.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL;
+  if (!allowed) return;
+
+  const marks = [
+    {
+      suffix: 'dwell',
+      minutes: opts.dwellMinutes,
+      title: 'Session recorded 🔥',
+      body: `${opts.dwellMinutes} minutes at ${opts.partnerName} — banked.`,
+    },
+    {
+      suffix: 'upgrade',
+      minutes: opts.upgradeMinutes,
+      title: 'Bonus unlocked 🔓',
+      body: `${opts.upgradeMinutes}-minute session at ${opts.partnerName}.`,
+    },
+  ];
+
+  for (const mark of marks) {
+    const fireAt = new Date(opts.entryTimestampMs + mark.minutes * 60_000);
+    if (fireAt <= new Date()) continue; // threshold already passed — live paths own it
+    try {
+      await Notifications.scheduleNotificationAsync({
+        identifier: `${SESSION_MARK_ID_PREFIX}${mark.suffix}-${opts.visitId}`,
+        content: {
+          title: mark.title,
+          body: mark.body,
+          data: {
+            type: 'session_mark',
+            route: '/(tabs)/index',
+            visitId: opts.visitId,
+            mark: mark.suffix,
+          } satisfies NotificationPayload,
+          sound: 'default',
+        },
+        trigger: {
+          type: Notifications.SchedulableTriggerInputTypes.DATE,
+          date: fireAt,
+        },
+      });
+    } catch (err) {
+      // LOUD by policy: a silent catch on this exact API hid the Android
+      // check-in gap for three weeks (2026-07-14 → 2026-08-05).
+      console.warn(`[Notifications] session mark (${mark.suffix}) failed to schedule:`, err);
+    }
+  }
+}
+
+/** Cancels pending session marks the user did not stay long enough to earn.
+ *  'all' when they left before the dwell threshold; 'upgrade_only' when they
+ *  left between the two. Marks already delivered are untouched. */
+export async function cancelSessionMarkNotifications(
+  visitId: string,
+  which: 'all' | 'upgrade_only',
+): Promise<void> {
+  if (Platform.OS !== 'ios') return;
+  const suffixes = which === 'all' ? ['dwell', 'upgrade'] : ['upgrade'];
+  for (const suffix of suffixes) {
+    await Notifications
+      .cancelScheduledNotificationAsync(`${SESSION_MARK_ID_PREFIX}${suffix}-${visitId}`)
+      .catch(() => { /* never scheduled on this runtime — nothing to cancel */ });
+  }
 }
 
 // ---------------------------------------------------------------------------
