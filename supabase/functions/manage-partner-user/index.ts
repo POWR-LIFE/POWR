@@ -28,7 +28,7 @@ import { sendEmail } from '../_shared/mailgun.ts';
 import { brandInviteEmail } from '../_shared/emails/brand-invite.ts';
 import { partnerWelcomeEmail } from '../_shared/emails/partner-welcome.ts';
 
-const REPLY_TO = 'hello@powr.life';
+const REPLY_TO = 'support@powr.life';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',

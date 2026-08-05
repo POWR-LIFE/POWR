@@ -82,7 +82,7 @@ export default function PrivacyPolicyScreen() {
           • Withdraw consent at any time (e.g. for health or location data).{'\n\n'}
           • Object to processing based on legitimate interest.{'\n\n'}
           • Request data portability.{'\n\n'}
-          To exercise any of these rights, contact us at privacy@powr.life.
+          To exercise any of these rights, contact us at support@powr.life.
         </Section>
 
         <Section title="8. Data Security">
@@ -108,7 +108,7 @@ export default function PrivacyPolicyScreen() {
 
         <Section title="12. Contact Us">
           If you have any questions about this privacy policy or our data practices, please contact us at:{'\n\n'}
-          <Text style={styles.email}>privacy@powr.life</Text>
+          <Text style={styles.email}>support@powr.life</Text>
         </Section>
       </ScrollView>
     </View>

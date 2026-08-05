@@ -127,7 +127,7 @@ export default function EmailChangeConfirmedScreen() {
             </Pressable>
             <View style={styles.iconRow}>
                 <Ionicons name="shield-checkmark-outline" size={14} color={DIM} />
-                <Text style={styles.shieldHint}>If this wasn't you, contact hello@powr.life right away.</Text>
+                <Text style={styles.shieldHint}>If this wasn't you, contact support@powr.life right away.</Text>
             </View>
         </View>
     );

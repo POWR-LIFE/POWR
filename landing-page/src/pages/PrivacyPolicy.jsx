@@ -97,7 +97,7 @@ export default function PrivacyPolicy() {
                             <li>Object to processing based on legitimate interest.</li>
                             <li>Request data portability.</li>
                         </ul>
-                        <p className="mt-3">To exercise any of these rights, contact us at <a href="mailto:privacy@powr.life" className="text-[#E8D200] hover:underline">privacy@powr.life</a>.</p>
+                        <p className="mt-3">To exercise any of these rights, contact us at <a href="mailto:support@powr.life" className="text-[#E8D200] hover:underline">support@powr.life</a>.</p>
                     </section>
 
                     <section>
@@ -139,7 +139,7 @@ export default function PrivacyPolicy() {
                             If you have any questions about this privacy policy or our data practices, please contact us at:
                         </p>
                         <p className="mt-3">
-                            <a href="mailto:privacy@powr.life" className="text-[#E8D200] hover:underline">privacy@powr.life</a>
+                            <a href="mailto:support@powr.life" className="text-[#E8D200] hover:underline">support@powr.life</a>
                         </p>
                     </section>
                 </div>
