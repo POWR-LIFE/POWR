@@ -75,7 +75,10 @@ module.exports = {
     plugins: [
       ...expo.plugins,
       'expo-apple-authentication',
-      ['react-native-health-connect'],
+      // NOTE: react-native-health-connect is registered in app.json's plugin
+      // list. Registering it here as well ran the plugin twice and emitted a
+      // duplicate ACTION_SHOW_PERMISSIONS_RATIONALE intent-filter on
+      // MainActivity.
       'expo-secure-store',
       // Picks a profile/share-card image and nothing else. On Android 13+ this
       // goes through the system photo picker and requests NO permission, which
