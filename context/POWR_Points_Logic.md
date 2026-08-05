@@ -213,7 +213,7 @@ at a partner studio already scored at gym rates before this change.
 | 3-day active streak | +1 POWR / session | Running, Cycling, Swimming, Yoga |
 | 5-day active streak | +2 POWR / session | Running, Cycling, Swimming, Yoga |
 | 7-day active streak | 1.5× base POWR | Running, Cycling, Swimming |
-| Strength-lane multipliers | 1.2× / 1.5× / 2.0× / 3.0× at 3 / 5 / 7 / 10 days | Gym, HIIT |
+| Strength-lane multipliers | 1.2× / 1.5× / 2.0× / 3.0× at 3 / 5 / 7 / 10 days | Gym (check-in only; HIIT sessions do not receive a streak multiplier because check-ins always write type `gym`) |
 | Weekly consistency (5+ sessions) | +5 POWR flat | All activities |
 | Monthly milestone (20+ sessions) | +15 POWR flat | All activities |
 

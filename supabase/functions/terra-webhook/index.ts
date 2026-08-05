@@ -119,7 +119,19 @@ async function upgradeTruncatedSession(supabase, {
     .maybeSingle();
   if (!existing || durSec <= (existing.duration_sec ?? 0)) return null;
 
-  const oldPoints = calculateBasePoints(type, (existing.duration_sec ?? 0) / 60, thresholds);
+  // Use the ledger as the source of truth for already-awarded points so that
+  // admin retuning of thresholds between the fragment insert and this delivery
+  // cannot cause the delta to over/underpay.
+  const { data: txRows, error: txReadError } = await supabase
+    .from('point_transactions')
+    .select('amount')
+    .eq('session_id', existing.id)
+    .eq('type', 'earn');
+  if (txReadError) {
+    console.error('[terra-webhook] ledger read failed:', txReadError.message);
+    return null;
+  }
+  const oldPoints = (txRows ?? []).reduce((sum, r) => sum + (r.amount ?? 0), 0);
   const newPoints = calculateBasePoints(type, durSec / 60, thresholds);
 
   // Missing metrics on the incoming delivery keep whatever the fragment had —
@@ -378,10 +390,14 @@ async function notifyWearableReceipt(
 async function readStrengthThresholds(supabase): Promise<StrengthThresholds> {
   const out: StrengthThresholds = {};
   try {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('system_config')
       .select('key, value')
       .in('key', ['min_gym_dwell_minutes', 'gym_upgrade_minutes']);
+    if (error) {
+      console.warn('[terra-webhook] strength threshold read failed, using defaults:', error.message);
+      return out;
+    }
     for (const row of data ?? []) {
       const parsed = parseInt(row.value ?? '', 10);
       if (!Number.isFinite(parsed) || parsed <= 0) continue;
