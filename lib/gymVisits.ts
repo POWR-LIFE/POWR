@@ -11,8 +11,16 @@
 // pending-claim queue remain the backstop.
 
 import { Platform } from 'react-native';
+import { callWithAuthRetry } from '@/lib/authFresh';
 import { withNetworkTimeout } from '@/lib/networkTimeout';
 import { supabase } from '@/lib/supabase';
+
+// The four RPCs that carry real state (open/confirm/progress/close) run through
+// callWithAuthRetry: fresh-session-first, one retry if auth-rejected. Elliot's
+// 2026-08-05 visit died exactly here — ENTER detected, token family revoked the
+// same second, open_gym_visit swallowed a 401 and the whole session vanished.
+// The telemetry helpers stay bare fire-and-forget: they ride on the freshness
+// the entry points establish, and must never spend the wake's budget.
 
 /** Opens (or re-uses) the server-side visit record. Returns the visit id to store
  *  alongside the active geofence so later stages can reference it. */
@@ -22,7 +30,7 @@ export async function openGymVisit(
   startedAtMs: number,
 ): Promise<string | null> {
   try {
-    const { data, error } = await withNetworkTimeout(supabase.rpc('open_gym_visit', {
+    const { data, error } = await callWithAuthRetry(() => supabase.rpc('open_gym_visit', {
       p_partner_id: partnerId,
       p_region_id:  regionId ?? null,
       p_started_at: new Date(startedAtMs).toISOString(),
@@ -80,7 +88,7 @@ export async function logGymWakeReceived(
 export async function logGeofenceRegionEvent(
   regionId: string,
   event: 'enter' | 'exit' | 'approach_stream_on' | 'checked_in' | 'stream_start_failed'
-    | 'armed' | 'sentinel_exit' | 'rearm_skipped',
+    | 'armed' | 'sentinel_exit' | 'rearm_skipped' | 'auth_stale',
   detail: Record<string, unknown> = {},
 ): Promise<void> {
   try {
@@ -119,7 +127,7 @@ export async function confirmGymVisit(
     // system_config). The FCM wake window fits ~one round-trip, and this is it —
     // the local claim chain behind it starved every time (field 2026-07-14).
     // Credit only ever follows p_inside=true, so "no fix, no credit" holds.
-    const { data, error } = await withNetworkTimeout(supabase.rpc('confirm_gym_visit_v2', {
+    const { data, error } = await callWithAuthRetry(() => supabase.rpc('confirm_gym_visit_v2', {
       p_visit_id:       visitId,
       p_inside:         inside,
       p_detail:         detail,
@@ -173,7 +181,7 @@ export async function markGymVisitProgress(
   sessionId?: string,
 ): Promise<void> {
   try {
-    const { error } = await withNetworkTimeout(supabase.rpc('mark_gym_visit_progress', {
+    const { error } = await callWithAuthRetry(() => supabase.rpc('mark_gym_visit_progress', {
       p_visit_id:   visitId,
       p_stage:      stage,
       p_session_id: sessionId ?? null,
@@ -187,7 +195,7 @@ export async function markGymVisitProgress(
 /** Closes the visit so the server stops nudging a device that has left. */
 export async function closeGymVisit(visitId: string, endedAtMs?: number): Promise<void> {
   try {
-    const { error } = await withNetworkTimeout(supabase.rpc('close_gym_visit', {
+    const { error } = await callWithAuthRetry(() => supabase.rpc('close_gym_visit', {
       p_visit_id: visitId,
       p_ended_at: endedAtMs ? new Date(endedAtMs).toISOString() : null,
     }), 'close_gym_visit');

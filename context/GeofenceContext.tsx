@@ -4,6 +4,7 @@ import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { AppState, AppStateStatus, Platform } from 'react-native';
+import { ensureFreshSession } from '@/lib/authFresh';
 import { withNetworkTimeout } from '@/lib/networkTimeout';
 import { supabase } from '@/lib/supabase';
 import { getGymDwellMinutes, getGymUpgradeMinutes, primeGymDwellMinutes } from '@/lib/gymDwellConfig';
@@ -997,18 +998,16 @@ async function recordDwellSession(activeGeofence: StoredGeofence, staleLockMs: n
   const endedAtMs = activeGeofence.endedAtMs ?? Date.now();
   const dwellMs = endedAtMs - activeGeofence.entryTimestamp;
   try {
-    // Use the cached session (getSession) — NOT refreshSession(). refreshSession()
-    // unconditionally ROTATES the refresh token; when this runs in the background
-    // TaskManager context (a separate GoTrue instance sharing the same SecureStore as
-    // the foreground app), the two clients race to rotate the same token and GoTrue's
-    // reuse-detection revokes the whole session family — silently logging the user out
-    // mid-gym and dropping the claim. getSession() returns the stored token and only
-    // refreshes (under the client's lock) when it's actually expired, so it can't
-    // trigger that race.
-    const { data: { session: authSession }, error: authError } =
-      await withNetworkTimeout(supabase.auth.getSession(), 'auth.getSession');
-    if (authError || !authSession?.user) {
-      console.error('[Geofence] No valid session — cannot record session:', authError?.message ?? 'logged out');
+    // ensureFreshSession, NOT bare getSession() and NOT refreshSession(): the
+    // 2026-07 rule ("never force-rotate from a background context") stopped one
+    // revocation trigger but left the real one — a long-lived runtime whose
+    // in-memory session diverged from storage lazily refreshes off the DEAD
+    // token and GoTrue revokes the family (field-proven 2026-08-05). This
+    // resyncs to the persisted pair first, single-flights, and proactively
+    // refreshes only when the token is actually near expiry.
+    const authSession = await ensureFreshSession('record_dwell_session');
+    if (!authSession?.user) {
+      console.error('[Geofence] No valid session — cannot record session (auth unrecoverable until app-open).');
       return { outcome: 'error' };
     }
     const user = authSession.user;
@@ -1299,6 +1298,11 @@ async function flushPendingClaims(): Promise<void> {
   }
   if (!queue.length) return;
 
+  // There is real work: make the whole replay pass run on a fresh token. Placed
+  // after the empty-queue return so the hot path (every task wake flushes) costs
+  // nothing when there is nothing to flush.
+  await ensureFreshSession('flush_pending_claims');
+
   // Whose queue is this? The outbox is replayed on login, so without an owner check
   // an entry banked by the previous account is claimed by whoever signs in next —
   // a real cross-account credit path, not just cosmetic state bleed. Entries
@@ -1378,14 +1382,12 @@ async function resolveTodayGymSessionId(): Promise<string | undefined> {
 
 async function upgradeGymTier(sessionId: string, partnerName?: string, visitId?: string): Promise<boolean> {
   try {
-    // Use the cached session (getSession) rather than a forced refreshSession(): a
-    // forced rotation here races the background/foreground GoTrue instances and can
-    // revoke the session family. getSession() refreshes under the client's lock only
-    // if the token is actually expired.
-    const { data: { session: authSession }, error: sessionError } =
-      await withNetworkTimeout(supabase.auth.getSession(), 'auth.getSession');
-    if (sessionError || !authSession) {
-      console.warn('[Geofence] Tier upgrade: no valid session — will retry on next poll.', sessionError?.message);
+    // ensureFreshSession resyncs this runtime to the latest persisted token pair
+    // before any refresh, which is what actually prevents the family-revocation
+    // race the old comment here worried about (see lib/authFresh.ts, 2026-08-05).
+    const authSession = await ensureFreshSession('upgrade_gym_tier');
+    if (!authSession) {
+      console.warn('[Geofence] Tier upgrade: no valid session — will retry on next poll.');
       return false;
     }
 
@@ -1806,6 +1808,12 @@ export async function runVisitCheck(
   serverVisitId?: string,
 ): Promise<void> {
   const trace: WakeTrace = { stage };
+  // Freshness before the first server touch (prime_config reads system_config).
+  // The background wake task already ensured — the module-level single-flight
+  // makes this second call a no-op there — but runVisitCheck has foreground
+  // callers too (NotificationsContext, FCM probe) and must not depend on which
+  // door it was entered through.
+  await ensureFreshSession(`visit_check_${stage}`);
   await tracedStep('prime_config', trace, () => primeGymDwellMinutes(), STEP_TIMEOUT_MS);
 
   const raw = await tracedStep('read_active', trace, () => AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY), STEP_TIMEOUT_MS);

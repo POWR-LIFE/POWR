@@ -54,9 +54,24 @@ export const PASSWORD_RESET_REDIRECT = 'https://powr.life/app?to=reset-password'
  */
 export const EMAIL_CONFIRM_REDIRECT = 'https://powr.life/app?to=signup-confirmed';
 
+/** The storage adapter the auth client persists sessions through — exported so
+ *  lib/authFresh.ts can re-read the LATEST persisted token pair. A long-lived JS
+ *  runtime (headless geofence/notification contexts) never re-reads rotated
+ *  tokens on its own: its in-memory session diverges from storage the moment any
+ *  other runtime refreshes, and its next lazy refresh then presents the dead
+ *  token — which GoTrue's reuse-detection answers by revoking the whole session
+ *  family (field-proven 2026-08-05: token_revoked at the exact second of the
+ *  first background wake, every subsequent write a silent 401). */
+export const authStorage = Platform.OS === 'web' ? webStorageAdapter : secureStoreAdapter;
+
+/** Pinned explicitly so authFresh's direct storage reads can never drift from
+ *  what supabase-js actually uses (its default is derived the same way). */
+export const AUTH_STORAGE_KEY = `sb-${new URL(supabaseUrl).hostname.split('.')[0]}-auth-token`;
+
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     auth: {
-        storage: Platform.OS === 'web' ? webStorageAdapter : secureStoreAdapter,
+        storage: authStorage,
+        storageKey: AUTH_STORAGE_KEY,
         autoRefreshToken: true,
         persistSession: true,
         detectSessionInUrl: false,
