@@ -32,6 +32,9 @@ interface VisitCheckData {
   type?: string;
   stage?: 'dwell' | 'upgrade';
   visit_id?: string;
+  /** Short-lived visit-scoped ticket minted by the beacon per nudge. When
+   *  present the whole wake runs auth-free (see lib/gymVisits nonce path). */
+  nonce?: string;
 }
 
 /** Digs the data payload out of the platform-specific notification shapes.
@@ -93,17 +96,23 @@ TaskManager.defineTask(BACKGROUND_NOTIFICATION_TASK, async ({ data, error }) => 
     const stage = payload.stage === 'upgrade' ? 'upgrade' : 'dwell';
     console.log(`[BackgroundNotification] Visit check (${stage}) — verifying presence.`);
 
-    // AUTH BEFORE ANYTHING that talks to the server. The wake's access token is
-    // stale more often than not — real users don't open the app before working
-    // out, and tokens live one hour — and a stale token here doesn't just fail,
-    // it can REVOKE the whole session family via GoTrue reuse-detection when
-    // this runtime's in-memory copy has diverged from storage (2026-08-05:
-    // token_revoked stamped the exact second the first wake of the day arrived,
-    // then three flawless JS executions whose every write 401'd silently).
-    // ensureFreshSession resyncs from storage, single-flights, and never throws;
-    // when the token is already fresh it costs one storage read.
-    const { ensureFreshSession } = await import('@/lib/authFresh');
-    await ensureFreshSession('background_wake');
+    // AUTH POLICY FOR WAKES (hard-won, twice):
+    //  • Ticketed nudge (payload.nonce, beacon ≥v13): the wake does ZERO auth
+    //    work — telemetry and confirm ride the nonce over raw fetch. Awaiting
+    //    ANY auth round-trip here froze wakes solid on 2026-08-05 (refresh 200
+    //    on the server in 276 ms, client promise never settled — RN frozen
+    //    response + a Keystore session write). Session warming still happens,
+    //    but fire-and-forget: it helps LATER paths and must never cost this one.
+    //  • Legacy nudge without a ticket: keep the awaited freshness pass — a
+    //    stale-token confirm there fails outright, so the gamble inverts.
+    if (payload.nonce) {
+      void import('@/lib/authFresh')
+        .then(m => m.ensureFreshSession('background_wake_warm'))
+        .catch(() => { /* warming is best-effort by definition */ });
+    } else {
+      const { ensureFreshSession } = await import('@/lib/authFresh');
+      await ensureFreshSession('background_wake');
+    }
 
     // Record that the push reached JS — but NEVER await it.
     //
@@ -129,9 +138,11 @@ TaskManager.defineTask(BACKGROUND_NOTIFICATION_TASK, async ({ data, error }) => 
     // off the import instead would have made the ordering depend on which dynamic
     // import settles first — near-certain in practice, not guaranteed.
     if (payload.visit_id) {
-      const { logGymWakeReceived } = await import('@/lib/gymVisits');
-      void logGymWakeReceived(payload.visit_id, stage, { source: 'background_task' })
-        .catch(() => { /* telemetry must never cost the wake its round-trip */ });
+      const { logGymWakeReceived, logGymWakeReceivedViaNonce } = await import('@/lib/gymVisits');
+      const telemetry = payload.nonce
+        ? logGymWakeReceivedViaNonce(payload.visit_id, payload.nonce, stage, { source: 'background_task' })
+        : logGymWakeReceived(payload.visit_id, stage, { source: 'background_task' });
+      void telemetry.catch(() => { /* telemetry must never cost the wake its round-trip */ });
     }
 
     // Imported lazily: this task is registered at module load in a headless context,
@@ -148,7 +159,7 @@ TaskManager.defineTask(BACKGROUND_NOTIFICATION_TASK, async ({ data, error }) => 
     // against the device's stored one. Discarding it is how four wakes for live
     // visit 793e434a were answered into the DEAD visit 2fa4e05d (2026-07-16), which
     // then burned its whole nudge budget answering for a visit that had exited.
-    await runVisitCheck(stage, payload.visit_id);
+    await runVisitCheck(stage, payload.visit_id, payload.nonce);
   } catch (err) {
     console.warn('[BackgroundNotification] visit check failed:', err);
   }

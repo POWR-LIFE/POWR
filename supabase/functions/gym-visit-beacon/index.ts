@@ -244,7 +244,24 @@ Deno.serve(async (req: Request) => {
       // (apns-push-type: background, priority 5) and returns Apple's per-device
       // verdict. Missing/broken credentials fall back to Expo — unsetting
       // FCM_SERVICE_ACCOUNT / APNS_AUTH_KEY is the per-platform rollback switch.
-      const payload = { type: 'gym_visit_check', visit_id: visit.id, stage };
+      // WAKE NONCE (2026-08-05): the nudge carries a short-lived, visit-scoped
+      // ticket so the device can answer over confirm_gym_visit_v3 with ZERO
+      // auth work in the wake window. An expired-token wake froze awaiting its
+      // refresh (server 200 in 276ms, client promise never settled — RN frozen
+      // response + Keystore write); the wake fits ONE round-trip and the ticket
+      // makes the confirm that round-trip. Hash lives on the visit row; raw
+      // value rides the push (TLS end-to-end on both platforms).
+      const nonceBytes = new Uint8Array(32);
+      crypto.getRandomValues(nonceBytes);
+      const nonce = Array.from(nonceBytes, b => b.toString(16).padStart(2, '0')).join('');
+      const nonceHashBuf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(nonce));
+      const nonceHash = Array.from(new Uint8Array(nonceHashBuf), b => b.toString(16).padStart(2, '0')).join('');
+      const { error: nonceErr } = await admin.rpc('set_gym_visit_wake_nonce', {
+        p_visit_id: visit.id, p_nonce_hash: nonceHash, p_ttl_seconds: 900,
+      });
+      if (nonceErr) console.error('[gym-visit-beacon] nonce stamp failed (wake will fall back to JWT)', nonceErr);
+
+      const payload = { type: 'gym_visit_check', visit_id: visit.id, stage, nonce: nonceErr ? undefined : nonce };
       const TTL_SEC = 10 * 60; // pointless to deliver a presence check long after the fact
       let sentDirect = 0;
       let failedDirect = 0;

@@ -368,13 +368,16 @@ export async function scheduleSessionMarkNotifications(opts: {
       suffix: 'dwell',
       minutes: opts.dwellMinutes,
       title: 'Session recorded 🔥',
-      body: `${opts.dwellMinutes} minutes at ${opts.partnerName} — banked.`,
+      // Mirrors the server push's shape ("Session recorded 🔥 · POWR · +15 pts")
+      // minus the numbers a pre-claim banner cannot know — points settle when
+      // the session wraps.
+      body: `${opts.partnerName} · ${opts.dwellMinutes} min session banked`,
     },
     {
       suffix: 'upgrade',
       minutes: opts.upgradeMinutes,
       title: 'Bonus unlocked 🔓',
-      body: `${opts.upgradeMinutes}-minute session at ${opts.partnerName}.`,
+      body: `${opts.partnerName} · ${opts.upgradeMinutes}+ min session`,
     },
   ];
 

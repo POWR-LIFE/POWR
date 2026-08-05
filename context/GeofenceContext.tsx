@@ -1873,14 +1873,16 @@ async function finalizeActiveGeofenceInner(expectedRegionId?: string): Promise<b
 export async function runVisitCheck(
   stage: 'dwell' | 'upgrade',
   serverVisitId?: string,
+  /** The nudge's short-lived ticket. When present, the ENTIRE check runs
+   *  auth-free: telemetry and confirm ride the nonce (raw fetch + anon key),
+   *  and no auth round-trip is ever awaited — the 2026-08-05 freeze class. */
+  wakeNonce?: string,
 ): Promise<void> {
   const trace: WakeTrace = { stage };
-  // Freshness before the first server touch (prime_config reads system_config).
-  // The background wake task already ensured — the module-level single-flight
-  // makes this second call a no-op there — but runVisitCheck has foreground
-  // callers too (NotificationsContext, FCM probe) and must not depend on which
-  // door it was entered through.
-  await ensureFreshSession(`visit_check_${stage}`);
+  // Freshness before the first server touch — but ONLY on ticketless entries
+  // (foreground callers, legacy nudges). A ticketed wake must never await auth;
+  // warming happens fire-and-forget in the background task instead.
+  if (!wakeNonce) await ensureFreshSession(`visit_check_${stage}`);
   await tracedStep('prime_config', trace, () => primeGymDwellMinutes(), STEP_TIMEOUT_MS);
 
   const raw = await tracedStep('read_active', trace, () => AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY), STEP_TIMEOUT_MS);
@@ -1964,8 +1966,12 @@ export async function runVisitCheck(
   // again, and failing that the exit path still resolves it.
   if (!coords) {
     if (visitId) {
-      const { confirmGymVisit } = await import('@/lib/gymVisits');
-      await confirmGymVisit(visitId, false, { stage, reason: 'no_fix', visit_mismatch: visitMismatch, trace });
+      const { confirmGymVisit, confirmGymVisitViaNonce } = await import('@/lib/gymVisits');
+      const detail = { stage, reason: 'no_fix', visit_mismatch: visitMismatch, trace };
+      // The nonce is bound to the SERVER's visit; after the mismatch repair
+      // above, visitId is exactly that visit whenever a ticket exists.
+      if (wakeNonce) await confirmGymVisitViaNonce(visitId, wakeNonce, false, detail);
+      else await confirmGymVisit(visitId, false, detail);
     }
     return;
   }
@@ -1980,20 +1986,22 @@ export async function runVisitCheck(
   }
 
   if (visitId) {
-    const { confirmGymVisit } = await import('@/lib/gymVisits');
+    const { confirmGymVisit, confirmGymVisitViaNonce } = await import('@/lib/gymVisits');
     // requestCredit on an inside confirm: this one round-trip both proves
     // presence AND has the server relay the claim/upgrade (confirm_gym_visit_v2)
     // — the wake window fits ~one round-trip and the local chain below starves.
     // The trace rides along on the round-trip we are already making, so the
     // per-step timings land in gym_visit_events.detail with zero extra network
     // cost — and, crucially, they arrive for iOS too, where there is no logcat.
-    await confirmGymVisit(visitId, inside, {
+    const detail = {
       stage,
       distance_m: distance != null ? Math.round(distance) : null,
       accuracy_m: coords.accuracy != null ? Math.round(coords.accuracy) : null,
       visit_mismatch: visitMismatch,
       trace,
-    }, inside, active.entryTimestamp);
+    };
+    if (wakeNonce) await confirmGymVisitViaNonce(visitId, wakeNonce, inside, detail, inside, active.entryTimestamp);
+    else await confirmGymVisit(visitId, inside, detail, inside, active.entryTimestamp);
   }
 
   if (inside) {

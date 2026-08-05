@@ -68,6 +68,14 @@ export const authStorage = Platform.OS === 'web' ? webStorageAdapter : secureSto
  *  what supabase-js actually uses (its default is derived the same way). */
 export const AUTH_STORAGE_KEY = `sb-${new URL(supabaseUrl).hostname.split('.')[0]}-auth-token`;
 
+/** For the nonce-authenticated wake path (lib/gymVisits.ts): raw fetch with the
+ *  ANON key only, deliberately bypassing this client so a background wake can
+ *  never touch auth machinery (lazy refresh + Keystore persistence — both
+ *  freeze-prone in screen-off background processes, field-proven 2026-08-05).
+ *  The anon key is public by design; the wake's authority is its nonce. */
+export const SUPABASE_URL = supabaseUrl;
+export const SUPABASE_ANON_KEY = supabaseAnonKey;
+
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     auth: {
         storage: authStorage,

@@ -350,3 +350,32 @@ describe('forced-refresh single-flight interaction (2026-08-05 finding #2)', () 
   });
 
 });
+
+describe('in-flight deadline (2026-08-05 field wedge: frozen resync pinned every later wake)', () => {
+  it('abandons a pass stuck past the deadline and lets the next caller run live', async () => {
+    jest.useFakeTimers({ doNotFake: ['queueMicrotask'] });
+    try {
+      const { ensureFreshSession } = loadAuthFresh();
+      seedMemory({ access_token: 'at-old', refresh_token: 'rt-old', lifeS: 3600 });
+      await ensureFreshSession('warmup');
+      seedPersisted({ access_token: 'at-new', refresh_token: 'rt-new' });
+
+      // First wake: resync's setSession never settles (the frozen-network class).
+      mockAuth.setSession.mockImplementationOnce(() => new Promise(() => {}));
+      const stuck = ensureFreshSession('wake_1');
+
+      // Second wake arrives within the deadline: must coalesce (no duplicate work).
+      jest.setSystemTime(Date.now() + 10_000);
+      expect(ensureFreshSession('wake_2')).toBe(stuck);
+
+      // Third wake arrives past the deadline: must abandon and run a live pass.
+      jest.setSystemTime(Date.now() + 60_000);
+      const live = await ensureFreshSession('wake_3');
+
+      expect((live as { refresh_token?: string })?.refresh_token).toBe('rt-new');
+      expect(mockAuth.setSession).toHaveBeenCalledTimes(2); // stuck + live
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+});

@@ -96,6 +96,17 @@ async function readPersistedPair(): Promise<PersistedPair | null> {
 
 let inFlight: Promise<Session | null> | null = null;
 let inFlightForced = false;
+let inFlightStartedMs = 0;
+
+/** A freshness pass older than this is presumed hung, not slow. Background
+ *  processes freeze in-flight network promises (RN's documented class: request
+ *  delivered, response never processed, timers frozen so withNetworkTimeout
+ *  never fires). Field-caught 2026-08-05 15:18Z: a wake's resync froze and the
+ *  single-flight latch then pinned every later wake to the same dead promise —
+ *  re-creating the exact wedge this module exists to prevent. Wall-clock
+ *  comparison works where timers don't: new callers only arrive on new wakes,
+ *  and Date.now() read at call time needs no timer. */
+const IN_FLIGHT_DEADLINE_MS = 45_000;
 
 /**
  * Returns a session whose access token is guaranteed fresh (≥ EXPIRY_SLACK_S of
@@ -108,6 +119,13 @@ let inFlightForced = false;
  * confirm's token valid when it fires.
  */
 export function ensureFreshSession(reason: string, opts?: { force?: boolean }): Promise<Session | null> {
+  if (inFlight && Date.now() - inFlightStartedMs > IN_FLIGHT_DEADLINE_MS) {
+    // The pending pass is presumed frozen — abandon the latch (NOT the promise;
+    // if it ever settles it is harmless) and let this caller start a live pass.
+    console.warn(`[authFresh] ${reason}: abandoning a freshness pass stuck for >${IN_FLIGHT_DEADLINE_MS / 1000}s.`);
+    inFlight = null;
+    inFlightForced = false;
+  }
   if (inFlight) {
     // A FORCED caller must never coalesce onto a non-forced pass: the retry
     // paths call force precisely because the current token was just rejected,
@@ -121,7 +139,8 @@ export function ensureFreshSession(reason: string, opts?: { force?: boolean }): 
     return inFlight;
   }
   inFlightForced = !!opts?.force;
-  inFlight = (async () => {
+  inFlightStartedMs = Date.now();
+  const myPass = (async () => {
     subscribeOnce();
     try {
       const persisted = await readPersistedPair();
@@ -182,8 +201,12 @@ export function ensureFreshSession(reason: string, opts?: { force?: boolean }): 
       void recordBreadcrumb(reason, err);
       return null;
     }
-  })().finally(() => { inFlight = null; inFlightForced = false; });
-  return inFlight;
+  })().finally(() => {
+    // An abandoned pass settling late must not clear a LIVE successor's latch.
+    if (inFlight === myPass) { inFlight = null; inFlightForced = false; }
+  });
+  inFlight = myPass;
+  return myPass;
 }
 
 /** Auth-shaped failure, across the shapes our stack actually produces:

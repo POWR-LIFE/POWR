@@ -13,7 +13,87 @@
 import { Platform } from 'react-native';
 import { callWithAuthRetry } from '@/lib/authFresh';
 import { withNetworkTimeout } from '@/lib/networkTimeout';
-import { supabase } from '@/lib/supabase';
+import { SUPABASE_ANON_KEY, SUPABASE_URL, supabase } from '@/lib/supabase';
+
+// ---------------------------------------------------------------------------
+// Nonce-authenticated wake path (2026-08-05).
+//
+// The beacon's nudge carries a short-lived, visit-scoped ticket; the RPCs below
+// authenticate with THAT over a raw fetch + anon key, never the supabase
+// client. Rationale: in a screen-off background process, any path through the
+// client's auth machinery (getSession → lazy refresh → Keystore persistence)
+// can freeze the wake forever — field-proven twice on 2026-08-05, server 200 in
+// 276 ms while the client promise never settled. The wake fits ONE round-trip;
+// the ticket makes the confirm that round-trip.
+// ---------------------------------------------------------------------------
+
+async function nonceRpc(fn: string, body: Record<string, unknown>, label: string): Promise<unknown> {
+  const res = await withNetworkTimeout(fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      apikey: SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+    },
+    body: JSON.stringify(body),
+  }), label);
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`${label} ${res.status}: ${text.slice(0, 200)}`);
+  }
+  const text = await res.text().catch(() => '');
+  try { return text ? JSON.parse(text) : null; } catch { return null; }
+}
+
+/** Ticketed twin of logGymWakeReceived — same contract: fire-and-forget. */
+export async function logGymWakeReceivedViaNonce(
+  visitId: string,
+  nonce: string,
+  stage: 'dwell' | 'upgrade',
+  detail: Record<string, unknown> = {},
+): Promise<void> {
+  try {
+    await nonceRpc('log_gym_wake_received_v2', {
+      p_visit_id: visitId, p_nonce: nonce, p_stage: stage, p_detail: detail,
+    }, 'log_gym_wake_received_v2');
+  } catch (err) {
+    console.warn('[GymVisit] logGymWakeReceivedViaNonce failed:', err);
+  }
+}
+
+/** Ticketed twin of confirmGymVisit: identical semantics and return shape,
+ *  zero auth work. Server-side it delegates into confirm_gym_visit_v2's own
+ *  logic, so every credit rule and idempotency guard is the same code. */
+export async function confirmGymVisitViaNonce(
+  visitId: string,
+  nonce: string,
+  inside: boolean,
+  detail: Record<string, unknown> = {},
+  requestCredit = false,
+  entryAtMs?: number,
+): Promise<{ ok: boolean; triggered?: string | null }> {
+  try {
+    const data = await nonceRpc('confirm_gym_visit_v3', {
+      p_visit_id:       visitId,
+      p_nonce:          nonce,
+      p_inside:         inside,
+      p_detail:         detail,
+      p_request_credit: requestCredit,
+      p_entry_at:       entryAtMs ? new Date(entryAtMs).toISOString() : null,
+    }, 'confirm_gym_visit_v3');
+    const triggered = (data as { triggered?: string | null } | null)?.triggered;
+    const declined = (data as { declined?: string | null } | null)?.declined;
+    if (triggered) {
+      console.log(`[GymVisit] Server credit trigger fired from nonce confirm: ${triggered}.`);
+    } else if (declined) {
+      console.log(`[GymVisit] Server declined credit (${declined}) — visit resolved.`);
+    }
+    return { ok: true, triggered };
+  } catch (err) {
+    console.error('[GymVisit] confirmGymVisitViaNonce FAILED — wake answered nothing:', err);
+    return { ok: false };
+  }
+}
 
 // The four RPCs that carry real state (open/confirm/progress/close) run through
 // callWithAuthRetry: fresh-session-first, one retry if auth-rejected. Elliot's

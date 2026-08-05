@@ -81,7 +81,7 @@ describe('background wake task telemetry + visit threading', () => {
     await capturedTask({ data: iosWake('dwell', VISIT) });
 
     expect(mockLogWakeReceived).toHaveBeenCalledWith(VISIT, 'dwell', { source: 'background_task' });
-    expect(mockRunVisitCheck).toHaveBeenCalledWith('dwell', VISIT);
+    expect(mockRunVisitCheck).toHaveBeenCalledWith('dwell', VISIT, undefined);
     // Ordering is the point: telemetry must land even if the presence check dies.
     expect(callOrder[0]).toContain('wake:');
     expect(callOrder[1]).toContain('check:');
@@ -91,14 +91,14 @@ describe('background wake task telemetry + visit threading', () => {
     await capturedTask({ data: androidWake('upgrade', VISIT) });
 
     expect(mockLogWakeReceived).toHaveBeenCalledWith(VISIT, 'upgrade', { source: 'background_task' });
-    expect(mockRunVisitCheck).toHaveBeenCalledWith('upgrade', VISIT);
+    expect(mockRunVisitCheck).toHaveBeenCalledWith('upgrade', VISIT, undefined);
   });
 
   it('still runs the presence check when the payload carries no visit id', async () => {
     await capturedTask({ data: androidWake('dwell') });
 
     expect(mockLogWakeReceived).not.toHaveBeenCalled();
-    expect(mockRunVisitCheck).toHaveBeenCalledWith('dwell', undefined);
+    expect(mockRunVisitCheck).toHaveBeenCalledWith('dwell', undefined, undefined);
   });
 
   it('ignores a payload that is not ours, without logging or checking', async () => {
@@ -125,7 +125,7 @@ describe('background wake task telemetry + visit threading', () => {
 
     await capturedTask({ data: iosWake('dwell', VISIT) });
 
-    expect(mockRunVisitCheck).toHaveBeenCalledWith('dwell', VISIT);
+    expect(mockRunVisitCheck).toHaveBeenCalledWith('dwell', VISIT, undefined);
   });
 
   it('never throws when the presence check fails — a wake must not crash the task', async () => {
