@@ -19,7 +19,7 @@ alter table public.gym_visits
 -- keeps the every-minute cron query off the table's history.
 create index if not exists gym_visits_announce_due_idx
   on public.gym_visits (started_at)
-  where announced_at is null and ended_at is null;
+  where announced_at is null and ended_at is null and platform = 'android';
 
 -- Owner-locked: the client calls this after it successfully DISPLAYED the local
 -- banner, so the beacon knows not to send the push copy. Idempotent; marking an
