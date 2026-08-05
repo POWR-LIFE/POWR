@@ -34,6 +34,7 @@ jest.mock('expo-notifications', () => ({
 const callOrder: string[] = [];
 const mockLogWakeReceived = jest.fn(async (...args: unknown[]) => { callOrder.push(`wake:${JSON.stringify(args)}`); });
 const mockRunVisitCheck = jest.fn(async (...args: unknown[]) => { callOrder.push(`check:${JSON.stringify(args)}`); });
+const mockRearm = jest.fn(async () => { callOrder.push('rearm'); });
 
 jest.mock('@/lib/gymVisits', () => ({
   logGymWakeReceived: (...args: unknown[]) => mockLogWakeReceived(...args),
@@ -41,6 +42,7 @@ jest.mock('@/lib/gymVisits', () => ({
 
 jest.mock('@/context/GeofenceContext', () => ({
   runVisitCheck: (...args: unknown[]) => mockRunVisitCheck(...args),
+  rearmFencesFromWake: () => mockRearm(),
 }));
 
 import * as TaskManager from 'expo-task-manager';
@@ -56,6 +58,7 @@ beforeEach(() => {
   callOrder.length = 0;
   mockLogWakeReceived.mockClear();
   mockRunVisitCheck.mockClear();
+  mockRearm.mockClear();
 });
 
 /** The Expo APNs envelope shape — the one whose `??` match cost us the iOS path. */
@@ -82,9 +85,15 @@ describe('background wake task telemetry + visit threading', () => {
 
     expect(mockLogWakeReceived).toHaveBeenCalledWith(VISIT, 'dwell', { source: 'background_task' });
     expect(mockRunVisitCheck).toHaveBeenCalledWith('dwell', VISIT, undefined);
-    // Ordering is the point: telemetry must land even if the presence check dies.
-    expect(callOrder[0]).toContain('wake:');
-    expect(callOrder[1]).toContain('check:');
+    // Ordering is the point: telemetry first, and the self-heal re-arm must
+    // start BEFORE the presence check (whose confirm can freeze forever
+    // screen-off — 2026-08-05, twice). The check always comes last.
+    const wakeIdx  = callOrder.findIndex(e => e.startsWith('wake:'));
+    const rearmIdx = callOrder.indexOf('rearm');
+    const checkIdx = callOrder.findIndex(e => e.startsWith('check:'));
+    expect(wakeIdx).toBe(0);
+    expect(rearmIdx).toBeGreaterThan(wakeIdx);
+    expect(checkIdx).toBeGreaterThan(rearmIdx);
   });
 
   it('threads the server visit id through on Android too, and honours the stage', async () => {
@@ -133,5 +142,39 @@ describe('background wake task telemetry + visit threading', () => {
 
     await expect(capturedTask({ data: iosWake('dwell', VISIT) })).resolves.toBeUndefined();
     expect(mockLogWakeReceived).toHaveBeenCalled();
+  });
+
+  // THE OTHER REGRESSION THIS FILE NOW EXISTS FOR. The self-heal re-arm died
+  // twice on 2026-08-05 — first void'd behind runVisitCheck, then awaited
+  // behind it (#326) — because runVisitCheck's confirm round-trip can freeze
+  // forever with the screen off: the 19:16Z and 19:51Z bench wakes both landed
+  // confirmed_inside server-side while the line after the confirm never ran.
+  // The re-arm must therefore START before the check and COMPLETE without it.
+  it('completes the wake re-arm even when the presence check never settles', async () => {
+    let observed!: () => void;
+    const rearmObserved = new Promise<void>((res) => { observed = res; });
+    mockRearm.mockImplementationOnce(async () => { callOrder.push('rearm'); observed(); });
+    mockRunVisitCheck.mockImplementationOnce(() => new Promise<void>(() => { /* frozen confirm — never settles */ }));
+
+    const pending = capturedTask({ data: androidWake('dwell', VISIT) });
+
+    await rearmObserved; // must not deadlock behind the frozen check
+    expect(mockRearm).toHaveBeenCalledTimes(1);
+    expect(mockRunVisitCheck).toHaveBeenCalled();
+    void pending; // intentionally left pending, exactly like the field wakes
+  });
+
+  it('holds the task open for the re-arm even when the presence check throws', async () => {
+    let rearmSettled = false;
+    mockRearm.mockImplementationOnce(() => new Promise<void>((res) => {
+      setTimeout(() => { rearmSettled = true; res(); }, 0);
+    }));
+    mockRunVisitCheck.mockRejectedValueOnce(new Error('no fix'));
+
+    await capturedTask({ data: iosWake('dwell', VISIT) });
+
+    // A disposable headless context is torn down when the task resolves; the
+    // re-arm must already be done by then, throw path included.
+    expect(rearmSettled).toBe(true);
   });
 });
