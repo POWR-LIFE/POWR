@@ -220,7 +220,7 @@ export function DocsLayout({ eyebrow, title, intro, toc = [], children }) {
                         <p className="text-[13px] text-[#777]">
                             Stuck on something this page doesn’t cover? Raise a ticket from{' '}
                             <a href="/partner/support" className="font-bold text-[#8a7600] hover:underline">Support</a> in the portal,
-                            or email <a href="mailto:partners@powr.life" className="font-bold text-[#8a7600] hover:underline">partners@powr.life</a>.
+                            or email <a href="mailto:support@powr.life" className="font-bold text-[#8a7600] hover:underline">support@powr.life</a>.
                         </p>
                     </div>
                 </main>

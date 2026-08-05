@@ -2,240 +2,46 @@
 <html lang="en">
 
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>POWR — Partner With Us</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@200;300;400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/partners.css">
-  <script type="module" src="/partners.js"></script>
+  <meta name="description"
+    content="Put your brand where the habit lives. POWR members earn points for training we can verify, then spend them with the brands in the vault. Listed in a day; codes delivered by promo pool, Shopify or API." />
 
-  <!-- Social Media Meta Tags -->
+  <!-- Fonts — the page renders serif without this; main.jsx only carries CSS, not the font link -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@200;300;400;500;600;700;800;900&display=swap"
+    rel="stylesheet" />
+
+  <!-- Favicon — see index.html; both shells must carry the same set -->
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+  <link rel="icon" type="image/png" sizes="512x512" href="/favicon-512.png" />
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+
+  <!-- Social Media Meta Tags — the whole reason this file exists. The site is a
+       single-page app sharing one index.html head, so a React route cannot give
+       a crawler its own og: tags. Vercel serves a matching static file BEFORE it
+       applies the SPA rewrite, so /partners is served from here and boots the
+       same bundle: crawlers get partner copy, browsers get the React page. -->
   <meta property="og:title" content="POWR — Partner With Us" />
   <meta property="og:description"
-    content="Put your brand in front of the people who show up. POWR rewards across Eat, Move, Mind and Sleep." />
+    content="Put your brand where the habit lives. POWR members earn points for training we can verify, then spend them with the brands in the vault." />
   <meta property="og:image" content="https://powr.life/powr-logo-black.png" />
-  <meta property="og:url" content="https://powr.life/partners.html" />
+  <meta property="og:url" content="https://powr.life/partners" />
   <meta property="og:type" content="website" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="POWR — Partner With Us" />
   <meta name="twitter:description"
-    content="Put your brand in front of the people who show up. POWR rewards across Eat, Move, Mind and Sleep." />
+    content="Put your brand where the habit lives. POWR members earn points for training we can verify, then spend them with the brands in the vault." />
   <meta name="twitter:image" content="https://powr.life/powr-logo-black.png" />
 </head>
 
 <body>
+  <div id="root"></div>
 
-  <!-- NAV -->
-  <nav id="nav">
-    <div class="nav-inner">
-      <a href="/" class="nav-logo">
-        <img
-          src="https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/landing-page-assets/powrlogotext.png?v=1.1"
-          alt="POWR Logo" class="nav-logo-img" />
-      </a>
-      <div class="nav-links" id="navLinks">
-        <a href="#apply" class="nav-cta-outline type-cta">Apply to Partner</a>
-        <a href="https://powr.life#waitlist" class="nav-cta type-cta">Join Waitlist</a>
-      </div>
-      <button class="nav-toggle" id="navToggle" aria-label="Toggle menu">
-        <span></span><span></span><span></span>
-      </button>
-    </div>
-  </nav>
-
-  <!-- HERO -->
-  <section class="hero">
-    <video autoplay muted loop playsinline class="hero-video">
-      <source
-        src="https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/landing-page-assets/partners_hero.mp4"
-        type="video/mp4">
-    </video>
-    <div class="hero-overlay"></div>
-    <div class="hero-inner">
-      <p class="eyebrow">Brand Partners · London Launch · May 2026</p>
-      <h1>Your brand belongs<br />where the <em>habit lives.</em></h1>
-      <p class="hero-sub">POWR puts your brand in front of the people who already show up — every day, across Eat, Move, Mind, and Sleep.</p>
-      <div class="hero-ctas">
-        <a href="#apply" class="btn-primary type-cta">Apply to Partner</a>
-        <a href="#brands" class="btn-ghost type-cta">See Brand Categories</a>
-      </div>
-      <div class="stats-row">
-        <div class="stat"><span class="stat-val">76%</span><span class="stat-lbl">buy health products within 2hrs of training</span></div>
-        <div class="stat"><span class="stat-val">3.2×</span><span class="stat-lbl">higher purchase intent post-workout</span></div>
-        <div class="stat"><span class="stat-val">£1,800</span><span class="stat-lbl">avg. annual fitness spend per member</span></div>
-        <div class="stat"><span class="stat-val">4</span><span class="stat-lbl">pillars · one audience · full lifestyle reach</span></div>
-      </div>
-    </div>
-  </section>
-
-  <!-- BRANDS -->
-  <section class="section" id="brands">
-    <div class="section-inner">
-      <p class="eyebrow">Brand Partners</p>
-      <h2 class="section-h">Rewards across every pillar<br />of a <em>healthy life.</em></h2>
-      <p class="section-p">We're building a network of brands across the four things people who train actually care about — Eat, Move, Mind, and Sleep.</p>
-
-      <div class="cat-block cat-block-eat">
-        <div class="cat-label lbl-eat"><span class="pip"></span>Eat</div>
-        <div class="logo-grid">
-          <div class="logo-tile">
-            <span class="tile-badge badge-live">Partner</span>
-            <img class="tile-logo" src="https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/landing-page-assets/Huel%20Logo%20.png" alt="Huel" />
-          </div>
-          <div class="logo-tile">
-            <span class="tile-badge badge-live">Partner</span>
-            <img class="tile-logo tile-logo-lg" src="https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/landing-page-assets/tribe.png" alt="Tribe" />
-          </div>
-          <div class="logo-tile">
-            <span class="tile-badge badge-live">Partner</span>
-            <img class="tile-logo" src="https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/reward-images/rewards/1777970109317-d8nwod.png" alt="FRANK Protein" />
-          </div>
-          <div class="logo-tile">
-            <span class="tile-badge badge-live">Partner</span>
-            <img class="tile-logo" src="https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/reward-images/rewards/1779282253167-cwto35.png" alt="MAJIC" />
-          </div>
-          <div class="logo-tile">
-            <span class="tile-badge badge-live">Partner</span>
-            <img class="tile-logo" src="https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/reward-images/rewards/1781177374575-acu6oe.png" alt="OMNITY" />
-          </div>
-          <div class="logo-tile">
-            <span class="tile-badge badge-live">Partner</span>
-            <img class="tile-logo" src="https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/reward-images/rewards/1777526358629-vuwy7n.png" alt="REP" />
-          </div>
-        </div>
-      </div>
-
-      <div class="cat-block cat-block-move">
-        <div class="cat-label lbl-move"><span class="pip"></span>Move</div>
-        <div class="logo-grid">
-          <div class="logo-tile">
-            <span class="tile-badge badge-live">Partner</span>
-            <img class="tile-logo" src="https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/reward-submissions/logos/1780493633701-o9l9sp.png" alt="MATHAN" />
-          </div>
-          <div class="logo-tile">
-            <span class="tile-badge badge-live">Partner</span>
-            <img class="tile-logo" src="https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/reward-images/rewards/1778142388539-ytktxh.png" alt="SWT" />
-          </div>
-          <a href="#apply" class="logo-tile open-slot">
-            <span class="open-label">Founding slot open</span>
-            <span class="open-cta">Apply now</span>
-          </a>
-          <a href="#apply" class="logo-tile open-slot">
-            <span class="open-label">Founding slot open</span>
-            <span class="open-cta">Apply now</span>
-          </a>
-        </div>
-      </div>
-
-      <p class="cat-footnote">Mind · Sleep &nbsp;—&nbsp; <a href="#apply">apply to partner across all categories</a></p>
-    </div>
-  </section>
-
-  <!-- HOW IT WORKS -->
-  <section class="section hiw" id="how-it-works">
-    <div class="section-inner">
-      <p class="eyebrow">How It Works</p>
-      <h2 class="section-h">Zero overhead.<br /><em>Maximum reach.</em></h2>
-      <p class="section-p no-mb">Listed in the POWR rewards marketplace in under 24 hours. No integrations, no hardware, no ongoing commitment.</p>
-      <div class="steps">
-        <div class="step">
-          <div class="step-n">01</div>
-          <h4>You supply the offer</h4>
-          <p>A discount, a free product, an exclusive deal. You decide what POWR members get.</p>
-        </div>
-        <div class="step">
-          <div class="step-n">02</div>
-          <h4>We handle the listing</h4>
-          <p>Your brand goes live on the Spend tab — visible to every active user in your category.</p>
-        </div>
-        <div class="step">
-          <div class="step-n">03</div>
-          <h4>Members earn, then redeem</h4>
-          <p>Every session earns points. Your reward is where that effort goes.</p>
-        </div>
-        <div class="step">
-          <div class="step-n">04</div>
-          <h4>You reach proven habit</h4>
-          <p>Not impressions. People who have already proven they show up.</p>
-        </div>
-      </div>
-      <div class="friction-grid">
-        <div class="friction-block">
-          <h4>What we need from you</h4>
-          <ul class="check-list">
-            <li class="ok"><span class="ico">✓</span>Your brand logo</li>
-            <li class="ok"><span class="ico">✓</span>Your offer or discount code</li>
-            <li class="ok"><span class="ico">✓</span>Sign-off to list</li>
-          </ul>
-        </div>
-        <div class="friction-block">
-          <h4>What we don't need</h4>
-          <ul class="check-list">
-            <li class="no"><span class="ico">✕</span>System integration</li>
-            <li class="no"><span class="ico">✕</span>Cash commitment</li>
-            <li class="no"><span class="ico">✕</span>Staff time or training</li>
-          </ul>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- APPLY -->
-  <section class="section apply" id="apply">
-    <div class="section-inner">
-      <div class="apply-inner">
-        <p class="eyebrow">Apply to Partner</p>
-        <h2 class="section-h">Be part of <em>the launch.</em></h2>
-        <p class="section-p apply-intro">Founding partners across Eat, Move, Mind, and Sleep get priority placement and early member exposure ahead of May 2026.</p>
-
-        <form id="partnerApplyForm" novalidate>
-          <div class="form-row">
-            <div class="form-group">
-              <label for="partnerBrand">Brand Name</label>
-              <input type="text" id="partnerBrand" name="brand" placeholder="e.g. Grenade" required />
-            </div>
-            <div class="form-group">
-              <label for="partnerCategory">Category</label>
-              <select id="partnerCategory" name="category" required>
-                <option value="" disabled selected>Select category</option>
-                <option value="eat">Eat — Nutrition &amp; Food</option>
-                <option value="move">Move — Activewear &amp; Gear</option>
-                <option value="mind">Mind — Wellness &amp; Mental Health</option>
-                <option value="sleep">Sleep — Recovery &amp; Rest</option>
-              </select>
-            </div>
-          </div>
-          <div class="form-row">
-            <div class="form-group">
-              <label for="partnerName">Your Name</label>
-              <input type="text" id="partnerName" name="name" placeholder="First &amp; last name" required />
-            </div>
-            <div class="form-group">
-              <label for="partnerEmail">Email</label>
-              <input type="email" id="partnerEmail" name="email" placeholder="you@brand.com" required />
-            </div>
-          </div>
-          <div class="form-group">
-            <label for="partnerOffer">Your offer</label>
-            <textarea id="partnerOffer" name="offer" placeholder="What would you like to offer POWR members? e.g. 20% off all orders, free trial, etc."></textarea>
-          </div>
-          <button type="submit" class="btn-primary type-cta form-submit">Apply Now</button>
-        </form>
-
-        <div id="partnerErrorMsg" class="form-error" style="display:none"></div>
-        <div id="partnerSuccessMsg" class="success-msg">
-          <strong>Application received.</strong><br />We'll be in touch shortly.
-        </div>
-        <p class="apply-note">Selective onboarding · London launch · May 2026</p>
-      </div>
-    </div>
-  </section>
-
-  <!-- FOOTER -->
-  <footer id="site-footer"></footer>
-
+  <!-- Same entry as index.html: React Router reads the URL and renders PartnersPage -->
+  <script type="module" src="/main.jsx"></script>
 </body>
 
 </html>

@@ -1,13 +1,14 @@
 import { motion, useScroll, useSpring } from 'framer-motion';
 import { pg, w } from './theme';
 import Hero from './Hero';
-import LogoMorph, { NavBrand, LOGO_SRC } from './LogoMorph';
+import LogoMorph, { NavBrand } from './LogoMorph';
 import MoveStage from './stages/MoveStage';
 import EarnTrack from './stages/EarnTrack';
 import RedeemTrack from './stages/RedeemTrack';
 import TogetherStage from './stages/TogetherStage';
 import AscendStage from './stages/AscendStage';
 import { StoreBadges, ChapterBreak } from './stages/shared';
+import SiteFooter from './SiteFooter';
 
 /**
  * /v2 — scroll-driven app showcase, on the live landing page's canvas:
@@ -47,15 +48,24 @@ export default function LandingV2() {
         }}
       >
         <NavBrand />
-        <a
-          href="#download"
-          style={{
-            padding: '9px 18px', borderRadius: 100, background: pg.accent, color: pg.onAccent,
-            fontSize: 12, fontWeight: w.semiBold, textDecoration: 'none', letterSpacing: 0.3,
-          }}
-        >
-          Get the App
-        </a>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'clamp(14px, 2vw, 22px)' }}>
+          {/* Brands are sent powr.life, not powr.life/partners — without this
+              their only way in is scrolling the whole film to the footer. Kept
+              a plain text link on purpose: the nav carries ONE gold CTA, and a
+              consumer who doesn't know what a reward partner is shouldn't have
+              to choose between two buttons. */}
+          <a className="powr-nav-secondary" href="/partners">For Brands</a>
+          <a
+            href="#download"
+            style={{
+              padding: '9px 18px', borderRadius: 100, background: pg.accent, color: pg.onAccent,
+              fontSize: 12, fontWeight: w.semiBold, textDecoration: 'none', letterSpacing: 0.3,
+              whiteSpace: 'nowrap',
+            }}
+          >
+            Get the App
+          </a>
+        </div>
       </nav>
 
       <LogoMorph />
@@ -119,50 +129,8 @@ export default function LandingV2() {
         </motion.div>
       </section>
 
-      <Footer />
+      <SiteFooter />
     </div>
-  );
-}
-
-/* Site footer — the live page's elements (SiteFooter.js), restated in the
-   v2 canvas: brand + tagline, support/legal links, copyright */
-function Footer() {
-  const links = [
-    { label: 'Support', href: '/support' },
-    { label: 'support@powr.life', href: 'mailto:support@powr.life' },
-    { label: 'Privacy Policy', href: '/privacy' },
-    { label: 'Cookie Policy', href: '/cookies' },
-  ];
-  /* Second tier: brand/partner audience. Deliberately subordinate to the links
-     above — a consumer never needs these, a brand scrolls looking for them. */
-  const brandLinks = [
-    { label: 'Partner Login', href: '/partner/login' },
-    { label: 'Integration Docs', href: '/docs' },
-    { label: 'partners@powr.life', href: 'mailto:partners@powr.life' },
-  ];
-  return (
-    <footer style={{ borderTop: `1px solid ${pg.border}`, padding: '40px clamp(18px, 3vw, 28px)' }}>
-      <div className="powr-footer-inner">
-        <div className="powr-footer-brand">
-          <img src={LOGO_SRC} alt="POWR" style={{ height: 28, width: 'auto', display: 'block', opacity: 0.5 }} />
-          <span style={{ fontSize: 13, color: pg.textSec, fontWeight: w.light }}>Made to Move. Designed to Reward.</span>
-        </div>
-        <div className="powr-footer-links">
-          {links.map((l) => (
-            <a key={l.label} className="powr-footer-link" href={l.href}>{l.label}</a>
-          ))}
-        </div>
-      </div>
-      <div className="powr-footer-sub">
-        <div className="powr-footer-links">
-          <span className="powr-footer-label">For Brands</span>
-          {brandLinks.map((l) => (
-            <a key={l.label} className="powr-footer-link" href={l.href}>{l.label}</a>
-          ))}
-        </div>
-        <span style={{ fontSize: 12, color: pg.textSec, fontWeight: w.light }}>© 2026 POWR. All rights reserved.</span>
-      </div>
-    </footer>
   );
 }
 
@@ -235,21 +203,10 @@ function GlobalStyles() {
       @keyframes powrDot { 0% { box-shadow: 0 0 0 0 rgba(232,210,0,0.45); } 70% { box-shadow: 0 0 0 9px rgba(232,210,0,0); } 100% { box-shadow: 0 0 0 0 rgba(232,210,0,0); } }
       @keyframes powrMarquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
       @keyframes powrRing { 0% { transform: scale(0.85); opacity: 0; } 30% { opacity: 1; } 100% { transform: scale(1.25); opacity: 0; } }
-      .powr-footer-inner { max-width: 1200px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 24px; }
-      .powr-footer-brand { display: flex; align-items: center; gap: 16px; }
-      .powr-footer-links { display: flex; gap: 24px; flex-wrap: wrap; }
-      .powr-footer-link { font-size: 13px; color: ${pg.textSec}; font-weight: 300; text-decoration: none; transition: color 0.2s; }
-      .powr-footer-link:hover { color: ${pg.accent}; }
-      .powr-footer-sub { max-width: 1200px; margin: 24px auto 0; padding-top: 20px; border-top: 1px solid ${pg.border}; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px 24px; }
-      .powr-footer-sub .powr-footer-link { font-size: 12px; opacity: 0.72; }
-      .powr-footer-sub .powr-footer-link:hover { opacity: 1; }
-      .powr-footer-label { font-size: 10px; color: ${pg.textSec}; font-weight: 500; letter-spacing: 0.18em; text-transform: uppercase; opacity: 0.6; }
-      @media (max-width: 768px) {
-        .powr-footer-inner { flex-direction: column; text-align: center; gap: 16px; }
-        .powr-footer-brand { flex-direction: column; gap: 8px; }
-        .powr-footer-links { justify-content: center; gap: 14px 18px; }
-        .powr-footer-sub { flex-direction: column; text-align: center; gap: 14px; }
-      }
+      .powr-nav-secondary { font-size: 12px; font-weight: 300; color: ${pg.textSec}; text-decoration: none; white-space: nowrap; transition: color 0.2s; }
+      .powr-nav-secondary:hover { color: ${pg.text}; }
+      /* Under ~380px the pair crowds the logo — the footer still carries it */
+      @media (max-width: 380px) { .powr-nav-secondary { display: none; } }
     `}</style>
   );
 }

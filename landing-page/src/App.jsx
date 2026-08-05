@@ -81,6 +81,7 @@ import VaultManager from './pages/admin/VaultManager';
 import LiveEvents from './pages/admin/LiveEvents';
 import AthleteSignup from './pages/AthleteSignup';
 import LandingV2 from './landing/LandingV2';
+import PartnersPage from './landing/partners/PartnersPage';
 import CookiePolicy from './pages/CookiePolicy';
 import DeleteAccount from './pages/DeleteAccount';
 import PartnerRewardSubmit from './pages/PartnerRewardSubmit';
@@ -1059,6 +1060,10 @@ export default function App() {
                     <Route path="/" element={<LandingV2 />} />
                     {/* The showcase shipped at /v2 before it became the homepage — keep old links working */}
                     <Route path="/v2" element={<Navigate to="/" replace />} />
+                    {/* Was a standalone static partners.html until it was rebuilt on the
+                        homepage canvas; the .html path is still on business cards */}
+                    <Route path="/partners" element={<PartnersPage />} />
+                    <Route path="/partners.html" element={<Navigate to="/partners" replace />} />
                     <Route path="/privacy" element={<PrivacyPolicy />} />
                     <Route path="/terms" element={<TermsOfService />} />
                     <Route path="/cookies" element={<CookiePolicy />} />

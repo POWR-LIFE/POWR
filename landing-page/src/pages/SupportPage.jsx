@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { LOGO_SRC } from '../landing/LogoMorph';
 import { supabase } from '../lib/supabase';
 
 // Mirrors CATEGORIES in app/help-centre.tsx and the allowlist in the
@@ -184,7 +185,7 @@ export default function SupportPage() {
                 <div className="max-w-3xl mx-auto px-6 h-16 flex items-center justify-between">
                     <Link to="/">
                         <img
-                            src="https://wjvvujnicwkruaeibttt.supabase.co/storage/v1/object/public/landing-page-assets/powrlogotext.png?v=1.1"
+                            src={LOGO_SRC}
                             alt="POWR Logo"
                             className="h-8"
                         />
