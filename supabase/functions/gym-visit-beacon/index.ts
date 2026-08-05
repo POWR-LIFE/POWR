@@ -153,21 +153,28 @@ Deno.serve(async (req: Request) => {
     if (announceErr) console.error('[gym-visit-beacon] announce scan failed', announceErr);
 
     for (const visit of due ?? []) {
-      // Stamp FIRST (conditionally, so a racing client mark wins): a crash
-      // between send and stamp must not double-banner on the next tick.
-      const { data: stamped } = await admin
+      const { data: tokens, error: tokensErr } = await admin
+        .from('user_push_tokens')
+        .select('expo_push_token')
+        .eq('user_id', visit.user_id);
+      if (tokensErr) {
+        console.error('[gym-visit-beacon] announce token lookup failed', tokensErr);
+        continue;
+      }
+      if (!tokens || tokens.length === 0) continue;
+
+      // Stamp (conditionally, so a racing client mark wins) before sending so retries never double-banner.
+      const { data: stamped, error: stampErr } = await admin
         .from('gym_visits')
         .update({ announced_at: new Date().toISOString() })
         .eq('id', visit.id)
         .is('announced_at', null)
         .select('id');
+      if (stampErr) {
+        console.error('[gym-visit-beacon] announce stamp failed', stampErr);
+        continue;
+      }
       if (!stamped || stamped.length === 0) continue; // client marked in the meantime
-
-      const { data: tokens } = await admin
-        .from('user_push_tokens')
-        .select('expo_push_token')
-        .eq('user_id', visit.user_id);
-      if (!tokens || tokens.length === 0) continue;
 
       const gymName = (visit as { partners?: { name?: string } | null }).partners?.name ?? 'your gym';
       const result = await deliverExpoMessages(admin, tokens.map(({ expo_push_token }) => ({
