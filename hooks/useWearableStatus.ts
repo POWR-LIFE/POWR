@@ -38,6 +38,7 @@ const EMPTY: Omit<WearableStatus, 'refresh'> = {
 type ConnRow = {
     provider: string;
     last_upload_at: string | null;
+    created_at: string | null;
     device_name: string | null;
 };
 
@@ -69,7 +70,7 @@ export function useWearableStatus(): WearableStatus {
             // second live row can't win with older data.
             const { data, error } = await supabase
                 .from('terra_connections')
-                .select('provider, last_upload_at, device_name')
+                .select('provider, last_upload_at, created_at, device_name')
                 .eq('user_id', user.id)
                 .is('deauthed_at', null)
                 .order('last_upload_at', { ascending: false, nullsFirst: false })
@@ -91,7 +92,11 @@ export function useWearableStatus(): WearableStatus {
                 providerId,
                 providerName: meta?.name ?? row.provider,
                 deviceName: row.device_name,
-                freshness: wearableFreshness({ connected: true, lastUploadAt: row.last_upload_at }),
+                freshness: wearableFreshness({
+                    connected: true,
+                    lastUploadAt: row.last_upload_at,
+                    connectedAt: row.created_at,
+                }),
                 hoursSinceSync: hours,
                 syncLabel: formatSyncAge(hours),
                 loading: false,

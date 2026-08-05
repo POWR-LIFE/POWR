@@ -28,6 +28,24 @@ export const WEARABLE_STALE_HOURS = 24;
  */
 export const WEARABLE_SILENT_HOURS = 48;
 
+/**
+ * Grace period after a connection is created, before "never delivered" is
+ * allowed to read as 'silent'.
+ *
+ * Nothing arrives at auth time: handleAuth only records the connection, and the
+ * first data lands either on Terra's auto-push or the next terra-poll tick (30
+ * min, and Whoop never auto-pushes `daily` at all). Without this window a user
+ * who has just reconnected is immediately told "hasn't sent POWR any data since
+ * you connected it — reconnecting usually fixes this", i.e. told to redo the
+ * thing they are standing in the middle of doing.
+ *
+ * Sized at four poll cycles: long enough that a healthy connection always
+ * delivers inside it, short enough that a genuinely dead one still surfaces the
+ * same morning. The outage shape this whole module exists for (authorised,
+ * delivering nothing, for weeks) is untouched — it just has to wait 2h.
+ */
+export const WEARABLE_CONNECTING_HOURS = 2;
+
 export type WearableFreshness =
     | 'none'      // no live wearable — render nothing
     | 'fresh'     // delivered within WEARABLE_STALE_HOURS
@@ -39,6 +57,13 @@ export type WearableStatusInput = {
     connected: boolean;
     /** terra_connections.last_upload_at, or null if it has never delivered. */
     lastUploadAt: string | null;
+    /**
+     * terra_connections.created_at — when this connection was authorised. Only
+     * consulted when the connection has never delivered, to tell "just
+     * connected, still settling" apart from "authorised and dead". Omit or pass
+     * null to keep the old behaviour (never-delivered ⇒ silent immediately).
+     */
+    connectedAt?: string | null;
     /** Injected for testability; defaults to now at call time. */
     now?: Date;
 };
@@ -62,7 +87,13 @@ export function wearableFreshness(input: WearableStatusInput): WearableFreshness
     // Never delivered. Treated as 'silent' rather than 'none' precisely because
     // this is the auth-succeeded-but-no-data shape of both real outages we've
     // hit: the user believes they're connected and nothing is coming through.
-    if (hours === null) return 'silent';
+    // The one exception is a connection young enough that no delivery is due
+    // yet — see WEARABLE_CONNECTING_HOURS.
+    if (hours === null) {
+        const sinceConnect = hoursSinceUpload(input.connectedAt ?? null, input.now ?? new Date());
+        if (sinceConnect !== null && sinceConnect < WEARABLE_CONNECTING_HOURS) return 'fresh';
+        return 'silent';
+    }
 
     if (hours >= WEARABLE_SILENT_HOURS) return 'silent';
     if (hours >= WEARABLE_STALE_HOURS) return 'stale';

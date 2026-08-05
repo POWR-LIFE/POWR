@@ -12,6 +12,7 @@ import {
     hoursSinceUpload,
     wearableFreshness,
     wearableSilentCopy,
+    WEARABLE_CONNECTING_HOURS,
     WEARABLE_SILENT_HOURS,
     WEARABLE_STALE_HOURS,
 } from '@/lib/health/wearableStatus';
@@ -71,6 +72,43 @@ describe('wearableFreshness', () => {
         // would show green here; that is the bug this module exists to fix.
         expect(wearableFreshness({ connected: true, lastUploadAt: null, now: NOW }))
             .toBe('silent');
+    });
+
+    it('does not shout at a connection made moments ago', () => {
+        // Reconnecting Whoop used to read as 'silent' the instant it landed,
+        // telling the user "reconnecting usually fixes this" while they were
+        // standing in the middle of doing exactly that. Nothing is due yet:
+        // handleAuth stores the row and the first delivery waits on terra-poll.
+        expect(wearableFreshness({
+            connected: true, lastUploadAt: null, connectedAt: agoHours(0.2), now: NOW,
+        })).toBe('fresh');
+    });
+
+    it('still goes silent once the grace period lapses with nothing delivered', () => {
+        expect(wearableFreshness({
+            connected: true,
+            lastUploadAt: null,
+            connectedAt: agoHours(WEARABLE_CONNECTING_HOURS),
+            now: NOW,
+        })).toBe('silent');
+    });
+
+    it('keeps the five-week outage silent — a long-authorised connection is not "new"', () => {
+        expect(wearableFreshness({
+            connected: true, lastUploadAt: null, connectedAt: agoHours(24 * 35), now: NOW,
+        })).toBe('silent');
+    });
+
+    it('never lets a fresh reconnect mask a wearable that has delivered before', () => {
+        // connectedAt is only consulted when nothing has ever arrived; a real
+        // delivery timestamp always wins, so re-authing can't paper over a
+        // watch that stopped feeding us days ago.
+        expect(wearableFreshness({
+            connected: true,
+            lastUploadAt: agoHours(WEARABLE_SILENT_HOURS + 1),
+            connectedAt: agoHours(0.1),
+            now: NOW,
+        })).toBe('silent');
     });
 });
 
