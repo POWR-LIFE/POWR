@@ -89,6 +89,7 @@ TaskManager.defineTask(BACKGROUND_NOTIFICATION_TASK, async ({ data, error }) => 
     console.warn('[BackgroundNotification] task error:', error);
     return;
   }
+  let rearmDone: Promise<void> | undefined;
   try {
     const payload = extractData(data);
     if (payload?.type !== VISIT_CHECK_TYPE) return; // not ours — ignore quietly
@@ -145,6 +146,27 @@ TaskManager.defineTask(BACKGROUND_NOTIFICATION_TASK, async ({ data, error }) => 
       void telemetry.catch(() => { /* telemetry must never cost the wake its round-trip */ });
     }
 
+    // Android fence self-heal: this process is provably awake and FCM-reachable
+    // right now — the one thing the dead-fence deadlock can't take away. Refresh
+    // the geofence registration with a live PendingIntent before going back to
+    // sleep.
+    //
+    // STARTED BEFORE runVisitCheck, ON PURPOSE. The confirm round-trip inside
+    // runVisitCheck can freeze forever with the screen off — server answers,
+    // client promise never settles (bench 2026-08-05: the 19:16Z and 19:51Z
+    // wakes both landed confirmed_inside server-side at ~80 ms while the JS
+    // line after the confirm never printed; same frozen-response class as the
+    // morning's auth freeze, now on the nonce fetch itself). Anything sequenced
+    // after that await is hostage — which is exactly how the first version of
+    // this self-heal died twice ("teardown race" was the wrong read of the
+    // first death; the process was alive the whole time). The re-arm chain is
+    // pure native + AsyncStorage — no network anywhere in it — so once started
+    // it always runs to completion; the trailing await below only holds the
+    // task open in the healthy case.
+    rearmDone = import('@/context/GeofenceContext')
+      .then(m => m.rearmFencesFromWake())
+      .catch(() => { /* self-heal is best-effort by definition */ });
+
     // Imported lazily: this task is registered at module load in a headless context,
     // and GeofenceContext pulls in the whole geofence engine.
     //
@@ -160,20 +182,14 @@ TaskManager.defineTask(BACKGROUND_NOTIFICATION_TASK, async ({ data, error }) => 
     // visit 793e434a were answered into the DEAD visit 2fa4e05d (2026-07-16), which
     // then burned its whole nudge budget answering for a visit that had exited.
     await runVisitCheck(stage, payload.visit_id, payload.nonce);
-
-    // Android fence self-heal: this process is provably awake and FCM-reachable
-    // right now — the one thing the dead-fence deadlock can't take away. Refresh
-    // the geofence registration with a live PendingIntent before going back to
-    // sleep. AWAITED deliberately (bench 2026-08-05 20:16Z: fired-and-forgotten
-    // here, it never ran — the task's resolution lets expo tear the headless
-    // context down immediately, racing the re-arm to death). It runs after the
-    // wake's real round-trip, so the held window costs nothing that matters.
-    try {
-      const { rearmFencesFromWake } = await import('@/context/GeofenceContext');
-      await rearmFencesFromWake();
-    } catch { /* self-heal is best-effort by definition */ }
   } catch (err) {
     console.warn('[BackgroundNotification] visit check failed:', err);
+  } finally {
+    // Hold the task open until the self-heal lands — including the throw path,
+    // where a disposable headless context would otherwise be torn down while
+    // the re-arm chain is still in flight. Undefined before the payload guard,
+    // and awaiting undefined is free.
+    await rearmDone;
   }
 });
 

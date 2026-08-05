@@ -537,7 +537,7 @@ let _lastArmSignature: string | null = null;
 
 async function armNativeRegions(
   fix: { latitude: number; longitude: number } | null,
-  opts: { force?: boolean } = {},
+  opts: { force?: boolean; freshHandle?: boolean } = {},
 ): Promise<void> {
   const { status } = await Location.getBackgroundPermissionsAsync()
     .catch(() => ({ status: 'denied' as Location.PermissionStatus }));
@@ -626,7 +626,13 @@ async function armNativeRegions(
         .sort((a, b) => (a.identifier ?? '').localeCompare(b.identifier ?? ''))
         .map(r => `${r.identifier}:${r.latitude.toFixed(4)},${r.longitude.toFixed(4)}:${Math.round(r.radius ?? 0)}:${r.notifyOnEnter ? 1 : 0}${r.notifyOnExit ? 1 : 0}`)
         .join('|');
-    if (running && signature === _lastArmSignature) {
+    // freshHandle callers (the wake self-heal) skip this skip: their entire
+    // purpose is a fresh registration with a fresh PendingIntent even when the
+    // region set is byte-identical — a mute geofencer looks exactly like an
+    // unchanged one from JS. Boot/startup arms must NOT set it (the dedupe is
+    // what stops the 2026-08-04 startup double-arm from cancelling its own
+    // queued initial-trigger events).
+    if (!opts.freshHandle && running && signature === _lastArmSignature) {
       console.log('[Geofence] Arm skipped — region set unchanged.');
       return;
     }
@@ -1878,19 +1884,26 @@ async function finalizeActiveGeofenceInner(expectedRegionId?: string): Promise<b
  *  Field pattern: after a swipe-away, GMS's registry still lists every fence
  *  but crossings stop being DELIVERED (registry populated, geofencer mute —
  *  three walks proved it; root cause under investigation). Meanwhile FCM wakes
- *  keep landing flawlessly. So every wake force-re-arms: a fresh registration
- *  with a fresh PendingIntent from the currently-live process. The beacon
- *  nudges within a minute of any session, making dead fences self-heal fast —
- *  and `force` deliberately bypasses the same-set signature skip, because a
- *  fresh delivery handle IS the point. Fire-and-forget from the wake task,
- *  strictly after the wake's real round-trip. */
+ *  keep landing flawlessly. So every wake re-arms: a fresh registration with a
+ *  fresh PendingIntent from the currently-live process. The beacon nudges
+ *  within a minute of any session, making dead fences self-heal fast.
+ *
+ *  freshHandle (not just force) is load-bearing: a mute geofencer is
+ *  indistinguishable from a healthy one on the JS side, so the same-set
+ *  signature skip would turn this call into a no-op in any warm process —
+ *  precisely the process most likely to be holding a dead PendingIntent.
+ *
+ *  Everything awaited here is native or AsyncStorage (getArmFix answers from
+ *  the stream cache / OS cache; the live-GPS branch is bounded). No network —
+ *  callers rely on this chain never freezing, because the wake task starts it
+ *  BEFORE the confirm round-trip that can. */
 export async function rearmFencesFromWake(): Promise<void> {
   if (Platform.OS !== 'android') return;
   try {
     const fix = await getArmFix();
     await armNativeRegions(
       fix ? { latitude: fix.latitude, longitude: fix.longitude } : null,
-      { force: true },
+      { force: true, freshHandle: true },
     );
   } catch (err) {
     console.warn('[Geofence] wake re-arm failed:', err);
