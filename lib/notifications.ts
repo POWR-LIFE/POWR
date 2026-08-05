@@ -380,7 +380,11 @@ export async function scheduleSessionMarkNotifications(opts: {
 
   for (const mark of marks) {
     const fireAt = new Date(opts.entryTimestampMs + mark.minutes * 60_000);
-    if (fireAt <= new Date()) continue; // threshold already passed — live paths own it
+    // Finite-check as well as past-check: a NaN date reaches expo-notifications'
+    // native Swift conversion as a NaN interval, which traps UNCATCHABLY on iOS
+    // (2026-08-05 crash-hunt finding). NaN can only come from corrupted
+    // entryTimestampMs/config, but a corrupt banner must never cost the process.
+    if (!Number.isFinite(fireAt.getTime()) || fireAt <= new Date()) continue;
     try {
       await Notifications.scheduleNotificationAsync({
         identifier: `${SESSION_MARK_ID_PREFIX}${mark.suffix}-${opts.visitId}`,
