@@ -808,6 +808,18 @@ function rulesFor(type: ActivityType): string[] {
             `${getGymUpgradeMinutes()} to reach the higher tier.`,
         );
         lines.push('Consecutive gym days multiply what a check-in pays.');
+    } else if (type === 'hiit') {
+        // Strength lane: HIIT pays exactly what a gym session pays, off its own
+        // 20-min entry. Say so plainly — this is the surface where the old
+        // 7/9/10 ladder made classes look like the lesser activity.
+        lines.push(
+            `A class earns the same as a gym session: ${config.minDuration} minutes to qualify, ` +
+            `${getGymUpgradeMinutes()} to reach the higher tier.`,
+        );
+        // NO multiplier line here. Streak multipliers are paid by claim-points,
+        // which only ever fires for a geofence check-in — and a check-in always
+        // writes type 'gym' whatever the venue. So a HIIT session never receives
+        // one, and promising it here would be a claim the ledger can't keep.
     } else if (config.minDuration > 0) {
         lines.push(`Sessions under ${config.minDuration} minutes don't earn.`);
     }

@@ -19,6 +19,7 @@ import {
   stepTierPoints,
   terraActivityToPOWR,
   terraResourceToSource,
+  type StrengthThresholds,
 } from '../_shared/points.ts';
 import { verifyTerraSignature } from '../_shared/terraSignature.ts';
 import { DATA_TYPES, extractDeviceFreshness, freshnessPatch } from '../_shared/deviceFreshness.ts';
@@ -101,6 +102,7 @@ async function insertSession(supabase, row, points: number): Promise<InsertSessi
  */
 async function upgradeTruncatedSession(supabase, {
   userId, type, start, endedAt, durSec, distanceM, hrAvg, hrMax, caloriesActive, extras, rawName,
+  thresholds,
 }): Promise<{ deltaPoints: number } | null> {
   const bucketStart = dayStartUTC(start);
   const bucketEnd = new Date(new Date(bucketStart).getTime() + 24 * 60 * 60 * 1000).toISOString();
@@ -117,8 +119,20 @@ async function upgradeTruncatedSession(supabase, {
     .maybeSingle();
   if (!existing || durSec <= (existing.duration_sec ?? 0)) return null;
 
-  const oldPoints = calculateBasePoints(type, (existing.duration_sec ?? 0) / 60);
-  const newPoints = calculateBasePoints(type, durSec / 60);
+  // Use the ledger as the source of truth for already-awarded points so that
+  // admin retuning of thresholds between the fragment insert and this delivery
+  // cannot cause the delta to over/underpay.
+  const { data: txRows, error: txReadError } = await supabase
+    .from('point_transactions')
+    .select('amount')
+    .eq('session_id', existing.id)
+    .eq('type', 'earn');
+  if (txReadError) {
+    console.error('[terra-webhook] ledger read failed:', txReadError.message);
+    return null;
+  }
+  const oldPoints = (txRows ?? []).reduce((sum, r) => sum + (r.amount ?? 0), 0);
+  const newPoints = calculateBasePoints(type, durSec / 60, thresholds);
 
   // Missing metrics on the incoming delivery keep whatever the fragment had —
   // never null out a reading we already learned.
@@ -369,10 +383,38 @@ async function notifyWearableReceipt(
   }
 }
 
+/** Admin-tunable strength thresholds. The strength lane (gym + hiit) pays the
+ *  same 15/20 tiers here as a geofence check-in does, so it must read the same
+ *  system_config gates claim-points reads — a hardcoded 30/40 would desync from
+ *  the check-in path on every retune. Falls back to the historical defaults. */
+async function readStrengthThresholds(supabase): Promise<StrengthThresholds> {
+  const out: StrengthThresholds = {};
+  try {
+    const { data, error } = await supabase
+      .from('system_config')
+      .select('key, value')
+      .in('key', ['min_gym_dwell_minutes', 'gym_upgrade_minutes']);
+    if (error) {
+      console.warn('[terra-webhook] strength threshold read failed, using defaults:', error.message);
+      return out;
+    }
+    for (const row of data ?? []) {
+      const parsed = parseInt(row.value ?? '', 10);
+      if (!Number.isFinite(parsed) || parsed <= 0) continue;
+      if (row.key === 'min_gym_dwell_minutes') out.gymDwellMin = parsed;
+      if (row.key === 'gym_upgrade_minutes') out.gymUpgradeMin = parsed;
+    }
+  } catch (err) {
+    console.warn('[terra-webhook] strength threshold read failed, using defaults:', err);
+  }
+  return out;
+}
+
 async function handleActivity(supabase, payload): Promise<void> {
   const userId = await resolveUserId(supabase, payload);
   if (!userId) return;
   const source = terraResourceToSource(payload?.user?.provider ?? '');
+  const thresholds = await readStrengthThresholds(supabase);
 
   let awardedCount = 0;
   let awardedPoints = 0;
@@ -398,7 +440,7 @@ async function handleActivity(supabase, payload): Promise<void> {
     const caloriesActive = a.calories_data?.total_burned_calories != null
       ? Math.round(a.calories_data.total_burned_calories) : null;
     const rawName = (meta.name ?? '').trim().slice(0, 80) || null;
-    const points = calculateBasePoints(type, durMin);
+    const points = calculateBasePoints(type, durMin, thresholds);
     const extras = activityExtras(a);
 
     // Gym geofence wins: if this wearable workout overlaps a geofence gym check-in,
@@ -490,6 +532,7 @@ async function handleActivity(supabase, payload): Promise<void> {
       // fragment written mid-workout. If it's longer, heal the row.
       const upgraded = await upgradeTruncatedSession(supabase, {
         userId, type, start, endedAt, durSec, distanceM, hrAvg, hrMax, caloriesActive, extras, rawName,
+        thresholds,
       });
       if (upgraded) {
         // The window grew — a manual log it now overlaps is superseded too.

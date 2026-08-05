@@ -129,21 +129,41 @@ POWR awards points (POWR) for verified physical activity across 8 activity types
 ---
 
 ### 🔥 HIIT / Classes
-**Tag:** High Intensity  
-**Daily Cap:** 10 POWR  
+**Tag:** High Intensity · **Strength lane** (scores identically to Gym)  
+**Daily Cap:** 30 POWR  
 **Verification:** Geofencing · Heart Rate · Manual Log
 
 **Eligibility:** HR Zone 4+ sustained 10+ min OR geofenced partner studio entry with 20+ min dwell.
 
 | Tier | POWR |
 |------|------|
-| 20–30 min | 7 |
-| 30–45 min | 9 |
-| 45+ min | 10 |
+| 20+ min | 15 |
+| `gym_upgrade_minutes`+ (default 40) | 20 |
 
-**Streak:** +1 POWR at 3-class streak · Weekly bonus: +3 POWR for 3+ classes/week
+**Streak Multipliers:** the same ladder as Gym — 1.2× at 3, 1.5× at 5, 2.0× at 7, 3.0× at 10+.
 
-**Rationale:** Geofence detects partner studios passively. Manual log permitted for home or outdoor HIIT with HR confirmation required.
+**Rationale (2026-08-05):** gym and HIIT/classes are one **strength lane**. A hard
+session shouldn't pay less because a wearable — or the venue — labelled it a class
+rather than a gym visit, so the two share one base table, one streak ladder and one
+daily cap. The single deliberate asymmetry is the entry gate: HIIT qualifies at 20
+minutes where gym uses the tunable `min_gym_dwell_minutes` (default 30), so a short
+class keeps earning instead of dropping to zero. The upgrade rung is the shared
+`gym_upgrade_minutes`, so an admin retune moves both together.
+
+**The strength lane pays the same on every path**, including wearables. The
+Terra webhook and the native HealthKit / Health Connect sync used to pay a flat
+10 for both gym and HIIT; they now run the 15/20 table off the same
+`min_gym_dwell_minutes` / `gym_upgrade_minutes` config the check-in path reads, so
+a retune moves all of them together. A tracked session is worth what the session
+is worth, whatever recorded it.
+
+⚠ Streak multipliers remain a **check-in-only** bonus, for every activity type —
+they're awarded in `claim-points`, which in practice only fires for geofence gym.
+Neither the wearable path nor the manual log has ever paid a streak bonus, so this
+is a verification-path difference, not an activity one.
+
+⚠ The geofence path always writes `type: 'gym'` regardless of venue, so a check-in
+at a partner studio already scored at gym rates before this change.
 
 ---
 
@@ -190,9 +210,10 @@ POWR awards points (POWR) for verified physical activity across 8 activity types
 
 | Trigger | Bonus | Applies To |
 |---------|-------|------------|
-| 3-day active streak | +1 POWR / session | Running, Cycling, Swimming, HIIT, Yoga |
-| 5-day active streak | +2 POWR / session | Running, Cycling, Swimming, HIIT, Yoga |
+| 3-day active streak | +1 POWR / session | Running, Cycling, Swimming, Yoga |
+| 5-day active streak | +2 POWR / session | Running, Cycling, Swimming, Yoga |
 | 7-day active streak | 1.5× base POWR | Running, Cycling, Swimming |
+| Strength-lane multipliers | 1.2× / 1.5× / 2.0× / 3.0× at 3 / 5 / 7 / 10 days | Gym (check-in only; HIIT sessions do not receive a streak multiplier because check-ins always write type `gym`) |
 | Weekly consistency (5+ sessions) | +5 POWR flat | All activities |
 | Monthly milestone (20+ sessions) | +15 POWR flat | All activities |
 
@@ -236,7 +257,7 @@ POWR awards points (POWR) for verified physical activity across 8 activity types
 | Cycling | 10 POWR |
 | Swimming | 10 POWR |
 | Gym | 30 POWR |
-| HIIT / Classes | 10 POWR |
+| HIIT / Classes | 30 POWR |
 | Sports | 10 POWR |
 | Yoga / Pilates | 6 POWR |
 

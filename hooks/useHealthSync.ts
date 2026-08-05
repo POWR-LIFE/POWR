@@ -9,6 +9,7 @@ import { getInferredActivitiesForWeek } from '@/lib/health/runInference';
 import { reconcileRecentGymSessions } from '@/lib/health/gymReconcile';
 import { supabase } from '@/lib/supabase';
 import { ACTIVITIES, type ActivityType } from '@/constants/activities';
+import { getGymDwellMinutes, getGymUpgradeMinutes } from '@/lib/gymDwellConfig';
 import { logManualSession, saveHealthSnapshot } from '@/lib/api/activity';
 import { triggerServerNotification } from '@/lib/api/notifications';
 import { getSessionUser } from '@/lib/supabase';
@@ -389,14 +390,28 @@ function mapHealthType(name: string): ActivityType | null {
   return null;
 }
 
+/** HIIT's fixed entry gate — the strength lane's lower floor. Mirrors
+ *  HIIT_MIN_MINUTES in supabase/functions/_shared/points.ts. */
+const HIIT_MIN_MINUTES = 20;
+
 function calculateBasePoints(type: ActivityType, durationMin: number): number {
+  // Strength lane (gym + hiit): the same 15/20 tiers a geofence check-in pays,
+  // off the admin-tunable thresholds — a wearable-tracked session is worth what
+  // the same session is worth anywhere else. Mirrors _shared/points.ts, which
+  // the Terra webhook uses for the identical calculation server-side.
+  if (type === 'gym' || type === 'hiit') {
+    const entryMin = type === 'hiit' ? HIIT_MIN_MINUTES : getGymDwellMinutes();
+    const upgradeMin = getGymUpgradeMinutes();
+    if (durationMin >= upgradeMin && durationMin >= entryMin) return 20;
+    if (durationMin >= entryMin) return 15;
+    return 0;
+  }
+
   const config = ACTIVITIES[type];
   if (durationMin < config.minDuration) return 0;
 
-  if (type === 'gym') return 10;
   if (type === 'running' || type === 'cycling') return 10;
   if (type === 'swimming') return 7;
-  if (type === 'hiit') return 10;
   if (type === 'sports') return 6;
   if (type === 'yoga') return 3;
   return 5;
