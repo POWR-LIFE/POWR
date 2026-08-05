@@ -70,7 +70,7 @@ function subscribeOnce(): void {
  *  and a quiet client emits nothing), and the divergence detector is only as
  *  good as this value. */
 function remember(session: Session | null): Session | null {
-  memRefreshToken = session?.refresh_token ?? memRefreshToken;
+  memRefreshToken = session?.refresh_token ?? null;
   return session;
 }
 
@@ -116,7 +116,7 @@ export function ensureFreshSession(reason: string, opts?: { force?: boolean }): 
       // Divergence: another runtime rotated after we loaded. Adopt the
       // persisted pair — setSession() refreshes off it if the access token is
       // already expired, and that refresh presents the NEWEST family member.
-      if (persisted && memRefreshToken && persisted.refresh_token !== memRefreshToken) {
+      if (persisted && persisted.refresh_token !== memRefreshToken) {
         console.warn(`[authFresh] ${reason}: runtime session is stale vs storage — resyncing to the persisted pair.`);
         const { data, error } = await withNetworkTimeout(
           supabase.auth.setSession(persisted), 'auth.setSession',
@@ -129,9 +129,10 @@ export function ensureFreshSession(reason: string, opts?: { force?: boolean }): 
       // Memory matches storage (or this is a cold runtime, where they are the
       // same thing): getSession()'s lazy refresh is safe here because any
       // refresh it performs uses the newest pair.
-      const { data: { session } } = await withNetworkTimeout(
+      const { data: { session }, error } = await withNetworkTimeout(
         supabase.auth.getSession(), 'auth.getSession',
       );
+      if (error) throw error;
       if (!session) return null;
       remember(session);
 
@@ -224,10 +225,10 @@ async function flushBreadcrumbs(): Promise<void> {
     if (!raw) return;
     const list = JSON.parse(raw);
     if (!Array.isArray(list) || list.length === 0) return;
-    await AsyncStorage.removeItem(BREADCRUMB_KEY);
     // Dynamic import breaks the module cycle (gymVisits imports this module).
     const { logGeofenceRegionEvent } = await import('@/lib/gymVisits');
-    void logGeofenceRegionEvent('auth', 'auth_stale', { failures: list }).catch(() => {});
+    await logGeofenceRegionEvent('auth', 'auth_stale', { failures: list });
+    await AsyncStorage.removeItem(BREADCRUMB_KEY);
   } catch { /* flush retries on the next healthy call */ } finally {
     flushing = false;
   }

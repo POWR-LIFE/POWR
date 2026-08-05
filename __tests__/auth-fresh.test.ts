@@ -20,6 +20,8 @@ const mockStorage: Record<string, string> = {};
 jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock'));
 
+const asyncStorage = require('@react-native-async-storage/async-storage');
+
 const authState = {
   onChange: [] as Array<(evt: string, session: unknown) => void>,
   session: null as Record<string, unknown> | null,
@@ -60,8 +62,9 @@ jest.mock('@/lib/supabase', () => ({
 
 // gymVisits is dynamically imported by the breadcrumb flusher; stub it so a
 // flush can never pull the real module graph into this focused test.
+const mockLogGeofenceRegionEvent = jest.fn(async () => {});
 jest.mock('@/lib/gymVisits', () => ({
-  logGeofenceRegionEvent: jest.fn(async () => {}),
+  logGeofenceRegionEvent: (...args: unknown[]) => mockLogGeofenceRegionEvent(...args),
 }));
 
 const nowS = () => Math.floor(Date.now() / 1000);
@@ -94,6 +97,8 @@ beforeEach(() => {
   authState.onChange.length = 0;
   authState.session = null;
   Object.keys(mockStorage).forEach(k => delete mockStorage[k]);
+  mockLogGeofenceRegionEvent.mockReset();
+  mockLogGeofenceRegionEvent.mockResolvedValue(undefined);
 });
 
 describe('ensureFreshSession', () => {
@@ -114,8 +119,11 @@ describe('ensureFreshSession', () => {
 
   it('proactively refreshes a token inside the expiry slack', async () => {
     const { ensureFreshSession } = loadAuthFresh();
-    seedMemory({ access_token: 'at', refresh_token: 'rt', lifeS: 30 });   // < 120s slack
+    seedMemory({ access_token: 'at', refresh_token: 'rt', lifeS: 3600 });
     seedPersisted({ access_token: 'at', refresh_token: 'rt' });           // no divergence
+    await ensureFreshSession('warmup');
+    mockAuth.refreshSession.mockClear();
+    seedMemory({ access_token: 'at', refresh_token: 'rt', lifeS: 30 });   // < 120s slack
 
     const session = await ensureFreshSession('test');
 
@@ -127,6 +135,8 @@ describe('ensureFreshSession', () => {
     const { ensureFreshSession } = loadAuthFresh();
     seedMemory({ access_token: 'at', refresh_token: 'rt', lifeS: 3600 });
     seedPersisted({ access_token: 'at', refresh_token: 'rt' });
+    await ensureFreshSession('warmup');
+    mockAuth.setSession.mockClear();
 
     const session = await ensureFreshSession('test');
 
@@ -137,8 +147,11 @@ describe('ensureFreshSession', () => {
 
   it('single-flights concurrent callers', async () => {
     const { ensureFreshSession } = loadAuthFresh();
-    seedMemory({ access_token: 'at', refresh_token: 'rt', lifeS: 30 });
+    seedMemory({ access_token: 'at', refresh_token: 'rt', lifeS: 3600 });
     seedPersisted({ access_token: 'at', refresh_token: 'rt' });
+    await ensureFreshSession('warmup');
+    seedMemory({ access_token: 'at', refresh_token: 'rt', lifeS: 30 });
+    mockAuth.refreshSession.mockClear();
 
     await Promise.all([
       ensureFreshSession('a'), ensureFreshSession('b'), ensureFreshSession('c'),
@@ -149,8 +162,10 @@ describe('ensureFreshSession', () => {
 
   it('returns null (never throws) when refresh fails — the revoked-family case', async () => {
     const { ensureFreshSession } = loadAuthFresh();
-    seedMemory({ access_token: 'at', refresh_token: 'rt', lifeS: 30 });
+    seedMemory({ access_token: 'at', refresh_token: 'rt', lifeS: 3600 });
     seedPersisted({ access_token: 'at', refresh_token: 'rt' });
+    await ensureFreshSession('warmup');
+    seedMemory({ access_token: 'at', refresh_token: 'rt', lifeS: 30 });
     mockAuth.refreshSession.mockResolvedValueOnce({
       data: { session: null },
       error: { message: 'Invalid Refresh Token: Already Used', status: 400 },
@@ -164,6 +179,46 @@ describe('ensureFreshSession', () => {
     await expect(ensureFreshSession('test')).resolves.toBeNull();
     expect(mockAuth.refreshSession).not.toHaveBeenCalled();
   });
+
+  it('adopts the persisted pair when runtime token belief is unknown', async () => {
+    const { ensureFreshSession } = loadAuthFresh();
+    seedPersisted({ access_token: 'at-new', refresh_token: 'rt-new' });
+
+    await ensureFreshSession('cold-start');
+
+    expect(mockAuth.setSession).toHaveBeenCalledWith(
+      expect.objectContaining({ refresh_token: 'rt-new' }));
+    expect(mockAuth.getSession).not.toHaveBeenCalled();
+  });
+
+  it('clears runtime token belief when the runtime becomes signed out', async () => {
+    const { ensureFreshSession } = loadAuthFresh();
+    seedMemory({ access_token: 'at-old', refresh_token: 'rt-old', lifeS: 3600 });
+    await ensureFreshSession('warmup');
+
+    authState.onChange.forEach(cb => cb('SIGNED_OUT', null));
+    seedPersisted({ access_token: 'at-new', refresh_token: 'rt-new' });
+
+    await ensureFreshSession('after-signout');
+
+    expect(mockAuth.setSession).toHaveBeenCalledWith(
+      expect.objectContaining({ refresh_token: 'rt-new' }));
+  });
+
+  it('records getSession errors as auth failures instead of silently treating them as signed out', async () => {
+    const { ensureFreshSession } = loadAuthFresh();
+    mockAuth.getSession.mockResolvedValueOnce({
+      data: { session: null },
+      error: new Error('storage parse failed'),
+    } as never);
+
+    await expect(ensureFreshSession('test')).resolves.toBeNull();
+
+    const breadcrumbsRaw = await asyncStorage.getItem('POWR_AUTH_FAILURE_BREADCRUMBS');
+    expect(JSON.parse(breadcrumbsRaw)).toEqual([
+      expect.objectContaining({ reason: 'test', error: 'storage parse failed' }),
+    ]);
+  });
 });
 
 describe('callWithAuthRetry', () => {
@@ -171,6 +226,8 @@ describe('callWithAuthRetry', () => {
     const { callWithAuthRetry } = loadAuthFresh();
     seedMemory({ access_token: 'at', refresh_token: 'rt', lifeS: 3600 });
     seedPersisted({ access_token: 'at', refresh_token: 'rt' });
+    await loadAuthFresh().ensureFreshSession('warmup');
+    mockAuth.refreshSession.mockClear();
 
     const make = jest.fn()
       .mockResolvedValueOnce({ data: null, error: { code: 'PGRST301', message: 'JWT expired' } })
@@ -187,6 +244,8 @@ describe('callWithAuthRetry', () => {
     const { callWithAuthRetry } = loadAuthFresh();
     seedMemory({ access_token: 'at', refresh_token: 'rt', lifeS: 3600 });
     seedPersisted({ access_token: 'at', refresh_token: 'rt' });
+    await loadAuthFresh().ensureFreshSession('warmup');
+    mockAuth.refreshSession.mockClear();
 
     const make = jest.fn().mockResolvedValue({
       data: null, error: { code: '23505', message: 'duplicate key value' },
@@ -202,6 +261,8 @@ describe('callWithAuthRetry', () => {
     const { callWithAuthRetry } = loadAuthFresh();
     seedMemory({ access_token: 'at', refresh_token: 'rt', lifeS: 3600 });
     seedPersisted({ access_token: 'at', refresh_token: 'rt' });
+    await loadAuthFresh().ensureFreshSession('warmup');
+    mockAuth.refreshSession.mockClear();
     mockAuth.refreshSession.mockResolvedValue({
       data: { session: null },
       error: { message: 'Invalid Refresh Token: Already Used', status: 400 },
@@ -228,5 +289,21 @@ describe('isAuthError', () => {
     expect(isAuthError({ code: '23505', message: 'duplicate key value' })).toBe(false);
     expect(isAuthError(new Error('network request failed'))).toBe(false);
     expect(isAuthError(null)).toBe(false);
+  });
+});
+
+describe('flushBreadcrumbs', () => {
+  it('keeps breadcrumbs queued when server-side flush fails', async () => {
+    const { ensureFreshSession } = loadAuthFresh();
+    await asyncStorage.setItem('POWR_AUTH_FAILURE_BREADCRUMBS', JSON.stringify([
+      { at: new Date().toISOString(), reason: 'test', error: 'boom' },
+    ]));
+    seedMemory({ access_token: 'at', refresh_token: 'rt', lifeS: 3600 });
+    seedPersisted({ access_token: 'at', refresh_token: 'rt' });
+    mockLogGeofenceRegionEvent.mockRejectedValueOnce(new Error('rpc down'));
+
+    await ensureFreshSession('flush-fails');
+
+    expect(await asyncStorage.getItem('POWR_AUTH_FAILURE_BREADCRUMBS')).toContain('"reason":"test"');
   });
 });
