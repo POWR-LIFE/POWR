@@ -97,7 +97,7 @@ export default function PartnersPage() {
       />
 
       <Nav />
-      <Hero count={brands?.length ?? null} />
+      <Hero />
 
       <Vault brands={list} />
       <Loop />
@@ -143,19 +143,11 @@ function Nav() {
   );
 }
 
-function Hero({ count }) {
+function Hero() {
   const { scrollY } = useScroll();
   const videoOpacity = useTransform(scrollY, [0, 700], [1, 0.3]);
   const contentY = useTransform(scrollY, [0, 700], [0, -110]);
   const contentOpacity = useTransform(scrollY, [0, 520], [1, 0]);
-
-  /* Facts, not market research. Each is something POWR can point at. */
-  const proof = [
-    { value: count ? String(count) : '8', label: 'live brands in the vault' },
-    { value: '3', label: 'ways to deliver a code' },
-    { value: '<24h', label: 'from listing to live' },
-    { value: '0', label: 'integration required' },
-  ];
 
   return (
     <section style={{ position: 'relative', minHeight: '100vh', display: 'flex', alignItems: 'center', overflow: 'hidden' }}>
@@ -230,26 +222,6 @@ function Hero({ count }) {
         <motion.div variants={rise} style={{ marginTop: 34, display: 'flex', flexWrap: 'wrap', gap: 12 }}>
           <GoldButton href="#apply">Apply to partner</GoldButton>
           <GhostButton href="#partners">See who’s already in</GhostButton>
-        </motion.div>
-
-        <motion.div
-          variants={rise}
-          style={{
-            marginTop: 56, paddingTop: 26, borderTop: `1px solid ${pg.border}`,
-            display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '24px 20px',
-            maxWidth: 820,
-          }}
-        >
-          {proof.map((p) => (
-            <div key={p.label}>
-              <div style={{ fontSize: 'clamp(26px, 3vw, 38px)', fontWeight: w.extraLight, letterSpacing: -1.2, color: pg.text, lineHeight: 1 }}>
-                {p.value}
-              </div>
-              <div style={{ marginTop: 9, fontSize: 11.5, color: pg.textSec, fontWeight: w.light, lineHeight: 1.45 }}>
-                {p.label}
-              </div>
-            </div>
-          ))}
         </motion.div>
       </motion.div>
 
