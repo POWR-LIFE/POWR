@@ -1546,9 +1546,10 @@ async function setActiveAndNotify(regionId: string, entry: PartnerMapEntry): Pro
   // a silent push — because a stationary phone gets no location callbacks and
   // therefore cannot wake itself. Best-effort: no beacon just means no nudges, and
   // the exit path still claims.
+  let visitId: string | null = null;
   try {
     const { openGymVisit } = await import('@/lib/gymVisits');
-    const visitId = await openGymVisit(entry.dbId, regionId, entryTimestamp);
+    visitId = await openGymVisit(entry.dbId, regionId, entryTimestamp);
     if (visitId) {
       const raw = await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY);
       const active = raw ? JSON.parse(raw) as StoredGeofence : null;
@@ -1561,10 +1562,44 @@ async function setActiveAndNotify(regionId: string, entry: PartnerMapEntry): Pro
     console.warn('[Geofence] Visit beacon failed to open:', err);
   }
 
+  // The "You're in" banner, with the dual-path contract:
+  //  - Local notification first (instant when it works — always foreground, and
+  //    headless on iOS).
+  //  - On Android, headless scheduleNotificationAsync fails SILENTLY (known
+  //    since 2026-07-14; a bare catch here hid it until 2026-08-05), so the
+  //    beacon server-announces any android visit not marked within its grace
+  //    window. A successful local display marks the visit so nobody gets both.
   try {
     const { notifyCheckInAvailable } = await import('@/lib/notifications');
-    await notifyCheckInAvailable(entry.name, regionId);
-  } catch { /* non-fatal */ }
+    const shown = await notifyCheckInAvailable(entry.name, regionId);
+    if (shown && visitId) {
+      const { supabase } = await import('@/lib/supabase');
+      void supabase
+        .rpc('mark_gym_visit_announced', { p_visit_id: visitId })
+        .then(({ error }) => { if (error) console.warn('[Geofence] announce mark failed:', error.message); })
+        .catch((rpcErr) => { console.warn('[Geofence] announce mark RPC threw:', rpcErr); });
+  } catch (err) {
+    console.warn('[Geofence] check-in banner failed locally — server announce will cover (android):', err);
+  }
+
+  // iOS swiped-away: pre-schedule the 30/40-minute banners now, while we are
+  // provably awake. Apple delivers scheduled locals to force-quit apps; the
+  // EXIT relaunch cancels whichever marks the user leaves before earning
+  // (see finalizeActiveGeofenceInner). No-op on Android.
+  if (visitId) {
+    try {
+      const { scheduleSessionMarkNotifications } = await import('@/lib/notifications');
+      await scheduleSessionMarkNotifications({
+        visitId,
+        partnerName: entry.name,
+        entryTimestampMs: entryTimestamp,
+        dwellMinutes: getGymDwellMinutes(),
+        upgradeMinutes: getGymUpgradeMinutes(),
+      });
+    } catch (err) {
+      console.warn('[Geofence] session marks failed to schedule:', err);
+    }
+  }
 }
 
 /** Runs the exit claim/upgrade path after finalizeActiveGeofence has persisted
@@ -1777,6 +1812,26 @@ async function finalizeActiveGeofenceInner(expectedRegionId?: string): Promise<b
       const { closeGymVisit } = await import('@/lib/gymVisits');
       await closeGymVisit(active.visitId, endedAtMs);
     } catch { /* non-fatal */ }
+
+    // iOS: withdraw the pre-scheduled session-mark banners the user left before
+    // earning. This exit code is what keeps those banners honest — it runs even
+    // from a force-quit relaunch (region EXIT, proven 2026-08-05). Left before
+    // the dwell threshold → cancel both; between dwell and upgrade → cancel the
+    // upgrade one; past both → nothing pending to cancel.
+    try {
+      const dwellMs = endedAtMs - active.entryTimestamp;
+      const dwellThresholdMs = getGymDwellMinutes() * 60_000;
+      const upgradeThresholdMs = getGymUpgradeMinutes() * 60_000;
+      if (dwellMs < upgradeThresholdMs) {
+        const { cancelSessionMarkNotifications } = await import('@/lib/notifications');
+        await cancelSessionMarkNotifications(
+          active.visitId,
+          dwellMs < dwellThresholdMs ? 'all' : 'upgrade_only',
+        );
+      }
+    } catch (err) {
+      console.warn('[Geofence] session mark cancel failed:', err);
+    }
   }
 
   if (!needsClaim) {
