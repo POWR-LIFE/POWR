@@ -62,7 +62,7 @@ jest.mock('@/lib/supabase', () => ({
 
 // gymVisits is dynamically imported by the breadcrumb flusher; stub it so a
 // flush can never pull the real module graph into this focused test.
-const mockLogGeofenceRegionEvent = jest.fn(async () => {});
+const mockLogGeofenceRegionEvent = jest.fn(async (..._args: unknown[]) => {});
 jest.mock('@/lib/gymVisits', () => ({
   logGeofenceRegionEvent: (...args: unknown[]) => mockLogGeofenceRegionEvent(...args),
 }));

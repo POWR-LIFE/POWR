@@ -623,7 +623,7 @@ async function armNativeRegions(
     const signature =
       `${fix ? `${fix.latitude.toFixed(3)},${fix.longitude.toFixed(3)}` : 'nofix'}|` +
       [...regions]
-        .sort((a, b) => a.identifier.localeCompare(b.identifier))
+        .sort((a, b) => (a.identifier ?? '').localeCompare(b.identifier ?? ''))
         .map(r => `${r.identifier}:${r.latitude.toFixed(4)},${r.longitude.toFixed(4)}:${Math.round(r.radius ?? 0)}:${r.notifyOnEnter ? 1 : 0}${r.notifyOnExit ? 1 : 0}`)
         .join('|');
     if (running && signature === _lastArmSignature) {
@@ -1581,10 +1581,14 @@ async function setActiveAndNotify(regionId: string, entry: PartnerMapEntry): Pro
     const shown = await notifyCheckInAvailable(entry.name, regionId);
     if (shown && visitId) {
       const { supabase } = await import('@/lib/supabase');
-      void supabase
-        .rpc('mark_gym_visit_announced', { p_visit_id: visitId })
-        .then(({ error }) => { if (error) console.warn('[Geofence] announce mark failed:', error.message); })
-        .catch((rpcErr) => { console.warn('[Geofence] announce mark RPC threw:', rpcErr); });
+      // Promise.resolve upgrades PostgREST's PromiseLike to a real Promise; the
+      // two-arg then covers both the {error} result and a thrown network error.
+      void Promise.resolve(
+        supabase.rpc('mark_gym_visit_announced', { p_visit_id: visitId }),
+      ).then(
+        ({ error }) => { if (error) console.warn('[Geofence] announce mark failed:', error.message); },
+        (rpcErr: unknown) => { console.warn('[Geofence] announce mark RPC threw:', rpcErr); },
+      );
     }
   } catch (err) {
     console.warn('[Geofence] check-in banner failed locally — server announce will cover (android):', err);
