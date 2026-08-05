@@ -164,7 +164,16 @@ TaskManager.defineTask(BACKGROUND_NOTIFICATION_TASK, async ({ data, error }) => 
     // it always runs to completion; the trailing await below only holds the
     // task open in the healthy case.
     rearmDone = import('@/context/GeofenceContext')
-      .then(m => m.rearmFencesFromWake())
+      .then(async m => {
+        await m.rearmFencesFromWake();
+        // Visit-less wakes (the beacon's fence-refresh ping) double as
+        // zombie-session reconciliation: a missed walk-out EXIT leaves the
+        // persisted session active forever, and the enter handler then
+        // refuses every REAL arrival ("Enter ignored — session already
+        // active"). A wake FOR a visit already reconciles inside/outside via
+        // runVisitCheck's own fix — don't double up there.
+        if (!payload.visit_id) await m.reconcileActiveSessionFromWake();
+      })
       .catch(() => { /* self-heal is best-effort by definition */ });
 
     // Imported lazily: this task is registered at module load in a headless context,
