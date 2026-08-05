@@ -30,9 +30,9 @@ const getPermissions = Notifications.getPermissionsAsync as jest.Mock;
 const schedule = Notifications.scheduleNotificationAsync as jest.Mock;
 const cancel = Notifications.cancelScheduledNotificationAsync as jest.Mock;
 
-const VISIT_ID = 'visit-123';
+const SESSION_KEY = '1754400000000';
 const baseOpts = {
-  visitId: VISIT_ID,
+  sessionKey: SESSION_KEY,
   partnerName: 'POWR Gym',
   dwellMinutes: 30,
   upgradeMinutes: 40,
@@ -60,8 +60,8 @@ describe('scheduleSessionMarkNotifications', () => {
     expect(schedule).toHaveBeenCalledTimes(2);
     const [dwellCall, upgradeCall] = schedule.mock.calls.map(c => c[0]);
 
-    expect(dwellCall.identifier).toBe(`powr-session_mark-dwell-${VISIT_ID}`);
-    expect(upgradeCall.identifier).toBe(`powr-session_mark-upgrade-${VISIT_ID}`);
+    expect(dwellCall.identifier).toBe(`powr-session_mark-dwell-${SESSION_KEY}`);
+    expect(upgradeCall.identifier).toBe(`powr-session_mark-upgrade-${SESSION_KEY}`);
     expect(dwellCall.trigger.date.getTime()).toBe(entry + 30 * 60_000);
     expect(upgradeCall.trigger.date.getTime()).toBe(entry + 40 * 60_000);
     expect(dwellCall.content.title).toContain('Session recorded');
@@ -73,7 +73,7 @@ describe('scheduleSessionMarkNotifications', () => {
     await scheduleSessionMarkNotifications({ ...baseOpts, entryTimestampMs: entry });
 
     expect(schedule).toHaveBeenCalledTimes(1);
-    expect(schedule.mock.calls[0][0].identifier).toBe(`powr-session_mark-upgrade-${VISIT_ID}`);
+    expect(schedule.mock.calls[0][0].identifier).toBe(`powr-session_mark-upgrade-${SESSION_KEY}`);
   });
 
   it('never schedules on Android — server pushes own the marks there', async () => {
@@ -102,28 +102,28 @@ describe('scheduleSessionMarkNotifications', () => {
 
 describe('cancelSessionMarkNotifications', () => {
   it("cancels both marks when the user left before the dwell threshold ('all')", async () => {
-    await cancelSessionMarkNotifications(VISIT_ID, 'all');
+    await cancelSessionMarkNotifications(SESSION_KEY, 'all');
     expect(cancel.mock.calls.map(c => c[0]).sort()).toEqual([
-      `powr-session_mark-dwell-${VISIT_ID}`,
-      `powr-session_mark-upgrade-${VISIT_ID}`,
+      `powr-session_mark-dwell-${SESSION_KEY}`,
+      `powr-session_mark-upgrade-${SESSION_KEY}`,
     ]);
   });
 
   it("cancels only the upgrade mark when they left between thresholds ('upgrade_only')", async () => {
-    await cancelSessionMarkNotifications(VISIT_ID, 'upgrade_only');
+    await cancelSessionMarkNotifications(SESSION_KEY, 'upgrade_only');
     expect(cancel).toHaveBeenCalledTimes(1);
-    expect(cancel).toHaveBeenCalledWith(`powr-session_mark-upgrade-${VISIT_ID}`);
+    expect(cancel).toHaveBeenCalledWith(`powr-session_mark-upgrade-${SESSION_KEY}`);
   });
 
   it('is a no-op on Android', async () => {
     Object.defineProperty(Platform, 'OS', { value: 'android', configurable: true });
-    await cancelSessionMarkNotifications(VISIT_ID, 'all');
+    await cancelSessionMarkNotifications(SESSION_KEY, 'all');
     expect(cancel).not.toHaveBeenCalled();
   });
 
   it('tolerates cancelling marks that were never scheduled on this runtime', async () => {
     cancel.mockRejectedValue(new Error('not found'));
-    await expect(cancelSessionMarkNotifications(VISIT_ID, 'all')).resolves.toBeUndefined();
+    await expect(cancelSessionMarkNotifications(SESSION_KEY, 'all')).resolves.toBeUndefined();
   });
 });
 

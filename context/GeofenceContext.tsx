@@ -1553,6 +1553,38 @@ async function setActiveAndNotify(regionId: string, entry: PartnerMapEntry): Pro
   // a silent push — because a stationary phone gets no location callbacks and
   // therefore cannot wake itself. Best-effort: no beacon just means no nudges, and
   // the exit path still claims.
+  // LOCAL UX FIRST, NETWORK LAST — the ordering is load-bearing. On 2026-08-05
+  // the iOS return re-entry's frozen background network meant openGymVisit
+  // never resolved a visit id, and everything gated behind it silently
+  // vanished — including the purely-local session-mark banners. Banners and
+  // marks now happen before the first network touch and depend on nothing.
+  let checkInShown = false;
+  try {
+    const { notifyCheckInAvailable } = await import('@/lib/notifications');
+    checkInShown = await notifyCheckInAvailable(entry.name, regionId);
+  } catch (err) {
+    console.warn('[Geofence] check-in banner failed locally — server announce will cover (android):', err);
+  }
+
+  // iOS: pre-schedule the 30/40-minute banners now, while we are provably
+  // awake. Keyed on entryTimestamp — always known locally — NOT the visit id,
+  // which needs a network round-trip that background relaunches may freeze.
+  // The EXIT path cancels by the same key (see finalizeActiveGeofenceInner).
+  // No-op on Android.
+  try {
+    const { scheduleSessionMarkNotifications } = await import('@/lib/notifications');
+    await scheduleSessionMarkNotifications({
+      sessionKey: String(entryTimestamp),
+      partnerName: entry.name,
+      entryTimestampMs: entryTimestamp,
+      dwellMinutes: getGymDwellMinutes(),
+      upgradeMinutes: getGymUpgradeMinutes(),
+    });
+  } catch (err) {
+    console.warn('[Geofence] session marks failed to schedule:', err);
+  }
+
+  // Only now the network: open the server-side visit beacon.
   let visitId: string | null = null;
   try {
     const { openGymVisit } = await import('@/lib/gymVisits');
@@ -1564,54 +1596,23 @@ async function setActiveAndNotify(regionId: string, entry: PartnerMapEntry): Pro
       if (active && active.entryTimestamp === entryTimestamp) {
         await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...active, visitId }));
       }
+      if (checkInShown) {
+        // Local banner displayed — tell the beacon not to double-announce
+        // (android). Promise.resolve upgrades PostgREST's PromiseLike; two-arg
+        // then covers both the {error} result and a thrown network error.
+        const { supabase } = await import('@/lib/supabase');
+        void Promise.resolve(
+          supabase.rpc('mark_gym_visit_announced', { p_visit_id: visitId }),
+        ).then(
+          ({ error }) => { if (error) console.warn('[Geofence] announce mark failed:', error.message); },
+          (rpcErr: unknown) => { console.warn('[Geofence] announce mark RPC threw:', rpcErr); },
+        );
+      }
     }
   } catch (err) {
     console.warn('[Geofence] Visit beacon failed to open:', err);
   }
 
-  // The "You're in" banner, with the dual-path contract:
-  //  - Local notification first (instant when it works — always foreground, and
-  //    headless on iOS).
-  //  - On Android, headless scheduleNotificationAsync fails SILENTLY (known
-  //    since 2026-07-14; a bare catch here hid it until 2026-08-05), so the
-  //    beacon server-announces any android visit not marked within its grace
-  //    window. A successful local display marks the visit so nobody gets both.
-  try {
-    const { notifyCheckInAvailable } = await import('@/lib/notifications');
-    const shown = await notifyCheckInAvailable(entry.name, regionId);
-    if (shown && visitId) {
-      const { supabase } = await import('@/lib/supabase');
-      // Promise.resolve upgrades PostgREST's PromiseLike to a real Promise; the
-      // two-arg then covers both the {error} result and a thrown network error.
-      void Promise.resolve(
-        supabase.rpc('mark_gym_visit_announced', { p_visit_id: visitId }),
-      ).then(
-        ({ error }) => { if (error) console.warn('[Geofence] announce mark failed:', error.message); },
-        (rpcErr: unknown) => { console.warn('[Geofence] announce mark RPC threw:', rpcErr); },
-      );
-    }
-  } catch (err) {
-    console.warn('[Geofence] check-in banner failed locally — server announce will cover (android):', err);
-  }
-
-  // iOS swiped-away: pre-schedule the 30/40-minute banners now, while we are
-  // provably awake. Apple delivers scheduled locals to force-quit apps; the
-  // EXIT relaunch cancels whichever marks the user leaves before earning
-  // (see finalizeActiveGeofenceInner). No-op on Android.
-  if (visitId) {
-    try {
-      const { scheduleSessionMarkNotifications } = await import('@/lib/notifications');
-      await scheduleSessionMarkNotifications({
-        visitId,
-        partnerName: entry.name,
-        entryTimestampMs: entryTimestamp,
-        dwellMinutes: getGymDwellMinutes(),
-        upgradeMinutes: getGymUpgradeMinutes(),
-      });
-    } catch (err) {
-      console.warn('[Geofence] session marks failed to schedule:', err);
-    }
-  }
 }
 
 /** Runs the exit claim/upgrade path after finalizeActiveGeofence has persisted
@@ -1836,8 +1837,11 @@ async function finalizeActiveGeofenceInner(expectedRegionId?: string): Promise<b
       const upgradeThresholdMs = getGymUpgradeMinutes() * 60_000;
       if (dwellMs < upgradeThresholdMs) {
         const { cancelSessionMarkNotifications } = await import('@/lib/notifications');
+        // Same key the scheduler used: entryTimestamp, never the visit id —
+        // a frozen-network entry has no visit id, but its marks still exist
+        // and still need honest cancellation.
         await cancelSessionMarkNotifications(
-          active.visitId,
+          String(active.entryTimestamp),
           dwellMs < dwellThresholdMs ? 'all' : 'upgrade_only',
         );
       }
