@@ -350,7 +350,11 @@ export async function notifyCheckInAvailable(partnerName: string, locationId: st
 const SESSION_MARK_ID_PREFIX = 'powr-session_mark-';
 
 export async function scheduleSessionMarkNotifications(opts: {
-  visitId: string;
+  /** Stable per-session key. Use the ENTRY TIMESTAMP, never the visit id: the
+   *  visit id needs a network round-trip that background relaunches can
+   *  freeze, and these banners are purely local (2026-08-05: gating them on
+   *  the visit id silently dropped them on a frozen iOS re-entry). */
+  sessionKey: string;
   partnerName: string;
   entryTimestampMs: number;
   dwellMinutes: number;
@@ -390,14 +394,14 @@ export async function scheduleSessionMarkNotifications(opts: {
     if (!Number.isFinite(fireAt.getTime()) || fireAt <= new Date()) continue;
     try {
       await Notifications.scheduleNotificationAsync({
-        identifier: `${SESSION_MARK_ID_PREFIX}${mark.suffix}-${opts.visitId}`,
+        identifier: `${SESSION_MARK_ID_PREFIX}${mark.suffix}-${opts.sessionKey}`,
         content: {
           title: mark.title,
           body: mark.body,
           data: {
             type: 'session_mark',
             route: '/(tabs)/index',
-            visitId: opts.visitId,
+            sessionKey: opts.sessionKey,
             mark: mark.suffix,
           } satisfies NotificationPayload,
           sound: 'default',
@@ -419,14 +423,14 @@ export async function scheduleSessionMarkNotifications(opts: {
  *  'all' when they left before the dwell threshold; 'upgrade_only' when they
  *  left between the two. Marks already delivered are untouched. */
 export async function cancelSessionMarkNotifications(
-  visitId: string,
+  sessionKey: string,
   which: 'all' | 'upgrade_only',
 ): Promise<void> {
   if (Platform.OS !== 'ios') return;
   const suffixes = which === 'all' ? ['dwell', 'upgrade'] : ['upgrade'];
   for (const suffix of suffixes) {
     await Notifications
-      .cancelScheduledNotificationAsync(`${SESSION_MARK_ID_PREFIX}${suffix}-${visitId}`)
+      .cancelScheduledNotificationAsync(`${SESSION_MARK_ID_PREFIX}${suffix}-${sessionKey}`)
       .catch(() => { /* never scheduled on this runtime — nothing to cancel */ });
   }
 }
