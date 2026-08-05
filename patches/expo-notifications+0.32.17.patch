@@ -1,0 +1,26 @@
+diff --git a/node_modules/expo-notifications/android/src/main/java/expo/modules/notifications/notifications/background/BackgroundRemoteNotificationTaskConsumer.java b/node_modules/expo-notifications/android/src/main/java/expo/modules/notifications/notifications/background/BackgroundRemoteNotificationTaskConsumer.java
+index 07807aa..2da0d4b 100644
+--- a/node_modules/expo-notifications/android/src/main/java/expo/modules/notifications/notifications/background/BackgroundRemoteNotificationTaskConsumer.java
++++ b/node_modules/expo-notifications/android/src/main/java/expo/modules/notifications/notifications/background/BackgroundRemoteNotificationTaskConsumer.java
+@@ -122,7 +122,20 @@ public class BackgroundRemoteNotificationTaskConsumer extends TaskConsumer imple
+   }
+ 
+   public void executeTask(@NonNull Bundle bundle) {
+-    mTask.execute(bundle, null);
++    // POWR patch — mTask is null between didUnregister() and the next
++    // didRegister(), the window every unregister -> register rebind opens.
++    // An FCM message delivered inside that window NPE'd on the whole process:
++    // field 2026-08-03, the app was killed by its OWN "Session recorded" push
++    // arriving 2 s after app-open, while the foreground rebind was in flight.
++    // Upstream already null-checks mTask in scheduleJob() and didExecuteJob();
++    // this path was simply missed. Dropping one wake is recoverable (the server
++    // re-nudges, and the exit/app-open backstops still claim) — crashing is not.
++    TaskInterface task = mTask;
++    if (task == null) {
++      Log.w("expo-notifications", "Background remote notification dropped: no task bound.");
++      return;
++    }
++    task.execute(bundle, null);
+   }
+ 
+   //endregion
