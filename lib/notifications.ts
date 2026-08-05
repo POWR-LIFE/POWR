@@ -284,10 +284,9 @@ async function isCheckInReminderEnabled(): Promise<boolean> {
 const CHECK_IN_COOLDOWN_MS = 30 * 60 * 1000;
 const CHECK_IN_LAST_FIRED_PREFIX = '@powr/check_in_last_fired/';
 
-/** Returns whether the banner was actually scheduled — the caller uses this to
- *  tell the server "already announced locally, don't send the push copy".
- *  false = suppressed (pref off, no permission, cooldown) OR failed; either way
- *  the server-side announce is the right fallback on Android. */
+/** Returns whether the banner was scheduled OR suppressed by cooldown.
+ *  true = treat as "user already told locally" (no server copy); false = suppressed (pref off / no permission).
+ *  Throws if scheduling fails (caller should fall back to server announce on Android). */
 export async function notifyCheckInAvailable(partnerName: string, locationId: string): Promise<boolean> {
   if (!(await isCheckInReminderEnabled())) return false;
 
