@@ -121,7 +121,75 @@ Deno.serve(async (req: Request) => {
   if (valid !== true) return new Response('forbidden', { status: 403 });
 
   const { dwellMin, upgradeMin } = await thresholds(admin);
-  const stats = { dwell: 0, upgrade: 0, sent: 0, no_token: 0, announced: 0 };
+  const stats = { dwell: 0, upgrade: 0, sent: 0, no_token: 0, announced: 0, completed: 0 };
+
+  // SESSION COMPLETE: the walk-out closure banner, both platforms, one
+  // template. Only CLAIMED visits (sub-threshold pop-ins end silently). The
+  // 2-minute grace lets exit-time claims/upgrades settle so the points total
+  // is final; the 30-minute window stops a deploy from blasting history.
+  {
+    const COMPLETE_GRACE_MS = 2 * 60 * 1000;
+    const COMPLETE_WINDOW_MS = 30 * 60 * 1000;
+    const { data: doneVisits, error: doneErr } = await admin
+      .from('gym_visits')
+      .select('id, user_id, started_at, ended_at, claimed_session_id, partners(name)')
+      .is('completed_push_at', null)
+      .not('ended_at', 'is', null)
+      .not('claimed_session_id', 'is', null)
+      .lte('ended_at', new Date(Date.now() - COMPLETE_GRACE_MS).toISOString())
+      .gte('ended_at', new Date(Date.now() - COMPLETE_WINDOW_MS).toISOString())
+      .limit(50);
+    if (doneErr) console.error('[gym-visit-beacon] complete scan failed', doneErr);
+
+    for (const visit of doneVisits ?? []) {
+      const { data: tokens, error: tokensErr } = await admin
+        .from('user_push_tokens')
+        .select('expo_push_token')
+        .eq('user_id', visit.user_id);
+      if (tokensErr) {
+        console.error('[gym-visit-beacon] complete token lookup failed', tokensErr);
+        continue;
+      }
+      if (!tokens || tokens.length === 0) continue;
+
+      const { data: pts, error: ptsErr } = await admin
+        .from('point_transactions')
+        .select('amount')
+        .eq('session_id', visit.claimed_session_id);
+      if (ptsErr) {
+        console.error('[gym-visit-beacon] complete points lookup failed', ptsErr);
+        continue;
+      }
+      const totalPts = (pts ?? []).reduce((sum: number, r: { amount: number }) => sum + (r.amount ?? 0), 0);
+
+      // Stamp (conditionally): a crash between send and stamp must not double-banner on the next tick.
+      const { data: stamped, error: stampErr } = await admin
+        .from('gym_visits')
+        .update({ completed_push_at: new Date().toISOString() })
+        .eq('id', visit.id)
+        .is('completed_push_at', null)
+        .select('id');
+      if (stampErr) {
+        console.error('[gym-visit-beacon] complete stamp failed', stampErr);
+        continue;
+      }
+      if (!stamped || stamped.length === 0) continue;
+
+      const mins = Math.max(1, Math.round(
+        (new Date(visit.ended_at as string).getTime() - new Date(visit.started_at as string).getTime()) / 60_000,
+      ));
+      const gymName = (visit as { partners?: { name?: string } | null }).partners?.name ?? 'your gym';
+
+      const result = await deliverExpoMessages(admin, tokens.map(({ expo_push_token }) => ({
+        to: expo_push_token,
+        title: 'Session complete 💪',
+        body: `${gymName} · ${mins} min` + (totalPts > 0 ? ` · +${totalPts} pts today` : ''),
+        data: { type: 'session_completed', route: '/(tabs)/index' },
+        priority: 'high',
+      })), { userId: visit.user_id, type: 'gym_session_complete' });
+      if (result.queued > 0) stats.completed++;
+    }
+  }
 
   // ANNOUNCE: the "You're in" banner as a visible push, Android only.
   //
