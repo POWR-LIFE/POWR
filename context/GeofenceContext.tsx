@@ -1574,9 +1574,10 @@ async function setActiveAndNotify(regionId: string, entry: PartnerMapEntry): Pro
     const shown = await notifyCheckInAvailable(entry.name, regionId);
     if (shown && visitId) {
       const { supabase } = await import('@/lib/supabase');
-      void supabase.rpc('mark_gym_visit_announced', { p_visit_id: visitId })
-        .then(({ error }) => { if (error) console.warn('[Geofence] announce mark failed:', error.message); });
-    }
+      void supabase
+        .rpc('mark_gym_visit_announced', { p_visit_id: visitId })
+        .then(({ error }) => { if (error) console.warn('[Geofence] announce mark failed:', error.message); })
+        .catch((rpcErr) => { console.warn('[Geofence] announce mark RPC threw:', rpcErr); });
   } catch (err) {
     console.warn('[Geofence] check-in banner failed locally — server announce will cover (android):', err);
   }
