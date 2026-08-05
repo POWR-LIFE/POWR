@@ -160,6 +160,14 @@ TaskManager.defineTask(BACKGROUND_NOTIFICATION_TASK, async ({ data, error }) => 
     // visit 793e434a were answered into the DEAD visit 2fa4e05d (2026-07-16), which
     // then burned its whole nudge budget answering for a visit that had exited.
     await runVisitCheck(stage, payload.visit_id, payload.nonce);
+
+    // Android fence self-heal: this process is provably awake and FCM-reachable
+    // right now — the one thing the dead-fence deadlock can't take away. Refresh
+    // the geofence registration with a live PendingIntent before going back to
+    // sleep. Fire-and-forget: the wake's budget is already spent where it matters.
+    void import('@/context/GeofenceContext')
+      .then(m => m.rearmFencesFromWake())
+      .catch(() => { /* self-heal is best-effort by definition */ });
   } catch (err) {
     console.warn('[BackgroundNotification] visit check failed:', err);
   }

@@ -1819,35 +1819,34 @@ async function finalizeActiveGeofenceInner(expectedRegionId?: string): Promise<b
     await setLocationStreamMode(visitStreamMode(Platform.OS, { sessionActive: false, approaching }));
   } catch { /* non-fatal — worst case the stream stays in its prior mode */ }
 
+  // iOS: withdraw un-earned session-mark banners FIRST — before ANY network,
+  // and NEVER gated on visitId. Both gates bit on 2026-08-05 night: sessions
+  // whose frozen-network entry had no visit id could never cancel, and even
+  // with an id the cancel sat behind closeGymVisit's round-trip, which iOS's
+  // relaunch window can cut short. Boundary wobble (exit→enter cycles) then
+  // ACCUMULATED banner pairs — an 8-notification storm on one phone. Local
+  // honesty must not wait on the network.
+  try {
+    const dwellMs = endedAtMs - active.entryTimestamp;
+    const dwellThresholdMs = getGymDwellMinutes() * 60_000;
+    const upgradeThresholdMs = getGymUpgradeMinutes() * 60_000;
+    if (dwellMs < upgradeThresholdMs) {
+      const { cancelSessionMarkNotifications } = await import('@/lib/notifications');
+      await cancelSessionMarkNotifications(
+        String(active.entryTimestamp),
+        dwellMs < dwellThresholdMs ? 'all' : 'upgrade_only',
+      );
+    }
+  } catch (err) {
+    console.warn('[Geofence] session mark cancel failed:', err);
+  }
+
   // Close the beacon so the server stops waking a device that has already left.
   if (active.visitId) {
     try {
       const { closeGymVisit } = await import('@/lib/gymVisits');
       await closeGymVisit(active.visitId, endedAtMs);
     } catch { /* non-fatal */ }
-
-    // iOS: withdraw the pre-scheduled session-mark banners the user left before
-    // earning. This exit code is what keeps those banners honest — it runs even
-    // from a force-quit relaunch (region EXIT, proven 2026-08-05). Left before
-    // the dwell threshold → cancel both; between dwell and upgrade → cancel the
-    // upgrade one; past both → nothing pending to cancel.
-    try {
-      const dwellMs = endedAtMs - active.entryTimestamp;
-      const dwellThresholdMs = getGymDwellMinutes() * 60_000;
-      const upgradeThresholdMs = getGymUpgradeMinutes() * 60_000;
-      if (dwellMs < upgradeThresholdMs) {
-        const { cancelSessionMarkNotifications } = await import('@/lib/notifications');
-        // Same key the scheduler used: entryTimestamp, never the visit id —
-        // a frozen-network entry has no visit id, but its marks still exist
-        // and still need honest cancellation.
-        await cancelSessionMarkNotifications(
-          String(active.entryTimestamp),
-          dwellMs < dwellThresholdMs ? 'all' : 'upgrade_only',
-        );
-      }
-    } catch (err) {
-      console.warn('[Geofence] session mark cancel failed:', err);
-    }
   }
 
   if (!needsClaim) {
@@ -1874,6 +1873,30 @@ async function finalizeActiveGeofenceInner(expectedRegionId?: string): Promise<b
  *  iOS app force-quit — Apple does not deliver background pushes to a user-terminated
  *  app), nothing is credited here and the existing EXIT path claims later, exactly as
  *  it does today. No fix, no credit. */
+/** ANDROID FENCE SELF-HEAL (2026-08-05 night).
+ *
+ *  Field pattern: after a swipe-away, GMS's registry still lists every fence
+ *  but crossings stop being DELIVERED (registry populated, geofencer mute —
+ *  three walks proved it; root cause under investigation). Meanwhile FCM wakes
+ *  keep landing flawlessly. So every wake force-re-arms: a fresh registration
+ *  with a fresh PendingIntent from the currently-live process. The beacon
+ *  nudges within a minute of any session, making dead fences self-heal fast —
+ *  and `force` deliberately bypasses the same-set signature skip, because a
+ *  fresh delivery handle IS the point. Fire-and-forget from the wake task,
+ *  strictly after the wake's real round-trip. */
+export async function rearmFencesFromWake(): Promise<void> {
+  if (Platform.OS !== 'android') return;
+  try {
+    const fix = await getArmFix();
+    await armNativeRegions(
+      fix ? { latitude: fix.latitude, longitude: fix.longitude } : null,
+      { force: true },
+    );
+  } catch (err) {
+    console.warn('[Geofence] wake re-arm failed:', err);
+  }
+}
+
 export async function runVisitCheck(
   stage: 'dwell' | 'upgrade',
   serverVisitId?: string,
