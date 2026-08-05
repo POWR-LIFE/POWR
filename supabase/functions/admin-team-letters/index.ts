@@ -5,7 +5,7 @@ import sanitizeHtml from "npm:sanitize-html@2.17.0";
 import { sendEmail } from "../_shared/mailgun.ts";
 import { teamLetterEmail, type TeamLetterReport } from "../_shared/emails/team-letter.ts";
 
-const REPLY_TO = "hello@powr.life";
+const REPLY_TO = "support@powr.life";
 const CONCURRENCY = 5;
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",

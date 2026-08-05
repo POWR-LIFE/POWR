@@ -26,7 +26,7 @@ import {
 } from "../_shared/emails/partner-weekly-summary.ts";
 
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
-const REPLY_TO = "hello@powr.life";
+const REPLY_TO = "support@powr.life";
 const DAY_MS = 24 * 60 * 60 * 1000;
 const CONCURRENCY = 5;
 

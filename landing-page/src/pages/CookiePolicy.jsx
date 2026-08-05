@@ -116,7 +116,7 @@ export default function CookiePolicy() {
                             If you have any questions about our use of cookies, please contact us at:
                         </p>
                         <p className="mt-3">
-                            <a href="mailto:privacy@powr.life" className="text-[#E8D200] hover:underline">privacy@powr.life</a>
+                            <a href="mailto:support@powr.life" className="text-[#E8D200] hover:underline">support@powr.life</a>
                         </p>
                         <p className="mt-3">
                             For more information about how we handle your personal data, please see our{' '}
