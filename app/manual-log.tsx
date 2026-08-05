@@ -17,6 +17,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ACTIVITIES, ACTIVITY_ORDER, type ActivityType } from '@/constants/activities';
+import { getGymDwellMinutes, getGymUpgradeMinutes } from '@/lib/gymDwellConfig';
 import { useAuth } from '@/context/AuthContext';
 import { tracked } from '@/lib/analytics';
 import { logManualSession } from '@/lib/api/activity';
@@ -35,6 +36,9 @@ const DIM    = 'rgba(255,255,255,0.45)';
 // ─── Points calculation ────────────────────────────────────────────────────────
 // Returns base POWR for each activity given user inputs.
 // Manual log penalty (80%) is applied at the end.
+
+/** HIIT's entry gate — the strength lane's lower floor. Mirrors claim-points. */
+const HIIT_MIN_MINUTES = 20;
 
 function calcBasePoints(type: ActivityType, durationMins: number, steps: number): number {
     switch (type) {
@@ -66,16 +70,19 @@ function calcBasePoints(type: ActivityType, durationMins: number, steps: number)
             if (durationMins < 60) return 9;
             return 10;
         }
+        // Strength lane — gym and HIIT/classes pay the same 15/20 tiers, off the
+        // admin-tunable thresholds rather than hardcoded 30/40 (the old hardcode
+        // silently desynced from the server on every retune). Only the entry gate
+        // differs: HIIT's 20-min floor keeps short classes earning.
         case 'gym': {
-            if (durationMins < 30) return 0;
-            if (durationMins < 40) return 15;
+            if (durationMins < getGymDwellMinutes()) return 0;
+            if (durationMins < getGymUpgradeMinutes()) return 15;
             return 20;
         }
         case 'hiit': {
-            if (durationMins < 20) return 0;
-            if (durationMins < 30) return 7;
-            if (durationMins < 45) return 9;
-            return 10;
+            if (durationMins < HIIT_MIN_MINUTES) return 0;
+            if (durationMins < getGymUpgradeMinutes()) return 15;
+            return 20;
         }
         case 'sports': {
             if (durationMins < 30) return 0;
@@ -124,8 +131,8 @@ function getMinimumNote(type: ActivityType): string {
         case 'running':  return 'Minimum 15 min to qualify';
         case 'cycling':  return 'Minimum 20 min to qualify';
         case 'swimming': return 'Minimum 15 min to qualify';
-        case 'gym':      return 'Minimum 30 min to qualify';
-        case 'hiit':     return 'Minimum 20 min to qualify';
+        case 'gym':      return `Minimum ${getGymDwellMinutes()} min to qualify`;
+        case 'hiit':     return `Minimum ${HIIT_MIN_MINUTES} min to qualify`;
         case 'sports':   return 'Minimum 30 min to qualify';
         case 'yoga':     return 'Minimum 20 min to qualify';
         case 'dance':    return 'Minimum 20 min to qualify';

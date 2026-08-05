@@ -100,9 +100,33 @@ describe('point calculators', () => {
   it('awards base points only above each type minimum duration', () => {
     expect(calculateBasePoints('running', 10)).toBe(0);   // < 15 min
     expect(calculateBasePoints('running', 30)).toBe(10);
-    expect(calculateBasePoints('gym', 30)).toBe(10);
     expect(calculateBasePoints('yoga', 25)).toBe(3);
     expect(calculateBasePoints('swimming', 20)).toBe(7);
+  });
+
+  describe('strength lane (gym + hiit score identically)', () => {
+    it('pays a wearable session the same 15/20 tiers a check-in pays', () => {
+      expect(calculateBasePoints('gym', 30)).toBe(15);
+      expect(calculateBasePoints('gym', 45)).toBe(20);
+      expect(calculateBasePoints('hiit', 30)).toBe(15);
+      expect(calculateBasePoints('hiit', 45)).toBe(20);
+    });
+
+    it('keeps HIIT qualifying at 20 min while gym waits for the dwell gate', () => {
+      expect(calculateBasePoints('hiit', 20)).toBe(15);
+      expect(calculateBasePoints('hiit', 19)).toBe(0);
+      expect(calculateBasePoints('gym', 20)).toBe(0);
+      expect(calculateBasePoints('gym', 29)).toBe(0);
+    });
+
+    it('follows an admin retune of the shared thresholds', () => {
+      const tuned = { gymDwellMin: 25, gymUpgradeMin: 50 };
+      expect(calculateBasePoints('gym', 25, tuned)).toBe(15);
+      expect(calculateBasePoints('gym', 45, tuned)).toBe(15); // upgrade moved to 50
+      expect(calculateBasePoints('gym', 50, tuned)).toBe(20);
+      expect(calculateBasePoints('hiit', 20, tuned)).toBe(15); // HIIT floor is fixed
+      expect(calculateBasePoints('hiit', 50, tuned)).toBe(20);
+    });
   });
 
   it('scores sleep by duration and restorative ratio', () => {

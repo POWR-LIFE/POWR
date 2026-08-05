@@ -107,7 +107,10 @@ export const ACTIVITIES: Record<ActivityType, ActivityConfig> = {
     icon: 'flame-outline',
     iconActive: 'flame',
     tag: 'High Intensity',
-    dailyCap: 10,
+    // Strength lane — HIIT/classes score exactly like a gym session (same 15/20
+    // tiers, same streak multipliers, same cap). Keep in step with claim-points
+    // DAILY_CAPS and enforce_point_award_cap.
+    dailyCap: 30,
     colour: '#EF4444',
     minDuration: 20,
     verification: 'geofence',

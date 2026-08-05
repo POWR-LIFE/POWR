@@ -41,13 +41,26 @@ interface UserStreak {
 // Point calculation tables (mirrors POWR_Points_Logic.md)
 // ─────────────────────────────────────────────
 
+// The STRENGTH LANE — gym and HIIT/classes score identically (product decision
+// 2026-08-05). A user who trains hard shouldn't be paid less because their
+// wearable, or the studio they went to, labelled it a class instead of a gym
+// session. Same base tiers, same streak multipliers, same daily cap. Keep the
+// three in step: DAILY_CAPS below, calcBasePoints, calcStreakBonus. Mirrored by
+// enforce_point_award_cap (DB), app/manual-log.tsx and constants/activities.ts.
+const STRENGTH_TYPES: ActivityType[] = ['gym', 'hiit'];
+
+/** HIIT's own entry gate. Deliberately NOT the tunable gym dwell: a 20-min class
+ *  is a real session and must keep earning, so the strength lane's floor is the
+ *  lower of the two while everything above it is identical. */
+const HIIT_MIN_MINUTES = 20;
+
 const DAILY_CAPS: Record<ActivityType, number> = {
   walking:  5,
   running:  10,
   cycling:  10,
   swimming: 10,
   gym:      30,
-  hiit:     10,
+  hiit:     30,
   sports:   10,
   yoga:     6,
   dance:    8,
@@ -100,9 +113,11 @@ function calcBasePoints(session: ActivitySession, gymDwellMin = 30, gymUpgradeMi
       return 0;
 
     case 'hiit':
-      if (mins >= 45) return 10;
-      if (mins >= 30) return 9;
-      if (mins >= 20) return 7;
+      // Strength lane: the same 15/20 gym pays, off HIIT's own 20-min entry gate
+      // (see STRENGTH_TYPES). The upgrade rung is the shared admin-tunable one so
+      // a retune moves both together.
+      if (mins >= gymUpgradeMin && mins >= HIIT_MIN_MINUTES) return 20;
+      if (mins >= HIIT_MIN_MINUTES) return 15;
       return 0;
 
     case 'sports':
@@ -142,8 +157,8 @@ function calcBasePoints(session: ActivitySession, gymDwellMin = 30, gymUpgradeMi
 }
 
 function calcStreakBonus(type: ActivityType, streak: number, base: number): number {
-  // Gym uses multipliers, not flat bonuses
-  if (type === 'gym') {
+  // The strength lane (gym + HIIT) uses multipliers, not flat bonuses.
+  if (STRENGTH_TYPES.includes(type)) {
     if (streak >= 10) return Math.floor(base * 3.0) - base;
     if (streak >= 7)  return Math.floor(base * 2.0) - base;
     if (streak >= 5)  return Math.floor(base * 1.5) - base;
@@ -154,8 +169,8 @@ function calcStreakBonus(type: ActivityType, streak: number, base: number): numb
   // No streak bonus for walking or sleep
   if (type === 'walking' || type === 'sleep') return 0;
 
-  // Flat bonuses for running, cycling, swimming, hiit, yoga, dance
-  const flatTypes: ActivityType[] = ['running', 'cycling', 'swimming', 'hiit', 'yoga', 'dance'];
+  // Flat bonuses for running, cycling, swimming, yoga, dance
+  const flatTypes: ActivityType[] = ['running', 'cycling', 'swimming', 'yoga', 'dance'];
   if (!flatTypes.includes(type)) return 0;
 
   if (streak >= 7 && ['running', 'cycling', 'swimming'].includes(type)) {

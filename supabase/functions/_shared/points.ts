@@ -28,13 +28,50 @@ export const ACTIVITY_MIN_DURATION: Record<ActivityType, number> = {
   sleep: 0,
 };
 
+// ── The strength lane ────────────────────────────────────────────────────────
+// `gym` and `hiit` score identically, on EVERY path (product decision
+// 2026-08-05): a hard session shouldn't pay less because a wearable — or the
+// venue — called it a class rather than a gym visit, and it shouldn't pay less
+// for arriving from a watch instead of a check-in. Same 15/20 tiers a geofence
+// claim pays (claim-points calcBasePoints). The one deliberate asymmetry is the
+// entry gate: HIIT qualifies at a fixed 20 minutes so a short class still earns,
+// while gym uses the admin-tunable min_gym_dwell_minutes. The upgrade rung is
+// the shared gym_upgrade_minutes for both.
+export const HIIT_MIN_MINUTES = 20;
+export const DEFAULT_GYM_DWELL_MIN = 30;
+export const DEFAULT_GYM_UPGRADE_MIN = 40;
+
+/** Admin-tunable strength thresholds (system_config). Callers that can read the
+ *  table should pass them so a retune moves the wearable path with the check-in
+ *  path; the defaults are the historical 30/40. */
+export interface StrengthThresholds {
+  gymDwellMin?: number;
+  gymUpgradeMin?: number;
+}
+
+export function isStrengthType(type: ActivityType): boolean {
+  return type === 'gym' || type === 'hiit';
+}
+
 /** Base points for a workout. Mirrors calculateBasePoints in hooks/useHealthSync.ts. */
-export function calculateBasePoints(type: ActivityType, durationMin: number): number {
+export function calculateBasePoints(
+  type: ActivityType,
+  durationMin: number,
+  thresholds: StrengthThresholds = {},
+): number {
+  // Strength lane first — its gate is the tunable threshold, not the static
+  // ACTIVITY_MIN_DURATION table (which still describes gym's 30-min default).
+  if (isStrengthType(type)) {
+    const dwellMin = thresholds.gymDwellMin ?? DEFAULT_GYM_DWELL_MIN;
+    const upgradeMin = thresholds.gymUpgradeMin ?? DEFAULT_GYM_UPGRADE_MIN;
+    const entryMin = type === 'hiit' ? HIIT_MIN_MINUTES : dwellMin;
+    if (durationMin >= upgradeMin && durationMin >= entryMin) return 20;
+    if (durationMin >= entryMin) return 15;
+    return 0;
+  }
   if (durationMin < ACTIVITY_MIN_DURATION[type]) return 0;
-  if (type === 'gym') return 10;
   if (type === 'running' || type === 'cycling') return 10;
   if (type === 'swimming') return 7;
-  if (type === 'hiit') return 10;
   if (type === 'sports') return 6;
   if (type === 'yoga') return 3;
   return 5;
