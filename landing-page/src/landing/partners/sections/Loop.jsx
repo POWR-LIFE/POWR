@@ -23,7 +23,7 @@ const STEPS = [
   {
     n: '02',
     title: 'They choose you',
-    body: 'Your listing sits in the vault beside every other brand, priced in points. Nobody is interrupted with it — they arrive holding a balance and decide where to spend it.',
+    body: 'Your listing sits beside every other brand in the rewards tab, priced in points. Nobody is interrupted with it — they arrive holding a balance and decide where to spend it.',
     tag: 'Intent',
   },
   {

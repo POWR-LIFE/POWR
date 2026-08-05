@@ -17,12 +17,13 @@ export default function SiteFooter() {
     { label: 'Cookie Policy', href: '/cookies' },
   ];
   /* Second tier: brand/partner audience. Deliberately subordinate to the links
-     above — a consumer never needs these, a brand scrolls looking for them. */
+     above — a consumer never needs these, a brand scrolls looking for them.
+     No email here: brands and members share support@powr.life, and it is
+     already one row up. */
   const brandLinks = [
     { label: 'Partner With Us', href: '/partners' },
     { label: 'Partner Login', href: '/partner/login' },
     { label: 'Integration Docs', href: '/docs' },
-    { label: 'partners@powr.life', href: 'mailto:partners@powr.life' },
   ];
   return (
     <footer style={{ borderTop: `1px solid ${pg.border}`, padding: '40px clamp(18px, 3vw, 28px)' }}>

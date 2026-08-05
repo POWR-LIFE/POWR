@@ -3,20 +3,25 @@ import { pg, w } from '../../theme';
 import { GhostLabel, Kicker, Panel, Section, SectionHead, rise } from '../bits';
 
 /**
- * 01 — THE VAULT. Who is already in.
+ * 01 — THE LINEUP. Who is already in.
  *
  * Every tile is a live row in the `rewards` table, so this wall cannot claim
  * a partner POWR no longer has. Two open slots close the grid: the wall is a
  * pitch, not a trophy cabinet, and the empty frames are the pitch.
+ *
+ * ⚠ Do NOT call this "the vault" anywhere a partner can read it. The app has
+ * a points vault (a real, shipped feature where a member's points are
+ * protected), so the word is already taken and means something else. The
+ * homepage film's Redeem act still uses it in copy — a separate call.
  */
-export default function Vault({ brands }) {
+export default function Lineup({ brands }) {
   return (
     <Section id="partners" style={{ overflow: 'hidden' }}>
-      <GhostLabel top={40} right={-40} gold>THE VAULT</GhostLabel>
+      <GhostLabel top={40} right={-40} gold>THE LINEUP</GhostLabel>
 
       <SectionHead
         n="01"
-        label="The vault"
+        label="The lineup"
         title={<>Already spending<br />what they earned.</>}
         body="These brands are live in the app right now. One listing per brand, priced in points — a member cannot buy their way in with cash, only with sessions they actually completed."
       />
@@ -37,7 +42,7 @@ export default function Vault({ brands }) {
         <OpenSlot />
       </div>
 
-      {/* Index rail — every partner as a wordmark, the way the homepage vault
+      {/* Index rail — every partner as a wordmark, the way the homepage film
           lists them under the gallery */}
       <motion.div
         variants={rise}

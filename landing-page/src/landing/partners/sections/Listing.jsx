@@ -9,19 +9,36 @@ import { useCompact } from '../../stages/shared';
  *
  * The card is a likeness of the app's reward card built from the app's own
  * tokens (theme.js `t` mirrors constants/tokens.ts), furnished with a REAL
- * live reward so the mock can never show an offer POWR doesn't carry. The
- * friction grid beside it is the honest answer to "what do you need from me" —
- * the shortest list on the page, and the reason most brands say yes.
+ * live reward so the mock can never show an offer POWR doesn't carry.
+ *
+ * The grid beside it answers "what do you need from me". Two rules learned
+ * the hard way, both worth keeping:
+ *
+ *  • The NEED column must be complete. A brand cannot go live without a way
+ *    to hand over codes — PartnerLayout redirects any brand with no
+ *    delivery_method straight to /partner/integration — so leaving that out
+ *    made the ask look lighter than it is and set up a surprise on day one.
+ *  • The right column is about EFFORT AVOIDED, not capability we lack. It
+ *    used to read "Systems integration" under "what we don't", which flatly
+ *    contradicts section 04 selling Shopify and a REST API. Integrations are
+ *    optional, not absent — never phrase an optional feature as one we
+ *    haven't got.
  */
 const NEED = [
   'Your logo and a hero image',
   'The offer — a discount, a free product, a trial',
-  'Sign-off to list it',
+  'A way to hand over codes — a pool, your store, or your API',
+  'Sign-off to go live',
 ];
-const DONT_NEED = [
-  'Systems integration',
-  'Cash up front',
-  'Hardware, scanners or staff training',
+/* ⚠ Nothing in here may promise anything about price or commercial terms.
+   POWR intends to charge for placements, so a line like "no spend or
+   contract" is a promise the business will have to break. Keep this list to
+   operational effort a partner genuinely avoids. */
+const NO_NEED = [
+  'Rebuild your checkout or add hardware',
+  'Train your staff — members redeem like anyone else',
+  'Write any code to start — upload a pool and you’re live',
+  'Chase us for numbers — every claim shows up in your portal',
 ];
 
 export default function Listing({ featured }) {
@@ -43,7 +60,7 @@ export default function Listing({ featured }) {
             n="03"
             label="Your listing"
             title={<>Live in the app,<br />the same day.</>}
-            body="You send an offer and a logo. We build the listing, review it, and put it in the vault — usually inside 24 hours. From then on you edit it yourself from the portal, and every change is previewed on a phone as you type."
+            body="You send an offer, a logo and a way to hand over codes. We build the listing, review it, and put it live in the app — usually inside 24 hours. From then on you edit it yourself from the portal, and every change is previewed on a phone as you type."
           />
 
           <div
@@ -54,14 +71,14 @@ export default function Listing({ featured }) {
             }}
           >
             <motion.div variants={rise}>
-              <Kicker color={pg.accent} style={{ display: 'block', marginBottom: 14 }}>What we need</Kicker>
+              <Kicker color={pg.accent} style={{ display: 'block', marginBottom: 14 }}>What we need from you</Kicker>
               {NEED.map((item) => (
                 <Row key={item} ok>{item}</Row>
               ))}
             </motion.div>
             <motion.div variants={rise}>
-              <Kicker color={pg.textMuted} style={{ display: 'block', marginBottom: 14 }}>What we don’t</Kicker>
-              {DONT_NEED.map((item) => (
+              <Kicker color={pg.textMuted} style={{ display: 'block', marginBottom: 14 }}>What you won’t have to do</Kicker>
+              {NO_NEED.map((item) => (
                 <Row key={item}>{item}</Row>
               ))}
             </motion.div>

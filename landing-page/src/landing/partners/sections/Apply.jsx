@@ -38,7 +38,7 @@ export default function Apply() {
     setSending(true);
     setError('');
     try {
-      if (!supabase) throw new Error('Something went wrong. Please email partners@powr.life.');
+      if (!supabase) throw new Error('Something went wrong. Please email support@powr.life.');
       const { error: insertError } = await supabase.from('partner_applications').insert([{
         brand: form.brand.trim(),
         category: form.category,
@@ -74,13 +74,13 @@ export default function Apply() {
           <SectionHead
             n="07"
             label="Apply"
-            title={<>Put your brand<br />in the vault.</>}
+            title={<>Put your brand<br />in the lineup.</>}
             body="Tell us who you are and what you’d offer. If it fits, we build the listing and come back to you with it — normally the same week."
           />
           <motion.p variants={rise} style={{ fontSize: 13, color: pg.textMuted, fontWeight: w.light, lineHeight: 1.6 }}>
             Already a partner? <a href="/partner/login" style={{ color: pg.accent, textDecoration: 'none' }}>Sign in to the portal</a>.
             <br />
-            Prefer email? <a href="mailto:partners@powr.life" style={{ color: pg.accent, textDecoration: 'none' }}>partners@powr.life</a>
+            Prefer email? <a href="mailto:support@powr.life" style={{ color: pg.accent, textDecoration: 'none' }}>support@powr.life</a>
           </motion.p>
         </div>
 
@@ -139,8 +139,11 @@ export default function Apply() {
                 <GoldButton type="submit" disabled={sending}>
                   {sending ? 'Sending…' : 'Apply to partner'}
                 </GoldButton>
+                {/* No pricing claim here — POWR intends to charge for
+                    placements, so "no cost to list" is a promise with a
+                    shelf life. Same rule as the NO_NEED list in Listing.jsx. */}
                 <span style={{ fontSize: 11.5, color: pg.textMuted, fontWeight: w.light }}>
-                  Selective onboarding · no cost to list
+                  Selective onboarding
                 </span>
               </div>
             </form>

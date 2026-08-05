@@ -38,7 +38,7 @@ const BEATS = [
   {
     n: '03',
     title: 'Your reward leads',
-    copy: 'Your offer jumps the queue — straight to the top of their vault, in the hero slot, priced in points they have already earned.',
+    copy: 'Your offer jumps the queue — straight to the top of their rewards, in the hero slot, priced in points they have already earned.',
   },
 ];
 

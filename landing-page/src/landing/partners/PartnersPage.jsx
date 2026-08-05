@@ -6,7 +6,7 @@ import SiteFooter from '../SiteFooter';
 import { useCompact } from '../stages/shared';
 import { GhostButton, GoldButton, MAXW, rise, stagger } from './bits';
 import { FALLBACK_BRANDS, fetchLiveBrands } from './data';
-import Vault from './sections/Vault';
+import Lineup from './sections/Lineup';
 import Loop from './sections/Loop';
 import Listing from './sections/Listing';
 import Delivery from './sections/Delivery';
@@ -68,7 +68,7 @@ export default function PartnersPage() {
 
   const list = brands ?? FALLBACK_BRANDS;
   /* HUEL is the homepage's showcase brand too — keep the two pages agreeing.
-     Falls back to whatever leads the vault if it ever lapses. */
+     Falls back to whatever leads the lineup if it ever lapses. */
   const featured = useMemo(
     () => list.find((b) => b.brand.toUpperCase() === 'HUEL') || list[0],
     [list],
@@ -99,7 +99,7 @@ export default function PartnersPage() {
       <Nav />
       <Hero />
 
-      <Vault brands={list} />
+      <Lineup brands={list} />
       <Loop />
       <Listing featured={featured} />
       <Delivery />
@@ -216,7 +216,7 @@ function Hero() {
           style={{ marginTop: 24, fontSize: 'clamp(15px, 1.6vw, 19px)', color: pg.textSec, fontWeight: w.light, maxWidth: 540, lineHeight: 1.55 }}
         >
           POWR members earn points for training POWR can verify — then spend them with the brands
-          in the vault. Your reward is where all that effort goes.
+          in the app. Your reward is where all that effort goes.
         </motion.p>
 
         <motion.div variants={rise} style={{ marginTop: 34, display: 'flex', flexWrap: 'wrap', gap: 12 }}>
