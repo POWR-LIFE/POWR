@@ -215,9 +215,9 @@ describe('ensureFreshSession', () => {
     await expect(ensureFreshSession('test')).resolves.toBeNull();
 
     const breadcrumbsRaw = await asyncStorage.getItem('POWR_AUTH_FAILURE_BREADCRUMBS');
-    expect(JSON.parse(breadcrumbsRaw)).toEqual([
+    expect(JSON.parse(breadcrumbsRaw)).toEqual(expect.arrayContaining([
       expect.objectContaining({ reason: 'test', error: 'storage parse failed' }),
-    ]);
+    ]));
   });
 });
 

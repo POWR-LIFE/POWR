@@ -48,8 +48,8 @@ const MAX_BREADCRUMBS = 20;
 /** What THIS runtime believes the current refresh token is. Maintained via
  *  onAuthStateChange so divergence from storage is detectable without poking
  *  GoTrue (getSession() would lazily refresh — off the stale token, which is
- *  the exact bug). null = unknown/cold runtime, where memory == storage by
- *  construction and getSession() is safe. */
+ *  the exact bug). null = unknown/cold runtime, which must adopt the persisted
+ *  pair before trusting any local session state. */
 let memRefreshToken: string | null = null;
 let subscribed = false;
 
@@ -225,9 +225,14 @@ async function flushBreadcrumbs(): Promise<void> {
     if (!raw) return;
     const list = JSON.parse(raw);
     if (!Array.isArray(list) || list.length === 0) return;
-    // Dynamic import breaks the module cycle (gymVisits imports this module).
-    const { logGeofenceRegionEvent } = await import('@/lib/gymVisits');
-    await logGeofenceRegionEvent('auth', 'auth_stale', { failures: list });
+    const { Platform } = await import('react-native');
+    const { error } = await withNetworkTimeout(supabase.rpc('log_geofence_region_event', {
+      p_region_id: 'auth',
+      p_event:     'auth_stale',
+      p_platform:  Platform.OS,
+      p_detail:    { failures: list },
+    }), 'log_geofence_region_event');
+    if (error) throw error;
     await AsyncStorage.removeItem(BREADCRUMB_KEY);
   } catch { /* flush retries on the next healthy call */ } finally {
     flushing = false;
