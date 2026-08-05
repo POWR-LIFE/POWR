@@ -95,6 +95,7 @@ async function readPersistedPair(): Promise<PersistedPair | null> {
 }
 
 let inFlight: Promise<Session | null> | null = null;
+let inFlightForced = false;
 
 /**
  * Returns a session whose access token is guaranteed fresh (≥ EXPIRY_SLACK_S of
@@ -107,7 +108,19 @@ let inFlight: Promise<Session | null> | null = null;
  * confirm's token valid when it fires.
  */
 export function ensureFreshSession(reason: string, opts?: { force?: boolean }): Promise<Session | null> {
-  if (inFlight) return inFlight;
+  if (inFlight) {
+    // A FORCED caller must never coalesce onto a non-forced pass: the retry
+    // paths call force precisely because the current token was just rejected,
+    // and inheriting a pass that may conclude "still fresh, no rotation" makes
+    // the retry re-present the same dead token (2026-08-05 crash-hunt finding
+    // #2 — this silently stranded claims). Chain a genuinely forced pass after
+    // the pending one instead. Forced callers still coalesce with each other.
+    if (opts?.force && !inFlightForced) {
+      return inFlight.then(() => ensureFreshSession(reason, opts));
+    }
+    return inFlight;
+  }
+  inFlightForced = !!opts?.force;
   inFlight = (async () => {
     subscribeOnce();
     try {
@@ -116,6 +129,13 @@ export function ensureFreshSession(reason: string, opts?: { force?: boolean }): 
       // Divergence: another runtime rotated after we loaded. Adopt the
       // persisted pair — setSession() refreshes off it if the access token is
       // already expired, and that refresh presents the NEWEST family member.
+      //
+      // Deliberately adopts when memRefreshToken is UNKNOWN (null) too: null
+      // does not mean cold — it can mean a long-lived runtime whose supabase
+      // client holds a stale in-memory session while this module has simply
+      // never run. getSession() there would lazily refresh off the dead token
+      // (the family-killer). The cost is one setSession per runtime lifetime —
+      // after the first pass, remember() makes the belief concrete.
       if (persisted && persisted.refresh_token !== memRefreshToken) {
         console.warn(`[authFresh] ${reason}: runtime session is stale vs storage — resyncing to the persisted pair.`);
         const { data, error } = await withNetworkTimeout(
@@ -162,7 +182,7 @@ export function ensureFreshSession(reason: string, opts?: { force?: boolean }): 
       void recordBreadcrumb(reason, err);
       return null;
     }
-  })().finally(() => { inFlight = null; });
+  })().finally(() => { inFlight = null; inFlightForced = false; });
   return inFlight;
 }
 

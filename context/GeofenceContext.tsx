@@ -623,7 +623,7 @@ async function armNativeRegions(
     const signature =
       `${fix ? `${fix.latitude.toFixed(3)},${fix.longitude.toFixed(3)}` : 'nofix'}|` +
       [...regions]
-        .sort((a, b) => a.identifier.localeCompare(b.identifier))
+        .sort((a, b) => (a.identifier ?? '').localeCompare(b.identifier ?? ''))
         .map(r => `${r.identifier}:${r.latitude.toFixed(4)},${r.longitude.toFixed(4)}:${Math.round(r.radius ?? 0)}:${r.notifyOnEnter ? 1 : 0}${r.notifyOnExit ? 1 : 0}`)
         .join('|');
     if (running && signature === _lastArmSignature) {
@@ -1296,6 +1296,13 @@ async function flushPendingClaims(): Promise<void> {
     await AsyncStorage.removeItem(PENDING_CLAIMS_KEY).catch(() => {});
     return;
   }
+  // JSON.parse can SUCCEED with a non-array (the literal "null" parses fine) —
+  // `.length` on that throws outside the catch above and aborts the caller's
+  // whole event (2026-08-05 crash-hunt finding #4). Treat it like corruption.
+  if (!Array.isArray(queue)) {
+    await AsyncStorage.removeItem(PENDING_CLAIMS_KEY).catch(() => {});
+    return;
+  }
   if (!queue.length) return;
 
   // There is real work: make the whole replay pass run on a fresh token. Placed
@@ -1574,10 +1581,14 @@ async function setActiveAndNotify(regionId: string, entry: PartnerMapEntry): Pro
     const shown = await notifyCheckInAvailable(entry.name, regionId);
     if (shown && visitId) {
       const { supabase } = await import('@/lib/supabase');
-      void supabase
-        .rpc('mark_gym_visit_announced', { p_visit_id: visitId })
-        .then(({ error }) => { if (error) console.warn('[Geofence] announce mark failed:', error.message); })
-        .catch((rpcErr) => { console.warn('[Geofence] announce mark RPC threw:', rpcErr); });
+      // Promise.resolve upgrades PostgREST's PromiseLike to a real Promise; the
+      // two-arg then covers both the {error} result and a thrown network error.
+      void Promise.resolve(
+        supabase.rpc('mark_gym_visit_announced', { p_visit_id: visitId }),
+      ).then(
+        ({ error }) => { if (error) console.warn('[Geofence] announce mark failed:', error.message); },
+        (rpcErr: unknown) => { console.warn('[Geofence] announce mark RPC threw:', rpcErr); },
+      );
     }
   } catch (err) {
     console.warn('[Geofence] check-in banner failed locally — server announce will cover (android):', err);
@@ -2322,23 +2333,33 @@ TaskManager.defineTask(GEOFENCE_REARM_TASK, async () => {
 });
 
 // Native geofence (fast, low-power ENTER/EXIT trigger when the OS delivers it).
+// The whole body is guarded: this executor runs headlessly at every relaunch a
+// region crossing causes, and its siblings both already catch. A malformed or
+// null event (iOS delivers these on Circle-remount flake and cold relaunches)
+// must drop THIS event, never abort the executor with an unhandled rejection
+// (2026-08-05 crash-hunt findings #3/#5).
 TaskManager.defineTask(GEOFENCE_TASK_NAME, async ({ data, error }) => {
-  if (error) {
-    console.error('[Geofence] Task error:', error);
-    return;
-  }
+  try {
+    if (error) {
+      console.error('[Geofence] Task error:', error);
+      return;
+    }
 
-  // Headless context: load the last-persisted admin dwell threshold from storage
-  // so exit-time dwell checks use the current value.
-  await primeGymDwellMinutes();
-  await flushPendingClaims();
+    // Headless context: load the last-persisted admin dwell threshold from storage
+    // so exit-time dwell checks use the current value.
+    await primeGymDwellMinutes();
+    await flushPendingClaims();
 
-  const { eventType, region } = data as {
-    eventType: Location.GeofencingEventType;
-    region: Location.LocationRegion;
-  };
+    const { eventType, region } = (data ?? {}) as {
+      eventType?: Location.GeofencingEventType;
+      region?: Location.LocationRegion;
+    };
+    if (eventType == null || !region) {
+      console.warn('[Geofence] Task fired without a usable event — ignoring.');
+      return;
+    }
 
-  const regionId = region.identifier ?? '';
+    const regionId = region.identifier ?? '';
 
   // Sentinel crossings re-target coverage; they are never partner check-ins.
   // Guard BEFORE any session state is touched — a sentinel EXIT can coincide
@@ -2403,6 +2424,10 @@ TaskManager.defineTask(GEOFENCE_TASK_NAME, async ({ data, error }) => {
     // neighboring approach-ring exit must not stop tracking an active gym.
     await exitApproach(regionId);
     await finalizeActiveGeofence(regionId);
+  }
+  } catch (err) {
+    // One bad event must cost one event, not the executor.
+    console.error('[Geofence] Task handler failed:', err);
   }
 });
 

@@ -62,7 +62,7 @@ jest.mock('@/lib/supabase', () => ({
 
 // gymVisits is dynamically imported by the breadcrumb flusher; stub it so a
 // flush can never pull the real module graph into this focused test.
-const mockLogGeofenceRegionEvent = jest.fn(async () => {});
+const mockLogGeofenceRegionEvent = jest.fn(async (..._args: unknown[]) => {});
 jest.mock('@/lib/gymVisits', () => ({
   logGeofenceRegionEvent: (...args: unknown[]) => mockLogGeofenceRegionEvent(...args),
 }));
@@ -306,4 +306,47 @@ describe('flushBreadcrumbs', () => {
 
     expect(await asyncStorage.getItem('POWR_AUTH_FAILURE_BREADCRUMBS')).toContain('"reason":"test"');
   });
+});
+
+describe('forced-refresh single-flight interaction (2026-08-05 finding #2)', () => {
+  it('a forced call arriving during a non-forced pass still produces a real rotation', async () => {
+    const { ensureFreshSession } = loadAuthFresh();
+    seedMemory({ access_token: 'at', refresh_token: 'rt', lifeS: 3600 });
+    seedPersisted({ access_token: 'at', refresh_token: 'rt' });
+    await ensureFreshSession('warmup');
+    mockAuth.refreshSession.mockClear();
+
+    // Slow down getSession so the non-forced pass is genuinely in flight when
+    // the forced call arrives.
+    let releaseGet: () => void;
+    const gate = new Promise<void>(res => { releaseGet = res; });
+    mockAuth.getSession.mockImplementationOnce(async () => {
+      await gate;
+      return { data: { session: authState.session }, error: null };
+    });
+
+    const nonForced = ensureFreshSession('background_pass');       // fresh token → no rotation
+    const forced = ensureFreshSession('rpc:retry', { force: true }); // must rotate anyway
+    releaseGet!();
+
+    await Promise.all([nonForced, forced]);
+
+    expect(mockAuth.refreshSession).toHaveBeenCalledTimes(1);
+  });
+
+  it('concurrent forced callers coalesce into one rotation', async () => {
+    const { ensureFreshSession } = loadAuthFresh();
+    seedMemory({ access_token: 'at', refresh_token: 'rt', lifeS: 3600 });
+    seedPersisted({ access_token: 'at', refresh_token: 'rt' });
+    await ensureFreshSession('warmup');
+    mockAuth.refreshSession.mockClear();
+
+    await Promise.all([
+      ensureFreshSession('a', { force: true }),
+      ensureFreshSession('b', { force: true }),
+    ]);
+
+    expect(mockAuth.refreshSession).toHaveBeenCalledTimes(1);
+  });
+
 });
