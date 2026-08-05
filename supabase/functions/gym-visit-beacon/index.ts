@@ -142,27 +142,38 @@ Deno.serve(async (req: Request) => {
     if (doneErr) console.error('[gym-visit-beacon] complete scan failed', doneErr);
 
     for (const visit of doneVisits ?? []) {
-      // Stamp first (conditionally): a crash between send and stamp must not
-      // double-banner on the next tick.
-      const { data: stamped } = await admin
+      const { data: tokens, error: tokensErr } = await admin
+        .from('user_push_tokens')
+        .select('expo_push_token')
+        .eq('user_id', visit.user_id);
+      if (tokensErr) {
+        console.error('[gym-visit-beacon] complete token lookup failed', tokensErr);
+        continue;
+      }
+      if (!tokens || tokens.length === 0) continue;
+
+      const { data: pts, error: ptsErr } = await admin
+        .from('point_transactions')
+        .select('amount')
+        .eq('session_id', visit.claimed_session_id);
+      if (ptsErr) {
+        console.error('[gym-visit-beacon] complete points lookup failed', ptsErr);
+        continue;
+      }
+      const totalPts = (pts ?? []).reduce((sum: number, r: { amount: number }) => sum + (r.amount ?? 0), 0);
+
+      // Stamp (conditionally): a crash between send and stamp must not double-banner on the next tick.
+      const { data: stamped, error: stampErr } = await admin
         .from('gym_visits')
         .update({ completed_push_at: new Date().toISOString() })
         .eq('id', visit.id)
         .is('completed_push_at', null)
         .select('id');
+      if (stampErr) {
+        console.error('[gym-visit-beacon] complete stamp failed', stampErr);
+        continue;
+      }
       if (!stamped || stamped.length === 0) continue;
-
-      const { data: tokens } = await admin
-        .from('user_push_tokens')
-        .select('expo_push_token')
-        .eq('user_id', visit.user_id);
-      if (!tokens || tokens.length === 0) continue;
-
-      const { data: pts } = await admin
-        .from('point_transactions')
-        .select('amount')
-        .eq('session_id', visit.claimed_session_id);
-      const totalPts = (pts ?? []).reduce((sum: number, r: { amount: number }) => sum + (r.amount ?? 0), 0);
 
       const mins = Math.max(1, Math.round(
         (new Date(visit.ended_at as string).getTime() - new Date(visit.started_at as string).getTime()) / 60_000,
