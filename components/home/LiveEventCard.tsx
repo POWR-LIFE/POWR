@@ -1,37 +1,77 @@
 import { useQuery } from '@tanstack/react-query';
-import { Image as ExpoImage } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { EventLockup } from '@/components/events/EventLockup';
 import { EventRegisterSheet } from '@/components/home/EventRegisterSheet';
 import { RewardHeroMedia } from '@/components/rewards/RewardHeroMedia';
-import { fetchActiveLiveEvent, type LiveEvent } from '@/lib/api/liveEvents';
+import {
+    fetchActiveLiveEvent,
+    fetchEventLeaderboard,
+    type EventLeaderboard,
+    type LiveEvent,
+} from '@/lib/api/liveEvents';
 import { eventStatusChip, isVideoUrl, shortDate } from '@/lib/liveEventDisplay';
-import { storageImage } from '@/lib/storageImage';
 
 const GOLD = '#E8D200';
 const TEXT_PRIMARY = '#F2F2F2';
 const DIM = 'rgba(255,255,255,0.55)';
 
-// The default POWR side of the lockup. Hosted (not bundled) so the standard
-// mark can be swapped in storage without shipping an update.
-const POWR_MARK_URL = 'https://auth.powr.life/storage/v1/object/public/landing-page-assets/powr_transparent.png';
+/**
+ * What the pill says once you're registered — the single most useful fact
+ * about where you stand, short enough to sit in a pill.
+ *
+ * Ordered by what's actually actionable: an unmet entry gate outranks
+ * everything, because until it's met nothing else about the event applies to
+ * you. `is_gated` on the board is the server saying the same thing, so both
+ * sources agree by construction.
+ */
+function registeredPill(
+    event: LiveEvent,
+    board: EventLeaderboard | null | undefined,
+): { label: string; a11y: string } {
+    // Preview deliberately gets the REAL pill: the point of an in-app preview
+    // is to see exactly what the room will see. The only thing preview changes
+    // is where a tap goes (the sheet, so the test registration can be reset).
+    const gate = event.viewer.gate;
+    if (gate && !gate.met) {
+        return {
+            label: `${gate.count} OF ${gate.required} FRIENDS`,
+            a11y: `${gate.count} of ${gate.required} friends in — the leaderboard unlocks at ${gate.required}.`,
+        };
+    }
+
+    if (event.is_locked) return { label: 'SCORES LOCKED', a11y: 'Scores are locked for the reveal.' };
+
+    // Live and on the board: your rank is the fact worth carrying. Points
+    // alone before a rank exists still beats a generic "you're in".
+    if (event.status === 'live' && board && !board.is_gated) {
+        const { rank, points } = board.viewer;
+        if (typeof rank === 'number') return { label: `RANK ${rank}`, a11y: `You're ranked ${rank}.` };
+        if (typeof points === 'number') return { label: `${points} POWR`, a11y: `You've earned ${points} POWR.` };
+    }
+
+    return { label: 'YOU’RE IN', a11y: 'You’re registered.' };
+}
 
 /**
- * The home-screen sell for whatever live event is coming up: promo video/image
- * background, venue logo, dates — tap to register. Entirely driven by
- * get_active_live_event(), so a future event only needs its admin row filled
- * in (promo media + headline in the "Promo page" group) to take this slot.
+ * The home-screen presence of whatever live event is on: promo video/image
+ * background, venue logo, dates. Entirely driven by get_active_live_event(),
+ * so a future event only needs its admin row filled in (promo media +
+ * headline in the "Promo page" group) to take this slot.
  *
- * Registration is its one job. It renders only while there is something to
- * register FOR: an opt-in event that is scheduled or live-and-unlocked, for
- * an eligible viewer who hasn't joined. Once they register (or for global
- * events, where everyone is counted automatically) the card disappears and
- * the event lives on the League tab.
+ * It carries the event the whole way through rather than only up to
+ * registration. Before you join it sells the event and opens the register
+ * sheet; after you join the pill flips to where you actually stand — gate
+ * progress in the run-up, your score once the window opens — and tapping it
+ * goes to the League tab, where the ticket and the board live. Home is where
+ * the event is sold, so it shouldn't go quiet the moment someone says yes.
  */
 export function LiveEventCard() {
     const [sheetOpen, setSheetOpen] = useState(false);
+    const router = useRouter();
 
     // Shares useLiveEvent's cache key so home and League stay in sync, but
     // deliberately NOT the full hook — that would drag the invite-progress
@@ -42,40 +82,53 @@ export function LiveEventCard() {
         staleTime: 60_000,
     });
 
+    // Your standing, for the pill only. Shares League's board cache key so the
+    // two never show different numbers, but sets NO refetchInterval — Home
+    // reads whatever the tab last fetched (or fetches once on mount) rather
+    // than putting a second 60s poll on the busiest screen in the app.
+    const { data: board } = useQuery<EventLeaderboard | null>({
+        queryKey: ['liveEventBoard', event?.id],
+        queryFn: () => fetchEventLeaderboard(event!.id),
+        enabled: !!event && event.viewer.joined && event.status === 'live' && !event.is_locked,
+        staleTime: 60_000,
+    });
+
     if (!event) return null;
     if (event.status !== 'scheduled' && event.status !== 'live') return null;
-    if (event.is_locked) return null;
     if (event.scope !== 'opt_in') return null;
     if (!event.viewer.eligible || event.viewer.disqualified) return null;
-    // Registered users lose the card — except in preview, where it stays so
-    // the flow can be reset and re-run (the sheet offers the reset).
-    if (event.viewer.joined && !event.is_preview) return null;
 
     const registered = event.viewer.joined;
+
+    // Locked means scores are being verified for the in-person reveal: there
+    // is nothing left to register for, so the card only survives the lock for
+    // people who are actually in the event.
+    if (event.is_locked && !registered) return null;
 
     const media = event.promo_media_url;
     const videoUrl = isVideoUrl(media) ? media : null;
     const imageUrl = videoUrl ? null : media;
-    // Identity = partnership lockup: venue logo · divider · POWR side. The
-    // POWR side is the uploaded event logo when one exists (white mark on a
-    // transparent background — it sits RAW on the artwork, never chipped),
-    // else the bundled white POWR mark. No venue → the POWR side stands alone.
-    const venueLogo = storageImage(event.venue?.logo_url, 512, 512);
-    // Promo-page convention: venue logos marked 'dark' sit on the artwork raw;
-    // everything else gets a white chip so dark-on-transparent marks survive.
-    const chipVenue = !!venueLogo && event.venue?.logo_bg !== 'dark';
-    const uploadedLogo = storageImage(event.logo_url, 512, 512);
     const large = event.logo_only;
+
+    // Preview keeps the register sheet reachable after joining so the flow can
+    // be reset and run again; a real registration sends you to the tab that
+    // owns the event from here on.
+    const opensSheet = !registered || !!event.is_preview;
+    const pill = registeredPill(event, board);
 
     return (
         <>
             <Pressable
-                onPress={() => setSheetOpen(true)}
+                onPress={() => (opensSheet ? setSheetOpen(true) : router.push('/(tabs)/league'))}
                 style={({ pressed }) => [pressed && { opacity: 0.92 }]}
                 accessibilityRole="button"
-                accessibilityLabel={registered
-                    ? `Live event: ${event.name}. Registered — tap to reset the preview.`
-                    : `Live event: ${event.name}. Tap to register.`}
+                accessibilityLabel={
+                    !registered
+                        ? `Live event: ${event.name}. Tap to register.`
+                        : event.is_preview
+                            ? `Live event: ${event.name}. Registered — tap to reset the preview.`
+                            : `Live event: ${event.name}. ${pill.a11y} Tap to open the League tab.`
+                }
             >
                 <View style={styles.card}>
                     <View style={styles.heroContainer}>
@@ -103,33 +156,7 @@ export function LiveEventCard() {
                         </View>
 
                         <View style={styles.bottomSection}>
-                            <View style={styles.lockupRow}>
-                                {venueLogo && (
-                                    <>
-                                        <View style={chipVenue && styles.venueChip}>
-                                            <ExpoImage
-                                                source={{ uri: venueLogo }}
-                                                style={large ? styles.venueLogoLarge : styles.venueLogo}
-                                                contentFit="contain"
-                                            />
-                                        </View>
-                                        <View style={[styles.lockupDivider, large && styles.lockupDividerLarge]} />
-                                    </>
-                                )}
-                                {uploadedLogo ? (
-                                    <ExpoImage
-                                        source={{ uri: uploadedLogo }}
-                                        style={large ? styles.uploadedLogoLarge : styles.uploadedLogo}
-                                        contentFit="contain"
-                                    />
-                                ) : (
-                                    <ExpoImage
-                                        source={{ uri: POWR_MARK_URL }}
-                                        style={large ? styles.powrMarkLarge : styles.powrMark}
-                                        contentFit="contain"
-                                    />
-                                )}
-                            </View>
+                            <EventLockup event={event} size={large ? 'large' : 'normal'} />
 
                             {/* logo_only: the lockup IS the identity (name stays in the
                                 a11y label and the register sheet). */}
@@ -144,7 +171,7 @@ export function LiveEventCard() {
                                 </Text>
                                 <View style={[styles.registerPill, registered && styles.registeredPill]}>
                                     <Text style={[styles.registerText, registered && styles.registeredText]}>
-                                        {registered ? 'REGISTERED' : 'REGISTER'}
+                                        {registered ? pill.label : 'REGISTER'}
                                     </Text>
                                 </View>
                             </View>
@@ -209,58 +236,6 @@ const styles = StyleSheet.create({
         right: 16,
         bottom: 14,
         gap: 8,
-    },
-    lockupRow: {
-        flexDirection: 'column',
-        alignItems: 'flex-start',
-        gap: 8,
-        alignSelf: 'flex-start',
-    },
-    venueChip: {
-        backgroundColor: '#FFFFFF',
-        borderRadius: 10,
-        paddingHorizontal: 8,
-        paddingVertical: 6,
-    },
-    venueLogo: {
-        width: 64,
-        height: 22,
-    },
-    venueLogoLarge: {
-        width: 80,
-        height: 28,
-    },
-    // The line runs the width of the gym logo above it.
-    lockupDivider: {
-        width: 64,
-        height: 1,
-        backgroundColor: 'rgba(255,255,255,0.45)',
-    },
-    lockupDividerLarge: {
-        width: 80,
-    },
-    // The bundled mark is a square canvas with its own padding — negative
-    // margins trim it so the visible mark aligns with the row, not the canvas.
-    // The POWR side leads the lockup — noticeably bigger than the gym mark.
-    uploadedLogo: {
-        width: 88,
-        height: 32,
-    },
-    uploadedLogoLarge: {
-        width: 112,
-        height: 40,
-    },
-    powrMark: {
-        width: 64,
-        height: 64,
-        marginVertical: -12,
-        marginHorizontal: -10,
-    },
-    powrMarkLarge: {
-        width: 90,
-        height: 90,
-        marginVertical: -17,
-        marginHorizontal: -14,
     },
     name: {
         fontSize: 26,

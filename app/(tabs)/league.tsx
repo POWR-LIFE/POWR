@@ -26,7 +26,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { HeaderActions } from '@/components/HeaderActions';
 import { ComingSoon } from '@/components/ComingSoon';
-import { EventInviteCard } from '@/components/league/EventInviteCard';
+import { EventHeaderCard } from '@/components/league/EventHeaderCard';
+import { EventTicketCard } from '@/components/league/EventTicketCard';
 import { ProBadge } from '@/components/ui/ProBadge';
 import { UserProfileSheet } from '@/components/UserProfileSheet';
 import { usePoints } from '@/hooks/usePoints';
@@ -143,9 +144,10 @@ export default function LeagueScreen() {
       </View>
 
       {!LEAGUE_LIVE ? (
-        /* Event mode: when an event is configured the tab carries the event +
-           invite card (ticket 3); the event leaderboard itself lands with
-           ticket 5. No event → the original teaser. */
+        /* Event mode: when an event is configured the tab carries the event.
+           Three blocks, one job each — what the event IS (header), how you get
+           onto the board (ticket), and the board itself. No event → the
+           original teaser. */
         activeEvent ? (
           <>
             <ScrollView
@@ -153,12 +155,16 @@ export default function LeagueScreen() {
               contentContainerStyle={{ paddingBottom: insets.bottom + 24, gap: 8 }}
               showsVerticalScrollIndicator={false}
             >
-              <EventInviteCard
+              <EventHeaderCard
                 event={activeEvent}
-                invites={invites}
                 onJoin={joinEvent}
                 joining={joining}
               />
+              {/* The ticket only means anything once you're in the event, and
+                  only while there's still time to convert an invite. */}
+              {activeEvent.viewer.joined && invitesOpen(activeEvent) && (
+                <EventTicketCard event={activeEvent} invites={invites} />
+              )}
               <EventBoardSection event={activeEvent} board={eventBoard} onPressUser={openUserSheet} />
             </ScrollView>
             <UserProfileSheet
@@ -286,6 +292,17 @@ export default function LeagueScreen() {
       )}
     </View>
   );
+}
+
+/**
+ * Whether an invite can still count for this event — the window is open and
+ * the conversion deadline (if the event sets one) hasn't passed. Past it the
+ * ticket card is just a promise we can't keep, so it comes off the tab.
+ */
+function invitesOpen(event: LiveEvent): boolean {
+  if (event.status !== 'scheduled' && event.status !== 'live') return false;
+  if (!event.conversion_deadline_at) return true;
+  return Date.now() < new Date(event.conversion_deadline_at).getTime();
 }
 
 // ─── EventBoardSection ────────────────────────────────────────────────────────
