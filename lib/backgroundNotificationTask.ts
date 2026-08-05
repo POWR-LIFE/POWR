@@ -93,6 +93,18 @@ TaskManager.defineTask(BACKGROUND_NOTIFICATION_TASK, async ({ data, error }) => 
     const stage = payload.stage === 'upgrade' ? 'upgrade' : 'dwell';
     console.log(`[BackgroundNotification] Visit check (${stage}) — verifying presence.`);
 
+    // AUTH BEFORE ANYTHING that talks to the server. The wake's access token is
+    // stale more often than not — real users don't open the app before working
+    // out, and tokens live one hour — and a stale token here doesn't just fail,
+    // it can REVOKE the whole session family via GoTrue reuse-detection when
+    // this runtime's in-memory copy has diverged from storage (2026-08-05:
+    // token_revoked stamped the exact second the first wake of the day arrived,
+    // then three flawless JS executions whose every write 401'd silently).
+    // ensureFreshSession resyncs from storage, single-flights, and never throws;
+    // when the token is already fresh it costs one storage read.
+    const { ensureFreshSession } = await import('@/lib/authFresh');
+    await ensureFreshSession('background_wake');
+
     // Record that the push reached JS — but NEVER await it.
     //
     // ⚠ THIS AWAIT WAS EATING EVERY WAKE. Field 2026-08-03, four sessions across a
