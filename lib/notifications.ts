@@ -362,6 +362,12 @@ export async function scheduleSessionMarkNotifications(opts: {
 }): Promise<void> {
   if (Platform.OS !== 'ios') return;
 
+  // SUPERSEDE, always: one active banner pair per device, belonging to the
+  // NEWEST session. Without this, boundary wobble (exit→enter cycles) piles up
+  // pairs keyed to different entry timestamps and they all fire — the
+  // 2026-08-05 eight-banner storm. A new check-in owns the future outright.
+  await cancelNotificationsOfType('session_mark').catch(() => {});
+
   const permissions = await Notifications.getPermissionsAsync().catch(() => null);
   const allowed = permissions?.granted
     || permissions?.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL;

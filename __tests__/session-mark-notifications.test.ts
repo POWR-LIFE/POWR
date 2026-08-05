@@ -21,6 +21,7 @@ jest.mock('expo-notifications', () => ({
   getPermissionsAsync: jest.fn(),
   scheduleNotificationAsync: jest.fn(),
   cancelScheduledNotificationAsync: jest.fn(),
+  getAllScheduledNotificationsAsync: jest.fn(async () => []),
 }));
 
 jest.mock('expo-device', () => ({ isDevice: true }));
@@ -152,5 +153,26 @@ describe('notifyCheckInAvailable return contract (announce dedupe)', () => {
   it('propagates a scheduling failure rather than reporting shown', async () => {
     schedule.mockRejectedValueOnce(new Error('notification service unavailable'));
     await expect(notifyCheckInAvailable('POWR Gym', 'r-1')).rejects.toThrow();
+  });
+});
+
+describe('supersede on schedule (2026-08-05 eight-banner storm)', () => {
+  it('sweeps ALL previously scheduled marks before planting a new pair', async () => {
+    const getAll = Notifications.getAllScheduledNotificationsAsync as jest.Mock;
+    getAll.mockResolvedValueOnce([
+      { identifier: 'powr-session_mark-dwell-111' },
+      { identifier: 'powr-session_mark-upgrade-111' },
+      { identifier: 'powr-session_mark-dwell-222' },
+      { identifier: 'powr-streak_at_risk-x' },              // other types untouched
+    ]);
+
+    await scheduleSessionMarkNotifications({ ...baseOpts, entryTimestampMs: Date.now() });
+
+    const cancelled = cancel.mock.calls.map(c => c[0]);
+    expect(cancelled).toEqual(expect.arrayContaining([
+      'powr-session_mark-dwell-111', 'powr-session_mark-upgrade-111', 'powr-session_mark-dwell-222',
+    ]));
+    expect(cancelled).not.toContain('powr-streak_at_risk-x');
+    expect(schedule).toHaveBeenCalledTimes(2); // new pair still planted
   });
 });
