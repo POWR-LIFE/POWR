@@ -232,6 +232,16 @@ export default function PermissionFixScreen({
     }, [kind, fade]);
 
     const finish = useCallback(() => {
+        // Arm NOW — this is the convergence point for EVERY grant path,
+        // including the one where the user flips the switch in system Settings
+        // and returns (iOS restarts the app on that change, so nothing else
+        // would arm until they happened to open it again).
+        // Dynamic import on purpose: GeofenceContext pulls the whole geofence
+        // engine (task-manager, background-fetch, location) and a static import
+        // would drag all of it into this component's tests.
+        void import('@/context/GeofenceContext')
+            .then(m => m.armAfterPermissionGrant())
+            .catch(() => { /* the refresh path still covers it */ });
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
         onClose();
     }, [onClose]);

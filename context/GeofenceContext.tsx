@@ -2004,6 +2004,54 @@ async function finalizeActiveGeofenceInner(expectedRegionId?: string, endedAtOve
  *  the stream cache / OS cache; the live-GPS branch is bounded). No network —
  *  callers rely on this chain never freezing, because the wake task starts it
  *  BEFORE the confirm round-trip that can. */
+/** ARM THE MOMENT PERMISSION LANDS (2026-08-06 field).
+ *
+ *  Granting background location used to arm nothing. The startup effect
+ *  checks permission, and when it is missing it clears the partner
+ *  fingerprint and returns — so arming waits for the NEXT partner refresh
+ *  (app launch, return-to-foreground, or the 5-minute interval). A user who
+ *  grants permission and then pockets the phone — onboarding's single most
+ *  common ending — walks to the gym with nothing armed.
+ *
+ *  That is exactly what happened on the 08-06 walk: permission granted in-app
+ *  at 18:47, app swiped 30 s later, zero `armed` rows until the app was
+ *  reopened at 19:10, at which point it armed 20 regions in three seconds.
+ *
+ *  So every permission-granting surface calls this immediately afterwards. It
+ *  is idempotent and cheap: the same-set signature check makes a redundant
+ *  call a no-op, and a failure just leaves the old refresh path to catch it.
+ *
+ *  Ordering matters: fetch the geometry cache FIRST. On a fresh install the
+ *  map is empty, and armNativeRegions with no map returns early — the second
+ *  way this silently does nothing. */
+export async function armAfterPermissionGrant(): Promise<void> {
+  try {
+    const { status: fg } = await Location.getForegroundPermissionsAsync();
+    if (fg !== 'granted') return;
+    const { status: bg } = await Location.getBackgroundPermissionsAsync();
+    if (bg !== 'granted') {
+      // Worth a row: "granted foreground only" is invisible from the server
+      // otherwise, and it is the difference between a working install and one
+      // that can never check in.
+      logRegionEvent('arm', 'rearm_skipped', { reason: 'background_permission_missing' });
+      return;
+    }
+
+    if (!(await readPartnerMap())) {
+      await fetchAndCacheAllPartnerGeometry();
+    }
+
+    const fix = await getArmFix();
+    await armNativeRegions(
+      fix ? { latitude: fix.latitude, longitude: fix.longitude } : null,
+      { force: true },
+    );
+    console.log('[Geofence] Armed immediately after permission grant.');
+  } catch (err) {
+    console.warn('[Geofence] Arm-on-grant failed (the refresh path still covers it):', err);
+  }
+}
+
 export async function rearmFencesFromWake(): Promise<void> {
   if (Platform.OS !== 'android') return;
   try {
@@ -2253,6 +2301,40 @@ export async function runVisitCheck(
     };
     if (wakeNonce) await confirmGymVisitViaNonce(visitId, wakeNonce, inside, detail, inside, active.entryTimestamp);
     else await confirmGymVisit(visitId, inside, detail, inside, active.entryTimestamp);
+  }
+
+  // DURABLE ENTRY (2026-08-06 field): the check-in's own openGymVisit is a
+  // single best-effort call, and when it freezes — which it did tonight at
+  // 20:03:38, resyncing auth and never returning — the server never learns the
+  // session exists. No visit row means no beacon, no nudges, no server-side
+  // timers: the device is alone with a session nobody else knows about.
+  //
+  // The device is the source of truth, so the server just has to catch up.
+  // Every wake already has a fresh fix and a live network, so a wake that
+  // finds an active session WITHOUT a visit id opens one, backdated to the
+  // real entry time (open_gym_visit re-uses an open visit, so a racing
+  // double-open is a no-op, and the backdate keeps the server's 30/40 timers
+  // honest no matter how late this lands). A frozen check-in therefore costs a
+  // few minutes of beacon coverage rather than the whole session.
+  //
+  // This mirrors what the stream heartbeat already does — but the heartbeat
+  // needs stream ticks, and a swiped Android phone's only heartbeat IS the wake.
+  if (inside && !active.visitId) {
+    try {
+      const { openGymVisit } = await import('@/lib/gymVisits');
+      const lateId = await openGymVisit(active.partnerId, active.regionId, active.entryTimestamp);
+      if (lateId) {
+        const raw = await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY);
+        const cur = raw ? JSON.parse(raw) as StoredGeofence : null;
+        // Only stamp the session we just opened for — never a later one.
+        if (cur && cur.entryTimestamp === active.entryTimestamp) {
+          await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...cur, visitId: lateId }));
+        }
+        console.log(`[Geofence] Late visit open succeeded on wake — server caught up (${lateId}).`);
+      }
+    } catch (err) {
+      console.warn('[Geofence] Late visit open failed — next wake retries:', err);
+    }
   }
 
   if (inside) {

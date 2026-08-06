@@ -153,6 +153,15 @@ export default function OnboardingPermissionBackgroundScreen() {
                 return;
             }
 
+            // Permission is granted at this point — arm before moving on, so a
+            // user who finishes onboarding and pockets the phone is actually
+            // covered rather than waiting for a later refresh to notice.
+            // Dynamic import on purpose: GeofenceContext pulls the whole geofence
+            // engine (task-manager, background-fetch, location) and a static import
+            // would drag all of it into this component's tests.
+            void import('@/context/GeofenceContext')
+                .then(m => m.armAfterPermissionGrant())
+                .catch(() => { /* the refresh path still covers it */ });
             await continueViaBatteryPrompt();
         } catch (error) {
             console.error('Error requesting background location:', error);

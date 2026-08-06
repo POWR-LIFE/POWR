@@ -54,6 +54,16 @@ export default function LocationPrimeSheet() {
 
     const finishGranted = useCallback(() => {
         if (user?.id) reportLocationPermission(user.id).catch(() => {});
+        // Arm NOW. Granting permission used to arm nothing until the next
+        // partner refresh (app launch / foreground return / 5-min tick), so a
+        // user who granted here and pocketed the phone reached the gym with no
+        // regions registered — field-proven 2026-08-06.
+        // Dynamic import on purpose: GeofenceContext pulls the whole geofence
+        // engine (task-manager, background-fetch, location) and a static import
+        // would drag all of it into this component's tests.
+        void import('@/context/GeofenceContext')
+            .then(m => m.armAfterPermissionGrant())
+            .catch(() => { /* the refresh path still covers it */ });
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
         setMode('hidden');
     }, [user?.id]);
