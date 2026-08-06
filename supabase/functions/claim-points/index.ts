@@ -667,16 +667,31 @@ Deno.serve(async (req) => {
     try {
       const nowIso = new Date().toISOString();
       const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
-      let lateMark = supabase
-        .from('gym_visits')
-        .update({ claimed_session_id: session.id, claimed_at: nowIso })
-        .eq('user_id', user.id)
-        .neq('status', 'open')
-        .is('claimed_session_id', null)
-        .not('ended_at', 'is', null)
-        .gte('ended_at', sixHoursAgo);
-      lateMark = body.visit_id ? lateMark.eq('id', body.visit_id) : lateMark.eq('partner_id', session.partner_id);
-      const { data: lateMarked } = await lateMark.select('id');
+
+      let targetVisitId = body.visit_id ?? null;
+      if (!targetVisitId) {
+        const { data: candidates } = await supabase
+          .from('gym_visits')
+          .select('id')
+          .eq('user_id', user.id)
+          .eq('partner_id', session.partner_id)
+          .neq('status', 'open')
+          .is('claimed_session_id', null)
+          .not('ended_at', 'is', null)
+          .gte('ended_at', sixHoursAgo)
+          .order('ended_at', { ascending: false })
+          .limit(1);
+        targetVisitId = candidates?.[0]?.id ?? null;
+      }
+
+      const { data: lateMarked } = !targetVisitId
+        ? { data: [] }
+        : await supabase
+            .from('gym_visits')
+            .update({ claimed_session_id: session.id, claimed_at: nowIso })
+            .eq('id', targetVisitId)
+            .is('claimed_session_id', null)
+            .select('id');
       for (const row of lateMarked ?? []) {
         await supabase.from('gym_visit_events').insert({
           visit_id: row.id, user_id: user.id, event: 'claimed',
