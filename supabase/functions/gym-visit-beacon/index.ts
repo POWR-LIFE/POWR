@@ -280,7 +280,17 @@ Deno.serve(async (req: Request) => {
   // FLEET-WIDE since v15 (2026-08-06): every android device with a fresh
   // native token, on a gentle cadence (fences at most ~4h stale, 6 silent
   // wakes/day). The bench account keeps its tight loop for test velocity.
-  {
+  // ⚠ DISABLED 2026-08-06. This pass existed to keep fences fresh via a
+  // background re-arm. Field work that day showed a background re-arm cannot
+  // heal anything — every re-arm is remove-then-add (expo's consumer
+  // setOptions/didUnregister removes + cancels the PendingIntent first), so a
+  // wake-triggered re-arm can only ever risk the user's live registration.
+  // Until a device-side build can VERIFY registration (the instrumentation
+  // patch did not make it into build 16), waking phones to re-arm is pure
+  // downside. The zombie-reconcile that rode along with it needs a new
+  // trigger before this is re-enabled.
+  const FENCE_REFRESH_ENABLED = false;
+  if (FENCE_REFRESH_ENABLED) {
     const FAST_USER_IDS = new Set(['234d49f3-d189-44b1-a874-063e724e4380']); // Sony bench cadence
     const FAST_INTERVAL_MIN = 30;
     const FLEET_INTERVAL_MIN = 240;
