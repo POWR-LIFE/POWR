@@ -1495,26 +1495,29 @@ async function gymAlreadyLoggedToday(): Promise<boolean> {
     if (!user || DEV_TEST_EMAILS.has(user.email ?? '')) return false;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const { count } = await supabase
+    const { data } = await supabase
       .from('activity_sessions')
-      .select('id', { count: 'exact', head: true })
+      .select('id')
       .eq('user_id', user.id)
       .eq('type', 'gym')
       .eq('verification', 'geofence')
-      .gte('started_at', today.toISOString());
-    return (count ?? 0) > 0;
+      .gte('started_at', today.toISOString())
+      .limit(1);
+    return (data?.length ?? 0) > 0;
   } catch {
     return false;
   }
 }
 
 /** Writes active-geofence state and fires the "You're in" notification for a
- *  newly-entered circle. No-ops if a session is already active or a gym was
- *  already logged today. `regionId` is the composite UI key so the notification
- *  cooldown dedups against the native ENTER path for the same gym. */
+ *  newly-entered circle. No-ops if a session is already active. A gym already
+ *  logged today does NOT block the check-in — the session still records and
+ *  the server caps the points; the day-cap check runs async below, purely to
+ *  withdraw the iOS mark banners whose copy promises points that won't bank.
+ *  `regionId` is the composite UI key so the notification cooldown dedups
+ *  against the native ENTER path for the same gym. */
 async function setActiveAndNotify(regionId: string, entry: PartnerMapEntry): Promise<void> {
   if (await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY)) return;
-  if (await gymAlreadyLoggedToday()) return;
   const entryTimestamp = Date.now();
 
   // Stamp the owner so a session can never be finalized — or its exit-claim
@@ -1589,6 +1592,27 @@ async function setActiveAndNotify(regionId: string, entry: PartnerMapEntry): Pro
   } catch (err) {
     console.warn('[Geofence] session marks failed to schedule:', err);
   }
+
+  // Day-cap honesty, advisory + fire-and-forget. A second visit today still
+  // gets the FULL check-in (session history, announce, exit close) — the
+  // never-drop-a-workout rule; the server caps the POINTS on its own. The one
+  // local artifact that would lie is the pre-scheduled iOS marks ("banked"),
+  // so when the check says the day is already claimed, withdraw them.
+  //
+  // NEVER await this. Its former life as an awaited gate — an UNBOUNDED
+  // PostgREST round-trip before even the session write — was the frozen-
+  // response class parked at the front door of entry, invisible on dev
+  // phones (DEV_TEST_EMAILS short-circuits before the query) and lethal for
+  // real users (2026-08-06 audit, gap #1: no banner, no marks, no session,
+  // no visit — total silence on arrival).
+  void gymAlreadyLoggedToday()
+    .then(async (already) => {
+      if (!already) return;
+      const { cancelSessionMarkNotifications } = await import('@/lib/notifications');
+      await cancelSessionMarkNotifications(String(entryTimestamp), 'all');
+      console.log('[Geofence] Day already claimed — session records, marks withdrawn.');
+    })
+    .catch(() => { /* advisory only — worst case the marks stay */ });
 
   // Only now the network: open the server-side visit beacon.
   let visitId: string | null = null;
