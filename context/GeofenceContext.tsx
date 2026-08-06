@@ -777,6 +777,32 @@ export async function setLocationStreamMode(mode: StreamMode): Promise<void> {
     }
     if (started && current === mode) return;
 
+    // A LIVE stream is worth more than the right mode. The switch below is a
+    // stop→start, and Android 12+ refuses to start a foreground service from the
+    // background — including the restore attempt in the catch, which is why the
+    // safety net below is not enough on its own. 2026-08-06, the second cause of
+    // that night's Android silence, logged verbatim:
+    //
+    //   stream_start_failed  mode: dwell  restored: FALSE
+    //   "Couldn't start the foreground service"
+    //
+    // That fired at the exact second of gym entry, so the passive→dwell switch
+    // traded a working stream for none at all, and Android had no location
+    // driver for the rest of the session. Defer instead: the mode we want is
+    // recorded, the next foreground pass applies it, and until then the beacon's
+    // nudges drive the visit (each takes its own fresh fix, so a coarser stream
+    // costs nothing that matters). Same principle as the background re-arm
+    // guard — a background context may never destroy live native registrations.
+    //
+    // The recorded mode is deliberately NOT updated: it must keep describing the
+    // stream that is actually running, or the next foreground request for this
+    // mode would match it, no-op, and the switch would never happen at all.
+    if (started && Platform.OS === 'android' && AppState.currentState !== 'active') {
+      logRegionEvent('stream', 'stream_switch_deferred', { from: current, to: mode });
+      console.log(`[Geofence] Stream switch ${current} → ${mode} deferred — a background stop→start cannot restart.`);
+      return;
+    }
+
     if (started) await Location.stopLocationUpdatesAsync(LOCATION_TRACKING_TASK).catch(() => {});
     try {
       await Location.startLocationUpdatesAsync(LOCATION_TRACKING_TASK, streamOptsFor(mode));
@@ -807,7 +833,7 @@ export async function setLocationStreamMode(mode: StreamMode): Promise<void> {
 function logRegionEvent(
   regionId: string,
   event: 'enter' | 'exit' | 'approach_stream_on' | 'checked_in' | 'stream_start_failed'
-    | 'armed' | 'sentinel_exit' | 'rearm_skipped',
+    | 'stream_switch_deferred' | 'armed' | 'sentinel_exit' | 'rearm_skipped',
   detail: Record<string, unknown> = {},
 ): void {
   void import('@/lib/gymVisits')

@@ -424,4 +424,62 @@ describe('setLocationStreamMode — a live stream must never be restarted into t
     expect(failures).toHaveLength(1);
     expect(failures[0]?.[1]?.p_detail).toMatchObject({ mode: 'dwell', restored: true });
   });
+
+  // The restore above is a safety net, and on 2026-08-06 the net tore: Android
+  // refused the dwell start AND the passive restore, logging restored:false at
+  // the exact second of gym entry. The device then had no location driver for
+  // the rest of the session. The only reliable answer is not to stop a live
+  // stream from the background at all.
+  it('defers the switch entirely when backgrounded — a live stream is never stopped', async () => {
+    await setLocationStreamMode('passive');
+    jest.clearAllMocks();
+    mockLocation.hasStartedLocationUpdatesAsync.mockResolvedValue(true);
+    const { AppState } = require('react-native');
+    const originalOS = Platform.OS;
+    const originalState = AppState.currentState;
+    Object.defineProperty(Platform, 'OS', { configurable: true, value: 'android' });
+    Object.defineProperty(AppState, 'currentState', { configurable: true, value: 'background' });
+
+    try {
+      await setLocationStreamMode('dwell');
+      await flushTelemetry();
+
+      expect(mockLocation.stopLocationUpdatesAsync).not.toHaveBeenCalled();
+      expect(mockLocation.startLocationUpdatesAsync).not.toHaveBeenCalled();
+      const deferred = (mockRpc.mock.calls as any[][]).filter(([fn, args]) =>
+        fn === 'log_geofence_region_event' && args?.p_event === 'stream_switch_deferred');
+      expect(deferred).toHaveLength(1);
+      expect(deferred[0]?.[1]?.p_detail).toMatchObject({ from: 'passive', to: 'dwell' });
+    } finally {
+      Object.defineProperty(AppState, 'currentState', { configurable: true, value: originalState });
+      Object.defineProperty(Platform, 'OS', { configurable: true, value: originalOS });
+    }
+  });
+
+  // Recording 'dwell' while 'passive' is what is actually running would make the
+  // next foreground request match and no-op, stranding the stream in the wrong
+  // mode forever. The deferral must leave the switch still pending.
+  it('still performs the switch on the next foreground call', async () => {
+    await setLocationStreamMode('passive');
+    mockLocation.hasStartedLocationUpdatesAsync.mockResolvedValue(true);
+    const { AppState } = require('react-native');
+    const originalOS = Platform.OS;
+    const originalState = AppState.currentState;
+    Object.defineProperty(Platform, 'OS', { configurable: true, value: 'android' });
+    Object.defineProperty(AppState, 'currentState', { configurable: true, value: 'background' });
+    try {
+      await setLocationStreamMode('dwell');
+    } finally {
+      Object.defineProperty(AppState, 'currentState', { configurable: true, value: originalState });
+      Object.defineProperty(Platform, 'OS', { configurable: true, value: originalOS });
+    }
+    jest.clearAllMocks();
+    mockLocation.hasStartedLocationUpdatesAsync.mockResolvedValue(true);
+
+    await setLocationStreamMode('dwell');
+
+    expect(mockLocation.stopLocationUpdatesAsync).toHaveBeenCalledTimes(1);
+    expect(mockLocation.startLocationUpdatesAsync).toHaveBeenCalledTimes(1);
+    expect((mockLocation.startLocationUpdatesAsync.mock.calls[0] as any[])[1].distanceInterval).toBe(0);
+  });
 });
