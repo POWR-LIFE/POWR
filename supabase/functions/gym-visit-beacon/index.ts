@@ -287,13 +287,20 @@ Deno.serve(async (req: Request) => {
   // wake-triggered re-arm can only ever risk the user's live registration.
   // Until a device-side build can VERIFY registration (the instrumentation
   // patch did not make it into build 16), waking phones to re-arm is pure
-  // downside. The zombie-reconcile that rode along with it needs a new
-  // trigger before this is re-enabled.
-  const FENCE_REFRESH_ENABLED = false;
+  // downside.
+  //
+  // RE-ENABLED with a DIFFERENT job: the wake no longer re-arms anything (#336
+  // refuses that outright). It triggers the presence sweep (#338) — the device
+  // answers "am I in a gym right now?" from a cached fix and evaluateLocationFix
+  // decides, exactly as it does for every other check-in. That is entry
+  // detection which does not depend on the fence layer at all, riding the one
+  // primitive with hundreds of proven successes: an FCM data wake to a swiped
+  // app. It also carries the zombie-session reconcile (#329).
+  const FENCE_REFRESH_ENABLED = true;
   if (FENCE_REFRESH_ENABLED) {
     const FAST_USER_IDS = new Set(['234d49f3-d189-44b1-a874-063e724e4380']); // Sony bench cadence
-    const FAST_INTERVAL_MIN = 30;
-    const FLEET_INTERVAL_MIN = 240;
+    const FAST_INTERVAL_MIN = 5;    // bench cadence while the sweep is being proven
+    const FLEET_INTERVAL_MIN = 0;   // 0 = fleet OFF; only FAST_USER_IDS are pinged
     const TOKEN_FRESH_DAYS = 14; // dormant devices aren't worth the wake budget
 
     const { data: refreshTargets, error: refreshScanErr } = await admin
@@ -311,7 +318,12 @@ Deno.serve(async (req: Request) => {
       .from('push_send_log')
       .select('user_id, created_at')
       .eq('type', 'fence_refresh')
-      .gte('created_at', new Date(Date.now() - FLEET_INTERVAL_MIN * 60_000).toISOString())
+      // ⚠ Lookback is its OWN value. It was FLEET_INTERVAL_MIN, and when that
+      // went to 0 to disable fleet pings the window became 'the last zero
+      // minutes' — nobody ever looked recently-pinged, so the bench phone was
+      // woken on EVERY cron tick, once a minute (field 2026-08-06). A rate
+      // limiter must never derive its memory from a value that can be zero.
+      .gte('created_at', new Date(Date.now() - Math.max(FAST_INTERVAL_MIN, FLEET_INTERVAL_MIN, 60) * 60_000).toISOString())
       .order('created_at', { ascending: false })
       .limit(2000);
     if (recentPingsErr) console.error('[gym-visit-beacon] fence_refresh recent ping scan failed', recentPingsErr);
@@ -332,6 +344,7 @@ Deno.serve(async (req: Request) => {
     let fcmDown = false;
     for (const [userId, tokens] of tokensByUser) {
       if (fcmDown) break;
+      if (!FAST_USER_IDS.has(userId) && FLEET_INTERVAL_MIN <= 0) continue; // fleet off
       const intervalMin = FAST_USER_IDS.has(userId) ? FAST_INTERVAL_MIN : FLEET_INTERVAL_MIN;
       if (Date.now() - (lastPingByUser.get(userId) ?? 0) < intervalMin * 60_000) continue;
 
