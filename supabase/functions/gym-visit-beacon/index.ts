@@ -311,7 +311,12 @@ Deno.serve(async (req: Request) => {
       .from('push_send_log')
       .select('user_id, created_at')
       .eq('type', 'fence_refresh')
-      .gte('created_at', new Date(Date.now() - FLEET_INTERVAL_MIN * 60_000).toISOString())
+      // ⚠ Lookback is its OWN constant. It used to be FLEET_INTERVAL_MIN, and
+      // when that went to 0 to disable fleet pings the window became 'the last
+      // zero minutes' — nobody ever looked recently-pinged, so the bench phone
+      // was woken EVERY tick, once a minute (field 2026-08-06). A rate limiter
+      // must never derive its lookback from a value that can legitimately be 0.
+      .gte('created_at', new Date(Date.now() - Math.max(FAST_INTERVAL_MIN, FLEET_INTERVAL_MIN, 60) * 60_000).toISOString())
       .order('created_at', { ascending: false })
       .limit(2000);
     if (recentPingsErr) console.error('[gym-visit-beacon] fence_refresh recent ping scan failed', recentPingsErr);
