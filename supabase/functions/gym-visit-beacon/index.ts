@@ -289,11 +289,16 @@ Deno.serve(async (req: Request) => {
   // patch did not make it into build 16), waking phones to re-arm is pure
   // downside. The zombie-reconcile that rode along with it needs a new
   // trigger before this is re-enabled.
-  const FENCE_REFRESH_ENABLED = false;
+  // RE-ENABLED 2026-08-06 with a NEW purpose. It no longer exists to re-arm
+  // fences (impossible from the background, and #336 now refuses it) — it is
+  // the trigger for the presence sweep: the wake asks the device 'are you in
+  // a gym right now?' and evaluateLocationFix answers from a cached fix.
+  // Allowlisted while that path is being proven; the fleet stays off.
+  const FENCE_REFRESH_ENABLED = true;
   if (FENCE_REFRESH_ENABLED) {
     const FAST_USER_IDS = new Set(['234d49f3-d189-44b1-a874-063e724e4380']); // Sony bench cadence
-    const FAST_INTERVAL_MIN = 30;
-    const FLEET_INTERVAL_MIN = 240;
+    const FAST_INTERVAL_MIN = 5;      // bench cadence while proving the sweep
+    const FLEET_INTERVAL_MIN = 0;     // 0 = fleet disabled; only FAST_USER_IDS are pinged
     const TOKEN_FRESH_DAYS = 14; // dormant devices aren't worth the wake budget
 
     const { data: refreshTargets, error: refreshScanErr } = await admin
@@ -332,6 +337,7 @@ Deno.serve(async (req: Request) => {
     let fcmDown = false;
     for (const [userId, tokens] of tokensByUser) {
       if (fcmDown) break;
+      if (!FAST_USER_IDS.has(userId) && FLEET_INTERVAL_MIN <= 0) continue; // fleet off
       const intervalMin = FAST_USER_IDS.has(userId) ? FAST_INTERVAL_MIN : FLEET_INTERVAL_MIN;
       if (Date.now() - (lastPingByUser.get(userId) ?? 0) < intervalMin * 60_000) continue;
 
