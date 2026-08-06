@@ -637,13 +637,19 @@ async function armNativeRegions(
       return;
     }
 
-    // NO stop-first in production. stopGeofencingAsync unregisters the task,
-    // which tears down the native consumer and cancels its PendingIntent —
-    // in-flight events die with it. startGeofencingAsync on a live task swaps
-    // the options on the SAME consumer (remove-then-add, one fence generation),
-    // which is all a re-arm needs. Expo Go keeps the historical stop-first
-    // (internal sync quirk in the dev client).
-    if (__DEV__ && running) {
+    // Normal production re-arms do NOT stop first. stopGeofencingAsync
+    // unregisters the task, tears down the native consumer and cancels its
+    // PendingIntent, so in-flight events die with it. startGeofencingAsync on a
+    // live task swaps options on the same consumer, which is all a re-centre
+    // needs.
+    //
+    // freshHandle is intentionally different: the wake path is repairing a
+    // consumer whose PendingIntent is already mute. Reusing that consumer
+    // cannot heal it (2026-08-06 Android field capture: GMS reported every
+    // restored fence as "registration not active / not permitted" until app
+    // open). Tear it down while this headless context is alive, then let start
+    // create a genuinely fresh consumer and PendingIntent.
+    if (running && (opts.freshHandle || __DEV__)) {
       await Location.stopGeofencingAsync(GEOFENCE_TASK_NAME).catch(() => {});
     }
     await Location.startGeofencingAsync(GEOFENCE_TASK_NAME, regions);

@@ -27,7 +27,13 @@
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
-import { DWELL_LOCATION_OPTIONS, getArmFix, setLocationStreamMode } from '@/context/GeofenceContext';
+import { Platform } from 'react-native';
+import {
+  DWELL_LOCATION_OPTIONS,
+  getArmFix,
+  rearmFencesFromWake,
+  setLocationStreamMode,
+} from '@/context/GeofenceContext';
 
 const GEOFENCE_TASK_NAME = 'GEOFENCE_CHECK_IN';
 const LOCATION_TRACKING_TASK = 'POWR_LOCATION_TRACKING';
@@ -283,6 +289,26 @@ describe('re-arm hygiene — one fence generation, no teardown, no duplicates', 
     await driveLocationFix({ latitude: 52.10, longitude: -1.85, accuracy: 30 });
     expect(mockLocation.startGeofencingAsync).toHaveBeenCalledTimes(2);
     expect(mockLocation.stopGeofencingAsync).not.toHaveBeenCalled();
+  });
+
+  it('wake self-heal replaces the stale native consumer before re-arming', async () => {
+    const originalOS = Platform.OS;
+    Object.defineProperty(Platform, 'OS', { configurable: true, value: 'android' });
+    try {
+      await AsyncStorage.setItem(LAST_STREAM_FIX_KEY, JSON.stringify({
+        latitude: HOME_GYM.lat, longitude: HOME_GYM.lng, accuracy: 30, at: Date.now(),
+      }));
+      mockLocation.hasStartedGeofencingAsync.mockResolvedValue(true);
+
+      await rearmFencesFromWake();
+
+      expect(mockLocation.stopGeofencingAsync).toHaveBeenCalledWith(GEOFENCE_TASK_NAME);
+      expect(mockLocation.startGeofencingAsync).toHaveBeenCalledTimes(1);
+      expect(mockLocation.stopGeofencingAsync.mock.invocationCallOrder[0])
+        .toBeLessThan(mockLocation.startGeofencingAsync.mock.invocationCallOrder[0]);
+    } finally {
+      Object.defineProperty(Platform, 'OS', { configurable: true, value: originalOS });
+    }
   });
 });
 
