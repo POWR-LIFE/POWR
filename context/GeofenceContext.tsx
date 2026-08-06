@@ -1495,14 +1495,15 @@ async function gymAlreadyLoggedToday(): Promise<boolean> {
     if (!user || DEV_TEST_EMAILS.has(user.email ?? '')) return false;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const { count } = await supabase
+    const { data } = await supabase
       .from('activity_sessions')
-      .select('id', { count: 'exact', head: true })
+      .select('id')
       .eq('user_id', user.id)
       .eq('type', 'gym')
       .eq('verification', 'geofence')
-      .gte('started_at', today.toISOString());
-    return (count ?? 0) > 0;
+      .gte('started_at', today.toISOString())
+      .limit(1);
+    return (data?.length ?? 0) > 0;
   } catch {
     return false;
   }
