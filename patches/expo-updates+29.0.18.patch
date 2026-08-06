@@ -1,0 +1,96 @@
+diff --git a/node_modules/expo-updates/ios/EXUpdates/AppLoader/AppLoaderTask.swift b/node_modules/expo-updates/ios/EXUpdates/AppLoader/AppLoaderTask.swift
+index 800fa75..2c24274 100644
+--- a/node_modules/expo-updates/ios/EXUpdates/AppLoader/AppLoaderTask.swift
++++ b/node_modules/expo-updates/ios/EXUpdates/AppLoader/AppLoaderTask.swift
+@@ -378,7 +378,9 @@ public final class AppLoaderTask: NSObject {
+           }
+           return true
+         default:
+-          NSException(name: .internalInconsistencyException, reason: "Unhandled update directive type").raise()
++          // POWR patch: an unknown server directive must never crash the app —
++          // treat it as "no update available" (see FetchUpdateProcedure).
++          self.logger.warn(message: "Unhandled update directive type; treating as no update available")
+           return false
+         }
+       }
+diff --git a/node_modules/expo-updates/ios/EXUpdates/ErrorRecovery.swift b/node_modules/expo-updates/ios/EXUpdates/ErrorRecovery.swift
+index 14a9ce5..a692462 100644
+--- a/node_modules/expo-updates/ios/EXUpdates/ErrorRecovery.swift
++++ b/node_modules/expo-updates/ios/EXUpdates/ErrorRecovery.swift
+@@ -172,7 +172,13 @@ public final class ErrorRecovery: NSObject {
+ 
+   private func runNextTask() {
+     dispatchPrecondition(condition: .onQueue(errorRecoveryQueue))
+-    let nextTask = pipeline.first!
++    // POWR patch: guard the force-unwrap — an exhausted pipeline halts
++    // recovery instead of trapping on nil.
++    guard let nextTask = pipeline.first else {
++      logger.warn(message: "ErrorRecovery: pipeline exhausted; halting recovery")
++      isRunning = false
++      return
++    }
+     pipeline.remove(at: 0)
+ 
+     switch nextTask {
+@@ -187,7 +193,13 @@ public final class ErrorRecovery: NSObject {
+       tryRelaunchFromCache()
+     case .crash:
+       logger.error(cause: UpdatesError.errorRecoveryCrashing, code: .updateFailedToLoad)
+-      crash()
++      // POWR patch: never deliberately terminate the process. The stock .crash
++      // step is the engine of the 29.0.18 crash LOOP: a poisoned update marks
++      // itself FAILED, every next launch re-enters recovery, the pipeline
++      // drains (instantly when offline), and the app kills itself again — by
++      // design ("updateFailedToLoad"), forever, until reinstall. Logging and
++      // stopping leaves the app on the last launchable update instead.
++      isRunning = false
+     }
+   }
+ 
+@@ -241,7 +253,13 @@ public final class ErrorRecovery: NSObject {
+   private func crash() {
+     // create new exception object from stack of errors
+     // use the initial error and put the rest into userInfo
+-    let initialError = encounteredErrors.first!
++    // POWR patch: guard the force-unwrap — nothing to report is not a reason
++    // to trap. (Unreachable from the pipeline now that .crash is neutered,
++    // kept as defense in depth.)
++    guard let initialError = encounteredErrors.first else {
++      logger.warn(message: "ErrorRecovery: crash() invoked with no encountered errors; ignoring")
++      return
++    }
+     encounteredErrors.remove(at: 0)
+ 
+     if let initialError = initialError as? NSError,
+diff --git a/node_modules/expo-updates/ios/EXUpdates/Procedures/FetchUpdateProcedure.swift b/node_modules/expo-updates/ios/EXUpdates/Procedures/FetchUpdateProcedure.swift
+index 34cbd12..51fcbe4 100644
+--- a/node_modules/expo-updates/ios/EXUpdates/Procedures/FetchUpdateProcedure.swift
++++ b/node_modules/expo-updates/ios/EXUpdates/Procedures/FetchUpdateProcedure.swift
+@@ -67,7 +67,11 @@ final class FetchUpdateProcedure: StateMachineProcedure {
+         case is RollBackToEmbeddedUpdateDirective:
+           return true
+         default:
+-          NSException(name: .internalInconsistencyException, reason: "Unhandled update directive type").raise()
++          // POWR patch: an unknown server directive must never crash the app —
++          // treat it as "no update available". Upstream's own
++          // CheckForUpdateProcedure default branch is already non-fatal; no fix
++          // exists in expo-updates as of 29.0.19 (sdk-54) or main.
++          self.logger.warn(message: "Unhandled update directive type; treating as no update available")
+           return false
+         }
+       }
+diff --git a/node_modules/expo-updates/ios/EXUpdates/Procedures/StartupProcedure.swift b/node_modules/expo-updates/ios/EXUpdates/Procedures/StartupProcedure.swift
+index 0f81115..ef6983c 100644
+--- a/node_modules/expo-updates/ios/EXUpdates/Procedures/StartupProcedure.swift
++++ b/node_modules/expo-updates/ios/EXUpdates/Procedures/StartupProcedure.swift
+@@ -271,7 +271,9 @@ final class StartupProcedure: StateMachineProcedure, AppLoaderTaskDelegate, AppL
+         case is RollBackToEmbeddedUpdateDirective:
+           return false
+         default:
+-          NSException(name: .internalInconsistencyException, reason: "Unhandled update directive type").raise()
++          // POWR patch: an unknown server directive must never crash the app —
++          // treat it as "no update available" (see FetchUpdateProcedure).
++          self.logger.warn(message: "Unhandled update directive type; treating as no update available")
+           return false
+         }
+       }

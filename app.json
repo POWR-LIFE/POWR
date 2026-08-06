@@ -11,16 +11,24 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.powr.life",
-      "buildNumber": "12",
+      "buildNumber": "13",
       "googleServicesFile": "./GoogleService-Info.plist",
-      "associatedDomains": ["applinks:powr.life"],
+      "associatedDomains": [
+        "applinks:powr.life"
+      ],
       "infoPlist": {
         "NSHealthShareUsageDescription": "POWR needs access to your sleep and workout data to reward you for healthy habits.",
         "NSHealthUpdateUsageDescription": "POWR needs access to log your habits.",
-        "UIBackgroundModes": ["location", "fetch", "remote-notification"],
+        "UIBackgroundModes": [
+          "location",
+          "fetch",
+          "remote-notification"
+        ],
         "CFBundleURLTypes": [
           {
-            "CFBundleURLSchemes": ["powr"]
+            "CFBundleURLSchemes": [
+              "powr"
+            ]
           }
         ],
         "ITSAppUsesNonExemptEncryption": false
@@ -62,25 +70,44 @@
         "android.permission.READ_MEDIA_VISUAL_USER_SELECTED"
       ],
       "package": "com.powr.life",
-      "versionCode": 15,
+      "versionCode": 16,
       "intentFilters": [
         {
           "action": "VIEW",
           "autoVerify": false,
           "data": [
-            { "scheme": "powr", "host": "auth-callback" },
-            { "scheme": "powr", "host": "terra-callback" },
-            { "scheme": "powr", "host": "samsung-health-callback" }
+            {
+              "scheme": "powr",
+              "host": "auth-callback"
+            },
+            {
+              "scheme": "powr",
+              "host": "terra-callback"
+            },
+            {
+              "scheme": "powr",
+              "host": "samsung-health-callback"
+            }
           ],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         },
         {
           "action": "VIEW",
           "autoVerify": true,
           "data": [
-            { "scheme": "https", "host": "powr.life", "pathPrefix": "/app" }
+            {
+              "scheme": "https",
+              "host": "powr.life",
+              "pathPrefix": "/app"
+            }
           ],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
       ]
     },
@@ -93,7 +120,7 @@
       [
         "expo-notifications",
         {
-            "icon": "./assets/images/ic_stat_powr_logo_black.png",
+          "icon": "./assets/images/ic_stat_powr_logo_black.png",
           "color": "#facc15",
           "defaultChannel": "powr_default_v2",
           "sounds": []

@@ -20,6 +20,31 @@ index 80647ab..972930d 100644
        .build()
    }
  
+diff --git a/node_modules/expo-location/android/src/main/java/expo/modules/location/taskConsumers/GeofencingTaskConsumer.kt b/node_modules/expo-location/android/src/main/java/expo/modules/location/taskConsumers/GeofencingTaskConsumer.kt
+index cafc11b..012bde2 100644
+--- a/node_modules/expo-location/android/src/main/java/expo/modules/location/taskConsumers/GeofencingTaskConsumer.kt
++++ b/node_modules/expo-location/android/src/main/java/expo/modules/location/taskConsumers/GeofencingTaskConsumer.kt
+@@ -148,7 +148,20 @@ class GeofencingTaskConsumer(context: Context, taskManagerUtils: TaskManagerUtil
+     try {
+       mPendingIntent?.let { pendingIntent ->
+         mGeofencingRequest?.let { geofencingRequest ->
++          // POWR patch: addGeofences reports acceptance/refusal ASYNCHRONOUSLY
++          // on the returned Task, and stock expo-location discards it — so GMS
++          // refusals ("registration not permitted", GEOFENCE_NOT_AVAILABLE,
++          // rate limits) are invisible: JS logs a successful arm while the
++          // registry holds nothing. Field 2026-08-06: a phone walked with ZERO
++          // fences while every layer above believed 50 were armed. Listeners
++          // make the native verdict loud enough for logcat forensics.
+           mGeofencingClient?.addGeofences(geofencingRequest, pendingIntent)
++            ?.addOnSuccessListener {
++              Log.i(TAG, "POWR: GMS ACCEPTED geofence registration (" + mGeofencingList.size + " fences).")
++            }
++            ?.addOnFailureListener { e ->
++              Log.e(TAG, "POWR: GMS REFUSED geofence registration (" + mGeofencingList.size + " fences): " + e)
++            }
+         }
+       }
+     } catch (e: SecurityException) {
 diff --git a/node_modules/expo-location/ios/TaskConsumers/EXGeofencingTaskConsumer.m b/node_modules/expo-location/ios/TaskConsumers/EXGeofencingTaskConsumer.m
 index 7e6482e..be2ed5e 100644
 --- a/node_modules/expo-location/ios/TaskConsumers/EXGeofencingTaskConsumer.m
