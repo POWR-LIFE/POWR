@@ -296,12 +296,14 @@ Deno.serve(async (req: Request) => {
     if (refreshScanErr) console.error('[gym-visit-beacon] fence_refresh target scan failed', refreshScanErr);
 
     // One query for everyone's last ping instead of a count per user per tick.
-    const { data: recentPings } = await admin
+    const { data: recentPings, error: recentPingsErr } = await admin
       .from('push_send_log')
       .select('user_id, created_at')
       .eq('type', 'fence_refresh')
       .gte('created_at', new Date(Date.now() - FLEET_INTERVAL_MIN * 60_000).toISOString())
+      .order('created_at', { ascending: false })
       .limit(2000);
+    if (recentPingsErr) console.error('[gym-visit-beacon] fence_refresh recent ping scan failed', recentPingsErr);
     const lastPingByUser = new Map();
     for (const row of recentPings ?? []) {
       const at = new Date(row.created_at).getTime();
