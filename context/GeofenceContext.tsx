@@ -1681,7 +1681,7 @@ async function recordExitAndClaim(claimEntry: StoredGeofence): Promise<'resolved
  * the durable retry queue, then the active key is removed. This ordering keeps
  * a headless task interruption from losing both the live session and its claim.
  * A native EXIT may only end its matching active region. */
-export async function finalizeActiveGeofence(expectedRegionId?: string): Promise<boolean> {
+export async function finalizeActiveGeofence(expectedRegionId?: string, endedAtOverrideMs?: number): Promise<boolean> {
   // Re-entrancy lease, taken SYNCHRONOUSLY before the first await.
   //
   // The `if (!raw) return true` gate below is not a mutex: ACTIVE_GEOFENCE_KEY is
@@ -1709,7 +1709,7 @@ export async function finalizeActiveGeofence(expectedRegionId?: string): Promise
   const myFinalizeStamp = Date.now();
   _finalizeInFlight = myFinalizeStamp;
   try {
-    return await finalizeActiveGeofenceInner(expectedRegionId);
+    return await finalizeActiveGeofenceInner(expectedRegionId, endedAtOverrideMs);
   } finally {
     // Fenced: only the holder clears, so a stolen-from zombie can't release the
     // lease out from under whoever took it over.
@@ -1777,7 +1777,7 @@ export async function clearGeofenceStateOnSignOut(departingUserId?: string): Pro
   console.log('[Geofence] Cleared active session on sign-out; pending claims kept for their owner.');
 }
 
-async function finalizeActiveGeofenceInner(expectedRegionId?: string): Promise<boolean> {
+async function finalizeActiveGeofenceInner(expectedRegionId?: string, endedAtOverrideMs?: number): Promise<boolean> {
   let raw: string | null;
   try {
     raw = await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY);
@@ -1799,7 +1799,11 @@ async function finalizeActiveGeofenceInner(expectedRegionId?: string): Promise<b
     return false;
   }
 
-  const endedAtMs = Date.now();
+  // The override is the wake reconciler's honesty bound: a zombie session
+  // (missed walk-out EXIT, discovered by a later fix showing us outside) ends
+  // at the last PROVEN-inside moment, not at discovery time — a claim must
+  // never count minutes nobody witnessed.
+  const endedAtMs = Math.max(active.entryTimestamp, Math.min((endedAtOverrideMs != null && Number.isFinite(endedAtOverrideMs)) ? endedAtOverrideMs : Date.now(), Date.now()));
   const claimEntry: StoredGeofence = { ...active, endedAtMs };
   const needsClaim = (!active.sessionRecorded || active.pointsPending)
     && endedAtMs - active.entryTimestamp >= minDwellMs();
@@ -1907,6 +1911,110 @@ export async function rearmFencesFromWake(): Promise<void> {
     );
   } catch (err) {
     console.warn('[Geofence] wake re-arm failed:', err);
+  }
+}
+
+/** ZOMBIE-SESSION RECONCILER (2026-08-05 night) — runs on visit-less wakes
+ *  (the beacon's fence-refresh ping).
+ *
+ *  The walk-killer it exists for: a swiped-away phone misses its walk-out EXIT
+ *  (mute geofencer — see rearmFencesFromWake), so the persisted session stays
+ *  active forever, and the NEXT real arrival is refused by the enter handler
+ *  ("Enter ignored — session already active"). One missed exit silently eats
+ *  every future check-in until app-open.
+ *
+ *  The discriminator is a GPS fix, never a timer: by age alone a zombie is
+ *  indistinguishable from a live swiped in-gym session (neither gets ticks
+ *  while the process is dead), and resetting a live session would destroy its
+ *  accrued dwell. Only a fix showing the device OUTSIDE the session's own
+ *  radius — buffered by the fix's reported accuracy, so a coarse fix
+ *  self-gates into a no-op — may finalize it. endedAt is bounded to the last
+ *  PROVEN-inside moment (VISIT_TICK_KEY: stream heartbeats + confirmed-inside
+ *  wakes), so the finalized claim cannot inflate dwell up to ping time. */
+const RECONCILE_MIN_SESSION_AGE_MS = 10 * 60_000;
+const RECONCILE_FIX_MAX_AGE_MS = 3 * 60_000;
+
+export async function reconcileActiveSessionFromWake(): Promise<void> {
+  try {
+    const raw = await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY);
+    if (!raw) return;
+    const active = JSON.parse(raw) as StoredGeofence;
+    if (active.latitude == null || active.longitude == null || active.radius == null) return;
+    // Too young to be the zombie blocking anyone's return walk — and a fresh
+    // boundary check-in deserves its wobble grace.
+    if (Date.now() - active.entryTimestamp < RECONCILE_MIN_SESSION_AGE_MS) return;
+
+    const fix = await reconcileFix();
+    if (!fix) return; // no usable evidence — keep the session; never guess
+
+    const distance = haversineMetres(fix.latitude, fix.longitude, active.latitude, active.longitude);
+    const buffer = Math.max(fix.accuracy ?? 50, LOCATION_EXIT_HYSTERESIS_M);
+    if (distance <= active.radius + buffer) {
+      // Proven inside right now — refresh the evidence floor the endedAt bound
+      // reads. (Also throttles the next stream heartbeat by one interval; the
+      // wake just did that heartbeat's job.)
+      await AsyncStorage.setItem(VISIT_TICK_KEY, String(Date.now())).catch(() => {});
+      return;
+    }
+
+    const tickRaw = await AsyncStorage.getItem(VISIT_TICK_KEY).catch(() => null);
+    const tick = Number(tickRaw ?? 0);
+    const endedAt = Math.max(active.entryTimestamp, Number.isFinite(tick) ? tick : 0);
+    console.warn(
+      `[Geofence] Wake reconcile: fix is ${Math.round(distance)}m from "${active.partnerName}" ` +
+      `(radius ${active.radius}m + ${Math.round(buffer)}m buffer) — finalizing zombie session, ` +
+      `ended ${Math.round((Date.now() - endedAt) / 60_000)}min ago by last inside-evidence.`,
+    );
+    await finalizeActiveGeofence(undefined, endedAt);
+  } catch (err) {
+    console.warn('[Geofence] wake reconcile failed:', err);
+  }
+}
+
+/** Accuracy-carrying cousin of getArmFix: reconciliation needs the fix's own
+ *  accuracy for the outside buffer, and tolerates no source that can hang. */
+async function reconcileFix(): Promise<{ latitude: number; longitude: number; accuracy: number | null } | null> {
+  // 1. The stream's persisted fix, when fresh enough to speak for "now".
+  try {
+    const raw = await AsyncStorage.getItem(LAST_STREAM_FIX_KEY);
+    if (raw) {
+      const f = JSON.parse(raw) as { latitude?: number; longitude?: number; accuracy?: number | null; at?: number };
+      if (typeof f?.latitude === 'number' && typeof f?.longitude === 'number'
+          && Date.now() - (f.at ?? 0) <= RECONCILE_FIX_MAX_AGE_MS) {
+        return { latitude: f.latitude, longitude: f.longitude, accuracy: f.accuracy ?? null };
+      }
+    }
+  } catch { /* fall through to the OS sources */ }
+
+  // 2. OS cache — no acquisition, cannot hang. The ping's own re-arm just made
+  // GMS evaluate fence states, so this is usually seconds old.
+  const lastKnown = await Location.getLastKnownPositionAsync({ maxAge: RECONCILE_FIX_MAX_AGE_MS })
+    .catch(() => null);
+  if (lastKnown) {
+    return {
+      latitude: lastKnown.coords.latitude,
+      longitude: lastKnown.coords.longitude,
+      accuracy: lastKnown.coords.accuracy ?? null,
+    };
+  }
+
+  // 3. One bounded live read. The bound is best-effort under Doze (RN timers
+  // can freeze) — a hang here holds only the wake task's tail, never the
+  // re-arm, which its caller sequences first.
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const fresh = await Promise.race([
+      Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }).catch(() => null),
+      new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), ARM_FIX_TIMEOUT_MS); }),
+    ]);
+    if (!fresh) return null;
+    return {
+      latitude: fresh.coords.latitude,
+      longitude: fresh.coords.longitude,
+      accuracy: fresh.coords.accuracy ?? null,
+    };
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
   }
 }
 
@@ -2046,6 +2154,11 @@ export async function runVisitCheck(
 
   if (inside) {
     console.log(`[Geofence] Visit check (${stage}): still inside — advancing dwell.`);
+    // Confirmed-inside is inside-EVIDENCE: stamp the heartbeat floor so the
+    // wake reconciler's honest endedAt bound tracks nudge-confirmed sessions
+    // (a swiped phone's only ticks ARE these wakes). void — evidence must
+    // never cost the wake anything.
+    void AsyncStorage.setItem(VISIT_TICK_KEY, String(Date.now())).catch(() => {});
     // Wake-scoped lease: cron wakes (:01) and stream ticks (:32) are permanently
     // out of phase, so a tick-started zombie attempt is almost always <2 min old
     // when a wake arrives — under the normal lease the wake would skip and waste

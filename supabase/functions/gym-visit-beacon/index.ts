@@ -121,7 +121,7 @@ Deno.serve(async (req: Request) => {
   if (valid !== true) return new Response('forbidden', { status: 403 });
 
   const { dwellMin, upgradeMin } = await thresholds(admin);
-  const stats = { dwell: 0, upgrade: 0, sent: 0, no_token: 0, announced: 0, completed: 0 };
+  const stats = { dwell: 0, upgrade: 0, sent: 0, no_token: 0, announced: 0, completed: 0, fence_refresh: 0 };
 
   // SESSION COMPLETE: the walk-out closure banner, both platforms, one
   // template. Only CLAIMED visits (sub-threshold pop-ins end silently). The
@@ -254,6 +254,69 @@ Deno.serve(async (req: Request) => {
         priority: 'high',
       })), { userId: visit.user_id, type: 'gym_checkin_announce' });
       if (result.queued > 0) stats.announced++;
+    }
+  }
+
+  // ── Fence-refresh pass (2026-08-05 night) ─────────────────────────────────
+  // GMS geofence delivery to a swiped-away app goes mute (registry populated,
+  // crossings undelivered — root cause under investigation). The client's wake
+  // task re-arms its fences with a fresh PendingIntent on EVERY wake (#327),
+  // but organic wakes only fire while a visit is OPEN — i.e. only after the
+  // check-in this very defect blocks. This pass closes that trigger gap: ping
+  // idle Android devices on a slow cadence so the self-heal keeps their fence
+  // registration fresh BETWEEN sessions, and arrival finds live fences.
+  //
+  // The payload is a visit-less gym_visit_check carrying a PLACEHOLDER nonce.
+  // The nonce's only client-side job is selecting the auth-free wake path (no
+  // awaited refresh — the 08-05 freeze class); with no visit_id the task skips
+  // wake telemetry, the re-arm runs, and the visit check no-ops. If the device
+  // happens to hold a stale local visit, its confirm is rejected on the nonce
+  // hash — harmless, the real nudges own real visits. A typed payload can
+  // replace this trick once a client OTA adds explicit handling.
+  //
+  // IT STILL CREDITS NOTHING — this wakes a device so the DEVICE can re-arm.
+  //
+  // BENCH SCOPE: allowlisted to the Sony test account until a real walk-in
+  // validates entry end-to-end; then widen to active android users and raise
+  // the interval (~4-6h).
+  {
+    const FENCE_REFRESH_USER_IDS = ['234d49f3-d189-44b1-a874-063e724e4380']; // jamiemasonwright — Sony bench
+    const FENCE_REFRESH_MIN_INTERVAL_MIN = 30;
+    const since = new Date(Date.now() - FENCE_REFRESH_MIN_INTERVAL_MIN * 60_000).toISOString();
+    for (const userId of FENCE_REFRESH_USER_IDS) {
+      const { count: recent } = await admin
+        .from('push_send_log')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', userId)
+        .eq('type', 'fence_refresh')
+        .gte('created_at', since);
+      if (recent) continue;
+
+      const { data: refreshTokens } = await admin
+        .from('user_push_tokens')
+        .select('device_token, platform')
+        .eq('user_id', userId)
+        .eq('platform', 'android')
+        .not('device_token', 'is', null);
+      if (!refreshTokens || refreshTokens.length === 0) continue;
+
+      const refreshPayload = { type: 'gym_visit_check', stage: 'dwell', nonce: 'fence-refresh' };
+      for (const t of refreshTokens) {
+        const outcome = await sendFcmDataMessage(t.device_token, {
+          ...refreshPayload,
+          body: JSON.stringify(refreshPayload),
+        }, 15 * 60);
+        if (outcome.unavailable) break; // no FCM credentials — pass is inert
+        await admin.from('push_send_log').insert({
+          user_id: userId,
+          type: 'fence_refresh',
+          expo_push_token: t.device_token,
+          status: outcome.ok ? 'accepted' : 'rejected',
+          ticket_id: outcome.messageName ?? null,
+          error: outcome.ok ? null : outcome.error,
+        }).then(({ error }) => { if (error) console.error('[gym-visit-beacon] fence_refresh log insert failed', error); });
+        if (outcome.ok) stats.fence_refresh++;
+      }
     }
   }
 
