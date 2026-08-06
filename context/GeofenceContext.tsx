@@ -936,6 +936,29 @@ async function pollForCheckIn(regionId: string): Promise<void> {
  *  and the once-per-day guard. A missed check-in is otherwise unrecoverable in the
  *  background — with no visit row the beacon has nothing to nudge, so the silent
  *  wakes we fixed today can never rescue it. */
+/** PRESENCE SWEEP ON WAKE (2026-08-06) — entry detection that does not involve
+ *  GMS geofences at all.
+ *
+ *  Why this exists: closed-app ENTRY via native fences has never once succeeded
+ *  in the field, and the fence layer is the one part of the chain the device
+ *  cannot inspect — `hasStartedGeofencingAsync` reports expo's task registry,
+ *  not GMS's fence store, and GMS's accept/refuse verdict is discarded before
+ *  it reaches JS. Meanwhile the FCM wake path has hundreds of recorded
+ *  successes: a data-only push reaches the swiped app in ~100 ms and JS runs.
+ *
+ *  So: let the server ask "where are you?" and answer from the OS location
+ *  cache. Detection latency becomes the ping interval instead of instant, but
+ *  it runs on a primitive that WORKS, and it fails visibly (every ping either
+ *  produces a row or does not) instead of failing silently in a layer we
+ *  cannot read.
+ *
+ *  It changes no rules: evaluateLocationFix remains the sole authority that
+ *  starts a session, so the 25 m radius, the daily cap, the partner map and
+ *  every downstream guard apply unchanged. No fix, no check-in. */
+export async function sweepForMissedCheckInFromWake(): Promise<void> {
+  await sweepForMissedCheckIn();
+}
+
 async function sweepForMissedCheckIn(): Promise<void> {
   try {
     if (await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY)) return; // already checked in

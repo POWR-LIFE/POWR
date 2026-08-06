@@ -172,7 +172,20 @@ TaskManager.defineTask(BACKGROUND_NOTIFICATION_TASK, async ({ data, error }) => 
         // refuses every REAL arrival ("Enter ignored — session already
         // active"). A wake FOR a visit already reconciles inside/outside via
         // runVisitCheck's own fix — don't double up there.
-        if (!payload.visit_id) await m.reconcileActiveSessionFromWake();
+        if (!payload.visit_id) {
+          await m.reconcileActiveSessionFromWake();
+          // ...then look for an arrival the fence layer never told us about.
+          // ORDER IS LOAD-BEARING: the sweep no-ops while a session is stored,
+          // so the reconcile has to clear a zombie FIRST or the sweep can
+          // never see the gym the user is standing in right now.
+          //
+          // This is the fence-independent entry path (2026-08-06). Closed-app
+          // ENTRY via GMS fences has never succeeded in the field and the
+          // device cannot verify fence health; the FCM wake reliably does.
+          // evaluateLocationFix still decides — same radius, same daily cap,
+          // no fix means no check-in.
+          await m.sweepForMissedCheckInFromWake();
+        }
       })
       .catch(() => { /* self-heal is best-effort by definition */ });
 
