@@ -10,8 +10,9 @@
 // beacon failing is a lost nudge, not a lost session. The existing exit path and
 // pending-claim queue remain the backstop.
 
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import { callWithAuthRetry } from '@/lib/authFresh';
+import { bgRpc, readBackgroundAuth } from '@/lib/backgroundRest';
 import { withNetworkTimeout } from '@/lib/networkTimeout';
 import { SUPABASE_ANON_KEY, SUPABASE_URL, supabase } from '@/lib/supabase';
 
@@ -109,13 +110,40 @@ export async function openGymVisit(
   regionId: string | undefined,
   startedAtMs: number,
 ): Promise<string | null> {
+  const args = {
+    p_partner_id: partnerId,
+    p_region_id:  regionId ?? null,
+    p_started_at: new Date(startedAtMs).toISOString(),
+    p_platform:   Platform.OS,
+  };
+
+  // THE call that must survive a screen-off wake. Everything downstream — every
+  // nudge, every nonce, the server-side claim — hangs off this visit existing,
+  // so when it freezes the whole session is lost with no second chance (that is
+  // exactly what happened on 2026-08-06: entry detected and announced locally,
+  // the app froze inside the auth resync, and no server visit was ever born).
+  // Backgrounded, present the persisted token directly and skip auth entirely.
+  //
+  // A failure here does NOT fall through to the client path: the raw fetch is
+  // the more reliable transport of the two, so a failure means the network is
+  // genuinely unreachable, and retrying it through the freeze-prone path buys
+  // nothing. The late-open retry in runVisitCheck covers the next wake.
+  if (AppState.currentState !== 'active') {
+    const auth = await readBackgroundAuth();
+    if (auth) {
+      const { data, error } = await bgRpc<string | null>('open_gym_visit', args, auth);
+      if (error) {
+        console.warn('[GymVisit] openGymVisit (background) failed:', error.message);
+        return null;
+      }
+      return (data as string) ?? null;
+    }
+  }
+
   try {
-    const { data, error } = await callWithAuthRetry(() => supabase.rpc('open_gym_visit', {
-      p_partner_id: partnerId,
-      p_region_id:  regionId ?? null,
-      p_started_at: new Date(startedAtMs).toISOString(),
-      p_platform:   Platform.OS,
-    }), 'open_gym_visit');
+    const { data, error } = await callWithAuthRetry(
+      () => supabase.rpc('open_gym_visit', args), 'open_gym_visit',
+    );
     if (error) throw error;
     return (data as string) ?? null;
   } catch (err) {
@@ -168,7 +196,7 @@ export async function logGymWakeReceived(
 export async function logGeofenceRegionEvent(
   regionId: string,
   event: 'enter' | 'exit' | 'approach_stream_on' | 'checked_in' | 'stream_start_failed'
-    | 'armed' | 'sentinel_exit' | 'rearm_skipped' | 'auth_stale',
+    | 'armed' | 'sentinel_exit' | 'rearm_skipped' | 'auth_stale' | 'stream_switch_deferred',
   detail: Record<string, unknown> = {},
 ): Promise<void> {
   try {

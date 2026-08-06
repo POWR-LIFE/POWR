@@ -67,6 +67,12 @@ jest.mock('@/lib/notifications', () => ({
 }));
 
 const mockRpc = jest.fn();
+/** activity_sessions behaviour, per test. Defaults reproduce a clean insert. */
+const mockSessionTable: { insertError: unknown; existingRow: Record<string, unknown> | null } = {
+  insertError: null,
+  existingRow: { id: 'session-abc' },
+};
+const mockSessionUpdate = jest.fn();
 const mockInvoke = jest.fn().mockResolvedValue({
   data: { earned: 30, push_delivered: true, within_reach: null },
   error: null,
@@ -84,13 +90,15 @@ jest.mock('@/lib/supabase', () => ({
     from: () => {
       const builder: any = {
         select: () => builder,
-        insert: () => builder,
-        update: () => builder,
+        insert: () => { builder.__insert = true; return builder; },
+        update: (patch: unknown) => { mockSessionUpdate(patch); return builder; },
         eq: () => builder,
         gte: () => builder,
         order: () => builder,
         limit: () => builder,
-        single: async () => ({ data: { id: 'session-abc' }, error: null }),
+        single: async () => (builder.__insert && mockSessionTable.insertError
+          ? { data: null, error: mockSessionTable.insertError }
+          : { data: mockSessionTable.existingRow, error: null }),
         maybeSingle: async () => ({ data: null, error: null }),
         then: (res: any, rej: any) => Promise.resolve({ data: null, count: 0, error: null }).then(res, rej),
       };
@@ -130,6 +138,8 @@ function armRpc(relays: Record<string, unknown>) {
 
 beforeEach(async () => {
   jest.clearAllMocks();
+  mockSessionTable.insertError = null;
+  mockSessionTable.existingRow = { id: 'session-abc' };
   await AsyncStorage.clear();
   (globalThis as any).__DEV__ = false;
   (AppState as any).currentState = 'background';
@@ -182,6 +192,45 @@ describe('backgrounded claim rides the relay, never the invoke', () => {
     await runVisitCheck('dwell');
 
     expect((await readState()).pointsPending).toBe(true);
+  });
+});
+
+// One gym session per user per UTC day is a unique index, so a second visit and
+// every stale retry all land on the SAME row. Last-writer-wins turned that into a
+// wedge on 2026-08-06: an exited 29m51s attempt kept relaying its own frozen
+// length, rewriting the row below the 30-minute eligibility minimum every few
+// minutes, and the server answered 422 every time — while a live 43-minute visit
+// sat unclaimable behind it. The day's row must describe the LONGEST verified
+// stay, not the most recent writer.
+describe("the day's session row only ever grows", () => {
+  it('extends the existing row when this stay is longer', async () => {
+    mockSessionTable.insertError = { code: '23505', message: 'duplicate key' };
+    mockSessionTable.existingRow = { id: 'session-abc', duration_sec: 1791 };
+    await seedVisit(); // 35 minutes, i.e. longer than the 29m51s already stored
+    armRpc({ relay_gym_claim: { status: 'accepted' } });
+
+    await runVisitCheck('dwell');
+
+    expect(mockSessionUpdate).toHaveBeenCalledTimes(1);
+    expect(mockSessionUpdate.mock.calls[0][0].duration_sec).toBeGreaterThan(1791);
+    expect(relayCalls('relay_gym_claim')).toHaveLength(1);
+  });
+
+  it('leaves a longer row alone when a stale short retry lands on it', async () => {
+    mockSessionTable.insertError = { code: '23505', message: 'duplicate key' };
+    mockSessionTable.existingRow = { id: 'session-abc', duration_sec: 43 * 60 };
+    // The zombie: exited at 29m51s, its end time frozen, retrying forever.
+    const entry = Date.now() - 120 * 60 * 1000;
+    await seedVisit({ entryTimestamp: entry, endedAtMs: entry + 1791 * 1000 });
+    armRpc({ relay_gym_claim: { status: 'accepted' } });
+
+    await runVisitCheck('dwell');
+
+    expect(mockSessionUpdate).not.toHaveBeenCalled();
+    // Still claims the row — it is eligible on its own merits now.
+    expect(relayCalls('relay_gym_claim')).toEqual([
+      ['relay_gym_claim', { p_session_id: 'session-abc', p_visit_id: 'visit-1' }],
+    ]);
   });
 });
 
