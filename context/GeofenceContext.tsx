@@ -650,7 +650,11 @@ async function armNativeRegions(
     // open). Tear it down while this headless context is alive, then let start
     // create a genuinely fresh consumer and PendingIntent.
     if (running && (opts.freshHandle || __DEV__)) {
-      await Location.stopGeofencingAsync(GEOFENCE_TASK_NAME).catch(() => {});
+      try {
+        await Location.stopGeofencingAsync(GEOFENCE_TASK_NAME);
+      } catch (err) {
+        if (opts.freshHandle) console.warn('[Geofence] stopGeofencingAsync failed during freshHandle re-arm:', err);
+      }
     }
     await Location.startGeofencingAsync(GEOFENCE_TASK_NAME, regions);
     _lastArmSignature = signature;
