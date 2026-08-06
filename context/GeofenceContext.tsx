@@ -643,13 +643,19 @@ async function armNativeRegions(
     // live task swaps options on the same consumer, which is all a re-centre
     // needs.
     //
-    // freshHandle is intentionally different: the wake path is repairing a
-    // consumer whose PendingIntent is already mute. Reusing that consumer
-    // cannot heal it (2026-08-06 Android field capture: GMS reported every
-    // restored fence as "registration not active / not permitted" until app
-    // open). Tear it down while this headless context is alive, then let start
-    // create a genuinely fresh consumer and PendingIntent.
-    if (running && (opts.freshHandle || __DEV__)) {
+    // freshHandle is intentionally different: it repairs a consumer whose
+    // PendingIntent is already mute (GMS: "registration not active / not
+    // permitted"). But the teardown is FOREGROUND-ONLY — field 2026-08-06,
+    // the walk that went silent across the board: GMS silently REFUSES
+    // geofence adds from headless contexts on this device class, and expo
+    // swallows the async add-failure ("Armed 50" logged, registry ZERO). From
+    // a headless wake, stop+start therefore DELETES a registration it can
+    // never replace — strictly worse than the mute consumer it meant to heal.
+    // Headless wakes keep the non-destructive start-only swap; the
+    // fresh-handle teardown runs only where adds are actually accepted: the
+    // foreground, which has always been the one context that heals.
+    const stopFirst = __DEV__ || (opts.freshHandle && AppState.currentState === 'active');
+    if (running && stopFirst) {
       try {
         await Location.stopGeofencingAsync(GEOFENCE_TASK_NAME);
       } catch (err) {

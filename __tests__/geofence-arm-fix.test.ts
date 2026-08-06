@@ -291,9 +291,12 @@ describe('re-arm hygiene — one fence generation, no teardown, no duplicates', 
     expect(mockLocation.stopGeofencingAsync).not.toHaveBeenCalled();
   });
 
-  it('wake self-heal replaces the stale native consumer before re-arming', async () => {
+  it('wake self-heal replaces the stale native consumer before re-arming — FOREGROUND only', async () => {
     const originalOS = Platform.OS;
     Object.defineProperty(Platform, 'OS', { configurable: true, value: 'android' });
+    const { AppState } = require('react-native');
+    const originalState = AppState.currentState;
+    Object.defineProperty(AppState, 'currentState', { configurable: true, value: 'active' });
     try {
       await AsyncStorage.setItem(LAST_STREAM_FIX_KEY, JSON.stringify({
         latitude: HOME_GYM.lat, longitude: HOME_GYM.lng, accuracy: 30, at: Date.now(),
@@ -308,6 +311,34 @@ describe('re-arm hygiene — one fence generation, no teardown, no duplicates', 
         .toBeLessThan(mockLocation.startGeofencingAsync.mock.invocationCallOrder[0]);
     } finally {
       Object.defineProperty(Platform, 'OS', { configurable: true, value: originalOS });
+      Object.defineProperty(AppState, 'currentState', { configurable: true, value: originalState });
+    }
+  });
+
+  // Field 2026-08-06, the walk that went silent across the board: GMS silently
+  // REFUSES geofence adds from headless contexts (expo swallows the async
+  // failure — "Armed 50" logged, registry ZERO), so a headless stop+start
+  // DELETES a registration it can never replace. Headless wakes must stay
+  // non-destructive: swap-in-place only, never teardown.
+  it('wake self-heal from a HEADLESS context never tears down — start-only swap', async () => {
+    const originalOS = Platform.OS;
+    Object.defineProperty(Platform, 'OS', { configurable: true, value: 'android' });
+    const { AppState } = require('react-native');
+    const originalState = AppState.currentState;
+    Object.defineProperty(AppState, 'currentState', { configurable: true, value: 'background' });
+    try {
+      await AsyncStorage.setItem(LAST_STREAM_FIX_KEY, JSON.stringify({
+        latitude: HOME_GYM.lat, longitude: HOME_GYM.lng, accuracy: 30, at: Date.now(),
+      }));
+      mockLocation.hasStartedGeofencingAsync.mockResolvedValue(true);
+
+      await rearmFencesFromWake();
+
+      expect(mockLocation.stopGeofencingAsync).not.toHaveBeenCalled();
+      expect(mockLocation.startGeofencingAsync).toHaveBeenCalledTimes(1);
+    } finally {
+      Object.defineProperty(Platform, 'OS', { configurable: true, value: originalOS });
+      Object.defineProperty(AppState, 'currentState', { configurable: true, value: originalState });
     }
   });
 });
