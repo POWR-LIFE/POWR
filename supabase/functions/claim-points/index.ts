@@ -653,6 +653,56 @@ Deno.serve(async (req) => {
     }
   }
 
+  // 11c. The background-exit class: points that settle AT or AFTER the exit
+  // reach here after closeGymVisit already moved the visit out of 'open' —
+  // the status='open' stamp above misses it, claimed_session_id stays null,
+  // and the beacon's "Session complete" pass (keyed on claimed_session_id)
+  // never fires for exactly the sessions that settle on the way out (iOS
+  // force-quit exit-claims chief among them; 2026-08-06 audit gap #3). Stamp
+  // the ended, still-unclaimed visit WITHOUT touching its exit status —
+  // idempotency rides claimed_session_id IS NULL. Bounded to visits ended in
+  // the last 6h so a partner-fallback stamp can never resurrect ancient
+  // history into the complete-push window.
+  if (session.verification === 'geofence' && (body.visit_id || session.partner_id)) {
+    try {
+      const nowIso = new Date().toISOString();
+      const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
+
+      let targetVisitId = body.visit_id ?? null;
+      if (!targetVisitId) {
+        const { data: candidates } = await supabase
+          .from('gym_visits')
+          .select('id')
+          .eq('user_id', user.id)
+          .eq('partner_id', session.partner_id)
+          .neq('status', 'open')
+          .is('claimed_session_id', null)
+          .not('ended_at', 'is', null)
+          .gte('ended_at', sixHoursAgo)
+          .order('ended_at', { ascending: false })
+          .limit(1);
+        targetVisitId = candidates?.[0]?.id ?? null;
+      }
+
+      const { data: lateMarked } = !targetVisitId
+        ? { data: [] }
+        : await supabase
+            .from('gym_visits')
+            .update({ claimed_session_id: session.id, claimed_at: nowIso })
+            .eq('id', targetVisitId)
+            .is('claimed_session_id', null)
+            .select('id');
+      for (const row of lateMarked ?? []) {
+        await supabase.from('gym_visit_events').insert({
+          visit_id: row.id, user_id: user.id, event: 'claimed',
+          detail: { session_id: session.id, via: viaRelay ? 'relay' : 'direct', late_stamp: true },
+        });
+      }
+    } catch (visitErr) {
+      console.warn('[claim-points] late visit mark failed:', visitErr);
+    }
+  }
+
   // 12. Session completed push — server-side for reliability (fires regardless of app/background state).
   //     We read the delivery outcome so the client can fire an on-device fallback
   //     ONLY when the server genuinely couldn't land it (no live token / send

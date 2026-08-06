@@ -274,43 +274,67 @@ Deno.serve(async (req: Request) => {
   // hash — harmless, the real nudges own real visits. A typed payload can
   // replace this trick once a client OTA adds explicit handling.
   //
-  // IT STILL CREDITS NOTHING — this wakes a device so the DEVICE can re-arm.
+  // IT STILL CREDITS NOTHING — this wakes a device so the DEVICE can re-arm
+  // (and, post-#329, reconcile a zombie session against a real GPS fix).
   //
-  // BENCH SCOPE: allowlisted to the Sony test account until a real walk-in
-  // validates entry end-to-end; then widen to active android users and raise
-  // the interval (~4-6h).
+  // FLEET-WIDE since v15 (2026-08-06): every android device with a fresh
+  // native token, on a gentle cadence (fences at most ~4h stale, 6 silent
+  // wakes/day). The bench account keeps its tight loop for test velocity.
   {
-    const FENCE_REFRESH_USER_IDS = ['234d49f3-d189-44b1-a874-063e724e4380']; // jamiemasonwright — Sony bench
-    const FENCE_REFRESH_MIN_INTERVAL_MIN = 30;
-    const since = new Date(Date.now() - FENCE_REFRESH_MIN_INTERVAL_MIN * 60_000).toISOString();
-    for (const userId of FENCE_REFRESH_USER_IDS) {
-      const { count: recent } = await admin
-        .from('push_send_log')
-        .select('id', { count: 'exact', head: true })
-        .eq('user_id', userId)
-        .eq('type', 'fence_refresh')
-        .gte('created_at', since);
-      if (recent) continue;
+    const FAST_USER_IDS = new Set(['234d49f3-d189-44b1-a874-063e724e4380']); // Sony bench cadence
+    const FAST_INTERVAL_MIN = 30;
+    const FLEET_INTERVAL_MIN = 240;
+    const TOKEN_FRESH_DAYS = 14; // dormant devices aren't worth the wake budget
 
-      const { data: refreshTokens } = await admin
-        .from('user_push_tokens')
-        .select('device_token, platform')
-        .eq('user_id', userId)
-        .eq('platform', 'android')
-        .not('device_token', 'is', null);
-      if (!refreshTokens || refreshTokens.length === 0) continue;
+    const { data: refreshTargets, error: refreshScanErr } = await admin
+      .from('user_push_tokens')
+      .select('user_id, device_token')
+      .eq('platform', 'android')
+      .not('device_token', 'is', null)
+      .gte('updated_at', new Date(Date.now() - TOKEN_FRESH_DAYS * 86_400_000).toISOString())
+      .order('updated_at', { ascending: false })
+      .limit(500);
+    if (refreshScanErr) console.error('[gym-visit-beacon] fence_refresh target scan failed', refreshScanErr);
 
-      const refreshPayload = { type: 'gym_visit_check', stage: 'dwell', nonce: 'fence-refresh' };
-      for (const t of refreshTokens) {
-        const outcome = await sendFcmDataMessage(t.device_token, {
+    // One query for everyone's last ping instead of a count per user per tick.
+    const { data: recentPings, error: recentPingsErr } = await admin
+      .from('push_send_log')
+      .select('user_id, created_at')
+      .eq('type', 'fence_refresh')
+      .gte('created_at', new Date(Date.now() - FLEET_INTERVAL_MIN * 60_000).toISOString())
+      .order('created_at', { ascending: false })
+      .limit(2000);
+    if (recentPingsErr) console.error('[gym-visit-beacon] fence_refresh recent ping scan failed', recentPingsErr);
+    const lastPingByUser = new Map();
+    for (const row of recentPings ?? []) {
+      const at = new Date(row.created_at).getTime();
+      if (at > (lastPingByUser.get(row.user_id) ?? 0)) lastPingByUser.set(row.user_id, at);
+    }
+
+    const tokensByUser = new Map();
+    for (const t of refreshTargets ?? []) {
+      const arr = tokensByUser.get(t.user_id) ?? [];
+      if (!arr.includes(t.device_token)) arr.push(t.device_token);
+      tokensByUser.set(t.user_id, arr);
+    }
+
+    const refreshPayload = { type: 'gym_visit_check', stage: 'dwell', nonce: 'fence-refresh' };
+    let fcmDown = false;
+    for (const [userId, tokens] of tokensByUser) {
+      if (fcmDown) break;
+      const intervalMin = FAST_USER_IDS.has(userId) ? FAST_INTERVAL_MIN : FLEET_INTERVAL_MIN;
+      if (Date.now() - (lastPingByUser.get(userId) ?? 0) < intervalMin * 60_000) continue;
+
+      for (const token of tokens) {
+        const outcome = await sendFcmDataMessage(token, {
           ...refreshPayload,
           body: JSON.stringify(refreshPayload),
         }, 15 * 60);
-        if (outcome.unavailable) break; // no FCM credentials — pass is inert
+        if (outcome.unavailable) { fcmDown = true; break; } // no FCM credentials — pass is inert
         await admin.from('push_send_log').insert({
           user_id: userId,
           type: 'fence_refresh',
-          expo_push_token: t.device_token,
+          expo_push_token: token,
           status: outcome.ok ? 'accepted' : 'rejected',
           ticket_id: outcome.messageName ?? null,
           error: outcome.ok ? null : outcome.error,
