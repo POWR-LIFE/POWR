@@ -315,12 +315,14 @@ describe('re-arm hygiene — one fence generation, no teardown, no duplicates', 
     }
   });
 
-  // Field 2026-08-06, the walk that went silent across the board: GMS silently
-  // REFUSES geofence adds from headless contexts (expo swallows the async
-  // failure — "Armed 50" logged, registry ZERO), so a headless stop+start
-  // DELETES a registration it can never replace. Headless wakes must stay
-  // non-destructive: swap-in-place only, never teardown.
-  it('wake self-heal from a HEADLESS context never tears down — start-only swap', async () => {
+  // THE RULE, proven on-device 2026-08-06 (build 16, GMS's own log): a
+  // background re-arm of a LIVE registration can only destroy it —
+  // startGeofencingAsync re-registers the task, expo removes the old fences,
+  // and Google refuses the re-add outside the foreground ("registration not
+  // active, not permitted" ×50) while the JS promise still resolves. So when
+  // fences are already registered and we are not foreground, we must not
+  // touch them AT ALL — not stop, not start.
+  it('background re-arm of a LIVE registration is refused outright — no stop, no start', async () => {
     const originalOS = Platform.OS;
     Object.defineProperty(Platform, 'OS', { configurable: true, value: 'android' });
     const { AppState } = require('react-native');
@@ -335,15 +337,40 @@ describe('re-arm hygiene — one fence generation, no teardown, no duplicates', 
       await rearmFencesFromWake();
 
       expect(mockLocation.stopGeofencingAsync).not.toHaveBeenCalled();
-      expect(mockLocation.startGeofencingAsync).toHaveBeenCalledTimes(1);
+      expect(mockLocation.startGeofencingAsync).not.toHaveBeenCalled();
+      await flushTelemetry();
+      expect(regionEvents()).toContain('rearm_skipped');
     } finally {
       Object.defineProperty(Platform, 'OS', { configurable: true, value: originalOS });
       Object.defineProperty(AppState, 'currentState', { configurable: true, value: originalState });
     }
   });
-});
 
-describe('killServiceOnDestroy — a swiped-away app must die, not zombify', () => {
+  // With NOTHING registered there is nothing to subtract, so a background
+  // attempt is still allowed (boot / headless-restore). It may be refused by
+  // GMS, but it cannot make things worse.
+  it('background arm is still attempted when no registration exists', async () => {
+    const originalOS = Platform.OS;
+    Object.defineProperty(Platform, 'OS', { configurable: true, value: 'android' });
+    const { AppState } = require('react-native');
+    const originalState = AppState.currentState;
+    Object.defineProperty(AppState, 'currentState', { configurable: true, value: 'background' });
+    try {
+      await AsyncStorage.setItem(LAST_STREAM_FIX_KEY, JSON.stringify({
+        latitude: HOME_GYM.lat, longitude: HOME_GYM.lng, accuracy: 30, at: Date.now(),
+      }));
+      mockLocation.hasStartedGeofencingAsync.mockResolvedValue(false);
+
+      await rearmFencesFromWake();
+
+      expect(mockLocation.startGeofencingAsync).toHaveBeenCalledTimes(1);
+      expect(mockLocation.stopGeofencingAsync).not.toHaveBeenCalled();
+    } finally {
+      Object.defineProperty(Platform, 'OS', { configurable: true, value: originalOS });
+      Object.defineProperty(AppState, 'currentState', { configurable: true, value: originalState });
+    }
+  });
+
   it('every stream profile kills its foreground service with the task', async () => {
     // The dwell profile is exported — assert it directly.
     expect((DWELL_LOCATION_OPTIONS.foregroundService as any)?.killServiceOnDestroy).toBe(true);
