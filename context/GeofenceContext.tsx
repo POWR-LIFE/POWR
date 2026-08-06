@@ -614,6 +614,42 @@ async function armNativeRegions(
   try {
     const running = await Location.hasStartedGeofencingAsync(GEOFENCE_TASK_NAME).catch(() => false);
 
+    // ⚠ THE ONE RULE THIS FILE IS BUILT AROUND (proven on-device 2026-08-06,
+    // build 16, GMS's own log — the first time we could see it):
+    //
+    //   15:15:03.911 TaskService: Unregistering task 'GEOFENCE_CHECK_IN'
+    //   15:15:03.928 TaskService: Registered task   'GEOFENCE_CHECK_IN'
+    //   15:15:03.931 Geofencer: registration not active, NOT PERMITTED  ×50
+    //
+    // That was a HEADLESS wake that never called stopGeofencingAsync.
+    // startGeofencingAsync RE-REGISTERS the task internally, and expo's
+    // consumer tears the old registration down on didUnregister (removeGeofences
+    // + PendingIntent.cancel) before re-adding on didRegister. Google then
+    // REFUSES the re-add from a non-foreground process — every fence, every
+    // time — while expo's promise still resolves and JS happily logs "Armed 50".
+    // So the long-held "start swaps options on the same consumer, one fence
+    // generation" model was simply false: EVERY re-arm is remove-then-add, and
+    // in the background the add never lands.
+    //
+    // Therefore a background re-arm of a LIVE registration can only ever
+    // destroy it. Refuse outright. Nothing to arm around is a different case:
+    // with no registration there is nothing to lose, so an attempt is allowed
+    // (boot/headless-restore paths) — it may be refused, but it cannot subtract.
+    //
+    // The corollary the product has to live with until this is solved natively:
+    // fences are (re)built ONLY in the foreground. That is not a policy choice,
+    // it is what Google permits on this device class.
+    if (running && Platform.OS === 'android' && AppState.currentState !== 'active') {
+      console.warn('[Geofence] Re-arm REFUSED — background re-arm can only destroy a live registration.');
+      logRegionEvent('arm', 'rearm_skipped', {
+        reason: 'background_would_destroy',
+        app_state: String(AppState.currentState),
+        forced: !!opts.force,
+        fresh_handle: !!opts.freshHandle,
+      });
+      return;
+    }
+
     // Same-set dedupe: two arms for an identical set buy nothing and cost a full
     // native re-registration. 2026-08-04: the startup flow armed twice 91 s
     // apart; the second registration CANCELLED the first's delivery
@@ -1923,19 +1959,23 @@ async function finalizeActiveGeofenceInner(expectedRegionId?: string, endedAtOve
  *  iOS app force-quit — Apple does not deliver background pushes to a user-terminated
  *  app), nothing is credited here and the existing EXIT path claims later, exactly as
  *  it does today. No fix, no credit. */
-/** ANDROID FENCE SELF-HEAL (2026-08-05 night).
+/** ANDROID FENCE RE-ARM ON WAKE — now a DELIBERATE NO-OP while backgrounded.
  *
- *  Field pattern: after a swipe-away, GMS's registry still lists every fence
- *  but crossings stop being DELIVERED (registry populated, geofencer mute —
- *  three walks proved it; root cause under investigation). Meanwhile FCM wakes
- *  keep landing flawlessly. So every wake re-arms: a fresh registration with a
- *  fresh PendingIntent from the currently-live process. The beacon nudges
- *  within a minute of any session, making dead fences self-heal fast.
+ *  History worth keeping, because it cost a week: this began (2026-08-05) as a
+ *  self-heal for the mute-geofencer pattern — registry populated, crossings
+ *  never delivered — on the theory that a fresh registration from a live
+ *  process would repair the dead PendingIntent. It could not. Build 16's
+ *  patched expo-location finally let GMS speak (2026-08-06): every headless
+ *  re-arm is answered with "registration not active, registration not
+ *  permitted" ×50, because startGeofencingAsync re-registers the task, expo's
+ *  consumer removes the old fences first, and Google refuses the re-add
+ *  outside the foreground. The "heal" was the wrecking ball — it is what took
+ *  the 2026-08-06 walk to zero.
  *
- *  freshHandle (not just force) is load-bearing: a mute geofencer is
- *  indistinguishable from a healthy one on the JS side, so the same-set
- *  signature skip would turn this call into a no-op in any warm process —
- *  precisely the process most likely to be holding a dead PendingIntent.
+ *  armNativeRegions now refuses any background re-arm of a live registration,
+ *  so this function survives only for the case where nothing is registered
+ *  (nothing to lose) and, mainly, as the documented place where that lesson
+ *  lives. Fences are rebuilt in the FOREGROUND, full stop.
  *
  *  Everything awaited here is native or AsyncStorage (getArmFix answers from
  *  the stream cache / OS cache; the live-GPS branch is bounded). No network —
