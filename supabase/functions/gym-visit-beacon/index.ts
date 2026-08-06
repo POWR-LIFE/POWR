@@ -292,6 +292,7 @@ Deno.serve(async (req: Request) => {
       .eq('platform', 'android')
       .not('device_token', 'is', null)
       .gte('updated_at', new Date(Date.now() - TOKEN_FRESH_DAYS * 86_400_000).toISOString())
+      .order('updated_at', { ascending: false })
       .limit(500);
     if (refreshScanErr) console.error('[gym-visit-beacon] fence_refresh target scan failed', refreshScanErr);
 
