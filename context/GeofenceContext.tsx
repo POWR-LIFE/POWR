@@ -5,6 +5,7 @@ import * as TaskManager from 'expo-task-manager';
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { AppState, AppStateStatus, Platform } from 'react-native';
 import { ensureFreshSession } from '@/lib/authFresh';
+import { bgInsert, bgRpc, bgSelect, bgUpdate, readBackgroundAuth } from '@/lib/backgroundRest';
 import { withNetworkTimeout } from '@/lib/networkTimeout';
 import { supabase } from '@/lib/supabase';
 import { getGymDwellMinutes, getGymUpgradeMinutes, primeGymDwellMinutes } from '@/lib/gymDwellConfig';
@@ -1079,19 +1080,30 @@ async function recordDwellSession(activeGeofence: StoredGeofence, staleLockMs: n
   const endedAtMs = activeGeofence.endedAtMs ?? Date.now();
   const dwellMs = endedAtMs - activeGeofence.entryTimestamp;
   try {
-    // ensureFreshSession, NOT bare getSession() and NOT refreshSession(): the
-    // 2026-07 rule ("never force-rotate from a background context") stopped one
-    // revocation trigger but left the real one — a long-lived runtime whose
-    // in-memory session diverged from storage lazily refreshes off the DEAD
-    // token and GoTrue revokes the family (field-proven 2026-08-05). This
-    // resyncs to the persisted pair first, single-flights, and proactively
-    // refreshes only when the token is actually near expiry.
-    const authSession = await ensureFreshSession('record_dwell_session');
-    if (!authSession?.user) {
-      console.error('[Geofence] No valid session — cannot record session (auth unrecoverable until app-open).');
-      return { outcome: 'error' };
+    // Backgrounded, the auth machinery is the enemy. A cold headless runtime
+    // always takes authFresh's resync branch (its remembered token is null by
+    // definition), and setSession can hang forever with the screen off: on
+    // 2026-08-06 this claim froze there, and the zombie-heal retry froze in the
+    // identical place six minutes later. Present the persisted token over raw
+    // REST instead — same user, same RLS, no auth work (see lib/backgroundRest).
+    //
+    // Foreground keeps ensureFreshSession: nothing freezes there, and it is the
+    // only path allowed to rotate a token (a background rotation revokes the
+    // family — the silent-401 outage of 2026-08-05).
+    const backgrounded = AppState.currentState !== 'active';
+    const bgAuth = backgrounded ? await readBackgroundAuth() : null;
+
+    let userId: string;
+    if (bgAuth) {
+      userId = bgAuth.userId;
+    } else {
+      const authSession = await ensureFreshSession('record_dwell_session');
+      if (!authSession?.user) {
+        console.error('[Geofence] No valid session — cannot record session (auth unrecoverable until app-open).');
+        return { outcome: 'error' };
+      }
+      userId = authSession.user.id;
     }
-    const user = authSession.user;
 
     const startedAt   = new Date(activeGeofence.entryTimestamp);
     // Cap the dwell so a late EXIT/dwell detection can't record an impossible
@@ -1105,54 +1117,83 @@ async function recordDwellSession(activeGeofence: StoredGeofence, staleLockMs: n
 
     let sessionId: string;
 
-    const { data: session, error: sessionError } = await withNetworkTimeout(supabase
-      .from('activity_sessions')
-      .insert({
-        user_id:      user.id,
-        type:         'gym',
-        started_at:   startedAt.toISOString(),
-        ended_at:     endedAt.toISOString(),
-        duration_sec: durationSec,
-        verification: 'geofence',
-        trust_score:  0.94,
-        device_id:    deviceId,
-        partner_id:   activeGeofence.partnerId,
-        raw_gps:      {
-          partnerId:      activeGeofence.partnerId,
-          partnerName:    activeGeofence.partnerName,
-          entryTimestamp: activeGeofence.entryTimestamp,
-        },
-      })
-      .select()
-      .single(), 'activity_sessions insert');
+    const sessionRow = {
+      user_id:      userId,
+      type:         'gym',
+      started_at:   startedAt.toISOString(),
+      ended_at:     endedAt.toISOString(),
+      duration_sec: durationSec,
+      verification: 'geofence',
+      trust_score:  0.94,
+      device_id:    deviceId,
+      partner_id:   activeGeofence.partnerId,
+      raw_gps:      {
+        partnerId:      activeGeofence.partnerId,
+        partnerName:    activeGeofence.partnerName,
+        entryTimestamp: activeGeofence.entryTimestamp,
+      },
+    };
+
+    const { data: session, error: sessionError } = bgAuth
+      ? await bgInsert<{ id: string }>('activity_sessions', sessionRow, bgAuth)
+      : await withNetworkTimeout(supabase
+          .from('activity_sessions')
+          .insert(sessionRow)
+          .select()
+          .single(), 'activity_sessions insert');
 
     if (sessionError) {
       if (sessionError.code === '23505') {
         // Session already exists (recorded when duration was too short) — update to actual elapsed time
         const today = new Date();
         today.setHours(0, 0, 0, 0);
-        const { data: existing } = await withNetworkTimeout(supabase
-          .from('activity_sessions')
-          .select('id')
-          .eq('user_id', user.id)
-          .eq('type', 'gym')
-          .gte('started_at', today.toISOString())
-          .order('started_at', { ascending: false })
-          .limit(1)
-          .single(), 'existing-session lookup');
+        const existing = bgAuth
+          ? (await bgSelect<{ id: string; duration_sec: number | null }>(
+              'activity_sessions',
+              `select=id,duration_sec&user_id=eq.${userId}&type=eq.gym&started_at=gte.${today.toISOString()}`
+                + '&order=started_at.desc&limit=1',
+              bgAuth,
+            )).data?.[0] ?? null
+          : (await withNetworkTimeout(supabase
+              .from('activity_sessions')
+              .select('id, duration_sec')
+              .eq('user_id', userId)
+              .eq('type', 'gym')
+              .gte('started_at', today.toISOString())
+              .order('started_at', { ascending: false })
+              .limit(1)
+              .single(), 'existing-session lookup')).data;
 
         if (!existing) {
           console.error('[Geofence] 23505 but could not find existing session');
           return { outcome: 'error' };
         }
 
-        await withNetworkTimeout(supabase
-          .from('activity_sessions')
-          .update({ ended_at: endedAt.toISOString(), duration_sec: durationSec })
-          .eq('id', existing.id), 'activity_sessions update');
+        // NEVER SHRINK. One gym session per user per UTC day is a unique index,
+        // so a second visit and every stale retry all land on this same row —
+        // and whoever writes last used to win. On 2026-08-06 that wedged a live
+        // 43-minute visit: an exited 29m51s attempt kept retrying with its own
+        // frozen (too-short) length, rewriting the row below the eligibility
+        // minimum every few minutes, and the server rejected the claim 422 every
+        // time. Extending only is both safer and truer — the day's row should
+        // describe the longest verified stay, not the most recent writer.
+        const existingSec = existing.duration_sec ?? 0;
+        if (durationSec > existingSec) {
+          const patch = { ended_at: endedAt.toISOString(), duration_sec: durationSec };
+          if (bgAuth) {
+            await bgUpdate('activity_sessions', `id=eq.${existing.id}`, patch, bgAuth);
+          } else {
+            await withNetworkTimeout(supabase
+              .from('activity_sessions')
+              .update(patch)
+              .eq('id', existing.id), 'activity_sessions update');
+          }
+          console.log(`[Geofence] Extended today's session to ${Math.round(durationSec / 60)}min.`);
+        } else {
+          console.log(`[Geofence] Today's session already records ${Math.round(existingSec / 60)}min — leaving it (this attempt is ${Math.round(durationSec / 60)}min).`);
+        }
 
         sessionId = existing.id;
-        console.log(`[Geofence] Updated existing session to ${Math.round(durationSec / 60)}min.`);
       } else {
         console.error('[Geofence] Failed to create session:', sessionError);
         return { outcome: 'error' };
@@ -1170,11 +1211,11 @@ async function recordDwellSession(activeGeofence: StoredGeofence, staleLockMs: n
     // completes, so the caller keeps pointsPending; the next tick's relay answers
     // 'already_claimed' and resolves it. The server marks the visit and sends the
     // "Session recorded" push itself.
-    if (AppState.currentState !== 'active') {
-      const { data: relay, error: relayError } = await withNetworkTimeout(
-        supabase.rpc('relay_gym_claim', { p_session_id: sessionId, p_visit_id: activeGeofence.visitId ?? null }),
-        'relay_gym_claim rpc',
-      );
+    if (backgrounded) {
+      const relayArgs = { p_session_id: sessionId, p_visit_id: activeGeofence.visitId ?? null };
+      const { data: relay, error: relayError } = bgAuth
+        ? await bgRpc<{ status?: string }>('relay_gym_claim', relayArgs, bgAuth)
+        : await withNetworkTimeout(supabase.rpc('relay_gym_claim', relayArgs), 'relay_gym_claim rpc');
       if (relayError) {
         console.error('[Geofence] Claim relay failed:', relayError.message);
         return { outcome: 'error' };
@@ -1262,7 +1303,7 @@ async function recordDwellSession(activeGeofence: StoredGeofence, staleLockMs: n
       const { data: streakRow } = await withNetworkTimeout(supabase
         .from('user_streaks')
         .select('current_streak')
-        .eq('user_id', user.id)
+        .eq('user_id', userId)
         .maybeSingle(), 'user_streaks lookup');
       currentStreak = streakRow?.current_streak ?? undefined;
     } catch { /* non-fatal */ }
