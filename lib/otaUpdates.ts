@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Updates from 'expo-updates';
 import { useEffect } from 'react';
-import { Alert, AppState } from 'react-native';
+import { Alert, AppState, Platform } from 'react-native';
 
 import { ACTIVE_GEOFENCE_KEY } from '@/context/GeofenceContext';
 
@@ -16,6 +16,19 @@ let promptedUpdateId: string | null = null;
 
 async function maybePromptForUpdate(): Promise<void> {
   if (__DEV__ || !Updates.isEnabled) return; // Expo Go / dev client
+
+  // iOS: DISABLED until the expo-updates 29.0.18 patch ships in a new build.
+  // All three 2026-08-05 crash-loop strikes symbolicated to
+  // FetchUpdateProcedure.swift — the procedure behind the JS-invoked
+  // fetchUpdateAsync below, NOT the launch-time check. A fetch racing a fresh
+  // publish can hit an unhandled server directive whose NSException is
+  // uncatchable (SIGABRT), and ErrorRecovery then crash-LOOPS the poisoned
+  // install until reinstall (see patches/expo-updates+29.0.18.patch, PR #328).
+  // Running this on every foreground made every open-app iOS user roll that
+  // race on every publish. Launch-time checks still fetch updates natively, so
+  // iOS is at most one cold start behind — the pre-prompt baseline that never
+  // struck. REMOVE this gate once the patched build is the installed floor.
+  if (Platform.OS === 'ios') return;
   const now = Date.now();
   if (now - lastCheckAt < CHECK_COOLDOWN_MS) return;
   lastCheckAt = now;
