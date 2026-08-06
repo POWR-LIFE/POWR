@@ -1803,7 +1803,7 @@ async function finalizeActiveGeofenceInner(expectedRegionId?: string, endedAtOve
   // (missed walk-out EXIT, discovered by a later fix showing us outside) ends
   // at the last PROVEN-inside moment, not at discovery time — a claim must
   // never count minutes nobody witnessed.
-  const endedAtMs = endedAtOverrideMs ?? Date.now();
+  const endedAtMs = Math.max(active.entryTimestamp, Math.min((endedAtOverrideMs != null && Number.isFinite(endedAtOverrideMs)) ? endedAtOverrideMs : Date.now(), Date.now()));
   const claimEntry: StoredGeofence = { ...active, endedAtMs };
   const needsClaim = (!active.sessionRecorded || active.pointsPending)
     && endedAtMs - active.entryTimestamp >= minDwellMs();
