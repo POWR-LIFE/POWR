@@ -36,6 +36,7 @@ const mockLogWakeReceived = jest.fn(async (...args: unknown[]) => { callOrder.pu
 const mockRunVisitCheck = jest.fn(async (...args: unknown[]) => { callOrder.push(`check:${JSON.stringify(args)}`); });
 const mockRearm = jest.fn(async () => { callOrder.push('rearm'); });
 const mockReconcile = jest.fn(async () => { callOrder.push('reconcile'); });
+const mockSweep = jest.fn(async () => { callOrder.push('sweep'); });
 
 jest.mock('@/lib/gymVisits', () => ({
   logGymWakeReceived: (...args: unknown[]) => mockLogWakeReceived(...args),
@@ -45,6 +46,7 @@ jest.mock('@/context/GeofenceContext', () => ({
   runVisitCheck: (...args: unknown[]) => mockRunVisitCheck(...args),
   rearmFencesFromWake: () => mockRearm(),
   reconcileActiveSessionFromWake: () => mockReconcile(),
+  sweepForMissedCheckInFromWake: () => mockSweep(),
 }));
 
 import * as TaskManager from 'expo-task-manager';
@@ -62,6 +64,7 @@ beforeEach(() => {
   mockRunVisitCheck.mockClear();
   mockRearm.mockClear();
   mockReconcile.mockClear();
+  mockSweep.mockClear();
 });
 
 /** The Expo APNs envelope shape — the one whose `??` match cost us the iOS path. */
@@ -183,6 +186,24 @@ describe('background wake task telemetry + visit threading', () => {
 
     expect(mockRearm).toHaveBeenCalledTimes(1);
     expect(mockReconcile).not.toHaveBeenCalled();
+  });
+
+  // The fence-independent entry path (2026-08-06): closed-app ENTRY via GMS
+  // fences has never succeeded in the field, so a visit-less ping also asks
+  // "are you standing in a gym right now?". Ordering is load-bearing — the
+  // sweep no-ops while a session is stored, so a zombie must be reconciled
+  // away FIRST or the sweep can never see the gym the user is in.
+  it('sweeps for a missed check-in on visit-less wakes, AFTER the reconcile', async () => {
+    await capturedTask({ data: androidWake('dwell') });
+
+    expect(mockSweep).toHaveBeenCalledTimes(1);
+    expect(callOrder.indexOf('reconcile')).toBeLessThan(callOrder.indexOf('sweep'));
+  });
+
+  it('does not sweep on wakes that carry a visit — that visit already owns the answer', async () => {
+    await capturedTask({ data: androidWake('dwell', VISIT) });
+
+    expect(mockSweep).not.toHaveBeenCalled();
   });
 
   it('holds the task open for the re-arm even when the presence check throws', async () => {
