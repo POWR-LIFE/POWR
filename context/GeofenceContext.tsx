@@ -1790,8 +1790,7 @@ async function setActiveAndNotify(regionId: string, entry: PartnerMapEntry): Pro
               const { error } = await bgRpc('mark_gym_visit_announced', { p_visit_id: visitId }, auth);
               if (error) console.warn('[Geofence] announce mark failed:', error.message);
               return;
-            }
-            const { supabase } = await import('@/lib/supabase');
+            if (AppState.currentState !== 'active') return;
             const { error } = await supabase.rpc('mark_gym_visit_announced', { p_visit_id: visitId });
             if (error) console.warn('[Geofence] announce mark failed:', error.message);
           } catch (rpcErr) {
