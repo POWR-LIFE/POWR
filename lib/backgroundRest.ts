@@ -248,15 +248,20 @@ export async function readDeviceTicket(): Promise<DeviceTicket | null> {
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<DeviceTicket>;
     if (typeof parsed?.ticket !== 'string' || typeof parsed?.deviceId !== 'string') return null;
-    if (typeof parsed.expiresAt === 'number' && parsed.expiresAt - Date.now() < TICKET_MIN_LIFE_MS) {
+
+    const expiresAt =
+      typeof parsed.expiresAt === 'number' && Number.isFinite(parsed.expiresAt) ? parsed.expiresAt : 0;
+
+    if (expiresAt && expiresAt - Date.now() < TICKET_MIN_LIFE_MS) {
       console.warn('[bgRest] Device wake ticket has expired — the next foreground pass will mint a fresh one.');
       return null;
     }
+
     return {
       ticket: parsed.ticket,
       deviceId: parsed.deviceId,
       userId: typeof parsed.userId === 'string' ? parsed.userId : '',
-      expiresAt: typeof parsed.expiresAt === 'number' ? parsed.expiresAt : 0,
+      expiresAt,
     };
   } catch {
     return null;
