@@ -352,7 +352,7 @@ Deno.serve(async (req: Request) => {
           ? await sendFcmDataMessage(t.device_token, { ...payload, body: JSON.stringify(payload) }, TTL_SEC)
           : await sendApnsBackgroundPush(t.device_token, payload, TTL_SEC);
         if (outcome.unavailable) continue;
-        await admin.from('push_send_log').insert({
+        const { error: logErr } = await admin.from('push_send_log').insert({
           user_id: visit.user_id,
           type: 'gym_visit_check_presence',
           expo_push_token: t.device_token,
@@ -360,6 +360,7 @@ Deno.serve(async (req: Request) => {
           ticket_id: outcome.messageName ?? outcome.apnsId ?? null,
           error: outcome.ok ? null : (outcome.error ?? null),
         });
+        if (logErr) console.error('[gym-visit-beacon] presence log insert failed', logErr);
         if (outcome.ok) stats.presence++;
       }
     }
