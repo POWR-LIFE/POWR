@@ -62,7 +62,13 @@ async function dueVisits(admin, stage: 'dwell' | 'upgrade', minutes: number) {
 
   let q = admin
     .from('gym_visits')
-    .select('id, user_id, partner_id, started_at, nudge_count, nudge_count_upgrade, last_nudge_at')
+    // The embedded session start is what the upgrade gate actually measures from
+    // (see the hopeless-visit filter below). It is null for the dwell stage —
+    // those rows have no claimed_session_id yet — and unused there.
+    .select(
+      'id, user_id, partner_id, started_at, ended_at, nudge_count, nudge_count_upgrade, last_nudge_at, ' +
+      'activity_sessions!gym_visits_claimed_session_id_fkey(started_at)',
+    )
     .lte('started_at', thresholdAt)
     .or(`last_nudge_at.is.null,last_nudge_at.lt.${backoffAt}`)
     .limit(200);
@@ -99,14 +105,56 @@ async function dueVisits(admin, stage: 'dwell' | 'upgrade', minutes: number) {
     // the single-shot design was protecting against.
     : q.not('claimed_session_id', 'is', null).is('upgraded_at', null)
        .gte('started_at', new Date(Date.now() - UPGRADE_RETRY_WINDOW_MS).toISOString())
-       .lt('nudge_count_upgrade', MAX_NUDGES_UPGRADE);
+       .lt('nudge_count_upgrade', MAX_NUDGES_UPGRADE)
+       // Newest first. The hopeless-visit filter below drops rows AFTER the row
+       // cap, and a dropped row is never nudged, so it keeps matching this query
+       // for its whole 24h window instead of cycling out on the backoff. Ordering
+       // means that if the 200 cap is ever reached, the visits still worth a wake
+       // are the ones that survive it.
+       .order('started_at', { ascending: false });
 
   const { data, error } = await q;
   if (error) {
     console.error('[gym-visit-beacon] dueVisits failed', stage, error);
     return [];
   }
-  return data ?? [];
+  const rows = data ?? [];
+  if (stage !== 'upgrade') return rows;
+
+  // HOPELESS VISITS. Retrying past the exit is the point of the query above, but
+  // only while the answer can still be yes. Once a visit has ended its length is
+  // fixed, so one already under the tier can never reach it — upgrade-gym-tier
+  // declines every attempt with the same 422, forever. On 2026-08-07 visits
+  // 3dc2d104 (30 min) and 0ce2dc84 (36 min) each burned all 5 upgrade nudges
+  // waking a phone to be told no.
+  //
+  // Measured the way the GATE measures, which is NOT the visit's own length: the
+  // gate bounds elapsed by ended_at − SESSION.started_at (upgrade-gym-tier
+  // index.ts:146-170), and one session spans every gym visit of the UTC day. A
+  // 30-minute second visit can therefore sit 800 minutes past its session start
+  // and legitimately qualify — visit d568eb6d on 2026-08-01 is exactly that. Using
+  // the visit's own length here would have suppressed a bonus the gate accepts.
+  //
+  // Deliberately NOT mirroring the gate's MAX_GYM_SESSION_SEC clamp: it is 12 h,
+  // so it can only ever lower a value that is already far above the tier.
+  //
+  // In JS rather than the query because PostgREST cannot compare two columns and
+  // gym_visits stores no duration.
+  const live = rows.filter((v) => {
+    if (!v.ended_at) return true;                       // still open — the answer is still open
+    const sessionStart = v.activity_sessions?.started_at;
+    if (!sessionStart) return true;                     // no session to measure against; leave it alone
+    const sec = Math.round((new Date(v.ended_at).getTime() - new Date(sessionStart).getTime()) / 1000);
+    // sec <= 0 is a late-write artifact (visit ends before its session starts).
+    // The gate leaves visitEndSec null there and falls back to now − session
+    // start, so it does NOT decline — mirror that and keep the row.
+    if (sec <= 0) return true;
+    return Math.floor(sec / 60) >= minutes;
+  });
+  if (live.length !== rows.length) {
+    console.log(`[gym-visit-beacon] upgrade: skipped ${rows.length - live.length} ended visit(s) already under ${minutes} min`);
+  }
+  return live;
 }
 
 Deno.serve(async (req: Request) => {
