@@ -58,8 +58,6 @@ jest.mock('@/lib/gymDwellConfig', () => ({
   refreshGymDwellMinutes: jest.fn().mockResolvedValue(30),
 }));
 jest.mock('@/lib/notifications', () => ({
-  cancelSessionMarkNotifications: jest.fn().mockResolvedValue(undefined),
-  scheduleSessionMarkNotifications: jest.fn().mockResolvedValue(undefined),
   notifyCheckInAvailable: jest.fn().mockResolvedValue(true),
   notifySessionCompleted: jest.fn().mockResolvedValue(undefined),
   notifySessionUpgraded: jest.fn().mockResolvedValue(undefined),

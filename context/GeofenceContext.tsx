@@ -1718,44 +1718,18 @@ async function setActiveAndNotify(regionId: string, entry: PartnerMapEntry): Pro
     console.warn('[Geofence] check-in banner failed locally — server announce will cover (android):', err);
   }
 
-  // iOS: pre-schedule the 30/40-minute banners now, while we are provably
-  // awake. Keyed on entryTimestamp — always known locally — NOT the visit id,
-  // which needs a network round-trip that background relaunches may freeze.
-  // The EXIT path cancels by the same key (see finalizeActiveGeofenceInner).
-  // No-op on Android.
-  try {
-    const { scheduleSessionMarkNotifications } = await import('@/lib/notifications');
-    await scheduleSessionMarkNotifications({
-      sessionKey: String(entryTimestamp),
-      partnerName: entry.name,
-      entryTimestampMs: entryTimestamp,
-      dwellMinutes: getGymDwellMinutes(),
-      upgradeMinutes: getGymUpgradeMinutes(),
-    });
-  } catch (err) {
-    console.warn('[Geofence] session marks failed to schedule:', err);
-  }
-
-  // Day-cap honesty, advisory + fire-and-forget. A second visit today still
-  // gets the FULL check-in (session history, announce, exit close) — the
-  // never-drop-a-workout rule; the server caps the POINTS on its own. The one
-  // local artifact that would lie is the pre-scheduled iOS marks ("banked"),
-  // so when the check says the day is already claimed, withdraw them.
-  //
-  // NEVER await this. Its former life as an awaited gate — an UNBOUNDED
-  // PostgREST round-trip before even the session write — was the frozen-
-  // response class parked at the front door of entry, invisible on dev
-  // phones (DEV_TEST_EMAILS short-circuits before the query) and lethal for
-  // real users (2026-08-06 audit, gap #1: no banner, no marks, no session,
-  // no visit — total silence on arrival).
-  void gymAlreadyLoggedToday()
-    .then(async (already) => {
-      if (!already) return;
-      const { cancelSessionMarkNotifications } = await import('@/lib/notifications');
-      await cancelSessionMarkNotifications(String(entryTimestamp), 'all');
-      console.log('[Geofence] Day already claimed — session records, marks withdrawn.');
-    })
-    .catch(() => { /* advisory only — worst case the marks stay */ });
+  // The pre-scheduled iOS 30/40-minute banners are GONE (2026-08-07). They
+  // existed because iOS could not be relied on to wake at a threshold — a
+  // premise disproved on 08-07, when a force-quit iPhone answered an APNs nudge
+  // and claimed in TWO SECONDS. What they did instead was fire on a timer and
+  // announce "30 min session banked" whether or not the user was still there
+  // and whether or not anything had actually been banked, then land alongside
+  // the real server push: the field run produced THREE "Session recorded"
+  // banners on one iPhone for one session. Keeping them would have meant
+  // building cancellation that races the very push it is trying not to
+  // duplicate. The server's notification is the true one, and it is now the
+  // only one. (This also retires the whole day-cap withdrawal dance that
+  // existed solely to un-say a banner these had already promised.)
 
   // Only now the network: open the server-side visit beacon.
   let visitId: string | null = null;
@@ -2033,20 +2007,10 @@ async function finalizeActiveGeofenceInner(expectedRegionId?: string, endedAtOve
   // relaunch window can cut short. Boundary wobble (exit→enter cycles) then
   // ACCUMULATED banner pairs — an 8-notification storm on one phone. Local
   // honesty must not wait on the network.
-  try {
-    const dwellMs = endedAtMs - active.entryTimestamp;
-    const dwellThresholdMs = getGymDwellMinutes() * 60_000;
-    const upgradeThresholdMs = getGymUpgradeMinutes() * 60_000;
-    if (dwellMs < upgradeThresholdMs) {
-      const { cancelSessionMarkNotifications } = await import('@/lib/notifications');
-      await cancelSessionMarkNotifications(
-        String(active.entryTimestamp),
-        dwellMs < dwellThresholdMs ? 'all' : 'upgrade_only',
-      );
-    }
-  } catch (err) {
-    console.warn('[Geofence] session mark cancel failed:', err);
-  }
+  // Nothing to cancel any more: the pre-scheduled marks were deleted on
+  // 2026-08-07 (see setActiveAndNotify). Every banner the user sees for a
+  // session now comes from the server, after the points actually landed, so
+  // there is no local promise left that an early exit could turn into a lie.
 
   // Close the beacon so the server stops waking a device that has already left.
   if (active.visitId) {
