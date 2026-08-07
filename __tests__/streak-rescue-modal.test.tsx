@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React from 'react';
-import { configure, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { act, configure, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 
 import { StreakRescueModal } from '@/components/home/StreakRescueModal';
 import type { StreakRescueOffer } from '@/hooks/useStreakRescue';
@@ -24,12 +24,38 @@ const SAVED_KEY = '@powr/rescue_seen/rescue-1/saved';
 
 // The modal waits SETTLE_MS (700) before presenting so it decides on
 // post-invalidate data; every assertion here has to outlast that.
+//
+// Fake timers, not wall-clock sleeps: the settle delay costs ~700ms of real
+// time per assertion, and with 18 cases that put the slowest tests within a
+// few hundred ms of Jest's 5s default — so under parallel load they timed out
+// and read as real failures. Faked, the same waits cost nothing and the
+// outcome no longer depends on how busy the machine is. asyncUtilTimeout is
+// spent in fake milliseconds too (RNTL advances the clock itself while
+// polling), so it is generous rather than slow.
 configure({ asyncUtilTimeout: 4000 });
 const PAST_SETTLE = 1200;
 
+// The AsyncStorage mock resolves on the microtask queue, so leave that queue
+// real — faking queueMicrotask/nextTick/setImmediate would strand React's own
+// act() flushing, which never gets a chance to advance the clock.
 beforeEach(async () => {
+  jest.useFakeTimers({ doNotFake: ['queueMicrotask', 'nextTick', 'setImmediate'] });
   await AsyncStorage.clear();
 });
+
+afterEach(() => {
+  jest.useRealTimers();
+});
+
+/** Let the seen-marker read resolve, then run the modal's settle timer out.
+ *  Replaces `await new Promise((r) => setTimeout(r, PAST_SETTLE))` — the read
+ *  has to land before the timer it arms can be advanced. */
+const settle = async (ms = PAST_SETTLE) => {
+  await act(async () => {});
+  await act(async () => {
+    jest.advanceTimersByTime(ms);
+  });
+};
 
 describe('StreakRescueModal', () => {
   it('announces an unseen offer with the challenge terms', async () => {
@@ -84,14 +110,14 @@ describe('StreakRescueModal', () => {
 
     // Fresh mount with the marker already set — must stay silent.
     render(<StreakRescueModal rescue={offer} />);
-    await new Promise((r) => setTimeout(r, PAST_SETTLE));
+    await settle();
     expect(screen.queryByText('Back on track')).toBeNull();
   });
 
   it('re-opens on user request via reopenNonce, bypassing the seen marker', async () => {
     await AsyncStorage.setItem(SEEN_KEY, '1');
     const { rerender } = render(<StreakRescueModal rescue={offer} reopenNonce={0} />);
-    await new Promise((r) => setTimeout(r, PAST_SETTLE));
+    await settle();
     expect(screen.queryByText('Back on track')).toBeNull();
 
     rerender(<StreakRescueModal rescue={offer} reopenNonce={1} />);
@@ -114,7 +140,7 @@ describe('StreakRescueModal', () => {
   it('re-announces once when a session banks, without the user having to tap', async () => {
     await AsyncStorage.setItem(SEEN_KEY, '1'); // saw + dismissed the 0/2 offer
     const { rerender } = render(<StreakRescueModal rescue={offer} />);
-    await new Promise((r) => setTimeout(r, PAST_SETTLE));
+    await settle();
     expect(screen.queryByText('Back on track')).toBeNull();
 
     // A session lands — the revision bus refetches and progress moves to 1/2.
@@ -127,7 +153,7 @@ describe('StreakRescueModal', () => {
       expect(await AsyncStorage.getItem('@powr/rescue_seen/rescue-1/offered/1')).toBe('1');
     });
     rerender(<StreakRescueModal rescue={{ ...offer, sessionsDone: 1 }} reopenNonce={0} />);
-    await new Promise((r) => setTimeout(r, PAST_SETTLE));
+    await settle();
     expect(screen.queryByText(/Just 1 session left/)).toBeNull();
   });
 
@@ -135,25 +161,25 @@ describe('StreakRescueModal', () => {
     const steps = { ...offer, requirementType: 'steps' as const, sessionsRequired: 15000, sessionsDone: 4000 };
     await AsyncStorage.setItem('@powr/rescue_seen/rescue-1/offered', '1');
     const { rerender } = render(<StreakRescueModal rescue={steps} />);
-    await new Promise((r) => setTimeout(r, PAST_SETTLE));
+    await settle();
     expect(screen.queryByText('Back on track')).toBeNull();
 
     rerender(<StreakRescueModal rescue={{ ...steps, sessionsDone: 4231 }} />);
-    await new Promise((r) => setTimeout(r, PAST_SETTLE));
+    await settle();
     expect(screen.queryByText('Back on track')).toBeNull();
   });
 
   it('a dismissed save stays dismissed', async () => {
     await AsyncStorage.setItem(SAVED_KEY, '1');
     render(<StreakRescueModal rescue={{ ...offer, state: 'saved', sessionsDone: 2 }} />);
-    await new Promise((r) => setTimeout(r, PAST_SETTLE));
+    await settle();
     expect(screen.queryByText('Streak saved')).toBeNull();
   });
 
   it('holds while another modal owns the screen, then presents when it clears', async () => {
     // Two RN Modals visible at once means one silently never appears on iOS.
     const { rerender } = render(<StreakRescueModal rescue={offer} deferred />);
-    await new Promise((r) => setTimeout(r, PAST_SETTLE));
+    await settle();
     expect(screen.queryByText('Back on track')).toBeNull();
     // Held, not dropped — no marker was stamped, so it still owes an announcement.
     expect(await AsyncStorage.getItem(SEEN_KEY)).toBeNull();
@@ -168,7 +194,7 @@ describe('StreakRescueModal', () => {
 
     // Something goes pending mid-read (points land → level-up queues).
     rerender(<StreakRescueModal rescue={offer} deferred />);
-    await new Promise((r) => setTimeout(r, 100));
+    await settle(100);
     expect(screen.getByText('Back on track')).toBeTruthy();
   });
 
@@ -188,7 +214,7 @@ describe('StreakRescueModal', () => {
   it('reports nothing visible while deferred', async () => {
     const onVisibleChange = jest.fn();
     render(<StreakRescueModal rescue={offer} deferred onVisibleChange={onVisibleChange} />);
-    await new Promise((r) => setTimeout(r, PAST_SETTLE));
+    await settle();
     expect(onVisibleChange).not.toHaveBeenCalledWith(true);
   });
 

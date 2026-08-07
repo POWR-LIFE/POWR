@@ -17,6 +17,14 @@ module.exports = {
     '^@/(.*)$': '<rootDir>/$1',
   },
   testMatch: ['**/__tests__/**/*.test.ts', '**/__tests__/**/*.test.tsx'],
+  // Jest's 5s default is a wall-clock budget, and these suites share 11 workers
+  // on a machine that is also running everything else. A render test that takes
+  // 300ms alone can exceed 5s purely by being starved of CPU — which reads as a
+  // real failure and has repeatedly been triaged as one. Verified by running the
+  // suite oversubscribed (24 workers + 12 busy cores): at 5s, unrelated suites
+  // fail the timeout; at 15s they pass, and the timings are otherwise unchanged.
+  // Still well under any genuine hang — a deadlocked test fails in 15s, not 5.
+  testTimeout: 15_000,
   // Ignore git worktrees so Jest's haste map doesn't see duplicate package.json files.
   modulePathIgnorePatterns: ['<rootDir>/.claude/'],
   transform: {
