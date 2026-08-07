@@ -199,13 +199,33 @@ export async function logGeofenceRegionEvent(
     | 'armed' | 'sentinel_exit' | 'rearm_skipped' | 'auth_stale' | 'stream_switch_deferred',
   detail: Record<string, unknown> = {},
 ): Promise<void> {
+  const args = {
+    p_region_id: regionId,
+    p_event:     event,
+    p_platform:  Platform.OS,
+    p_detail:    detail,
+  };
+
+  // Telemetry has to survive the same background conditions as the work it
+  // describes, or the record goes blank exactly when something is going wrong.
+  // Field, 2026-08-07: every one of these timed out at 30 s on a backgrounded
+  // Android device — a dozen `log_geofence_region_event timed out after 30s`
+  // warnings per wake — so the region-event trail simply stopped at 09:20 while
+  // the device was checking in, claiming and confirming perfectly well over the
+  // raw transport beside it. We were blind to a working system.
+  if (AppState.currentState !== 'active') {
+    const auth = await readBackgroundAuth();
+    if (auth) {
+      const { error } = await bgRpc('log_geofence_region_event', args, auth);
+      if (error) console.warn('[GymVisit] logGeofenceRegionEvent (background) failed:', error.message);
+      return;
+    }
+  }
+
   try {
-    const { error } = await withNetworkTimeout(supabase.rpc('log_geofence_region_event', {
-      p_region_id: regionId,
-      p_event:     event,
-      p_platform:  Platform.OS,
-      p_detail:    detail,
-    }), 'log_geofence_region_event');
+    const { error } = await withNetworkTimeout(
+      supabase.rpc('log_geofence_region_event', args), 'log_geofence_region_event',
+    );
     if (error) throw error;
   } catch (err) {
     console.warn('[GymVisit] logGeofenceRegionEvent failed:', err);
@@ -270,11 +290,23 @@ export async function logGymVisitTick(
   visitId: string,
   detail: Record<string, unknown> = {},
 ): Promise<void> {
+  const args = { p_visit_id: visitId, p_detail: detail };
+
+  // Same reasoning as logGeofenceRegionEvent: a tick that only records itself
+  // in the foreground is not a tick, it is a lie of omission.
+  if (AppState.currentState !== 'active') {
+    const auth = await readBackgroundAuth();
+    if (auth) {
+      const { error } = await bgRpc('log_gym_visit_tick', args, auth);
+      if (error) console.warn('[GymVisit] logGymVisitTick (background) failed:', error.message);
+      return;
+    }
+  }
+
   try {
-    const { error } = await withNetworkTimeout(supabase.rpc('log_gym_visit_tick', {
-      p_visit_id: visitId,
-      p_detail:   detail,
-    }), 'log_gym_visit_tick');
+    const { error } = await withNetworkTimeout(
+      supabase.rpc('log_gym_visit_tick', args), 'log_gym_visit_tick',
+    );
     if (error) throw error;
   } catch (err) {
     console.warn('[GymVisit] logGymVisitTick failed:', err);
