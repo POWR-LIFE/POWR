@@ -104,6 +104,11 @@ const PARTNER_MAP_META_KEY   = '@powr/partner_map_meta';   // { fetchedAt, v } �
 const ARM_META_KEY           = '@powr/geofence_arm_meta';  // centre + sentinel radius of the currently armed region set
 const SESSION_COMPLETED_KEY  = '@powr/session_completed';
 const PENDING_CLAIMS_KEY     = '@powr/pending_claims';
+// Exit-close outbox. Sibling of PENDING_CLAIMS_KEY and for the same reason: an
+// exit happens with the phone pocketed and the screen off, so its network call is
+// the one most likely to fail — and closing the visit was previously fire-and-
+// forget. See enqueuePendingVisitClose.
+const PENDING_VISIT_CLOSES_KEY = '@powr/pending_visit_closes';
 const VISIT_TICK_KEY         = '@powr/last_visit_tick';   // throttle for the stream heartbeat
 const LAST_STREAM_FIX_KEY    = '@powr/last_stream_fix';   // newest fix the location stream delivered — the wake path's fallback presence proof
 
@@ -1206,7 +1211,34 @@ async function recordDwellSession(activeGeofence: StoredGeofence, staleLockMs: n
   // Use the frozen exit time when present (post-exit retry) so a claim that runs
   // minutes/hours later still records the real session length — not entry→now,
   // which would keep growing and wrongly cross the 40-min tier.
-  const endedAtMs = activeGeofence.endedAtMs ?? Date.now();
+  // A finalized exit carries a frozen endedAtMs. A LIVE session has none, and this
+  // used to fall straight through to Date.now() — which is an assumption that the
+  // user is still here, not evidence of it. Combined with the NEVER SHRINK rule
+  // below, every retry then "extended" the row to the current clock: field
+  // 2026-08-07 watched one session go 2400s (exactly 40.0 min) → 3598s (exactly
+  // 60.0 min) while its owner stood 400 m away, and it was still climbing. That is
+  // where the 12-hour session rows come from — not one bad write, but a duration
+  // that tracks wall-clock for as long as the visit fails to close.
+  //
+  // Bound it by the same evidence the wake reconciler uses: VISIT_TICK_KEY, the
+  // last moment the device actually PROVED it was inside (stream heartbeats +
+  // confirmed-inside wakes).
+  //
+  // The eligibility guard is load-bearing, not caution. A stale tick could
+  // otherwise clamp a genuine claim below the dwell minimum, and the server would
+  // reject it 422 — the exact wedge the NEVER SHRINK comment records from
+  // 2026-08-06. So the bound is only applied when it still describes a claimable
+  // session; below that we keep the old behaviour and let the claim through.
+  let endedAtMs = activeGeofence.endedAtMs ?? Date.now();
+  if (activeGeofence.endedAtMs == null) {
+    try {
+      const tickRaw = await AsyncStorage.getItem(VISIT_TICK_KEY);
+      const tick = Number(tickRaw ?? 0);
+      if (Number.isFinite(tick) && tick > activeGeofence.entryTimestamp && tick < endedAtMs) {
+        if (tick - activeGeofence.entryTimestamp >= prodDwellMs()) endedAtMs = tick;
+      }
+    } catch { /* no tick to bound by — keep the clock, as before */ }
+  }
   const dwellMs = endedAtMs - activeGeofence.entryTimestamp;
   try {
     // Backgrounded, the auth machinery is the enemy. A cold headless runtime
@@ -1529,6 +1561,95 @@ async function removePendingClaim(entry: StoredGeofence): Promise<void> {
   } catch (err) {
     console.warn('[Geofence] removePendingClaim failed:', err);
   }
+}
+
+// ─── Exit-close outbox ───────────────────────────────────────────────────────
+//
+// A visit can ONLY be closed by the device that opened it, and finalizeActive-
+// Geofence deletes ACTIVE_GEOFENCE_KEY before it calls closeGymVisit. That made
+// the close a single fire-and-forget shot at the least reliable moment in the
+// session — pocketed phone, screen off, an hour-old token — with the local record
+// already gone. When it failed the visit was orphaned: server open, client blind,
+// re-opening the app powerless (reconcileActiveSessionFromWake returns at its
+// first line with no active session). Field 2026-08-07: exactly that, and it had
+// to be closed by hand.
+//
+// So the close gets the same treatment the claim already had: a durable outbox,
+// retried on every flush. The claim outbox proved the pattern — this is the same
+// idea applied to the other half of the exit.
+type PendingVisitClose = { visitId: string; endedAtMs: number; userId?: string; queuedAtMs: number };
+
+// Past this a close is pointless: the 12h abandon cron has owned the row for
+// hours and re-closing it would only rewrite history with a worse timestamp.
+const PENDING_CLOSE_MAX_AGE_MS = 12 * 60 * 60 * 1000;
+
+async function enqueuePendingVisitClose(entry: PendingVisitClose): Promise<void> {
+  try {
+    const raw = await AsyncStorage.getItem(PENDING_VISIT_CLOSES_KEY);
+    const queue: PendingVisitClose[] = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(queue)) throw new Error('corrupt');
+    // Idempotent by visit: a retry loop must not grow the queue without bound.
+    if (queue.some(e => e.visitId === entry.visitId)) return;
+    queue.push(entry);
+    await AsyncStorage.setItem(PENDING_VISIT_CLOSES_KEY, JSON.stringify(queue));
+    console.log(`[Geofence] Visit ${entry.visitId} close queued for retry.`);
+  } catch {
+    // Best-effort: losing the retry is no worse than the old behaviour, and the
+    // server-side reaper closes it as a backstop.
+    try { await AsyncStorage.setItem(PENDING_VISIT_CLOSES_KEY, JSON.stringify([entry])); } catch { /* give up */ }
+  }
+}
+
+async function flushPendingVisitCloses(): Promise<void> {
+  let raw: string | null = null;
+  try { raw = await AsyncStorage.getItem(PENDING_VISIT_CLOSES_KEY); } catch { return; }
+  if (!raw) return;
+
+  let queue: PendingVisitClose[];
+  try { queue = JSON.parse(raw); } catch {
+    await AsyncStorage.removeItem(PENDING_VISIT_CLOSES_KEY).catch(() => {});
+    return;
+  }
+  // Same non-array trap as flushPendingClaims: "null" parses fine and .length
+  // then throws outside the catch, aborting the caller's whole event.
+  if (!Array.isArray(queue)) {
+    await AsyncStorage.removeItem(PENDING_VISIT_CLOSES_KEY).catch(() => {});
+    return;
+  }
+  if (!queue.length) return;
+
+  const { closeGymVisit } = await import('@/lib/gymVisits');
+
+  // Ownership fence: avoid replaying a prior account's queued close under a different login.
+  let currentUserId: string | null = null;
+  try {
+    const { data: { user } } = await withNetworkTimeout(supabase.auth.getUser(), 'auth.getUser');
+    currentUserId = user?.id ?? null;
+  } catch { /* offline — treat ownership as unknown */ }
+
+  const remaining: PendingVisitClose[] = [];
+  for (const entry of queue) {
+    if (Date.now() - entry.queuedAtMs > PENDING_CLOSE_MAX_AGE_MS) {
+      console.log('[Geofence] Dropping stale pending visit close (>12h) — the abandon cron owns it.');
+      continue;
+    }
+    if (entry.userId && currentUserId && entry.userId !== currentUserId) {
+      console.log('[Geofence] Pending visit close belongs to another account — leaving it queued.');
+      remaining.push(entry);
+      continue;
+    }
+    // endedAtMs is the ORIGINAL exit instant, never now(): a retry hours later
+    // must still record when the user actually left, or the retry itself becomes
+    // the duration-inflation bug it exists to prevent.
+    const ok = await closeGymVisit(entry.visitId, entry.endedAtMs).catch(() => false);
+    if (ok) console.log(`[Geofence] Pending visit close resolved (${entry.visitId}).`);
+    else remaining.push(entry);
+  }
+
+  try {
+    if (remaining.length) await AsyncStorage.setItem(PENDING_VISIT_CLOSES_KEY, JSON.stringify(remaining));
+    else await AsyncStorage.removeItem(PENDING_VISIT_CLOSES_KEY);
+  } catch { /* next flush retries */ }
 }
 
 async function flushPendingClaims(): Promise<void> {
@@ -2115,11 +2236,25 @@ async function finalizeActiveGeofenceInner(expectedRegionId?: string, endedAtOve
   // there is no local promise left that an early exit could turn into a lie.
 
   // Close the beacon so the server stops waking a device that has already left.
+  //
+  // ACTIVE_GEOFENCE_KEY is already gone by this point, so this is the last moment
+  // anything on the device knows the visit exists. A silent failure here is what
+  // orphans it — permanently, since re-opening the app finds no session to
+  // finalize. Queue the retry instead of dropping it on the floor.
   if (active.visitId) {
+    let closed = false;
     try {
       const { closeGymVisit } = await import('@/lib/gymVisits');
-      await closeGymVisit(active.visitId, endedAtMs);
-    } catch { /* non-fatal */ }
+      closed = await closeGymVisit(active.visitId, endedAtMs);
+    } catch { /* treated as not-closed below */ }
+    if (!closed) {
+      await enqueuePendingVisitClose({
+        visitId: active.visitId,
+        endedAtMs,
+        userId: active.userId,
+        queuedAtMs: Date.now(),
+      });
+    }
   }
 
   if (!needsClaim) {
@@ -2247,7 +2382,13 @@ export async function rearmFencesFromWake(): Promise<void> {
  *  PROVEN-inside moment (VISIT_TICK_KEY: stream heartbeats + confirmed-inside
  *  wakes), so the finalized claim cannot inflate dwell up to ping time. */
 const RECONCILE_MIN_SESSION_AGE_MS = 10 * 60_000;
-const RECONCILE_FIX_MAX_AGE_MS = 3 * 60_000;
+// Was 3 minutes. At walking pace that is ~250 m of travel, which is more than the
+// whole decision: the exit test is "am I outside radius + buffer", and on a 20 m
+// fence a 3-minute-old fix can put a departed user back inside. Field 2026-08-07:
+// the device reported nearest_m 85 with a 50 s-old fix while the user stood 400 m
+// away, and the visit never closed. 90 s keeps a cheap cache hit for the common
+// case without letting the fix outlive the question it is answering.
+const RECONCILE_FIX_MAX_AGE_MS = 90_000;
 
 export async function reconcileActiveSessionFromWake(): Promise<void> {
   try {
@@ -2289,13 +2430,25 @@ export async function reconcileActiveSessionFromWake(): Promise<void> {
 /** Accuracy-carrying cousin of getArmFix: reconciliation needs the fix's own
  *  accuracy for the outside buffer, and tolerates no source that can hang. */
 async function reconcileFix(): Promise<{ latitude: number; longitude: number; accuracy: number | null } | null> {
-  // 1. The stream's persisted fix, when fresh enough to speak for "now".
+  // A fix too coarse to resolve the fence cannot answer "am I outside", and
+  // returning one anyway is worse than returning nothing: the caller's buffer is
+  // max(accuracy, 50), so a 247 m fix demands the user be ~250 m clear before it
+  // will concede they left — and if the coarse position happens to sit near the
+  // venue it silently re-confirms presence instead. That is the whole shape of the
+  // 2026-08-07 failure, and of the 5½-hour phantom visit that morning (every one of
+  // those confirms carried accuracy_m 100). Screen cached sources on accuracy and
+  // fall through to a real acquisition rather than deciding on a blur.
+  const usable = (accuracy: number | null | undefined) =>
+    accuracy == null || accuracy <= MAX_FIX_ACCURACY_M;
+
+  // 1. The stream's persisted fix, when fresh enough AND sharp enough to speak for "now".
   try {
     const raw = await AsyncStorage.getItem(LAST_STREAM_FIX_KEY);
     if (raw) {
       const f = JSON.parse(raw) as { latitude?: number; longitude?: number; accuracy?: number | null; at?: number };
       if (typeof f?.latitude === 'number' && typeof f?.longitude === 'number'
-          && Date.now() - (f.at ?? 0) <= RECONCILE_FIX_MAX_AGE_MS) {
+          && Date.now() - (f.at ?? 0) <= RECONCILE_FIX_MAX_AGE_MS
+          && usable(f.accuracy)) {
         return { latitude: f.latitude, longitude: f.longitude, accuracy: f.accuracy ?? null };
       }
     }
@@ -2305,7 +2458,7 @@ async function reconcileFix(): Promise<{ latitude: number; longitude: number; ac
   // GMS evaluate fence states, so this is usually seconds old.
   const lastKnown = await Location.getLastKnownPositionAsync({ maxAge: RECONCILE_FIX_MAX_AGE_MS })
     .catch(() => null);
-  if (lastKnown) {
+  if (lastKnown && usable(lastKnown.coords.accuracy)) {
     return {
       latitude: lastKnown.coords.latitude,
       longitude: lastKnown.coords.longitude,
@@ -2316,10 +2469,16 @@ async function reconcileFix(): Promise<{ latitude: number; longitude: number; ac
   // 3. One bounded live read. The bound is best-effort under Doze (RN timers
   // can freeze) — a hang here holds only the wake task's tail, never the
   // re-arm, which its caller sequences first.
+  //
+  // HIGH, not Balanced. Balanced on Android is a fused/network position good to a
+  // few hundred metres — it cannot resolve a 20 m fence, so asking for it and then
+  // rejecting it as coarse wastes the one acquisition this wake gets. The claim
+  // path already proves High is affordable here: on 2026-08-07 the dwell and
+  // upgrade wakes returned 20 m, 11 m and 15 m fixes inside their wake windows.
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     const fresh = await Promise.race([
-      Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }).catch(() => null),
+      Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High }).catch(() => null),
       new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), ARM_FIX_TIMEOUT_MS); }),
     ]);
     if (!fresh) return null;
@@ -2689,7 +2848,15 @@ async function evaluateLocationFix(coords: Location.LocationObjectCoords): Promi
   // only ran at app-open — 2026-07-03 + 2026-07-11 field sessions. A coarse fix
   // now still ticks an active session; only the geometric decisions demand
   // accuracy.
-  const isCoarse = coords.accuracy != null && coords.accuracy > MAX_FIX_ACCURACY_M;
+  //
+  // `>=`, not `>`. A fix reporting EXACTLY 100 m used to pass this gate by one
+  // unit, and 100.0 is not a measurement — it is the round number a fused/network
+  // provider emits when it is really saying "somewhere around here". Every phantom
+  // confirm in the 2026-08-07 5½-hour zombie visit carried accuracy_m 100, as did
+  // the upgrade confirm on the clean run that same afternoon. The gate exists to
+  // reject exactly that class of fix; letting the sentinel value through on a
+  // boundary technicality defeated it.
+  const isCoarse = coords.accuracy != null && coords.accuracy >= MAX_FIX_ACCURACY_M;
 
   const raw = await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY);
   const active: StoredGeofence | null = raw ? JSON.parse(raw) : null;
@@ -2842,6 +3009,7 @@ TaskManager.defineTask(LOCATION_TRACKING_TASK, async ({ data, error }) => {
     // Headless context: load the last-persisted admin dwell threshold from
     // storage before any dwell decision (foreground refreshes it on launch).
     await primeGymDwellMinutes();
+    await flushPendingVisitCloses();
     await flushPendingClaims();
     await evaluateLocationFix(locations[locations.length - 1].coords);
   } catch (err) {
@@ -2853,6 +3021,7 @@ TaskManager.defineTask(LOCATION_TRACKING_TASK, async ({ data, error }) => {
 TaskManager.defineTask(GEOFENCE_REARM_TASK, async () => {
   noteTask('POWR_GEOFENCE_BOOT_REARM');
   try {
+    await flushPendingVisitCloses();
     await flushPendingClaims();
     await rearmGeofencingFromCache();
     await sweepForMissedCheckIn();
@@ -2879,6 +3048,7 @@ TaskManager.defineTask(GEOFENCE_TASK_NAME, async ({ data, error }) => {
     // Headless context: load the last-persisted admin dwell threshold from storage
     // so exit-time dwell checks use the current value.
     await primeGymDwellMinutes();
+    await flushPendingVisitCloses();
     await flushPendingClaims();
 
     const { eventType, region } = (data ?? {}) as {
@@ -3137,6 +3307,7 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
     if (nowFlush - lastFlushRef.current >= 60_000) {
       lastFlushRef.current = nowFlush;
       flushPendingClaims().catch(() => { /* non-fatal */ });
+      flushPendingVisitCloses().catch(() => { /* non-fatal */ });
     }
 
     if (dwellTimerRef.current != null) return; // timer already running

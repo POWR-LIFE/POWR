@@ -384,7 +384,18 @@ export async function markGymVisitProgress(
 }
 
 /** Closes the visit so the server stops nudging a device that has left. */
-export async function closeGymVisit(visitId: string, endedAtMs?: number): Promise<void> {
+/** Returns TRUE only when the server has actually accepted the close.
+ *
+ *  It used to return void, so every failure — a ticket RPC error, a timed-out
+ *  supabase-js fallback, a thrown network — was indistinguishable from success to
+ *  the caller. finalizeActiveGeofence had already deleted ACTIVE_GEOFENCE_KEY by
+ *  the time it called this, so a silent failure orphaned the visit permanently:
+ *  server open, client with no record it ever existed, nothing left that could
+ *  close it but the 12h abandon cron. Field 2026-08-07: a visit sat `upgraded`
+ *  with ended_at null while the user stood 400 m away; opening the app did not
+ *  help, because there was no local session left to finalize. The boolean is what
+ *  lets the caller queue a retry instead of losing the visit. */
+export async function closeGymVisit(visitId: string, endedAtMs?: number): Promise<boolean> {
   const args = {
     p_visit_id: visitId,
     p_ended_at: endedAtMs ? new Date(endedAtMs).toISOString() : null,
@@ -404,9 +415,14 @@ export async function closeGymVisit(visitId: string, endedAtMs?: number): Promis
   if (AppState.currentState !== 'active') {
     const res = await wakeRpc('close_gym_visit', args);
     if (res) {
-      if (res.error) console.warn('[GymVisit] closeGymVisit (background) failed:', res.error.message);
-      return;
+      if (res.error) {
+        console.warn('[GymVisit] closeGymVisit (background) failed:', res.error.message);
+        return false;
+      }
+      return true;
     }
+    // res == null means "no ticket available", not "closed" — fall through to the
+    // authed path rather than reporting a close that never happened.
   }
 
   try {
@@ -414,7 +430,9 @@ export async function closeGymVisit(visitId: string, endedAtMs?: number): Promis
       () => supabase.rpc('close_gym_visit', args), 'close_gym_visit',
     );
     if (error) throw error;
+    return true;
   } catch (err) {
     console.warn('[GymVisit] closeGymVisit failed:', err);
+    return false;
   }
 }

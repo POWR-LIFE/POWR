@@ -169,22 +169,34 @@ Deno.serve(async (req: Request) => {
   if (valid !== true) return new Response('forbidden', { status: 403 });
 
   const { dwellMin, upgradeMin } = await thresholds(admin);
-  const stats = { dwell: 0, upgrade: 0, sent: 0, no_token: 0, announced: 0, completed: 0, fence_refresh: 0 };
+  const stats = { dwell: 0, upgrade: 0, sent: 0, no_token: 0, announced: 0, completed: 0, fence_refresh: 0, presence: 0, stale_closed: 0, stale_clamped: 0 };
 
   // SESSION COMPLETE: the walk-out closure banner, both platforms, one
   // template. Only CLAIMED visits (sub-threshold pop-ins end silently). The
-  // 2-minute grace lets exit-time claims/upgrades settle so the points total
-  // is final; the 30-minute window stops a deploy from blasting history.
+  // 30-minute window stops a deploy from blasting history.
+  //
+  // THE GRACE IS CONDITIONAL (2026-08-07). It exists so an exit-time claim or
+  // upgrade can settle before we quote a points total — but a visit that has
+  // ALREADY upgraded has nothing left to settle, and waiting on it is pure
+  // latency on the most satisfying notification in the product. Field
+  // 2026-08-07: upgrade landed 16:25:07, the user walked out at 16:31:04, and
+  // the banner still sat behind the grace. So: upgraded visits are due
+  // immediately, everything else keeps the full wait.
+  //
+  // Deliberately keyed on upgraded_at rather than "is it past the upgrade
+  // threshold" — the latter is a guess about what MIGHT still land, and the
+  // whole point of the grace is to not guess.
   {
     const COMPLETE_GRACE_MS = 2 * 60 * 1000;
     const COMPLETE_WINDOW_MS = 30 * 60 * 1000;
+    const graceCutoff = new Date(Date.now() - COMPLETE_GRACE_MS).toISOString();
     const { data: doneVisits, error: doneErr } = await admin
       .from('gym_visits')
       .select('id, user_id, started_at, ended_at, claimed_session_id, partners(name)')
       .is('completed_push_at', null)
       .not('ended_at', 'is', null)
       .not('claimed_session_id', 'is', null)
-      .lte('ended_at', new Date(Date.now() - COMPLETE_GRACE_MS).toISOString())
+      .or(`upgraded_at.not.is.null,ended_at.lte.${graceCutoff}`)
       .gte('ended_at', new Date(Date.now() - COMPLETE_WINDOW_MS).toISOString())
       .limit(50);
     if (doneErr) console.error('[gym-visit-beacon] complete scan failed', doneErr);
@@ -239,69 +251,211 @@ Deno.serve(async (req: Request) => {
     }
   }
 
-  // ANNOUNCE: the "You're in" banner as a visible push, Android only.
+  // ANNOUNCE — DELETED 2026-08-07.
   //
-  // Headless Android check-ins cannot display a local notification (the
-  // schedule call silently no-ops without a UI context — client bug class
-  // known since 2026-07-14), so any android visit the client has NOT marked
-  // announced within the grace window gets the banner from here instead, over
-  // the same visible-push path as "Session recorded". The grace window gives a
-  // foreground check-in's instant local banner time to mark the visit (the
-  // client stamps mark_gym_visit_announced after a successful display), so
-  // nobody gets both.
+  // This existed on one premise: "headless Android check-ins cannot display a
+  // local notification (the schedule call silently no-ops without a UI context
+  // — client bug class known since 2026-07-14)". The field run on 2026-08-07
+  // disproved it. A Pixel swiped away from recents checked in headless at
+  // 15:42:55 and DID display the client's local banner; the user then received
+  // this server copy as well at 15:45:02 and reported two check-in
+  // notifications — one without the gym name (the local one) and one with it.
   //
-  // iOS is excluded: its headless local banner works (force-quit relaunch
-  // displayed one on 2026-08-05), and a frozen-network iOS visit has no row
-  // here to announce until app-open anyway — announcing THAT hours later would
-  // be noise, not feedback.
-  {
-    const ANNOUNCE_GRACE_MS = 90 * 1000;        // let a foreground local banner mark first
-    const ANNOUNCE_WINDOW_MS = 15 * 60 * 1000;  // a check-in banner 15+ min late is noise
-    const { data: due, error: announceErr } = await admin
-      .from('gym_visits')
-      .select('id, user_id, partners(name)')
-      .eq('platform', 'android')
-      .is('announced_at', null)
-      .is('ended_at', null)
-      .lte('started_at', new Date(Date.now() - ANNOUNCE_GRACE_MS).toISOString())
-      .gte('started_at', new Date(Date.now() - ANNOUNCE_WINDOW_MS).toISOString())
-      .limit(50);
-    if (announceErr) console.error('[gym-visit-beacon] announce scan failed', announceErr);
+  // It could never have been anything else. The de-dupe depends on the client
+  // winning a 90-second race to call mark_gym_visit_announced, and the client
+  // deliberately SKIPS that mark when backgrounded without a usable token
+  // (GeofenceContext.tsx, "losing the mark costs one duplicate banner"). So on
+  // precisely the headless check-in this pass was built to rescue, the mark is
+  // guaranteed not to land and the duplicate is guaranteed to fire. Field
+  // 2026-08-07 15:42:54: announced_at was stamped by THIS function, not the
+  // client — 2m07s after check-in, with no client mark at any point.
+  //
+  // Both platforms' local banners are now confirmed working headless (Android
+  // 2026-08-07 above; iOS confirmed by the same run, slightly behind Android).
+  // One announcer per platform, and it is the client's — the one that fires at
+  // the moment of check-in rather than up to 90s later.
+  //
+  // If a headless local banner ever regresses, restore this pass — but fix the
+  // mark first, or it will duplicate again exactly as it did here.
 
-    for (const visit of due ?? []) {
-      const { data: tokens, error: tokensErr } = await admin
+  // ── PRESENCE: keep a post-upgrade session provably alive (2026-08-07) ─────
+  //
+  // Once a visit is upgraded, the dwell and upgrade stages are both spent and the
+  // beacon stops waking the device. Nothing else refreshes last_confirmed_at
+  // either — the fence-refresh pass carries no visit_id on purpose, so its visit
+  // check no-ops. Measured 2026-08-07 on Android: last_confirmed_at froze at the
+  // upgrade (16:23:03) and never moved again, though the user stayed until 16:31.
+  //
+  // That makes silence ambiguous exactly where the reaper below has to act on it:
+  // a user still training and a user who left an hour ago look identical. This
+  // pass removes the ambiguity by ASKING. A device that answers refreshes
+  // last_confirmed_at (confirm_gym_visit_v2 writes it on every inside-confirm,
+  // before any credit branch) and resets the reaper's clock; one that never
+  // answers is genuinely gone and gets reaped on honest evidence.
+  //
+  // NO CREDIT CAN LEAK FROM THIS. confirm_gym_visit_v2's two credit branches are
+  // gated on status 'open' and 'claimed' respectively; these visits are already
+  // 'upgraded', so both are unreachable and the call is a pure presence confirm.
+  // The wire `stage` stays 'dwell' because that is what the client task already
+  // understands — introducing a third stage would need a migration
+  // (record_gym_visit_nudge hard-rejects anything but dwell/upgrade) for no gain.
+  //
+  // Bounded by TIME, not budget, deliberately: the nudge counters are per-stage
+  // and already spent by the time we get here, so this rides last_nudge_at via
+  // touch_gym_visit_nudge — the same 'no wake budget, just a backoff' mechanism
+  // the token-less branch uses. A live session is cheap to keep proving (one
+  // wake per 15 min); a dead one stops costing anything after PRESENCE_MAX_AGE.
+  {
+    const PRESENCE_SILENCE_MS = 15 * 60 * 1000;  // ask only if we haven't heard for this long
+    const PRESENCE_BACKOFF_MS = 15 * 60 * 1000;  // and never re-ask faster than this
+    const PRESENCE_MAX_AGE_MS = 8 * 60 * 60 * 1000; // past this the 12h cron owns it
+    const silenceCut = new Date(Date.now() - PRESENCE_SILENCE_MS).toISOString();
+    const backoffCut = new Date(Date.now() - PRESENCE_BACKOFF_MS).toISOString();
+
+    const { data: quiet, error: quietErr } = await admin
+      .from('gym_visits')
+      .select('id, user_id, started_at, last_confirmed_at')
+      .is('ended_at', null)
+      .not('upgraded_at', 'is', null)
+      .gte('started_at', new Date(Date.now() - PRESENCE_MAX_AGE_MS).toISOString())
+      .or(`last_confirmed_at.is.null,last_confirmed_at.lt.${silenceCut}`)
+      .or(`last_nudge_at.is.null,last_nudge_at.lt.${backoffCut}`)
+      .limit(50);
+    if (quietErr) console.error('[gym-visit-beacon] presence scan failed', quietErr);
+
+    for (const visit of quiet ?? []) {
+      const { data: tokens } = await admin
         .from('user_push_tokens')
-        .select('expo_push_token')
+        .select('expo_push_token, device_token, platform')
         .eq('user_id', visit.user_id);
-      if (tokensErr) {
-        console.error('[gym-visit-beacon] announce token lookup failed', tokensErr);
-        continue;
-      }
+      // Always take the backoff, even with no device to wake — otherwise this
+      // re-selects the same visit every minute forever (the 722-row lesson from
+      // the token-less branch above).
+      await admin.rpc('touch_gym_visit_nudge', { p_visit_id: visit.id });
       if (!tokens || tokens.length === 0) continue;
 
-      // Stamp (conditionally, so a racing client mark wins) before sending so retries never double-banner.
-      const { data: stamped, error: stampErr } = await admin
-        .from('gym_visits')
-        .update({ announced_at: new Date().toISOString() })
-        .eq('id', visit.id)
-        .is('announced_at', null)
-        .select('id');
-      if (stampErr) {
-        console.error('[gym-visit-beacon] announce stamp failed', stampErr);
-        continue;
-      }
-      if (!stamped || stamped.length === 0) continue; // client marked in the meantime
+      const nonceBytes = new Uint8Array(32);
+      crypto.getRandomValues(nonceBytes);
+      const nonce = Array.from(nonceBytes, b => b.toString(16).padStart(2, '0')).join('');
+      const nonceHashBuf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(nonce));
+      const nonceHash = Array.from(new Uint8Array(nonceHashBuf), b => b.toString(16).padStart(2, '0')).join('');
+      const { error: nonceErr } = await admin.rpc('set_gym_visit_wake_nonce', {
+        p_visit_id: visit.id, p_nonce_hash: nonceHash, p_ttl_seconds: 900,
+      });
+      if (nonceErr) console.error('[gym-visit-beacon] presence nonce stamp failed (wake will fall back to JWT)', nonceErr);
 
-      const gymName = (visit as { partners?: { name?: string } | null }).partners?.name ?? 'your gym';
-      const result = await deliverExpoMessages(admin, tokens.map(({ expo_push_token }) => ({
-        to: expo_push_token,
-        // Mirrors the client's local banner copy — same moment, same voice.
-        title: 'POWR',
-        body: `You're in at ${gymName}. Every minute counts.`,
-        data: { type: 'check_in_reminder', route: '/(tabs)/index' },
-        priority: 'high',
-      })), { userId: visit.user_id, type: 'gym_checkin_announce' });
-      if (result.queued > 0) stats.announced++;
+      const payload = { type: 'gym_visit_check', visit_id: visit.id, stage: 'dwell', nonce: nonceErr ? undefined : nonce };
+      const TTL_SEC = 10 * 60;
+      for (const t of tokens) {
+        if (!t.device_token || (t.platform !== 'android' && t.platform !== 'ios')) continue;
+        const outcome = t.platform === 'android'
+          ? await sendFcmDataMessage(t.device_token, { ...payload, body: JSON.stringify(payload) }, TTL_SEC)
+          : await sendApnsBackgroundPush(t.device_token, payload, TTL_SEC);
+        if (outcome.unavailable) continue;
+        const { error: logErr } = await admin.from('push_send_log').insert({
+          user_id: visit.user_id,
+          type: 'gym_visit_check_presence',
+          expo_push_token: t.device_token,
+          status: outcome.ok ? 'accepted' : 'rejected',
+          ticket_id: outcome.messageName ?? outcome.apnsId ?? null,
+          error: outcome.ok ? null : (outcome.error ?? null),
+        });
+        if (logErr) console.error('[gym-visit-beacon] presence log insert failed', logErr);
+        if (outcome.ok) stats.presence++;
+      }
+    }
+  }
+
+  // ── STALE CLOSE: the orphaned-visit reaper (2026-08-07) ───────────────────
+  //
+  // A visit can only be closed by the client, and the client can forget it. Field
+  // 2026-08-07: an Android visit sat `upgraded` with ended_at null while the user
+  // stood 400m away. Opening the app did NOT close it — ACTIVE_GEOFENCE_KEY was
+  // already gone, so reconcileActiveSessionFromWake() returns at its first line
+  // and the exit path never runs. Server open, client unaware: a deadlock only
+  // the 12h abandon cron could break, and it had to be closed by hand.
+  //
+  // Three costs while it sits there: no "Session complete" push (that pass needs
+  // ended_at), the user's one live slot in gym_visits_one_live_per_user_idx is
+  // occupied so a genuine return check-in gets reused instead of created, and —
+  // the expensive one — the client's pending-claim flush keeps re-recording the
+  // session with a FRESH now() end, so duration climbs with wall-clock. Measured
+  // the same day: 2400s (exactly 40.0 min) at 16:22, 3598s (exactly 60.0 min) at
+  // 16:42, still climbing. That is where the 12-hour session rows come from.
+  //
+  // WHY THIS IS SAFE TO DO EARLY, when 20260803100000 warns at length that
+  // closing early "is equivalent to abandoning the points": it is gated on
+  // upgraded_at. Past the upgrade there is nothing left to earn — the claim and
+  // the 40-min bonus are both banked — so ending the visit forfeits nothing. The
+  // dwell and upgrade stages are untouched; this only reaps what they finished.
+  //
+  // ended_at is the last PROVEN-inside moment, never now(): under-report a
+  // session rather than inflate one. It costs a few minutes of tail on a real
+  // walk-out and cannot manufacture dwell that never happened.
+  //
+  // WHAT KEEPS A LIVE SESSION ALIVE: confirm_gym_visit_v2 writes last_confirmed_at
+  // on EVERY inside-confirm, before any credit branch — so any wake that reaches
+  // the device's JS refreshes it and resets this window. What the beacon no longer
+  // does after the upgrade is CAUSE such a wake: the dwell and upgrade stages are
+  // both spent, and the fence-refresh pass below deliberately carries no visit_id
+  // (placeholder nonce, visit check no-ops). The presence pass added alongside this
+  // one closes that gap by re-nudging still-open upgraded visits, so silence here
+  // means "asked and got no answer", not "never asked".
+  {
+    const STALE_SILENCE_MS = 45 * 60 * 1000;
+    const { data: orphans, error: orphanErr } = await admin
+      .from('gym_visits')
+      .select('id, user_id, started_at, claimed_at, upgraded_at, last_confirmed_at, claimed_session_id')
+      .is('ended_at', null)
+      .not('upgraded_at', 'is', null)
+      .limit(100);
+    if (orphanErr) console.error('[gym-visit-beacon] stale-close scan failed', orphanErr);
+
+    const silenceCutoff = Date.now() - STALE_SILENCE_MS;
+    for (const v of orphans ?? []) {
+      // Last moment the DEVICE proved it was inside. claimed_at/upgraded_at both
+      // required a location-confirmed wake, so they are proof too — and
+      // last_confirmed_at is not updated by the upgrade confirm, so taking the
+      // max of all three is strictly more accurate than last_confirmed_at alone.
+      const provenMs = Math.max(
+        v.last_confirmed_at ? Date.parse(v.last_confirmed_at) : 0,
+        v.upgraded_at ? Date.parse(v.upgraded_at) : 0,
+        v.claimed_at ? Date.parse(v.claimed_at) : 0,
+        Date.parse(v.started_at),
+      );
+      if (provenMs > silenceCutoff) continue; // proved presence recently — still live
+
+      const endedAtIso = new Date(provenMs).toISOString();
+      const { data: closed, error: closeErr } = await admin
+        .from('gym_visits')
+        .update({ status: 'closed', close_reason: 'stale_after_upgrade', ended_at: endedAtIso })
+        .eq('id', v.id)
+        .is('ended_at', null)          // conditional: a real client exit racing us wins
+        .select('id');
+      if (closeErr) { console.error('[gym-visit-beacon] stale-close failed', closeErr); continue; }
+      if (!closed || closed.length === 0) continue;
+
+      // Undo any drift the pending-claim flush already wrote into the session.
+      // Clamp DOWN only: iOS health reconciliation legitimately moves started_at
+      // earlier (gymReconcile.ts), and this must never fight a longer, truer
+      // session — only a stored end that outruns the last proof of presence.
+      if (v.claimed_session_id) {
+        const { data: sess } = await admin
+          .from('activity_sessions')
+          .select('id, started_at, ended_at')
+          .eq('id', v.claimed_session_id)
+          .maybeSingle();
+        if (sess?.ended_at && Date.parse(sess.ended_at) > provenMs) {
+          const durationSec = Math.max(0, Math.round((provenMs - Date.parse(sess.started_at)) / 1000));
+          const { error: sessErr } = await admin
+            .from('activity_sessions')
+            .update({ ended_at: endedAtIso, duration_sec: durationSec })
+            .eq('id', sess.id);
+          if (sessErr) console.error('[gym-visit-beacon] stale-close session clamp failed', sessErr);
+          else stats.stale_clamped++;
+        }
+      }
+      stats.stale_closed++;
     }
   }
 
