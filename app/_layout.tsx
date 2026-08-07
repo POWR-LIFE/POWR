@@ -49,7 +49,12 @@ const APP_DARK_THEME = {
 
 function RootLayoutNav() {
   const { theme } = useAppTheme();
-  const [fontsLoaded] = useFonts({
+  // The error is CAPTURED, not discarded. useFonts leaves `loaded` false forever
+  // when loadAsync rejects, and this gate gated both the render below and the
+  // only SplashScreen.hideAsync() in the app — so a font failure meant a
+  // permanent splash screen with no error, no timeout and no way out. Rendering
+  // in a fallback typeface is strictly better than not rendering at all.
+  const [fontsLoaded, fontError] = useFonts({
     Outfit_200ExtraLight,
     Outfit_300Light,
     Outfit_400Regular,
@@ -57,12 +62,21 @@ function RootLayoutNav() {
     Outfit_600SemiBold,
     Outfit_700Bold,
   });
+  const fontsSettled = fontsLoaded || !!fontError;
 
   useEffect(() => {
-    if (fontsLoaded) {
+    if (fontError) {
+      // Not fatal, but never silent: the app is now running in a fallback
+      // typeface and that should be visible in app_errors, not guesswork.
+      reportHandled(fontError, { gate: 'useFonts' });
+    }
+  }, [fontError]);
+
+  useEffect(() => {
+    if (fontsSettled) {
       SplashScreen.hideAsync().catch(() => {});
     }
-  }, [fontsLoaded]);
+  }, [fontsSettled]);
 
   // Create Android notification channels at launch so any notification — local
   // or a remote push referencing a channel — always has a valid channel to land
@@ -127,7 +141,7 @@ function RootLayoutNav() {
   // Offer a restart when an OTA update is ready (launch + foreground checks).
   useOtaUpdatePrompt();
 
-  if (!fontsLoaded) {
+  if (!fontsSettled) {
     return null;
   }
 
@@ -230,9 +244,21 @@ export default function RootLayout() {
  * expo-router destructures this off the route module and wraps the default
  * export in its own Try boundary — in production as well as development — so it
  * sits above QueryClientProvider and catches a render error from any provider
- * below it. Try also hides the splash screen itself, which matters because
- * RootLayoutNav returns null until the fonts load and would otherwise leave the
- * splash up forever.
+ * below it.
+ *
+ * ⚠ THIS COMMENT USED TO CLAIM "Try also hides the splash screen itself, which
+ * matters because RootLayoutNav returns null until the fonts load". THAT WAS
+ * WRONG, and believing it is why the font gate above went unguarded long enough
+ * to become a second never-resolves hang. expo-router has exactly three
+ * hideAsync call sites and none of them fire on a healthy-but-stalled boot:
+ *   • views/Try.js            — inside getDerivedStateFromError (error path only)
+ *   • ExpoRoot.js             — inside shouldShowTutorial() (dev tutorial only)
+ *   • renderRootComponent.js  — inside the catch around registerRootComponent
+ * There is also utils/splash.js, which hides on any ErrorUtils error — but a
+ * rejected font load is a caught promise rejection, not an ErrorUtils fatal, so
+ * it never triggers. The effect above is the ONLY normal-path hideAsync in this
+ * app; if it stops running, the splash stays up forever. Keep it unconditional
+ * on a SETTLED gate, never on a SUCCESSFUL one.
  *
  * WHY THIS IS NOT OPTIONAL. lib/crashHandler stops an uncaught render error
  * aborting the process, but React has already committed {element: null} by then

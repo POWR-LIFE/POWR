@@ -49,7 +49,42 @@ let accessibilityUpgraded = false;
  */
 const secureStoreAdapter = {
     getItem: async (key: string) => {
-        const value = await SecureStore.getItemAsync(key, KEYCHAIN);
+        // A LOCKED KEYCHAIN MUST READ AS "SIGNED OUT", NEVER AS A THROW.
+        //
+        // This is the root of the iOS load hang (root-caused 2026-08-07). The
+        // read throws errSecInteractionNotAllowed ("User interaction is not
+        // allowed") whenever the item is unreadable — always before the first
+        // unlock since boot, and on any install whose token was last written
+        // under the old WHEN_UNLOCKED attribute (the heal below only runs after
+        // a SUCCESSFUL read, so those devices never get there on their own).
+        //
+        // Nothing downstream catches it. supabase-js's getItemAsync
+        // (auth-js/dist/main/lib/helpers.js) is a bare `await storage.getItem`,
+        // and __loadSession / _useSession / getSession are all try/FINALLY with
+        // no catch — so the throw propagates out of supabase.auth.getSession()
+        // to whichever caller is unlucky enough to have no .catch(). That was
+        // AuthContext's bootstrap, and a rejection there pinned `loading` true
+        // for the life of the JS runtime.
+        //
+        // The trigger is UIBackgroundModes: remote-notification. A push launches
+        // the app into the background while the phone is locked in a pocket; RN
+        // boots the bundle and mounts the React tree invisibly; this read throws;
+        // the runtime is wedged. The user then unlocks, taps the notification,
+        // and foregrounds INTO that already-wedged runtime — which is exactly
+        // why it looks like "the notification broke it" and why force-quitting
+        // (a fresh runtime, device now unlocked) is what clears it.
+        //
+        // Returning null degrades to the signed-out state, which onAuthStateChange
+        // corrects the moment auth is readable again. Failing open here is
+        // strictly better than failing shut: the caller sees "no session yet",
+        // not an exception it was never written to handle.
+        let value: string | null = null;
+        try {
+            value = await SecureStore.getItemAsync(key, KEYCHAIN);
+        } catch (err) {
+            console.warn(`[supabase] keychain read for ${key} failed — treating as signed out:`, err);
+            return null;
+        }
 
         // HEAL EXISTING INSTALLS. iOS applies the accessibility attribute when
         // the item is WRITTEN, so setting the option above only helps tokens

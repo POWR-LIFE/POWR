@@ -27,6 +27,13 @@ type AuthContextType = {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+/** How long the launch session read gets before the app gives up and renders
+ *  the signed-out state. Sits in front of FIRST PAINT, so it is deliberately
+ *  far tighter than lib/networkTimeout's 30 s background bound: a warm keychain
+ *  read is single-digit milliseconds, and anything past a few seconds is a wedge
+ *  rather than a slow device. INITIAL_SESSION still delivers a late session. */
+const AUTH_BOOTSTRAP_TIMEOUT_MS = 8_000;
+
 /**
  * Decode the session_id claim from a Supabase JWT without external deps.
  * The session_id uniquely identifies the auth.sessions row for this login.
@@ -202,11 +209,57 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
 
     useEffect(() => {
-        supabase.auth.getSession().then(({ data: { session } }) => {
-            setSession(session);
+        // THE AUTH BOOTSTRAP MUST ALWAYS SETTLE. This `setLoading(false)` is the
+        // ONLY one in the app, and app/index.tsx renders a bare ActivityIndicator
+        // until it runs — so any path that skips it strands the user on a spinner
+        // with no error, no timeout and no recovery short of force-quitting.
+        //
+        // It did exactly that (root-caused 2026-08-07). The call was a lone
+        // .then() with no catch, no finally and no timeout, and it can fail two
+        // ways that both look identical from here:
+        //
+        //  1. REJECTION — the keychain read throws on a locked device and
+        //     supabase-js propagates it (see the long note in lib/supabase.ts).
+        //     Fixed at the source there; this catch is the second line of
+        //     defence, because a bootstrap that can only succeed is a bug
+        //     regardless of which dependency happens to break next.
+        //  2. NEVER SETTLING — getSession() awaits initializePromise and then
+        //     _acquireLock. On React Native there is no navigator.locks, so
+        //     auth-js falls back to lockNoOp and `lockAcquireTimeout` is dead
+        //     code; the re-entrancy queue still makes every caller `await` the
+        //     previous in-lock operation with NO bound. One frozen background
+        //     auth call — the RN delivered-request/never-settled-response class
+        //     documented in lib/networkTimeout.ts — therefore jams every
+        //     subsequent auth call in the runtime, permanently.
+        //
+        // A timeout is what covers case 2, since there is nothing to catch.
+        // Deliberately NOT withNetworkTimeout: that helper is the 30 s bound for
+        // background writes, which is an eternity in front of first paint.
+        //
+        // Fails OPEN, to signed-out. onAuthStateChange's INITIAL_SESSION fires
+        // independently and calls setSession itself, so a session that was
+        // merely slow still lands and self-corrects — whereas failing shut would
+        // reinstate the very hang this replaces.
+        let settled = false;
+        const settle = (nextSession: Session | null) => {
+            if (settled) return;
+            settled = true;
+            setSession(nextSession);
             setLoading(false);
             // Registration is handled by INITIAL_SESSION in onAuthStateChange below — no duplicate call needed
-        });
+        };
+        const bootstrapTimeout = setTimeout(() => {
+            if (settled) return;
+            console.warn('[Auth] getSession() did not settle in 8s — starting signed out; INITIAL_SESSION will correct it if a session exists.');
+            settle(null);
+        }, AUTH_BOOTSTRAP_TIMEOUT_MS);
+        supabase.auth.getSession()
+            .then(({ data: { session } }) => settle(session))
+            .catch((err) => {
+                console.error('[Auth] getSession() rejected during bootstrap — starting signed out:', err);
+                settle(null);
+            })
+            .finally(() => clearTimeout(bootstrapTimeout));
 
         const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
             // Captured BEFORE sessionUserRef is overwritten below: by the time the
@@ -323,6 +376,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         });
 
         return () => {
+            clearTimeout(bootstrapTimeout);
             subscription.unsubscribe();
             linkingSubscription.remove();
             appStateSubscription.remove();
