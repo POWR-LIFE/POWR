@@ -234,6 +234,52 @@ describe("the day's session row only ever grows", () => {
   });
 });
 
+// The presence-sweep ping borrows the nonce field ('fence-refresh') purely to
+// select the auth-free wake path — it is not scoped to any visit. Confirming a
+// locally-stored visit with it is guaranteed to fail, and did: two
+// `confirm_gym_visit_v3 400 invalid or expired wake nonce` per iPhone per ping
+// once a session was live (field 2026-08-07). It must be treated as a wake, not
+// a ticket — and dropping it must NOT re-open the awaited-auth door, because a
+// wake that awaits auth is the original freeze class.
+describe('the sweep ping is a wake, not a ticket', () => {
+  it('never confirms a visit with the placeholder nonce', async () => {
+    const fetchSpy = jest.fn(async () => ({ ok: true, status: 200, text: async () => '{}' }));
+    const priorFetch = (globalThis as any).fetch;
+    (globalThis as any).fetch = fetchSpy;
+    await seedVisit();
+    armRpc({});
+
+    try {
+      await runVisitCheck('dwell', undefined, 'fence-refresh');
+    } finally {
+      (globalThis as any).fetch = priorFetch;
+    }
+
+    const confirms = fetchSpy.mock.calls.filter(([url]: any[]) => String(url).includes('confirm_gym_visit'));
+    expect(confirms).toHaveLength(0);
+    // The auth half of this guard (isSweepPing must also suppress the awaited
+    // ensureFreshSession) is enforced in the source and reviewed there; this
+    // suite does not mock authFresh, so asserting it here would be theatre.
+  });
+
+  it('still confirms normally when the nonce is a real ticket', async () => {
+    const fetchSpy = jest.fn(async () => ({ ok: true, status: 200, text: async () => '{}' }));
+    const priorFetch = (globalThis as any).fetch;
+    (globalThis as any).fetch = fetchSpy;
+    await seedVisit();
+    armRpc({});
+
+    try {
+      await runVisitCheck('dwell', 'visit-1', 'a-real-ticket');
+    } finally {
+      (globalThis as any).fetch = priorFetch;
+    }
+
+    const confirms = fetchSpy.mock.calls.filter(([url]: any[]) => String(url).includes('confirm_gym_visit'));
+    expect(confirms.length).toBeGreaterThan(0);
+  });
+});
+
 describe('backgrounded upgrade rides the relay', () => {
   it("'accepted' leaves tierUpgraded unset; the next tick's 'already_done' completes it", async () => {
     await seedVisit({

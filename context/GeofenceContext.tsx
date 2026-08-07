@@ -2275,11 +2275,27 @@ export async function runVisitCheck(
    *  and no auth round-trip is ever awaited — the 2026-08-05 freeze class. */
   wakeNonce?: string,
 ): Promise<void> {
+  // The presence-sweep ping carries the PLACEHOLDER nonce 'fence-refresh' and no
+  // visit id — the beacon borrows the field purely to select the auth-free wake
+  // path. It is not scoped to any visit, so confirming a locally-stored visit
+  // with it is guaranteed to fail: field 2026-08-07, two `confirm_gym_visit_v3
+  // 400 invalid or expired wake nonce` per iPhone per ping once a session was
+  // live. Treat it as what it is — a wake, not a ticket. The sweep and reconcile
+  // that the ping actually exists for run in the background task before this,
+  // and are unaffected.
+  const isSweepPing = wakeNonce === 'fence-refresh';
+  if (isSweepPing) wakeNonce = undefined;
+
   const trace: WakeTrace = { stage };
   // Freshness before the first server touch — but ONLY on ticketless entries
   // (foreground callers, legacy nudges). A ticketed wake must never await auth;
   // warming happens fire-and-forget in the background task instead.
-  if (!wakeNonce) await ensureFreshSession(`visit_check_${stage}`);
+  //
+  // A sweep ping counts as ticketed for THIS purpose even though its nonce is
+  // useless: it is still a wake, and awaiting auth on a wake is the freeze class
+  // this whole design exists to avoid. Dropping the placeholder must not quietly
+  // re-open that door.
+  if (!wakeNonce && !isSweepPing) await ensureFreshSession(`visit_check_${stage}`);
   await tracedStep('prime_config', trace, () => primeGymDwellMinutes(), STEP_TIMEOUT_MS);
 
   const raw = await tracedStep('read_active', trace, () => AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY), STEP_TIMEOUT_MS);
