@@ -230,7 +230,8 @@ export async function logGymWakeReceived(
 export async function logGeofenceRegionEvent(
   regionId: string,
   event: 'enter' | 'exit' | 'approach_stream_on' | 'checked_in' | 'stream_start_failed'
-    | 'armed' | 'sentinel_exit' | 'rearm_skipped' | 'auth_stale' | 'stream_switch_deferred',
+    | 'armed' | 'sentinel_exit' | 'rearm_skipped' | 'auth_stale' | 'stream_switch_deferred'
+    | 'sweep',
   detail: Record<string, unknown> = {},
 ): Promise<void> {
   const args = {
