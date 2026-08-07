@@ -1619,10 +1619,23 @@ async function flushPendingVisitCloses(): Promise<void> {
   if (!queue.length) return;
 
   const { closeGymVisit } = await import('@/lib/gymVisits');
+
+  // Ownership fence: avoid replaying a prior account's queued close under a different login.
+  let currentUserId: string | null = null;
+  try {
+    const { data: { user } } = await withNetworkTimeout(supabase.auth.getUser(), 'auth.getUser');
+    currentUserId = user?.id ?? null;
+  } catch { /* offline — treat ownership as unknown */ }
+
   const remaining: PendingVisitClose[] = [];
   for (const entry of queue) {
     if (Date.now() - entry.queuedAtMs > PENDING_CLOSE_MAX_AGE_MS) {
       console.log('[Geofence] Dropping stale pending visit close (>12h) — the abandon cron owns it.');
+      continue;
+    }
+    if (entry.userId && currentUserId && entry.userId !== currentUserId) {
+      console.log('[Geofence] Pending visit close belongs to another account — leaving it queued.');
+      remaining.push(entry);
       continue;
     }
     // endedAtMs is the ORIGINAL exit instant, never now(): a retry hours later
