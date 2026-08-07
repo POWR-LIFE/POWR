@@ -238,6 +238,44 @@ describe('openGymVisit transport selection', () => {
     expect(mockSupabaseRpc).toHaveBeenCalledTimes(1);
   });
 
+  // The EXIT is a background event by definition — the user has walked off with
+  // the phone pocketed. A frozen close leaves the visit open forever: the beacon
+  // keeps nudging it and the "Session complete" push never fires.
+  it('closes the visit over raw REST when backgrounded', async () => {
+    const { closeGymVisit } = require('@/lib/gymVisits');
+    persistSession();
+    fetchMock.mockResolvedValueOnce(okJson(null, 204));
+
+    await closeGymVisit('visit-42', 1_700_000_000_000);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][0]).toContain('/rpc/close_gym_visit');
+    expect(mockSupabaseRpc).not.toHaveBeenCalled();
+  });
+
+  it('marks claim progress over raw REST when backgrounded', async () => {
+    const { markGymVisitProgress } = require('@/lib/gymVisits');
+    persistSession();
+    fetchMock.mockResolvedValueOnce(okJson(null, 204));
+
+    await markGymVisitProgress('visit-42', 'claimed', 'session-1');
+
+    expect(fetchMock.mock.calls[0][0]).toContain('/rpc/mark_gym_visit_progress');
+    expect(mockSupabaseRpc).not.toHaveBeenCalled();
+  });
+
+  it('closes through supabase-js in the foreground', async () => {
+    const { closeGymVisit } = require('@/lib/gymVisits');
+    mockAppState = 'active';
+    persistSession();
+    mockSupabaseRpc.mockResolvedValueOnce({ data: null, error: null });
+
+    await closeGymVisit('visit-42');
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(mockSupabaseRpc).toHaveBeenCalledTimes(1);
+  });
+
   // INVARIANT 5.
   it('uses supabase-js in the foreground even with a healthy token', async () => {
     mockAppState = 'active';
