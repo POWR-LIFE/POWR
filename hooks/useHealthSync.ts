@@ -187,7 +187,7 @@ export function useHealthSync() {
           ? verificationFromProvenance(health.source, verificationSource)
           : verificationSource;
 
-        const workoutPoints = calculateBasePoints(mappedType, health.durationMin);
+        const workoutPoints = calculateBasePoints(mappedType, health.durationMin, health.distanceM);
         const workoutSessionId = await logManualSession({
           type: mappedType,
           duration_sec: health.durationMin * 60,
@@ -198,6 +198,7 @@ export function useHealthSync() {
           healthVerified: true,
           healthSource: activityVerification,
           rawActivityName: health.rawName ?? health.type,
+          pointsFor: (mins, distM) => calculateBasePoints(mappedType, mins, distM),
         });
 
         if (workoutSessionId && workoutPoints > 0) {
@@ -236,8 +237,14 @@ export function useHealthSync() {
       // Garmin et al. push distance/HR into Apple Health without an HKWorkout, so
       // the workout loop above never sees them. Reconstruct run/cycle/swim from the
       // wearable-sourced distance across the week (each lives in its own HK distance
-      // type, so the type is self-identifying). iOS native path only; the once-per
-      // -type-per-day DB constraint dedups against the workout path and re-syncs.
+      // type, so the type is self-identifying). iOS native path only.
+      //
+      // Dedup against the workout path used to lean on the once-per-type-per-day DB
+      // constraint. That constraint destroyed split workouts and was replaced
+      // (migration 20260807120000), so the guard is now explicit and, being
+      // overlap-based rather than day-based, strictly stronger: the in-memory check
+      // below catches a workout in THIS fetch, and logManualSession folds an
+      // inferred activity into any already-persisted session it overlaps.
       if (isNativeProvider && Platform.OS === 'ios') {
         const inferred = await getInferredActivitiesForWeek().catch(() => []);
         for (const act of inferred) {
@@ -260,7 +267,7 @@ export function useHealthSync() {
 
           const today = isLocalToday(act.startedAt);
           const actVerification = verificationFromProvenance(act.source, verificationSource);
-          const inferredPoints = calculateBasePoints(act.type, act.durationMin);
+          const inferredPoints = calculateBasePoints(act.type, act.durationMin, act.distanceM);
           const inferredSessionId = await logManualSession({
             type: act.type,
             duration_sec: act.durationMin * 60,
@@ -270,6 +277,7 @@ export function useHealthSync() {
             points: inferredPoints,
             healthVerified: true,
             healthSource: actVerification,
+            pointsFor: (mins, distM) => calculateBasePoints(act.type, mins, distM),
           });
 
           if (inferredSessionId && inferredPoints > 0) {
@@ -394,7 +402,9 @@ function mapHealthType(name: string): ActivityType | null {
  *  HIIT_MIN_MINUTES in supabase/functions/_shared/points.ts. */
 const HIIT_MIN_MINUTES = 20;
 
-function calculateBasePoints(type: ActivityType, durationMin: number): number {
+function calculateBasePoints(
+  type: ActivityType, durationMin: number, distanceM: number | null = null,
+): number {
   // Strength lane (gym + hiit): the same 15/20 tiers a geofence check-in pays,
   // off the admin-tunable thresholds — a wearable-tracked session is worth what
   // the same session is worth anywhere else. Mirrors _shared/points.ts, which
@@ -407,14 +417,62 @@ function calculateBasePoints(type: ActivityType, durationMin: number): number {
     return 0;
   }
 
-  const config = ACTIVITIES[type];
-  if (durationMin < config.minDuration) return 0;
+  // Cardio scores on the distance/duration ladder, NOT a flat per-session rate.
+  // It used to be flat (any run ≥ 15 min paid 10), which was invisible only
+  // because the daily cap was also 10. Caps came off on 2026-08-07, so a flat
+  // rate would now pay three short jogs more than one long run — see the same
+  // ladder and the reasoning in _shared/points.ts.
+  const mins = Math.floor(durationMin);
+  const dist = distanceM ?? 0;
 
-  if (type === 'running' || type === 'cycling') return 10;
-  if (type === 'swimming') return 7;
-  if (type === 'sports') return 6;
-  if (type === 'yoga') return 3;
-  return 5;
+  switch (type) {
+    case 'running':
+      if (dist >= 10000 || mins >= 60) return 10;
+      if (dist >= 5000  || mins >= 30) return 8;
+      if (dist >= 3000  || mins >= 20) return 6;
+      if (dist >= 2000  || mins >= 15) return 5;
+      return 0;
+
+    case 'cycling':
+      if (dist >= 50000 || mins >= 90) return 10;
+      if (dist >= 25000 || mins >= 60) return 8;
+      if (dist >= 12000 || mins >= 30) return 6;
+      if (dist >= 6000  || mins >= 20) return 4;
+      return 0;
+
+    case 'swimming':
+      if (dist >= 2000 || mins >= 60) return 10;
+      if (dist >= 2000 || mins >= 40) return 9;
+      if (dist >= 1000 || mins >= 20) return 7;
+      if (dist >= 500  || mins >= 15) return 5;
+      return 0;
+
+    case 'sports':
+      if (mins >= 90) return 10;
+      if (mins >= 60) return 8;
+      if (mins >= 30) return 6;
+      return 0;
+
+    case 'yoga':
+      if (mins >= 60) return 6;
+      if (mins >= 45) return 5;
+      if (mins >= 30) return 4;
+      if (mins >= 20) return 3;
+      return 0;
+
+    case 'dance':
+      if (mins >= 60) return 8;
+      if (mins >= 45) return 7;
+      if (mins >= 30) return 6;
+      if (mins >= 20) return 5;
+      return 0;
+
+    default: {
+      const config = ACTIVITIES[type];
+      if (durationMin < config.minDuration) return 0;
+      return 5;
+    }
+  }
 }
 
 function calculateSleepPoints(hours: number, deepHours?: number, remHours?: number): number {

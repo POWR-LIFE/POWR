@@ -3,6 +3,7 @@ import { getDeviceId } from '@/lib/device';
 import { emitPointsChanged } from '@/lib/pointsEvents';
 import { dayAnchor, monthAnchorEnd, monthAnchorStart, weekAnchorMonday } from '@/lib/progressLookback';
 import { getSessionUser, supabase } from '@/lib/supabase';
+import { mergeWorkouts, relateWorkouts } from '@/shared/sessionMerge';
 
 // ── Walking step-tier helpers (shared by manual-log + health sync) ─────────────
 
@@ -156,10 +157,130 @@ export type ManualSessionParams = {
     healthSource?: 'wearable' | 'health';
     /** Provider-reported activity name before bucketing (e.g. "Strength Training"). */
     rawActivityName?: string;
+    /**
+     * Prices a session of a given length and distance, for the case where this
+     * workout turns out to continue one we already hold and the merged session is
+     * worth more than the half we were paid for (4 km + 6 km crosses the 10 km
+     * rung; 25 + 20 min of gym crosses the upgrade tier). Passed in rather than
+     * imported because the scoring table lives in the caller — useHealthSync owns
+     * the client mirror of _shared/points.ts, and importing it here would close a
+     * cycle.
+     */
+    pointsFor?: (durationMin: number, distanceM: number | null) => number;
 };
 
 /** Max unverified manual logs allowed per calendar day (across all types). */
 const DAILY_MANUAL_CAP = 1;
+
+/**
+ * Fold a health-synced workout into the session it continues, when it continues
+ * one. Returns true if it was absorbed and the caller should NOT insert a row.
+ *
+ * Two things arrive here that are not new workouts: a watch restating a session
+ * it already sent (a slightly different window for the same effort), and the
+ * second half of a workout the user stopped and restarted — a run paused for a
+ * phone call comes out of HealthKit as two workouts, not one.
+ *
+ * Before 2026-08-07 neither could be expressed: wearable rows were unique per
+ * (user, type, UTC day), so the second one raised a 23505 that logManualSession
+ * swallowed with a `return null`. The workout was not merged, not recorded, not
+ * logged — a 10 k run interrupted by a call was simply stored as half of itself
+ * (Sorine, 2026-08-06). The index now keys workouts on their start instant, so
+ * this is where the two halves are put back together.
+ *
+ * relateWorkouts/mergeWorkouts are shared with terra-webhook via the mirrored
+ * shared/sessionMerge.js so the Terra and native paths cannot disagree about
+ * what counts as one workout.
+ */
+async function absorbIntoExistingWorkout(
+    params: ManualSessionParams, endedAt: string, uid: string,
+): Promise<boolean> {
+    const incoming = {
+        startMs: new Date(params.started_at).getTime(),
+        endMs: new Date(endedAt).getTime(),
+        durationSec: params.duration_sec,
+        distanceM: params.distance_m ?? null,
+        hrAvg: params.hr_avg ?? null,
+    };
+
+    const { data: candidates } = await supabase
+        .from('activity_sessions')
+        .select('id, started_at, ended_at, duration_sec, distance_m, hr_avg')
+        .eq('user_id', uid)
+        .eq('type', params.type)
+        .in('verification', ['wearable', 'health'])
+        .gte('started_at', new Date(incoming.startMs - 24 * 60 * 60 * 1000).toISOString())
+        .lte('started_at', new Date(incoming.endMs + 24 * 60 * 60 * 1000).toISOString());
+
+    let target: { row: any; existing: any; relation: 'same' | 'contiguous'; gap: number } | null = null;
+    for (const row of candidates ?? []) {
+        const startMs = new Date(row.started_at).getTime();
+        const existing = {
+            startMs,
+            endMs: row.ended_at
+                ? new Date(row.ended_at).getTime()
+                : startMs + (row.duration_sec ?? 0) * 1000,
+            durationSec: row.duration_sec ?? 0,
+            distanceM: row.distance_m,
+            hrAvg: row.hr_avg,
+        };
+        const relation = relateWorkouts(existing, incoming);
+        if (relation === 'separate') continue;
+        // An overlap is the same activity told twice — settled, stop looking.
+        if (relation === 'same') { target = { row, existing, relation, gap: 0 }; break; }
+        const gap = incoming.startMs >= existing.endMs
+            ? incoming.startMs - existing.endMs
+            : existing.startMs - incoming.endMs;
+        if (!target || gap < target.gap) target = { row, existing, relation, gap };
+    }
+    if (!target) return false;
+
+    const merged = mergeWorkouts(target.existing, incoming, target.relation);
+    if (!merged.changed) return true; // a re-sync of something we already hold
+
+    const patch: Record<string, unknown> = {
+        started_at: new Date(merged.startMs).toISOString(),
+        ended_at: new Date(merged.endMs).toISOString(),
+        duration_sec: merged.durationSec,
+    };
+    if (merged.distanceM != null) patch.distance_m = Math.round(merged.distanceM);
+    if (merged.hrAvg != null) patch.hr_avg = merged.hrAvg;
+    const { error } = await supabase.from('activity_sessions').update(patch).eq('id', target.row.id);
+    if (error) {
+        console.warn('[activity] workout merge failed:', error.message);
+        return false; // fall through and record it as its own session rather than lose it
+    }
+
+    // Top up to what the merged session is worth. The ledger, not a
+    // recomputation, says what it has already been paid — and
+    // enforce_point_award_cap silently clamps or cancels the insert if the day's
+    // ceiling for this type is already met, so this cannot overpay.
+    const priced = params.pointsFor?.(merged.durationSec / 60, merged.distanceM);
+    if (priced != null && priced > 0) {
+        const { data: earns } = await supabase
+            .from('point_transactions')
+            .select('amount')
+            .eq('session_id', target.row.id)
+            .eq('type', 'earn');
+        const already = (earns ?? []).reduce((sum, t) => sum + (t.amount ?? 0), 0);
+        if (priced > already) {
+            const { error: ptError } = await supabase.from('point_transactions').insert({
+                session_id: target.row.id,
+                amount: priced - already,
+                type: 'earn',
+                source: 'health_sync',
+            });
+            if (ptError) console.warn('[activity] merge top-up failed:', ptError.message);
+            else emitPointsChanged();
+        }
+    }
+
+    console.log(
+        `[activity] ${target.relation === 'contiguous' ? 'stitched split' : 'restated'} `
+        + `${params.type} into ${target.row.id}: ${target.existing.durationSec}s → ${merged.durationSec}s`,
+    );
+    return true;
+}
 
 /**
  * Records a session. Returns the new session's id, or null when nothing was
@@ -211,6 +332,12 @@ export async function logManualSession(params: ManualSessionParams): Promise<str
             console.log(`[activity] skipping health-synced ${params.type} ${params.started_at} — overlaps geofence check-in`);
             return null;
         }
+
+        // Not a new workout if it continues one we already hold — the second half
+        // of a run the user paused, or the same session restated. Absorbed into
+        // that row rather than becoming a second one; returns null for the same
+        // reason the branch above does, so the caller writes no extra snapshot.
+        if (await absorbIntoExistingWorkout(params, ended_at, uid)) return null;
     }
 
     // A manual log must never be created when a higher-trust source (geofence
@@ -292,7 +419,11 @@ export async function logManualSession(params: ManualSessionParams): Promise<str
         .select('id')
         .single();
     if (sessionError) {
-        // Session for this type/day already exists — skip silently
+        // Already recorded — skip silently. For a health-synced workout that now
+        // means an identical start instant (the same session re-synced, or a race
+        // with another device); anything merely NEAR an existing session was
+        // absorbed above rather than reaching here. For manual logs and walking it
+        // still means the day already holds one.
         if (sessionError.code === '23505') return null;
         throw sessionError;
     }

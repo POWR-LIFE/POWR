@@ -54,16 +54,25 @@ const STRENGTH_TYPES: ActivityType[] = ['gym', 'hiit'];
  *  lower of the two while everything above it is identical. */
 const HIIT_MIN_MINUTES = 20;
 
-const DAILY_CAPS: Record<ActivityType, number> = {
+/**
+ * Most a user may earn from one activity type in a day (base + streak).
+ * A type ABSENT here is uncapped — do the work, get the points.
+ *
+ * Product decision 2026-08-07: cardio is uncapped, because a second run is a
+ * second run. What makes that safe is that the scoring ladder pays for effort
+ * (distance/duration), so splitting one workout into three earns three small
+ * awards rather than three full ones. The strength lane keeps its 30: a gym
+ * check-in measures verified PRESENCE rather than work, and gym + hiit must
+ * cap together or a wearable-labelled class would out-earn the check-in it is
+ * deliberately scored identically to (decision 2026-08-05).
+ *
+ * Mirrored by DAILY_CAPS in _shared/points.ts (terra-webhook) and the CASE in
+ * enforce_point_award_cap (client writes). Keep the three in step.
+ */
+const DAILY_CAPS: Partial<Record<ActivityType, number>> = {
   walking:  5,
-  running:  10,
-  cycling:  10,
-  swimming: 10,
   gym:      30,
   hiit:     30,
-  sports:   10,
-  yoga:     6,
-  dance:    8,
   sleep:    5,
 };
 
@@ -488,35 +497,40 @@ Deno.serve(async (req) => {
   // streak — so "already earned today" must count BOTH row types below: the
   // bonus lives in its own 'streak' row so the ledger can show it, and summing
   // only 'earn' rows here let streak rows ride past the cap uncounted.
+  // An absent cap means this type is uncapped (cardio, since 2026-08-07): skip
+  // the day's tally entirely and let every session pay what it scored.
   const cap = DAILY_CAPS[session.type as ActivityType];
+  let remaining = Infinity;
 
-  // 9. Check how much already earned today for THIS activity type specifically.
-  // point_transactions has no type column, so we resolve it via the session join.
-  const { data: todaySessions } = await supabase
-    .from('activity_sessions')
-    .select('id')
-    .eq('user_id', user.id)
-    .eq('type', session.type)
-    .gte('started_at', `${sessionDay}T00:00:00Z`)
-    .lte('started_at', `${sessionDay}T23:59:59Z`);
-
-  const todaySessionIds = (todaySessions ?? []).map((s: { id: string }) => s.id);
-
-  let todayTotal = 0;
-  if (todaySessionIds.length > 0) {
-    const { data: todayEarned } = await supabase
-      .from('point_transactions')
-      .select('amount')
+  if (cap != null) {
+    // 9. Check how much already earned today for THIS activity type specifically.
+    // point_transactions has no type column, so we resolve it via the session join.
+    const { data: todaySessions } = await supabase
+      .from('activity_sessions')
+      .select('id')
       .eq('user_id', user.id)
-      .in('type', ['earn', 'streak'])
-      .in('session_id', todaySessionIds);
-    todayTotal = (todayEarned ?? []).reduce((sum: number, t: { amount: number }) => sum + t.amount, 0);
-  }
+      .eq('type', session.type)
+      .gte('started_at', `${sessionDay}T00:00:00Z`)
+      .lte('started_at', `${sessionDay}T23:59:59Z`);
 
-  const remaining = cap - todayTotal;
+    const todaySessionIds = (todaySessions ?? []).map((s: { id: string }) => s.id);
 
-  if (!isDevTestUser && remaining <= 0) {
-    return new Response(JSON.stringify({ error: 'Daily cap reached', cap }), { status: 422 });
+    let todayTotal = 0;
+    if (todaySessionIds.length > 0) {
+      const { data: todayEarned } = await supabase
+        .from('point_transactions')
+        .select('amount')
+        .eq('user_id', user.id)
+        .in('type', ['earn', 'streak'])
+        .in('session_id', todaySessionIds);
+      todayTotal = (todayEarned ?? []).reduce((sum: number, t: { amount: number }) => sum + t.amount, 0);
+    }
+
+    remaining = cap - todayTotal;
+
+    if (!isDevTestUser && remaining <= 0) {
+      return new Response(JSON.stringify({ error: 'Daily cap reached', cap }), { status: 422 });
+    }
   }
 
   // ⚠ The earn row is BASE ONLY. It used to carry min(base + streakBonus, cap)
@@ -525,7 +539,7 @@ Deno.serve(async (req) => {
   // (gym ×1.2: an 18-pt earn row plus a 3-pt streak row for an intended 18).
   // One value, one row: base here, the whole bonus in the streak row, and the
   // daily cap enforced across the pair.
-  const baseCredited = Math.min(base, isDevTestUser ? cap : remaining);
+  const baseCredited = Math.min(base, isDevTestUser ? (cap ?? Infinity) : remaining);
 
   // 10. Insert point transaction (service role — bypasses RLS)
   const { data: tx, error: txError } = await supabase

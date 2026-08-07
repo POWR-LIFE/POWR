@@ -10,17 +10,23 @@
 // hooks/useHealthSync.ts + lib/api/activity.ts:
 //   - workouts/sleep → verification 'wearable', trust_score 0.85
 //   - walking (daily) → trust_score 0.90
-// and rely on the idx_one_session_per_type_per_day unique index (user_id, type,
-// trust_score, day) for idempotency on Terra re-delivery.
+// Idempotency on Terra re-delivery comes from a unique index: sleep, walking,
+// geofence and manual rows are one-per-type-per-day, while wearable WORKOUTS are
+// keyed on their own start instant (idx_one_wearable_workout_per_start). The day
+// bucket used to cover workouts too, which meant a workout the user paused and
+// restarted arrived as a 23505 and had its first half overwritten — see
+// migration 20260807120000 and findMergeTarget below.
 import { createClient } from '@supabase/supabase-js';
 import {
   calculateBasePoints,
   calculateSleepPoints,
+  DAILY_CAPS,
   stepTierPoints,
   terraActivityToPOWR,
   terraResourceToSource,
   type StrengthThresholds,
 } from '../_shared/points.ts';
+import { mergeWorkouts, relateWorkouts, type WorkoutWindow } from '../_shared/sessionMerge.ts';
 import { verifyTerraSignature } from '../_shared/terraSignature.ts';
 import { DATA_TYPES, extractDeviceFreshness, freshnessPatch } from '../_shared/deviceFreshness.ts';
 import { activityExtras } from '../_shared/terraExtras.ts';
@@ -83,95 +89,244 @@ async function insertSession(supabase, row, points: number): Promise<InsertSessi
 }
 
 /**
- * Heal a partial-first truncation. A watch that syncs MID-workout delivers an
- * in-progress fragment first; insertSession writes it, and when the finished
- * workout arrives the per-type-per-day unique index rejects it — so the
- * fragment stood forever (a 34-minute run stored as 2 minutes, 0 pts) and no
- * re-delivery could ever fix it, because unlike handleDaily's steps merge the
- * activity path had no update-on-conflict. On a 23505 the caller lands here:
- * look up the day's row and, when the incoming delivery is LONGER, rewrite the
- * row as the complete workout and pay the points difference at the new
- * duration.
+ * How much of this activity type's daily ceiling the user has left.
  *
- * A genuinely different second session of the same type that day also lands
- * here and — when not longer than what we hold — stays dropped: one paid
- * session per type per day is deliberate (points caps). Preferring the longest
- * telling of the day keeps that rule while never letting a fragment win.
+ * enforce_point_award_cap applies the same ceiling to client-side writes but
+ * returns early for the service role, so nothing capped THIS path — it did not
+ * have to while a unique index allowed only one wearable workout per type per
+ * day. Since migration 20260807120000 a day can hold two runs, so the ceiling
+ * has to be counted here or the second one gets paid in full.
  *
- * Returns { deltaPoints } when the row was upgraded, else null.
+ * Counts 'earn' AND 'streak' rows, matching claim-points: the bonus lives in its
+ * own row so the ledger can show it, and summing only 'earn' would let it ride
+ * past the cap uncounted.
  */
-async function upgradeTruncatedSession(supabase, {
-  userId, type, start, endedAt, durSec, distanceM, hrAvg, hrMax, caloriesActive, extras, rawName,
-  thresholds,
-}): Promise<{ deltaPoints: number } | null> {
-  const bucketStart = dayStartUTC(start);
+async function dailyHeadroom(supabase, userId: string, type: string, startIso: string): Promise<number> {
+  // Absent from DAILY_CAPS means uncapped — cardio pays for every session done.
+  const cap = DAILY_CAPS[type as keyof typeof DAILY_CAPS];
+  if (cap == null) return Infinity;
+  const bucketStart = dayStartUTC(startIso);
   const bucketEnd = new Date(new Date(bucketStart).getTime() + 24 * 60 * 60 * 1000).toISOString();
-  // The unique index guarantees at most one row in this bucket, so the lookup
-  // mirrors the index exactly and insert-vs-lookup can never disagree.
-  const { data: existing } = await supabase
+
+  const { data: sessions } = await supabase
     .from('activity_sessions')
-    .select('id, duration_sec')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('type', type)
+    .gte('started_at', bucketStart)
+    .lt('started_at', bucketEnd);
+  const ids = (sessions ?? []).map((s) => s.id);
+  if (ids.length === 0) return cap;
+
+  const { data: earned } = await supabase
+    .from('point_transactions')
+    .select('amount')
+    .eq('user_id', userId)
+    .in('type', ['earn', 'streak'])
+    .in('session_id', ids);
+  const already = (earned ?? []).reduce((sum, t) => sum + (t.amount ?? 0), 0);
+  return Math.max(0, cap - already);
+}
+
+function rowToWindow(row): WorkoutWindow {
+  const startMs = new Date(row.started_at).getTime();
+  return {
+    startMs,
+    endMs: row.ended_at ? new Date(row.ended_at).getTime() : startMs + (row.duration_sec ?? 0) * 1000,
+    durationSec: row.duration_sec ?? 0,
+    distanceM: row.distance_m,
+    hrAvg: row.hr_avg,
+  };
+}
+
+/**
+ * Find the workout already on file that this delivery belongs to, if any.
+ *
+ * Two things arrive here that must NOT become two rows: the same activity told
+ * twice (a mid-workout fragment then the finished article, or terra-poll
+ * replaying its 2-day window), and the two halves of a workout the user stopped
+ * and restarted. relateWorkouts decides which from the windows alone; anything
+ * further apart than the contiguity gap is a genuinely separate workout and gets
+ * its own row.
+ *
+ * Deliberately not bucketed by day: a run that ends at 23:55 and resumes at
+ * 00:05 is one run, and the old day bucket is exactly what made split workouts
+ * destroy each other.
+ */
+async function findMergeTarget(supabase, userId: string, type: string, incoming: WorkoutWindow) {
+  // ±1 day bounds the scan onto (user_id, started_at); the relation itself is
+  // decided in JS so the gap rule lives in one tested place.
+  const windowStart = new Date(incoming.startMs - 24 * 60 * 60 * 1000).toISOString();
+  const windowEnd = new Date(incoming.endMs + 24 * 60 * 60 * 1000).toISOString();
+  const { data, error } = await supabase
+    .from('activity_sessions')
+    .select('id, started_at, ended_at, duration_sec, distance_m, hr_avg')
     .eq('user_id', userId)
     .eq('type', type)
     .eq('trust_score', 0.85)
-    .gte('started_at', bucketStart)
-    .lt('started_at', bucketEnd)
-    .maybeSingle();
-  if (!existing || durSec <= (existing.duration_sec ?? 0)) return null;
+    .gte('started_at', windowStart)
+    .lte('started_at', windowEnd)
+    .order('started_at', { ascending: true });
+  if (error) {
+    console.error('[terra-webhook] merge-target lookup failed:', error.message);
+    return null;
+  }
 
-  // Use the ledger as the source of truth for already-awarded points so that
-  // admin retuning of thresholds between the fragment insert and this delivery
-  // cannot cause the delta to over/underpay.
+  let nearest = null;
+  for (const row of data ?? []) {
+    const existing = rowToWindow(row);
+    const relation = relateWorkouts(existing, incoming);
+    if (relation === 'separate') continue;
+    // An overlap is the same activity told twice — settled, stop looking.
+    if (relation === 'same') return { row, existing, relation };
+    const gap = incoming.startMs >= existing.endMs
+      ? incoming.startMs - existing.endMs
+      : existing.startMs - incoming.endMs;
+    if (!nearest || gap < nearest.gap) nearest = { row, existing, relation, gap };
+  }
+  return nearest;
+}
+
+/**
+ * Fold a delivery into the workout it belongs to and pay what the merged shape
+ * is worth, minus what this session has already been paid, minus whatever the
+ * day's ceiling leaves.
+ *
+ * Replaces upgradeTruncatedSession, whose rule was "keep whichever telling is
+ * longer". That healed fragments correctly and destroyed split workouts: the
+ * second half of Sorine's 2026-08-06 10 k overwrote the first half in place,
+ * because to a day-bucketed index the two halves were indistinguishable from one
+ * run delivered twice. mergeWorkouts distinguishes them and sums instead.
+ *
+ * Returns { deltaPoints } when the row changed, else null.
+ */
+async function mergeIntoSession(supabase, {
+  userId, type, target, incoming, hrMax, caloriesActive, extras, rawName, thresholds,
+}): Promise<{ deltaPoints: number } | null> {
+  const { row: sessionRow, existing, relation } = target;
+  const merged = mergeWorkouts(existing, incoming, relation);
+  if (!merged.changed) return null; // a replay of something we already hold
+
+  const patch: Record<string, unknown> = {
+    started_at: new Date(merged.startMs).toISOString(),
+    ended_at: new Date(merged.endMs).toISOString(),
+    duration_sec: merged.durationSec,
+  };
+  if (merged.distanceM != null) patch.distance_m = Math.round(merged.distanceM);
+  if (merged.hrAvg != null) patch.hr_avg = merged.hrAvg;
+  if (rawName) patch.raw_activity_name = rawName;
+  const { error } = await supabase.from('activity_sessions').update(patch).eq('id', sessionRow.id);
+  if (error) {
+    console.error('[terra-webhook] session merge failed:', error.message);
+    return null;
+  }
+
+  // The ledger, not a recomputation, is the source of truth for what this
+  // session has already been paid: an admin retuning thresholds between the two
+  // deliveries must not make the delta over- or underpay.
   const { data: txRows, error: txReadError } = await supabase
     .from('point_transactions')
     .select('amount')
-    .eq('session_id', existing.id)
+    .eq('session_id', sessionRow.id)
     .eq('type', 'earn');
   if (txReadError) {
     console.error('[terra-webhook] ledger read failed:', txReadError.message);
-    return null;
+    return { deltaPoints: 0 };
   }
   const oldPoints = (txRows ?? []).reduce((sum, r) => sum + (r.amount ?? 0), 0);
-  const newPoints = calculateBasePoints(type, durSec / 60, thresholds);
+  // Priced on the MERGED shape: two halves of one run are one run's distance.
+  const newPoints = calculateBasePoints(type, merged.durationSec / 60, thresholds, merged.distanceM);
+  const headroom = await dailyHeadroom(supabase, userId, type, patch.started_at as string);
+  const deltaPoints = Math.min(Math.max(0, newPoints - oldPoints), headroom);
 
-  // Missing metrics on the incoming delivery keep whatever the fragment had —
-  // never null out a reading we already learned.
-  const patch: Record<string, unknown> = { started_at: start, ended_at: endedAt, duration_sec: durSec };
-  if (distanceM != null) patch.distance_m = Math.round(distanceM);
-  if (hrAvg != null) patch.hr_avg = Math.round(hrAvg);
-  if (rawName) patch.raw_activity_name = rawName;
-  const { error } = await supabase.from('activity_sessions').update(patch).eq('id', existing.id);
-  if (error) {
-    console.error('[terra-webhook] session upgrade failed:', error.message);
-    return null;
-  }
-
-  const deltaPoints = Math.max(0, newPoints - oldPoints);
   if (deltaPoints > 0) {
     const { error: txError } = await supabase.from('point_transactions').insert({
-      user_id: userId, session_id: existing.id, amount: deltaPoints, type: 'earn', source: 'health_sync',
+      user_id: userId, session_id: sessionRow.id, amount: deltaPoints, type: 'earn', source: 'health_sync',
     });
     if (txError) {
       console.error('[terra-webhook] delta points insert failed:', txError.message);
-      return null;
+      return { deltaPoints: 0 };
     }
   }
 
-  const snapPatch: Record<string, unknown> = { duration_sec: durSec };
-  if (distanceM != null) snapPatch.distance_m = Math.round(distanceM);
-  if (hrAvg != null) snapPatch.hr_avg = Math.round(hrAvg);
-  if (hrMax != null) snapPatch.hr_max = Math.round(hrMax);
-  if (caloriesActive != null) snapPatch.calories_active = caloriesActive;
-  if (extras != null) snapPatch.extras = extras;
-  const { error: snapError } = await supabase.from('health_snapshots').update(snapPatch)
-    .eq('session_id', existing.id)
-    .eq('activity_type', type);
-  if (snapError) {
-    console.error('[terra-webhook] snapshot upgrade failed:', snapError.message);
+  await mergeSnapshot(supabase, {
+    sessionId: sessionRow.id, type, relation,
+    durationSec: merged.durationSec,
+    distanceM: merged.distanceM,
+    hrAvg: merged.hrAvg,
+    hrMax, caloriesActive, extras,
+  });
+
+  console.log(
+    `[terra-webhook] ${relation === 'contiguous' ? 'stitched split' : 'healed'} ${type}: `
+    + `${existing.durationSec}s → ${merged.durationSec}s (+${deltaPoints} pts)`,
+  );
+  return { deltaPoints };
+}
+
+/**
+ * Bring the session's health snapshot up to the merged shape. A stitched
+ * workout accumulates (two halves burned two halves' worth of calories and
+ * steps); a healed fragment is superseded by the fuller reading.
+ */
+async function mergeSnapshot(supabase, {
+  sessionId, type, relation, durationSec, distanceM, hrAvg, hrMax, caloriesActive, extras,
+}): Promise<void> {
+  // Deliberately limit(1) rather than maybeSingle: a session that has been
+  // through both the native sync and Terra can carry two snapshot rows, and a
+  // read that errors on the second one would silently drop the merge.
+  const { data: snap } = await supabase
+    .from('health_snapshots')
+    .select('id, hr_max, calories_active, extras')
+    .eq('session_id', sessionId)
+    .eq('activity_type', type)
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (!snap) return;
+
+  const patch: Record<string, unknown> = { duration_sec: durationSec };
+  if (distanceM != null) patch.distance_m = Math.round(distanceM);
+  if (hrAvg != null) patch.hr_avg = hrAvg;
+
+  const pick = (a: number | null | undefined, b: number | null | undefined) => {
+    if (a == null && b == null) return null;
+    return relation === 'contiguous' ? (a ?? 0) + (b ?? 0) : Math.max(a ?? 0, b ?? 0);
+  };
+  // hr_max is a peak either way — the hardest moment of a split workout is still
+  // the hardest moment, so it maxes even when everything else sums.
+  const nextHrMax = maxOf(snap?.hr_max, hrMax);
+  if (nextHrMax != null) patch.hr_max = Math.round(nextHrMax);
+  const nextCalories = pick(snap?.calories_active, caloriesActive);
+  if (nextCalories != null) patch.calories_active = Math.round(nextCalories);
+
+  if (extras != null || snap?.extras != null) {
+    const prev = snap?.extras ?? {};
+    const next = extras ?? {};
+    patch.extras = {
+      ...prev,
+      ...next,
+      ...(pick(prev.steps, next.steps) != null ? { steps: Math.round(pick(prev.steps, next.steps)!) } : {}),
+      ...(pick(prev.elevation_gain_m, next.elevation_gain_m) != null
+        ? { elevation_gain_m: Math.round(pick(prev.elevation_gain_m, next.elevation_gain_m)!) } : {}),
+      ...(pick(prev.elevation_loss_m, next.elevation_loss_m) != null
+        ? { elevation_loss_m: Math.round(pick(prev.elevation_loss_m, next.elevation_loss_m)!) } : {}),
+      ...(maxOf(prev.hr_min, next.hr_min) != null ? { hr_min: Math.round(minOf(prev.hr_min, next.hr_min)!) } : {}),
+    };
   }
 
-  console.log(`[terra-webhook] upgraded truncated ${type}: ${existing.duration_sec}s → ${durSec}s (+${deltaPoints} pts)`);
-  return { deltaPoints };
+  const { error } = await supabase.from('health_snapshots').update(patch).eq('id', snap.id);
+  if (error) console.error('[terra-webhook] snapshot merge failed:', error.message);
+}
+
+function maxOf(a: number | null | undefined, b: number | null | undefined): number | null {
+  if (a == null && b == null) return null;
+  return Math.max(a ?? -Infinity, b ?? -Infinity);
+}
+
+function minOf(a: number | null | undefined, b: number | null | undefined): number | null {
+  if (a == null && b == null) return null;
+  return Math.min(a ?? Infinity, b ?? Infinity);
 }
 
 /** Marks today as an active streak day for the user. Mirrors updateStreakForToday in lib/api/activity.ts. */
@@ -440,7 +595,7 @@ async function handleActivity(supabase, payload): Promise<void> {
     const caloriesActive = a.calories_data?.total_burned_calories != null
       ? Math.round(a.calories_data.total_burned_calories) : null;
     const rawName = (meta.name ?? '').trim().slice(0, 80) || null;
-    const points = calculateBasePoints(type, durMin, thresholds);
+    const points = calculateBasePoints(type, durMin, thresholds, distanceM);
     const extras = activityExtras(a);
 
     // Gym geofence wins: if this wearable workout overlaps a geofence gym check-in,
@@ -486,6 +641,40 @@ async function handleActivity(supabase, payload): Promise<void> {
     }
 
     const endedAt = end ? end : new Date(new Date(start).getTime() + durSec * 1000).toISOString();
+    const incoming: WorkoutWindow = {
+      startMs, endMs, durationSec: durSec, distanceM, hrAvg,
+    };
+
+    // Does this delivery belong to a workout we already hold — the same activity
+    // told twice, or the other half of one the user stopped and restarted? Ask
+    // BEFORE inserting: a second half carries a different start_time, so the
+    // unique index would happily let it become a second row, and the day would
+    // read as two short runs instead of the one long one it was.
+    const mergeInto = async (target) => {
+      const merged = await mergeIntoSession(supabase, {
+        userId, type, target, incoming, hrMax, caloriesActive, extras, rawName, thresholds,
+      });
+      if (!merged) return;
+      // The window grew — a manual log it now overlaps is superseded too.
+      await supersedeManualOverlaps(supabase, userId, type,
+        Math.min(startMs, target.existing.startMs), Math.max(endMs, target.existing.endMs));
+      if (merged.deltaPoints > 0) {
+        awardedCount++;
+        awardedPoints += merged.deltaPoints;
+        awardedLabel = (meta.name ?? '').trim() || type;
+      }
+    };
+
+    const target = await findMergeTarget(supabase, userId, type, incoming);
+    if (target) {
+      await mergeInto(target);
+      continue;
+    }
+
+    // A genuinely separate workout. It gets its own row — but the day's ceiling
+    // still applies, so a second run does not pay a second time.
+    const headroom = await dailyHeadroom(supabase, userId, type, start);
+    const award = Math.min(points, headroom);
     const result = await insertSession(supabase, {
       user_id: userId,
       type,
@@ -498,7 +687,7 @@ async function handleActivity(supabase, payload): Promise<void> {
       trust_score: 0.85,
       device_id: null,
       raw_activity_name: rawName,
-    }, points);
+    }, award);
 
     if ('id' in result) {
       const inserted = result.id;
@@ -519,30 +708,21 @@ async function handleActivity(supabase, payload): Promise<void> {
       });
       if (isToday(start)) await bumpStreak(supabase, userId);
 
-      if (points > 0) {
+      if (points > 0 && award === 0) {
+        console.log(`[terra-webhook] recorded ${type} (${Math.round(durMin)}m) unpaid — ${type} daily cap already met`);
+      }
+      if (award > 0) {
         awardedCount++;
-        awardedPoints += points;
+        awardedPoints += award;
         // Prefer the human name Terra sent ("Spin", "Functional Fitness"),
         // fall back to the mapped POWR type. Only meaningful when count = 1.
         awardedLabel = (meta.name ?? '').trim() || type;
       }
     } else if ('conflict' in result) {
-      // 23505: the day already holds a wearable session of this type — either
-      // Terra re-delivering the same workout, or the complete version of a
-      // fragment written mid-workout. If it's longer, heal the row.
-      const upgraded = await upgradeTruncatedSession(supabase, {
-        userId, type, start, endedAt, durSec, distanceM, hrAvg, hrMax, caloriesActive, extras, rawName,
-        thresholds,
-      });
-      if (upgraded) {
-        // The window grew — a manual log it now overlaps is superseded too.
-        await supersedeManualOverlaps(supabase, userId, type, startMs, endMs);
-        if (upgraded.deltaPoints > 0) {
-          awardedCount++;
-          awardedPoints += upgraded.deltaPoints;
-          awardedLabel = (meta.name ?? '').trim() || type;
-        }
-      }
+      // Lost the race to a concurrent delivery of this same activity (identical
+      // start_time). Re-look and fold into whatever landed first.
+      const raced = await findMergeTarget(supabase, userId, type, incoming);
+      if (raced) await mergeInto(raced);
     }
   }
 

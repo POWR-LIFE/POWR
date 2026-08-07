@@ -13,6 +13,7 @@ import {
   terraResourceToSource,
   calculateBasePoints,
   calculateSleepPoints,
+  DAILY_CAPS,
   stepTierPoints,
 } from '@/supabase/functions/_shared/points';
 import {
@@ -98,10 +99,74 @@ describe('terraResourceToSource', () => {
 
 describe('point calculators', () => {
   it('awards base points only above each type minimum duration', () => {
-    expect(calculateBasePoints('running', 10)).toBe(0);   // < 15 min
-    expect(calculateBasePoints('running', 30)).toBe(10);
+    expect(calculateBasePoints('running', 10)).toBe(0);   // < 15 min, no distance
+    expect(calculateBasePoints('running', 30)).toBe(8);
     expect(calculateBasePoints('yoga', 25)).toBe(3);
     expect(calculateBasePoints('swimming', 20)).toBe(7);
+  });
+
+  // Cardio used to pay a FLAT rate off duration alone — any run over 15 minutes
+  // was worth 10, the same as a 10 k. That was invisible while the daily cap was
+  // also 10; uncapping cardio (2026-08-07) made it the difference between paying
+  // for effort and paying for the number of times you pressed start.
+  describe('cardio scores on effort, not per session', () => {
+    it('pays a 10 k more than a jog, however long each took', () => {
+      expect(calculateBasePoints('running', 55, {}, 10_000)).toBe(10);
+      expect(calculateBasePoints('running', 16, {}, 2_100)).toBe(5);
+    });
+
+    it('leaves splitting a workout up strictly worse than finishing it', () => {
+      // The 2026-08-06 incident, priced: one 10 km run vs the same distance
+      // logged as three separate legs. Uncapped and flat this paid 30 vs 10.
+      const whole = calculateBasePoints('running', 57, {}, 10_000);
+      const legs = [3_400, 3_300, 3_300]
+        .map(d => calculateBasePoints('running', 19, {}, d))
+        .reduce((a, b) => a + b, 0);
+      expect(whole).toBe(10);
+      expect(legs).toBe(18);
+      // Still more than the whole — three legs IS three efforts — but nothing
+      // like the 3× a flat rate paid, and each leg is scored on its own merit.
+      expect(legs / whole).toBeLessThan(2);
+    });
+
+    it('scores on distance when a session is short but fast', () => {
+      // 12 minutes is under every duration rung; 3.1 km is not.
+      expect(calculateBasePoints('running', 12, {}, 3_100)).toBe(6);
+    });
+
+    it('falls back to duration when a provider reports no distance', () => {
+      expect(calculateBasePoints('cycling', 95)).toBe(10);
+      expect(calculateBasePoints('cycling', 95, {}, null)).toBe(10);
+    });
+
+    it('matches the ladder claim-points uses for the same session', () => {
+      expect(calculateBasePoints('cycling', 30, {}, 12_000)).toBe(6);
+      expect(calculateBasePoints('swimming', 45, {}, 1_200)).toBe(9);
+      expect(calculateBasePoints('sports', 90)).toBe(10);
+      expect(calculateBasePoints('dance', 45)).toBe(7);
+      expect(calculateBasePoints('yoga', 60)).toBe(6);
+    });
+  });
+
+  describe('daily caps', () => {
+    it('caps only the strength lane and the daily aggregates', () => {
+      expect(DAILY_CAPS.gym).toBe(30);
+      expect(DAILY_CAPS.hiit).toBe(30);   // must equal gym — strength lane parity
+      expect(DAILY_CAPS.walking).toBe(5);
+      expect(DAILY_CAPS.sleep).toBe(5);
+    });
+
+    it('leaves cardio uncapped — absent means unlimited', () => {
+      for (const type of ['running', 'cycling', 'swimming', 'sports', 'yoga', 'dance'] as const) {
+        expect(DAILY_CAPS[type]).toBeUndefined();
+      }
+    });
+
+    it('never caps a type below what one session of it can score', () => {
+      // A ceiling under the top rung would silently shave every full effort.
+      expect(DAILY_CAPS.gym!).toBeGreaterThanOrEqual(calculateBasePoints('gym', 120));
+      expect(DAILY_CAPS.hiit!).toBeGreaterThanOrEqual(calculateBasePoints('hiit', 120));
+    });
   });
 
   describe('strength lane (gym + hiit score identically)', () => {
