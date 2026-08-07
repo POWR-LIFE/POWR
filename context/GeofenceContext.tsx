@@ -6,6 +6,7 @@ import React, { createContext, useCallback, useContext, useEffect, useRef, useSt
 import { AppState, AppStateStatus, Platform } from 'react-native';
 import { ensureFreshSession } from '@/lib/authFresh';
 import { bgInsert, bgRpc, bgSelect, bgUpdate, readBackgroundAuth } from '@/lib/backgroundRest';
+import { noteTask } from '@/lib/crashHandler';
 import { withNetworkTimeout } from '@/lib/networkTimeout';
 import { supabase } from '@/lib/supabase';
 import { getGymDwellMinutes, getGymUpgradeMinutes, primeGymDwellMinutes } from '@/lib/gymDwellConfig';
@@ -2701,6 +2702,9 @@ export async function registerGeofenceBootRearm(): Promise<void> {
 
 // Foreground-service location stream (primary closed-app detector on Android).
 TaskManager.defineTask(LOCATION_TRACKING_TASK, async ({ data, error }) => {
+  // Names the executor on any crash report filed from this wake — a headless
+  // stack has no route to place it. Pure assignment, no throw surface.
+  noteTask('POWR_LOCATION_TRACKING');
   if (error) {
     console.error('[Geofence] Location task error:', error);
     return;
@@ -2735,6 +2739,7 @@ TaskManager.defineTask(LOCATION_TRACKING_TASK, async ({ data, error }) => {
 
 // Boot re-arm: re-issues monitoring from cached circles after a device restart.
 TaskManager.defineTask(GEOFENCE_REARM_TASK, async () => {
+  noteTask('POWR_GEOFENCE_BOOT_REARM');
   try {
     await flushPendingClaims();
     await rearmGeofencingFromCache();
@@ -2752,6 +2757,7 @@ TaskManager.defineTask(GEOFENCE_REARM_TASK, async () => {
 // must drop THIS event, never abort the executor with an unhandled rejection
 // (2026-08-05 crash-hunt findings #3/#5).
 TaskManager.defineTask(GEOFENCE_TASK_NAME, async ({ data, error }) => {
+  noteTask('GEOFENCE_CHECK_IN');
   try {
     if (error) {
       console.error('[Geofence] Task error:', error);

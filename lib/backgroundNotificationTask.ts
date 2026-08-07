@@ -21,6 +21,7 @@
 
 import * as Notifications from 'expo-notifications';
 import * as TaskManager from 'expo-task-manager';
+import { noteTask, reportHandled } from '@/lib/crashHandler';
 
 export const BACKGROUND_NOTIFICATION_TASK = 'POWR_BACKGROUND_NOTIFICATION';
 
@@ -96,6 +97,10 @@ TaskManager.defineTask(BACKGROUND_NOTIFICATION_TASK, async ({ data, error }) => 
 
     const stage = payload.stage === 'upgrade' ? 'upgrade' : 'dwell';
     console.log(`[BackgroundNotification] Visit check (${stage}) — verifying presence.`);
+    // Names the executor on any crash report filed from here. A stack from a
+    // headless wake has no route to place it, and this wake is exactly where
+    // the 30- and 40-minute-mark crashes were reported from.
+    noteTask(`POWR_BACKGROUND_NOTIFICATION:${stage}`);
 
     // AUTH POLICY FOR WAKES (hard-won, twice):
     //  • Ticketed nudge (payload.nonce, beacon ≥v13): the wake does ZERO auth
@@ -206,6 +211,11 @@ TaskManager.defineTask(BACKGROUND_NOTIFICATION_TASK, async ({ data, error }) => 
     await runVisitCheck(stage, payload.visit_id, payload.nonce);
   } catch (err) {
     console.warn('[BackgroundNotification] visit check failed:', err);
+    // Captured explicitly because the console.warn above cannot be: only
+    // console.error feeds RN's reporting pipeline, and TaskManager's own
+    // console.error path flattens the original stack into a synthetic one.
+    // Synchronous, returns void, adds no await to the wake.
+    reportHandled(err, { task: 'POWR_BACKGROUND_NOTIFICATION' });
   } finally {
     // Hold the task open until the self-heal lands — including the throw path,
     // where a disposable headless context would otherwise be torn down while

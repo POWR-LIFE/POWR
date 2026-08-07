@@ -8,7 +8,7 @@ import {
   Outfit_700Bold,
   useFonts,
 } from '@expo-google-fonts/outfit';
-import { Stack, usePathname } from 'expo-router';
+import { Stack, usePathname, type ErrorBoundaryProps } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import * as WebBrowser from 'expo-web-browser';
@@ -23,6 +23,8 @@ import { NotificationsProvider } from '@/context/NotificationsContext';
 import { ThemeProvider as AppThemeProvider, useAppTheme } from '@/context/ThemeContext';
 import { queryClient } from '@/lib/queryClient';
 import { startAnalytics, trackScreen, trackTouch } from '@/lib/analytics';
+import CrashRecoveryScreen from '@/components/CrashRecoveryScreen';
+import { flushCrashReports, noteRoute, reportHandled } from '@/lib/crashHandler';
 import { registerWalkingSync } from '@/lib/health/walkingSync';
 import { ensureAndroidChannels } from '@/lib/notifications';
 import { useOtaUpdatePrompt } from '@/lib/otaUpdates';
@@ -107,9 +109,19 @@ function RootLayoutNav() {
   const pathname = usePathname();
   useEffect(() => {
     startAnalytics();
+    // Send anything earlier launches left spooled — including the reports from
+    // the launch that crashed, which by definition never got to send them
+    // itself. Delayed so it never competes with first paint or the auth
+    // bootstrap; this is diagnostics, and diagnostics go last.
+    const t = setTimeout(() => flushCrashReports(), 4000);
+    return () => clearTimeout(t);
   }, []);
   useEffect(() => {
     if (pathname) trackScreen(pathname);
+    // Gives a crash report the screen it happened on, and tells the reporter a
+    // React tree exists at all — which is how a headless wake is told apart
+    // from a backgrounded app.
+    noteRoute(pathname ?? null);
   }, [pathname]);
 
   // Offer a restart when an OTA update is ready (launch + foreground checks).
@@ -212,4 +224,34 @@ export default function RootLayout() {
       </AuthProvider>
     </QueryClientProvider>
   );
+}
+
+/**
+ * expo-router destructures this off the route module and wraps the default
+ * export in its own Try boundary — in production as well as development — so it
+ * sits above QueryClientProvider and catches a render error from any provider
+ * below it. Try also hides the splash screen itself, which matters because
+ * RootLayoutNav returns null until the fonts load and would otherwise leave the
+ * splash up forever.
+ *
+ * WHY THIS IS NOT OPTIONAL. lib/crashHandler stops an uncaught render error
+ * aborting the process, but React has already committed {element: null} by then
+ * — without a fallback the member would be left on a permanently blank screen,
+ * which is a worse outcome than the crash it replaced. Suppressing the abort and
+ * providing this screen are two halves of one change.
+ *
+ * The report is filed from an effect rather than during render because RN
+ * stamps error.componentStack at commit time, and it is the component stack —
+ * not the minified stack — that usually names what threw.
+ */
+export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
+  useEffect(() => {
+    // React also reports a boundary-caught error through onCaughtError, which
+    // the decorator sees — so this is a second sighting of one bug, not a second
+    // bug. Both spellings of the message are normalised to the same fingerprint,
+    // so they collapse into one row with a repeat count rather than two rows.
+    reportHandled(error, undefined, 'error_boundary');
+  }, [error]);
+
+  return <CrashRecoveryScreen error={error} onRetry={retry} />;
 }

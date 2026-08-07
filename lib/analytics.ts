@@ -83,6 +83,18 @@ let started = false;
  */
 const sessionId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 
+// Published as a global so lib/crashReporter can stamp a crash report with the
+// launch it happened in, with ZERO import. Importing analytics from the reporter
+// would drag this module's AppState listener and 30s flush timer into every
+// headless boot that currently never loads it. Headlessly the global is simply
+// absent and the report carries no session_id — which is correct, because there
+// is no screen trail to join it to.
+try {
+  (globalThis as Record<string, unknown>).__POWR_SESSION__ = sessionId;
+} catch {
+  /* the join is a convenience; analytics does not depend on it */
+}
+
 const appVersion = (() => {
   try {
     // Expo Go reports no native version; fall back to the manifest so QA builds
@@ -369,6 +381,11 @@ export function tracked<A extends unknown[], R>(
     }
     return handler(...args);
   };
+}
+
+/** The id crash reports and screen views share, for callers that can import. */
+export function getAnalyticsSessionId(): string {
+  return sessionId;
 }
 
 /** Exposed for tests. */

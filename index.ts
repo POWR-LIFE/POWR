@@ -1,3 +1,11 @@
+// Arms the JS crash handler before anything else in the bundle can throw.
+// Everything './lib/headlessTasks' pulls in (GeofenceContext -> AsyncStorage,
+// expo-location, expo-task-manager, supabase) initialises inside Metro's
+// guardedLoadModule, whose catch reports through whichever global handler is
+// installed at that instant — and in a release build RN's own handler turns
+// that report into a hard native abort. See lib/crashHandler.ts.
+import './lib/crashHandler';
+
 // The app's real entry (package.json "main").
 //
 // The side-effect import below MUST come before 'expo-router/entry' and MUST
