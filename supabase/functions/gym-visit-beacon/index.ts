@@ -375,7 +375,23 @@ Deno.serve(async (req: Request) => {
         const outcome = platform === 'android'
           ? await sendFcmDataMessage(token, { ...refreshPayload, body: JSON.stringify(refreshPayload) }, 15 * 60)
           : await sendApnsBackgroundPush(token, refreshPayload, 15 * 60);
-        if (outcome.unavailable) { platformDown[platform] = true; continue; } // no credentials — that platform is inert
+        if (outcome.unavailable) {
+          // Leave a trace, once per platform per tick. Silently skipping made
+          // "this platform has no credentials" indistinguishable from "no
+          // targets matched" in push_send_log — and that log is the whole
+          // monitoring plan for this pass. An absence that means two different
+          // things is not evidence of either.
+          platformDown[platform] = true;
+          await admin.from('push_send_log').insert({
+            user_id: userId,
+            type: 'fence_refresh',
+            expo_push_token: token,
+            status: 'skipped',
+            skip_reason: `${platform}_credentials_unavailable`,
+            error: outcome.error ?? null,
+          }).then(({ error }) => { if (error) console.error('[gym-visit-beacon] fence_refresh skip log failed', error); });
+          continue;
+        }
         await admin.from('push_send_log').insert({
           user_id: userId,
           type: 'fence_refresh',
