@@ -188,7 +188,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
      * this check is here because the getDeviceId call sits in front of it.
      */
     const refreshWakeTicket = async (userId: string) => {
-        if (AppState.currentState === 'background') return;
+        if (AppState.currentState !== 'active') return;
         try {
             await ensureDeviceWakeTicket(userId, await getDeviceId(), Platform.OS);
         } catch {
