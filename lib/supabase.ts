@@ -14,14 +14,61 @@ if (!process.env.EXPO_PUBLIC_SUPABASE_URL || !process.env.EXPO_PUBLIC_SUPABASE_A
 }
 
 /**
+ * AFTER_FIRST_UNLOCK, not the default.
+ *
+ * expo-secure-store defaults to WHEN_UNLOCKED (kSecAttrAccessibleWhenUnlocked),
+ * which means the token is READABLE ONLY WHILE THE PHONE IS UNLOCKED. Every
+ * background wake on a locked device therefore failed to read the session with
+ * iOS Keychain errSecInteractionNotAllowed — surfacing as:
+ *
+ *   Calling the 'getValueWithKeyAsync' function has failed
+ *   → Caused by: User interaction is not allowed.
+ *
+ * Captured on a real device 2026-08-07 at the 30- and 40-minute dwell marks,
+ * with the phone locked in a pocket. It is the cause of the long-standing
+ * "locked iOS can miss check-in", it is why ensureFreshSession kept failing on
+ * wakes, and — via the breadcrumb it left behind — it was the trigger for the
+ * SIGABRT (see lib/authFresh.ts's import comment).
+ *
+ * AFTER_FIRST_UNLOCK stays readable in the background once the user has
+ * unlocked the device at least once since boot, which is what a
+ * geofencing app needs and is the standard setting for one.
+ */
+const KEYCHAIN = { keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK } as const;
+
+/** Set once the stored token has been rewritten under the new accessibility.
+ *  Per launch, not persisted: the flag costs one Keychain write on the first
+ *  successful read of each launch, and being wrong about it is far cheaper than
+ *  a stale flag leaving a device permanently unable to work in the background. */
+let accessibilityUpgraded = false;
+
+/**
  * Adapter that stores auth tokens in the device's encrypted keychain/keystore
  * instead of unencrypted AsyncStorage. Prevents token extraction on
  * rooted/jailbroken devices.
  */
 const secureStoreAdapter = {
-    getItem: (key: string) => SecureStore.getItemAsync(key),
-    setItem: (key: string, value: string) => SecureStore.setItemAsync(key, value),
-    removeItem: (key: string) => SecureStore.deleteItemAsync(key),
+    getItem: async (key: string) => {
+        const value = await SecureStore.getItemAsync(key, KEYCHAIN);
+
+        // HEAL EXISTING INSTALLS. iOS applies the accessibility attribute when
+        // the item is WRITTEN, so setting the option above only helps tokens
+        // saved from now on — every device already signed in would keep its
+        // WHEN_UNLOCKED item and stay broken in the background forever. A read
+        // that returned a value proves the device is unlocked right now, which
+        // is exactly the moment the value can be rewritten. Fire-and-forget so
+        // it never delays a sign-in, and reset the flag on failure so the next
+        // read tries again.
+        if (value != null && !accessibilityUpgraded) {
+            accessibilityUpgraded = true;
+            void SecureStore.setItemAsync(key, value, KEYCHAIN).catch(() => {
+                accessibilityUpgraded = false;
+            });
+        }
+        return value;
+    },
+    setItem: (key: string, value: string) => SecureStore.setItemAsync(key, value, KEYCHAIN),
+    removeItem: (key: string) => SecureStore.deleteItemAsync(key, KEYCHAIN),
 };
 
 /**

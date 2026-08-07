@@ -35,6 +35,16 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Session } from '@supabase/supabase-js';
+// STATIC, and it must stay that way. This was `await import('react-native')`
+// inside flushBreadcrumbs(), and it was the SIGABRT that cost us 2026-08-05/06:
+// Metro compiles a dynamic import() to asyncRequire -> importAll, and importAll
+// COPIES EVERY PROPERTY off the module — firing every deprecated getter on React
+// Native's index. One of them is PushNotificationIOS, whose module scope runs
+// `new NativeEventEmitter(NativePushNotificationManagerIOS)`; that native module
+// is absent from an Expo build, so the argument is null, and the resulting
+// Invariant Violation is an uncaught fatal -> RCTFatal -> abort.
+// Never dynamically import 'react-native'. A named static import costs nothing.
+import { Platform } from 'react-native';
 import { withNetworkTimeout } from '@/lib/networkTimeout';
 import { AUTH_STORAGE_KEY, authStorage, supabase } from '@/lib/supabase';
 
@@ -268,7 +278,6 @@ async function flushBreadcrumbs(): Promise<void> {
     if (!raw) return;
     const list = JSON.parse(raw);
     if (!Array.isArray(list) || list.length === 0) return;
-    const { Platform } = await import('react-native');
     const { error } = await withNetworkTimeout(supabase.rpc('log_geofence_region_event', {
       p_region_id: 'auth',
       p_event:     'auth_stale',
