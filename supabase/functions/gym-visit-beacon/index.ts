@@ -298,15 +298,30 @@ Deno.serve(async (req: Request) => {
   // app. It also carries the zombie-session reconcile (#329).
   const FENCE_REFRESH_ENABLED = true;
   if (FENCE_REFRESH_ENABLED) {
-    const FAST_USER_IDS = new Set(['234d49f3-d189-44b1-a874-063e724e4380']); // Sony bench cadence
+    // ⚠ BOTH PLATFORMS since 2026-08-07. This pass was android-only, and that
+    // asymmetry cost a field test: iOS armed 20 regions at 08:43:06 (POWR among
+    // them, initial state correctly reported as outside), the user walked back
+    // in at ~08:54 — Android saw the crossing that second — and iOS delivered
+    // NOTHING for 27 minutes until the app was opened by hand. Android survived
+    // the same mute fence layer because a ping every 5 minutes woke it to ask
+    // "am I in a gym right now?". iOS had no such backstop, so a quiet fence
+    // layer there is simply an invisible dead end.
+    //
+    // Root cause of the iOS fence silence is still unknown, and this does not
+    // pretend to fix it — it makes iOS entry survive it, which is the same bet
+    // that already works on Android.
+    const FAST_USER_IDS = new Set([
+      '234d49f3-d189-44b1-a874-063e724e4380', // Sony bench   (android)
+      'a2585666-5b7a-4622-8e43-6bd4fb8013f0', // iPhone bench (ios)
+    ]);
     const FAST_INTERVAL_MIN = 5;    // bench cadence while the sweep is being proven
     const FLEET_INTERVAL_MIN = 0;   // 0 = fleet OFF; only FAST_USER_IDS are pinged
     const TOKEN_FRESH_DAYS = 14; // dormant devices aren't worth the wake budget
 
     const { data: refreshTargets, error: refreshScanErr } = await admin
       .from('user_push_tokens')
-      .select('user_id, device_token')
-      .eq('platform', 'android')
+      .select('user_id, device_token, platform')
+      .in('platform', ['android', 'ios'])
       .not('device_token', 'is', null)
       .gte('updated_at', new Date(Date.now() - TOKEN_FRESH_DAYS * 86_400_000).toISOString())
       .order('updated_at', { ascending: false })
@@ -336,30 +351,37 @@ Deno.serve(async (req: Request) => {
     const tokensByUser = new Map();
     for (const t of refreshTargets ?? []) {
       const arr = tokensByUser.get(t.user_id) ?? [];
-      if (!arr.includes(t.device_token)) arr.push(t.device_token);
+      if (!arr.some((e) => e.token === t.device_token)) arr.push({ token: t.device_token, platform: t.platform });
       tokensByUser.set(t.user_id, arr);
     }
 
     const refreshPayload = { type: 'gym_visit_check', stage: 'dwell', nonce: 'fence-refresh' };
-    let fcmDown = false;
-    for (const [userId, tokens] of tokensByUser) {
-      if (fcmDown) break;
+    // Per-platform, so a missing credential on one side cannot silence the
+    // other — the whole point of this change is that iOS stops depending on
+    // Android's luck.
+    const platformDown = { android: false, ios: false };
+    for (const [userId, entries] of tokensByUser) {
       if (!FAST_USER_IDS.has(userId) && FLEET_INTERVAL_MIN <= 0) continue; // fleet off
       const intervalMin = FAST_USER_IDS.has(userId) ? FAST_INTERVAL_MIN : FLEET_INTERVAL_MIN;
       if (Date.now() - (lastPingByUser.get(userId) ?? 0) < intervalMin * 60_000) continue;
 
-      for (const token of tokens) {
-        const outcome = await sendFcmDataMessage(token, {
-          ...refreshPayload,
-          body: JSON.stringify(refreshPayload),
-        }, 15 * 60);
-        if (outcome.unavailable) { fcmDown = true; break; } // no FCM credentials — pass is inert
+      for (const { token, platform } of entries) {
+        if (platformDown[platform]) continue;
+        // iOS takes the documented background-push shape (apns-push-type:
+        // background, priority 5) — the same call the dwell/upgrade nudges
+        // already use successfully on this device. Android keeps the mirrored
+        // `body` key because Expo's envelope nests the payload there and the
+        // client's extractData accepts either shape.
+        const outcome = platform === 'android'
+          ? await sendFcmDataMessage(token, { ...refreshPayload, body: JSON.stringify(refreshPayload) }, 15 * 60)
+          : await sendApnsBackgroundPush(token, refreshPayload, 15 * 60);
+        if (outcome.unavailable) { platformDown[platform] = true; continue; } // no credentials — that platform is inert
         await admin.from('push_send_log').insert({
           user_id: userId,
           type: 'fence_refresh',
           expo_push_token: token,
           status: outcome.ok ? 'accepted' : 'rejected',
-          ticket_id: outcome.messageName ?? null,
+          ticket_id: outcome.messageName ?? outcome.apnsId ?? null,
           error: outcome.ok ? null : outcome.error,
         }).then(({ error }) => { if (error) console.error('[gym-visit-beacon] fence_refresh log insert failed', error); });
         if (outcome.ok) stats.fence_refresh++;
