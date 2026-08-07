@@ -285,7 +285,7 @@ export async function readDeviceTicket(): Promise<DeviceTicket | null> {
  * next real foreground pass mints; nothing is lost by waiting for one.
  */
 export async function ensureDeviceWakeTicket(userId: string, deviceId: string, platform?: string): Promise<void> {
-  if (AppState.currentState === 'background') return;
+  if (AppState.currentState !== 'active') return;
 
   try {
     const existing = await readDeviceTicket();
