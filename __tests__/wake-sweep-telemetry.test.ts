@@ -215,4 +215,16 @@ describe('presence sweep telemetry', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ outcome: 'handoff', nearest_m: null, nearest_id: null });
   });
+
+  it("emits a checked_in row (via:'sweep') when the cached fix is inside a partner radius", async () => {
+    mockLocation.getLastKnownPositionAsync.mockResolvedValue(
+      fixAt({ latitude: GYM.lat, longitude: GYM.lng }) as never,
+    );
+
+    await sweepForMissedCheckInFromWake();
+
+    const checkedIn = mockLogRegionEvent.mock.calls.find(c => c[1] === 'checked_in');
+    expect(checkedIn?.[0]).toBe('partner-1-0');
+    expect(checkedIn?.[2]).toMatchObject({ via: 'sweep' });
+  });
 });
