@@ -342,6 +342,7 @@ Deno.serve(async (req: Request) => {
       const { error: nonceErr } = await admin.rpc('set_gym_visit_wake_nonce', {
         p_visit_id: visit.id, p_nonce_hash: nonceHash, p_ttl_seconds: 900,
       });
+      if (nonceErr) console.error('[gym-visit-beacon] presence nonce stamp failed (wake will fall back to JWT)', nonceErr);
 
       const payload = { type: 'gym_visit_check', visit_id: visit.id, stage: 'dwell', nonce: nonceErr ? undefined : nonce };
       const TTL_SEC = 10 * 60;
