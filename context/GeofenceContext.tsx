@@ -1075,7 +1075,7 @@ function describeStoredSession(raw: string): Record<string, unknown> {
     const a = JSON.parse(raw) as StoredGeofence;
     return {
       partner:  a.partnerName ?? null,
-      age_min:  Math.round((Date.now() - a.entryTimestamp) / 60_000),
+      age_min:  typeof a.entryTimestamp === 'number' ? Math.round((Date.now() - a.entryTimestamp) / 60_000) : null,
       has_geom: a.latitude != null && a.longitude != null && a.radius != null,
       visit:    a.visitId ?? null,
     };
