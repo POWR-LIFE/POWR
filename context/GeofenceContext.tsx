@@ -1785,12 +1785,25 @@ async function setActiveAndNotify(regionId: string, entry: PartnerMapEntry): Pro
         // outlive the window it is racing.
         void (async () => {
           try {
-            const auth = AppState.currentState !== 'active' ? await readBackgroundAuth() : null;
+            // Backgrounded with no usable token, SKIP rather than fall back:
+            // the fallback is the very transport that can outlive the 90 s
+            // window, so attempting it cannot win the race and can only burn
+            // the wake. Losing the mark costs one duplicate banner; the server
+            // fallback is doing its job at that point.
+            const backgrounded = AppState.currentState !== 'active';
+            const auth = backgrounded ? await readBackgroundAuth() : null;
             if (auth) {
               const { error } = await bgRpc('mark_gym_visit_announced', { p_visit_id: visitId }, auth);
               if (error) console.warn('[Geofence] announce mark failed:', error.message);
               return;
-            if (AppState.currentState !== 'active') return;
+            }
+            // Backgrounded with no usable token: SKIP rather than fall back. The
+            // fallback is the very transport that can outlive the 90 s window,
+            // so attempting it cannot win the race — it can only burn the wake.
+            // Losing the mark costs one duplicate banner, which is precisely
+            // what the server fallback exists to provide.
+            if (backgrounded) return;
+            const { supabase } = await import('@/lib/supabase');
             const { error } = await supabase.rpc('mark_gym_visit_announced', { p_visit_id: visitId });
             if (error) console.warn('[Geofence] announce mark failed:', error.message);
           } catch (rpcErr) {
