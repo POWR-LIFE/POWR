@@ -12,7 +12,8 @@
 
 import { AppState, Platform } from 'react-native';
 import { callWithAuthRetry } from '@/lib/authFresh';
-import { bgRpc, readBackgroundAuth } from '@/lib/backgroundRest';
+import type { BgResult } from '@/lib/backgroundRest';
+import { bgRpc, isTicketRejection, readBackgroundAuth, readDeviceTicket, ticketRpc } from '@/lib/backgroundRest';
 import { withNetworkTimeout } from '@/lib/networkTimeout';
 import { SUPABASE_ANON_KEY, SUPABASE_URL, supabase } from '@/lib/supabase';
 
@@ -96,6 +97,40 @@ export async function confirmGymVisitViaNonce(
   }
 }
 
+// ---------------------------------------------------------------------------
+// The wake path's credential ladder (2026-08-07).
+//
+// Three transports, tried in order of how well each survives a screen-off,
+// possibly-locked background process:
+//
+//   1. THE DEVICE TICKET. AsyncStorage, no keychain, no expiry inside a month,
+//      no auth machinery. Minted in the foreground and bound to this
+//      (user, device). This is the only one of the three that works on a phone
+//      pocketed for an hour or locked in a pocket — which is every gym visit.
+//   2. THE PERSISTED ACCESS TOKEN. Works, right up until it doesn't: one hour
+//      of pocket time, or a locked keychain, and it is gone.
+//   3. NOTHING — the caller falls through to supabase-js, whose auth machinery
+//      is the freeze this whole file exists to route around. Reached only by an
+//      install that has never had a foreground pass since the ticket shipped.
+//
+// A ticket the server REFUSES (expired, revoked, minted for a device that has
+// since changed hands) falls through to 2 rather than failing the call, so a
+// stale ticket is never worse than no ticket.
+// ---------------------------------------------------------------------------
+async function wakeRpc<T>(fn: string, args: Record<string, unknown>): Promise<BgResult<T> | null> {
+  const ticket = await readDeviceTicket();
+  if (ticket) {
+    const res = await ticketRpc<T>(`${fn}_by_ticket`, args, ticket);
+    if (!isTicketRejection(res.error)) return res;
+    console.warn(`[GymVisit] ${fn}: the server refused this device's ticket — falling back to the persisted token.`);
+  }
+
+  const auth = await readBackgroundAuth();
+  if (auth) return bgRpc<T>(fn, args, auth);
+
+  return null;
+}
+
 // The four RPCs that carry real state (open/confirm/progress/close) run through
 // callWithAuthRetry: fresh-session-first, one retry if auth-rejected. Elliot's
 // 2026-08-05 visit died exactly here — ENTER detected, token family revoked the
@@ -129,14 +164,13 @@ export async function openGymVisit(
   // genuinely unreachable, and retrying it through the freeze-prone path buys
   // nothing. The late-open retry in runVisitCheck covers the next wake.
   if (AppState.currentState !== 'active') {
-    const auth = await readBackgroundAuth();
-    if (auth) {
-      const { data, error } = await bgRpc<string | null>('open_gym_visit', args, auth);
-      if (error) {
-        console.warn('[GymVisit] openGymVisit (background) failed:', error.message);
+    const res = await wakeRpc<string | null>('open_gym_visit', args);
+    if (res) {
+      if (res.error) {
+        console.warn('[GymVisit] openGymVisit (background) failed:', res.error.message);
         return null;
       }
-      return (data as string) ?? null;
+      return (res.data as string) ?? null;
     }
   }
 
@@ -214,10 +248,9 @@ export async function logGeofenceRegionEvent(
   // the device was checking in, claiming and confirming perfectly well over the
   // raw transport beside it. We were blind to a working system.
   if (AppState.currentState !== 'active') {
-    const auth = await readBackgroundAuth();
-    if (auth) {
-      const { error } = await bgRpc('log_geofence_region_event', args, auth);
-      if (error) console.warn('[GymVisit] logGeofenceRegionEvent (background) failed:', error.message);
+    const res = await wakeRpc('log_geofence_region_event', args);
+    if (res) {
+      if (res.error) console.warn('[GymVisit] logGeofenceRegionEvent (background) failed:', res.error.message);
       return;
     }
   }
@@ -295,10 +328,9 @@ export async function logGymVisitTick(
   // Same reasoning as logGeofenceRegionEvent: a tick that only records itself
   // in the foreground is not a tick, it is a lie of omission.
   if (AppState.currentState !== 'active') {
-    const auth = await readBackgroundAuth();
-    if (auth) {
-      const { error } = await bgRpc('log_gym_visit_tick', args, auth);
-      if (error) console.warn('[GymVisit] logGymVisitTick (background) failed:', error.message);
+    const res = await wakeRpc('log_gym_visit_tick', args);
+    if (res) {
+      if (res.error) console.warn('[GymVisit] logGymVisitTick (background) failed:', res.error.message);
       return;
     }
   }
@@ -329,11 +361,13 @@ export async function markGymVisitProgress(
   // Same background exposure as the close: this is called straight after a
   // claim lands, which on the dwell path happens on a wake. Freezing here tells
   // the beacon nothing landed, so it keeps nudging a visit that is already paid.
+  //
+  // A MARKER, NOT A CREDIT — it records a claim that some other path already
+  // made, and can no more award a point over the ticket than it can over a JWT.
   if (AppState.currentState !== 'active') {
-    const auth = await readBackgroundAuth();
-    if (auth) {
-      const { error } = await bgRpc('mark_gym_visit_progress', args, auth);
-      if (error) console.warn('[GymVisit] markGymVisitProgress (background) failed:', error.message);
+    const res = await wakeRpc('mark_gym_visit_progress', args);
+    if (res) {
+      if (res.error) console.warn('[GymVisit] markGymVisitProgress (background) failed:', res.error.message);
       return;
     }
   }
@@ -360,11 +394,16 @@ export async function closeGymVisit(visitId: string, endedAtMs?: number): Promis
   // auth resync that killed the entry open on 2026-08-06. A frozen close is not
   // cosmetic: the visit stays open forever, the beacon keeps nudging it, and the
   // server's "Session complete" push never fires because nothing ever closed it.
+  //
+  // It is also the call the expired-token gap hits hardest: an exit comes at the
+  // END of a session, so by definition the phone has been pocketed for the whole
+  // of it — an hour or more, which is exactly when the persisted token is spent.
+  // Field 2026-08-07: every walk-out close that morning fell back to supabase-js
+  // and timed out. This is what the ticket is for.
   if (AppState.currentState !== 'active') {
-    const auth = await readBackgroundAuth();
-    if (auth) {
-      const { error } = await bgRpc('close_gym_visit', args, auth);
-      if (error) console.warn('[GymVisit] closeGymVisit (background) failed:', error.message);
+    const res = await wakeRpc('close_gym_visit', args);
+    if (res) {
+      if (res.error) console.warn('[GymVisit] closeGymVisit (background) failed:', res.error.message);
       return;
     }
   }
