@@ -147,9 +147,16 @@ export function useHealthSync() {
       weekAgo.setDate(weekAgo.getDate() - 7);
       weekAgo.setHours(0, 0, 0, 0);
 
+      // Scoped on user_id: activity_sessions has an "admins can read all"
+      // policy, so without it syncedKeys fills with OTHER users' sessions and
+      // this user's own workouts get silently dropped as "already synced".
+      const uid = (await getSessionUser())?.id;
+      if (!uid) return;
+
       const { data: existingSessions } = await supabase
         .from('activity_sessions')
         .select('type, started_at')
+        .eq('user_id', uid)
         // Match both health-synced sources so dedup survives the wearable→health split.
         .in('verification', ['wearable', 'health'])
         .gte('started_at', weekAgo.toISOString());
@@ -304,14 +311,11 @@ export function useHealthSync() {
       // later in the day just logs a type_daily_cap skip.
       if (receiptCount > 0) {
         try {
-          const uid = (await getSessionUser())?.id;
-          if (uid) {
-            await triggerServerNotification(uid, 'wearable_session_recorded', {
-              count: receiptCount,
-              points: receiptPoints,
-              activity_label: receiptCount === 1 ? receiptLabel : undefined,
-            });
-          }
+          await triggerServerNotification(uid, 'wearable_session_recorded', {
+            count: receiptCount,
+            points: receiptPoints,
+            activity_label: receiptCount === 1 ? receiptLabel : undefined,
+          });
         } catch { /* receipt must never break the sync */ }
       }
 

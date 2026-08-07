@@ -28,16 +28,23 @@ async function computeStreakFromSessions(): Promise<{ current: number; longest: 
     const since = new Date();
     since.setDate(since.getDate() - 90);
 
+    // Both reads below scope on user_id EXPLICITLY. RLS is the backstop, not
+    // the filter: activity_sessions and streak_rescues each carry an "admins
+    // can read all" policy, so without this an admin account computes its
+    // streak from every user's sessions and shows a permanently maxed streak.
+    const user = await getSessionUser();
+    if (!user) return { current: 0, longest: 0 };
+
     const { data, error } = await supabase
         .from('activity_sessions')
         .select('started_at')
+        .eq('user_id', user.id)
         .neq('verification', 'manual')
         .gte('started_at', since.toISOString())
         .order('started_at', { ascending: false });
 
     // Completed streak rescues bridge their missed day — the day counts as
     // active even though no session exists for it, restoring the full streak.
-    // RLS scopes the read to the signed-in user.
     //
     // Same bridge-day CONCEPT as the server's _shared/streak.ts, but NOT the
     // same day boundaries: this hook buckets sessions by device-local date,
@@ -50,6 +57,7 @@ async function computeStreakFromSessions(): Promise<{ current: number; longest: 
         const { data: rescues } = await supabase
             .from('streak_rescues')
             .select('missed_day')
+            .eq('user_id', user.id)
             .eq('status', 'completed')
             .gte('missed_day', since.toISOString().slice(0, 10));
         bridgeDays = (rescues ?? []).map(r => String(r.missed_day).slice(0, 10));
@@ -100,20 +108,17 @@ async function computeStreakFromSessions(): Promise<{ current: number; longest: 
 
     // Sync computed streak back to user_streaks so notifications always read accurate data
     try {
-        const userId = (await getSessionUser())?.id;
-        if (userId) {
-            const { data: existing } = await supabase
-                .from('user_streaks')
-                .select('longest_streak')
-                .eq('user_id', userId)
-                .maybeSingle();
-            await supabase.from('user_streaks').upsert({
-                user_id: userId,
-                current_streak: result.current,
-                longest_streak: Math.max(result.longest, existing?.longest_streak ?? 0),
-                last_activity_date: lastActiveDate,
-            }, { onConflict: 'user_id' });
-        }
+        const { data: existing } = await supabase
+            .from('user_streaks')
+            .select('longest_streak')
+            .eq('user_id', user.id)
+            .maybeSingle();
+        await supabase.from('user_streaks').upsert({
+            user_id: user.id,
+            current_streak: result.current,
+            longest_streak: Math.max(result.longest, existing?.longest_streak ?? 0),
+            last_activity_date: lastActiveDate,
+        }, { onConflict: 'user_id' });
     } catch {
         // Non-fatal — streak display is still correct even if sync fails
     }

@@ -103,10 +103,14 @@ export async function fetchCheckInSummary(
   const user = await getSessionUser();
   if (!user) throw new Error('Not authenticated');
 
+  // Scoped on user_id as well as the session id: the aggregates below are the
+  // CALLER's, so without this an admin opening someone else's session id would
+  // render that session's details (raw_gps included) against their own stats.
   const { data: session, error: sErr } = await supabase
     .from('activity_sessions')
     .select('id, type, started_at, duration_sec, partner_id, partner_location_idx, raw_gps, point_transactions(amount)')
     .eq('id', sessionId)
+    .eq('user_id', user.id)
     .single();
   if (sErr || !session) throw sErr ?? new Error('Session not found');
 
@@ -349,14 +353,18 @@ async function fetchAggregates(
 
   const txQ = supabase
     .from('point_transactions')
-    .select('amount');
+    .select('amount')
+    .eq('user_id', userId);
   if (asOf) txQ.lte('created_at', asOf.toISOString());
 
   // Vault POWR still counting toward level (unreleased) — part of the canonical
-  // lifetime-earned basis. RLS scopes both reads to the signed-in member.
+  // lifetime-earned basis. Both reads scope on user_id like every other query
+  // here: RLS is NOT sufficient, since both tables carry an "admins can read
+  // all" policy and an unfiltered sum would total the whole platform's POWR.
   const vaultQ = supabase
     .from('vault_deposits')
-    .select('amount, created_at, released_at');
+    .select('amount, created_at, released_at')
+    .eq('user_id', userId);
   if (asOf) vaultQ.lte('created_at', asOf.toISOString());
 
   const [profileRes, lifetimeRes, monthRes, streakRes, weekRes, balanceRes, vaultRes, authRes] = await Promise.all([

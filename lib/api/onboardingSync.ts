@@ -106,10 +106,14 @@ export async function syncHistoricalHealthData(
             const config = ACTIVITIES[mappedType];
             if (activity.durationMin < config.minDuration) continue;
 
-            // Check for existing session at this timestamp to prevent duplicates
+            // Check for existing session at this timestamp to prevent duplicates.
+            // Scoped on user_id: activity_sessions has an "admins can read all"
+            // policy, so an unfiltered probe can match a STRANGER's session and
+            // silently skip inserting this user's own workout.
             const { data: existing } = await supabase
                 .from('activity_sessions')
                 .select('id')
+                .eq('user_id', user.id)
                 .eq('started_at', activity.startedAt)
                 .eq('type', mappedType)
                 .limit(1)
@@ -163,6 +167,7 @@ export async function syncHistoricalHealthData(
             const { data: existingWalk } = await supabase
                 .from('activity_sessions')
                 .select('id')
+                .eq('user_id', user.id)
                 .eq('type', 'walking')
                 .eq('trust_score', 0.85)
                 .gte('started_at', midnight)
@@ -201,6 +206,7 @@ export async function syncHistoricalHealthData(
             const { data: existingSleep } = await supabase
                 .from('activity_sessions')
                 .select('id')
+                .eq('user_id', user.id)
                 .eq('type', 'sleep')
                 .eq('started_at', day.sleep.startedAt)
                 .limit(1)
