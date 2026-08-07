@@ -15,6 +15,15 @@
 -- already establish "this is the same check-in". Status was never the right
 -- discriminator: claimed and upgraded are progress markers ON a live visit, not
 -- reasons to abandon it.
+--
+-- The 4-hour ceiling is also restored to the CONDITIONAL form that
+-- 20260803100000 introduced and the deployed function had since lost. It was
+-- always a backstop for a caller that passes no started_at, never a rule:
+-- applied to every caller it splits exactly the long visits this machinery
+-- exists for (47% run past 4h), because the heartbeat's late-open retry
+-- replays the SAME entryTimestamp and stops matching its own live row. Same
+-- failure shape as the status bug above, on a different trigger. Caught in
+-- review after I read the deployed definition and carried its drift forward.
 create or replace function public.open_gym_visit(
   p_partner_id uuid, p_region_id text, p_started_at timestamp with time zone, p_platform text default null::text
 ) returns uuid
@@ -44,7 +53,7 @@ begin
   -- whatever progress it has already recorded.
   if v_id is not null
      and v_status in ('open','claimed','upgraded')
-     and v_started_at > now() - c_reuse_window
+     and (p_started_at is not null or v_started_at > now() - c_reuse_window)
      and v_partner_id is not distinct from p_partner_id
      and v_started_at between coalesce(p_started_at, now()) - c_same_checkin
                           and coalesce(p_started_at, now()) + c_same_checkin
