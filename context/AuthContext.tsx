@@ -4,11 +4,12 @@ import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
 import { router } from 'expo-router';
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
-import { Alert, AppState } from 'react-native';
+import { Alert, AppState, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { EMAIL_CONFIRM_REDIRECT, supabase } from '@/lib/supabase';
-import { claimDevice, confirmDeviceTransfer } from '@/lib/deviceLock';
+import { clearDeviceWakeTicket, ensureDeviceWakeTicket } from '@/lib/backgroundRest';
+import { claimDevice, confirmDeviceTransfer, getDeviceId } from '@/lib/deviceLock';
 import { reportLocationPermission } from '@/lib/locationPermission';
 import TransferDeviceSheet from '@/components/TransferDeviceSheet';
 
@@ -166,6 +167,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
 
     /**
+     * Mint this device's wake ticket while we are certain of a session.
+     *
+     * The background geofence path cannot authenticate on its own: the persisted
+     * access token expires after an hour of pocket time and may not be refreshed
+     * from a background runtime (that is what revokes the whole token family),
+     * and on a locked iPhone the keychain refuses the read outright. So the wake
+     * path is given a credential minted HERE, in the foreground, where auth is
+     * guaranteed to work — see the long note in lib/backgroundRest.ts.
+     *
+     * Fire-and-forget and idempotent: it only calls the server when the stored
+     * ticket is missing, belongs to another account, or is near expiry. Failing
+     * is harmless — the wake path falls back to today's behaviour.
+     *
+     * Skipped outright in the background. A push launches the app into the
+     * background with the phone locked, and INITIAL_SESSION fires there like
+     * anywhere else — but getDeviceId reads the keychain, which is both the
+     * thing a locked device refuses and the thing that must never be awaited on
+     * a wake. ensureDeviceWakeTicket enforces the same rule at its own door;
+     * this check is here because the getDeviceId call sits in front of it.
+     */
+    const refreshWakeTicket = async (userId: string) => {
+        if (AppState.currentState === 'background') return;
+        try {
+            await ensureDeviceWakeTicket(userId, await getDeviceId(), Platform.OS);
+        } catch {
+            /* non-fatal: the wake path keeps its existing fallbacks */
+        }
+    };
+
+    /**
      * The user tapped "Move to this device" on the transfer sheet. Migrate the
      * binding to this device (server signs the old one out) and keep the session.
      * On a non-'ok' result (raced into 'locked', or over the cap) fall back to the
@@ -277,6 +308,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             if (session && (event === 'SIGNED_IN' || event === 'INITIAL_SESSION')) {
                 enforceDeviceLock(session);
                 reportLocationPermission(session.user.id);
+                refreshWakeTicket(session.user.id);
             }
             if (!session) {
                 cleanupSessionWatch();
@@ -294,6 +326,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 import('@/context/GeofenceContext')
                     .then(({ clearGeofenceStateOnSignOut }) => clearGeofenceStateOnSignOut(departingUserId ?? undefined))
                     .catch(() => { /* non-fatal */ });
+
+                // Same reasoning, for the wake credential: it outlives the session
+                // by design, so nothing else would ever retire it. Retired with the
+                // ticket itself, which still works when the session is already gone.
+                clearDeviceWakeTicket().catch(() => { /* non-fatal */ });
 
                 const wasForced = forcedSignOutRef.current;
                 const wasDeviceLocked = deviceLockedRef.current;
@@ -372,6 +409,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const appStateSubscription = AppState.addEventListener('change', (state) => {
             if (state === 'active' && sessionUserRef.current) {
                 reportLocationPermission(sessionUserRef.current);
+                // Renewal rides the foreground, because the foreground is the only
+                // place a ticket CAN be minted. A device that opens the app even
+                // once a month therefore never reaches a wake without one.
+                refreshWakeTicket(sessionUserRef.current);
             }
         });
 
