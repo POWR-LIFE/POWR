@@ -311,7 +311,15 @@ export async function notifyCheckInAvailable(partnerName: string, locationId: st
     identifier: `powr-check_in_reminder-${locationId}`,
     content: {
       title: 'POWR',
-      body: "You're in. Every minute counts.",
+      // partnerName arrives here and used to be dropped into `data` without ever
+      // reaching the body, so the banner read "You're in." while the server's
+      // copy read "You're in at POWR." — and the server's was the one that got
+      // DELETED as a duplicate (2026-08-07), leaving every user the weaker line.
+      // The gym name is the whole point of the notification: it is the proof we
+      // recognised where they are.
+      body: partnerName
+        ? `You're in at ${partnerName}. Every minute counts.`
+        : "You're in. Every minute counts.",
       data: {
         type: 'check_in_reminder',
         route: '/(tabs)/index',
