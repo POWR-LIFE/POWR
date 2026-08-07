@@ -1770,16 +1770,34 @@ async function setActiveAndNotify(regionId: string, entry: PartnerMapEntry): Pro
         await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...active, visitId }));
       }
       if (checkInShown) {
-        // Local banner displayed — tell the beacon not to double-announce
-        // (android). Promise.resolve upgrades PostgREST's PromiseLike; two-arg
-        // then covers both the {error} result and a thrown network error.
-        const { supabase } = await import('@/lib/supabase');
-        void Promise.resolve(
-          supabase.rpc('mark_gym_visit_announced', { p_visit_id: visitId }),
-        ).then(
-          ({ error }) => { if (error) console.warn('[Geofence] announce mark failed:', error.message); },
-          (rpcErr: unknown) => { console.warn('[Geofence] announce mark RPC threw:', rpcErr); },
-        );
+        // Local banner displayed — tell the beacon not to double-announce.
+        //
+        // This is a RACE against the server's 90-second grace window, and a
+        // background check-in has no business entering the auth machinery to
+        // win it. Field, 2026-08-07 08:54: this fired through supabase-js on a
+        // phone whose auth calls were timing out after 30 s, the mark never
+        // landed inside the window, and the user got BOTH banners — the local
+        // "You're in" and the server's "You're in at POWR".
+        //
+        // Fire-and-forget is still correct (the banner is already on screen, and
+        // the wake's round-trip belongs to the confirm) — but it has to go out
+        // over the transport that lands in milliseconds rather than one that can
+        // outlive the window it is racing.
+        void (async () => {
+          try {
+            const auth = AppState.currentState !== 'active' ? await readBackgroundAuth() : null;
+            if (auth) {
+              const { error } = await bgRpc('mark_gym_visit_announced', { p_visit_id: visitId }, auth);
+              if (error) console.warn('[Geofence] announce mark failed:', error.message);
+              return;
+            }
+            const { supabase } = await import('@/lib/supabase');
+            const { error } = await supabase.rpc('mark_gym_visit_announced', { p_visit_id: visitId });
+            if (error) console.warn('[Geofence] announce mark failed:', error.message);
+          } catch (rpcErr) {
+            console.warn('[Geofence] announce mark RPC threw:', rpcErr);
+          }
+        })();
       }
     }
   } catch (err) {
