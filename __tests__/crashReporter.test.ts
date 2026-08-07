@@ -54,6 +54,14 @@ beforeEach(async () => {
   await AsyncStorage.clear();
   mockReadAuth.mockClear().mockResolvedValue(null);
   global.fetch = jest.fn().mockResolvedValue(okResponse) as unknown as typeof fetch;
+  // Sending is off by default under jest so no suite can post to the live
+  // project by accident (it happened — see postRow). This file is the one that
+  // turns it back on, and only against the mocked fetch above.
+  internals.setNetworkEnabled(true);
+});
+
+afterEach(() => {
+  internals.setNetworkEnabled(false);
 });
 
 describe('redaction', () => {
@@ -394,6 +402,19 @@ describe('flushing what earlier launches left behind', () => {
 
   it('does nothing at all when there is nothing to send', async () => {
     await flush();
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it('sends nothing at all from a test runner unless a suite opts in', async () => {
+    // The guard that stops `npm test` writing to the production incident table.
+    // Suites that drive the real background task reach reportHandled without
+    // mocking supabase or fetch, and a green run says nothing about it.
+    internals.setNetworkEnabled(false);
+
+    ingest({ source: 'global_handler', fatal: true, message: 'must not leave the machine' });
+    await internals.settle();
+    await flush();
+
     expect(global.fetch).not.toHaveBeenCalled();
   });
 

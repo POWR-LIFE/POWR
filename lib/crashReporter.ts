@@ -413,6 +413,10 @@ function markDropped(): void {
 
 let chain: Promise<void> = Promise.resolve();
 let flushing = false;
+/** Off under jest, on in the app — see the note in postRow(). Metro replaces
+ *  process.env.NODE_ENV with 'development' or 'production' at bundle time, so
+ *  this is always true in a shipped build. */
+let networkEnabled = process.env.NODE_ENV !== 'test';
 
 /**
  * Read the spool without trusting what is in it.
@@ -490,6 +494,17 @@ function evict(list: CrashRow[], launchId: string): CrashRow[] {
  * which under one-account-per-device is nearly always the same person.
  */
 async function postRow(row: CrashRow): Promise<boolean> {
+  // NEVER phone home from a test runner.
+  //
+  // This is not hygiene, it is a bug that already happened: several suites drive
+  // the real background task (background-notification-wake-telemetry.test.ts
+  // among them) without mocking @/lib/supabase or fetch, so a reportHandled()
+  // in a catch block reaches straight through to the live project. `npm test`
+  // wrote eight rows into the production incident table on 2026-08-06 before
+  // this guard existed, and the tests still passed — nothing about a green run
+  // would ever have told us. Every send goes through here, so one check covers
+  // send() and flush() both. The reporter's own tests opt back in explicitly.
+  if (!networkEnabled) return false;
   try {
     const auth = await readBackgroundAuth();
     const headers: Record<string, string> = {
@@ -594,6 +609,11 @@ export const __reporterInternals = {
   peek: () => [...pending],
   peekSpool: readSpool,
   settle: () => chain,
+  /** Only the reporter's own tests should call this, and only with a mocked
+   *  fetch. Any other suite that needs it is a suite about to write to prod. */
+  setNetworkEnabled: (on: boolean) => {
+    networkEnabled = on;
+  },
   reset: () => {
     seq = 0;
     seen.clear();
