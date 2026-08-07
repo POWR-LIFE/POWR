@@ -834,7 +834,7 @@ export async function setLocationStreamMode(mode: StreamMode): Promise<void> {
 function logRegionEvent(
   regionId: string,
   event: 'enter' | 'exit' | 'approach_stream_on' | 'checked_in' | 'stream_start_failed'
-    | 'stream_switch_deferred' | 'armed' | 'sentinel_exit' | 'rearm_skipped',
+    | 'stream_switch_deferred' | 'armed' | 'sentinel_exit' | 'rearm_skipped' | 'sweep',
   detail: Record<string, unknown> = {},
 ): void {
   void import('@/lib/gymVisits')
@@ -987,20 +987,122 @@ export async function sweepForMissedCheckInFromWake(): Promise<void> {
   await sweepForMissedCheckIn();
 }
 
+/** SWEEP TELEMETRY (2026-08-07) — pure observation, no behaviour change.
+ *
+ *  The sweep's own docstring claims "it fails visibly — every ping either
+ *  produces a row or does not". That was false: it emitted NOTHING, so its four
+ *  exits were one indistinguishable silence, and 290 accepted `fence_refresh`
+ *  pings had produced exactly zero evidence of anything. "The ping never reached
+ *  JS", "a session was already stored", "the permission read said no", "the OS
+ *  cache was empty" and "the fix was outside every circle" all looked the same.
+ *
+ *  Two rules this instrumentation follows, both learned the hard way:
+ *
+ *  1. THE ROW GOES BEFORE THE HANDOFF, NOT IN A `finally`. evaluateLocationFix
+ *     reaches setActiveAndNotify, which awaits supabase.auth.getSession() and
+ *     openGymVisit — the exact promise this codebase has twice recorded as never
+ *     settling (gymVisits.ts:158, backgroundNotificationTask.ts:180). A suspended
+ *     frame never reaches its `finally`, so a `finally`-emitted row would go
+ *     missing precisely on the failure it exists to catch. Emitting first means a
+ *     freeze leaves a 'handoff' row with no 'checked_in' after it — which names
+ *     the freeze instead of hiding it.
+ *
+ *  2. IT GATES NOTHING. Every guard, threshold and early return below is byte-for
+ *     -byte the behaviour that shipped; the only additions are logRegionEvent
+ *     calls and two read-only helpers. In particular there is no partner-map
+ *     gate: readPartnerMap swallows its own errors and returns null, and
+ *     evaluateLocationFix does its own independent read — so gating on it here
+ *     would trade a wasted scan for a lost check-in AND a lost arm re-target. */
 async function sweepForMissedCheckIn(): Promise<void> {
   try {
-    if (await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY)) return; // already checked in
+    const active = await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY);
+    if (active) { // already checked in
+      // Names the blocker: the reconcile is the only thing that can clear this and
+      // it ran immediately before us, so `has_geom: false` here is also the reason
+      // it declined (its discriminator needs geometry it does not have).
+      logRegionEvent('sweep', 'sweep', { outcome: 'session_active', ...describeStoredSession(active) });
+      return;
+    }
     const { status } = await Location.getBackgroundPermissionsAsync()
       .catch(() => ({ status: 'denied' as Location.PermissionStatus }));
-    if (status !== 'granted') return;
+    if (status !== 'granted') {
+      // Deliberately still a hard return — a throw reads as denial, and failing
+      // open here would start sessions on a "While Using" device that has no
+      // mechanism left to close them. The row only makes the refusal visible.
+      logRegionEvent('sweep', 'sweep', { outcome: 'no_permission', perm_bg: String(status) });
+      return;
+    }
 
     // Cheap sources only — this runs on the OS's schedule, not in a wake window,
     // but an unbounded acquisition here would hang exactly like the wake path did.
     const cached = await Location.getLastKnownPositionAsync({ maxAge: 10 * 60_000 }).catch(() => null);
-    if (!cached) return;
+    if (!cached) {
+      // The prime suspect on iOS: BASELINE_STREAM_MODE is 'off', so with the app
+      // swiped nothing feeds the OS cache and it ages past ten minutes.
+      logRegionEvent('sweep', 'sweep', { outcome: 'no_fix' });
+      return;
+    }
+
+    logRegionEvent('sweep', 'sweep', {
+      outcome: 'handoff',
+      acc_m:   cached.coords.accuracy != null ? Math.round(cached.coords.accuracy) : null,
+      age_s:   Math.round((Date.now() - cached.timestamp) / 1000),
+      ...(await nearestPartnerMetres(cached.coords)),
+    });
+
     await evaluateLocationFix(cached.coords);
+
+    // Mirrors pollForCheckIn's row exactly, so "which detector started this
+    // session?" is one query across both. Until this lands, every checked_in row
+    // in the table is via:'enter_poll' — and that has been unfalsifiable, because
+    // a sweep success would not have logged anything either.
+    const after = await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY);
+    if (after) {
+      let regionId = 'sweep';
+      try { regionId = (JSON.parse(after) as StoredGeofence).regionId ?? 'sweep'; } catch { /* synthetic id */ }
+      logRegionEvent(regionId, 'checked_in', { via: 'sweep' });
+    }
   } catch (err) {
+    logRegionEvent('sweep', 'sweep', { outcome: 'error', err: String(err).slice(0, 120) });
     console.warn('[Geofence] Missed check-in sweep failed:', err);
+  }
+}
+
+/** Read-only description of a stored session, for the sweep's blocked row.
+ *  Never throws: a corrupt record must still produce a row. */
+function describeStoredSession(raw: string): Record<string, unknown> {
+  try {
+    const a = JSON.parse(raw) as StoredGeofence;
+    return {
+      partner:  a.partnerName ?? null,
+      age_min:  typeof a.entryTimestamp === 'number' ? Math.round((Date.now() - a.entryTimestamp) / 60_000) : null,
+      has_geom: a.latitude != null && a.longitude != null && a.radius != null,
+      visit:    a.visitId ?? null,
+    };
+  } catch {
+    return { parse: 'failed' };
+  }
+}
+
+/** Distance to the nearest cached partner — the one number that separates
+ *  "outside every circle" from "inside one and the gate refused it". Cache-only
+ *  and memoised (evaluateLocationFix reads the same map moments later), and it
+ *  returns nulls rather than throwing so it can never gate the sweep. */
+async function nearestPartnerMetres(
+  c: { latitude: number; longitude: number },
+): Promise<{ nearest_m: number | null; nearest_id: string | null }> {
+  try {
+    const map = await readPartnerMap();
+    if (!map) return { nearest_m: null, nearest_id: null };
+    let best: { id: string; m: number } | null = null;
+    for (const [regionId, e] of Object.entries(map)) {
+      if (e.lat == null || e.lng == null) continue;
+      const m = haversineMetres(c.latitude, c.longitude, e.lat, e.lng);
+      if (!best || m < best.m) best = { id: regionId, m };
+    }
+    return best ? { nearest_m: Math.round(best.m), nearest_id: best.id } : { nearest_m: null, nearest_id: null };
+  } catch {
+    return { nearest_m: null, nearest_id: null };
   }
 }
 
