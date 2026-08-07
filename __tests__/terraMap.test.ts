@@ -14,6 +14,7 @@ import {
   calculateBasePoints,
   calculateSleepPoints,
   DAILY_CAPS,
+  dailyCapBucket,
   stepTierPoints,
 } from '@/supabase/functions/_shared/points';
 import {
@@ -154,6 +155,11 @@ describe('point calculators', () => {
       expect(DAILY_CAPS.hiit).toBe(30);   // must equal gym — strength lane parity
       expect(DAILY_CAPS.walking).toBe(5);
       expect(DAILY_CAPS.sleep).toBe(5);
+    });
+
+    it('buckets gym and hiit under the same daily cap lane', () => {
+      expect(dailyCapBucket('gym')).toBe('gym');
+      expect(dailyCapBucket('hiit')).toBe('gym');
     });
 
     it('leaves cardio uncapped — absent means unlimited', () => {

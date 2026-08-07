@@ -20,10 +20,12 @@ import { createClient } from '@supabase/supabase-js';
 import {
   calculateBasePoints,
   calculateSleepPoints,
-  DAILY_CAPS,
+  dailyCapBucket,
+  dailyCapForType,
   stepTierPoints,
   terraActivityToPOWR,
   terraResourceToSource,
+  type ActivityType,
   type StrengthThresholds,
 } from '../_shared/points.ts';
 import { mergeWorkouts, relateWorkouts, type WorkoutWindow } from '../_shared/sessionMerge.ts';
@@ -101,29 +103,41 @@ async function insertSession(supabase, row, points: number): Promise<InsertSessi
  * own row so the ledger can show it, and summing only 'earn' would let it ride
  * past the cap uncounted.
  */
-async function dailyHeadroom(supabase, userId: string, type: string, startIso: string): Promise<number> {
+async function dailyHeadroom(supabase, userId: string, type: ActivityType, startIso: string): Promise<number> {
+  const capBucket = dailyCapBucket(type);
   // Absent from DAILY_CAPS means uncapped — cardio pays for every session done.
-  const cap = DAILY_CAPS[type as keyof typeof DAILY_CAPS];
+  const cap = dailyCapForType(type);
   if (cap == null) return Infinity;
   const bucketStart = dayStartUTC(startIso);
   const bucketEnd = new Date(new Date(bucketStart).getTime() + 24 * 60 * 60 * 1000).toISOString();
 
-  const { data: sessions } = await supabase
+  let sessionQuery = supabase
     .from('activity_sessions')
     .select('id')
     .eq('user_id', userId)
-    .eq('type', type)
     .gte('started_at', bucketStart)
     .lt('started_at', bucketEnd);
+  sessionQuery = capBucket === 'gym'
+    ? sessionQuery.in('type', ['gym', 'hiit'])
+    : sessionQuery.eq('type', capBucket);
+  const { data: sessions, error: sessionsError } = await sessionQuery;
+  if (sessionsError) {
+    console.error('[terra-webhook] daily cap session lookup failed:', sessionsError.message);
+    return 0;
+  }
   const ids = (sessions ?? []).map((s) => s.id);
   if (ids.length === 0) return cap;
 
-  const { data: earned } = await supabase
+  const { data: earned, error: earnedError } = await supabase
     .from('point_transactions')
     .select('amount')
     .eq('user_id', userId)
     .in('type', ['earn', 'streak'])
     .in('session_id', ids);
+  if (earnedError) {
+    console.error('[terra-webhook] daily cap ledger lookup failed:', earnedError.message);
+    return 0;
+  }
   const already = (earned ?? []).reduce((sum, t) => sum + (t.amount ?? 0), 0);
   return Math.max(0, cap - already);
 }
@@ -275,7 +289,7 @@ async function mergeSnapshot(supabase, {
   // Deliberately limit(1) rather than maybeSingle: a session that has been
   // through both the native sync and Terra can carry two snapshot rows, and a
   // read that errors on the second one would silently drop the merge.
-  const { data: snap } = await supabase
+  const { data: snap, error: snapError } = await supabase
     .from('health_snapshots')
     .select('id, hr_max, calories_active, extras')
     .eq('session_id', sessionId)
@@ -283,6 +297,10 @@ async function mergeSnapshot(supabase, {
     .order('created_at', { ascending: true })
     .limit(1)
     .maybeSingle();
+  if (snapError) {
+    console.error('[terra-webhook] snapshot lookup failed:', snapError.message);
+    return;
+  }
   if (!snap) return;
 
   const patch: Record<string, unknown> = { duration_sec: durationSec };

@@ -37,6 +37,7 @@ DECLARE
   v_uid        uuid;
   v_sess_user  uuid;
   v_type       text;
+  v_cap_bucket text;
   v_started_at timestamptz;
   v_day_start  timestamptz;
   v_cap        int;
@@ -75,10 +76,14 @@ BEGIN
 
   -- NULL = uncapped. The ownership and row-type checks above still apply: this
   -- trigger is the client write gate, not only a ceiling.
-  v_cap := CASE v_type
+  v_cap_bucket := CASE
+    WHEN v_type IN ('gym', 'hiit') THEN 'strength'
+    ELSE v_type
+  END;
+
+  v_cap := CASE v_cap_bucket
     WHEN 'walking'  THEN 5
-    WHEN 'gym'      THEN 30
-    WHEN 'hiit'     THEN 30
+    WHEN 'strength' THEN 30
     WHEN 'sleep'    THEN 5
     ELSE NULL
   END;
@@ -98,7 +103,10 @@ BEGIN
   JOIN activity_sessions s ON s.id = pt.session_id
   WHERE pt.user_id = v_uid
     AND pt.type = 'earn'
-    AND s.type::text = v_type
+    AND (
+      (v_cap_bucket = 'strength' AND s.type::text IN ('gym', 'hiit'))
+      OR (v_cap_bucket <> 'strength' AND s.type::text = v_type)
+    )
     AND s.started_at >= v_day_start
     AND s.started_at <  v_day_start + interval '1 day';
 

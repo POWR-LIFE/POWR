@@ -76,6 +76,10 @@ const DAILY_CAPS: Partial<Record<ActivityType, number>> = {
   sleep:    5,
 };
 
+function dailyCapBucket(type: ActivityType): ActivityType {
+  return STRENGTH_TYPES.includes(type) ? 'gym' : type;
+}
+
 // gymDwellMin is the admin-tunable minutes required to lock in a base gym
 // check-in point (system_config → min_gym_dwell_minutes, default 30).
 // gymUpgradeMin is the admin-tunable upgrade-tier threshold (system_config →
@@ -499,19 +503,23 @@ Deno.serve(async (req) => {
   // only 'earn' rows here let streak rows ride past the cap uncounted.
   // An absent cap means this type is uncapped (cardio, since 2026-08-07): skip
   // the day's tally entirely and let every session pay what it scored.
-  const cap = DAILY_CAPS[session.type as ActivityType];
+  const capBucket = dailyCapBucket(session.type);
+  const cap = DAILY_CAPS[capBucket];
   let remaining = Infinity;
 
   if (cap != null) {
-    // 9. Check how much already earned today for THIS activity type specifically.
+    // 9. Check how much already earned today for this type's cap bucket.
     // point_transactions has no type column, so we resolve it via the session join.
-    const { data: todaySessions } = await supabase
+    let todaySessionsQuery = supabase
       .from('activity_sessions')
       .select('id')
       .eq('user_id', user.id)
-      .eq('type', session.type)
       .gte('started_at', `${sessionDay}T00:00:00Z`)
       .lte('started_at', `${sessionDay}T23:59:59Z`);
+    todaySessionsQuery = capBucket === 'gym'
+      ? todaySessionsQuery.in('type', STRENGTH_TYPES)
+      : todaySessionsQuery.eq('type', capBucket);
+    const { data: todaySessions } = await todaySessionsQuery;
 
     const todaySessionIds = (todaySessions ?? []).map((s: { id: string }) => s.id);
 

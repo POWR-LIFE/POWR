@@ -53,6 +53,17 @@ export function isStrengthType(type: ActivityType): boolean {
   return type === 'gym' || type === 'hiit';
 }
 
+/** Gym + HIIT share one daily cap bucket even though they remain distinct
+ *  activity types elsewhere. Callers enforcing caps must bucket through this
+ *  helper rather than keying DAILY_CAPS by session.type directly. */
+export function dailyCapBucket(type: ActivityType): ActivityType {
+  return isStrengthType(type) ? 'gym' : type;
+}
+
+export function dailyCapForType(type: ActivityType): number | null {
+  return DAILY_CAPS[dailyCapBucket(type)] ?? null;
+}
+
 /**
  * Base points for a workout. Mirrors calcBasePoints in claim-points and
  * calculateBasePoints in hooks/useHealthSync.ts.
@@ -110,7 +121,7 @@ export function calculateBasePoints(
 
     case 'swimming':
       if (dist >= 2000 || mins >= 60) return 10;
-      if (dist >= 2000 || mins >= 40) return 9;
+      if (mins >= 40) return 9;
       if (dist >= 1000 || mins >= 20) return 7;
       if (dist >= 500  || mins >= 15) return 5;
       return 0;

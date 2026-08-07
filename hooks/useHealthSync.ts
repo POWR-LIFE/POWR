@@ -442,7 +442,7 @@ function calculateBasePoints(
 
     case 'swimming':
       if (dist >= 2000 || mins >= 60) return 10;
-      if (dist >= 2000 || mins >= 40) return 9;
+      if (mins >= 40) return 9;
       if (dist >= 1000 || mins >= 20) return 7;
       if (dist >= 500  || mins >= 15) return 5;
       return 0;
