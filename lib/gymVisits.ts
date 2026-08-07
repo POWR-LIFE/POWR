@@ -288,12 +288,28 @@ export async function markGymVisitProgress(
   stage: 'claimed' | 'upgraded',
   sessionId?: string,
 ): Promise<void> {
+  const args = {
+    p_visit_id:   visitId,
+    p_stage:      stage,
+    p_session_id: sessionId ?? null,
+  };
+
+  // Same background exposure as the close: this is called straight after a
+  // claim lands, which on the dwell path happens on a wake. Freezing here tells
+  // the beacon nothing landed, so it keeps nudging a visit that is already paid.
+  if (AppState.currentState !== 'active') {
+    const auth = await readBackgroundAuth();
+    if (auth) {
+      const { error } = await bgRpc('mark_gym_visit_progress', args, auth);
+      if (error) console.warn('[GymVisit] markGymVisitProgress (background) failed:', error.message);
+      return;
+    }
+  }
+
   try {
-    const { error } = await callWithAuthRetry(() => supabase.rpc('mark_gym_visit_progress', {
-      p_visit_id:   visitId,
-      p_stage:      stage,
-      p_session_id: sessionId ?? null,
-    }), 'mark_gym_visit_progress');
+    const { error } = await callWithAuthRetry(
+      () => supabase.rpc('mark_gym_visit_progress', args), 'mark_gym_visit_progress',
+    );
     if (error) throw error;
   } catch (err) {
     console.warn('[GymVisit] markGymVisitProgress failed:', err);
@@ -302,11 +318,29 @@ export async function markGymVisitProgress(
 
 /** Closes the visit so the server stops nudging a device that has left. */
 export async function closeGymVisit(visitId: string, endedAtMs?: number): Promise<void> {
+  const args = {
+    p_visit_id: visitId,
+    p_ended_at: endedAtMs ? new Date(endedAtMs).toISOString() : null,
+  };
+
+  // The exit is a background event BY DEFINITION — the user has walked off with
+  // the phone in a pocket, screen off — so this call meets exactly the frozen
+  // auth resync that killed the entry open on 2026-08-06. A frozen close is not
+  // cosmetic: the visit stays open forever, the beacon keeps nudging it, and the
+  // server's "Session complete" push never fires because nothing ever closed it.
+  if (AppState.currentState !== 'active') {
+    const auth = await readBackgroundAuth();
+    if (auth) {
+      const { error } = await bgRpc('close_gym_visit', args, auth);
+      if (error) console.warn('[GymVisit] closeGymVisit (background) failed:', error.message);
+      return;
+    }
+  }
+
   try {
-    const { error } = await callWithAuthRetry(() => supabase.rpc('close_gym_visit', {
-      p_visit_id: visitId,
-      p_ended_at: endedAtMs ? new Date(endedAtMs).toISOString() : null,
-    }), 'close_gym_visit');
+    const { error } = await callWithAuthRetry(
+      () => supabase.rpc('close_gym_visit', args), 'close_gym_visit',
+    );
     if (error) throw error;
   } catch (err) {
     console.warn('[GymVisit] closeGymVisit failed:', err);
