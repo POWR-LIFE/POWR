@@ -330,116 +330,23 @@ export async function notifyCheckInAvailable(partnerName: string, locationId: st
 }
 
 // ---------------------------------------------------------------------------
-// Session mark notifications — iOS swiped-away only.
+// Session mark notifications — DELETED 2026-08-07.
 //
-// Apple never delivers background pushes to a force-quit app, so the beacon's
-// at-the-mark wakes (and therefore the server's "Session recorded" push) cannot
-// reach a swiped-away iPhone mid-session. But iOS DOES deliver SCHEDULED local
-// notifications regardless of app state (field-proven 2026-08-05: a force-quit
-// relaunch displayed the check-in banner). So at check-in — a moment we are
-// provably awake — we pre-schedule the 30/40-minute banners for the times the
-// thresholds will pass. Honesty is kept by the region-EXIT relaunch (also
-// proven 2026-08-05), which cancels any mark the user left before reaching.
-// The points themselves still settle through the usual claim paths; these
-// banners announce the outcome at the moment it becomes true.
+// These pre-scheduled the 30/40-minute banners on iOS at check-in, because
+// Apple was believed never to deliver a background push to a force-quit app.
+// The field run on 2026-08-07 disproved the premise: a force-quit iPhone
+// answered a direct APNs nudge and claimed its session in TWO SECONDS.
 //
-// Android never schedules these: its background pushes are reliable and carry
-// the real points/streak copy.
+// They also lied by construction. Firing on a timer, they announced "30 min
+// session banked" whether or not the user was still there and whether or not
+// anything had been banked — and then landed next to the real server push,
+// producing three "Session recorded" banners on one iPhone for one session.
+// Keeping them would have meant building cancellation that races the very
+// push it is trying not to duplicate.
+//
+// The server notification is the true one: it is sent after the points
+// actually land and carries the real total. It is now the only one.
 // ---------------------------------------------------------------------------
-
-const SESSION_MARK_ID_PREFIX = 'powr-session_mark-';
-
-export async function scheduleSessionMarkNotifications(opts: {
-  /** Stable per-session key. Use the ENTRY TIMESTAMP, never the visit id: the
-   *  visit id needs a network round-trip that background relaunches can
-   *  freeze, and these banners are purely local (2026-08-05: gating them on
-   *  the visit id silently dropped them on a frozen iOS re-entry). */
-  sessionKey: string;
-  partnerName: string;
-  entryTimestampMs: number;
-  dwellMinutes: number;
-  upgradeMinutes: number;
-}): Promise<void> {
-  if (Platform.OS !== 'ios') return;
-
-  // SUPERSEDE, always: one active banner pair per device, belonging to the
-  // NEWEST session. Without this, boundary wobble (exit→enter cycles) piles up
-  // pairs keyed to different entry timestamps and they all fire — the
-  // 2026-08-05 eight-banner storm. A new check-in owns the future outright.
-  await cancelNotificationsOfType('session_mark').catch(() => {});
-
-  const permissions = await Notifications.getPermissionsAsync().catch(() => null);
-  const allowed = permissions?.granted
-    || permissions?.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL;
-  if (!allowed) return;
-
-  const marks = [
-    {
-      suffix: 'dwell',
-      minutes: opts.dwellMinutes,
-      title: 'Session recorded 🔥',
-      // Mirrors the server push's shape ("Session recorded 🔥 · POWR · +15 pts")
-      // minus the numbers a pre-claim banner cannot know — points settle when
-      // the session wraps.
-      body: `${opts.partnerName} · ${opts.dwellMinutes} min session banked`,
-    },
-    {
-      suffix: 'upgrade',
-      minutes: opts.upgradeMinutes,
-      title: 'Bonus unlocked 🔓',
-      body: `${opts.partnerName} · ${opts.upgradeMinutes}+ min session`,
-    },
-  ];
-
-  for (const mark of marks) {
-    const fireAt = new Date(opts.entryTimestampMs + mark.minutes * 60_000);
-    // Finite-check as well as past-check: a NaN date reaches expo-notifications'
-    // native Swift conversion as a NaN interval, which traps UNCATCHABLY on iOS
-    // (2026-08-05 crash-hunt finding). NaN can only come from corrupted
-    // entryTimestampMs/config, but a corrupt banner must never cost the process.
-    if (!Number.isFinite(fireAt.getTime()) || fireAt <= new Date()) continue;
-    try {
-      await Notifications.scheduleNotificationAsync({
-        identifier: `${SESSION_MARK_ID_PREFIX}${mark.suffix}-${opts.sessionKey}`,
-        content: {
-          title: mark.title,
-          body: mark.body,
-          data: {
-            type: 'session_mark',
-            route: '/(tabs)/index',
-            sessionKey: opts.sessionKey,
-            mark: mark.suffix,
-          } satisfies NotificationPayload,
-          sound: 'default',
-        },
-        trigger: {
-          type: Notifications.SchedulableTriggerInputTypes.DATE,
-          date: fireAt,
-        },
-      });
-    } catch (err) {
-      // LOUD by policy: a silent catch on this exact API hid the Android
-      // check-in gap for three weeks (2026-07-14 → 2026-08-05).
-      console.warn(`[Notifications] session mark (${mark.suffix}) failed to schedule:`, err);
-    }
-  }
-}
-
-/** Cancels pending session marks the user did not stay long enough to earn.
- *  'all' when they left before the dwell threshold; 'upgrade_only' when they
- *  left between the two. Marks already delivered are untouched. */
-export async function cancelSessionMarkNotifications(
-  sessionKey: string,
-  which: 'all' | 'upgrade_only',
-): Promise<void> {
-  if (Platform.OS !== 'ios') return;
-  const suffixes = which === 'all' ? ['dwell', 'upgrade'] : ['upgrade'];
-  for (const suffix of suffixes) {
-    await Notifications
-      .cancelScheduledNotificationAsync(`${SESSION_MARK_ID_PREFIX}${suffix}-${sessionKey}`)
-      .catch(() => { /* never scheduled on this runtime — nothing to cancel */ });
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Nearby offer — fired from the placement background task when a location

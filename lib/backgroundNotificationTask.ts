@@ -111,10 +111,26 @@ TaskManager.defineTask(BACKGROUND_NOTIFICATION_TASK, async ({ data, error }) => 
     //    but fire-and-forget: it helps LATER paths and must never cost this one.
     //  • Legacy nudge without a ticket: keep the awaited freshness pass — a
     //    stale-token confirm there fails outright, so the gamble inverts.
+    //
+    // ⚠ THE WARM PASS IS GONE (2026-08-07). It was fire-and-forget, so it never
+    // blocked this wake — but it was never harmless either, and it never once
+    // did its job. Observed on EVERY wake across a full field session:
+    //
+    //   [authFresh] background_wake_warm: abandoning a freshness pass stuck for >45s
+    //
+    // It cannot complete on a wake — on iOS the Keychain read is refused
+    // outright while the phone is locked ("User interaction is not allowed"),
+    // and on Android getSession/setSession time out at 30 s. So it warms
+    // nothing. What it DOES do is take authFresh's single-flight latch and hold
+    // it, so the next genuine caller in that wake coalesces onto a dead promise
+    // and waits out the 45-second deadline — punishing the fallback path at
+    // exactly the moment it is needed, which is when bgRest has already
+    // declined a spent or locked token.
+    //
+    // Nothing on the wake path needs it any more: the five visit RPCs and both
+    // telemetry writers present the persisted token themselves over raw fetch.
     if (payload.nonce) {
-      void import('@/lib/authFresh')
-        .then(m => m.ensureFreshSession('background_wake_warm'))
-        .catch(() => { /* warming is best-effort by definition */ });
+      // Deliberately nothing. A ticketed wake does zero auth work.
     } else {
       const { ensureFreshSession } = await import('@/lib/authFresh');
       await ensureFreshSession('background_wake');
