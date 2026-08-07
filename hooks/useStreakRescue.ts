@@ -3,7 +3,7 @@ import { useEffect, useRef } from 'react';
 
 import { useActivityRevision } from '@/hooks/useActivityRevision';
 import { deriveRescueOffer, type StreakRescueOffer } from '@/lib/streakRescue';
-import { supabase } from '@/lib/supabase';
+import { getSessionUser, supabase } from '@/lib/supabase';
 
 // Pure state derivation (types, SAVED_VISIBLE_MS, deriveRescueOffer,
 // rescueDayIndexFor) lives in lib/streakRescue so it stays testable without the
@@ -49,9 +49,16 @@ export function useStreakRescue() {
         queryKey: ['streakRescue'],
         queryFn: async (): Promise<StreakRescueOffer | null> => {
             try {
+                // Scope explicitly — RLS alone is NOT enough. streak_rescues also
+                // carries an "admins can read all" policy, so for an admin account
+                // this ordered limit-1 returns the newest rescue belonging to ANY
+                // user, and their own sessions never advance its counter.
+                const user = await getSessionUser();
+                if (!user) return null;
                 const { data: row } = await supabase
                     .from('streak_rescues')
                     .select('id, lost_streak, missed_day, label, requirement_type, sessions_required, sessions_done, expires_at, status, completed_at')
+                    .eq('user_id', user.id)
                     .in('status', ['offered', 'completed'])
                     .order('offered_at', { ascending: false })
                     .limit(1)

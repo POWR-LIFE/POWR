@@ -167,18 +167,34 @@ export function useWeeklyChallenges(): WeeklyChallengesState {
     // 2. This week's sessions + completions — fetched before the active set is
     //    chosen, because both feed personalization.
     const weekStart = localMondayAsUTC(utcOffsetMinutes);
-    const [{ data: sessions }, { data: completions }, { data: { session: authSession } }] =
+    // Resolved before the reads below because every one of them must scope on
+    // user_id: activity_sessions and user_challenge_completions both carry an
+    // "admins can read all" policy, so unfiltered these evaluate challenges
+    // against the WHOLE platform's activity — every challenge trivially met,
+    // and the award path below then grants points for it. getSession() is a
+    // local cache read, so hoisting it out of the parallel batch costs nothing.
+    const { data: { session: authSession } } = await supabase.auth.getSession();
+    if (!authSession) {
+      // Signed out — nothing to evaluate. Clear loading so the board doesn't
+      // sit on its initial spinner forever.
+      setState({ challenges: [], loading: false, newlyCompletedId: null });
+      return;
+    }
+    const uid = authSession.user.id;
+
+    const [{ data: sessions }, { data: completions }] =
       await Promise.all([
         supabase
           .from('activity_sessions')
           .select('type, started_at, duration_sec, distance_m, steps, verification')
+          .eq('user_id', uid)
           .gte('started_at', weekStart)
           .order('started_at', { ascending: true }),
         supabase
           .from('user_challenge_completions')
           .select('challenge_id')
+          .eq('user_id', uid)
           .eq('challenge_week', challengeWeek),
-        supabase.auth.getSession(),
       ]);
     const completedIds = new Set((completions ?? []).map((c) => c.challenge_id));
 
@@ -225,6 +241,7 @@ export function useWeeklyChallenges(): WeeklyChallengesState {
       const { data: windows } = await supabase
         .from('daily_step_windows')
         .select('date, before_9am, midday_12_14, after_6pm')
+        .eq('user_id', uid)
         .gte('date', weekStart.slice(0, 10));
       stepWindowRows = windows ?? [];
     }
@@ -298,6 +315,7 @@ export function useWeeklyChallenges(): WeeklyChallengesState {
           const { data: prevCompletions, error: pcErr } = await supabase
             .from('user_challenge_completions')
             .select('challenge_id')
+            .eq('user_id', uid)
             .eq('challenge_week', prevWeek);
           if (pcErr) throw pcErr;
           const prevCompleted = new Set((prevCompletions ?? []).map((c) => c.challenge_id));
@@ -309,6 +327,7 @@ export function useWeeklyChallenges(): WeeklyChallengesState {
           const { data: prevSessions, error: psErr } = await supabase
             .from('activity_sessions')
             .select('type, started_at, duration_sec, distance_m, steps, verification')
+            .eq('user_id', uid)
             .gte('started_at', prevWeekStart)
             .lt('started_at', prevWeekEnd)
             .order('started_at', { ascending: true });
@@ -334,6 +353,7 @@ export function useWeeklyChallenges(): WeeklyChallengesState {
               const { data: windows } = await supabase
                 .from('daily_step_windows')
                 .select('date, before_9am, midday_12_14, after_6pm')
+                .eq('user_id', uid)
                 .gte('date', prevWeekStart.slice(0, 10))
                 .lt('date', prevWeekEnd.slice(0, 10));
               prevStepRows = windows ?? [];

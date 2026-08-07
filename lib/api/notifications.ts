@@ -1,5 +1,5 @@
 import { getAppVersion } from '@/lib/device';
-import { supabase } from '@/lib/supabase';
+import { getSessionUser, supabase } from '@/lib/supabase';
 import type { NotificationType } from '@/lib/notifications';
 
 // ---------------------------------------------------------------------------
@@ -245,9 +245,16 @@ export interface ActivityItem {
 
 /** Newest-first page of the signed-in user's activity feed. Never throws. */
 export async function fetchActivityFeed(limit = 50): Promise<ActivityItem[]> {
+  // Scoped on user_id rather than left to RLS. user_activity has no admin-read
+  // policy today, so this is currently belt-and-braces — but the moment one is
+  // added for a support tool, an unfiltered ordered limit turns the bell into
+  // every user's feed, and deleteActivityItem() would then target those rows.
+  const user = await getSessionUser();
+  if (!user) return [];
   const { data, error } = await supabase
     .from('user_activity')
     .select('id, type, category, title, body, route, data, read_at, created_at')
+    .eq('user_id', user.id)
     .order('created_at', { ascending: false })
     .limit(limit);
 

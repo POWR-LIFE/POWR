@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase';
+import { getSessionUser, supabase } from '@/lib/supabase';
 
 export type IntegrationType = 'POOL' | 'API_VALIDATED' | 'AFFILIATE';
 
@@ -118,9 +118,12 @@ export interface RedemptionHistoryRow {
 }
 
 export async function fetchRedemptionHistory(): Promise<RedemptionHistoryRow[]> {
+  const user = await getSessionUser();
+  if (!user) return [];
   const { data, error } = await supabase
     .from('redemptions')
     .select('id, reward_id, code, powr_spent, status, redeemed_at, expires_at, rewards(title, partners(name, partner_code, logo_url))')
+    .eq('user_id', user.id)
     .order('redeemed_at', { ascending: false });
   if (error) throw error;
   return (data ?? []) as any;
@@ -173,10 +176,13 @@ export const WALLET_HISTORY_PAGE_SIZE = 20;
  * soonest-to-expire first so the most urgent code is on top.
  */
 export async function fetchActiveWallet(): Promise<WalletEntry[]> {
+  const user = await getSessionUser();
+  if (!user) return [];
   const nowIso = new Date().toISOString();
   const { data, error } = await supabase
     .from('redemptions')
     .select(WALLET_COLUMNS)
+    .eq('user_id', user.id)
     .eq('status', 'active')
     .or(`expires_at.is.null,expires_at.gte.${nowIso}`)
     .order('expires_at', { ascending: true, nullsFirst: false });
@@ -192,10 +198,13 @@ export async function fetchWalletHistory(
   offset: number,
   limit: number = WALLET_HISTORY_PAGE_SIZE,
 ): Promise<WalletEntry[]> {
+  const user = await getSessionUser();
+  if (!user) return [];
   const nowIso = new Date().toISOString();
   const { data, error } = await supabase
     .from('redemptions')
     .select(WALLET_COLUMNS)
+    .eq('user_id', user.id)
     .neq('status', 'refunded')
     .or(`status.in.(used,expired),expires_at.lt.${nowIso}`)
     .order('redeemed_at', { ascending: false })
@@ -212,9 +221,12 @@ export async function fetchWalletHistory(
  * redeem-reward edge function, which ignores expiry.
  */
 export async function fetchMyRedemptionSummary(): Promise<Record<string, { active: number; nonRefunded: number }>> {
+  const user = await getSessionUser();
+  if (!user) return {};
   const { data, error } = await supabase
     .from('redemptions')
-    .select('reward_id, status, expires_at');
+    .select('reward_id, status, expires_at')
+    .eq('user_id', user.id);
   if (error) throw error;
   const now = Date.now();
   const out: Record<string, { active: number; nonRefunded: number }> = {};

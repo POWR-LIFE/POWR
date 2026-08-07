@@ -22,7 +22,7 @@ import { usePoints } from '@/hooks/usePoints';
 import { tracked } from '@/lib/analytics';
 import { redeemReward, RedemptionError, type IntegrationType, type Reward } from '@/lib/api/rewards';
 import { rewardHeroUri, rewardLogoUri } from '@/lib/storageImage';
-import { supabase } from '@/lib/supabase';
+import { getSessionUser, supabase } from '@/lib/supabase';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 
@@ -99,6 +99,8 @@ export default function RedeemModal() {
   useEffect(() => {
     if (!id) return;
     (async () => {
+      const user = await getSessionUser();
+      if (!user) return;
       // Load reward and check for an existing active redemption in parallel
       const [rewardRes, redemptionRes] = await Promise.all([
         supabase
@@ -109,6 +111,7 @@ export default function RedeemModal() {
         supabase
           .from('redemptions')
           .select('code, expires_at, status, checkout_url')
+          .eq('user_id', user.id)
           .eq('reward_id', id)
           .eq('status', 'active')
           // Lapsed codes stay status='active' in the ledger; don't count them

@@ -11,7 +11,7 @@
 
 import { Platform } from 'react-native';
 
-import { supabase } from '@/lib/supabase';
+import { getSessionUser, supabase } from '@/lib/supabase';
 import {
   computeCorrectedWindow,
   ENTRY_BACKDATE_MARGIN_MS,
@@ -138,10 +138,16 @@ export async function reconcileGymSession(session: GymSessionRow): Promise<void>
  */
 export async function reconcileRecentGymSessions(): Promise<void> {
   if (Platform.OS === 'web') return;
+  // Scoped on user_id: activity_sessions has an "admins can read all" policy,
+  // so an unfiltered limit-3 hands back other users' sessions — and each one is
+  // then put through `upgrade-gym-tier` from this device.
+  const user = await getSessionUser();
+  if (!user) return;
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
   const { data, error } = await supabase
     .from('activity_sessions')
     .select('id, started_at, ended_at, duration_sec')
+    .eq('user_id', user.id)
     .eq('type', 'gym')
     .eq('verification', 'geofence')
     .gte('started_at', since)
