@@ -235,7 +235,32 @@ Deno.serve(async (req: Request) => {
       }
       if (!stamped || stamped.length === 0) continue;
 
-      const mins = Math.max(1, Math.round(
+      // THE SESSION IS AUTHORITATIVE, not the visit (2026-08-07).
+      //
+      // This used to quote the visit's own span, which meant the user was told one
+      // number and the app stored another: field 2026-08-07, the push said 47 min
+      // while activity_sessions held 63.4 min, because gymReconcile.ts had matched
+      // the row to a HealthKit workout that began 19 minutes before the geofence
+      // ever saw them. Three numbers for one workout, and the one the user read was
+      // the one we did not keep.
+      //
+      // The session wins because the codebase already says it should — see
+      // MAX_GYM_SESSION_SEC: the cap "only bounds the runaway wall-clock", and "the
+      // true length is corrected after the fact ... against the health store". It is
+      // also the row every other surface renders (history, stats, Progress); the
+      // visit is internal lifecycle plumbing the user never sees.
+      //
+      // Reconciliation can still land after this push, in which case the app shows a
+      // corrected figure later. That is a visible correction to a shared value, not
+      // two permanently different sources — which is what it was before.
+      const { data: sessRow } = await admin
+        .from('activity_sessions')
+        .select('duration_sec')
+        .eq('id', visit.claimed_session_id)
+        .maybeSingle();
+      const mins = sessRow?.duration_sec
+        ? Math.max(1, Math.round(sessRow.duration_sec / 60))
+        : Math.max(1, Math.round(
         (new Date(visit.ended_at as string).getTime() - new Date(visit.started_at as string).getTime()) / 60_000,
       ));
       const gymName = (visit as { partners?: { name?: string } | null }).partners?.name ?? 'your gym';
@@ -445,7 +470,15 @@ Deno.serve(async (req: Request) => {
           .select('id, started_at, ended_at')
           .eq('id', v.claimed_session_id)
           .maybeSingle();
-        if (sess?.ended_at && Date.parse(sess.ended_at) > provenMs) {
+        // Only DRIFT, never a health correction. The session is the authoritative
+        // length (see the SESSION COMPLETE pass), and gymReconcile.ts legitimately
+        // extends it against the health store — by minutes, to cover a warm-up the
+        // fence never saw. Drift is a different animal entirely: it ratchets with
+        // wall-clock for as long as the visit stays open and reaches HOURS (2400s →
+        // 3598s in twenty minutes, on its way to the 12h cap). The margin lets an
+        // honest reconciliation stand and still catches the pathology.
+        const DRIFT_MARGIN_MS = 30 * 60 * 1000;
+        if (sess?.ended_at && Date.parse(sess.ended_at) > provenMs + DRIFT_MARGIN_MS) {
           const durationSec = Math.max(0, Math.round((provenMs - Date.parse(sess.started_at)) / 1000));
           const { error: sessErr } = await admin
             .from('activity_sessions')
