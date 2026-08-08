@@ -839,7 +839,8 @@ export async function setLocationStreamMode(mode: StreamMode): Promise<void> {
 function logRegionEvent(
   regionId: string,
   event: 'enter' | 'exit' | 'approach_stream_on' | 'checked_in' | 'stream_start_failed'
-    | 'stream_switch_deferred' | 'armed' | 'sentinel_exit' | 'rearm_skipped' | 'sweep',
+    | 'stream_switch_deferred' | 'armed' | 'sentinel_exit' | 'rearm_skipped' | 'sweep'
+    | 'visit_stamp_relaxed' | 'visit_stamp_skipped' | 'coarse_rejected',
   detail: Record<string, unknown> = {},
 ): void {
   void import('@/lib/gymVisits')
@@ -1022,6 +1023,51 @@ async function sweepForMissedCheckIn(): Promise<void> {
   try {
     const active = await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY);
     if (active) { // already checked in
+      // THE EXIT BACKSTOP (2026-08-08). This used to return unconditionally, which
+      // meant the ~5-6 min fence_refresh cadence — the thing that rescues a missed
+      // CHECK-IN — was structurally incapable of rescuing a missed CHECK-OUT.
+      // Check-in had three detectors and a scheduled backstop; check-out had the
+      // native region exit and nothing else. Field 2026-08-08: Android's native
+      // exit did not arrive for 13.1 minutes, every fix in the window was coarse
+      // (so evaluateLocationFix's geometry never ran either), and the visit was
+      // still open 25 minutes after the owner had walked 500 m away.
+      //
+      // ⚠ GATED ON PAST-UPGRADE, and that gate is not negotiable. Closing a visit
+      // early kills the claim AND the bonus — 55 of 100 visits were once destroyed
+      // exactly that way (see project_gym_session_day_uniqueness). Past the upgrade
+      // there is nothing left to earn, so an early close forfeits nothing; this is
+      // the same rationale the server-side reaper is gated on.
+      //
+      // Only ever acts on an UNAMBIGUOUS fix: trusted accuracy, and outside by more
+      // than the exit hysteresis PLUS the fix's own error bar. Anything less and it
+      // defers to the detectors that own the decision.
+      let handled = false;
+      try {
+        const a = JSON.parse(active) as StoredGeofence;
+        const elapsed = typeof a.entryTimestamp === 'number' ? Date.now() - a.entryTimestamp : 0;
+        if (elapsed >= getGymUpgradeMinutes() * 60_000
+            && a.latitude != null && a.longitude != null && a.radius != null) {
+          const fix = await Location.getLastKnownPositionAsync({ maxAge: 10 * 60_000 }).catch(() => null);
+          const acc = fix?.coords.accuracy ?? null;
+          if (fix && (acc == null || acc < MAX_FIX_ACCURACY_M)) {
+            const dist = haversineMetres(fix.coords.latitude, fix.coords.longitude, a.latitude, a.longitude);
+            const bound = a.radius + LOCATION_EXIT_HYSTERESIS_M + (acc ?? 0);
+            if (dist > bound) {
+              logRegionEvent(a.regionId ?? 'sweep', 'sweep', {
+                outcome: 'exit_backstop',
+                distance_m: Math.round(dist),
+                bound_m: Math.round(bound),
+                acc_m: acc != null ? Math.round(acc) : null,
+                elapsed_min: Math.round(elapsed / 60_000),
+              });
+              await finalizeActiveGeofence();
+              handled = true;
+            }
+          }
+        }
+      } catch { /* never let the backstop break the sweep's own row */ }
+      if (handled) return;
+
       // Names the blocker: the reconcile is the only thing that can clear this and
       // it ran immediately before us, so `has_geom: false` here is also the reason
       // it declined (its discriminator needs geometry it does not have).
@@ -1071,6 +1117,44 @@ async function sweepForMissedCheckIn(): Promise<void> {
     logRegionEvent('sweep', 'sweep', { outcome: 'error', err: String(err).slice(0, 120) });
     console.warn('[Geofence] Missed check-in sweep failed:', err);
   }
+}
+
+/** Names a fix that was too coarse to make a geometric decision.
+ *
+ *  Both `isCoarse` branches in evaluateLocationFix used to return in silence,
+ *  which made "the stream never delivered" and "the stream delivered twelve
+ *  fixes and every one was gated" produce byte-identical telemetry. On
+ *  2026-08-08 that cost a whole field run's worth of certainty: iOS checked in
+ *  2m24s after entering the approach ring, from the SWEEP rather than the
+ *  approach stream the design says is "the only thing that starts a session",
+ *  and there was no way to tell which of the two had happened.
+ *
+ *  This is the same blind spot the sweep instrumentation was written to close —
+ *  that fix landed on the sweep and not on the function that actually decides
+ *  check-ins and check-outs.
+ *
+ *  Throttled hard (one row per 5 min per reason): a dwell stream ticks every
+ *  ~60 s and an approach stream every 8 s, so an unthrottled row here would
+ *  bury the table the way stream_tick did. */
+let lastCoarseLogAt: Record<string, number> = {};
+function logCoarseRejection(
+  reason: 'dwell_tick' | 'enter_blocked',
+  coords: { latitude: number; longitude: number; accuracy: number | null },
+  active: StoredGeofence | null,
+): void {
+  const now = Date.now();
+  if (now - (lastCoarseLogAt[reason] ?? 0) < 5 * 60_000) return;
+  lastCoarseLogAt[reason] = now;
+  let distance: number | null = null;
+  if (active?.latitude != null && active?.longitude != null) {
+    distance = Math.round(haversineMetres(coords.latitude, coords.longitude, active.latitude, active.longitude));
+  }
+  logRegionEvent(active?.regionId ?? 'fix', 'coarse_rejected', {
+    reason,
+    acc_m: coords.accuracy != null ? Math.round(coords.accuracy) : null,
+    distance_m: distance,
+    gate_m: MAX_FIX_ACCURACY_M,
+  });
 }
 
 /** Read-only description of a stored session, for the sweep's blocked row.
@@ -1962,9 +2046,49 @@ async function setActiveAndNotify(regionId: string, entry: PartnerMapEntry): Pro
     if (visitId) {
       const raw = await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY);
       const active = raw ? JSON.parse(raw) as StoredGeofence : null;
-      // Only stamp the visit onto the session we just opened — never a later one.
-      if (active && active.entryTimestamp === entryTimestamp) {
+      // Stamp the visit onto the stored session — never onto a DIFFERENT PLACE.
+      //
+      // This used to demand `active.entryTimestamp === entryTimestamp` exactly,
+      // and on Android that equality failed silently on every single check-in:
+      // field 2026-08-08, `visit: null` in every sweep row for a 60-minute
+      // session, and a `VISIT reused` on every wake because the client had to
+      // re-resolve the visit from the server each time it woke.
+      //
+      // Losing the id is not cosmetic — it is load-bearing four ways over:
+      //   1. finalizeActiveGeofence's close is gated on it, so the visit never closes;
+      //   2. so is the #364 durable-close outbox, so it never even queues a retry;
+      //   3. markGymVisitProgress is gated on it, so claim/upgrade never mark;
+      //   4. and with no id the client re-resolves via openGymVisit on every wake —
+      //      so the moment anything closes the visit server-side (the REAPER does
+      //      exactly this, 45 min after upgrade) the next wake opens a DUPLICATE
+      //      visit with a stale started_at, which the beacon then nudges. Observed
+      //      live on 2026-08-08.
+      //
+      // The guard's real job is to not attach this visit to a session at some
+      // OTHER partner, and regionId says that directly. A timestamp mismatch at
+      // the same region means a concurrent check-in path rewrote the record
+      // (iOS fired `sweep` and `enter_poll` 3 ms apart that same run) — and
+      // open_gym_visit reuses the user's open visit anyway, so the id we hold IS
+      // that session's visit. `!active.visitId` keeps it strictly additive: an
+      // already-stamped session is never overwritten.
+      const sameSession = active?.entryTimestamp === entryTimestamp;
+      const stampable = active && active.regionId === regionId && !active.visitId;
+      if (stampable) {
         await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...active, visitId }));
+        // Name the relaxed path so we learn how often the strict guard was wrong,
+        // rather than inferring it from `visit: null` months later.
+        if (!sameSession) {
+          logRegionEvent(regionId, 'visit_stamp_relaxed', {
+            stored_entry: active.entryTimestamp ?? null,
+            opened_entry: entryTimestamp,
+          });
+        }
+      } else if (active && !active.visitId) {
+        // Region changed under us — genuinely must not stamp. Previously silent.
+        logRegionEvent(regionId, 'visit_stamp_skipped', {
+          reason: 'region_mismatch',
+          stored_region: active.regionId ?? null,
+        });
       }
       if (checkInShown) {
         // Local banner displayed — tell the beacon not to double-announce.
@@ -2241,15 +2365,38 @@ async function finalizeActiveGeofenceInner(expectedRegionId?: string, endedAtOve
   // anything on the device knows the visit exists. A silent failure here is what
   // orphans it — permanently, since re-opening the app finds no session to
   // finalize. Queue the retry instead of dropping it on the floor.
-  if (active.visitId) {
+  // NEVER gated on visitId alone. Field 2026-08-08: Android reached this point
+  // with visitId null on a real 60-minute session, and BOTH the close and the
+  // retry queue below sat inside `if (active.visitId)` — so the visit was not
+  // closed, was not queued, and could only ever be ended by the server reaper.
+  // #364 fixed the case where closeGymVisit FAILS; it did not cover the case
+  // where the id was never stamped, so such a visit never reached the outbox
+  // built to save it. The stamp itself is fixed in setActiveAndNotify, but this
+  // path must not depend on that having worked.
+  let visitId = active.visitId ?? null;
+  if (!visitId) {
+    // The server can still tell us which visit this is — open_gym_visit returns
+    // the user's existing OPEN visit rather than creating a second one, which is
+    // exactly the resolve the client has been doing on every wake anyway.
+    try {
+      const { openGymVisit } = await import('@/lib/gymVisits');
+      visitId = await openGymVisit(active.partnerId, active.regionId, active.entryTimestamp);
+    } catch { /* offline — fall through to the queue below */ }
+    logRegionEvent(active.regionId ?? 'exit', 'visit_stamp_skipped', {
+      reason: 'missing_at_close',
+      recovered: !!visitId,
+    });
+  }
+
+  if (visitId) {
     let closed = false;
     try {
       const { closeGymVisit } = await import('@/lib/gymVisits');
-      closed = await closeGymVisit(active.visitId, endedAtMs);
+      closed = await closeGymVisit(visitId, endedAtMs);
     } catch { /* treated as not-closed below */ }
     if (!closed) {
       await enqueuePendingVisitClose({
-        visitId: active.visitId,
+        visitId,
         endedAtMs,
         userId: active.userId,
         queuedAtMs: Date.now(),
@@ -2623,6 +2770,23 @@ export async function runVisitCheck(
     inside = distance <= active.radius + LOCATION_EXIT_HYSTERESIS_M;
   }
 
+  // Is this fix good enough for `distance_m` to mean anything? Field 2026-08-08,
+  // 09:54: Android answered a presence nudge with accuracy_m 574 and reported
+  // distance_m 49 while its owner was several hundred metres away — and the row
+  // read exactly like a genuine confirm. That is the signature of every phantom
+  // confirm in the 5½-hour zombie visit (all of which carried the 100.0
+  // sentinel), and it is what keeps a visit provably "alive" after the user has
+  // gone.
+  //
+  // The DECISION is deliberately unchanged: `inside` still defaults true on a
+  // bad fix, because refusing coarse fixes here would starve the time-based
+  // dwell exactly as it did on 07-03/07-11 (indoor GPS is routinely >100 m), and
+  // the reaper + presence pass are the intended defence against a zombie. What
+  // changes is that the confirm no longer LOOKS trustworthy when it isn't: the
+  // server and every future investigation can now separate "proven inside" from
+  // "asked, and got an answer we cannot bank on".
+  const fixTrusted = coords.accuracy == null || coords.accuracy < MAX_FIX_ACCURACY_M;
+
   if (visitId) {
     const { confirmGymVisit, confirmGymVisitViaNonce } = await import('@/lib/gymVisits');
     // requestCredit on an inside confirm: this one round-trip both proves
@@ -2635,6 +2799,7 @@ export async function runVisitCheck(
       stage,
       distance_m: distance != null ? Math.round(distance) : null,
       accuracy_m: coords.accuracy != null ? Math.round(coords.accuracy) : null,
+      fix_trusted: fixTrusted,
       visit_mismatch: visitMismatch,
       trace,
     };
@@ -2865,6 +3030,15 @@ async function evaluateLocationFix(coords: Location.LocationObjectCoords): Promi
     // Position untrusted: skip the EXIT geometry (assume still inside — the same
     // effective outcome as the old early-return) but keep the time-based dwell
     // state machine alive so background claims fire without an app-open.
+    //
+    // ⚠ This is ALSO why an Android device cannot notice it has left: indoors or
+    // out, whenever the fused provider reports >=100 m the exit geometry never
+    // runs. Field 2026-08-08: the owner walked 500 m away and the visit stayed
+    // open for 25 minutes, because every fix in that window was coarse and the
+    // sweep (which returns early on session_active) is no backstop for exits.
+    // Kept as-is deliberately — rejecting coarse fixes wholesale is what starved
+    // entire in-gym dwells on 07-03/07-11 — but it is no longer SILENT.
+    logCoarseRejection('dwell_tick', coords, active);
     await heartbeatVisitStream(active, coords);
     await advanceActiveSession(active);
     return;
@@ -2876,6 +3050,7 @@ async function evaluateLocationFix(coords: Location.LocationObjectCoords): Promi
     // town. 2026-08-04: after a city-level fix mis-centred the arm by 13 km,
     // every indoor fix was >100 m and returned HERE, so nothing could ever
     // correct it. armNativeRegions itself no-ops inside the sentinel envelope.
+    logCoarseRejection('enter_blocked', coords, null);
     if (coords.accuracy != null && coords.accuracy <= ARM_FIX_MAX_ACCURACY_M) {
       await armNativeRegions({ latitude: coords.latitude, longitude: coords.longitude });
     }
