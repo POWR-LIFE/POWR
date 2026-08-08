@@ -6,6 +6,7 @@
  * `syncWalkingNow()` can be called from the foreground at any time.
  */
 
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as BackgroundFetch from 'expo-background-fetch';
 import * as TaskManager from 'expo-task-manager';
 import { Platform } from 'react-native';
@@ -456,6 +457,50 @@ export async function backfillWalkingDays(daysBack = 7): Promise<void> {
     } catch (e) {
         console.warn('[walkingSync] backfill failed:', e);
         _backfilledThisSession = false; // allow a retry on the next trigger
+    }
+}
+
+// ── Wake-path sync ────────────────────────────────────────────────────────────
+
+const WAKE_SYNC_KEY = '@powr/walking_wake_sync_at';
+const WAKE_SYNC_MIN_GAP_MS = 30 * 60 * 1000;
+
+/** Syncs steps off the geofence beacon's wake, not BackgroundFetch.
+ *
+ *  BACKGROUNDFETCH HAS NEVER DELIVERED A ROW. Proven 2026-08-08 by a deliberate
+ *  apps-closed field test, then confirmed against three weeks of history: every
+ *  walking row was written in a foreground BACKFILL BATCH — three days' rows
+ *  created within the same second, repeatedly — which is `backfillWalkingDays`
+ *  catching up at app-open. A task running on its 15-minute interval would leave
+ *  nothing to back-fill. The failure was invisible only because opening the app
+ *  swept up what the background never collected.
+ *
+ *  The beacon's `fence_refresh` wake, by contrast, is the most reliable recurring
+ *  execution this app has: ~5-6 minutes apart, answered on both platforms, and
+ *  observed landing ~30 times in a two-hour window on 2026-08-08. So steps ride
+ *  that instead of waiting for a scheduler that never runs.
+ *
+ *  ⚠ iOS is what this fixes. It has no HealthKit background-read permission to be
+ *  missing — the entitlement and usage strings have always been there — so the
+ *  only thing it ever lacked was execution time, which this supplies. ANDROID
+ *  WILL STILL FAIL here until an EAS build ships
+ *  `android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND`: Health Connect
+ *  refuses background reads without it regardless of which data types the user
+ *  granted. It is called on both platforms anyway so Android starts working the
+ *  moment that build lands, with no second OTA.
+ *
+ *  Throttled to one run per 30 minutes and deliberately best-effort: this runs on
+ *  the wake path, where the rule is that nothing may jeopardise the check-in. */
+export async function syncWalkingFromWake(): Promise<void> {
+    try {
+        const last = Number((await AsyncStorage.getItem(WAKE_SYNC_KEY)) ?? 0);
+        if (Number.isFinite(last) && Date.now() - last < WAKE_SYNC_MIN_GAP_MS) return;
+        // Stamped BEFORE the work, not after: a read that hangs or throws must not
+        // leave the gate open for every subsequent wake to pile into.
+        await AsyncStorage.setItem(WAKE_SYNC_KEY, String(Date.now()));
+        await syncWalkingNow();
+    } catch (err) {
+        console.warn('[walkingSync] wake sync failed (non-fatal):', err);
     }
 }
 

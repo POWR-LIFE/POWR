@@ -207,6 +207,22 @@ TaskManager.defineTask(BACKGROUND_NOTIFICATION_TASK, async ({ data, error }) => 
           // no fix means no check-in.
           await m.sweepForMissedCheckInFromWake();
         }
+
+        // LAST, AND ONLY EVER LAST. Steps ride this wake because BackgroundFetch
+        // has never delivered a single row — proven 2026-08-08 by an apps-closed
+        // field test and three weeks of history in which every walking row was
+        // written in a foreground backfill batch. This wake is the most reliable
+        // recurring execution the app has (~5-6 min, both platforms), so it is
+        // where the read belongs.
+        //
+        // It sits after every self-heal step on purpose: re-arm, reconcile and
+        // the missed-check-in sweep are what this wake exists for, and a health
+        // read must never be able to delay or break one. Own try/catch, throttled
+        // to 30 min inside syncWalkingFromWake, and it cannot reject.
+        try {
+          const { syncWalkingFromWake } = await import('@/lib/health/walkingSync');
+          await syncWalkingFromWake();
+        } catch { /* steps are never worth a wake */ }
       })
       .catch(() => { /* self-heal is best-effort by definition */ });
 
