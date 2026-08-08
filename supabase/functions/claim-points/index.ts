@@ -607,20 +607,53 @@ Deno.serve(async (req) => {
     : Math.max(0, base + streakBonus - baseCredited - streakCredited);
   let vaulted = 0;
   if (overflow > 0) {
+    const vestsAt = new Date(Date.now() + vaultVestDays * 24 * 60 * 60 * 1000).toISOString();
+    const vaultDescription = streakBonus > 0
+      ? `${currentStreak}-day streak · ${session.type} over the daily cap`
+      : `${session.type} over the daily cap`;
     const { error: vaultErr } = await supabase.from('vault_deposits').insert({
       user_id: user.id,
       session_id: session.id,
       amount: overflow,
       source: 'cap_overflow',
-      description: streakBonus > 0
-        ? `${currentStreak}-day streak · ${session.type} over the daily cap`
-        : `${session.type} over the daily cap`,
-      vests_at: new Date(Date.now() + vaultVestDays * 24 * 60 * 60 * 1000).toISOString(),
+      description: vaultDescription,
+      vests_at: vestsAt,
     });
     if (vaultErr) {
       console.warn('[claim-points] vault deposit failed:', vaultErr);
     } else {
       vaulted = overflow;
+
+      // Announce it. The claim's own push quotes only the SPENDABLE figure, so a
+      // capped user was told "+15 pts" while another 15 went somewhere they were
+      // never told about — field 2026-08-08, where a 14-day streak bonus split
+      // 15 paid / 15 banked at 09:15:05 in complete silence. upgrade-gym-tier had
+      // the identical hole and was fixed the same day; this is its other half.
+      //
+      // Best-effort and deliberately AFTER the deposit: a notification failure
+      // must never fail a claim whose points are already saved. The vault rollout
+      // gate in send-push-notification still decides whether a user with no Vault
+      // surface should hear about it.
+      try {
+        const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+        const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+        await fetch(`${supabaseUrl}/functions/v1/send-push-notification`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${serviceKey}` },
+          body: JSON.stringify({
+            target_user_id: user.id,
+            type: 'vault_banked',
+            payload: {
+              session_id: session.id,
+              points: overflow,
+              reason: streakBonus > 0 ? `${currentStreak}-day streak bonus` : `${session.type} session`,
+              vests_at: vestsAt,
+            },
+          }),
+        });
+      } catch (notifErr) {
+        console.warn('[claim-points] vault_banked notification failed:', notifErr);
+      }
     }
   }
 
