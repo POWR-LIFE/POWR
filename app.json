@@ -54,6 +54,7 @@
         "android.permission.health.READ_RESTING_HEART_RATE",
         "android.permission.health.READ_ACTIVE_CALORIES_BURNED",
         "android.permission.health.READ_TOTAL_CALORIES_BURNED",
+        "android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND",
         "android.permission.POST_NOTIFICATIONS",
         "android.permission.RECEIVE_BOOT_COMPLETED",
         "android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS",
