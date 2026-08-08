@@ -40,7 +40,12 @@ function sessionToFeedItem(session: ActivitySession): ActivityFeedItem | null {
         detail,
         timestamp: session.started_at,
         verified: session.verification !== 'manual',
-        rawName: formatRawActivityName(session.raw_activity_name, session.type) ?? undefined,
+        // Unrewarded visits carry no provider name, so the venue takes that slot —
+        // "Gym · POWR" is the only thing that distinguishes two short visits.
+        rawName: session.unrewarded
+            ? (session.partner_name ?? undefined)
+            : (formatRawActivityName(session.raw_activity_name, session.type) ?? undefined),
+        unrewarded: session.unrewarded === true,
     };
 }
 

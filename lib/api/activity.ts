@@ -36,6 +36,12 @@ export type ActivitySession = {
     trust_score: number;
     raw_activity_name: string | null;
     point_transactions: { amount: number }[];
+    /** A gym visit that never became a claimable session — under the dwell
+     *  threshold, or the day's points were already banked. It still happened, so
+     *  it still shows. Absent/false on everything from activity_sessions. */
+    unrewarded?: boolean;
+    /** Venue name, only carried by unrewarded visits (sessions render the type). */
+    partner_name?: string | null;
 };
 
 async function getCurrentUserId(): Promise<string | null> {
@@ -52,17 +58,94 @@ function isLocalToday(iso: string): boolean {
         && d.getDate() === now.getDate();
 }
 
+/** Recent activity, INCLUDING gym visits that earned nothing.
+ *
+ *  A visit under the dwell threshold produces no activity_sessions row at all —
+ *  finalizeActiveGeofence returns at `if (!needsClaim)` — and the day-uniqueness
+ *  index means a second visit on the same day cannot create one either. So a real
+ *  10-minute visit to a real gym simply vanished from the user's history. Jamie,
+ *  2026-08-08: "we should still record session lengths even if they can't be
+ *  rewarded points."
+ *
+ *  gym_visits already holds started_at/ended_at for every visit, so nothing needs
+ *  recording — only surfacing. Read-only, no schema change, and points are
+ *  untouched: these carry an empty point_transactions, so every consumer that
+ *  sums it already renders them as zero.
+ *
+ *  ⚠ They DO count toward the session count and average duration on
+ *  progress-detail, which is the point — they are sessions the user did.
+ */
 export async function fetchRecentSessions(limit = 5): Promise<ActivitySession[]> {
     const uid = await getCurrentUserId();
     if (!uid) return [];
-    const { data, error } = await supabase
-        .from('activity_sessions')
-        .select('id, type, started_at, ended_at, duration_sec, distance_m, steps, verification, trust_score, raw_activity_name, point_transactions(amount)')
-        .eq('user_id', uid)
-        .order('ended_at', { ascending: false, nullsFirst: false })
-        .limit(limit);
-    if (error) throw error;
-    return (data ?? []) as ActivitySession[];
+
+    const [sessionsRes, visitsRes] = await Promise.all([
+        supabase
+            .from('activity_sessions')
+            .select('id, type, started_at, ended_at, duration_sec, distance_m, steps, verification, trust_score, raw_activity_name, point_transactions(amount)')
+            .eq('user_id', uid)
+            .order('ended_at', { ascending: false, nullsFirst: false })
+            .limit(limit),
+        // Closed visits that never produced a session. Best-effort by design: a
+        // failure here must never blank the real history below it.
+        supabase
+            .from('gym_visits')
+            .select('id, started_at, ended_at, partners(name)')
+            .eq('user_id', uid)
+            .is('claimed_session_id', null)
+            .not('ended_at', 'is', null)
+            .order('ended_at', { ascending: false })
+            .limit(limit),
+    ]);
+
+    if (sessionsRes.error) throw sessionsRes.error;
+    const sessions = (sessionsRes.data ?? []) as ActivitySession[];
+    if (visitsRes.error) return sessions;
+
+    // ⚠ DEDUPE AGAINST REAL SESSIONS. A visit with claimed_session_id null is not
+    // proof the time was unrewarded — the 2026-08-08 duplicate-visit bug produced
+    // a SECOND unclaimed row covering the exact span of a claimed 60-minute
+    // session, and rendering that would show the user a phantom hour they never
+    // did twice. Overlap with any known session disqualifies it.
+    const spans = sessions
+        .filter(s => s.started_at && s.ended_at)
+        .map(s => [Date.parse(s.started_at), Date.parse(s.ended_at)] as const)
+        .filter(([a, b]) => Number.isFinite(a) && Number.isFinite(b));
+
+    const unrewarded: ActivitySession[] = [];
+    for (const v of (visitsRes.data ?? []) as Array<{
+        id: string; started_at: string; ended_at: string;
+        partners?: { name?: string | null } | { name?: string | null }[] | null;
+    }>) {
+        const start = Date.parse(v.started_at);
+        const end = Date.parse(v.ended_at);
+        if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) continue;
+        if (spans.some(([a, b]) => start < b && end > a)) continue;
+
+        const partner = Array.isArray(v.partners) ? v.partners[0] : v.partners;
+        unrewarded.push({
+            // Namespaced so it can never collide with an activity_sessions id —
+            // these are list keys, and a duplicate key silently drops a row.
+            id: `visit:${v.id}`,
+            type: 'gym',
+            started_at: v.started_at,
+            ended_at: v.ended_at,
+            duration_sec: Math.round((end - start) / 1000),
+            distance_m: null,
+            steps: null,
+            verification: 'geofence',
+            trust_score: 0.94,
+            raw_activity_name: null,
+            point_transactions: [],
+            unrewarded: true,
+            partner_name: partner?.name ?? null,
+        });
+    }
+
+    if (unrewarded.length === 0) return sessions;
+    return [...sessions, ...unrewarded]
+        .sort((a, b) => Date.parse(b.ended_at ?? '') - Date.parse(a.ended_at ?? ''))
+        .slice(0, limit);
 }
 
 /** Returns a Mon–Sun boolean[7] for the current week */

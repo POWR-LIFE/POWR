@@ -16,6 +16,10 @@ interface ActivityFeedItemProps {
   verified?: boolean;
   /** Display-ready provider activity name (e.g. "Strength Training"), when it adds info. */
   rawName?: string;
+  /** A real session that earned nothing — under the dwell threshold, or the day's
+   *  points were already banked. Shows an em dash rather than "+0", which reads
+   *  as a failure rather than as a session that simply didn't qualify. */
+  unrewarded?: boolean;
   cardHeight?: number;
 }
 
@@ -27,6 +31,7 @@ export function ActivityFeedItem({
   timestamp,
   verified = true,
   rawName,
+  unrewarded = false,
   cardHeight,
 }: ActivityFeedItemProps) {
   const config = ACTIVITIES[type];
@@ -41,7 +46,9 @@ export function ActivityFeedItem({
           <ActivityIcon activity={config} size={18} color={config.colour} />
         </View>
         <View style={styles.pointsBadge}>
-          <Text style={styles.pointsValue}>+{pointsEarned}</Text>
+          <Text style={[styles.pointsValue, unrewarded && styles.pointsValueMuted]}>
+            {unrewarded ? '—' : `+${pointsEarned}`}
+          </Text>
           <Text style={styles.pointsLabel}>POWR</Text>
         </View>
       </View>
@@ -111,6 +118,9 @@ const styles = StyleSheet.create({
     letterSpacing: -0.5,
     lineHeight: 20,
     color: colours.accent,
+  },
+  pointsValueMuted: {
+    color: colours.textMuted,
   },
   pointsLabel: {
     fontFamily: typography.label.fontFamily,

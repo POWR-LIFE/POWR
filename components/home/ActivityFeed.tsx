@@ -21,6 +21,8 @@ export interface ActivityFeedItem {
   verified: boolean;
   /** Display-ready provider activity name (e.g. "Strength Training"), when it adds info. */
   rawName?: string;
+  /** A real session that earned nothing — renders an em dash instead of "+0". */
+  unrewarded?: boolean;
 }
 
 interface ActivityFeedProps {
@@ -77,6 +79,7 @@ export function ActivityFeed({ items, isNewUser }: ActivityFeedProps & { isNewUs
           timestamp={item.timestamp}
           verified={item.verified}
           rawName={item.rawName}
+          unrewarded={item.unrewarded}
           cardHeight={CARD_HEIGHT}
         />
       ))}
