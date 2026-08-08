@@ -840,7 +840,7 @@ function logRegionEvent(
   regionId: string,
   event: 'enter' | 'exit' | 'approach_stream_on' | 'checked_in' | 'stream_start_failed'
     | 'stream_switch_deferred' | 'armed' | 'sentinel_exit' | 'rearm_skipped' | 'sweep'
-    | 'visit_stamp_relaxed' | 'visit_stamp_skipped' | 'coarse_rejected',
+    | 'visit_stamp_relaxed' | 'visit_stamp_skipped' | 'coarse_rejected' | 'enter_scan',
   detail: Record<string, unknown> = {},
 ): void {
   void import('@/lib/gymVisits')
@@ -1154,6 +1154,35 @@ function logCoarseRejection(
     acc_m: coords.accuracy != null ? Math.round(coords.accuracy) : null,
     distance_m: distance,
     gate_m: MAX_FIX_ACCURACY_M,
+  });
+}
+
+/** Names an ENTER scan that looked at the cached circles and started nothing.
+ *
+ *  The scan's two negative outcomes were both silent returns, so "the partner map
+ *  was missing" and "the map was fine and you were genuinely outside every circle"
+ *  produced identical evidence: none. That is precisely the pair 2026-08-08 could
+ *  not distinguish when Android reported a trusted fix 16–17 m from a 25 m fence
+ *  and never checked in.
+ *
+ *  Same throttle discipline as logCoarseRejection — this sits on the location
+ *  stream, which ticks every 8 s inside an approach ring. */
+let lastEnterScanLogAt: Record<string, number> = {};
+function logEnterScan(
+  reason: 'map_unavailable' | 'no_match_in_ring',
+  coords: { latitude: number; longitude: number; accuracy: number | null },
+  nearestM: number | null,
+  nearestId: string | null,
+  scanned: number,
+): void {
+  const now = Date.now();
+  if (now - (lastEnterScanLogAt[reason] ?? 0) < 5 * 60_000) return;
+  lastEnterScanLogAt[reason] = now;
+  logRegionEvent(nearestId ?? 'fix', 'enter_scan', {
+    reason,
+    acc_m: coords.accuracy != null ? Math.round(coords.accuracy) : null,
+    nearest_m: nearestM != null ? Math.round(nearestM) : null,
+    scanned,
   });
 }
 
@@ -3079,18 +3108,41 @@ async function evaluateLocationFix(coords: Location.LocationObjectCoords): Promi
 
   // No active session — look for an ENTER against the cached circles.
   const partnerMap = await readPartnerMap();
-  if (!partnerMap) return;
+  if (!partnerMap) {
+    // Previously a SILENT return, and the leading suspect for the one failure
+    // this telemetry could not explain: field 2026-08-08, Android's sweeps
+    // reported trusted fixes (32 m and 27 m accuracy) placing it 16–17 m from
+    // POWR — inside the 25 m radius — and no check-in followed, with no error
+    // anywhere. A missing or unreadable partner map looks exactly like "nothing
+    // nearby" from the server side, because both produce no rows at all.
+    logEnterScan('map_unavailable', coords, null, null, 0);
+    return;
+  }
 
   let withinAnyApproach = false;
+  let nearestM: number | null = null;
+  let nearestId: string | null = null;
+  let scanned = 0;
   for (const [regionId, entry] of Object.entries(partnerMap)) {
     if (entry.lat == null || entry.lng == null) continue;
+    scanned++;
     const dist = haversineMetres(coords.latitude, coords.longitude, entry.lat, entry.lng);
+    if (nearestM == null || dist < nearestM) { nearestM = dist; nearestId = regionId; }
     // Exact partner radius — no accuracy buffer added, so a 25 m circle means 25 m.
     if (dist <= (entry.radius ?? 100)) {
       await setActiveAndNotify(regionId, entry);
       return;
     }
     if (dist <= APPROACH_RADIUS_M) withinAnyApproach = true;
+  }
+
+  // Scanned the whole map from inside the approach ring and still did not check
+  // in. Usually legitimate — 120 m ring, 25 m fence — but it is also the only
+  // shape the above failure could take if the map were merely INCOMPLETE rather
+  // than absent, so it must not be silent either. Bounded to the ring so a user
+  // walking past a town's worth of gyms does not generate a row per fix.
+  if (withinAnyApproach) {
+    logEnterScan('no_match_in_ring', coords, nearestM, nearestId, scanned);
   }
 
   // Outside every approach ring — if the stream is still escalated (the native
