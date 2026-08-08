@@ -24,6 +24,7 @@ type NotificationType =
   | 'vault_unlocked'
   | 'vault_ready'
   | 'vault_granted'
+  | 'vault_banked'
   // Shared ("together") challenges + friend graph (scope §4/§6a).
   | 'friend_request'
   | 'friend_accepted'
@@ -73,6 +74,7 @@ function categoryFor(type: NotificationType): 'social' | 'rewards' | 'activity' 
     case 'vault_unlocked':
     case 'vault_ready':
     case 'vault_granted':
+    case 'vault_banked':
       return 'rewards';
     case 'level_up':
       return 'rewards';
@@ -462,6 +464,35 @@ function buildMessage(
         };
       }
 
+      case 'vault_banked': {
+        // The deposit moment for cap overflow — the ONLY vault event the user
+        // was never told about. Field 2026-08-08: a 40-minute gym upgrade was
+        // banked at 09:25:05 and the run went completely silent, because
+        // upgrade-gym-tier returns before its push whenever the whole delta is
+        // vaulted (finalDelta 0). The tester did the same 40 minutes on two
+        // phones, watched one say "Bonus unlocked" and the other say nothing,
+        // and had no way to tell a capped award from a broken one.
+        //
+        // That account had 385 POWR across 22 deposits, none of them ever
+        // announced. Silence is the one outcome this codebase treats as a bug
+        // everywhere else — earning something and being told nothing reads as
+        // "it didn't work", which is exactly what the beacon telemetry exists
+        // to stop.
+        //
+        // Leads with the earn, not the cap: the user did the work and the
+        // points are theirs. The cap is the reason it went to the Vault rather
+        // than the balance, so it is explanation, not headline.
+        const points = Math.max(0, Math.round(Number(payload.points ?? 0)));
+        const reason = typeof payload.reason === 'string' ? payload.reason.trim() : '';
+        return {
+          title: 'Banked in your Vault 🏦',
+          body: `+${points.toLocaleString()} POWR${reason ? ` from your ${reason}` : ''} went past today's cap, so it's banked. It already counts toward your level, and unlocks ${formatVestDate(payload.vests_at)}.`,
+          data: { type, route: '/vault', points },
+          sound: 'default',
+          channelId: 'powr_rewards_v2',
+        };
+      }
+
       case 'vault_granted': {
         // Fired by notify-vault-grant when an admin banks POWR into a user's
         // Vault. Unlike vault_ready/vault_unlocked this is a gift landing, not
@@ -834,6 +865,7 @@ Deno.serve(async (req: Request) => {
       : type === 'vault_unlocked' ? 'points_milestone'
       : type === 'vault_ready' ? 'points_milestone'
       : type === 'vault_granted' ? 'points_milestone'
+      : type === 'vault_banked' ? 'points_milestone'
       : type === 'wearable_session_recorded' ? 'wearable_session'
       : type === 'streak_lost' ? 'streak_rescue'
       : type === 'streak_rescued' ? 'streak_rescue'

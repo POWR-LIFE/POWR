@@ -350,14 +350,16 @@ Deno.serve(async (req) => {
   // Best-effort beyond that: a vault failure must never fail an upgrade whose
   // spendable share is already saved (claim-points' stance).
   let vaulted = 0;
+  let vestsAt: string | null = null;
   if (vaultAmount > 0) {
+    vestsAt = new Date(Date.now() + vaultVestDays * 24 * 60 * 60 * 1000).toISOString();
     const { error: vaultErr } = await supabase.from('vault_deposits').insert({
       user_id: user.id,
       session_id: session.id,
       amount: vaultAmount,
       source: 'cap_overflow',
       description: `gym session upgrade (${upgradeMin}min) · over the daily cap`,
-      vests_at: new Date(Date.now() + vaultVestDays * 24 * 60 * 60 * 1000).toISOString(),
+      vests_at: vestsAt,
     });
     if (vaultErr) {
       if ((vaultErr as { code?: string }).code !== '23505') {
@@ -371,8 +373,48 @@ Deno.serve(async (req) => {
   await markVisitUpgraded();
 
   if (finalDelta <= 0) {
-    // Vault-only outcome: nothing spendable changed, so no "+X" push — the
-    // deposit surfaces in the ledger/vault UI with the rest of the banked merit.
+    // Vault-only outcome. This used to return here in silence, on the reasoning
+    // that "nothing spendable changed" — but the user did the full 40 minutes
+    // either way, and the only difference they could observe was whether their
+    // phone said anything. Field 2026-08-08: two phones, same session, one
+    // announced "Bonus unlocked 🔓" and the other said nothing at all, because
+    // this one was over the cap. The tester's first read was that the upgrade
+    // had failed. It hadn't — it was banked, along with 385 POWR across 21
+    // earlier deposits nobody had ever been told about.
+    //
+    // A capped award and a broken one must not look identical. Announce the
+    // deposit; the Vault rollout gate in send-push-notification still decides
+    // whether a user with no Vault surface should hear about it, which is the
+    // correct place for that call to live.
+    //
+    // Best-effort, exactly like the spendable push below: a notification
+    // failure must never fail an upgrade whose points are already banked.
+    if (vaulted > 0) {
+      try {
+        const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+        const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+        await fetch(`${supabaseUrl}/functions/v1/send-push-notification`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${serviceKey}`,
+          },
+          body: JSON.stringify({
+            target_user_id: user.id,
+            type: 'vault_banked',
+            payload: {
+              session_id: session.id,
+              points: vaulted,
+              reason: `${upgradeMin}-min bonus`,
+              vests_at: vestsAt,
+            },
+          }),
+        });
+      } catch (notifErr) {
+        console.warn('[upgrade-gym-tier] vault_banked notification failed:', notifErr);
+      }
+    }
+
     return new Response(
       JSON.stringify({ ok: true, delta: 0, vaulted, message: 'Upgrade banked to vault (daily cap reached)' }),
       { status: 200, headers: { 'Content-Type': 'application/json' } },
