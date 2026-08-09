@@ -1496,9 +1496,18 @@ async function recordDwellSession(activeGeofence: StoredGeofence, staleLockMs: n
     // identical place six minutes later. Present the persisted token over raw
     // REST instead — same user, same RLS, no auth work (see lib/backgroundRest).
     //
-    // Foreground keeps ensureFreshSession: nothing freezes there, and it is the
-    // only path allowed to rotate a token (a background rotation revokes the
-    // family — the silent-401 outage of 2026-08-05).
+    // Foreground keeps ensureFreshSession because it is the only path allowed to
+    // rotate a token (a background rotation revokes the family — the silent-401
+    // outage of 2026-08-05).
+    //
+    // ⚠ "nothing freezes in the foreground" was the old justification for this
+    // gate and it is FALSE — 2026-08-09 11:26Z, app open and UI mounted:
+    // ensureFreshSession(close_gym_visit) timed out at 30s, then this very
+    // branch fired, then the activity_sessions insert timed out at 30s too. The
+    // hang is local (no request reached GoTrue in that window, while raw-fetch
+    // ticket RPCs kept landing), so backgrounding is not what causes it, and the
+    // AppState gate above leaves the foreground as the ONLY transport with no
+    // ticket fallback.
     const backgrounded = AppState.currentState !== 'active';
     const bgAuth = backgrounded ? await readBackgroundAuth() : null;
 
@@ -1508,7 +1517,10 @@ async function recordDwellSession(activeGeofence: StoredGeofence, staleLockMs: n
     } else {
       const authSession = await ensureFreshSession('record_dwell_session');
       if (!authSession?.user) {
-        console.error('[Geofence] No valid session — cannot record session (auth unrecoverable until app-open).');
+        // Report the state, not a cure. This used to claim "auth unrecoverable
+        // until app-open", which printed verbatim while the app WAS open and
+        // seconds before auth recovered on its own.
+        console.error(`[Geofence] No fresh session — cannot record session (app_state=${AppState.currentState}).`);
         return { outcome: 'error' };
       }
       userId = authSession.user.id;
