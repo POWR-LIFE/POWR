@@ -207,7 +207,16 @@ export function ensureFreshSession(reason: string, opts?: { force?: boolean }): 
       // This is the moment the old code went silent. Never again: this line in
       // logcat + the breadcrumb row are how the next auth regression gets
       // caught in one query instead of a week of field walks.
-      console.error(`[authFresh] ensureFreshSession(${reason}) FAILED — background writes will be rejected until re-auth:`, err);
+      //
+      // Say what happened, NOT what it means. The old wording ("background
+      // writes will be rejected until re-auth") asserted the 2026-08-05 model —
+      // revoked family, heals only at app-open — and on 2026-08-09 that reading
+      // was wrong twice over: the failure was a 30s TIMEOUT (a local auth call
+      // that never settled, with zero requests reaching GoTrue), and the very
+      // next pass succeeded ~3s later and flushed this breadcrumb. A message
+      // that diagnoses instead of reporting sends the next triage down the
+      // wrong path.
+      console.error(`[authFresh] ensureFreshSession(${reason}) did not complete — this caller has no fresh session; later passes may still succeed:`, err);
       void recordBreadcrumb(reason, err);
       return null;
     }
