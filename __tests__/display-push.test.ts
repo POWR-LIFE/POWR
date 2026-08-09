@@ -41,14 +41,14 @@ const scheduleMock = Notifications.scheduleNotificationAsync as jest.Mock;
 function payload(overrides: Record<string, string> = {}) {
   return {
     type: 'display_notification',
-    log_id: 'log-1',
-    notif_type: 'session_completed',
-    title: 'Session complete 💪',
-    body: 'POWR · 60 min · +24 pts today',
-    channel_id: 'powr_default_v2',
-    sound: '1',
-    route: '/(tabs)/index',
-    data: JSON.stringify({ type: 'session_completed', route: '/(tabs)/index' }),
+    n_log_id: 'log-1',
+    n_type: 'session_completed',
+    n_title: 'Session complete 💪',
+    n_body: 'POWR · 60 min · +24 pts today',
+    n_channel: 'powr_default_v2',
+    n_sound: '1',
+    n_route: '/(tabs)/index',
+    n_data: JSON.stringify({ type: 'session_completed', route: '/(tabs)/index' }),
     ...overrides,
   };
 }
@@ -95,7 +95,39 @@ describe('extractData', () => {
       aps: { 'content-available': 1 },
       data: { body: payload(), dataString: JSON.stringify(payload()), scopeKey: '@powr/powr' },
     };
-    expect(extractData(raw, ['display_notification']).log_id).toBe('log-1');
+    expect(extractData(raw, ['display_notification']).n_log_id).toBe('log-1');
+  });
+});
+
+describe('the reserved-key guard', () => {
+  // ⚠ THIS IS THE ONE THAT COST A DUPLICATE BANNER IN THE FIELD (2026-08-09).
+  //
+  // expo-notifications builds a notification from the FCM DATA payload —
+  // RemoteNotificationContent reads data.title for the title and data.message
+  // for the text — and FirebaseMessagingDelegate posts it BEFORE handing the
+  // message to our task. Nothing in JS can suppress that; setNotificationHandler
+  // only governs foreground presentation. So shipping `title` in data produced a
+  // body-less "Session recorded" banner from the library alongside our correct
+  // one, and `body` was being fed to JSONObject(...) as if it were JSON.
+  //
+  // Every field we control is therefore n_-prefixed, and this test fails if any
+  // future field wanders back into the reserved namespace.
+  const RESERVED = [
+    'title', 'message', 'body', 'sound', 'vibrate', 'sticky',
+    'color', 'autoDismiss', 'categoryId', 'subtitle', 'badge',
+  ];
+
+  it('never puts a reserved expo-notifications key in the FCM data payload', () => {
+    const keys = Object.keys(payload());
+    for (const reserved of RESERVED) {
+      expect(keys).not.toContain(reserved);
+    }
+  });
+
+  it('keeps `type` unprefixed, because extractData matches on it', () => {
+    // `type` is NOT in expo's reserved set, and the wake matcher needs it.
+    expect(Object.keys(payload())).toContain('type');
+    expect(RESERVED).not.toContain('type');
   });
 });
 
@@ -147,7 +179,7 @@ describe('presentDisplayPush', () => {
   });
 
   it('survives a malformed data blob rather than dropping the banner', async () => {
-    expect(await presentDisplayPush(payload({ data: '{not json' }))).toBe(true);
+    expect(await presentDisplayPush(payload({ n_data: '{not json' }))).toBe(true);
     const arg = scheduleMock.mock.calls[0][0];
     expect(arg.content.title).toBe('Session complete 💪');
     // Falls back to the flat keys the payload always carries.
@@ -156,7 +188,7 @@ describe('presentDisplayPush', () => {
   });
 
   it('refuses a payload with no copy in it', async () => {
-    expect(await presentDisplayPush(payload({ title: '', body: '' }))).toBe(false);
+    expect(await presentDisplayPush(payload({ n_title: '', n_body: '' }))).toBe(false);
     expect(scheduleMock).not.toHaveBeenCalled();
   });
 

@@ -511,7 +511,25 @@ const ARM_FIX_MAX_ACCURACY_M = 1_000;
 const ARM_FIX_MAX_AGE_MS     = 10 * 60_000;
 const ARM_FIX_TIMEOUT_MS     = 8_000;
 
-export interface ArmFix { latitude: number; longitude: number; src: 'stream_cache' | 'last_known' | 'live' }
+/** ⚠ `accuracy` and `ageMs` are carried purely so the `armed` row can state them
+ *  (2026-08-09). They gate nothing — the screening above already happened, and
+ *  widening these tolerances would undo the 08-04 lesson.
+ *
+ *  Why they exist: the arm row used to record only the centre it chose, so an arm
+ *  taken from a legitimately-coarse fix and an arm taken from a broken one looked
+ *  identical. On 2026-08-09 an Android arm landed 454 m from the venue and, with
+ *  no accuracy on the row, it was read as a fault and nearly "fixed" by forcing
+ *  GPS onto this path — which would have added acquisition cost and hang risk to
+ *  a function deliberately built to have neither. The fix was fine; a 1 km
+ *  tolerance is the documented design. One field on the telemetry settles that
+ *  question in a query instead of an inference. */
+export interface ArmFix {
+  latitude: number;
+  longitude: number;
+  src: 'stream_cache' | 'last_known' | 'live';
+  accuracy: number | null;
+  ageMs: number | null;
+}
 
 export async function getArmFix(): Promise<ArmFix | null> {
   // 1. The stream's own persisted fix — free, and fresh whenever the stream lives.
@@ -524,7 +542,13 @@ export async function getArmFix(): Promise<ArmFix | null> {
         Date.now() - (f.at ?? 0) <= ARM_FIX_MAX_AGE_MS &&
         (f.accuracy == null || f.accuracy <= ARM_FIX_MAX_ACCURACY_M)
       ) {
-        return { latitude: f.latitude, longitude: f.longitude, src: 'stream_cache' };
+        return {
+          latitude: f.latitude,
+          longitude: f.longitude,
+          src: 'stream_cache',
+          accuracy: f.accuracy ?? null,
+          ageMs: typeof f.at === 'number' ? Date.now() - f.at : null,
+        };
       }
     }
   } catch { /* fall through to the OS sources */ }
@@ -536,7 +560,13 @@ export async function getArmFix(): Promise<ArmFix | null> {
     requiredAccuracy: ARM_FIX_MAX_ACCURACY_M,
   }).catch(() => null);
   if (lastKnown) {
-    return { latitude: lastKnown.coords.latitude, longitude: lastKnown.coords.longitude, src: 'last_known' };
+    return {
+      latitude: lastKnown.coords.latitude,
+      longitude: lastKnown.coords.longitude,
+      src: 'last_known',
+      accuracy: lastKnown.coords.accuracy ?? null,
+      ageMs: typeof lastKnown.timestamp === 'number' ? Date.now() - lastKnown.timestamp : null,
+    };
   }
 
   // 3. A live Balanced read, raced against a bound. The bound is best-effort (RN
@@ -550,7 +580,13 @@ export async function getArmFix(): Promise<ArmFix | null> {
       new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), ARM_FIX_TIMEOUT_MS); }),
     ]);
     if (fresh && (fresh.coords.accuracy == null || fresh.coords.accuracy <= ARM_FIX_MAX_ACCURACY_M)) {
-      return { latitude: fresh.coords.latitude, longitude: fresh.coords.longitude, src: 'live' };
+      return {
+        latitude: fresh.coords.latitude,
+        longitude: fresh.coords.longitude,
+        src: 'live',
+        accuracy: fresh.coords.accuracy ?? null,
+        ageMs: 0,
+      };
     }
     return null;
   } finally {
@@ -579,7 +615,11 @@ interface ArmMeta {
 let _lastArmSignature: string | null = null;
 
 async function armNativeRegions(
-  fix: { latitude: number; longitude: number } | null,
+  // Provenance is OPTIONAL because most callers hand over raw stream coords that
+  // never went through getArmFix — they have no src/accuracy/age to give. Those
+  // arms simply log nulls for the three fields rather than forcing every call
+  // site to invent them.
+  fix: { latitude: number; longitude: number; src?: ArmFix['src']; accuracy?: number | null; ageMs?: number | null } | null,
   opts: { force?: boolean; freshHandle?: boolean } = {},
 ): Promise<void> {
   const { status } = await Location.getBackgroundPermissionsAsync()
@@ -757,6 +797,12 @@ async function armNativeRegions(
       lat:        fix ? Number(fix.latitude.toFixed(4)) : null,
       lng:        fix ? Number(fix.longitude.toFixed(4)) : null,
       sentinel_m: meta ? Math.round(meta.sentinelRadius) : null,
+      // The provenance of the centre, not just the centre. Without these an arm
+      // from a coarse-but-legal fix reads exactly like an arm from a broken one
+      // — see the ArmFix docstring for the misdiagnosis that cost.
+      src:        fix?.src ?? null,
+      acc_m:      fix?.accuracy != null ? Math.round(fix.accuracy) : null,
+      age_s:      fix?.ageMs != null ? Math.round(fix.ageMs / 1000) : null,
     });
   } catch (err) {
     console.warn('[Geofence] Failed to arm native regions:', err);

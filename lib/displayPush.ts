@@ -30,18 +30,28 @@ import { SUPABASE_ANON_KEY, SUPABASE_URL } from '@/lib/supabase';
  *  matcher in backgroundNotificationTask and the presenter can never drift. */
 export const DISPLAY_NOTIFICATION_TYPE = 'display_notification';
 
-/** FCM v1 requires every data value to be a string, so everything arrives as one. */
+/** FCM v1 requires every data value to be a string, so everything arrives as one.
+ *
+ *  ⚠ EVERY FIELD IS `n_`-PREFIXED. expo-notifications reads notification content
+ *  straight out of the FCM data payload — `data.title` becomes the banner title
+ *  and `data.body` is run through `JSONObject(...)` — and
+ *  FirebaseMessagingDelegate posts that banner BEFORE handing us the message, so
+ *  nothing on the JS side can suppress it. Unprefixed keys therefore produced a
+ *  second, body-less "Session recorded" banner on the first field run
+ *  (2026-08-09). Reserved names to keep clear of: title, message, body, sound,
+ *  vibrate, sticky, color, autoDismiss, categoryId, subtitle, badge.
+ *  `type` stays unprefixed — extractData matches on it and it is not reserved. */
 export interface DisplayPushPayload {
   type?: string;
-  log_id?: string;
-  notif_type?: string;
-  title?: string;
-  body?: string;
-  channel_id?: string;
-  sound?: string;
-  route?: string;
+  n_log_id?: string;
+  n_type?: string;
+  n_title?: string;
+  n_body?: string;
+  n_channel?: string;
+  n_sound?: string;
+  n_route?: string;
   /** The original server-side `data` object, JSON-encoded. */
-  data?: string;
+  n_data?: string;
 }
 
 const SEEN_KEY = 'powr_display_push_seen_v1';
@@ -108,11 +118,11 @@ export function isDisplayPush(payload: unknown): payload is DisplayPushPayload {
  *  "the schedule call silently no-ops without a UI context" belief and got the
  *  server's duplicate ANNOUNCE pass deleted). */
 export async function presentDisplayPush(payload: DisplayPushPayload): Promise<boolean> {
-  const title = typeof payload.title === 'string' ? payload.title : '';
-  const body = typeof payload.body === 'string' ? payload.body : '';
+  const title = typeof payload.n_title === 'string' ? payload.n_title : '';
+  const body = typeof payload.n_body === 'string' ? payload.n_body : '';
   if (!title && !body) return false;
 
-  const logId = typeof payload.log_id === 'string' ? payload.log_id : '';
+  const logId = typeof payload.n_log_id === 'string' ? payload.n_log_id : '';
   if (logId && !(await claimFirstDelivery(logId))) return false;
 
   // The server's original data object, so the tap handler reads the same shape
@@ -121,10 +131,10 @@ export async function presentDisplayPush(payload: DisplayPushPayload): Promise<b
   // gate, the activity feed, getRouteFromNotification's siblings).
   let data: Record<string, unknown> = {};
   try {
-    if (typeof payload.data === 'string' && payload.data) data = JSON.parse(payload.data);
+    if (typeof payload.n_data === 'string' && payload.n_data) data = JSON.parse(payload.n_data);
   } catch { /* a malformed data blob must not cost the user the banner */ }
-  if (typeof payload.notif_type === 'string' && !data.type) data.type = payload.notif_type;
-  if (typeof payload.route === 'string' && !data.route) data.route = payload.route;
+  if (typeof payload.n_type === 'string' && !data.type) data.type = payload.n_type;
+  if (typeof payload.n_route === 'string' && !data.route) data.route = payload.n_route;
 
   try {
     await Notifications.scheduleNotificationAsync({
@@ -135,9 +145,9 @@ export async function presentDisplayPush(payload: DisplayPushPayload): Promise<b
         title,
         body,
         data,
-        ...(payload.sound === '0' ? {} : { sound: 'default' as const }),
-        ...(Platform.OS === 'android' && payload.channel_id
-          ? { channelId: payload.channel_id }
+        ...(payload.n_sound === '0' ? {} : { sound: 'default' as const }),
+        ...(Platform.OS === 'android' && payload.n_channel
+          ? { channelId: payload.n_channel }
           : {}),
       },
       trigger: null, // immediate
