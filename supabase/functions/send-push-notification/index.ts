@@ -1,6 +1,6 @@
 // @ts-nocheck — Deno runtime, not Node. Types enforced at deploy time.
 import { createClient } from '@supabase/supabase-js';
-import { deliverExpoMessages } from '../_shared/expoPush.ts';
+import { deliverVisiblePush } from '../_shared/visiblePush.ts';
 import { streakFromSessions } from '../_shared/streak.ts';
 import { nudgeBudgetGate } from '../_shared/nudgeBudget.ts';
 import { levelDef } from '../_shared/levels.ts';
@@ -202,6 +202,7 @@ function buildMessage(
             : `"${name}" expires in 24 hours. Don't miss your bonus POWR points.`,
           data: { type, route: '/(tabs)/index' }, // the weekly board lives on Home
           sound: 'default',
+          channelId: 'powr_streak_v2',
         };
       }
 
@@ -243,6 +244,7 @@ function buildMessage(
           body: "You're in. Every minute counts.",
           data: { type, route: '/(tabs)/index', location_id: payload.location_id },
           sound: 'default',
+          channelId: 'powr_default_v2',
         };
       }
 
@@ -272,6 +274,7 @@ function buildMessage(
             reward_name: rewardName || undefined,
           },
           sound: 'default',
+          channelId: 'powr_rewards_v2',
         };
       }
 
@@ -290,6 +293,7 @@ function buildMessage(
           body: bodies[days] ?? "Log any activity today and start your next streak.",
           data: { type, route: '/(tabs)/index' },
           sound: 'default',
+          channelId: 'powr_default_v2',
         };
       }
 
@@ -1045,10 +1049,11 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // Fetch push tokens for the target user
+    // Fetch push tokens for the target user. device_token + platform come along
+    // because Android now takes the direct FCM transport (see below).
     const { data: tokens, error: tokenError } = await supabase
       .from('user_push_tokens')
-      .select('expo_push_token')
+      .select('expo_push_token, device_token, platform')
       .eq('user_id', target_user_id);
 
     if (tokenError) throw tokenError;
@@ -1060,17 +1065,25 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    // Build and send messages for every registered device. deliverExpoMessages
-    // reads the Expo tickets and prunes any DeviceNotRegistered token inline, then
-    // confirms delivery via a background receipt poll (EdgeRuntime.waitUntil) so a
-    // reinstalled/upgraded device's dead token is cleaned up instead of silently
-    // swallowing every future push. Same single inline Expo round-trip as before —
-    // no added latency for callers that await this (e.g. claim-points).
-    const messages: ExpoMessage[] = tokens.map(({ expo_push_token }) =>
-      applyNotifOverrides(buildMessage(type, payload, expo_push_token), notifConfig),
-    );
+    // Build once and let deliverVisiblePush fan out per device — the copy is
+    // identical across a user's devices, only the transport differs. Android
+    // rows with a device_token go direct via FCM v1 at HIGH priority; iOS and
+    // any row without one stay on Expo, where deliverExpoMessages still reads
+    // the tickets, prunes DeviceNotRegistered inline and confirms via the
+    // background receipt poll. Same single inline round-trip as before, so no
+    // added latency for callers that await this (e.g. claim-points).
+    //
+    // WHY the Android split: on 2026-08-09 an Expo-routed visible push sat ~25
+    // minutes behind FCM-direct wakes on the same handset during the same radio
+    // outage — including wakes queued later that flushed the moment the link
+    // returned. _shared/visiblePush.ts carries the measurements.
+    const message = applyNotifOverrides(buildMessage(type, payload, ''), notifConfig);
+    const { to: _unused, ...content } = message;
 
-    const result = await deliverExpoMessages(supabase, messages, { userId: target_user_id, type });
+    const result = await deliverVisiblePush(supabase, tokens, content, {
+      userId: target_user_id,
+      type,
+    });
 
     return new Response(JSON.stringify({ ok: true, result }), {
       status: 200,

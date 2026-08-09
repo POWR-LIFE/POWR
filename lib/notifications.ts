@@ -52,13 +52,33 @@ export interface NotificationPayload {
 // ---------------------------------------------------------------------------
 
 Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
+  handleNotification: async (notification) => {
+    // A direct visible push (2026-08-09) arrives DATA-ONLY — it carries no title
+    // or body, because the server deliberately submits it as an FCM data message
+    // so that we, not GMS, render it. Showing this one would put an empty banner
+    // on screen a beat before the real one; NotificationsContext presents it
+    // properly and this returns silence in the meantime.
+    //
+    // Cannot recurse: the banner we then present carries the ORIGINAL type
+    // ('session_completed' and friends), never 'display_notification'.
+    const type = (notification?.request?.content?.data as { type?: string } | undefined)?.type;
+    if (type === 'display_notification') {
+      return {
+        shouldShowAlert: false,
+        shouldPlaySound: false,
+        shouldSetBadge: false,
+        shouldShowBanner: false,
+        shouldShowList: false,
+      };
+    }
+    return {
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: true,
+      shouldShowBanner: true,
+      shouldShowList: true,
+    };
+  },
 });
 
 // ---------------------------------------------------------------------------

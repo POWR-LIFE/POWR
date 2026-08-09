@@ -445,9 +445,15 @@ Deno.serve(async (req) => {
     });
     const pushBody = await pushRes.json().catch(() => null);
     if (pushBody) {
+      // Counts BOTH transports — see the same guard in claim-points. An Android
+      // visible push now reports `direct`, not `queued`, and reading queued alone
+      // would make the client fire notifySessionUpgraded on top of the server's
+      // banner (2026-08-09).
+      const accepted = Number(pushBody?.result?.queued ?? 0)
+        + Number(pushBody?.result?.direct ?? 0);
       pushDelivered = pushBody.skipped
         ? pushBody.reason !== 'no_tokens'
-        : Number(pushBody?.result?.queued ?? 0) > 0;
+        : accepted > 0;
     }
   } catch (notifErr) {
     pushDelivered = false;

@@ -761,10 +761,22 @@ Deno.serve(async (req) => {
     if (pushBody) {
       // skipped:no_tokens → nothing landed (fire local); skipped:user_preference
       // → intentionally suppressed (respect it, no local). Otherwise delivered iff
-      // Expo queued at least one ticket.
+      // at least one message was accepted on EITHER transport.
+      //
+      // ⚠ `direct` is not optional here. Counting only Expo tickets was correct
+      // until 2026-08-09, when Android visible pushes moved to a direct FCM
+      // submission (_shared/visiblePush.ts) that reports `direct` and leaves
+      // `queued` at zero. Reading queued alone would call every successful
+      // Android send a failure, and the client answers push_delivered=false by
+      // firing notifySessionCompleted locally — so the user would get the
+      // server's banner AND the fallback. That is the duplicate-notification
+      // failure this codebase already shipped once and deleted the beacon's
+      // ANNOUNCE pass over; it must not come back through the back door.
+      const accepted = Number(pushBody?.result?.queued ?? 0)
+        + Number(pushBody?.result?.direct ?? 0);
       pushDelivered = pushBody.skipped
         ? pushBody.reason !== 'no_tokens'
-        : Number(pushBody?.result?.queued ?? 0) > 0;
+        : accepted > 0;
     }
   } catch (notifErr) {
     // Couldn't even reach send-push — the client should fire its local fallback.
