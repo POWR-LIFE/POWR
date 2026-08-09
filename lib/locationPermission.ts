@@ -19,6 +19,41 @@ async function getLocationPermissionLevel(): Promise<LocationPermissionLevel | n
   return bg?.status === 'granted' ? 'always' : 'while_using';
 }
 
+/** Why an in-progress gym session can no longer be verified. */
+export type LocationLossReason =
+  | 'services_disabled'      // system Location Services switched off device-wide
+  | 'permission_denied'      // foreground grant revoked (or never determined)
+  | 'permission_downgraded'; // dropped to "While Using" — geofencing is dead
+
+/**
+ * The one question an open gym session needs answered: can this device still
+ * PROVE the user is at the gym? Returns the reason it cannot, or null while
+ * location is still good enough.
+ *
+ * Every read fails CLOSED (null = "still fine"). A transient native error must
+ * never end a real session — a session wrongly closed forfeits the rest of the
+ * user's visit, while one wrongly kept is caught by the next check. Same
+ * reasoning as getLocationPermissionLevel's null-on-failure contract above.
+ *
+ * ⚠ Deliberately does NOT consider reduced accuracy. iOS Precise Location off
+ * coarsens fixes to 1-5 km, which genuinely defeats a 25 m fence — but accuracy
+ * is sampled per-fix and wobbles, and killing a live session on one bad sample
+ * is a worse trade than the drift it prevents. See REDUCED_ACCURACY_THRESHOLD_M.
+ */
+export async function detectLocationLoss(): Promise<LocationLossReason | null> {
+  let servicesEnabled: boolean;
+  try {
+    servicesEnabled = await Location.hasServicesEnabledAsync();
+  } catch {
+    return null;
+  }
+  if (!servicesEnabled) return 'services_disabled';
+
+  const level = await getLocationPermissionLevel();
+  if (!level || level === 'always') return null;
+  return level === 'while_using' ? 'permission_downgraded' : 'permission_denied';
+}
+
 // Accuracy radii (m) above this are treated as reduced/coarse for dedupe and
 // admin display: iOS "Precise Location" off coarsens every fix to ~1-5 km,
 // Android coarse-only to ~2 km, while even a poor genuine fix stays well

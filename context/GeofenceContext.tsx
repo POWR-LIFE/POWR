@@ -7,6 +7,7 @@ import { AppState, AppStateStatus, Platform } from 'react-native';
 import { ensureFreshSession } from '@/lib/authFresh';
 import { bgInsert, bgRpc, bgSelect, bgUpdate, readBackgroundAuth } from '@/lib/backgroundRest';
 import { noteTask } from '@/lib/crashHandler';
+import { detectLocationLoss, type LocationLossReason } from '@/lib/locationPermission';
 import { withNetworkTimeout } from '@/lib/networkTimeout';
 import { supabase } from '@/lib/supabase';
 import { getGymDwellMinutes, getGymUpgradeMinutes, primeGymDwellMinutes } from '@/lib/gymDwellConfig';
@@ -840,7 +841,8 @@ function logRegionEvent(
   regionId: string,
   event: 'enter' | 'exit' | 'approach_stream_on' | 'checked_in' | 'stream_start_failed'
     | 'stream_switch_deferred' | 'armed' | 'sentinel_exit' | 'rearm_skipped' | 'sweep'
-    | 'visit_stamp_relaxed' | 'visit_stamp_skipped' | 'coarse_rejected' | 'enter_scan',
+    | 'visit_stamp_relaxed' | 'visit_stamp_skipped' | 'coarse_rejected' | 'enter_scan'
+    | 'location_revoked',
   detail: Record<string, unknown> = {},
 ): void {
   void import('@/lib/gymVisits')
@@ -1023,6 +1025,15 @@ async function sweepForMissedCheckIn(): Promise<void> {
   try {
     const active = await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY);
     if (active) { // already checked in
+      // THE PERMISSION BACKSTOP (2026-08-09), and it goes FIRST because it is the
+      // cheapest question and the most decisive answer. Note where the sweep's own
+      // permission read sits: BELOW this branch, which returns before ever reaching
+      // it — so an open session structurally MASKED the one state that makes it
+      // unclosable. Every other detector here needs a fix that revoked location can
+      // no longer produce, so without this the sweep's exit backstop is silently a
+      // no-op exactly when it is needed most.
+      if (await finalizeSessionIfLocationRevoked()) return;
+
       // THE EXIT BACKSTOP (2026-08-08). This used to return unconditionally, which
       // meant the ~5-6 min fence_refresh cadence — the thing that rescues a missed
       // CHECK-IN — was structurally incapable of rescuing a missed CHECK-OUT.
@@ -2668,6 +2679,103 @@ async function reconcileFix(): Promise<{ latitude: number; longitude: number; ac
   }
 }
 
+/** LOCATION-OFF SESSION CLOSE (2026-08-09).
+ *
+ *  A session and the location permission feeding it are one mechanism, and until
+ *  now only one half knew it. Turn location off mid-visit and the dwell stream
+ *  stops delivering fixes, VISIT_TICK_KEY stops advancing, no EXIT can ever fire,
+ *  and evaluateLocationFix's geometry never runs — so the visit stayed open until
+ *  the 12 h server reaper, which on Android produces a DUPLICATE visit (field
+ *  2026-08-08). Whatever finalized it later stamped the wall clock, which is
+ *  precisely where the 12-hour duration rows come from (see recordDwellSession).
+ *
+ *  So: no location, no verified session. Two rules make that honest rather than
+ *  punitive, and neither is optional.
+ *
+ *  1. IT TRUNCATES, IT DOES NOT VOID. Points already earned stay earned — a
+ *     revocation after the dwell threshold is not fraud, and finalizeActiveGeofence
+ *     still runs the claim for whatever the evidence supports. Never-drop-a-workout
+ *     applies here as much as anywhere.
+ *  2. IT ENDS AT THE LAST PROVEN-INSIDE MOMENT, NOT AT DISCOVERY. There is no OS
+ *     callback for "the user revoked location", so this runs on app-foreground and
+ *     on the sweep — potentially hours after the fact. Closing at `now` would bank
+ *     hours of unwitnessed time into the very row we are closing BECAUSE it can no
+ *     longer be witnessed. VISIT_TICK_KEY is the same evidence floor the zombie
+ *     reconciler uses, and with no tick at all the honest answer is entryTimestamp:
+ *     we proved presence at one instant and never again.
+ *
+ *  Turning location back on recovers cheaply: every permission-granting surface
+ *  calls armAfterPermissionGrant, whose initial-state burst checks a still-present
+ *  user straight back in, and the gym_visits row only ever GROWS (#345), so the
+ *  second session of the day tops up the first rather than replacing it.
+ *
+ *  Returns whether it closed a session. */
+export async function finalizeSessionIfLocationRevoked(): Promise<boolean> {
+  let active: StoredGeofence;
+  try {
+    const raw = await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY);
+    if (!raw) return false;
+    active = JSON.parse(raw) as StoredGeofence;
+  } catch {
+    return false; // unreadable state is finalizeActiveGeofence's problem, not ours
+  }
+
+  let reason: LocationLossReason | null;
+  try {
+    reason = await detectLocationLoss();
+  } catch {
+    return false; // fails closed — never guess a session away
+  }
+  if (!reason) return false;
+
+  const tick = await AsyncStorage.getItem(VISIT_TICK_KEY)
+    .then(raw => Number(raw ?? 0))
+    .catch(() => 0);
+  const endedAtMs = Math.max(active.entryTimestamp, Number.isFinite(tick) ? tick : 0);
+
+  logRegionEvent(active.regionId ?? 'location', 'location_revoked', {
+    reason,
+    dwell_min:       Math.round((endedAtMs - active.entryTimestamp) / 60_000),
+    unwitnessed_min: Math.round((Date.now() - endedAtMs) / 60_000),
+    had_tick:        endedAtMs > active.entryTimestamp,
+    recorded:        !!active.sessionRecorded,
+  });
+  console.warn(
+    `[Geofence] Location ${reason} during an open session at "${active.partnerName}" — ` +
+    `closing it at the last proven-inside moment ` +
+    `(${Math.round((endedAtMs - active.entryTimestamp) / 60_000)}min dwell, discovered ` +
+    `${Math.round((Date.now() - endedAtMs) / 60_000)}min later).`,
+  );
+
+  // THE BANNER GOES BEFORE THE NETWORK, and this ordering is the point.
+  // finalizeActiveGeofence returns only after up to three awaited round-trips
+  // (openGymVisit, closeGymVisit, the claim) — the exact frames this codebase has
+  // repeatedly recorded as never settling on a backgrounded device. Announcing
+  // afterwards would lose the banner precisely on the sweep path, in the
+  // background, which is where a revocation is most likely to be discovered and
+  // where the user has least idea anything happened. Local honesty must not wait
+  // on the network (same rule as the exit-path banner withdrawal above).
+  //
+  // What it costs: finalize can still decline — a broken AsyncStorage, or a
+  // concurrent finalize holding the lease. Neither makes this a lie. Location IS
+  // off, the session IS ending, and a declined write is retried on the next
+  // foreground. The identifier is keyed on the visit, so a repeat attempt
+  // replaces the banner instead of stacking a second one.
+  try {
+    const { notifyLocationOffSessionEnded } = await import('@/lib/notifications');
+    await notifyLocationOffSessionEnded(
+      active.partnerName,
+      active.visitId ?? String(active.entryTimestamp),
+    );
+  } catch { /* the close is what matters; a missing banner must not block it */ }
+
+  // The ordinary exit path from here: the claim, the visit close and its outbox
+  // retry, the stream stand-down. False means it could not durably record the
+  // exit, so the session is deliberately still there — retried on the next
+  // foreground or sweep rather than lost.
+  return finalizeActiveGeofence(undefined, endedAtMs);
+}
+
 export async function runVisitCheck(
   stage: 'dwell' | 'upgrade',
   serverVisitId?: string,
@@ -3763,6 +3871,21 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
       sub.remove();
     };
   }, [refresh]);
+
+  // Close an open session whose location permission has gone away. THE primary
+  // detection point: there is no OS callback for a revoked permission, and on
+  // Android revoking one usually kills the process outright — so app-foreground
+  // (and cold launch, which is why this fires on mount too) is where the app
+  // first gets to look. Lateness is fine; finalizeSessionIfLocationRevoked ends
+  // the session at the last proven-inside moment, not at this discovery.
+  useEffect(() => {
+    const check = () => { void finalizeSessionIfLocationRevoked().catch(() => {}); };
+    check();
+    const sub = AppState.addEventListener('change', (state: AppStateStatus) => {
+      if (state === 'active') check();
+    });
+    return () => sub.remove();
+  }, []);
 
   // Start geofencing when partners load — never torn down by navigation
   useEffect(() => {

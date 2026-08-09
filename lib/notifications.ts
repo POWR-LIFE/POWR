@@ -23,7 +23,8 @@ export type NotificationType =
   | 'nearby_offer'
   | 'step_goal_nudge'
   | 'wearable_session_recorded'
-  | 'session_mark';
+  | 'session_mark'
+  | 'location_off_session_ended';
 
 export interface PointsMilestoneOptions {
   pointsToUnlock?: number;
@@ -538,6 +539,38 @@ export async function notifySessionUpgraded(
       } satisfies NotificationPayload,
       sound: 'default',
       ...(Platform.OS === 'android' && { channelId: CHANNEL_REWARDS }),
+    },
+    trigger: null, // immediate
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Location turned off mid-session — local only
+// ---------------------------------------------------------------------------
+
+/** Announces a session the geofence closed because location can no longer prove
+ *  presence (see finalizeSessionIfLocationRevoked).
+ *
+ *  Local by necessity: the server cannot see a device's permission state, and it
+ *  is the one thing the user must know to fix. Deliberately says NOTHING about
+ *  points — if the truncated session still earned, the server sends its own
+ *  session_completed banner and this would double up. This announces an outcome
+ *  and names the fix; it never asks anyone to open the app to record a session. */
+export async function notifyLocationOffSessionEnded(partnerName: string, sessionKey: string) {
+  const name = partnerName.trim();
+  await Notifications.scheduleNotificationAsync({
+    identifier: `powr-location_off_session_ended-${sessionKey}`,
+    content: {
+      title: 'Location is off',
+      body: name
+        ? `${name} · session ended. Turn location back on to keep earning.`
+        : 'Your session ended. Turn location back on to keep earning.',
+      data: {
+        type: 'location_off_session_ended',
+        route: '/permissions-help',
+      } satisfies NotificationPayload,
+      sound: 'default',
+      ...(Platform.OS === 'android' && { channelId: CHANNEL_DEFAULT }),
     },
     trigger: null, // immediate
   });
