@@ -61,7 +61,26 @@ export interface BackgroundHealth {
   outcome: BackgroundOutcome;
   /** Raw permission string the HEADLESS context saw, when the outcome turned on it. */
   permBg?: string | null;
+  /**
+   * How many CONSECUTIVE sweeps have now ended this same way (1 = first).
+   *
+   * Exists because some states are only meaningful when they repeat. A single
+   * `no_fix` is a stale OS cache and self-heals; three in a row across separate
+   * wakes is a device that cannot get a location at all.
+   */
+  streak?: number;
 }
+
+/**
+ * Consecutive `no_fix` sweeps before we call the chain broken.
+ *
+ * Three, because that is the smallest number that cannot be a coincidence of
+ * cache staleness, and because iOS's provisional-Always window — the state this
+ * exists to catch — produced FOUR in a row on 2026-08-09 before the user was
+ * finally asked (10:26:00, 10:26:08, 10:32:04, 10:32:04), alongside an arm
+ * carrying `lat: null, lng: null, sentinel_m: null`.
+ */
+export const NO_FIX_STREAK_BROKEN = 3;
 
 /** Outcomes that prove the background chain is structurally unable to work.
  *
@@ -101,7 +120,12 @@ export async function recordBackgroundHealth(
   permBg?: string | null,
 ): Promise<void> {
   try {
-    const record: BackgroundHealth = { at: Date.now(), outcome, permBg: permBg ?? null };
+    // Carry a consecutive count so repetition can be graded (see NO_FIX_STREAK_BROKEN).
+    // A read on a background path, but AsyncStorage-local and already inside the
+    // try/catch that guarantees this can never affect the sweep it observes.
+    const previous = await readBackgroundHealth();
+    const streak = previous?.outcome === outcome ? (previous.streak ?? 1) + 1 : 1;
+    const record: BackgroundHealth = { at: Date.now(), outcome, permBg: permBg ?? null, streak };
     await AsyncStorage.setItem(KEY, JSON.stringify(record));
   } catch {
     // Observability only — never let it surface into the sweep's control flow.
@@ -121,6 +145,8 @@ export async function readBackgroundHealth(): Promise<BackgroundHealth | null> {
       at: parsed.at,
       outcome: parsed.outcome as BackgroundOutcome,
       permBg: parsed.permBg ?? null,
+      // Records written before streaks existed count as their own first sighting.
+      streak: typeof parsed.streak === 'number' && parsed.streak > 0 ? parsed.streak : 1,
     };
   } catch {
     return null;
@@ -181,6 +207,20 @@ export interface VerdictInput {
    * is exactly the nagware this surface was rejected for once already.
    */
   backgroundGrantedNow: boolean | null;
+  /**
+   * Live FOREGROUND read of FOREGROUND location. Selects WHICH fix to offer, and
+   * nothing else — it can never cause or suppress a verdict.
+   *
+   * ⚠ Without it the banner offers a fix that cannot work. The sweep only ever
+   * records `perm_bg`, so 'no_permission' covers two different users: one on
+   * While Using who needs upgrading to Always, and one who granted nothing at
+   * all. Sending the second to the background request is a dead end —
+   * expo-location asks for ACCESS_BACKGROUND_LOCATION alone (LocationModule.kt),
+   * and Android 11+ auto-denies that with no dialog when foreground is missing,
+   * leaving PermissionFixScreen's Android branch with nothing to do. Measured on
+   * both field devices, 2026-08-09, sitting at 'undetermined'.
+   */
+  foregroundGrantedNow?: boolean | null;
 }
 
 /**
@@ -190,10 +230,30 @@ export interface VerdictInput {
  * Pure and total so the rules are testable without a device — every guard here
  * is a false-positive class the design brief named, and each returns null.
  */
-export function deriveSetupVerdict({ health, backgroundGrantedNow }: VerdictInput): PermissionFixKind | null {
+export function deriveSetupVerdict({
+  health,
+  backgroundGrantedNow,
+  foregroundGrantedNow,
+}: VerdictInput): PermissionFixKind | null {
   // Never observed a sweep: a new install, an OTA that has not woken yet, or a
   // healthy iOS device that simply had no reason to run one. Inconclusive.
   if (!health) return null;
+
+  // REPEATED no_fix: the chain ran, and ran, and ran, and never once obtained a
+  // location. One is a stale cache; NO_FIX_STREAK_BROKEN in a row is a device that
+  // cannot see where it is, which earns exactly as much as a revoked permission.
+  //
+  // ⚠ DELIBERATELY ABOVE THE backgroundGrantedNow SUPPRESSION, and that is the
+  // whole point of this branch. Its headline case is iOS's provisional-Always
+  // window, where `getBackgroundPermissionsAsync()` reports GRANTED while Apple
+  // quietly withholds the grant until it asks the user later — measured at 24
+  // minutes on 2026-08-09, during which the phone reported `always`, swept
+  // `no_fix` four times, and armed 20 regions with a null position. Suppressing on
+  // the probe would silence us precisely when the probe is the thing that is
+  // wrong. Repetition is the evidence here, not the permission read.
+  if (health.outcome === 'no_fix' && (health.streak ?? 1) >= NO_FIX_STREAK_BROKEN) {
+    return 'location-background';
+  }
 
   // The last thing the background actually did was fine (or was a deliberate
   // no-op). Nothing to report.
@@ -207,5 +267,13 @@ export function deriveSetupVerdict({ health, backgroundGrantedNow }: VerdictInpu
   // path that fires, and it is the highest-confidence signal available anywhere
   // in the app: not a permission we asked about, but a job that was actually
   // attempted and actually failed.
+  //
+  // Which rung of the ladder to offer is a separate question, decided here and
+  // only on an EXPLICIT false: a failed read (null) leaves the verdict where the
+  // background evidence put it, exactly as backgroundGrantedNow does above.
+  // Asking for Always before While Using is refused by the OS, so a user holding
+  // neither has to be sent one rung lower or the fix screen does nothing at all.
+  if (foregroundGrantedNow === false) return 'location';
+
   return 'location-background';
 }
