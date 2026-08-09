@@ -5,6 +5,7 @@ import * as TaskManager from 'expo-task-manager';
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { AppState, AppStateStatus, Platform } from 'react-native';
 import { ensureFreshSession } from '@/lib/authFresh';
+import { recordBackgroundHealth } from '@/lib/backgroundHealth';
 import { bgInsert, bgRpc, bgSelect, bgUpdate, readBackgroundAuth } from '@/lib/backgroundRest';
 import { noteTask } from '@/lib/crashHandler';
 import { detectLocationLoss, type LocationLossReason } from '@/lib/locationPermission';
@@ -1105,6 +1106,10 @@ async function sweepForMissedCheckIn(): Promise<void> {
                 acc_m: acc != null ? Math.round(acc) : null,
                 elapsed_min: Math.round(elapsed / 60_000),
               });
+              // No recordBackgroundHealth here: this branch returns above the
+              // sweep's permission read, so it cannot say anything about the
+              // permission, and a non-observation must never overwrite a real
+              // 'no_permission'. See lib/backgroundHealth.ts.
               await finalizeActiveGeofence();
               handled = true;
             }
@@ -1117,6 +1122,12 @@ async function sweepForMissedCheckIn(): Promise<void> {
       // it ran immediately before us, so `has_geom: false` here is also the reason
       // it declined (its discriminator needs geometry it does not have).
       logRegionEvent('sweep', 'sweep', { outcome: 'session_active', ...describeStoredSession(active) });
+      // ⚠ DELIBERATELY NO recordBackgroundHealth. This branch is above the
+      // permission read, and in the live 'observe' close mode a session whose
+      // permission was revoked is left open on purpose — a device with no grant
+      // can never obtain the fix that would close it, so every later wake would
+      // land here and rewrite the record indefinitely, hiding the banner
+      // forever on precisely the devices it was built for.
       return;
     }
     const { status } = await Location.getBackgroundPermissionsAsync()
@@ -1126,6 +1137,11 @@ async function sweepForMissedCheckIn(): Promise<void> {
       // open here would start sessions on a "While Using" device that has no
       // mechanism left to close them. The row only makes the refusal visible.
       logRegionEvent('sweep', 'sweep', { outcome: 'no_permission', perm_bg: String(status) });
+      // THE ONE VERDICT THE USER CAN ACT ON, and the only one this device can
+      // state with certainty: a headless context tried to work and was refused.
+      // The foreground cannot reach this conclusion on its own — it demonstrably
+      // reads 'always' on devices writing this very row (see lib/backgroundHealth).
+      await recordBackgroundHealth('no_permission', String(status));
       return;
     }
 
@@ -1136,6 +1152,9 @@ async function sweepForMissedCheckIn(): Promise<void> {
       // The prime suspect on iOS: BASELINE_STREAM_MODE is 'off', so with the app
       // swiped nothing feeds the OS cache and it ages past ten minutes.
       logRegionEvent('sweep', 'sweep', { outcome: 'no_fix' });
+      // Safe to record: only reachable below the `status === 'granted'` gate, so
+      // it DOES observe a live grant even though it found no usable fix.
+      await recordBackgroundHealth('no_fix', String(status));
       return;
     }
 
@@ -1145,6 +1164,10 @@ async function sweepForMissedCheckIn(): Promise<void> {
       age_s:   Math.round((Date.now() - cached.timestamp) / 1000),
       ...(await nearestPartnerMetres(cached.coords)),
     });
+    // Healthy. Recorded like every other branch so a granted permission
+    // OVERWRITES a stale 'no_permission' and the banner retires itself on the
+    // next sweep — no foreground probe, no dismissal bookkeeping.
+    await recordBackgroundHealth('handoff', String(status));
 
     await evaluateLocationFix(cached.coords);
 
@@ -1160,6 +1183,8 @@ async function sweepForMissedCheckIn(): Promise<void> {
     }
   } catch (err) {
     logRegionEvent('sweep', 'sweep', { outcome: 'error', err: String(err).slice(0, 120) });
+    // No health write: a throw can happen either side of the permission read,
+    // so this branch cannot claim to have observed anything.
     console.warn('[Geofence] Missed check-in sweep failed:', err);
   }
 }

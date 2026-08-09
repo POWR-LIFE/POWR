@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import PermissionPrimeScene from '@/components/onboarding/PermissionPrimeScene';
 import { useAuth } from '@/context/AuthContext';
 import { useActiveGeofence } from '@/hooks/useActiveGeofence';
+import { isBackgroundHealthDismissedToday, readBackgroundHealth } from '@/lib/backgroundHealth';
 import { reportLocationPermission } from '@/lib/locationPermission';
 import {
     getLocationPromptState,
@@ -79,6 +80,16 @@ export default function LocationPrimeSheet() {
             // Only the "While Using" silent-failure case is ours to fix.
             const whileUsing = await isWhileUsingOnly();
             if (whileUsing !== true) return;
+
+            // Yield to SetupHealthBanner. It asks for the SAME permission on
+            // strictly better evidence — a headless sweep that was actually
+            // refused, rather than this sheet's foreground read of a permission
+            // the two contexts are known to disagree about. Two surfaces asking
+            // for one grant is nagging, and the banner's fix screen is a Modal
+            // like ours: on iOS presenting two at once means one silently never
+            // appears. Same precedent as the NotificationPrimeSheet yield below.
+            if (!(await isBackgroundHealthDismissedToday())
+                && (await readBackgroundHealth())?.outcome === 'no_permission') return;
 
             const state = await getLocationPromptState();
             if (!shouldShowLocationPrompt(state, Date.now())) return;
