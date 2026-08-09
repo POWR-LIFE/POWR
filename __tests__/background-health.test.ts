@@ -6,6 +6,7 @@ import {
     clearBackgroundHealth,
     deriveSetupVerdict,
     dismissBackgroundHealthToday,
+    FIRES_ON,
     isBackgroundHealthDismissedToday,
     NO_FIX_STREAK_BROKEN,
     readBackgroundHealth,
@@ -208,6 +209,53 @@ describe('repeated no_fix — the iOS provisional-Always window', () => {
             health: health({ outcome: 'no_fix', streak: undefined }),
             backgroundGrantedNow: true,
         })).toBeNull();
+    });
+});
+
+describe('FIRES_ON is the whole door, and the hook gates on it', () => {
+    // Shipped-dead-code regression. `useSetupHealth` short-circuits before the
+    // permission probe, and it used to spell that shortcut as
+    // `outcome !== 'no_permission'` — correct when BROKEN was the only way into a
+    // verdict, silently wrong the moment the no_fix streak branch was added above
+    // it. Result: every test in the block above passed while the branch they cover
+    // could not be reached from the app. Two assertions, so neither half can rot:
+    // the set matches the deriver, and the hook's gate IS the set.
+
+    const source = (...parts: string[]) => readFileSync(join(__dirname, '..', ...parts), 'utf8');
+
+    /** Read the union straight out of the type so a new outcome joins this test
+     *  automatically instead of quietly sitting outside it. */
+    const ALL_OUTCOMES: BackgroundOutcome[] = (() => {
+        // Comments first: every arm carries a trailing `//`, and one of them
+        // contains a semicolon that ends the match on the wrong line.
+        const src = source('lib', 'backgroundHealth.ts').replace(/\/\/[^\n]*/g, '');
+        const union = src.match(/export type BackgroundOutcome =([\s\S]*?);/)?.[1] ?? '';
+        return [...union.matchAll(/'([a-z_]+)'/g)].map(m => m[1] as BackgroundOutcome);
+    })();
+
+    it('reads every outcome out of the union', () => {
+        // Guards the regex itself: a parse failure would make the sweep below vacuous.
+        expect(ALL_OUTCOMES).toEqual(expect.arrayContaining(['no_permission', 'no_fix', 'handoff']));
+        expect(ALL_OUTCOMES).toHaveLength(6);
+    });
+
+    it.each(ALL_OUTCOMES)('%s can produce a verdict iff FIRES_ON says so', outcome => {
+        const PROBES = [true, false, null] as const;
+        const reachable = PROBES.some(bg => PROBES.some(fg =>
+            [1, NO_FIX_STREAK_BROKEN, 10].some(streak => deriveSetupVerdict({
+                health: health({ outcome, streak }),
+                backgroundGrantedNow: bg,
+                foregroundGrantedNow: fg,
+            }) !== null),
+        ));
+        expect(reachable).toBe(FIRES_ON.has(outcome));
+    });
+
+    it('the hook gates on the set, never on a hand-written outcome', () => {
+        const src = source('hooks', 'useSetupHealth.ts');
+        expect(src).toMatch(/!FIRES_ON\.has\(health\.outcome\)/);
+        // The exact shape that made the streak branch unreachable.
+        expect(src).not.toMatch(/health\.outcome\s*[!=]==\s*'/);
     });
 });
 

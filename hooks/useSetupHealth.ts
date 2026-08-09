@@ -6,6 +6,7 @@ import type { PermissionFixKind } from '@/components/PermissionFixScreen';
 import {
     deriveSetupVerdict,
     dismissBackgroundHealthToday,
+    FIRES_ON,
     isBackgroundHealthDismissedToday,
     readBackgroundHealth,
 } from '@/lib/backgroundHealth';
@@ -34,7 +35,12 @@ export function useSetupHealth() {
         // Short-circuit before touching the permission API. Nothing has been
         // recorded, or what was recorded is healthy — either way the probe below
         // cannot change the answer, and it is the more expensive question.
-        if (!health || health.outcome !== 'no_permission') { setVerdict(null); return; }
+        //
+        // ⚠ Gate on FIRES_ON, never on a hand-written outcome. Spelling it as
+        // `!== 'no_permission'` is how the no_fix streak branch — the entire iOS
+        // provisional-Always detector — ended up dead code behind a green test
+        // suite: the deriver grew a second door and this line still knew of one.
+        if (!health || !FIRES_ON.has(health.outcome)) { setVerdict(null); return; }
 
         // Both rungs, because 'no_permission' alone cannot tell them apart: the
         // sweep records only perm_bg, and the fix for someone holding NOTHING is

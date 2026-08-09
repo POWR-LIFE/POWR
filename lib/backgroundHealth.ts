@@ -91,6 +91,21 @@ export const NO_FIX_STREAK_BROKEN = 3;
 const BROKEN: ReadonlySet<BackgroundOutcome> = new Set<BackgroundOutcome>(['no_permission']);
 
 /**
+ * Every outcome `deriveSetupVerdict` can return a non-null verdict for.
+ *
+ * ⚠ THE ONLY GATE ANY CALLER MAY USE. useSetupHealth deliberately returns before
+ * probing the permission API when there is nothing the probe could change, and
+ * it used to spell that shortcut as `outcome !== 'no_permission'` — a copy of
+ * BROKEN made when BROKEN was the only way in. The `no_fix` streak branch below
+ * was then added ABOVE the BROKEN check (it has to fire THROUGH a granted probe),
+ * so the hook filtered out every record that branch exists to catch and the whole
+ * iOS provisional-Always case was unreachable in the app while its unit tests
+ * passed. Gate on this set and the two cannot drift again.
+ */
+export const FIRES_ON: ReadonlySet<BackgroundOutcome> =
+  new Set<BackgroundOutcome>([...BROKEN, 'no_fix']);
+
+/**
  * Persist the outcome of a headless sweep. Never throws: this rides inside a
  * background task whose whole job is elsewhere, and a storage fault must never
  * break the sweep it is observing.
