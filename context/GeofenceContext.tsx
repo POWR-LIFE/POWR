@@ -117,10 +117,22 @@ const LOCATION_LOSS_KEY      = '@powr/location_loss_pending'; // first unconfirm
 /** First sighting of a location loss against a specific session. Persisted so the
  *  two observations that a close requires can straddle process death. */
 interface LocationLossMarker {
+  /** The loss currently being confirmed. A DIFFERENT reason is a different
+   *  condition and restarts the window — see finalizeSessionIfLocationRevoked. */
   reason:         LocationLossReason;
+  /** Start of the confirmation window for `reason`. Reset when the reason changes. */
   firstSeenAtMs:  number;
   /** Fences the marker to one session, so it can never condemn the next one. */
   entryTimestamp: number;
+  /** Start of this unbroken run of losses, of ANY reason — never reset while some
+   *  loss persists. Telemetry only; nothing gates on it. It exists to answer the
+   *  one question the reason-reset rule raises: can the reason oscillate in the
+   *  field, and if so does a genuinely-dead session end up never confirming?
+   *  A large loss_total_s next to a small confirmed_after_s is that fingerprint. */
+  firstLossAtMs?: number;
+  /** How many times the reason changed within this unbroken run. Telemetry only,
+   *  and incremented only ON a change, so it costs no extra write per sweep. */
+  reasonChanges?: number;
   /** Set once the verdict has been logged, so 'observe' mode emits one row per
    *  decision rather than one per sweep for the rest of the visit. */
   decided?:       boolean;
@@ -2732,10 +2744,26 @@ async function reconcileFix(): Promise<{ latitude: number; longitude: number; ac
  *  user straight back in, and the gym_visits row only ever GROWS (#345), so the
  *  second session of the day tops up the first rather than replacing it.
  *
+ *  Nothing here acts on ONE reading — see the confirmation marker below. Three
+ *  things can void a pending confirmation, and all three exist because a marker
+ *  that outlives its context would let a once-seen loss pass as a confirmed one:
+ *  a healthy read (the loss was a blip), a changed reason (different condition),
+ *  and the kill switch (off means forget, not pause).
+ *
  *  Returns whether it closed a session. */
 export async function finalizeSessionIfLocationRevoked(): Promise<boolean> {
   const mode = getLocationCloseMode();
-  if (mode === 'off') return false; // kill switch, before any work at all
+  if (mode === 'off') {
+    // Kill switch — no permission reads, no session read. But it must not leave
+    // a half-finished decision lying around: the flag is flipped server-side and
+    // can come back mid-session, and a marker written before it went off would
+    // already be older than the confirmation window. The very next check would
+    // then "confirm" a loss it had never seen twice, which is precisely the
+    // single-reading close this staging exists to prevent. Switching off means
+    // forgetting, not pausing.
+    await AsyncStorage.removeItem(LOCATION_LOSS_KEY).catch(() => {});
+    return false;
+  }
 
   let active: StoredGeofence;
   try {
@@ -2793,11 +2821,41 @@ export async function finalizeSessionIfLocationRevoked(): Promise<boolean> {
     if (parsed && parsed.entryTimestamp === active.entryTimestamp) marker = parsed;
   } catch { /* treat an unreadable marker as absent — this is the first sighting */ }
 
-  if (!marker) {
+  // A DIFFERENT reason is a DIFFERENT condition, and inherits nothing.
+  // Otherwise a marker aged past the window under one cause (Services off) would
+  // let an unrelated later cause (permission revoked) skip confirmation entirely
+  // on its very first sighting — the two-spaced-sightings guarantee would hold
+  // for "some loss" while the thing actually being acted on had been seen once.
+  //
+  // ⚠ This rule has a failure mode of its own, and it is why firstLossAtMs and
+  // reasonChanges exist. detectLocationLoss tests Services BEFORE permission, so
+  // a device that is BOTH downgraded to "While Using" AND has battery-saver
+  // toggling Services reports services_disabled / permission_downgraded
+  // alternately — resetting on every change, never confirming, on a session that
+  // genuinely cannot be verified. That is the original bug wearing a new hat.
+  // It errs in the direction we chose (miss a close rather than invent one), so
+  // it ships as-is, but the observe rows now carry the fingerprint that would
+  // prove it: a large loss_total_s beside a small confirmed_after_s, with
+  // reason_changes climbing. If the field shows it, the fix is to confirm on the
+  // unbroken run once the reason has stopped moving — not to weaken this rule.
+  const reasonChanged = !!marker && marker.reason !== reason;
+
+  if (!marker || reasonChanged) {
     await AsyncStorage.setItem(LOCATION_LOSS_KEY, JSON.stringify({
-      reason, firstSeenAtMs: now, entryTimestamp: active.entryTimestamp,
+      reason,
+      firstSeenAtMs:  now,
+      entryTimestamp: active.entryTimestamp,
+      // Preserved across a reason change: this run of losses has been unbroken
+      // (a healthy read would have deleted the marker above), so the run's start
+      // is still the older timestamp.
+      firstLossAtMs:  marker?.firstLossAtMs ?? marker?.firstSeenAtMs ?? now,
+      reasonChanges:  reasonChanged ? (marker?.reasonChanges ?? 0) + 1 : 0,
     } satisfies LocationLossMarker)).catch(() => {});
-    console.log(`[Geofence] Location ${reason} with a session open — first sighting, awaiting confirmation.`);
+    console.log(
+      reasonChanged
+        ? `[Geofence] Location loss changed ${marker?.reason} → ${reason} — restarting confirmation.`
+        : `[Geofence] Location ${reason} with a session open — first sighting, awaiting confirmation.`,
+    );
     return false;
   }
 
@@ -2818,8 +2876,12 @@ export async function finalizeSessionIfLocationRevoked(): Promise<boolean> {
       would_close:     true,
       closed:          mode === 'on',
       reason,
-      first_reason:    marker.reason,
+      // confirmed_after_s is THIS reason's window; loss_total_s is the whole
+      // unbroken run. They diverge only when the reason changed on the way here,
+      // which reason_changes counts — together they are the oscillation tell.
       confirmed_after_s: Math.round(heldForMs / 1000),
+      loss_total_s:    Math.round((now - (marker.firstLossAtMs ?? marker.firstSeenAtMs)) / 1000),
+      reason_changes:  marker.reasonChanges ?? 0,
       session_age_min: Math.round((now - active.entryTimestamp) / 60_000),
       dwell_min:       Math.round((endedAtMs - active.entryTimestamp) / 60_000),
       unwitnessed_min: Math.round((now - endedAtMs) / 60_000),
