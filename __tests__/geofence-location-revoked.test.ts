@@ -18,6 +18,9 @@
  *     the claim path with the truncated duration.
  *  4. ⚠ TWO sightings, spaced in time, before anything ends. One read is not
  *     evidence — cold launch is exactly when a native read is least reliable.
+ *     And the two must be the SAME condition: a changed reason restarts the
+ *     window, and switching the flag off forgets rather than pauses. Both are
+ *     ways a marker could otherwise let a once-seen loss act as a confirmed one.
  *  5. ⚠ 'undetermined' is NOT 'denied'. It means the read did not answer.
  *  6. It fails CLOSED everywhere. A transient error never ends a real session.
  *  7. The rollout flag is obeyed: 'off' does nothing, 'observe' logs its verdict
@@ -158,13 +161,25 @@ function locationHealthy() {
 const revokePermission = () =>
   mockLocation.getForegroundPermissionsAsync.mockResolvedValue({ status: 'denied' } as never);
 
+const disableServices = () => mockLocation.hasServicesEnabledAsync.mockResolvedValue(false);
+
+const readMarker = async () => {
+  const raw = await AsyncStorage.getItem(LOCATION_LOSS_KEY);
+  return raw ? JSON.parse(raw) : null;
+};
+
 /** Age the pending marker so the NEXT call sees a loss that has persisted past
  *  the confirmation window — the second of the two required sightings. */
 async function ageMarkerPastConfirmWindow() {
   const raw = await AsyncStorage.getItem(LOCATION_LOSS_KEY);
   if (!raw) throw new Error('expected a pending marker to age');
   const marker = JSON.parse(raw);
-  marker.firstSeenAtMs -= CONFIRM_MS + 1_000;
+  const delta = CONFIRM_MS + 1_000;
+  // Wall-clock moves away from EVERY stored timestamp at once, so backdating one
+  // and not the other would model a clock that runs at two different speeds —
+  // and would quietly make loss_total_s look smaller than the window inside it.
+  marker.firstSeenAtMs -= delta;
+  if (typeof marker.firstLossAtMs === 'number') marker.firstLossAtMs -= delta;
   await AsyncStorage.setItem(LOCATION_LOSS_KEY, JSON.stringify(marker));
 }
 
@@ -234,6 +249,45 @@ describe('confirmation — two sightings, never one', () => {
     expect(mockCloseGymVisit).not.toHaveBeenCalled();
   });
 
+  it('a CHANGED reason restarts the window — it cannot inherit the old one', async () => {
+    // Services off first, aged past the window. Then Services come back but the
+    // permission is gone: a different condition, seen exactly once. Inheriting
+    // the old clock would close on that single sighting.
+    await seedActive();
+    disableServices();
+    await finalizeSessionIfLocationRevoked();
+    await ageMarkerPastConfirmWindow();
+
+    locationHealthy();
+    revokePermission();
+    expect(await finalizeSessionIfLocationRevoked()).toBe(false);
+
+    expect(mockCloseGymVisit).not.toHaveBeenCalled();
+    expect(revokedRows()).toHaveLength(0);
+    const marker = await readMarker();
+    expect(marker.reason).toBe('permission_denied');
+    expect(marker.reasonChanges).toBe(1);
+    // The window restarted, but the unbroken run's start is preserved.
+    expect(marker.firstLossAtMs).toBeLessThan(marker.firstSeenAtMs);
+  });
+
+  it('the new reason still closes once IT has persisted across the window', async () => {
+    await seedActive();
+    disableServices();
+    await finalizeSessionIfLocationRevoked();
+    await ageMarkerPastConfirmWindow();
+
+    locationHealthy();
+    revokePermission();
+    expect(await confirmLoss()).toBe(true);
+
+    // The row separates this reason's window from the whole unbroken run, so a
+    // reason that oscillates is visible rather than silently never confirming.
+    expect(revokedRows()[0][2]).toMatchObject({ reason: 'permission_denied', reason_changes: 1 });
+    const row = revokedRows()[0][2] as Record<string, number>;
+    expect(row.loss_total_s).toBeGreaterThan(row.confirmed_after_s);
+  });
+
   it('a marker from a previous session cannot condemn the current one', async () => {
     // Marker left behind by an older session, already well past the window.
     await AsyncStorage.setItem(LOCATION_LOSS_KEY, JSON.stringify({
@@ -250,15 +304,34 @@ describe('confirmation — two sightings, never one', () => {
 });
 
 describe('rollout flag', () => {
-  it("'off' is a true kill switch — it does not even look at the session", async () => {
+  it("'off' is a true kill switch — no permission read, no session read", async () => {
     mockCloseMode = 'off';
     await seedActive();
     revokePermission();
 
     expect(await finalizeSessionIfLocationRevoked()).toBe(false);
-    expect(await AsyncStorage.getItem(LOCATION_LOSS_KEY)).toBeNull();
     expect(mockLocation.hasServicesEnabledAsync).not.toHaveBeenCalled();
     expect(mockCloseGymVisit).not.toHaveBeenCalled();
+  });
+
+  it("'off' FORGETS — it must not leave a marker that outlives the switch", async () => {
+    // The flag is flipped server-side and can come back mid-session. A marker
+    // written before it went off is already older than the window, so the first
+    // check after it returns would "confirm" a loss seen exactly once.
+    await seedActive();
+    revokePermission();
+    await finalizeSessionIfLocationRevoked();      // sighting 1, marker written
+    expect(await AsyncStorage.getItem(LOCATION_LOSS_KEY)).not.toBeNull();
+
+    mockCloseMode = 'off';
+    await finalizeSessionIfLocationRevoked();
+    expect(await AsyncStorage.getItem(LOCATION_LOSS_KEY)).toBeNull();
+
+    // Coming back on starts from a fresh first sighting, not a confirmed verdict.
+    mockCloseMode = 'on';
+    expect(await finalizeSessionIfLocationRevoked()).toBe(false);
+    expect(mockCloseGymVisit).not.toHaveBeenCalled();
+    expect(await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY)).not.toBeNull();
   });
 
   it("'observe' reaches a verdict, logs it, and closes NOTHING", async () => {
