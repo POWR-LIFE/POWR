@@ -34,7 +34,7 @@ export function useSetupHealth() {
         // Short-circuit before touching the permission API. Nothing has been
         // recorded, or what was recorded is healthy — either way the probe below
         // cannot change the answer, and it is the more expensive question.
-        if (!health) { setVerdict(null); return; }
+        if (!health || health.outcome !== 'no_permission') { setVerdict(null); return; }
 
         const bg = await Location.getBackgroundPermissionsAsync().catch(() => null);
         setVerdict(deriveSetupVerdict({
