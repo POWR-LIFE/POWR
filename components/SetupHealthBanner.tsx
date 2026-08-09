@@ -64,7 +64,7 @@ export function SetupHealthBanner() {
                     // PermissionFixScreen self-closes the moment the underlying
                     // permission actually flips, but it also closes on a plain
                     // dismiss — so re-derive rather than assuming success.
-                    resolved();
+                    void resolved();
                 }}
             />
         </>
