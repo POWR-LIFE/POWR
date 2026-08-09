@@ -198,3 +198,46 @@ describe('presentDisplayPush', () => {
     expect(global.fetch).not.toHaveBeenCalled();
   });
 });
+
+describe('wire-format compatibility across the n_ rename', () => {
+  // ⚠ DO NOT DELETE THE LEGACY BRANCH UNTIL NO PRE-RENAME BUNDLE IS LEFT.
+  //
+  // The rename breaks in BOTH directions and no deploy order avoids it: server
+  // first and an old bundle finds no `n_title`; OTA first and a new bundle finds
+  // no `title` on a server still sending the old shape. Either way Android shows
+  // NOTHING — worse than the duplicate the rename removes. These two tests are
+  // the guarantee that every intermediate state still produces a banner.
+  const LEGACY = {
+    type: 'display_notification',
+    log_id: 'legacy-1',
+    notif_type: 'session_completed',
+    title: 'Session complete 💪',
+    body: 'POWR · 47 min · +24 pts today',
+    channel_id: 'powr_default_v2',
+    sound: '1',
+    route: '/(tabs)/index',
+    data: JSON.stringify({ type: 'session_completed', route: '/(tabs)/index' }),
+  };
+
+  it('still renders a pre-rename payload', async () => {
+    expect(await presentDisplayPush(LEGACY as never)).toBe(true);
+    const arg = scheduleMock.mock.calls[0][0];
+    expect(arg.content.title).toBe('Session complete 💪');
+    expect(arg.content.body).toBe('POWR · 47 min · +24 pts today');
+    expect(arg.content.channelId).toBe('powr_default_v2');
+    expect(arg.content.data.route).toBe('/(tabs)/index');
+    expect(arg.content.data.type).toBe('session_completed');
+  });
+
+  it('stamps delivery off the legacy id too', async () => {
+    await presentDisplayPush(LEGACY as never);
+    const [, init] = (global.fetch as jest.Mock).mock.calls[0];
+    expect(JSON.parse(init.body)).toEqual({ p_log_id: 'legacy-1' });
+  });
+
+  it('prefers the new shape when a payload somehow carries both', async () => {
+    await presentDisplayPush({ ...LEGACY, ...payload() } as never);
+    expect(scheduleMock.mock.calls[0][0].content.body)
+      .toBe('POWR · 60 min · +24 pts today');
+  });
+});

@@ -118,23 +118,45 @@ export function isDisplayPush(payload: unknown): payload is DisplayPushPayload {
  *  "the schedule call silently no-ops without a UI context" belief and got the
  *  server's duplicate ANNOUNCE pass deleted). */
 export async function presentDisplayPush(payload: DisplayPushPayload): Promise<boolean> {
-  const title = typeof payload.n_title === 'string' ? payload.n_title : '';
-  const body = typeof payload.n_body === 'string' ? payload.n_body : '';
+  // ⚠ READS BOTH SHAPES, AND MUST KEEP DOING SO UNTIL EVERY BUNDLE PREDATING THE
+  // n_ RENAME IS GONE (2026-08-09).
+  //
+  // The rename is a wire-format break in BOTH directions, and there is no deploy
+  // order that avoids it:
+  //   • server first — an old bundle reads `title`, finds nothing, shows NOTHING.
+  //   • OTA first    — a new bundle reads `n_title` against an old server that
+  //                    still sends `title`, finds nothing, shows NOTHING.
+  // Either way Android loses its notification entirely, which is strictly worse
+  // than the duplicate this rename exists to remove. Accepting both shapes makes
+  // every intermediate state safe, and the legacy branch costs one `??`.
+  //
+  // While a legacy-shaped push is in flight the phantom banner still appears —
+  // that is unavoidable, it is posted by the library before we are consulted.
+  // The duplicate stops the moment the server sends n_ keys.
+  const pick = (next: unknown, legacy: unknown): string =>
+    typeof next === 'string' ? next : (typeof legacy === 'string' ? legacy : '');
+  const legacy = payload as Record<string, unknown>;
+
+  const title = pick(payload.n_title, legacy.title);
+  const body = pick(payload.n_body, legacy.body);
   if (!title && !body) return false;
 
-  const logId = typeof payload.n_log_id === 'string' ? payload.n_log_id : '';
+  const logId = pick(payload.n_log_id, legacy.log_id);
   if (logId && !(await claimFirstDelivery(logId))) return false;
 
   // The server's original data object, so the tap handler reads the same shape
-  // it would have read off an Expo-routed push. `notif_type` restores the type
-  // key the rest of the app switches on (NotificationsContext's points-refresh
-  // gate, the activity feed, getRouteFromNotification's siblings).
+  // it would have read off an Expo-routed push. The type key restores what the
+  // rest of the app switches on (NotificationsContext's points-refresh gate, the
+  // activity feed, getRouteFromNotification's siblings).
   let data: Record<string, unknown> = {};
+  const rawData = pick(payload.n_data, legacy.data);
   try {
-    if (typeof payload.n_data === 'string' && payload.n_data) data = JSON.parse(payload.n_data);
+    if (rawData) data = JSON.parse(rawData);
   } catch { /* a malformed data blob must not cost the user the banner */ }
-  if (typeof payload.n_type === 'string' && !data.type) data.type = payload.n_type;
-  if (typeof payload.n_route === 'string' && !data.route) data.route = payload.n_route;
+  const notifType = pick(payload.n_type, legacy.notif_type);
+  const route = pick(payload.n_route, legacy.route);
+  if (notifType && !data.type) data.type = notifType;
+  if (route && !data.route) data.route = route;
 
   try {
     await Notifications.scheduleNotificationAsync({
@@ -145,9 +167,9 @@ export async function presentDisplayPush(payload: DisplayPushPayload): Promise<b
         title,
         body,
         data,
-        ...(payload.n_sound === '0' ? {} : { sound: 'default' as const }),
-        ...(Platform.OS === 'android' && payload.n_channel
-          ? { channelId: payload.n_channel }
+        ...(pick(payload.n_sound, legacy.sound) === '0' ? {} : { sound: 'default' as const }),
+        ...(Platform.OS === 'android' && pick(payload.n_channel, legacy.channel_id)
+          ? { channelId: pick(payload.n_channel, legacy.channel_id) }
           : {}),
       },
       trigger: null, // immediate
