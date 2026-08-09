@@ -90,8 +90,11 @@ import { sendFcmDataMessage } from './fcmV1.ts';
 
 const TRANSPORT_KEY = 'visible_push_transport';
 
-/** Cached per edge-instance for the life of one invocation batch; the beacon
- *  runs every minute, so a flip is live within the minute either way. */
+/** Read the transport flag from system_config.
+ *
+ *  Intentionally NOT cached at module scope: a flag flip should take effect
+ *  immediately without waiting for a cold start, and the query cost is tiny.
+ */
 async function directEnabled(admin): Promise<boolean> {
   try {
     const { data } = await admin
