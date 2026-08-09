@@ -3271,13 +3271,18 @@ export async function runVisitCheck(
     // within its OWN error bar could actually place the user in the venue. The
     // error bar is honest evidence; the 50 m flap-guard is not — it exists to stop
     // oscillation, not to describe where anyone is.
-    const { fixCreditsPresence } = await import('@/lib/health/gymPresence');
-    const provenInside = fixCreditsPresence({
-      fixTrusted,
-      distanceM: distance,
-      radiusM,
-      accuracyM: coords.accuracy ?? null,
-    });
+    let provenInside = false;
+    try {
+      const { fixCreditsPresence } = await import('@/lib/health/gymPresence');
+      provenInside = fixCreditsPresence({
+        fixTrusted,
+        distanceM: distance,
+        radiusM,
+        accuracyM: coords.accuracy ?? null,
+      });
+    } catch {
+      provenInside = false;
+    }
     if (provenInside) {
       void AsyncStorage.setItem(VISIT_TICK_KEY, String(Date.now())).catch(() => {});
     }
