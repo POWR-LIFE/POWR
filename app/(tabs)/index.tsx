@@ -33,6 +33,7 @@ import { WeeklyActivityCircles } from '@/components/home/WeeklyActivityRings';
 import { HeaderActions } from '@/components/HeaderActions';
 import { WearableChip } from '@/components/WearableChip';
 import { HealthGapBanner } from '@/components/HealthGapBanner';
+import { SetupHealthBanner } from '@/components/SetupHealthBanner';
 import NotificationPrimeSheet from '@/components/NotificationPrimeSheet';
 import LocationPrimeSheet from '@/components/LocationPrimeSheet';
 import HealthPrimeSheet from '@/components/HealthPrimeSheet';
@@ -625,6 +626,12 @@ export default function HomeScreen() {
                 )}
 
                 <HealthGapBanner />
+
+                {/* Above the fold with HealthGapBanner and for the same reason:
+                    both report that POWR is failing to earn for the user right
+                    now. Inline, not a modal — the three prime sheets below
+                    already queue behind one another. */}
+                <SetupHealthBanner />
 
                 <StreakRescueModal
                     rescue={rescue}

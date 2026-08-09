@@ -57,6 +57,76 @@ const timeAgo = (dateStr) => {
     return `${Math.floor(h / 24)}d ago`;
 };
 
+// ── Location / setup health ──────────────────────────────────────────────────
+// This column used to render profiles.location_granted, a WRITE-ONCE flag set by
+// the onboarding bonus. It says the user once tapped allow and never changes
+// again — so it read "Granted" for people whose location has been off for
+// months. Three live signals replace it (admin_get_users v5).
+
+const PERMISSION_META = {
+    always:       { label: 'Always',      colour: '#10B981' }, // the only state passive earning works in
+    while_using:  { label: 'While using', colour: '#F59E0B' },
+    denied:       { label: 'Denied',      colour: '#EF4444' },
+    undetermined: { label: 'Not asked',   colour: '#666666' },
+};
+
+// ⚠ 'unknown' and null are DIFFERENT and neither means healthy. 'unknown' = the
+// last sweep was inconclusive (an open session, a stale OS fix, a transient
+// throw); null = the device has never reported one. Absence is not evidence —
+// iOS devices with a perfect setup routinely emit nothing for days.
+const VERDICT_META = {
+    broken:  { label: 'BG blocked', colour: '#EF4444', title: 'A background wake ran and was refused — background location is not granted. This device earns nothing passively.' },
+    ok:      { label: 'BG ok',      colour: '#10B981', title: 'The last background sweep got a fix and handed off normally.' },
+    unknown: { label: 'BG unclear', colour: '#999999', title: 'Last sweep was inconclusive (session already open, no cached fix, or an error). Says nothing either way.' },
+};
+
+function LocationCell({ user }) {
+    const perm = PERMISSION_META[user.location_permission];
+    const verdict = VERDICT_META[user.background_verdict];
+    // Precise Location off coarsens every fix to kilometres, which silently
+    // defeats a 25m fence even on an 'always' grant.
+    const reduced = user.location_accuracy_m != null && user.location_accuracy_m > 500;
+
+    if (!perm) {
+        return <span className="text-[9px] uppercase tracking-[0.3em] text-[#BBBBBB] font-black">No data</span>;
+    }
+
+    return (
+        <div className="flex flex-col gap-1">
+            <div className="flex items-center gap-2">
+                <MapPin size={14} style={{ color: perm.colour }} />
+                <span className="text-[9px] uppercase tracking-[0.3em] font-black" style={{ color: perm.colour }}>
+                    {perm.label}
+                </span>
+            </div>
+
+            {verdict && (
+                <span
+                    className="text-[9px] uppercase tracking-[0.2em] font-black"
+                    style={{ color: verdict.colour }}
+                    title={`${verdict.title}${user.background_checked_at ? ` (${timeAgo(user.background_checked_at)})` : ''}`}
+                >
+                    {verdict.label}
+                </span>
+            )}
+
+            {reduced && (
+                <span className="text-[9px] uppercase tracking-[0.2em] text-[#F59E0B] font-black"
+                      title={`Last fix was accurate to ${user.location_accuracy_m}m — Precise Location is off, which defeats a 25m geofence.`}>
+                    Approx {user.location_accuracy_m}m
+                </span>
+            )}
+
+            {user.permission_regressed_at && (
+                <span className="text-[9px] uppercase tracking-[0.2em] text-[#EF4444] font-black"
+                      title="This user dropped out of 'Always' — they were earning passively and stopped.">
+                    Lost always {timeAgo(user.permission_regressed_at)}
+                </span>
+            )}
+        </div>
+    );
+}
+
 export default function UserManager() {
     const toast = useToast();
     const { user: adminUser } = useAuth();
@@ -70,7 +140,7 @@ export default function UserManager() {
     const [filterActivity, setFilterActivity] = useState('all');   // all | none | <type>
     const [activityOnly, setActivityOnly] = useState(false);       // exclusively that activity
     const [filterTier, setFilterTier] = useState('all');           // all | pro | standard
-    const [filterLocation, setFilterLocation] = useState('all');   // all | granted | denied
+    const [filterLocation, setFilterLocation] = useState('all');   // all | granted (= always) | denied (= not always) | broken
     const [filterActive, setFilterActive] = useState('all');       // all | 1 | 7 | 30 | inactive30 | never
     const [filterMinLevel, setFilterMinLevel] = useState('');
     const [showFilters, setShowFilters] = useState(false);
@@ -191,8 +261,13 @@ export default function UserManager() {
         if (filterTier === 'pro' && !u.is_pro) return false;
         if (filterTier === 'standard' && u.is_pro) return false;
 
-        if (filterLocation === 'granted' && !u.location_granted) return false;
-        if (filterLocation === 'denied' && u.location_granted) return false;
+        // Filters on the LIVE permission level, not the write-once onboarding
+        // flag. 'granted' now means the state passive earning actually needs —
+        // 'While using' is a grant that earns nothing with the app closed, so it
+        // belongs on the not-granted side of this filter, where it never was.
+        if (filterLocation === 'granted' && u.location_permission !== 'always') return false;
+        if (filterLocation === 'denied' && u.location_permission === 'always') return false;
+        if (filterLocation === 'broken' && u.background_verdict !== 'broken') return false;
 
         if (filterActive !== 'all') {
             const last = u.last_active_at ? new Date(u.last_active_at).getTime() : null;
@@ -426,8 +501,9 @@ export default function UserManager() {
                                 className="w-full h-12 px-4 bg-[#F4F4F1] border border-[#E6E6E1] rounded-xl text-[11px] font-black uppercase tracking-[0.15em] text-[#1A1A1A] outline-none focus:border-[#E8D200]/40 transition-all"
                             >
                                 <option value="all">All</option>
-                                <option value="granted">Granted</option>
-                                <option value="denied">Denied</option>
+                                <option value="granted">Always</option>
+                                <option value="denied">Not always</option>
+                                <option value="broken">BG blocked</option>
                             </select>
                         </div>
                         <div>
@@ -590,14 +666,7 @@ export default function UserManager() {
                                             )}
                                         </td>
                                         <td className="px-6 py-5">
-                                            {user.location_granted ? (
-                                                <div className="flex items-center gap-3">
-                                                    <MapPin size={14} className="text-[#10B981]" />
-                                                    <span className="text-[9px] uppercase tracking-[0.3em] text-[#10B981] font-black">Granted</span>
-                                                </div>
-                                            ) : (
-                                                <span className="text-[9px] uppercase tracking-[0.3em] text-[#666666] font-black">Denied</span>
-                                            )}
+                                            <LocationCell user={user} />
                                         </td>
                                         <td className="px-6 py-5 whitespace-nowrap">
                                             <div className="flex flex-col">

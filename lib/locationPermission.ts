@@ -128,18 +128,18 @@ export async function reportLocationPermission(userId: string): Promise<void> {
     const accuracyM = granted ? await sampleLocationAccuracyM() : null;
     const key = `${userId}:${level}:${accuracyBucket(accuracyM)}`;
     if (key === lastReported) return;
-    const update: Record<string, unknown> = {
-      location_permission: level,
-      location_permission_checked_at: new Date().toISOString(),
-    };
-    // A failed sample on a granted permission keeps the previous reading (a
-    // transient miss shouldn't erase real signal); a revoked permission nulls
-    // it (any stored accuracy no longer describes anything current).
-    if (accuracyM != null || !granted) update.location_accuracy_m = accuracyM;
-    const { error } = await supabase
-      .from('profiles')
-      .update(update)
-      .eq('id', userId);
+    // Via the RPC, not a bare UPDATE on profiles: the same write now also appends
+    // to location_permission_events when the level actually CHANGED, which is the
+    // only way the server can ever see a user drop from 'always' — the column
+    // alone is overwritten in place and the regression is lost.
+    //
+    // The accuracy rule (keep the last reading on a failed sample, null it on a
+    // revoked permission) moved into the function so both halves stay consistent;
+    // passing null here means "no sample", never "clear it".
+    const { error } = await supabase.rpc('record_location_permission', {
+      p_level: level,
+      p_accuracy_m: accuracyM,
+    });
     if (!error) lastReported = key;
   } catch {
     // Telemetry only — must never interfere with the auth flow it rides on.
