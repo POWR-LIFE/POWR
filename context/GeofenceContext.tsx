@@ -10,7 +10,7 @@ import { noteTask } from '@/lib/crashHandler';
 import { detectLocationLoss, type LocationLossReason } from '@/lib/locationPermission';
 import { withNetworkTimeout } from '@/lib/networkTimeout';
 import { supabase } from '@/lib/supabase';
-import { getGymDwellMinutes, getGymUpgradeMinutes, primeGymDwellMinutes } from '@/lib/gymDwellConfig';
+import { getGymDwellMinutes, getGymUpgradeMinutes, getLocationCloseMode, primeGymDwellMinutes } from '@/lib/gymDwellConfig';
 
 // ─── Session-completed event bus ─────────────────────────────────────────────
 // Fires synchronously in the JS thread when a foreground claim succeeds.
@@ -112,6 +112,28 @@ const PENDING_CLAIMS_KEY     = '@powr/pending_claims';
 const PENDING_VISIT_CLOSES_KEY = '@powr/pending_visit_closes';
 const VISIT_TICK_KEY         = '@powr/last_visit_tick';   // throttle for the stream heartbeat
 const LAST_STREAM_FIX_KEY    = '@powr/last_stream_fix';   // newest fix the location stream delivered — the wake path's fallback presence proof
+const LOCATION_LOSS_KEY      = '@powr/location_loss_pending'; // first unconfirmed sighting of a revoked permission — see finalizeSessionIfLocationRevoked
+
+/** First sighting of a location loss against a specific session. Persisted so the
+ *  two observations that a close requires can straddle process death. */
+interface LocationLossMarker {
+  reason:         LocationLossReason;
+  firstSeenAtMs:  number;
+  /** Fences the marker to one session, so it can never condemn the next one. */
+  entryTimestamp: number;
+  /** Set once the verdict has been logged, so 'observe' mode emits one row per
+   *  decision rather than one per sweep for the rest of the visit. */
+  decided?:       boolean;
+}
+
+// How long a location loss must PERSIST, across at least two separate
+// observations, before it may end a session. Detection latency is free here —
+// the close is truncated to the last proven-inside tick, so a verdict reached
+// late records exactly the same duration as one reached instantly — which means
+// this can be generous without costing the user a single minute. Long enough to
+// outlast a cold-launch read or a momentary Services toggle; short enough that
+// one sweep cycle normally confirms it.
+const LOCATION_LOSS_CONFIRM_MS = 3 * 60 * 1000;
 
 // The in-gym stream heartbeat is a checkpoint, not a firehose: the stream ticks
 // every 60 s, but we only need enough resolution to answer "is it alive at all?"
@@ -2314,6 +2336,7 @@ export async function clearGeofenceStateOnSignOut(departingUserId?: string): Pro
 
   await AsyncStorage.removeItem(ACTIVE_GEOFENCE_KEY).catch(() => {});
   await AsyncStorage.removeItem(VISIT_TICK_KEY).catch(() => {});
+  await AsyncStorage.removeItem(LOCATION_LOSS_KEY).catch(() => {});
   _lastTickAtMs = 0;
 
   // Backfill ownership on anything banked before the stamp existed (or before the
@@ -2711,10 +2734,17 @@ async function reconcileFix(): Promise<{ latitude: number; longitude: number; ac
  *
  *  Returns whether it closed a session. */
 export async function finalizeSessionIfLocationRevoked(): Promise<boolean> {
+  const mode = getLocationCloseMode();
+  if (mode === 'off') return false; // kill switch, before any work at all
+
   let active: StoredGeofence;
   try {
     const raw = await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY);
-    if (!raw) return false;
+    if (!raw) {
+      // No session to lose — drop any marker so the next one starts clean.
+      await AsyncStorage.removeItem(LOCATION_LOSS_KEY).catch(() => {});
+      return false;
+    }
     active = JSON.parse(raw) as StoredGeofence;
   } catch {
     return false; // unreadable state is finalizeActiveGeofence's problem, not ours
@@ -2726,25 +2756,98 @@ export async function finalizeSessionIfLocationRevoked(): Promise<boolean> {
   } catch {
     return false; // fails closed — never guess a session away
   }
-  if (!reason) return false;
+
+  if (!reason) {
+    // Location is fine. Clear any pending marker: whatever we saw before was a
+    // blip, and it must not be allowed to combine with a future sighting into a
+    // "confirmed" revocation that never actually persisted.
+    await AsyncStorage.removeItem(LOCATION_LOSS_KEY).catch(() => {});
+    return false;
+  }
+
+  // ── TWO SIGHTINGS, SPACED IN TIME, BEFORE ANYTHING ENDS ──────────────────
+  // The zombie reconciler demands a GPS fix buffered by its own accuracy before
+  // it dares finalize; this ran on a single permission read, which is far weaker
+  // evidence for an equally destructive act. The cold-launch check is the worst
+  // case: it fires the instant the provider mounts, which is exactly when a
+  // native permission read is least trustworthy.
+  //
+  // Confirmation is a PERSISTED MARKER rather than a timer, deliberately. A
+  // setTimeout here would be a wake-path liability — RN drives timers off the UI
+  // frame clock and under Doze they simply do not fire (field 2026-07-14: a 30 s
+  // timeout still pending 16 minutes later). The marker instead spaces the two
+  // observations by the app's real cadence: the next foreground, or the next
+  // ~5-6 min sweep. Cheap, timer-free, and it survives process death.
+  //
+  // Keyed on entryTimestamp so a marker can never outlive the session that
+  // produced it and condemn the next one.
+  //
+  // ⚠ The failure mode is deliberately asymmetric. If the second sighting never
+  // arrives, the session simply stays open — the pre-existing behaviour, with the
+  // reaper as backstop. We would rather miss a close than invent one.
+  const now = Date.now();
+  let marker: LocationLossMarker | null = null;
+  try {
+    const raw = await AsyncStorage.getItem(LOCATION_LOSS_KEY);
+    const parsed = raw ? (JSON.parse(raw) as LocationLossMarker) : null;
+    if (parsed && parsed.entryTimestamp === active.entryTimestamp) marker = parsed;
+  } catch { /* treat an unreadable marker as absent — this is the first sighting */ }
+
+  if (!marker) {
+    await AsyncStorage.setItem(LOCATION_LOSS_KEY, JSON.stringify({
+      reason, firstSeenAtMs: now, entryTimestamp: active.entryTimestamp,
+    } satisfies LocationLossMarker)).catch(() => {});
+    console.log(`[Geofence] Location ${reason} with a session open — first sighting, awaiting confirmation.`);
+    return false;
+  }
+
+  const heldForMs = now - marker.firstSeenAtMs;
+  if (heldForMs < LOCATION_LOSS_CONFIRM_MS) return false;
 
   const tick = await AsyncStorage.getItem(VISIT_TICK_KEY)
     .then(raw => Number(raw ?? 0))
     .catch(() => 0);
   const endedAtMs = Math.max(active.entryTimestamp, Number.isFinite(tick) ? tick : 0);
 
-  logRegionEvent(active.regionId ?? 'location', 'location_revoked', {
-    reason,
-    dwell_min:       Math.round((endedAtMs - active.entryTimestamp) / 60_000),
-    unwitnessed_min: Math.round((Date.now() - endedAtMs) / 60_000),
-    had_tick:        endedAtMs > active.entryTimestamp,
-    recorded:        !!active.sessionRecorded,
-  });
+  // One row per decision, not one per sweep: in 'observe' mode the session stays
+  // open, so without this the same verdict would be re-logged every ~5 min for
+  // the rest of the visit and the counts would be cadence, not incidence.
+  if (!marker.decided) {
+    logRegionEvent(active.regionId ?? 'location', 'location_revoked', {
+      mode,
+      would_close:     true,
+      closed:          mode === 'on',
+      reason,
+      first_reason:    marker.reason,
+      confirmed_after_s: Math.round(heldForMs / 1000),
+      session_age_min: Math.round((now - active.entryTimestamp) / 60_000),
+      dwell_min:       Math.round((endedAtMs - active.entryTimestamp) / 60_000),
+      unwitnessed_min: Math.round((now - endedAtMs) / 60_000),
+      had_tick:        endedAtMs > active.entryTimestamp,
+      recorded:        !!active.sessionRecorded,
+      platform_os:     Platform.OS,
+    });
+    await AsyncStorage.setItem(LOCATION_LOSS_KEY, JSON.stringify({
+      ...marker, decided: true,
+    } satisfies LocationLossMarker)).catch(() => {});
+  }
+
+  if (mode !== 'on') {
+    // OBSERVE. The detector has reached a verdict and recorded it; the session is
+    // left exactly as it was before PR #366. This is the whole staging mechanism —
+    // read these rows, then flip system_config.location_close_mode to 'on'.
+    console.log(
+      `[Geofence] [observe] Would close "${active.partnerName}" — location ${reason} ` +
+      `for ${Math.round(heldForMs / 1000)}s. No action taken (location_close_mode=${mode}).`,
+    );
+    return false;
+  }
+
   console.warn(
     `[Geofence] Location ${reason} during an open session at "${active.partnerName}" — ` +
     `closing it at the last proven-inside moment ` +
     `(${Math.round((endedAtMs - active.entryTimestamp) / 60_000)}min dwell, discovered ` +
-    `${Math.round((Date.now() - endedAtMs) / 60_000)}min later).`,
+    `${Math.round((now - endedAtMs) / 60_000)}min later).`,
   );
 
   // THE BANNER GOES BEFORE THE NETWORK, and this ordering is the point.
@@ -2773,7 +2876,9 @@ export async function finalizeSessionIfLocationRevoked(): Promise<boolean> {
   // retry, the stream stand-down. False means it could not durably record the
   // exit, so the session is deliberately still there — retried on the next
   // foreground or sweep rather than lost.
-  return finalizeActiveGeofence(undefined, endedAtMs);
+  const closed = await finalizeActiveGeofence(undefined, endedAtMs);
+  if (closed) await AsyncStorage.removeItem(LOCATION_LOSS_KEY).catch(() => {});
+  return closed;
 }
 
 export async function runVisitCheck(

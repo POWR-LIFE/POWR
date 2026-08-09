@@ -51,6 +51,15 @@ export async function detectLocationLoss(): Promise<LocationLossReason | null> {
 
   const level = await getLocationPermissionLevel();
   if (!level || level === 'always') return null;
+
+  // ⚠ 'undetermined' IS NOT 'denied', and conflating them is a false-close.
+  // A session cannot exist without a prior grant, so "never asked" reported
+  // mid-session does not describe the user's settings — it describes a read
+  // that did not answer (iOS can report .notDetermined before its location
+  // manager has initialised, which is exactly when the cold-launch check
+  // runs). Inconclusive, so it fails closed like every other bad read here.
+  if (level === 'undetermined') return null;
+
   return level === 'while_using' ? 'permission_downgraded' : 'permission_denied';
 }
 

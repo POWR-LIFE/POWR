@@ -60,6 +60,7 @@ jest.mock('@/lib/device', () => ({ getDeviceId: jest.fn().mockResolvedValue('dev
 jest.mock('@/lib/gymDwellConfig', () => ({
   getGymDwellMinutes: () => 30,
   getGymUpgradeMinutes: () => 40,
+  getLocationCloseMode: () => 'on',
   primeGymDwellMinutes: jest.fn().mockResolvedValue(30),
   refreshGymDwellMinutes: jest.fn().mockResolvedValue(30),
 }));
