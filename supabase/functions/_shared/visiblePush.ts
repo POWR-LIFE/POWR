@@ -221,7 +221,7 @@ export async function deliverVisiblePush(
       type: log.type,
       title: content.title,
       body: content.body,
-      expo_push_token: row.device_token,
+      expo_push_token: row.expo_push_token ?? null,
       transport: 'fcm_direct',
       status: outcome.ok ? 'accepted' : 'rejected',
       ticket_id: outcome.messageName ?? null,
