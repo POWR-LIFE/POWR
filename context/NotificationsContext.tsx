@@ -35,6 +35,7 @@ import {
   type PointsMilestoneOptions,
   type NotificationType,
 } from '@/lib/notifications';
+import { isDisplayPush, presentDisplayPush } from '@/lib/displayPush';
 import {
   upsertPushToken,
   removePushToken,
@@ -381,6 +382,14 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     // Foreground notification received — a friend request / challenge invite or a
     // feed-worthy event may have just landed, so re-pull both badge sources.
     notificationListener.current = Notifications.addNotificationReceivedListener((notification) => {
+      // A direct visible push (2026-08-09) arrives data-only and undisplayed —
+      // the background task does not run while the app is open, so the
+      // foreground render belongs here. presentDisplayPush is idempotent per
+      // send, so the local notification it schedules re-entering this listener
+      // is harmless; the refreshes below are idempotent too.
+      const raw = notification?.request?.content?.data as Record<string, unknown> | undefined;
+      if (isDisplayPush(raw)) void presentDisplayPush(raw);
+
       refreshPendingActions();
       refreshActivity();
 
@@ -388,7 +397,12 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
       // nudge usePoints so the home "X pts to next level" readout can't lag the
       // notification. Gated to those types so friend-request/invite pushes don't
       // trigger a needless refetch.
-      const type = (notification?.request?.content?.data as { type?: string } | undefined)?.type;
+      //
+      // Reads notif_type first: on a direct visible push the outer `type` is the
+      // transport marker, and the type the app actually switches on rides
+      // alongside it.
+      const data = raw as { type?: string; notif_type?: string } | undefined;
+      const type = data?.notif_type ?? data?.type;
       const mayAffectPoints = type === 'level_up'
         || type === 'reward_unlocked'
         || type === 'points_milestone'

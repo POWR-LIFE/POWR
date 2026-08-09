@@ -25,9 +25,23 @@ import { noteTask, reportHandled } from '@/lib/crashHandler';
 
 export const BACKGROUND_NOTIFICATION_TASK = 'POWR_BACKGROUND_NOTIFICATION';
 
-/** The one payload marker that says a wake is ours. Kept next to extractData so
+/** The payload markers that say a message is ours. Kept next to extractData so
  *  the matcher and the guard can never drift apart. */
 const VISIT_CHECK_TYPE = 'gym_visit_check';
+
+/** A server-sent VISIBLE push, delivered data-only so we render it ourselves
+ *  (2026-08-09 — see lib/displayPush.ts and _shared/visiblePush.ts).
+ *
+ *  ⚠ Mirrors DISPLAY_NOTIFICATION_TYPE in lib/displayPush.ts and must stay equal
+ *  to it; __tests__/display-push.test.ts pins that. It is duplicated rather than
+ *  imported on purpose: this module is statically imported off the entry point
+ *  so its task binding exists in a headless process, and pulling displayPush's
+ *  own imports (supabase client, AsyncStorage) into that boot path for the sake
+ *  of one string would be a real cost for no gain. The presenter itself is
+ *  imported lazily, only on a message that is actually ours. */
+const DISPLAY_NOTIFICATION_TYPE = 'display_notification';
+
+const OUR_TYPES = [VISIT_CHECK_TYPE, DISPLAY_NOTIFICATION_TYPE];
 
 interface VisitCheckData {
   type?: string;
@@ -36,6 +50,7 @@ interface VisitCheckData {
   /** Short-lived visit-scoped ticket minted by the beacon per nudge. When
    *  present the whole wake runs auth-free (see lib/gymVisits nonce path). */
   nonce?: string;
+  [k: string]: unknown;
 }
 
 /** Digs the data payload out of the platform-specific notification shapes.
@@ -53,8 +68,13 @@ interface VisitCheckData {
  *  because its DIRECT FCM message puts our keys at `raw.data` verbatim.
  *
  *  So: gather every candidate shape and pick the first that actually looks like
- *  ours, rather than the first that happens to be non-null. */
-export function extractData(raw: unknown): VisitCheckData {
+ *  ours, rather than the first that happens to be non-null.
+ *
+ *  `accepted` widens what "ours" means without touching the search: the visible
+ *  push added on 2026-08-09 arrives through the identical transport as a wake
+ *  (data-only FCM), so it must survive the identical envelope hazards. Defaults
+ *  to the wake type alone so every existing caller is unchanged. */
+export function extractData(raw: unknown, accepted: string[] = [VISIT_CHECK_TYPE]): VisitCheckData {
   const body = raw as Record<string, any> | null | undefined;
 
   const candidates: unknown[] = [
@@ -78,7 +98,7 @@ export function extractData(raw: unknown): VisitCheckData {
 
   for (const candidate of candidates) {
     if (candidate && typeof candidate === 'object'
-        && (candidate as VisitCheckData).type === VISIT_CHECK_TYPE) {
+        && accepted.includes((candidate as VisitCheckData).type as string)) {
       return candidate as VisitCheckData;
     }
   }
@@ -92,7 +112,26 @@ TaskManager.defineTask(BACKGROUND_NOTIFICATION_TASK, async ({ data, error }) => 
   }
   let rearmDone: Promise<void> | undefined;
   try {
-    const payload = extractData(data);
+    const payload = extractData(data, OUR_TYPES);
+
+    // A VISIBLE push, delivered data-only so we can render it ourselves.
+    //
+    // FIRST, AND IT RETURNS. This branch shares nothing with the wake below —
+    // no presence check, no credit, no location — and the wake path's every
+    // hazard (auth freshness, frozen round-trips, the re-arm chain) is exactly
+    // what a banner must not be sequenced behind. Present, stamp, done.
+    //
+    // Why the server sends it this way at all: an Expo-routed visible push took
+    // ~25 minutes to reach an Android tray on 2026-08-09 while FCM-direct wakes
+    // to the same handset in the same radio outage landed in under a second.
+    // The evidence is in supabase/functions/_shared/visiblePush.ts.
+    if (payload?.type === DISPLAY_NOTIFICATION_TYPE) {
+      noteTask('POWR_BACKGROUND_NOTIFICATION:display');
+      const { presentDisplayPush } = await import('@/lib/displayPush');
+      await presentDisplayPush(payload as Record<string, string>);
+      return;
+    }
+
     if (payload?.type !== VISIT_CHECK_TYPE) return; // not ours — ignore quietly
 
     const stage = payload.stage === 'upgrade' ? 'upgrade' : 'dwell';

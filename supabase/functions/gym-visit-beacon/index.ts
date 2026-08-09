@@ -22,6 +22,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { deliverExpoMessages } from '../_shared/expoPush.ts';
+import { deliverVisiblePush } from '../_shared/visiblePush.ts';
 import { sendFcmDataMessage } from '../_shared/fcmV1.ts';
 import { sendApnsBackgroundPush } from '../_shared/apnsV1.ts';
 
@@ -204,7 +205,7 @@ Deno.serve(async (req: Request) => {
     for (const visit of doneVisits ?? []) {
       const { data: tokens, error: tokensErr } = await admin
         .from('user_push_tokens')
-        .select('expo_push_token')
+        .select('expo_push_token, device_token, platform')
         .eq('user_id', visit.user_id);
       if (tokensErr) {
         console.error('[gym-visit-beacon] complete token lookup failed', tokensErr);
@@ -265,14 +266,27 @@ Deno.serve(async (req: Request) => {
       ));
       const gymName = (visit as { partners?: { name?: string } | null }).partners?.name ?? 'your gym';
 
-      const result = await deliverExpoMessages(admin, tokens.map(({ expo_push_token }) => ({
-        to: expo_push_token,
+      // ⚠ THE ROUTE MATTERS AS MUCH AS THE COPY (2026-08-09). This send used to
+      // go through Expo like every other visible push, and on 08-09 it took ~25
+      // minutes to reach an Android tray while the FCM-direct wakes around it
+      // landed in under a second — including two that were queued LATER and
+      // flushed the instant the radio came back. deliverVisiblePush puts Android
+      // on the same direct, HIGH-priority transport as those wakes and leaves
+      // iOS on Expo; the full evidence is in _shared/visiblePush.ts.
+      //
+      // It also supplies the channel this call was missing. Omitting channelId
+      // does not mean "the app's default" — per Expo's docs it means Expo's own
+      // auto-created "Default" channel, at importance DEFAULT, so the most
+      // satisfying notification in the product had no heads-up banner.
+      const result = await deliverVisiblePush(admin, tokens, {
         title: 'Session complete 💪',
         body: `${gymName} · ${mins} min` + (totalPts > 0 ? ` · +${totalPts} pts today` : ''),
         data: { type: 'session_completed', route: '/(tabs)/index' },
+        sound: 'default',
+        channelId: 'powr_default_v2',
         priority: 'high',
-      })), { userId: visit.user_id, type: 'gym_session_complete' });
-      if (result.queued > 0) stats.completed++;
+      }, { userId: visit.user_id, type: 'gym_session_complete' });
+      if (result.direct + result.queued > 0) stats.completed++;
     }
   }
 
