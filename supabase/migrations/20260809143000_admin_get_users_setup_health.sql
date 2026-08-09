@@ -144,8 +144,8 @@ begin
 end;
 $function$;
 
-revoke execute on function public.admin_get_users() from anon;
-revoke execute on function public.admin_get_users() from public;
+revoke execute on function public.admin_get_users() from public, anon;
+grant execute on function public.admin_get_users() to authenticated;
 
 -- The verdict lateral filters on event='sweep', but the table's only index is
 -- (user_id, created_at desc) — without this it walks every event row per user
