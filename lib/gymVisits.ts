@@ -231,7 +231,8 @@ export async function logGeofenceRegionEvent(
   regionId: string,
   event: 'enter' | 'exit' | 'approach_stream_on' | 'checked_in' | 'stream_start_failed'
     | 'armed' | 'sentinel_exit' | 'rearm_skipped' | 'auth_stale' | 'stream_switch_deferred'
-    | 'sweep' | 'visit_stamp_relaxed' | 'visit_stamp_skipped' | 'coarse_rejected' | 'enter_scan',
+    | 'sweep' | 'visit_stamp_relaxed' | 'visit_stamp_skipped' | 'coarse_rejected' | 'enter_scan'
+    | 'location_revoked',
   detail: Record<string, unknown> = {},
 ): Promise<void> {
   const args = {
