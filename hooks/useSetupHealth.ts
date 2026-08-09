@@ -36,12 +36,19 @@ export function useSetupHealth() {
         // cannot change the answer, and it is the more expensive question.
         if (!health || health.outcome !== 'no_permission') { setVerdict(null); return; }
 
-        const bg = await Location.getBackgroundPermissionsAsync().catch(() => null);
+        // Both rungs, because 'no_permission' alone cannot tell them apart: the
+        // sweep records only perm_bg, and the fix for someone holding NOTHING is
+        // a foreground ask, not a background one the OS will refuse outright.
+        const [bg, fg] = await Promise.all([
+            Location.getBackgroundPermissionsAsync().catch(() => null),
+            Location.getForegroundPermissionsAsync().catch(() => null),
+        ]);
         setVerdict(deriveSetupVerdict({
             health,
             // null (a failed read) is NOT "denied" — it must not manufacture a
             // verdict, and deriveSetupVerdict only suppresses on an explicit true.
             backgroundGrantedNow: bg ? bg.status === 'granted' : null,
+            foregroundGrantedNow: fg ? fg.status === 'granted' : null,
         }));
     }, []);
 

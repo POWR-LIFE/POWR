@@ -955,10 +955,54 @@ async function tracedStep<T>(
 // full ~90 s and blow Jest's timeout. Overriding here beats branching on NODE_ENV
 // inside the loop, which would mean the code under test is not the code that ships.
 export const CHECKIN_POLL = {
-  attempts:      6,
-  intervalMs:    15 * 1000,   // ~90 s of cover: a 120 m walk-in at normal pace
+  // ⚠ WAS 6 (90 s), sized for "a 120 m walk-in at normal pace". Real approaches are
+  // not that tidy. Field 2026-08-09: the ring fired at 109 m, all six passes burned
+  // by 11:26:04, and the owner did not cross the 20 m fence until ~11:29 — a
+  // measured 3 m 56 s window in which NOTHING was watching. Car parks, lifts,
+  // reception, changing rooms all live in that gap.
+  //
+  // For real users this poll is the ONLY cover: gym-visit-beacon ships
+  // FLEET_INTERVAL_MIN = 0, so there is no periodic sweep behind it to catch what
+  // it misses. That is what makes the gap unbounded in production rather than
+  // merely slow, and why the count doubles rather than nudging.
+  //
+  // Still bounded in both directions (fixed count × per-read timeout), so it
+  // cannot become the unbounded wait that froze the wake path. Passes are cheap:
+  // each returns immediately once a session exists.
+  attempts:      12,
+  intervalMs:    15 * 1000,   // ~3 min of cover
   fixTimeoutMs:   8 * 1000,
 };
+
+/**
+ * Acquire a fix preferring GPS, without letting that preference cost us a fix.
+ *
+ * `Accuracy.Balanced` maps to Android's PRIORITY_BALANCED_POWER_ACCURACY, whose
+ * NOMINAL accuracy is ~100 m — precisely the value MAX_FIX_ACCURACY_M turns away.
+ * Field 2026-08-09: every fix taken while the owner walked in read 350-700 m and
+ * every geometric decision was skipped; the same handset read 17-20 m the moment
+ * it stood still. Asking for High is what actually engages GPS.
+ *
+ * ⚠ But High ALONE is not safe. GPS cold-start indoors routinely outruns the wake
+ * budget, and "no fix" is strictly worse than "coarse fix" — a coarse fix still
+ * advances the time-based dwell, and refusing them once starved it for entire
+ * in-gym sessions (07-03 / 07-11). So High gets the first, shorter slice of the
+ * budget and Balanced catches whatever it misses.
+ */
+async function acquireFixPreferHigh(highMs: number, balancedMs: number): Promise<Location.LocationObject | null> {
+  const race = async (accuracy: Location.Accuracy, ms: number): Promise<Location.LocationObject | null> => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        Location.getCurrentPositionAsync({ accuracy }).catch(() => null),
+        new Promise<null>(resolve => { timer = setTimeout(() => resolve(null), ms); }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  };
+  return (await race(Location.Accuracy.High, highMs)) ?? (await race(Location.Accuracy.Balanced, balancedMs));
+}
 
 async function pollForCheckIn(regionId: string): Promise<void> {
   for (let attempt = 0; attempt < CHECKIN_POLL.attempts; attempt++) {
@@ -966,11 +1010,18 @@ async function pollForCheckIn(regionId: string): Promise<void> {
       // Someone got there first (the stream, or a previous pass) — done.
       if (await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY)) return;
 
+      // ⚠ The cache is only a shortcut when it can actually DECIDE. It used to be
+      // taken unconditionally, which meant the walk-in was judged on whatever the
+      // OS last happened to hold — on 2026-08-09 that was the 500 m network fix
+      // the owner had been carrying for the previous half-mile, so all six passes
+      // burned against a fix no gate would ever accept. A coarse cached fix now
+      // yields to a real acquisition, and is still kept as the fallback.
       const cached = await Location.getLastKnownPositionAsync({ maxAge: 30_000 }).catch(() => null);
-      const fix = cached ?? await Promise.race([
-        Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }).catch(() => null),
-        new Promise<null>(resolve => setTimeout(() => resolve(null), CHECKIN_POLL.fixTimeoutMs)),
-      ]);
+      const cachedUsable = !!cached
+        && (cached.coords.accuracy == null || cached.coords.accuracy <= MAX_FIX_ACCURACY_M);
+      const fix = cachedUsable
+        ? cached
+        : (await acquireFixPreferHigh(CHECKIN_POLL.fixTimeoutMs - 3_000, 3_000)) ?? cached;
       if (fix) {
         await evaluateLocationFix(fix.coords);
         // Re-check immediately rather than at the top of the next pass: that cost a
@@ -1095,7 +1146,21 @@ async function sweepForMissedCheckIn(): Promise<void> {
             && a.latitude != null && a.longitude != null && a.radius != null) {
           const fix = await Location.getLastKnownPositionAsync({ maxAge: 10 * 60_000 }).catch(() => null);
           const acc = fix?.coords.accuracy ?? null;
-          if (fix && (acc == null || acc < MAX_FIX_ACCURACY_M)) {
+          // `<=`, deliberately NOT the `>=` used by evaluateLocationFix's isCoarse.
+          // That gate rejects exactly-100 because a wrong answer there INVENTS or
+          // destroys a session. Here a wrong answer costs nothing: this branch only
+          // runs past the upgrade, where there is nothing left to earn, and it still
+          // demands `dist > radius + hysteresis + acc` — so a 100 m fix must place
+          // the user 170 m away before it acts. The error bar widens the bound it
+          // has to clear, which is its own protection.
+          //
+          // ⚠ Excluding exactly 100 made this backstop INERT ON ANDROID from the day
+          // it shipped. 100 is not a sentinel there, it is the modal reading —
+          // Accuracy.Balanced's nominal figure, 5 of 10 samples on 08-07→08-09.
+          // Field 2026-08-09: iOS closed itself on acc 42 / dist 197; Android, same
+          // code and minutes, returned session_active with no geometry computed and
+          // could not close at all.
+          if (fix && (acc == null || acc <= MAX_FIX_ACCURACY_M)) {
             const dist = haversineMetres(fix.coords.latitude, fix.coords.longitude, a.latitude, a.longitude);
             const bound = a.radius + LOCATION_EXIT_HYSTERESIS_M + (acc ?? 0);
             if (dist > bound) {
@@ -3068,7 +3133,17 @@ export async function runVisitCheck(
       coords = cached.coords;
       fixSource = 'last_known';
     } else {
-      const fresh = await tracedStep('acquire', trace, () => Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }), FIX_ACQUIRE_TIMEOUT_MS);
+      // GPS first, network second — see acquireFixPreferHigh. This is already the
+      // last resort (stream cache and last-known both missed), so it is the one
+      // acquisition in the wake worth spending on: everything downstream of it is
+      // a geometric decision, and a 350 m answer fails every one of them.
+      // The two slices share the existing budget, so the wake's bound is unchanged.
+      const fresh = await tracedStep(
+        'acquire',
+        trace,
+        () => acquireFixPreferHigh(FIX_ACQUIRE_TIMEOUT_MS - 3_000, 3_000),
+        FIX_ACQUIRE_TIMEOUT_MS,
+      );
       coords = fresh?.coords ?? null;
       fixSource = fresh ? 'acquired' : 'timeout';
     }
@@ -3094,8 +3169,12 @@ export async function runVisitCheck(
   // session; the dwell machine's own thresholds still gate the claim.
   let inside = true;
   let distance: number | null = null;
+  // Captured here so the credit test below can use it: the narrowing on
+  // `active.radius` does not survive this block.
+  let radiusM: number | null = null;
   if (active.latitude != null && active.longitude != null && active.radius != null) {
     distance = haversineMetres(coords.latitude, coords.longitude, active.latitude, active.longitude);
+    radiusM = active.radius;
     inside = distance <= active.radius + LOCATION_EXIT_HYSTERESIS_M;
   }
 
@@ -3176,7 +3255,37 @@ export async function runVisitCheck(
     // wake reconciler's honest endedAt bound tracks nudge-confirmed sessions
     // (a swiped phone's only ticks ARE these wakes). void — evidence must
     // never cost the wake anything.
-    void AsyncStorage.setItem(VISIT_TICK_KEY, String(Date.now())).catch(() => {});
+    //
+    // ⚠ STRICT TO CREDIT, LOOSE TO CLOSE. `inside` above is deliberately generous
+    // — radius + hysteresis, and true by default on an unusable fix — so the
+    // time-based dwell keeps advancing and a coarse fix can never flap a real
+    // session out. That generosity is right for staying open and wrong for paying
+    // out. VISIT_TICK_KEY is not a liveness flag: recordDwellSession uses it as the
+    // ceiling on how much time gets BANKED, so whatever it certifies is billed.
+    //
+    // Field 2026-08-09: a wake confirmed presence at distance_m 67 against a 20 m
+    // fence (bound 20 + 50 hysteresis) nine minutes after the owner had left, and
+    // the completion push then told him "60 min" for a 50.5-minute visit.
+    //
+    // So the floor now advances only on a fix worth billing: one we trust, which
+    // within its OWN error bar could actually place the user in the venue. The
+    // error bar is honest evidence; the 50 m flap-guard is not — it exists to stop
+    // oscillation, not to describe where anyone is.
+    let provenInside = false;
+    try {
+      const { fixCreditsPresence } = await import('@/lib/health/gymPresence');
+      provenInside = fixCreditsPresence({
+        fixTrusted,
+        distanceM: distance,
+        radiusM,
+        accuracyM: coords.accuracy ?? null,
+      });
+    } catch {
+      provenInside = false;
+    }
+    if (provenInside) {
+      void AsyncStorage.setItem(VISIT_TICK_KEY, String(Date.now())).catch(() => {});
+    }
     // Wake-scoped lease: cron wakes (:01) and stream ticks (:32) are permanently
     // out of phase, so a tick-started zombie attempt is almost always <2 min old
     // when a wake arrives — under the normal lease the wake would skip and waste

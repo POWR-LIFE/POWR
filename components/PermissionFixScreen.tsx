@@ -297,10 +297,19 @@ export default function PermissionFixScreen({
             if (kind === 'location-background') {
                 const res = await Location.requestBackgroundPermissionsAsync().catch(() => null);
                 if (res?.status === 'granted') finish();
-                // iOS showed its one-shot alert and they declined — the only
-                // lever left is settings. Android already sent them there, so
-                // leave this open; the AppState listener catches a grant.
-                else if (isIOS) setRoute('settings');
+                // Not granted, and from here we cannot tell WHY. iOS burned its
+                // one-shot alert; Android 11+ USUALLY routes to its own settings
+                // page, but auto-denies with no UI at all when foreground is
+                // missing. This used to be `else if (isIOS)`, which left Android
+                // on a screen whose only button did nothing — confirmed on a
+                // field device 2026-08-09, where the sole effect of pressing it
+                // was to move perm_bg from 'undetermined' to 'denied'.
+                //
+                // So: always leave a route that works. It costs the Android
+                // retry-in-place case nothing (the CTA becomes OPEN SETTINGS,
+                // which lands on the same page the request would have opened)
+                // and the AppState listener still closes us on a real grant.
+                else setRoute('settings');
             }
         } finally {
             setBusy(false);

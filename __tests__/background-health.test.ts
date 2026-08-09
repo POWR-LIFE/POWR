@@ -7,6 +7,7 @@ import {
     deriveSetupVerdict,
     dismissBackgroundHealthToday,
     isBackgroundHealthDismissedToday,
+    NO_FIX_STREAK_BROKEN,
     readBackgroundHealth,
     recordBackgroundHealth,
     type BackgroundHealth,
@@ -94,6 +95,148 @@ describe('deriveSetupVerdict — the live probe may suppress but never accuse', 
     it('never manufactures a verdict from the probe alone', () => {
         expect(deriveSetupVerdict({ health: null, backgroundGrantedNow: false })).toBeNull();
         expect(deriveSetupVerdict({ health: null, backgroundGrantedNow: null })).toBeNull();
+    });
+});
+
+describe('deriveSetupVerdict — offers a rung the OS will actually grant', () => {
+    // Shipped bug, caught on both field devices 2026-08-09 sitting at
+    // 'undetermined': the verdict was always 'location-background', whose CTA
+    // asks for ACCESS_BACKGROUND_LOCATION alone. Android 11+ auto-denies that
+    // when foreground is missing — no dialog — and PermissionFixScreen's Android
+    // branch has no else, so FIX IT was a dead button for anyone holding nothing.
+    it('asks for foreground first when the user holds no location permission at all', () => {
+        expect(deriveSetupVerdict({
+            health: health(),
+            backgroundGrantedNow: false,
+            foregroundGrantedNow: false,
+        })).toBe('location');
+    });
+
+    it('still asks for background when foreground is already granted', () => {
+        expect(deriveSetupVerdict({
+            health: health(),
+            backgroundGrantedNow: false,
+            foregroundGrantedNow: true,
+        })).toBe('location-background');
+    });
+
+    it.each([
+        ['a failed read (null)', null],
+        ['an absent field (undefined)', undefined],
+    ])('does not downgrade the rung on %s', (_label, foregroundGrantedNow) => {
+        // Same discipline as backgroundGrantedNow: only an EXPLICIT false moves
+        // the verdict. An unreadable probe leaves the background evidence alone.
+        expect(deriveSetupVerdict({
+            health: health(),
+            backgroundGrantedNow: false,
+            foregroundGrantedNow,
+        })).toBe('location-background');
+    });
+
+    it('never lets the foreground probe manufacture a verdict on its own', () => {
+        expect(deriveSetupVerdict({
+            health: null,
+            backgroundGrantedNow: false,
+            foregroundGrantedNow: false,
+        })).toBeNull();
+        expect(deriveSetupVerdict({
+            health: health({ outcome: 'handoff' }),
+            backgroundGrantedNow: false,
+            foregroundGrantedNow: false,
+        })).toBeNull();
+    });
+
+    it('keeps the background suppression ahead of the rung choice', () => {
+        // Background granted ends it, whatever the foreground probe says.
+        expect(deriveSetupVerdict({
+            health: health(),
+            backgroundGrantedNow: true,
+            foregroundGrantedNow: false,
+        })).toBeNull();
+    });
+
+    it('the hook actually supplies the foreground probe', () => {
+        // The verdict being right is worthless if nothing passes the input —
+        // which is precisely how the dead button shipped. Pin the call site.
+        const src = readFileSync(
+            join(__dirname, '..', 'hooks', 'useSetupHealth.ts'), 'utf8',
+        );
+        expect(src).toMatch(/getForegroundPermissionsAsync/);
+        expect(src).toMatch(/foregroundGrantedNow:/);
+    });
+});
+
+describe('repeated no_fix — the iOS provisional-Always window', () => {
+    // 2026-08-09: jpowr reported location_permission 'always' for 24 minutes while
+    // background location was genuinely dead, swept no_fix four times, and armed 20
+    // regions with lat/lng/sentinel all null. Apple's deferred Always prompt had not
+    // been answered. The live probe said granted throughout.
+
+    it('stays quiet on a single no_fix (stale cache, self-heals)', () => {
+        expect(deriveSetupVerdict({
+            health: health({ outcome: 'no_fix', streak: 1 }),
+            backgroundGrantedNow: true,
+        })).toBeNull();
+    });
+
+    it('stays quiet below the streak threshold', () => {
+        expect(deriveSetupVerdict({
+            health: health({ outcome: 'no_fix', streak: NO_FIX_STREAK_BROKEN - 1 }),
+            backgroundGrantedNow: true,
+        })).toBeNull();
+    });
+
+    it('fires once the streak proves the device cannot locate itself', () => {
+        expect(deriveSetupVerdict({
+            health: health({ outcome: 'no_fix', streak: NO_FIX_STREAK_BROKEN }),
+            backgroundGrantedNow: true,
+        })).toBe('location-background');
+    });
+
+    it('fires THROUGH the granted probe — that probe is what is lying here', () => {
+        // Every other branch treats backgroundGrantedNow === true as decisive.
+        // This one must not, or it goes silent in exactly its own headline case.
+        expect(deriveSetupVerdict({
+            health: health({ outcome: 'no_fix', streak: 4 }),
+            backgroundGrantedNow: true,
+            foregroundGrantedNow: true,
+        })).toBe('location-background');
+    });
+
+    it('treats a legacy record with no streak as a first sighting', () => {
+        expect(deriveSetupVerdict({
+            health: health({ outcome: 'no_fix', streak: undefined }),
+            backgroundGrantedNow: true,
+        })).toBeNull();
+    });
+});
+
+describe('streak counting', () => {
+    it('counts consecutive identical outcomes', async () => {
+        await recordBackgroundHealth('no_fix');
+        await recordBackgroundHealth('no_fix');
+        await recordBackgroundHealth('no_fix');
+        expect((await readBackgroundHealth())?.streak).toBe(3);
+    });
+
+    it('resets the streak when the outcome changes', async () => {
+        await recordBackgroundHealth('no_fix');
+        await recordBackgroundHealth('no_fix');
+        await recordBackgroundHealth('handoff');
+        const got = await readBackgroundHealth();
+        expect(got?.outcome).toBe('handoff');
+        expect(got?.streak).toBe(1);
+    });
+
+    it('a single healthy sweep retires a qualifying no_fix streak', async () => {
+        await recordBackgroundHealth('no_fix');
+        await recordBackgroundHealth('no_fix');
+        await recordBackgroundHealth('no_fix');
+        await recordBackgroundHealth('handoff');
+        expect(deriveSetupVerdict({
+            health: await readBackgroundHealth(),
+            backgroundGrantedNow: null,
+        })).toBeNull();
     });
 });
 

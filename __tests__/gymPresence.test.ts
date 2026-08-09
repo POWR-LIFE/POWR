@@ -9,6 +9,7 @@
 import {
   computeCorrectedWindow,
   EXIT_COOLDOWN_BUFFER_MS,
+  fixCreditsPresence,
   MAX_GYM_SESSION_MS,
   type StepSample,
 } from '@/lib/health/gymPresence';
@@ -44,19 +45,35 @@ describe('computeCorrectedWindow', () => {
     expect(r.changed).toBe(true);
   });
 
-  it('backdates a late-detected entry to first activity (Sorine case)', () => {
-    // Geofence entered at 23 min, but the user was already moving from 0; left ~65.
-    const r = computeCorrectedWindow(23 * MIN, 65 * MIN, [steps(0, 64)]);
-    expect(r.startMs).toBe(0); // within the 30-min backdate margin
+  it('backdates a late-detected entry to first activity, within the margin', () => {
+    // Geofence fired 3 min late (Android's measured worst case is 216 s) — the
+    // user was already inside and moving. This is the case backdating exists for.
+    const r = computeCorrectedWindow(23 * MIN, 65 * MIN, [steps(20, 64)]);
+    expect(r.startMs).toBe(20 * MIN);
     expect(r.endMs).toBe(65 * MIN); // trailing gap (1 min) < threshold → kept
-    expect(r.durationSec).toBe(65 * 60);
     expect(r.changed).toBe(true);
   });
 
-  it('caps how far entry can be backdated (margin)', () => {
-    // Activity started 2 h before detection → clamp to detected - 30 min.
+  it('refuses to backdate at all when activity reaches back BEYOND the margin', () => {
+    // ⚠ REGRESSION GUARD — field 2026-08-09. This used to clamp to
+    // `detected - margin`, so the further back the activity ran the MORE time it
+    // awarded. Activity starting long before entry is an approach walk, not late
+    // detection; outside the fence is outside the fence.
     const r = computeCorrectedWindow(120 * MIN, 180 * MIN, [steps(0, 175)]);
-    expect(r.startMs).toBe(120 * MIN - 30 * MIN);
+    expect(r.startMs).toBe(120 * MIN); // unmoved
+    expect(r.changed).toBe(false);
+  });
+
+  it('does not inflate a settled visit from the walk-in (the 44 → 77 min case)', () => {
+    // The real row: entry 10:32:39, exit 11:14:04 (41.4 min recorded), with step
+    // activity running from ~10:02 because the owner walked there. The old margin
+    // rewrote started_at back a full 30 min and booked 77.5 min.
+    const entry = 632 * MIN;         // 10:32
+    const exit = 674 * MIN;          // 11:14
+    const r = computeCorrectedWindow(entry, exit, [steps(602, 673)]); // walking from 10:02
+    expect(r.startMs).toBe(entry);
+    expect(r.durationSec).toBe(42 * 60);
+    expect(r.durationSec).toBeLessThan(45 * 60);
   });
 
   it('keeps a normal session with a small trailing gap unchanged', () => {
@@ -71,12 +88,48 @@ describe('computeCorrectedWindow', () => {
     expect(r.endMs - r.startMs).toBeLessThanOrEqual(MAX_GYM_SESSION_MS);
   });
 
-  it('is idempotent — re-running on a corrected window makes no further change', () => {
+  it('is idempotent — re-running on a corrected window makes no further change (window)', () => {
     const sample = [steps(0, 50)];
     const first = computeCorrectedWindow(0, 12 * HOUR, sample);
     const second = computeCorrectedWindow(first.startMs, first.endMs, sample);
     expect(second.changed).toBe(false);
     expect(second.startMs).toBe(first.startMs);
     expect(second.endMs).toBe(first.endMs);
+  });
+});
+
+describe('fixCreditsPresence — strict to credit, loose to close', () => {
+  const RADIUS = 20;
+
+  it('credits a trusted fix inside the radius', () => {
+    expect(fixCreditsPresence({ fixTrusted: true, distanceM: 16, radiusM: RADIUS, accuracyM: 20 })).toBe(true);
+  });
+
+  it('credits when the venue falls inside the fix\'s own error bar', () => {
+    // 35 m away on a 20 m fix — the error bar reaches the fence, so the user
+    // plausibly is inside. That is honest evidence.
+    expect(fixCreditsPresence({ fixTrusted: true, distanceM: 35, radiusM: RADIUS, accuracyM: 20 })).toBe(true);
+  });
+
+  it('REFUSES the field case that billed 9m11s after the owner left', () => {
+    // ⚠ REGRESSION GUARD — 2026-08-09. distance 67 m against a 20 m fence on a
+    // 46 m fix. The old test was `distance <= radius + 50 hysteresis`, which
+    // passed at 67 ≤ 70 and stamped the credit floor nine minutes after the exit.
+    expect(fixCreditsPresence({ fixTrusted: true, distanceM: 67, radiusM: RADIUS, accuracyM: 46 })).toBe(false);
+  });
+
+  it('refuses an untrusted fix however close it claims to be', () => {
+    // The phantom-confirm signature: accuracy 574, distance 49.
+    expect(fixCreditsPresence({ fixTrusted: false, distanceM: 49, radiusM: RADIUS, accuracyM: 574 })).toBe(false);
+  });
+
+  it('refuses when geometry is unknown rather than assuming presence', () => {
+    expect(fixCreditsPresence({ fixTrusted: true, distanceM: null, radiusM: RADIUS, accuracyM: 20 })).toBe(false);
+    expect(fixCreditsPresence({ fixTrusted: true, distanceM: 10, radiusM: null, accuracyM: 20 })).toBe(false);
+  });
+
+  it('does not use the 50 m hysteresis band as evidence of position', () => {
+    // Exactly the band's edge on a perfect fix: open, but not billable.
+    expect(fixCreditsPresence({ fixTrusted: true, distanceM: 70, radiusM: RADIUS, accuracyM: 0 })).toBe(false);
   });
 });
