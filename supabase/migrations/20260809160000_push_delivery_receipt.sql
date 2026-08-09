@@ -42,7 +42,9 @@ comment on column public.push_send_log.transport is
 -- had no way to ask. Partial so it stays small: confirmed rows drop straight out.
 create index if not exists push_send_log_undelivered_idx
   on public.push_send_log (created_at desc)
-  where delivered_at is null and status = 'accepted';
+  where delivered_at is null
+    and status = 'accepted'
+    and transport = 'fcm_direct';
 
 -- Stamp a send as displayed.
 --
