@@ -71,6 +71,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const deviceLockReasonRef = useRef<'locked' | 'rate_limited'>('locked'); // why we blocked, for the SIGNED_OUT copy
     const deviceCheckedSessionRef = useRef<string | null>(null); // session we've already run the device-lock check for
     const sessionUserRef = useRef<string | null>(null); // current user id for listeners that outlive the auth closure
+    // Set when the bootstrap FAILED OPEN — settled to signed-out without ever
+    // hearing back from getSession. It is the only state in which a late
+    // INITIAL_SESSION has to navigate for itself; see the correction below.
+    const bootstrapFailedOpenRef = useRef(false);
+    // The newest session onAuthStateChange has handed us, readable from the
+    // bootstrap timeout. getSession() and the listener race, and the listener
+    // can win: INITIAL_SESSION is emitted during initialization, so a getSession
+    // jammed on the auth lock (see the bootstrap note) can still be outrun by
+    // its own event. Without this the timeout would settle(null) OVER a session
+    // that had already arrived and sign the user out of a working account.
+    const latestSessionRef = useRef<Session | null>(null);
 
     /**
      * Upserts this device's session_id into user_active_sessions, overwriting any
@@ -267,10 +278,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Deliberately NOT withNetworkTimeout: that helper is the 30 s bound for
         // background writes, which is an eternity in front of first paint.
         //
-        // Fails OPEN, to signed-out. onAuthStateChange's INITIAL_SESSION fires
-        // independently and calls setSession itself, so a session that was
-        // merely slow still lands and self-corrects — whereas failing shut would
-        // reinstate the very hang this replaces.
+        // Fails OPEN, to signed-out — failing shut would reinstate the very hang
+        // this replaces.
+        //
+        // ⚠ "INITIAL_SESSION lands and self-corrects" WAS NOT TRUE, and this is
+        // the correction (field 2026-08-09, iOS: after a session of headless
+        // wakes the app reopened on the Train/Earn/Repeat landing, and pressing
+        // Login walked straight in with no credentials — the giveaway that the
+        // session had been valid the whole time).
+        //
+        // setSession did land. What could not land was the NAVIGATION. app/index
+        // latches `didRedirect` on the first non-loading render and immediately
+        // router.replace's — so index is UNMOUNTED by the time INITIAL_SESSION
+        // arrives, and its effect can never run again. The state self-corrected;
+        // the route did not, and the route is what the user sees.
+        //
+        // So the late session has to navigate for itself, exactly as SIGNED_OUT
+        // does below. Gated on bootstrapFailedOpenRef so this only ever fires on
+        // the failure path: on a healthy start getSession settles first, index
+        // routes correctly, and this branch is dead code.
         let settled = false;
         const settle = (nextSession: Session | null) => {
             if (settled) return;
@@ -281,13 +307,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         };
         const bootstrapTimeout = setTimeout(() => {
             if (settled) return;
-            console.warn('[Auth] getSession() did not settle in 8s — starting signed out; INITIAL_SESSION will correct it if a session exists.');
-            settle(null);
+            // Settle to whatever the listener already knows, never blindly to
+            // null — see latestSessionRef. Only a genuinely empty answer counts
+            // as failing open, and only that arms the route correction.
+            const known = latestSessionRef.current;
+            if (known) {
+                console.warn('[Auth] getSession() did not settle in 8s — using the session INITIAL_SESSION already delivered.');
+            } else {
+                console.warn('[Auth] getSession() did not settle in 8s — starting signed out; INITIAL_SESSION will correct it if a session exists.');
+                bootstrapFailedOpenRef.current = true;
+            }
+            settle(known);
         }, AUTH_BOOTSTRAP_TIMEOUT_MS);
         supabase.auth.getSession()
             .then(({ data: { session } }) => settle(session))
             .catch((err) => {
                 console.error('[Auth] getSession() rejected during bootstrap — starting signed out:', err);
+                bootstrapFailedOpenRef.current = true;
                 settle(null);
             })
             .finally(() => clearTimeout(bootstrapTimeout));
@@ -298,10 +334,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             // is otherwise unrecoverable — and the geofence cleanup needs it to
             // stamp ownership on their unclaimed sessions.
             const departingUserId = sessionUserRef.current;
+            latestSessionRef.current = session;
             setSession(session);
             sessionUserRef.current = session?.user?.id ?? null;
             if (session && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION')) {
                 registerAndWatchSession(session);
+            }
+
+            // THE FAIL-OPEN CORRECTION. Only reachable when the bootstrap gave up
+            // and routed the user to the signed-out stack while a real session
+            // existed — see the long note on the bootstrap above for why index
+            // cannot do this itself once it has unmounted.
+            //
+            // Mirrors app/index.tsx's destination logic exactly, including the
+            // onboarding_complete branch: a user whose bootstrap timed out
+            // mid-onboarding must land back in onboarding, not be dropped into
+            // the tabs with a half-built account.
+            //
+            // One-shot: the ref is cleared before navigating, so a later
+            // TOKEN_REFRESHED cannot yank someone out of wherever they have
+            // since navigated to.
+            if (session && event === 'INITIAL_SESSION' && bootstrapFailedOpenRef.current) {
+                bootstrapFailedOpenRef.current = false;
+                console.warn('[Auth] INITIAL_SESSION arrived after a failed-open bootstrap — correcting the route.');
+                const onboardingComplete = session.user.user_metadata?.onboarding_complete;
+                router.replace(onboardingComplete ? '/(tabs)' : '/onboarding-permission');
             }
             // Device-lock check on a fresh session only (a token refresh keeps the
             // same binding, so re-checking every hour would be wasted work).

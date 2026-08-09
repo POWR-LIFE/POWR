@@ -164,3 +164,124 @@ describe('the auth bootstrap always settles', () => {
     expect(b.seen).toEqual([null]);
   });
 });
+
+describe('the fail-open correction: a late session must fix the ROUTE too', () => {
+  // Field 2026-08-09 (iOS). After a session of headless wakes the app reopened
+  // on the Train/Earn/Repeat landing, and pressing Login walked straight in with
+  // no credentials — the giveaway that the session had been valid all along.
+  //
+  // The block above is why setSession self-corrects. This block is why that was
+  // not enough. app/index.tsx latches `didRedirect` on the first non-loading
+  // render and immediately router.replace's, so index is UNMOUNTED before
+  // INITIAL_SESSION lands and its effect can never run again. State recovered;
+  // navigation did not; the user only ever sees navigation.
+  //
+  // Mirrors context/AuthContext.tsx: bootstrap + listener + one-shot correction.
+  const AUTH_BOOTSTRAP_TIMEOUT_MS = 8_000;
+
+  type Sess = { user: { id: string; user_metadata?: { onboarding_complete?: boolean } } } | null;
+
+  function makeAuth(getSession: () => Promise<{ data: { session: Sess } }>) {
+    const routes: string[] = [];
+    const router = { replace: (r: string) => routes.push(r) };
+
+    let settled = false;
+    let failedOpen = false;
+    let latest: Sess = null;
+    const sessions: Sess[] = [];
+
+    const settle = (s: Sess) => { if (settled) return; settled = true; sessions.push(s); };
+
+    const timer = setTimeout(() => {
+      if (settled) return;
+      if (latest) { settle(latest); } else { failedOpen = true; settle(null); }
+    }, AUTH_BOOTSTRAP_TIMEOUT_MS);
+
+    const done = getSession()
+      .then(({ data: { session } }) => settle(session))
+      // A REJECTION is the locked-keychain case, and it fails open exactly like
+      // the timeout does — so it arms the correction too. Mirrors the real
+      // catch; omitting the flag here is what made this model disagree with the
+      // implementation on first run.
+      .catch(() => { failedOpen = true; settle(null); })
+      .finally(() => clearTimeout(timer));
+
+    /** The onAuthStateChange body, in the order AuthContext runs it. */
+    const emit = (event: string, session: Sess) => {
+      latest = session;
+      if (session && event === 'INITIAL_SESSION' && failedOpen) {
+        failedOpen = false;
+        router.replace(session.user.user_metadata?.onboarding_complete ? '/(tabs)' : '/onboarding-permission');
+      }
+    };
+
+    return { routes, done, emit, sessions, isSettled: () => settled };
+  }
+
+  const ONBOARDED: Sess = { user: { id: 'u1', user_metadata: { onboarding_complete: true } } };
+  const MID_ONBOARDING: Sess = { user: { id: 'u2', user_metadata: {} } };
+
+  beforeEach(() => { jest.useFakeTimers(); });
+  afterEach(() => { jest.useRealTimers(); });
+
+  it('routes into the app when INITIAL_SESSION lands after a failed-open bootstrap', async () => {
+    const a = makeAuth(() => new Promise(() => { /* jammed lock */ }));
+    jest.advanceTimersByTime(AUTH_BOOTSTRAP_TIMEOUT_MS);
+    await Promise.resolve();
+    expect(a.sessions).toEqual([null]); // index has already sent them to /onboarding
+
+    a.emit('INITIAL_SESSION', ONBOARDED);
+
+    // Without this the user sits on the landing page holding a valid session.
+    expect(a.routes).toEqual(['/(tabs)']);
+  });
+
+  it('returns a half-onboarded user to onboarding, not into the tabs', async () => {
+    const a = makeAuth(() => Promise.reject(LOCKED));
+    await a.done;
+    a.emit('INITIAL_SESSION', MID_ONBOARDING);
+    expect(a.routes).toEqual(['/onboarding-permission']);
+  });
+
+  it('does NOT navigate when the bootstrap was healthy — index already routed', async () => {
+    const a = makeAuth(async () => ({ data: { session: ONBOARDED } }));
+    await a.done;
+    a.emit('INITIAL_SESSION', ONBOARDED);
+    // Firing here would fight app/index.tsx for the route on every cold start.
+    expect(a.routes).toEqual([]);
+  });
+
+  it('does NOT navigate when there is genuinely no session', async () => {
+    const a = makeAuth(() => new Promise(() => { /* jammed */ }));
+    jest.advanceTimersByTime(AUTH_BOOTSTRAP_TIMEOUT_MS);
+    await Promise.resolve();
+    a.emit('INITIAL_SESSION', null);
+    expect(a.routes).toEqual([]);
+  });
+
+  it('is one-shot — a later TOKEN_REFRESHED cannot yank the user around', async () => {
+    const a = makeAuth(() => new Promise(() => { /* jammed */ }));
+    jest.advanceTimersByTime(AUTH_BOOTSTRAP_TIMEOUT_MS);
+    await Promise.resolve();
+
+    a.emit('INITIAL_SESSION', ONBOARDED);
+    a.emit('TOKEN_REFRESHED', ONBOARDED);
+    a.emit('INITIAL_SESSION', ONBOARDED);
+
+    expect(a.routes).toEqual(['/(tabs)']);
+  });
+
+  it('never settles null OVER a session the listener already delivered', async () => {
+    // INITIAL_SESSION is emitted during initialization, so a getSession jammed on
+    // the auth lock can be outrun by its own event. settle(null) there would sign
+    // out a working account — worse than the hang it replaces.
+    const a = makeAuth(() => new Promise(() => { /* jammed */ }));
+    a.emit('INITIAL_SESSION', ONBOARDED);
+
+    jest.advanceTimersByTime(AUTH_BOOTSTRAP_TIMEOUT_MS);
+    await Promise.resolve();
+
+    expect(a.sessions).toEqual([ONBOARDED]);
+    expect(a.routes).toEqual([]); // never failed open, so nothing to correct
+  });
+});
