@@ -41,14 +41,14 @@ const scheduleMock = Notifications.scheduleNotificationAsync as jest.Mock;
 function payload(overrides: Record<string, string> = {}) {
   return {
     type: 'display_notification',
-    log_id: 'log-1',
-    notif_type: 'session_completed',
-    title: 'Session complete 💪',
-    body: 'POWR · 60 min · +24 pts today',
-    channel_id: 'powr_default_v2',
-    sound: '1',
-    route: '/(tabs)/index',
-    data: JSON.stringify({ type: 'session_completed', route: '/(tabs)/index' }),
+    n_log_id: 'log-1',
+    n_type: 'session_completed',
+    n_title: 'Session complete 💪',
+    n_body: 'POWR · 60 min · +24 pts today',
+    n_channel: 'powr_default_v2',
+    n_sound: '1',
+    n_route: '/(tabs)/index',
+    n_data: JSON.stringify({ type: 'session_completed', route: '/(tabs)/index' }),
     ...overrides,
   };
 }
@@ -95,7 +95,39 @@ describe('extractData', () => {
       aps: { 'content-available': 1 },
       data: { body: payload(), dataString: JSON.stringify(payload()), scopeKey: '@powr/powr' },
     };
-    expect(extractData(raw, ['display_notification']).log_id).toBe('log-1');
+    expect(extractData(raw, ['display_notification']).n_log_id).toBe('log-1');
+  });
+});
+
+describe('the reserved-key guard', () => {
+  // ⚠ THIS IS THE ONE THAT COST A DUPLICATE BANNER IN THE FIELD (2026-08-09).
+  //
+  // expo-notifications builds a notification from the FCM DATA payload —
+  // RemoteNotificationContent reads data.title for the title and data.message
+  // for the text — and FirebaseMessagingDelegate posts it BEFORE handing the
+  // message to our task. Nothing in JS can suppress that; setNotificationHandler
+  // only governs foreground presentation. So shipping `title` in data produced a
+  // body-less "Session recorded" banner from the library alongside our correct
+  // one, and `body` was being fed to JSONObject(...) as if it were JSON.
+  //
+  // Every field we control is therefore n_-prefixed, and this test fails if any
+  // future field wanders back into the reserved namespace.
+  const RESERVED = [
+    'title', 'message', 'body', 'sound', 'vibrate', 'sticky',
+    'color', 'autoDismiss', 'categoryId', 'subtitle', 'badge',
+  ];
+
+  it('never puts a reserved expo-notifications key in the FCM data payload', () => {
+    const keys = Object.keys(payload());
+    for (const reserved of RESERVED) {
+      expect(keys).not.toContain(reserved);
+    }
+  });
+
+  it('keeps `type` unprefixed, because extractData matches on it', () => {
+    // `type` is NOT in expo's reserved set, and the wake matcher needs it.
+    expect(Object.keys(payload())).toContain('type');
+    expect(RESERVED).not.toContain('type');
   });
 });
 
@@ -147,7 +179,7 @@ describe('presentDisplayPush', () => {
   });
 
   it('survives a malformed data blob rather than dropping the banner', async () => {
-    expect(await presentDisplayPush(payload({ data: '{not json' }))).toBe(true);
+    expect(await presentDisplayPush(payload({ n_data: '{not json' }))).toBe(true);
     const arg = scheduleMock.mock.calls[0][0];
     expect(arg.content.title).toBe('Session complete 💪');
     // Falls back to the flat keys the payload always carries.
@@ -156,7 +188,7 @@ describe('presentDisplayPush', () => {
   });
 
   it('refuses a payload with no copy in it', async () => {
-    expect(await presentDisplayPush(payload({ title: '', body: '' }))).toBe(false);
+    expect(await presentDisplayPush(payload({ n_title: '', n_body: '' }))).toBe(false);
     expect(scheduleMock).not.toHaveBeenCalled();
   });
 
@@ -164,5 +196,48 @@ describe('presentDisplayPush', () => {
     scheduleMock.mockRejectedValueOnce(new Error('no channel'));
     expect(await presentDisplayPush(payload())).toBe(false);
     expect(global.fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe('wire-format compatibility across the n_ rename', () => {
+  // ⚠ DO NOT DELETE THE LEGACY BRANCH UNTIL NO PRE-RENAME BUNDLE IS LEFT.
+  //
+  // The rename breaks in BOTH directions and no deploy order avoids it: server
+  // first and an old bundle finds no `n_title`; OTA first and a new bundle finds
+  // no `title` on a server still sending the old shape. Either way Android shows
+  // NOTHING — worse than the duplicate the rename removes. These two tests are
+  // the guarantee that every intermediate state still produces a banner.
+  const LEGACY = {
+    type: 'display_notification',
+    log_id: 'legacy-1',
+    notif_type: 'session_completed',
+    title: 'Session complete 💪',
+    body: 'POWR · 47 min · +24 pts today',
+    channel_id: 'powr_default_v2',
+    sound: '1',
+    route: '/(tabs)/index',
+    data: JSON.stringify({ type: 'session_completed', route: '/(tabs)/index' }),
+  };
+
+  it('still renders a pre-rename payload', async () => {
+    expect(await presentDisplayPush(LEGACY as never)).toBe(true);
+    const arg = scheduleMock.mock.calls[0][0];
+    expect(arg.content.title).toBe('Session complete 💪');
+    expect(arg.content.body).toBe('POWR · 47 min · +24 pts today');
+    expect(arg.content.channelId).toBe('powr_default_v2');
+    expect(arg.content.data.route).toBe('/(tabs)/index');
+    expect(arg.content.data.type).toBe('session_completed');
+  });
+
+  it('stamps delivery off the legacy id too', async () => {
+    await presentDisplayPush(LEGACY as never);
+    const [, init] = (global.fetch as jest.Mock).mock.calls[0];
+    expect(JSON.parse(init.body)).toEqual({ p_log_id: 'legacy-1' });
+  });
+
+  it('prefers the new shape when a payload somehow carries both', async () => {
+    await presentDisplayPush({ ...LEGACY, ...payload() } as never);
+    expect(scheduleMock.mock.calls[0][0].content.body)
+      .toBe('POWR · 60 min · +24 pts today');
   });
 });

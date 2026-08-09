@@ -260,7 +260,32 @@ export async function deliverVisiblePush(
 /** FCM v1 requires every `data` value to be a string. Keys land at `raw.data`
  *  verbatim on a direct send (no Expo envelope), which is exactly the shape
  *  extractData already matches on Android — so no JSON mirror is needed here,
- *  unlike the wake payload which has to survive Expo's iOS envelope. */
+ *  unlike the wake payload which has to survive Expo's iOS envelope.
+ *
+ *  ⚠ EVERY FIELD IS `n_`-PREFIXED, AND THAT IS NOT COSMETIC (field 2026-08-09).
+ *
+ *  expo-notifications reads notification content out of the FCM DATA payload,
+ *  not just out of an FCM `notification` block. RemoteNotificationContent.kt:
+ *
+ *      override val title = remoteMessage.notification?.title ?: notificationData.title
+ *      override val text  = remoteMessage.notification?.body  ?: notificationData.message
+ *
+ *  ...where notificationData wraps remoteMessage.data. And
+ *  FirebaseMessagingDelegate.onMessageReceived calls NotificationsService.receive()
+ *  UNCONDITIONALLY, before it runs the task-manager tasks — so the library posts
+ *  its own banner from our data keys and THEN hands us the message to render.
+ *  setNotificationHandler cannot stop it: that governs foreground presentation
+ *  only, and this is the background path.
+ *
+ *  Shipping `title`/`body`/`sound` unprefixed therefore produced TWO banners on
+ *  the first field run: a title-only, body-less one from the library (because it
+ *  reads `data.title` for the title but `data.message` — which we did not send —
+ *  for the text), followed by our correct one. Worse, `data.body` is parsed as
+ *  JSON by NotificationData.body, and ours is prose.
+ *
+ *  The reserved set as of expo-notifications 0.32.x is: title, message, body,
+ *  sound, vibrate, sticky, color, autoDismiss, categoryId, subtitle, badge.
+ *  `type` is NOT reserved and must stay unprefixed — extractData matches on it. */
 export function buildDisplayPayload(
   logId: string,
   type: string,
@@ -269,15 +294,15 @@ export function buildDisplayPayload(
   const route = typeof content.data?.route === 'string' ? content.data.route : '';
   return {
     type: 'display_notification',
-    log_id: logId,
-    notif_type: type,
-    title: content.title,
-    body: content.body,
-    channel_id: content.channelId ?? DEFAULT_CHANNEL,
-    sound: content.sound === 'default' ? '1' : '0',
-    ...(route ? { route } : {}),
+    n_log_id: logId,
+    n_type: type,
+    n_title: content.title,
+    n_body: content.body,
+    n_channel: content.channelId ?? DEFAULT_CHANNEL,
+    n_sound: content.sound === 'default' ? '1' : '0',
+    ...(route ? { n_route: route } : {}),
     // The caller's own data object, round-tripped so the client can hand the
     // identical payload to the tap handler that already reads `route` from it.
-    data: JSON.stringify(content.data ?? {}),
+    n_data: JSON.stringify(content.data ?? {}),
   };
 }

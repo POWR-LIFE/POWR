@@ -135,7 +135,7 @@ describe('when fcm_direct is on', () => {
 
     const payload = fcm.mock.calls[0][1];
     expect(admin.inserts).toHaveLength(1);
-    expect(admin.inserts[0].id).toBe(payload.log_id);
+    expect(admin.inserts[0].id).toBe(payload.n_log_id);
     expect(admin.inserts[0].transport).toBe('fcm_direct');
     expect(admin.inserts[0].status).toBe('accepted');
   });
@@ -203,9 +203,22 @@ describe('buildDisplayPayload', () => {
   it('carries the copy, the route and the original type', () => {
     const payload = buildDisplayPayload('log-1', 'gym_session_complete', CONTENT);
     expect(payload.type).toBe('display_notification');
-    expect(payload.title).toBe('Session complete 💪');
-    expect(payload.route).toBe('/(tabs)/index');
-    expect(payload.notif_type).toBe('gym_session_complete');
-    expect(JSON.parse(payload.data)).toEqual(CONTENT.data);
+    expect(payload.n_title).toBe('Session complete 💪');
+    expect(payload.n_route).toBe('/(tabs)/index');
+    expect(payload.n_type).toBe('gym_session_complete');
+    expect(JSON.parse(payload.n_data)).toEqual(CONTENT.data);
+  });
+
+  it('keeps every field out of expo-notifications reserved namespace', () => {
+    // Field 2026-08-09: `title` in the data payload made expo-notifications post
+    // its own body-less banner alongside ours, and `body` was parsed as JSON.
+    // The library reads these straight off remoteMessage.data and presents
+    // BEFORE our task runs, so this can only be prevented at the sender.
+    const payload = buildDisplayPayload('log-1', 'gym_session_complete', CONTENT);
+    for (const reserved of ['title', 'message', 'body', 'sound', 'vibrate',
+                            'sticky', 'color', 'autoDismiss', 'categoryId',
+                            'subtitle', 'badge']) {
+      expect(payload).not.toHaveProperty(reserved);
+    }
   });
 });

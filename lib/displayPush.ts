@@ -30,18 +30,28 @@ import { SUPABASE_ANON_KEY, SUPABASE_URL } from '@/lib/supabase';
  *  matcher in backgroundNotificationTask and the presenter can never drift. */
 export const DISPLAY_NOTIFICATION_TYPE = 'display_notification';
 
-/** FCM v1 requires every data value to be a string, so everything arrives as one. */
+/** FCM v1 requires every data value to be a string, so everything arrives as one.
+ *
+ *  ⚠ EVERY FIELD IS `n_`-PREFIXED. expo-notifications reads notification content
+ *  straight out of the FCM data payload — `data.title` becomes the banner title
+ *  and `data.body` is run through `JSONObject(...)` — and
+ *  FirebaseMessagingDelegate posts that banner BEFORE handing us the message, so
+ *  nothing on the JS side can suppress it. Unprefixed keys therefore produced a
+ *  second, body-less "Session recorded" banner on the first field run
+ *  (2026-08-09). Reserved names to keep clear of: title, message, body, sound,
+ *  vibrate, sticky, color, autoDismiss, categoryId, subtitle, badge.
+ *  `type` stays unprefixed — extractData matches on it and it is not reserved. */
 export interface DisplayPushPayload {
   type?: string;
-  log_id?: string;
-  notif_type?: string;
-  title?: string;
-  body?: string;
-  channel_id?: string;
-  sound?: string;
-  route?: string;
+  n_log_id?: string;
+  n_type?: string;
+  n_title?: string;
+  n_body?: string;
+  n_channel?: string;
+  n_sound?: string;
+  n_route?: string;
   /** The original server-side `data` object, JSON-encoded. */
-  data?: string;
+  n_data?: string;
 }
 
 const SEEN_KEY = 'powr_display_push_seen_v1';
@@ -108,23 +118,45 @@ export function isDisplayPush(payload: unknown): payload is DisplayPushPayload {
  *  "the schedule call silently no-ops without a UI context" belief and got the
  *  server's duplicate ANNOUNCE pass deleted). */
 export async function presentDisplayPush(payload: DisplayPushPayload): Promise<boolean> {
-  const title = typeof payload.title === 'string' ? payload.title : '';
-  const body = typeof payload.body === 'string' ? payload.body : '';
+  // ⚠ READS BOTH SHAPES, AND MUST KEEP DOING SO UNTIL EVERY BUNDLE PREDATING THE
+  // n_ RENAME IS GONE (2026-08-09).
+  //
+  // The rename is a wire-format break in BOTH directions, and there is no deploy
+  // order that avoids it:
+  //   • server first — an old bundle reads `title`, finds nothing, shows NOTHING.
+  //   • OTA first    — a new bundle reads `n_title` against an old server that
+  //                    still sends `title`, finds nothing, shows NOTHING.
+  // Either way Android loses its notification entirely, which is strictly worse
+  // than the duplicate this rename exists to remove. Accepting both shapes makes
+  // every intermediate state safe, and the legacy branch costs one `??`.
+  //
+  // While a legacy-shaped push is in flight the phantom banner still appears —
+  // that is unavoidable, it is posted by the library before we are consulted.
+  // The duplicate stops the moment the server sends n_ keys.
+  const pick = (next: unknown, legacy: unknown): string =>
+    typeof next === 'string' ? next : (typeof legacy === 'string' ? legacy : '');
+  const legacy = payload as Record<string, unknown>;
+
+  const title = pick(payload.n_title, legacy.title);
+  const body = pick(payload.n_body, legacy.body);
   if (!title && !body) return false;
 
-  const logId = typeof payload.log_id === 'string' ? payload.log_id : '';
+  const logId = pick(payload.n_log_id, legacy.log_id);
   if (logId && !(await claimFirstDelivery(logId))) return false;
 
   // The server's original data object, so the tap handler reads the same shape
-  // it would have read off an Expo-routed push. `notif_type` restores the type
-  // key the rest of the app switches on (NotificationsContext's points-refresh
-  // gate, the activity feed, getRouteFromNotification's siblings).
+  // it would have read off an Expo-routed push. The type key restores what the
+  // rest of the app switches on (NotificationsContext's points-refresh gate, the
+  // activity feed, getRouteFromNotification's siblings).
   let data: Record<string, unknown> = {};
+  const rawData = pick(payload.n_data, legacy.data);
   try {
-    if (typeof payload.data === 'string' && payload.data) data = JSON.parse(payload.data);
+    if (rawData) data = JSON.parse(rawData);
   } catch { /* a malformed data blob must not cost the user the banner */ }
-  if (typeof payload.notif_type === 'string' && !data.type) data.type = payload.notif_type;
-  if (typeof payload.route === 'string' && !data.route) data.route = payload.route;
+  const notifType = pick(payload.n_type, legacy.notif_type);
+  const route = pick(payload.n_route, legacy.route);
+  if (notifType && !data.type) data.type = notifType;
+  if (route && !data.route) data.route = route;
 
   try {
     await Notifications.scheduleNotificationAsync({
@@ -135,9 +167,9 @@ export async function presentDisplayPush(payload: DisplayPushPayload): Promise<b
         title,
         body,
         data,
-        ...(payload.sound === '0' ? {} : { sound: 'default' as const }),
-        ...(Platform.OS === 'android' && payload.channel_id
-          ? { channelId: payload.channel_id }
+        ...(pick(payload.n_sound, legacy.sound) === '0' ? {} : { sound: 'default' as const }),
+        ...(Platform.OS === 'android' && pick(payload.n_channel, legacy.channel_id)
+          ? { channelId: pick(payload.n_channel, legacy.channel_id) }
           : {}),
       },
       trigger: null, // immediate
