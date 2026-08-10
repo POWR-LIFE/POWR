@@ -167,7 +167,7 @@ begin
   v_distance := _gym_detail_num(v_detail, 'distance_m');
   v_accuracy := _gym_detail_num(v_detail, 'accuracy_m');
   v_proven := p_inside
-          and coalesce((v_detail ->> 'fix_trusted')::boolean, false)
+          and lower(coalesce(v_detail ->> 'fix_trusted', '')) = 'true'
           and v_distance is not null
           and v_distance <= v_radius + coalesce(v_accuracy, 0);
 
