@@ -1614,12 +1614,45 @@ async function recordDwellSession(activeGeofence: StoredGeofence, staleLockMs: n
   let endedAtMs = activeGeofence.endedAtMs ?? Date.now();
   if (activeGeofence.endedAtMs == null) {
     try {
-      const tickRaw = await AsyncStorage.getItem(VISIT_TICK_KEY);
-      const tick = Number(tickRaw ?? 0);
-      if (Number.isFinite(tick) && tick > activeGeofence.entryTimestamp && tick < endedAtMs) {
-        if (tick - activeGeofence.entryTimestamp >= prodDwellMs()) endedAtMs = tick;
+      // ⚠ TWO KEYS, AND THE CEILING IS THE *LIVENESS* ONE — NOT THE CREDIT ONE.
+      //
+      // This read VISIT_TICK_KEY alone. PR #374 then repurposed that key from an
+      // unconditional heartbeat stamp into the CREDIT floor, gated on
+      // fixCreditsPresence, and taught finalize to delete it. On Android every fix
+      // reports accuracy exactly 100 against a `< 100` test, so from #374 onward
+      // the key is stamped NEVER — and with no ceiling this fell through to
+      // Date.now() and grew on every retry. Field 2026-08-10: 69 minutes recorded
+      // for a 52m49s visit, against 47-for-46.6 the day before #374 shipped.
+      //
+      // The design note ("stamping it more strictly yields an EARLIER end, i.e.
+      // less over-report") is true for STRICTER and inverts at NEVER: zero stamps
+      // is not a tight ceiling, it is no ceiling.
+      //
+      // So the two questions get the two keys they always needed, mirroring
+      // last_proven_at vs last_confirmed_at server-side:
+      //   • how long could this session plausibly have been live?  → LIVENESS
+      //   • how much of it may we bill?                            → CREDIT
+      // VISIT_TICK_THROTTLE_KEY is stamped unconditionally by heartbeatVisitStream
+      // and is indifferent to accuracy by design, which is exactly what a duration
+      // ceiling needs. Credit strictness is untouched: last_proven_at and the
+      // server's v_proven still move only on a fix that passes the credit test.
+      const [creditRaw, seenRaw] = await Promise.all([
+        AsyncStorage.getItem(VISIT_TICK_KEY),
+        AsyncStorage.getItem(VISIT_TICK_THROTTLE_KEY),
+      ]);
+      const credit = Number(creditRaw ?? 0);
+      const seen = Number(seenRaw ?? 0);
+      const lastEvidence = Math.max(
+        Number.isFinite(credit) ? credit : 0,
+        Number.isFinite(seen) ? seen : 0,
+      );
+      if (lastEvidence > activeGeofence.entryTimestamp && lastEvidence < endedAtMs) {
+        // The eligibility guard is load-bearing, not caution: clamping below the
+        // dwell minimum makes the server reject the claim 422 (the 2026-08-06
+        // wedge). Below that we keep the clock and let the claim through.
+        if (lastEvidence - activeGeofence.entryTimestamp >= prodDwellMs()) endedAtMs = lastEvidence;
       }
-    } catch { /* no tick to bound by — keep the clock, as before */ }
+    } catch { /* no evidence to bound by — keep the clock, as before */ }
   }
   let dwellMs = endedAtMs - activeGeofence.entryTimestamp;
   try {
