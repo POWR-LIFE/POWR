@@ -47,6 +47,41 @@ export const EXIT_COOLDOWN_BUFFER_MS = 5 * 60 * 1000; // 5 min
 export const MAX_GYM_SESSION_MS = 12 * 60 * 60 * 1000; // 12 h
 
 /**
+ * Accuracy beyond this buys NO further protection from an exit decision.
+ *
+ * ⚠ The exit bound used to be `radius + hysteresis + accuracy`, unbounded, which
+ * inverted under bad conditions: the less the device knew, the more protection it
+ * granted. Field 2026-08-10, both platforms — Android sat 334 m away on 900 m fixes
+ * (bound 970 m) and iOS 544 m away on 930 m fixes (bound 1000 m), and neither could
+ * ever close. A fix that vague is not evidence of presence and must not be treated
+ * as a reason to keep earning.
+ *
+ * 30 m caps the bound at 100 m on a 20 m fence, which is the product answer: a user
+ * 100 m outside has left, and people who live near a venue must not stay checked in.
+ * Safety moves from precision to REPETITION — see exitReadingsRequired.
+ */
+export const EXIT_ACCURACY_CREDIT_CAP_M = 30;
+
+/**
+ * How far outside the fence a fix must place someone before it counts as evidence
+ * they have gone. Bounded, so exit is always reachable.
+ */
+export function exitBoundM(radiusM: number, hysteresisM: number, accuracyM: number | null): number {
+  return radiusM + hysteresisM + Math.min(Math.max(accuracyM ?? 0, 0), EXIT_ACCURACY_CREDIT_CAP_M);
+}
+
+/**
+ * Consecutive outside readings before a session closes.
+ *
+ * This is what replaces the unbounded accuracy term. That term existed to stop one
+ * wild fix ending a live session; capping it would have reopened that risk, so the
+ * guard becomes repetition instead. Two independent readings agreeing is stronger
+ * evidence than one precise one, and it is the pattern this codebase already trusts
+ * (NO_FIX_STREAK_BROKEN, the location-loss confirmation marker).
+ */
+export const EXIT_READINGS_REQUIRED = 2;
+
+/**
  * Does this fix justify BILLING the time up to now — as opposed to merely keeping
  * the session open?
  *

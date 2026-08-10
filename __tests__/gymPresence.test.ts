@@ -8,7 +8,9 @@
 
 import {
   computeCorrectedWindow,
+  EXIT_ACCURACY_CREDIT_CAP_M,
   EXIT_COOLDOWN_BUFFER_MS,
+  exitBoundM,
   fixCreditsPresence,
   MAX_GYM_SESSION_MS,
   type StepSample,
@@ -95,6 +97,43 @@ describe('computeCorrectedWindow', () => {
     expect(second.changed).toBe(false);
     expect(second.startMs).toBe(first.startMs);
     expect(second.endMs).toBe(first.endMs);
+  });
+});
+
+describe('exitBoundM — exit must always be reachable', () => {
+  const RADIUS = 20;
+  const HYST = 50;
+
+  it('adds the error bar on a good fix, so a small wobble cannot eject anyone', () => {
+    expect(exitBoundM(RADIUS, HYST, 20)).toBe(90);
+  });
+
+  it('never exceeds 100 m on a 20 m fence, however bad the fix', () => {
+    // ⚠ REGRESSION GUARD — field 2026-08-10. Unbounded, this returned 970 m at
+    // 900 m accuracy and 1000 m at 930 m, so two phones 334 m and 544 m away were
+    // structurally incapable of closing and billed the time.
+    for (const acc of [100, 350, 500, 900, 930, 5000]) {
+      expect(exitBoundM(RADIUS, HYST, acc)).toBe(100);
+    }
+  });
+
+  it('closes the two real field cases that could not close before', () => {
+    expect(334).toBeGreaterThan(exitBoundM(RADIUS, HYST, 900)); // Android
+    expect(544).toBeGreaterThan(exitBoundM(RADIUS, HYST, 930)); // iOS
+  });
+
+  it('treats a missing or negative accuracy as no error bar', () => {
+    expect(exitBoundM(RADIUS, HYST, null)).toBe(70);
+    expect(exitBoundM(RADIUS, HYST, -5)).toBe(70);
+  });
+
+  it('caps the contribution at exactly the documented constant', () => {
+    expect(exitBoundM(0, 0, 10_000)).toBe(EXIT_ACCURACY_CREDIT_CAP_M);
+  });
+
+  it('still keeps someone just outside the fence checked in (no flapping)', () => {
+    // Someone living 80 m from a venue, on a good fix: inside the bound, stays put.
+    expect(80).toBeLessThan(exitBoundM(RADIUS, HYST, 20) + 1);
   });
 });
 
