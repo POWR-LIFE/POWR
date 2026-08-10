@@ -171,6 +171,82 @@ describe('runVisitCheck — the server wakes us, the device decides', () => {
     expect(await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY)).not.toBeNull();
   });
 
+  // ── The late-open retry, and the stamp that has to survive it ──────────────
+  //
+  // A check-in whose openGymVisit response is lost (routine on Android while
+  // auth is wedged) leaves an active session with no visit id, and every wake
+  // re-resolves it. If the resolved id is then DISCARDED, the client keeps
+  // asking — and once the server closes that visit, the next ask is a request to
+  // re-open an ended check-in. That is how duplicate a635617c was minted on
+  // 2026-08-10, backdated 95 minutes to a visit that had closed 23 minutes
+  // earlier. The stamp is what stops the asking.
+  describe('late-open stamping', () => {
+    async function seedUnstampedVisit() {
+      await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({
+        partnerId: 'partner-1',
+        partnerName: 'Xtreme Gym',
+        regionId: 'partner-1-0',
+        entryTimestamp: Date.now() - 35 * 60 * 1000,
+        latitude: GYM.lat,
+        longitude: GYM.lng,
+        radius: GYM.radius,
+      }));
+    }
+
+    /** Simulates the concurrent check-in path rewriting the stored record while
+     *  open_gym_visit is in flight — the race that made the old strict
+     *  `entryTimestamp ===` guard fail on every Android check-in. */
+    function rewriteActiveDuringOpen(patch: Record<string, unknown>) {
+      mockRpc.mockImplementation(async (fn: string) => {
+        if (fn === 'open_gym_visit') {
+          const raw = await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY);
+          await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...JSON.parse(raw!), ...patch }));
+          return { data: 'visit-late', error: null };
+        }
+        return { data: fn === 'relay_gym_claim' ? { status: 'accepted' } : null, error: null };
+      });
+    }
+
+    it('stamps the resolved id even when a concurrent path moved the entry timestamp', async () => {
+      await seedUnstampedVisit();
+      rewriteActiveDuringOpen({ entryTimestamp: Date.now() - 34 * 60 * 1000 });
+      getFix.mockResolvedValue({ coords: { latitude: GYM.lat, longitude: GYM.lng, accuracy: 10 } });
+
+      await runVisitCheck('dwell');
+
+      const stored = JSON.parse((await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY))!);
+      expect(stored.visitId).toBe('visit-late');
+    });
+
+    it('refuses to stamp a visit onto a session at a different region', async () => {
+      await seedUnstampedVisit();
+      rewriteActiveDuringOpen({ regionId: 'partner-2-0' });
+      getFix.mockResolvedValue({ coords: { latitude: GYM.lat, longitude: GYM.lng, accuracy: 10 } });
+
+      await runVisitCheck('dwell');
+
+      const stored = JSON.parse((await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY))!);
+      expect(stored.visitId).toBeUndefined();
+    });
+
+    it('never overwrites an id the session already has', async () => {
+      await seedActiveVisit(); // already carries visit-1
+      mockRpc.mockImplementation(async (fn: string) => ({
+        data: fn === 'open_gym_visit' ? 'visit-late'
+          : fn === 'relay_gym_claim' ? { status: 'accepted' } : null,
+        error: null,
+      }));
+      getFix.mockResolvedValue({ coords: { latitude: GYM.lat, longitude: GYM.lng, accuracy: 10 } });
+
+      await runVisitCheck('dwell');
+
+      const stored = JSON.parse((await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY))!);
+      expect(stored.visitId).toBe('visit-1');
+      // ...and with an id in hand there is nothing to re-resolve.
+      expect(rpcCalls('open_gym_visit')).toHaveLength(0);
+    });
+  });
+
   it('ignores a wake-up when no visit is active', async () => {
     getFix.mockResolvedValue({ coords: { latitude: GYM.lat, longitude: GYM.lng, accuracy: 10 } });
 

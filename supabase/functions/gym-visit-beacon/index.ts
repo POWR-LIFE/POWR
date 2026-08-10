@@ -25,6 +25,7 @@ import { deliverExpoMessages } from '../_shared/expoPush.ts';
 import { deliverVisiblePush } from '../_shared/visiblePush.ts';
 import { sendFcmDataMessage } from '../_shared/fcmV1.ts';
 import { sendApnsBackgroundPush } from '../_shared/apnsV1.ts';
+import { staleVisitVerdict } from '../_shared/gymReaper.ts';
 
 // Budgets are PER STAGE and live in their own columns (nudge_count /
 // nudge_count_upgrade). They used to share `nudge_count`, which silently handed the
@@ -432,42 +433,44 @@ Deno.serve(async (req: Request) => {
   // session rather than inflate one. It costs a few minutes of tail on a real
   // walk-out and cannot manufacture dwell that never happened.
   //
-  // WHAT KEEPS A LIVE SESSION ALIVE: confirm_gym_visit_v2 writes last_confirmed_at
-  // on EVERY inside-confirm, before any credit branch — so any wake that reaches
-  // the device's JS refreshes it and resets this window. What the beacon no longer
-  // does after the upgrade is CAUSE such a wake: the dwell and upgrade stages are
-  // both spent, and the fence-refresh pass below deliberately carries no visit_id
-  // (placeholder nonce, visit check no-ops). The presence pass added alongside this
-  // one closes that gap by re-nudging still-open upgraded visits, so silence here
-  // means "asked and got no answer", not "never asked".
+  // WHAT KEEPS A LIVE SESSION ALIVE — and the 2026-08-10 correction to it.
+  //
+  // This used to read last_confirmed_at, on the reasoning that confirm_gym_visit_v2
+  // writes it on EVERY inside-confirm, so any wake reaching the device's JS resets
+  // the window. True, and that is exactly the defect: `inside` is the client's
+  // GENEROUS liveness verdict (radius + 50 m hysteresis, and true by default when
+  // the fix is too coarse to run the geometry), and three further writers —
+  // mark_gym_visit_progress, claim-points, upgrade-gym-tier — stamp the same column
+  // from the server with no device involved at all. Every one of them bought
+  // another 45 minutes. Visit 2efeea36: a `claimed` relay at 09:42:30Z moved the
+  // deadline from 09:53 to 10:27 with the owner miles away.
+  //
+  // So the clock now runs on last_proven_at, which has ONE writer and one meaning:
+  // the device proved it was inside with a fix good enough to bill
+  // (fixCreditsPresence — the same test PR #374 applied to credit). The presence
+  // pass above still does its job of ASKING; what changed is that an answer we
+  // cannot bank on no longer counts as an answer. Silence here means "asked, and
+  // got nothing we could prove", not "never asked".
+  //
+  // The whole decision lives in _shared/gymReaper.ts so it can be unit-tested.
   {
-    const STALE_SILENCE_MS = 45 * 60 * 1000;
     const { data: orphans, error: orphanErr } = await admin
       .from('gym_visits')
-      .select('id, user_id, started_at, claimed_at, upgraded_at, last_confirmed_at, claimed_session_id')
+      .select('id, user_id, started_at, claimed_at, upgraded_at, last_proven_at, claimed_session_id')
       .is('ended_at', null)
       .not('upgraded_at', 'is', null)
       .limit(100);
     if (orphanErr) console.error('[gym-visit-beacon] stale-close scan failed', orphanErr);
 
-    const silenceCutoff = Date.now() - STALE_SILENCE_MS;
     for (const v of orphans ?? []) {
-      // Last moment the DEVICE proved it was inside. claimed_at/upgraded_at both
-      // required a location-confirmed wake, so they are proof too — and
-      // last_confirmed_at is not updated by the upgrade confirm, so taking the
-      // max of all three is strictly more accurate than last_confirmed_at alone.
-      const provenMs = Math.max(
-        v.last_confirmed_at ? Date.parse(v.last_confirmed_at) : 0,
-        v.upgraded_at ? Date.parse(v.upgraded_at) : 0,
-        v.claimed_at ? Date.parse(v.claimed_at) : 0,
-        Date.parse(v.started_at),
-      );
-      if (provenMs > silenceCutoff) continue; // proved presence recently — still live
+      const verdict = staleVisitVerdict(v, Date.now());
+      if (!verdict.close) continue; // proved presence recently — still live
 
+      const provenMs = verdict.provenMs;
       const endedAtIso = new Date(provenMs).toISOString();
       const { data: closed, error: closeErr } = await admin
         .from('gym_visits')
-        .update({ status: 'closed', close_reason: 'stale_after_upgrade', ended_at: endedAtIso })
+        .update({ status: 'closed', close_reason: verdict.closeReason, ended_at: endedAtIso })
         .eq('id', v.id)
         .is('ended_at', null)          // conditional: a real client exit racing us wins
         .select('id');
