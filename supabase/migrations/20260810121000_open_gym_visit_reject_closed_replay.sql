@@ -99,7 +99,7 @@ begin
 
   if v_id is not null then
     update gym_visits
-       set ended_at     = greatest(started_at, last_proven_at, upgraded_at, claimed_at),
+       set ended_at     = greatest(started_at, coalesce(last_proven_at, started_at), coalesce(upgraded_at, started_at), coalesce(claimed_at, started_at)),
            status       = 'closed',
            close_reason = 'superseded_by_new_check_in'
      where id = v_id and ended_at is null;
