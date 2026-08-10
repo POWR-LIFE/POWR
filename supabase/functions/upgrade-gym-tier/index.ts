@@ -125,7 +125,7 @@ Deno.serve(async (req) => {
   {
     let visitQuery = supabase
       .from('gym_visits')
-      .select('last_confirmed_at, ended_at')
+      .select('last_confirmed_at, last_proven_at, ended_at')
       .eq('user_id', user.id)
       // nullsFirst:false — a DESC order puts NULLs first in Postgres, which would
       // pick an unconfirmed duplicate over the row that actually has evidence.
@@ -139,8 +139,14 @@ Deno.serve(async (req) => {
       console.error('[upgrade-gym-tier] gym_visits lookup failed:', visitError);
       return new Response(JSON.stringify({ error: 'Failed to verify visit state' }), { status: 500 });
     }
-    if (visit?.last_confirmed_at) {
-      const sec = Math.round((new Date(visit.last_confirmed_at).getTime() - startedMs) / 1000);
+    // last_proven_at first: same meaning, one writer, and it only moves on a fix
+    // that would pass fixCreditsPresence. last_confirmed_at is the fallback for
+    // rows written before that column existed (2026-08-10) — it is the weaker
+    // evidence, which is exactly why recordedGymDurationSec takes the MIN of
+    // everything rather than a priority order.
+    const provenAt = visit?.last_proven_at ?? visit?.last_confirmed_at;
+    if (provenAt) {
+      const sec = Math.round((new Date(provenAt).getTime() - startedMs) / 1000);
       if (sec > 0) presenceSec = sec;
     }
     if (visit?.ended_at) {

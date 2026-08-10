@@ -2469,6 +2469,53 @@ async function recordExitAndClaim(claimEntry: StoredGeofence): Promise<'resolved
   return 'resolved';
 }
 
+/** May the id we just resolved be stamped onto the session currently in storage?
+ *
+ *  ONE rule for all three late-open paths (check-in, wake, stream tick), because
+ *  they had three different rules and two of them were wrong. The guard's real
+ *  job is to never attach a visit to a session at some OTHER partner, and
+ *  regionId says that directly; an entryTimestamp mismatch at the same region
+ *  means a concurrent check-in path rewrote the record, and open_gym_visit reuses
+ *  the user's live visit anyway, so the id we hold IS that session's visit.
+ *
+ *  Strictly additive: an already-stamped session is never overwritten.
+ *
+ *  ⚠ Losing the stamp is not cosmetic. An unstamped session sends the client back
+ *  to openGymVisit on every wake, and the moment anything closes that visit
+ *  server-side (an exit, the 45-minute reaper) the next resolve asks for a visit
+ *  at a started_at the server has already ended. Field 2026-08-08 and again
+ *  2026-08-10, that minted a duplicate backdated visit which the beacon then
+ *  nudged for hours. The server refuses to mint it now
+ *  (20260810121000_open_gym_visit_reject_closed_replay.sql); this keeps the
+ *  client from asking in the first place. */
+function stampVisitOnActive(
+  current: StoredGeofence | null,
+  opened: StoredGeofence,
+  visitId: string,
+  source: 'wake_late_open' | 'stream_late_open',
+): current is StoredGeofence {
+  if (!current || current.visitId) return false;
+  if (current.regionId !== opened.regionId) {
+    logRegionEvent(opened.regionId ?? 'exit', 'visit_stamp_skipped', {
+      reason: 'region_mismatch',
+      source,
+      stored_region: current.regionId ?? null,
+    });
+    return false;
+  }
+  if (current.entryTimestamp !== opened.entryTimestamp) {
+    // Name the relaxed path so we learn how often the strict guard was wrong,
+    // rather than inferring it from `visit: null` months later.
+    logRegionEvent(opened.regionId ?? 'exit', 'visit_stamp_relaxed', {
+      source,
+      stored_entry: current.entryTimestamp ?? null,
+      opened_entry: opened.entryTimestamp,
+      visit_id: visitId,
+    });
+  }
+  return true;
+}
+
 /** Finalizes the active visit exactly once. Eligible exits are first written to
  * the durable retry queue, then the active key is removed. This ordering keeps
  * a headless task interruption from losing both the live session and its claim.
@@ -3367,9 +3414,26 @@ export async function runVisitCheck(
       if (lateId) {
         const raw = await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY);
         const cur = raw ? JSON.parse(raw) as StoredGeofence : null;
-        // Only stamp the session we just opened for — never a later one.
-        if (cur && cur.entryTimestamp === active.entryTimestamp) {
+        // Only stamp the session we just opened for — never a later one, and
+        // never a session at some OTHER partner.
+        //
+        // ⚠ This used to demand `cur.entryTimestamp === active.entryTimestamp`,
+        // the same strict equality that was relaxed in setActiveAndNotify on
+        // 2026-08-08 because it failed on every Android check-in. It was never
+        // relaxed HERE, so the id was fetched and thrown away: field 2026-08-10,
+        // Android re-resolved the visit on every wake for 90 minutes (`reused`
+        // at 09:21, 09:26, 09:32, 09:37, 09:56) and still swept `visit: null`.
+        // That is not cosmetic — an unstamped visit is what sends the client
+        // back to openGymVisit with a stale entryTimestamp after the server has
+        // closed the visit, which is how the duplicate a635617c was minted.
+        if (stampVisitOnActive(cur, active, lateId, 'wake_late_open')) {
           await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...cur, visitId: lateId }));
+          // In-place too, or the stamp does not survive this wake: every branch
+          // of advanceActiveSession below rewrites the whole record from THIS
+          // object, so a stamp that only landed in storage is erased seconds
+          // later by the dwell machine — and the next wake re-resolves all over
+          // again. heartbeatVisitStream has always done this; this path did not.
+          active.visitId = lateId;
         }
         console.log(`[Geofence] Late visit open succeeded on wake — server caught up (${lateId}).`);
       }
@@ -3580,7 +3644,10 @@ async function heartbeatVisitStream(active: StoredGeofence, coords: Location.Loc
       const raw = await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY);
       const current = raw ? JSON.parse(raw) as StoredGeofence : null;
       // Only stamp the visit onto the session it belongs to — never a later one.
-      if (!current || current.entryTimestamp !== active.entryTimestamp) return;
+      // Same relaxation, and the same reason, as the wake path above: the strict
+      // entryTimestamp equality failed on every Android check-in and silently
+      // discarded a perfectly good id.
+      if (!stampVisitOnActive(current, active, visitId, 'stream_late_open')) return;
       await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...current, visitId }));
       active.visitId = visitId; // in-place so this tick's claim path sees it too
       console.log('[Geofence] Visit beacon opened late — check-in had raced auth.');
