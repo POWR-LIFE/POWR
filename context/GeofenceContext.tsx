@@ -111,7 +111,25 @@ const PENDING_CLAIMS_KEY     = '@powr/pending_claims';
 // the one most likely to fail — and closing the visit was previously fire-and-
 // forget. See enqueuePendingVisitClose.
 const PENDING_VISIT_CLOSES_KEY = '@powr/pending_visit_closes';
-const VISIT_TICK_KEY         = '@powr/last_visit_tick';   // throttle for the stream heartbeat
+// ⚠ TWO KEYS, AND THE DISTINCTION IS LOAD-BEARING.
+//
+// VISIT_TICK_KEY is the CREDIT floor: recordDwellSession reads it as "the last
+// moment the device actually PROVED it was inside" and bills time up to it. Only a
+// fix that would pass fixCreditsPresence may move it.
+//
+// VISIT_TICK_THROTTLE_KEY is just the cross-context rate limiter for the stream
+// heartbeat. It answers "is the stream alive?", which is a different question and
+// deliberately indifferent to accuracy.
+//
+// They were ONE key, and heartbeatVisitStream stamped it on a timer with no position
+// check at all — so opening the app 334 m from the venue woke the stream, stamped
+// "proven inside", and billed the session to that instant: 90.9 min recorded against
+// a 71.5 min visit, and the user was told "91 min" (field 2026-08-10).
+const VISIT_TICK_KEY          = '@powr/last_visit_tick';        // credit floor — proof of presence
+const VISIT_TICK_THROTTLE_KEY = '@powr/last_visit_tick_beat';   // liveness only — never billed
+// Consecutive outside readings behind the exit backstop. See EXIT_READINGS_REQUIRED:
+// this is the corroboration that replaced the unbounded accuracy term.
+const EXIT_STREAK_KEY         = '@powr/exit_readings';
 const LAST_STREAM_FIX_KEY    = '@powr/last_stream_fix';   // newest fix the location stream delivered — the wake path's fallback presence proof
 const LOCATION_LOSS_KEY      = '@powr/location_loss_pending'; // first unconfirmed sighting of a revoked permission — see finalizeSessionIfLocationRevoked
 
@@ -1206,17 +1224,51 @@ async function sweepForMissedCheckIn(): Promise<void> {
           // Field 2026-08-09: iOS closed itself on acc 42 / dist 197; Android, same
           // code and minutes, returned session_active with no geometry computed and
           // could not close at all.
-          if (fix && (acc == null || acc <= MAX_FIX_ACCURACY_M)) {
+          // ⚠ THE ACCURACY GATE IS NO LONGER A PRECONDITION, and that is the point.
+          // It used to read `acc <= MAX_FIX_ACCURACY_M`, which skipped the geometry
+          // entirely on a coarse fix — so a device reporting 900 m could never close,
+          // however far it had gone. Field 2026-08-10: Android sat 334 m away and iOS
+          // 544 m, both indefinitely, both billing time.
+          //
+          // A coarse fix is now allowed to argue for an exit; it just cannot win the
+          // argument alone. Precision is replaced by CORROBORATION — see
+          // EXIT_READINGS_REQUIRED. And the whole branch still only runs past the
+          // upgrade, where nothing remains to earn, so the cost of being wrong is a
+          // slightly short duration, against inflated durations and phantom earnings
+          // for being unable to act at all.
+          if (fix) {
             const dist = haversineMetres(fix.coords.latitude, fix.coords.longitude, a.latitude, a.longitude);
-            const bound = a.radius + LOCATION_EXIT_HYSTERESIS_M + (acc ?? 0);
+            // Bounded: see EXIT_ACCURACY_CREDIT_CAP_M. Unbounded, this term made
+            // exit unreachable exactly when the device was least able to judge —
+            // 900 m accuracy demanded 970 m of distance, so a phone 334 m away
+            // stayed checked in indefinitely (field 2026-08-10).
+            const { exitBoundM, EXIT_READINGS_REQUIRED } = await import('@/lib/health/gymPresence');
+            const bound = exitBoundM(a.radius, LOCATION_EXIT_HYSTERESIS_M, acc);
+            const trusted = acc == null || acc <= MAX_FIX_ACCURACY_M;
+
+            let readings = 0;
             if (dist > bound) {
+              readings = Number((await AsyncStorage.getItem(EXIT_STREAK_KEY).catch(() => null)) ?? 0) + 1;
+              await AsyncStorage.setItem(EXIT_STREAK_KEY, String(readings)).catch(() => {});
+            } else {
+              // One reading back inside breaks the run — a departure has to be
+              // uninterrupted, or a user pacing near the boundary would accumulate
+              // an exit across an entire session.
+              await AsyncStorage.removeItem(EXIT_STREAK_KEY).catch(() => {});
+            }
+
+            // A trusted fix is decisive by itself; a coarse one must be corroborated.
+            if (dist > bound && (trusted || readings >= EXIT_READINGS_REQUIRED)) {
               logRegionEvent(a.regionId ?? 'sweep', 'sweep', {
                 outcome: 'exit_backstop',
                 distance_m: Math.round(dist),
                 bound_m: Math.round(bound),
                 acc_m: acc != null ? Math.round(acc) : null,
                 elapsed_min: Math.round(elapsed / 60_000),
+                trusted,
+                readings,
               });
+              await AsyncStorage.removeItem(EXIT_STREAK_KEY).catch(() => {});
               // No recordBackgroundHealth here: this branch returns above the
               // sweep's permission read, so it cannot say anything about the
               // permission, and a non-observation must never overwrite a real
@@ -2496,6 +2548,7 @@ export async function clearGeofenceStateOnSignOut(departingUserId?: string): Pro
 
   await AsyncStorage.removeItem(ACTIVE_GEOFENCE_KEY).catch(() => {});
   await AsyncStorage.removeItem(VISIT_TICK_KEY).catch(() => {});
+  await AsyncStorage.removeItem(VISIT_TICK_THROTTLE_KEY).catch(() => {});
   await AsyncStorage.removeItem(LOCATION_LOSS_KEY).catch(() => {});
   _lastTickAtMs = 0;
 
@@ -2557,6 +2610,14 @@ async function finalizeActiveGeofenceInner(expectedRegionId?: string, endedAtOve
 
   try {
     await AsyncStorage.removeItem(ACTIVE_GEOFENCE_KEY);
+    // The credit floor and its liveness throttle belong to the visit that just
+    // ended. Leaving them behind lets a stale "proven inside" moment outlive the
+    // session it described; harmless while the next entryTimestamp is newer
+    // (recordDwellSession takes the max), but it is state with no owner.
+    await AsyncStorage.removeItem(VISIT_TICK_KEY).catch(() => {});
+    await AsyncStorage.removeItem(VISIT_TICK_THROTTLE_KEY).catch(() => {});
+    await AsyncStorage.removeItem(EXIT_STREAK_KEY).catch(() => {});
+    _lastTickAtMs = 0;
   } catch {
     return false;
   }
@@ -2773,13 +2834,23 @@ export async function reconcileActiveSessionFromWake(): Promise<void> {
     const fix = await reconcileFix();
     if (!fix) return; // no usable evidence — keep the session; never guess
 
+    const { exitBoundM, fixCreditsPresence } = await import('@/lib/health/gymPresence');
     const distance = haversineMetres(fix.latitude, fix.longitude, active.latitude, active.longitude);
-    const buffer = Math.max(fix.accuracy ?? 50, LOCATION_EXIT_HYSTERESIS_M);
-    if (distance <= active.radius + buffer) {
-      // Proven inside right now — refresh the evidence floor the endedAt bound
-      // reads. (Also throttles the next stream heartbeat by one interval; the
-      // wake just did that heartbeat's job.)
-      await AsyncStorage.setItem(VISIT_TICK_KEY, String(Date.now())).catch(() => {});
+    // ⚠ WAS `Math.max(fix.accuracy ?? 50, LOCATION_EXIT_HYSTERESIS_M)`, which let a
+    // 900 m fix claim presence anywhere within 920 m of the venue. Bounded now.
+    if (distance <= exitBoundM(active.radius, LOCATION_EXIT_HYSTERESIS_M, fix.accuracy ?? null)) {
+      // Still inside by the (bounded) exit test — so do NOT close. But staying open
+      // and BILLING are different questions: the evidence floor moves only on a fix
+      // good enough to pay out on, the same rule the wake confirm and the stream
+      // heartbeat now use. A visit kept alive on a vague fix stops accruing time.
+      if (fixCreditsPresence({
+        fixTrusted: fix.accuracy == null || fix.accuracy < MAX_FIX_ACCURACY_M,
+        distanceM: distance,
+        radiusM: active.radius,
+        accuracyM: fix.accuracy ?? null,
+      })) {
+        await AsyncStorage.setItem(VISIT_TICK_KEY, String(Date.now())).catch(() => {});
+      }
       return;
     }
 
@@ -2788,7 +2859,7 @@ export async function reconcileActiveSessionFromWake(): Promise<void> {
     const endedAt = Math.max(active.entryTimestamp, Number.isFinite(tick) ? tick : 0);
     console.warn(
       `[Geofence] Wake reconcile: fix is ${Math.round(distance)}m from "${active.partnerName}" ` +
-      `(radius ${active.radius}m + ${Math.round(buffer)}m buffer) — finalizing zombie session, ` +
+      `(bound ${Math.round(exitBoundM(active.radius, LOCATION_EXIT_HYSTERESIS_M, fix.accuracy ?? null))}m) — finalizing zombie session, ` +
       `ended ${Math.round((Date.now() - endedAt) / 60_000)}min ago by last inside-evidence.`,
     );
     await finalizeActiveGeofence(undefined, endedAt);
@@ -3468,9 +3539,32 @@ async function heartbeatVisitStream(active: StoredGeofence, coords: Location.Loc
     // and the UI both run this), and a fresh context starts at 0 — so the
     // persisted value is still the cross-context floor. It just no longer has to
     // win a race it structurally cannot win.
-    const persisted = Number((await AsyncStorage.getItem(VISIT_TICK_KEY)) ?? 0);
+    const persisted = Number((await AsyncStorage.getItem(VISIT_TICK_THROTTLE_KEY)) ?? 0);
     if (now - persisted < VISIT_TICK_INTERVAL_MS) return;
-    await AsyncStorage.setItem(VISIT_TICK_KEY, String(now));
+    await AsyncStorage.setItem(VISIT_TICK_THROTTLE_KEY, String(now));
+
+    // The heartbeat proves the STREAM is alive. Whether it also proves the USER is
+    // present is a separate question with a separate answer — and billing the wrong
+    // one cost 19 minutes of phantom session time on 2026-08-10, because opening the
+    // app anywhere woke the stream and the stamp went in unconditionally.
+    //
+    // The credit floor moves only on a fix that would pass the same test the wake
+    // confirm and the wake reconciler use. Everything below this line still runs:
+    // liveness, the late-open retry and the dwell machine are unaffected.
+    {
+      const { fixCreditsPresence } = await import('@/lib/health/gymPresence');
+      const distanceM = (active.latitude != null && active.longitude != null)
+        ? haversineMetres(coords.latitude, coords.longitude, active.latitude, active.longitude)
+        : null;
+      if (fixCreditsPresence({
+        fixTrusted: coords.accuracy == null || coords.accuracy < MAX_FIX_ACCURACY_M,
+        distanceM,
+        radiusM: active.radius ?? null,
+        accuracyM: coords.accuracy ?? null,
+      })) {
+        await AsyncStorage.setItem(VISIT_TICK_KEY, String(now));
+      }
+    }
 
     if (!active.visitId) {
       // Late-open. openGymVisit fires exactly once, at check-in — but check-in can
