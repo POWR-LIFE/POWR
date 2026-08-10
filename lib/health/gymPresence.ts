@@ -82,6 +82,21 @@ export function exitBoundM(radiusM: number, hysteresisM: number, accuracyM: numb
 export const EXIT_READINGS_REQUIRED = 2;
 
 /**
+ * How old a fix may be and still justify BILLING the time up to now.
+ *
+ * The dwell stream delivers roughly every 60 s while checked in, so two minutes
+ * is one tick plus generous jitter: fresh enough that a walk-out stops earning
+ * almost immediately, loose enough that a stationary phone indoors still has
+ * something creditable to answer a wake with.
+ *
+ * ⚠ DELIBERATELY NOT APPLIED TO `inside`. Staying open and billing have opposite
+ * risk profiles — the same asymmetry EXIT_ACCURACY_CREDIT_CAP_M documents. A
+ * stale fix must still hold a real session open (refusing coarse fixes there
+ * starved entire dwells on 07-03 and 07-11); it just must not pay for it.
+ */
+export const MAX_CREDIT_FIX_AGE_MS = 120 * 1000;
+
+/**
  * Does this fix justify BILLING the time up to now — as opposed to merely keeping
  * the session open?
  *
@@ -104,10 +119,22 @@ export function fixCreditsPresence(opts: {
   distanceM: number | null;
   radiusM: number | null;
   accuracyM: number | null;
+  /** Age of the fix at the moment of the decision. Omit only where genuinely
+   *  unknowable — a missing age is treated as acceptable so existing callers are
+   *  unchanged, but every caller that CAN supply it must. */
+  fixAgeMs?: number | null;
 }): boolean {
-  const { fixTrusted, distanceM, radiusM, accuracyM } = opts;
+  const { fixTrusted, distanceM, radiusM, accuracyM, fixAgeMs } = opts;
   if (!fixTrusted) return false;
   if (distanceM == null || radiusM == null) return false;
+  // ⚠ A PRECISE FIX IS NOT A PRESENT ONE. Field 2026-08-10 12:45:02Z: this
+  // returned true on accuracy 28 m / distance 18 m and stamped last_proven_at —
+  // four minutes AFTER the user walked out, from a fix that was already 219 s old
+  // when it was used. The other handset in the same pocket read 193 m at that
+  // instant. Trusted accuracy and a short distance describe the fix; only its age
+  // describes WHEN it was true, and this test had no opinion about that at all —
+  // while the very same event logged `stream_fix_age_s: 219` beside the verdict.
+  if (fixAgeMs != null && fixAgeMs > MAX_CREDIT_FIX_AGE_MS) return false;
   return distanceM <= radiusM + (accuracyM ?? 0);
 }
 

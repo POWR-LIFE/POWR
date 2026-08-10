@@ -12,6 +12,7 @@ import {
   EXIT_COOLDOWN_BUFFER_MS,
   exitBoundM,
   fixCreditsPresence,
+  MAX_CREDIT_FIX_AGE_MS,
   MAX_GYM_SESSION_MS,
   type StepSample,
 } from '@/lib/health/gymPresence';
@@ -160,6 +161,40 @@ describe('fixCreditsPresence — strict to credit, loose to close', () => {
   it('refuses an untrusted fix however close it claims to be', () => {
     // The phantom-confirm signature: accuracy 574, distance 49.
     expect(fixCreditsPresence({ fixTrusted: false, distanceM: 49, radiusM: RADIUS, accuracyM: 574 })).toBe(false);
+  });
+
+  it('REFUSES the field case that stamped proof 4 min after the owner left', () => {
+    // ⚠ REGRESSION GUARD — 2026-08-10 12:45:02Z, Android visit 95a96e93.
+    // accuracy 28 / distance 18 against a 40 m fence: precise, close, and
+    // completely out of date. The fix was 219 s old and the other handset in the
+    // same pocket read 193 m. Precision described the fix; only age described
+    // whether it was still true.
+    expect(fixCreditsPresence({
+      fixTrusted: true, distanceM: 18, radiusM: 40, accuracyM: 28, fixAgeMs: 219_000,
+    })).toBe(false);
+  });
+
+  it('credits that same fix when it is fresh', () => {
+    expect(fixCreditsPresence({
+      fixTrusted: true, distanceM: 18, radiusM: 40, accuracyM: 28, fixAgeMs: 5_000,
+    })).toBe(true);
+  });
+
+  it('treats an unknown age as acceptable, so pre-OTA bundles keep earning', () => {
+    // The client only started sending fix_age_s on 2026-08-10. A phone that never
+    // takes the OTA must not silently stop being credited.
+    expect(fixCreditsPresence({
+      fixTrusted: true, distanceM: 18, radiusM: 40, accuracyM: 28,
+    })).toBe(true);
+    expect(fixCreditsPresence({
+      fixTrusted: true, distanceM: 18, radiusM: 40, accuracyM: 28, fixAgeMs: null,
+    })).toBe(true);
+  });
+
+  it('accepts a fix exactly at the age ceiling and refuses one past it', () => {
+    const base = { fixTrusted: true, distanceM: 18, radiusM: 40, accuracyM: 28 };
+    expect(fixCreditsPresence({ ...base, fixAgeMs: MAX_CREDIT_FIX_AGE_MS })).toBe(true);
+    expect(fixCreditsPresence({ ...base, fixAgeMs: MAX_CREDIT_FIX_AGE_MS + 1 })).toBe(false);
   });
 
   it('refuses when geometry is unknown rather than assuming presence', () => {

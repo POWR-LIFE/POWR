@@ -316,6 +316,9 @@ let _locationStreamEnsuredThisProcess = false;
 // fires (closed app). Require the fix to be clearly outside the circle before
 // trusting it, so GPS noise can't flap a genuinely-inside session out early.
 const LOCATION_EXIT_HYSTERESIS_M = 50;
+/** How stale a fix the exit backstop will reason about. See its call site: a
+ *  ten-minute cache let a departed user look present for the whole walk out. */
+export const EXIT_BACKSTOP_FIX_MAX_AGE_MS = 90 * 1000;
 
 // Accounts that bypass the one-session-per-day guard during testing
 const DEV_TEST_EMAILS = new Set(['jamiemasonwright@gmail.com']);
@@ -1208,7 +1211,19 @@ async function sweepForMissedCheckIn(): Promise<void> {
         const elapsed = typeof a.entryTimestamp === 'number' ? Date.now() - a.entryTimestamp : 0;
         if (elapsed >= getGymUpgradeMinutes() * 60_000
             && a.latitude != null && a.longitude != null && a.radius != null) {
-          const fix = await Location.getLastKnownPositionAsync({ maxAge: 10 * 60_000 }).catch(() => null);
+          // ⚠ WAS `maxAge: 10 * 60_000`, and that made the backstop argue about
+          // where the user was TEN MINUTES AGO. Field 2026-08-10: the user left at
+          // 12:41, this branch ran at 12:44:02 and 12:47:11 against cached fixes
+          // still placing them 27 m from the centre, and the native GMS exit beat
+          // it by five and a half minutes — on the one platform this backstop
+          // exists to rescue. The same staleness fed the check-in sweep a 294 s
+          // old fix on the walk in.
+          //
+          // 90 s is one dwell-stream tick plus headroom: fresh enough that a
+          // walk-out is visible, loose enough that a stationary phone still has
+          // something to answer with. A missing fix is not a decision — the branch
+          // simply does nothing, exactly as before.
+          const fix = await Location.getLastKnownPositionAsync({ maxAge: EXIT_BACKSTOP_FIX_MAX_AGE_MS }).catch(() => null);
           const acc = fix?.coords.accuracy ?? null;
           // `<=`, deliberately NOT the `>=` used by evaluateLocationFix's isCoarse.
           // That gate rejects exactly-100 because a wrong answer there INVENTS or
@@ -1275,6 +1290,27 @@ async function sweepForMissedCheckIn(): Promise<void> {
               // 'no_permission'. See lib/backgroundHealth.ts.
               await finalizeActiveGeofence();
               handled = true;
+            } else {
+              // ⚠ THE SILENT CASE IS WHY 2026-08-10 WAS UNREADABLE. This branch
+              // used to log NOTHING unless it fired, so three consecutive sweeps
+              // during a real walk-out produced `session_active` rows carrying no
+              // geometry at all — indistinguishable from "the backstop never ran",
+              // "it ran and found us inside", and "it is one reading short". It is
+              // the same blind spot that cost the 08-08 run its certainty on
+              // evaluateLocationFix, fixed there and not here.
+              //
+              // The sweep is already ~3 min apart and this only runs past the
+              // upgrade, so an unthrottled row costs nothing.
+              logRegionEvent(a.regionId ?? 'sweep', 'sweep', {
+                outcome:     'exit_check',
+                distance_m:  Math.round(dist),
+                bound_m:     Math.round(bound),
+                acc_m:       acc != null ? Math.round(acc) : null,
+                fix_age_s:   Math.round((Date.now() - fix.timestamp) / 1000),
+                elapsed_min: Math.round(elapsed / 60_000),
+                trusted,
+                readings,
+              });
             }
           }
         }
@@ -1585,7 +1621,7 @@ async function recordDwellSession(activeGeofence: StoredGeofence, staleLockMs: n
       }
     } catch { /* no tick to bound by — keep the clock, as before */ }
   }
-  const dwellMs = endedAtMs - activeGeofence.entryTimestamp;
+  let dwellMs = endedAtMs - activeGeofence.entryTimestamp;
   try {
     // Backgrounded, the auth machinery is the enemy. A cold headless runtime
     // always takes authFresh's resync branch (its remembered token is null by
@@ -1606,8 +1642,26 @@ async function recordDwellSession(activeGeofence: StoredGeofence, staleLockMs: n
     // ticket RPCs kept landing), so backgrounding is not what causes it, and the
     // AppState gate above leaves the foreground as the ONLY transport with no
     // ticket fallback.
+    // ⚠ NO LONGER GATED ON AppState, and that is the point. Field 2026-08-10
+    // 12:54–12:57Z: the user opened the app AFTER a completed visit, this path
+    // took the foreground branch, and ensureFreshSession('record_dwell_session')
+    // timed out at 30 s four times in a row (12:54:22, 12:54:52, 12:55:54, and
+    // again under flush_pending_claims at 12:56:36). Each partial retry re-wrote
+    // ended_at to the wall clock, so a 52m49s visit was recorded as 69 minutes and
+    // still climbing — purely because the app was open.
+    //
+    // The persisted token is a local AsyncStorage read that returns null the
+    // moment it is spent, so this cannot bypass rotation: a genuinely stale token
+    // still falls through to ensureFreshSession below, which remains the only
+    // path allowed to rotate. It just stops a healthy token from being ignored
+    // because the UI happens to be mounted.
+    //
+    // `backgrounded` still exists below and is still AppState-based: it gates the
+    // claim RELAY, which is a different question (a client call to
+    // /functions/v1/* never arrives from a backgrounded Android app). Only the
+    // AUTH read is decoupled here.
     const backgrounded = AppState.currentState !== 'active';
-    const bgAuth = backgrounded ? await readBackgroundAuth() : null;
+    const bgAuth = await readBackgroundAuth();
 
     let userId: string;
     if (bgAuth) {
@@ -1622,6 +1676,52 @@ async function recordDwellSession(activeGeofence: StoredGeofence, staleLockMs: n
         return { outcome: 'error' };
       }
       userId = authSession.user.id;
+    }
+
+    // ── A FINISHED VISIT IS A CEILING, NOT A SUGGESTION ─────────────────────
+    //
+    // Field 2026-08-10: visit 95a96e93 closed at 12:46:33 with the user 6.5 km
+    // away, then the app was opened and a FRESH active record was created for
+    // that already-closed visit. With no frozen endedAtMs (this record was not
+    // born of a finalize) and no VISIT_TICK_KEY (finalize deletes it, see the
+    // removeItem below), `endedAtMs` fell straight through to Date.now() and
+    // every retry re-wrote it: 3923 s → 4122 s → 4145 s, a 52m49s visit recorded
+    // as 69 minutes and still climbing. duration_sec is greatest(...) server-side
+    // so none of it could ever be walked back.
+    //
+    // The visit's own ended_at is the honest ceiling and the server already knows
+    // it. One cheap REST read on the persisted token — no auth machinery, the
+    // same transport the wake path has always trusted.
+    //
+    // ⚠ IT CLAMPS, IT DOES NOT REFUSE. A visit closed server-side by the reaper
+    // with the claim still outstanding is a LEGITIMATE late claim, and refusing
+    // it outright would reinstate the wedge the NEVER SHRINK comment records from
+    // 2026-08-06. Only an already-recorded session is skipped outright, because
+    // that has nothing left to write.
+    if (activeGeofence.visitId && bgAuth) {
+      try {
+        const { data: visitRows } = await bgSelect<{ ended_at: string | null }>(
+          'gym_visits',
+          `id=eq.${activeGeofence.visitId}&select=ended_at`,
+          bgAuth,
+        );
+        const closedAt = visitRows?.[0]?.ended_at ? Date.parse(visitRows[0].ended_at) : NaN;
+        if (Number.isFinite(closedAt)) {
+          if (activeGeofence.sessionRecorded && !activeGeofence.pointsPending) {
+            console.log('[Geofence] Visit already closed and session already recorded — nothing to extend.');
+            return { outcome: 'in_flight' };
+          }
+          if (closedAt > activeGeofence.entryTimestamp && closedAt < endedAtMs) {
+            console.log(
+              `[Geofence] Visit closed at ${new Date(closedAt).toISOString()} — clamping session end ` +
+              `(was ${Math.round((endedAtMs - activeGeofence.entryTimestamp) / 60_000)}min, ` +
+              `now ${Math.round((closedAt - activeGeofence.entryTimestamp) / 60_000)}min).`,
+            );
+            endedAtMs = closedAt;
+            dwellMs = endedAtMs - activeGeofence.entryTimestamp;
+          }
+        }
+      } catch { /* unreadable — keep the pre-existing bound, never block a claim */ }
     }
 
     const startedAt   = new Date(activeGeofence.entryTimestamp);
@@ -2664,6 +2764,15 @@ async function finalizeActiveGeofenceInner(expectedRegionId?: string, endedAtOve
     await AsyncStorage.removeItem(VISIT_TICK_KEY).catch(() => {});
     await AsyncStorage.removeItem(VISIT_TICK_THROTTLE_KEY).catch(() => {});
     await AsyncStorage.removeItem(EXIT_STREAK_KEY).catch(() => {});
+    // The check-in banner's cooldown belongs to the visit that just ended too —
+    // otherwise a spurious check-in can silently eat the REAL one's notification
+    // for the next half hour. See clearCheckInCooldown for the field case.
+    if (active.regionId) {
+      try {
+        const { clearCheckInCooldown } = await import('@/lib/notifications');
+        await clearCheckInCooldown(active.regionId);
+      } catch { /* cosmetic — never let it cost the finalize */ }
+    }
     _lastTickAtMs = 0;
   } catch {
     return false;
@@ -3276,6 +3385,11 @@ export async function runVisitCheck(
 
   let coords: Location.LocationObjectCoords | null = null;
   let fixSource = 'none';
+  // Age of whatever fix we end up reasoning about, for the CREDIT decision only.
+  // `last_known` is capped at 60 s and `acquired` is fresh by construction, so
+  // only the stream cache can be meaningfully stale — and it was, by 219 s, when
+  // it stamped proof of presence four minutes after the user left (2026-08-10).
+  let fixAgeMs: number | null = null;
 
   // ORDER MATTERS, and it is the opposite of what it was.
   //
@@ -3301,13 +3415,15 @@ export async function runVisitCheck(
   if (streamFix && Date.now() - streamFix.at <= STREAM_FIX_MAX_AGE_MS) {
     coords = { latitude: streamFix.latitude, longitude: streamFix.longitude, accuracy: streamFix.accuracy } as Location.LocationObjectCoords;
     fixSource = 'stream_cache';
-    trace.stream_fix_age_s = Math.round((Date.now() - streamFix.at) / 1000);
+    fixAgeMs = Date.now() - streamFix.at;
+    trace.stream_fix_age_s = Math.round(fixAgeMs / 1000);
   } else {
     trace.stream_fix_age_s = streamFix ? Math.round((Date.now() - streamFix.at) / 1000) : 'absent';
     const cached = await tracedStep('last_known', trace, () => Location.getLastKnownPositionAsync({ maxAge: 60_000 }), STEP_TIMEOUT_MS);
     if (cached) {
       coords = cached.coords;
       fixSource = 'last_known';
+      fixAgeMs = typeof cached.timestamp === 'number' ? Date.now() - cached.timestamp : null;
     } else {
       // GPS first, network second — see acquireFixPreferHigh. This is already the
       // last resort (stream cache and last-known both missed), so it is the one
@@ -3322,9 +3438,11 @@ export async function runVisitCheck(
       );
       coords = fresh?.coords ?? null;
       fixSource = fresh ? 'acquired' : 'timeout';
+      fixAgeMs = fresh ? 0 : null;
     }
   }
   trace.fix_source = fixSource;
+  if (fixAgeMs != null) trace.fix_age_ms = fixAgeMs;
   console.log(`[Geofence] Visit check (${stage}): fix source = ${fixSource}.`);
 
   // No fix = no proof = no credit. Leave the visit open; the server will nudge
@@ -3384,6 +3502,11 @@ export async function runVisitCheck(
       distance_m: distance != null ? Math.round(distance) : null,
       accuracy_m: coords.accuracy != null ? Math.round(coords.accuracy) : null,
       fix_trusted: fixTrusted,
+      // Top-level, not just inside `trace`, because the SERVER's v_proven mirror
+      // reads this shape — and it must apply the same age rule as
+      // fixCreditsPresence or the two answers diverge. Null means "unknown", which
+      // both sides treat as acceptable rather than inventing a failure.
+      fix_age_s: fixAgeMs != null ? Math.round(fixAgeMs / 1000) : null,
       visit_mismatch: visitMismatch,
       trace,
     };
@@ -3472,6 +3595,7 @@ export async function runVisitCheck(
         distanceM: distance,
         radiusM,
         accuracyM: coords.accuracy ?? null,
+        fixAgeMs,
       });
     } catch {
       provenInside = false;

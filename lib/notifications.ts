@@ -308,6 +308,22 @@ const CHECK_IN_LAST_FIRED_PREFIX = '@powr/check_in_last_fired/';
 /** Returns whether the banner was scheduled OR suppressed by cooldown.
  *  true = treat as "user already told locally" (no server copy); false = suppressed (pref off / no permission).
  *  Throws if scheduling fails (caller should fall back to server announce on Android). */
+/** Clears the check-in cooldown for a venue.
+ *
+ *  ⚠ CALLED WHEN A VISIT ENDS, and it is the fix for a real lost notification.
+ *  Field 2026-08-10: a phantom check-in at 11:32:48 fired the banner and stamped
+ *  this cooldown; the REAL check-in 15m23s later fell inside the 30-minute window
+ *  and drew nothing. The user walked into a gym, earned 24 points, and was never
+ *  told they were in — the server-side ANNOUNCE pass that would have covered it
+ *  was deleted on 2026-08-07 on the premise that the local banner always fires.
+ *
+ *  A finished visit means the next entry is a genuinely new arrival, so the
+ *  cooldown — which exists to damp repeat ENTER events within one visit — has
+ *  nothing left to protect. */
+export async function clearCheckInCooldown(locationId: string): Promise<void> {
+  await AsyncStorage.removeItem(`${CHECK_IN_LAST_FIRED_PREFIX}${locationId}`).catch(() => {});
+}
+
 export async function notifyCheckInAvailable(partnerName: string, locationId: string): Promise<boolean> {
   if (!(await isCheckInReminderEnabled())) return false;
 
@@ -327,6 +343,11 @@ export async function notifyCheckInAvailable(partnerName: string, locationId: st
       if (Number.isFinite(lastFired) && Date.now() - lastFired < CHECK_IN_COOLDOWN_MS) return true;
     }
   } catch { /* non-fatal — fall through and notify */ }
+
+  // Same reason as presentDisplayPush: this fires from the headless geofence task,
+  // and a channel that only the UI root creates may not exist yet on Android.
+  // Idempotent — creating an existing channel is a no-op.
+  await ensureAndroidChannels().catch(() => {});
 
   await Notifications.scheduleNotificationAsync({
     identifier: `powr-check_in_reminder-${locationId}`,

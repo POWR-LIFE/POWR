@@ -158,6 +158,27 @@ export async function presentDisplayPush(payload: DisplayPushPayload): Promise<b
   if (notifType && !data.type) data.type = notifType;
   if (route && !data.route) data.route = route;
 
+  // ⚠ THE CHANNEL MUST EXIST BEFORE WE SCHEDULE, AND ONLY THE UI USED TO MAKE IT.
+  //
+  // ensureAndroidChannels() was called from app/_layout.tsx alone — the UI root.
+  // Every banner on this path is scheduled from a HEADLESS task, which on a device
+  // whose UI has not mounted since install/update targets a channel that does not
+  // exist. Android then accepts the schedule call and drops the notification, so
+  // scheduleNotificationAsync resolves, markPushDisplayed stamps delivered_at, and
+  // the user sees nothing — telemetry that says "delivered" for a banner that was
+  // never posted.
+  //
+  // Field 2026-08-10: three Android pushes (12:19:04, 12:29:06, 12:54:02) all
+  // stamped delivered_at and none appeared, and "General" was absent from the
+  // device's notification panel entirely. Creating a channel that already exists
+  // is a no-op, so this is cheap and idempotent.
+  if (Platform.OS === 'android') {
+    try {
+      const { ensureAndroidChannels } = await import('@/lib/notifications');
+      await ensureAndroidChannels();
+    } catch { /* never let channel setup cost the banner */ }
+  }
+
   try {
     await Notifications.scheduleNotificationAsync({
       // Stable per send: if the OS somehow delivers the same message twice past

@@ -110,15 +110,51 @@ async function computeStreakFromSessions(): Promise<{ current: number; longest: 
     try {
         const { data: existing } = await supabase
             .from('user_streaks')
-            .select('longest_streak')
+            .select('current_streak, longest_streak, last_activity_date')
             .eq('user_id', user.id)
             .maybeSingle();
-        await supabase.from('user_streaks').upsert({
-            user_id: user.id,
-            current_streak: result.current,
-            longest_streak: Math.max(result.longest, existing?.longest_streak ?? 0),
-            last_activity_date: lastActiveDate,
-        }, { onConflict: 'user_id' });
+
+        // ⚠ THIS WRITE MUST NEVER REGRESS THE STORED VALUE.
+        //
+        // Field 2026-08-10 12:53:56Z: the user opened the app after a completed
+        // gym session and this sync overwrote a correct `4 / 2026-08-10` with
+        // `3 / 2026-08-09` — the pre-session answer — while the +3 "4-day streak
+        // bonus" stayed banked. The account was paid for a 4-day streak and then
+        // told it was on 3. It self-corrected four minutes later on a complete
+        // read, which is the tell: the recompute above degrades silently. Line
+        // "(error ? [] : (data ?? []))" turns a failed read into an empty list,
+        // and supabase-js does not throw on query errors, so a partial or failed
+        // read is indistinguishable here from a genuine gap in activity.
+        //
+        // `longest_streak` was already guarded with Math.max for exactly this
+        // reason. The other two fields were not, and they are the ones the user
+        // sees. A client recompute is the LEAST reliable writer of a value the
+        // server also derives (_shared/streak.ts calls user_streaks.current_streak
+        // "a denormalised cache"), so it gets to raise this cache, never lower it.
+        //
+        // A genuine streak BREAK is not lost by this: it lands via the server's
+        // own recompute, and locally the value simply stays until then rather
+        // than flickering down and back up on every cold start.
+        const storedCurrent = existing?.current_streak ?? 0;
+        const storedLast = existing?.last_activity_date ?? null;
+        const regresses = result.current < storedCurrent
+            || (lastActiveDate != null && storedLast != null && lastActiveDate < storedLast)
+            || (lastActiveDate == null && storedLast != null);
+
+        if (!regresses) {
+            await supabase.from('user_streaks').upsert({
+                user_id: user.id,
+                current_streak: result.current,
+                longest_streak: Math.max(result.longest, existing?.longest_streak ?? 0),
+                last_activity_date: lastActiveDate,
+            }, { onConflict: 'user_id' });
+        } else if (result.longest > (existing?.longest_streak ?? 0)) {
+            // Still let a genuinely higher longest through — it is monotonic and
+            // cannot be wrong in the direction that hurts.
+            await supabase.from('user_streaks').update({
+                longest_streak: result.longest,
+            }).eq('user_id', user.id);
+        }
     } catch {
         // Non-fatal — streak display is still correct even if sync fails
     }
