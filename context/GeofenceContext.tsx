@@ -319,6 +319,11 @@ const LOCATION_EXIT_HYSTERESIS_M = 50;
 /** How stale a fix the exit backstop will reason about. See its call site: a
  *  ten-minute cache let a departed user look present for the whole walk out. */
 export const EXIT_BACKSTOP_FIX_MAX_AGE_MS = 90 * 1000;
+/** How long the backstop's one-shot acquisition may run when the cache is empty
+ *  (see its call site). A race bound, not an expectation — Balanced outdoors
+ *  answers in 1-5 s; the bound exists for the indoor/Doze case where it might
+ *  not answer at all. */
+export const EXIT_BACKSTOP_ACQUIRE_TIMEOUT_MS = 10 * 1000;
 
 // Accounts that bypass the one-session-per-day guard during testing
 const DEV_TEST_EMAILS = new Set(['jamiemasonwright@gmail.com']);
@@ -1223,7 +1228,41 @@ async function sweepForMissedCheckIn(): Promise<void> {
           // walk-out is visible, loose enough that a stationary phone still has
           // something to answer with. A missing fix is not a decision — the branch
           // simply does nothing, exactly as before.
-          const fix = await Location.getLastKnownPositionAsync({ maxAge: EXIT_BACKSTOP_FIX_MAX_AGE_MS }).catch(() => null);
+          let fix = await Location.getLastKnownPositionAsync({ maxAge: EXIT_BACKSTOP_FIX_MAX_AGE_MS }).catch(() => null);
+          let fixSrc: 'cache' | 'acquired' = 'cache';
+          if (!fix) {
+            // ⚠ "A missing fix is not a decision" made this backstop BLIND on the
+            // one platform it exists to rescue. Field 2026-08-11: the user walked
+            // out at ~09:52, the dwell stream died with them (its newest fix aged
+            // to 233 s), and every wake for the next 20 minutes found an empty
+            // 90 s cache and did nothing — while the fused provider's cached
+            // WiFi/cell pin kept claiming 16 m from centre at 226-1000 m
+            // accuracy. A departed Android mints no fixes on its own, so waiting
+            // passively meant waiting for the 45-minute reaper.
+            //
+            // So ASK, once, bounded, and only on this branch: past the upgrade
+            // there is nothing left to earn, we are provably awake (this IS a
+            // wake), and the race caps a hung acquisition at 10 s instead of the
+            // whole sweep — the same hang class getArmFix refuses for the arm
+            // path. Balanced, not High: outdoors-walking Balanced reads 20-50 m,
+            // decisive against a ~120 m bound, without High's cost profile.
+            // A null after the race leaves the branch doing nothing, as before —
+            // but no longer silently.
+            fix = await Promise.race([
+              Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+              new Promise<null>((resolve) => setTimeout(() => resolve(null), EXIT_BACKSTOP_ACQUIRE_TIMEOUT_MS)),
+            ]).catch(() => null);
+            fixSrc = 'acquired';
+            if (!fix) {
+              // The starved case, previously invisible — the silence that made
+              // the 08-11 twenty-minute open visit unreadable live.
+              logRegionEvent(a.regionId ?? 'sweep', 'sweep', {
+                outcome:     'exit_check',
+                fix_src:     'acquire_timeout',
+                elapsed_min: Math.round(elapsed / 60_000),
+              });
+            }
+          }
           const acc = fix?.coords.accuracy ?? null;
           // `<=`, deliberately NOT the `>=` used by evaluateLocationFix's isCoarse.
           // That gate rejects exactly-100 because a wrong answer there INVENTS or
@@ -1282,6 +1321,7 @@ async function sweepForMissedCheckIn(): Promise<void> {
                 elapsed_min: Math.round(elapsed / 60_000),
                 trusted,
                 readings,
+                fix_src: fixSrc,
               });
               await AsyncStorage.removeItem(EXIT_STREAK_KEY).catch(() => {});
               // No recordBackgroundHealth here: this branch returns above the
@@ -1310,6 +1350,7 @@ async function sweepForMissedCheckIn(): Promise<void> {
                 elapsed_min: Math.round(elapsed / 60_000),
                 trusted,
                 readings,
+                fix_src:     fixSrc,
               });
             }
           }
