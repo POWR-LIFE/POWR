@@ -1229,7 +1229,7 @@ async function sweepForMissedCheckIn(): Promise<void> {
           // something to answer with. A missing fix is not a decision — the branch
           // simply does nothing, exactly as before.
           let fix = await Location.getLastKnownPositionAsync({ maxAge: EXIT_BACKSTOP_FIX_MAX_AGE_MS }).catch(() => null);
-          let fixSrc: 'cache' | 'acquired' = 'cache';
+          let fixSrc: 'cache' | 'acquired' | 'acquired_high' = 'cache';
           if (!fix) {
             // ⚠ "A missing fix is not a decision" made this backstop BLIND on the
             // one platform it exists to rescue. Field 2026-08-11: the user walked
@@ -1248,20 +1248,52 @@ async function sweepForMissedCheckIn(): Promise<void> {
             // decisive against a ~120 m bound, without High's cost profile.
             // A null after the race leaves the branch doing nothing, as before —
             // but no longer silently.
-            fix = await Promise.race([
-              Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+            const acquireFix = (accuracy: Location.Accuracy) => Promise.race([
+              Location.getCurrentPositionAsync({ accuracy }),
               new Promise<null>((resolve) => setTimeout(() => resolve(null), EXIT_BACKSTOP_ACQUIRE_TIMEOUT_MS)),
             ]).catch(() => null);
+            const fixAgeMs = (f: Location.LocationObject | null) =>
+              f ? Date.now() - f.timestamp : null;
+            const isStale = (f: Location.LocationObject | null) => {
+              const age = fixAgeMs(f);
+              return age != null && age > EXIT_BACKSTOP_FIX_MAX_AGE_MS;
+            };
+
+            let acquired = await acquireFix(Location.Accuracy.Balanced);
             fixSrc = 'acquired';
-            if (!fix) {
+            if (isStale(acquired)) {
+              // ⚠ AN "ACQUIRED" FIX CAN BE A CACHED ONE WEARING A NEW REQUEST.
+              // Field 2026-08-11 PM: this branch fired as designed, but Balanced
+              // getCurrentPositionAsync let the fused provider answer with the
+              // SAME five-minute-old WiFi/cell pin twice in a row — which then
+              // voted "inside" for a user long gone. Balanced is allowed to
+              // satisfy a request from cache; only its accuracy is a hint, its
+              // freshness is not. So the 90 s cache gate applies to ACQUIRED
+              // fixes too — a stale answer is no answer.
+              //
+              // Escalate once to High before giving up: High compels an actual
+              // hardware measurement rather than a cache read, and its cost
+              // profile is acceptable here precisely because this branch is
+              // rare, past-upgrade, and already provably awake. Same 10 s race.
+              acquired = await acquireFix(Location.Accuracy.High);
+              fixSrc = 'acquired_high';
+            }
+            if (!acquired || isStale(acquired)) {
               // The starved case, previously invisible — the silence that made
-              // the 08-11 twenty-minute open visit unreadable live.
+              // the 08-11 twenty-minute open visit unreadable live. A stale
+              // survivor lands here too (as acquire_timeout): rejected, not
+              // reasoned about — but its age is logged so a cache-serving
+              // provider shows up in the field as what it is.
+              const staleAge = fixAgeMs(acquired);
               logRegionEvent(a.regionId ?? 'sweep', 'sweep', {
                 outcome:     'exit_check',
                 fix_src:     'acquire_timeout',
+                ...(staleAge != null ? { stale_age_s: Math.round(staleAge / 1000) } : {}),
                 elapsed_min: Math.round(elapsed / 60_000),
               });
+              acquired = null;
             }
+            fix = acquired;
           }
           const acc = fix?.coords.accuracy ?? null;
           // `<=`, deliberately NOT the `>=` used by evaluateLocationFix's isCoarse.
