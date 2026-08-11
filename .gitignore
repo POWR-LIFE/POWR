@@ -54,3 +54,6 @@ GoogleService-Info.plist
 scripts/import-gyms.js
 
 scripts/import-gyms.js
+
+# Session scratch (agent working files)
+scratchpad/
