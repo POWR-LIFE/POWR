@@ -949,7 +949,7 @@ function logRegionEvent(
   event: 'enter' | 'exit' | 'approach_stream_on' | 'checked_in' | 'stream_start_failed'
     | 'stream_switch_deferred' | 'armed' | 'sentinel_exit' | 'rearm_skipped' | 'sweep'
     | 'visit_stamp_relaxed' | 'visit_stamp_skipped' | 'coarse_rejected' | 'enter_scan'
-    | 'location_revoked',
+    | 'location_revoked' | 'active_patch_refused',
   detail: Record<string, unknown> = {},
 ): void {
   void import('@/lib/gymVisits')
@@ -3529,7 +3529,11 @@ export async function runVisitCheck(
       `[Geofence] Visit check: stored visit ${active.visitId} != server ${serverVisitId} — answering for the server's.`,
     );
     try {
-      const current = raw ? JSON.parse(raw) as StoredGeofence : null;
+      // Fresh read, not a re-parse of `raw` — another context (finalize, a
+      // concurrent stamp) may have moved the record since; a gone key must
+      // never be resurrected by this repair.
+      const rawNow = await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY);
+      const current = rawNow ? JSON.parse(rawNow) as StoredGeofence : null;
       if (current && current.visitId === active.visitId) {
         await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...current, visitId: serverVisitId }));
       }
@@ -3769,6 +3773,63 @@ export async function runVisitCheck(
   }
 }
 
+/** Read-modify-write for every flag mutation of the stored active session.
+ *
+ *  Both 2026-08-11 field bugs were the same write, aimed two different ways: a
+ *  branch captured `{ ...active }` BEFORE an awaited call and persisted that
+ *  snapshot afterwards. In the background the snapshot pre-dated the check-in's
+ *  visitId stamp, so the first claim writer erased the id and every wake
+ *  re-resolved it (`visit: null` sweeps, `reused` each wake — foreground was
+ *  fine only because its snapshot happened to be taken after the stamp). After
+ *  an exit the snapshot post-dated finalizeActiveGeofence's removeItem, so the
+ *  write RESURRECTED the key and the exit backstop kept running against a
+ *  visit the server had already closed.
+ *
+ *  So: merge the patch onto whatever is stored NOW, and refuse outright when
+ *  the key is gone (the session was finalized — never bring it back) or when
+ *  the stored record belongs to a different region (a new session started —
+ *  never bleed one session's flags into another). An entryTimestamp change at
+ *  the SAME region is a concurrent check-in path rewriting the same physical
+ *  visit (see stampVisitOnActive) and patches normally.
+ *
+ *  This shrinks the race to the get→set microtask gap instead of an entire
+ *  network round-trip; it is not a mutex (see heartbeatVisitStream's throttle
+ *  history for why an AsyncStorage lock cannot be one). Returns the merged
+ *  record it wrote, or null when it refused or storage failed — callers treat
+ *  null as "this session is no longer mine to advance". */
+async function patchActiveGeofence(
+  expected: StoredGeofence,
+  patch: Partial<StoredGeofence>,
+  source: string,
+): Promise<StoredGeofence | null> {
+  let current: StoredGeofence | null = null;
+  try {
+    const raw = await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY);
+    current = raw ? JSON.parse(raw) as StoredGeofence : null;
+  } catch {
+    return null; // unreadable — never guess over a write this load-bearing
+  }
+  if (!current) {
+    logRegionEvent(expected.regionId ?? 'exit', 'active_patch_refused', {
+      reason: 'key_gone', source, patch: Object.keys(patch),
+    });
+    return null;
+  }
+  if (current.regionId !== expected.regionId) {
+    logRegionEvent(expected.regionId ?? 'exit', 'active_patch_refused', {
+      reason: 'region_mismatch', source, stored_region: current.regionId ?? null, patch: Object.keys(patch),
+    });
+    return null;
+  }
+  const merged: StoredGeofence = { ...current, ...patch };
+  try {
+    await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify(merged));
+  } catch {
+    return null;
+  }
+  return merged;
+}
+
 /** Immediate (timer-free) dwell state machine driven by the background-location
  *  task while the user is still inside a gym. Mirrors the foreground dwell timer's
  *  branches but acts the moment a GPS batch shows a threshold was crossed — so a
@@ -3782,18 +3843,16 @@ async function advanceActiveSession(active: StoredGeofence, staleLockMs?: number
   // 1. Prior claim was too short / failed — retry once the prod threshold is met.
   if (active.sessionRecorded && active.pointsPending) {
     if (elapsed < prodDwellMs()) return;
-    await AsyncStorage.setItem(
-      ACTIVE_GEOFENCE_KEY,
-      JSON.stringify({ ...active, pointsPending: false, claimAttemptAt: Date.now() }),
-    );
-    const { outcome, sessionId } = await recordDwellSession(active, staleLockMs);
+    const started = await patchActiveGeofence(active, { pointsPending: false, claimAttemptAt: Date.now() }, 'dwell_retry_start');
+    if (!started) return; // finalized under us — the exit path owns this claim now
+    const { outcome, sessionId } = await recordDwellSession(started, staleLockMs);
     if (outcome === 'claimed' && sessionId) {
-      await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...active, pointsPending: false, sessionId }));
+      await patchActiveGeofence(started, { pointsPending: false, sessionId }, 'dwell_retry_claimed');
     } else {
-      await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...active, pointsPending: true }));
+      await patchActiveGeofence(started, { pointsPending: true }, 'dwell_retry_unresolved');
       // Durably queue (frozen at now) on a hard error so a logout/app-kill before the
       // EXIT event can't lose the claim — flushPendingClaims retries it on re-login.
-      if (outcome === 'error') await enqueuePendingClaim({ ...active, endedAtMs: Date.now() });
+      if (outcome === 'error') await enqueuePendingClaim({ ...started, endedAtMs: Date.now() });
     }
     return;
   }
@@ -3802,7 +3861,7 @@ async function advanceActiveSession(active: StoredGeofence, staleLockMs?: number
   if (active.sessionRecorded && active.sessionId && !active.tierUpgraded) {
     if (elapsed < prodUpgradeMs()) return;
     const ok = await upgradeGymTier(active.sessionId, active.partnerName, active.visitId);
-    if (ok) await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...active, tierUpgraded: true }));
+    if (ok) await patchActiveGeofence(active, { tierUpgraded: true }, 'dwell_upgrade');
     return;
   }
 
@@ -3827,30 +3886,27 @@ async function advanceActiveSession(active: StoredGeofence, staleLockMs?: number
     if (!active.sessionId && !active.pointsPending
         && Date.now() - (active.claimAttemptAt ?? 0) > resultGraceMs) {
       console.warn('[Geofence] Claim attempt left no outcome — queueing retry.');
-      const queued = { ...active, pointsPending: true };
-      await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify(queued));
-      if (staleLockMs != null) await advanceActiveSession(queued, staleLockMs);
+      const queued = await patchActiveGeofence(active, { pointsPending: true }, 'dwell_heal');
+      if (queued && staleLockMs != null) await advanceActiveSession(queued, staleLockMs);
     }
     return;
   }
 
   // 3. Initial claim once the dwell threshold is met.
   if (elapsed < minDwellMs()) return;
-  await AsyncStorage.setItem(
-    ACTIVE_GEOFENCE_KEY,
-    JSON.stringify({ ...active, sessionRecorded: true, claimAttemptAt: Date.now() }),
-  );
-  const { outcome, sessionId } = await recordDwellSession(active, staleLockMs);
+  const started = await patchActiveGeofence(active, { sessionRecorded: true, claimAttemptAt: Date.now() }, 'dwell_claim_start');
+  if (!started) return; // finalized under us — the exit path owns this claim now
+  const { outcome, sessionId } = await recordDwellSession(started, staleLockMs);
   if (outcome === 'claimed' && sessionId) {
-    await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...active, sessionRecorded: true, sessionId }));
+    await patchActiveGeofence(started, { sessionRecorded: true, sessionId }, 'dwell_claimed');
   } else if (outcome === 'too_short' || outcome === 'error' || outcome === 'relayed') {
     // relayed: the server is completing the claim — keep pointsPending so the
     // next tick re-enters recordDwellSession, whose relay answers
     // 'already_claimed' and finalizes. Not a failure, so no durable queue.
-    await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...active, sessionRecorded: true, pointsPending: true }));
+    await patchActiveGeofence(started, { sessionRecorded: true, pointsPending: true }, 'dwell_claim_unresolved');
     // Durably queue on a hard error (e.g. logged out) so the claim survives an app
     // kill before EXIT and is flushed on re-login. too_short retries in-gym only.
-    if (outcome === 'error') await enqueuePendingClaim({ ...active, endedAtMs: Date.now() });
+    if (outcome === 'error') await enqueuePendingClaim({ ...started, endedAtMs: Date.now() });
   }
 }
 
@@ -4505,14 +4561,15 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
       const remaining  = prodDwellMs() - elapsed;
       if (remaining <= 0) {
         console.log('[Geofence] Foreground: retrying pending claim now (production threshold met).');
-        await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...activeGeofence, pointsPending: false, claimAttemptAt: Date.now() }));
-        const { outcome, sessionId: retriedId } = await recordDwellSession(activeGeofence);
+        const started = await patchActiveGeofence(activeGeofence, { pointsPending: false, claimAttemptAt: Date.now() }, 'fg_retry_start');
+        if (!started) return; // finalized under us — the exit path owns this claim now
+        const { outcome, sessionId: retriedId } = await recordDwellSession(started);
         if (outcome === 'claimed' && retriedId) {
           // claim-points already fired the session_completed push.
-          await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...activeGeofence, pointsPending: false, sessionId: retriedId }));
+          await patchActiveGeofence(started, { pointsPending: false, sessionId: retriedId }, 'fg_retry_claimed');
         } else {
           // Still failing — restore flag and keep retrying via the poll interval
-          await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...activeGeofence, pointsPending: true }));
+          await patchActiveGeofence(started, { pointsPending: true }, 'fg_retry_unresolved');
           console.log('[Geofence] Retry claim failed — will try again.');
         }
       } else {
@@ -4524,13 +4581,14 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
           const gf: StoredGeofence = JSON.parse(raw2);
           if (!gf.pointsPending) return;
           console.log('[Geofence] Foreground: pending-claim retry timer fired.');
-          await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...gf, pointsPending: false, claimAttemptAt: Date.now() }));
-          const { outcome, sessionId: retriedId } = await recordDwellSession(gf);
+          const started = await patchActiveGeofence(gf, { pointsPending: false, claimAttemptAt: Date.now() }, 'fg_retry_timer_start');
+          if (!started) return; // finalized under us — the exit path owns this claim now
+          const { outcome, sessionId: retriedId } = await recordDwellSession(started);
           if (outcome === 'claimed' && retriedId) {
             // claim-points already fired the session_completed push.
-            await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...gf, pointsPending: false, sessionId: retriedId }));
+            await patchActiveGeofence(started, { pointsPending: false, sessionId: retriedId }, 'fg_retry_timer_claimed');
           } else {
-            await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...gf, pointsPending: true }));
+            await patchActiveGeofence(started, { pointsPending: true }, 'fg_retry_timer_unresolved');
             console.log('[Geofence] Retry claim failed — poll will try again.');
           }
         }, remaining);
@@ -4553,7 +4611,7 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
         console.log('[Geofence] Foreground: upgrade threshold met — upgrading tier now.');
         const upgraded1 = await upgradeGymTier(activeGeofence.sessionId, activeGeofence.partnerName, activeGeofence.visitId);
         if (upgraded1) {
-          await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...activeGeofence, tierUpgraded: true }));
+          await patchActiveGeofence(activeGeofence, { tierUpgraded: true }, 'fg_upgrade');
         }
       } else {
         console.log(`[Geofence] Foreground: scheduling 40-min tier upgrade in ${Math.round(remaining / 1000)}s`);
@@ -4566,7 +4624,7 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
           console.log('[Geofence] Foreground: 40-min upgrade timer fired.');
           const upgraded2 = await upgradeGymTier(gf.sessionId, gf.partnerName, gf.visitId);
           if (upgraded2) {
-            await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...gf, tierUpgraded: true }));
+            await patchActiveGeofence(gf, { tierUpgraded: true }, 'fg_upgrade_timer');
           }
         }, remaining);
       }
@@ -4582,18 +4640,19 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
 
     if (remaining <= 0) {
       console.log('[Geofence] Foreground: dwell already met — recording session now.');
-      await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...activeGeofence, sessionRecorded: true, claimAttemptAt: Date.now() }));
-      const { outcome, sessionId } = await recordDwellSession(activeGeofence);
+      const started = await patchActiveGeofence(activeGeofence, { sessionRecorded: true, claimAttemptAt: Date.now() }, 'fg_claim_start');
+      if (!started) return; // finalized under us — the exit path owns this claim now
+      const { outcome, sessionId } = await recordDwellSession(started);
       if (outcome === 'too_short' || outcome === 'error' || outcome === 'relayed') {
         // too_short: claim rejected because duration < eligibility minimum — retry at PROD_DWELL_MS.
         // error:     transient failure (network, auth, rate-limit, etc.) — retry via the same path,
         //            and durably queue so a logout/app-kill before EXIT can't lose the claim.
         // relayed:   server is completing the claim — the retry's relay resolves it.
-        await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...activeGeofence, sessionRecorded: true, pointsPending: true }));
-        if (outcome === 'error') await enqueuePendingClaim({ ...activeGeofence, endedAtMs: Date.now() });
+        await patchActiveGeofence(started, { sessionRecorded: true, pointsPending: true }, 'fg_claim_unresolved');
+        if (outcome === 'error') await enqueuePendingClaim({ ...started, endedAtMs: Date.now() });
       } else if (outcome === 'claimed' && sessionId) {
         // claim-points already fired the session_completed push.
-        await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...activeGeofence, sessionRecorded: true, sessionId }));
+        await patchActiveGeofence(started, { sessionRecorded: true, sessionId }, 'fg_claimed');
       }
       return;
     }
@@ -4606,18 +4665,19 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
       const gf: StoredGeofence = JSON.parse(raw2);
       if (gf.sessionRecorded) return;
       console.log('[Geofence] Foreground: dwell timer fired — recording session.');
-      await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...gf, sessionRecorded: true, claimAttemptAt: Date.now() }));
-      const { outcome, sessionId } = await recordDwellSession(gf);
+      const started = await patchActiveGeofence(gf, { sessionRecorded: true, claimAttemptAt: Date.now() }, 'fg_claim_timer_start');
+      if (!started) return; // finalized under us — the exit path owns this claim now
+      const { outcome, sessionId } = await recordDwellSession(started);
       if (outcome === 'too_short' || outcome === 'error' || outcome === 'relayed') {
         // too_short: claim rejected because duration < eligibility minimum — retry at PROD_DWELL_MS.
         // error:     transient failure (network, auth, rate-limit, etc.) — retry via the same path,
         //            and durably queue so a logout/app-kill before EXIT can't lose the claim.
         // relayed:   server is completing the claim — the retry's relay resolves it.
-        await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...gf, sessionRecorded: true, pointsPending: true }));
-        if (outcome === 'error') await enqueuePendingClaim({ ...gf, endedAtMs: Date.now() });
+        await patchActiveGeofence(started, { sessionRecorded: true, pointsPending: true }, 'fg_claim_timer_unresolved');
+        if (outcome === 'error') await enqueuePendingClaim({ ...started, endedAtMs: Date.now() });
       } else if (outcome === 'claimed' && sessionId) {
         // claim-points already fired the session_completed push.
-        await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...gf, sessionRecorded: true, sessionId }));
+        await patchActiveGeofence(started, { sessionRecorded: true, sessionId }, 'fg_claim_timer_claimed');
       }
     }, remaining);
   }, []);
