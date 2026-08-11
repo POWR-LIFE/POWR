@@ -224,14 +224,20 @@ Deno.serve(async (req) => {
   }
 
   // Derive ended_at from the recorded duration so the row stays internally
-  // consistent (started_at + duration). Only write when it actually changes —
-  // a converged retry then costs no write at all.
-  if (recordedSec !== session.duration_sec) {
+  // consistent (started_at + duration). GROWS-ONLY, like the exit close's
+  // greatest() guard (20260808095300): recordedSec is an estimate, and on a
+  // post-close replay its tier floor can come in BELOW the exit close's real
+  // length — field 2026-08-11, a replayed upgrade mark rewrote a closed 3276 s
+  // session back to 2400 s and dragged ended_at with it (#345). The duration_sec
+  // filter repeats the guard inside the UPDATE so a close that grew the row
+  // after our read can't be shrunk either; equality is skipped for free.
+  if (recordedSec > (session.duration_sec ?? 0)) {
     const endedAt = new Date(startedMs + recordedSec * 1000);
     await supabase
       .from('activity_sessions')
       .update({ ended_at: endedAt.toISOString(), duration_sec: recordedSec })
-      .eq('id', session.id);
+      .eq('id', session.id)
+      .or(`duration_sec.is.null,duration_sec.lt.${recordedSec}`);
     console.log(
       `[upgrade-gym-tier] duration ${session.duration_sec}s → ${recordedSec}s ` +
       `(elapsed ${elapsedSec}s, presence ${presenceSec ?? 'none'})`,

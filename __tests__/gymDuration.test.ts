@@ -49,7 +49,10 @@ describe('recordedGymDurationSec', () => {
       expect(second).toBe(first);
     });
 
-    it('self-heals a row already poisoned to 12h once presence evidence exists', () => {
+    it('estimates below a row already poisoned to 12h once presence evidence exists', () => {
+      // The ESTIMATE drops back to the evidence; the write path clamps
+      // grows-only (#345), so the stored row no longer self-heals downward —
+      // fixing poisoned rows is a cleanup's job now.
       expect(recordedGymDurationSec({
         elapsedSec: MAX_GYM_SESSION_SEC,
         presenceSec: 50 * MIN,
@@ -189,7 +192,10 @@ describe('recordedGymDurationSec', () => {
     });
   });
 
-  describe('the reason shrinking is safe', () => {
+  // A short ESTIMATE is safe; a short WRITE is not — upgrade-gym-tier clamps
+  // grows-only at write time (#345, field 2026-08-11: post-close replay shrank
+  // a closed 3276 s session to its 2400 s tier floor before the clamp existed).
+  describe('the reason a short estimate is safe', () => {
     it('never returns less than the tier being paid for when time allows', () => {
       // A row must stay consistent with its own tier: a session paid the 40-min
       // bonus can never store less than 40 min unless it truly is shorter.

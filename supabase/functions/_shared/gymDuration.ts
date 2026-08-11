@@ -47,12 +47,15 @@ export interface GymDurationInputs {
  * must stay consistent with its own tier) — and that floor is itself capped at
  * elapsed, so the dev-test short-upgrade path can't be inflated past real time.
  *
- * Shrinking is safe: points key off session_id and the target tier, never off
- * duration_sec, so nothing is clawed back. A shorter window also narrows
- * claim-points supersedeLowerTrust / terra-webhook overlapsGeofenceGym, which
- * can only mean FEWER real workouts suppressed. Erring short is the right
- * direction anyway — the client writes the true length from its frozen exit time
- * on the EXIT path, so this value is a fallback, not the authority.
+ * Returning a SHORT estimate is safe — points key off session_id and the target
+ * tier, never off duration_sec, and a narrower window only means fewer real
+ * workouts suppressed by supersedeLowerTrust / overlapsGeofenceGym. WRITING it
+ * short is not: the stored row only ever grows (#345 — the exit close guards
+ * with greatest(), and a post-close upgrade replay shrank a closed 3276 s
+ * session to its 2400 s tier floor on 2026-08-11). The caller clamps
+ * grows-only at write time; this function stays a pure estimate. That clamp
+ * also means a row already poisoned high no longer self-heals downward here —
+ * correcting those is a cleanup's job, not a live write path's.
  */
 export function recordedGymDurationSec(input: GymDurationInputs): number {
   const elapsedSec = Number.isFinite(input.elapsedSec)
