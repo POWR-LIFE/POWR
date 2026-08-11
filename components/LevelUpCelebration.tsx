@@ -38,9 +38,12 @@ const EMBLEM = 148;
 const BAR_W = 168;
 
 /**
- * How hard the moment should hit, derived from the jump itself:
- * - standard — an ordinary level within the same tier: the badge dissolves
- *   through, few particles, no overshoot. Frequent, so it stays calm.
+ * How hard the moment should hit, derived from the jump itself. Every grade
+ * shatters the old badge and punches the new one in on the same overshoot —
+ * that break IS the level-up, so it is not something a grade can switch off.
+ * A grade only scales what surrounds the break:
+ * - standard — an ordinary level within the same tier: one soft ring, few
+ *   particles, medium haptic. Frequent, so the trimmings stay calm.
  * - tier — first level of a new tier (6 / 11 / 16): the full explosion.
  * - apex — level 20. Everything, in gold.
  */
@@ -283,13 +286,13 @@ export function LevelUpCelebration({ fromLevel, toLevel, fromXp, totalEarned, on
 
   const particleColors = useMemo(() => [GOLD, accent, '#F2F2F2'], [accent]);
 
-  // Shatter debris (tier/apex only): the floor sits near the bottom edge of
+  // Shatter debris, on every grade: the floor sits near the bottom edge of
   // the screen. The emblem centre lands around 34% of screen height, so this
   // distance drops the pieces into the bottom ~5%.
   const { height: windowH, width: windowW } = useWindowDimensions();
   const shards = useMemo(
-    () => (explosive ? buildShards(EMBLEM, windowH * 0.58, windowW) : []),
-    [explosive, windowH, windowW],
+    () => buildShards(EMBLEM, windowH * 0.58, windowW),
+    [windowH, windowW],
   );
 
   const bar = useSharedValue(fromPct);
@@ -325,16 +328,11 @@ export function LevelUpCelebration({ fromLevel, toLevel, fromXp, totalEarned, on
     }));
     sweep.value = withDelay(CHARGE_START, withRepeat(withTiming(1, { duration: 520, easing: Easing.inOut(Easing.quad) }), -1, false));
 
-    // Flash: charge chrome dissolves, then the artwork changes hands.
-    // Tier/apex jumps land with a back-eased overshoot; ordinary levels
-    // dissolve through — same beat, half the drama.
+    // Flash: charge chrome dissolves, then the new artwork punches in on a
+    // back-eased overshoot — every grade, the same landing the tier and apex
+    // jumps have always had.
     chargeBlock.value = withDelay(FLASH, withTiming(0, { duration: 260 }));
-    swap.value = withDelay(
-      FLASH + 120,
-      explosive
-        ? withTiming(1, { duration: 620, easing: Easing.out(Easing.back(1.7)) })
-        : withTiming(1, { duration: 680, easing: Easing.inOut(Easing.cubic) }),
-    );
+    swap.value = withDelay(FLASH + 120, withTiming(1, { duration: 620, easing: Easing.out(Easing.back(1.7)) }));
 
     // Reveal cascade.
     kickerA.value = withDelay(REVEAL, withTiming(1, { duration: 420 }));
@@ -364,14 +362,6 @@ export function LevelUpCelebration({ fromLevel, toLevel, fromXp, totalEarned, on
     transform: [{ translateX: interpolate(sweep.value, [0, 1], [-44, BAR_W]) }],
   }));
   const chargeBlockStyle = useAnimatedStyle(() => ({ opacity: chargeBlock.value }));
-  const oldLogoStyle = useAnimatedStyle(() => ({
-    // swap overshoots past 1 (back easing), so clamp the fade-out floor
-    opacity: (0.4 + oldLogo.value * 0.6) * Math.max(0, 1 - swap.value),
-    transform: [
-      { scale: (0.92 + oldLogo.value * 0.08) * (1 - swap.value * 0.06) },
-      { translateY: float.value },
-    ],
-  }));
   // Shard board: carries the entrance only — the pieces themselves fly, and
   // the board must NOT fade at the swap or the debris would vanish with it.
   const shardBoardStyle = useAnimatedStyle(() => ({
@@ -379,11 +369,11 @@ export function LevelUpCelebration({ fromLevel, toLevel, fromXp, totalEarned, on
     transform: [{ scale: 0.92 + oldLogo.value * 0.08 }],
   }));
   const newLogoStyle = useAnimatedStyle(() => ({
-    opacity: Math.min(1, swap.value * (explosive ? 1.6 : 1.4)),
+    opacity: Math.min(1, swap.value * 1.6),
     transform: [
-      // Explosive: grows in from small with overshoot. Standard: settles down
-      // from slightly large, like a breath.
-      { scale: explosive ? 0.3 + swap.value * 0.7 : 1.06 - swap.value * 0.06 },
+      // Grows in from small and overshoots its resting size on the way — the
+      // back easing carries swap past 1, so this deliberately isn't clamped.
+      { scale: 0.3 + swap.value * 0.7 },
       { translateY: float.value },
     ],
   }));
@@ -432,22 +422,16 @@ export function LevelUpCelebration({ fromLevel, toLevel, fromXp, totalEarned, on
           {kickerText}
         </Animated.Text>
 
-        {/* Emblem: old artwork charges, new artwork lands over it. On
-            explosive grades the old badge is a shard board that blows apart
-            at the flash and leaves its pieces on the floor. */}
+        {/* Emblem: the old badge charges as a shard board — a grid of clipped
+            tiles reading as one intact logo — then blows apart at the flash and
+            leaves its pieces on the floor. The new artwork lands over them. */}
         <View style={styles.emblem}>
           <Animated.View style={[styles.halo, { borderColor: accent }, haloStyle]} />
-          {explosive ? (
-            <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFillObject, shardBoardStyle]}>
-              {shards.map((spec, i) => (
-                <Shard key={i} spec={spec} level={fromLevel} cell={EMBLEM / SHATTER_GRID} />
-              ))}
-            </Animated.View>
-          ) : (
-            <Animated.View style={[StyleSheet.absoluteFillObject, styles.emblemCenter, oldLogoStyle]}>
-              <LevelIcon level={fromLevel} size={LEVEL_IMAGE[fromLevel] ? EMBLEM : EMBLEM * 0.56} color={GOLD} />
-            </Animated.View>
-          )}
+          <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFillObject, shardBoardStyle]}>
+            {shards.map((spec, i) => (
+              <Shard key={i} spec={spec} level={fromLevel} cell={EMBLEM / SHATTER_GRID} />
+            ))}
+          </Animated.View>
           <Animated.View style={[StyleSheet.absoluteFillObject, styles.emblemCenter, newLogoStyle]}>
             <LevelIcon level={toLevel} size={LEVEL_IMAGE[toLevel] ? EMBLEM : EMBLEM * 0.56} color={GOLD} />
           </Animated.View>
