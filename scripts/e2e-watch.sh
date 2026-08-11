@@ -21,8 +21,8 @@ A="${WATCH_USER_A:-234d49f3-d189-44b1-a874-063e724e4380}"   # AND = powrcto (pro
 B="${WATCH_USER_B:-a2585666-5b7a-4622-8e43-6bd4fb8013f0}"   # iOS = jpowr (preview channel)
 USERS="in.(${A},${B})"
 VENUE="${WATCH_VENUE:-7d865c3b}"   # POWR partner id prefix (radius 40m)
-AND_OTA="${WATCH_AND_OTA:-019ff058-23fb-73e6-a897-39167c1f3831}"
-IOS_OTA="${WATCH_IOS_OTA:-019ff059-709b-7032-b353-b0483c6943ea}"
+AND_OTA="${WATCH_AND_OTA:-019ff127-b8b5-7371-b36a-980b8b1593db}"
+IOS_OTA="${WATCH_IOS_OTA:-019ff129-696e-7149-8f97-b9afcb6a7508}"
 
 S=$(mktemp -d) || exit 1; trap 'rm -rf "$S"' EXIT
 get() { cat "$S/$1" 2>/dev/null; }
