@@ -32,6 +32,7 @@ import {
   DWELL_LOCATION_OPTIONS,
   getArmFix,
   rearmFencesFromWake,
+  resetNativeEventDebounceForTests,
   setLocationStreamMode,
 } from '@/context/GeofenceContext';
 
@@ -140,6 +141,7 @@ const regionEvents = () =>
 
 beforeEach(async () => {
   jest.clearAllMocks();
+  resetNativeEventDebounceForTests();
   await AsyncStorage.clear();
   await AsyncStorage.setItem(PARTNER_MAP_KEY, JSON.stringify({ 'partner-home-0': HOME_GYM, ...TOWN_GYMS }));
   await AsyncStorage.setItem(PARTNER_MAP_META_KEY, JSON.stringify({ fetchedAt: Date.now() }));
@@ -234,6 +236,46 @@ describe('sentinel EXIT — re-arm must be observable and never centred on a gue
 
     expect(mockLocation.startGeofencingAsync).not.toHaveBeenCalled();
     expect(regionEvents()).toEqual(expect.arrayContaining(['sentinel_exit', 'rearm_skipped']));
+  });
+});
+
+describe('native event debounce — a registration\'s initial-trigger storm is absorbed (2026-08-11)', () => {
+  // Offset centre: _lastArmSignature is module state, so re-using an earlier
+  // test's exact fix would trip the same-set dedupe and mask the debounce.
+  const seedStreamFix = (latOffset = 0.02) =>
+    AsyncStorage.setItem(LAST_STREAM_FIX_KEY, JSON.stringify({
+      latitude: HOME_GYM.lat + latOffset, longitude: HOME_GYM.lng, accuracy: 30, at: Date.now() - 30_000,
+    }));
+
+  it('drops repeats of the same crossing inside the window; the first is processed normally', async () => {
+    await seedStreamFix();
+
+    // The field shape: ONE arm, then the same crossing delivered over and over
+    // within ~2 s. Only the first may act — a repeat sentinel exit re-arming
+    // would fire a fresh storm each time (a self-sustaining loop).
+    await driveSentinelExit();
+    await driveSentinelExit();
+    await driveSentinelExit();
+    await flushTelemetry();
+
+    expect(mockLocation.startGeofencingAsync).toHaveBeenCalledTimes(1);
+    expect(regionEvents().filter(e => e === 'sentinel_exit')).toHaveLength(1);
+  });
+
+  it('lets the same crossing through again once the window has passed', async () => {
+    jest.useFakeTimers();
+    try {
+      await seedStreamFix();
+
+      await driveSentinelExit();
+      await jest.advanceTimersByTimeAsync(6_000);
+      await driveSentinelExit();
+      await flushTelemetry();
+
+      expect(regionEvents().filter(e => e === 'sentinel_exit')).toHaveLength(2);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });
 

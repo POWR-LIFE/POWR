@@ -646,7 +646,11 @@ async function armNativeRegions(
   // arms simply log nulls for the three fields rather than forcing every call
   // site to invent them.
   fix: { latitude: number; longitude: number; src?: ArmFix['src']; accuracy?: number | null; ageMs?: number | null } | null,
-  opts: { force?: boolean; freshHandle?: boolean } = {},
+  // `via` names the calling path in the `armed` row. 2026-08-11: the day's one
+  // Android arm logged src/acc/age all-null (call sites used to strip the
+  // ArmFix down to bare coords) and nothing said WHICH path armed — the storm
+  // investigation had to reconstruct it from timing alone.
+  opts: { force?: boolean; freshHandle?: boolean; via?: string } = {},
 ): Promise<void> {
   const { status } = await Location.getBackgroundPermissionsAsync()
     .catch(() => ({ status: 'denied' as Location.PermissionStatus }));
@@ -755,6 +759,7 @@ async function armNativeRegions(
         app_state: String(AppState.currentState),
         forced: !!opts.force,
         fresh_handle: !!opts.freshHandle,
+        via: opts.via ?? null,
       });
       return;
     }
@@ -829,6 +834,7 @@ async function armNativeRegions(
       src:        fix?.src ?? null,
       acc_m:      fix?.accuracy != null ? Math.round(fix.accuracy) : null,
       age_s:      fix?.ageMs != null ? Math.round(fix.ageMs / 1000) : null,
+      via:        opts.via ?? null,
     });
   } catch (err) {
     console.warn('[Geofence] Failed to arm native regions:', err);
@@ -3079,10 +3085,7 @@ export async function armAfterPermissionGrant(): Promise<void> {
     }
 
     const fix = await getArmFix();
-    await armNativeRegions(
-      fix ? { latitude: fix.latitude, longitude: fix.longitude } : null,
-      { force: true },
-    );
+    await armNativeRegions(fix, { force: true, via: 'permission_grant' });
     console.log('[Geofence] Armed immediately after permission grant.');
   } catch (err) {
     console.warn('[Geofence] Arm-on-grant failed (the refresh path still covers it):', err);
@@ -3093,10 +3096,7 @@ export async function rearmFencesFromWake(): Promise<void> {
   if (Platform.OS !== 'android') return;
   try {
     const fix = await getArmFix();
-    await armNativeRegions(
-      fix ? { latitude: fix.latitude, longitude: fix.longitude } : null,
-      { force: true, freshHandle: true },
-    );
+    await armNativeRegions(fix, { force: true, freshHandle: true, via: 'wake_fresh_handle' });
   } catch (err) {
     console.warn('[Geofence] wake re-arm failed:', err);
   }
@@ -4042,7 +4042,10 @@ async function evaluateLocationFix(coords: Location.LocationObjectCoords): Promi
     // correct it. armNativeRegions itself no-ops inside the sentinel envelope.
     logCoarseRejection('enter_blocked', coords, null);
     if (coords.accuracy != null && coords.accuracy <= ARM_FIX_MAX_ACCURACY_M) {
-      await armNativeRegions({ latitude: coords.latitude, longitude: coords.longitude });
+      await armNativeRegions(
+        { latitude: coords.latitude, longitude: coords.longitude },
+        { via: 'coarse_recentre' },
+      );
     }
     return;
   }
@@ -4116,7 +4119,10 @@ async function evaluateLocationFix(coords: Location.LocationObjectCoords): Promi
   // (user travelled with the app closed), re-target the native regions around
   // where they actually are — cache-only, no network. armNativeRegions itself
   // no-ops while the fix is still inside the armed envelope.
-  await armNativeRegions({ latitude: coords.latitude, longitude: coords.longitude });
+  await armNativeRegions(
+    { latitude: coords.latitude, longitude: coords.longitude },
+    { via: 'drift' },
+  );
 }
 
 /** Re-registers native geofencing + the location stream from the cached partner
@@ -4131,10 +4137,7 @@ async function rearmGeofencingFromCache(): Promise<void> {
     // Accuracy-screened: an unqualified last-known here can be any age and any
     // accuracy — the same class of wrong-town centre as the 2026-08-04 arm.
     const fix = await getArmFix();
-    await armNativeRegions(
-      fix ? { latitude: fix.latitude, longitude: fix.longitude } : null,
-      { force: true },
-    );
+    await armNativeRegions(fix, { force: true, via: 'boot_restore' });
   }
 
   if (Platform.OS === 'android') {
@@ -4219,6 +4222,47 @@ TaskManager.defineTask(GEOFENCE_REARM_TASK, async () => {
   }
 });
 
+// ─── Native event debounce ───────────────────────────────────────────────────
+// 2026-08-11 field, BOTH runs: ONE foreground startGeofencingAsync produced a
+// ~6 s native initial-trigger storm — 12 ENTERs for the occupied venue and 2–11
+// EXITs for every other armed region (~160 rows), delivered in cumulative waves
+// as GMS ingested the 50-fence add: region k joins the storm when its add
+// lands, and everything already added re-fires — hence the ×12, ×11, ×10…
+// descending counts, plus a straggler wave 5.3 s in. JS armed exactly ONCE
+// (single `armed` row); the amplification is entirely below us, so it is
+// absorbed here instead. The FIRST event per (region, transition) is processed
+// and logged normally — iOS check-ins LIVE on that first arm-time burst event,
+// so it must never be suppressed — and repeats inside the window are dropped
+// BEFORE the handler's first await, so they cannot interleave with the real
+// event's run (the stale-snapshot race class this file keeps re-paying for).
+// The window SLIDES (a repeat refreshes the stamp) so a storm outliving it
+// stays suppressed. Module state deliberately: one storm arrives in one JS
+// context, and a synchronous check-and-set cannot race at an await the way an
+// AsyncStorage read-modify-write would. Cost of the trade: a REAL re-crossing
+// of the same edge within 5 s is dropped — at that rate it's boundary flap,
+// and the stream/sweep (check-in) and finalize guards (exit) own the truth.
+const NATIVE_EVENT_DEBOUNCE_MS = 5_000;
+const _lastNativeEventAt = new Map<string, number>();
+
+function isDuplicateNativeEvent(regionId: string, eventType: Location.GeofencingEventType): boolean {
+  const key = `${regionId}:${eventType}`;
+  const now = Date.now();
+  const last = _lastNativeEventAt.get(key);
+  _lastNativeEventAt.set(key, now);
+  if (_lastNativeEventAt.size > 256) {
+    for (const [k, t] of _lastNativeEventAt) {
+      if (now - t > NATIVE_EVENT_DEBOUNCE_MS) _lastNativeEventAt.delete(k);
+    }
+  }
+  return last != null && now - last < NATIVE_EVENT_DEBOUNCE_MS;
+}
+
+/** Test-only: the debounce map is module state, so back-to-back simulated
+ *  crossings in one jest module instance read as a storm without this. */
+export function resetNativeEventDebounceForTests(): void {
+  _lastNativeEventAt.clear();
+}
+
 // Native geofence (fast, low-power ENTER/EXIT trigger when the OS delivers it).
 // The whole body is guarded: this executor runs headlessly at every relaunch a
 // region crossing causes, and its siblings both already catch. A malformed or
@@ -4233,12 +4277,6 @@ TaskManager.defineTask(GEOFENCE_TASK_NAME, async ({ data, error }) => {
       return;
     }
 
-    // Headless context: load the last-persisted admin dwell threshold from storage
-    // so exit-time dwell checks use the current value.
-    await primeGymDwellMinutes();
-    await flushPendingVisitCloses();
-    await flushPendingClaims();
-
     const { eventType, region } = (data ?? {}) as {
       eventType?: Location.GeofencingEventType;
       region?: Location.LocationRegion;
@@ -4249,6 +4287,19 @@ TaskManager.defineTask(GEOFENCE_TASK_NAME, async ({ data, error }) => {
     }
 
     const regionId = region.identifier ?? '';
+
+    // Storm absorber — MUST stay before the first await (see docstring above).
+    if (isDuplicateNativeEvent(regionId, eventType)) {
+      console.log(`[Geofence] Duplicate native event suppressed (${regionId}:${eventType}).`);
+      return;
+    }
+
+    // Headless context: load the last-persisted admin dwell threshold from storage
+    // so exit-time dwell checks use the current value. (After the debounce: a
+    // 24-event storm needs one flush pass, not 24 interleaved ones.)
+    await primeGymDwellMinutes();
+    await flushPendingVisitCloses();
+    await flushPendingClaims();
 
   // Sentinel crossings re-target coverage; they are never partner check-ins.
   // Guard BEFORE any session state is touched — a sentinel EXIT can coincide
@@ -4265,7 +4316,7 @@ TaskManager.defineTask(GEOFENCE_TASK_NAME, async ({ data, error }) => {
       logRegionEvent(SENTINEL_REGION_ID, 'sentinel_exit');
       const fix = await getArmFix();
       if (fix) {
-        await armNativeRegions({ latitude: fix.latitude, longitude: fix.longitude });
+        await armNativeRegions(fix, { via: 'sentinel_exit' });
       } else {
         // No trusted position → DON'T re-arm around a guess. The current set
         // stays live and the next qualifying fix re-arms via the drift path.
@@ -4800,10 +4851,7 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
       // own gym missed the nearest-49 cut at rank 65). getArmFix screens every
       // source to ≤1 km and never hangs.
       const userPos = await getArmFix();
-      await armNativeRegions(
-        userPos ? { latitude: userPos.latitude, longitude: userPos.longitude } : null,
-        { force: true },
-      );
+      await armNativeRegions(userPos, { force: true, via: 'startup_refresh' });
       setIsMonitoring(true);
 
       // Android: run a persistent foreground-service location stream alongside the

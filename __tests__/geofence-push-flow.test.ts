@@ -15,7 +15,7 @@
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppState } from 'react-native';
-import { ACTIVE_GEOFENCE_KEY, CHECKIN_POLL } from '@/context/GeofenceContext';
+import { ACTIVE_GEOFENCE_KEY, CHECKIN_POLL, resetNativeEventDebounceForTests } from '@/context/GeofenceContext';
 
 // The ENTER branch awaits pollForCheckIn — deliberately, so the OS holds the task
 // open while the user walks the last stretch to the 25 m radius. Drive it with zero
@@ -174,6 +174,7 @@ async function simulateDwell(minutes: number) {
 
 beforeEach(async () => {
   jest.clearAllMocks();
+  resetNativeEventDebounceForTests();
   await AsyncStorage.clear();
   mockInserts = [];
   mockClaimResponse = { data: { earned: 30, push_delivered: true, within_reach: null }, error: null };
