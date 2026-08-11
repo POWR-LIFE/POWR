@@ -189,11 +189,19 @@ export async function presentDisplayPush(payload: DisplayPushPayload): Promise<b
         body,
         data,
         ...(pick(payload.n_sound, legacy.sound) === '0' ? {} : { sound: 'default' as const }),
-        ...(Platform.OS === 'android' && pick(payload.n_channel, legacy.channel_id)
-          ? { channelId: pick(payload.n_channel, legacy.channel_id) }
-          : {}),
       },
-      trigger: null, // immediate
+      // ⚠ THE CHANNEL RIDES ON THE TRIGGER, NOT THE CONTENT (2026-08-11).
+      // ArgumentsNotificationContentBuilder reads only title/subtitle/body/data/
+      // sound/vibrate/priority/badge/color/autoDismiss/categoryIdentifier/sticky
+      // from the content dict — a `channelId` there is silently dropped, and a
+      // null trigger makes ExpoNotificationBuilder fall back to the auto-created
+      // "Miscellaneous" channel. Every banner this file ever presented landed
+      // there, one importance step below the HIGH channel it named. A
+      // channel-aware trigger still presents immediately (ExpoSchedulingDelegate
+      // routes it through the same receive() as a null trigger).
+      trigger: Platform.OS === 'android'
+        ? { channelId: pick(payload.n_channel, legacy.channel_id) || 'powr_default_v2' }
+        : null,
     });
   } catch (err) {
     console.warn('[DisplayPush] present failed:', err);

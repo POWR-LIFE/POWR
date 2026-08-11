@@ -137,7 +137,6 @@ describe('presentDisplayPush', () => {
 
     expect(scheduleMock).toHaveBeenCalledTimes(1);
     const arg = scheduleMock.mock.calls[0][0];
-    expect(arg.trigger).toBeNull();
     expect(arg.content.title).toBe('Session complete 💪');
     expect(arg.content.body).toBe('POWR · 60 min · +24 pts today');
     // The tap has to route. getRouteFromNotification reads content.data.route,
@@ -147,12 +146,16 @@ describe('presentDisplayPush', () => {
     expect(arg.content.data.type).toBe('session_completed');
   });
 
-  it('puts the banner on the channel the server named', async () => {
+  it('puts the banner on the channel the server named — via the TRIGGER', async () => {
     // Omitting the channel is not a cosmetic slip: it lands the notification on
-    // Expo's auto-created "Default" channel at importance DEFAULT, i.e. no
-    // heads-up banner. That is what the 08-09 completion push did.
+    // Expo's auto-created fallback channel, i.e. no heads-up banner. And the
+    // channel must ride on the TRIGGER: ArgumentsNotificationContentBuilder
+    // ignores a `channelId` inside content, which is how every banner before
+    // 2026-08-11 silently landed on "Miscellaneous" despite naming General.
     await presentDisplayPush(payload());
-    expect(scheduleMock.mock.calls[0][0].content.channelId).toBe('powr_default_v2');
+    const arg = scheduleMock.mock.calls[0][0];
+    expect(arg.trigger).toEqual({ channelId: 'powr_default_v2' });
+    expect(arg.content.channelId).toBeUndefined();
   });
 
   it('stamps delivered_at exactly once, without awaiting it', async () => {
@@ -224,7 +227,7 @@ describe('wire-format compatibility across the n_ rename', () => {
     const arg = scheduleMock.mock.calls[0][0];
     expect(arg.content.title).toBe('Session complete 💪');
     expect(arg.content.body).toBe('POWR · 47 min · +24 pts today');
-    expect(arg.content.channelId).toBe('powr_default_v2');
+    expect(arg.trigger).toEqual({ channelId: 'powr_default_v2' });
     expect(arg.content.data.route).toBe('/(tabs)/index');
     expect(arg.content.data.type).toBe('session_completed');
   });
