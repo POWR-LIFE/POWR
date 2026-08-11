@@ -2209,22 +2209,33 @@ async function flushPendingClaims(): Promise<void> {
   }
   if (!queue.length) return;
 
-  // There is real work: make the whole replay pass run on a fresh token. Placed
-  // after the empty-queue return so the hot path (every task wake flushes) costs
-  // nothing when there is nothing to flush.
-  await ensureFreshSession('flush_pending_claims');
-
-  // Whose queue is this? The outbox is replayed on login, so without an owner check
-  // an entry banked by the previous account is claimed by whoever signs in next —
-  // a real cross-account credit path, not just cosmetic state bleed. Entries
-  // written before this field existed have no userId and stay claimable by the
-  // current user, which is the old behaviour and the safe direction for a device
-  // that has only ever had one account.
-  let currentUserId: string | null = null;
-  try {
-    const { data: { user } } = await withNetworkTimeout(supabase.auth.getUser(), 'auth.getUser');
-    currentUserId = user?.id ?? null;
-  } catch { /* offline — fall through and treat ownership as unknown */ }
+  // There is real work. The replay itself (recordDwellSession) reads the
+  // persisted identity unconditionally since 2026-08-10, so what this pass
+  // actually needs is (a) a userId for the ownership fence below and (b) a
+  // live-enough token for the RPCs — and a valid STORED token satisfies both.
+  //
+  // ⚠ Read storage first, machinery only on a spent token. ensureFreshSession
+  // serializes on the auth client's internal lock, and field 2026-08-11 logged
+  // THIS call site timing out at 30 s (auth_stale, reason flush_pending_claims)
+  // behind a wedged lock while the stored token was perfectly valid — the same
+  // jam that ate the morning's background check-in. A spent token is the one
+  // case storage cannot fix, and the one case that still earns the lock: it is
+  // the only legitimate rotator.
+  //
+  // Whose queue is this? The outbox is replayed on login, so without an owner
+  // check an entry banked by the previous account is claimed by whoever signs
+  // in next — a real cross-account credit path. Entries written before the
+  // userId field existed stay claimable by the current user (old behaviour,
+  // safe for a device that has only ever had one account); ownership unknown
+  // (offline, no token) also falls through unchanged.
+  let currentUserId: string | null = (await readBackgroundAuth())?.userId ?? null;
+  if (!currentUserId) {
+    await ensureFreshSession('flush_pending_claims');
+    try {
+      const { data: { user } } = await withNetworkTimeout(supabase.auth.getUser(), 'auth.getUser');
+      currentUserId = user?.id ?? null;
+    } catch { /* offline — fall through and treat ownership as unknown */ }
+  }
 
   const remaining: StoredGeofence[] = [];
   for (const entry of queue) {
