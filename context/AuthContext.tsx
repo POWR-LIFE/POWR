@@ -8,7 +8,7 @@ import { Alert, AppState, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { EMAIL_CONFIRM_REDIRECT, supabase } from '@/lib/supabase';
-import { clearDeviceWakeTicket, ensureDeviceWakeTicket } from '@/lib/backgroundRest';
+import { clearDeviceWakeTicket, ensureDeviceWakeTicket, readStoredSession } from '@/lib/backgroundRest';
 import { claimDevice, confirmDeviceTransfer, getDeviceId } from '@/lib/deviceLock';
 import { reportLocationPermission } from '@/lib/locationPermission';
 import TransferDeviceSheet from '@/components/TransferDeviceSheet';
@@ -305,7 +305,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setLoading(false);
             // Registration is handled by INITIAL_SESSION in onAuthStateChange below — no duplicate call needed
         };
-        const bootstrapTimeout = setTimeout(() => {
+        const bootstrapTimeout = setTimeout(async () => {
             if (settled) return;
             // Settle to whatever the listener already knows, never blindly to
             // null — see latestSessionRef. Only a genuinely empty answer counts
@@ -313,11 +313,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             const known = latestSessionRef.current;
             if (known) {
                 console.warn('[Auth] getSession() did not settle in 8s — using the session INITIAL_SESSION already delivered.');
-            } else {
-                console.warn('[Auth] getSession() did not settle in 8s — starting signed out; INITIAL_SESSION will correct it if a session exists.');
-                bootstrapFailedOpenRef.current = true;
+                settle(known);
+                return;
             }
-            settle(known);
+            // The listener knows nothing either — but STORAGE might. The fail-open
+            // correction above was necessary and insufficient (field 2026-08-11,
+            // iOS): on a reopen after headless wakes, getSession() jams on the
+            // auth client's lock, and INITIAL_SESSION queues behind the SAME lock
+            // — so the event that was supposed to correct the route can be
+            // delayed indefinitely, and the user reopens onto Get Started while
+            // their session sits valid in the keychain (pressing Login walked
+            // straight in — the giveaway). The route must not depend on the
+            // machinery at all: seed it from the persisted session, and let
+            // getSession/INITIAL_SESSION remain the authority whenever either
+            // finally answers (they overwrite this state; navigation is already
+            // right, so the armed correction is unnecessary and stays off).
+            const stored = await readStoredSession();
+            if (settled) return; // getSession may have answered during the read
+            if (stored) {
+                console.warn('[Auth] getSession() did not settle in 8s — seeding from the persisted session; auth machinery stays authoritative.');
+                settle(stored);
+                return;
+            }
+            console.warn('[Auth] getSession() did not settle in 8s — starting signed out; INITIAL_SESSION will correct it if a session exists.');
+            bootstrapFailedOpenRef.current = true;
+            settle(null);
         }, AUTH_BOOTSTRAP_TIMEOUT_MS);
         supabase.auth.getSession()
             .then(({ data: { session } }) => settle(session))

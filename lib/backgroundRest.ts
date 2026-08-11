@@ -39,6 +39,7 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppState } from 'react-native';
+import type { Session } from '@supabase/supabase-js';
 
 import { withNetworkTimeout } from '@/lib/networkTimeout';
 import { AUTH_STORAGE_KEY, SUPABASE_ANON_KEY, SUPABASE_URL, authStorage, supabase } from '@/lib/supabase';
@@ -99,6 +100,37 @@ export async function readBackgroundAuth(): Promise<BackgroundAuth | null> {
     }
 
     return { accessToken, userId };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The persisted SESSION, read without touching supabase-js — for seeding
+ * launch-time state (which stack to show, whose account this is), never for
+ * authenticating a request (that is readBackgroundAuth's job).
+ *
+ * Deliberately NO expiry gate, unlike readBackgroundAuth: an access token that
+ * expired in a pocket still names a signed-in user — the refresh token beside
+ * it is the durable credential, and only the auth machinery may spend it. A
+ * genuinely signed-out device has nothing at this key (sign-out clears it), so
+ * a stored session ≈ a signed-in user, however stale the token.
+ *
+ * Why it exists (field 2026-08-11, iOS): a wake-jammed auth lock made the
+ * launch getSession() time out, the bootstrap failed open to signed-out, and
+ * INITIAL_SESSION — queued behind the same lock — never arrived to correct the
+ * route. The user reopened onto Get Started with a valid session in storage
+ * the whole time. This read is what lets the launch route answer from storage
+ * while the machinery stays the eventual authority.
+ */
+export async function readStoredSession(): Promise<Session | null> {
+  try {
+    const raw = await authStorage.getItem(AUTH_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const session = parsed?.currentSession ?? parsed;
+    if (typeof session?.access_token !== 'string' || typeof session?.user?.id !== 'string') return null;
+    return session as Session;
   } catch {
     return null;
   }
