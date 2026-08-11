@@ -10,7 +10,8 @@
       "channel": "preview",
       "env": {
         "EXPO_PUBLIC_SUPABASE_URL": "https://wjvvujnicwkruaeibttt.supabase.co",
-        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_kh2lOAPJRrdykLLOR1QVxA_jj3H4CAL"
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_kh2lOAPJRrdykLLOR1QVxA_jj3H4CAL",
+        "EXPO_PUBLIC_SENTRY_DSN": "https://669fad15359ad774f21db27afb05eb97@o4511841679900672.ingest.de.sentry.io/4511892892549200"
       },
       "android": {
         "buildType": "apk"
@@ -22,7 +23,8 @@
       "env": {
         "EXPO_PUBLIC_SUPABASE_URL": "https://wjvvujnicwkruaeibttt.supabase.co",
         "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_kh2lOAPJRrdykLLOR1QVxA_jj3H4CAL",
-        "EXPO_PUBLIC_GOOGLE_MAPS_API_KEY": "AIzaSyBlWjadfjwrtx62Rmb_b5aAPMM-l2pSgww"
+        "EXPO_PUBLIC_GOOGLE_MAPS_API_KEY": "AIzaSyBlWjadfjwrtx62Rmb_b5aAPMM-l2pSgww",
+        "EXPO_PUBLIC_SENTRY_DSN": "https://669fad15359ad774f21db27afb05eb97@o4511841679900672.ingest.de.sentry.io/4511892892549200"
       },
       "android": {
         "buildType": "app-bundle"

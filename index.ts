@@ -6,6 +6,11 @@
 // that report into a hard native abort. See lib/crashHandler.ts.
 import './lib/crashHandler';
 
+// Sentry second: it wraps the handler crashHandler just installed (so both
+// capture), and must be live before the headless graph below initialises.
+// See lib/sentry.ts for the full ordering contract.
+import './lib/sentry';
+
 // The app's real entry (package.json "main").
 //
 // The side-effect import below MUST come before 'expo-router/entry' and MUST

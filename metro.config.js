@@ -1,8 +1,10 @@
-const { getDefaultConfig } = require("expo/metro-config");
+// getSentryExpoConfig extends expo/metro-config's default with debug IDs and
+// source-map settings Sentry needs to symbolicate release stacks.
+const { getSentryExpoConfig } = require("@sentry/react-native/metro");
 const { withNativeWind } = require("nativewind/metro");
 const path = require("path");
 
-const config = getDefaultConfig(__dirname);
+const config = getSentryExpoConfig(__dirname);
 
 // Enable .web.tsx / .web.ts platform-specific extensions on web
 config.resolver.platforms = ['ios', 'android', 'web'];

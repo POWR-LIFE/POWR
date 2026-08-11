@@ -75,7 +75,10 @@ module.exports = {
     plugins: [
       ...expo.plugins,
       'expo-apple-authentication',
-      ['react-native-health-connect'],
+      // NOTE: react-native-health-connect is registered in app.json's plugin
+      // list. Registering it here as well ran the plugin twice and emitted a
+      // duplicate ACTION_SHOW_PERMISSIONS_RATIONALE intent-filter on
+      // MainActivity.
       'expo-secure-store',
       // Picks a profile/share-card image and nothing else. On Android 13+ this
       // goes through the system photo picker and requests NO permission, which
@@ -88,6 +91,19 @@ module.exports = {
         {
           photosPermission: 'POWR needs access to your photo library so you can set a profile picture.',
           cameraPermission: 'POWR needs access to your camera so you can take a profile photo.',
+        },
+      ],
+      // Native crash capture (the .ips-blind-spot complement to lib/crashHandler.ts).
+      // organization/project are the Sentry slugs used only for source-map upload
+      // at build time; upload is skipped entirely unless SENTRY_AUTH_TOKEN is set
+      // in the build env. Keep these literal — env-derived values here would make
+      // the fingerprint differ between local and EAS, silently orphaning OTAs.
+      [
+        '@sentry/react-native/expo',
+        {
+          url: 'https://sentry.io/',
+          organization: 'powr-m9',
+          project: 'powr',
         },
       ],
     ],

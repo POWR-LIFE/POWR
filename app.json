@@ -2,7 +2,7 @@
   "expo": {
     "name": "POWR",
     "slug": "POWR",
-    "version": "1.4.12",
+    "version": "1.5.0",
     "orientation": "portrait",
     "icon": "./assets/images/ios_icon_black.png",
     "scheme": "powr",
@@ -11,7 +11,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.powr.life",
-      "buildNumber": "14",
+      "buildNumber": "16",
       "googleServicesFile": "./GoogleService-Info.plist",
       "associatedDomains": [
         "applinks:powr.life"
@@ -57,6 +57,12 @@
         "android.permission.FOREGROUND_SERVICE_LOCATION",
         "android.permission.health.READ_STEPS",
         "android.permission.health.READ_EXERCISE",
+        "android.permission.health.READ_SLEEP",
+        "android.permission.health.READ_HEART_RATE",
+        "android.permission.health.READ_RESTING_HEART_RATE",
+        "android.permission.health.READ_ACTIVE_CALORIES_BURNED",
+        "android.permission.health.READ_TOTAL_CALORIES_BURNED",
+        "android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND",
         "android.permission.POST_NOTIFICATIONS",
         "android.permission.RECEIVE_BOOT_COMPLETED",
         "android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS",
@@ -70,7 +76,7 @@
         "android.permission.READ_MEDIA_VISUAL_USER_SELECTED"
       ],
       "package": "com.powr.life",
-      "versionCode": 18,
+      "versionCode": 19,
       "intentFilters": [
         {
           "action": "VIEW",
