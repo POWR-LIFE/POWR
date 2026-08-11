@@ -20,6 +20,7 @@ import * as BackgroundFetch from 'expo-background-fetch';
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import { Platform } from 'react-native';
+import { readBackgroundAuth } from '@/lib/backgroundRest';
 import { supabase } from '@/lib/supabase';
 import { resolveContextualPlacements, recordPlacementNotification } from '@/lib/api/placements';
 import { notifyNearbyOffer } from '@/lib/notifications';
@@ -46,9 +47,12 @@ async function runPlacementCheck(): Promise<boolean> {
   const { latitude, longitude } = pos.coords;
 
   // Resolver requires an authenticated session; silently bail if logged out.
-  // getSession() reads the persisted session without a network round-trip.
-  const { data: auth } = await supabase.auth.getSession();
-  if (!auth.session) return false;
+  // Storage read, never getSession(): this is a headless background-fetch task,
+  // and the auth client's lock jams headless — one entry here queues forever
+  // behind a wedged lock (and getSession's lazy refresh from a background
+  // runtime is the family-revocation trigger besides). A spent token skips the
+  // nudge; the next foreground pass fires it.
+  if (!(await readBackgroundAuth())) return false;
 
   const placements = await resolveContextualPlacements(latitude, longitude);
   if (placements.length === 0) return false;

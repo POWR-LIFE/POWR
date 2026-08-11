@@ -24,7 +24,7 @@ import { getNotificationPreferences } from '@/lib/api/notifications';
 import { fetchTodayWalkingPoints, nextStepThreshold, stepTierPoints, WALKING_DAILY_CAP } from '@/lib/api/activity';
 import { getStepsToday } from '@/lib/health/walkingSync';
 import { notifyStepGoal } from '@/lib/notifications';
-import { supabase } from '@/lib/supabase';
+import { readBackgroundAuth } from '@/lib/backgroundRest';
 
 export const STEP_GOAL_NOTIFY_TASK = 'POWR_STEP_GOAL_NOTIFY';
 
@@ -49,8 +49,11 @@ export async function runStepGoalCheck(): Promise<boolean> {
     if ((await AsyncStorage.getItem(FIRED_DAY_KEY)) === todayKey()) return false;
   } catch { /* fall through */ }
 
-  const { data: { session } } = await supabase.auth.getSession();
-  const userId = session?.user?.id;
+  // Storage read, never getSession(): headless task — entering the auth
+  // client's lock here jams behind a wedged wake and can itself trigger a
+  // background lazy refresh (the family-revocation class). A spent token skips
+  // tonight's nudge rather than gambling the token family on it.
+  const userId = (await readBackgroundAuth())?.userId;
   if (!userId) return false;
 
   try {

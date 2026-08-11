@@ -171,8 +171,18 @@ TaskManager.defineTask(BACKGROUND_NOTIFICATION_TASK, async ({ data, error }) => 
     if (payload.nonce) {
       // Deliberately nothing. A ticketed wake does zero auth work.
     } else {
-      const { ensureFreshSession } = await import('@/lib/authFresh');
-      await ensureFreshSession('background_wake');
+      // Legacy ticketless nudge. Since 2026-08-11 the confirm presents the
+      // persisted token itself over raw fetch, so a valid stored token needs no
+      // freshness pass — and awaiting one here enters the auth client's lock,
+      // which jams headless and holds the whole wake hostage (the systemic
+      // 08-11 class). Only a SPENT token still earns the machinery: it is the
+      // one thing storage cannot fix, and the confirm would fail outright
+      // without a rotation.
+      const { readBackgroundAuth } = await import('@/lib/backgroundRest');
+      if (!(await readBackgroundAuth())) {
+        const { ensureFreshSession } = await import('@/lib/authFresh');
+        await ensureFreshSession('background_wake');
+      }
     }
 
     // Record that the push reached JS — but NEVER await it.

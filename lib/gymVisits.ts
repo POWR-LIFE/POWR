@@ -83,14 +83,7 @@ export async function confirmGymVisitViaNonce(
       p_request_credit: requestCredit,
       p_entry_at:       entryAtMs ? new Date(entryAtMs).toISOString() : null,
     }, 'confirm_gym_visit_v3');
-    const triggered = (data as { triggered?: string | null } | null)?.triggered;
-    const declined = (data as { declined?: string | null } | null)?.declined;
-    if (triggered) {
-      console.log(`[GymVisit] Server credit trigger fired from nonce confirm: ${triggered}.`);
-    } else if (declined) {
-      console.log(`[GymVisit] Server declined credit (${declined}) — visit resolved.`);
-    }
-    return { ok: true, triggered };
+    return { ok: true, triggered: noteConfirmOutcome(data, 'nonce confirm') };
   } catch (err) {
     console.error('[GymVisit] confirmGymVisitViaNonce FAILED — wake answered nothing:', err);
     return { ok: false };
@@ -267,6 +260,21 @@ export async function logGeofenceRegionEvent(
   }
 }
 
+/** Logs the server's credit verdict from a confirm round-trip and returns the
+ *  trigger, whichever transport carried the call. A decline is not an error: the
+ *  session was already credited by another path, and the server advances the
+ *  visit anyway so the beacon stops nudging a resolved visit. */
+function noteConfirmOutcome(data: unknown, source: string): string | null | undefined {
+  const triggered = (data as { triggered?: string | null } | null)?.triggered;
+  const declined = (data as { declined?: string | null } | null)?.declined;
+  if (triggered) {
+    console.log(`[GymVisit] Server credit trigger fired from ${source}: ${triggered}.`);
+  } else if (declined) {
+    console.log(`[GymVisit] Server declined credit (${declined}) — visit resolved.`);
+  }
+  return triggered;
+}
+
 /** Reports what the device actually SAW when the server woke it. `inside` is the
  *  device's verdict from a real GPS fix — the only thing that can unlock a credit.
  *
@@ -284,30 +292,49 @@ export async function confirmGymVisit(
    *  agree (`least()` server-side); omitting it keeps the old behaviour exactly. */
   entryAtMs?: number,
 ): Promise<{ ok: boolean; triggered?: string | null }> {
+  const args = {
+    p_visit_id:       visitId,
+    p_inside:         inside,
+    p_detail:         detail,
+    p_request_credit: requestCredit,
+    p_entry_at:       entryAtMs ? new Date(entryAtMs).toISOString() : null,
+  };
+
+  // This was the last state-carrying RPC still entering the auth machinery from
+  // a wake: every ticketless background confirm (the presence sweep, a legacy
+  // nudge, the exit backstop) went through callWithAuthRetry → getSession, and
+  // field 2026-08-11 logged two of them timing out at 30 s behind a wedged auth
+  // lock (auth_stale, reason confirm_gym_visit) while the stored token was
+  // valid the whole time. Present the persisted token directly instead.
+  //
+  // ⚠ NOT wakeRpc: the DEVICE TICKET is deliberately excluded from confirms.
+  // A confirm can carry the credit trigger, and the ticket's five-verbs-never-
+  // a-point boundary (see lib/backgroundRest.ts) must hold. The persisted USER
+  // token is the same identity supabase-js would present — only the transport
+  // changes. A spent token falls through to the authed path, which remains the
+  // only legitimate rotator; a transport failure does NOT fall through, because
+  // the raw fetch is the more reliable of the two (openGymVisit's reasoning).
+  if (AppState.currentState !== 'active') {
+    const auth = await readBackgroundAuth();
+    if (auth) {
+      const { data, error } = await bgRpc('confirm_gym_visit_v2', args, auth);
+      if (error) {
+        console.error('[GymVisit] confirmGymVisit (background) FAILED — wake answered nothing:', error.message);
+        return { ok: false };
+      }
+      return { ok: true, triggered: noteConfirmOutcome(data, 'confirm') };
+    }
+  }
+
   try {
     // v2 lets this single round-trip ALSO ask the server to credit the visit
     // (claim or upgrade, decided server-side from visit status + elapsed +
     // system_config). The FCM wake window fits ~one round-trip, and this is it —
     // the local claim chain behind it starved every time (field 2026-07-14).
     // Credit only ever follows p_inside=true, so "no fix, no credit" holds.
-    const { data, error } = await callWithAuthRetry(() => supabase.rpc('confirm_gym_visit_v2', {
-      p_visit_id:       visitId,
-      p_inside:         inside,
-      p_detail:         detail,
-      p_request_credit: requestCredit,
-      p_entry_at:       entryAtMs ? new Date(entryAtMs).toISOString() : null,
-    }), 'confirm_gym_visit');
+    const { data, error } = await callWithAuthRetry(() => supabase.rpc('confirm_gym_visit_v2', args), 'confirm_gym_visit');
     if (error) throw error;
-    const triggered = (data as { triggered?: string | null } | null)?.triggered;
-    const declined = (data as { declined?: string | null } | null)?.declined;
-    if (triggered) {
-      console.log(`[GymVisit] Server credit trigger fired from confirm: ${triggered}.`);
-    } else if (declined) {
-      // Not an error: the session was already credited by another path. The server
-      // now advances the visit anyway so the beacon stops nudging a resolved visit.
-      console.log(`[GymVisit] Server declined credit (${declined}) — visit resolved.`);
-    }
-    return { ok: true, triggered };
+    return { ok: true, triggered: noteConfirmOutcome(data, 'confirm') };
   } catch (err) {
     // Loud: a wake that reached JS but failed its one round-trip used to be
     // indistinguishable from a wake that never arrived. Pair with wake_received.

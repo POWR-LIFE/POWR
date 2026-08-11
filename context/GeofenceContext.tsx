@@ -2184,12 +2184,17 @@ async function flushPendingVisitCloses(): Promise<void> {
 
   const { closeGymVisit } = await import('@/lib/gymVisits');
 
-  // Ownership fence: avoid replaying a prior account's queued close under a different login.
-  let currentUserId: string | null = null;
-  try {
-    const { data: { user } } = await withNetworkTimeout(supabase.auth.getUser(), 'auth.getUser');
-    currentUserId = user?.id ?? null;
-  } catch { /* offline — treat ownership as unknown */ }
+  // Ownership fence: avoid replaying a prior account's queued close under a
+  // different login. Storage first, machinery only on a spent token — the exact
+  // fix flushPendingClaims got on 2026-08-11 (see the note there); this is the
+  // same fence in the closes twin, and it runs from the same wake tasks.
+  let currentUserId: string | null = (await readBackgroundAuth())?.userId ?? null;
+  if (!currentUserId) {
+    try {
+      const { data: { user } } = await withNetworkTimeout(supabase.auth.getUser(), 'auth.getUser');
+      currentUserId = user?.id ?? null;
+    } catch { /* offline — treat ownership as unknown */ }
+  }
 
   const remaining: PendingVisitClose[] = [];
   for (const entry of queue) {
@@ -2314,10 +2319,26 @@ async function flushPendingClaims(): Promise<void> {
 // side, so a redundant call is harmless.
 async function resolveTodayGymSessionId(): Promise<string | undefined> {
   try {
-    const { data: { user } } = await withNetworkTimeout(supabase.auth.getUser(), 'auth.getUser');
-    if (!user) return undefined;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
+
+    // Reachable from the exit path, which is background by definition — so the
+    // stored identity answers first, and while it holds, the lookup itself rides
+    // the raw transport too: a supabase-js query would re-enter the jammed auth
+    // lock via fetchWithAuth → getSession, the very thing being routed around.
+    const bgAuth = await readBackgroundAuth();
+    if (bgAuth) {
+      const { data } = await bgSelect<{ id: string }>(
+        'activity_sessions',
+        `select=id&user_id=eq.${bgAuth.userId}&type=eq.gym&verification=eq.geofence`
+          + `&started_at=gte.${encodeURIComponent(today.toISOString())}&order=started_at.desc&limit=1`,
+        bgAuth,
+      );
+      return data?.[0]?.id ?? undefined;
+    }
+
+    const { data: { user } } = await withNetworkTimeout(supabase.auth.getUser(), 'auth.getUser');
+    if (!user) return undefined;
     const { data } = await withNetworkTimeout(supabase
       .from('activity_sessions')
       .select('id')
@@ -2336,27 +2357,46 @@ async function resolveTodayGymSessionId(): Promise<string | undefined> {
 
 async function upgradeGymTier(sessionId: string, partnerName?: string, visitId?: string): Promise<boolean> {
   try {
-    // ensureFreshSession resyncs this runtime to the latest persisted token pair
-    // before any refresh, which is what actually prevents the family-revocation
-    // race the old comment here worried about (see lib/authFresh.ts, 2026-08-05).
-    const authSession = await ensureFreshSession('upgrade_gym_tier');
-    if (!authSession) {
-      console.warn('[Geofence] Tier upgrade: no valid session — will retry on next poll.');
-      return false;
-    }
-
     // BACKGROUND: same as the claim — a functions.invoke never arrives from a
     // backgrounded Android app, so relay via the REST path and let pg_net call
     // upgrade-gym-tier server-to-server. 'accepted' returns false on purpose:
     // the next tick's relay answers 'already_done' and finalizes the state.
+    //
+    // Storage first, machinery only on a spent token: this ran on wake paths
+    // (the exit claim, the location-task tick) yet awaited ensureFreshSession
+    // and then rode supabase-js — both of which serialize on the auth client's
+    // lock, which jams headless (field 2026-08-08 iOS: auth_stale, reason
+    // upgrade_gym_tier, locked-keychain read). While the stored token holds,
+    // the relay rides the raw transport; a spent token falls through to the
+    // machinery, which is the only legitimate rotator and is idempotent to
+    // retry on the next poll if it cannot complete here.
     if (AppState.currentState !== 'active') {
-      const { data: relay, error: relayError } = await withNetworkTimeout(
-        supabase.rpc('relay_gym_upgrade', { p_session_id: sessionId, p_visit_id: visitId ?? null }),
-        'relay_gym_upgrade rpc',
-      );
-      if (relayError) {
-        console.warn('[Geofence] Upgrade relay failed:', relayError.message);
-        return false;
+      const bgAuth = await readBackgroundAuth();
+      let relay: unknown;
+      if (bgAuth) {
+        const { data, error: relayError } = await bgRpc(
+          'relay_gym_upgrade', { p_session_id: sessionId, p_visit_id: visitId ?? null }, bgAuth,
+        );
+        if (relayError) {
+          console.warn('[Geofence] Upgrade relay failed:', relayError.message);
+          return false;
+        }
+        relay = data;
+      } else {
+        const authSession = await ensureFreshSession('upgrade_gym_tier');
+        if (!authSession) {
+          console.warn('[Geofence] Tier upgrade: no valid session — will retry on next poll.');
+          return false;
+        }
+        const { data, error: relayError } = await withNetworkTimeout(
+          supabase.rpc('relay_gym_upgrade', { p_session_id: sessionId, p_visit_id: visitId ?? null }),
+          'relay_gym_upgrade rpc',
+        );
+        if (relayError) {
+          console.warn('[Geofence] Upgrade relay failed:', relayError.message);
+          return false;
+        }
+        relay = data;
       }
       const relayStatus = (relay as { status?: string } | null)?.status;
       if (relayStatus === 'already_done') {
@@ -2374,6 +2414,17 @@ async function upgradeGymTier(sessionId: string, partnerName?: string, visitId?:
         return false;
       }
       console.warn('[Geofence] Upgrade relay rejected:', relayStatus ?? 'unknown');
+      return false;
+    }
+
+    // FOREGROUND: the machinery is fine here — a hang is survivable, and the
+    // invoke below needs a genuinely fresh access token for its header.
+    // ensureFreshSession resyncs this runtime to the latest persisted token pair
+    // before any refresh, which is what actually prevents the family-revocation
+    // race the old comment here worried about (see lib/authFresh.ts, 2026-08-05).
+    const authSession = await ensureFreshSession('upgrade_gym_tier');
+    if (!authSession) {
+      console.warn('[Geofence] Tier upgrade: no valid session — will retry on next poll.');
       return false;
     }
 
@@ -3438,15 +3489,17 @@ export async function runVisitCheck(
   if (isSweepPing) wakeNonce = undefined;
 
   const trace: WakeTrace = { stage };
-  // Freshness before the first server touch — but ONLY on ticketless entries
-  // (foreground callers, legacy nudges). A ticketed wake must never await auth;
-  // warming happens fire-and-forget in the background task instead.
-  //
-  // A sweep ping counts as ticketed for THIS purpose even though its nonce is
-  // useless: it is still a wake, and awaiting auth on a wake is the freeze class
-  // this whole design exists to avoid. Dropping the placeholder must not quietly
-  // re-open that door.
-  if (!wakeNonce && !isSweepPing) await ensureFreshSession(`visit_check_${stage}`);
+  // Freshness before the first server touch — but ONLY on ticketless FOREGROUND
+  // entries. A ticketed wake must never await auth, a sweep ping counts as
+  // ticketed for this purpose even though its nonce is useless, and since
+  // 2026-08-11 a ticketless BACKGROUND entry (legacy nudge) skips it too: the
+  // confirm now presents the persisted token itself over raw fetch, so the
+  // only case this pass could still serve back there is a spent token — and
+  // that case reaches the machinery anyway via confirmGymVisit's authed
+  // fallback, without holding the whole check hostage first.
+  if (!wakeNonce && !isSweepPing && AppState.currentState === 'active') {
+    await ensureFreshSession(`visit_check_${stage}`);
+  }
   await tracedStep('prime_config', trace, () => primeGymDwellMinutes(), STEP_TIMEOUT_MS);
 
   const raw = await tracedStep('read_active', trace, () => AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY), STEP_TIMEOUT_MS);
