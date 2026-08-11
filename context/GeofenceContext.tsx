@@ -2343,29 +2343,6 @@ async function upgradeGymTier(sessionId: string, partnerName?: string, visitId?:
 // Used by both the native geofence task and the foreground-service location task
 // so the two detection paths run through one claim/record/upgrade code path.
 
-/** True if the user has already logged a geofence gym session today. Uses the
- *  cached auth token (getSession — local, no network round-trip) for the user id. */
-async function gymAlreadyLoggedToday(): Promise<boolean> {
-  try {
-    const { data: { session } } = await supabase.auth.getSession();
-    const user = session?.user;
-    if (!user || DEV_TEST_EMAILS.has(user.email ?? '')) return false;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const { data } = await supabase
-      .from('activity_sessions')
-      .select('id')
-      .eq('user_id', user.id)
-      .eq('type', 'gym')
-      .eq('verification', 'geofence')
-      .gte('started_at', today.toISOString())
-      .limit(1);
-    return (data?.length ?? 0) > 0;
-  } catch {
-    return false;
-  }
-}
-
 /** Writes active-geofence state and fires the "You're in" notification for a
  *  newly-entered circle. No-ops if a session is already active. A gym already
  *  logged today does NOT block the check-in — the session still records and
@@ -2381,11 +2358,17 @@ async function setActiveAndNotify(regionId: string, entry: PartnerMapEntry): Pro
   // replayed — under a different account after a sign-out/switch. Best-effort:
   // check-in can race auth (field 2026-07-14), and an unowned record behaves
   // exactly as it did before rather than blocking a real check-in.
-  let ownerId: string | undefined;
-  try {
-    const { data: { session } } = await supabase.auth.getSession();
-    ownerId = session?.user?.id;
-  } catch { /* unauthenticated or offline — leave unstamped */ }
+  //
+  // ⚠ NEVER supabase.auth.getSession() here — this runs on wake paths. Field
+  // 2026-08-11: three sweeps handed trusted fixes (27 m against a 40 m radius)
+  // to this function and each one vanished at the getSession await — no banner,
+  // no visit, no error row, three handoff rows with nothing after them. The
+  // auth client's internal lock had jammed in the headless process, every
+  // caller queued behind it forever, and the device could not check in until a
+  // cold start. The storage read returns the same persisted identity without
+  // entering that machinery; null (no session / spent token) leaves the record
+  // unowned — the same best-effort outcome the old catch produced.
+  const ownerId = (await readBackgroundAuth())?.userId;
 
   await AsyncStorage.setItem(
     ACTIVE_GEOFENCE_KEY,
