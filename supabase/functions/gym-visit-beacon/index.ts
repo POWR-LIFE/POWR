@@ -35,11 +35,6 @@ import { staleVisitVerdict } from '../_shared/gymReaper.ts';
 const MAX_NUDGES_DWELL = 4;              // then leave it to the exit path
 const MAX_NUDGES_UPGRADE = 5;            // the weaker leg — one more attempt than dwell
 const NUDGE_BACKOFF_MS = 5 * 60 * 1000;  // don't re-wake a silent device more than every 5 min
-// How far back the upgrade stage will keep retrying after a visit has ended. The
-// bonus is worth chasing past the exit (that is the whole point of this change),
-// but not indefinitely — a device that has ignored 5 nudges across a day is not
-// going to answer, and the backfill migration covers anything older.
-const UPGRADE_RETRY_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 async function thresholds(admin): Promise<{ dwellMin: number; upgradeMin: number }> {
   const { data } = await admin
@@ -64,13 +59,25 @@ async function dueVisits(admin, stage: 'dwell' | 'upgrade', minutes: number) {
 
   let q = admin
     .from('gym_visits')
-    // The embedded session start is what the upgrade gate actually measures from
-    // (see the hopeless-visit filter below). It is null for the dwell stage —
-    // those rows have no claimed_session_id yet — and unused there.
-    .select(
-      'id, user_id, partner_id, started_at, ended_at, nudge_count, nudge_count_upgrade, last_nudge_at, ' +
-      'activity_sessions!gym_visits_claimed_session_id_fkey(started_at)',
-    )
+    .select('id, user_id, partner_id, started_at, ended_at, nudge_count, nudge_count_upgrade, last_nudge_at')
+    // BOTH stages require a live visit (ended_at null). The dwell stage always
+    // did — a claim needs the user provably still inside. The upgrade stage
+    // spent 2026-08-03 → 2026-08-11 retrying past the exit instead, on the
+    // theory that upgrade-gym-tier gates an ended visit on its RECORDED length
+    // so a late answer could still bank the bonus. The theory was sound; the
+    // client is not: the exit path clears ACTIVE_GEOFENCE_KEY, and runVisitCheck
+    // returns at "no active session — ignoring" (GeofenceContext.tsx) before it
+    // ever looks at the wake's visit_id. Measured over the experiment's whole
+    // life: ZERO of 21 upgrades landed after ended_at. Visit 3468ccdd
+    // (2026-08-11) is the shape of every one: session 41.0 min — genuinely owed
+    // the 40-min bonus — closed at 06:50:59, then four more wakes 06:54–07:11
+    // burned the full budget against a client guaranteed not to answer.
+    //
+    // So: no wake after the exit. An ended visit's bonus cannot be recovered by
+    // waking the device at all — the recovery, if we want it, is a server-side
+    // settle (the gate already needs no presence once ended_at is fixed) or a
+    // client change that answers for a visit it no longer holds locally.
+    .is('ended_at', null)
     .lte('started_at', thresholdAt)
     .or(`last_nudge_at.is.null,last_nudge_at.lt.${backoffAt}`)
     .limit(200);
@@ -78,41 +85,16 @@ async function dueVisits(admin, stage: 'dwell' | 'upgrade', minutes: number) {
   // Each stage counts against its OWN column, so a dwell stage that burns its
   // budget no longer eats into the upgrade stage's.
   q = stage === 'dwell'
-    // A dwell claim genuinely requires the user to still be inside — the device
-    // must take a fresh fix and confirm the radius — so a visit that has ended is
-    // correctly out of scope here.
-    ? q.is('ended_at', null)
-       .eq('status', 'open').is('claimed_session_id', null)
+    ? q.eq('status', 'open').is('claimed_session_id', null)
        .lt('nudge_count', MAX_NUDGES_DWELL)
-    // The UPGRADE does not: it asks "did they stay past the tier?", which is a
-    // question about a window that is already over. Requiring `ended_at is null`
-    // here made the bonus unretryable the instant the user walked out — and since
-    // the claim fires at 30 min and the tier is 40, the eligible window is at most
-    // 10 minutes wide. Measured 2026-08-03: 17 of 39 claimed visits ended within
-    // 10 minutes of the claim, so the beacon never got a single chance at them,
-    // and only 26 of 62 sessions >= 2h ever received the bonus. The client's own
-    // exit-path attempt is single-shot too — the durable claim queue deliberately
-    // skips the upgrade (GeofenceContext.tsx:898) — so one failed background call
-    // lost the bonus permanently.
-    //
     // Keyed on claimed_session_id rather than status='claimed': the exit moves the
     // row to 'closed'/'abandoned', and post-beacon prod holds ZERO visits sitting
     // in 'claimed'. The FACT that a session was claimed is what matters; `status`
     // has not been a reliable label since it started carrying exit state.
-    //
-    // Safe to retry late ONLY because upgrade-gym-tier now gates on the visit's
-    // real length once it has ended, instead of an ever-growing now - started_at
-    // (see this PR's companion change). Without that, a 32-minute visit would
-    // eventually cross the 40-minute gate on its own — the exact phantom upgrade
-    // the single-shot design was protecting against.
     : q.not('claimed_session_id', 'is', null).is('upgraded_at', null)
-       .gte('started_at', new Date(Date.now() - UPGRADE_RETRY_WINDOW_MS).toISOString())
        .lt('nudge_count_upgrade', MAX_NUDGES_UPGRADE)
-       // Newest first. The hopeless-visit filter below drops rows AFTER the row
-       // cap, and a dropped row is never nudged, so it keeps matching this query
-       // for its whole 24h window instead of cycling out on the backoff. Ordering
-       // means that if the 200 cap is ever reached, the visits still worth a wake
-       // are the ones that survive it.
+       // Newest first, so if the 200 cap is ever reached the visits still worth
+       // a wake are the ones that survive it.
        .order('started_at', { ascending: false });
 
   const { data, error } = await q;
@@ -120,43 +102,7 @@ async function dueVisits(admin, stage: 'dwell' | 'upgrade', minutes: number) {
     console.error('[gym-visit-beacon] dueVisits failed', stage, error);
     return [];
   }
-  const rows = data ?? [];
-  if (stage !== 'upgrade') return rows;
-
-  // HOPELESS VISITS. Retrying past the exit is the point of the query above, but
-  // only while the answer can still be yes. Once a visit has ended its length is
-  // fixed, so one already under the tier can never reach it — upgrade-gym-tier
-  // declines every attempt with the same 422, forever. On 2026-08-07 visits
-  // 3dc2d104 (30 min) and 0ce2dc84 (36 min) each burned all 5 upgrade nudges
-  // waking a phone to be told no.
-  //
-  // Measured the way the GATE measures, which is NOT the visit's own length: the
-  // gate bounds elapsed by ended_at − SESSION.started_at (upgrade-gym-tier
-  // index.ts:146-170), and one session spans every gym visit of the UTC day. A
-  // 30-minute second visit can therefore sit 800 minutes past its session start
-  // and legitimately qualify — visit d568eb6d on 2026-08-01 is exactly that. Using
-  // the visit's own length here would have suppressed a bonus the gate accepts.
-  //
-  // Deliberately NOT mirroring the gate's MAX_GYM_SESSION_SEC clamp: it is 12 h,
-  // so it can only ever lower a value that is already far above the tier.
-  //
-  // In JS rather than the query because PostgREST cannot compare two columns and
-  // gym_visits stores no duration.
-  const live = rows.filter((v) => {
-    if (!v.ended_at) return true;                       // still open — the answer is still open
-    const sessionStart = v.activity_sessions?.started_at;
-    if (!sessionStart) return true;                     // no session to measure against; leave it alone
-    const sec = Math.round((new Date(v.ended_at).getTime() - new Date(sessionStart).getTime()) / 1000);
-    // sec <= 0 is a late-write artifact (visit ends before its session starts).
-    // The gate leaves visitEndSec null there and falls back to now − session
-    // start, so it does NOT decline — mirror that and keep the row.
-    if (sec <= 0) return true;
-    return Math.floor(sec / 60) >= minutes;
-  });
-  if (live.length !== rows.length) {
-    console.log(`[gym-visit-beacon] upgrade: skipped ${rows.length - live.length} ended visit(s) already under ${minutes} min`);
-  }
-  return live;
+  return data ?? [];
 }
 
 Deno.serve(async (req: Request) => {
