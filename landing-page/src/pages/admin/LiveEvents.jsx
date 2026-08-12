@@ -87,7 +87,11 @@ const editableFields = (ev) => ({
     entry_gate_n: ev.entry_gate_n,
     entry_gate_counting: ev.entry_gate_counting,
     entry_gate_since: ev.entry_gate_since,
+    booking_url: ev.booking_url,
     prizes: ev.prizes ?? [],
+    // Kept as an ARRAY in form state (the textarea maps join/split at its
+    // edge) so the JSON.stringify dirty comparison stays stable.
+    rules: ev.rules ?? [],
     promo_media_url: ev.promo_media_url,
     promo_headline: ev.promo_headline,
 });
@@ -301,6 +305,11 @@ export default function LiveEvents() {
             const { error: mediaError, warn: mediaWarn } = validateHeroVideoUrl(form.promo_media_url);
             if (mediaError) { toast.error(mediaError); return; }
             if (mediaWarn) toast.info(mediaWarn);
+        }
+        if (form.booking_url && !/^https?:\/\//i.test(form.booking_url)) {
+            // Mirrors the DB check constraint — fail here with a usable
+            // message instead of a constraint-violation toast.
+            toast.error('Booking URL must start with http:// or https://'); return;
         }
         setSaving(true);
         const payload = { ...form, slug: slugify(form.slug) };
@@ -769,7 +778,7 @@ function RegistrationsPanel({ ev, data, onRefresh }) {
                     ) : (
                         <div className="overflow-x-auto">
                             <table className="w-full text-[13px]">
-                                <Head cols={[['Member'], ['Email'], ['Joined'], ['Status']]} />
+                                <Head cols={[['Member'], ['Email'], ['Joined'], ['Opened booking'], ['Booked'], ['Status']]} />
                                 <tbody className="divide-y divide-[#F6F6F3]">
                                     {participants.map((p) => (
                                         <tr key={p.user_id} className={p.disqualified_at ? 'opacity-45' : ''}>
@@ -779,6 +788,15 @@ function RegistrationsPanel({ ev, data, onRefresh }) {
                                             </td>
                                             <td className="py-2.5 pr-3 font-mono text-[12px] text-[#888888]">{p.email ?? '—'}</td>
                                             <td className="py-2.5 pr-3 text-[#888888]">{fmtTime(p.joined_at)}</td>
+                                            {/* joined → opened → booked, the whole funnel in one row.
+                                                "Booked" derives from the Venue bookings export by email —
+                                                blank means "not in the export", not "didn't book". */}
+                                            <td className="py-2.5 pr-3 text-[#888888]">{fmtTime(p.booking_opened_at)}</td>
+                                            <td className="py-2.5 pr-3">
+                                                {p.booked
+                                                    ? <span className="text-[#10B981] text-[11px] font-bold uppercase tracking-wide">✓</span>
+                                                    : <span className="text-[#BBBBBB]">—</span>}
+                                            </td>
                                             <td className="py-2.5 pr-3">
                                                 {p.disqualified_at
                                                     ? <span className="text-[#F43F5E] text-[11px] font-bold uppercase tracking-wide">DQ</span>
@@ -1609,6 +1627,20 @@ function EditorPanel({ form, setForm, dirty, saving, onSave, onDiscard, venueNam
                         </Field>
                     </Group>
 
+                    {/* Booking */}
+                    <Group title="Booking" blurb="The venue's own booking page. Blank hides every booking surface in the app — set it when their form opens and the CTAs appear on the next refresh. Attendee reconciliation lives in the Venue bookings panel.">
+                        <Field label="Booking URL" hint="May contain {email} and {name} — the app substitutes the registrant's details so the form can prefill where the platform supports it.">
+                            <TextInput mono value={form.booking_url} onChange={v => set({ booking_url: v || null })} />
+                        </Field>
+                    </Group>
+
+                    {/* Rules */}
+                    <Group title="Rules" blurb="Shown at registration and on the League ticket. One rule per line — keep each one short enough to read at a glance.">
+                        <Field label="Event rules" hint="e.g. Only points earned during the event week count.">
+                            <RulesField value={form.rules} onChange={v => set({ rules: v })} />
+                        </Field>
+                    </Group>
+
                     {/* Prizes */}
                     <Group title="Prizes" blurb="Labels only — attached to ranks at Settle and read out on the night.">
                         <PrizeEditor prizes={form.prizes} onChange={v => set({ prizes: v })} />
@@ -1688,6 +1720,34 @@ function TextInput({ value, onChange, mono }) {
             value={value ?? ''}
             onChange={e => onChange(e.target.value)}
             className={`w-full max-w-md h-11 px-4 bg-[#F4F4F1] border border-[#E6E6E1] rounded-xl text-sm text-[#1A1A1A] outline-none transition-all focus:border-[#10B981]/40 ${mono ? 'font-mono' : ''}`}
+        />
+    );
+}
+
+const parseRules = (text) => text.split('\n').map(s => s.trim()).filter(Boolean);
+
+/**
+ * One rule per line ↔ jsonb string array. The canonical form value is the
+ * ARRAY (so the JSON.stringify dirty comparison is stable against the saved
+ * row) but the textarea needs its own text buffer: parsing on every
+ * keystroke would eat the trailing newline the user just typed. The buffer
+ * re-seeds only when the canonical value diverges from what the buffer
+ * parses to — i.e. Discard or switching events, never our own keystrokes.
+ */
+function RulesField({ value, onChange }) {
+    const [text, setText] = useState((value ?? []).join('\n'));
+    useEffect(() => {
+        if (JSON.stringify(parseRules(text)) !== JSON.stringify(value ?? [])) {
+            setText((value ?? []).join('\n'));
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- re-seed on external value changes only
+    }, [value]);
+    return (
+        <textarea
+            value={text}
+            onChange={e => { setText(e.target.value); onChange(parseRules(e.target.value)); }}
+            spellCheck={false}
+            className="w-full max-w-md h-28 px-4 py-3 bg-[#F4F4F1] border border-[#E6E6E1] rounded-xl text-sm text-[#1A1A1A] outline-none transition-all focus:border-[#10B981]/40 resize-y"
         />
     );
 }

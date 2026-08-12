@@ -44,15 +44,15 @@ function rankLabel(rank: number): string {
  * The JOIN CTA lives here rather than on the ticket because until you're
  * registered there is no ticket to show — Home is the primary registration
  * surface, but a per-event share link or QR can land someone here first.
+ * The button doesn't join directly: it opens the shared EventRegisterFlow
+ * (confirm → rules/QR/booking), so there is exactly one join path in the app.
  */
 export function EventHeaderCard({
     event,
-    onJoin,
-    joining,
+    onRegister,
 }: {
     event: LiveEvent;
-    onJoin: (eventId: string) => Promise<unknown>;
-    joining: boolean;
+    onRegister: () => void;
 }) {
     const canJoin =
         event.scope === 'opt_in' &&
@@ -88,15 +88,14 @@ export function EventHeaderCard({
             {canJoin && (
                 <Pressable
                     style={({ pressed }) => [styles.joinBtn, pressed && { opacity: 0.85 }]}
-                    disabled={joining}
                     onPress={() => {
                         Haptics.selectionAsync();
-                        void onJoin(event.id);
+                        onRegister();
                     }}
                     accessibilityRole="button"
                     accessibilityLabel={`Register for ${event.name}`}
                 >
-                    <Text style={styles.joinBtnText}>{joining ? 'JOINING…' : 'JOIN THE WEEK'}</Text>
+                    <Text style={styles.joinBtnText}>JOIN THE WEEK</Text>
                 </Pressable>
             )}
             {event.viewer.joined && (

@@ -32,3 +32,14 @@ export function eventStatusChip(event: Pick<LiveEvent, 'status' | 'window_start_
 export function isVideoUrl(url: string | null | undefined): boolean {
     return !!url && /\.(mp4|m3u8|webm|mov)(\?|#|$)/i.test(url);
 }
+
+/**
+ * The registration consent line. Shown whenever the event has a venue — even
+ * before a booking_url exists, because the admin roster export exists from
+ * day one and consent has to precede the share, not the link. One place so
+ * the pitch stage and any future surface can never drift on the wording.
+ */
+export function consentLine(event: Pick<LiveEvent, 'venue'>): string | null {
+    if (!event.venue?.name) return null;
+    return `By registering, your name and email are shared with ${event.venue.name} to arrange your booking.`;
+}

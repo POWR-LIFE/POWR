@@ -1,11 +1,10 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
     fetchActiveLiveEvent,
     fetchEventLeaderboard,
     fetchInviteProgress,
     fetchLiveEventBySlug,
-    joinLiveEvent,
     type EventLeaderboard,
     type InviteProgress,
     type LiveEvent,
@@ -54,21 +53,14 @@ export function useLiveEvent(slug?: string) {
         staleTime: 30_000,
     });
 
-    const joinMutation = useMutation({
-        mutationFn: (eventId: string) => joinLiveEvent(eventId),
-        onSuccess: () => {
-            void queryClient.invalidateQueries({ queryKey: ['liveEvent'] });
-        },
-    });
-
+    // Joining lives in EventRegisterFlow (the one confirm → success surface) —
+    // this hook stays read-only so no caller can grow a second join path.
     return {
         event: eventQuery.data ?? null,
         loading: eventQuery.isPending,
         invites: inviteQuery.data ?? null,
         board: boardQuery.data ?? null,
         boardLoading: boardQuery.isPending,
-        join: (eventId: string) => joinMutation.mutateAsync(eventId),
-        joining: joinMutation.isPending,
         refresh: () => {
             void queryClient.invalidateQueries({ queryKey: ['liveEvent'] });
             void queryClient.invalidateQueries({ queryKey: ['liveEventInvites'] });
