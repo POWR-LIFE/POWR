@@ -11,7 +11,8 @@ import {
     ArrowUpRight, ArrowDownRight, Gift, Plus, X,
     Heart, Moon, Flame, Footprints, Star, Trash2,
     Camera, ImagePlus, Trophy, Check, Link2, RefreshCw, Pencil,
-    Smartphone, Bell
+    Smartphone, Bell,
+    Dumbbell, Bike, Waves, Wind, PersonStanding, Music
 } from 'lucide-react';
 
 const MIN_USERNAME = 3;
@@ -110,6 +111,21 @@ const venueName = (session, partnerMap) => {
     const partner = partnerMap[sessionPartnerId(session)];
     if (partner) return partner.name;
     return session.raw_gps?.partnerName || null;
+};
+
+// Every activity_sessions.type in prod. A geofence gym row prefers the venue's own logo
+// (see the row render); this is the fallback and what every other type gets.
+const ACTIVITY_ICONS = {
+    gym:      Dumbbell,
+    walking:  Footprints,
+    running:  Wind,
+    cycling:  Bike,
+    swimming: Waves,
+    sleep:    Moon,
+    hiit:     Flame,
+    yoga:     PersonStanding,
+    sports:   Trophy,
+    dance:    Music,
 };
 
 export default function UserProfile() {
@@ -629,7 +645,7 @@ export default function UserProfile() {
             const partnerIds = [...new Set((s.data || []).map(sessionPartnerId).filter(Boolean))];
             if (partnerIds.length > 0) {
                 const { data: partnerRows } = await supabase
-                    .from('partners').select('id, name').in('id', partnerIds);
+                    .from('partners').select('id, name, logo_url').in('id', partnerIds);
                 setPartnerMap(Object.fromEntries((partnerRows || []).map(p => [p.id, p])));
             } else {
                 setPartnerMap({});
@@ -1211,10 +1227,12 @@ export default function UserProfile() {
                                     const resolvedPartnerId = session.verification === 'geofence'
                                         ? sessionPartnerId(session)
                                         : null;
-                                    const geoPartnerId = partnerMap[resolvedPartnerId] ? resolvedPartnerId : null;
+                                    const venuePartner = resolvedPartnerId ? partnerMap[resolvedPartnerId] : null;
+                                    const geoPartnerId = venuePartner ? resolvedPartnerId : null;
                                     const venue = session.verification === 'geofence'
                                         ? venueName(session, partnerMap)
                                         : null;
+                                    const TypeIcon = ACTIVITY_ICONS[session.type] || Activity;
                                     return (
                                     <div
                                         key={session.id}
@@ -1223,8 +1241,19 @@ export default function UserProfile() {
                                         title={geoPartnerId ? 'View gym performance for this session' : undefined}
                                         className={`p-10 flex items-center gap-10 group transition-all ${geoPartnerId ? 'cursor-pointer hover:bg-[#F4F4F1]' : 'hover:bg-[#F4F4F1]'}`}
                                     >
-                                        <div className="w-14 h-14 rounded-3xl bg-[#F4F4F1] border border-[#E6E6E1] flex items-center justify-center shrink-0">
-                                            <Activity size={20} className="text-[#666666] group-hover:text-[#8a7600] transition-colors" />
+                                        {/* The venue's logo on a geofence row, else an icon for the activity.
+                                            The icon sits BEHIND the logo rather than in an :else — a logo that
+                                            404s hides itself and uncovers the icon, with no per-row state. */}
+                                        <div className="relative w-14 h-14 rounded-3xl bg-[#F4F4F1] border border-[#E6E6E1] flex items-center justify-center overflow-hidden shrink-0">
+                                            <TypeIcon size={20} className="text-[#666666] group-hover:text-[#8a7600] transition-colors" />
+                                            {venuePartner?.logo_url && (
+                                                <img
+                                                    src={venuePartner.logo_url}
+                                                    alt=""
+                                                    className="absolute inset-0 w-full h-full object-contain p-2 bg-[#F4F4F1]"
+                                                    onError={e => { e.currentTarget.style.display = 'none'; }}
+                                                />
+                                            )}
                                         </div>
                                         <div className="flex-1">
                                             <div className="flex justify-between items-center mb-1">
