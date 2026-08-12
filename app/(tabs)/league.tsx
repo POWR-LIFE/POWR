@@ -396,7 +396,7 @@ function EventBoardSection({
       {board.is_preview && (
         <View style={styles.boardPreviewChipRow}>
           <View style={styles.boardPreviewChip}>
-            <Text style={styles.boardPreviewChipText}>BOARD PREVIEW · SAMPLE DATA</Text>
+            <Text style={styles.boardPreviewChipText}>{'BOARD PREVIEW' + (entries.some(e => e.user_id.startsWith('00000000-0000-4000-8000')) ? ' · SAMPLE DATA' : '')}</Text>
           </View>
         </View>
       )}
