@@ -27,6 +27,7 @@ import {
     ArrowUpRight,
     ArrowDownRight,
     PartyPopper,
+    Radio,
 } from 'lucide-react';
 import { createContext, useContext, useEffect, useState } from 'react';
 import { Link, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
@@ -79,6 +80,7 @@ import NotificationManager from './pages/admin/NotificationManager';
 import StreakRescue from './pages/admin/StreakRescue';
 import VaultManager from './pages/admin/VaultManager';
 import LiveEvents from './pages/admin/LiveEvents';
+import LiveOps from './pages/admin/LiveOps';
 import AthleteSignup from './pages/AthleteSignup';
 import LandingV2 from './landing/LandingV2';
 import PartnersPage from './landing/partners/PartnersPage';
@@ -303,6 +305,7 @@ const PATH_LABELS = {
     notifications: 'Notifications',
     'streak-rescue': 'Streak Rescue',
     events: 'Live Events',
+    liveops: 'Live Ops',
     config: 'Config',
 };
 
@@ -911,6 +914,7 @@ const AdminLayout = ({ children }) => {
         { label: 'Analytics',   path: '/admin/analytics',   icon: BarChart3     },
         { label: 'Usage',       path: '/admin/usage',       icon: MousePointerClick },
         { label: 'Sessions',    path: '/admin/sessions',    icon: Shield        },
+        { label: 'Live Ops',    path: '/admin/liveops',     icon: Radio         },
         { label: 'Performance', path: '/admin/performance', icon: Activity      },
         { label: 'Redemptions', path: '/admin/redemptions', icon: Gift          },
         { label: 'Audit Log',   path: '/admin/audit',       icon: ScrollText    },
@@ -1121,6 +1125,7 @@ export default function App() {
                     <Route path="/admin/notifications" element={<ProtectedRoute><AdminLayout><NotificationManager /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/streak-rescue" element={<ProtectedRoute><AdminLayout><StreakRescue /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/events" element={<ProtectedRoute><AdminLayout><LiveEvents /></AdminLayout></ProtectedRoute>} />
+                    <Route path="/admin/liveops" element={<ProtectedRoute><AdminLayout><LiveOps /></AdminLayout></ProtectedRoute>} />
                     <Route path="/admin/athletes" element={<ProtectedRoute><AdminLayout><AthleteApplications /></AdminLayout></ProtectedRoute>} />
                     <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>

@@ -1,0 +1,411 @@
+import {
+  ARM_BURST_MS,
+  BoardRow,
+  PushRow,
+  RawEvent,
+  VisitDoc,
+  checkinPathLabel,
+  collapseTimeline,
+  displayRate,
+  elapsedMinutes,
+  formatAgo,
+  formatDuration,
+  isOtaBehind,
+  isWakeStarved,
+  lastHeardLabel,
+  otaLabel,
+  pushVerdict,
+  secondsBetween,
+  stageDeltas,
+  visitAlerts,
+  visitStage,
+} from '@/shared/liveops';
+
+// A fixed "now" so every threshold assertion is deterministic.
+const NOW = Date.parse('2026-08-12T12:00:00.000Z');
+const ago = (minutes: number) => new Date(NOW - minutes * 60_000).toISOString();
+
+function boardRow(over: Partial<BoardRow> = {}): BoardRow {
+  return {
+    visit_id: 'v1',
+    user_id: 'u1',
+    username: 'tester',
+    display_name: 'Tester',
+    email: 'tester@example.com',
+    partner_id: 'p1',
+    venue_name: 'ONE LDN',
+    region_id: 'p1-0',
+    platform: 'ios',
+    status: 'open',
+    started_at: ago(10),
+    checked_in_at: ago(10),
+    announced_at: ago(10),
+    claimed_at: null,
+    upgraded_at: null,
+    ended_at: null,
+    close_reason: null,
+    last_proven_at: ago(2),
+    last_confirmed_at: ago(2),
+    completed_push_at: null,
+    claimed_session_id: null,
+    last_heard_at: ago(2),
+    last_heard_kind: 'region event',
+    unanswered_nudge_streak: 0,
+    undrawn_push_count: 0,
+    dwell_minutes: 30,
+    upgrade_minutes: 40,
+    is_test: false,
+    ...over,
+  };
+}
+
+function pushRow(over: Partial<PushRow> = {}): PushRow {
+  return {
+    id: 'push1',
+    type: 'gym_session_complete',
+    title: 'Session complete',
+    status: 'accepted',
+    skip_reason: null,
+    error: null,
+    transport: 'fcm_direct',
+    delivered_at: null,
+    created_at: ago(30),
+    ...over,
+  };
+}
+
+function geo(event: string, atMs: number, regionId: string | null = 'p1-0'): RawEvent {
+  return { src: 'geo', event, region_id: regionId, detail: {}, created_at: new Date(atMs).toISOString() };
+}
+
+describe('time formatting', () => {
+  it('formats sub-minute, minute and hour spans', () => {
+    expect(formatDuration(9)).toBe('9s');
+    expect(formatDuration(252)).toBe('4m 12s');
+    expect(formatDuration(3840)).toBe('1h 04m');
+  });
+
+  it('keeps the sign on a negative delta — beating a threshold is the good case', () => {
+    expect(formatDuration(-150)).toBe('-2m 30s');
+  });
+
+  it('returns a dash rather than NaN for missing spans', () => {
+    expect(formatDuration(null)).toBe('—');
+    expect(secondsBetween(null, ago(1))).toBeNull();
+    expect(secondsBetween(ago(1), null)).toBeNull();
+    expect(formatAgo(null, NOW)).toBe('never');
+  });
+});
+
+describe('visitStage', () => {
+  it('reads the award stamps, not the lifecycle status', () => {
+    expect(visitStage(boardRow())).toBe('checked_in');
+    expect(visitStage(boardRow({ claimed_at: ago(1) }))).toBe('claimed');
+    expect(visitStage(boardRow({ claimed_at: ago(5), upgraded_at: ago(1) }))).toBe('upgraded');
+    expect(visitStage(boardRow({ ended_at: ago(1), status: 'closed' }))).toBe('closed');
+    expect(visitStage(boardRow({ status: 'abandoned', ended_at: ago(1) }))).toBe('abandoned');
+  });
+
+  it('measures elapsed to the CLOSE for a finished visit, not to now', () => {
+    const closed = boardRow({ started_at: ago(90), ended_at: ago(30) });
+    expect(Math.round(elapsedMinutes(closed, NOW))).toBe(60);
+  });
+});
+
+describe('stuck heuristics', () => {
+  it('flags an open visit past 40m with no claim', () => {
+    const alerts = visitAlerts(boardRow({ started_at: ago(41) }), NOW);
+    expect(alerts.map(a => a.key)).toContain('claim_overdue');
+  });
+
+  it('does not flag at exactly the threshold — the rule is strictly greater', () => {
+    const alerts = visitAlerts(boardRow({ started_at: ago(40) }), NOW);
+    expect(alerts.map(a => a.key)).not.toContain('claim_overdue');
+  });
+
+  it('flags a claimed visit past 55m with no upgrade', () => {
+    const alerts = visitAlerts(boardRow({ started_at: ago(56), claimed_at: ago(25) }), NOW);
+    expect(alerts.map(a => a.key)).toContain('upgrade_overdue');
+    expect(alerts.map(a => a.key)).not.toContain('claim_overdue');
+  });
+
+  it('flags stale presence when BOTH proof stamps are older than 45m', () => {
+    const alerts = visitAlerts(
+      boardRow({ started_at: ago(50), claimed_at: ago(20), last_proven_at: ago(46), last_confirmed_at: ago(46) }),
+      NOW,
+    );
+    expect(alerts.map(a => a.key)).toContain('presence_stale');
+  });
+
+  it('takes the FRESHER of the two proof stamps — a recent confirm rescues a stale proof', () => {
+    const alerts = visitAlerts(
+      boardRow({ started_at: ago(50), claimed_at: ago(20), last_proven_at: ago(90), last_confirmed_at: ago(3) }),
+      NOW,
+    );
+    expect(alerts.map(a => a.key)).not.toContain('presence_stale');
+  });
+
+  it('never calls a CLOSED visit stuck — a short walk-through is a finished story', () => {
+    const alerts = visitAlerts(
+      boardRow({ started_at: ago(120), ended_at: ago(60), status: 'closed', close_reason: 'exit', last_proven_at: ago(120) }),
+      NOW,
+    );
+    expect(alerts.map(a => a.key)).toEqual([]);
+  });
+
+  it('badges a wake-starved device at three unanswered wakes, not two', () => {
+    expect(isWakeStarved(2)).toBe(false);
+    expect(isWakeStarved(3)).toBe(true);
+    expect(visitAlerts(boardRow({ unanswered_nudge_streak: 2 }), NOW).map(a => a.key)).not.toContain('wake_starved');
+    expect(visitAlerts(boardRow({ unanswered_nudge_streak: 3 }), NOW).map(a => a.key)).toContain('wake_starved');
+  });
+
+  it('badges accepted-but-never-drawn pushes', () => {
+    const alerts = visitAlerts(boardRow({ undrawn_push_count: 2 }), NOW);
+    const alert = alerts.find(a => a.key === 'push_never_drew');
+    expect(alert?.detail).toContain('2 accepted');
+  });
+});
+
+describe('pushVerdict — accepted is not displayed', () => {
+  it('treats a device-stamped delivered_at as the only proof of display', () => {
+    expect(pushVerdict(pushRow({ delivered_at: ago(29) }), NOW).key).toBe('drew');
+  });
+
+  it('calls an fcm_direct push with no receipt after 5 minutes "sent, never drew"', () => {
+    expect(pushVerdict(pushRow({ created_at: ago(6) }), NOW).key).toBe('never_drew');
+  });
+
+  it('still waits inside the 5-minute grace window', () => {
+    expect(pushVerdict(pushRow({ created_at: ago(4) }), NOW).key).toBe('pending');
+  });
+
+  it('NEVER blames a transport that cannot stamp a receipt', () => {
+    // The Expo path never writes delivered_at. Reading its silence as failure
+    // would invent a bug on every push the app has ever sent through Expo.
+    const verdict = pushVerdict(pushRow({ transport: null, created_at: ago(120) }), NOW);
+    expect(verdict.key).toBe('no_receipt_path');
+    expect(verdict.severity).toBe('neutral');
+  });
+
+  it('surfaces the server gate and the platform error verbatim', () => {
+    expect(pushVerdict(pushRow({ status: 'skipped', skip_reason: 'vault_rollout' }), NOW).label)
+      .toContain('vault_rollout');
+    expect(pushVerdict(pushRow({ status: 'rejected', error: 'DeviceNotRegistered' }), NOW).label)
+      .toContain('DeviceNotRegistered');
+  });
+
+  it('counts display rate only over pushes that COULD report one', () => {
+    const rate = displayRate([
+      { transport: 'fcm_direct', accepted: 10, drawn: 7 },
+      { transport: 'expo', accepted: 100, drawn: 0 },   // unmeasurable, must not dilute
+    ]);
+    expect(rate.measurable).toBe(10);
+    expect(rate.pct).toBe(70);
+  });
+
+  it('reports "no measurable sends" as null rather than 0%', () => {
+    expect(displayRate([{ transport: 'expo', accepted: 40, drawn: 0 }]).pct).toBeNull();
+  });
+});
+
+describe('collapseTimeline — arm bursts and phantom exits', () => {
+  const t0 = Date.parse('2026-08-12T09:00:00.000Z');
+
+  it('collapses the arm burst into one entry carrying its counts', () => {
+    // Arming registers every cached region; the OS reports initial state for all
+    // of them within a few seconds. Unfiltered this IS the timeline.
+    const events: RawEvent[] = [geo('armed', t0)];
+    for (let i = 0; i < 40; i++) events.push(geo('exit', t0 + 1000 + i * 10, `region-${i}`));
+    for (let i = 0; i < 5; i++) events.push(geo('enter', t0 + 2000 + i * 10, `near-${i}`));
+
+    const timeline = collapseTimeline(events);
+    expect(timeline).toHaveLength(1);
+    expect(timeline[0].event).toBe('armed');
+    expect(timeline[0].collapsed).toEqual({ armed: 1, enters: 5, exits: 40 });
+  });
+
+  it('folds a re-arm storm into the same burst rather than opening a new one', () => {
+    const events = [geo('armed', t0), geo('rearm_skipped', t0 + 2000), geo('armed', t0 + 4000)];
+    const timeline = collapseTimeline(events);
+    expect(timeline).toHaveLength(1);
+    expect(timeline[0].collapsed?.armed).toBe(3);
+  });
+
+  it('lets a crossing that lands after the burst window through as a real event', () => {
+    const events = [geo('armed', t0), geo('enter', t0 + ARM_BURST_MS + 1000)];
+    const timeline = collapseTimeline(events);
+    expect(timeline).toHaveLength(2);
+    expect(timeline[1].event).toBe('enter');
+    expect(timeline[1].noise).toBe(false);
+  });
+
+  it('marks an exit with no preceding enter as noise, not a departure', () => {
+    const timeline = collapseTimeline([geo('exit', t0, 'never-entered')]);
+    expect(timeline[0].noise).toBe(true);
+  });
+
+  it('treats an exit that PAIRS with an earlier enter as a real departure', () => {
+    const timeline = collapseTimeline([
+      geo('enter', t0, 'p1-0'),
+      geo('exit', t0 + 30 * 60_000, 'p1-0'),
+    ]);
+    expect(timeline.map(e => e.noise)).toEqual([false, false]);
+  });
+
+  it('pairs an exit against an enter that was absorbed into an arm burst', () => {
+    const timeline = collapseTimeline([
+      geo('armed', t0),
+      geo('enter', t0 + 500, 'p1-0'),                     // swallowed by the burst…
+      geo('exit', t0 + 30 * 60_000, 'p1-0'),              // …but still a real departure
+    ]);
+    expect(timeline).toHaveLength(2);
+    expect(timeline[1].event).toBe('exit');
+    expect(timeline[1].noise).toBe(false);
+  });
+
+  it('demotes stream_tick — real, but not a story beat', () => {
+    const timeline = collapseTimeline([
+      { src: 'visit', event: 'stream_tick', region_id: null, detail: {}, created_at: new Date(t0).toISOString() },
+      { src: 'visit', event: 'claimed', region_id: null, detail: {}, created_at: new Date(t0 + 1000).toISOString() },
+    ]);
+    expect(timeline[0].noise).toBe(true);
+    expect(timeline[1].noise).toBe(false);
+  });
+});
+
+describe('stageDeltas', () => {
+  function visitDoc(over: Partial<VisitDoc> = {}): VisitDoc {
+    return {
+      visit: boardRow({ started_at: ago(90), checked_in_at: ago(90) }),
+      thresholds: { dwell_minutes: 30, upgrade_minutes: 40 },
+      entered_at: null,
+      checkin_via: null,
+      exit_detected_at: null,
+      device: null,
+      last_heard: null,
+      events_total: 0,
+      events_limit: 600,
+      events: [],
+      pushes: [],
+      session: null,
+      points: [],
+      ...over,
+    };
+  }
+
+  it('measures the claim against the CONFIGURED threshold, not a hardcoded 30', () => {
+    const doc = visitDoc({
+      visit: boardRow({ started_at: ago(90), checked_in_at: ago(90), claimed_at: ago(58) }),
+      thresholds: { dwell_minutes: 25, upgrade_minutes: 35 },
+    });
+    const claim = stageDeltas(doc, NOW).find(d => d.key === 'checkin_to_claim')!;
+    expect(claim.seconds).toBe(32 * 60);
+    expect(claim.vsThresholdSec).toBe(7 * 60);       // 32m against a 25m threshold
+    expect(claim.thresholdLabel).toBe('25m');
+  });
+
+  it('explains a missing OS enter rather than printing a dash', () => {
+    const enter = stageDeltas(visitDoc(), NOW).find(d => d.key === 'enter_to_checkin')!;
+    expect(enter.seconds).toBeNull();
+    expect(enter.missing).toMatch(/no OS enter delivered/);
+  });
+
+  it('distinguishes "not claimed yet" from "closed before the threshold"', () => {
+    const open = stageDeltas(visitDoc(), NOW).find(d => d.key === 'checkin_to_claim')!;
+    expect(open.missing).toBe('not claimed yet');
+
+    const closed = stageDeltas(
+      visitDoc({ visit: boardRow({ started_at: ago(90), ended_at: ago(80), status: 'closed' }) }),
+      NOW,
+    ).find(d => d.key === 'checkin_to_claim')!;
+    expect(closed.missing).toBe('closed before the dwell threshold');
+  });
+
+  it('names the close_reason when a visit ended with no exit event', () => {
+    const doc = visitDoc({
+      visit: boardRow({ started_at: ago(90), ended_at: ago(10), status: 'closed', close_reason: 'stale_after_upgrade' }),
+    });
+    const leg = stageDeltas(doc, NOW).find(d => d.key === 'exit_to_close')!;
+    expect(leg.missing).toContain('stale_after_upgrade');
+  });
+
+  it('measures door-to-notification from the DISPLAY receipt, never from the send', () => {
+    const doc = visitDoc({
+      visit: boardRow({
+        started_at: ago(90), checked_in_at: ago(90), claimed_at: ago(60),
+        ended_at: ago(20), completed_push_at: ago(18), status: 'closed',
+      }),
+      pushes: [pushRow({ created_at: ago(18), delivered_at: ago(15) })],
+    });
+    const deltas = stageDeltas(doc, NOW);
+    expect(deltas.find(d => d.key === 'push_to_drawn')!.seconds).toBe(3 * 60);
+    expect(deltas.find(d => d.key === 'door_to_notification')!.seconds).toBe(75 * 60);
+  });
+
+  it('refuses to claim a banner drew when only the SEND is stamped', () => {
+    const doc = visitDoc({
+      visit: boardRow({ started_at: ago(90), ended_at: ago(20), completed_push_at: ago(18), status: 'closed' }),
+      pushes: [pushRow({ created_at: ago(18), delivered_at: null })],
+    });
+    const leg = stageDeltas(doc, NOW).find(d => d.key === 'door_to_notification')!;
+    expect(leg.seconds).toBeNull();
+    expect(leg.missing).toMatch(/not been proven to draw/);
+  });
+
+  it('gives an open visit a live clock instead of seven dashes', () => {
+    const deltas = stageDeltas(visitDoc(), NOW);
+    expect(deltas[0].key).toBe('elapsed');
+    expect(deltas[0].seconds).toBe(90 * 60);
+  });
+});
+
+describe('device header', () => {
+  const device = {
+    platform: 'android', app_version: '1.5.0', app_build: '19',
+    ota_update_id: 'aaaaaaaa-1111', ota_channel: 'preview',
+    token_updated_at: ago(5), newest_ota_on_channel: 'bbbbbbbb-2222',
+  };
+
+  it('flags a device running an older bundle than its own channel has published', () => {
+    expect(isOtaBehind(device)).toBe(true);
+    expect(isOtaBehind({ ...device, ota_update_id: 'bbbbbbbb-2222' })).toBe(false);
+  });
+
+  it('flags a device that lost its OTA and fell back to the embedded bundle', () => {
+    expect(isOtaBehind({ ...device, ota_update_id: null })).toBe(true);
+    expect(otaLabel({ ota_update_id: null })).toBe('embedded');
+    expect(otaLabel(device)).toBe('aaaaaaaa');
+  });
+
+  it('does not cry stale when the channel has published nothing to compare against', () => {
+    expect(isOtaBehind({ ...device, newest_ota_on_channel: null })).toBe(false);
+    expect(isOtaBehind(null)).toBe(false);
+  });
+});
+
+describe('last heard from', () => {
+  it('names the source and never guesses why a device is quiet', () => {
+    // An event gap cannot tell "app dead" from "user went nowhere".
+    const label = lastHeardLabel(ago(12), 'region event', NOW);
+    expect(label).toBe('12m 00s ago · region event');
+    expect(label).not.toMatch(/dead|offline|crashed/i);
+  });
+
+  it('says so plainly when there is no footprint at all', () => {
+    expect(lastHeardLabel(null, null, NOW)).toBe('never heard from');
+  });
+});
+
+describe('checkinPathLabel', () => {
+  it('names the foreground bucket instead of calling it unknown', () => {
+    expect(checkinPathLabel(null)).toBe('Foreground / unlogged');
+    expect(checkinPathLabel('foreground_or_unlogged')).toBe('Foreground / unlogged');
+    expect(checkinPathLabel('enter_poll')).toBe('Native enter → poll');
+    expect(checkinPathLabel('sweep')).toBe('Background sweep');
+  });
+
+  it('passes an unrecognised path through rather than hiding it', () => {
+    expect(checkinPathLabel('some_new_path')).toBe('some_new_path');
+  });
+});

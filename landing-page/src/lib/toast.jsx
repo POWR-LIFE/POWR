@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
 import { CheckCircle2, XCircle, Info } from 'lucide-react';
 
 const ToastContext = createContext(null);
@@ -6,11 +6,18 @@ const ToastContext = createContext(null);
 export function ToastProvider({ children }) {
     const [toasts, setToasts] = useState([]);
 
-    const addToast = (msg, type) => {
+    // Stable identity, both here and in useToast below. This used to be a plain
+    // function plus a fresh object literal per render, which made `toast` a
+    // dependency that changed on EVERY render — so any page doing
+    //   const load = useCallback(..., [toast]);
+    //   useEffect(() => { load(); }, [load]);
+    // span in a tight fetch → setState → render → new toast → fetch loop. That
+    // is a trap for the caller, not a bug in the caller, so it is fixed here.
+    const addToast = useCallback((msg, type) => {
         const id = crypto.randomUUID();
         setToasts(prev => [...prev, { id, msg, type }]);
         setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3500);
-    };
+    }, []);
 
     const cfg = {
         success: { border: 'border-green-500/25', icon: CheckCircle2, color: 'text-green-400' },
@@ -38,9 +45,9 @@ export function ToastProvider({ children }) {
 
 export function useToast() {
     const add = useContext(ToastContext);
-    return {
+    return useMemo(() => ({
         success: msg => add(msg, 'success'),
         error:   msg => add(msg, 'error'),
         info:    msg => add(msg, 'info'),
-    };
+    }), [add]);
 }
