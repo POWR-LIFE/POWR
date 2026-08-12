@@ -21,16 +21,15 @@ A="${WATCH_USER_A:-234d49f3-d189-44b1-a874-063e724e4380}"   # AND = powrcto (pre
 B="${WATCH_USER_B:-a2585666-5b7a-4622-8e43-6bd4fb8013f0}"   # iOS = jpowr (production channel, build 17)
 USERS="in.(${A},${B})"
 VENUE="${WATCH_VENUE:-7d865c3b}"   # POWR partner id prefix (radius 40m)
-# 2026-08-12 late: verified against user_push_tokens, not assumed. ⚠ Channels stay
-# SWAPPED since the 08-12 reinstalls: powrcto/AND runs preview, jpowr/iOS runs
-# production — so the two devices sit on DIFFERENT commits and that is expected:
-#   AND 019ff6be = preview/d2bb85d   (Friday fix set e579e0c + session-watcher fix)
-#   iOS 019ff726 = production/f851566 (same fix set + the events UI on top)
-# f851566 touches events UI only, so the geofence/auth chain under test is identical
-# on both. Each is its own branch's newest, so neither drifts mid-run.
-# STALE-OTA(019ff62*) means "still on the b1ace1d-era bundle, open the app once".
-AND_OTA="${WATCH_AND_OTA:-019ff6be-36f2-7008-a3e9-e1b672a3fb01}"
-IOS_OTA="${WATCH_IOS_OTA:-019ff726-0a78-7d37-a251-70ee135e7c6b}"
+# 2026-08-12 night: the 9bb1f31 bundles (approach-aware sweep + wake receipts),
+# published to BOTH branches after the evening field test. Both devices were
+# UNINSTALLED at 19:33; these defaults assume they reinstall the same builds
+# (AND build 19 = preview channel, iOS build 17 = production channel — the
+# swap persists through a reinstall of the same binaries). A fresh install runs
+# its embedded bundle until the first app open fetches the OTA, so expect
+# STALE-OTA(embedded) on first heartbeat, then these ids.
+AND_OTA="${WATCH_AND_OTA:-019ff77e-321d-7193-8b6f-d79824f57e76}"
+IOS_OTA="${WATCH_IOS_OTA:-019ff77b-3da8-7971-9cd7-dc22ae12da35}"
 
 S=$(mktemp -d) || exit 1; trap 'rm -rf "$S"' EXIT
 get() { cat "$S/$1" 2>/dev/null; }
