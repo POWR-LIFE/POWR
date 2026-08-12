@@ -150,8 +150,27 @@ export type EventLeaderboard = {
     viewer: LiveEventViewer & { rank?: number; points?: number; prize_label?: string | null };
 };
 
-export async function fetchEventLeaderboard(eventId: string): Promise<EventLeaderboard | null> {
-    const { data, error } = await supabase.rpc('get_event_leaderboard', { p_event_id: eventId });
+/**
+ * The board states a previewer can force from the app, in the order a tester
+ * walks them. 'auto' is the real thing under the simulated status — the only
+ * value a non-previewer can ever get, whatever they send.
+ */
+export const BOARD_PREVIEW_STATES = ['auto', 'gated', 'live', 'locked', 'revealed'] as const;
+export type BoardPreviewState = (typeof BOARD_PREVIEW_STATES)[number];
+
+/**
+ * `previewState` is honoured server-side ONLY for a previewer on a draft, and
+ * falls back to the event's admin-set column when omitted — so passing it is
+ * safe on any event and the admin control stays the default.
+ */
+export async function fetchEventLeaderboard(
+    eventId: string,
+    previewState?: BoardPreviewState | null,
+): Promise<EventLeaderboard | null> {
+    const { data, error } = await supabase.rpc('get_event_leaderboard', {
+        p_event_id: eventId,
+        p_preview_state: previewState ?? null,
+    });
     if (error) return null;
     return (data as EventLeaderboard | null) ?? null;
 }

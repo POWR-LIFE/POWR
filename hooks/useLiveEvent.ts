@@ -5,6 +5,7 @@ import {
     fetchEventLeaderboard,
     fetchInviteProgress,
     fetchLiveEventBySlug,
+    type BoardPreviewState,
     type EventLeaderboard,
     type InviteProgress,
     type LiveEvent,
@@ -20,7 +21,7 @@ import {
  * an unknown/ended slug falls back to the active event rather than a
  * dead end.
  */
-export function useLiveEvent(slug?: string) {
+export function useLiveEvent(slug?: string, boardPreviewState?: BoardPreviewState | null) {
     const queryClient = useQueryClient();
 
     const eventQuery = useQuery<LiveEvent | null>({
@@ -45,9 +46,12 @@ export function useLiveEvent(slug?: string) {
     // The board is server-driven state — standings while live and visible,
     // nothing score-shaped while locked, frozen results after reveal. ~60s
     // poll while the tab is mounted (spec §5); no realtime infra needed.
+    // The forced state is part of the key: a tester stepping through the flow
+    // gets a fresh fetch per state instead of the previous state's cached
+    // payload, and Home's board entry (which passes no state) keeps its own.
     const boardQuery = useQuery<EventLeaderboard | null>({
-        queryKey: ['liveEventBoard', eventQuery.data?.id],
-        queryFn: () => fetchEventLeaderboard(eventQuery.data!.id),
+        queryKey: ['liveEventBoard', eventQuery.data?.id, boardPreviewState ?? null],
+        queryFn: () => fetchEventLeaderboard(eventQuery.data!.id, boardPreviewState),
         // Scheduled events have no board — except in preview, where the admin
         // can force the board into any state for the design walkthrough, so
         // previewers always ask and let the server decide the shape.

@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -37,7 +38,7 @@ import { usePoints } from '@/hooks/usePoints';
 import { useLiveEvent } from '@/hooks/useLiveEvent';
 import { useAuth } from '@/context/AuthContext';
 import { fetchLeaderboard, type LeaderboardEntry, type LeaderboardMetric } from '@/lib/api/leaderboard';
-import type { EventBoardEntry, EventLeaderboard, LiveEvent } from '@/lib/api/liveEvents';
+import type { BoardPreviewState, EventBoardEntry, EventLeaderboard, LiveEvent } from '@/lib/api/liveEvents';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -92,8 +93,13 @@ export default function LeagueScreen() {
   const { weeklyEarned, totalEarned } = usePoints();
   const myPoints = metric === 'weekly' ? weeklyEarned : totalEarned;
 
+  // Board state a preview tester has stepped to. null = whatever the event's
+  // admin-set preview_board_state says, which is also what every non-previewer
+  // gets — the server ignores this argument for anyone else.
+  const [boardPreview, setBoardPreview] = useState<BoardPreviewState | null>(null);
+
   const { event: activeEvent, invites, board: eventBoard } =
-    useLiveEvent(typeof eventSlug === 'string' ? eventSlug : undefined);
+    useLiveEvent(typeof eventSlug === 'string' ? eventSlug : undefined, boardPreview);
   const [registerOpen, setRegisterOpen] = useState(false);
 
   // Load leaderboard data when metric changes (only when live)
@@ -167,6 +173,11 @@ export default function LeagueScreen() {
                   only while there's still time to convert an invite. */}
               {activeEvent.viewer.joined && invitesOpen(activeEvent) && (
                 <EventTicketCard event={activeEvent} invites={invites} />
+              )}
+              {/* Testers only — walks the board through every state it can be
+                  in without an admin flipping a column between each step. */}
+              {activeEvent.is_preview && (
+                <BoardPreviewSwitcher value={boardPreview} onChange={setBoardPreview} />
               )}
               <EventBoardSection event={activeEvent} board={eventBoard} onPressUser={openUserSheet} />
             </ScrollView>
@@ -314,6 +325,65 @@ function invitesOpen(event: LiveEvent): boolean {
   return Date.now() < new Date(event.conversion_deadline_at).getTime();
 }
 
+// ─── BoardPreviewSwitcher ─────────────────────────────────────────────────────
+
+/**
+ * The board lifecycle, walkable in place. Rendered ONLY when the server has
+ * already told us this viewer is a previewer on a draft (`is_preview`), and
+ * the state it picks is re-validated server-side against the same previewer
+ * check — so this is a convenience, never the access control.
+ *
+ * It exists because the states were previously only reachable by an admin
+ * editing `preview_board_state` on the event: one value shared by every
+ * tester, changed for everyone at once, and nobody could step through the
+ * sequence themselves. AUTO hands control back to that column.
+ */
+function BoardPreviewSwitcher({
+  value,
+  onChange,
+}: {
+  value: BoardPreviewState | null;
+  onChange: (next: BoardPreviewState | null) => void;
+}) {
+  // 'auto' is modelled as null so the app sends nothing and the event's own
+  // setting decides — distinct from explicitly forcing 'auto'.
+  const options: { label: string; state: BoardPreviewState | null }[] = [
+    { label: 'AUTO', state: null },
+    { label: 'GATED', state: 'gated' },
+    { label: 'LIVE', state: 'live' },
+    { label: 'SEALED', state: 'locked' },
+    { label: 'WINNERS', state: 'revealed' },
+  ];
+
+  return (
+    <View style={styles.previewSwitcher}>
+      <Text style={styles.previewSwitcherLabel}>PREVIEW · BOARD STATE</Text>
+      <View style={styles.previewSwitcherRow}>
+        {options.map(o => {
+          const active = value === o.state;
+          return (
+            <Pressable
+              key={o.label}
+              onPress={() => {
+                Haptics.selectionAsync();
+                onChange(o.state);
+              }}
+              style={[styles.previewSwitcherPill, active && styles.previewSwitcherPillOn]}
+              accessibilityRole="button"
+              accessibilityState={{ selected: active }}
+              accessibilityLabel={`Preview the ${o.label.toLowerCase()} board state`}
+            >
+              <Text style={[styles.previewSwitcherText, active && styles.previewSwitcherTextOn]}>
+                {o.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
 // ─── EventBoardSection ────────────────────────────────────────────────────────
 // The event-mode board (ticket 5). Server-driven: standings exist only while
 // the board is live and visible, nothing score-shaped arrives while locked
@@ -342,12 +412,28 @@ function EventBoardSection({
   onPressUser: (e: LeaderboardEntry) => void;
 }) {
   // Pre-week: the header card above already carries the countdown. A preview
-  // payload FORCED into a real state (sealed / live / winners) still renders —
-  // that walkthrough is the point; auto-scheduled mirrors the real nothing.
+  // payload FORCED into a real state (gated / sealed / live / winners) still
+  // renders — that walkthrough is the point; auto-scheduled mirrors the real
+  // nothing.
   if (!board) return null;
+  // is_gated belongs here with the rest: it is a forced state like any other,
+  // and a gated payload carries nothing score-shaped, so testing it against
+  // standings/results alone silently dropped it on a pre-window event.
   const previewForced =
-    board.is_preview && (board.is_locked || !!board.standings || !!board.results);
-  if (event.status === 'scheduled' && !previewForced) return null;
+    board.is_preview &&
+    (board.is_locked || board.is_gated || !!board.standings || !!board.results);
+  if (event.status === 'scheduled' && !previewForced) {
+    // A blank is ambiguous inside a preview walkthrough — say why it's empty
+    // rather than leaving a tester wondering whether something failed.
+    return board.is_preview ? (
+      <View style={styles.previewEmptyNote}>
+        <Text style={styles.previewEmptyNoteText}>
+          No board before the window opens — this is exactly what a real user sees
+          pre-event. Pick a state above to walk the rest of the flow.
+        </Text>
+      </View>
+    ) : null;
+  }
 
   const viewer = board.viewer ?? { eligible: false, joined: false, disqualified: false };
 
@@ -356,13 +442,26 @@ function EventBoardSection({
   // tools; this card says what the blur is and how far they've got.
   const gate = viewer.gate;
   if (board.is_gated && gate) {
+    const have = Math.min(gate.count, gate.required);
+    const pct = gate.required > 0 ? Math.max(0, Math.min(1, have / gate.required)) : 0;
     return (
-      <View style={styles.eventLockedCard}>
-        <Text style={styles.eventLockedEmoji}>🔐</Text>
-        <Text style={styles.eventLockedTitle}>
-          {`${Math.min(gate.count, gate.required)} of ${gate.required} friends in`}
+      // No card: this state is a held breath, and a bordered box makes it look
+      // like an error. The content floats on the screen's own background and
+      // the hairline is the only structure.
+      <View style={styles.eventGated}>
+        <Ionicons name="lock-closed-outline" size={30} color={GOLD} style={styles.eventGatedIcon} />
+
+        <Text style={styles.eventGatedTitle}>
+          {`${have} of ${gate.required} friends in`}
         </Text>
-        <Text style={styles.eventLockedSub}>
+
+        {/* The count again, as distance rather than a number — the one piece of
+            structure the layout gets, so progress reads before the copy does. */}
+        <View style={styles.eventGatedTrack}>
+          <View style={[styles.eventGatedFill, { width: `${pct * 100}%` }]} />
+        </View>
+
+        <Text style={styles.eventGatedSub}>
           {gate.counting === 'conversions'
             ? `The leaderboard unlocks when ${gate.required} friends sign up with your code and log their first verified workout — share it above.`
             : `The leaderboard unlocks when ${gate.required} friends sign up with your code — share it above.`}
@@ -411,7 +510,7 @@ function EventBoardSection({
 
       {/* Your rank — server-computed; outside the visible board it still shows */}
       {viewer.rank != null && (
-        <View style={styles.eventYouCard}>
+        <View style={styles.eventYouBlock}>
           <View>
             <Text style={styles.eventYouLabel}>{isWinners ? 'YOUR FINAL RANK' : 'YOUR RANK'}</Text>
             <View style={styles.heroRankRow}>
@@ -446,7 +545,7 @@ function EventBoardSection({
           )}
 
           {isWinners && prizeWinners.length > 0 && (
-            <View style={styles.eventPrizeCard}>
+            <View style={styles.eventPrizeBlock}>
               {prizeWinners.map(r => (
                 <View key={r.rank} style={styles.eventPrizeRow}>
                   <Text style={styles.eventPrizeRank}>
@@ -467,7 +566,7 @@ function EventBoardSection({
                 <Text style={styles.sectionLabel}>{isWinners ? 'FINAL STANDINGS' : 'STANDINGS'}</Text>
                 <View style={styles.sectionLine} />
               </View>
-              <View style={[styles.standingsCard, { marginHorizontal: 10 }]}>
+              <View style={styles.eventStandings}>
                 {restRows.map((entry, idx, arr) => (
                   <Pressable
                     key={entry.user_id}
@@ -688,17 +787,9 @@ function RealPodium({
 
   return (
     <View style={{ paddingHorizontal: 16, marginBottom: 4 }}>
-      {/* soft glow behind centre column */}
-      <View style={{
-        position: 'absolute', top: 16,
-        left: SCREEN_W / 2 - 56, width: 112, height: 100,
-        borderRadius: 56,
-        backgroundColor: `${GOLD}0A`,
-        shadowColor: GOLD,
-        shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: 0.25,
-        shadowRadius: 40,
-      }} />
+      {/* The gold disc that used to sit behind the centre column is gone —
+          on a floating board it read as a stray circle rather than a glow.
+          The winner still reads first: bigger avatar, trophy, spinning rings. */}
       <View style={{ flexDirection: 'row', alignItems: 'flex-end' }}>
         {order.map((entry, i) => {
           if (!entry) return <View key={i} style={{ width: COL_W }} />;
@@ -1252,16 +1343,41 @@ const styles = StyleSheet.create({
   ladderDivider: { height: 1, backgroundColor: 'rgba(255,255,255,0.04)', marginHorizontal: 12 },
 
   // ── Event board (ticket 5)
-  eventLockedCard: {
-    marginHorizontal: 14, marginTop: 8,
-    borderRadius: 18, backgroundColor: CARD_BG,
-    borderWidth: 1, borderColor: BORDER,
-    paddingVertical: 36, paddingHorizontal: 24,
-    alignItems: 'center', gap: 8,
+  // Deliberately no backgroundColor/border: the gated state floats.
+  eventGated: {
+    marginHorizontal: 14,
+    marginTop: 8,
+    paddingVertical: 48,
+    paddingHorizontal: 28,
+    alignItems: 'center',
   },
-  eventLockedEmoji: { fontSize: 40 },
-  eventLockedTitle: { fontSize: 20, fontWeight: '300', color: TEXT, letterSpacing: -0.3 },
-  eventLockedSub: { fontSize: 12, fontWeight: '300', color: DIM, textAlign: 'center', lineHeight: 18, maxWidth: 300 },
+  eventGatedIcon: { opacity: 0.9, marginBottom: 18 },
+  eventGatedTitle: {
+    fontSize: 23,
+    fontWeight: '200',
+    color: TEXT,
+    letterSpacing: -0.4,
+    textAlign: 'center',
+  },
+  eventGatedTrack: {
+    width: 168,
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    marginTop: 18,
+    marginBottom: 18,
+    // The fill is a child with a % width, so the track has to clip it at the
+    // ends rather than let a rounded cap overhang.
+    overflow: 'hidden',
+  },
+  eventGatedFill: { height: 1, backgroundColor: GOLD },
+  eventGatedSub: {
+    fontSize: 12,
+    fontWeight: '300',
+    color: DIM,
+    textAlign: 'center',
+    lineHeight: 19,
+    maxWidth: 290,
+  },
 
   // ── Sealed board ──
   sealedCard: {
@@ -1275,13 +1391,14 @@ const styles = StyleSheet.create({
     paddingBottom: 20,
     alignItems: 'center',
   },
+  // Outline only — the gold fill made it read as a yellow disc, and the gated
+  // state now uses a bare outline lock, so the two lock moments match.
   sealedLockRing: {
     width: 42,
     height: 42,
     borderRadius: 21,
     borderWidth: 1,
     borderColor: 'rgba(232,210,0,0.45)',
-    backgroundColor: 'rgba(232,210,0,0.06)',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 12,
@@ -1331,28 +1448,75 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 4,
   },
+
+  previewSwitcher: {
+    marginHorizontal: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(232,210,0,0.35)',
+    backgroundColor: 'rgba(232,210,0,0.06)',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 8,
+  },
+  previewSwitcherLabel: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: GOLD,
+    letterSpacing: 2,
+  },
+  previewSwitcherRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  previewSwitcherPill: {
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+    borderRadius: 100,
+    paddingHorizontal: 11,
+    paddingVertical: 6,
+  },
+  previewSwitcherPillOn: { backgroundColor: GOLD, borderColor: GOLD },
+  previewSwitcherText: { fontSize: 9, fontWeight: '700', color: DIM, letterSpacing: 1.2 },
+  previewSwitcherTextOn: { color: '#0a0a0a', fontWeight: '800' },
+
+  previewEmptyNote: {
+    marginHorizontal: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: BORDER,
+    backgroundColor: CARD_BG,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  previewEmptyNoteText: { fontSize: 12, fontWeight: '300', color: DIM, lineHeight: 18 },
   boardPreviewChipText: { fontSize: 8, fontWeight: '800', color: GOLD, letterSpacing: 1.5 },
   revealHeader: { alignItems: 'center', marginTop: 4, marginBottom: 2, gap: 10 },
   revealHeaderText: { fontSize: 24, fontWeight: '200', color: TEXT, letterSpacing: -0.5 },
   revealHairline: { width: 46, height: 1, backgroundColor: 'rgba(232,210,0,0.55)' },
 
-  eventYouCard: {
+  // Floating like the gated state: no fill, no border box. A single gold
+  // hairline underneath does the separating, which also ties it to the gold
+  // rank numeral sitting on it.
+  eventYouBlock: {
     marginHorizontal: 14, marginTop: 4,
-    borderRadius: 18,
-    backgroundColor: 'rgba(232,210,0,0.06)',
-    borderWidth: 1, borderColor: 'rgba(232,210,0,0.22)',
-    paddingHorizontal: 18, paddingVertical: 14,
+    paddingHorizontal: 4, paddingTop: 6, paddingBottom: 18,
     flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(232,210,0,0.20)',
   },
   eventYouLabel: { fontSize: 8, fontWeight: '800', color: GOLD, opacity: 0.6, letterSpacing: 2.5, marginBottom: 4 },
   eventYouRank: { fontSize: 40, fontWeight: '100', color: GOLD, letterSpacing: -2, lineHeight: 42 },
   eventYouPrize: { fontSize: 12, fontWeight: '500', color: GOLD, marginTop: 4 },
 
-  eventPrizeCard: {
+  eventPrizeBlock: {
+    marginHorizontal: 18,
+    paddingVertical: 8,
+    gap: 12,
+  },
+  // Event board only. standingsCard (the boxed version) stays exactly as it is
+  // for the main League leaderboard, which shares it and is not part of this
+  // redesign — the event board floats, that surface does not.
+  eventStandings: {
     marginHorizontal: 14,
-    borderRadius: 14, backgroundColor: CARD_BG,
-    borderWidth: 1, borderColor: 'rgba(232,210,0,0.3)',
-    paddingVertical: 10, paddingHorizontal: 16, gap: 8,
+    paddingVertical: 4,
   },
   eventPrizeRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   eventPrizeRank: { fontSize: 16 },

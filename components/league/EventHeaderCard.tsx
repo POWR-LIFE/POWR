@@ -1,10 +1,12 @@
 import * as Haptics from 'expo-haptics';
+import { LinearGradient } from 'expo-linear-gradient';
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { EventLockup } from '@/components/events/EventLockup';
+import { RewardHeroMedia } from '@/components/rewards/RewardHeroMedia';
 import type { LiveEvent } from '@/lib/api/liveEvents';
-import { eventDateRange, lastDayOf } from '@/lib/liveEventDisplay';
+import { eventDateRange, isVideoUrl, lastDayOf } from '@/lib/liveEventDisplay';
 
 const GOLD = '#E8D200';
 const CARD_BG = 'rgba(40,40,40,0.85)';
@@ -61,8 +63,36 @@ export function EventHeaderCard({
         !event.viewer.disqualified &&
         (event.status === 'scheduled' || event.status === 'live');
 
+    // Same source and same split as the home card: promo_media_url is one field
+    // that may hold either a video or a still, so whichever it is takes the
+    // background and the other stays null.
+    const media = event.promo_media_url;
+    const videoUrl = isVideoUrl(media) ? media : null;
+    const imageUrl = videoUrl ? null : media;
+
     return (
         <View style={styles.card}>
+            {media && (
+                <>
+                    <RewardHeroMedia
+                        videoUrl={videoUrl}
+                        imageUrl={imageUrl}
+                        style={StyleSheet.absoluteFillObject}
+                        contentFit="cover"
+                    />
+
+                    {/* Lightest at the top where the lockup sits, heaviest over
+                        the dates/prizes/CTA below — this card is far more
+                        text-dense than the home hero, so the bottom needs more
+                        scrim than home's does to stay legible over bright video. */}
+                    <LinearGradient
+                        colors={['rgba(10,10,10,0.3)', 'rgba(10,10,10,0.55)', 'rgba(10,10,10,0.88)']}
+                        locations={[0, 0.45, 1]}
+                        style={StyleSheet.absoluteFillObject}
+                    />
+                </>
+            )}
+
             <EventLockup event={event} />
 
             {/* logo_only: the lockup IS the identity (the name still carries the
@@ -110,9 +140,15 @@ const styles = StyleSheet.create({
         marginHorizontal: 14,
         marginTop: 8,
         borderRadius: 18,
+        // Stays visible when the event has no promo media, and is what shows if
+        // the video fails — promo_media_url being a video means there is no
+        // poster still to fall back to.
         backgroundColor: CARD_BG,
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.08)',
+        // Required now the background is a full-bleed video: without it the
+        // media paints past the 18px radius and squares off the card corners.
+        overflow: 'hidden',
         paddingHorizontal: 18,
         paddingVertical: 16,
         gap: 4,

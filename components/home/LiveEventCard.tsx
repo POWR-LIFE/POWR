@@ -103,9 +103,12 @@ export function LiveEventCard() {
     // two never show different numbers, but sets NO refetchInterval — Home
     // reads whatever the tab last fetched (or fetches once on mount) rather
     // than putting a second 60s poll on the busiest screen in the app.
+    // The trailing null is the board-preview state and must match the shape
+    // useLiveEvent builds, or Home stops sharing League's cache entry and the
+    // two can drift. Home never forces a state — it always reads the real one.
     const { data: board } = useQuery<EventLeaderboard | null>({
-        queryKey: ['liveEventBoard', event?.id],
-        queryFn: () => fetchEventLeaderboard(event!.id),
+        queryKey: ['liveEventBoard', event?.id, null],
+        queryFn: () => fetchEventLeaderboard(event!.id, null),
         enabled: !!event && event.viewer.joined && event.status === 'live' && !event.is_locked,
         staleTime: 60_000,
     });

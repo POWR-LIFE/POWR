@@ -1,14 +1,16 @@
 import { Image as ExpoImage } from 'expo-image';
 import React from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Image as NativeImage, StyleSheet, View } from 'react-native';
 
 import type { LiveEvent } from '@/lib/api/liveEvents';
 import { storageImage } from '@/lib/storageImage';
 
 // The default POWR side of the lockup. Hosted (not bundled) so the standard
-// mark can be swapped in storage without shipping an update.
+// mark can be swapped in storage without shipping an update. Same square
+// white-on-transparent canvas as the mark it replaced — its padding measures
+// within a pixel or two of it on every side, so the trim below still lands.
 const POWR_MARK_URL =
-    'https://auth.powr.life/storage/v1/object/public/landing-page-assets/powr_transparent.png';
+    'https://auth.powr.life/storage/v1/object/public/powr-level-logo/move-machine.png';
 
 /**
  * The event identity mark: a VERTICAL partnership lockup — venue logo small,
@@ -58,10 +60,16 @@ export function EventLockup({
                     contentFit="contain"
                 />
             ) : (
-                <ExpoImage
+                // react-native's Image, NOT expo-image, and deliberately so: over
+                // the promo video expo-image composites this artwork's transparent
+                // pixels onto black, drawing a solid box around the mark. The old
+                // solid-fill mark hid it; outline art does not. The achievements
+                // grid renders the same PNGs through NativeImage for this reason
+                // (app/achievements.tsx) — this is the same fix at the same layer.
+                <NativeImage
                     source={{ uri: POWR_MARK_URL }}
                     style={large ? styles.powrMarkLarge : styles.powrMark}
-                    contentFit="contain"
+                    resizeMode="contain"
                 />
             )}
         </View>
@@ -92,18 +100,29 @@ const styles = StyleSheet.create({
     lockupDividerLarge: { width: 80 },
     uploadedLogo: { width: 88, height: 32 },
     uploadedLogoLarge: { width: 112, height: 40 },
-    // The bundled mark is a square canvas with its own padding — negative
-    // margins trim it so the visible mark aligns with the row, not the canvas.
+    // The mark is a square canvas with its own padding — negative margins trim
+    // it so the visible mark aligns with the row, not the canvas. Tuned to this
+    // artwork's measured padding: 15% left, 20% bottom. Left and bottom are the
+    // load-bearing sides (they set the alignment with the text and the gap to
+    // the row below); the other two only affect a width nothing measures.
+    //
+    // The explicit transparent background is load-bearing, not decoration: over
+    // the promo video this mark otherwise composites onto black and reads as a
+    // solid box around the logo. The achievements grid carries the same explicit
+    // 'transparent' on its level artwork for the same reason — this is the one
+    // place in the lockup that never got it.
     powrMark: {
         width: 64,
         height: 64,
-        marginVertical: -12,
+        marginVertical: -13,
         marginHorizontal: -10,
+        backgroundColor: 'transparent',
     },
     powrMarkLarge: {
         width: 90,
         height: 90,
-        marginVertical: -17,
+        marginVertical: -18,
         marginHorizontal: -14,
+        backgroundColor: 'transparent',
     },
 });
