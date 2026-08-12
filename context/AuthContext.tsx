@@ -99,6 +99,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (registeringRef.current) return;
         registeringRef.current = true;
         currentSessionIdRef.current = sessionId;
+        // A throw below used to strand registeringRef=true (and the ref claiming
+        // a session whose watcher never armed) for the runtime's whole life —
+        // every later registration bounced off the guard. Contain and reset so
+        // the next auth event retries cleanly (Sentry 2026-08-12).
+        try {
 
         // Stamp this session as the single active one for the user
         await supabase
@@ -116,10 +121,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             sessionChannelRef.current = null;
         }
 
+        // ⚠ THE REF IS NOT THE CACHE (Sentry 2026-08-12, issue 140313562).
+        // cleanupSessionWatch nulls the ref without awaiting removeChannel, so a
+        // re-register for the SAME session can find the ref empty while the
+        // client's channel cache still holds the old, already-subscribed
+        // instance — .channel(topic) then returns that instance and .on()
+        // throws "cannot add postgres_changes callbacks after subscribe()",
+        // leaving the device-kick watcher unarmed. Sweep the cache by topic,
+        // not by ref, so a cached survivor can never be handed back to us.
+        const topic = `single-device:${activeSession.user.id}:${sessionId}`;
+        for (const ch of supabase.getChannels()) {
+            if (ch.topic === `realtime:${topic}`) {
+                await supabase.removeChannel(ch).catch(() => { /* a failed removal is retried by the next register */ });
+            }
+        }
+
         // Unique channel name per registration so Supabase never returns a cached
         // already-subscribed instance when TOKEN_REFRESHED fires a new session ID.
         sessionChannelRef.current = supabase
-            .channel(`single-device:${activeSession.user.id}:${sessionId}`)
+            .channel(topic)
             .on(
                 'postgres_changes',
                 {
@@ -149,7 +169,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 },
             )
             .subscribe();
-        registeringRef.current = false;
+        } catch (err) {
+            // The watcher failed to arm — release the session claim so the next
+            // SIGNED_IN / TOKEN_REFRESHED retries the registration from scratch.
+            currentSessionIdRef.current = null;
+            console.warn('[Auth] registerAndWatchSession failed — will retry on the next auth event:', err);
+        } finally {
+            registeringRef.current = false;
+        }
     };
 
     /**
