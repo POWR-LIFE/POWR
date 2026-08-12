@@ -88,6 +88,30 @@ const formatSessionTime = (start, sec) => {
     return `${dStart.toLocaleTimeString([], timeOptions)} - ${dEnd.toLocaleTimeString([], timeOptions)}`;
 };
 
+// raw_gps.partnerId is NOT always a bare partner uuid. Older client rows store the
+// composite geofence key `<uuid>-<locationIdx>` (21 prod rows), which is not a valid uuid
+// and will 22P02 the whole partners lookup if passed to .in() unfiltered. Take the uuid
+// prefix; anything that still isn't a uuid resolves to nothing rather than poisoning the
+// query.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+const sessionPartnerId = (session) => {
+    if (session.partner_id) return session.partner_id;
+    const raw = session.raw_gps?.partnerId;
+    return typeof raw === 'string' ? (raw.match(UUID_RE)?.[0] ?? null) : null;
+};
+
+// The two gym writers disagree about raw_gps: the client (GeofenceContext) stamps
+// partnerName, the confirm_gym_visit_v2 RPC never has. Both set partner_id, so resolve the
+// live partner first and keep the name snapshot as the last resort — same precedence as
+// lib/api/share.ts. The snapshot is not dead weight (9 rows point at a since-deleted
+// partner and have nothing else) but it is not trustworthy either: one venue is stamped
+// "Jamie" on rows whose partner is really "POWR". Live name wins wherever there is one.
+const venueName = (session, partnerMap) => {
+    const partner = partnerMap[sessionPartnerId(session)];
+    if (partner) return partner.name;
+    return session.raw_gps?.partnerName || null;
+};
+
 export default function UserProfile() {
     const { userId } = useParams();
     const toast = useToast();
@@ -162,6 +186,7 @@ export default function UserProfile() {
     const [pointsSearchFilter, setPointsSearchFilter] = useState('');
 
     const [preferredGym, setPreferredGym] = useState(null);
+    const [partnerMap, setPartnerMap] = useState({});
     const [userEmail, setUserEmail] = useState(null);
 
     const filteredSessions = sessions.filter(s => {
@@ -597,6 +622,18 @@ export default function UserProfile() {
             setRedemptions(r.data || []);
             setHealthSnapshots(hs.data || []);
             setVaultDeposits(vd.data || []);
+
+            // Venue names for the activity rows. One batched lookup keyed on every partner
+            // this user's sessions reference, so a row created by the server RPC (which
+            // stores no partnerName) still renders its gym.
+            const partnerIds = [...new Set((s.data || []).map(sessionPartnerId).filter(Boolean))];
+            if (partnerIds.length > 0) {
+                const { data: partnerRows } = await supabase
+                    .from('partners').select('id, name').in('id', partnerIds);
+                setPartnerMap(Object.fromEntries((partnerRows || []).map(p => [p.id, p])));
+            } else {
+                setPartnerMap({});
+            }
 
             // Fetch email (lives in auth.users, not profiles)
             const { data: emailData } = await supabase.rpc('admin_get_user_email', { p_user_id: userId });
@@ -1168,8 +1205,15 @@ export default function UserProfile() {
                                 {filteredSessions.length === 0 ? (
                                     <div className="p-20 text-center text-[#888888] text-[10px] uppercase tracking-[0.4em] font-black">No activity markers detected</div>
                                 ) : filteredSessions.slice(0, visibleSessions).map(session => {
-                                    const geoPartnerId = session.verification === 'geofence'
-                                        ? (session.partner_id || session.raw_gps?.partnerId)
+                                    // Link only where the partner actually resolves — older rows carry a
+                                    // composite geofence key or a since-deleted partner, and both used to
+                                    // produce a dead /admin/performance link.
+                                    const resolvedPartnerId = session.verification === 'geofence'
+                                        ? sessionPartnerId(session)
+                                        : null;
+                                    const geoPartnerId = partnerMap[resolvedPartnerId] ? resolvedPartnerId : null;
+                                    const venue = session.verification === 'geofence'
+                                        ? venueName(session, partnerMap)
                                         : null;
                                     return (
                                     <div
@@ -1187,10 +1231,10 @@ export default function UserProfile() {
                                                 <span className="text-lg font-bold text-[#222222] capitalize">{session.type} session</span>
                                                 <span className="text-[10px] text-[#666666] font-black uppercase tracking-[0.4em]">{timeAgo(session.started_at)}</span>
                                             </div>
-                                            {session.verification === 'geofence' && session.raw_gps?.partnerName && (
+                                            {venue && (
                                                 <div className="text-[12px] text-[#222222] mb-3 font-medium flex items-center gap-2">
                                                     <MapPin size={12} className="text-[#8a7600]" />
-                                                    <span>{session.raw_gps.partnerName}</span>
+                                                    <span>{venue}</span>
                                                     <span className="text-[#555555]">•</span>
                                                     <span>{formatSessionTime(session.started_at, session.duration_sec)}</span>
                                                     {geoPartnerId && (
@@ -1201,7 +1245,7 @@ export default function UserProfile() {
                                                     )}
                                                 </div>
                                             )}
-                                            {(!session.raw_gps || session.verification !== 'geofence') && <div className="mb-2" />}
+                                            {!venue && <div className="mb-2" />}
                                             <div className="flex items-center gap-6 text-[10px] font-black text-[#666666] uppercase tracking-[0.2em]">
                                                 <span className="flex items-center gap-2"><Clock size={12} /> {Math.floor(session.duration_sec / 60)}M</span>
                                                 {session.distance_m > 0 && <span className="flex items-center gap-2"><MapPin size={12} /> {(session.distance_m / 1000).toFixed(2)}KM</span>}
