@@ -117,7 +117,7 @@ Deno.serve(async (req: Request) => {
   if (valid !== true) return new Response('forbidden', { status: 403 });
 
   const { dwellMin, upgradeMin } = await thresholds(admin);
-  const stats = { dwell: 0, upgrade: 0, sent: 0, no_token: 0, announced: 0, completed: 0, fence_refresh: 0, presence: 0, stale_closed: 0, stale_clamped: 0 };
+  const stats = { dwell: 0, upgrade: 0, sent: 0, no_token: 0, announced: 0, completed: 0, fence_refresh: 0, presence: 0, stale_closed: 0, stale_clamped: 0, redelivered: 0 };
 
   // SESSION COMPLETE: the walk-out closure banner, both platforms, one
   // template. Only CLAIMED visits (sub-threshold pop-ins end silently). The
@@ -599,6 +599,47 @@ Deno.serve(async (req: Request) => {
           error: outcome.ok ? null : outcome.error,
         }).then(({ error }) => { if (error) console.error('[gym-visit-beacon] fence_refresh log insert failed', error); });
         if (outcome.ok) stats.fence_refresh++;
+      }
+    }
+  }
+
+  // ── Undelivered visible-push redelivery (2026-08-12) ───────────────────────
+  // A direct banner that FCM accepted but the device never drew (no delivered_at
+  // after minutes) got lost in an app-state transition: the headless task
+  // doesn't run while the app is open, and the foreground listener wasn't
+  // listening yet. One resend of the EXACT same payload, once, 3-20 minutes
+  // later: the client dedupes by log id (claimFirstDelivery + a stable
+  // notification identifier), so a receipt that was merely late costs nothing,
+  // and a genuinely swallowed banner finally draws. redelivered_at is stamped
+  // whatever the outcome — this pass never loops.
+  {
+    const { data: undrawn, error: undrawnErr } = await admin
+      .from('push_send_log')
+      .select('id, user_id, device_token, payload, created_at')
+      .eq('transport', 'fcm_direct')
+      .eq('status', 'accepted')
+      .is('delivered_at', null)
+      .is('redelivered_at', null)
+      .not('payload', 'is', null)
+      .not('device_token', 'is', null)
+      .gte('created_at', new Date(Date.now() - 20 * 60_000).toISOString())
+      .lte('created_at', new Date(Date.now() - 3 * 60_000).toISOString())
+      .limit(20);
+    if (undrawnErr) console.error('[gym-visit-beacon] redelivery scan failed', undrawnErr);
+
+    for (const row of undrawn ?? []) {
+      await admin.from('push_send_log')
+        .update({ redelivered_at: new Date().toISOString() })
+        .eq('id', row.id)
+        .then(({ error }) => { if (error) console.error('[gym-visit-beacon] redelivery stamp failed', error); });
+      const outcome = await sendFcmDataMessage(
+        row.device_token as string,
+        row.payload as Record<string, string>,
+        30 * 60,
+      );
+      if (outcome.ok) {
+        stats.redelivered++;
+        console.log(`[gym-visit-beacon] redelivered undrawn push ${row.id}`);
       }
     }
   }

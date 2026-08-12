@@ -7,7 +7,7 @@ import React, { createContext, useContext, useEffect, useRef, useState } from 'r
 import { Alert, AppState, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { EMAIL_CONFIRM_REDIRECT, supabase } from '@/lib/supabase';
+import { EMAIL_CONFIRM_REDIRECT, authorizeSessionErase, supabase } from '@/lib/supabase';
 import { clearDeviceWakeTicket, ensureDeviceWakeTicket, readStoredSession } from '@/lib/backgroundRest';
 import { claimDevice, confirmDeviceTransfer, getDeviceId } from '@/lib/deviceLock';
 import { reportLocationPermission } from '@/lib/locationPermission';
@@ -68,6 +68,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const registeringRef = useRef(false); // prevents concurrent registerAndWatchSession calls
     const forcedSignOutRef = useRef(false); // set when another device kicked us, so we can explain why
     const deviceLockedRef = useRef(false); // set when this device is already bound to a different account
+    const userSignOutRef = useRef(false); // set ONLY by the user-initiated signOut() — the synthetic-sign-out check keys off it
     const deviceLockReasonRef = useRef<'locked' | 'rate_limited'>('locked'); // why we blocked, for the SIGNED_OUT copy
     const deviceCheckedSessionRef = useRef<string | null>(null); // session we've already run the device-lock check for
     const sessionUserRef = useRef<string | null>(null); // current user id for listeners that outlive the auth closure
@@ -134,9 +135,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     // user — including the new device that just signed in — so the device the
                     // user is actively using would silently log out at its next token refresh.
                     // Server-side revocation of old sessions is enforceOneSession's job.
-                    if (incomingId && incomingId !== currentSessionIdRef.current) {
+                    // ⚠ Also requires knowing our OWN id: in a background-launched
+                    // runtime this ref is null until registration completes, and
+                    // `anything !== null` kicked the device on a payload that said
+                    // nothing at all (2026-08-12 audit finding). No self-knowledge,
+                    // no kick — the next registration pass re-evaluates.
+                    if (incomingId && currentSessionIdRef.current && incomingId !== currentSessionIdRef.current) {
                         currentSessionIdRef.current = null;
                         forcedSignOutRef.current = true;
+                        authorizeSessionErase(); // designed one-session policy — a real sign-out
                         supabase.auth.signOut({ scope: 'local' });
                     }
                 },
@@ -171,6 +178,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (res.status === 'locked' || res.status === 'rate_limited') {
             deviceLockedRef.current = true;
             deviceLockReasonRef.current = res.status;
+            authorizeSessionErase(); // designed device-lock refusal — a real sign-out
             // Local scope: only this device is refused — signing in on a locked phone
             // must not revoke the user's legitimate sessions on their own devices.
             await supabase.auth.signOut({ scope: 'local' });
@@ -229,6 +237,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             deviceLockedRef.current = true;
             deviceLockReasonRef.current = res.status === 'rate_limited' ? 'rate_limited' : 'locked';
             setTransferPrompt(null);
+            authorizeSessionErase(); // user attempted the transfer — a real sign-out
             await supabase.auth.signOut({ scope: 'local' });
         } finally {
             setTransferBusy(false);
@@ -239,6 +248,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const handleCancelTransfer = async () => {
         setTransferPrompt(null);
         forcedSignOutRef.current = false; // this is a user choice, not a kick — no alert
+        userSignOutRef.current = true; // ...but it IS a chosen sign-out: the synthetic check must not restore it
+        authorizeSessionErase();
         await supabase.auth.signOut({ scope: 'local' });
     };
 
@@ -348,7 +359,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             })
             .finally(() => clearTimeout(bootstrapTimeout));
 
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
             // Captured BEFORE sessionUserRef is overwritten below: by the time the
             // SIGNED_OUT branch runs, `session` is null and the departing user's id
             // is otherwise unrecoverable — and the geofence cleanup needs it to
@@ -386,6 +397,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 enforceDeviceLock(session);
                 reportLocationPermission(session.user.id);
                 refreshWakeTicket(session.user.id);
+                // ZOMBIE PATROL (2026-08-12): the destroyed-session logout bypasses
+                // clearGeofenceStateOnSignOut, so a re-login can inherit a stale
+                // ACTIVE session — which then replays a phantom check-in the moment
+                // anything reads it (field: visit 0186f114 minted at the user's
+                // HOME after a re-login). Another account's leftovers are cleared
+                // outright; our own are handed to the wake reconciler, which only
+                // ever closes on a real outside fix. Fire-and-forget.
+                import('@/context/GeofenceContext')
+                    .then(m => m.reconcileActiveOnLogin(session.user.id))
+                    .catch(() => { /* non-fatal */ });
             }
             if (!session) {
                 cleanupSessionWatch();
@@ -396,6 +417,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             // rendering placeholders ("?" avatar, "You" name). Send them back to the login
             // screen, and if another device kicked them out, say so.
             if (event === 'SIGNED_OUT') {
+                // ⚠ SYNTHETIC SIGN-OUT CHECK (2026-08-12). auth-js emits SIGNED_OUT
+                // from its own failure paths (_removeSession on a non-retryable
+                // refresh error) — the erase gate in lib/supabase.ts blocks the
+                // keychain wipe those paths attempt, so when a stored session
+                // SURVIVES this event and no user-facing flow asked to sign out,
+                // this SIGNED_OUT is machinery, not intent. Restore instead of
+                // tearing down: the surviving pair is the newest one any runtime
+                // successfully persisted (the winner of whatever rotation race
+                // fired this), and setSession on it re-establishes the login
+                // without the user ever seeing Get Started. Field 2026-08-12:
+                // two full iOS credential re-entries in one afternoon, both this
+                // class.
+                const userInitiated = forcedSignOutRef.current || deviceLockedRef.current || userSignOutRef.current;
+                if (!userInitiated) {
+                    try {
+                        const { readStoredSession } = await import('@/lib/backgroundRest');
+                        const survivor = await readStoredSession();
+                        if (survivor?.access_token && survivor?.refresh_token) {
+                            console.warn('[Auth] SIGNED_OUT with a surviving stored session — synthetic sign-out, restoring.');
+                            void supabase.auth.setSession({
+                                access_token: survivor.access_token,
+                                refresh_token: survivor.refresh_token,
+                            }).catch(() => { /* a failed restore falls through to a real sign-out next event */ });
+                            return; // no teardown, no navigation — the restore re-emits SIGNED_IN
+                        }
+                    } catch { /* unreadable storage — treat as a real sign-out below */ }
+                }
+                userSignOutRef.current = false;
+
                 // Geofence state is per-account and used to survive a sign-out: the
                 // active session and the exit-claim outbox both carried no owner, so
                 // the next account to sign in on this device inherited them. Fire
@@ -601,6 +651,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
 
     const signOut = async () => {
+        // The one deliberate exit. Both flags open the two gates a sign-out must
+        // pass: the keychain erase (lib/supabase.ts) and the synthetic-sign-out
+        // check in onAuthStateChange — every OTHER path to SIGNED_OUT is treated
+        // as machinery and restored (2026-08-12).
+        userSignOutRef.current = true;
+        authorizeSessionErase();
         // Navigation is handled centrally by the SIGNED_OUT branch in onAuthStateChange.
         await supabase.auth.signOut();
     };

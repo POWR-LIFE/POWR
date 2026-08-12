@@ -44,7 +44,7 @@ import type { Session } from '@supabase/supabase-js';
 // is absent from an Expo build, so the argument is null, and the resulting
 // Invariant Violation is an uncaught fatal -> RCTFatal -> abort.
 // Never dynamically import 'react-native'. A named static import costs nothing.
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import { withNetworkTimeout } from '@/lib/networkTimeout';
 import { AUTH_STORAGE_KEY, authStorage, supabase } from '@/lib/supabase';
 
@@ -129,6 +129,24 @@ const IN_FLIGHT_DEADLINE_MS = 45_000;
  * confirm's token valid when it fires.
  */
 export function ensureFreshSession(reason: string, opts?: { force?: boolean }): Promise<Session | null> {
+  // ⚠ ROTATION IS FOREGROUND-ONLY (2026-08-12). Every branch below can mutate
+  // the persisted session (setSession resync, getSession's lazy refresh,
+  // refreshSession) — and a rotation attempted from a headless runtime is the
+  // established session-killer: no cross-process lock exists, the keychain may
+  // be cold, a timed-out call keeps running after its caller gave up, and a
+  // loser in the resulting race presents a superseded token that GoTrue answers
+  // by revoking the family. Field 2026-08-12: `auth.setSession timed out after
+  // 30s` on a background flush, and two complete iOS sign-outs the same
+  // afternoon. Background callers get a hard no — their durable work (claims,
+  // closes) simply waits for the next foreground pass, which is exactly when
+  // rotation is safe.
+  // 'background' EXPLICITLY — never "not active": headless runtimes report
+  // 'background', while app-switch transitions ('inactive') and test
+  // environments (undefined) are not headless and must keep rotating.
+  if (Platform.OS !== 'web' && AppState.currentState === 'background') {
+    console.log(`[authFresh] ${reason}: skipped — rotation is foreground-only (state=${AppState.currentState}).`);
+    return Promise.resolve(null);
+  }
   if (inFlight && Date.now() - inFlightStartedMs > IN_FLIGHT_DEADLINE_MS) {
     // The pending pass is presumed frozen — abandon the latch (NOT the promise;
     // if it ever settles it is harmless) and let this caller start a live pass.

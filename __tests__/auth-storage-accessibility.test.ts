@@ -61,7 +61,7 @@ describe('react-native is never imported dynamically', () => {
 
   it('reads Platform in authFresh from a static import', () => {
     const source = readFileSync(join(ROOT, 'lib/authFresh.ts'), 'utf8');
-    expect(source).toMatch(/^import \{ Platform \} from 'react-native';$/m);
+    expect(source).toMatch(/^import \{ (?:[A-Za-z]+, )*Platform(?:, [A-Za-z]+)* \} from 'react-native';$/m);
   });
 });
 
@@ -90,5 +90,40 @@ describe('the auth token stays readable in the background', () => {
     const source = readFileSync(join(ROOT, 'lib/supabase.ts'), 'utf8');
     expect(source).toMatch(/accessibilityUpgraded/);
     expect(source).toMatch(/void SecureStore\.setItemAsync\(key, value, KEYCHAIN\)/);
+  });
+});
+
+describe('the session-erase gate (2026-08-12)', () => {
+  // auth-js reaches removeItem from seven internal failure paths — any refresh
+  // that fails non-retryably (400 invalid_grant / "Already Used" / 401) wipes
+  // the keychain and signs the user out with zero user action. Field
+  // 2026-08-12: two complete iOS credential re-entries in one afternoon. The
+  // gate makes the ONLY session-destroying operation require explicit intent.
+  const supabaseSrc = readFileSync(join(ROOT, 'lib/supabase.ts'), 'utf8');
+  const authCtxSrc = readFileSync(join(ROOT, 'context/AuthContext.tsx'), 'utf8');
+
+  it('removeItem refuses to erase the auth session without authorization', () => {
+    expect(supabaseSrc).toMatch(/key === AUTH_STORAGE_KEY && !consumeSessionEraseAuthorization\(\)/);
+    expect(supabaseSrc).toMatch(/export function authorizeSessionErase/);
+  });
+
+  it('the authorization is single-shot and time-boxed', () => {
+    expect(supabaseSrc).toMatch(/_sessionEraseAuthorizedAt = 0;\s*\n\s*return ok;/);
+    expect(supabaseSrc).toMatch(/SESSION_ERASE_WINDOW_MS = 30 \* 1000/);
+  });
+
+  it('every deliberate sign-out path authorizes its erase', () => {
+    // user signOut, session kicker, device lock, transfer-failed, transfer-cancelled
+    const count = (authCtxSrc.match(/authorizeSessionErase\(\)/g) ?? []).length;
+    expect(count).toBeGreaterThanOrEqual(5);
+  });
+
+  it('SIGNED_OUT restores from a surviving stored session instead of tearing down', () => {
+    expect(authCtxSrc).toMatch(/userInitiated = forcedSignOutRef.current \|\| deviceLockedRef.current \|\| userSignOutRef.current/);
+    expect(authCtxSrc).toMatch(/synthetic sign-out, restoring/);
+  });
+
+  it('the session kicker never fires without knowing its own session id', () => {
+    expect(authCtxSrc).toMatch(/incomingId && currentSessionIdRef.current && incomingId !== currentSessionIdRef.current/);
   });
 });

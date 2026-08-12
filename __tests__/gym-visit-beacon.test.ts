@@ -66,6 +66,17 @@ const mockInvoke = jest.fn().mockResolvedValue({
   error: null,
 });
 
+// A healthy device carries a VALID persisted session through every wake — the
+// storage-first auth contract (2026-08-12: rotation is foreground-only, so a
+// background path that cannot read auth from storage now defers instead of
+// rotating). Seeding it here is what a real signed-in device looks like.
+const mockStoredSession = JSON.stringify({
+  access_token: 't',
+  refresh_token: 'rt',
+  expires_at: Math.floor(Date.now() / 1000) + 3600,
+  user: { id: 'user-1', email: 'jamiemasonwright@gmail.com' },
+});
+
 jest.mock('@/lib/supabase', () => ({
   supabase: {
     auth: {
@@ -92,6 +103,12 @@ jest.mock('@/lib/supabase', () => ({
     },
     functions: { invoke: (...a: any[]) => (mockInvoke as jest.Mock)(...a) },
   },
+  authStorage: {
+    getItem: jest.fn(async () => mockStoredSession),
+    setItem: jest.fn(async () => {}),
+    removeItem: jest.fn(async () => {}),
+  },
+  AUTH_STORAGE_KEY: 'sb-test-auth-token',
 }));
 
 const GYM = { lat: 51.5, lng: -0.12, radius: 25 };
@@ -119,6 +136,36 @@ const rpcCalls = (name: string) => mockRpc.mock.calls.filter(c => c[0] === name)
 
 beforeEach(async () => {
   jest.clearAllMocks();
+  // The storage-first auth contract routes background RPCs over raw REST
+  // (bgRpc) instead of supabase.rpc. Route those calls into the SAME mockRpc so
+  // every assertion stays transport-agnostic — what matters is which RPC ran,
+  // not which pipe carried it.
+  (globalThis as any).fetch = jest.fn(async (url: unknown, init?: { body?: string }) => {
+    const m = String(url).match(/\/rest\/v1\/rpc\/([a-z_0-9]+)/);
+    const args = init?.body ? JSON.parse(init.body) : {};
+    if (m) {
+      const { data, error } = await (mockRpc as jest.Mock)(m[1], args);
+      return {
+        ok: !error,
+        status: error ? 500 : 200,
+        text: async () => JSON.stringify(data ?? null),
+        json: async () => data ?? null,
+      };
+    }
+    // Table REST (bgInsert/bgSelect): echo an insert back as its row; empty set
+    // for reads. Enough for the storage-first paths these suites exercise.
+    const table = String(url).match(/\/rest\/v1\/([a-z_]+)/);
+    const method = (init as { method?: string } | undefined)?.method ?? 'GET';
+    const payload = table && method !== 'GET'
+      ? [{ id: `test-${table[1]}-row`, ...args }]
+      : [];
+    return {
+      ok: true,
+      status: method === 'POST' ? 201 : 200,
+      text: async () => JSON.stringify(payload),
+      json: async () => payload,
+    };
+  });
   await AsyncStorage.clear();
   (globalThis as any).__DEV__ = false;
   (AppState as any).currentState = 'background'; // a beacon wake = backgrounded app

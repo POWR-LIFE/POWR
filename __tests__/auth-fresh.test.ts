@@ -379,3 +379,41 @@ describe('in-flight deadline (2026-08-05 field wedge: frozen resync pinned every
     }
   });
 });
+
+describe('rotation is foreground-only (2026-08-12)', () => {
+  // Every branch of ensureFreshSession can mutate the persisted session, and a
+  // rotation from a headless runtime is the established session-killer: no
+  // cross-process lock, a timed-out setSession keeps running after its caller
+  // gave up, and the loser of the race presents a superseded token that GoTrue
+  // answers by revoking the family. Background callers must get a hard no.
+  const { AppState } = require('react-native');
+
+  afterEach(() => {
+    AppState.currentState = 'active';
+  });
+
+  it('refuses to run from a background app state and touches no auth machinery', async () => {
+    AppState.currentState = 'background';
+    mockAuth.setSession.mockClear();
+    mockAuth.getSession.mockClear();
+    mockAuth.refreshSession.mockClear();
+
+    const { ensureFreshSession } = require('@/lib/authFresh');
+    await expect(ensureFreshSession('bg_test')).resolves.toBeNull();
+
+    expect(mockAuth.setSession).not.toHaveBeenCalled();
+    expect(mockAuth.getSession).not.toHaveBeenCalled();
+    expect(mockAuth.refreshSession).not.toHaveBeenCalled();
+  });
+
+  it('still runs in the foreground', async () => {
+    AppState.currentState = 'active';
+    const { ensureFreshSession } = require('@/lib/authFresh');
+    await ensureFreshSession('fg_test');
+    // any of the three paths is fine — the point is it did auth work at all
+    const calls = mockAuth.setSession.mock.calls.length
+      + mockAuth.getSession.mock.calls.length
+      + mockAuth.refreshSession.mock.calls.length;
+    expect(calls).toBeGreaterThan(0);
+  });
+});

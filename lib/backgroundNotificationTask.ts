@@ -291,6 +291,16 @@ TaskManager.defineTask(BACKGROUND_NOTIFICATION_TASK, async ({ data, error }) => 
       })
       .catch(() => { /* self-heal is best-effort by definition */ });
 
+    // Drain the durable outboxes (pending closes + claims) on every wake —
+    // fire-and-forget and DELIBERATELY outside rearmDone: the self-heal chain
+    // is network-free by contract and awaited in finally, while these flushes
+    // do network work that must never be able to hold the task open. A frozen
+    // flush costs nothing (single-flighted, retried next wake); a missing
+    // flush cost a close nine minutes on 2026-08-12.
+    void import('@/context/GeofenceContext')
+      .then(m => m.flushPendingOutboxesFromWake())
+      .catch(() => { /* next wake retries */ });
+
     // Imported lazily: this task is registered at module load in a headless context,
     // and GeofenceContext pulls in the whole geofence engine.
     //

@@ -1421,8 +1421,7 @@ async function sweepForMissedCheckIn(): Promise<void> {
               // minutes apart, but an arm-storm must not turn this into a
               // confirm storm.
               const fixAgeMs = Date.now() - fix.timestamp;
-              if (a.visitId
-                  && Date.now() - _lastSweepProvenStampAt > 4 * 60_000
+              if (Date.now() - _lastSweepProvenStampAt > 4 * 60_000
                   && fixCreditsPresence({
                        fixTrusted: trusted,
                        distanceM:  dist,
@@ -1430,15 +1429,34 @@ async function sweepForMissedCheckIn(): Promise<void> {
                        accuracyM:  acc,
                        fixAgeMs,
                      })) {
-                _lastSweepProvenStampAt = Date.now();
-                const { confirmGymVisit } = await import('@/lib/gymVisits');
-                await confirmGymVisit(a.visitId, true, {
-                  stage:       'sweep',
-                  distance_m:  Math.round(dist),
-                  accuracy_m:  acc != null ? Math.round(acc) : null,
-                  fix_trusted: trusted,
-                  fix_age_ms:  fixAgeMs,
-                }).catch(() => { /* a lost stamp is one sweep interval of proof */ });
+                // A missing visit id must not starve the proof clock: Android's
+                // background check-in path can still lose the stamp (field
+                // 2026-08-12 PM — every sweep carried visit:null all session),
+                // and this branch was the only proof carrier. open_gym_visit
+                // re-uses the caller's open visit, so resolving here is a
+                // no-op server-side; the patch stamps it for every later pass.
+                let visitId = a.visitId ?? null;
+                if (!visitId && a.partnerId) {
+                  try {
+                    const { openGymVisit } = await import('@/lib/gymVisits');
+                    visitId = await openGymVisit(a.partnerId, a.regionId, a.entryTimestamp);
+                    if (visitId) {
+                      await patchActiveGeofence(a, { visitId }, 'sweep_proven_stamp');
+                      a.visitId = visitId;
+                    }
+                  } catch { visitId = null; }
+                }
+                if (visitId) {
+                  _lastSweepProvenStampAt = Date.now();
+                  const { confirmGymVisit } = await import('@/lib/gymVisits');
+                  await confirmGymVisit(visitId, true, {
+                    stage:       'sweep',
+                    distance_m:  Math.round(dist),
+                    accuracy_m:  acc != null ? Math.round(acc) : null,
+                    fix_trusted: trusted,
+                    fix_age_ms:  fixAgeMs,
+                  }).catch(() => { /* a lost stamp is one sweep interval of proof */ });
+                }
               }
             }
           }
@@ -2220,6 +2238,19 @@ async function enqueuePendingVisitClose(entry: PendingVisitClose): Promise<void>
   }
 }
 
+/** Removes one visit's entry after its close landed. Companion to the
+ *  queue-first ordering in finalizeActiveGeofenceInner (2026-08-12). */
+async function dequeuePendingVisitClose(visitId: string): Promise<void> {
+  try {
+    const raw = await AsyncStorage.getItem(PENDING_VISIT_CLOSES_KEY);
+    const queue: PendingVisitClose[] = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(queue) || !queue.length) return;
+    const remaining = queue.filter(e => e.visitId !== visitId);
+    if (remaining.length) await AsyncStorage.setItem(PENDING_VISIT_CLOSES_KEY, JSON.stringify(remaining));
+    else await AsyncStorage.removeItem(PENDING_VISIT_CLOSES_KEY);
+  } catch { /* a leftover entry is harmless — the flush's closeGymVisit is idempotent */ }
+}
+
 async function flushPendingVisitCloses(): Promise<void> {
   let raw: string | null = null;
   try { raw = await AsyncStorage.getItem(PENDING_VISIT_CLOSES_KEY); } catch { return; }
@@ -2277,6 +2308,28 @@ async function flushPendingVisitCloses(): Promise<void> {
   } catch { /* next flush retries */ }
 }
 
+/** Drain both durable outboxes from a server wake (2026-08-12).
+ *
+ *  The queues were only flushed by native geofence events, the boot task and
+ *  app-opens — none of which a stationary, swiped-away phone reliably produces.
+ *  Field: Android finalized its exit at 15:08, the close RPC failed, and the
+ *  queued close then waited NINE minutes for a native exit event to provide a
+ *  flush trigger, while four perfectly good wakes came and went. The wake IS
+ *  the reliable recurring execution (~5-6 min); it is where the drain belongs.
+ *
+ *  Fire-and-forget from the wake task — never awaited on the wake's critical
+ *  path, single-flighted so overlapping wakes can't double-drain. */
+let _outboxFlushInFlight = false;
+export async function flushPendingOutboxesFromWake(): Promise<void> {
+  if (_outboxFlushInFlight) return;
+  _outboxFlushInFlight = true;
+  try {
+    await flushPendingVisitCloses();
+    await flushPendingClaims();
+  } catch { /* both flushes already contain their own retries */ }
+  finally { _outboxFlushInFlight = false; }
+}
+
 async function flushPendingClaims(): Promise<void> {
   let raw: string | null = null;
   try {
@@ -2322,7 +2375,15 @@ async function flushPendingClaims(): Promise<void> {
   // safe for a device that has only ever had one account); ownership unknown
   // (offline, no token) also falls through unchanged.
   let currentUserId: string | null = (await readBackgroundAuth())?.userId ?? null;
-  if (!currentUserId) {
+  // ⚠ HEADLESS ROTATION BAN (2026-08-12). The spent-token branch below is the
+  // call site that logged `auth.setSession timed out after 30s` this afternoon —
+  // and a rotation that dies MID-WRITE is the leading suspect for the day's two
+  // full iOS session destructions (storage cleared, new session never lands,
+  // user finds Get Started). Rotation now happens in the FOREGROUND only, where
+  // the keychain is unlocked and a jam is visible. Backgrounded with a spent
+  // token: leave the queue for the next foreground pass — claims are durable
+  // and hours-late claims are still honest (endedAtMs is the original instant).
+  if (!currentUserId && AppState.currentState === 'active') {
     await ensureFreshSession('flush_pending_claims');
     try {
       const { data: { user } } = await withNetworkTimeout(supabase.auth.getUser(), 'auth.getUser');
@@ -3036,19 +3097,26 @@ async function finalizeActiveGeofenceInner(expectedRegionId?: string, endedAtOve
   }
 
   if (visitId) {
+    // CRASH-SAFE ORDER (field 2026-08-12): queue FIRST, attempt second, dequeue
+    // on success. The old order — attempt, queue only on a RETURNED failure —
+    // lost the close entirely when the process died mid-call: iOS suspends a
+    // wake moments after its confirm round-trip, and the 15:06 outside verdict's
+    // finalize deleted local state and then evaporated, leaving the visit open
+    // with no record anywhere that a close was owed. The queue write is pure
+    // storage (survives suspension); a duplicate flush of an already-closed
+    // visit is absorbed server-side.
+    await enqueuePendingVisitClose({
+      visitId,
+      endedAtMs,
+      userId: active.userId,
+      queuedAtMs: Date.now(),
+    });
     let closed = false;
     try {
       const { closeGymVisit } = await import('@/lib/gymVisits');
       closed = await closeGymVisit(visitId, endedAtMs);
-    } catch { /* treated as not-closed below */ }
-    if (!closed) {
-      await enqueuePendingVisitClose({
-        visitId,
-        endedAtMs,
-        userId: active.userId,
-        queuedAtMs: Date.now(),
-      });
-    }
+    } catch { /* stays queued for the next flush */ }
+    if (closed) await dequeuePendingVisitClose(visitId);
   }
 
   if (!needsClaim) {
@@ -3187,6 +3255,30 @@ const RECONCILE_MIN_SESSION_AGE_MS = 10 * 60_000;
 // away, and the visit never closed. 90 s keeps a cheap cache hit for the common
 // case without letting the fix outlive the question it is answering.
 const RECONCILE_FIX_MAX_AGE_MS = 90_000;
+
+/** Login-time zombie patrol (2026-08-12). A session destroyed by auth machinery
+ *  never runs clearGeofenceStateOnSignOut, so the next login inherits whatever
+ *  active-session state the old login left behind — and the first reader then
+ *  replays a phantom check-in (field: visit 0186f114, minted at the user's home
+ *  moments after a re-login). Another account's leftovers are cleared outright;
+ *  the same account's are handed to the wake reconciler, which closes only on a
+ *  real fix showing the device outside — a live same-user session survives. */
+export async function reconcileActiveOnLogin(userId: string): Promise<void> {
+  try {
+    const raw = await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY);
+    if (!raw) return;
+    const active = JSON.parse(raw) as StoredGeofence;
+    if (active.userId && active.userId !== userId) {
+      console.warn('[Geofence] Login found another account\'s active session — clearing it.');
+      await AsyncStorage.removeItem(ACTIVE_GEOFENCE_KEY).catch(() => {});
+      await AsyncStorage.removeItem(VISIT_TICK_KEY).catch(() => {});
+      await AsyncStorage.removeItem(VISIT_TICK_THROTTLE_KEY).catch(() => {});
+      await AsyncStorage.removeItem(EXIT_STREAK_KEY).catch(() => {});
+      return;
+    }
+    await reconcileActiveSessionFromWake();
+  } catch { /* best-effort — the wake reconciler still owns the steady state */ }
+}
 
 export async function reconcileActiveSessionFromWake(): Promise<void> {
   try {

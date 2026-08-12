@@ -103,8 +103,54 @@ const secureStoreAdapter = {
         return value;
     },
     setItem: (key: string, value: string) => SecureStore.setItemAsync(key, value, KEYCHAIN),
-    removeItem: (key: string) => SecureStore.deleteItemAsync(key, KEYCHAIN),
+    removeItem: async (key: string) => {
+        // ⚠ THE SESSION-ERASE GATE (2026-08-12). This removeItem is the ONLY way
+        // the persisted session leaves the keychain — and auth-js reaches it from
+        // SEVEN internal paths, none of which asks the user first: any refresh
+        // that fails non-retryably (400 invalid_grant / "Already Used" / 401 /
+        // 403) calls _removeSession() and wipes the keychain. Our headless
+        // runtimes guarantee the rotation races that produce those errors (every
+        // cold wake resyncs via setSession, with no cross-process lock), and a
+        // timed-out rotation keeps running after its caller gave up — field
+        // 2026-08-12: two full iOS sign-outs in one afternoon, each traceable to
+        // background auth work, zero user action.
+        //
+        // So: erasing the AUTH SESSION requires explicit user intent, declared
+        // via authorizeSessionErase() by the user-initiated sign-out paths.
+        // Unauthorized attempts are logged and dropped — auth-js still emits its
+        // SIGNED_OUT (in-memory), but the newest persisted pair survives, and
+        // AuthContext's synthetic-sign-out check restores from it. Crucially,
+        // when runtime A rotates successfully and runtime B then fails with A's
+        // superseded token, the pair this gate preserves is A's NEWER one — the
+        // one that still works.
+        //
+        // Auxiliary keys (-code-verifier, -user) stay freely erasable: losing
+        // them costs a PKCE retry or a cached profile, never the session.
+        if (key === AUTH_STORAGE_KEY && !consumeSessionEraseAuthorization()) {
+            console.warn('[supabase] BLOCKED unauthorized session erase — auth-js tried to wipe the keychain without user intent.');
+            return;
+        }
+        return SecureStore.deleteItemAsync(key, KEYCHAIN);
+    },
 };
+
+// The erase-gate latch. Single-shot with a short validity window: a user tap
+// authorizes exactly one erase, promptly. Anything else that reaches removeItem
+// — auth-js failure paths, races, replays — finds the latch closed.
+let _sessionEraseAuthorizedAt = 0;
+const SESSION_ERASE_WINDOW_MS = 30 * 1000;
+
+/** Call ONLY from a user-initiated sign-out / account-deletion / device-transfer
+ *  flow, immediately before supabase.auth.signOut(). */
+export function authorizeSessionErase(): void {
+    _sessionEraseAuthorizedAt = Date.now();
+}
+
+function consumeSessionEraseAuthorization(): boolean {
+    const ok = Date.now() - _sessionEraseAuthorizedAt < SESSION_ERASE_WINDOW_MS;
+    _sessionEraseAuthorizedAt = 0;
+    return ok;
+}
 
 /**
  * expo-secure-store has no web implementation, so `expo start --web` (used for

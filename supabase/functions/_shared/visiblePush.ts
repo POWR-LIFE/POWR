@@ -182,9 +182,10 @@ export async function deliverVisiblePush(
     // The log row id is minted BEFORE the send so it can ride in the payload —
     // that is what lets the device stamp delivered_at against this exact send.
     const logId = crypto.randomUUID();
+    const dataPayload = buildDisplayPayload(logId, log.type, content);
     const outcome = await sendFcmDataMessage(
       row.device_token,
-      buildDisplayPayload(logId, log.type, content),
+      dataPayload,
       content.ttl ?? DEFAULT_TTL_SEC,
     );
 
@@ -229,6 +230,16 @@ export async function deliverVisiblePush(
       status: outcome.ok ? 'accepted' : 'rejected',
       ticket_id: outcome.messageName ?? null,
       error: outcome.ok ? null : (outcome.error ?? null),
+      // The exact FCM data map, so the beacon's redelivery pass can resend an
+      // accepted-but-never-drawn banner verbatim (2026-08-12 — a push arriving
+      // mid app-state transition reached neither the headless task nor the
+      // foreground listener; the user saw nothing and nothing retried). The
+      // client's per-logId first-delivery claim makes a redelivery that races a
+      // late display receipt harmless.
+      payload: dataPayload,
+      // The token the send actually used — expo_push_token above is the Expo
+      // sibling, which a redelivery over raw FCM cannot address.
+      device_token: row.device_token,
     }).then(({ error }) => { if (error) console.error('[visiblePush] direct log insert failed', error); });
   }
 

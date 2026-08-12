@@ -79,6 +79,17 @@ const mockInvoke = jest.fn().mockResolvedValue({
   error: null,
 });
 
+// A healthy device carries a VALID persisted session through every wake — the
+// storage-first auth contract (2026-08-12: rotation is foreground-only, so a
+// background path that cannot read auth from storage now defers instead of
+// rotating). Seeding it here is what a real signed-in device looks like.
+const mockStoredSession = JSON.stringify({
+  access_token: 't',
+  refresh_token: 'rt',
+  expires_at: Math.floor(Date.now() / 1000) + 3600,
+  user: { id: 'user-1', email: 'jamiemasonwright@gmail.com' },
+});
+
 jest.mock('@/lib/supabase', () => ({
   supabase: {
     auth: {
@@ -107,6 +118,12 @@ jest.mock('@/lib/supabase', () => ({
     },
     functions: { invoke: (...a: any[]) => (mockInvoke as jest.Mock)(...a) },
   },
+  authStorage: {
+    getItem: jest.fn(async () => mockStoredSession),
+    setItem: jest.fn(async () => {}),
+    removeItem: jest.fn(async () => {}),
+  },
+  AUTH_STORAGE_KEY: 'sb-test-auth-token',
 }));
 
 const GYM = { lat: 51.5, lng: -0.12, radius: 25 };
@@ -139,6 +156,54 @@ function armRpc(relays: Record<string, unknown>) {
 
 beforeEach(async () => {
   jest.clearAllMocks();
+  // The storage-first auth contract routes background RPCs over raw REST
+  // (bgRpc) instead of supabase.rpc. Route those calls into the SAME mockRpc so
+  // every assertion stays transport-agnostic — what matters is which RPC ran,
+  // not which pipe carried it.
+  (globalThis as any).fetch = jest.fn(async (url: unknown, init?: { body?: string }) => {
+    const m = String(url).match(/\/rest\/v1\/rpc\/([a-z_0-9]+)/);
+    const args = init?.body ? JSON.parse(init.body) : {};
+    if (m) {
+      const { data, error } = await (mockRpc as jest.Mock)(m[1], args);
+      return {
+        ok: !error,
+        status: error ? 500 : 200,
+        text: async () => JSON.stringify(data ?? null),
+        json: async () => data ?? null,
+      };
+    }
+    // Table REST (bgInsert/bgSelect/bgUpdate): the raw-fetch twins of the
+    // supabase builders, wired to the SAME mockSessionTable/mockSessionUpdate
+    // fixtures so each invariant is asserted once, whichever pipe carries it.
+    const table = String(url).match(/\/rest\/v1\/([a-z_]+)/)?.[1] ?? '';
+    const method = (init as { method?: string } | undefined)?.method ?? 'GET';
+    if (table === 'activity_sessions') {
+      if (method === 'POST') {
+        if (mockSessionTable.insertError) {
+          return {
+            ok: false, status: 409,
+            text: async () => JSON.stringify(mockSessionTable.insertError),
+            json: async () => mockSessionTable.insertError,
+          };
+        }
+        const row = { ...args, ...mockSessionTable.existingRow };
+        return { ok: true, status: 201, text: async () => JSON.stringify([row]), json: async () => [row] };
+      }
+      if (method === 'PATCH') {
+        mockSessionUpdate(args);
+        return { ok: true, status: 204, text: async () => '', json: async () => null };
+      }
+      const rows = mockSessionTable.existingRow ? [mockSessionTable.existingRow] : [];
+      return { ok: true, status: 200, text: async () => JSON.stringify(rows), json: async () => rows };
+    }
+    const generic = table && method !== 'GET' ? [{ id: `test-${table}-row`, ...args }] : [];
+    return {
+      ok: true,
+      status: method === 'POST' ? 201 : 200,
+      text: async () => JSON.stringify(generic),
+      json: async () => generic,
+    };
+  });
   mockSessionTable.insertError = null;
   mockSessionTable.existingRow = { id: 'session-abc' };
   await AsyncStorage.clear();
@@ -256,7 +321,12 @@ describe('the sweep ping is a wake, not a ticket', () => {
       (globalThis as any).fetch = priorFetch;
     }
 
-    const confirms = fetchSpy.mock.calls.filter(([url]: any[]) => String(url).includes('confirm_gym_visit'));
+    // The invariant is about the NONCE path specifically: confirm_gym_visit_v3
+    // is the only endpoint a wake nonce can authenticate, and the placeholder
+    // must never reach it. The ordinary v2 confirm legitimately rides raw fetch
+    // since the storage-first auth contract (2026-08-12) — it presents the
+    // persisted token, not the ticket, and is not this test's subject.
+    const confirms = fetchSpy.mock.calls.filter(([url]: any[]) => String(url).includes('confirm_gym_visit_v3'));
     expect(confirms).toHaveLength(0);
     // The auth half of this guard (isSweepPing must also suppress the awaited
     // ensureFreshSession) is enforced in the source and reviewed there; this
