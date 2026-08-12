@@ -8,6 +8,7 @@ import {
     Activity, Award, Edit2, Trash2, Image, X, Calendar, Building2, Clock, BarChart3
 } from 'lucide-react';
 import PartnerPerformancePanel from './PartnerPerformancePanel';
+import GeofenceMap from '../../components/GeofenceMap';
 
 const DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 const DAY_LABELS = { mon: 'Monday', tue: 'Tuesday', wed: 'Wednesday', thu: 'Thursday', fri: 'Friday', sat: 'Saturday', sun: 'Sunday' };
@@ -162,6 +163,16 @@ export default function PartnerProfile() {
         const locs = [...(form.locations || [])];
         locs[i] = { ...locs[i], [field]: field === 'name' ? value : parseFloat(value) || 0 };
         setForm({ ...form, locations: locs });
+    };
+
+    // lat and lng arrive together when the fence is dragged on the map — they have
+    // to land in ONE update, or the second setForm would read the same stale form
+    // as the first and throw the other coordinate away.
+    const moveLocation = (i, { lat, lng }) => {
+        setForm(prev => ({
+            ...prev,
+            locations: (prev.locations || []).map((l, idx) => (idx === i ? { ...l, lat, lng } : l)),
+        }));
     };
 
     const handleSave = async () => {
@@ -375,7 +386,8 @@ export default function PartnerProfile() {
                                     <p className="text-[10px] uppercase tracking-[0.4em] text-[#888888] font-black">No locations configured</p>
                                 </div>
                             ) : (editing ? form.locations : partner.locations).map((loc, i) => (
-                                <div key={i} className="p-10 flex items-center gap-8 group hover:bg-[#F4F4F1] transition-all">
+                                <div key={i} className="p-10 space-y-8 group hover:bg-[#F4F4F1] transition-all">
+                                  <div className="flex items-center gap-8">
                                     <div className="w-14 h-14 rounded-3xl bg-[#F4F4F1] border border-[#E6E6E1] flex items-center justify-center shrink-0">
                                         <MapPin size={20} className="text-[#0EA5E9] group-hover:text-[#8a7600] transition-colors" />
                                     </div>
@@ -408,6 +420,19 @@ export default function PartnerProfile() {
                                             </div>
                                         </div>
                                     )}
+                                  </div>
+
+                                  {/* The fence as the app enforces it, over the real building —
+                                      read-only until the node is being edited. */}
+                                  <GeofenceMap
+                                      lat={loc.lat}
+                                      lng={loc.lng}
+                                      radius={loc.radius ?? DEFAULT_LOCATION_RADIUS_M}
+                                      label={loc.name}
+                                      readOnly={!editing}
+                                      height={260}
+                                      onMove={(coords) => moveLocation(i, coords)}
+                                  />
                                 </div>
                             ))}
                         </div>

@@ -1,6 +1,7 @@
 import { BarChart3, Clock, Edit2, Eye, Globe, Image as ImageIcon, Loader2, MapPin, Plus, Satellite, Search, Settings2, Trash2, Upload, User, Users, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import GeofenceMap from '../../components/GeofenceMap';
 import { uploadPublicImage } from '../../lib/storage';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
@@ -172,6 +173,16 @@ const LocationEditor = ({ locations, onChange }) => {
                                     onChange={e => update(i, 'radius', e.target.value)}
                                 />
                             </div>
+
+                            {/* Fence preview — the circle the app actually enforces, over the
+                                real building. Drag it (or search a venue) to set the point. */}
+                            <GeofenceMap
+                                lat={loc.lat}
+                                lng={loc.lng}
+                                radius={loc.radius ?? DEFAULT_LOCATION_RADIUS_M}
+                                label={loc.name}
+                                onMove={({ lat, lng }) => onChange(locations.map((l, idx) => (idx === i ? { ...l, lat, lng } : l)))}
+                            />
                         </div>
                     ))}
                 </div>
