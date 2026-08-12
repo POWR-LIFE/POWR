@@ -25,6 +25,15 @@ import { noteTask, reportHandled } from '@/lib/crashHandler';
 
 export const BACKGROUND_NOTIFICATION_TASK = 'POWR_BACKGROUND_NOTIFICATION';
 
+/** When this device last PROCESSED a server wake (any gym_visit_check, including
+ *  the visit-less fence_refresh ping) — stamped below, read by the dwell tick's
+ *  wake-starvation watchdog in GeofenceContext. The wake cadence while a visit
+ *  is open is ~5-6 min; a device that has heard nothing for far longer than that
+ *  while holding an open visit is cut off from the beacon (dead task binding,
+ *  VPN-broken FCM socket, UNREGISTERED token — all field-seen 2026-08-12), and
+ *  only the location stream can notice. */
+export const LAST_WAKE_AT_KEY = '@powr/last_wake_processed_at';
+
 /** The payload markers that say a message is ours. Kept next to extractData so
  *  the matcher and the guard can never drift apart. */
 const VISIT_CHECK_TYPE = 'gym_visit_check';
@@ -133,6 +142,13 @@ TaskManager.defineTask(BACKGROUND_NOTIFICATION_TASK, async ({ data, error }) => 
     }
 
     if (payload?.type !== VISIT_CHECK_TYPE) return; // not ours — ignore quietly
+
+    // Feed the wake-starvation watchdog. Fire-and-forget via dynamic import:
+    // AsyncStorage stays out of this module's static boot path (see the
+    // DISPLAY_NOTIFICATION_TYPE note), and a stamp must never cost the wake.
+    void import('@react-native-async-storage/async-storage')
+      .then(m => m.default.setItem(LAST_WAKE_AT_KEY, String(Date.now())))
+      .catch(() => { /* the watchdog just sees a staler stamp */ });
 
     const stage = payload.stage === 'upgrade' ? 'upgrade' : 'dwell';
     console.log(`[BackgroundNotification] Visit check (${stage}) — verifying presence.`);
@@ -356,5 +372,32 @@ export function registerBackgroundNotificationTask(): Promise<void> {
       }
     })();
   }
+  return _bindOnce;
+}
+
+/** The ONE sanctioned bypass of the once-per-context latch: a location
+ *  permission grant kills the native wake binding IN PLACE — same process, same
+ *  JS context, so the latch (correctly) refuses the routine re-take and every
+ *  subsequent wake is delivered to the app and dropped in silence. Field
+ *  2026-08-12: bindings died at the 08:10 grant; the location foreground
+ *  service kept the process alive through swipe-aways, so "reopen the app"
+ *  resumed the same broken process and only a force-stop healed it — 100
+ *  minutes of wakes eaten at 27-62 ms each (dumpsys broadcast history).
+ *
+ *  Serialized behind any in-flight bind so the unregister → register gap —
+ *  the 2026-08-03 crash window — is never doubled. Failure clears the latch,
+ *  same contract as registerBackgroundNotificationTask. */
+export function forceRebindBackgroundNotificationTask(): Promise<void> {
+  const prior = _bindOnce ?? Promise.resolve();
+  _bindOnce = prior.catch(() => {}).then(async () => {
+    try {
+      await Notifications.unregisterTaskAsync(BACKGROUND_NOTIFICATION_TASK).catch(() => {});
+      await Notifications.registerTaskAsync(BACKGROUND_NOTIFICATION_TASK);
+      console.log('[BackgroundNotification] task force-rebound after permission grant.');
+    } catch (err) {
+      _bindOnce = null;
+      console.warn('[BackgroundNotification] force rebind failed:', err);
+    }
+  });
   return _bindOnce;
 }

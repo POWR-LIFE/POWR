@@ -85,3 +85,48 @@ describe('registerBackgroundNotificationTask', () => {
     expect(mockRegister).toHaveBeenCalledTimes(2);
   });
 });
+
+// A location permission grant kills the native binding IN PLACE — same process,
+// same JS context — so the once-per-context latch (correctly) refuses the routine
+// re-take and every wake is delivered and dropped. Field 2026-08-12: 100 minutes
+// of wakes eaten at 27-62 ms each; the fg-service kept the broken process alive
+// through swipe-aways, so only a force-stop healed it. forceRebind is the ONE
+// sanctioned latch bypass, wired to armAfterPermissionGrant.
+describe('forceRebindBackgroundNotificationTask', () => {
+  it('rebinds again even after the once-per-context latch is satisfied', async () => {
+    const mod = freshContext();
+    await mod.registerBackgroundNotificationTask();       // onboarding UI mount
+    await mod.forceRebindBackgroundNotificationTask();    // permission grant
+
+    expect(mockCalls).toEqual(['unregister', 'register', 'unregister', 'register']);
+  });
+
+  it('serializes behind an in-flight bind — the unregister→register crash window is never doubled', async () => {
+    const mod = freshContext();
+    let releaseFirst!: () => void;
+    mockUnregister.mockImplementationOnce(async (_name: string) => {
+      mockCalls.push('unregister');
+      await new Promise<void>((resolve) => { releaseFirst = resolve; });
+      return null;
+    });
+
+    const first = mod.registerBackgroundNotificationTask();
+    const forced = mod.forceRebindBackgroundNotificationTask();
+    releaseFirst();
+    await first;
+    await forced;
+
+    // Strict interleaving-free order: the forced pass starts only after the
+    // first bind fully completes.
+    expect(mockCalls).toEqual(['unregister', 'register', 'unregister', 'register']);
+  });
+
+  it('a later routine register shares the forced bind instead of re-taking it', async () => {
+    const mod = freshContext();
+    await mod.registerBackgroundNotificationTask();
+    await mod.forceRebindBackgroundNotificationTask();
+    await mod.registerBackgroundNotificationTask();       // foreground after grant
+
+    expect(mockRegister).toHaveBeenCalledTimes(2);        // mount + forced, nothing more
+  });
+});

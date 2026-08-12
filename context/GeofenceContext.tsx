@@ -130,6 +130,24 @@ const VISIT_TICK_THROTTLE_KEY = '@powr/last_visit_tick_beat';   // liveness only
 // Consecutive outside readings behind the exit backstop. See EXIT_READINGS_REQUIRED:
 // this is the corroboration that replaced the unbounded accuracy term.
 const EXIT_STREAK_KEY         = '@powr/exit_readings';
+
+// Last time a sweep stamped proven presence (fix 2026-08-12). Module state, not
+// storage: a missed stamp costs one sweep interval of proof, nothing more.
+let _lastSweepProvenStampAt = 0;
+
+// ⚠ Mirrors LAST_WAKE_AT_KEY in lib/backgroundNotificationTask.ts and must stay
+// equal to it. Duplicated rather than imported for the same reason that module
+// documents on DISPLAY_NOTIFICATION_TYPE: neither boot path should drag the
+// other's static imports along for one string. __tests__ pin the equality.
+export const LAST_WAKE_AT_KEY = '@powr/last_wake_processed_at';
+
+/** Wake silence, while a visit is open, past which the device must assume the
+ *  beacon cannot reach it. Wakes arrive ~5-6 min apart for the whole life of an
+ *  open visit, so 15 minutes is two-plus consecutive losses — not jitter. */
+const WAKE_STARVATION_MS = 15 * 60 * 1000;
+
+// Self-poll throttle (module state — same cost model as _lastSweepProvenStampAt).
+let _lastSelfPollAt = 0;
 const LAST_STREAM_FIX_KEY    = '@powr/last_stream_fix';   // newest fix the location stream delivered — the wake path's fallback presence proof
 const LOCATION_LOSS_KEY      = '@powr/location_loss_pending'; // first unconfirmed sighting of a revoked permission — see finalizeSessionIfLocationRevoked
 
@@ -955,7 +973,7 @@ function logRegionEvent(
   event: 'enter' | 'exit' | 'approach_stream_on' | 'checked_in' | 'stream_start_failed'
     | 'stream_switch_deferred' | 'armed' | 'sentinel_exit' | 'rearm_skipped' | 'sweep'
     | 'visit_stamp_relaxed' | 'visit_stamp_skipped' | 'coarse_rejected' | 'enter_scan'
-    | 'location_revoked' | 'active_patch_refused',
+    | 'location_revoked' | 'active_patch_refused' | 'exit_refuted',
   detail: Record<string, unknown> = {},
 ): void {
   void import('@/lib/gymVisits')
@@ -1334,7 +1352,7 @@ async function sweepForMissedCheckIn(): Promise<void> {
             // exit unreachable exactly when the device was least able to judge —
             // 900 m accuracy demanded 970 m of distance, so a phone 334 m away
             // stayed checked in indefinitely (field 2026-08-10).
-            const { exitBoundM, EXIT_READINGS_REQUIRED } = await import('@/lib/health/gymPresence');
+            const { exitBoundM, EXIT_READINGS_REQUIRED, fixCreditsPresence } = await import('@/lib/health/gymPresence');
             const bound = exitBoundM(a.radius, LOCATION_EXIT_HYSTERESIS_M, acc);
             const trusted = acc == null || acc <= MAX_FIX_ACCURACY_M;
 
@@ -1390,6 +1408,38 @@ async function sweepForMissedCheckIn(): Promise<void> {
                 readings,
                 fix_src:     fixSrc,
               });
+
+              // PROOF STARVATION (field 2026-08-12): this branch is the ONLY
+              // repeating post-upgrade path that measures presence — the nonce
+              // presence pass had gone quiet and the sweep's trusted 11 m / 4 m
+              // reading here never reached last_proven_at, so the reaper's
+              // stale-close clamped an honest 73-minute session back to its
+              // 09:30 upgrade stamp (4371 s → 2457 s, the #345 shrink, writer
+              // №3). When the fix would CREDIT presence — the strict test, same
+              // rule the server's v_proven mirrors — spend one confirm
+              // round-trip so the proof clock advances. Throttled: sweeps are
+              // minutes apart, but an arm-storm must not turn this into a
+              // confirm storm.
+              const fixAgeMs = Date.now() - fix.timestamp;
+              if (a.visitId
+                  && Date.now() - _lastSweepProvenStampAt > 4 * 60_000
+                  && fixCreditsPresence({
+                       fixTrusted: trusted,
+                       distanceM:  dist,
+                       radiusM:    a.radius ?? null,
+                       accuracyM:  acc,
+                       fixAgeMs,
+                     })) {
+                _lastSweepProvenStampAt = Date.now();
+                const { confirmGymVisit } = await import('@/lib/gymVisits');
+                await confirmGymVisit(a.visitId, true, {
+                  stage:       'sweep',
+                  distance_m:  Math.round(dist),
+                  accuracy_m:  acc != null ? Math.round(acc) : null,
+                  fix_trusted: trusted,
+                  fix_age_ms:  fixAgeMs,
+                }).catch(() => { /* a lost stamp is one sweep interval of proof */ });
+              }
             }
           }
         }
@@ -3069,6 +3119,16 @@ async function finalizeActiveGeofenceInner(expectedRegionId?: string, endedAtOve
  *  way this silently does nothing. */
 export async function armAfterPermissionGrant(): Promise<void> {
   try {
+    // BEFORE the permission reads, unconditionally: the grant itself is what
+    // kills the native wake binding (field 2026-08-12 — bindings died at the
+    // 08:10 grant and the fg-service kept the broken process alive through
+    // every swipe, so no later moment ever healed it). Fences are worthless if
+    // the wakes that drive claims are being delivered to a dead binding.
+    try {
+      const { forceRebindBackgroundNotificationTask } = await import('@/lib/backgroundNotificationTask');
+      await forceRebindBackgroundNotificationTask();
+    } catch { /* the fences below must still arm */ }
+
     const { status: fg } = await Location.getForegroundPermissionsAsync();
     if (fg !== 'granted') return;
     const { status: bg } = await Location.getBackgroundPermissionsAsync();
@@ -3487,6 +3547,11 @@ export async function runVisitCheck(
   // and are unaffected.
   const isSweepPing = wakeNonce === 'fence-refresh';
   if (isSweepPing) wakeNonce = undefined;
+
+  // Feed the wake-starvation watchdog: any entry here — background task OR the
+  // foreground notification handler — proves server wakes are reaching JS.
+  // Fire-and-forget; a lost stamp just leaves the watchdog a staler reading.
+  void AsyncStorage.setItem(LAST_WAKE_AT_KEY, String(Date.now())).catch(() => {});
 
   const trace: WakeTrace = { stage };
   // Freshness before the first server touch — but ONLY on ticketless FOREGROUND
@@ -4063,6 +4128,7 @@ async function evaluateLocationFix(coords: Location.LocationObjectCoords): Promi
     if (stillInside) {
       await heartbeatVisitStream(active, coords);
       await advanceActiveSession(active);
+      await selfPollIfWakeStarved(active, coords);
     } else {
       // Location-detected EXIT — the native exit event may never arrive when closed.
       await finalizeActiveGeofence();
@@ -4263,6 +4329,143 @@ export function resetNativeEventDebounceForTests(): void {
   _lastNativeEventAt.clear();
 }
 
+/** WAKE-STARVATION WATCHDOG (2026-08-12) — the self-poll that makes an open
+ *  visit survive a dead push channel.
+ *
+ *  The server holds every timer and can only ASK the device via silent pushes.
+ *  On 2026-08-12 that channel was severed for 100+ minutes while a visit was
+ *  open — dead task binding after a permission grant, then a VPN-strangled FCM
+ *  socket, then an UNREGISTERED token after a reinstall: three different
+ *  transports, one symptom, and the app sat inside a gym with a claimable visit
+ *  doing nothing, because every claim path waits to be woken. Meanwhile the
+ *  Android location stream delivered a fix every ~60 s the entire time — the
+ *  one executor the repo can actually rely on without a push
+ *  (expo-background-fetch "has never delivered a single row", per
+ *  lib/backgroundNotificationTask.ts).
+ *
+ *  So the dwell tick carries the fallback: if a visit is open, the dwell
+ *  threshold has passed, and NO server wake has been processed for
+ *  WAKE_STARVATION_MS, spend the tick's own fix on the same single round-trip
+ *  a wake would have made — confirm_gym_visit_v2 with request_credit, which
+ *  both stamps proven presence and lets the server relay the claim/upgrade.
+ *  Strictly gated on fixCreditsPresence (live fix, age 0): a starved device
+ *  with weak evidence keeps waiting — the watchdog exists to beat channel
+ *  death, not to weaken the credit bar. iOS runs no baseline stream, so this
+ *  is Android-first by design; iOS's APNs direct path answered force-quit all
+ *  through the same field day.
+ *
+ *  Self-throttled to one poll per 10 min, module state — worst case after a
+ *  context death is one extra poll, and the confirm is idempotent server-side. */
+async function selfPollIfWakeStarved(active: StoredGeofence, coords: Location.LocationObjectCoords): Promise<void> {
+  try {
+    if (!active.visitId) return;
+    const elapsed = Date.now() - active.entryTimestamp;
+    if (elapsed < minDwellMs()) return; // nothing creditable yet
+    if (Date.now() - _lastSelfPollAt < 10 * 60_000) return;
+
+    const rawLast = await AsyncStorage.getItem(LAST_WAKE_AT_KEY).catch(() => null);
+    // 0 = no wake EVER processed on this install — with an open, dwell-satisfied
+    // visit that is the starved case exactly (a fresh install's first visit on a
+    // wake path that never worked), not an exemption from it.
+    const lastWakeAt = Number(rawLast ?? 0) || 0;
+    if (Date.now() - lastWakeAt < WAKE_STARVATION_MS) return;
+
+    const acc = coords.accuracy ?? null;
+    const fixTrusted = acc == null || acc < MAX_FIX_ACCURACY_M;
+    let distance: number | null = null;
+    let radiusM: number | null = null;
+    if (active.latitude != null && active.longitude != null && active.radius != null) {
+      distance = haversineMetres(coords.latitude, coords.longitude, active.latitude, active.longitude);
+      radiusM = active.radius;
+    }
+    const { fixCreditsPresence } = await import('@/lib/health/gymPresence');
+    if (!fixCreditsPresence({ fixTrusted, distanceM: distance, radiusM, accuracyM: acc, fixAgeMs: 0 })) return;
+
+    _lastSelfPollAt = Date.now();
+    logRegionEvent(active.regionId ?? 'watchdog', 'sweep', {
+      outcome:     'wake_starved_self_poll',
+      starved_min: lastWakeAt > 0 ? Math.round((Date.now() - lastWakeAt) / 60_000) : null,
+      elapsed_min: Math.round(elapsed / 60_000),
+      distance_m:  distance != null ? Math.round(distance) : null,
+      acc_m:       acc != null ? Math.round(acc) : null,
+    });
+
+    const { confirmGymVisit } = await import('@/lib/gymVisits');
+    await confirmGymVisit(active.visitId, true, {
+      stage:       elapsed >= prodUpgradeMs() ? 'upgrade' : 'dwell',
+      source:      'wake_starved_self_poll',
+      distance_m:  distance != null ? Math.round(distance) : null,
+      accuracy_m:  acc != null ? Math.round(acc) : null,
+      fix_trusted: fixTrusted,
+      fix_age_ms:  0,
+    }, true, active.entryTimestamp);
+  } catch { /* the watchdog must never cost the tick */ }
+}
+
+/** Can a fresh fix refute this native EXIT? (2026-08-12)
+ *
+ *  An OS region exit carries no accuracy and no appeal: iOS fired one off a
+ *  wandering 2243 m cell pin 12 minutes into a live visit, the handler
+ *  finalized on its word alone, and a sweep EIGHT SECONDS later measured 4 m
+ *  from centre at 11 m accuracy — the dwell clock reset, the claim slid 12
+ *  minutes, and the re-minted visit under-recorded the session. The enter path
+ *  refuses fixes that coarse; the exit path executed one without a fix at all.
+ *
+ *  So: while the visit still has something to earn (pre-upgrade-threshold), a
+ *  native EXIT must survive one bounded verification — a fix ≤90 s old (cache
+ *  or one Balanced acquisition, same budget as the sweep backstop) that is
+ *  TRUSTED (< MAX_FIX_ACCURACY_M) and places us back INSIDE refutes it.
+ *
+ *  Deliberate asymmetries, each load-bearing:
+ *  • No fix / stale fix / coarse fix → the OS is honored. Verification can
+ *    only SAVE a visit on strong contrary evidence, never veto a real
+ *    departure on weak evidence — a phone in a bag on a walk-out often can't
+ *    produce a trusted fix, and blocking that exit would resurrect the 08-08
+ *    "nothing periodically checks you've LEFT" class.
+ *  • Past the upgrade threshold the OS is honored unverified — nothing is
+ *    left to earn, a native-exit close bills the exit moment (generous), and
+ *    the 08-11 PM runs proved that path end-to-end. Refuting there could only
+ *    trade a good close for a later, meaner reaper truncation.
+ *  • A refuted exit closes NOTHING and re-arms nothing: the dwell stream's
+ *    geometry, the sweep backstop and the reaper all still own the real exit. */
+export async function nativeExitRefuted(regionId: string): Promise<boolean> {
+  try {
+    const raw = await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY);
+    if (!raw) return false;
+    const active = JSON.parse(raw) as StoredGeofence;
+    if (active.regionId && active.regionId !== regionId) return false; // finalize ignores it anyway
+    if (active.latitude == null || active.longitude == null || active.radius == null) return false;
+    if (Date.now() - active.entryTimestamp >= prodUpgradeMs()) return false;
+
+    let fix = await Location.getLastKnownPositionAsync({ maxAge: EXIT_BACKSTOP_FIX_MAX_AGE_MS }).catch(() => null);
+    if (!fix) {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      fix = await Promise.race([
+        Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }).catch(() => null),
+        new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), EXIT_BACKSTOP_ACQUIRE_TIMEOUT_MS); }),
+      ]);
+      clearTimeout(timer);
+    }
+    if (!fix) return false;
+    const ageMs = typeof fix.timestamp === 'number' ? Date.now() - fix.timestamp : null;
+    if (ageMs != null && ageMs > EXIT_BACKSTOP_FIX_MAX_AGE_MS) return false; // the 08-11 stale-"acquired" lesson
+    const acc = fix.coords.accuracy;
+    if (acc != null && acc >= MAX_FIX_ACCURACY_M) return false;
+    const dist = haversineMetres(fix.coords.latitude, fix.coords.longitude, active.latitude, active.longitude);
+    if (dist > active.radius + LOCATION_EXIT_HYSTERESIS_M) return false;
+
+    logRegionEvent(regionId, 'exit_refuted', {
+      distance_m: Math.round(dist),
+      acc_m: acc != null ? Math.round(acc) : null,
+      fix_age_s: ageMs != null ? Math.round(ageMs / 1000) : null,
+      elapsed_min: Math.round((Date.now() - active.entryTimestamp) / 60_000),
+    });
+    return true;
+  } catch {
+    return false; // verification must never block a real exit
+  }
+}
+
 // Native geofence (fast, low-power ENTER/EXIT trigger when the OS delivers it).
 // The whole body is guarded: this executor runs headlessly at every relaunch a
 // region crossing causes, and its siblings both already catch. A malformed or
@@ -4363,7 +4566,12 @@ TaskManager.defineTask(GEOFENCE_TASK_NAME, async ({ data, error }) => {
     // session was active (also covers "walked up but never checked in"). A
     // neighboring approach-ring exit must not stop tracking an active gym.
     await exitApproach(regionId);
-    await finalizeActiveGeofence(regionId);
+    if (await nativeExitRefuted(regionId)) {
+      // Spurious OS exit — the visit stays open. The dwell stream's geometry,
+      // the sweep backstop and the reaper still own the real departure.
+    } else {
+      await finalizeActiveGeofence(regionId);
+    }
   }
   } catch (err) {
     // One bad event must cost one event, not the executor.
