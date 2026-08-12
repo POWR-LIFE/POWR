@@ -8,7 +8,7 @@ import {
     CalendarClock, Eye, EyeOff, Lock, Flag, Trophy, Archive,
     Link2, RefreshCw, AlertTriangle, Rocket, Undo2,
     Gauge, Download, UserX, UserCheck, ShieldAlert,
-    Megaphone, Upload, ExternalLink, QrCode, Smartphone, Users,
+    Megaphone, Upload, ExternalLink, QrCode, Smartphone, Users, TicketCheck,
 } from 'lucide-react';
 import { QRCodeCanvas } from 'qrcode.react';
 import { storageImage, uploadPublicImage } from '../../lib/storage';
@@ -110,6 +110,8 @@ export default function LiveEvents() {
     const [dqBusy, setDqBusy] = useState(null);    // user_id of DQ action in flight
     const [anticheat, setAnticheat] = useState(null); // admin_get_event_anticheat payload
     const [registrations, setRegistrations] = useState(null); // admin_get_event_registrations payload
+    const [bookings, setBookings] = useState(null);   // admin_get_event_bookings payload
+    const [bookingsBusy, setBookingsBusy] = useState(false);
     const lastOpsEventId = useRef(null);           // guards against showing event A's ops data under event B
 
     const selected = useMemo(() => events.find(e => e.id === selectedId) ?? null, [events, selectedId]);
@@ -121,17 +123,18 @@ export default function LiveEvents() {
     useEffect(() => { fetchEvents(); }, []);
 
     useEffect(() => {
-        if (!selected) { setForm(null); setVenueName(null); setOps(null); setStandings(null); setDqRows([]); setAnticheat(null); setRegistrations(null); lastOpsEventId.current = null; return; }
+        if (!selected) { setForm(null); setVenueName(null); setOps(null); setStandings(null); setDqRows([]); setAnticheat(null); setRegistrations(null); setBookings(null); lastOpsEventId.current = null; return; }
         setForm(editableFields(selected));
         // Switching events must never show the previous event's ops data while
         // the new fetch is in flight; same-event refreshes keep what's there.
         if (selected.id !== lastOpsEventId.current) {
             lastOpsEventId.current = selected.id;
-            setOps(null); setStandings(null); setDqRows([]); setAnticheat(null); setRegistrations(null);
+            setOps(null); setStandings(null); setDqRows([]); setAnticheat(null); setRegistrations(null); setBookings(null);
         }
         fetchCounts(selected.id);
         fetchOps(selected.id);
         fetchRegistrations(selected.id);
+        fetchBookings(selected.id);
         if (selected.venue_partner_id) {
             supabase.from('partners').select('name').eq('id', selected.venue_partner_id).single()
                 .then(({ data }) => setVenueName(data?.name ?? null));
@@ -162,6 +165,30 @@ export default function LiveEvents() {
         const { data, error } = await supabase.rpc('admin_get_event_registrations', { p_event_id: eventId });
         if (error) { console.error(error); setRegistrations(null); return; }
         setRegistrations(data);
+    };
+
+    // Booking reconciliation against the venue's own ticketing. Nothing here
+    // is derived from POWR state — the venue's export is the input, and the
+    // RPC returns the intersection plus both differences.
+    const fetchBookings = async (eventId) => {
+        const { data, error } = await supabase.rpc('admin_get_event_bookings', { p_event_id: eventId });
+        if (error) { console.error(error); setBookings(null); return; }
+        setBookings(data);
+    };
+
+    // Writing REPLACES the event's list — the export is authoritative at
+    // upload time, so a corrected export is the fix for a bad one.
+    const saveBookings = async (emails) => {
+        if (!selected) return;
+        setBookingsBusy(true);
+        const { data, error } = await supabase.rpc('admin_set_event_bookings', {
+            p_event_id: selected.id,
+            p_emails: emails,
+        });
+        setBookingsBusy(false);
+        if (error) { toast.error('Failed to save the booking list'); console.error(error); return; }
+        setBookings(data);
+        toast.success(`${data?.booked_total ?? 0} bookings saved`);
     };
 
     // Ops dashboard data: counts/funnel + the through-blur standings. Admin
@@ -469,6 +496,13 @@ export default function LiveEvents() {
                         onRefresh={() => fetchRegistrations(selected.id)}
                     />
 
+                    <BookingsPanel
+                        data={bookings}
+                        busy={bookingsBusy}
+                        onSave={saveBookings}
+                        onRefresh={() => fetchBookings(selected.id)}
+                    />
+
                     {selected.status !== 'draft' && (
                         <OpsPanel
                             ev={selected}
@@ -497,6 +531,180 @@ export default function LiveEvents() {
                 </div>
             )}
         </div>
+    );
+}
+
+// ─── Venue bookings ──────────────────────────────────────────────
+// The venue sells places through its own system, so "booked" and
+// "registered in POWR" are two lists that only meet by email. Paste the
+// venue's export and this shows the intersection and both differences —
+// the two mismatches are the ones that cost you on the night.
+
+function BookingsPanel({ data, busy, onSave, onRefresh }) {
+    const [raw, setRaw] = useState('');
+    const [editing, setEditing] = useState(false);
+
+    const confirmed = data?.confirmed ?? [];
+    const notRegistered = data?.booked_not_registered ?? [];
+    const notBooked = data?.registered_not_booked ?? [];
+    const bookedTotal = data?.booked_total ?? 0;
+
+    // Anything that isn't an email is a header row or a stray column — the
+    // RPC drops them too, but showing the count before saving is what stops
+    // someone pasting a whole CSV and trusting a silently wrong number.
+    const parsed = useMemo(
+        () => Array.from(new Set(
+            raw.split(/[\s,;]+/).map(s => s.trim().toLowerCase()).filter(s => s.includes('@') && s.length > 2),
+        )),
+        [raw],
+    );
+
+    const fmtTime = (iso) => iso
+        ? new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+        : null;
+
+    const Stat = ({ label, value, tone }) => (
+        <div className={`rounded-2xl border p-4 ${tone}`}>
+            <div className="text-[26px] font-bold leading-none tracking-tight">{value}</div>
+            <div className="text-[10px] font-black uppercase tracking-[0.2em] mt-2 opacity-70">{label}</div>
+        </div>
+    );
+
+    return (
+        <section>
+            <div className="flex items-center gap-4 mb-4 px-1">
+                <div className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 border bg-[#0EA5E9]/10 border-[#0EA5E9]/25">
+                    <TicketCheck size={18} className="text-[#0EA5E9]" />
+                </div>
+                <div className="min-w-0 flex-1">
+                    <h2 className="text-lg font-bold text-[#1A1A1A] tracking-tight">Venue bookings</h2>
+                    <p className="text-[12px] text-[#888888] leading-snug">
+                        Paste the attendee email export from the venue&rsquo;s booking system. Matching is by email
+                        only — someone who booked with a different address than their POWR account shows as a
+                        mismatch, not a match.
+                        {data?.uploaded_at && <> Last uploaded {fmtTime(data.uploaded_at)}.</>}
+                    </p>
+                </div>
+                <button
+                    onClick={onRefresh}
+                    className="inline-flex items-center gap-2 h-10 px-4 rounded-xl bg-[#F4F4F1] border border-[#E6E6E1] text-[10.5px] font-bold uppercase tracking-[0.18em] text-[#555555] hover:text-[#1A1A1A] transition-all shrink-0"
+                >
+                    <RefreshCw size={13} /> Refresh
+                </button>
+            </div>
+
+            <div className="bg-white border border-[#E6E6E1] rounded-3xl p-7 space-y-7">
+                <div className="grid grid-cols-3 gap-3">
+                    <Stat label="Booked & registered" value={confirmed.length} tone="bg-[#16A34A]/5 border-[#16A34A]/20 text-[#16A34A]" />
+                    <Stat label="Booked, not registered" value={notRegistered.length} tone="bg-[#F59E0B]/5 border-[#F59E0B]/20 text-[#B45309]" />
+                    <Stat label="Registered, not booked" value={notBooked.length} tone="bg-[#EF4444]/5 border-[#EF4444]/20 text-[#DC2626]" />
+                </div>
+
+                {/* Upload */}
+                {editing ? (
+                    <div className="space-y-3">
+                        <textarea
+                            value={raw}
+                            onChange={(e) => setRaw(e.target.value)}
+                            rows={8}
+                            placeholder={'Paste emails — commas, spaces or one per line.\nHeader rows and duplicates are ignored.'}
+                            className="w-full rounded-2xl border border-[#E6E6E1] bg-[#FAFAF8] p-4 font-mono text-[12px] text-[#1A1A1A] outline-none focus:border-[#0EA5E9]"
+                        />
+                        <div className="flex items-center gap-3">
+                            <button
+                                disabled={busy || parsed.length === 0}
+                                onClick={async () => { await onSave(parsed); setEditing(false); setRaw(''); }}
+                                className="inline-flex items-center gap-2 h-10 px-5 rounded-xl bg-[#1A1A1A] text-white text-[10.5px] font-bold uppercase tracking-[0.18em] disabled:opacity-40"
+                            >
+                                <Upload size={13} /> {busy ? 'Saving…' : `Replace list with ${parsed.length}`}
+                            </button>
+                            <button
+                                onClick={() => { setEditing(false); setRaw(''); }}
+                                className="h-10 px-4 rounded-xl border border-[#E6E6E1] text-[10.5px] font-bold uppercase tracking-[0.18em] text-[#888888]"
+                            >
+                                Cancel
+                            </button>
+                            <p className="text-[12px] text-[#999999]">
+                                {parsed.length} valid {parsed.length === 1 ? 'address' : 'addresses'} — this
+                                <strong className="text-[#B45309]"> replaces </strong>
+                                all {bookedTotal} currently stored.
+                            </p>
+                        </div>
+                    </div>
+                ) : (
+                    <button
+                        onClick={() => setEditing(true)}
+                        className="inline-flex items-center gap-2 h-10 px-5 rounded-xl bg-[#F4F4F1] border border-[#E6E6E1] text-[10.5px] font-bold uppercase tracking-[0.18em] text-[#555555] hover:text-[#1A1A1A] transition-all"
+                    >
+                        <Upload size={13} /> {bookedTotal > 0 ? 'Upload a new export' : 'Paste the booking export'}
+                    </button>
+                )}
+
+                {/* The two mismatches — the lists worth acting on */}
+                {notRegistered.length > 0 && (
+                    <div>
+                        <div className="text-[10px] font-black uppercase tracking-[0.25em] text-[#B45309] mb-2">
+                            Booked, not registered ({notRegistered.length})
+                        </div>
+                        <p className="text-[12px] text-[#888888] mb-3">
+                            They have a place on the night but aren&rsquo;t in the event. No account at all means the
+                            download has to happen first — chase those earliest.
+                        </p>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-[13px]">
+                                <tbody className="divide-y divide-[#F6F6F3]">
+                                    {notRegistered.map((r) => (
+                                        <tr key={r.email}>
+                                            <td className="py-2.5 pr-3 font-mono text-[12px] text-[#555555]">{r.email}</td>
+                                            <td className="py-2.5 pr-3 text-[#888888]">{r.name ?? '—'}</td>
+                                            <td className="py-2.5 text-right">
+                                                <span className={`text-[10px] font-black uppercase tracking-[0.15em] px-2 py-1 rounded-lg ${
+                                                    r.has_account
+                                                        ? 'bg-[#F59E0B]/10 text-[#B45309]'
+                                                        : 'bg-[#EF4444]/10 text-[#DC2626]'
+                                                }`}>
+                                                    {r.has_account ? 'Has account' : 'No account'}
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                )}
+
+                {notBooked.length > 0 && (
+                    <div>
+                        <div className="text-[10px] font-black uppercase tracking-[0.25em] text-[#DC2626] mb-2">
+                            Registered, not booked ({notBooked.length})
+                        </div>
+                        <p className="text-[12px] text-[#888888] mb-3">
+                            In the event but with no booking against their account email — they may not get
+                            through the door, or they booked under a different address.
+                        </p>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-[13px]">
+                                <tbody className="divide-y divide-[#F6F6F3]">
+                                    {notBooked.map((r) => (
+                                        <tr key={r.user_id}>
+                                            <td className="py-2.5 pr-3 font-medium text-[#1A1A1A]">{r.name}</td>
+                                            <td className="py-2.5 font-mono text-[12px] text-[#888888]">{r.email ?? '—'}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                )}
+
+                {bookedTotal === 0 && (
+                    <p className="text-[13px] text-[#999999]">
+                        No booking export uploaded yet — every registration will show as unbooked until there is one.
+                    </p>
+                )}
+            </div>
+        </section>
     );
 }
 
