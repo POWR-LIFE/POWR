@@ -21,11 +21,12 @@ A="${WATCH_USER_A:-234d49f3-d189-44b1-a874-063e724e4380}"   # AND = powrcto (pro
 B="${WATCH_USER_B:-a2585666-5b7a-4622-8e43-6bd4fb8013f0}"   # iOS = jpowr (preview channel)
 USERS="in.(${A},${B})"
 VENUE="${WATCH_VENUE:-7d865c3b}"   # POWR partner id prefix (radius 40m)
-# 2026-08-12: both devices run the 1.5.0 native builds (commit 14902ec, runtime
-# 6acdda91) whose EMBEDDED bundle is current — no OTA exists on that runtime, so
-# ota_update_id is expected to be null, which the heartbeat maps to "embedded".
-AND_OTA="${WATCH_AND_OTA:-embedded}"
-IOS_OTA="${WATCH_IOS_OTA:-embedded}"
+# 2026-08-12 PM: the b1ace1d fix set published as OTA on the 1.5.0 runtimes
+# (AND 6acdda91 / iOS a848fb8f). "embedded" (null) now means the device has NOT
+# yet fetched it — open the app once before a test. If iOS pins at embedded the
+# Xcode build's runtime differs from a848fb8f and the OTA can never land there.
+AND_OTA="${WATCH_AND_OTA:-019ff62a-cbb1-7794-945a-645da5846d39}"
+IOS_OTA="${WATCH_IOS_OTA:-019ff62c-67da-7df3-be51-9c27e75a89cf}"
 
 S=$(mktemp -d) || exit 1; trap 'rm -rf "$S"' EXIT
 get() { cat "$S/$1" 2>/dev/null; }
