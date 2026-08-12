@@ -48,7 +48,12 @@ export function useLiveEvent(slug?: string) {
     const boardQuery = useQuery<EventLeaderboard | null>({
         queryKey: ['liveEventBoard', eventQuery.data?.id],
         queryFn: () => fetchEventLeaderboard(eventQuery.data!.id),
-        enabled: !!eventQuery.data && eventQuery.data.status !== 'scheduled',
+        // Scheduled events have no board — except in preview, where the admin
+        // can force the board into any state for the design walkthrough, so
+        // previewers always ask and let the server decide the shape.
+        enabled:
+            !!eventQuery.data &&
+            (eventQuery.data.status !== 'scheduled' || !!eventQuery.data.is_preview),
         refetchInterval: 60_000,
         staleTime: 30_000,
     });
