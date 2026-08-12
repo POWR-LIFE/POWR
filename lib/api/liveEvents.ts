@@ -135,6 +135,10 @@ export type EventLeaderboard = {
     event_id: string;
     status: LiveEvent['status'];
     is_locked: boolean;
+    /** True on preview-forced payloads (draft + previewer): the board may
+     *  carry SAMPLE rows under sentinel 00000000-0000-4000-8000-* user_ids —
+     *  render them, never treat them as tappable profiles. */
+    is_preview?: boolean;
     /** True while the board is live but this viewer hasn't met the referral
      *  entry gate — the payload carries nothing score-shaped, same discipline
      *  as the locked blur. viewer.gate has their progress. */

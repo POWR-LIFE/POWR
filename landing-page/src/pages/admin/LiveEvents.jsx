@@ -334,6 +334,20 @@ export default function LiveEvents() {
         fetchEvents();
     };
 
+    // Board preview state: which leaderboard state the preview accounts see —
+    // sealed blur, live standings (real scores + sample fill), or the sample
+    // winners reveal. Instant write, outside the Save payload.
+    const setBoardState = async (ev, state) => {
+        setActing('board-state');
+        const { error } = await supabase.from('live_events')
+            .update({ preview_board_state: state }).eq('id', ev.id);
+        setActing(null);
+        if (error) { toast.error(error.message); return; }
+        await logAction(user.id, 'live_event_board_preview', 'live_event', ev.id, { state });
+        toast.success(`Board preview → ${state}`);
+        fetchEvents();
+    };
+
     // In-app test preview: instant write, deliberately outside the Save
     // payload (like status/hidden) so it can't be reverted by a stale edit.
     const setPreview = async (ev, enabled, emails) => {
@@ -497,6 +511,7 @@ export default function LiveEvents() {
                         onRegenToken={() => regenerateToken(selected)}
                         onDuplicate={() => duplicateEvent(selected)}
                         onSetPreview={(enabled, emails) => setPreview(selected, enabled, emails)}
+                        onSetBoardState={(state) => setBoardState(selected, state)}
                     />
 
                     <RegistrationsPanel
@@ -900,7 +915,14 @@ function RegistrationsPanel({ ev, data, onRefresh }) {
 // scheduled/live from the window. Everyone else sees nothing — this is
 // how you check the card in Expo Go before pressing Schedule.
 
-function PreviewBlock({ ev, acting, onSetPreview }) {
+const BOARD_STATES = [
+    ['auto',     'Auto',     'Behaves like the real thing under the simulated status'],
+    ['live',     'Live',     'Standings — testers’ real points merged with sample rows'],
+    ['locked',   'Sealed',   'The blur everyone stares at during event week'],
+    ['revealed', 'Winners',  'Sample results with the tester placed 4th'],
+];
+
+function PreviewBlock({ ev, acting, onSetPreview, onSetBoardState }) {
     // Resync the input from the saved list only when it actually changes
     // (event switch or a save) — never clobber in-progress typing on
     // unrelated refetches.
@@ -953,6 +975,35 @@ function PreviewBlock({ ev, acting, onSetPreview }) {
             {invalid.length > 0 && (
                 <p className="text-[11px] text-[#F43F5E] mt-2">Not an email: {invalid.join(', ')}</p>
             )}
+            {ev.preview_enabled && (
+                <div className="mt-4">
+                    <div className="text-[9px] font-black uppercase tracking-[0.25em] text-[#999999] mb-2">
+                        Board preview — what testers see on the League leaderboard
+                    </div>
+                    <div className="flex gap-2 flex-wrap">
+                        {BOARD_STATES.map(([value, label, hint]) => (
+                            <button
+                                key={value}
+                                onClick={() => onSetBoardState(value)}
+                                disabled={!!acting || (ev.preview_board_state ?? 'auto') === value}
+                                title={hint}
+                                className={`h-9 px-4 rounded-xl border text-[10.5px] font-bold uppercase tracking-[0.15em] transition-all disabled:cursor-default ${
+                                    (ev.preview_board_state ?? 'auto') === value
+                                        ? 'bg-[#1A1A1A] border-[#1A1A1A] text-white'
+                                        : 'bg-[#F4F4F1] border-[#E6E6E1] text-[#666666] hover:text-[#1A1A1A] hover:border-[#D8D8D2]'
+                                }`}
+                            >
+                                {label}
+                            </button>
+                        ))}
+                    </div>
+                    <p className="text-[11px] text-[#999999] mt-2 leading-relaxed">
+                        Sealed is the state real users hold all event week; Winners uses sample rows (tester
+                        placed 4th, prize labels from this event’s Prizes). The app picks it up within a minute
+                        — or instantly on a fresh open.
+                    </p>
+                </div>
+            )}
             <p className="text-[11px] text-[#999999] mt-2 leading-relaxed">
                 Only the accounts listed here see this draft in the app — the home card, register sheet and League
                 tab behave exactly as if the event were scheduled (or live once the window opens), with a PREVIEW
@@ -969,7 +1020,7 @@ function LifecyclePanel({
     ev, counts, acting,
     onSchedule, onUnschedule, onGoLive, onLock, onToggleHidden,
     onSettle, onReveal, onMarkSettled, onArchive,
-    onCopyUrl, onCopyPromoUrl, onRegenToken, onDuplicate, onSetPreview,
+    onCopyUrl, onCopyPromoUrl, onRegenToken, onDuplicate, onSetPreview, onSetBoardState,
 }) {
     const meta = STATUS_META[ev.status];
     const pastLock = ev.lock_at && new Date(ev.lock_at) <= new Date();
@@ -1051,7 +1102,9 @@ function LifecyclePanel({
                 </div>
 
                 {/* In-app test preview — draft only; scheduling makes it moot */}
-                {ev.status === 'draft' && <PreviewBlock ev={ev} acting={acting} onSetPreview={onSetPreview} />}
+                {ev.status === 'draft' && (
+                    <PreviewBlock ev={ev} acting={acting} onSetPreview={onSetPreview} onSetBoardState={onSetBoardState} />
+                )}
 
                 {/* Display URL */}
                 <div className="border-t border-[#F0F0EC] pt-6">

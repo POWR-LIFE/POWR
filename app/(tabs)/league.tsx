@@ -18,7 +18,9 @@ import Animated, {
   Easing,
   useAnimatedStyle,
   useSharedValue,
+  withDelay,
   withRepeat,
+  withSequence,
   withTiming,
 } from 'react-native-reanimated';
 import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
@@ -339,8 +341,13 @@ function EventBoardSection({
   board: EventLeaderboard | null;
   onPressUser: (e: LeaderboardEntry) => void;
 }) {
-  // Pre-week: the invite card above already carries the countdown.
-  if (event.status === 'scheduled' || !board) return null;
+  // Pre-week: the header card above already carries the countdown. A preview
+  // payload FORCED into a real state (sealed / live / winners) still renders —
+  // that walkthrough is the point; auto-scheduled mirrors the real nothing.
+  if (!board) return null;
+  const previewForced =
+    board.is_preview && (board.is_locked || !!board.standings || !!board.results);
+  if (event.status === 'scheduled' && !previewForced) return null;
 
   const viewer = board.viewer ?? { eligible: false, joined: false, disqualified: false };
 
@@ -364,17 +371,11 @@ function EventBoardSection({
     );
   }
 
-  // Locked and not yet revealed: suspense, no scores anywhere.
+  // Locked and not yet revealed: the sealed board. The server sent nothing
+  // score-shaped — these rows are pure theatre, and that's the point: the
+  // board exists, it's full, and nobody gets to see it until the reveal.
   if (!board.standings && !board.results) {
-    return (
-      <View style={styles.eventLockedCard}>
-        <Text style={styles.eventLockedEmoji}>🔒</Text>
-        <Text style={styles.eventLockedTitle}>Scores are locked</Text>
-        <Text style={styles.eventLockedSub}>
-          The final standings are being verified — winners are announced in person at the event.
-        </Text>
-      </View>
-    );
+    return <SealedBoard preview={!!board.is_preview} />;
   }
 
   const isWinners = board.results != null;
@@ -383,8 +384,31 @@ function EventBoardSection({
   const restRows = entries.slice(entries.length >= 3 ? 3 : 0);
   const prizeWinners = (board.results ?? []).filter(r => r.prize_label).slice(0, 3);
 
+  // Sample rows in a board preview carry sentinel ids — there is no profile
+  // behind them to open.
+  const pressUser = (e: LeaderboardEntry) => {
+    if (board.is_preview && e.user_id.startsWith('00000000-0000-4000-8000')) return;
+    onPressUser(e);
+  };
+
   return (
     <View style={{ gap: 8 }}>
+      {board.is_preview && (
+        <View style={styles.boardPreviewChipRow}>
+          <View style={styles.boardPreviewChip}>
+            <Text style={styles.boardPreviewChipText}>{'BOARD PREVIEW' + (entries.some(e => e.user_id.startsWith('00000000-0000-4000-8000')) ? ' · SAMPLE DATA' : '')}</Text>
+          </View>
+        </View>
+      )}
+
+      {/* The reveal moment: one quiet line before the winners appear. */}
+      {isWinners && (
+        <View style={styles.revealHeader}>
+          <Text style={styles.revealHeaderText}>The results are in.</Text>
+          <View style={styles.revealHairline} />
+        </View>
+      )}
+
       {/* Your rank — server-computed; outside the visible board it still shows */}
       {viewer.rank != null && (
         <View style={styles.eventYouCard}>
@@ -417,7 +441,7 @@ function EventBoardSection({
                 <Text style={styles.sectionLabel}>{isWinners ? 'WINNERS' : 'TOP 3'}</Text>
                 <View style={styles.sectionLine} />
               </View>
-              <RealPodium entries={top3} onPress={onPressUser} />
+              <RealPodium entries={top3} onPress={pressUser} />
             </>
           )}
 
@@ -447,7 +471,7 @@ function EventBoardSection({
                 {restRows.map((entry, idx, arr) => (
                   <Pressable
                     key={entry.user_id}
-                    onPress={() => onPressUser(entry)}
+                    onPress={() => pressUser(entry)}
                     style={({ pressed }) => [pressed && { opacity: 0.6 }]}
                   >
                     <RealLeaderRow entry={entry} isMe={false} showPro={false} />
@@ -459,6 +483,89 @@ function EventBoardSection({
           )}
         </>
       )}
+    </View>
+  );
+}
+
+// ─── SealedBoard ──────────────────────────────────────────────────────────────
+// The locked state a whole venue stares at all event week. Deliberately NOT a
+// skeleton loader: rank numerals are real and readable, the name/score bars
+// breathe slowly at different widths — a full board under a seal, not a page
+// that failed to load. No score-shaped data exists client-side; the bars are
+// decoration over the server's silence.
+
+const SEALED_ROWS = [0.62, 0.5, 0.58, 0.44, 0.52, 0.4];
+
+function SealedRow({ rank, widthRatio }: { rank: number; widthRatio: number }) {
+  const glow = useSharedValue(0.35);
+
+  useEffect(() => {
+    glow.value = withDelay(
+      rank * 180,
+      withRepeat(
+        withSequence(
+          withTiming(0.75, { duration: 1400, easing: Easing.inOut(Easing.quad) }),
+          withTiming(0.3, { duration: 1400, easing: Easing.inOut(Easing.quad) }),
+        ),
+        -1,
+        false,
+      ),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const pulse = useAnimatedStyle(() => ({ opacity: glow.value }));
+  const isTop3 = rank <= 3;
+
+  return (
+    <View style={styles.sealedRow}>
+      <Text style={[styles.sealedRank, isTop3 && styles.sealedRankTop]}>{rank}</Text>
+      <Animated.View
+        style={[
+          styles.sealedBar,
+          { flex: widthRatio },
+          isTop3 && styles.sealedBarTop,
+          pulse,
+        ]}
+      />
+      <View style={{ flex: 1 - widthRatio }} />
+      <Animated.View style={[styles.sealedPts, isTop3 && styles.sealedPtsTop, pulse]} />
+    </View>
+  );
+}
+
+function SealedBoard({ preview }: { preview: boolean }) {
+  return (
+    <View style={{ gap: 8 }}>
+      {preview && (
+        <View style={styles.boardPreviewChipRow}>
+          <View style={styles.boardPreviewChip}>
+            <Text style={styles.boardPreviewChipText}>BOARD PREVIEW</Text>
+          </View>
+        </View>
+      )}
+      <View style={styles.sealedCard}>
+        <View style={styles.sealedLockRing}>
+          <Ionicons name="lock-closed" size={16} color={GOLD} />
+        </View>
+        <Text style={styles.sealedEyebrow}>SCORES SEALED</Text>
+        <Text style={styles.sealedTitle}>Winners announced live at the final</Text>
+
+        <View style={styles.sealedRows}>
+          {SEALED_ROWS.map((w, i) => (
+            <SealedRow key={i} rank={i + 1} widthRatio={w} />
+          ))}
+          <LinearGradient
+            colors={['rgba(16,16,16,0)', 'rgba(16,16,16,0.96)']}
+            style={styles.sealedFade}
+            pointerEvents="none"
+          />
+        </View>
+
+        <Text style={styles.sealedFoot}>
+          Every point is already counted. Nobody sees the board until the reveal.
+        </Text>
+      </View>
     </View>
   );
 }
@@ -1156,6 +1263,79 @@ const styles = StyleSheet.create({
   eventLockedTitle: { fontSize: 20, fontWeight: '300', color: TEXT, letterSpacing: -0.3 },
   eventLockedSub: { fontSize: 12, fontWeight: '300', color: DIM, textAlign: 'center', lineHeight: 18, maxWidth: 300 },
 
+  // ── Sealed board ──
+  sealedCard: {
+    marginHorizontal: 14,
+    borderRadius: 20,
+    backgroundColor: 'rgba(14,14,14,0.94)',
+    borderWidth: 1,
+    borderColor: 'rgba(232,210,0,0.22)',
+    paddingHorizontal: 20,
+    paddingTop: 24,
+    paddingBottom: 20,
+    alignItems: 'center',
+  },
+  sealedLockRing: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    borderWidth: 1,
+    borderColor: 'rgba(232,210,0,0.45)',
+    backgroundColor: 'rgba(232,210,0,0.06)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  sealedEyebrow: { fontSize: 10, fontWeight: '800', color: GOLD, letterSpacing: 3.5, opacity: 0.85 },
+  sealedTitle: {
+    fontSize: 19,
+    fontWeight: '200',
+    color: TEXT,
+    letterSpacing: -0.3,
+    marginTop: 6,
+    textAlign: 'center',
+    maxWidth: 300,
+  },
+  sealedRows: { alignSelf: 'stretch', marginTop: 20, gap: 14, position: 'relative' },
+  sealedRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  sealedRank: {
+    width: 22,
+    fontSize: 15,
+    fontWeight: '200',
+    color: 'rgba(255,255,255,0.28)',
+    letterSpacing: -0.5,
+    textAlign: 'center',
+  },
+  sealedRankTop: { color: 'rgba(232,210,0,0.55)', fontWeight: '300' },
+  sealedBar: { height: 10, borderRadius: 5, backgroundColor: 'rgba(255,255,255,0.07)' },
+  sealedBarTop: { backgroundColor: 'rgba(255,255,255,0.11)' },
+  sealedPts: { width: 44, height: 10, borderRadius: 5, backgroundColor: 'rgba(255,255,255,0.05)' },
+  sealedPtsTop: { backgroundColor: 'rgba(232,210,0,0.14)' },
+  sealedFade: { position: 'absolute', left: 0, right: 0, bottom: -6, height: 64 },
+  sealedFoot: {
+    fontSize: 11,
+    fontWeight: '300',
+    color: 'rgba(255,255,255,0.4)',
+    textAlign: 'center',
+    lineHeight: 16,
+    marginTop: 18,
+    maxWidth: 280,
+  },
+
+  // ── Board preview chip + reveal header ──
+  boardPreviewChipRow: { alignItems: 'flex-end', marginHorizontal: 14 },
+  boardPreviewChip: {
+    borderWidth: 1,
+    borderColor: 'rgba(232,210,0,0.6)',
+    borderRadius: 100,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  boardPreviewChipText: { fontSize: 8, fontWeight: '800', color: GOLD, letterSpacing: 1.5 },
+  revealHeader: { alignItems: 'center', marginTop: 4, marginBottom: 2, gap: 10 },
+  revealHeaderText: { fontSize: 24, fontWeight: '200', color: TEXT, letterSpacing: -0.5 },
+  revealHairline: { width: 46, height: 1, backgroundColor: 'rgba(232,210,0,0.55)' },
+
   eventYouCard: {
     marginHorizontal: 14, marginTop: 4,
     borderRadius: 18,
@@ -1171,7 +1351,7 @@ const styles = StyleSheet.create({
   eventPrizeCard: {
     marginHorizontal: 14,
     borderRadius: 14, backgroundColor: CARD_BG,
-    borderWidth: 1, borderColor: BORDER,
+    borderWidth: 1, borderColor: 'rgba(232,210,0,0.3)',
     paddingVertical: 10, paddingHorizontal: 16, gap: 8,
   },
   eventPrizeRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
