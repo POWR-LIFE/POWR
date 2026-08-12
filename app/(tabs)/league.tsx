@@ -26,6 +26,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { HeaderActions } from '@/components/HeaderActions';
 import { ComingSoon } from '@/components/ComingSoon';
+import { EventRegisterFlow } from '@/components/events/EventRegisterFlow';
 import { EventHeaderCard } from '@/components/league/EventHeaderCard';
 import { EventTicketCard } from '@/components/league/EventTicketCard';
 import { ProBadge } from '@/components/ui/ProBadge';
@@ -89,8 +90,9 @@ export default function LeagueScreen() {
   const { weeklyEarned, totalEarned } = usePoints();
   const myPoints = metric === 'weekly' ? weeklyEarned : totalEarned;
 
-  const { event: activeEvent, invites, board: eventBoard, join: joinEvent, joining } =
+  const { event: activeEvent, invites, board: eventBoard } =
     useLiveEvent(typeof eventSlug === 'string' ? eventSlug : undefined);
+  const [registerOpen, setRegisterOpen] = useState(false);
 
   // Load leaderboard data when metric changes (only when live)
   useEffect(() => {
@@ -157,8 +159,7 @@ export default function LeagueScreen() {
             >
               <EventHeaderCard
                 event={activeEvent}
-                onJoin={joinEvent}
-                joining={joining}
+                onRegister={() => setRegisterOpen(true)}
               />
               {/* The ticket only means anything once you're in the event, and
                   only while there's still time to convert an invite. */}
@@ -167,6 +168,12 @@ export default function LeagueScreen() {
               )}
               <EventBoardSection event={activeEvent} board={eventBoard} onPressUser={openUserSheet} />
             </ScrollView>
+            <EventRegisterFlow
+              event={activeEvent}
+              visible={registerOpen}
+              onClose={() => setRegisterOpen(false)}
+              origin="league"
+            />
             <UserProfileSheet
               userId={selectedUserId}
               myPoints={myPoints}

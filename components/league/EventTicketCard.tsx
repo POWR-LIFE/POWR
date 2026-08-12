@@ -6,8 +6,10 @@ import React, { useEffect, useState } from 'react';
 import { Pressable, Share, StyleSheet, Text, View } from 'react-native';
 
 import { Avatar } from '@/components/social/Avatar';
+import { useAuth } from '@/context/AuthContext';
 import type { InviteFriend, InviteProgress, LiveEvent } from '@/lib/api/liveEvents';
 import { fetchProfile } from '@/lib/api/user';
+import { openEventBooking } from '@/lib/eventBookingLink';
 import { eventInviteLink } from '@/lib/eventInviteLink';
 import type { Friend } from '@/lib/social/types';
 
@@ -17,6 +19,7 @@ const BORDER = 'rgba(255,255,255,0.08)';
 const TEXT = '#F2F2F2';
 const MUTED = 'rgba(255,255,255,0.25)';
 const DIM = 'rgba(255,255,255,0.5)';
+const GREEN = '#4ade80';
 
 const MAX_FACES = 6;
 
@@ -69,13 +72,19 @@ export function EventTicketCard({
     invites: InviteProgress | null;
 }) {
     const router = useRouter();
+    const { user } = useAuth();
     const [code, setCode] = useState<string | null>(null);
+    const [displayName, setDisplayName] = useState<string | null>(null);
     const [copied, setCopied] = useState(false);
+    const [rulesOpen, setRulesOpen] = useState(false);
 
     useEffect(() => {
         let active = true;
         fetchProfile().then(p => {
-            if (active) setCode(p?.referral_code ?? null);
+            if (active) {
+                setCode(p?.referral_code ?? null);
+                setDisplayName(p?.display_name ?? null);
+            }
         });
         return () => {
             active = false;
@@ -98,6 +107,12 @@ export function EventTicketCard({
     const countingConversions = gate ? gate.counting === 'conversions' : true;
 
     const link = code ? eventInviteLink(event.slug, code) : null;
+
+    const rules = event.rules ?? [];
+    const bookingUrl = event.booking_url ?? null;
+    const booking = event.viewer.booking ?? null;
+    const bookingConfirmed = booking?.confirmed ?? false;
+    const venueName = event.venue?.name ?? 'the venue';
 
     const handleShare = async () => {
         if (!link) return;
@@ -210,6 +225,38 @@ export function EventTicketCard({
                 </Pressable>
             </View>
 
+            {/* ── Your physical spot: the venue's own booking system ──
+                Hidden until the admin sets booking_url (the link typically
+                lands weeks after registrations open). `confirmed` derives from
+                the venue's uploaded export by email — positive-only, so the
+                unconfirmed copy invites, it never asserts "not booked". */}
+            {bookingConfirmed ? (
+                <View style={styles.bookedRow}>
+                    <Ionicons name="checkmark-circle" size={16} color={GREEN} />
+                    <Text style={styles.bookedText}>Booked with {venueName}</Text>
+                </View>
+            ) : bookingUrl ? (
+                <>
+                    <Pressable
+                        style={({ pressed }) => [styles.bookBtn, pressed && { opacity: 0.85 }]}
+                        onPress={() => {
+                            Haptics.selectionAsync().catch(() => {});
+                            openEventBooking(event, { email: user?.email, name: displayName });
+                        }}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Book your place with ${venueName}`}
+                    >
+                        <Text style={styles.bookBtnText}>BOOK YOUR PLACE</Text>
+                        <Ionicons name="open-outline" size={14} color="#0a0a0a" />
+                    </Pressable>
+                    {booking?.opened_at ? (
+                        <Text style={styles.bookHint}>
+                            Already booked? It’ll show here once {venueName}’s list syncs.
+                        </Text>
+                    ) : null}
+                </>
+            ) : null}
+
             {/* ── Who you've already brought ── */}
             {friends.length > 0 && (
                 <View style={styles.friendBlock}>
@@ -238,6 +285,33 @@ export function EventTicketCard({
                             first verified workout
                         </Text>
                     )}
+                </View>
+            )}
+
+            {/* ── The rules you signed up under — collapsed, always reachable.
+                The success sheet shows them once; this is where they live. */}
+            {rules.length > 0 && (
+                <View style={styles.rulesBlock}>
+                    <Pressable
+                        style={({ pressed }) => [styles.rulesToggle, pressed && { opacity: 0.7 }]}
+                        onPress={() => setRulesOpen(open => !open)}
+                        accessibilityRole="button"
+                        accessibilityLabel={rulesOpen ? 'Hide the event rules' : 'Show the event rules'}
+                    >
+                        <Text style={styles.rulesToggleText}>EVENT RULES</Text>
+                        <Ionicons
+                            name={rulesOpen ? 'chevron-up' : 'chevron-down'}
+                            size={13}
+                            color={MUTED}
+                        />
+                    </Pressable>
+                    {rulesOpen &&
+                        rules.map((rule, i) => (
+                            <View key={i} style={styles.ruleRow}>
+                                <Text style={styles.ruleBullet}>•</Text>
+                                <Text style={styles.ruleText}>{rule}</Text>
+                            </View>
+                        ))}
                 </View>
             )}
         </View>
@@ -315,6 +389,38 @@ const styles = StyleSheet.create({
         borderColor: BORDER,
         backgroundColor: 'rgba(0,0,0,0.25)',
     },
+
+    bookBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
+        marginTop: 12,
+        backgroundColor: GOLD,
+        borderRadius: 100,
+        paddingVertical: 12,
+    },
+    bookBtnText: { fontSize: 11, fontWeight: '800', color: '#0a0a0a', letterSpacing: 1.5 },
+    bookHint: { fontSize: 10, fontWeight: '400', color: MUTED, marginTop: 8, lineHeight: 14 },
+    bookedRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
+        marginTop: 14,
+    },
+    bookedText: { fontSize: 12, fontWeight: '400', color: GREEN },
+
+    rulesBlock: { marginTop: 16, gap: 6 },
+    rulesToggle: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+    },
+    rulesToggleText: { fontSize: 8, fontWeight: '800', color: GOLD, opacity: 0.6, letterSpacing: 2.5 },
+    ruleRow: { flexDirection: 'row', gap: 8, alignItems: 'flex-start' },
+    ruleBullet: { fontSize: 11, lineHeight: 16, color: GOLD },
+    ruleText: { flex: 1, fontSize: 11, fontWeight: '300', color: DIM, lineHeight: 16 },
 
     friendBlock: { marginTop: 16, gap: 8 },
     faces: { flexDirection: 'row', alignItems: 'center', gap: 6 },

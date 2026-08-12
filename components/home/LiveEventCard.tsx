@@ -5,7 +5,7 @@ import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { EventLockup } from '@/components/events/EventLockup';
-import { EventRegisterSheet } from '@/components/home/EventRegisterSheet';
+import { EventRegisterFlow } from '@/components/events/EventRegisterFlow';
 import { RewardHeroMedia } from '@/components/rewards/RewardHeroMedia';
 import {
     fetchActiveLiveEvent,
@@ -51,6 +51,23 @@ function registeredPill(
         const { rank, points } = board.viewer;
         if (typeof rank === 'number') return { label: `RANK ${rank}`, a11y: `You're ranked ${rank}.` };
         if (typeof points === 'number') return { label: `${points} POWR`, a11y: `You've earned ${points} POWR.` };
+    }
+
+    // Registered but not yet booked with the venue: the one thing left to do
+    // in the run-up. Scheduled only — once the window opens, rank carries the
+    // pill and the League ticket owns the booking nudge. `confirmed` is a
+    // positive-only signal (the venue's export by email), so this can show to
+    // someone who booked under a different address — the pill invites, it
+    // never accuses.
+    if (
+        event.status === 'scheduled' &&
+        event.booking_url &&
+        !event.viewer.booking?.confirmed
+    ) {
+        return {
+            label: 'BOOK YOUR SPOT',
+            a11y: `You're registered — book your place with ${event.venue?.name ?? 'the venue'} from the League tab.`,
+        };
     }
 
     return { label: 'YOU’RE IN', a11y: 'You’re registered.' };
@@ -180,7 +197,12 @@ export function LiveEventCard() {
                 </View>
             </Pressable>
 
-            <EventRegisterSheet event={event} visible={sheetOpen} onClose={() => setSheetOpen(false)} />
+            <EventRegisterFlow
+                event={event}
+                visible={sheetOpen}
+                onClose={() => setSheetOpen(false)}
+                origin="home"
+            />
         </>
     );
 }

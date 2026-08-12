@@ -20,12 +20,25 @@ export type LiveEventGate = {
     met: boolean;
 };
 
+/** The viewer's venue-booking state. `confirmed` derives server-side from the
+ *  venue's uploaded attendee export by email match — a positive-only signal:
+ *  false means "not in the export we have", never "did not book" (they may
+ *  have booked under a different email). Don't write copy that asserts the
+ *  negative. */
+export type LiveEventBookingState = {
+    /** When this user first tapped through to the booking site. */
+    opened_at: string | null;
+    confirmed: boolean;
+};
+
 export type LiveEventViewer = {
     eligible: boolean;
     joined: boolean;
     disqualified: boolean;
     /** Null/absent when the event has no entry gate. */
     gate?: LiveEventGate | null;
+    /** Absent only from pre-migration payloads — treat missing as unopened. */
+    booking?: LiveEventBookingState;
 };
 
 export type LiveEventPrize = { rank: number; label: string };
@@ -66,6 +79,13 @@ export type LiveEvent = {
      *  with powr.life/promo/<slug> so one upload feeds every surface. */
     promo_headline: string | null;
     promo_media_url: string | null;
+    /** Admin-authored list of the rules a registrant agrees to. Optional only
+     *  because pre-migration payloads lack it — consumers read `rules ?? []`. */
+    rules?: string[];
+    /** The venue's external booking page (third-party system). Null/absent
+     *  hides every booking surface; the admin sets it when bookings open. May
+     *  contain {email}/{name} placeholders — see lib/eventBookingLink.ts. */
+    booking_url?: string | null;
     venue: LiveEventVenue | null;
     /** True when this is a draft served only to the admin-listed preview
      *  accounts (status is simulated as scheduled/live for them). */
@@ -160,9 +180,22 @@ export async function resetLiveEventPreview(eventId: string): Promise<LiveEventV
     return (data as LiveEventViewer | null) ?? null;
 }
 
-/** Opt-in scope only; server re-checks eligibility. Returns the updated viewer state. */
+/** Opt-in scope only; server re-checks eligibility. Returns the updated viewer
+ *  state. THROWS on failure — the server's P0001 messages are written for
+ *  humans ("Your account was created after the eligibility cutoff") and the
+ *  register flow surfaces them verbatim instead of a generic shrug. */
 export async function joinLiveEvent(eventId: string): Promise<LiveEventViewer | null> {
     const { data, error } = await supabase.rpc('join_live_event', { p_event_id: eventId });
-    if (error) return null;
+    if (error) throw error;
     return (data as LiveEventViewer | null) ?? null;
+}
+
+/** Stamp that the viewer tapped through to the venue booking site. Set-if-null
+ *  server-side (first open is the funnel fact) and deliberately fire-and-forget
+ *  here: the stamp must never stand between a user and the booking page. */
+export async function markEventBookingOpened(eventId: string): Promise<void> {
+    await supabase.rpc('mark_event_booking_opened', { p_event_id: eventId }).then(
+        () => undefined,
+        () => undefined,
+    );
 }
