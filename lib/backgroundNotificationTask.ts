@@ -150,6 +150,23 @@ TaskManager.defineTask(BACKGROUND_NOTIFICATION_TASK, async ({ data, error }) => 
       .then(m => m.default.setItem(LAST_WAKE_AT_KEY, String(Date.now())))
       .catch(() => { /* the watchdog just sees a staler stamp */ });
 
+    // Wake receipt for the VISIT-LESS ping (fence_refresh). Visit wakes stamp
+    // wake_received through logGymWakeReceived below; the visit-less ping's only
+    // server-side trace was whichever sweep row it eventually produced — so a
+    // wake that died between here and the sweep was indistinguishable from one
+    // iOS never delivered. Field 2026-08-12 PM: three consecutive accepted
+    // pings, zero device rows, and no way to say which of those two it was.
+    // The receipt goes FIRST — before the auth branch, before the engine import
+    // (itself a documented hang suspect) — so it convicts everything after it.
+    // Fire-and-forget on the gymVisits surface, which rides the device-ticket
+    // transport when backgrounded; a lost receipt costs one wake of ambiguity,
+    // never the wake itself.
+    if (!payload.visit_id) {
+      void import('@/lib/gymVisits')
+        .then(m => m.logGeofenceRegionEvent('wake', 'wake_received', { type: 'fence_refresh' }))
+        .catch(() => { /* ambiguity, not breakage */ });
+    }
+
     const stage = payload.stage === 'upgrade' ? 'upgrade' : 'dwell';
     console.log(`[BackgroundNotification] Visit check (${stage}) — verifying presence.`);
     // Names the executor on any crash report filed from here. A stack from a

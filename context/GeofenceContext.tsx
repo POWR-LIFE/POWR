@@ -1491,13 +1491,57 @@ async function sweepForMissedCheckIn(): Promise<void> {
       return;
     }
 
+    // APPROACH-PENDING ESCALATION (field 2026-08-12 PM). The iOS walk-in: region
+    // ENTER fired at 18:38:20, enterApproach stored its state and the approach
+    // stream reported itself on — and then the stream produced NOTHING for 6.5
+    // minutes while the owner stood inside the fence. The enter-poll froze with
+    // the suspended process (attempt 0 at 90 m out, attempt 1 six and a half
+    // minutes later, thawed by an app open). Every rescue this sweep could have
+    // staged was cache-only — and the freshest thing in the OS cache was the
+    // enter scan's own fix, taken while the owner was still 90 m OUT. A wake
+    // delivered mid-approach would have sworn the user was outside on the
+    // strength of where they USED to be.
+    //
+    // So: while an approach is pending, a delivered wake is the rescue path for
+    // a silent stream, and it must judge the PRESENT. Mirror one pass of
+    // pollForCheckIn exactly — a fresh accurate cache may decide; anything
+    // stale or coarse earns one bounded real acquisition (same budgets, same
+    // High-then-Balanced ladder, hang-capped like every acquisition on a wake).
+    // Absent an approach, the path below is byte-for-byte the cheap one that
+    // shipped — this runs on the OS's schedule, and an unconditional
+    // acquisition per wake is a battery bill with no payer.
+    //
+    // approach_age_s rides every row it touches: the stream should resolve an
+    // approach in seconds, so a large age on a sweep row IS the "stream went
+    // silent" conviction the 08-12 PM run had no way to record.
+    let approachAgeS: number | null = null;
+    try {
+      const rawApproach = await AsyncStorage.getItem(APPROACH_STATE_KEY);
+      const since = rawApproach ? (JSON.parse(rawApproach) as { since?: number }).since : undefined;
+      if (typeof since === 'number') approachAgeS = Math.round((Date.now() - since) / 1000);
+    } catch { /* unreadable approach state — the cheap path still covers it */ }
+
     // Cheap sources only — this runs on the OS's schedule, not in a wake window,
     // but an unbounded acquisition here would hang exactly like the wake path did.
     const cached = await Location.getLastKnownPositionAsync({ maxAge: 10 * 60_000 }).catch(() => null);
-    if (!cached) {
+    let fix = cached;
+    let fixSrc: 'cache' | 'acquired' = 'cache';
+    if (approachAgeS != null) {
+      const cachedUsable = !!cached
+        && (Date.now() - cached.timestamp) <= 30_000
+        && (cached.coords.accuracy == null || cached.coords.accuracy <= MAX_FIX_ACCURACY_M);
+      if (!cachedUsable) {
+        const acquired = await acquireFixPreferHigh(CHECKIN_POLL.fixTimeoutMs - 3_000, 3_000);
+        if (acquired) { fix = acquired; fixSrc = 'acquired'; }
+      }
+    }
+    if (!fix) {
       // The prime suspect on iOS: BASELINE_STREAM_MODE is 'off', so with the app
       // swiped nothing feeds the OS cache and it ages past ten minutes.
-      logRegionEvent('sweep', 'sweep', { outcome: 'no_fix' });
+      logRegionEvent('sweep', 'sweep', {
+        outcome: 'no_fix',
+        ...(approachAgeS != null ? { approach_age_s: approachAgeS } : {}),
+      });
       // Safe to record: only reachable below the `status === 'granted'` gate, so
       // it DOES observe a live grant even though it found no usable fix.
       await recordBackgroundHealth('no_fix', String(status));
@@ -1506,16 +1550,17 @@ async function sweepForMissedCheckIn(): Promise<void> {
 
     logRegionEvent('sweep', 'sweep', {
       outcome: 'handoff',
-      acc_m:   cached.coords.accuracy != null ? Math.round(cached.coords.accuracy) : null,
-      age_s:   Math.round((Date.now() - cached.timestamp) / 1000),
-      ...(await nearestPartnerMetres(cached.coords)),
+      acc_m:   fix.coords.accuracy != null ? Math.round(fix.coords.accuracy) : null,
+      age_s:   Math.round((Date.now() - fix.timestamp) / 1000),
+      ...(approachAgeS != null ? { approach_age_s: approachAgeS, fix_src: fixSrc } : {}),
+      ...(await nearestPartnerMetres(fix.coords)),
     });
     // Healthy. Recorded like every other branch so a granted permission
     // OVERWRITES a stale 'no_permission' and the banner retires itself on the
     // next sweep — no foreground probe, no dismissal bookkeeping.
     await recordBackgroundHealth('handoff', String(status));
 
-    await evaluateLocationFix(cached.coords);
+    await evaluateLocationFix(fix.coords);
 
     // Mirrors pollForCheckIn's row exactly, so "which detector started this
     // session?" is one query across both. Until this lands, every checked_in row

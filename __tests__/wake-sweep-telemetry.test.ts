@@ -229,3 +229,94 @@ describe('presence sweep telemetry', () => {
     expect(checkedIn?.[2]).toMatchObject({ via: 'sweep' });
   });
 });
+
+/** APPROACH-PENDING ESCALATION (field 2026-08-12 PM).
+ *
+ *  The iOS walk-in: region ENTER at 18:38:20, approach stream reported on, then
+ *  SILENCE for 6.5 minutes while the owner stood inside the fence. The freshest
+ *  thing in the OS cache was the enter scan's own fix — taken while the owner
+ *  was still 90 m OUT — so a wake delivered mid-approach would have judged the
+ *  user on where they USED to be and sworn they were outside.
+ *
+ *  What must never regress:
+ *   1. While an approach is pending, a stale or coarse cache earns ONE bounded
+ *      real acquisition (pollForCheckIn's exact ladder), so a delivered wake
+ *      judges the PRESENT and can rescue a silent stream's check-in.
+ *   2. Absent an approach, the cheap cache-only path is byte-for-byte what
+ *      shipped — no acquisition, ever.
+ *   3. approach_age_s rides the rows so a stream that has been silent for
+ *      minutes is convictable from the table, which the 08-12 PM run was not.
+ */
+describe('approach-pending escalation', () => {
+  const APPROACH_STATE_KEY = '@powr/approach_state';
+
+  it('escalates a stale cache to a real acquisition and checks in on the acquired fix', async () => {
+    await AsyncStorage.setItem(APPROACH_STATE_KEY, JSON.stringify({
+      regionId: 'partner-1-0',
+      since: Date.now() - 390_000,   // the stream has been silent for 6.5 min
+    }));
+    // The 08-12 PM cache: 90 m out, four minutes old.
+    mockLocation.getLastKnownPositionAsync.mockResolvedValue(
+      fixAt({ latitude: GYM.lat + 0.0008, longitude: GYM.lng }, 19, 240_000) as never,
+    );
+    // The truth: standing on the gym's centre.
+    mockLocation.getCurrentPositionAsync.mockResolvedValue(
+      fixAt({ latitude: GYM.lat, longitude: GYM.lng }, 12) as never,
+    );
+
+    await sweepForMissedCheckInFromWake();
+
+    expect(mockLocation.getCurrentPositionAsync).toHaveBeenCalled();
+    const rows = sweepRows();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ outcome: 'handoff', fix_src: 'acquired', acc_m: 12 });
+    expect(rows[0].approach_age_s as number).toBeGreaterThanOrEqual(389);
+    const checkedIn = mockLogRegionEvent.mock.calls.find(c => c[1] === 'checked_in');
+    expect(checkedIn?.[0]).toBe('partner-1-0');
+    expect(checkedIn?.[2]).toMatchObject({ via: 'sweep' });
+  });
+
+  it('lets a fresh accurate cache decide without spending an acquisition', async () => {
+    await AsyncStorage.setItem(APPROACH_STATE_KEY, JSON.stringify({
+      regionId: 'partner-1-0', since: Date.now() - 20_000,
+    }));
+    mockLocation.getLastKnownPositionAsync.mockResolvedValue(
+      fixAt({ latitude: GYM.lat, longitude: GYM.lng }, 15, 10_000) as never,
+    );
+
+    await sweepForMissedCheckInFromWake();
+
+    expect(mockLocation.getCurrentPositionAsync).not.toHaveBeenCalled();
+    expect(sweepRows()[0]).toMatchObject({ outcome: 'handoff', fix_src: 'cache' });
+  });
+
+  it('never acquires when no approach is pending — the cheap path is unchanged', async () => {
+    // Stale AND coarse: the exact shape that earns an acquisition mid-approach.
+    mockLocation.getLastKnownPositionAsync.mockResolvedValue(
+      fixAt(OUTSIDE, 500, 240_000) as never,
+    );
+
+    await sweepForMissedCheckInFromWake();
+
+    expect(mockLocation.getCurrentPositionAsync).not.toHaveBeenCalled();
+    const rows = sweepRows();
+    expect(rows[0]).toMatchObject({ outcome: 'handoff' });
+    expect(rows[0]).not.toHaveProperty('approach_age_s');
+    expect(rows[0]).not.toHaveProperty('fix_src');
+  });
+
+  it('names the starved approach when even the acquisition yields nothing', async () => {
+    await AsyncStorage.setItem(APPROACH_STATE_KEY, JSON.stringify({
+      regionId: 'partner-1-0', since: Date.now() - 120_000,
+    }));
+    mockLocation.getLastKnownPositionAsync.mockResolvedValue(null as never);
+    mockLocation.getCurrentPositionAsync.mockResolvedValue(null as never);
+
+    await sweepForMissedCheckInFromWake();
+
+    const rows = sweepRows();
+    expect(rows).toHaveLength(1);
+    expect(rows[0].outcome).toBe('no_fix');
+    expect(rows[0].approach_age_s as number).toBeGreaterThanOrEqual(119);
+  });
+});
