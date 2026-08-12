@@ -21,8 +21,11 @@ A="${WATCH_USER_A:-234d49f3-d189-44b1-a874-063e724e4380}"   # AND = powrcto (pro
 B="${WATCH_USER_B:-a2585666-5b7a-4622-8e43-6bd4fb8013f0}"   # iOS = jpowr (preview channel)
 USERS="in.(${A},${B})"
 VENUE="${WATCH_VENUE:-7d865c3b}"   # POWR partner id prefix (radius 40m)
-AND_OTA="${WATCH_AND_OTA:-019ff131-189e-78b1-b2fe-3e4aa2386a3e}"
-IOS_OTA="${WATCH_IOS_OTA:-019ff132-6baf-77ee-9f06-7d8ae7e02a97}"
+# 2026-08-12: both devices run the 1.5.0 native builds (commit 14902ec, runtime
+# 6acdda91) whose EMBEDDED bundle is current — no OTA exists on that runtime, so
+# ota_update_id is expected to be null, which the heartbeat maps to "embedded".
+AND_OTA="${WATCH_AND_OTA:-embedded}"
+IOS_OTA="${WATCH_IOS_OTA:-embedded}"
 
 S=$(mktemp -d) || exit 1; trap 'rm -rf "$S"' EXIT
 get() { cat "$S/$1" 2>/dev/null; }
@@ -168,7 +171,7 @@ while true; do
     ptsb=$(q point_transactions "user_id=${USERS}&created_at=gte.$(date -u +%Y-%m-%d)&select=user_id,amount" | jq -r --arg b "$B" '[.[] | select(.user_id==$b) | .amount] | add // 0' 2>/dev/null)
     geo=$(q geofence_region_events "user_id=${USERS}&created_at=gte.${since}&select=id" | jq -r 'length' 2>/dev/null)
     ota=$(q user_push_tokens "user_id=${USERS}&select=user_id,ota_update_id" | jq -r --arg a "$A" --arg ax "$AND_OTA" --arg b "$B" --arg bx "$IOS_OTA" \
-      'map(if .user_id==$a then (if .ota_update_id==$ax then "AND=fixed" else "AND=STALE-OTA("+(.ota_update_id[0:8])+")" end) else (if .ota_update_id==$bx then "iOS=fixed" else "iOS=STALE-OTA("+(.ota_update_id[0:8])+")" end) end) | join(" ")' 2>/dev/null)
+      'map((.ota_update_id // "embedded") as $o | if .user_id==$a then (if $o==$ax then "AND=fixed" else "AND=STALE-OTA("+$o[0:8]+")" end) else (if $o==$bx then "iOS=fixed" else "iOS=STALE-OTA("+$o[0:8]+")" end) end) | join(" ")' 2>/dev/null)
     echo "-- heartbeat: pts today AND=${pts:-?} iOS=${ptsb:-?} | geo evts 15m=${geo:-?} | ${ota} --"
   fi
 
