@@ -83,6 +83,10 @@ export function EventInviteCard({
     const milestoneN = invites?.event?.milestone_n ?? event.invite_milestone_n;
     const convertedForEvent = invites?.event?.converted_for_event ?? 0;
     const milestonePaid = invites?.event?.milestone_paid ?? false;
+    // Referral entry gate: with one set, invites are the ticket ONTO the
+    // leaderboard, so gate progress replaces the milestone progress bar (the
+    // milestone bonus still gets a line in the explainer).
+    const gate = event.viewer.gate ?? null;
     const pendingNames = (invites?.friends ?? [])
         .filter(f => !f.converted)
         .map(f => f.display_name ?? f.username ?? 'A friend');
@@ -159,6 +163,11 @@ export function EventInviteCard({
                     <View style={styles.divider} />
                     <Text style={styles.inviteTitle}>INVITE FRIENDS</Text>
                     <Text style={styles.inviteExplainer}>
+                        {gate
+                            ? `${gate.required} friends signing up with your code${
+                                  gate.counting === 'conversions' ? ' and logging their first verified workout' : ''
+                              } puts you on the leaderboard. `
+                            : ''}
                         You each get +{event.invite_bonus_points} POWR when a friend joins with your code and
                         logs their first verified workout.
                         {milestoneN > 0 && event.invite_milestone_bonus > 0
@@ -195,23 +204,39 @@ export function EventInviteCard({
                         </Pressable>
                     </View>
 
-                    {/* Progress */}
-                    {(invites?.total ?? 0) > 0 && (
+                    {/* Progress — gate progress when a gate is set, else milestone */}
+                    {(gate != null || (invites?.total ?? 0) > 0) && (
                         <View style={styles.progressBlock}>
                             <View style={styles.progressRow}>
                                 <Text style={styles.progressCount}>
-                                    {milestonePaid
-                                        ? `${convertedForEvent} converted`
-                                        : `${convertedForEvent} of ${milestoneN} converted`}
+                                    {gate
+                                        ? gate.met
+                                            ? 'You’re on the leaderboard'
+                                            : `${gate.count} of ${gate.required} ${gate.counting === 'conversions' ? 'converted' : 'signed up'}`
+                                        : milestonePaid
+                                            ? `${convertedForEvent} converted`
+                                            : `${convertedForEvent} of ${milestoneN} converted`}
                                 </Text>
-                                {milestonePaid && (
+                                {gate?.met && (
+                                    <View style={styles.milestoneChip}>
+                                        <Ionicons name="lock-open" size={10} color={GOLD} />
+                                        <Text style={styles.milestoneChipText}>BOARD UNLOCKED</Text>
+                                    </View>
+                                )}
+                                {!gate && milestonePaid && (
                                     <View style={styles.milestoneChip}>
                                         <Ionicons name="trophy" size={10} color={GOLD} />
                                         <Text style={styles.milestoneChipText}>MILESTONE EARNED</Text>
                                     </View>
                                 )}
                             </View>
-                            {milestoneN > 0 && !milestonePaid && (
+                            {gate && !gate.met && (
+                                <View style={styles.progressTrack}>
+                                    <View style={[styles.progressFill,
+                                        { width: `${Math.min(100, (gate.count / gate.required) * 100)}%` }]} />
+                                </View>
+                            )}
+                            {!gate && milestoneN > 0 && !milestonePaid && (
                                 <View style={styles.progressTrack}>
                                     <View style={[styles.progressFill,
                                         { width: `${Math.min(100, (convertedForEvent / milestoneN) * 100)}%` }]} />
