@@ -89,12 +89,14 @@ while true; do
   fi
 
   # ---- gym_visits signature diff (status mutates in place) ----
-  rows=$(q gym_visits "user_id=${USERS}&created_at=gte.$(date -u +%Y-%m-%d)&select=user_id,status,announced_at,claimed_at,upgraded_at,ended_at,close_reason,completed_push_at,last_proven_at,last_confirmed_at")
+  # keyed by VISIT id, not user — a re-mint gives a user 2+ rows in a day, and a
+  # per-user signature flaps between them, reprinting both rows on every poll
+  rows=$(q gym_visits "user_id=${USERS}&created_at=gte.$(date -u +%Y-%m-%d)&select=id,user_id,status,announced_at,claimed_at,upgraded_at,ended_at,close_reason,completed_push_at,last_proven_at,last_confirmed_at")
   if ok_array "$rows"; then
-    while IFS=$'\t' read -r uid sig; do
-      [ -z "$uid" ] && continue
-      [ "$(get "vis_$uid")" != "$sig" ] && { echo "[$(nm "$uid")] ** VISIT ** ${sig}"; put "vis_$uid" "$sig"; }
-    done < <(jq -r '.[] | [.user_id, ("status="+.status+" announced="+((.announced_at//"-")|tostring)+" claimed="+((.claimed_at//"-")|tostring)+" upgraded="+((.upgraded_at//"-")|tostring)+" ended="+((.ended_at//"-")|tostring)+" reason="+((.close_reason//"-")|tostring)+" donepush="+((.completed_push_at//"-")|tostring)+" proven="+((.last_proven_at//"-")|tostring)+" confirmed="+((.last_confirmed_at//"-")|tostring))] | @tsv' <<<"$rows" 2>/dev/null)
+    while IFS=$'\t' read -r vid uid sig; do
+      [ -z "$vid" ] && continue
+      [ "$(get "vis_$vid")" != "$sig" ] && { echo "[$(nm "$uid")] ** VISIT ${vid:0:8} ** ${sig}"; put "vis_$vid" "$sig"; }
+    done < <(jq -r '.[] | [.id, .user_id, ("status="+.status+" announced="+((.announced_at//"-")|tostring)+" claimed="+((.claimed_at//"-")|tostring)+" upgraded="+((.upgraded_at//"-")|tostring)+" ended="+((.ended_at//"-")|tostring)+" reason="+((.close_reason//"-")|tostring)+" donepush="+((.completed_push_at//"-")|tostring)+" proven="+((.last_proven_at//"-")|tostring)+" confirmed="+((.last_confirmed_at//"-")|tostring))] | @tsv' <<<"$rows" 2>/dev/null)
   fi
 
   # ---- activity_sessions signature diff (duration grows in place — that progression IS the duration test) ----
