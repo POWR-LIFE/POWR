@@ -21,13 +21,12 @@ A="${WATCH_USER_A:-234d49f3-d189-44b1-a874-063e724e4380}"   # AND = powrcto (pro
 B="${WATCH_USER_B:-a2585666-5b7a-4622-8e43-6bd4fb8013f0}"   # iOS = jpowr (preview channel)
 USERS="in.(${A},${B})"
 VENUE="${WATCH_VENUE:-7d865c3b}"   # POWR partner id prefix (radius 40m)
-# 2026-08-12 PM: the b1ace1d fix set, fetched and confirmed on BOTH devices.
-# ⚠ The 08-12 reinstalls SWAPPED the channels: powrcto/AND now runs preview,
-# jpowr/iOS runs production (verified from user_push_tokens.ota_channel).
-# Same commit either way; these are the per-platform update ids the devices
-# actually report. "embedded" (null) = the device lost the OTA (reinstall).
-AND_OTA="${WATCH_AND_OTA:-019ff62c-67da-7305-bde4-ad196c6950d3}"
-IOS_OTA="${WATCH_IOS_OTA:-019ff62a-cbb1-7ea7-aedc-9539f653ca48}"
+# 2026-08-12 evening: the d2bb85d bundles (Friday fix set e579e0c + the session-
+# watcher fix). ⚠ Channels stay SWAPPED since the 08-12 reinstalls: powrcto/AND
+# runs preview, jpowr/iOS runs production. Devices fetch on next app open —
+# STALE-OTA(019ff62*) means "still on the b1ace1d-era bundle, open the app once".
+AND_OTA="${WATCH_AND_OTA:-019ff6be-36f2-7008-a3e9-e1b672a3fb01}"
+IOS_OTA="${WATCH_IOS_OTA:-019ff6bc-b52d-77e5-939b-2735677742f5}"
 
 S=$(mktemp -d) || exit 1; trap 'rm -rf "$S"' EXIT
 get() { cat "$S/$1" 2>/dev/null; }
