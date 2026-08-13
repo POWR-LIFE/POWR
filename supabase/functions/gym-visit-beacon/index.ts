@@ -331,7 +331,13 @@ Deno.serve(async (req: Request) => {
       if (nonceErr) console.error('[gym-visit-beacon] presence nonce stamp failed (wake will fall back to JWT)', nonceErr);
 
       const payload = { type: 'gym_visit_check', visit_id: visit.id, stage: 'dwell', nonce: nonceErr ? undefined : nonce };
-      const TTL_SEC = 10 * 60;
+      // 30 min, not 10 (2026-08-13): a pocketed Android defers HIGH-priority FCM
+      // to its next maintenance window, and a 10-min TTL meant "deferred" became
+      // "expired" — two accepted dwell nudges died undelivered while the claim
+      // sat provable. A late nudge is harmless: the wake judges the PRESENT
+      // (fresh fix), an expired nonce (900 s) falls back to the ticket path,
+      // and a stale claim is absorbed idempotently server-side.
+      const TTL_SEC = 30 * 60;
       for (const t of tokens) {
         if (!t.device_token || (t.platform !== 'android' && t.platform !== 'ios')) continue;
         const outcome = t.platform === 'android'
@@ -717,7 +723,10 @@ Deno.serve(async (req: Request) => {
       if (nonceErr) console.error('[gym-visit-beacon] nonce stamp failed (wake will fall back to JWT)', nonceErr);
 
       const payload = { type: 'gym_visit_check', visit_id: visit.id, stage, nonce: nonceErr ? undefined : nonce };
-      const TTL_SEC = 10 * 60; // pointless to deliver a presence check long after the fact
+      // Upgrade nudges get the doze-survival TTL (see the dwell sender above);
+      // presence checks stay short — delivering one long after the fact is
+      // pointless, the next cycle will ask again anyway.
+      const TTL_SEC = stage === 'upgrade' ? 30 * 60 : 10 * 60;
       let sentDirect = 0;
       let failedDirect = 0;
       const viaExpo = [];
