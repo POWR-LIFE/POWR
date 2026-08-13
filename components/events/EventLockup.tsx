@@ -111,18 +111,22 @@ const styles = StyleSheet.create({
     // solid box around the logo. The achievements grid carries the same explicit
     // 'transparent' on its level artwork for the same reason — this is the one
     // place in the lockup that never got it.
+    //
+    // Both sizes carry a 5% trim off their tuned values (64→60.8, 90→85.5). The
+    // margins are fractions of the canvas, so they scale by the same 0.95 —
+    // change one without the other and the trim stops landing on the padding.
     powrMark: {
-        width: 64,
-        height: 64,
-        marginVertical: -13,
-        marginHorizontal: -10,
+        width: 60.8,
+        height: 60.8,
+        marginVertical: -12.35,
+        marginHorizontal: -9.5,
         backgroundColor: 'transparent',
     },
     powrMarkLarge: {
-        width: 90,
-        height: 90,
-        marginVertical: -18,
-        marginHorizontal: -14,
+        width: 85.5,
+        height: 85.5,
+        marginVertical: -17.1,
+        marginHorizontal: -13.3,
         backgroundColor: 'transparent',
     },
 });
