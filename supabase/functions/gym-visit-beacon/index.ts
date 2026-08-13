@@ -117,7 +117,7 @@ Deno.serve(async (req: Request) => {
   if (valid !== true) return new Response('forbidden', { status: 403 });
 
   const { dwellMin, upgradeMin } = await thresholds(admin);
-  const stats = { dwell: 0, upgrade: 0, sent: 0, no_token: 0, announced: 0, completed: 0, fence_refresh: 0, presence: 0, stale_closed: 0, stale_clamped: 0, redelivered: 0 };
+  const stats = { dwell: 0, upgrade: 0, sent: 0, no_token: 0, announced: 0, completed: 0, fence_refresh: 0, presence: 0, stale_closed: 0, stale_clamped: 0, redelivered: 0, settled_claim: 0, settled_upgrade: 0 };
 
   // SESSION COMPLETE: the walk-out closure banner, both platforms, one
   // template. Only CLAIMED visits (sub-threshold pop-ins end silently). The
@@ -817,6 +817,163 @@ Deno.serve(async (req: Request) => {
           fcm_direct: sentDirect,
           attempt: attempt ?? null,
         },
+      });
+    }
+  }
+
+  // ── SETTLE: bank proven-but-unanswered credit server-side (2026-08-13) ────
+  //
+  // Apple treats silent pushes as best-effort and withholds them entirely at
+  // its discretion (force-quit state, per-app budget, device conditions);
+  // Android doze can defer past any TTL. Field 2026-08-13, visit ef404719: a
+  // swiped iOS app checked in via the OS region ENTER (trusted inside fix),
+  // the user stood in the gym for the full dwell, and every dwell nudge was
+  // APNs-accepted and never delivered — a fully-earned session on track to
+  // end silently. A transport the OS does not guarantee cannot be a
+  // DEPENDENCY for credit; a device that answers is an optimization.
+  //
+  // What the server can prove without the device:
+  //   - the check-in required a trusted inside fix (last_proven_at set);
+  //   - the OS-monitored exit fence has NOT fired since check-in — leaving is
+  //     the one transition even a force-quit iOS app still reports;
+  //   - the stage threshold passed, plus grace;
+  //   - the device was offered >= SETTLE_MIN_NUDGES wakes and answered none,
+  //     and the last one has had a full backoff to land — a healthy device
+  //     always gets first claim, so this pass can never race it.
+  // Credit rides the REAL paths (claim-points / upgrade-gym-tier resolve-token
+  // relay legs), so tiers, streaks, caps, dev bypasses and visit marking stay
+  // in one place. A declined claim deletes its session so the one-gym-per-day
+  // rule is not blocked for a later, healthier attempt.
+  //
+  // Duration: check-in -> now. Under an armed exit fence, "no exit observed"
+  // is the strongest available evidence of continued presence; a missed
+  // walk-out is bounded by the stage tiers and reversible in session review.
+  // The client's own exit close still lands afterwards; grows-only semantics
+  // absorb the overlap. ⚠ Known cost: the reaper reads claimed_at/upgraded_at
+  // as device-proven moments — a settled stamp weakens that invariant by up
+  // to one settle delay; acceptable against losing the session outright.
+  {
+    const SETTLE_GRACE_MIN = 5;
+    const SETTLE_MIN_NUDGES = 2;
+    // How long after the LAST nudge the device keeps right-of-way. Two minutes,
+    // not NUDGE_BACKOFF_MS: a device that answers at all answers in seconds
+    // (bench 2026-08-13: 2.4 s cold-start), while the nudge pass above re-stamps
+    // last_nudge_at every backoff for as long as its budget lasts — tying the
+    // settle to the backoff made it wait out the ENTIRE budget (~25 min for the
+    // upgrade stage), long enough for a real walk-out to void the credit. The
+    // race this shortens is idempotent on both credit paths.
+    const SETTLE_ANSWER_GRACE_MS = 2 * 60 * 1000;
+    const settleBackoffIso = new Date(Date.now() - SETTLE_ANSWER_GRACE_MS).toISOString();
+    const settleFnHeaders = { 'Content-Type': 'application/json', 'x-resolve-token': token };
+    const fnBase = Deno.env.get('SUPABASE_URL')!;
+
+    const noExitSince = async (v: { user_id: string; region_id: string | null; started_at: string }) => {
+      if (!v.region_id) return true;
+      // Prefix match: venue region ids share the partner uuid with a location
+      // suffix ('<uuid>-0'), and an exit can be recorded against any of them.
+      const { count } = await admin
+        .from('geofence_region_events')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', v.user_id)
+        .eq('event', 'exit')
+        .like('region_id', `${v.region_id.slice(0, 36)}%`)
+        .gt('created_at', v.started_at);
+      return (count ?? 0) === 0;
+    };
+
+    // Stage 1: unclaimed visits past dwell + grace with an exhausted wake offer.
+    const { data: settleClaims, error: scErr } = await admin
+      .from('gym_visits')
+      .select('id, user_id, partner_id, region_id, started_at, last_proven_at, nudge_count')
+      .eq('status', 'open')
+      .is('claimed_session_id', null)
+      .is('ended_at', null)
+      .lte('started_at', new Date(Date.now() - (dwellMin + SETTLE_GRACE_MIN) * 60_000).toISOString())
+      .gte('nudge_count', SETTLE_MIN_NUDGES)
+      .lt('last_nudge_at', settleBackoffIso)
+      .limit(50);
+    if (scErr) console.error('[gym-visit-beacon] settle claim scan failed', scErr);
+
+    for (const v of settleClaims ?? []) {
+      if (!v.last_proven_at) continue;             // check-in never proved an inside fix
+      if (!(await noExitSince(v))) continue;       // user observably left — exit path owns it
+
+      const nowIso = new Date().toISOString();
+      const durationSec = Math.max(0, Math.round((Date.now() - Date.parse(v.started_at)) / 1000));
+      const { data: sess, error: sessErr } = await admin
+        .from('activity_sessions')
+        .insert({
+          user_id: v.user_id, type: 'gym', verification: 'geofence',
+          trust_score: 0.85, // below a device-confirmed 0.94, above the review floor
+          started_at: v.started_at, ended_at: nowIso, duration_sec: durationSec,
+          partner_id: v.partner_id,
+        })
+        .select('id')
+        .single();
+      if (sessErr || !sess) { console.error('[gym-visit-beacon] settle session insert failed', sessErr); continue; }
+
+      let status = 0; let respErr: string | null = null;
+      try {
+        const resp = await fetch(`${fnBase}/functions/v1/claim-points`, {
+          method: 'POST', headers: settleFnHeaders,
+          body: JSON.stringify({ session_id: sess.id, user_id: v.user_id, visit_id: v.id }),
+        });
+        status = resp.status;
+        if (!resp.ok) respErr = (await resp.json().catch(() => null))?.error ?? `http ${resp.status}`;
+      } catch (e) { respErr = String(e); }
+
+      if (respErr !== null || status !== 200) {
+        await admin.from('activity_sessions').delete().eq('id', sess.id);
+      } else {
+        stats.settled_claim++;
+      }
+      await admin.from('gym_visit_events').insert({
+        visit_id: v.id, user_id: v.user_id,
+        event: respErr === null ? 'settled' : 'settle_failed',
+        detail: { stage: 'dwell', session_id: sess.id, nudges_unanswered: v.nudge_count, status, error: respErr },
+      });
+    }
+
+    // Stage 2: claimed-not-upgraded visits past upgrade + grace, same offer test.
+    const { data: settleUpgrades, error: suErr } = await admin
+      .from('gym_visits')
+      .select('id, user_id, region_id, started_at, claimed_session_id, nudge_count_upgrade')
+      .not('claimed_session_id', 'is', null)
+      .is('upgraded_at', null)
+      .is('ended_at', null)
+      .lte('started_at', new Date(Date.now() - (upgradeMin + SETTLE_GRACE_MIN) * 60_000).toISOString())
+      .gte('nudge_count_upgrade', SETTLE_MIN_NUDGES)
+      .lt('last_nudge_at', settleBackoffIso)
+      .limit(50);
+    if (suErr) console.error('[gym-visit-beacon] settle upgrade scan failed', suErr);
+
+    for (const v of settleUpgrades ?? []) {
+      if (!(await noExitSince(v))) continue;
+
+      // upgrade-gym-tier gates on the RECORDED length, and a device that never
+      // answered post-claim left the session frozen at claim time. Extend to
+      // the same no-exit-observed "now" the claim settle uses — grows-only.
+      const durationSec = Math.max(0, Math.round((Date.now() - Date.parse(v.started_at)) / 1000));
+      await admin.from('activity_sessions')
+        .update({ ended_at: new Date().toISOString(), duration_sec: durationSec })
+        .eq('id', v.claimed_session_id)
+        .lt('duration_sec', durationSec);
+
+      let status = 0; let respErr: string | null = null;
+      try {
+        const resp = await fetch(`${fnBase}/functions/v1/upgrade-gym-tier`, {
+          method: 'POST', headers: settleFnHeaders,
+          body: JSON.stringify({ session_id: v.claimed_session_id, user_id: v.user_id, visit_id: v.id }),
+        });
+        status = resp.status;
+        if (!resp.ok) respErr = (await resp.json().catch(() => null))?.error ?? `http ${resp.status}`;
+      } catch (e) { respErr = String(e); }
+
+      if (respErr === null) stats.settled_upgrade++;
+      await admin.from('gym_visit_events').insert({
+        visit_id: v.id, user_id: v.user_id,
+        event: respErr === null ? 'settled' : 'settle_failed',
+        detail: { stage: 'upgrade', session_id: v.claimed_session_id, nudges_unanswered: v.nudge_count_upgrade, status, error: respErr },
       });
     }
   }
