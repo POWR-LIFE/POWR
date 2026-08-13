@@ -588,3 +588,232 @@ export function checkinPathLabel(via: string | null | undefined): string {
     default: return via;
   }
 }
+
+// ── History: journeys ────────────────────────────────────────────────────────
+//
+// gym_visit_journeys is the permanent per-visit FACT record (migration
+// 20260813150000). It exists because two of the four tables Live Ops reads —
+// geofence_region_events and push_send_log — are purged on a rolling window, so
+// before it, no question about the chain could be answered beyond the retention
+// horizon. The rollup distils each visit while the raw rows are still alive.
+//
+// Everything below is the judgement layer over those facts, same contract as the
+// rest of this file: the RPC ships columns, this file decides what they mean.
+
+export interface JourneyRow {
+  visit_id: string;
+  user_id: string;
+  username: string | null;
+  display_name: string | null;
+  email: string | null;
+  partner_id: string | null;
+  venue_name: string | null;
+  platform: string | null;
+  is_test: boolean;
+  started_at: string;
+  ended_at: string | null;
+  close_reason: string | null;
+  claimed_at: string | null;
+  upgraded_at: string | null;
+  completed_push_at: string | null;
+  native_enter_at: string | null;
+  checkin_via: string | null;
+  exit_detected_at: string | null;
+  /** False = the raw evidence had already been purged when this was rolled up.
+   *  Derived nulls then mean "we cannot know", never "it did not happen". */
+  evidence_complete: boolean;
+  nudge_count: number;
+  nudge_count_upgrade: number;
+  wakes_received: number;
+  proofs: number;
+  settled_stages: string[];
+  pushes_sent: number;
+  pushes_displayed: number;
+  pushes_receiptable: number;
+  session_duration_sec: number | null;
+  points_earned: number;
+  total_count: number;
+}
+
+/**
+ * The searchable outcome filters.
+ *
+ * ⚠ KEYS ARE MIRRORED IN SQL (admin_liveops_history's CASE). Adding one here
+ * without adding it there silently returns unfiltered rows — the SQL `else true`
+ * branch is deliberately permissive so an unknown key can never 500 a dashboard,
+ * which means a typo degrades to "no filter" rather than an error. The test
+ * `HISTORY_OUTCOMES keys` pins the list; update both sides together.
+ *
+ * Every one is a FACT predicate — a column comparison. "Did this visit fail" is
+ * not in here, because it isn't a column: a six-minute walk-through SHOULD never
+ * claim, and calling that a failure would bury the real ones.
+ */
+export interface HistoryOutcome {
+  key: string;
+  label: string;
+  /** What the filter actually asks of the data — shown as help text, because
+   *  "never claimed" and "failed" are not the same question. */
+  predicate: string;
+  group: 'progress' | 'detection' | 'delivery' | 'settlement';
+}
+
+export const HISTORY_OUTCOMES: HistoryOutcome[] = [
+  { key: 'all',                 label: 'All visits',            predicate: 'no filter',                                   group: 'progress' },
+  { key: 'full_chain',          label: 'Full chain',            predicate: 'claimed, upgraded and a completion push sent', group: 'progress' },
+  { key: 'claimed',             label: 'Claimed',               predicate: 'claimed_at is set',                            group: 'progress' },
+  { key: 'never_claimed',       label: 'Never claimed',         predicate: 'claimed_at is null — includes short walk-throughs', group: 'progress' },
+  { key: 'upgraded',            label: 'Upgraded',              predicate: 'upgraded_at is set',                           group: 'progress' },
+  { key: 'claimed_not_upgraded',label: 'Claimed, not upgraded', predicate: 'claimed but the 40-min bonus never landed',    group: 'progress' },
+  { key: 'no_os_enter',         label: 'No OS enter',           predicate: 'the OS never delivered the crossing (evidence-complete visits only)', group: 'detection' },
+  { key: 'no_exit_detected',    label: 'No exit detected',      predicate: 'closed with nothing ever observing them leave', group: 'detection' },
+  { key: 'no_proof',            label: 'No presence proof',     predicate: 'zero confirms cleared the accuracy gate',       group: 'detection' },
+  { key: 'wake_starved',        label: 'Wake starved',          predicate: '3+ nudges sent, zero answered',                 group: 'delivery' },
+  { key: 'push_never_drew',     label: 'Push never drew',       predicate: 'receiptable pushes sent, none stamped displayed', group: 'delivery' },
+  { key: 'no_completion_push',  label: 'No completion push',    predicate: 'claimed and closed, but no banner was sent',    group: 'delivery' },
+  { key: 'server_settled',      label: 'Server settled',        predicate: 'credit banked by the beacon, not the device',   group: 'settlement' },
+  { key: 'reaper_closed',       label: 'Closed by reaper',      predicate: 'no exit detected — closed on stale presence',   group: 'settlement' },
+  { key: 'evidence_expired',    label: 'Evidence expired',      predicate: 'raw rows were already purged — derived fields unknowable', group: 'settlement' },
+];
+
+export const HISTORY_OUTCOME_KEYS: string[] = HISTORY_OUTCOMES.map(o => o.key);
+
+/** How far the chain got, from a journey row. Mirrors visitStage's rule of
+ *  reading the STAMPS, not `status` (which journeys do not even carry). */
+export function journeyStage(j: Pick<JourneyRow, 'claimed_at' | 'upgraded_at' | 'ended_at'>): StageKey {
+  if (j.upgraded_at) return 'upgraded';
+  if (j.claimed_at) return 'claimed';
+  if (j.ended_at) return 'closed';
+  return 'checked_in';
+}
+
+/**
+ * The badges on a history row.
+ *
+ * Ordered worst-first so a truncated row still shows the thing worth clicking.
+ * Nothing here is emitted for a journey whose evidence expired, EXCEPT the
+ * expiry badge itself: scoring detection against data we no longer hold is how
+ * you manufacture a 100% failure rate out of a retention policy.
+ */
+export function journeyFindings(j: JourneyRow): Alert[] {
+  const out: Alert[] = [];
+
+  if (!j.evidence_complete) {
+    out.push({
+      key: 'presence_stale',
+      label: 'EVIDENCE EXPIRED',
+      detail: 'raw rows purged before rollup — detection fields are unknown, not failed',
+      severity: 'warn',
+    });
+  }
+
+  if (j.pushes_receiptable > 0 && j.pushes_displayed === 0) {
+    out.push({
+      key: 'push_never_drew',
+      label: 'PUSH NEVER DREW',
+      detail: `${j.pushes_receiptable} receiptable push(es), no display receipt`,
+      severity: 'bad',
+    });
+  }
+
+  const nudges = j.nudge_count + j.nudge_count_upgrade;
+  if (nudges >= WAKE_STARVED_STREAK && j.wakes_received === 0) {
+    out.push({
+      key: 'wake_starved',
+      label: 'WAKE STARVED',
+      detail: `${nudges} nudges sent, none answered`,
+      severity: 'bad',
+    });
+  }
+
+  if (j.evidence_complete && !j.native_enter_at) {
+    out.push({
+      key: 'claim_overdue',
+      label: 'NO OS ENTER',
+      detail: `check-in came from ${checkinPathLabel(j.checkin_via).toLowerCase()}, not the region crossing`,
+      severity: 'warn',
+    });
+  }
+
+  if (j.evidence_complete && j.ended_at && !j.exit_detected_at) {
+    out.push({
+      key: 'presence_stale',
+      label: 'NO EXIT DETECTED',
+      detail: `closed by ${j.close_reason ?? 'unknown'} — nothing observed them leaving`,
+      severity: 'warn',
+    });
+  }
+
+  if (j.settled_stages.length > 0) {
+    out.push({
+      key: 'wake_starved',
+      label: `SERVER SETTLED · ${j.settled_stages.join(', ')}`,
+      detail: 'the device never answered; the beacon banked the credit from its own evidence',
+      severity: 'warn',
+    });
+  }
+
+  return out;
+}
+
+// ── Trends ───────────────────────────────────────────────────────────────────
+
+export interface TrendBucket {
+  bucket: string;
+  visits: number;
+  evidence_complete: number;
+  os_enter_delivered: number;
+  claimed: number;
+  upgraded: number;
+  closed_by_reaper: number;
+  exit_detected: number;
+  server_settled: number;
+  nudges_sent: number;
+  wakes_received: number;
+  pushes_receiptable: number;
+  pushes_displayed: number;
+  points_earned: number;
+}
+
+/**
+ * A rate that refuses to lie.
+ *
+ * `measurable` is the denominator AFTER excluding everything the metric cannot
+ * see, and `pct` is null when it is zero. A component that renders `pct ?? '—'`
+ * therefore cannot print "0%" for "we had nothing to measure" — which is exactly
+ * the mistake that made the 08-12 board read "0 pushes proven drawn" when the
+ * truth was "no push that day rode a transport capable of proving it".
+ */
+export interface Rate {
+  numerator: number;
+  measurable: number;
+  pct: number | null;
+}
+
+function rate(numerator: number, measurable: number): Rate {
+  return { numerator, measurable, pct: measurable > 0 ? (numerator / measurable) * 100 : null };
+}
+
+/** Sum a trend series into one rate set. Denominators are per-metric on purpose. */
+export function trendTotals(buckets: TrendBucket[]) {
+  const sum = (pick: (b: TrendBucket) => number) => buckets.reduce((n, b) => n + pick(b), 0);
+  const visits = sum(b => b.visits);
+  const evidenced = sum(b => b.evidence_complete);
+  return {
+    visits,
+    evidenceComplete: evidenced,
+    /** Over EVIDENCE-COMPLETE visits only — a purged visit has no opinion. */
+    osEnter: rate(sum(b => b.os_enter_delivered), evidenced),
+    exitDetected: rate(sum(b => b.exit_detected), evidenced),
+    /** Over all visits: claiming does not depend on raw-event retention. */
+    claim: rate(sum(b => b.claimed), visits),
+    upgrade: rate(sum(b => b.upgraded), visits),
+    /** Over RECEIPTABLE pushes only — fcm_direct is the sole transport that
+     *  stamps delivered_at, so every other send is unmeasurable, not failed. */
+    pushDisplay: rate(sum(b => b.pushes_displayed), sum(b => b.pushes_receiptable)),
+    /** Over nudges actually sent. */
+    wakeAnswer: rate(sum(b => b.wakes_received), sum(b => b.nudges_sent)),
+    reaperClosed: sum(b => b.closed_by_reaper),
+    serverSettled: sum(b => b.server_settled),
+    points: sum(b => b.points_earned),
+  };
+}

@@ -409,3 +409,140 @@ describe('checkinPathLabel', () => {
     expect(checkinPathLabel('some_new_path')).toBe('some_new_path');
   });
 });
+
+// ── History journeys ─────────────────────────────────────────────────────────
+
+import {
+  HISTORY_OUTCOMES,
+  HISTORY_OUTCOME_KEYS,
+  JourneyRow,
+  TrendBucket,
+  journeyFindings,
+  journeyStage,
+  trendTotals,
+} from '@/shared/liveops';
+
+const journey = (over: Partial<JourneyRow> = {}): JourneyRow => ({
+  visit_id: 'v1', user_id: 'u1', username: 'jamie', display_name: 'Jamie', email: 'j@powr.life',
+  partner_id: 'p1', venue_name: 'POWR', platform: 'android', is_test: false,
+  started_at: '2026-08-13T10:00:00Z', ended_at: '2026-08-13T11:00:00Z', close_reason: 'exit',
+  claimed_at: '2026-08-13T10:30:00Z', upgraded_at: '2026-08-13T10:40:00Z',
+  completed_push_at: '2026-08-13T11:01:00Z',
+  native_enter_at: '2026-08-13T09:59:00Z', checkin_via: 'enter_poll',
+  exit_detected_at: '2026-08-13T11:00:00Z',
+  evidence_complete: true,
+  nudge_count: 1, nudge_count_upgrade: 1, wakes_received: 2, proofs: 3, settled_stages: [],
+  pushes_sent: 3, pushes_displayed: 3, pushes_receiptable: 3,
+  session_duration_sec: 3600, points_earned: 60, total_count: 1,
+  ...over,
+});
+
+describe('HISTORY_OUTCOMES', () => {
+  // The SQL CASE in admin_liveops_history matches on these strings. Its `else
+  // true` branch means a key that exists here but not there degrades to "no
+  // filter" rather than erroring — silent, so the list is pinned.
+  it('pins the key list mirrored in admin_liveops_history', () => {
+    expect(HISTORY_OUTCOME_KEYS).toEqual([
+      'all', 'full_chain', 'claimed', 'never_claimed', 'upgraded', 'claimed_not_upgraded',
+      'no_os_enter', 'no_exit_detected', 'no_proof',
+      'wake_starved', 'push_never_drew', 'no_completion_push',
+      'server_settled', 'reaper_closed', 'evidence_expired',
+    ]);
+  });
+
+  it('gives every filter a predicate, so nobody reads "never claimed" as "failed"', () => {
+    for (const o of HISTORY_OUTCOMES) {
+      expect(o.predicate.length).toBeGreaterThan(0);
+      expect(o.label.length).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe('journeyStage', () => {
+  it('reads the stamps, not the close', () => {
+    expect(journeyStage(journey())).toBe('upgraded');
+    expect(journeyStage(journey({ upgraded_at: null }))).toBe('claimed');
+    expect(journeyStage(journey({ upgraded_at: null, claimed_at: null }))).toBe('closed');
+    expect(journeyStage(journey({ upgraded_at: null, claimed_at: null, ended_at: null }))).toBe('checked_in');
+  });
+});
+
+describe('journeyFindings', () => {
+  it('says nothing about a clean full-chain visit', () => {
+    expect(journeyFindings(journey())).toEqual([]);
+  });
+
+  it('flags a receiptable push that never drew', () => {
+    const f = journeyFindings(journey({ pushes_displayed: 0 }));
+    expect(f.map(a => a.label)).toContain('PUSH NEVER DREW');
+  });
+
+  it('does NOT flag undrawn pushes when none were receiptable', () => {
+    // iOS rides Expo, which never stamps delivered_at. Calling that "never drew"
+    // would invent a bug on every iPhone in the fleet.
+    const f = journeyFindings(journey({ pushes_displayed: 0, pushes_receiptable: 0 }));
+    expect(f.map(a => a.label)).not.toContain('PUSH NEVER DREW');
+  });
+
+  it('flags a wake-starved device', () => {
+    const f = journeyFindings(journey({ nudge_count: 4, nudge_count_upgrade: 5, wakes_received: 0 }));
+    expect(f.map(a => a.label)).toContain('WAKE STARVED');
+  });
+
+  it('reports expired evidence INSTEAD of scoring detection against it', () => {
+    const f = journeyFindings(journey({
+      evidence_complete: false, native_enter_at: null, exit_detected_at: null,
+    }));
+    const labels = f.map(a => a.label);
+    expect(labels).toContain('EVIDENCE EXPIRED');
+    expect(labels).not.toContain('NO OS ENTER');
+    expect(labels).not.toContain('NO EXIT DETECTED');
+  });
+
+  it('flags a missing OS enter only when the evidence survives', () => {
+    const f = journeyFindings(journey({ native_enter_at: null, checkin_via: 'sweep' }));
+    expect(f.map(a => a.label)).toContain('NO OS ENTER');
+  });
+
+  it('names the settle stages when the server banked the credit', () => {
+    const f = journeyFindings(journey({ settled_stages: ['dwell', 'upgrade'] }));
+    expect(f.map(a => a.label)).toContain('SERVER SETTLED · dwell, upgrade');
+  });
+});
+
+describe('trendTotals', () => {
+  const bucket = (over: Partial<TrendBucket> = {}): TrendBucket => ({
+    bucket: '2026-08-13', visits: 10, evidence_complete: 10, os_enter_delivered: 7,
+    claimed: 6, upgraded: 4, closed_by_reaper: 2, exit_detected: 5, server_settled: 1,
+    nudges_sent: 20, wakes_received: 15, pushes_receiptable: 8, pushes_displayed: 6,
+    points_earned: 300, ...over,
+  });
+
+  it('divides each metric by its OWN denominator', () => {
+    const t = trendTotals([bucket()]);
+    expect(t.osEnter.pct).toBeCloseTo(70);      // over evidence-complete, not visits
+    expect(t.claim.pct).toBeCloseTo(60);        // over all visits
+    expect(t.pushDisplay.pct).toBeCloseTo(75);  // over receiptable pushes only
+    expect(t.wakeAnswer.pct).toBeCloseTo(75);
+  });
+
+  it('excludes evidence-expired visits from the OS-enter denominator', () => {
+    // 10 visits, only 4 with surviving evidence, 4 of those saw the crossing.
+    // The honest answer is 100%, not 40% — the other six cannot vote.
+    const t = trendTotals([bucket({ visits: 10, evidence_complete: 4, os_enter_delivered: 4 })]);
+    expect(t.osEnter.pct).toBeCloseTo(100);
+    expect(t.osEnter.measurable).toBe(4);
+  });
+
+  it('returns null — never 0% — when nothing could be measured', () => {
+    const t = trendTotals([bucket({ pushes_receiptable: 0, pushes_displayed: 0, evidence_complete: 0 })]);
+    expect(t.pushDisplay.pct).toBeNull();
+    expect(t.osEnter.pct).toBeNull();
+  });
+
+  it('sums across buckets', () => {
+    const t = trendTotals([bucket(), bucket()]);
+    expect(t.visits).toBe(20);
+    expect(t.points).toBe(600);
+  });
+});
