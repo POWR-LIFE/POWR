@@ -417,6 +417,8 @@ import {
   HISTORY_OUTCOME_KEYS,
   JourneyRow,
   TrendBucket,
+  formatRate,
+  historyPageInfo,
   journeyFindings,
   journeyStage,
   trendTotals,
@@ -544,5 +546,68 @@ describe('trendTotals', () => {
     const t = trendTotals([bucket(), bucket()]);
     expect(t.visits).toBe(20);
     expect(t.points).toBe(600);
+  });
+});
+
+describe('formatRate', () => {
+  it('renders an unmeasurable rate as an em-dash, never as 0%', () => {
+    // The 08-12 board read "0 pushes proven drawn" when the truth was "no push
+    // that day rode a transport capable of proving it". This is that guard.
+    const d = formatRate({ numerator: 0, measurable: 0, pct: null }, 'no push rode a transport that can prove display');
+    expect(d.text).toBe('—');
+    expect(d.text).not.toContain('0%');
+    expect(d.unmeasurable).toBe(true);
+    expect(d.title).toMatch(/nothing measurable/i);
+    expect(d.title).toMatch(/no push rode a transport/);
+  });
+
+  it('keeps the denominator visible next to every percentage', () => {
+    const d = formatRate({ numerator: 6, measurable: 8, pct: 75 });
+    expect(d.text).toBe('75%');
+    expect(d.ratio).toBe('6/8');
+    expect(d.unmeasurable).toBe(false);
+    expect(d.title).toBe('6 of 8 measurable');
+  });
+
+  it('prints a REAL zero as 0%, because that one did happen', () => {
+    const d = formatRate({ numerator: 0, measurable: 12, pct: 0 });
+    expect(d.text).toBe('0%');
+    expect(d.ratio).toBe('0/12');
+    expect(d.unmeasurable).toBe(false);
+  });
+});
+
+describe('historyPageInfo', () => {
+  it('counts pages off total_count, not off the rows on screen', () => {
+    const p = historyPageInfo(342, 50, 0);
+    expect(p.page).toBe(1);
+    expect(p.pages).toBe(7);
+    expect(p.label).toBe('1–50 of 342');
+    expect(p.hasPrev).toBe(false);
+    expect(p.hasNext).toBe(true);
+  });
+
+  it('reports the last page honestly when it is short', () => {
+    const p = historyPageInfo(342, 50, 300);
+    expect(p.page).toBe(7);
+    expect(p.from).toBe(301);
+    expect(p.to).toBe(342);
+    expect(p.hasNext).toBe(false);
+    expect(p.hasPrev).toBe(true);
+  });
+
+  it('says nothing matched rather than showing "1–0 of 0"', () => {
+    const p = historyPageInfo(0, 50, 0);
+    expect(p.from).toBe(0);
+    expect(p.pages).toBe(1);
+    expect(p.hasNext).toBe(false);
+    expect(p.label).toBe('No visits match these filters');
+  });
+
+  it('never offers a next page when one full page is all there is', () => {
+    const p = historyPageInfo(50, 50, 0);
+    expect(p.pages).toBe(1);
+    expect(p.hasNext).toBe(false);
+    expect(p.label).toBe('1–50 of 50');
   });
 });

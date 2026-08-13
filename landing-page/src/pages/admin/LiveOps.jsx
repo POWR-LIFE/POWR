@@ -1,24 +1,30 @@
 import {
-    Activity, AlertTriangle, BellRing, CheckCircle, Clock, MapPin, Radio,
-    RefreshCw, Smartphone, X, Zap,
+    Activity, AlertTriangle, BellRing, CheckCircle, ChevronLeft, ChevronRight, Clock, MapPin,
+    Radio, RefreshCw, Search, Smartphone, X, Zap,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../lib/toast';
 import {
+    HISTORY_OUTCOMES,
     checkinPathLabel,
     collapseTimeline,
     displayRate,
     elapsedMinutes,
     formatAgo,
     formatDuration,
+    formatRate,
+    historyPageInfo,
     isNoisePush,
     isOtaBehind,
+    journeyFindings,
+    journeyStage,
     lastHeardLabel,
     otaLabel,
     pushVerdict,
     stageDeltas,
     stageLabel,
+    trendTotals,
     visitAlerts,
     visitStage,
 } from '../../../../shared/liveops.ts';
@@ -88,8 +94,46 @@ const COUNTER_LABELS = [
     { key: 'sentinel_exit',          label: 'Sentinel exits (travel re-arm)' },
 ];
 
+// History reads gym_visit_journeys — the permanent rollup — so it can look past
+// the retention horizon that limits the live board. One page is one RPC round
+// trip; 50 keeps the widest row set inside a screen's worth of scrolling.
+const HISTORY_PAGE_SIZE = 50;
+const DAY_MS = 86_400_000;
+
+const PLATFORM_OPTIONS = [
+    { key: '', label: 'All platforms' },
+    { key: 'android', label: 'Android' },
+    { key: 'ios', label: 'iOS' },
+];
+
 const timeOfDay = (iso) =>
     new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+const dayAndTime = (iso) =>
+    new Date(iso).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+
+/** 'YYYY-MM-DD' in the admin's own timezone — the format <input type="date"> wants. */
+const isoDay = (msAt) => new Date(msAt).toLocaleDateString('en-CA');
+
+// A half-typed or cleared date input must never reach the RPC: `started_at >= null`
+// matches nothing, so an empty box would silently render "no visits" instead of an
+// error. Both ends fall back to the default window instead.
+const rangeStart = (day) => {
+    const t = Date.parse(`${day}T00:00:00`);
+    return new Date(Number.isFinite(t) ? t : Date.now() - 29 * DAY_MS).toISOString();
+};
+const rangeEnd = (day) => {
+    const t = Date.parse(`${day}T23:59:59.999`);
+    return new Date(Number.isFinite(t) ? t : Date.now()).toISOString();
+};
+
+const defaultHistoryFilters = () => ({
+    from: isoDay(Date.now() - 29 * DAY_MS),
+    to: isoDay(Date.now()),
+    query: '',
+    outcome: 'all',
+    platform: '',
+});
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
@@ -119,6 +163,17 @@ export default function LiveOps() {
     const [aggReady, setAggReady] = useState(false);
     const [aggBusy, setAggBusy] = useState(false);
     const [openVisit, setOpenVisit] = useState(null);
+
+    // History. `filters` is the APPLIED set — the search box keeps its own draft
+    // inside <History> so typing a name does not fire an RPC per keystroke.
+    const [histFilters, setHistFilters] = useState(defaultHistoryFilters);
+    const [histOffset, setHistOffset] = useState(0);
+    const [histRows, setHistRows] = useState([]);
+    const [histReady, setHistReady] = useState(false);
+    const [histBusy, setHistBusy] = useState(false);
+    const [trends, setTrends] = useState([]);
+    const [trendsReady, setTrendsReady] = useState(false);
+    const [trendsBusy, setTrendsBusy] = useState(false);
 
     const loadBoard = useCallback(async ({ quiet } = {}) => {
         if (!quiet) setBoardBusy(true);
@@ -155,8 +210,52 @@ export default function LiveOps() {
         setAggBusy(false);
     }, [windowKey, includeTest]);
 
+    // Rows and trends are two effects on purpose: the summary strip is a property
+    // of the FILTERED WINDOW, not of the page you happen to be on, so paging
+    // through results must not re-run the (much heavier) daily rollup query.
+    const loadHistoryRows = useCallback(async () => {
+        setHistBusy(true);
+        const { data, error } = await supabase.rpc('admin_liveops_history', {
+            p_from: rangeStart(histFilters.from),
+            p_to: rangeEnd(histFilters.to),
+            p_user_query: histFilters.query.trim() || null,
+            p_outcome: histFilters.outcome,
+            p_platform: histFilters.platform || null,
+            p_include_test: includeTest,
+            p_limit: HISTORY_PAGE_SIZE,
+            p_offset: histOffset,
+        });
+        if (error) toastRef.current.error(error.message);
+        else setHistRows(data ?? []);
+        setHistReady(true);
+        setHistBusy(false);
+    }, [histFilters, histOffset, includeTest]);
+
+    const loadTrends = useCallback(async () => {
+        setTrendsBusy(true);
+        const { data, error } = await supabase.rpc('admin_liveops_trends', {
+            p_from: rangeStart(histFilters.from),
+            p_to: rangeEnd(histFilters.to),
+            p_include_test: includeTest,
+            p_platform: histFilters.platform || null,
+        });
+        if (error) toastRef.current.error(error.message);
+        else setTrends(data ?? []);
+        setTrendsReady(true);
+        setTrendsBusy(false);
+    }, [histFilters, includeTest]);
+
+    // A filter change invalidates the page number: page 5 of the old result set
+    // is a different set of rows, and often past the end of the new one.
+    const applyHistoryFilters = useCallback((next) => {
+        setHistFilters(next);
+        setHistOffset(0);
+    }, []);
+
     useEffect(() => { if (tab === 'live') loadBoard(); }, [tab, loadBoard]);
     useEffect(() => { if (tab === 'aggregates') loadAggregates(); }, [tab, loadAggregates]);
+    useEffect(() => { if (tab === 'history') loadHistoryRows(); }, [tab, loadHistoryRows]);
+    useEffect(() => { if (tab === 'history') loadTrends(); }, [tab, loadTrends]);
 
     // Quiet re-poll: no spinner, no toast on a blip. A field test runs for hours
     // and a transient failure must not clear the board off the screen.
@@ -192,11 +291,15 @@ export default function LiveOps() {
                         </span>
                     )}
                     <button
-                        onClick={() => (tab === 'live' ? loadBoard() : loadAggregates())}
+                        onClick={() => {
+                            if (tab === 'live') loadBoard();
+                            else if (tab === 'history') { loadHistoryRows(); loadTrends(); }
+                            else loadAggregates();
+                        }}
                         className="w-12 h-12 rounded-2xl bg-white border border-[#E6E6E1] flex items-center justify-center text-[#888888] hover:text-[#8a7600] hover:border-[#E8D200]/40 transition-all"
                         title="Refresh"
                     >
-                        <RefreshCw size={16} className={boardBusy || aggBusy ? 'animate-spin' : ''} />
+                        <RefreshCw size={16} className={boardBusy || aggBusy || histBusy || trendsBusy ? 'animate-spin' : ''} />
                     </button>
                 </div>
             </div>
@@ -204,7 +307,7 @@ export default function LiveOps() {
             {/* Tabs + test toggle */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12">
                 <div className="flex gap-3">
-                    {[{ k: 'live', l: 'Live Board' }, { k: 'aggregates', l: 'Aggregates' }].map(t => (
+                    {[{ k: 'live', l: 'Live Board' }, { k: 'history', l: 'History' }, { k: 'aggregates', l: 'Aggregates' }].map(t => (
                         <button
                             key={t.k}
                             onClick={() => setTab(t.k)}
@@ -222,7 +325,7 @@ export default function LiveOps() {
                         Include test accounts
                     </span>
                     <span
-                        onClick={() => setIncludeTest(v => !v)}
+                        onClick={() => { setIncludeTest(v => !v); setHistOffset(0); }}
                         className={`w-11 h-6 rounded-full transition-all relative ${includeTest ? 'bg-[#E8D200]' : 'bg-[#E6E6E1]'}`}
                     >
                         <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${includeTest ? 'left-[22px]' : 'left-0.5'}`} />
@@ -263,6 +366,18 @@ export default function LiveOps() {
                         </div>
                     )}
                 </>
+            ) : tab === 'history' ? (
+                <History
+                    filters={histFilters}
+                    onFilters={applyHistoryFilters}
+                    rows={histRows}
+                    rowsLoading={!histReady}
+                    trends={trends}
+                    trendsLoading={!trendsReady}
+                    offset={histOffset}
+                    onOffset={setHistOffset}
+                    onOpen={setOpenVisit}
+                />
             ) : (
                 <Aggregates
                     doc={aggregates}
@@ -677,6 +792,330 @@ function summariseDetail(detail) {
         .slice(0, 6)
         .map(([k, v]) => `${k}=${typeof v === 'object' ? JSON.stringify(v) : String(v)}`)
         .join('  ');
+}
+
+// ─── History ──────────────────────────────────────────────────────────────────
+//
+// The live board only reaches as far back as geofence_region_events and
+// push_send_log are retained. gym_visit_journeys is the permanent per-visit
+// rollup, so this is the only surface that can answer "what happened on the 9th".
+//
+// ⚠ Nothing here decides anything. Stage, findings, rates and page arithmetic all
+// come from shared/liveops.ts, under jest — the portal has no test runner, so a
+// verdict computed in this file is a verdict nobody can check.
+
+const INPUT_CLASS =
+    'h-12 px-4 rounded-2xl bg-white border border-[#E6E6E1] text-[11px] font-bold text-[#333333] ' +
+    'focus:outline-none focus:border-[#E8D200] transition-all';
+
+const CELL_CLASS = 'px-5 py-4 text-[11px] font-bold text-[#666666] whitespace-nowrap align-top';
+
+function History({ filters, onFilters, rows, rowsLoading, trends, trendsLoading, offset, onOffset, onOpen }) {
+    // Only the free-text box is a draft: it applies on submit so that typing a
+    // name does not fire one RPC per keystroke. Every other control is discrete
+    // and applies on change.
+    const [query, setQuery] = useState(filters.query);
+    useEffect(() => { setQuery(filters.query); }, [filters.query]);
+
+    const set = (patch) => onFilters({ ...filters, query, ...patch });
+
+    const totals = useMemo(() => trendTotals(trends || []), [trends]);
+    // total_count is a window count over the WHOLE filtered set, carried on every
+    // row; the rows on screen are one page of it.
+    const total = rows.length > 0 ? Number(rows[0].total_count ?? 0) : 0;
+    const page = historyPageInfo(total, HISTORY_PAGE_SIZE, offset);
+    const outcome = HISTORY_OUTCOMES.find(o => o.key === filters.outcome);
+    const groups = [...new Set(HISTORY_OUTCOMES.map(o => o.group))];
+
+    return (
+        <>
+            {/* Filters */}
+            <form
+                onSubmit={(e) => { e.preventDefault(); set({}); }}
+                className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-5 mb-12"
+            >
+                <Field label="From">
+                    <input type="date" value={filters.from} onChange={e => set({ from: e.target.value })} className={INPUT_CLASS} />
+                </Field>
+                <Field label="To">
+                    <input type="date" value={filters.to} onChange={e => set({ to: e.target.value })} className={INPUT_CLASS} />
+                </Field>
+
+                <Field label="User" hint="Email, username, display name, user id or visit id.">
+                    <span className="relative flex">
+                        <input
+                            type="search"
+                            value={query}
+                            onChange={e => setQuery(e.target.value)}
+                            placeholder="Search — press enter"
+                            className={`${INPUT_CLASS} w-full pr-11`}
+                        />
+                        <button type="submit" className="absolute right-3 top-0 h-12 flex items-center text-[#AAAAAA] hover:text-[#8a7600]" title="Search">
+                            <Search size={14} />
+                        </button>
+                    </span>
+                </Field>
+
+                <Field label="Outcome" hint={outcome ? outcome.predicate : 'no filter'}>
+                    <select
+                        value={filters.outcome}
+                        onChange={e => set({ outcome: e.target.value })}
+                        title={outcome ? outcome.predicate : undefined}
+                        className={INPUT_CLASS}
+                    >
+                        {groups.map(g => (
+                            <optgroup key={g} label={g}>
+                                {HISTORY_OUTCOMES.filter(o => o.group === g).map(o => (
+                                    // The predicate rides on every option: "never claimed" and
+                                    // "failed" are different questions, and a bare label loses that.
+                                    <option key={o.key} value={o.key} title={o.predicate}>
+                                        {o.label} — {o.predicate}
+                                    </option>
+                                ))}
+                            </optgroup>
+                        ))}
+                    </select>
+                </Field>
+
+                <Field label="Platform">
+                    <select value={filters.platform} onChange={e => set({ platform: e.target.value })} className={INPUT_CLASS}>
+                        {PLATFORM_OPTIONS.map(p => <option key={p.key} value={p.key}>{p.label}</option>)}
+                    </select>
+                </Field>
+            </form>
+
+            {/* Summary */}
+            <Section title="Across the filtered window" />
+            {trendsLoading ? (
+                <Loading label="Rolling up the window…" />
+            ) : (
+                <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-4 mb-6">
+                    <Metric label="Visits" value={totals.visits} sub={`${totals.evidenceComplete} evidenced`} title="Journeys rolled up in this window" />
+                    <RateMetric label="Claim rate" rate={totals.claim} note="no visits fell in this window" />
+                    <RateMetric label="Upgrade rate" rate={totals.upgrade} note="no visits fell in this window" />
+                    <RateMetric label="OS enter" rate={totals.osEnter} note="no visit here still has its raw region events" />
+                    <RateMetric label="Push display" rate={totals.pushDisplay} note="no push rode a transport that can prove display" />
+                    <RateMetric label="Wake answered" rate={totals.wakeAnswer} note="no wake nudges were sent" />
+                    <Metric label="Points" value={totals.points} sub="earned" title="Points credited across these visits" />
+                </div>
+            )}
+            <p className="text-[10px] leading-relaxed text-[#999999] font-bold mb-16 max-w-3xl">
+                A dash is not a zero. Each rate is scored only against what it can see — OS enter and exit over
+                evidence-complete visits, display over fcm_direct pushes alone — so an empty denominator reads
+                &quot;—&quot;, never &quot;0%&quot;. The pair beneath each figure is that denominator.
+            </p>
+
+            {/* Results */}
+            <Section title={`Journeys — ${page.label}`} />
+            {rowsLoading ? (
+                <Loading label="Reading the journey rollup…" />
+            ) : rows.length === 0 ? (
+                <Empty text="No visits match these filters." />
+            ) : (
+                <>
+                    <div className="bg-white border border-[#E6E6E1] rounded-3xl overflow-hidden">
+                        <div className="overflow-x-auto">
+                            <table className="w-full min-w-[1180px] text-left border-collapse">
+                                <thead>
+                                    <tr className="border-b border-[#EFEFEC]">
+                                        {['When', 'User', 'Venue', 'Platform', 'Stage', 'OS enter', 'Check-in path', 'Exit', 'Duration', 'Points', 'Findings'].map(h => (
+                                            <th key={h} className="px-5 py-5 text-[9px] uppercase tracking-[0.3em] text-[#AAAAAA] font-black whitespace-nowrap">
+                                                {h}
+                                            </th>
+                                        ))}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {rows.map(r => (
+                                        <JourneyTableRow key={r.visit_id} row={r} onOpen={() => onOpen(r.visit_id)} />
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-between gap-6 mt-8">
+                        <span className="text-[10px] uppercase tracking-[0.3em] text-[#888888] font-black">
+                            {page.label} · page {page.page} of {page.pages}
+                        </span>
+                        <div className="flex gap-3">
+                            <PageButton
+                                disabled={!page.hasPrev}
+                                onClick={() => onOffset(Math.max(0, offset - HISTORY_PAGE_SIZE))}
+                                icon={ChevronLeft}
+                                label="Newer"
+                            />
+                            <PageButton
+                                disabled={!page.hasNext}
+                                onClick={() => onOffset(offset + HISTORY_PAGE_SIZE)}
+                                icon={ChevronRight}
+                                label="Older"
+                                trailing
+                            />
+                        </div>
+                    </div>
+                </>
+            )}
+        </>
+    );
+}
+
+function JourneyTableRow({ row, onOpen }) {
+    const stage = journeyStage(row);
+    const colour = STAGE_COLOUR[stage] ?? '#888888';
+    const findings = journeyFindings(row);
+    const evidenced = row.evidence_complete;
+
+    return (
+        <tr
+            onClick={onOpen}
+            className="border-b border-[#EFEFEC] last:border-b-0 cursor-pointer hover:bg-[#FBFBF8] transition-colors"
+        >
+            <td className={CELL_CLASS} title={formatAgo(row.started_at)}>
+                <span className="text-[#333333]">{dayAndTime(row.started_at)}</span>
+            </td>
+
+            <td className="px-5 py-4 align-top min-w-0">
+                <span className="flex items-center gap-2">
+                    <span className="text-[12px] font-bold text-[#222222] truncate max-w-[180px]">
+                        {row.display_name || row.username || row.email || row.user_id.slice(0, 8)}
+                    </span>
+                    {row.is_test && (
+                        <span className="px-2 py-0.5 rounded-full border border-[#8B5CF6]/30 text-[8px] font-black tracking-[0.2em] text-[#8B5CF6]">TEST</span>
+                    )}
+                </span>
+                <span className="block text-[10px] font-bold text-[#AAAAAA] truncate max-w-[220px] mt-1">{row.email || '—'}</span>
+            </td>
+
+            <td className={CELL_CLASS}>
+                <span className="block truncate max-w-[180px]">{row.venue_name || row.partner_id?.slice(0, 8) || 'unknown venue'}</span>
+            </td>
+
+            <td className={CELL_CLASS}>{row.platform || '?'}</td>
+
+            <td className="px-5 py-4 align-top whitespace-nowrap">
+                <span
+                    className="px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-[0.2em] border"
+                    style={{ color: colour, borderColor: `${colour}33`, background: `${colour}0f` }}
+                >{stageLabel(stage)}</span>
+            </td>
+
+            {/* The three evidence-dependent cells. A purged rollup makes these
+                unknowable, not failed — so they read '—', never a red cross. */}
+            <EvidenceCell
+                evidenced={evidenced}
+                text={row.native_enter_at ? timeOfDay(row.native_enter_at) : null}
+                missing="none"
+            />
+            <EvidenceCell
+                evidenced={evidenced}
+                text={row.checkin_via ? checkinPathLabel(row.checkin_via) : null}
+                missing={checkinPathLabel(null)}
+                missingNeutral
+            />
+            <EvidenceCell
+                evidenced={evidenced}
+                text={row.exit_detected_at ? timeOfDay(row.exit_detected_at) : null}
+                missing={row.ended_at ? 'none' : 'still open'}
+                missingNeutral={!row.ended_at}
+            />
+
+            <td className={CELL_CLASS}>{formatDuration(row.session_duration_sec)}</td>
+
+            <td className={CELL_CLASS}>
+                <span className="text-[#8a7600] font-bold">{row.points_earned > 0 ? `+${row.points_earned}` : '0'}</span>
+            </td>
+
+            <td className="px-5 py-4 align-top">
+                {findings.length === 0 ? (
+                    <span className="text-[9px] font-black uppercase tracking-[0.2em] text-[#CCCCCC]">Clean</span>
+                ) : (
+                    <span className="flex flex-wrap gap-2 max-w-[380px]">
+                        {findings.map((a, i) => {
+                            const c = a.severity === 'bad' ? '#F43F5E' : '#F59E0B';
+                            return (
+                                <span
+                                    // journeyFindings reuses AlertKeys across findings, so the
+                                    // index is part of the identity.
+                                    key={`${a.key}-${i}`}
+                                    title={a.detail}
+                                    className="px-3 py-1 rounded-full border text-[8px] font-black uppercase tracking-[0.2em]"
+                                    style={{ color: c, borderColor: `${c}33`, background: `${c}0f` }}
+                                >{a.label}</span>
+                            );
+                        })}
+                    </span>
+                )}
+            </td>
+        </tr>
+    );
+}
+
+/**
+ * native_enter_at / checkin_via / exit_detected_at are derived from raw rows that
+ * get purged. When evidence_complete is false they are UNKNOWN — rendering them
+ * as a failure would turn a retention policy into a fleet-wide detection outage.
+ */
+function EvidenceCell({ evidenced, text, missing, missingNeutral }) {
+    if (!evidenced) {
+        return (
+            <td className={CELL_CLASS}>
+                <span className="text-[#CCCCCC]" title="evidence expired — the raw rows were purged before rollup, so this is unknown, not failed">—</span>
+            </td>
+        );
+    }
+    if (text) return <td className={CELL_CLASS}>{text}</td>;
+    return (
+        <td className={CELL_CLASS}>
+            <span style={{ color: missingNeutral ? '#AAAAAA' : '#F59E0B' }}>{missing}</span>
+        </td>
+    );
+}
+
+function Field({ label, hint, children }) {
+    return (
+        <label className="flex flex-col gap-2 min-w-0">
+            <span className="text-[9px] uppercase tracking-[0.35em] text-[#888888] font-black">{label}</span>
+            {children}
+            {hint && <span className="text-[9px] text-[#AAAAAA] font-bold leading-relaxed">{hint}</span>}
+        </label>
+    );
+}
+
+function Metric({ label, value, sub, title, muted }) {
+    return (
+        <div className="bg-white border border-[#E6E6E1] rounded-3xl p-6" title={title}>
+            <div className={`text-3xl font-light tracking-tighter leading-none mb-2 ${muted ? 'text-[#AAAAAA]' : 'text-[#222222]'}`}>
+                {value}
+            </div>
+            <div className="text-[9px] uppercase tracking-[0.35em] text-[#666666] font-black">{label}</div>
+            {sub && <div className="text-[9px] font-black tracking-[0.2em] text-[#AAAAAA] mt-2">{sub}</div>}
+        </div>
+    );
+}
+
+/** pct === null renders as an em-dash with the reason in its tooltip — never 0%. */
+function RateMetric({ label, rate, note }) {
+    const d = formatRate(rate, note);
+    return <Metric label={label} value={d.text} sub={d.ratio} title={d.title} muted={d.unmeasurable} />;
+}
+
+function PageButton({ disabled, onClick, icon: Icon, label, trailing }) {
+    return (
+        <button
+            onClick={onClick}
+            disabled={disabled}
+            className={`h-11 px-5 rounded-2xl text-[10px] uppercase tracking-[0.3em] font-black border flex items-center gap-2 transition-all ${
+                disabled
+                    ? 'bg-white border-[#EFEFEC] text-[#DDDDDD] cursor-not-allowed'
+                    : 'bg-white border-[#E6E6E1] text-[#888888] hover:text-[#333333] hover:border-[#E8D200]/40'
+            }`}
+        >
+            {!trailing && <Icon size={14} />}
+            {label}
+            {trailing && <Icon size={14} />}
+        </button>
+    );
 }
 
 // ─── Aggregates ───────────────────────────────────────────────────────────────

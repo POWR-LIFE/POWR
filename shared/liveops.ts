@@ -793,6 +793,83 @@ function rate(numerator: number, measurable: number): Rate {
   return { numerator, measurable, pct: measurable > 0 ? (numerator / measurable) * 100 : null };
 }
 
+/**
+ * How a Rate is allowed to reach a screen.
+ *
+ * The renderer is the last place the lie can be told, so the em-dash rule lives
+ * here under test rather than as an `?? 0` in a .jsx: a null pct is "we had
+ * nothing to measure", and printing 0% there reports a catastrophe that did not
+ * happen. `ratio` travels with every value so the denominator is never hidden —
+ * "100%" over 1 measurable event and over 400 are different claims.
+ */
+export interface RateDisplay {
+  /** '75%', or an em-dash when nothing was measurable. NEVER '0%' for that. */
+  text: string;
+  /** 'numerator/measurable', shown alongside the percentage. */
+  ratio: string;
+  /** Tooltip. On an unmeasurable rate it names the gap, never a failure. */
+  title: string;
+  unmeasurable: boolean;
+}
+
+export function formatRate(r: Rate, unmeasurableNote = 'nothing could be measured'): RateDisplay {
+  const ratio = `${r.numerator}/${r.measurable}`;
+  if (r.pct == null) {
+    return {
+      text: '—',
+      ratio,
+      title: `Nothing measurable — ${unmeasurableNote}. A zero denominator is not a 0% result.`,
+      unmeasurable: true,
+    };
+  }
+  return {
+    text: `${r.pct.toFixed(0)}%`,
+    ratio,
+    title: `${r.numerator} of ${r.measurable} measurable`,
+    unmeasurable: false,
+  };
+}
+
+// ── Pagination ───────────────────────────────────────────────────────────────
+
+export interface PageInfo {
+  page: number;
+  pages: number;
+  /** 1-based inclusive range of the rows on screen; 0 when there are none. */
+  from: number;
+  to: number;
+  total: number;
+  hasPrev: boolean;
+  hasNext: boolean;
+  label: string;
+}
+
+/**
+ * admin_liveops_history ships `total_count` as a window count over the WHOLE
+ * filtered set while returning only one page of rows, so the row count on screen
+ * says nothing about how many matched. Off-by-ones here read as missing data on
+ * a page whose entire job is finding the visit that went wrong.
+ */
+export function historyPageInfo(total: number, limit: number, offset: number): PageInfo {
+  const t = Math.max(0, Math.trunc(total) || 0);
+  const size = Math.max(1, Math.trunc(limit) || 1);
+  const o = Math.max(0, Math.trunc(offset) || 0);
+  const pages = Math.max(1, Math.ceil(t / size));
+  const page = Math.min(pages, Math.floor(o / size) + 1);
+  const from = t === 0 ? 0 : Math.min(o + 1, t);
+  const to = Math.min(o + size, t);
+  return {
+    page,
+    pages,
+    from,
+    to,
+    total: t,
+    hasPrev: o > 0,
+    hasNext: o + size < t,
+    label: t === 0 ? 'No visits match these filters' : `${from}–${to} of ${t}`,
+  };
+}
+
 /** Sum a trend series into one rate set. Denominators are per-metric on purpose. */
 export function trendTotals(buckets: TrendBucket[]) {
   const sum = (pick: (b: TrendBucket) => number) => buckets.reduce((n, b) => n + pick(b), 0);
