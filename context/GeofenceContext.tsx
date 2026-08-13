@@ -658,7 +658,28 @@ interface ArmMeta {
 // Guards against back-to-back duplicate arms — see armNativeRegions.
 let _lastArmSignature: string | null = null;
 
+// Single-flight chain: concurrent arms SERIALIZE instead of racing. 2026-08-13
+// field run: the permission-grant path fired twice ~130 ms apart (returning
+// from the settings radio list resolves the awaited request AND fires
+// AppState→active), and both calls read running=false / signature=null before
+// either had armed — so BOTH reached startGeofencingAsync and the second
+// registration cancelled the first's delivery PendingIntent mid-ingest. That is
+// the 2026-08-04 failure again, just 700× tighter, and the signature dedupe
+// below cannot catch it because the signature is only written AFTER the await.
+// Serialised, the second call observes the first's registration + signature and
+// dedupes to a no-op.
+let _armChain: Promise<void> = Promise.resolve();
+
 async function armNativeRegions(
+  fix: Parameters<typeof armNativeRegionsUnserialized>[0],
+  opts: Parameters<typeof armNativeRegionsUnserialized>[1] = {},
+): Promise<void> {
+  const run = _armChain.then(() => armNativeRegionsUnserialized(fix, opts));
+  _armChain = run.catch(() => { /* keep the chain alive past a rejected link */ });
+  return run;
+}
+
+async function armNativeRegionsUnserialized(
   // Provenance is OPTIONAL because most callers hand over raw stream coords that
   // never went through getArmFix — they have no src/accuracy/age to give. Those
   // arms simply log nulls for the three fields rather than forcing every call
@@ -3230,7 +3251,24 @@ async function finalizeActiveGeofenceInner(expectedRegionId?: string, endedAtOve
  *  Ordering matters: fetch the geometry cache FIRST. On a fresh install the
  *  map is empty, and armNativeRegions with no map returns early — the second
  *  way this silently does nothing. */
-export async function armAfterPermissionGrant(): Promise<void> {
+export function armAfterPermissionGrant(): Promise<void> {
+  // Coalesce concurrent callers. 2026-08-13 field run: the settings-return
+  // grant fired this TWICE ~130 ms apart — returning from the system radio
+  // list resolves the awaited permission request AND fires AppState→active,
+  // and both paths call their surface's finish(). Two overlapping runs mean
+  // two forceRebinds churning the wake binding and two arms racing
+  // startGeofencingAsync (the second cancels the first's PendingIntent —
+  // see _armChain). The grant surfaces are latched too; this is the backstop
+  // for any pair of callers, present or future.
+  if (_grantArmInFlight) return _grantArmInFlight;
+  _grantArmInFlight = armAfterPermissionGrantInner()
+    .finally(() => { _grantArmInFlight = null; });
+  return _grantArmInFlight;
+}
+
+let _grantArmInFlight: Promise<void> | null = null;
+
+async function armAfterPermissionGrantInner(): Promise<void> {
   try {
     // BEFORE the permission reads, unconditionally: the grant itself is what
     // kills the native wake binding (field 2026-08-12 — bindings died at the

@@ -52,8 +52,18 @@ export default function LocationPrimeSheet() {
     const evaluating = useRef(false);
     const modeRef = useRef(mode);
     modeRef.current = mode;
+    // Once-latch for finishGranted(). The Android settings-return grant
+    // resolves the awaited request in handleEnable AND fires the AppState
+    // listener within ~130 ms — modeRef is still 'ask' when the second path
+    // fires because setMode('hidden') hasn't rendered yet. Both ran
+    // armAfterPermissionGrant, whose two arms raced startGeofencingAsync
+    // (field 2026-08-13: the second registration cancels the first's delivery
+    // PendingIntent). Synchronous latch; re-opens when the sheet re-shows.
+    const finished = useRef(false);
 
     const finishGranted = useCallback(() => {
+        if (finished.current) return;
+        finished.current = true;
         if (user?.id) reportLocationPermission(user.id).catch(() => {});
         // Arm NOW. Granting permission used to arm nothing until the next
         // partner refresh (app launch / foreground return / 5-min tick), so a
@@ -120,6 +130,7 @@ export default function LocationPrimeSheet() {
             const iosBurned = Platform.OS === 'ios' && bg?.canAskAgain === false;
 
             recordLocationPromptShown().catch(() => {});
+            finished.current = false;
             setMode(iosBurned ? 'settings' : 'ask');
         } finally {
             evaluating.current = false;

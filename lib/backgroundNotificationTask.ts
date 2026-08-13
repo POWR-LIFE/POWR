@@ -419,11 +419,28 @@ export function forceRebindBackgroundNotificationTask(): Promise<void> {
   _bindOnce = prior.catch(() => {}).then(async () => {
     try {
       await Notifications.unregisterTaskAsync(BACKGROUND_NOTIFICATION_TASK).catch(() => {});
-      await Notifications.registerTaskAsync(BACKGROUND_NOTIFICATION_TASK);
+      try {
+        await Notifications.registerTaskAsync(BACKGROUND_NOTIFICATION_TASK);
+      } catch (err) {
+        // One retry after a beat: the register races whatever the grant is
+        // doing to the process. If this ALSO fails the binding stays null and
+        // every wake dies in native ("no task bound") until process death.
+        console.warn('[BackgroundNotification] force rebind register failed, retrying once:', err);
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        await Notifications.registerTaskAsync(BACKGROUND_NOTIFICATION_TASK);
+      }
       console.log('[BackgroundNotification] task force-rebound after permission grant.');
     } catch (err) {
       _bindOnce = null;
       console.warn('[BackgroundNotification] force rebind failed:', err);
+      // Server receipt: an unbound wake path is indistinguishable from a quiet
+      // one from the outside — this row is the only way a field run can tell
+      // "rebind failed, wakes are dead" from "no wake was ever sent".
+      void import('@/lib/gymVisits')
+        .then(m => m.logGeofenceRegionEvent('wake', 'rebind_failed', {
+          err: String((err as Error)?.message ?? err).slice(0, 120),
+        }))
+        .catch(() => { /* fire-and-forget */ });
     }
   });
   return _bindOnce;

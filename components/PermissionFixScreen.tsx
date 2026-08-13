@@ -199,6 +199,13 @@ export default function PermissionFixScreen({
     const [busy, setBusy] = useState(false);
     const kindRef = useRef(kind);
     kindRef.current = kind;
+    // Once-latch for finish(). The Android settings-return grant resolves the
+    // awaited request in handlePrimary AND fires the AppState listener within
+    // ~130 ms; both called finish(), so armAfterPermissionGrant ran twice and
+    // the two arms raced startGeofencingAsync (field 2026-08-13 — the second
+    // registration cancels the first's delivery PendingIntent). Synchronous
+    // latch, set before any async work; re-opens with `kind` below.
+    const finishedRef = useRef(false);
 
     // Onboarding fades its content in; do the same so this reads as that screen
     // — but without onboarding's 800 ms hold, which would feel broken on a tap.
@@ -208,6 +215,7 @@ export default function PermissionFixScreen({
     // dialog may have burned since the caller last looked.
     useEffect(() => {
         let cancelled = false;
+        finishedRef.current = false;
         if (!kind) { setRoute(null); fade.setValue(0); return; }
         (async () => {
             let next: Route = 'settings';
@@ -232,6 +240,8 @@ export default function PermissionFixScreen({
     }, [kind, fade]);
 
     const finish = useCallback(() => {
+        if (finishedRef.current) return;
+        finishedRef.current = true;
         // Arm NOW — this is the convergence point for EVERY grant path,
         // including the one where the user flips the switch in system Settings
         // and returns (iOS restarts the app on that change, so nothing else
