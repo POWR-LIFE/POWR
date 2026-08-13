@@ -330,6 +330,13 @@ export function visitStreamMode(
 // later (fingerprint-change) restarts within the same process.
 let _locationStreamEnsuredThisProcess = false;
 
+/** How long a checked-in visit's stream may go tickless before a foreground
+ *  pass declares the service dead and force-restarts it. Dwell mode delivers
+ *  every ~60 s by contract (DWELL_LOCATION_OPTIONS), so five missed ticks is a
+ *  dead service, not jitter. Only consulted while a visit is OPEN — outside a
+ *  visit the passive stream is displacement-gated and legitimately silent. */
+const STREAM_SILENCE_RESTART_MS = 5 * 60_000;
+
 // Location-detected EXIT is a backstop for when the native geofence exit never
 // fires (closed app). Require the fix to be clearly outside the circle before
 // trusting it, so GPS noise can't flap a genuinely-inside session out early.
@@ -994,7 +1001,7 @@ function logRegionEvent(
   event: 'enter' | 'exit' | 'approach_stream_on' | 'checked_in' | 'stream_start_failed'
     | 'stream_switch_deferred' | 'armed' | 'sentinel_exit' | 'rearm_skipped' | 'sweep'
     | 'visit_stamp_relaxed' | 'visit_stamp_skipped' | 'coarse_rejected' | 'enter_scan'
-    | 'location_revoked' | 'active_patch_refused' | 'exit_refuted',
+    | 'location_revoked' | 'active_patch_refused' | 'exit_refuted' | 'visit_stream_ensured',
   detail: Record<string, unknown> = {},
 ): void {
   void import('@/lib/gymVisits')
@@ -5246,14 +5253,39 @@ export function GeofenceProvider({ children }: { children: React.ReactNode }) {
       if (Platform.OS === 'android') {
         try {
           const alreadyStreaming = await Location.hasStartedLocationUpdatesAsync(LOCATION_TRACKING_TASK).catch(() => false);
+          // STREAM-LIVENESS WATCHDOG (2026-08-13). "Started" is a registration
+          // flag, not a heartbeat: killServiceOnDestroy stops the service on a
+          // swipe, the task stays registered, and this block — latched by
+          // _locationStreamEnsuredThisProcess — trusted both and never
+          // restarted. Field 08-13: a checked-in visit ran 37 minutes with a
+          // dead driver (zero stream fixes 08:32→09:09) and the process died
+          // in a pocket, so the claim nudges hit a corpse. With a visit OPEN,
+          // silence from a stream that claims to be running IS the failure —
+          // dwell mode delivers every ~60 s by contract, so a stale
+          // LAST_STREAM_FIX_KEY is proof of a dead service, and a foreground
+          // pass through here is exactly the one context allowed to fix it.
+          let streamSilent = false;
+          if (_locationStreamEnsuredThisProcess && alreadyStreaming
+              && AppState.currentState === 'active'
+              && (await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY).catch(() => null)) != null) {
+            const rawFix = await AsyncStorage.getItem(LAST_STREAM_FIX_KEY).catch(() => null);
+            const lastTickAt = rawFix ? Number((JSON.parse(rawFix) as { at?: number }).at ?? 0) : 0;
+            streamSilent = Date.now() - lastTickAt > STREAM_SILENCE_RESTART_MS;
+            if (streamSilent) {
+              logRegionEvent('stream', 'visit_stream_ensured', {
+                silent_s: lastTickAt ? Math.round((Date.now() - lastTickAt) / 1000) : null,
+              });
+            }
+          }
           // On the first run of this JS process, the "started" flag may be stale
           // (the service was killed by a reboot but TaskManager kept the task
           // registered). Force a clean restart so the service — and its banner —
-          // is actually live. Later restarts in the same process trust the flag.
-          if (!_locationStreamEnsuredThisProcess && alreadyStreaming) {
+          // is actually live. Later restarts in the same process trust the flag,
+          // except when the watchdog above has just proven it a liar.
+          if ((!_locationStreamEnsuredThisProcess || streamSilent) && alreadyStreaming) {
             await Location.stopLocationUpdatesAsync(LOCATION_TRACKING_TASK).catch(() => {});
           }
-          if (!_locationStreamEnsuredThisProcess || !alreadyStreaming) {
+          if (!_locationStreamEnsuredThisProcess || !alreadyStreaming || streamSilent) {
             // Resume the mode the CURRENT visit state calls for — never a hard-coded
             // baseline. A JS process that restarts mid-visit (Android reclaiming a
             // backgrounded process, an OTA restart, a headless task boot) used to come
