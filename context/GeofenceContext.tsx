@@ -267,6 +267,33 @@ export const DWELL_LOCATION_OPTIONS: Location.LocationTaskOptions = {
   },
 };
 
+// In-session stream — iOS.
+//
+// NOT a tick source — a LIFELINE. Field 2026-08-13 PM: a swiped iOS app was
+// relaunched by the OS region ENTER, checked in cleanly, and was then killed
+// again minutes later; every APNs background push after that was accepted by
+// Apple and never delivered (force-quit/budget policy — silent pushes are
+// best-effort by contract), so the claim chain went dark until the server-side
+// settle banked it. An app that is RECEIVING location updates holds iOS's
+// continuous-background-location execution state: the process stays alive for
+// the visit, deferred APNs wakes flush to it, and the beacon's nudges land.
+//
+// distanceInterval 25 keeps it quiet while the user is stationary (iOS ignores
+// timeInterval; 0 here would be kCLDistanceFilterNone — a continuous firehose).
+// Proofs still come from wakes; any fix that does arrive is a bonus tick.
+// pausesUpdatesAutomatically MUST stay false — auto-pause suspends the app and
+// is precisely the state this stream exists to prevent. Bounded by the visit:
+// finalize stands the stream back down to the iOS baseline ('off').
+export const IOS_VISIT_LOCATION_OPTIONS: Location.LocationTaskOptions = {
+  accuracy:                         Location.Accuracy.High,
+  distanceInterval:                 25,
+  // Optional access: the enum exists on-device; jest's expo-location mocks
+  // predate it, and this module must stay importable under all of them.
+  activityType:                     Location.ActivityType?.Fitness ?? 3,
+  pausesUpdatesAutomatically:       false,
+  showsBackgroundLocationIndicator: false,
+};
+
 // ─── Approach stream (instant-entry escalation) ─────────────────────────────
 // The native OS region is armed at a WIDER "approach" radius than the partner's
 // true check-in circle (see armNativeRegions). A 25 m region on iOS fires late
@@ -306,18 +333,21 @@ const BASELINE_STREAM_MODE: StreamMode = Platform.OS === 'android' ? 'passive' :
 
 /** The stream mode a given platform should run for the current visit state.
  *
- * 'dwell' (time-driven, see DWELL_LOCATION_OPTIONS) is **Android only**: on iOS
- * `distanceInterval: 0` is kCLDistanceFilterNone — a continuous firehose — and iOS
- * ignores timeInterval, so the same options would hammer the battery. iOS keeps its
- * existing behaviour: the approach stream runs while inside the ring, and the claim
- * lands on the region EXIT.
+ * 'dwell' during a session on BOTH platforms since 2026-08-13, with per-platform
+ * options (streamOptsFor): Android runs the time-driven tick stream
+ * (DWELL_LOCATION_OPTIONS — distanceInterval 0 so a stationary user still ticks);
+ * iOS runs the displacement-gated lifeline (IOS_VISIT_LOCATION_OPTIONS — its job
+ * is holding background execution so the process survives and wakes deliver, not
+ * producing ticks). iOS was 'off' mid-session before, which left native region
+ * monitoring as the only detector and a force-quit app unreachable between
+ * check-in and exit.
  *
  * Pure so the platform rules are testable without a Platform mock. */
 export function visitStreamMode(
   os: string,
   state: { sessionActive: boolean; approaching: boolean },
 ): StreamMode {
-  if (os === 'android' && state.sessionActive) return 'dwell';
+  if (state.sessionActive) return 'dwell';
   if (state.approaching) return 'approach';
   return os === 'android' ? 'passive' : 'off';
 }
@@ -359,6 +389,12 @@ const DEV_TEST_EMAILS = new Set(['jamiemasonwright@gmail.com']);
 // fix on app open is often a network/fused position accurate to only a few hundred
 // metres, which can't be trusted against a tight radius and would otherwise fire a
 // false "You're in" from far away.
+// ⚠ EVERY comparison against this gate is `<=`, never `<` (2026-08-13). 100 m is
+// Android's MODAL accuracy (Balanced = PRIORITY_BALANCED_POWER_ACCURACY, nominal
+// ~100 m), so a strict `<` rejects the single most common fix the platform
+// produces. Field 2026-08-13 PM: an in-pocket presence answer at accuracy
+// EXACTLY 100 / distance 27 was stamped proven:false, last_proven_at froze at
+// the claim, and the 20-min reaper closed a live visit 24 minutes early.
 const MAX_FIX_ACCURACY_M = 100;
 
 // ⚠️ DEV OVERRIDES — restore before release
@@ -902,8 +938,11 @@ const STREAM_MODE_KEY = '@powr/stream_mode';
 let _streamModeInProcess: StreamMode | null = null;
 
 function streamOptsFor(mode: StreamMode | null): Location.LocationTaskOptions {
+  // 'dwell' is one MODE with two per-platform jobs: Android ticks a stationary
+  // user every 60 s; iOS holds background execution so the process survives the
+  // visit (see IOS_VISIT_LOCATION_OPTIONS — quiet by design).
   return mode === 'approach' ? APPROACH_LOCATION_OPTIONS
-    :    mode === 'dwell'    ? DWELL_LOCATION_OPTIONS
+    :    mode === 'dwell'    ? (Platform.OS === 'ios' ? IOS_VISIT_LOCATION_OPTIONS : DWELL_LOCATION_OPTIONS)
     :                          LOCATION_UPDATE_OPTIONS;
 }
 
@@ -3393,7 +3432,7 @@ export async function reconcileActiveSessionFromWake(): Promise<void> {
       // good enough to pay out on, the same rule the wake confirm and the stream
       // heartbeat now use. A visit kept alive on a vague fix stops accruing time.
       if (fixCreditsPresence({
-        fixTrusted: fix.accuracy == null || fix.accuracy < MAX_FIX_ACCURACY_M,
+        fixTrusted: fix.accuracy == null || fix.accuracy <= MAX_FIX_ACCURACY_M,
         distanceM: distance,
         radiusM: active.radius,
         accuracyM: fix.accuracy ?? null,
@@ -3891,7 +3930,7 @@ export async function runVisitCheck(
   // changes is that the confirm no longer LOOKS trustworthy when it isn't: the
   // server and every future investigation can now separate "proven inside" from
   // "asked, and got an answer we cannot bank on".
-  const fixTrusted = coords.accuracy == null || coords.accuracy < MAX_FIX_ACCURACY_M;
+  const fixTrusted = coords.accuracy == null || coords.accuracy <= MAX_FIX_ACCURACY_M;
 
   if (visitId) {
     const { confirmGymVisit, confirmGymVisitViaNonce } = await import('@/lib/gymVisits');
@@ -4201,7 +4240,7 @@ async function heartbeatVisitStream(active: StoredGeofence, coords: Location.Loc
         ? haversineMetres(coords.latitude, coords.longitude, active.latitude, active.longitude)
         : null;
       if (fixCreditsPresence({
-        fixTrusted: coords.accuracy == null || coords.accuracy < MAX_FIX_ACCURACY_M,
+        fixTrusted: coords.accuracy == null || coords.accuracy <= MAX_FIX_ACCURACY_M,
         distanceM,
         radiusM: active.radius ?? null,
         accuracyM: coords.accuracy ?? null,
@@ -4553,7 +4592,7 @@ async function selfPollIfWakeStarved(active: StoredGeofence, coords: Location.Lo
     if (Date.now() - lastWakeAt < WAKE_STARVATION_MS) return;
 
     const acc = coords.accuracy ?? null;
-    const fixTrusted = acc == null || acc < MAX_FIX_ACCURACY_M;
+    const fixTrusted = acc == null || acc <= MAX_FIX_ACCURACY_M;
     let distance: number | null = null;
     let radiusM: number | null = null;
     if (active.latitude != null && active.longitude != null && active.radius != null) {
@@ -4596,7 +4635,7 @@ async function selfPollIfWakeStarved(active: StoredGeofence, coords: Location.Lo
  *  So: while the visit still has something to earn (pre-upgrade-threshold), a
  *  native EXIT must survive one bounded verification — a fix ≤90 s old (cache
  *  or one Balanced acquisition, same budget as the sweep backstop) that is
- *  TRUSTED (< MAX_FIX_ACCURACY_M) and places us back INSIDE refutes it.
+ *  TRUSTED (<= MAX_FIX_ACCURACY_M) and places us back INSIDE refutes it.
  *
  *  Deliberate asymmetries, each load-bearing:
  *  • No fix / stale fix / coarse fix → the OS is honored. Verification can

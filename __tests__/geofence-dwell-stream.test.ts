@@ -37,11 +37,14 @@ describe('visitStreamMode', () => {
     expect(visitStreamMode('android', { sessionActive: true, approaching: false })).toBe('dwell');
   });
 
-  it('never puts iOS into the dwell stream', () => {
-    // distanceInterval 0 on iOS is kCLDistanceFilterNone — a continuous firehose.
-    // iOS stays on its approach stream and claims on the region EXIT.
-    expect(visitStreamMode('ios', { sessionActive: true, approaching: true })).toBe('approach');
-    expect(visitStreamMode('ios', { sessionActive: true, approaching: false })).toBe('off');
+  it('runs the visit lifeline stream while checked in on iOS', () => {
+    // 2026-08-13: 'off' mid-session left a force-quit iOS app unreachable between
+    // check-in and exit (APNs withheld silent pushes; the claim chain went dark).
+    // The 'dwell' mode maps to IOS_VISIT_LOCATION_OPTIONS on iOS — a quiet,
+    // displacement-gated stream whose job is holding background execution, not
+    // ticking (streamOptsFor owns the per-platform split).
+    expect(visitStreamMode('ios', { sessionActive: true, approaching: true })).toBe('dwell');
+    expect(visitStreamMode('ios', { sessionActive: true, approaching: false })).toBe('dwell');
   });
 
   it('stands back down to the platform baseline once the visit ends', () => {

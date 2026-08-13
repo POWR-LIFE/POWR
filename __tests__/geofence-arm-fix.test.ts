@@ -73,6 +73,7 @@ jest.mock('expo-background-fetch', () => ({
 
 jest.mock('expo-location', () => ({
   Accuracy: { Balanced: 3, High: 4, Low: 2 },
+  ActivityType: { Other: 1, AutomotiveNavigation: 2, Fitness: 3, OtherNavigation: 4, Airborne: 5 },
   GeofencingEventType: { Enter: 1, Exit: 2 },
   getBackgroundPermissionsAsync: jest.fn().mockResolvedValue({ status: 'granted' }),
   getCurrentPositionAsync: jest.fn().mockResolvedValue(null),
@@ -512,17 +513,22 @@ describe('setLocationStreamMode — a live stream must never be restarted into t
     Object.defineProperty(AppState, 'currentState', { configurable: true, value: 'background' });
     try {
       await setLocationStreamMode('dwell');
+
+      jest.clearAllMocks();
+      mockLocation.hasStartedLocationUpdatesAsync.mockResolvedValue(true);
+      Object.defineProperty(AppState, 'currentState', { configurable: true, value: 'active' });
+
+      // Still on ANDROID: the deferral is an Android-only path, and since
+      // 2026-08-13 the dwell options are per-platform (streamOptsFor) — on iOS
+      // this same switch would deliver IOS_VISIT_LOCATION_OPTIONS instead.
+      await setLocationStreamMode('dwell');
+
+      expect(mockLocation.stopLocationUpdatesAsync).toHaveBeenCalledTimes(1);
+      expect(mockLocation.startLocationUpdatesAsync).toHaveBeenCalledTimes(1);
+      expect((mockLocation.startLocationUpdatesAsync.mock.calls[0] as any[])[1].distanceInterval).toBe(0);
     } finally {
       Object.defineProperty(AppState, 'currentState', { configurable: true, value: originalState });
       Object.defineProperty(Platform, 'OS', { configurable: true, value: originalOS });
     }
-    jest.clearAllMocks();
-    mockLocation.hasStartedLocationUpdatesAsync.mockResolvedValue(true);
-
-    await setLocationStreamMode('dwell');
-
-    expect(mockLocation.stopLocationUpdatesAsync).toHaveBeenCalledTimes(1);
-    expect(mockLocation.startLocationUpdatesAsync).toHaveBeenCalledTimes(1);
-    expect((mockLocation.startLocationUpdatesAsync.mock.calls[0] as any[])[1].distanceInterval).toBe(0);
   });
 });
