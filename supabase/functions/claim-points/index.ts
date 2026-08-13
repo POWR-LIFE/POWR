@@ -348,6 +348,14 @@ Deno.serve(async (req) => {
   }
 
   // 6. Anti-abuse: rate limit — max 3 claims per hour (skipped for dev test accounts)
+  //
+  // ⚠ Count only THIS endpoint's own earns, which carry source null. The cap
+  // used to count every earn row, and batch writers stamp a source and land
+  // many at once: field 2026-08-13, a health-sync backfill wrote 6 earns at
+  // 07:30 and the geofence gym claim at 08:18 — wake delivered, presence
+  // proven, session row written — was answered 429 on all four attempts
+  // (relay + retries + exit path) and the visit closed unclaimed. A cap meant
+  // to stop claim spam must not be spendable by writers it doesn't govern.
   if (!isDevTestUser) {
   const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
   const { count: recentClaims } = await supabase
@@ -355,6 +363,7 @@ Deno.serve(async (req) => {
     .select('id', { count: 'exact', head: true })
     .eq('user_id', user.id)
     .eq('type', 'earn')
+    .is('source', null)
     .gte('created_at', oneHourAgo);
 
   if ((recentClaims ?? 0) >= 3) {
