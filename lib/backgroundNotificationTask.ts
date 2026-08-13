@@ -150,20 +150,28 @@ TaskManager.defineTask(BACKGROUND_NOTIFICATION_TASK, async ({ data, error }) => 
       .then(m => m.default.setItem(LAST_WAKE_AT_KEY, String(Date.now())))
       .catch(() => { /* the watchdog just sees a staler stamp */ });
 
-    // Wake receipt for the VISIT-LESS ping (fence_refresh). Visit wakes stamp
-    // wake_received through logGymWakeReceived below; the visit-less ping's only
-    // server-side trace was whichever sweep row it eventually produced — so a
-    // wake that died between here and the sweep was indistinguishable from one
-    // iOS never delivered. Field 2026-08-12 PM: three consecutive accepted
-    // pings, zero device rows, and no way to say which of those two it was.
-    // The receipt goes FIRST — before the auth branch, before the engine import
-    // (itself a documented hang suspect) — so it convicts everything after it.
-    // Fire-and-forget on the gymVisits surface, which rides the device-ticket
-    // transport when backgrounded; a lost receipt costs one wake of ambiguity,
-    // never the wake itself.
-    if (!payload.visit_id) {
+    // Wake receipt — FIRST, for EVERY wake type. Originally (9bb1f31) only the
+    // visit-less ping (fence_refresh) stamped here; visit wakes stamped
+    // wake_received through logGymWakeReceived below, which sits AFTER the auth
+    // branch and the engine import. Field 2026-08-13: two FCM-accepted dwell
+    // nudges to a fresh Android process produced zero rows of any kind, and
+    // "the wake never reached JS" vs "JS started and died in the visit path"
+    // were indistinguishable — the exact ambiguity 9bb1f31 closed for pings,
+    // still open for the wakes that carry points. The receipt goes FIRST —
+    // before the auth branch, before the engine import (itself a documented
+    // hang suspect) — so it convicts everything after it. Fire-and-forget on
+    // the gymVisits surface, which rides the device-ticket transport when
+    // backgrounded; a lost receipt costs one wake of ambiguity, never the wake.
+    {
+      const receiptDetail = payload.visit_id
+        ? {
+            type:  'visit_check',
+            stage: payload.stage === 'upgrade' ? 'upgrade' : 'dwell',
+            visit: String(payload.visit_id).slice(0, 8),
+          }
+        : { type: 'fence_refresh' };
       void import('@/lib/gymVisits')
-        .then(m => m.logGeofenceRegionEvent('wake', 'wake_received', { type: 'fence_refresh' }))
+        .then(m => m.logGeofenceRegionEvent('wake', 'wake_received', receiptDetail))
         .catch(() => { /* ambiguity, not breakage */ });
     }
 
