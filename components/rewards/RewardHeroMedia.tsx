@@ -5,6 +5,7 @@ import { useVideoPlayer, VideoView } from 'expo-video';
 import React, { useEffect, useRef, useState } from 'react';
 import { AccessibilityInfo, AppState, StyleProp, StyleSheet, Text, View, ViewStyle } from 'react-native';
 
+import { reportHandled } from '@/lib/crashHandler';
 import { rewardHeroUri } from '@/lib/storageImage';
 
 type Fit = 'cover' | 'contain';
@@ -43,6 +44,11 @@ export function RewardHeroMedia({
   // Videos stream progressively and must NOT go through the image transform.
   const posterUri = rewardHeroUri(imageUrl);
 
+  // Reduce Motion with a video-only hero (the live event card ships no still):
+  // suppressing the video outright leaves a blank panel, so show its first
+  // frame, paused — static, which is what the setting asks for.
+  const showStill = !!videoUrl && reduceMotion && !posterUri;
+
   if (!videoUrl && !posterUri) return null;
 
   return (
@@ -56,13 +62,20 @@ export function RewardHeroMedia({
           transition={150}
         />
       )}
-      {showVideo && <HeroVideo uri={videoUrl!} contentFit={contentFit} />}
+      {(showVideo || showStill) && (
+        // Keyed so a live Reduce-Motion toggle remounts the player: the
+        // play/still decision is baked in at player creation and the paused
+        // mode disarms every resume guard.
+        <HeroVideo key={showStill ? 'still' : 'live'} uri={videoUrl!} contentFit={contentFit} still={showStill} />
+      )}
     </View>
   );
 }
 
-/** Isolated so the expo-video player is only instantiated when a video actually plays. */
-function HeroVideo({ uri, contentFit }: { uri: string; contentFit: Fit }) {
+/** Isolated so the expo-video player is only instantiated when a video actually plays.
+ *  `still` renders the first frame paused (the Reduce-Motion, no-poster case) —
+ *  playback never starts and every resume/stall guard below stays disarmed. */
+function HeroVideo({ uri, contentFit, still = false }: { uri: string; contentFit: Fit; still?: boolean }) {
   // Pause whenever this player's screen isn't on top. The redeem modal is a
   // transparent 'modal' route, so the rewards screen (and its expanded card's
   // hero video) stays mounted and decoding underneath while the modal mounts a
@@ -84,7 +97,9 @@ function HeroVideo({ uri, contentFit }: { uri: string; contentFit: Fit }) {
     // Decorative background video must never claim audio focus: holding it
     // pauses the user's music, and losing it silently pauses the video.
     p.audioMixingMode = 'mixWithOthers';
-    p.play();
+    // Still mode never starts playback — the prepared item's first frame is
+    // the render.
+    if (!still) p.play();
   });
 
   // Release/reclaim the decoder as focus changes: pause when a screen (e.g. the
@@ -93,11 +108,12 @@ function HeroVideo({ uri, contentFit }: { uri: string; contentFit: Fit }) {
   const focusedRef = useRef(isFocused);
   focusedRef.current = isFocused;
   useEffect(() => {
+    if (still) return;
     try {
       if (isFocused) player.play();
       else player.pause();
     } catch {}
-  }, [isFocused, player]);
+  }, [isFocused, player, still]);
 
   // If the source fails outright, name the failure instead of swallowing it —
   // a wedged player with silent guards is undiagnosable (that blindness cost
@@ -114,10 +130,14 @@ function HeroVideo({ uri, contentFit }: { uri: string; contentFit: Fit }) {
       if (status === 'error') {
         const message = error?.message ?? 'unknown video error';
         console.warn(`[RewardHeroMedia] video failed: ${message} (${uri})`);
+        // console.warn dies with the session — record to app_errors so a
+        // user's playback failure is visible from the desk (the 2026-07 iOS
+        // "unplayable" incident was invisible until someone shipped a build).
+        reportHandled(error ?? new Error(message), { where: 'RewardHeroMedia', uri });
         setVideoError(message);
         return;
       }
-      if (status === 'readyToPlay' && !player.playing && focusedRef.current) player.play();
+      if (!still && status === 'readyToPlay' && !player.playing && focusedRef.current) player.play();
     } catch {}
   });
 
@@ -125,7 +145,7 @@ function HeroVideo({ uri, contentFit }: { uri: string; contentFit: Fit }) {
   // loop didn't restart playback after the clip ended, restart it ourselves.
   useEventListener(player, 'playToEnd', () => {
     try {
-      if (!player.playing && focusedRef.current) player.replay();
+      if (!still && !player.playing && focusedRef.current) player.replay();
     } catch {}
   });
 
@@ -142,6 +162,7 @@ function HeroVideo({ uri, contentFit }: { uri: string; contentFit: Fit }) {
   // event-based catches it. This independent interval polls the player: if it
   // is stopped but ready, restart the loop from the tail or resume mid-clip.
   useEffect(() => {
+    if (still) return;
     const id = setInterval(() => {
       try {
         if (!focusedRef.current) return;
@@ -153,9 +174,10 @@ function HeroVideo({ uri, contentFit }: { uri: string; contentFit: Fit }) {
       } catch {}
     }, 1000);
     return () => clearInterval(id);
-  }, [player]);
+  }, [player, still]);
 
   useEffect(() => {
+    if (still) return;
     const sub = AppState.addEventListener('change', (state) => {
       if (state !== 'active') return;
       try {
@@ -163,7 +185,7 @@ function HeroVideo({ uri, contentFit }: { uri: string; contentFit: Fit }) {
       } catch {}
     });
     return () => sub.remove();
-  }, [player]);
+  }, [player, still]);
 
   if (videoError) {
     // Poster-only fallback; in dev builds also print the failure on the card
