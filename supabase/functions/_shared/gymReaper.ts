@@ -22,7 +22,14 @@
 
 /** Silence — measured over PROOF, not over contact — before an upgraded visit
  *  is presumed over. */
-export const STALE_SILENCE_MS = 45 * 60 * 1000;
+// 20 min, down from 45 (2026-08-13, Jamie's call: an exit the user only learns
+// about by opening the app is a broken chain). Past the upgrade nothing is left
+// to earn and the close is stamped at the last PROVEN moment either way, so a
+// shorter window changes WHEN the user hears about it, never what we record. A
+// genuinely-present device re-proves every ~5 min (wakes + dwell stream), so 20
+// minutes of unprovable silence is four missed cycles — a dead driver, not
+// noise. Worst-case exit-banner latency drops from ~50 min to ~25.
+export const STALE_SILENCE_MS = 20 * 60 * 1000;
 
 /**
  * The ceiling that silence-resetting cannot postpone.
