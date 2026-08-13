@@ -130,6 +130,11 @@ const VISIT_TICK_THROTTLE_KEY = '@powr/last_visit_tick_beat';   // liveness only
 // Consecutive outside readings behind the exit backstop. See EXIT_READINGS_REQUIRED:
 // this is the corroboration that replaced the unbounded accuracy term.
 const EXIT_STREAK_KEY         = '@powr/exit_readings';
+// Running tally of arm-burst EXITs we declined to write a row for. Storage, not
+// module state: a headless geofencing context can be torn down between events,
+// and a tally that resets per event would report "1" fifty times — which is the
+// noise we are removing. See noteSuppressedExit.
+const EXIT_NOISE_KEY          = '@powr/exit_noise_tally';
 
 // Last time a sweep stamped proven presence (fix 2026-08-12). Module state, not
 // storage: a missed stamp costs one sweep interval of proof, nothing more.
@@ -734,6 +739,13 @@ async function armNativeRegionsUnserialized(
   // investigation had to reconstruct it from timing alone.
   opts: { force?: boolean; freshHandle?: boolean; via?: string } = {},
 ): Promise<void> {
+  // Ship the previous arm's suppressed-exit tally BEFORE this arm fires its own
+  // initial-state storm, so each burst gets its own row. First statement in the
+  // function on purpose: every early return below (no permission, inside the
+  // envelope, same set, background refusal) is still an arm attempt, and draining
+  // on all of them is what keeps the tally from ageing in storage.
+  await flushSuppressedExitNoise();
+
   const { status } = await Location.getBackgroundPermissionsAsync()
     .catch(() => ({ status: 'denied' as Location.PermissionStatus }));
   if (status !== 'granted') return;
@@ -1040,7 +1052,8 @@ function logRegionEvent(
   event: 'enter' | 'exit' | 'approach_stream_on' | 'checked_in' | 'stream_start_failed'
     | 'stream_switch_deferred' | 'armed' | 'sentinel_exit' | 'rearm_skipped' | 'sweep'
     | 'visit_stamp_relaxed' | 'visit_stamp_skipped' | 'coarse_rejected' | 'enter_scan'
-    | 'location_revoked' | 'active_patch_refused' | 'exit_refuted' | 'visit_stream_ensured',
+    | 'location_revoked' | 'active_patch_refused' | 'exit_refuted' | 'visit_stream_ensured'
+    | 'exit_noise_suppressed',
   detail: Record<string, unknown> = {},
 ): void {
   void import('@/lib/gymVisits')
@@ -4550,6 +4563,97 @@ export function resetNativeEventDebounceForTests(): void {
   _lastNativeEventAt.clear();
 }
 
+// ─── Exit-noise suppression (2026-08-13) ─────────────────────────────────────
+// MEASURED IN PROD TODAY: geofence_region_events held 26,689 rows, of which
+// 21,895 — 82% of the entire table — were `exit` rows carrying no information.
+//
+// They come from the same place as the storm above, one layer further out.
+// Arming registers ~50 regions at once, and Google Play Services reports INITIAL
+// STATE for every one of them: the user is not inside 49 of the 50, so GMS
+// dutifully delivers 49 EXITs within ~10 s of every single arm, for venues the
+// user has never been near. The debounce absorbs the *repeats* of each of those
+// (the ×12/×11/×10 waves); it deliberately lets the FIRST of each pair through,
+// because iOS check-ins live on that first arm-time event. So one clean arm
+// still writes ~49 exit rows that describe nothing but the act of arming.
+//
+// EVERY consumer already throws them away at read time, which is the proof that
+// nobody wants them stored:
+//   • scripts/e2e-watch.sh surfaces an exit only for a region it has already
+//     seen an ENTER for, and counts the rest into "N bg exits suppressed".
+//   • shared/liveops.ts collapseTimeline has an explicit arm-burst rule plus an
+//     unpaired-exit noise flag (see its rules 1 and 2).
+// We were paying to write, store, purge and repeatedly re-filter rows that no
+// reader has ever wanted. So stop writing them.
+//
+// ⚠ WHAT WE MUST NOT LOSE. "The OS never delivered an exit" and "we suppressed
+// the exit" are different diagnoses, and confusing them has cost this project
+// weeks (it is the same trap documented on the ENTER branch: a missing row made
+// a dead wake path and a working-but-unacted-on one look identical for 17 days).
+// So a suppressed exit is still COUNTED, and the tally ships as one
+// `exit_noise_suppressed` row per burst instead of N `exit` rows. Aggregate
+// evidence, zero per-region noise.
+//
+// SAFE BECAUSE IT IS PURELY A LOGGING DECISION: exitApproach, nativeExitRefuted
+// and finalizeActiveGeofence run below on exactly the conditions they ran on
+// before. Nothing about departure detection reads this table.
+
+/** How long a tally may accumulate before the next suppressed exit ships it.
+ *  Longer than the ~10 s an initial-state burst takes to land, so a whole burst
+ *  aggregates into one row rather than dribbling out mid-storm. */
+const EXIT_NOISE_FLUSH_MS = 60_000;
+
+function emitExitNoiseRow(count: number, sinceMs: number, nowMs: number): void {
+  logRegionEvent('arm', 'exit_noise_suppressed', {
+    count,
+    window_s: Math.max(0, Math.round((nowMs - sinceMs) / 1000)),
+  });
+}
+
+/** Ships any pending tally now. Called on every arm ATTEMPT (before the new
+ *  registration fires its own storm), which is what guarantees a burst's row
+ *  lands even if the device then goes quiet for hours: bursts are arm-caused, so
+ *  an arm is the one event certain to follow one. */
+async function flushSuppressedExitNoise(): Promise<void> {
+  try {
+    const raw = await AsyncStorage.getItem(EXIT_NOISE_KEY);
+    if (!raw) return;
+    await AsyncStorage.removeItem(EXIT_NOISE_KEY).catch(() => {});
+    const tally = JSON.parse(raw) as { count?: number; since?: number };
+    if (!tally?.count) return;
+    emitExitNoiseRow(tally.count, tally.since ?? Date.now(), Date.now());
+  } catch { /* a tally must never be able to break an arm */ }
+}
+
+/** Records one exit we chose not to write a row for, and ships the accumulated
+ *  tally once it is older than EXIT_NOISE_FLUSH_MS. Read-modify-write on a
+ *  single key: the events are serialised through one task executor, and a lost
+ *  increment costs a number in a telemetry row, never a decision. */
+async function noteSuppressedExit(regionId: string): Promise<void> {
+  const now = Date.now();
+  let count = 0;
+  let since = now;
+  try {
+    const raw = await AsyncStorage.getItem(EXIT_NOISE_KEY);
+    const tally = raw ? JSON.parse(raw) as { count?: number; since?: number } : null;
+    if (tally?.count && tally.count > 0) {
+      count = tally.count;
+      since = typeof tally.since === 'number' ? tally.since : now;
+    }
+  } catch { /* an unreadable tally simply starts a new one */ }
+
+  if (count > 0 && now - since >= EXIT_NOISE_FLUSH_MS) {
+    // The pending batch has aged out — ship it and start a fresh one with this
+    // event, so a row's window_s always describes the burst it counts.
+    emitExitNoiseRow(count, since, now);
+    count = 0;
+    since = now;
+  }
+  count += 1;
+
+  await AsyncStorage.setItem(EXIT_NOISE_KEY, JSON.stringify({ count, since })).catch(() => {});
+  console.log(`[Geofence] Exit for "${regionId}" is arm-burst noise — not logged (tally ${count}).`);
+}
+
 /** WAKE-STARVATION WATCHDOG (2026-08-12) — the self-poll that makes an open
  *  visit survive a dead push channel.
  *
@@ -4782,7 +4886,41 @@ TaskManager.defineTask(GEOFENCE_TASK_NAME, async ({ data, error }) => {
     await pollForCheckIn(regionId);
 
   } else if (eventType === Location.GeofencingEventType.Exit) {
-    logRegionEvent(regionId, 'exit');
+    // Log only a MEANINGFUL exit — see the exit-noise suppression block above for
+    // the 82% / 21,895-row measurement that motivates this. Meaningful means the
+    // exit could plausibly be about a place the user actually was:
+    //   1. an active session for THIS region — the departure that ends a visit, or
+    //   2. this region is the one in approach state — the walk-up that turned
+    //      around. (Shape matched to enterApproach's { regionId, since }; a stored
+    //      approach with no regionId counts, exactly as exitApproach treats it.)
+    // Everything else is Play Services reporting initial state for a fence the
+    // user has never been inside.
+    //
+    // Both reads happen HERE, before exitApproach clears APPROACH_STATE_KEY and
+    // finalizeActiveGeofence clears ACTIVE_GEOFENCE_KEY — after those, every exit
+    // would look like noise. They are also safely after the storm absorber's
+    // synchronous check-and-set (which must stay before the first await).
+    let meaningful = false;
+    try {
+      const activeRaw = await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY);
+      const active = activeRaw ? JSON.parse(activeRaw) as { regionId?: string } : null;
+      meaningful = active?.regionId === regionId;
+      if (!meaningful) {
+        const approachRaw = await AsyncStorage.getItem(APPROACH_STATE_KEY);
+        const approach = approachRaw ? JSON.parse(approachRaw) as { regionId?: string } : null;
+        meaningful = approach != null && (approach.regionId == null || approach.regionId === regionId);
+      }
+    } catch {
+      // Unreadable state is not evidence of noise. Log it — a row we cannot
+      // justify is far cheaper than a departure we cannot see.
+      meaningful = true;
+    }
+    if (meaningful) logRegionEvent(regionId, 'exit');
+    else void noteSuppressedExit(regionId);
+
+    // ⚠ PROCESSING IS UNCHANGED BELOW THIS LINE. The suppression above decides
+    // what we WRITE, never what we DO: exitApproach, nativeExitRefuted and
+    // finalizeActiveGeofence run on exactly the conditions they always have.
     // Left the approach ring — return the stream to baseline whether or not a
     // session was active (also covers "walked up but never checked in"). A
     // neighboring approach-ring exit must not stop tracking an active gym.
