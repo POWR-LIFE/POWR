@@ -28,8 +28,8 @@ VENUE="${WATCH_VENUE:-7d865c3b}"   # POWR partner id prefix (radius 40m)
 # swap persists through a reinstall of the same binaries). A fresh install runs
 # its embedded bundle until the first app open fetches the OTA, so expect
 # STALE-OTA(embedded) on first heartbeat, then these ids.
-AND_OTA="${WATCH_AND_OTA:-019ff77e-321d-7193-8b6f-d79824f57e76}"
-IOS_OTA="${WATCH_IOS_OTA:-019ff77b-3da8-7971-9cd7-dc22ae12da35}"
+AND_OTA="${WATCH_AND_OTA:-019ffaa8-cb07-7cc9-93ba-b11d23da7096}"
+IOS_OTA="${WATCH_IOS_OTA:-019ffaaa-53d2-7e4a-a635-3f9c5affbe03}"
 
 S=$(mktemp -d) || exit 1; trap 'rm -rf "$S"' EXIT
 get() { cat "$S/$1" 2>/dev/null; }
