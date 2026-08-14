@@ -1053,7 +1053,7 @@ function logRegionEvent(
     | 'stream_switch_deferred' | 'armed' | 'sentinel_exit' | 'rearm_skipped' | 'sweep'
     | 'visit_stamp_relaxed' | 'visit_stamp_skipped' | 'coarse_rejected' | 'enter_scan'
     | 'location_revoked' | 'active_patch_refused' | 'exit_refuted' | 'visit_stream_ensured'
-    | 'exit_noise_suppressed',
+    | 'exit_noise_suppressed' | 'visit_close_deferred',
   detail: Record<string, unknown> = {},
 ): void {
   void import('@/lib/gymVisits')
@@ -1352,7 +1352,7 @@ async function sweepForMissedCheckIn(): Promise<void> {
           // something to answer with. A missing fix is not a decision — the branch
           // simply does nothing, exactly as before.
           let fix = await Location.getLastKnownPositionAsync({ maxAge: EXIT_BACKSTOP_FIX_MAX_AGE_MS }).catch(() => null);
-          let fixSrc: 'cache' | 'acquired' | 'acquired_high' = 'cache';
+          let fixSrc: 'cache' | 'acquired' | 'acquired_high' | 'cache_after_acquire' = 'cache';
           if (!fix) {
             // ⚠ "A missing fix is not a decision" made this backstop BLIND on the
             // one platform it exists to rescue. Field 2026-08-11: the user walked
@@ -1402,19 +1402,51 @@ async function sweepForMissedCheckIn(): Promise<void> {
               fixSrc = 'acquired_high';
             }
             if (!acquired || isStale(acquired)) {
-              // The starved case, previously invisible — the silence that made
-              // the 08-11 twenty-minute open visit unreadable live. A stale
-              // survivor lands here too (as acquire_timeout): rejected, not
-              // reasoned about — but its age is logged so a cache-serving
-              // provider shows up in the field as what it is.
-              const staleAge = fixAgeMs(acquired);
-              logRegionEvent(a.regionId ?? 'sweep', 'sweep', {
-                outcome:     'exit_check',
-                fix_src:     'acquire_timeout',
-                ...(staleAge != null ? { stale_age_s: Math.round(staleAge / 1000) } : {}),
-                elapsed_min: Math.round(elapsed / 60_000),
-              });
-              acquired = null;
+              // ⚠ RE-READ THE CACHE AFTER THE RACES, NOT BEFORE THEM ONLY.
+              // The cache read at the top of this branch is what got us here — it
+              // returned nothing. But up to 20 s of acquisition has run since
+              // (Balanced, then High), and a getCurrentPositionAsync that misses
+              // OUR 10 s race very often still completes inside the provider and
+              // lands in last-known a moment later. Asking again after the races
+              // costs one cheap call and catches exactly that: the fix our own
+              // request produced, arriving too late to be returned to us.
+              //
+              // Field 2026-08-14 PM: two of four post-upgrade sweeps ended
+              // acquire_timeout with nothing recorded, on a walk-out where the
+              // same handset's upgrade nudge had credited presence ninety seconds
+              // earlier off a 24.7 s fix. Those passes had no second look.
+              //
+              // This is NOT a relaxation of the freshness rule. `isStale` still
+              // applies, so a WiFi/cell pin older than EXIT_BACKSTOP_FIX_MAX_AGE_MS
+              // is rejected here exactly as an acquired one is, and the 08-11 PM
+              // failure — a five-minute-old pin voting "inside" for a user long
+              // gone — stays impossible. Same bar, one more chance to clear it.
+              const lateCache = await Location.getLastKnownPositionAsync({
+                maxAge: EXIT_BACKSTOP_FIX_MAX_AGE_MS,
+              }).catch(() => null);
+
+              if (lateCache && !isStale(lateCache)) {
+                acquired = lateCache;
+                fixSrc   = 'cache_after_acquire';
+              } else {
+                // The starved case, previously invisible — the silence that made
+                // the 08-11 twenty-minute open visit unreadable live. A stale
+                // survivor lands here too (as acquire_timeout): rejected, not
+                // reasoned about — but its age is logged so a cache-serving
+                // provider shows up in the field as what it is. The last-known
+                // age rides along so "we asked and it was stale too" is
+                // distinguishable from "there was nothing to ask for".
+                const staleAge = fixAgeMs(acquired);
+                const lateCacheAge = fixAgeMs(lateCache);
+                logRegionEvent(a.regionId ?? 'sweep', 'sweep', {
+                  outcome:     'exit_check',
+                  fix_src:     'acquire_timeout',
+                  ...(staleAge != null ? { stale_age_s: Math.round(staleAge / 1000) } : {}),
+                  ...(lateCacheAge != null ? { late_cache_age_s: Math.round(lateCacheAge / 1000) } : {}),
+                  elapsed_min: Math.round(elapsed / 60_000),
+                });
+                acquired = null;
+              }
             }
             fix = acquired;
           }
@@ -1567,7 +1599,40 @@ async function sweepForMissedCheckIn(): Promise<void> {
                     accuracy_m:  acc != null ? Math.round(acc) : null,
                     fix_trusted: trusted,
                     fix_age_ms:  fixAgeMs,
-                  }).catch(() => { /* a lost stamp is one sweep interval of proof */ });
+                  }).catch((err) => {
+                    // ⚠ THIS CATCH USED TO BE SILENT, and that is what cost the
+                    // 2026-08-14 PM run its answer. The sweep held a TRUSTED 25 s
+                    // fix at 58 m against a 40 m radius — every upstream gate said
+                    // stamp — and `last_proven_at` never moved off the 11:25:03
+                    // upgrade. With no row for the failure there was no way to
+                    // separate "the confirm threw" from "the block was never
+                    // reached", so the walk-out clamp (40.4 min recorded for a
+                    // 50-minute visit) could only be explained by guessing.
+                    //
+                    // A lost stamp is still only one sweep interval of proof. It
+                    // must not also be one sweep interval of MYSTERY.
+                    //
+                    // The throttle is released too: it was armed before the await
+                    // on the assumption the stamp lands, so a throw left the proof
+                    // clock idle for a further four minutes on top of the one it
+                    // just lost. A failure should earn a retry, not a cooldown.
+                    _lastSweepProvenStampAt = 0;
+                    logRegionEvent(a.regionId ?? 'sweep', 'sweep', {
+                      outcome: 'proven_stamp_failed',
+                      visit:   visitId,
+                      error:   String((err as Error)?.message ?? err).slice(0, 120),
+                    });
+                  });
+                } else {
+                  // Measured presence with nowhere to record it: the recovery
+                  // above could not resolve a visit (no partnerId on the snapshot,
+                  // or open_gym_visit itself failed). Previously indistinguishable
+                  // from the stamp never being attempted.
+                  logRegionEvent(a.regionId ?? 'sweep', 'sweep', {
+                    outcome:    'proven_stamp_no_visit',
+                    partner_id: a.partnerId ?? null,
+                    has_geom:   true,
+                  });
                 }
               }
             }
@@ -3269,11 +3334,41 @@ async function finalizeActiveGeofenceInner(expectedRegionId?: string, endedAtOve
       queuedAtMs: Date.now(),
     });
     let closed = false;
+    let closeErr: string | null = null;
     try {
       const { closeGymVisit } = await import('@/lib/gymVisits');
       closed = await closeGymVisit(visitId, endedAtMs);
-    } catch { /* stays queued for the next flush */ }
-    if (closed) await dequeuePendingVisitClose(visitId);
+    } catch (err) {
+      // stays queued for the next flush — but no longer stays SECRET
+      closeErr = String((err as Error)?.message ?? err).slice(0, 120);
+    }
+    if (closed) {
+      await dequeuePendingVisitClose(visitId);
+    } else {
+      // ⚠ A CLOSE THAT DOES NOT LAND IS THE MOST EXPENSIVE SILENCE IN THE SYSTEM,
+      // and until now it left no trace at all. Field 2026-08-14 PM, Android: the
+      // OS delivered a real region exit at 11:35:14, this function ran to
+      // completion (the next sweeps report `handoff`, so local state was cleared),
+      // and the server visit stayed OPEN until the reaper closed it at 11:47 —
+      // stamping ended_at back at the 11:25 upgrade. The user walked out of a
+      // 50.6-minute visit, was credited 40.0 minutes, and was told "Session
+      // complete" twelve minutes after leaving. iOS was told in nine seconds.
+      //
+      // Three different faults produce that outcome and the trail could not tell
+      // them apart: closeGymVisit THREW, it returned false, or the outbox took
+      // the entry and never drained. They need different fixes — a retry, a
+      // server-side look, and a flush trigger respectively — so name which one.
+      //
+      // Deliberately not a throw and not a retry here: the entry is already in
+      // the crash-safe outbox above, and the flush is the right owner of the
+      // retry. This row exists so the NEXT run is readable.
+      logRegionEvent(active.regionId ?? 'exit', 'visit_close_deferred', {
+        visit:       visitId,
+        reason:      closeErr ?? 'returned_false',
+        ended_at_ms: endedAtMs,
+        queued:      true,
+      });
+    }
   }
 
   if (!needsClaim) {
