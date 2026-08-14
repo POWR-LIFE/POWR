@@ -66,6 +66,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const sessionChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
     const currentSessionIdRef = useRef<string | null>(null);
     const registeringRef = useRef(false); // prevents concurrent registerAndWatchSession calls
+    const registrationSeqRef = useRef(0); // monotonic per runtime — makes every watcher topic unique, see registerAndWatchSession
     const forcedSignOutRef = useRef(false); // set when another device kicked us, so we can explain why
     const deviceLockedRef = useRef(false); // set when this device is already bound to a different account
     const userSignOutRef = useRef(false); // set ONLY by the user-initiated signOut() — the synthetic-sign-out check keys off it
@@ -113,31 +114,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 { onConflict: 'user_id' },
             );
 
-        // Replace any stale subscription before creating a new one.
-        // Await removal so Supabase fully clears the internal channel cache before
-        // we create a new one — prevents "cannot add listeners after subscribe()" errors.
-        if (sessionChannelRef.current) {
-            await supabase.removeChannel(sessionChannelRef.current);
-            sessionChannelRef.current = null;
-        }
+        // ⚠ .channel(topic) IS A CACHE LOOKUP, NOT A FACTORY (Sentry 2026-08-12,
+        // issue 140313562). RealtimeClient.channel() returns any existing
+        // instance with the same topic, and .on() throws "cannot add
+        // postgres_changes callbacks after subscribe()" on an instance that is
+        // already joined or joining — leaving the device-kick watcher unarmed.
+        //
+        // Removing the old channel first is NOT enough to guarantee a clean
+        // topic. removeChannel only evicts from the cache when the server acks
+        // the leave:
+        //
+        //     const status = await channel.unsubscribe()   // ok | timed out | error
+        //     if (status === 'ok') channel.teardown()      // _remove fires via _onClose
+        //
+        // On a slow or half-open socket that ack never lands, the subscribed
+        // instance survives in client.channels, and the next .channel() call
+        // hands it straight back. The Sentry report came off a device seeing
+        // 7-second REST round trips — exactly the conditions that produce it.
+        //
+        // So don't fight the cache: never ask for a topic that could already be
+        // in it. Every attempt gets its own sequence number, which makes a
+        // collision structurally impossible rather than merely unlikely.
+        const topic = `single-device:${activeSession.user.id}:${sessionId}:${++registrationSeqRef.current}`;
 
-        // ⚠ THE REF IS NOT THE CACHE (Sentry 2026-08-12, issue 140313562).
-        // cleanupSessionWatch nulls the ref without awaiting removeChannel, so a
-        // re-register for the SAME session can find the ref empty while the
-        // client's channel cache still holds the old, already-subscribed
-        // instance — .channel(topic) then returns that instance and .on()
-        // throws "cannot add postgres_changes callbacks after subscribe()",
-        // leaving the device-kick watcher unarmed. Sweep the cache by topic,
-        // not by ref, so a cached survivor can never be handed back to us.
-        const topic = `single-device:${activeSession.user.id}:${sessionId}`;
-        for (const ch of supabase.getChannels()) {
-            if (ch.topic === `realtime:${topic}`) {
-                await supabase.removeChannel(ch).catch(() => { /* a failed removal is retried by the next register */ });
+        // Best-effort eviction of every previous attempt — this user's and any
+        // signed-out account's. Deliberately NOT awaited: the new topic is
+        // already unique, so a removal that hangs on a dead socket must not
+        // stall the watcher arming behind it (that wait was the whole reason the
+        // original collision window existed). Anything that fails to leave is
+        // swept again by the next registration, so nothing accumulates for long.
+        sessionChannelRef.current = null;
+        for (const ch of [...supabase.getChannels()]) {
+            if (ch.topic.startsWith('realtime:single-device:')) {
+                supabase.removeChannel(ch).catch(() => { /* retried by the next register */ });
             }
         }
 
-        // Unique channel name per registration so Supabase never returns a cached
-        // already-subscribed instance when TOKEN_REFRESHED fires a new session ID.
         sessionChannelRef.current = supabase
             .channel(topic)
             .on(
