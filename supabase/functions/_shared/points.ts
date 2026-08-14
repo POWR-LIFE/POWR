@@ -53,11 +53,40 @@ export function isStrengthType(type: ActivityType): boolean {
   return type === 'gym' || type === 'hiit';
 }
 
-/** Base points for a workout. Mirrors calculateBasePoints in hooks/useHealthSync.ts. */
+/** Gym + HIIT share one daily cap bucket even though they remain distinct
+ *  activity types elsewhere. Callers enforcing caps must bucket through this
+ *  helper rather than keying DAILY_CAPS by session.type directly. */
+export function dailyCapBucket(type: ActivityType): ActivityType {
+  return isStrengthType(type) ? 'gym' : type;
+}
+
+export function dailyCapForType(type: ActivityType): number | null {
+  return DAILY_CAPS[dailyCapBucket(type)] ?? null;
+}
+
+/**
+ * Base points for a workout. Mirrors calcBasePoints in claim-points and
+ * calculateBasePoints in hooks/useHealthSync.ts.
+ *
+ * This used to be a FLAT rate — any run over 15 minutes paid 10, the same as a
+ * 10 k — while the check-in path next door scored the same activity on a
+ * distance/duration ladder. Nobody noticed because the per-type daily cap was
+ * also 10: you could not earn a second run's worth in a day, so paying a jog
+ * like a 10 k never showed up in anyone's balance.
+ *
+ * Lifting the caps (2026-08-07) removed that cover and would have made three
+ * 15-minute jogs worth 30 while an actual 10 k stayed at 10 — paying people to
+ * chop a workout up. So the ladder moves here too: points now follow the effort,
+ * which is what makes an uncapped day safe.
+ *
+ * distanceM is optional because not every source reports it; a workout with no
+ * distance still scores on duration alone, exactly as claim-points does.
+ */
 export function calculateBasePoints(
   type: ActivityType,
   durationMin: number,
   thresholds: StrengthThresholds = {},
+  distanceM: number | null = null,
 ): number {
   // Strength lane first — its gate is the tunable threshold, not the static
   // ACTIVITY_MIN_DURATION table (which still describes gym's 30-min default).
@@ -69,13 +98,92 @@ export function calculateBasePoints(
     if (durationMin >= entryMin) return 15;
     return 0;
   }
-  if (durationMin < ACTIVITY_MIN_DURATION[type]) return 0;
-  if (type === 'running' || type === 'cycling') return 10;
-  if (type === 'swimming') return 7;
-  if (type === 'sports') return 6;
-  if (type === 'yoga') return 3;
-  return 5;
+
+  // Floor the minutes the way claim-points does, so a 29.9-minute run scores the
+  // same however it reached us.
+  const mins = Math.floor(durationMin);
+  const dist = distanceM ?? 0;
+
+  switch (type) {
+    case 'running':
+      if (dist >= 10000 || mins >= 60) return 10;
+      if (dist >= 5000  || mins >= 30) return 8;
+      if (dist >= 3000  || mins >= 20) return 6;
+      if (dist >= 2000  || mins >= 15) return 5;
+      return 0;
+
+    case 'cycling':
+      if (dist >= 50000 || mins >= 90) return 10;
+      if (dist >= 25000 || mins >= 60) return 8;
+      if (dist >= 12000 || mins >= 30) return 6;
+      if (dist >= 6000  || mins >= 20) return 4;
+      return 0;
+
+    case 'swimming':
+      if (dist >= 2000 || mins >= 60) return 10;
+      if (mins >= 40) return 9;
+      if (dist >= 1000 || mins >= 20) return 7;
+      if (dist >= 500  || mins >= 15) return 5;
+      return 0;
+
+    case 'sports':
+      if (mins >= 90) return 10;
+      if (mins >= 60) return 8;
+      if (mins >= 30) return 6;
+      return 0;
+
+    case 'yoga':
+      if (mins >= 60) return 6;
+      if (mins >= 45) return 5;
+      if (mins >= 30) return 4;
+      if (mins >= 20) return 3;
+      return 0;
+
+    case 'dance':
+      if (mins >= 60) return 8;
+      if (mins >= 45) return 7;
+      if (mins >= 30) return 6;
+      if (mins >= 20) return 5;
+      return 0;
+
+    // walking and sleep score off steps / sleep stages, not this ladder.
+    default:
+      if (mins < ACTIVITY_MIN_DURATION[type]) return 0;
+      return 5;
+  }
 }
+
+/**
+ * Most a user may earn from one activity type in a day, counting base + streak.
+ * A type that is ABSENT here is uncapped — do the work, get the points.
+ *
+ * Product decision 2026-08-07: cardio is uncapped. A second run is a second run,
+ * and the old ceiling meant the day's later effort earned nothing and said
+ * nothing about it — worse, only check-in claims banked the clamped points into
+ * the Vault, so a capped run's points were silently discarded. What makes this
+ * safe is that calculateBasePoints now scores on the effort ladder rather than a
+ * flat per-session rate; uncapping a flat rate would have paid for chopping one
+ * workout into several.
+ *
+ * Still capped, deliberately:
+ *   gym + hiit  the strength lane scores identically on every path (decision
+ *               2026-08-05) and gym check-ins are geofence-verified presence
+ *               rather than measured work, so they keep the 30 ceiling — and
+ *               they keep it TOGETHER, or a wearable-labelled class would out-earn
+ *               the check-in it is meant to match.
+ *   walking     a daily step aggregate; 5 is what the top tier pays anyway.
+ *   sleep       one night per day; 5 is what the top tier pays anyway.
+ *
+ * Mirrored by DAILY_CAPS in claim-points and the CASE in enforce_point_award_cap
+ * (which returns NULL for uncapped types). The trigger exempts the service role,
+ * so terra-webhook applies this itself.
+ */
+export const DAILY_CAPS: Partial<Record<ActivityType, number>> = {
+  walking: 5,
+  gym: 30,
+  hiit: 30,
+  sleep: 5,
+};
 
 /** Sleep points, scaled by restorative ratio. Mirrors calculateSleepPoints in hooks/useHealthSync.ts. */
 export function calculateSleepPoints(hours: number, deepHours?: number, remHours?: number): number {
