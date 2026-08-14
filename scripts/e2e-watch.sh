@@ -21,15 +21,16 @@ A="${WATCH_USER_A:-234d49f3-d189-44b1-a874-063e724e4380}"   # AND = powrcto (pre
 B="${WATCH_USER_B:-a2585666-5b7a-4622-8e43-6bd4fb8013f0}"   # iOS = jpowr (production channel, build 17)
 USERS="in.(${A},${B})"
 VENUE="${WATCH_VENUE:-7d865c3b}"   # POWR partner id prefix (radius 40m)
-# 2026-08-12 night: the 9bb1f31 bundles (approach-aware sweep + wake receipts),
-# published to BOTH branches after the evening field test. Both devices were
-# UNINSTALLED at 19:33; these defaults assume they reinstall the same builds
-# (AND build 19 = preview channel, iOS build 17 = production channel — the
-# swap persists through a reinstall of the same binaries). A fresh install runs
-# its embedded bundle until the first app open fetches the OTA, so expect
-# STALE-OTA(embedded) on first heartbeat, then these ids.
-AND_OTA="${WATCH_AND_OTA:-019ffaa8-cb07-7cc9-93ba-b11d23da7096}"
-IOS_OTA="${WATCH_IOS_OTA:-019ffaaa-53d2-7e4a-a635-3f9c5affbe03}"
+# 2026-08-14 07:2xZ: the 432d6f1 bundles, published to BOTH branches before the
+# 09:00 run. They carry everything from 5c4ce42 onward — the <=100 accuracy
+# gates and the iOS visit lifeline (957c26d), arm-burst exit suppression
+# (0f71040) and the kick-watcher topic fix — none of which either device had
+# taken: both were still reporting the 5c4ce42 ids at 08:00 because nobody
+# reopened the apps after the 08-13 15:30 publish. STALE-OTA on the first
+# heartbeat therefore means the phone has not been restarted onto the bundle
+# yet, NOT that the publish missed.
+AND_OTA="${WATCH_AND_OTA:-019fff2b-d987-7e1c-a716-704943e7e82b}"   # preview / android
+IOS_OTA="${WATCH_IOS_OTA:-019fff2d-4109-778b-ada5-2afebc11b889}"   # production / ios
 
 S=$(mktemp -d) || exit 1; trap 'rm -rf "$S"' EXIT
 get() { cat "$S/$1" 2>/dev/null; }
