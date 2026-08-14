@@ -19,6 +19,7 @@ import {
   stageDeltas,
   visitAlerts,
   visitStage,
+  partitionBoard,
 } from '@/shared/liveops';
 
 // A fixed "now" so every threshold assertion is deterministic.
@@ -609,5 +610,56 @@ describe('historyPageInfo', () => {
     expect(p.pages).toBe(1);
     expect(p.hasNext).toBe(false);
     expect(p.label).toBe('1–50 of 50');
+  });
+});
+
+describe('partitionBoard — a hidden visit must never look like no visit', () => {
+  // The 2026-08-14 report: a founder inside the POWR office, mid-session, saw
+  // "Nobody is inside a partner geofence right now". Three visits were open and
+  // every one of them was filtered — his own account, the second dev account,
+  // and a real user who happened to be at the excluded venue.
+  const live = () => [
+    boardRow({ visit_id: 'mine',  is_test: true,  ended_at: null }),
+    boardRow({ visit_id: 'other', is_test: true,  ended_at: null }),
+    boardRow({ visit_id: 'real',  is_test: true,  ended_at: null }),
+    boardRow({ visit_id: 'past',  is_test: false, ended_at: ago(30) }),
+  ];
+
+  it('counts what it hid, so the caller can never imply emptiness', () => {
+    const p = partitionBoard(live(), false);
+    expect(p.open).toHaveLength(0);
+    expect(p.hiddenOpen).toBe(3);
+    expect(p.hiddenTotal).toBe(3);
+  });
+
+  it('hides nothing when the filter is off', () => {
+    const p = partitionBoard(live(), true);
+    expect(p.open).toHaveLength(3);
+    expect(p.hiddenTotal).toBe(0);
+    expect(p.hiddenOpen).toBe(0);
+  });
+
+  it('never loses a row: shown + hidden always equals what came back', () => {
+    for (const includeTest of [true, false]) {
+      const rows = live();
+      const p = partitionBoard(rows, includeTest);
+      expect(p.shown.length + p.hiddenTotal).toBe(rows.length);
+      expect(p.open.length + p.recent.length).toBe(p.shown.length);
+    }
+  });
+
+  it('splits open from closed on ended_at, not on status', () => {
+    const p = partitionBoard([
+      boardRow({ visit_id: 'a', is_test: false, ended_at: null, status: 'abandoned' }),
+      boardRow({ visit_id: 'b', is_test: false, ended_at: ago(5), status: 'open' }),
+    ], false);
+    expect(p.open.map(r => r.visit_id)).toEqual(['a']);
+    expect(p.recent.map(r => r.visit_id)).toEqual(['b']);
+  });
+
+  it('survives a null payload rather than throwing on an empty board', () => {
+    const p = partitionBoard(undefined as unknown as never[], false);
+    expect(p.shown).toEqual([]);
+    expect(p.hiddenTotal).toBe(0);
   });
 });

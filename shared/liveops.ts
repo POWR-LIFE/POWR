@@ -894,3 +894,40 @@ export function trendTotals(buckets: TrendBucket[]) {
     points: sum(b => b.points_earned),
   };
 }
+
+// ── Board filtering ──────────────────────────────────────────────────────────
+
+export interface BoardPartition {
+  /** Rows that pass the current filter. */
+  shown: BoardRow[];
+  open: BoardRow[];
+  recent: BoardRow[];
+  /** How many rows the filter removed — total, and how many of those are LIVE. */
+  hiddenTotal: number;
+  hiddenOpen: number;
+}
+
+/**
+ * Split the board into what is shown and what the filter is holding back.
+ *
+ * ⚠ THE HIDDEN COUNTS ARE THE POINT. On 2026-08-14 a founder stood inside the
+ * POWR office, mid-session, and the board told him "nobody is inside a partner
+ * geofence right now". Three visits were open; all three were excluded, because
+ * the dev accounts AND the POWR venue are filtered by default and the exclusion
+ * happened server-side, where "no rows" and "rows you may not see" are the same
+ * answer. A screen that cannot count what it hid cannot avoid lying about it.
+ *
+ * So the board fetches inclusively and filters HERE, and the caller is expected
+ * to state hiddenTotal/hiddenOpen wherever it would otherwise imply emptiness.
+ */
+export function partitionBoard(rows: BoardRow[], includeTest: boolean): BoardPartition {
+  const all = rows ?? [];
+  const shown = includeTest ? all : all.filter(r => !r.is_test);
+  return {
+    shown,
+    open: shown.filter(r => !r.ended_at),
+    recent: shown.filter(r => !!r.ended_at),
+    hiddenTotal: all.length - shown.length,
+    hiddenOpen: includeTest ? 0 : all.filter(r => r.is_test && !r.ended_at).length,
+  };
+}

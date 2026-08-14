@@ -20,6 +20,7 @@ import {
     journeyFindings,
     journeyStage,
     lastHeardLabel,
+    partitionBoard,
     otaLabel,
     pushVerdict,
     stageDeltas,
@@ -149,7 +150,15 @@ export default function LiveOps() {
     toastRef.current = toast;
 
     const [tab, setTab] = useState('live');
+    // Two defaults, because the two halves of this page want opposite things.
+    // AGGREGATES / HISTORY are statistics: the dev accounts and the POWR office
+    // run every field test and would swamp them, so they start EXCLUDED.
+    // The LIVE BOARD *is* the field test — it exists to watch exactly those
+    // accounts walk into exactly that venue. Defaulting it the other way meant a
+    // founder standing in the POWR office mid-session was told "nobody is inside
+    // a partner geofence right now", which was both useless and untrue.
     const [includeTest, setIncludeTest] = useState(false);
+    const [boardIncludeTest, setBoardIncludeTest] = useState(true);
     const [windowKey, setWindowKey] = useState('7d');
 
     const [board, setBoard] = useState([]);
@@ -177,9 +186,15 @@ export default function LiveOps() {
 
     const loadBoard = useCallback(async ({ quiet } = {}) => {
         if (!quiet) setBoardBusy(true);
+        // ALWAYS fetch inclusively and filter in the client. The RPC cannot
+        // report what it filtered out, so asking IT to exclude makes "no visits"
+        // and "visits you are not being shown" identical on the wire — which is
+        // exactly how this board came to claim nobody was in a gym while three
+        // people were. Every row carries is_test; the filtering happens below,
+        // where the hidden count is knowable and can be stated.
         const { data, error } = await supabase.rpc('admin_liveops_board', {
             p_window_hours: 12,
-            p_include_test: includeTest,
+            p_include_test: true,
             p_limit: 100,
         });
         if (error) {
@@ -194,7 +209,7 @@ export default function LiveOps() {
         }
         setBoardReady(true);
         setBoardBusy(false);
-    }, [includeTest]);
+    }, []);
 
     const loadAggregates = useCallback(async () => {
         setAggBusy(true);
@@ -265,9 +280,15 @@ export default function LiveOps() {
         return () => clearInterval(id);
     }, [tab, loadBoard]);
 
-    const open = board.filter(r => !r.ended_at);
-    const recent = board.filter(r => r.ended_at);
-    const alerting = board.filter(r => visitAlerts(r).length > 0);
+    // What the filter is currently keeping off the screen. Never let this be
+    // silent: a hidden row and a non-existent row must not look the same.
+    // partitionBoard lives in shared/liveops.ts under test — the portal has no
+    // test runner, and this is exactly the logic that told a founder nobody was
+    // in a gym while he was standing in one.
+    const { shown, open, recent, hiddenTotal, hiddenOpen } = partitionBoard(board, boardIncludeTest);
+    const alerting = shown.filter(r => visitAlerts(r).length > 0);
+
+    const testFilterOn = tab === 'live' ? boardIncludeTest : includeTest;
 
     return (
         <div className="px-4 lg:px-0 py-20 animate-in fade-in slide-in-from-bottom-8 duration-1000">
@@ -320,15 +341,23 @@ export default function LiveOps() {
                     ))}
                 </div>
 
+                {/* One control, bound to whichever half of the page is showing —
+                    the live board and the statistics keep their own answer.
+                    The label names the VENUE too: the POWR office is excluded
+                    alongside the dev accounts, and "test accounts" alone did not
+                    explain why a real user standing in the office vanished. */}
                 <label className="flex items-center gap-3 cursor-pointer select-none">
                     <span className="text-[9px] uppercase tracking-[0.35em] text-[#888888] font-black">
-                        Include test accounts
+                        Include test accounts &amp; POWR office
                     </span>
                     <span
-                        onClick={() => { setIncludeTest(v => !v); setHistOffset(0); }}
-                        className={`w-11 h-6 rounded-full transition-all relative ${includeTest ? 'bg-[#E8D200]' : 'bg-[#E6E6E1]'}`}
+                        onClick={() => {
+                            if (tab === 'live') setBoardIncludeTest(v => !v);
+                            else { setIncludeTest(v => !v); setHistOffset(0); }
+                        }}
+                        className={`w-11 h-6 rounded-full transition-all relative ${testFilterOn ? 'bg-[#E8D200]' : 'bg-[#E6E6E1]'}`}
                     >
-                        <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${includeTest ? 'left-[22px]' : 'left-0.5'}`} />
+                        <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${testFilterOn ? 'left-[22px]' : 'left-0.5'}`} />
                     </span>
                 </label>
             </div>
@@ -346,11 +375,26 @@ export default function LiveOps() {
                         />
                     </div>
 
+                    {hiddenTotal > 0 && (
+                        <FilterNote
+                            hiddenTotal={hiddenTotal}
+                            hiddenOpen={hiddenOpen}
+                            onShow={() => setBoardIncludeTest(true)}
+                        />
+                    )}
+
                     <Section title={`In a gym now (${open.length})`} />
                     {!boardReady ? (
                         <Loading label="Reading the detection layer…" />
                     ) : open.length === 0 ? (
-                        <Empty text="Nobody is inside a partner geofence right now." />
+                        // The empty state must never assert more than it knows.
+                        // "Nobody is inside" is a claim about the world; with the
+                        // filter on it can only speak for what got through it.
+                        <Empty
+                            text={hiddenOpen > 0
+                                ? `No visits to show — but ${hiddenOpen} open visit${hiddenOpen === 1 ? ' is' : 's are'} hidden by the filter above.`
+                                : 'Nobody is inside a partner geofence right now.'}
+                        />
                     ) : (
                         <div className="grid gap-4 mb-16">
                             {open.map(r => <VisitCard key={r.visit_id} row={r} onOpen={() => setOpenVisit(r.visit_id)} />)}
@@ -359,7 +403,11 @@ export default function LiveOps() {
 
                     <Section title={`Closed in the last 12 hours (${recent.length})`} />
                     {recent.length === 0 && boardReady ? (
-                        <Empty text="No visits closed in the last 12 hours." />
+                        <Empty
+                            text={hiddenTotal - hiddenOpen > 0
+                                ? `Nothing to show — ${hiddenTotal - hiddenOpen} closed visit${hiddenTotal - hiddenOpen === 1 ? ' is' : 's are'} hidden by the filter above.`
+                                : 'No visits closed in the last 12 hours.'}
+                        />
                     ) : (
                         <div className="grid gap-4">
                             {recent.map(r => <VisitCard key={r.visit_id} row={r} onOpen={() => setOpenVisit(r.visit_id)} />)}
@@ -1367,6 +1415,25 @@ function Loading({ label }) {
         <div className="flex flex-col items-center justify-center py-32 gap-6">
             <div className="w-12 h-12 border-2 border-[#10B981]/20 border-t-[#10B981] rounded-full animate-spin" />
             <span className="text-[10px] uppercase tracking-[0.6em] text-[#666666] font-black">{label}</span>
+        </div>
+    );
+}
+
+/** Says what the filter is holding back, and offers to stop holding it back. */
+function FilterNote({ hiddenTotal, hiddenOpen, onShow }) {
+    return (
+        <div className="flex flex-wrap items-center justify-between gap-4 mb-8 px-6 py-4 rounded-2xl border border-[#F59E0B]/30 bg-[#F59E0B]/[0.07]">
+            <span className="text-[10px] uppercase tracking-[0.3em] text-[#8a6a00] font-black">
+                {hiddenTotal} visit{hiddenTotal === 1 ? '' : 's'} hidden
+                {hiddenOpen > 0 && ` — ${hiddenOpen} of them open right now`}
+                <span className="block normal-case tracking-normal text-[10px] text-[#999999] font-bold mt-1">
+                    Test accounts and anything at the POWR office are filtered out.
+                </span>
+            </span>
+            <button
+                onClick={onShow}
+                className="px-5 h-9 rounded-xl bg-[#1A1A1A] text-white text-[9px] uppercase tracking-[0.3em] font-black hover:bg-[#333333] transition-all shrink-0"
+            >Show them</button>
         </div>
     );
 }
