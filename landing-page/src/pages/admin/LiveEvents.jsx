@@ -54,6 +54,17 @@ const newToken = () => {
 
 const slugify = (s) => s.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
+// Three buckets, because that's how the list is actually used: things
+// you're still writing, the one you're running, and the pile you keep
+// for the record. Everything between scheduled and settled is "active"
+// — a settled event still gets its results read off it.
+const BUCKETS = [
+    ['active',   'Active'],
+    ['draft',    'Drafts'],
+    ['archived', 'Archived'],
+];
+const bucketOf = (ev) => (ev.status === 'draft' ? 'draft' : ev.status === 'archived' ? 'archived' : 'active');
+
 const fmtDT = (iso) => iso
     ? new Date(iso).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
     : '—';
@@ -116,9 +127,35 @@ export default function LiveEvents() {
     const [registrations, setRegistrations] = useState(null); // admin_get_event_registrations payload
     const [bookings, setBookings] = useState(null);   // admin_get_event_bookings payload
     const [bookingsBusy, setBookingsBusy] = useState(false);
+    const [rosterBusy, setRosterBusy] = useState(null);  // 'add' | user_id of the roster edit in flight
+    const [tab, setTab] = useState('active');
     const lastOpsEventId = useRef(null);           // guards against showing event A's ops data under event B
 
     const selected = useMemo(() => events.find(e => e.id === selectedId) ?? null, [events, selectedId]);
+
+    const bucketCounts = useMemo(() => events.reduce(
+        (acc, e) => { acc[bucketOf(e)] += 1; return acc; },
+        { active: 0, draft: 0, archived: 0 },
+    ), [events]);
+    const visibleEvents = useMemo(() => events.filter(e => bucketOf(e) === tab), [events, tab]);
+
+    // A tab must never hide the event you are standing in. Archiving the
+    // selected event moves it out of Active, and the honest response is
+    // to follow it rather than silently drop the panel you're working in.
+    useEffect(() => {
+        if (selected && bucketOf(selected) !== tab) setTab(bucketOf(selected));
+    }, [selected]);   // eslint-disable-line react-hooks/exhaustive-deps
+
+    // On a first load with nothing running, land on a tab that has
+    // something in it instead of an empty Active.
+    const landed = useRef(false);
+    useEffect(() => {
+        if (landed.current || loading || events.length === 0) return;
+        landed.current = true;
+        if (bucketCounts.active === 0) {
+            setTab(bucketCounts.draft > 0 ? 'draft' : 'archived');
+        }
+    }, [loading, events, bucketCounts]);
     const dirty = useMemo(() => {
         if (!selected || !form) return false;
         return JSON.stringify(editableFields(selected)) !== JSON.stringify(form);
@@ -226,9 +263,12 @@ export default function LiveEvents() {
         }
     };
 
+    // Called from both the standings rows (display_name) and the roster
+    // rows (name) — same action, two shapes of the same person.
     const disqualify = async (ev, row, disqualified) => {
+        const who = row.display_name ?? row.name ?? row.username ?? 'this member';
         const verb = disqualified ? 'Disqualify' : 'Requalify';
-        if (!window.confirm(`${verb} ${row.display_name ?? row.username ?? 'this member'} ${disqualified ? 'from' : 'for'} this event? Event-scoped only — their points are untouched.${disqualified && counts.results > 0 ? ' Re-settle afterwards so the frozen results drop them too.' : ''}`)) return;
+        if (!window.confirm(`${verb} ${who} ${disqualified ? 'from' : 'for'} this event? Event-scoped only — their points are untouched.${disqualified && counts.results > 0 ? ' Re-settle afterwards so the frozen results drop them too.' : ''}`)) return;
         setDqBusy(row.user_id);
         const { error } = await supabase.rpc('admin_disqualify_from_event', {
             p_event_id: ev.id, p_user_id: row.user_id, p_disqualified: disqualified,
@@ -236,9 +276,67 @@ export default function LiveEvents() {
         setDqBusy(null);
         if (error) { toast.error(error.message); return; }
         await logAction(user.id, disqualified ? 'live_event_disqualify' : 'live_event_requalify', 'live_event', ev.id, { target_user: row.user_id });
-        toast.success(`${row.display_name ?? row.username ?? 'Member'} ${disqualified ? 'disqualified' : 'requalified'}`);
+        toast.success(`${who} ${disqualified ? 'disqualified' : 'requalified'}`);
         fetchOps(ev.id);
         fetchCounts(ev.id);
+        fetchRegistrations(ev.id);
+    };
+
+    // ── Roster edits ──────────────────────────────────────────
+    // join_live_event speaks for the member and enforces the cutoff and
+    // the status window; these speak for the door, and don't. Both RPCs
+    // hand back the refreshed roster, so there's no second fetch.
+
+    const addParticipants = async ({ emails = [], userIds = [] }) => {
+        if (!selected) return;
+        setRosterBusy('add');
+        const { data, error } = await supabase.rpc('admin_add_event_participants', {
+            p_event_id: selected.id, p_emails: emails, p_user_ids: userIds,
+        });
+        setRosterBusy(null);
+        if (error) { toast.error(error.message); return null; }
+
+        const added = data?.added ?? [];
+        const already = data?.already ?? [];
+        const missing = data?.missing_emails ?? [];
+        if (data?.registrations) setRegistrations(data.registrations);
+        fetchCounts(selected.id);
+        if (selected.status !== 'draft') fetchOps(selected.id);
+        if (added.length > 0) {
+            await logAction(user.id, 'live_event_participants_added', 'live_event', selected.id,
+                { count: added.length, user_ids: added.map(a => a.user_id) });
+        }
+
+        // Every pasted address lands in exactly one bucket — say all three,
+        // because "2 added" out of 5 pasted is the sentence that costs
+        // someone a place on the night.
+        const parts = [added.length === 1 ? `${added[0].name} added` : `${added.length} added`];
+        if (already.length > 0) parts.push(`${already.length} already registered`);
+        if (missing.length > 0) parts.push(`${missing.length} with no POWR account`);
+        const line = parts.join(' · ');
+        if (added.length > 0) toast.success(line); else toast.error(line);
+        return data;
+    };
+
+    const removeParticipant = async (row) => {
+        if (!selected) return;
+        const who = row.name ?? row.username ?? 'this member';
+        if (!window.confirm(
+            `Remove ${who} from this event? Their registration is deleted outright — joined time, booking handoff and any DQ history go with it, and they can register again from the app.\n\nDisqualify instead if the registration was real and you want the record kept.${counts.results > 0 ? '\n\nResults are already frozen — re-settle afterwards.' : ''}`,
+        )) return;
+        setRosterBusy(row.user_id);
+        const { data, error } = await supabase.rpc('admin_remove_event_participant', {
+            p_event_id: selected.id, p_user_id: row.user_id,
+        });
+        setRosterBusy(null);
+        if (error) { toast.error(error.message); return; }
+        if (data?.registrations) setRegistrations(data.registrations);
+        fetchCounts(selected.id);
+        if (selected.status !== 'draft') fetchOps(selected.id);
+        await logAction(user.id, 'live_event_participant_removed', 'live_event', selected.id, { target_user: row.user_id });
+        toast.success(data?.in_results
+            ? `${who} removed — they're still in the frozen results, re-settle to drop them`
+            : `${who} removed`);
     };
 
     const exportCsv = (ev) => {
@@ -450,8 +548,36 @@ export default function LiveEvents() {
                     <p className="text-[13px] text-[#999999]">Create one and configure the week before anything goes live.</p>
                 </div>
             ) : (
+                <>
+                <div className="flex items-center gap-2 mb-5">
+                    {BUCKETS.map(([key, label]) => (
+                        <button
+                            key={key}
+                            onClick={() => setTab(key)}
+                            className={`inline-flex items-center gap-2 h-10 px-5 rounded-xl border text-[10.5px] font-bold uppercase tracking-[0.18em] transition-all ${
+                                tab === key
+                                    ? 'bg-[#1A1A1A] border-[#1A1A1A] text-white'
+                                    : 'bg-[#F4F4F1] border-[#E6E6E1] text-[#666666] hover:text-[#1A1A1A] hover:border-[#D8D8D2]'
+                            }`}
+                        >
+                            {label}
+                            <span className={`text-[10px] font-mono ${tab === key ? 'text-white/50' : 'text-[#AAAAAA]'}`}>
+                                {bucketCounts[key]}
+                            </span>
+                        </button>
+                    ))}
+                </div>
                 <div className="bg-white border border-[#E6E6E1] rounded-3xl overflow-hidden divide-y divide-[#F0F0EC] mb-10">
-                    {events.map(ev => {
+                    {visibleEvents.length === 0 && (
+                        <p className="px-7 py-10 text-center text-[13px] text-[#999999]">
+                            {tab === 'active'
+                                ? 'Nothing running — scheduled, live, locked, revealed and settled events land here.'
+                                : tab === 'draft'
+                                    ? 'No drafts. New events start here, invisible to the app.'
+                                    : 'Nothing archived yet.'}
+                        </p>
+                    )}
+                    {visibleEvents.map(ev => {
                         const meta = STATUS_META[ev.status] ?? STATUS_META.draft;
                         const isSel = ev.id === selectedId;
                         return (
@@ -486,6 +612,7 @@ export default function LiveEvents() {
                         );
                     })}
                 </div>
+                </>
             )}
 
             {/* ── Selected event ── */}
@@ -517,7 +644,11 @@ export default function LiveEvents() {
                     <RegistrationsPanel
                         ev={selected}
                         data={registrations}
+                        busy={rosterBusy ?? dqBusy}
                         onRefresh={() => fetchRegistrations(selected.id)}
+                        onAdd={addParticipants}
+                        onRemove={removeParticipant}
+                        onDisqualify={(row, dq) => disqualify(selected, row, dq)}
                     />
 
                     <BookingsPanel
@@ -737,11 +868,69 @@ function BookingsPanel({ data, busy, onSave, onRefresh }) {
 // at any status (drafts included) — this is where a preview test run is
 // checked against how the reward mechanics are supposed to pay out.
 
-function RegistrationsPanel({ ev, data, onRefresh }) {
+function RegistrationsPanel({ ev, data, busy, onRefresh, onAdd, onRemove, onDisqualify }) {
     const fmtTime = (iso) => iso
         ? new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
         : '—';
-    const participants = data?.participants ?? [];
+    const [adding, setAdding] = useState(false);
+    const [raw, setRaw] = useState('');
+    const [missed, setMissed] = useState([]);   // addresses the last add couldn't resolve
+    const [query, setQuery] = useState('');
+    const [results, setResults] = useState([]);
+    const [searching, setSearching] = useState(false);
+    const [filter, setFilter] = useState('');   // filters the roster below
+
+    // The panel isn't remounted per event, so an in-progress add and the
+    // leftover misses must not follow you onto the next one.
+    useEffect(() => {
+        setAdding(false); setRaw(''); setMissed([]);
+        setQuery(''); setResults([]); setFilter('');
+    }, [ev.id]);
+
+    // Profile search. Email lives in auth.users where the portal client
+    // has no read at all, so this has to go through the definer RPC —
+    // which also tells us who is already on the roster, the thing you
+    // actually want to know before clicking Add.
+    useEffect(() => {
+        const q = query.trim();
+        if (q.length < 2) { setResults([]); setSearching(false); return; }
+        setSearching(true);
+        const t = setTimeout(async () => {
+            const { data: rows, error } = await supabase.rpc('admin_search_event_candidates', {
+                p_event_id: ev.id, p_query: q,
+            });
+            setSearching(false);
+            if (error) { console.error(error); setResults([]); return; }
+            setResults(rows ?? []);
+        }, 250);
+        return () => clearTimeout(t);
+    }, [query, ev.id, data]);   // re-runs after an add so the chips follow the roster
+
+    // Same parse as the booking export, previewed before the write for the
+    // same reason: pasting a whole CSV column shouldn't silently add three
+    // of the eight people you meant.
+    const parsed = useMemo(
+        () => Array.from(new Set(
+            raw.split(/[\s,;]+/).map(s => s.trim().toLowerCase()).filter(s => s.includes('@') && s.length > 2),
+        )),
+        [raw],
+    );
+
+    // Adding is an opt-in-roster idea, and an archived event is closed for
+    // edits — mirrors what the RPC will refuse.
+    const canAdd = ev.scope === 'opt_in' && ev.status !== 'archived';
+
+    const participants = useMemo(() => data?.participants ?? [], [data]);
+    // Client-side, over the roster already in hand — the RPC caps at the
+    // 500 newest, so this narrows what's loaded and never claims to
+    // search past it.
+    const shown = useMemo(() => {
+        const q = filter.trim().toLowerCase();
+        if (!q) return participants;
+        return participants.filter(p =>
+            [p.name, p.username, p.email].some(v => (v ?? '').toLowerCase().includes(q)));
+    }, [participants, filter]);
+
     const referrals = data?.referrals ?? [];
     const milestones = data?.milestones ?? [];
     const ledger = data?.bonus_ledger ?? [];
@@ -785,17 +974,186 @@ function RegistrationsPanel({ ev, data, onRefresh }) {
             <div className="bg-white border border-[#E6E6E1] rounded-3xl p-7 space-y-7">
                 {/* Roster */}
                 <div>
-                    <div className="text-[10px] font-black uppercase tracking-[0.25em] text-[#888888] mb-2">
-                        Registered ({participants.length})
+                    <div className="flex items-center justify-between gap-3 mb-2 flex-wrap">
+                        <div className="text-[10px] font-black uppercase tracking-[0.25em] text-[#888888]">
+                            Registered ({shown.length === participants.length
+                                ? participants.length
+                                : `${shown.length} of ${participants.length}`})
+                        </div>
+                        <div className="flex items-center gap-2">
+                            {participants.length > 0 && (
+                                <div className="relative">
+                                    <Search size={13} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#BBBBBB]" />
+                                    <input
+                                        type="text"
+                                        value={filter}
+                                        onChange={(e) => setFilter(e.target.value)}
+                                        placeholder="Filter the roster…"
+                                        className="w-56 h-9 pl-9 pr-8 bg-[#F4F4F1] border border-[#E6E6E1] rounded-xl text-[12px] text-[#1A1A1A] placeholder:text-[#AAAAAA] outline-none focus:border-[#8B5CF6]/40 transition-all"
+                                    />
+                                    {filter && (
+                                        <button
+                                            onClick={() => setFilter('')}
+                                            aria-label="Clear roster filter"
+                                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#AAAAAA] hover:text-[#1A1A1A]"
+                                        >
+                                            <X size={13} />
+                                        </button>
+                                    )}
+                                </div>
+                            )}
+                            {canAdd && !adding && (
+                                <button
+                                    onClick={() => { setAdding(true); setMissed([]); }}
+                                    className="inline-flex items-center gap-2 h-9 px-4 rounded-xl bg-[#8B5CF6]/10 border border-[#8B5CF6]/25 text-[#8B5CF6] text-[10px] font-bold uppercase tracking-[0.15em] hover:bg-[#8B5CF6]/15 transition-all shrink-0"
+                                >
+                                    <Plus size={13} /> Add members
+                                </button>
+                            )}
+                        </div>
                     </div>
+
+                    {/* Add by email. Bulk, because the input on the night is a
+                        handful of addresses at once — and an admin add skips
+                        the eligibility cutoff and the joining window that
+                        stop the member doing it themselves. */}
+                    {adding && (
+                        <div className="rounded-2xl border border-[#8B5CF6]/25 bg-[#8B5CF6]/[0.04] p-4 mb-4 space-y-3">
+                            <p className="text-[12px] text-[#666666] leading-snug">
+                                Search a profile by name, username or email, or paste a batch of addresses below.
+                                Either way they go straight onto the roster: <strong>the eligibility cutoff and the
+                                joining window don&rsquo;t apply</strong>, so someone who signed up in the queue outside
+                                still gets in. Someone with no POWR account can&rsquo;t be added — the download has to
+                                happen first.
+                            </p>
+
+                            {/* Search — the path that doesn't assume you know the
+                                address they signed up with. */}
+                            <div className="relative">
+                                <Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-[#AAAAAA]" />
+                                <input
+                                    type="text"
+                                    value={query}
+                                    onChange={(e) => setQuery(e.target.value)}
+                                    placeholder="Search members by name, username or email…"
+                                    className="w-full h-11 pl-10 pr-4 bg-white border border-[#E6E6E1] rounded-xl text-sm text-[#1A1A1A] placeholder:text-[#AAAAAA] outline-none focus:border-[#8B5CF6]/50 transition-all"
+                                />
+                            </div>
+                            {query.trim().length >= 2 && (
+                                <div className="rounded-xl border border-[#E6E6E1] bg-white overflow-hidden divide-y divide-[#F6F6F3]">
+                                    {searching && results.length === 0 && (
+                                        <p className="px-4 py-3 text-[12px] text-[#999999]">Searching…</p>
+                                    )}
+                                    {!searching && results.length === 0 && (
+                                        <p className="px-4 py-3 text-[12px] text-[#999999]">
+                                            No member matches &ldquo;{query.trim()}&rdquo;. If they&rsquo;ve just signed up,
+                                            refresh — search reads live.
+                                        </p>
+                                    )}
+                                    {results.map((r) => (
+                                        <div key={r.user_id} className="flex items-center gap-3 px-4 py-2.5">
+                                            <div className="min-w-0 flex-1">
+                                                <div className="text-[13px] font-medium text-[#1A1A1A] truncate">
+                                                    {r.name}
+                                                    {r.username && <span className="text-[#999999] font-normal"> @{r.username}</span>}
+                                                </div>
+                                                <div className="font-mono text-[11px] text-[#AAAAAA] truncate">{r.email ?? 'no email on file'}</div>
+                                            </div>
+                                            {/* Already-in is stated, not hidden: a missing row
+                                                reads as "not found", which is a different answer. */}
+                                            {r.on_roster ? (
+                                                <span className={`text-[9.5px] font-black uppercase tracking-[0.15em] px-2.5 py-1 rounded-lg shrink-0 ${
+                                                    r.disqualified
+                                                        ? 'bg-[#F43F5E]/10 text-[#F43F5E]'
+                                                        : 'bg-[#10B981]/10 text-[#10B981]'
+                                                }`}>
+                                                    {r.disqualified ? 'Disqualified' : 'Already in'}
+                                                </span>
+                                            ) : (
+                                                <button
+                                                    disabled={busy === 'add' || busy === r.user_id}
+                                                    onClick={() => onAdd({ userIds: [r.user_id] })}
+                                                    className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border text-[9.5px] font-bold uppercase tracking-[0.12em] bg-[#8B5CF6]/10 border-[#8B5CF6]/25 text-[#8B5CF6] hover:bg-[#8B5CF6]/15 transition-all disabled:opacity-40 shrink-0"
+                                                >
+                                                    <Plus size={11} /> Add
+                                                </button>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+
+                            <div className="flex items-center gap-3 pt-1">
+                                <div className="h-[1px] flex-1 bg-[#8B5CF6]/15" />
+                                <span className="text-[9px] font-black uppercase tracking-[0.25em] text-[#AAAAAA]">or paste a batch</span>
+                                <div className="h-[1px] flex-1 bg-[#8B5CF6]/15" />
+                            </div>
+
+                            <textarea
+                                value={raw}
+                                onChange={(e) => setRaw(e.target.value)}
+                                rows={4}
+                                placeholder="member@email.com, another@email.com"
+                                className="w-full rounded-2xl border border-[#E6E6E1] bg-white p-4 font-mono text-[12px] text-[#1A1A1A] outline-none focus:border-[#8B5CF6]"
+                            />
+                            <div className="flex items-center gap-3 flex-wrap">
+                                <button
+                                    disabled={busy === 'add' || parsed.length === 0}
+                                    onClick={async () => {
+                                        const res = await onAdd({ emails: parsed });
+                                        if (!res) return;                    // failed — keep what was typed
+                                        setMissed(res.missing_emails ?? []);
+                                        setRaw('');
+                                        setAdding(false);
+                                    }}
+                                    className="inline-flex items-center gap-2 h-10 px-5 rounded-xl bg-[#1A1A1A] text-white text-[10.5px] font-bold uppercase tracking-[0.18em] disabled:opacity-40"
+                                >
+                                    <Plus size={13} /> {busy === 'add' ? 'Adding…' : `Add ${parsed.length || ''}`.trim()}
+                                </button>
+                                <button
+                                    onClick={() => { setAdding(false); setRaw(''); }}
+                                    className="h-10 px-4 rounded-xl border border-[#E6E6E1] text-[10.5px] font-bold uppercase tracking-[0.18em] text-[#888888]"
+                                >
+                                    Cancel
+                                </button>
+                                <p className="text-[12px] text-[#999999]">
+                                    {parsed.length} valid {parsed.length === 1 ? 'address' : 'addresses'} — anyone already
+                                    registered is left exactly as they are.
+                                </p>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* The addresses that didn't land: the only part of an add
+                        worth chasing after the toast has gone. */}
+                    {missed.length > 0 && (
+                        <div className="rounded-2xl border border-[#F59E0B]/25 bg-[#F59E0B]/[0.06] p-4 mb-4">
+                            <div className="flex items-start gap-2">
+                                <AlertTriangle size={13} className="text-[#B45309] mt-0.5 shrink-0" />
+                                <div className="min-w-0">
+                                    <div className="text-[10px] font-black uppercase tracking-[0.2em] text-[#B45309]">
+                                        No POWR account ({missed.length}) — not added
+                                    </div>
+                                    <p className="font-mono text-[12px] text-[#8a6a20] mt-1 break-words">{missed.join(', ')}</p>
+                                </div>
+                                <button onClick={() => setMissed([])} className="ml-auto text-[#B45309] shrink-0"><X size={14} /></button>
+                            </div>
+                        </div>
+                    )}
+
                     {participants.length === 0 ? (
                         <p className="text-[13px] text-[#999999]">Nobody has registered yet.</p>
+                    ) : shown.length === 0 ? (
+                        <p className="text-[13px] text-[#999999]">
+                            No registered member matches &ldquo;{filter.trim()}&rdquo;. Use Add members to search
+                            everyone, not just this roster.
+                        </p>
                     ) : (
                         <div className="overflow-x-auto">
                             <table className="w-full text-[13px]">
-                                <Head cols={[['Member'], ['Email'], ['Joined'], ['Opened booking'], ['Booked'], ['Status']]} />
+                                <Head cols={[['Member'], ['Email'], ['Joined'], ['Opened booking'], ['Booked'], ['Status'], ['', 'text-right']]} />
                                 <tbody className="divide-y divide-[#F6F6F3]">
-                                    {participants.map((p) => (
+                                    {shown.map((p) => (
                                         <tr key={p.user_id} className={p.disqualified_at ? 'opacity-45' : ''}>
                                             <td className="py-2.5 pr-3 font-medium text-[#1A1A1A]">
                                                 {p.name}
@@ -816,6 +1174,33 @@ function RegistrationsPanel({ ev, data, onRefresh }) {
                                                 {p.disqualified_at
                                                     ? <span className="text-[#F43F5E] text-[11px] font-bold uppercase tracking-wide">DQ</span>
                                                     : <span className="text-[#10B981] text-[11px] font-bold uppercase tracking-wide">In</span>}
+                                            </td>
+                                            {/* Two different verbs: DQ keeps the row and the record
+                                                (the registration was real, the conduct wasn't);
+                                                Remove deletes a row that shouldn't exist at all. */}
+                                            <td className="py-2.5 text-right whitespace-nowrap">
+                                                <button
+                                                    onClick={() => onDisqualify(p, !p.disqualified_at)}
+                                                    disabled={busy === p.user_id}
+                                                    title={p.disqualified_at ? 'Requalify for this event' : 'Disqualify from this event'}
+                                                    className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border text-[9.5px] font-bold uppercase tracking-[0.12em] transition-all disabled:opacity-40 ${
+                                                        p.disqualified_at
+                                                            ? 'bg-[#F4F4F1] border-[#E6E6E1] text-[#555555] hover:text-[#1A1A1A]'
+                                                            : 'bg-[#F43F5E]/10 border-[#F43F5E]/25 text-[#F43F5E] hover:bg-[#F43F5E]/15'
+                                                    }`}
+                                                >
+                                                    {p.disqualified_at
+                                                        ? <><UserCheck size={11} /> Requalify</>
+                                                        : <><UserX size={11} /> DQ</>}
+                                                </button>
+                                                <button
+                                                    onClick={() => onRemove(p)}
+                                                    disabled={busy === p.user_id}
+                                                    title="Delete this registration outright"
+                                                    className="inline-flex items-center justify-center w-8 h-8 ml-2 rounded-lg border border-[#E6E6E1] bg-[#F4F4F1] text-[#999999] hover:text-[#F43F5E] hover:border-[#F43F5E]/25 transition-all disabled:opacity-40"
+                                                >
+                                                    <Trash2 size={12} />
+                                                </button>
                                             </td>
                                         </tr>
                                     ))}
