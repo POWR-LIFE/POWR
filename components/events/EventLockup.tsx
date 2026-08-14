@@ -76,6 +76,13 @@ export function EventLockup({
     );
 }
 
+// Two successive 5% trims on the POWR mark (2026-08-14), compounded rather than
+// added: 0.95 × 0.95. The styles below apply it to the ORIGINAL tuned values, so
+// the sizes and their trim margins can never drift apart, and a third pass is a
+// one-number change here instead of six rounded literals.
+const MARK_SCALE = 0.95 * 0.95;
+const mark = (tuned: number) => tuned * MARK_SCALE;
+
 const styles = StyleSheet.create({
     lockupRow: {
         flexDirection: 'column',
@@ -112,21 +119,22 @@ const styles = StyleSheet.create({
     // 'transparent' on its level artwork for the same reason — this is the one
     // place in the lockup that never got it.
     //
-    // Both sizes carry a 5% trim off their tuned values (64→60.8, 90→85.5). The
-    // margins are fractions of the canvas, so they scale by the same 0.95 —
-    // change one without the other and the trim stops landing on the padding.
+    // Every number here is the TUNED value put through MARK_SCALE, never a
+    // hand-edited literal — the margins are fractions of the canvas, so shrinking
+    // the mark without scaling them by the same factor stops the trim landing on
+    // the padding. Change the scale, not the six numbers.
     powrMark: {
-        width: 60.8,
-        height: 60.8,
-        marginVertical: -12.35,
-        marginHorizontal: -9.5,
+        width: mark(64),
+        height: mark(64),
+        marginVertical: mark(-13),
+        marginHorizontal: mark(-10),
         backgroundColor: 'transparent',
     },
     powrMarkLarge: {
-        width: 85.5,
-        height: 85.5,
-        marginVertical: -17.1,
-        marginHorizontal: -13.3,
+        width: mark(90),
+        height: mark(90),
+        marginVertical: mark(-18),
+        marginHorizontal: mark(-14),
         backgroundColor: 'transparent',
     },
 });
