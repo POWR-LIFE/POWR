@@ -290,10 +290,38 @@ Deno.serve(async (req: Request) => {
   // and already spent by the time we get here, so this rides last_nudge_at via
   // touch_gym_visit_nudge — the same 'no wake budget, just a backoff' mechanism
   // the token-less branch uses. A live session is cheap to keep proving (one
-  // wake per 15 min); a dead one stops costing anything after PRESENCE_MAX_AGE.
+  // wake per 5 min); a dead one stops costing anything after PRESENCE_MAX_AGE.
+  //
+  // ⚠ THE INTERVAL IS THE RECORDED SESSION LENGTH, not just reaper hygiene.
+  // At 15 minutes this pass was the reason every Android visit came back as
+  // EXACTLY 40 minutes. upgrade-gym-tier writes the session at the 40-min tier
+  // and only PROOF can grow it afterwards; post-upgrade this pass is the only
+  // thing on Android that refreshes proof, because the in-visit stream switch is
+  // deferred (Android 12 background FGS start) and the fence-refresh pass carries
+  // no visit_id by design. Field 2026-08-14: upgraded 11:25:05, user left
+  // 11:35:14, this pass was not due until 11:40:05 and fired at 11:41:03 — six
+  // minutes AFTER they had gone. Zero proof accrued between upgrade and exit, so
+  // the close clamped to the upgrade stamp: 40.0 min recorded for a 50.6-minute
+  // visit, and "Session complete" twelve minutes late. iOS recorded 50.0 min,
+  // because its own stream keeps confirming and its sweep stamped three seconds
+  // before the exit.
+  //
+  // ANY user leaving within the interval of their upgrade gets exactly 40
+  // minutes — which is most gym visits. Five minutes bounds that error to five.
+  //
+  // Deliberately not lower: 5 min matches the fence-refresh cadence the device
+  // already answers, so this rides a wake rhythm Android has proven reliable
+  // (nudge → wake_received in <1 s, both fix fallbacks landing) rather than
+  // inventing a tighter one. Closing the gap the rest of the way belongs to the
+  // client's sweep stamp, which costs no extra wake at all.
+  //
+  // The reaper is NOT weakened by asking more often: last_proven_at only advances
+  // on a fix that would CREDIT presence (confirm_gym_visit_v2's v_proven mirrors
+  // fixCreditsPresence), so a departed phone answering from a stale cache cannot
+  // hold its visit open.
   {
-    const PRESENCE_SILENCE_MS = 15 * 60 * 1000;  // ask only if we haven't heard for this long
-    const PRESENCE_BACKOFF_MS = 15 * 60 * 1000;  // and never re-ask faster than this
+    const PRESENCE_SILENCE_MS = 5 * 60 * 1000;   // ask only if we haven't heard for this long
+    const PRESENCE_BACKOFF_MS = 5 * 60 * 1000;   // and never re-ask faster than this
     const PRESENCE_MAX_AGE_MS = 8 * 60 * 60 * 1000; // past this the 12h cron owns it
     const silenceCut = new Date(Date.now() - PRESENCE_SILENCE_MS).toISOString();
     const backoffCut = new Date(Date.now() - PRESENCE_BACKOFF_MS).toISOString();
