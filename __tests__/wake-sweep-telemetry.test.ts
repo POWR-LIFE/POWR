@@ -114,6 +114,9 @@ jest.mock('@/lib/supabase', () => ({
 }));
 
 import { sweepForMissedCheckInFromWake } from '@/context/GeofenceContext';
+import { confirmGymVisit } from '@/lib/gymVisits';
+
+const mockConfirmGymVisit = confirmGymVisit as jest.Mock;
 
 const mockLocation = Location as jest.Mocked<typeof Location>;
 
@@ -318,5 +321,102 @@ describe('approach-pending escalation', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0].outcome).toBe('no_fix');
     expect(rows[0].approach_age_s as number).toBeGreaterThanOrEqual(119);
+  });
+});
+
+/**
+ * PROOF BEFORE THE UPGRADE (field 2026-08-14).
+ *
+ * The sweep's proof stamp used to live inside `elapsed >= getGymUpgradeMinutes()`,
+ * sharing a gate with the exit close. So for a visit's first 40 minutes the sweep
+ * could hold a trusted fix squarely inside the fence and bank nothing — and 40
+ * minutes is *after* the 30-minute claim and twice the 20-minute unprovable-reaper
+ * window. An Android visit answering every wake, whose dwell stream only ever
+ * reported the 100 m fused sentinel, was closed at zero length with last_proven_at
+ * NULL because the only honest witness had been told to stay silent until too late.
+ *
+ * The two risks are now separated, and both directions matter:
+ *  · pre-upgrade the sweep PROVES and must never CLOSE (an early close forfeits
+ *    the claim and the bonus — the failure the original gate existed to prevent);
+ *  · past the upgrade the close behaves exactly as it always did.
+ *
+ * ⚠ ORDER-SENSITIVE: the proven-stamp throttle is module state (4 min), so the
+ * stamping assertion must be the first test here to spend it. The others assert
+ * absence of a close, which the throttle cannot affect.
+ */
+describe('the sweep proves presence before the upgrade, and still refuses to close', () => {
+  const insideActive = (agoMin: number) => JSON.stringify({
+    partnerId: 'partner-1',
+    partnerName: 'The Gym',
+    regionId: 'partner-1-0',
+    visitId: 'visit-1',
+    entryTimestamp: Date.now() - agoMin * 60_000,
+    latitude: GYM.lat,
+    longitude: GYM.lng,
+    radius: GYM.radius,
+  });
+
+  it('banks a trusted in-fence fix ten minutes in — the stamp the old gate withheld', async () => {
+    await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, insideActive(10));
+    mockLocation.getLastKnownPositionAsync.mockResolvedValue(
+      fixAt({ latitude: GYM.lat, longitude: GYM.lng }, 20, 0) as never,
+    );
+
+    await sweepForMissedCheckInFromWake();
+
+    expect(mockConfirmGymVisit).toHaveBeenCalledWith('visit-1', true, expect.objectContaining({
+      stage: 'sweep',
+      fix_trusted: true,
+    }));
+    // Named for what it is: this pass was never deciding a close.
+    const pass = sweepRows().find(r => r.outcome === 'presence_pass');
+    expect(pass).toMatchObject({ trusted: true, distance_m: 0 });
+    expect(sweepRows().some(r => r.outcome === 'exit_backstop')).toBe(false);
+  });
+
+  it('does NOT close pre-upgrade even when the fix is decisively outside', async () => {
+    await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, insideActive(10));
+    mockLocation.getLastKnownPositionAsync.mockResolvedValue(fixAt(OUTSIDE, 12, 0) as never);
+
+    await sweepForMissedCheckInFromWake();
+
+    // 620 m out on a 12 m fix would close instantly past the upgrade. Before it,
+    // closing would cost the user the claim AND the bonus, so the answer is no.
+    expect(sweepRows().some(r => r.outcome === 'exit_backstop')).toBe(false);
+    expect(await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY)).not.toBeNull();
+  });
+
+  it('leaves the exit streak untouched pre-upgrade, so nothing fires the moment 40 min ticks over', async () => {
+    await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, insideActive(10));
+    mockLocation.getLastKnownPositionAsync.mockResolvedValue(fixAt(OUTSIDE, 12, 0) as never);
+
+    await sweepForMissedCheckInFromWake();
+
+    // A streak banked during the earning window would let the close arrive by a
+    // side door the instant the visit crossed the threshold.
+    expect(await AsyncStorage.getItem('@powr/exit_streak')).toBeNull();
+  });
+
+  it('still closes past the upgrade on the same fix — the old behaviour is intact', async () => {
+    await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, insideActive(45));
+    mockLocation.getLastKnownPositionAsync.mockResolvedValue(fixAt(OUTSIDE, 12, 0) as never);
+
+    await sweepForMissedCheckInFromWake();
+
+    const closed = sweepRows().find(r => r.outcome === 'exit_backstop');
+    expect(closed).toMatchObject({ trusted: true });
+    expect(await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY)).toBeNull();
+  });
+
+  it('names a past-upgrade pass exit_check, not presence_pass', async () => {
+    await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, insideActive(45));
+    mockLocation.getLastKnownPositionAsync.mockResolvedValue(
+      fixAt({ latitude: GYM.lat, longitude: GYM.lng }, 20, 0) as never,
+    );
+
+    await sweepForMissedCheckInFromWake();
+
+    expect(sweepRows().some(r => r.outcome === 'exit_check')).toBe(true);
+    expect(sweepRows().some(r => r.outcome === 'presence_pass')).toBe(false);
   });
 });

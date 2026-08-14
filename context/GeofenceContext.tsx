@@ -1318,8 +1318,27 @@ async function sweepForMissedCheckIn(): Promise<void> {
       try {
         const a = JSON.parse(active) as StoredGeofence;
         const elapsed = typeof a.entryTimestamp === 'number' ? Date.now() - a.entryTimestamp : 0;
-        if (elapsed >= getGymUpgradeMinutes() * 60_000
-            && a.latitude != null && a.longitude != null && a.radius != null) {
+        // ⚠ PROOF AND CLOSURE ARE DIFFERENT RISKS AND NO LONGER SHARE A GATE.
+        // Everything below used to sit behind `elapsed >= upgradeMinutes`, which
+        // made the sweep's proof stamp — the only repeating sweep-side carrier of
+        // presence — unreachable for a visit's first 40 minutes. That is precisely
+        // the window the 30-minute claim and the 20-minute unprovable-reaper both
+        // live in, so the one branch able to prove a visit was structurally absent
+        // from the only stretch where proof decides anything.
+        //
+        // Field 2026-08-14: an Android visit sat inside the fence answering every
+        // wake, with a trusted 20 m fix in the sweep's own hand at +0 min, and was
+        // closed at ZERO LENGTH with last_proven_at still NULL — twice — because
+        // the code that would have banked that fix was forty minutes away. The
+        // handset's dwell stream only ever reported the 100 m fused sentinel, which
+        // evaluateLocationFix rightly refuses, so the sweep was the only honest
+        // witness available and it had been told not to speak until too late.
+        //
+        // Closing early forfeits the claim AND the bonus (55 of 100 visits died
+        // that way once), so CLOSING stays gated exactly as before. Proving costs
+        // nothing and is now allowed from check-in onward.
+        const pastUpgrade = elapsed >= getGymUpgradeMinutes() * 60_000;
+        if (a.latitude != null && a.longitude != null && a.radius != null) {
           // ⚠ WAS `maxAge: 10 * 60_000`, and that made the backstop argue about
           // where the user was TEN MINUTES AGO. Field 2026-08-10: the user left at
           // 12:41, this branch ran at 12:44:02 and 12:47:11 against cached fixes
@@ -1436,19 +1455,26 @@ async function sweepForMissedCheckIn(): Promise<void> {
             const bound = exitBoundM(a.radius, LOCATION_EXIT_HYSTERESIS_M, acc);
             const trusted = acc == null || acc <= MAX_FIX_ACCURACY_M;
 
+            // ⚠ EXIT STATE IS ONLY TOUCHED PAST THE UPGRADE. Pre-upgrade this pass
+            // exists to PROVE, not to judge departure: accumulating a streak here
+            // would let readings banked during the earning window fire a close the
+            // instant the upgrade threshold ticked over, which is the early-close
+            // failure this gate was built to prevent, arriving by a side door.
             let readings = 0;
-            if (dist > bound) {
-              readings = Number((await AsyncStorage.getItem(EXIT_STREAK_KEY).catch(() => null)) ?? 0) + 1;
-              await AsyncStorage.setItem(EXIT_STREAK_KEY, String(readings)).catch(() => {});
-            } else {
-              // One reading back inside breaks the run — a departure has to be
-              // uninterrupted, or a user pacing near the boundary would accumulate
-              // an exit across an entire session.
-              await AsyncStorage.removeItem(EXIT_STREAK_KEY).catch(() => {});
+            if (pastUpgrade) {
+              if (dist > bound) {
+                readings = Number((await AsyncStorage.getItem(EXIT_STREAK_KEY).catch(() => null)) ?? 0) + 1;
+                await AsyncStorage.setItem(EXIT_STREAK_KEY, String(readings)).catch(() => {});
+              } else {
+                // One reading back inside breaks the run — a departure has to be
+                // uninterrupted, or a user pacing near the boundary would accumulate
+                // an exit across an entire session.
+                await AsyncStorage.removeItem(EXIT_STREAK_KEY).catch(() => {});
+              }
             }
 
             // A trusted fix is decisive by itself; a coarse one must be corroborated.
-            if (dist > bound && (trusted || readings >= EXIT_READINGS_REQUIRED)) {
+            if (pastUpgrade && dist > bound && (trusted || readings >= EXIT_READINGS_REQUIRED)) {
               logRegionEvent(a.regionId ?? 'sweep', 'sweep', {
                 outcome: 'exit_backstop',
                 distance_m: Math.round(dist),
@@ -1477,8 +1503,14 @@ async function sweepForMissedCheckIn(): Promise<void> {
               //
               // The sweep is already ~3 min apart and this only runs past the
               // upgrade, so an unthrottled row costs nothing.
+              // Two different questions wear two different names, so the field
+              // trail says which one was being asked: past the upgrade this pass
+              // is deciding whether to CLOSE ('exit_check'); before it, the close
+              // is not on the table and the pass exists purely to bank presence
+              // ('presence_pass'). Reading a run is hard enough without one label
+              // covering both.
               logRegionEvent(a.regionId ?? 'sweep', 'sweep', {
-                outcome:     'exit_check',
+                outcome:     pastUpgrade ? 'exit_check' : 'presence_pass',
                 distance_m:  Math.round(dist),
                 bound_m:     Math.round(bound),
                 acc_m:       acc != null ? Math.round(acc) : null,
