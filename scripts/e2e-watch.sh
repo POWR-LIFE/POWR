@@ -31,8 +31,12 @@ VENUE="${WATCH_VENUE:-7d865c3b}"   # POWR partner id prefix (radius 40m)
 # (01a00ec6/01a00ec7), so the first heartbeat will legitimately read STALE-OTA
 # until each app is opened once and takes the update. That is the pre-test signal
 # to wait for, not a fault — do not arm the fences before it flips to `fixed`.
-AND_OTA="${WATCH_AND_OTA:-01a00f51-d1a3-705f-9e69-e2fcbbc7c162}"   # preview / android
-IOS_OTA="${WATCH_IOS_OTA:-01a00f53-32f7-724f-ab5f-e2ec56846c6e}"   # production / ios
+# Superseded ~11:1xZ by the 1f92240 bundles: the approach stream is now filed as
+# ActivityType.Fitness (it ran as `Other`, the class iOS defers most freely, and it
+# went silent for 6-8 min in three runs), and runVisitCheck's confirm — the wake's
+# ONE round-trip — reports its verdict instead of discarding it.
+AND_OTA="${WATCH_AND_OTA:-01a00f72-8ded-772f-b5a4-8c2031d4b420}"   # preview / android
+IOS_OTA="${WATCH_IOS_OTA:-01a00f73-e86f-723d-b422-72d64410ab6d}"   # production / ios
 
 S=$(mktemp -d) || exit 1; trap 'rm -rf "$S"' EXIT
 get() { cat "$S/$1" 2>/dev/null; }
