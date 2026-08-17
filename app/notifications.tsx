@@ -2,7 +2,7 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import ReanimatedSwipeable, { type SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -255,13 +255,22 @@ export default function NotificationsScreen() {
     Haptics.selectionAsync();
     declineRequest(f.id);
   };
+  // The row leaves the list on the tap (the hook answers optimistically) and
+  // comes back with the reason if the server refuses — a row that silently
+  // stayed put read as a missed press.
   const acceptChallenge = (c: SharedChallenge) => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    void acceptInvite(c.id).then(refreshPendingActions);
+    void acceptInvite(c.id).then((res) => {
+      refreshPendingActions();
+      if (!res.ok) Alert.alert('Couldn’t join', res.error);
+    });
   };
   const declineChallenge = (c: SharedChallenge) => {
     Haptics.selectionAsync();
-    void declineInvite(c.id).then(refreshPendingActions);
+    void declineInvite(c.id).then((res) => {
+      refreshPendingActions();
+      if (!res.ok) Alert.alert('Couldn’t decline', res.error);
+    });
   };
 
   const hasNeedsYou = incoming.length > 0 || pendingInvites.length > 0;

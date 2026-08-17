@@ -21,12 +21,53 @@ import type {
   Friend,
   IconSpec,
   Participant,
+  ParticipantState,
   SharedChallenge,
 } from '@/lib/social/types';
 
 export interface NewChallengeInput {
   templateId: string;
   friendIds: string[];
+}
+
+/** Outcome of an invite response, so a rejection can be shown rather than logged. */
+export interface RespondResult {
+  ok: boolean;
+  /** Server-supplied reason when `ok` is false — safe to show verbatim. */
+  error?: string;
+}
+
+type RespondAction = 'accept' | 'decline' | 'leave' | 'dismiss' | 'cancel';
+
+/** How our own participant row reads the moment we act, before the server agrees. */
+const OPTIMISTIC_SELF_STATE: Partial<Record<RespondAction, ParticipantState>> = {
+  accept: 'accepted',
+  decline: 'declined',
+  leave: 'left',
+};
+
+const RESPOND_FALLBACK_ERROR: Record<RespondAction, string> = {
+  accept: 'Couldn’t join this challenge. Check your connection and try again.',
+  decline: 'Couldn’t decline this invite. Check your connection and try again.',
+  leave: 'Couldn’t leave this challenge. Check your connection and try again.',
+  dismiss: 'Couldn’t clear this challenge. Check your connection and try again.',
+  cancel: 'Couldn’t cancel this challenge. Check your connection and try again.',
+};
+
+/**
+ * supabase-js surfaces a non-2xx edge-function reply as an error carrying the
+ * Response on `context`, so the server's own message (slots full, already
+ * finished) only exists if we read the body back out. Same shape join-challenge
+ * and lib/api/rewards use.
+ */
+async function edgeErrorMessage(fnErr: unknown, data: any, fallback: string): Promise<string> {
+  try {
+    const body = fnErr && typeof fnErr === 'object' && 'context' in (fnErr as any)
+      ? await (fnErr as any).context.json()
+      : data;
+    if (body?.error) return String(body.error);
+  } catch { /* body already consumed or not JSON — use the fallback */ }
+  return fallback;
 }
 
 const CATEGORY_LABEL: Record<string, string> = {
@@ -194,19 +235,24 @@ export interface UseSharedChallenges {
   selfId: string | null;
   getById: (id: string) => SharedChallenge | undefined;
   createChallenge: (input: NewChallengeInput) => Promise<void>;
-  acceptInvite: (challengeId: string) => Promise<void>;
-  declineInvite: (challengeId: string) => Promise<void>;
-  leaveChallenge: (challengeId: string) => Promise<void>;
+  /** Answers optimistically — the card flips on the tap, then reconciles with
+   *  the server. Resolves `{ ok: false, error }` if the server refused. */
+  acceptInvite: (challengeId: string) => Promise<RespondResult>;
+  declineInvite: (challengeId: string) => Promise<RespondResult>;
+  leaveChallenge: (challengeId: string) => Promise<RespondResult>;
+  /** Challenge ids with a response in flight — a second tap is ignored while
+   *  one is pending, and callers can show the button as busy. */
+  responding: Set<string>;
   /** Creator-only: end a live challenge for EVERYONE. `leaveChallenge` only
    *  ever moves your own row, so it is not the same thing — the detail screen's
    *  "Cancel challenge" button used to call it and quietly leave the rest of
    *  the group running. */
-  cancelChallenge: (challengeId: string) => Promise<void>;
+  cancelChallenge: (challengeId: string) => Promise<RespondResult>;
   /** Creator-only: pull more friends into a forming/active challenge. Returns
    *  the count actually (re)invited, or throws on a rejected request. */
   inviteToChallenge: (challengeId: string, userIds: string[]) => Promise<number>;
   /** Hide a settled challenge card from YOUR Home (per-user display flag). */
-  dismissChallenge: (challengeId: string) => Promise<void>;
+  dismissChallenge: (challengeId: string) => Promise<RespondResult>;
   /** Durable single-challenge fetch (no 3-day cutoff) — old notification links. */
   fetchById: (id: string) => Promise<SharedChallenge | null>;
   completeChallenge: (challengeId: string) => Promise<void>;
@@ -226,6 +272,11 @@ export function useSharedChallenges(): UseSharedChallenges {
   const [error, setError] = useState(false);
   const [newlyCompletedId, setNewlyCompletedId] = useState<string | null>(null);
   const checkedRef = useRef<Set<string>>(new Set());
+  // In-flight invite responses. The ref is the guard (two taps in one frame see
+  // it synchronously); the state mirror is what re-renders the button and
+  // re-runs the opportunistic-completion effect once the answer lands.
+  const respondingRef = useRef<Set<string>>(new Set());
+  const [responding, setResponding] = useState<Set<string>>(new Set());
 
   const utcOffsetMinutes = -new Date().getTimezoneOffset();
 
@@ -308,8 +359,11 @@ export function useSharedChallenges(): UseSharedChallenges {
   useEffect(() => {
     const candidates = all.filter((c) => {
       const self = c.participants.find((p) => p.isSelf);
+      // Skip anything mid-answer: joining a running challenge marks us accepted
+      // optimistically, and evaluating that before the server has our row would
+      // burn the once-per-mount check on a no-op. It re-runs when the flag clears.
       return c.status === 'active' && c.endsAt && self?.state === 'accepted'
-        && !self.completed && !checkedRef.current.has(c.id);
+        && !self.completed && !checkedRef.current.has(c.id) && !responding.has(c.id);
     });
     if (candidates.length === 0) return;
     let cancelled = false;
@@ -324,7 +378,7 @@ export function useSharedChallenges(): UseSharedChallenges {
       if (!cancelled) load();
     })();
     return () => { cancelled = true; };
-  }, [all, completeRaw, load]);
+  }, [all, completeRaw, load, responding]);
 
   const createChallenge = useCallback(async ({ templateId, friendIds }: NewChallengeInput) => {
     // No duration: the run length is the template's (server reads it there).
@@ -335,13 +389,74 @@ export function useSharedChallenges(): UseSharedChallenges {
     await load();
   }, [utcOffsetMinutes, load]);
 
-  const respond = useCallback(async (challengeId: string, action: 'accept' | 'decline' | 'leave' | 'dismiss' | 'cancel') => {
-    const { error } = await supabase.functions.invoke('respond-shared-challenge', {
-      body: { challenge_id: challengeId, action },
-    });
-    if (error) console.warn(`[useSharedChallenges] ${action} failed:`, error.message);
-    await load();
-  }, [load]);
+  /**
+   * Answer an invite. Optimistic and single-flight, because both halves of that
+   * were the "I had to press Accept twice" reports:
+   *   - nothing on screen moved until the edge function AND the refetch had both
+   *     landed (a second or more on mobile data), so the first press read as a
+   *     missed tap and people pressed again;
+   *   - a rejection (slots full, challenge already finished) only ever reached a
+   *     console.warn, leaving the Accept button sitting there as if untouched.
+   * Patching our own participant row up front makes the card answer the tap
+   * immediately; load() then reconciles against server truth, and a refusal
+   * reverts the patch and comes back as a message the caller can show.
+   */
+  const respond = useCallback(async (
+    challengeId: string,
+    action: RespondAction,
+  ): Promise<RespondResult> => {
+    // Already answering this one — the second tap is the same intent, not a
+    // second one. Report success so a caller that navigates on `ok` still does.
+    if (respondingRef.current.has(challengeId)) return { ok: true };
+    respondingRef.current.add(challengeId);
+    setResponding(new Set(respondingRef.current));
+
+    // What to put back if the server refuses. load() normally overwrites the
+    // patch with truth, but it deliberately keeps the last good list when the
+    // refetch itself fails — without this the optimistic row would survive that.
+    const before = all.find((c) => c.id === challengeId);
+    const priorSelfState = before?.participants.find((p) => p.isSelf)?.state;
+    const priorDismissedAt = before?.dismissedAt ?? null;
+
+    const patchSelf = (state: ParticipantState | undefined, dismissedAt: string | null) => {
+      setAll((prev) => prev.map((c) => {
+        if (c.id !== challengeId) return c;
+        return {
+          ...c,
+          dismissedAt,
+          participants: state
+            ? c.participants.map((p) => (p.isSelf ? { ...p, state } : p))
+            : c.participants,
+        };
+      }));
+    };
+
+    const optimisticState = OPTIMISTIC_SELF_STATE[action];
+    if (optimisticState || action === 'dismiss') {
+      patchSelf(
+        optimisticState,
+        action === 'dismiss' ? new Date().toISOString() : priorDismissedAt,
+      );
+    }
+
+    try {
+      const { data, error } = await supabase.functions.invoke('respond-shared-challenge', {
+        body: { challenge_id: challengeId, action },
+      });
+      if (error || data?.ok === false) {
+        const message = await edgeErrorMessage(error, data, RESPOND_FALLBACK_ERROR[action]);
+        console.warn(`[useSharedChallenges] ${action} failed:`, message);
+        patchSelf(priorSelfState, priorDismissedAt);
+        await load(); // server truth, where it's reachable
+        return { ok: false, error: message };
+      }
+      await load();
+      return { ok: true };
+    } finally {
+      respondingRef.current.delete(challengeId);
+      setResponding(new Set(respondingRef.current));
+    }
+  }, [all, load]);
 
   const acceptInvite = useCallback((id: string) => respond(id, 'accept'), [respond]);
   const declineInvite = useCallback((id: string) => respond(id, 'decline'), [respond]);
@@ -388,7 +503,7 @@ export function useSharedChallenges(): UseSharedChallenges {
     friends, search, sendRequest, templates, bonusConfig,
     selfId: user?.id ?? null,
     getById, createChallenge, acceptInvite, declineInvite, leaveChallenge, cancelChallenge, inviteToChallenge,
-    dismissChallenge, fetchById, completeChallenge,
+    dismissChallenge, fetchById, completeChallenge, responding,
     newlyCompletedId, clearCelebration, refresh: load,
   };
 }
