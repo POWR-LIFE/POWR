@@ -35,7 +35,7 @@ const BORDER = '#222222';
 export default function NotificationPrimeSheet() {
     const insets = useSafeAreaInsets();
     const { user } = useAuth();
-    const { requestPermissions } = useNotifications();
+    const { requestPermissions, pushRecoveryPrimePending } = useNotifications();
     const { activeGeofence } = useActiveGeofence();
 
     const [mode, setMode] = useState<'hidden' | 'ask' | 'denied'>('hidden');
@@ -55,18 +55,30 @@ export default function NotificationPrimeSheet() {
             const perm = await Notifications.getPermissionsAsync();
             if (perm.status === 'granted') return;
 
-            const state = await getNotificationPromptState();
-            if (!shouldShowNotificationPrompt(state, Date.now())) return;
+            // ⚠ A LOST REGISTRATION OVERRIDES THE PACING (2026-08-17). Normally this
+            // sheet waits for a value moment and respects dismissal pacing, which is
+            // right for a first ask. It is wrong for a user who ALREADY had push and
+            // silently lost it — a reinstall resets notification permission, the
+            // automatic registerForPush bails without prompting, and every push to
+            // them dies until they happen to land here. Pacing would keep that user
+            // dark indefinitely after three dismissals. registerForPush raises this
+            // flag at most once per install (see PUSH_RECOVERY_PRIMED_KEY), so it
+            // cannot nag, and it is only ever set when a token row proves they had
+            // push before. 38 of 70 users currently have no token at all.
+            if (!pushRecoveryPrimePending) {
+                const state = await getNotificationPromptState();
+                if (!shouldShowNotificationPrompt(state, Date.now())) return;
 
-            // The value moment: only ask users who have something to lose.
-            if (!(await hasAnyCompletedSession(user.id))) return;
+                // The value moment: only ask users who have something to lose.
+                if (!(await hasAnyCompletedSession(user.id))) return;
+            }
 
             recordPromptShown().catch(() => {});
             setMode(perm.status === 'undetermined' || perm.canAskAgain ? 'ask' : 'denied');
         } finally {
             evaluating.current = false;
         }
-    }, [user?.id, activeGeofence]);
+    }, [user?.id, activeGeofence, pushRecoveryPrimePending]);
 
     useEffect(() => {
         evaluate();

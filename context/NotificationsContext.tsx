@@ -18,6 +18,7 @@ import { useAuth } from '@/context/AuthContext';
 // mounted, logged-in app — so a background/headless bundle load had no handler and
 // FCM dropped every silent wake (Sony/Android 12 field capture, 2026-07-13).
 import { registerBackgroundNotificationTask } from '@/lib/backgroundNotificationTask';
+import { reportHandled } from '@/lib/crashHandler';
 import { isExpoGoClient } from '@/lib/device';
 import { emitPointsChanged } from '@/lib/pointsEvents';
 import {
@@ -36,6 +37,7 @@ import {
   type NotificationType,
 } from '@/lib/notifications';
 import { isDisplayPush, presentDisplayPush } from '@/lib/displayPush';
+import { supabase } from '@/lib/supabase';
 import {
   upsertPushToken,
   removePushToken,
@@ -53,6 +55,30 @@ import {
 // Context shape
 // ---------------------------------------------------------------------------
 
+/**
+ * Why a push-registration attempt ended.
+ *
+ * It used to answer `boolean`, which flattened "nothing to do, this device is
+ * already registered" into the same value as "every push to this device now
+ * dies, including the silent wakes the gym beacon rides on". One value per path
+ * so a caller — and the log line beside it — can tell those apart.
+ */
+export type PushRegistrationOutcome =
+  /** Token fetched and stored (or already stored, byte for byte). */
+  | 'registered'
+  /** OS permission is absent and this call was not allowed to ask for it. */
+  | 'not_granted'
+  /** Permission is fine (granted, or iOS provisional) but no token came back. */
+  | 'no_token'
+  /** Expo Go: its token is deliberately removed rather than registered. */
+  | 'skipped_expo_go'
+  /** A concurrent registration owns the fetch; this call did nothing. */
+  | 'in_progress'
+  /** Build configuration: getExpoPushTokenAsync found no EAS projectId. */
+  | 'no_project_id'
+  /** Threw. Recorded through reportHandled — no longer only a console line. */
+  | 'failed';
+
 interface NotificationsContextValue {
   /** Whether the user has granted notification permission */
   permissionGranted: boolean;
@@ -62,6 +88,15 @@ interface NotificationsContextValue {
   updatePreferences: (prefs: Partial<NotificationPreferences>) => Promise<void>;
   /** Manually re-request permissions (e.g. from Settings screen) */
   requestPermissions: () => Promise<boolean>;
+  /**
+   * This install HAD push and lost it: notification permission is off while a
+   * token row still exists server-side for this user (see registerForPush).
+   * True for the remainder of the session it was detected in, and raised at
+   * most ONCE per install — the signal for Home's NotificationPrimeSheet to
+   * open even when its own re-ask pacing would hold it back, because every
+   * push to this device is currently dying in silence.
+   */
+  pushRecoveryPrimePending: boolean;
   // Convenience scheduling wrappers that respect preferences
   scheduleStreakWarning: (currentStreak: number) => Promise<void>;
   scheduleWeeklyChallenge: (name: string, expiresAt: Date) => Promise<void>;
@@ -93,6 +128,53 @@ const NotificationsContext = createContext<NotificationsContextValue | null>(nul
 // recent tap even on a normal launch) isn't acted on more than once.
 const LAST_HANDLED_NOTIF_KEY = '@powr/last_handled_notification_id';
 
+// Stamped the one time an install is caught having LOST push (permission off,
+// token row still on the server). Never cleared: that is what caps the recovery
+// ask at once per install so it can't become a nag. An uninstall wipes
+// AsyncStorage — and an uninstall is exactly the event that earns a fresh ask.
+const PUSH_RECOVERY_PRIMED_KEY = '@powr/push_recovery_primed';
+
+/**
+ * "Permission is off, BUT the server still holds a push-token row for this
+ * user" = this install had push and lost it.
+ *
+ * The reinstall path is the known cause: uninstalling resets notification
+ * permission, so the automatic (promptIfNeeded:false) registration bails before
+ * the upsert while the row survives holding a rotated-away APNs/FCM token.
+ * Field-caught pre-test 2026-08-13 on iOS — the row stayed frozen on the dead
+ * token until notifications were re-enabled by hand, and it would have killed
+ * every background wake that morning. It is also the likeliest explanation for
+ * the 38-of-70 profiles with no usable token (push_daily_stats backfill, same
+ * day: 435 sends skipped `no_tokens` across 10 types, nothing surfaced).
+ *
+ * Bounded: a head count of the caller's own rows (RLS), skipped entirely once
+ * the key above exists, and fired at most once per app session by the ref in
+ * the provider — so a permanently-denied user costs nothing per foreground.
+ */
+async function detectLostPushRegistration(userId: string): Promise<boolean> {
+  try {
+    if (await AsyncStorage.getItem(PUSH_RECOVERY_PRIMED_KEY)) return false;
+
+    const { count, error } = await supabase
+      .from('user_push_tokens')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId);
+    if (error || !count) return false; // no row = never had push; not a regression
+
+    // Stamp BEFORE the sheet is surfaced, not after it is answered: whatever
+    // the user does with it, this install has now had its one ask.
+    await AsyncStorage.setItem(PUSH_RECOVERY_PRIMED_KEY, new Date().toISOString());
+    console.warn(
+      '[Notifications] Push permission lost while a token row still exists — every push to this device is dropping. Priming recovery once for this install.',
+    );
+    return true;
+  } catch {
+    // Storage or network unavailable — no stamp written, so the next launch
+    // gets to look again. Silence here only delays the ask, it can't nag.
+    return false;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Provider
 // ---------------------------------------------------------------------------
@@ -110,6 +192,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     total: 0,
   });
   const [unreadActivity, setUnreadActivity] = useState(0);
+  const [pushRecoveryPrimePending, setPushRecoveryPrimePending] = useState(false);
 
   const notificationListener = useRef<Notifications.EventSubscription | null>(null);
   const responseListener = useRef<Notifications.EventSubscription | null>(null);
@@ -117,6 +200,10 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   const coldStartHandled = useRef(false);
   const handledResponseIds = useRef<Set<string>>(new Set());
   const registeringPush = useRef(false);
+  // The lost-registration check costs one head count, and the foreground
+  // re-check calls registerForPush on every single foreground while there is no
+  // token — which is precisely the state being diagnosed. Once per session.
+  const lostRegistrationChecked = useRef(false);
   const lastRegistration = useRef<{
     userId: string;
     expoPushToken: string;
@@ -170,12 +257,15 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   // -------------------------------------------------------------------------
 
   const registerForPush = useCallback(
-    async (userId: string, opts?: { promptIfNeeded?: boolean }): Promise<boolean> => {
+    async (
+      userId: string,
+      opts?: { promptIfNeeded?: boolean },
+    ): Promise<PushRegistrationOutcome> => {
       // Fetching the token below fires addPushTokenListener on Android (it emits
       // on every fetch, not just rotations), whose handler calls back into this
       // function — without the guard that's an infinite upsert loop hammering
       // the API several times a second.
-      if (registeringPush.current) return false;
+      if (registeringPush.current) return 'in_progress';
       registeringPush.current = true;
       try {
         // Automatic callers (sign-in effect, token-rotation listener, foreground
@@ -190,7 +280,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
           if (registration) await removePushToken(userId, registration.expoPushToken);
           setExpoPushToken(null);
           setPermissionGranted(false);
-          return false;
+          return 'skipped_expo_go';
         }
 
         const registration = await requestPermissionsAndGetToken({
@@ -198,7 +288,52 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
         });
         if (!registration) {
           setPermissionGranted(false);
-          return false;
+
+          // THE SILENT BAIL. Returning here is correct — iOS grants exactly one
+          // shot at the dialog and an automatic call must never spend it — but
+          // it said nothing, and that silence is a product bug: an uninstall
+          // resets notification permission, so a returning user lands here
+          // every launch while their surviving token row holds a rotated-away
+          // value, and EVERY push (session_completed, streak, the beacon's
+          // silent wake) dies unremarked. See detectLostPushRegistration.
+          //
+          // Two very different shapes arrive here, so name which one it was
+          // instead of reporting one undifferentiated failure. The predicate is
+          // `granted || iOS provisional` — the same one lib/notifications.ts
+          // uses before every local notification (notifyCheckInAvailable,
+          // notifyNearbyOffer, notifyStepGoal) — because on iOS provisional
+          // authorization getPermissionsAsync reports status 'undetermined'
+          // with granted false, and a bare !granted would file every quietly-
+          // subscribed iOS install as a permission regression and ask them to
+          // re-enable notifications they already have.
+          const permissions = await Notifications.getPermissionsAsync().catch(() => null);
+          const allowed = permissions?.granted
+            || permissions?.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL;
+          if (allowed) {
+            // Permission is not the problem (provisional install, simulator, or
+            // a token fetch that came back empty) — nothing to prime and
+            // nothing to heal, but it is still a device that cannot be reached.
+            // permissionGranted stays false: it gates the local-scheduling
+            // helpers below, and whether a provisional install should schedule
+            // locals is a separate decision from making this bail visible.
+            console.warn(
+              '[Notifications] Notifications are permitted but no push token was returned — this device cannot receive pushes.',
+            );
+            return 'no_token';
+          }
+
+          // Web has no push install to lose (same reason the cold-start effect
+          // below opts out) — don't spend a query proving it.
+          if (Platform.OS !== 'web' && !lostRegistrationChecked.current) {
+            lostRegistrationChecked.current = true;
+            // Deliberately not awaited: the re-entrancy guard above is held
+            // until this function returns, and a token rotation arriving during
+            // an extra round trip would be dropped as 'in_progress'.
+            void detectLostPushRegistration(userId).then((lost) => {
+              if (lost) setPushRecoveryPrimePending(true);
+            });
+          }
+          return 'not_granted';
         }
 
         setPermissionGranted(true);
@@ -211,7 +346,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
           prev.expoPushToken === registration.expoPushToken &&
           prev.deviceToken === registration.deviceToken
         ) {
-          return true; // already registered exactly this — skip the redundant writes
+          return 'registered'; // already registered exactly this — skip the redundant writes
         }
 
         await upsertPushToken(
@@ -225,10 +360,23 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
           expoPushToken: registration.expoPushToken,
           deviceToken: registration.deviceToken,
         };
-        return true;
+        return 'registered';
       } catch (err) {
+        // A throw here leaves the user with no deliverable token and used to
+        // leave nothing behind but a console line no device ever ships — the
+        // same invisibility that let 38 of 70 profiles reach 2026-08-13 with no
+        // token at all. reportHandled spools to app_errors and never awaits, so
+        // it is safe on the paths that reach this from a wake.
         console.warn('[Notifications] Failed to register push token:', err);
-        return false;
+        reportHandled(err, {
+          where: 'registerForPush',
+          promptIfNeeded: opts?.promptIfNeeded ?? false,
+        });
+        // A missing EAS projectId is a build fault, not a flake: it throws for
+        // every user on that build, forever, and reads exactly like a dropped
+        // request unless it is named apart from one.
+        const message = err instanceof Error ? err.message : String(err);
+        return /projectid/i.test(message) ? 'no_project_id' : 'failed';
       } finally {
         registeringPush.current = false;
       }
@@ -460,7 +608,15 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     if (!user?.id) return false;
     // Deliberate user action (onboarding screen / settings) — always allowed to
     // show the OS dialog. Returns the fresh result, not the pre-request state.
-    return registerForPush(user.id, { promptIfNeeded: true });
+    // Callers (NotificationPrimeSheet, onboarding) only ever branch on "did the
+    // user end up reachable", so the outcome collapses to that here; anything
+    // that needs the reason has registerForPush's own return value.
+    const outcome = await registerForPush(user.id, { promptIfNeeded: true });
+    if (outcome === 'registered') {
+      // The recovery ask is answered — stop pointing the sheet at it.
+      setPushRecoveryPrimePending(false);
+    }
+    return outcome === 'registered';
   }, [user?.id, registerForPush]);
 
   const updatePreferences = useCallback(
@@ -529,6 +685,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     preferences,
     updatePreferences,
     requestPermissions,
+    pushRecoveryPrimePending,
     scheduleStreakWarning,
     scheduleWeeklyChallenge,
     sendRewardUnlocked,

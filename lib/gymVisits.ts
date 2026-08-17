@@ -227,7 +227,8 @@ export async function logGeofenceRegionEvent(
     | 'sweep' | 'visit_stamp_relaxed' | 'visit_stamp_skipped' | 'coarse_rejected' | 'enter_scan'
     | 'location_revoked' | 'active_patch_refused' | 'exit_refuted' | 'wake_received'
     | 'rebind_failed' | 'visit_stream_ensured' | 'exit_noise_suppressed'
-    | 'visit_close_deferred',
+    | 'visit_close_deferred' | 'visit_open_attempt' | 'visit_open_result'
+    | 'wake_step_hung' | 'stream_first_tick' | 'check_in_announced',
   detail: Record<string, unknown> = {},
 ): Promise<void> {
   const args = {
@@ -451,8 +452,30 @@ export async function closeGymVisit(visitId: string, endedAtMs?: number): Promis
       }
       return true;
     }
-    // res == null means "no ticket available", not "closed" — fall through to the
-    // authed path rather than reporting a close that never happened.
+    // res == null means "no usable background credential" — no device ticket AND no
+    // persisted token. It does NOT mean "closed", and it used to fall through to the
+    // authed path below.
+    //
+    // Field 2026-08-17, the walk-out: the OS region exit reached JS at 09:58:23 and
+    // finalizeActiveGeofence ran to completion and cleared local state, but that
+    // fallthrough took the close into supabase-js on a pocketed phone with a spent
+    // token — the exact freeze this file exists to route around, as the comment above
+    // already says. Nothing came back, the server visit stayed open, and a reaper
+    // closed it 11 minutes later at the wrong timestamp: 16.6 minutes shaved off a
+    // 56.6-minute workout and a "Session complete" push that said "40 min".
+    //
+    // So REFUSE promptly instead. false is the honest answer — the caller queues the
+    // close to its durable outbox and owns the retry from a context where auth works,
+    // and a close that did not land must never report success.
+    //
+    // 'background' EXACTLY, not `!== 'active'`: iOS reports 'inactive' for an app that
+    // is foregrounded but mid-transition, where the auth machinery is perfectly fine,
+    // and jest leaves currentState undefined. Re-read after the await on purpose — if
+    // the app came forward while we were trying, the authed path is legitimate again.
+    if (AppState.currentState === 'background') {
+      console.warn('[GymVisit] closeGymVisit: backgrounded with no wake transport (no device ticket, no persisted token) — refusing supabase-js. Returning false so the caller queues the close.');
+      return false;
+    }
   }
 
   try {
