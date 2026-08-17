@@ -21,20 +21,34 @@ A="${WATCH_USER_A:-234d49f3-d189-44b1-a874-063e724e4380}"   # AND = powrcto (pre
 B="${WATCH_USER_B:-a2585666-5b7a-4622-8e43-6bd4fb8013f0}"   # iOS = jpowr (production channel, build 17)
 USERS="in.(${A},${B})"
 VENUE="${WATCH_VENUE:-7d865c3b}"   # POWR partner id prefix (radius 40m)
-# 2026-08-14 07:2xZ: the 432d6f1 bundles, published to BOTH branches before the
-# 09:00 run. They carry everything from 5c4ce42 onward — the <=100 accuracy
-# gates and the iOS visit lifeline (957c26d), arm-burst exit suppression
-# (0f71040) and the kick-watcher topic fix — none of which either device had
-# taken: both were still reporting the 5c4ce42 ids at 08:00 because nobody
-# reopened the apps after the 08-13 15:30 publish. STALE-OTA on the first
-# heartbeat therefore means the phone has not been restarted onto the bundle
-# yet, NOT that the publish missed.
-AND_OTA="${WATCH_AND_OTA:-019fff2b-d987-7e1c-a716-704943e7e82b}"   # preview / android
-IOS_OTA="${WATCH_IOS_OTA:-019fff2d-4109-778b-ada5-2afebc11b889}"   # production / ios
+# 2026-08-17 08:1xZ: the fd6072b bundles (one-press challenge accept, the
+# keychain-accessibility heal, split-workout + daily-cap fixes), published to
+# BOTH branches. Unlike 08-14 both devices had ALREADY taken them by 08:17 —
+# user_push_tokens re-stamped with these ids on app open. A STALE-OTA line for
+# either phone now means it dropped BACK to an older bundle (or lost its token
+# row), not that the publish is still landing.
+AND_OTA="${WATCH_AND_OTA:-01a00ec6-500e-79ad-9794-683ebac5e372}"   # preview / android
+IOS_OTA="${WATCH_IOS_OTA:-01a00ec7-b89d-70b7-80b2-87580c039bca}"   # production / ios
 
 S=$(mktemp -d) || exit 1; trap 'rm -rf "$S"' EXIT
 get() { cat "$S/$1" 2>/dev/null; }
 put() { printf '%s' "$2" > "$S/$1"; }
+
+# ⚠ CURSORS ARE INCLUSIVE (gte), DEDUPED PER ROW — never go back to `gt.`
+# Rows written by ONE statement carry an IDENTICAL created_at to the microsecond,
+# so an exclusive cursor parked on the first one drops its siblings FOREVER.
+# Field-caught 2026-08-17: every `sweep` row shipped with the `wake_received` it
+# answered (both at 08:30:10.298799) and the watcher showed only one of the pair —
+# it read as "the wake reached JS but the sweep bailed before logging", a wake-path
+# bug that did not exist. The same trap was primed on the points lines: an `earn`
+# row and its `streak` row are written together, so a 15+30 award would have been
+# reported as 15. Inclusive cursor + row hash = no drops, no repeats.
+hash() {
+  if command -v md5 >/dev/null 2>&1; then printf '%s' "$1" | md5
+  else printf '%s' "$1" | md5sum | cut -d' ' -f1; fi
+}
+# true (0) when this exact row was already printed
+seen() { local k; k=$(hash "$1"); [ -f "$S/seen_$k" ] && return 0; : > "$S/seen_$k"; return 1; }
 nm() { case "$1" in "$A") printf 'AND';; "$B") printf 'iOS';; *) printf '%s' "${1:0:8}";; esac; }
 q() { curl -sS --max-time 25 -H "apikey: ${KEY}" -H "Authorization: Bearer ${KEY}" "${URL}/rest/v1/$1?$2" 2>/dev/null; }
 ok_array() { [ "$(jq -r 'type' <<<"$1" 2>/dev/null)" = "array" ]; }
@@ -49,10 +63,12 @@ echo "watch armed (bash ${BASH_VERSINFO[0]}) — polling every 30s from ${TS}Z |
 
 while true; do
   # ---- geofence region events ----
-  rows=$(q geofence_region_events "user_id=${USERS}&created_at=gt.${TS_GEO}&order=created_at.asc&select=user_id,region_id,event,detail,created_at")
+  rows=$(q geofence_region_events "user_id=${USERS}&created_at=gte.${TS_GEO}&order=created_at.asc&select=user_id,region_id,event,detail,created_at")
   if ok_array "$rows"; then
     while IFS=$'\t' read -r uid ev rid det ts; do
-      [ -z "$ts" ] && continue; TS_GEO="${ts%%+*}"; who=$(nm "$uid")
+      [ -z "$ts" ] && continue; TS_GEO="${ts%%+*}"
+      seen "geo|${uid}|${ev}|${rid}|${det}|${ts}" && continue
+      who=$(nm "$uid")
       case "$ev" in
         sweep) out=$(jq -r '.outcome // "?"' <<<"$det"); prev=$(get "sweep_$uid")
                [ "$prev" != "$out" ] && { echo "[$who] SWEEP ${prev:-none} -> ${out}  $(jq -c . <<<"$det")"; put "sweep_$uid" "$out"; } ;;
@@ -65,6 +81,17 @@ while true; do
                  *) if [ -n "$(get "seen_enter_${uid}_${rid:0:8}")" ]; then
                       vn=$(pname "$rid"); echo "[$who] exit ${vn:-${rid:0:8}}"
                     else n=$(get "supx_$uid"); put "supx_$uid" $(( ${n:-0} + 1 )); fi ;; esac ;;
+        # Already an AGGREGATE row (one per burst, by design) — but 2026-08-17 the
+        # emitter re-flushed the SAME tally 17× in 3 s on the arrival arm, and 17
+        # notification lines mid-check-in is how this monitor gets rate-limited off
+        # exactly when the run matters. Tally them and print at most one line/2 min.
+        exit_noise_suppressed)
+               n=$(get "ensn_$uid"); n=$(( ${n:-0} + 1 )); put "ensn_$uid" "$n"
+               now=$(date +%s); last=$(get "enst_$uid"); last=${last:-0}
+               if [ $(( now - last )) -ge 120 ]; then
+                 echo "[$who] exit-noise rows ×${n}  $(jq -c . <<<"$det")"
+                 put "enst_$uid" "$now"; put "ensn_$uid" 0
+               fi ;;
         exit_check) now=$(date +%s); last=$(get "exch_$uid"); last=${last:-0}
                [ $(( now - last )) -ge 120 ] && { echo "[$who] exit_check  $(jq -c . <<<"$det")"; put "exch_$uid" "$now"; } ;;
         armed|rearm_skipped)
@@ -80,10 +107,12 @@ while true; do
   fi
 
   # ---- gym visit events ----
-  rows=$(q gym_visit_events "user_id=${USERS}&created_at=gt.${TS_GVE}&order=created_at.asc&select=user_id,event,detail,created_at")
+  rows=$(q gym_visit_events "user_id=${USERS}&created_at=gte.${TS_GVE}&order=created_at.asc&select=user_id,event,detail,created_at")
   if ok_array "$rows"; then
     while IFS=$'\t' read -r uid ev det ts; do
-      [ -z "$ts" ] && continue; TS_GVE="${ts%%+*}"; who=$(nm "$uid")
+      [ -z "$ts" ] && continue; TS_GVE="${ts%%+*}"
+      seen "gve|${uid}|${ev}|${det}|${ts}" && continue
+      who=$(nm "$uid")
       case "$ev" in
         stream_tick) ;;
         confirmed_inside) now=$(date +%s); last=$(get "conf_$uid"); last=${last:-0}
@@ -126,19 +155,22 @@ while true; do
   fi
 
   # ---- points ----
-  rows=$(q point_transactions "user_id=${USERS}&created_at=gt.${TS_PT}&order=created_at.asc&select=user_id,amount,type,description,created_at")
+  rows=$(q point_transactions "user_id=${USERS}&created_at=gte.${TS_PT}&order=created_at.asc&select=id,user_id,amount,type,description,created_at")
   if ok_array "$rows"; then
-    while IFS=$'\t' read -r uid amt typ desc ts; do
+    while IFS=$'\t' read -r rid uid amt typ desc ts; do
       [ -z "$ts" ] && continue; TS_PT="${ts%%+*}"
+      seen "pt|${rid}" && continue
       echo "[$(nm "$uid")] *** POINTS ${typ} +${amt} — ${desc} (${ts}Z) ***"
-    done < <(jq -r '.[] | [.user_id,.amount,.type,.description,.created_at] | @tsv' <<<"$rows" 2>/dev/null)
+    done < <(jq -r '.[] | [.id,.user_id,.amount,.type,.description,.created_at] | @tsv' <<<"$rows" 2>/dev/null)
   fi
 
   # ---- push sends: surface, flag duplicate sends, queue display-receipt tracking ----
-  rows=$(q push_send_log "user_id=${USERS}&created_at=gt.${TS_PS}&order=created_at.asc&select=id,user_id,type,status,skip_reason,error,title,transport,delivered_at,created_at")
+  rows=$(q push_send_log "user_id=${USERS}&created_at=gte.${TS_PS}&order=created_at.asc&select=id,user_id,type,status,skip_reason,error,title,transport,delivered_at,created_at")
   if ok_array "$rows"; then
     while IFS=$'\t' read -r pid uid typ st skip err ttl tr dlv ts; do
-      [ -z "$ts" ] && continue; TS_PS="${ts%%+*}"; who=$(nm "$uid")
+      [ -z "$ts" ] && continue; TS_PS="${ts%%+*}"
+      seen "ps|${pid}" && continue
+      who=$(nm "$uid")
       [ "$typ" = "fence_refresh" ] && continue   # wake-loop noise; sweeps already prove the device answered
       now=$(date +%s)
       extra=""; [ "$skip" != "null" ] && [ -n "$skip" ] && extra=" skip=${skip}"
