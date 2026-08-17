@@ -40,8 +40,8 @@ VENUE="${WATCH_VENUE:-7d865c3b}"   # POWR partner id prefix (radius 40m)
 # was measured hanging 15-63 MINUTES in background wakes and is what starved the
 # proof clock, caused 24 re-opens of one visit, and killed the exit close.
 # ⚠ Deployed beacon FIRST (an extra payload key is ignored by older clients), OTA second.
-AND_OTA="${WATCH_AND_OTA:-01a01031-5f68-726e-8fdc-f33ba5806fc3}"   # preview / android
-IOS_OTA="${WATCH_IOS_OTA:-01a01032-bd8e-79de-946f-309e0fd21af8}"   # production / ios
+AND_OTA="${WATCH_AND_OTA:-01a01052-1ba8-7bf9-b8fe-08b99aaf0663}"   # preview / android
+IOS_OTA="${WATCH_IOS_OTA:-01a01053-93f8-7bf7-be86-ac161309d327}"   # production / ios
 
 S=$(mktemp -d) || exit 1; trap 'rm -rf "$S"' EXIT
 get() { cat "$S/$1" 2>/dev/null; }
