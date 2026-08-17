@@ -35,8 +35,13 @@ VENUE="${WATCH_VENUE:-7d865c3b}"   # POWR partner id prefix (radius 40m)
 # ActivityType.Fitness (it ran as `Other`, the class iOS defers most freely, and it
 # went silent for 6-8 min in three runs), and runVisitCheck's confirm — the wake's
 # ONE round-trip — reports its verdict instead of discarding it.
-AND_OTA="${WATCH_AND_OTA:-01a00f72-8ded-772f-b5a4-8c2031d4b420}"   # preview / android
-IOS_OTA="${WATCH_IOS_OTA:-01a00f73-e86f-723d-b422-72d64410ab6d}"   # production / ios
+# Superseded ~14:5xZ by the ccce07f bundles: the fence-refresh wake now carries
+# `open_visit_id`, so the sweep's proof stamp no longer calls openGymVisit — which
+# was measured hanging 15-63 MINUTES in background wakes and is what starved the
+# proof clock, caused 24 re-opens of one visit, and killed the exit close.
+# ⚠ Deployed beacon FIRST (an extra payload key is ignored by older clients), OTA second.
+AND_OTA="${WATCH_AND_OTA:-01a01031-5f68-726e-8fdc-f33ba5806fc3}"   # preview / android
+IOS_OTA="${WATCH_IOS_OTA:-01a01032-bd8e-79de-946f-309e0fd21af8}"   # production / ios
 
 S=$(mktemp -d) || exit 1; trap 'rm -rf "$S"' EXIT
 get() { cat "$S/$1" 2>/dev/null; }
