@@ -114,9 +114,10 @@ jest.mock('@/lib/supabase', () => ({
 }));
 
 import { sweepForMissedCheckInFromWake } from '@/context/GeofenceContext';
-import { confirmGymVisit } from '@/lib/gymVisits';
+import { openGymVisit, confirmGymVisit } from '@/lib/gymVisits';
 
 const mockConfirmGymVisit = confirmGymVisit as jest.Mock;
+const mockOpenGymVisit = openGymVisit as jest.Mock;
 
 const mockLocation = Location as jest.Mocked<typeof Location>;
 
@@ -418,5 +419,55 @@ describe('the sweep proves presence before the upgrade, and still refuses to clo
 
     expect(sweepRows().some(r => r.outcome === 'exit_check')).toBe(true);
     expect(sweepRows().some(r => r.outcome === 'presence_pass')).toBe(false);
+  });
+  // ⚠ THE FIX FOR THE 2026-08-17 HANG. The stamp used to ASK for a missing visit id
+  // via openGymVisit, and that call hung 15-63 MINUTES in a background wake (24
+  // attempts, four call sites, all resolving only on foreground). Nothing after the
+  // await ran, so the id was never written back, every later sweep reported
+  // `visit: null`, and the exit close died behind its own recovery-open. A timeout
+  // cannot fix it — RN timers do not fire in a suspended process, so the bound
+  // freezes with the call. The server now sends the id on the wake instead.
+  it('heals a missing visit id from the wake payload WITHOUT calling openGymVisit', async () => {
+    await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({
+      partnerId: 'partner-1',
+      partnerName: 'The Gym',
+      regionId: 'partner-1-0',
+      entryTimestamp: Date.now() - 20 * 60_000,
+      latitude: GYM.lat,
+      longitude: GYM.lng,
+      radius: GYM.radius,
+      // visitId deliberately absent — the state every Android sweep was stuck in.
+    }));
+
+    await sweepForMissedCheckInFromWake('visit-from-wake');
+
+    // The whole point: no network round-trip was spent discovering the id.
+    expect(mockOpenGymVisit).not.toHaveBeenCalled();
+
+    // And it is persisted, so the next pass — and the exit close — already have it.
+    const stored = JSON.parse((await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY)) ?? 'null');
+    expect(stored.visitId).toBe('visit-from-wake');
+
+    // The sweep row stops reporting the blank that made this invisible.
+    expect(sweepRows().some(r => r.visit === 'visit-from-wake')).toBe(true);
+  });
+
+  it('leaves a stored visit id alone when the wake also carries one', async () => {
+    await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({
+      partnerId: 'partner-1',
+      partnerName: 'The Gym',
+      regionId: 'partner-1-0',
+      entryTimestamp: Date.now() - 20 * 60_000,
+      latitude: GYM.lat,
+      longitude: GYM.lng,
+      radius: GYM.radius,
+      visitId: 'visit-already-stored',
+    }));
+
+    await sweepForMissedCheckInFromWake('visit-from-wake');
+
+    expect(mockOpenGymVisit).not.toHaveBeenCalled();
+    const stored = JSON.parse((await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY)) ?? 'null');
+    expect(stored.visitId).toBe('visit-already-stored');
   });
 });

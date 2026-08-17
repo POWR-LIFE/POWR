@@ -22,6 +22,72 @@ export type CorrectedWindow = {
 };
 
 /**
+ * The immutable facts about a session that the reconciler must NOT derive from the
+ * row it rewrites. Both come from `gym_visits`, which this writer never touches.
+ *
+ * ⚠ WHY THIS EXISTS — field 2026-08-17, Android visit/session `ae15fa06`. The
+ * reconciler read its step window from the session row's OWN `started_at` and
+ * compared the backdate margin against that same value, so every pass moved the
+ * anchor it would read from next time: a self-feeding ratchet, one margin per pass,
+ * limited only by how long the approach walk was. The same run also collapsed a real
+ * 40.4-minute visit (13:19:45.988 → 14:00:11.377, 2425 s, 20 points already awarded)
+ * to 584 s, because Health Connect reported steps for the 4m44s walk in and nothing
+ * at all for 40 minutes of lifting — `steps > 0` reads a stationary lifter as absent.
+ * The row's fingerprint was `ended_at − started_at` = 584,201 ms against
+ * `duration_sec` = 584: only this writer sets all three columns independently.
+ *
+ * A step stream cannot see someone under a barbell. The geofence could, and said so
+ * — so proven presence outranks the absence of steps, always.
+ */
+export type SessionAnchor = {
+  /** `gym_visits.started_at` — the geofence check-in. Null when no visit row exists. */
+  visitStartMs: number | null;
+  /** `gym_visits.last_proven_at` — the proof clock. Null on pre-proof-clock rows. */
+  provenUntilMs: number | null;
+};
+
+/**
+ * The span of health data to read for a session.
+ *
+ * Exported and pure so the ratchet is testable: the bug was never in
+ * `computeCorrectedWindow` (which is idempotent given fixed samples) but in the
+ * caller re-deriving this window from its own last write. The lower bound is
+ * anchored on the visit, so it is the same span on every pass forever.
+ */
+export function stepReadWindow(
+  sessionStartMs: number,
+  sessionEndMs: number,
+  anchor: SessionAnchor | null,
+): { fromMs: number; toMs: number } {
+  const anchorStartMs = anchor?.visitStartMs ?? sessionStartMs;
+  // `min` keeps an already-damaged row (start dragged below the anchor by a
+  // pre-fix pass) fully inside the window, so a repair pass can still see it.
+  const fromMs = Math.min(sessionStartMs, anchorStartMs) - ENTRY_BACKDATE_MARGIN_MS;
+  const provenMs = anchor?.provenUntilMs;
+  const toMs =
+    (provenMs != null ? Math.max(sessionEndMs, provenMs) : sessionEndMs) + EXIT_COOLDOWN_BUFFER_MS;
+  return { fromMs, toMs };
+}
+
+/**
+ * How far back entry may be moved, in absolute terms.
+ *
+ * Distinct from the margin: the margin is relative to whatever `started_at` says
+ * right now, which is a value this writer edits. This floor is relative to the
+ * geofence check-in, which it does not. Without it, "no more than 5 minutes" means
+ * five minutes per pass rather than five minutes total.
+ */
+export function backdateFloorMs(detectedStartMs: number, anchor: SessionAnchor | null): number {
+  if (anchor?.visitStartMs == null) {
+    // No anchor means no trustworthy reference for "how late did detection fire",
+    // so decline to backdate at all. Miss rather than invent — same instinct as the
+    // beyond-the-margin refusal below.
+    return detectedStartMs;
+  }
+  return Math.max(detectedStartMs - ENTRY_BACKDATE_MARGIN_MS, anchor.visitStartMs - ENTRY_BACKDATE_MARGIN_MS);
+}
+
+/**
  * Backdate entry to first activity, but no more than this before detected entry.
  *
  * ⚠ WAS 30 MIN, AND THAT WAS A LIVE DATA-INTEGRITY BUG. Field 2026-08-09: a
@@ -147,11 +213,14 @@ export function fixCreditsPresence(opts: {
  *    so unrelated earlier activity can't drag the start back arbitrarily.
  *  - Exit is only pulled IN, and only when the recorded end clearly trails real
  *    activity (a missed/late EXIT) — normal end-of-session trailing gaps are kept.
+ *  - Neither boundary may cross the geofence's own evidence: `anchor` supplies an
+ *    absolute floor for the start and the proof clock as a floor for the end.
  */
 export function computeCorrectedWindow(
   detectedStartMs: number,
   detectedEndMs: number,
   samples: StepSample[],
+  anchor: SessionAnchor | null = null,
 ): CorrectedWindow {
   const unchanged = (): CorrectedWindow => ({
     startMs: detectedStartMs,
@@ -181,8 +250,12 @@ export function computeCorrectedWindow(
   // cannot tell where the user was, so we decline to guess and keep the
   // geofence's own boundary. Same instinct as the exit clamp — miss rather than
   // invent.
+  //
+  // The floor is a VETO, not a clamp — activity reaching below it buys nothing,
+  // rather than being rounded up to it. That distinction is the 08-09 bug.
   let startMs = detectedStartMs;
-  if (firstActiveMs < detectedStartMs && firstActiveMs >= detectedStartMs - ENTRY_BACKDATE_MARGIN_MS) {
+  const floorMs = backdateFloorMs(detectedStartMs, anchor);
+  if (firstActiveMs < detectedStartMs && firstActiveMs >= floorMs) {
     startMs = firstActiveMs;
   }
 
@@ -191,6 +264,17 @@ export function computeCorrectedWindow(
   let endMs = detectedEndMs;
   if (detectedEndMs - lastActiveMs > EXIT_SHRINK_MIN_GAP_MS) {
     endMs = lastActiveMs + EXIT_COOLDOWN_BUFFER_MS;
+  }
+
+  // ⚠ PROVEN PRESENCE IS A FLOOR — field 2026-08-17 (see SessionAnchor). No absence
+  // of steps may shrink the session below time the geofence actually witnessed. The
+  // floor is itself capped at the detected end because this function's authority is
+  // to narrow a window, never to widen one: growing an end to meet the proof clock
+  // is the beacon reaper's job, server-side, where the proof is authoritative.
+  const provenMs = anchor?.provenUntilMs;
+  if (provenMs != null) {
+    const provenFloorMs = Math.min(provenMs, detectedEndMs);
+    if (endMs < provenFloorMs) endMs = provenFloorMs;
   }
 
   // Guard rails: ordered, non-negative, within the 12 h backstop.

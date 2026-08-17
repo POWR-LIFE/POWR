@@ -1316,8 +1316,8 @@ async function pollForCheckIn(regionId: string): Promise<void> {
  *  It changes no rules: evaluateLocationFix remains the sole authority that
  *  starts a session, so the 25 m radius, the daily cap, the partner map and
  *  every downstream guard apply unchanged. No fix, no check-in. */
-export async function sweepForMissedCheckInFromWake(): Promise<void> {
-  await sweepForMissedCheckIn();
+export async function sweepForMissedCheckInFromWake(openVisitId?: string | null): Promise<void> {
+  await sweepForMissedCheckIn(openVisitId ?? null);
 }
 
 /** SWEEP TELEMETRY (2026-08-07) — pure observation, no behaviour change.
@@ -1346,7 +1346,28 @@ export async function sweepForMissedCheckInFromWake(): Promise<void> {
  *     gate: readPartnerMap swallows its own errors and returns null, and
  *     evaluateLocationFix does its own independent read — so gating on it here
  *     would trade a wasted scan for a lost check-in AND a lost arm re-target. */
-async function sweepForMissedCheckIn(): Promise<void> {
+/** `openVisitId` — the id of the caller's currently-open server visit, when the
+ *  wake that triggered this sweep carried one.
+ *
+ *  ⚠ WHY THIS PARAMETER EXISTS (field 2026-08-17). The proof stamp below needs a
+ *  visit id, and when the stored session lacks one it used to go and ASK, via
+ *  openGymVisit. That call HANGS in a background wake: measured this afternoon at
+ *  **896 s to 3,792 s** — 15 to 63 minutes — across 24 attempts from four call
+ *  sites, every one of which eventually resolved the instant the app was
+ *  foregrounded. Nothing after the await ran until then, so the stamp never
+ *  confirmed, the id was never written back (which is why every sweep reported
+ *  `visit: null` and why three more callers each started their own hung open), and
+ *  the exit close died the same way.
+ *
+ *  A timeout is NOT the fix and was tried today: `withNetworkTimeout` is
+ *  setTimeout-based, and RN dispatches timers off the UI frame clock, so the bound
+ *  freezes alongside the call it is bounding. The 30 s race simply never fired.
+ *
+ *  The server already knows the answer, so it can just say. The wake carries the
+ *  id and the stamp spends its one round-trip on the CONFIRM — which is precisely
+ *  the single-round-trip shape iOS demonstrated works, seven proof stamps in one
+ *  visit, while Android managed none. */
+async function sweepForMissedCheckIn(openVisitId: string | null = null): Promise<void> {
   try {
     const active = await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY);
     if (active) { // already checked in
@@ -1358,6 +1379,14 @@ async function sweepForMissedCheckIn(): Promise<void> {
       // no longer produce, so without this the sweep's exit backstop is silently a
       // no-op exactly when it is needed most.
       if (await finalizeSessionIfLocationRevoked()) return;
+
+      // Set when the wake's id heals a blank stored visit below. It has to live out
+      // here because the `session_active` row at the bottom is built from
+      // describeStoredSession(active) — the RAW STRING read before the heal — and
+      // would otherwise keep reporting `visit: null` for a session we had just
+      // repaired. A row that under-reports its own fix is how this bug stayed
+      // invisible for a day; caught by its own regression test.
+      let healedVisitId: string | null = null;
 
       // THE EXIT BACKSTOP (2026-08-08). This used to return unconditionally, which
       // meant the ~5-6 min fence_refresh cadence — the thing that rescues a missed
@@ -1380,6 +1409,22 @@ async function sweepForMissedCheckIn(): Promise<void> {
       let handled = false;
       try {
         const a = JSON.parse(active) as StoredGeofence;
+
+        // ── HEAL THE VISIT ID FIRST, ON EVERY WAKE ────────────────────────────
+        // Deliberately here and not inside the proof-stamp block below: that block
+        // only runs on a fix good enough to CREDIT, and the device that needs this
+        // most is the one that rarely has one (Android held no creditable fix for
+        // most of 2026-08-17). Healing on every wake means the id is in place for
+        // whoever needs it next — the stamp, the dwell machine, and above all the
+        // EXIT CLOSE, whose own recovery-open hung for 11 minutes that afternoon and
+        // left the visit for the reaper. One local write removes the need for a
+        // network call from three separate paths.
+        if (openVisitId && !a.visitId) {
+          await patchActiveGeofence(a, { visitId: openVisitId }, 'sweep_wake_visit_id');
+          a.visitId = openVisitId;
+          healedVisitId = openVisitId;
+        }
+
         const elapsed = typeof a.entryTimestamp === 'number' ? Date.now() - a.entryTimestamp : 0;
         // ⚠ PROOF AND CLOSURE ARE DIFFERENT RISKS AND NO LONGER SHARE A GATE.
         // Everything below used to sit behind `elapsed >= upgradeMinutes`, which
@@ -1672,18 +1717,14 @@ async function sweepForMissedCheckIn(): Promise<void> {
                 // and this branch was the only proof carrier. open_gym_visit
                 // re-uses the caller's open visit, so resolving here is a
                 // no-op server-side; the patch stamps it for every later pass.
-                let visitId = a.visitId ?? null;
-                if (!visitId && a.partnerId) {
-                  try {
-                    visitId = await openVisitTraced(
-                      'sweep_proven_stamp', a.partnerId, a.regionId, a.entryTimestamp, a.visitId ?? null,
-                    );
-                    if (visitId) {
-                      await patchActiveGeofence(a, { visitId }, 'sweep_proven_stamp');
-                      a.visitId = visitId;
-                    }
-                  } catch { visitId = null; }
-                }
+                // The wake's id first, then the stored one. NO NETWORK CALL HERE —
+                // see the openVisitId note on this function for why asking cost us
+                // the whole afternoon. If neither is available we log
+                // `proven_stamp_no_visit` below and wait for the next wake, which
+                // is strictly better than hanging for an hour to find out.
+                // Already healed at the top of this branch from the wake's own id —
+                // no network call here. See the openVisitId note on this function.
+                const visitId = a.visitId ?? openVisitId ?? null;
                 if (visitId) {
                   _lastSweepProvenStampAt = Date.now();
                   const { confirmGymVisit } = await import('@/lib/gymVisits');
@@ -1768,7 +1809,12 @@ async function sweepForMissedCheckIn(): Promise<void> {
       // Names the blocker: the reconcile is the only thing that can clear this and
       // it ran immediately before us, so `has_geom: false` here is also the reason
       // it declined (its discriminator needs geometry it does not have).
-      logRegionEvent('sweep', 'sweep', { outcome: 'session_active', ...describeStoredSession(active) });
+      logRegionEvent('sweep', 'sweep', {
+        outcome: 'session_active',
+        ...describeStoredSession(active),
+        // Report the healed id, not the blank the raw snapshot still holds.
+        ...(healedVisitId ? { visit: healedVisitId, visit_healed: true } : {}),
+      });
       // ⚠ DELIBERATELY NO recordBackgroundHealth. This branch is above the
       // permission read, and in the live 'observe' close mode a session whose
       // permission was revoked is left open on purpose — a device with no grant
