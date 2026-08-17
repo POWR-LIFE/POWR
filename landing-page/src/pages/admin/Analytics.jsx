@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../../lib/supabase';
+import { fetchAllRows } from '../../lib/fetchAll';
 import { useToast } from '../../lib/toast';
 import {
     TrendingUp, Users, Activity, BarChart3, Calendar, Zap,
@@ -47,18 +48,17 @@ export default function Analytics() {
     const fetchAnalytics = async () => {
         setLoading(true);
         try {
-            const [profilesRes, sessionsRes, pointsRes, redemptionsRes] = await Promise.all([
-                supabase.from('profiles').select('created_at, is_pro, active_health_provider'),
-                supabase.from('activity_sessions').select('type, duration_sec, distance_m, steps, hr_avg, trust_score, verification, flagged, started_at, user_id'),
-                supabase.from('point_transactions').select('amount, type, source, created_at'),
-                supabase.from('redemptions').select('powr_spent, status, partner_name, redeemed_at'),
+            // Every KPI below is summed over the whole table, so every read has to be
+            // complete. A plain .select() stops at the server's 1000-row cap without
+            // erroring, which silently computed these numbers from a partial, unstable
+            // slice of the data.
+            const [profiles, sessions, points, redemptions] = await Promise.all([
+                fetchAllRows(() => supabase.from('profiles').select('created_at, is_pro, active_health_provider')),
+                fetchAllRows(() => supabase.from('activity_sessions').select('type, duration_sec, distance_m, steps, hr_avg, trust_score, verification, flagged, started_at, user_id')),
+                fetchAllRows(() => supabase.from('point_transactions').select('amount, type, source, created_at')),
+                fetchAllRows(() => supabase.from('redemptions').select('powr_spent, status, partner_name, redeemed_at')),
             ]);
-            setRaw({
-                profiles: profilesRes.data || [],
-                sessions: sessionsRes.data || [],
-                points: pointsRes.data || [],
-                redemptions: redemptionsRes.data || [],
-            });
+            setRaw({ profiles, sessions, points, redemptions });
         } catch (e) {
             toast.error('Analytics sync failed');
             console.error(e);

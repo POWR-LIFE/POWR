@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
+import { fetchAllRows, fetchRowsByIds } from '../../lib/fetchAll';
 import { useToast } from '../../lib/toast';
 import { Activity, Users, Clock, TrendingUp, MapPin, Award, ChevronRight, BarChart3 } from 'lucide-react';
 
@@ -17,13 +18,10 @@ export default function PartnerPerformance() {
     const fetchData = async () => {
         setLoading(true);
         try {
-            const [partnersRes, sessionsRes] = await Promise.all([
-                supabase.from('partners').select('id, name, logo_url, category, active, address'),
-                supabase.from('activity_sessions').select('id, user_id, partner_id, duration_sec, started_at, flagged'),
-            ]);
-
-            const partnerList = partnersRes.data || [];
-            const sessions = sessionsRes.data || [];
+            // The whole session history, paged. The network totals below are sums over
+            // every session, so stopping at the server's 1000-row cap understated them.
+            const sessions = await fetchAllRows(() =>
+                supabase.from('activity_sessions').select('id, user_id, partner_id, duration_sec, started_at, flagged'));
 
             // Group sessions by partner_id
             const byPartner = {};
@@ -32,6 +30,15 @@ export default function PartnerPerformance() {
                 if (!byPartner[s.partner_id]) byPartner[s.partner_id] = [];
                 byPartner[s.partner_id].push(s);
             }
+
+            // Only the venues a session actually references. `partners` is 10k+ rows, so
+            // reading it whole came back capped at an arbitrary 1000 — which could drop a
+            // venue that has sessions from the leaderboard entirely — while padding the
+            // list with thousands of all-zero rows.
+            const partnerList = await fetchRowsByIds(
+                () => supabase.from('partners').select('id, name, logo_url, category, active, address'),
+                Object.keys(byPartner)
+            );
 
             const enriched = partnerList.map(p => {
                 const ps = byPartner[p.id] || [];
@@ -77,8 +84,6 @@ export default function PartnerPerformance() {
         return true;
     });
 
-    const activeWithSessions = partners.filter(p => p.active && p.totalSessions > 0).length;
-
     return (
         <div className="px-4 lg:px-0 py-20 animate-in fade-in slide-in-from-bottom-8 duration-1000">
             <div className="mb-20">
@@ -116,7 +121,7 @@ export default function PartnerPerformance() {
                     <div>
                         <h3 className="text-xl font-light tracking-tighter text-[#1A1A1A]">Partner Leaderboard</h3>
                         <p className="text-[9px] uppercase tracking-[0.4em] text-[#666666] font-black mt-2">
-                            {loading ? '...' : `${activeWithSessions} venues with recorded sessions`}
+                            {loading ? '...' : `${filtered.length} venues with recorded sessions`}
                         </p>
                     </div>
                     <div className="flex items-center gap-3">
@@ -145,7 +150,7 @@ export default function PartnerPerformance() {
                 ) : filtered.length === 0 ? (
                     <div className="p-20 text-center">
                         <Award size={48} className="mx-auto text-[#333333] mb-6" />
-                        <p className="text-[10px] uppercase tracking-[0.4em] text-[#888888] font-black">No partners found</p>
+                        <p className="text-[10px] uppercase tracking-[0.4em] text-[#888888] font-black">No venue has recorded a session yet</p>
                     </div>
                 ) : (
                     <>
