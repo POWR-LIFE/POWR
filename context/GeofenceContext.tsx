@@ -335,6 +335,14 @@ const APPROACH_LOCATION_OPTIONS: Location.LocationTaskOptions = {
   accuracy:                         Location.Accuracy.High,
   timeInterval:                     8_000,
   distanceInterval:                 10,
+  // Matches the in-visit stream (see DWELL_LOCATION_OPTIONS). iOS uses
+  // activityType to decide how aggressively it may defer, batch or pause a
+  // stream, and `Other` — the default — is the class it treats most freely. This
+  // stream exists for one job, catching a walk-in at walking pace, and it went
+  // silent for 6-8 minutes in three separate field runs (08-12 PM, 08-13, 08-17)
+  // while doing exactly that. The optional form is deliberate: the enum is
+  // undefined under the jest mock, and `?? 3` is Fitness's raw value.
+  activityType:                     Location.ActivityType?.Fitness ?? 3,
   pausesUpdatesAutomatically:       false,
   showsBackgroundLocationIndicator: false,
   foregroundService: {
@@ -4476,8 +4484,25 @@ export async function runVisitCheck(
       visit_mismatch: visitMismatch,
       trace,
     };
-    if (wakeNonce) await confirmGymVisitViaNonce(visitId, wakeNonce, inside, detail, inside, active.entryTimestamp);
-    else await confirmGymVisit(visitId, inside, detail, inside, active.entryTimestamp);
+    // ⚠ CAPTURE THE VERDICT (2026-08-17). This is the wake's ONE round-trip — the
+    // confirm that also carries the claim/upgrade relay — and its result was
+    // discarded. Both transports catch everything and return { ok: false } rather
+    // than rejecting, so a wake that reached JS, took a good fix and then failed
+    // its only network call left no trace whatsoever: indistinguishable from a
+    // wake that never arrived. Same defect as the sweep's proof stamp, on the more
+    // expensive call of the two.
+    const confirmRes = wakeNonce
+      ? await confirmGymVisitViaNonce(visitId, wakeNonce, inside, detail, inside, active.entryTimestamp)
+      : await confirmGymVisit(visitId, inside, detail, inside, active.entryTimestamp);
+    if (!confirmRes?.ok) {
+      logRegionEvent(active.regionId ?? 'wake', 'sweep', {
+        outcome: 'wake_confirm_failed',
+        visit:   visitId,
+        stage,
+        auth:    wakeNonce ? 'nonce' : 'token',
+        inside,
+      });
+    }
   }
 
   if (inside) {
