@@ -8,12 +8,15 @@
 
 import {
   computeCorrectedWindow,
+  ENTRY_BACKDATE_MARGIN_MS,
   EXIT_ACCURACY_CREDIT_CAP_M,
   EXIT_COOLDOWN_BUFFER_MS,
   exitBoundM,
   fixCreditsPresence,
   MAX_CREDIT_FIX_AGE_MS,
   MAX_GYM_SESSION_MS,
+  type SessionAnchor,
+  stepReadWindow,
   type StepSample,
 } from '@/lib/health/gymPresence';
 
@@ -23,6 +26,24 @@ const HOUR = 60 * MIN;
 /** Build a single step sample spanning [fromMin, toMin] with steps. */
 function steps(fromMin: number, toMin: number, count = 100): StepSample {
   return { startMs: fromMin * MIN, endMs: toMin * MIN, steps: count };
+}
+
+/**
+ * One reconcile pass, wired exactly as `reconcileGymSession` wires it: derive the read
+ * window, read the store through it, correct. The ratchet lived in this wiring and not
+ * in either function, so the test has to exercise the wiring — and it calls the real
+ * `stepReadWindow` so it cannot drift from the app.
+ */
+function reconcilePass(
+  row: { startMs: number; endMs: number },
+  store: StepSample[],
+  anchor: SessionAnchor | null,
+): { startMs: number; endMs: number } {
+  const w = stepReadWindow(row.startMs, row.endMs, anchor);
+  // A health store answers a window by returning the samples that overlap it.
+  const visible = store.filter(s => s.endMs > w.fromMs && s.startMs < w.toMs);
+  const r = computeCorrectedWindow(row.startMs, row.endMs, visible, anchor);
+  return { startMs: r.startMs, endMs: r.endMs };
 }
 
 describe('computeCorrectedWindow', () => {
@@ -51,10 +72,25 @@ describe('computeCorrectedWindow', () => {
   it('backdates a late-detected entry to first activity, within the margin', () => {
     // Geofence fired 3 min late (Android's measured worst case is 216 s) — the
     // user was already inside and moving. This is the case backdating exists for.
-    const r = computeCorrectedWindow(23 * MIN, 65 * MIN, [steps(20, 64)]);
+    // The anchor is the check-in the geofence recorded, which is what "3 min late"
+    // is late RELATIVE TO; backdating without one is refused (see below).
+    const r = computeCorrectedWindow(23 * MIN, 65 * MIN, [steps(20, 64)], {
+      visitStartMs: 23 * MIN,
+      provenUntilMs: null,
+    });
     expect(r.startMs).toBe(20 * MIN);
     expect(r.endMs).toBe(65 * MIN); // trailing gap (1 min) < threshold → kept
     expect(r.changed).toBe(true);
+  });
+
+  it('refuses to backdate with no anchor, however plausible the activity', () => {
+    // Fail-safe default: a caller that cannot say where the geofence fired cannot
+    // be given the benefit of the doubt, because the only other reference available
+    // is `started_at` — the column this correction writes. Losing a correction is
+    // recoverable; feeding a write back into its own input is what ratcheted.
+    const r = computeCorrectedWindow(23 * MIN, 65 * MIN, [steps(20, 64)]);
+    expect(r.startMs).toBe(23 * MIN);
+    expect(r.changed).toBe(false);
   });
 
   it('refuses to backdate at all when activity reaches back BEYOND the margin', () => {
@@ -91,13 +127,134 @@ describe('computeCorrectedWindow', () => {
     expect(r.endMs - r.startMs).toBeLessThanOrEqual(MAX_GYM_SESSION_MS);
   });
 
-  it('is idempotent — re-running on a corrected window makes no further change (window)', () => {
+  it('is idempotent on FIXED samples — necessary, and not sufficient (see the ratchet suite)', () => {
+    // ⚠ This test passed every day the ratchet was live. Handing the function the
+    // same array twice cannot detect a caller that reads a different array each pass,
+    // and the docstring built on it ("safe to call repeatedly") was the reassurance
+    // that kept anyone from looking. Kept as a floor; the real guard is below.
     const sample = [steps(0, 50)];
     const first = computeCorrectedWindow(0, 12 * HOUR, sample);
     const second = computeCorrectedWindow(first.startMs, first.endMs, sample);
     expect(second.changed).toBe(false);
     expect(second.startMs).toBe(first.startMs);
     expect(second.endMs).toBe(first.endMs);
+  });
+});
+
+describe('the ratchet — repeated passes that re-read the health store', () => {
+  /** Per-minute step buckets, which is what HealthKit / Health Connect actually return. */
+  function walk(fromMin: number, toMin: number, count = 90): StepSample[] {
+    const out: StepSample[] = [];
+    for (let m = fromMin; m < toMin; m += 1) out.push(steps(m, m + 1, count));
+    return out;
+  }
+
+  const CHECK_IN = 100 * MIN;
+  const anchor: SessionAnchor = { visitStartMs: CHECK_IN, provenUntilMs: null };
+
+  it('settles after one pass instead of walking started_at back forever', () => {
+    // ⚠ REGRESSION GUARD — field 2026-08-17. A 20-minute approach walk in
+    // minute buckets. The read window used to be derived from the row's own
+    // `started_at`, so each pass saw five more minutes of walking and moved the
+    // anchor it would read from next time. Nothing bounded it but the walk's length.
+    const store = walk(80, 104);
+    let row = { startMs: CHECK_IN, endMs: 150 * MIN };
+
+    const trail: number[] = [];
+    for (let pass = 0; pass < 6; pass += 1) {
+      row = reconcilePass(row, store, anchor);
+      trail.push(row.startMs);
+    }
+
+    // Pass 1 takes the whole permitted margin; every pass after it changes nothing.
+    expect(trail[0]).toBe(CHECK_IN - ENTRY_BACKDATE_MARGIN_MS);
+    expect(new Set(trail).size).toBe(1);
+    // And the total movement is one margin — not one per pass.
+    expect(CHECK_IN - row.startMs).toBe(ENTRY_BACKDATE_MARGIN_MS);
+  });
+
+  it('never moves the start below the anchor floor even from a damaged row', () => {
+    // A row a pre-fix build already dragged 30 min back. Repair passes must not
+    // continue the slide, whatever the store says.
+    const store = walk(60, 104);
+    let row = { startMs: CHECK_IN - 30 * MIN, endMs: 150 * MIN };
+    for (let pass = 0; pass < 4; pass += 1) row = reconcilePass(row, store, anchor);
+    expect(row.startMs).toBe(CHECK_IN - 30 * MIN); // held, not deepened
+    expect(row.startMs).toBeGreaterThanOrEqual(CHECK_IN - 30 * MIN);
+  });
+
+  it('keeps the real 40.4-minute visit that was rewritten to 584 s', () => {
+    // ⚠ REGRESSION GUARD — field 2026-08-17, Android session ae15fa06. Health
+    // Connect returned steps for the 4m44s walk in and NOTHING for 40 minutes of
+    // lifting, so the exit shrink pulled the end back to the last step + 5 min and
+    // booked 9.7 minutes for a session already paid 20 points at 40.4.
+    const end = CHECK_IN + 2425 * 1000; // the real duration_sec
+    const proven = end - 2_000; // proof clock stamped 2 s before the close
+    const store = walk(95, 100); // approach only; nothing under the barbell
+    const withProof: SessionAnchor = { visitStartMs: CHECK_IN, provenUntilMs: proven };
+
+    const r = reconcilePass({ startMs: CHECK_IN, endMs: end }, store, withProof);
+
+    expect(r.endMs).toBe(proven); // floored at witnessed presence, not at last step
+    expect(Math.round((r.endMs - r.startMs) / 1000)).toBeGreaterThan(40 * 60);
+    // The ≤5 min the start does move is the documented margin: a walk ending exactly
+    // at check-in is indistinguishable from arriving 5 min before detection, and the
+    // DB guard permits the same 5 min. Bounded is the requirement, not zero.
+    expect(CHECK_IN - r.startMs).toBeLessThanOrEqual(ENTRY_BACKDATE_MARGIN_MS);
+  });
+
+  it('still shrinks a genuine missed-exit runaway down to real presence', () => {
+    // The case the shrink exists for must survive the proof floor: 12 h recorded,
+    // steps and proof both stopping at 50 min.
+    const store = walk(100, 150);
+    const proven = CHECK_IN + 50 * MIN;
+    const r = reconcilePass(
+      { startMs: CHECK_IN, endMs: CHECK_IN + 12 * HOUR },
+      store,
+      { visitStartMs: CHECK_IN, provenUntilMs: proven },
+    );
+    expect(r.endMs).toBe(CHECK_IN + 50 * MIN + EXIT_COOLDOWN_BUFFER_MS);
+  });
+
+  it('never grows an end past the recorded one to reach the proof clock', () => {
+    // Widening is the beacon reaper's job, server-side. This writer only narrows.
+    const store = walk(100, 150);
+    const r = reconcilePass(
+      { startMs: CHECK_IN, endMs: CHECK_IN + 55 * MIN },
+      store,
+      { visitStartMs: CHECK_IN, provenUntilMs: CHECK_IN + 9 * HOUR },
+    );
+    expect(r.endMs).toBe(CHECK_IN + 55 * MIN);
+  });
+});
+
+describe('stepReadWindow — the span read must not depend on the row being written', () => {
+  const CHECK_IN = 100 * MIN;
+
+  it('anchors the lower bound on the visit, not on the session row', () => {
+    const anchor: SessionAnchor = { visitStartMs: CHECK_IN, provenUntilMs: null };
+    const fresh = stepReadWindow(CHECK_IN, 150 * MIN, anchor);
+    expect(fresh.fromMs).toBe(CHECK_IN - ENTRY_BACKDATE_MARGIN_MS);
+  });
+
+  it('extends the upper bound to the proof clock when it runs past the recorded end', () => {
+    const proven = 160 * MIN;
+    const w = stepReadWindow(CHECK_IN, 150 * MIN, { visitStartMs: CHECK_IN, provenUntilMs: proven });
+    expect(w.toMs).toBe(proven + EXIT_COOLDOWN_BUFFER_MS);
+  });
+
+  it('falls back to the row when there is no visit anchor', () => {
+    const w = stepReadWindow(CHECK_IN, 150 * MIN, null);
+    expect(w.fromMs).toBe(CHECK_IN - ENTRY_BACKDATE_MARGIN_MS);
+    expect(w.toMs).toBe(150 * MIN + EXIT_COOLDOWN_BUFFER_MS);
+  });
+
+  it('still covers a damaged row that starts below the anchor', () => {
+    const w = stepReadWindow(CHECK_IN - 30 * MIN, 150 * MIN, {
+      visitStartMs: CHECK_IN,
+      provenUntilMs: null,
+    });
+    expect(w.fromMs).toBe(CHECK_IN - 30 * MIN - ENTRY_BACKDATE_MARGIN_MS);
   });
 });
 
