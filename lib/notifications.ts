@@ -3,6 +3,19 @@ import * as Device from 'expo-device';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import { getGymUpgradeMinutes } from '@/lib/gymDwellConfig';
+// ⚠ THE ANDROID CHANNEL RIDES ON THE TRIGGER, NEVER ON `content`.
+// Expo's native scheduler (NotificationScheduler.kt) reads channelId off the
+// TRIGGER and silently drops any channelId set inside `content` — no warning,
+// no error. Field 2026-08-17: every local banner this file schedules, the gym
+// check-in confirmation included, had been landing on the fallback channel
+// `expo_notifications_fallback_notification_channel` ("Miscellaneous"). Three
+// consequences, all invisible until you look at the channel list: the
+// HIGH-importance channels created below were never used, per-channel user
+// settings never applied to anything, and muting "Miscellaneous" silenced
+// check-in, exit, streak AND rewards together in one tap.
+// Immediate notifications therefore pass a ChannelAwareTriggerInput on Android
+// instead of `trigger: null`; date-triggered ones carry channelId inside the
+// date trigger.
 const CHANNEL_DEFAULT = 'powr_default_v2';
 const CHANNEL_STREAK = 'powr_streak_v2';
 const CHANNEL_REWARDS = 'powr_rewards_v2';
@@ -204,11 +217,11 @@ export async function scheduleStreakAtRiskWarning(currentStreak: number) {
       body: "Log any activity before midnight to keep it alive.",
       data: { type: 'streak_at_risk', route: '/(tabs)/index' } satisfies NotificationPayload,
       sound: 'default',
-      ...(Platform.OS === 'android' && { channelId: CHANNEL_STREAK }),
     },
     trigger: {
       type: Notifications.SchedulableTriggerInputTypes.DATE,
       date: fireAt,
+      ...(Platform.OS === 'android' && { channelId: CHANNEL_STREAK }),
     },
   });
 }
@@ -240,11 +253,11 @@ export async function scheduleWeeklyChallengeExpiryWarning(
         route: '/(tabs)/index',
       } satisfies NotificationPayload,
       sound: 'default',
-      ...(Platform.OS === 'android' && { channelId: CHANNEL_DEFAULT }),
     },
     trigger: {
       type: Notifications.SchedulableTriggerInputTypes.DATE,
       date: fireAt,
+      ...(Platform.OS === 'android' && { channelId: CHANNEL_DEFAULT }),
     },
   });
 }
@@ -265,9 +278,12 @@ export async function notifyRewardUnlocked(rewardName: string, rewardId: string)
         rewardId,
       } satisfies NotificationPayload,
       sound: 'default',
-      ...(Platform.OS === 'android' && { channelId: CHANNEL_REWARDS }),
     },
-    trigger: null, // immediate
+    // Immediate — but on Android the trigger is the only place the channel is
+    // read (see the CHANNEL_* note at the top of this file).
+    trigger: Platform.OS === 'android'
+      ? ({ channelId: CHANNEL_REWARDS } as Notifications.NotificationTriggerInput)
+      : null,
   });
 }
 
@@ -305,9 +321,24 @@ async function isCheckInReminderEnabled(): Promise<boolean> {
 const CHECK_IN_COOLDOWN_MS = 30 * 60 * 1000;
 const CHECK_IN_LAST_FIRED_PREFIX = '@powr/check_in_last_fired/';
 
-/** Returns whether the banner was scheduled OR suppressed by cooldown.
- *  true = treat as "user already told locally" (no server copy); false = suppressed (pref off / no permission).
- *  Throws if scheduling fails (caller should fall back to server announce on Android). */
+/** The outcome of a check-in announce attempt.
+ *
+ *  ⚠ THIS USED TO BE A BARE `boolean`, AND THE BOOLEAN LIED. Field 2026-08-17:
+ *  it read TRUE both when the banner was shown and when the 30-minute cooldown
+ *  suppressed it, so "the visit opened and nobody told the user" was
+ *  indistinguishable from success — at every call site and in every log line we
+ *  had. The whole point of the cooldown-clearing fix below (2026-08-10) was that
+ *  a suppressed announce is a user who was never told; we could not see it.
+ *
+ *  Callers wanting the old "user has already been told locally, don't send a
+ *  server copy" meaning want `'shown' || 'cooldown'`.
+ *
+ *  'failed' is deliberately NOT returned by notifyCheckInAvailable: a scheduling
+ *  failure still THROWS, because the Android caller depends on the throw to fall
+ *  back to the server announce. It exists so a caller that catches can record
+ *  the reason in this same vocabulary. */
+export type CheckInNotifyResult = 'shown' | 'cooldown' | 'pref_off' | 'no_permission' | 'failed';
+
 /** Clears the check-in cooldown for a venue.
  *
  *  ⚠ CALLED WHEN A VISIT ENDS, and it is the fix for a real lost notification.
@@ -324,23 +355,28 @@ export async function clearCheckInCooldown(locationId: string): Promise<void> {
   await AsyncStorage.removeItem(`${CHECK_IN_LAST_FIRED_PREFIX}${locationId}`).catch(() => {});
 }
 
-export async function notifyCheckInAvailable(partnerName: string, locationId: string): Promise<boolean> {
-  if (!(await isCheckInReminderEnabled())) return false;
+export async function notifyCheckInAvailable(
+  partnerName: string,
+  locationId: string,
+): Promise<CheckInNotifyResult> {
+  if (!(await isCheckInReminderEnabled())) return 'pref_off';
 
   const permissions = await Notifications.getPermissionsAsync().catch(() => null);
   const allowed = permissions?.granted
     || permissions?.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL;
-  if (!allowed) return false;
+  // A getPermissionsAsync() that threw lands here too — unproven permission is
+  // treated exactly as it was before: nothing is shown.
+  if (!allowed) return 'no_permission';
 
   const cooldownKey = `${CHECK_IN_LAST_FIRED_PREFIX}${locationId}`;
   try {
     const lastFiredRaw = await AsyncStorage.getItem(cooldownKey);
     if (lastFiredRaw) {
       const lastFired = parseInt(lastFiredRaw, 10);
-      // Within cooldown = the user has already been told recently. Report true
-      // so the caller doesn't trigger a server push the cooldown exists to
-      // prevent.
-      if (Number.isFinite(lastFired) && Date.now() - lastFired < CHECK_IN_COOLDOWN_MS) return true;
+      // Within cooldown = the user has already been told recently, so the caller
+      // must not trigger the server push this cooldown exists to prevent — but
+      // it is NOT a banner shown for THIS entry, and it no longer claims to be.
+      if (Number.isFinite(lastFired) && Date.now() - lastFired < CHECK_IN_COOLDOWN_MS) return 'cooldown';
     }
   } catch { /* non-fatal — fall through and notify */ }
 
@@ -369,14 +405,15 @@ export async function notifyCheckInAvailable(partnerName: string, locationId: st
         partnerName,
       } satisfies NotificationPayload,
       sound: 'default',
-      ...(Platform.OS === 'android' && { channelId: CHANNEL_DEFAULT }),
     },
-    trigger: null, // immediate
+    trigger: Platform.OS === 'android'
+      ? ({ channelId: CHANNEL_DEFAULT } as Notifications.NotificationTriggerInput)
+      : null,
   });
   // Stamp only after scheduling succeeds; otherwise a transient local-notification
   // failure would suppress the next legitimate entry alert for 30 minutes.
   await AsyncStorage.setItem(cooldownKey, String(Date.now())).catch(() => {});
-  return true;
+  return 'shown';
 }
 
 // ---------------------------------------------------------------------------
@@ -502,9 +539,10 @@ export async function notifyNearbyOffer(opts: {
         placementId: opts.placementId,
       } satisfies NotificationPayload,
       sound: 'default',
-      ...(Platform.OS === 'android' && { channelId: CHANNEL_DEFAULT }),
     },
-    trigger: null, // immediate
+    trigger: Platform.OS === 'android'
+      ? ({ channelId: CHANNEL_DEFAULT } as Notifications.NotificationTriggerInput)
+      : null,
   });
   // Stamp the cooldown only after a successful schedule so a failed attempt
   // doesn't mute the placement for 6 h without any push having been shown.
@@ -545,9 +583,10 @@ export async function notifySessionCompleted(
         partnerName,
       } satisfies NotificationPayload,
       sound: 'default',
-      ...(Platform.OS === 'android' && { channelId: CHANNEL_REWARDS }),
     },
-    trigger: null, // immediate
+    trigger: Platform.OS === 'android'
+      ? ({ channelId: CHANNEL_REWARDS } as Notifications.NotificationTriggerInput)
+      : null,
   });
 }
 
@@ -579,9 +618,10 @@ export async function notifySessionUpgraded(
         partnerName,
       } satisfies NotificationPayload,
       sound: 'default',
-      ...(Platform.OS === 'android' && { channelId: CHANNEL_REWARDS }),
     },
-    trigger: null, // immediate
+    trigger: Platform.OS === 'android'
+      ? ({ channelId: CHANNEL_REWARDS } as Notifications.NotificationTriggerInput)
+      : null,
   });
 }
 
@@ -611,9 +651,10 @@ export async function notifyLocationOffSessionEnded(partnerName: string, session
         route: '/permissions-help',
       } satisfies NotificationPayload,
       sound: 'default',
-      ...(Platform.OS === 'android' && { channelId: CHANNEL_DEFAULT }),
     },
-    trigger: null, // immediate
+    trigger: Platform.OS === 'android'
+      ? ({ channelId: CHANNEL_DEFAULT } as Notifications.NotificationTriggerInput)
+      : null,
   });
 }
 
@@ -645,7 +686,12 @@ export async function notifyPointsMilestone(points: number, options?: PointsMile
       } satisfies NotificationPayload,
       sound: 'default',
     },
-    trigger: null,
+    // Named no channel at all before 2026-08-17, which on Android meant the
+    // fallback "Miscellaneous" channel — same landing place as everything else,
+    // just for a different reason. CHANNEL_DEFAULT, like the other banners.
+    trigger: Platform.OS === 'android'
+      ? ({ channelId: CHANNEL_DEFAULT } as Notifications.NotificationTriggerInput)
+      : null,
   });
 }
 
@@ -740,11 +786,11 @@ export async function scheduleRewardWithinReach(
         rewardName,
       } satisfies NotificationPayload,
       sound: 'default',
-      ...(Platform.OS === 'android' && { channelId: CHANNEL_REWARDS }),
     },
     trigger: {
       type: Notifications.SchedulableTriggerInputTypes.DATE,
       date: fireDate,
+      ...(Platform.OS === 'android' && { channelId: CHANNEL_REWARDS }),
     },
   });
 }
@@ -784,6 +830,9 @@ export async function scheduleInactivityNudge(daysInactive: number) {
     trigger: {
       type: Notifications.SchedulableTriggerInputTypes.DATE,
       date: fireAt,
+      // Named no channel at all before 2026-08-17 — CHANNEL_DEFAULT, like the
+      // other user-facing banners.
+      ...(Platform.OS === 'android' && { channelId: CHANNEL_DEFAULT }),
     },
   });
 }
@@ -800,9 +849,10 @@ export async function notifySleepTargetMet(hours: number, points: number) {
       body: `${hours.toFixed(1)}h of sleep earned you ${points} POWR point${points !== 1 ? 's' : ''}.`,
       data: { type: 'sleep_target_met', route: '/(tabs)/index' } satisfies NotificationPayload,
       sound: 'default',
-      ...(Platform.OS === 'android' && { channelId: CHANNEL_DEFAULT }),
     },
-    trigger: null, // immediate
+    trigger: Platform.OS === 'android'
+      ? ({ channelId: CHANNEL_DEFAULT } as Notifications.NotificationTriggerInput)
+      : null,
   });
 }
 
@@ -837,9 +887,10 @@ export async function notifyStepGoal(opts: {
       body: `A ${mins}-minute walk locks in +${pts} POWR before midnight.`,
       data: { type: 'step_goal_nudge', route: '/(tabs)/index' } satisfies NotificationPayload,
       sound: 'default',
-      ...(Platform.OS === 'android' && { channelId: CHANNEL_DEFAULT }),
     },
-    trigger: null, // immediate
+    trigger: Platform.OS === 'android'
+      ? ({ channelId: CHANNEL_DEFAULT } as Notifications.NotificationTriggerInput)
+      : null,
   });
   return true;
 }

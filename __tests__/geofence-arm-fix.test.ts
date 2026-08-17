@@ -457,9 +457,17 @@ describe('setLocationStreamMode — a live stream must never be restarted into t
     await setLocationStreamMode('dwell');
     await flushTelemetry();
 
-    // Stopped once for the switch, then started twice: the refused dwell start,
-    // then the restore of the previous (passive/baseline) options.
-    expect(mockLocation.stopLocationUpdatesAsync).toHaveBeenCalledTimes(1);
+    // ⚠ NO STOP AT ALL SINCE 2026-08-17. The switch used to be a stop→start, and
+    // the stop is what made a refused start catastrophic rather than merely
+    // useless: it killed a live stream before asking for the new one. Starting
+    // straight over the top updates the registered task's options instead, so the
+    // worst case is "options unchanged", never "no stream". The restore below is
+    // now belt on top of braces rather than the only thing standing between the
+    // user and a dead driver — and it stays, because the day it is needed is the
+    // day this assumption turns out to be wrong on some OEM build.
+    expect(mockLocation.stopLocationUpdatesAsync).not.toHaveBeenCalled();
+    // Still two starts: the refused dwell start, then the restore of the previous
+    // (passive/baseline) options.
     expect(mockLocation.startLocationUpdatesAsync).toHaveBeenCalledTimes(2);
     const restoreOpts = (mockLocation.startLocationUpdatesAsync.mock.calls[1] as any[])[1];
     expect(restoreOpts.distanceInterval).toBe(50); // baseline options, not dwell's 0
@@ -523,7 +531,10 @@ describe('setLocationStreamMode — a live stream must never be restarted into t
       // this same switch would deliver IOS_VISIT_LOCATION_OPTIONS instead.
       await setLocationStreamMode('dwell');
 
-      expect(mockLocation.stopLocationUpdatesAsync).toHaveBeenCalledTimes(1);
+      // The switch happens — that is what this test is for. It just no longer
+      // stops the live stream to do it (2026-08-17); the start alone carries the
+      // new options, which is what `distanceInterval: 0` below proves.
+      expect(mockLocation.stopLocationUpdatesAsync).not.toHaveBeenCalled();
       expect(mockLocation.startLocationUpdatesAsync).toHaveBeenCalledTimes(1);
       expect((mockLocation.startLocationUpdatesAsync.mock.calls[0] as any[])[1].distanceInterval).toBe(0);
     } finally {

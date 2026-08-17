@@ -274,4 +274,42 @@ describe('the tally ships as exactly one summary row', () => {
       jest.useRealTimers();
     }
   });
+
+  // ⚠ THE FIELD BUG THIS AGGREGATION WAS SUPPOSED TO PREVENT, 2026-08-17.
+  //
+  // Every other case in this file awaits each exit in turn, so none of them ever
+  // exercised the way the EXIT branch actually calls this:
+  // `void noteSuppressedExit(regionId)`. Concurrently, all N callers read the same
+  // aged tally and all N shipped it — **17 identical `{count: 4, window_s: 1243}`
+  // rows in 3 seconds** on one arm burst, with all 17 increments lost. The row
+  // count is the assertion that matters: aggregate telemetry that duplicates is
+  // worse than none, because a server-side exit accelerator would read this table
+  // as truth.
+  it('a burst of UNAWAITED exits against an aged tally still ships exactly one row', async () => {
+    jest.useFakeTimers();
+    try {
+      for (let i = 0; i < 4; i++) await driveExit(`gym-burst-${i}-0`);
+      await flushTelemetry();
+      expect(regionRows('exit_noise_suppressed')).toHaveLength(0);
+
+      await jest.advanceTimersByTimeAsync(61_000);
+
+      // Fire them all off without awaiting between — the real call shape.
+      const inFlight = Array.from({ length: 17 }, (_, i) => driveExit(`gym-storm-${i}-0`));
+      await Promise.all(inFlight);
+      // The handler itself calls `void noteSuppressedExit(...)`, so awaiting the
+      // handlers does NOT await the tally writes — they are still queued on the
+      // serialising chain. Drain generously: 17 chained storage round-trips.
+      for (let i = 0; i < 500; i++) await Promise.resolve();
+      await flushTelemetry();
+
+      const rows = regionRows('exit_noise_suppressed');
+      expect(rows).toHaveLength(1);
+      expect(rows[0].p_detail).toMatchObject({ count: 4 });
+      // And not one of the 17 was dropped on the floor while they raced.
+      expect(await tally()).toMatchObject({ count: 17 });
+    } finally {
+      jest.useRealTimers();
+    }
+  });
 });

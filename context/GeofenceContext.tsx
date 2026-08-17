@@ -10,6 +10,9 @@ import { bgInsert, bgRpc, bgSelect, bgUpdate, readBackgroundAuth } from '@/lib/b
 import { noteTask } from '@/lib/crashHandler';
 import { detectLocationLoss, type LocationLossReason } from '@/lib/locationPermission';
 import { withNetworkTimeout } from '@/lib/networkTimeout';
+// Type-only: erased at compile time, so it does NOT pull lib/notifications into a
+// headless context. The value import stays dynamic, below, for that reason.
+import type { CheckInNotifyResult } from '@/lib/notifications';
 import { supabase } from '@/lib/supabase';
 import { getGymDwellMinutes, getGymUpgradeMinutes, getLocationCloseMode, primeGymDwellMinutes } from '@/lib/gymDwellConfig';
 
@@ -226,11 +229,23 @@ const PARTNER_CACHE_TTL_MS  = 24 * 60 * 60 * 1000;
 // swipe, the process dies too, and the next geofence event / FCM wake / job
 // relaunches a FRESH headless JS context — the resurrection path that actually
 // works. Normal backgrounding (no swipe) keeps the service and stream running.
+//
+// ⚠ NO deferredUpdatesInterval HERE (removed 2026-08-17). It was 60_000, and on
+// Android that is not "batch fixes for a minute" — expo-location's
+// shouldReportDeferredLocations compares the newest fix against
+// `mLastReportedLocation ?: mDeferredLocations[0]`, and that state lives on the
+// CONSUMER INSTANCE. A swiped-away app builds a fresh consumer on every headless
+// boot, so the first fix of each boot is its own baseline: `newest - oldest == 0`,
+// the interval is never satisfied, and NOTHING reaches JS. A per-broadcast boot
+// therefore got exactly one fix, and a process that keeps being rebuilt got none.
+// Field 2026-08-17: a 57-minute Android visit ran with the passive stream as its
+// only driver and logged `stream_fix_age_s: 2415` at the end — the last stream fix
+// had arrived 40 minutes earlier. This is INDEPENDENT of distanceInterval, which
+// is left at 50 m deliberately: that one is a battery decision, this one was a bug.
 const LOCATION_UPDATE_OPTIONS: Location.LocationTaskOptions = {
   accuracy:                         Location.Accuracy.Balanced,
   timeInterval:                     60_000,
   distanceInterval:                 50,
-  deferredUpdatesInterval:          60_000,
   pausesUpdatesAutomatically:       false,
   showsBackgroundLocationIndicator: false,
   foregroundService: {
@@ -963,16 +978,30 @@ async function recordStreamMode(mode: StreamMode): Promise<void> {
   await AsyncStorage.setItem(STREAM_MODE_KEY, mode).catch(() => {});
 }
 
+/** What the caller may honestly claim afterwards.
+ *
+ *  ⚠ THIS USED TO RETURN void, AND THAT IS WHY `approach_stream_on` WAS A LIE
+ *  (2026-08-17). Every failure in here — the Android background refusal, a failed
+ *  restore, the outer catch — was swallowed, and enterApproach logged
+ *  `approach_stream_on` unconditionally afterwards. So "the stream never started"
+ *  and "the stream started and then went mute" wrote byte-identical telemetry, and
+ *  three separate field runs (08-12 PM, 08-13, 08-17) each burned their one
+ *  reproduction deciding which of the two had happened. 08-17: the row was
+ *  written at 09:00:03 and ZERO stream fixes followed for 7.5 minutes while the
+ *  user walked 74 m → 4 m. `started` is now the truth, and `mode` is the mode
+ *  ACTUALLY running when this returns — not the one that was asked for. */
+type StreamModeResult = { started: boolean; mode: StreamMode };
+
 // Exported for tests: the same-mode no-op and the restore-on-refused-start are
 // regression-pinned directly (__tests__/geofence-arm-fix.test.ts).
-export async function setLocationStreamMode(mode: StreamMode): Promise<void> {
-  if (Platform.OS === 'web') return;
+export async function setLocationStreamMode(mode: StreamMode): Promise<StreamModeResult> {
+  if (Platform.OS === 'web') return { started: false, mode };
   try {
     const started = await Location.hasStartedLocationUpdatesAsync(LOCATION_TRACKING_TASK).catch(() => false);
     if (mode === 'off') {
       if (started) await Location.stopLocationUpdatesAsync(LOCATION_TRACKING_TASK).catch(() => {});
       await recordStreamMode('off');
-      return;
+      return { started: false, mode: 'off' };
     }
 
     // Already running in the requested mode → leave it alone. The switch below
@@ -992,7 +1021,7 @@ export async function setLocationStreamMode(mode: StreamMode): Promise<void> {
       const approaching   = (await AsyncStorage.getItem(APPROACH_STATE_KEY).catch(() => null)) != null;
       current = visitStreamMode(Platform.OS, { sessionActive, approaching });
     }
-    if (started && current === mode) return;
+    if (started && current === mode) return { started: true, mode };
 
     // A LIVE stream is worth more than the right mode. The switch below is a
     // stop→start, and Android 12+ refuses to start a foreground service from the
@@ -1017,13 +1046,24 @@ export async function setLocationStreamMode(mode: StreamMode): Promise<void> {
     if (started && Platform.OS === 'android' && AppState.currentState !== 'active') {
       logRegionEvent('stream', 'stream_switch_deferred', { from: current, to: mode });
       console.log(`[Geofence] Stream switch ${current} → ${mode} deferred — a background stop→start cannot restart.`);
-      return;
+      // The requested mode is NOT running. Callers that log "stream on" must say
+      // so honestly — this is the branch that fired at every 08-17 check-in.
+      return { started, mode: current ?? 'passive' };
     }
 
-    if (started) await Location.stopLocationUpdatesAsync(LOCATION_TRACKING_TASK).catch(() => {});
+    // ⚠ NO PRE-EMPTIVE STOP (removed 2026-08-17). This was a stop→start, and the
+    // stop is what made a refused start catastrophic rather than merely useless:
+    // it destroyed a live, working stream before asking for the new one. It is
+    // also unnecessary — startLocationUpdatesAsync on an ALREADY-REGISTERED task
+    // updates that task's options rather than erroring, and expo's
+    // maybeStartForegroundService early-returns while backgrounded, so no
+    // foreground service is stopped or started by this path. Starting straight
+    // over the top means the worst case is "the options did not change", never
+    // "there is no stream any more". The restore in the catch is kept as belt.
     try {
       await Location.startLocationUpdatesAsync(LOCATION_TRACKING_TASK, streamOptsFor(mode));
       await recordStreamMode(mode);
+      return { started: true, mode };
     } catch (err) {
       // The start was refused and the old stream is already stopped — restore it,
       // so "couldn't switch modes" never degrades into "no stream at all".
@@ -1035,14 +1075,28 @@ export async function setLocationStreamMode(mode: StreamMode): Promise<void> {
       }
       if (!restored) _streamModeInProcess = null;
       // Report it; pollForCheckIn is what actually keeps the check-in working
-      // when this fires.
-      logRegionEvent('stream', 'stream_start_failed', { mode, restored, error: String(err).slice(0, 120) });
+      // when this fires. `err_class` because the MESSAGE is what varies between
+      // OEM builds while the class is what identifies the refusal — 08-17 left us
+      // unable to say whether the throw was expo-location's own pre-OS
+      // foreground check or a genuine OS rejection, and they need different fixes.
+      logRegionEvent('stream', 'stream_start_failed', {
+        mode,
+        restored,
+        err_class: (err as Error)?.constructor?.name ?? typeof err,
+        error:     String(err).slice(0, 120),
+      });
       console.warn('[Geofence] setLocationStreamMode failed:', mode, err);
+      return { started: restored, mode: restored ? (current ?? 'passive') : mode };
     }
   } catch (err) {
-    logRegionEvent('stream', 'stream_start_failed', { mode, error: String(err).slice(0, 120) });
+    logRegionEvent('stream', 'stream_start_failed', {
+      mode,
+      err_class: (err as Error)?.constructor?.name ?? typeof err,
+      error:     String(err).slice(0, 120),
+    });
     console.warn('[Geofence] setLocationStreamMode failed:', mode, err);
   }
+  return { started: false, mode };
 }
 
 /** Fire-and-forget region telemetry, lazily imported like the rest of the
@@ -1053,7 +1107,8 @@ function logRegionEvent(
     | 'stream_switch_deferred' | 'armed' | 'sentinel_exit' | 'rearm_skipped' | 'sweep'
     | 'visit_stamp_relaxed' | 'visit_stamp_skipped' | 'coarse_rejected' | 'enter_scan'
     | 'location_revoked' | 'active_patch_refused' | 'exit_refuted' | 'visit_stream_ensured'
-    | 'exit_noise_suppressed' | 'visit_close_deferred',
+    | 'exit_noise_suppressed' | 'visit_close_deferred' | 'check_in_announced'
+    | 'visit_open_attempt' | 'visit_open_result' | 'wake_step_hung' | 'stream_first_tick',
   detail: Record<string, unknown> = {},
 ): void {
   void import('@/lib/gymVisits')
@@ -1438,12 +1493,42 @@ async function sweepForMissedCheckIn(): Promise<void> {
                 // distinguishable from "there was nothing to ask for".
                 const staleAge = fixAgeMs(acquired);
                 const lateCacheAge = fixAgeMs(lateCache);
+                // ⚠ ONE LABEL WAS COVERING THREE DIFFERENT BUGS (2026-08-17).
+                // `acquire_timeout` was written whether the provider returned
+                // NOTHING, returned a fix we then rejected as stale, or returned
+                // nothing while last-known held something stale — and those need
+                // three different fixes. Field 08-17 logged it five times on one
+                // visit with stale_age_s 114/136/177/197/235, and we could not say
+                // which of the three we were looking at.
+                //
+                // `answered` names the slice that produced anything at all;
+                // `blocked_by` says why the answer was refused. `late_cache_age_s`
+                // was ALREADY being logged here and nobody ever read it.
+                const answered = acquired ? 'acquire_stale'
+                  : lateCache ? 'late_cache_stale'
+                  : 'nothing';
+                // ⚠ AND THE OUTCOME NAME WAS A LIE BEFORE THE UPGRADE. This row is
+                // hardcoded 'exit_check', but that name means "deciding whether to
+                // CLOSE", which is only true past the upgrade. Pre-upgrade this
+                // pass exists purely to bank presence, and mislabelling it made
+                // 08-17's pre-upgrade starvation read as exit deliberation.
                 logRegionEvent(a.regionId ?? 'sweep', 'sweep', {
-                  outcome:     'exit_check',
+                  outcome:     pastUpgrade ? 'exit_check' : 'presence_pass',
                   fix_src:     'acquire_timeout',
+                  answered,
                   ...(staleAge != null ? { stale_age_s: Math.round(staleAge / 1000) } : {}),
                   ...(lateCacheAge != null ? { late_cache_age_s: Math.round(lateCacheAge / 1000) } : {}),
                   elapsed_min: Math.round(elapsed / 60_000),
+                  // THE CLOCK TRIPLE. Every age gate in this system derives from
+                  // `Date.now() - fix.timestamp`, and that arithmetic is only
+                  // meaningful if the two clocks agree. A handset whose
+                  // `location.time` is skewed would produce exactly the readings
+                  // above while being perfectly fresh — in which case
+                  // MAX_CREDIT_FIX_AGE_MS, EXIT_BACKSTOP_FIX_MAX_AGE_MS and
+                  // isStale are ALL poisoned and several fixes are invalid. Three
+                  // numbers settle it, and they cost nothing.
+                  now_ms:      Date.now(),
+                  fix_ts:      (acquired ?? lateCache)?.timestamp ?? null,
                 });
                 acquired = null;
               }
@@ -1582,8 +1667,9 @@ async function sweepForMissedCheckIn(): Promise<void> {
                 let visitId = a.visitId ?? null;
                 if (!visitId && a.partnerId) {
                   try {
-                    const { openGymVisit } = await import('@/lib/gymVisits');
-                    visitId = await openGymVisit(a.partnerId, a.regionId, a.entryTimestamp);
+                    visitId = await openVisitTraced(
+                      'sweep_proven_stamp', a.partnerId, a.regionId, a.entryTimestamp, a.visitId ?? null,
+                    );
                     if (visitId) {
                       await patchActiveGeofence(a, { visitId }, 'sweep_proven_stamp');
                       a.visitId = visitId;
@@ -1593,12 +1679,27 @@ async function sweepForMissedCheckIn(): Promise<void> {
                 if (visitId) {
                   _lastSweepProvenStampAt = Date.now();
                   const { confirmGymVisit } = await import('@/lib/gymVisits');
-                  await confirmGymVisit(visitId, true, {
+                  // ⚠ THE CATCH BELOW CANNOT FIRE ON A FAILED CONFIRM (2026-08-17).
+                  // confirmGymVisit catches everything on BOTH transports and
+                  // returns { ok: false } — it never rejects. So the `.catch()`
+                  // added on 08-14 to end exactly this mystery could only ever
+                  // catch the dynamic import, and the return value was thrown
+                  // away. Field 08-17: two sweeps held creditable fixes, produced
+                  // no confirmed_inside, and wrote NEITHER proven_stamp_failed
+                  // NOR proven_stamp_no_visit — three absences that read as a
+                  // freeze and are equally consistent with a soft `ok: false`.
+                  // Capture the result; the catch stays for the import only.
+                  //
+                  // fix_age_s, not fix_age_ms: the server's proof gate reads
+                  // `fix_age_s` and treats a missing value as acceptable, so
+                  // every sweep-originated proof has been bypassing the freshness
+                  // check on the one column the exit clamp anchors to.
+                  const res = await confirmGymVisit(visitId, true, {
                     stage:       'sweep',
                     distance_m:  Math.round(dist),
                     accuracy_m:  acc != null ? Math.round(acc) : null,
                     fix_trusted: trusted,
-                    fix_age_ms:  fixAgeMs,
+                    fix_age_s:   Math.round(fixAgeMs / 1000),
                   }).catch((err) => {
                     // ⚠ THIS CATCH USED TO BE SILENT, and that is what cost the
                     // 2026-08-14 PM run its answer. The sweep held a TRUSTED 25 s
@@ -1620,9 +1721,24 @@ async function sweepForMissedCheckIn(): Promise<void> {
                     logRegionEvent(a.regionId ?? 'sweep', 'sweep', {
                       outcome: 'proven_stamp_failed',
                       visit:   visitId,
+                      reason:  'import_failed',
                       error:   String((err as Error)?.message ?? err).slice(0, 120),
                     });
                   });
+                  // THE FAILURE THAT ACTUALLY HAPPENS. `ok: false` is what a dead
+                  // background transport returns — a spent persisted token with
+                  // the device ticket deliberately excluded from confirms — and it
+                  // reached here as a discarded value. Same treatment as a throw:
+                  // name it, and release the four-minute cooldown so the next
+                  // sweep re-attempts instead of inheriting a penalty for it.
+                  if (res && !res.ok) {
+                    _lastSweepProvenStampAt = 0;
+                    logRegionEvent(a.regionId ?? 'sweep', 'sweep', {
+                      outcome: 'proven_stamp_failed',
+                      visit:   visitId,
+                      reason:  'not_ok',
+                    });
+                  }
                 } else {
                   // Measured presence with nowhere to record it: the recovery
                   // above could not resolve a visit (no partnerId on the snapshot,
@@ -1869,13 +1985,27 @@ async function enterApproach(regionId: string): Promise<void> {
   try {
     await AsyncStorage.setItem(APPROACH_STATE_KEY, JSON.stringify({ regionId, since: Date.now() }));
   } catch { /* non-fatal */ }
-  await setLocationStreamMode('approach');
+  const res = await setLocationStreamMode('approach');
   // Pairs with the 'enter' row: this one landing means the OS delivered ENTER
   // *and* we got the high-accuracy stream running, so any missing check-in after
   // this point is the stream failing to produce an inside fix — not a missed
   // region event. Two rows, two distinct failure modes, no guessing.
-  logRegionEvent(regionId, 'approach_stream_on');
-  console.log(`[Geofence] Approach ring "${regionId}" — high-accuracy stream on.`);
+  //
+  // ⚠ The claim above was UNVERIFIED until 2026-08-17: setLocationStreamMode
+  // returned void and swallowed every failure, so this row asserted a running
+  // stream it had no way to know about. It is now the function's own verdict,
+  // cross-checked against the OS registry — because `started` says our start call
+  // returned and `has_started` says the OS agrees a task is registered, and a
+  // disagreement between those two is its own bug worth catching. A row with
+  // `started: true` and no `stream_first_tick` behind it now convicts the stream
+  // rather than the region event.
+  const hasStarted = await Location.hasStartedLocationUpdatesAsync(LOCATION_TRACKING_TASK).catch(() => false);
+  logRegionEvent(regionId, 'approach_stream_on', {
+    started:     res.started,
+    running_mode: res.mode,
+    has_started: hasStarted,
+  });
+  console.log(`[Geofence] Approach ring "${regionId}" — stream started=${res.started} mode=${res.mode}.`);
 }
 
 /** Leaves the approach ring: clear the flag and return the stream to baseline
@@ -1891,6 +2021,11 @@ async function exitApproach(expectedRegionId?: string): Promise<void> {
     if (expectedRegionId && approach?.regionId && approach.regionId !== expectedRegionId) return;
     wasApproaching = approach != null;
     if (wasApproaching) await AsyncStorage.removeItem(APPROACH_STATE_KEY);
+    // Re-arm the one-shot so the NEXT approach gets its own first-tick row. Reset
+    // here rather than on entry: enterApproach can be re-delivered by an arm
+    // burst (08-17 fired it twice in 26 s), and resetting there would let one
+    // approach emit two rows.
+    if (wasApproaching) _approachFirstTickEmitted = false;
   } catch { /* non-fatal */ }
   if (wasApproaching) {
     const sessionActive = (await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY).catch(() => null)) != null;
@@ -2497,35 +2632,74 @@ async function flushPendingVisitCloses(): Promise<void> {
   // different login. Storage first, machinery only on a spent token — the exact
   // fix flushPendingClaims got on 2026-08-11 (see the note there); this is the
   // same fence in the closes twin, and it runs from the same wake tasks.
+  //
+  // ⚠ FOREGROUND-ONLY FALLBACK (2026-08-17). The comment above claimed parity
+  // with flushPendingClaims and did not have it: the claims twin gained an
+  // `AppState.currentState === 'active'` guard on 2026-08-12 and this one never
+  // did. A walk-out is BY DEFINITION a pocketed phone at the end of a long
+  // session, which is exactly when the persisted token is spent — so this branch
+  // fired on every real exit and spent the wake's budget inside the auth
+  // machinery, ahead of a closeGymVisit that carries the device ticket and would
+  // have worked. Field 2026-08-17: OS exit at 09:58:23, local state finalized,
+  // and the server visit still open 11 minutes later when the reaper took it —
+  // 16.6 minutes of a 56.6-minute workout lost, and the user told "40 min".
+  //
+  // Backgrounded, leave currentUserId null: the ownership fence below already
+  // treats unknown as proceed, so a close still lands on its ORIGINAL instant.
   let currentUserId: string | null = (await readBackgroundAuth())?.userId ?? null;
-  if (!currentUserId) {
+  if (!currentUserId && AppState.currentState === 'active') {
     try {
       const { data: { user } } = await withNetworkTimeout(supabase.auth.getUser(), 'auth.getUser');
       currentUserId = user?.id ?? null;
     } catch { /* offline — treat ownership as unknown */ }
   }
 
-  const remaining: PendingVisitClose[] = [];
+  // Tracked as ids, not as a rebuilt array — see the merge-on-write below.
+  const resolved = new Set<string>();
+  const dropped = new Set<string>();
   for (const entry of queue) {
+    const queuedAgeS = Math.round((Date.now() - entry.queuedAtMs) / 1000);
     if (Date.now() - entry.queuedAtMs > PENDING_CLOSE_MAX_AGE_MS) {
       console.log('[Geofence] Dropping stale pending visit close (>12h) — the abandon cron owns it.');
+      dropped.add(entry.visitId);
       continue;
     }
     if (entry.userId && currentUserId && entry.userId !== currentUserId) {
       console.log('[Geofence] Pending visit close belongs to another account — leaving it queued.');
-      remaining.push(entry);
       continue;
     }
     // endedAtMs is the ORIGINAL exit instant, never now(): a retry hours later
     // must still record when the user actually left, or the retry itself becomes
     // the duration-inflation bug it exists to prevent.
     const ok = await closeGymVisit(entry.visitId, entry.endedAtMs).catch(() => false);
-    if (ok) console.log(`[Geofence] Pending visit close resolved (${entry.visitId}).`);
-    else remaining.push(entry);
+    if (ok) {
+      console.log(`[Geofence] Pending visit close resolved (${entry.visitId}).`);
+      resolved.add(entry.visitId);
+    } else {
+      // A queued close could previously fail on every wake for an hour and write
+      // NOTHING — the same silence that made the 08-14 and 08-17 walk-outs
+      // unreadable. One row per failed entry per drain: `queued_age_s` is the
+      // number that says "this has been stuck", which no other row can express.
+      logRegionEvent('outbox', 'visit_close_deferred', {
+        reason:       'drain_failed',
+        visit:        entry.visitId,
+        queued_age_s: queuedAgeS,
+        app_state:    AppState.currentState,
+        had_token:    !!currentUserId,
+      });
+    }
   }
 
   try {
-    if (remaining.length) await AsyncStorage.setItem(PENDING_VISIT_CLOSES_KEY, JSON.stringify(remaining));
+    // ⚠ MERGE ON WRITE (2026-08-17). This used to write a locally rebuilt array
+    // over the key wholesale, which loses both ways once two passes overlap: an
+    // entry enqueued DURING this drain is erased, and an entry another pass just
+    // resolved is resurrected. Re-read and subtract only what THIS pass settled.
+    const rawNow = await AsyncStorage.getItem(PENDING_VISIT_CLOSES_KEY);
+    const fresh: PendingVisitClose[] = rawNow ? JSON.parse(rawNow) : [];
+    const merged = (Array.isArray(fresh) ? fresh : [])
+      .filter(e => !resolved.has(e.visitId) && !dropped.has(e.visitId));
+    if (merged.length) await AsyncStorage.setItem(PENDING_VISIT_CLOSES_KEY, JSON.stringify(merged));
     else await AsyncStorage.removeItem(PENDING_VISIT_CLOSES_KEY);
   } catch { /* next flush retries */ }
 }
@@ -2541,15 +2715,68 @@ async function flushPendingVisitCloses(): Promise<void> {
  *
  *  Fire-and-forget from the wake task — never awaited on the wake's critical
  *  path, single-flighted so overlapping wakes can't double-drain. */
-let _outboxFlushInFlight = false;
+// ⚠ A LATCH MUST NOT OUTLIVE ITS PASS (2026-08-17). This was a bare boolean
+// cleared only in `finally`, so a flush that never settled — the freeze this
+// whole file routes around — silenced the drain for the entire life of the JS
+// context. Every later wake returned at the first line, and the queued close sat
+// there until the reaper. Same shape, same fix as ensureFreshSession's lock
+// (lib/authFresh.ts:107-156): store WHEN the holder took it, let a successor
+// take it once the deadline passes, and release holder-only so a revived
+// zombie pass cannot free a lock it no longer owns.
+let _outboxFlushStartedAt = 0;
+const OUTBOX_FLUSH_DEADLINE_MS = 60_000;
 export async function flushPendingOutboxesFromWake(): Promise<void> {
-  if (_outboxFlushInFlight) return;
-  _outboxFlushInFlight = true;
+  const heldForMs = _outboxFlushStartedAt ? Date.now() - _outboxFlushStartedAt : 0;
+  if (_outboxFlushStartedAt && heldForMs < OUTBOX_FLUSH_DEADLINE_MS) {
+    // A suppressed drain used to be indistinguishable from a drain that ran and
+    // found nothing. It is the reason "the outbox never retried" could not be
+    // told from "the outbox retried and failed".
+    logRegionEvent('outbox', 'visit_close_deferred', {
+      reason:      'latch_held',
+      latch_age_s: Math.round(heldForMs / 1000),
+    });
+    return;
+  }
+  const mine = Date.now();
+  _outboxFlushStartedAt = mine;
   try {
-    await flushPendingVisitCloses();
-    await flushPendingClaims();
+    await drainOutboxesBounded('wake');
   } catch { /* both flushes already contain their own retries */ }
-  finally { _outboxFlushInFlight = false; }
+  finally { if (_outboxFlushStartedAt === mine) _outboxFlushStartedAt = 0; }
+}
+
+/** How long either outbox may hold a caller's event before we move on. Short:
+ *  these are best-effort drains standing in front of the work the event actually
+ *  exists to do (a check-in evaluation, a boot re-arm, a sweep). */
+const OUTBOX_DRAIN_BOUND_MS = 10_000;
+
+/** Drains both outboxes, bounding EACH one separately, and never rejecting.
+ *
+ *  ⚠ WHY SEPARATELY (2026-08-17). The three task executors called
+ *  `await flushPendingVisitCloses(); await flushPendingClaims();` bare, ahead of
+ *  their real work. So either flush hanging cost the event everything behind it —
+ *  the location tick's evaluateLocationFix, the boot task's re-arm, the sweep. One
+ *  shared race would be no better: the closes flush could eat the whole budget and
+ *  leave the claims flush nothing. One bad outbox entry must cost one outbox
+ *  entry, never the executor.
+ *
+ *  ⚠ AND THIS IS BELT, NOT BRACES. RN dispatches setTimeout off the UI frame
+ *  clock, so this bound can itself freeze while the process is suspended (see
+ *  lib/networkTimeout.ts — a 30 s race still pending 16 minutes later). It rescues
+ *  the ordinary hang; the durable outbox plus the next wake rescue the rest. */
+async function drainOutboxesBounded(label: string): Promise<void> {
+  const bound = (work: Promise<void>, name: string): Promise<void> => new Promise<void>((resolve) => {
+    const timer = setTimeout(() => {
+      console.warn(`[Geofence] Outbox drain ${name} exceeded ${OUTBOX_DRAIN_BOUND_MS / 1000}s — moving on.`);
+      resolve();
+    }, OUTBOX_DRAIN_BOUND_MS);
+    work.then(
+      () => { clearTimeout(timer); resolve(); },
+      () => { clearTimeout(timer); resolve(); },
+    );
+  });
+  await bound(flushPendingVisitCloses(), `${label}_closes`);
+  await bound(flushPendingClaims(), `${label}_claims`);
 }
 
 async function flushPendingClaims(): Promise<void> {
@@ -2881,13 +3108,29 @@ async function setActiveAndNotify(regionId: string, entry: PartnerMapEntry): Pro
   // never resolved a visit id, and everything gated behind it silently
   // vanished — including the purely-local session-mark banners. Banners and
   // marks now happen before the first network touch and depend on nothing.
-  let checkInShown = false;
+  // ⚠ A REASON, NOT A BOOLEAN (2026-08-17). notifyCheckInAvailable used to return
+  // `true` both when it drew the banner AND when its 30-minute cooldown suppressed
+  // it, so "the visit opened and nobody told the user" was unobservable — the one
+  // question the check-in path most needs to be able to answer. The `checked_in`
+  // row now carries the verdict, including the throw.
+  let notifyResult: CheckInNotifyResult | 'threw' = 'threw';
   try {
     const { notifyCheckInAvailable } = await import('@/lib/notifications');
-    checkInShown = await notifyCheckInAvailable(entry.name, regionId);
+    notifyResult = await notifyCheckInAvailable(entry.name, regionId);
   } catch (err) {
-    console.warn('[Geofence] check-in banner failed locally — server announce will cover (android):', err);
+    // The old comment here promised "server announce will cover (android)". That
+    // pass was DELETED on 2026-08-07 once both platforms' headless local banners
+    // were confirmed working, so nothing covers this — which is precisely why the
+    // verdict has to reach the server as data instead of as a reassuring comment.
+    console.warn('[Geofence] check-in banner threw — nothing else will announce this check-in:', err);
   }
+  // Its own row rather than a field on `checked_in`: that row is written by the
+  // two callers that DETECT the arrival (enter_poll and sweep), well before this
+  // point, and a second row wearing the same name would read as a second check-in.
+  // `announced_at` cannot answer this — the client skips that mark whenever it is
+  // backgrounded without a usable token, i.e. on every headless check-in, which is
+  // why 08-17's Android banner could only be confirmed by the tester's own eyes.
+  logRegionEvent(regionId, 'check_in_announced', { notified: notifyResult });
 
   // The pre-scheduled iOS 30/40-minute banners are GONE (2026-08-07). They
   // existed because iOS could not be relied on to wake at a threshold — a
@@ -2905,8 +3148,7 @@ async function setActiveAndNotify(regionId: string, entry: PartnerMapEntry): Pro
   // Only now the network: open the server-side visit beacon.
   let visitId: string | null = null;
   try {
-    const { openGymVisit } = await import('@/lib/gymVisits');
-    visitId = await openGymVisit(entry.dbId, regionId, entryTimestamp);
+    visitId = await openVisitTraced('check_in', entry.dbId, regionId, entryTimestamp, null);
     if (visitId) {
       const raw = await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY);
       const active = raw ? JSON.parse(raw) as StoredGeofence : null;
@@ -2938,7 +3180,13 @@ async function setActiveAndNotify(regionId: string, entry: PartnerMapEntry): Pro
       const sameSession = active?.entryTimestamp === entryTimestamp;
       const stampable = active && active.regionId === regionId && !active.visitId;
       if (stampable) {
-        await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...active, visitId }));
+        // MERGE, DON'T OVERWRITE (2026-08-17). `active` was parsed before the
+        // awaited openGymVisit above, so writing `{ ...active }` publishes a
+        // pre-network snapshot over whatever landed meanwhile — the exact shape
+        // of both 2026-08-11 bugs. patchActiveGeofence merges onto what is stored
+        // NOW and refuses a finalized or re-regioned record, and its refusal
+        // surfaces as `active_patch_refused` instead of vanishing.
+        await patchActiveGeofence(active, { visitId }, 'check_in_stamp');
         // Name the relaxed path so we learn how often the strict guard was wrong,
         // rather than inferring it from `visit: null` months later.
         if (!sameSession) {
@@ -2954,7 +3202,15 @@ async function setActiveAndNotify(regionId: string, entry: PartnerMapEntry): Pro
           stored_region: active.regionId ?? null,
         });
       }
-      if (checkInShown) {
+      // ⚠ MARK ONLY WHAT WE ACTUALLY DREW (2026-08-17). This was `if (checkInShown)`
+      // on a boolean that also read true for a cooldown-suppressed banner, so
+      // `announced_at` could be stamped for a check-in the user was never told
+      // about. That is not merely cosmetic: the server announce pass deleted on
+      // 08-07 left instructions to "fix the mark first" before it is ever
+      // restored, because a mark that lies is exactly what made it duplicate.
+      // Nothing double-announces today, so the strict test costs nothing now and
+      // makes announced_at true.
+      if (notifyResult === 'shown') {
         // Local banner displayed — tell the beacon not to double-announce.
         //
         // This is a RACE against the server's 90-second grace window, and a
@@ -3309,8 +3565,9 @@ async function finalizeActiveGeofenceInner(expectedRegionId?: string, endedAtOve
     // the user's existing OPEN visit rather than creating a second one, which is
     // exactly the resolve the client has been doing on every wake anyway.
     try {
-      const { openGymVisit } = await import('@/lib/gymVisits');
-      visitId = await openGymVisit(active.partnerId, active.regionId, active.entryTimestamp);
+      visitId = await openVisitTraced(
+        'close_recovery', active.partnerId, active.regionId, active.entryTimestamp, active.visitId ?? null,
+      );
     } catch { /* offline — fall through to the queue below */ }
     logRegionEvent(active.regionId ?? 'exit', 'visit_stamp_skipped', {
       reason: 'missing_at_close',
@@ -3337,7 +3594,15 @@ async function finalizeActiveGeofenceInner(expectedRegionId?: string, endedAtOve
     let closeErr: string | null = null;
     try {
       const { closeGymVisit } = await import('@/lib/gymVisits');
-      closed = await closeGymVisit(visitId, endedAtMs);
+      // ⚠ BOUNDED (2026-08-17). Unbounded, this await is the finalize path's
+      // single point of failure: a close that never settles takes the whole exit
+      // handler with it, and everything after this line — the dequeue, the
+      // deferred row, the claim — never runs. A timeout converts a silent freeze
+      // into a `reason: 'timeout'` row plus an entry that is still queued, which
+      // is exactly the state the outbox exists to own. The entry was written to
+      // the outbox BEFORE this attempt (queue first, attempt second), so nothing
+      // is lost by giving up early.
+      closed = await withNetworkTimeout(closeGymVisit(visitId, endedAtMs), 'close_gym_visit');
     } catch (err) {
       // stays queued for the next flush — but no longer stays SECRET
       closeErr = String((err as Error)?.message ?? err).slice(0, 120);
@@ -3959,7 +4224,10 @@ export async function runVisitCheck(
   // correct: it answers "am I inside the gym I checked into", and since the
   // one-live-visit invariant (2026-07-30) plus the reuse bound (2026-08-01) hold,
   // a user has at most one live visit and it is this session's.
-  const visitId = serverVisitId ?? active.visitId;
+  // `let`, because the late-open below may resolve it before the confirm runs —
+  // see the C1 block. It used to be resolved AFTER the confirm, which is why a
+  // wake on an unstamped session confirmed nothing at all (field 2026-08-17).
+  let visitId = serverVisitId ?? active.visitId;
   const visitMismatch = !!serverVisitId && !!active.visitId && serverVisitId !== active.visitId;
   if (visitMismatch) {
     console.warn(
@@ -4083,7 +4351,111 @@ export async function runVisitCheck(
   // "asked, and got an answer we cannot bank on".
   const fixTrusted = coords.accuracy == null || coords.accuracy <= MAX_FIX_ACCURACY_M;
 
-  if (visitId) {
+  // ── E5: THE LOCAL PROOF FLOOR IS STAMPED BEFORE ANY NETWORK CALL ──────────
+  //
+  // This computation and its VISIT_TICK_KEY stamp used to live BELOW the confirm,
+  // which meant one dead round-trip destroyed both the server's proof and the
+  // device's own record of it — and the device's copy is what recordDwellSession
+  // and the wake reconciler bound the banked time by. It depends on nothing the
+  // network returns, so there is no reason for it to be downstream of a call that
+  // can fail. Same gate, same inputs, same rule as before.
+  //
+  // ⚠ STRICT TO CREDIT, LOOSE TO CLOSE. `inside` is deliberately generous —
+  // radius + hysteresis, and true by default on an unusable fix — so the
+  // time-based dwell keeps advancing and a coarse fix can never flap a real
+  // session out. That generosity is right for staying open and wrong for paying
+  // out. VISIT_TICK_KEY is not a liveness flag: recordDwellSession uses it as the
+  // ceiling on how much time gets BANKED, so whatever it certifies is billed.
+  //
+  // Field 2026-08-09: a wake confirmed presence at distance_m 67 against a 20 m
+  // fence (bound 20 + 50 hysteresis) nine minutes after the owner had left, and
+  // the completion push then told him "60 min" for a 50.5-minute visit.
+  let provenInside = false;
+  if (inside) {
+    try {
+      const { fixCreditsPresence } = await import('@/lib/health/gymPresence');
+      provenInside = fixCreditsPresence({
+        fixTrusted,
+        distanceM: distance,
+        radiusM,
+        accuracyM: coords.accuracy ?? null,
+        fixAgeMs,
+      });
+    } catch {
+      provenInside = false;
+    }
+    if (provenInside) {
+      void AsyncStorage.setItem(VISIT_TICK_KEY, String(Date.now())).catch(() => {});
+    }
+  }
+
+  // ── C1: RESOLVE THE VISIT *BEFORE* THE CONFIRM, NOT AFTER ────────────────
+  //
+  // DURABLE ENTRY (2026-08-06 field): the check-in's own openGymVisit is a single
+  // best-effort call, and when it freezes — which it did that night at 20:03:38,
+  // resyncing auth and never returning — the server never learns the session
+  // exists. No visit row means no beacon, no nudges, no server-side timers.
+  //
+  // ⚠ WHY THIS MOVED (2026-08-17). It used to sit BELOW the confirm and gate on
+  // `!active.visitId`, which produced the worst of both: a `fence_refresh` wake on
+  // an unstamped session found `visitId` null, SKIPPED the confirm entirely, and
+  // only then resolved an id it had nothing left to do with. Field: five `reused`
+  // rows in 19 minutes and `last_proven_at` NULL the whole time, on a visit whose
+  // sweeps were reporting `visit: null`. Resolving first means the wake's one
+  // round-trip is actually spent on the confirm.
+  //
+  // The gate is `!visitId` — NOT `!active.visitId` — or a nonce wake that already
+  // has a perfectly good server id would spend its window re-opening.
+  let lateResolved = false;
+  if (inside && !visitId) {
+    try {
+      // Bounded: this is on the wake's critical path now, so a freeze here must
+      // cost the open and not the confirm behind it.
+      const lateId = await withNetworkTimeout(
+        openVisitTraced('wake_late_open', active.partnerId, active.regionId, active.entryTimestamp, active.visitId ?? null),
+        'late_open_gym_visit',
+      ).catch(() => null);
+      if (lateId) {
+        const raw = await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY);
+        const cur = raw ? JSON.parse(raw) as StoredGeofence : null;
+        // Only stamp the session we just opened for — never a later one, and
+        // never a session at some OTHER partner.
+        //
+        // ⚠ This used to demand `cur.entryTimestamp === active.entryTimestamp`,
+        // the same strict equality that was relaxed in setActiveAndNotify on
+        // 2026-08-08 because it failed on every Android check-in. It was never
+        // relaxed HERE, so the id was fetched and thrown away: field 2026-08-10,
+        // Android re-resolved the visit on every wake for 90 minutes (`reused`
+        // at 09:21, 09:26, 09:32, 09:37, 09:56) and still swept `visit: null`.
+        // That is not cosmetic — an unstamped visit is what sends the client
+        // back to openGymVisit with a stale entryTimestamp after the server has
+        // closed the visit, which is how the duplicate a635617c was minted.
+        if (stampVisitOnActive(cur, active, lateId, 'wake_late_open')) {
+          await patchActiveGeofence(active, { visitId: lateId }, 'wake_late_open');
+          // In-place too, or the stamp does not survive this wake: every branch
+          // of advanceActiveSession below rewrites the whole record from THIS
+          // object, so a stamp that only landed in storage is erased seconds
+          // later by the dwell machine — and the next wake re-resolves all over
+          // again. heartbeatVisitStream has always done this; this path did not.
+          active.visitId = lateId;
+        }
+        visitId = lateId;
+        lateResolved = true;
+        console.log(`[Geofence] Late visit open succeeded on wake — server caught up (${lateId}).`);
+      }
+    } catch (err) {
+      console.warn('[Geofence] Late visit open failed — next wake retries:', err);
+    }
+  }
+
+  // ⚠ A LATE-RESOLVED VISIT MAY ONLY BE CONFIRMED ON *PROVEN* PRESENCE.
+  // An inside-confirm refreshes `last_confirmed_at`, and that is what deselects a
+  // visit from the beacon's post-upgrade presence pass — the ONLY proof carrier
+  // Android has after the upgrade. Confirming an unproven "inside" on every wake
+  // would therefore silence the one thing still advancing last_proven_at, which is
+  // precisely the 08-14 shape: 40.0 min recorded for a 50.6-minute visit. A visit
+  // id we already held keeps its existing, deliberately generous behaviour.
+  if (visitId && (!lateResolved || provenInside)) {
     const { confirmGymVisit, confirmGymVisitViaNonce } = await import('@/lib/gymVisits');
     // requestCredit on an inside confirm: this one round-trip both proves
     // presence AND has the server relay the claim/upgrade (confirm_gym_visit_v2)
@@ -4108,95 +4480,12 @@ export async function runVisitCheck(
     else await confirmGymVisit(visitId, inside, detail, inside, active.entryTimestamp);
   }
 
-  // DURABLE ENTRY (2026-08-06 field): the check-in's own openGymVisit is a
-  // single best-effort call, and when it freezes — which it did tonight at
-  // 20:03:38, resyncing auth and never returning — the server never learns the
-  // session exists. No visit row means no beacon, no nudges, no server-side
-  // timers: the device is alone with a session nobody else knows about.
-  //
-  // The device is the source of truth, so the server just has to catch up.
-  // Every wake already has a fresh fix and a live network, so a wake that
-  // finds an active session WITHOUT a visit id opens one, backdated to the
-  // real entry time (open_gym_visit re-uses an open visit, so a racing
-  // double-open is a no-op, and the backdate keeps the server's 30/40 timers
-  // honest no matter how late this lands). A frozen check-in therefore costs a
-  // few minutes of beacon coverage rather than the whole session.
-  //
-  // This mirrors what the stream heartbeat already does — but the heartbeat
-  // needs stream ticks, and a swiped Android phone's only heartbeat IS the wake.
-  if (inside && !active.visitId) {
-    try {
-      const { openGymVisit } = await import('@/lib/gymVisits');
-      const lateId = await openGymVisit(active.partnerId, active.regionId, active.entryTimestamp);
-      if (lateId) {
-        const raw = await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY);
-        const cur = raw ? JSON.parse(raw) as StoredGeofence : null;
-        // Only stamp the session we just opened for — never a later one, and
-        // never a session at some OTHER partner.
-        //
-        // ⚠ This used to demand `cur.entryTimestamp === active.entryTimestamp`,
-        // the same strict equality that was relaxed in setActiveAndNotify on
-        // 2026-08-08 because it failed on every Android check-in. It was never
-        // relaxed HERE, so the id was fetched and thrown away: field 2026-08-10,
-        // Android re-resolved the visit on every wake for 90 minutes (`reused`
-        // at 09:21, 09:26, 09:32, 09:37, 09:56) and still swept `visit: null`.
-        // That is not cosmetic — an unstamped visit is what sends the client
-        // back to openGymVisit with a stale entryTimestamp after the server has
-        // closed the visit, which is how the duplicate a635617c was minted.
-        if (stampVisitOnActive(cur, active, lateId, 'wake_late_open')) {
-          await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...cur, visitId: lateId }));
-          // In-place too, or the stamp does not survive this wake: every branch
-          // of advanceActiveSession below rewrites the whole record from THIS
-          // object, so a stamp that only landed in storage is erased seconds
-          // later by the dwell machine — and the next wake re-resolves all over
-          // again. heartbeatVisitStream has always done this; this path did not.
-          active.visitId = lateId;
-        }
-        console.log(`[Geofence] Late visit open succeeded on wake — server caught up (${lateId}).`);
-      }
-    } catch (err) {
-      console.warn('[Geofence] Late visit open failed — next wake retries:', err);
-    }
-  }
-
   if (inside) {
     console.log(`[Geofence] Visit check (${stage}): still inside — advancing dwell.`);
-    // Confirmed-inside is inside-EVIDENCE: stamp the heartbeat floor so the
-    // wake reconciler's honest endedAt bound tracks nudge-confirmed sessions
-    // (a swiped phone's only ticks ARE these wakes). void — evidence must
-    // never cost the wake anything.
+    // The proof floor (provenInside + VISIT_TICK_KEY) was computed and stamped
+    // ABOVE, before the confirm — see E5 there for why it must not be downstream
+    // of a network call that can fail.
     //
-    // ⚠ STRICT TO CREDIT, LOOSE TO CLOSE. `inside` above is deliberately generous
-    // — radius + hysteresis, and true by default on an unusable fix — so the
-    // time-based dwell keeps advancing and a coarse fix can never flap a real
-    // session out. That generosity is right for staying open and wrong for paying
-    // out. VISIT_TICK_KEY is not a liveness flag: recordDwellSession uses it as the
-    // ceiling on how much time gets BANKED, so whatever it certifies is billed.
-    //
-    // Field 2026-08-09: a wake confirmed presence at distance_m 67 against a 20 m
-    // fence (bound 20 + 50 hysteresis) nine minutes after the owner had left, and
-    // the completion push then told him "60 min" for a 50.5-minute visit.
-    //
-    // So the floor now advances only on a fix worth billing: one we trust, which
-    // within its OWN error bar could actually place the user in the venue. The
-    // error bar is honest evidence; the 50 m flap-guard is not — it exists to stop
-    // oscillation, not to describe where anyone is.
-    let provenInside = false;
-    try {
-      const { fixCreditsPresence } = await import('@/lib/health/gymPresence');
-      provenInside = fixCreditsPresence({
-        fixTrusted,
-        distanceM: distance,
-        radiusM,
-        accuracyM: coords.accuracy ?? null,
-        fixAgeMs,
-      });
-    } catch {
-      provenInside = false;
-    }
-    if (provenInside) {
-      void AsyncStorage.setItem(VISIT_TICK_KEY, String(Date.now())).catch(() => {});
-    }
     // Wake-scoped lease: cron wakes (:01) and stream ticks (:32) are permanently
     // out of phase, so a tick-started zombie attempt is almost always <2 min old
     // when a wake arrives — under the normal lease the wake would skip and waste
@@ -4408,8 +4697,9 @@ async function heartbeatVisitStream(active: StoredGeofence, coords: Location.Loc
       // Passing the original entryTimestamp backdates started_at, so the server's
       // dwell/upgrade timers are unaffected by how late the open happens; the RPC
       // re-uses an already-open visit, so a racing double-open is a no-op.
-      const { openGymVisit } = await import('@/lib/gymVisits');
-      const visitId = await openGymVisit(active.partnerId, active.regionId, active.entryTimestamp);
+      const visitId = await openVisitTraced(
+        'stream_late_open', active.partnerId, active.regionId, active.entryTimestamp, active.visitId ?? null,
+      );
       if (!visitId) return; // still unauthenticated/offline — next interval retries
       const raw = await AsyncStorage.getItem(ACTIVE_GEOFENCE_KEY);
       const current = raw ? JSON.parse(raw) as StoredGeofence : null;
@@ -4418,7 +4708,9 @@ async function heartbeatVisitStream(active: StoredGeofence, coords: Location.Loc
       // entryTimestamp equality failed on every Android check-in and silently
       // discarded a perfectly good id.
       if (!stampVisitOnActive(current, active, visitId, 'stream_late_open')) return;
-      await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({ ...current, visitId }));
+      // Merge rather than write `current` back wholesale: `current` was read
+      // before this line and the dwell machine writes the same key (2026-08-17).
+      await patchActiveGeofence(active, { visitId }, 'stream_late_open');
       active.visitId = visitId; // in-place so this tick's claim path sees it too
       console.log('[Geofence] Visit beacon opened late — check-in had raced auth.');
     }
@@ -4633,13 +4925,45 @@ TaskManager.defineTask(LOCATION_TRACKING_TASK, async ({ data, error }) => {
       accuracy:  newest.coords.accuracy ?? null,
       at:        newest.timestamp ?? Date.now(),
     }));
+
+    // ⚠ THE ROW THAT CONVICTS A SILENT APPROACH STREAM (2026-08-17).
+    //
+    // `approach_stream_on` now reports honestly whether the START succeeded, but a
+    // started stream that then delivers NOTHING is a different failure and looked
+    // identical from the server: 08-12 PM, 08-13 and 08-17 all recorded
+    // approach_stream_on followed by zero fixes for 6-8 minutes while the user
+    // stood inside the fence. One row on the FIRST fix of an approach settles it
+    // forever: present means the stream is alive and the check-in gate is the
+    // suspect; absent, with `started: true` beside it, means the stream is the
+    // suspect. `approach_age_s` is the number — it is how long the user walked
+    // before the driver produced anything at all.
+    //
+    // One-shot per approach: the flag resets in exitApproach. A burst of fixes
+    // must not become a burst of rows (see noteSuppressedExit for what that costs).
+    if (!_approachFirstTickEmitted) {
+      const rawApproach = await AsyncStorage.getItem(APPROACH_STATE_KEY).catch(() => null);
+      if (rawApproach) {
+        _approachFirstTickEmitted = true;
+        let since: number | null = null;
+        let approachRegion: string | null = null;
+        try {
+          const st = JSON.parse(rawApproach) as { regionId?: string; since?: number };
+          since = typeof st.since === 'number' ? st.since : null;
+          approachRegion = st.regionId ?? null;
+        } catch { /* an unreadable blob still deserves the row */ }
+        logRegionEvent(approachRegion ?? 'stream', 'stream_first_tick', {
+          acc_m:          newest.coords.accuracy != null ? Math.round(newest.coords.accuracy) : null,
+          age_s:          Math.round((Date.now() - (newest.timestamp ?? Date.now())) / 1000),
+          approach_age_s: since != null ? Math.round((Date.now() - since) / 1000) : null,
+        });
+      }
+    }
   } catch { /* best-effort — the wake falls back to its other sources */ }
   try {
     // Headless context: load the last-persisted admin dwell threshold from
     // storage before any dwell decision (foreground refreshes it on launch).
     await primeGymDwellMinutes();
-    await flushPendingVisitCloses();
-    await flushPendingClaims();
+    await drainOutboxesBounded('stream_tick');
     await evaluateLocationFix(locations[locations.length - 1].coords);
   } catch (err) {
     console.warn('[Geofence] evaluateLocationFix failed:', err);
@@ -4650,8 +4974,7 @@ TaskManager.defineTask(LOCATION_TRACKING_TASK, async ({ data, error }) => {
 TaskManager.defineTask(GEOFENCE_REARM_TASK, async () => {
   noteTask('POWR_GEOFENCE_BOOT_REARM');
   try {
-    await flushPendingVisitCloses();
-    await flushPendingClaims();
+    await drainOutboxesBounded('boot_rearm');
     await rearmGeofencingFromCache();
     await sweepForMissedCheckIn();
     return BackgroundFetch.BackgroundFetchResult.NewData;
@@ -4762,11 +5085,99 @@ async function flushSuppressedExitNoise(): Promise<void> {
   } catch { /* a tally must never be able to break an arm */ }
 }
 
+// ⚠ SERIALISED, BECAUSE IT NEVER ACTUALLY WAS (2026-08-17).
+//
+// noteSuppressedExit read-modify-writes EXIT_NOISE_KEY across an await, and its
+// docstring justified that with "the events are serialised through one task
+// executor". They are not: the EXIT branch calls it as
+// `void noteSuppressedExit(regionId)`, so an arm burst runs N copies
+// concurrently. All N awaited `getItem`, all N read the SAME aged-out tally, and
+// all N shipped it — field 2026-08-17: **17 identical rows** carrying
+// `{count: 4, window_s: 1243}` written in 3 seconds, while the 17 increments those
+// calls should have banked were lost, each overwriting the last with `count: 1`.
+// The aggregation built to replace per-region exit noise was itself generating a
+// storm, on the one table a future server-side exit accelerator would have to
+// treat as truth.
+//
+// The fix is a promise chain, not an in-memory tally. Appending to the chain
+// happens SYNCHRONOUSLY — before any await — so N concurrent callers queue behind
+// each other and each one's read sees the previous one's write. Storage stays the
+// single source of truth, which matters: flushSuppressedExitNoise ships the tally
+// and REMOVES the key, and an in-memory counter would sail past that and re-count
+// events already shipped.
+let _exitNoiseChain: Promise<void> = Promise.resolve();
+
+/** One `stream_first_tick` row per approach — see the stream task for why, and
+ *  exitApproach for where it re-arms. */
+let _approachFirstTickEmitted = false;
+
+/** openGymVisit, wrapped in an attempt/result row PAIR.
+ *
+ *  ⚠ TWO ROWS, NOT ONE, AND THE FIRST ONE GOES BEFORE THE AWAIT (2026-08-17).
+ *
+ *  Every field question we could not answer about this call needed a fact that is
+ *  only knowable AFTER the await that is itself the suspect — did it resolve, what
+ *  did it return, how long did it take. A single row emitted afterwards therefore
+ *  cannot exist for the one case that matters. An attempt row with **no result row
+ *  beside it** is the artefact that convicts a hang, and it is the same reasoning
+ *  the sweep's own telemetry already follows: the row goes before the handoff,
+ *  never in a `finally` (a suspended frame never reaches its finally).
+ *
+ *  It also finally names the PRODUCER. On 08-17 one visit was re-opened nine times
+ *  — five of them inside 19 minutes on a 3-minute cadence that no nudge schedule
+ *  explains — and with four call sites all logging nothing, at least two of those
+ *  rows had no identified source at all. `source` ends that.
+ *
+ *  Never throws: telemetry must not be able to break a check-in. */
+async function openVisitTraced(
+  source: 'check_in' | 'sweep_proven_stamp' | 'wake_late_open' | 'stream_late_open' | 'close_recovery',
+  partnerId: string,
+  regionId: string | undefined,
+  entryTimestamp: number,
+  storedVisit: string | null,
+): Promise<string | null> {
+  const rid = regionId ?? 'visit';
+  logRegionEvent(rid, 'visit_open_attempt', {
+    source,
+    stored_visit:  storedVisit,
+    opened_entry:  entryTimestamp,
+    app_state:     AppState.currentState,
+  });
+  const startedAt = Date.now();
+  try {
+    const { openGymVisit } = await import('@/lib/gymVisits');
+    const id = await openGymVisit(partnerId, regionId, entryTimestamp);
+    logRegionEvent(rid, 'visit_open_result', {
+      source,
+      resolved: !!id,
+      visit:    id,
+      ms:       Date.now() - startedAt,
+    });
+    return id;
+  } catch (err) {
+    logRegionEvent(rid, 'visit_open_result', {
+      source,
+      resolved: false,
+      ms:       Date.now() - startedAt,
+      err:      String((err as Error)?.message ?? err).slice(0, 120),
+    });
+    return null;
+  }
+}
+
 /** Records one exit we chose not to write a row for, and ships the accumulated
- *  tally once it is older than EXIT_NOISE_FLUSH_MS. Read-modify-write on a
- *  single key: the events are serialised through one task executor, and a lost
- *  increment costs a number in a telemetry row, never a decision. */
+ *  tally once it is older than EXIT_NOISE_FLUSH_MS. Concurrency-safe: see the
+ *  chain above. A lost increment costs a number in a telemetry row, never a
+ *  decision — but a DUPLICATED row costs the readability the tally exists for. */
 async function noteSuppressedExit(regionId: string): Promise<void> {
+  const run = _exitNoiseChain.then(() => noteSuppressedExitInner(regionId));
+  // Assigned before this function's first await, so the next caller — even one
+  // that arrives in the same tick — chains onto THIS run rather than racing it.
+  _exitNoiseChain = run.catch(() => {});
+  return run;
+}
+
+async function noteSuppressedExitInner(regionId: string): Promise<void> {
   const now = Date.now();
   let count = 0;
   let since = now;
@@ -4964,8 +5375,9 @@ TaskManager.defineTask(GEOFENCE_TASK_NAME, async ({ data, error }) => {
     // so exit-time dwell checks use the current value. (After the debounce: a
     // 24-event storm needs one flush pass, not 24 interleaved ones.)
     await primeGymDwellMinutes();
-    await flushPendingVisitCloses();
-    await flushPendingClaims();
+    // Bounded, or a stuck outbox entry swallows the region crossing behind it —
+    // and a swallowed EXIT is the most expensive event in the system.
+    await drainOutboxesBounded('region_event');
 
   // Sentinel crossings re-target coverage; they are never partner check-ins.
   // Guard BEFORE any session state is touched — a sentinel EXIT can coincide
