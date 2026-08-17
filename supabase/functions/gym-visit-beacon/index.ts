@@ -26,6 +26,7 @@ import { deliverVisiblePush } from '../_shared/visiblePush.ts';
 import { sendFcmDataMessage } from '../_shared/fcmV1.ts';
 import { sendApnsBackgroundPush } from '../_shared/apnsV1.ts';
 import { staleVisitVerdict } from '../_shared/gymReaper.ts';
+import { MAX_GYM_SESSION_SEC } from '../_shared/gymDuration.ts';
 
 // Budgets are PER STAGE and live in their own columns (nudge_count /
 // nudge_count_upgrade). They used to share `nudge_count`, which silently handed the
@@ -117,7 +118,7 @@ Deno.serve(async (req: Request) => {
   if (valid !== true) return new Response('forbidden', { status: 403 });
 
   const { dwellMin, upgradeMin } = await thresholds(admin);
-  const stats = { dwell: 0, upgrade: 0, sent: 0, no_token: 0, announced: 0, completed: 0, fence_refresh: 0, presence: 0, stale_closed: 0, stale_clamped: 0, stale_grown: 0, redelivered: 0, settled_claim: 0, settled_upgrade: 0 };
+  const stats = { dwell: 0, upgrade: 0, sent: 0, no_token: 0, announced: 0, completed: 0, fence_refresh: 0, presence: 0, stale_closed: 0, stale_clamped: 0, stale_grown: 0, complete_suppressed: 0, complete_no_token: 0, pursuit: 0, redelivered: 0, settled_claim: 0, settled_upgrade: 0 };
 
   // SESSION COMPLETE: the walk-out closure banner, both platforms, one
   // template. Only CLAIMED visits (sub-threshold pop-ins end silently). The
@@ -136,20 +137,79 @@ Deno.serve(async (req: Request) => {
   // whole point of the grace is to not guess.
   {
     const COMPLETE_GRACE_MS = 2 * 60 * 1000;
-    const COMPLETE_WINDOW_MS = 30 * 60 * 1000;
+    // ⚠ THE WINDOW KEYED ON A BACKDATED COLUMN, SO SOME USERS WERE NEVER TOLD
+    // (2026-08-17). It was `ended_at >= now() - 30 min`, and `ended_at` is not
+    // when the close HAPPENED — it is when presence was last proven. The 12-hour
+    // abandon cron sets it to `last_confirmed_at`, i.e. hours in the past at the
+    // instant it writes it, so those visits were already outside the window when
+    // they became eligible: `completed_push_at` never stamped, and the user was
+    // never told about a session they had been CREDITED for. The reaper's
+    // stale-close lands inside 30 min today, but only by ~10 minutes of margin —
+    // one tweak to STALE_SILENCE_MS and it joins them.
+    //
+    // Bound on `started_at` instead: it is never rewritten backwards by a close
+    // path, so "did this visit happen recently" stops depending on how its end was
+    // derived. `completed_push_at` is the idempotency — not the window — so a wider
+    // window cannot double-send. Verified before deploying: zero unstamped visits
+    // fall inside 24 h, and the 63 older ones were backfilled as already-notified
+    // so an unstamped row now means a banner is genuinely owed.
+    const COMPLETE_WINDOW_MS = 24 * 60 * 60 * 1000;
     const graceCutoff = new Date(Date.now() - COMPLETE_GRACE_MS).toISOString();
     const { data: doneVisits, error: doneErr } = await admin
       .from('gym_visits')
-      .select('id, user_id, started_at, ended_at, claimed_session_id, partners(name)')
+      .select('id, user_id, started_at, ended_at, close_reason, claimed_session_id, partners(name)')
       .is('completed_push_at', null)
       .not('ended_at', 'is', null)
       .not('claimed_session_id', 'is', null)
       .or(`upgraded_at.not.is.null,ended_at.lte.${graceCutoff}`)
-      .gte('ended_at', new Date(Date.now() - COMPLETE_WINDOW_MS).toISOString())
+      .gte('started_at', new Date(Date.now() - COMPLETE_WINDOW_MS).toISOString())
+      // Newest first, deliberately. The class that can accumulate here is
+      // un-stamped rows that cannot be delivered (no token yet), and ascending
+      // would hand them the 50 slots permanently BECAUSE they are the oldest,
+      // starving a user who just walked out. A banner two hours late is worth
+      // less than a banner two minutes late.
+      .order('ended_at', { ascending: false })
       .limit(50);
     if (doneErr) console.error('[gym-visit-beacon] complete scan failed', doneErr);
 
     for (const visit of doneVisits ?? []) {
+      // A 12-hour abandon is not a workout the user finished — it is a visit
+      // nobody ever closed, ended at whatever moment presence was last seen. The
+      // wider window above is what makes these reachable at all, so they need
+      // their own exclusion: "Session complete 💪" for a session someone walked
+      // away from half a day ago is worse than silence. Stamped so the scan does
+      // not keep reconsidering it every minute for 24 hours.
+      // ⚠ SUPPRESS ON A STALE *ENDING*, NOT ON A MAGIC STRING.
+      //
+      // The window above is on `started_at` so slow closes are reachable at all;
+      // whether to SEND is governed by how old the ending is. `abandoned_12h` is
+      // the obvious case, but it is not the only backdated one:
+      // `superseded_by_new_check_in` sets ended_at to the last proven moment too,
+      // and in prod it lands a MEAN OF 243 MINUTES after that instant (max 676,
+      // n=15, 11 of them claimed). Under the old 30-minute window those were
+      // silent; under a 24-hour window they qualify, and because a supersede is
+      // triggered BY a new check-in they would fire immediately — the device says
+      // "You're in" and seconds later the tray says "Session complete" for this
+      // morning's visit. The reaper's close, which is the class E6 exists to
+      // rescue, lands tens of minutes after ended_at, never hours, so 2 h has
+      // ample headroom.
+      //
+      // ⚠ AND NOTHING IS STAMPED HERE. `completed_push_at` means "a completion
+      // banner was sent", and four readers depend on that: LiveOps' `full_chain`
+      // (an abandoned 12-hour visit would count as a fully successful chain), its
+      // `no_completion_push` triage list (these rows would vanish from the very
+      // list that exists to find people nobody told), `close_to_push_sent` (which
+      // would ingest an hours-long latency into the delivery percentile) and the
+      // timeline chip. Skipping costs one of 50 scan slots and zero queries — the
+      // `continue` is above the token lookup — which is far cheaper than
+      // overloading the column six queries read.
+      const END_FRESH_MS = 2 * 60 * 60 * 1000;
+      const endedAgoMs = Date.now() - new Date(visit.ended_at as string).getTime();
+      if (visit.close_reason === 'abandoned_12h' || endedAgoMs > END_FRESH_MS) {
+        stats.complete_suppressed++;
+        continue;
+      }
+
       const { data: tokens, error: tokensErr } = await admin
         .from('user_push_tokens')
         .select('expo_push_token, device_token, platform')
@@ -158,7 +218,12 @@ Deno.serve(async (req: Request) => {
         console.error('[gym-visit-beacon] complete token lookup failed', tokensErr);
         continue;
       }
-      if (!tokens || tokens.length === 0) continue;
+      // ⚠ NOT STAMPED, DELIBERATELY. A user with no token today may register one
+      // tomorrow, and the visit stays eligible for the rest of its 24 h so the
+      // banner can still land. It is COUNTED, though: 38 of 70 users currently
+      // have no token at all, and this pass was silently skipping them with no
+      // record that a banner was owed and undeliverable.
+      if (!tokens || tokens.length === 0) { stats.complete_no_token++; continue; }
 
       const { data: pts, error: ptsErr } = await admin
         .from('point_transactions')
@@ -206,11 +271,19 @@ Deno.serve(async (req: Request) => {
         .select('duration_sec')
         .eq('id', visit.claimed_session_id)
         .maybeSingle();
-      const mins = sessRow?.duration_sec
-        ? Math.max(1, Math.round(sessRow.duration_sec / 60))
-        : Math.max(1, Math.round(
-        (new Date(visit.ended_at as string).getTime() - new Date(visit.started_at as string).getTime()) / 60_000,
-      ));
+      // Capped at the same 12 h backstop the duration writers use
+      // (_shared/gymDuration.ts MAX_GYM_SESSION_SEC). The quoted number is the one
+      // thing in this push the user checks against their own memory, and the
+      // fallback below derives from a span that drift can inflate for as long as a
+      // visit stays open — 2400 s reached 3598 s in twenty minutes on 08-11, on its
+      // way to the cap. A banner claiming eleven hours is worse than no banner.
+      const CAP_MIN = MAX_GYM_SESSION_SEC / 60;
+      const rawMins = sessRow?.duration_sec
+        ? Math.round(sessRow.duration_sec / 60)
+        : Math.round(
+          (new Date(visit.ended_at as string).getTime() - new Date(visit.started_at as string).getTime()) / 60_000,
+        );
+      const mins = Math.min(CAP_MIN, Math.max(1, rawMins));
       const gymName = (visit as { partners?: { name?: string } | null }).partners?.name ?? 'your gym';
 
       // ⚠ THE ROUTE MATTERS AS MUCH AS THE COPY (2026-08-09). This send used to
@@ -618,6 +691,104 @@ Deno.serve(async (req: Request) => {
       tokensByUser.set(t.user_id, arr);
     }
 
+    // ── APPROACH PURSUIT (2026-08-17) ────────────────────────────────────────
+    //
+    // The gap this exists for: on 08-17 an iPhone got its region ENTER at
+    // 08:59:37, 101 m out (the OS ring is ~120 m, the fence is 40 m), and then the
+    // process was suspended for SEVEN AND A HALF MINUTES while the owner walked
+    // 74 m → 4 m. Its scheduled wake was 5 minutes away and APNs held it 111 s
+    // beyond that. The 5-minute cadence is right for an idle fleet and far too
+    // slow for the ninety seconds either side of a doorway.
+    //
+    // So: a user who has entered a wake ring but has NOT converted it into a
+    // check-in is pursued once a minute for up to 8 minutes. Tightly bounded on
+    // purpose — this is the one moment worth spending push budget on, and
+    // Apple's ~2-3 background pushes/hour guidance means it must be a burst at a
+    // known-valuable moment rather than a raised floor. It stops the instant the
+    // arrival converts (a `checked_in` row after the approach, or any open visit).
+    //
+    // ⚠ It only RAISES the cadence for users already in the ping set; it does not
+    // add anyone. With the fleet off that means the bench devices, and it starts
+    // applying to real users on the day the fleet is switched on — deliberately,
+    // so this cannot quietly become a fleet-wide push increase today.
+    // ⚠ THE WINDOW IS ANCHORED ON THE ARRIVAL, NOT ON THE LAST ROW SEEN.
+    //
+    // The first cut of this keyed on the most recent approach row inside a trailing
+    // 8 minutes, which is not a bound at all — every new row re-armed it. Replayed
+    // against 14 days of prod: the Sony bench emits chains of **113** `enter` /
+    // `approach_stream_on` rows spanning 24 minutes (arm bursts, plus `enter` being
+    // logged before the already-active guard, plus the documented 5.3 s straggler
+    // wave), which would have meant **32 minutes of 1/min pushes**, on devices
+    // already receiving 10 `fence_refresh` pushes an hour against Apple's ~2-3
+    // guidance — and on the very handset whose 111 s APNs hold is why this exists.
+    // Walking the chain to its START makes the 8 minutes real: 113 burst rows now
+    // buy 8 minutes, not 32.
+    const PURSUIT_WINDOW_MS = 8 * 60 * 1000;
+    const PURSUIT_LOOKBACK_MS = 45 * 60 * 1000;  // far enough back to see where a chain BEGAN
+    const PURSUIT_ROW_LIMIT = 2000;
+    const PURSUIT_INTERVAL_MIN = 1;
+    const pursuing = new Set();
+    {
+      const { data: approachRows, error: approachErr } = await admin
+        .from('geofence_region_events')
+        .select('user_id, event, created_at')
+        .in('event', ['approach_stream_on', 'enter', 'checked_in'])
+        .gte('created_at', new Date(Date.now() - PURSUIT_LOOKBACK_MS).toISOString())
+        // Ascending is load-bearing: the chain walk below needs rows in order.
+        .order('created_at', { ascending: true })
+        .limit(PURSUIT_ROW_LIMIT);
+      if (approachErr) console.error('[gym-visit-beacon] pursuit scan failed', approachErr);
+
+      const chainStartByUser = new Map();
+      const lastApproachByUser = new Map();
+      const lastCheckedInByUser = new Map();
+      for (const r of approachRows ?? []) {
+        const at = new Date(r.created_at).getTime();
+        if (r.event === 'checked_in') { lastCheckedInByUser.set(r.user_id, at); continue; }
+        const prev = lastApproachByUser.get(r.user_id);
+        // A gap wider than the window starts a NEW episode; anything closer is the
+        // same arrival still being reported.
+        if (prev == null || at - prev > PURSUIT_WINDOW_MS) chainStartByUser.set(r.user_id, at);
+        lastApproachByUser.set(r.user_id, at);
+      }
+
+      // An open visit means the arrival already converted — pursuing it would be
+      // spending budget to tell a device something it has already acted on. This is
+      // also the only RELIABLE exclusion of the three: `checked_in` is written at
+      // just two client sites, and pollForCheckIn returns early on an existing
+      // active session WITHOUT logging, so a stream-detected check-in produces no
+      // `checked_in` row at all.
+      const { data: liveVisits, error: liveErr } = await admin
+        .from('gym_visits')
+        .select('user_id')
+        .is('ended_at', null)
+        .limit(200);
+      if (liveErr) console.error('[gym-visit-beacon] pursuit open-visit scan failed', liveErr);
+      const hasOpenVisit = new Set((liveVisits ?? []).map((v: { user_id: string }) => v.user_id));
+
+      // ⚠ FAIL CLOSED. `?? []` on the open-visit scan fails OPEN — an error would
+      // empty the one exclusion that works and pursue everyone with a recent
+      // approach row, including users mid-workout. Truncation is the same hazard
+      // wearing a different hat: at the row limit we have read only part of the
+      // window and the rows we lost are the NEWEST, i.e. exactly the `checked_in`
+      // rows that stop a pursuit. PostgREST has silently truncated at a limit in
+      // this project before. No pursuit is always safe; a half-read window is not.
+      const scanUnsafe = !!approachErr || !!liveErr
+        || (approachRows?.length ?? 0) >= PURSUIT_ROW_LIMIT;
+      if (scanUnsafe) {
+        console.error('[gym-visit-beacon] pursuit stood down', {
+          approachErr, liveErr, rows: approachRows?.length,
+        });
+      } else {
+        for (const [uid, chainStart] of chainStartByUser) {
+          if (Date.now() - chainStart >= PURSUIT_WINDOW_MS) continue; // 8 min from ARRIVAL, full stop
+          if (hasOpenVisit.has(uid)) continue;
+          if ((lastCheckedInByUser.get(uid) ?? 0) > chainStart) continue;
+          pursuing.add(uid);
+        }
+      }
+    }
+
     const refreshPayload = { type: 'gym_visit_check', stage: 'dwell', nonce: 'fence-refresh' };
     // Per-platform, so a missing credential on one side cannot silence the
     // other — the whole point of this change is that iOS stops depending on
@@ -625,8 +796,22 @@ Deno.serve(async (req: Request) => {
     const platformDown = { android: false, ios: false };
     for (const [userId, entries] of tokensByUser) {
       if (!FAST_USER_IDS.has(userId) && FLEET_INTERVAL_MIN <= 0) continue; // fleet off
-      const intervalMin = FAST_USER_IDS.has(userId) ? FAST_INTERVAL_MIN : FLEET_INTERVAL_MIN;
-      if (Date.now() - (lastPingByUser.get(userId) ?? 0) < intervalMin * 60_000) continue;
+      // Pursuit wins over both baselines — but BENCH ONLY until the burst has been
+      // measured in the field. Whoever raises FLEET_INTERVAL_MIN must enable this
+      // deliberately rather than inherit it: against the documented 240-minute
+      // fleet cadence, 1/min is a 240x increase in silent-push volume.
+      const inPursuit = pursuing.has(userId) && FAST_USER_IDS.has(userId);
+      const intervalMin = inPursuit
+        ? PURSUIT_INTERVAL_MIN
+        : (FAST_USER_IDS.has(userId) ? FAST_INTERVAL_MIN : FLEET_INTERVAL_MIN);
+      // 15 s of slack. `lastPingByUser` is stamped a second or two INTO the previous
+      // tick, so an exact comparison against a 1-minute cron loses a whole period to
+      // phase drift — measured: the 5-minute gate actually delivers ~6 (10 pushes an
+      // hour, not 12). Unamended, a 1-minute gate would pay the full push bill for
+      // half the cadence, and the field test would read as "pursuit fired and the
+      // arrival was still missed".
+      if (Date.now() - (lastPingByUser.get(userId) ?? 0) < intervalMin * 60_000 - 15_000) continue;
+      if (inPursuit) stats.pursuit++;
 
       for (const { token, platform } of entries) {
         if (platformDown[platform]) continue;
@@ -660,6 +845,13 @@ Deno.serve(async (req: Request) => {
           type: 'fence_refresh',
           expo_push_token: token,
           status: outcome.ok ? 'accepted' : 'rejected',
+          // The ONLY way to answer "did 1/min beat 5/min". `skip_reason` is a plain
+          // text column and is free on an accepted row. `type` deliberately stays
+          // 'fence_refresh': a new type would drop these rows out of the limiter's
+          // own select above and hand the device 1/min forever. It also makes a hard
+          // hourly ceiling cheap later — count skip_reason='pursuit' out of the same
+          // `recentPings` read, whose lookback is already 60 minutes.
+          skip_reason: inPursuit ? 'pursuit' : null,
           ticket_id: outcome.messageName ?? outcome.apnsId ?? null,
           error: outcome.ok ? null : outcome.error,
         }).then(({ error }) => { if (error) console.error('[gym-visit-beacon] fence_refresh log insert failed', error); });
