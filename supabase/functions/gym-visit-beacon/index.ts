@@ -117,7 +117,7 @@ Deno.serve(async (req: Request) => {
   if (valid !== true) return new Response('forbidden', { status: 403 });
 
   const { dwellMin, upgradeMin } = await thresholds(admin);
-  const stats = { dwell: 0, upgrade: 0, sent: 0, no_token: 0, announced: 0, completed: 0, fence_refresh: 0, presence: 0, stale_closed: 0, stale_clamped: 0, redelivered: 0, settled_claim: 0, settled_upgrade: 0 };
+  const stats = { dwell: 0, upgrade: 0, sent: 0, no_token: 0, announced: 0, completed: 0, fence_refresh: 0, presence: 0, stale_closed: 0, stale_clamped: 0, stale_grown: 0, redelivered: 0, settled_claim: 0, settled_upgrade: 0 };
 
   // SESSION COMPLETE: the walk-out closure banner, both platforms, one
   // template. Only CLAIMED visits (sub-threshold pop-ins end silently). The
@@ -483,6 +483,37 @@ Deno.serve(async (req: Request) => {
             .eq('id', sess.id);
           if (sessErr) console.error('[gym-visit-beacon] stale-close session clamp failed', sessErr);
           else stats.stale_clamped++;
+        } else if (sess?.ended_at && provenMs > Date.parse(sess.ended_at)) {
+          // ⚠ AND THE OTHER DIRECTION, WHICH NOBODY WAS DOING (2026-08-17).
+          //
+          // The clamp above only ever shortens. So when the reaper closes a visit
+          // whose LAST PROOF is later than the session's stored end, those minutes
+          // are simply never banked — the visit closes at the proven moment and the
+          // session keeps whatever the upgrade wrote. Field 2026-08-17: the visit
+          // closed at 09:48:03 (= last_proven_at, correct) while the session stayed
+          // at 09:41:47 / 2400 s, so a 56.6-minute workout was recorded as 40.0 and
+          // the push said "40 min". 6.3 of those 16.6 missing minutes were this,
+          // and no client fix can reach them.
+          //
+          // Growing here is the same rule the clamp obeys, pointed the other way:
+          // `provenMs` IS the proof floor, so this pays for time presence was
+          // established for and not one second more. It stays grows-only (guarded
+          // by the comparison itself, so a later, truer health reconciliation is
+          // never shortened), and it cannot move a payout — the gym/hiit ladder
+          // tops out at the 40-minute tier, so a longer duration adds no points.
+          const durationSec = Math.max(0, Math.round((provenMs - Date.parse(sess.started_at)) / 1000));
+          const { error: growErr } = await admin
+            .from('activity_sessions')
+            .update({ ended_at: endedAtIso, duration_sec: durationSec })
+            .eq('id', sess.id)
+            // Repeat the guard in the UPDATE: a client close that grew the row
+            // between our read and this write must not be shortened by us. The
+            // null arm matters — `.lt` against NULL matches nothing, so a session
+            // with no duration yet would silently never grow (same shape as
+            // upgrade-gym-tier's own grows-only filter).
+            .or(`duration_sec.is.null,duration_sec.lt.${durationSec}`);
+          if (growErr) console.error('[gym-visit-beacon] stale-close session grow failed', growErr);
+          else stats.stale_grown++;
         }
       }
       stats.stale_closed++;
