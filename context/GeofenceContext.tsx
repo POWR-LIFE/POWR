@@ -3372,7 +3372,18 @@ async function finalizeActiveGeofenceInner(expectedRegionId?: string, endedAtOve
   }
 
   if (!needsClaim) {
-    console.log(`[Geofence] Dwell ${Math.round((endedAtMs - active.entryTimestamp) / 60000)}min < threshold — no points.`);
+    // SAY WHICH CLAUSE FAILED. needsClaim has two, and this line used to blame
+    // the dwell for both — so on 2026-08-16 it printed "33min < threshold" with
+    // the threshold at 30, sending the triage after a config bug that did not
+    // exist while the real cause (an already-recorded session) went unnamed.
+    const dwellMin = Math.round((endedAtMs - active.entryTimestamp) / 60000);
+    const tooShort = endedAtMs - active.entryTimestamp < minDwellMs();
+    console.log(
+      tooShort
+        ? `[Geofence] Dwell ${dwellMin}min < ${Math.round(minDwellMs() / 60000)}min threshold — no points.`
+        : `[Geofence] Dwell ${dwellMin}min is creditable, but nothing to claim `
+          + `(sessionRecorded=${active.sessionRecorded}, pointsPending=${active.pointsPending}) — no points.`,
+    );
     return true;
   }
 

@@ -66,30 +66,55 @@ describe('react-native is never imported dynamically', () => {
 });
 
 describe('the auth token stays readable in the background', () => {
+  // ⚠ THESE THREE USED TO SCAN lib/supabase.ts, AND ONE OF THEM WAS GREEN ON A
+  // NO-OP. It asserted `void SecureStore.setItemAsync(key, value, KEYCHAIN)`
+  // existed — it did, and it healed nothing, because expo-secure-store's write
+  // degrades to SecItemUpdate for an existing key and SecItemUpdate never
+  // touches kSecAttrAccessible. Nine days of zero-second iOS gym visits passed
+  // underneath a green suite. The behaviour now lives in lib/secureKeychain.ts
+  // and is tested for real against a fake with the native semantics in
+  // __tests__/keychain-accessibility-migration.test.ts — that file is the guard;
+  // these remain only to stop the wiring being quietly undone.
+  const keychainSrc = readFileSync(join(ROOT, 'lib/secureKeychain.ts'), 'utf8');
+
   it('writes the keychain item as AFTER_FIRST_UNLOCK', () => {
     // The default, WHEN_UNLOCKED, makes every locked-device background wake
     // fail with errSecInteractionNotAllowed — no check-in, no claim, and a
     // breadcrumb that arms the crash above on the next app open.
-    const source = readFileSync(join(ROOT, 'lib/supabase.ts'), 'utf8');
-    expect(source).toMatch(/keychainAccessible:\s*SecureStore\.AFTER_FIRST_UNLOCK/);
+    expect(keychainSrc).toMatch(/keychainAccessible:\s*SecureStore\.AFTER_FIRST_UNLOCK/);
   });
 
   it('passes the accessibility option on every keychain call', () => {
-    const source = readFileSync(join(ROOT, 'lib/supabase.ts'), 'utf8');
     for (const call of ['getItemAsync', 'setItemAsync', 'deleteItemAsync']) {
-      const match = source.match(new RegExp(`SecureStore\\.${call}\\([^)]*\\)`, 'g')) ?? [];
+      const match = keychainSrc.match(new RegExp(`SecureStore\\.${call}\\([^)]*\\)`, 'g')) ?? [];
       expect(match.length).toBeGreaterThan(0);
-      for (const site of match) expect(site).toContain('KEYCHAIN');
+      for (const site of match) expect(site).toMatch(/KEYCHAIN|PRIMARY/);
     }
   });
 
-  it('rewrites an existing token so devices already signed in are healed', () => {
-    // iOS applies the accessibility attribute at WRITE time, so the option
-    // alone would fix new sign-ins only and leave every current install
-    // permanently broken in the background.
+  it('migrates under a separate keychainService, not an in-place rewrite', () => {
+    // An in-place rewrite cannot change accessibility. A distinct service makes
+    // SecItemAdd genuinely add, which is the only path that applies it.
+    expect(keychainSrc).toMatch(/keychainService:\s*AFU_SERVICE/);
+    expect(keychainSrc).toMatch(/export const AFU_SERVICE/);
+  });
+
+  it('the supabase adapter delegates to the migrating helper', () => {
     const source = readFileSync(join(ROOT, 'lib/supabase.ts'), 'utf8');
-    expect(source).toMatch(/accessibilityUpgraded/);
-    expect(source).toMatch(/void SecureStore\.setItemAsync\(key, value, KEYCHAIN\)/);
+    expect(source).toMatch(/from '@\/lib\/secureKeychain'/);
+    expect(source).toMatch(/return readSecure\(key\)/);
+    expect(source).toMatch(/setItem:.*writeSecure\(key, value\)/);
+    expect(source).toMatch(/return removeSecure\(key\)/);
+    // The old no-op heal must not come back alongside it.
+    expect(source).not.toMatch(/accessibilityUpgraded/);
+  });
+
+  it('lib/device.ts no longer calls SecureStore unguarded', () => {
+    // Same bug, same file pair: flagged 2026-08-07, still unguarded on the
+    // background claim chain until 2026-08-17.
+    const source = readFileSync(join(ROOT, 'lib/device.ts'), 'utf8');
+    expect(source).not.toMatch(/SecureStore\.(get|set|delete)ItemAsync/);
+    expect(source).toMatch(/from '@\/lib\/secureKeychain'/);
   });
 });
 

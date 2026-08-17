@@ -1,8 +1,8 @@
 import * as Application from 'expo-application';
 import Constants from 'expo-constants';
-import * as SecureStore from 'expo-secure-store';
 import * as Updates from 'expo-updates';
 import { Platform } from 'react-native';
+import { readSecure, writeSecure } from '@/lib/secureKeychain';
 
 const DEVICE_ID_KEY = 'powr_device_id';
 
@@ -44,7 +44,16 @@ export async function getDeviceId(): Promise<string> {
 
     // iOS (and the rare Android-without-ANDROID_ID): SecureStore survives app
     // reinstalls (iOS keychain), which is exactly why the IDFV is cached there.
-    const cached = await SecureStore.getItemAsync(DEVICE_ID_KEY);
+    //
+    // ⚠ THIS USED TO BE AN UNGUARDED SecureStore CALL PAIR, and it was the same
+    // bug as the auth token: written under the default WHEN_UNLOCKED, so both
+    // the read and the write threw errSecInteractionNotAllowed on a locked
+    // device — with no try/catch, on a path the background claim chain reaches
+    // (context/GeofenceContext.tsx's record-session step). Flagged 2026-08-07,
+    // fixed 2026-08-17 alongside the auth token it shadowed. readSecure/
+    // writeSecure migrate the item to AFTER_FIRST_UNLOCK on the first readable
+    // pass; see lib/secureKeychain.ts.
+    const cached = await readSecure(DEVICE_ID_KEY);
     if (cached) {
         _deviceIdMemo = cached;
         return cached;
@@ -61,7 +70,16 @@ export async function getDeviceId(): Promise<string> {
         deviceId = crypto.randomUUID();
     }
 
-    await SecureStore.setItemAsync(DEVICE_ID_KEY, deviceId);
+    // Best-effort persistence. This is a SOFT fraud signal (see the docstring),
+    // never a gate, so an id that could not be cached is strictly better than a
+    // rejected promise propagating into a background claim — which is what the
+    // unguarded write did before. On iOS the value is the IDFV either way, so a
+    // failed write costs nothing but a re-read next launch.
+    try {
+        await writeSecure(DEVICE_ID_KEY, deviceId);
+    } catch (err) {
+        console.warn('[device] could not cache the device id — continuing uncached:', err);
+    }
     _deviceIdMemo = deviceId;
     return deviceId;
 }

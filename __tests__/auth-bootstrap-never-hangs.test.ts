@@ -66,22 +66,40 @@ describe('a locked keychain reads as signed out, never as a throw', () => {
     await expect(loadAuthStorage().getItem('sb-x-auth-token')).resolves.toBeNull();
   });
 
-  it('still returns the value, and heals accessibility, on a successful read', async () => {
-    mockSecureStore.getItemAsync.mockResolvedValueOnce('{"access_token":"a"}');
+  it('still returns the value, and migrates it, on a successful read', async () => {
+    // ⚠ REWRITTEN 2026-08-17. This used to assert the in-place heal:
+    //   setItemAsync('k', value, { keychainAccessible })
+    // That call existed and healed NOTHING — expo-secure-store degrades an add
+    // on an existing key to SecItemUpdate, which writes kSecValueData only and
+    // leaves kSecAttrAccessible alone. So this test was green while every
+    // already-signed-in iOS device stayed unreadable in the background. The
+    // migration now copies to a separate keychainService, which is the only
+    // write path that can apply the attribute. See lib/secureKeychain.ts and
+    // __tests__/keychain-accessibility-migration.test.ts.
+    mockSecureStore.getItemAsync
+      .mockResolvedValueOnce(null)                      // migrated service: not there yet
+      .mockResolvedValueOnce('{"access_token":"a"}');   // legacy service: the old item
     const storage = loadAuthStorage();
 
     await expect(storage.getItem('k')).resolves.toBe('{"access_token":"a"}');
 
-    // The heal is what fixes installs whose token predates AFTER_FIRST_UNLOCK.
-    // It must survive the try/catch added around the read.
     expect(mockSecureStore.setItemAsync).toHaveBeenCalledWith(
-      'k', '{"access_token":"a"}', { keychainAccessible: 'afterFirstUnlock' },
+      'k', '{"access_token":"a"}',
+      { keychainAccessible: 'afterFirstUnlock', keychainService: expect.any(String) },
     );
+    // …and under a service that is NOT the default, or the add would collide
+    // with the legacy item and fall back to the accessibility-preserving update.
+    const [, , opts] = mockSecureStore.setItemAsync.mock.calls[0] as unknown as [
+      string, string, { keychainService?: string },
+    ];
+    expect(opts.keychainService).toBeTruthy();
   });
 
   it('passes AFTER_FIRST_UNLOCK on the read itself', async () => {
-    mockSecureStore.getItemAsync.mockResolvedValueOnce(null);
+    mockSecureStore.getItemAsync.mockResolvedValue(null);
     await loadAuthStorage().getItem('k');
+    // The legacy probe carries the accessibility option too — it is the read
+    // that has to survive a locked device on a not-yet-migrated install.
     expect(mockSecureStore.getItemAsync).toHaveBeenCalledWith(
       'k', { keychainAccessible: 'afterFirstUnlock' },
     );

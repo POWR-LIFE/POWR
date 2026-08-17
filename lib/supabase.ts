@@ -1,7 +1,7 @@
-import * as SecureStore from 'expo-secure-store';
 import { createClient, type User } from '@supabase/supabase-js';
 import { AppState, Platform } from 'react-native';
 import 'react-native-url-polyfill/auto';
+import { readSecure, removeSecure, writeSecure } from '@/lib/secureKeychain';
 
 const FALLBACK_SUPABASE_URL = 'https://wjvvujnicwkruaeibttt.supabase.co';
 const FALLBACK_SUPABASE_ANON_KEY = 'sb_publishable_kh2lOAPJRrdykLLOR1QVxA_jj3H4CAL';
@@ -33,14 +33,15 @@ if (!process.env.EXPO_PUBLIC_SUPABASE_URL || !process.env.EXPO_PUBLIC_SUPABASE_A
  * AFTER_FIRST_UNLOCK stays readable in the background once the user has
  * unlocked the device at least once since boot, which is what a
  * geofencing app needs and is the standard setting for one.
+ *
+ * ⚠ SETTING THE OPTION IS ONLY HALF THE FIX, and the half we shipped on
+ * 2026-08-07 healed nothing. iOS stamps the attribute at WRITE time, and
+ * expo-secure-store's write falls back to SecItemUpdate for an existing key —
+ * which replaces the VALUE and leaves kSecAttrAccessible alone. Every device
+ * already signed in kept its WHEN_UNLOCKED token and stayed dead in the
+ * background until 2026-08-17. lib/secureKeychain.ts owns the migration that
+ * actually works; the reasoning and the field cost are documented there.
  */
-const KEYCHAIN = { keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK } as const;
-
-/** Set once the stored token has been rewritten under the new accessibility.
- *  Per launch, not persisted: the flag costs one Keychain write on the first
- *  successful read of each launch, and being wrong about it is far cheaper than
- *  a stale flag leaving a device permanently unable to work in the background. */
-let accessibilityUpgraded = false;
 
 /**
  * Adapter that stores auth tokens in the device's encrypted keychain/keystore
@@ -78,31 +79,12 @@ const secureStoreAdapter = {
         // corrects the moment auth is readable again. Failing open here is
         // strictly better than failing shut: the caller sees "no session yet",
         // not an exception it was never written to handle.
-        let value: string | null = null;
-        try {
-            value = await SecureStore.getItemAsync(key, KEYCHAIN);
-        } catch (err) {
-            console.warn(`[supabase] keychain read for ${key} failed — treating as signed out:`, err);
-            return null;
-        }
-
-        // HEAL EXISTING INSTALLS. iOS applies the accessibility attribute when
-        // the item is WRITTEN, so setting the option above only helps tokens
-        // saved from now on — every device already signed in would keep its
-        // WHEN_UNLOCKED item and stay broken in the background forever. A read
-        // that returned a value proves the device is unlocked right now, which
-        // is exactly the moment the value can be rewritten. Fire-and-forget so
-        // it never delays a sign-in, and reset the flag on failure so the next
-        // read tries again.
-        if (value != null && !accessibilityUpgraded) {
-            accessibilityUpgraded = true;
-            void SecureStore.setItemAsync(key, value, KEYCHAIN).catch(() => {
-                accessibilityUpgraded = false;
-            });
-        }
-        return value;
+        //
+        // readSecure() upholds that contract and additionally migrates the item
+        // off the old WHEN_UNLOCKED accessibility the first time it can read it.
+        return readSecure(key);
     },
-    setItem: (key: string, value: string) => SecureStore.setItemAsync(key, value, KEYCHAIN),
+    setItem: (key: string, value: string) => writeSecure(key, value),
     removeItem: async (key: string) => {
         // ⚠ THE SESSION-ERASE GATE (2026-08-12). This removeItem is the ONLY way
         // the persisted session leaves the keychain — and auth-js reaches it from
@@ -130,7 +112,9 @@ const secureStoreAdapter = {
             console.warn('[supabase] BLOCKED unauthorized session erase — auth-js tried to wipe the keychain without user intent.');
             return;
         }
-        return SecureStore.deleteItemAsync(key, KEYCHAIN);
+        // Deletes BOTH the migrated and the legacy copy: a device caught
+        // mid-migration must not keep a readable token after a real sign-out.
+        return removeSecure(key);
     },
 };
 
