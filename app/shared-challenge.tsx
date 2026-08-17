@@ -136,6 +136,12 @@ export default function SharedChallengeDetail() {
   const { acceptInvite, declineInvite, leaveChallenge, cancelChallenge, inviteToChallenge, fetchById, getById, bonusConfig, loading, error, refresh, friends, search, sendRequest } = useSharedChallenges();
   const [showInvite, setShowInvite] = useState(false);
   const [retrying, setRetrying] = useState(false);
+  // Which answer is in flight. This screen leaves as soon as you answer, so the
+  // response has to land BEFORE we navigate: Home refetches the instant it
+  // regains focus, and it used to win that race against the edge function and
+  // redraw the invite you'd just accepted — the "I had to press Accept twice"
+  // report. Also disables the buttons so the second tap can't land at all.
+  const [answering, setAnswering] = useState<'accept' | 'decline' | null>(null);
   // Tap a participant to view their profile / add them. Relationship is unknown
   // here, so the sheet resolves it via RPC.
   const [sheetUserId, setSheetUserId] = useState<string | null>(null);
@@ -367,6 +373,27 @@ export default function SharedChallengeDetail() {
     }
   }
 
+  // Answer the invite, THEN leave. A refusal (slots full, challenge already
+  // finished) keeps you here with the reason instead of bouncing you back to a
+  // Home card that never changed.
+  const answerInvite = async (action: 'accept' | 'decline') => {
+    if (answering) return;
+    setAnswering(action);
+    Haptics.notificationAsync(
+      action === 'accept' ? Haptics.NotificationFeedbackType.Success : Haptics.NotificationFeedbackType.Warning,
+    );
+    const res = action === 'accept'
+      ? await acceptInvite(challenge.id)
+      : await declineInvite(challenge.id);
+    if (!res.ok) {
+      setAnswering(null);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert(action === 'accept' ? 'Couldn’t join' : 'Couldn’t decline', res.error);
+      return;
+    }
+    router.back();
+  };
+
   // Leaving / cancelling was a one-tap action that, for a pair, ends the
   // challenge for BOTH people (dropping below two live members cancels it).
   // Confirm first, and make the consequence explicit. `willCancelForAll` is true
@@ -389,10 +416,18 @@ export default function SharedChallengeDetail() {
       {
         text: isCreator ? 'Cancel challenge' : 'Leave',
         style: 'destructive',
-        onPress: () => {
+        onPress: async () => {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          if (isCreator) cancelChallenge(challenge.id);
-          else leaveChallenge(challenge.id);
+          // Same race as answerInvite: navigate before the server has it and
+          // Home redraws the challenge you just left.
+          const res = isCreator
+            ? await cancelChallenge(challenge.id)
+            : await leaveChallenge(challenge.id);
+          if (!res.ok) {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+            Alert.alert(isCreator ? 'Couldn’t cancel' : 'Couldn’t leave', res.error);
+            return;
+          }
           router.back();
         },
       },
@@ -673,20 +708,26 @@ export default function SharedChallengeDetail() {
               </Text>
             ) : null}
             <Pressable
-              style={styles.acceptBtn}
-              onPress={() => {
-                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                acceptInvite(challenge.id);
-                router.back();
-              }}
+              style={[styles.acceptBtn, !!answering && styles.btnBusy]}
+              disabled={!!answering}
+              onPress={() => { void answerInvite('accept'); }}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: !!answering, busy: answering === 'accept' }}
+              accessibilityLabel="Accept challenge"
             >
-              <Text style={styles.acceptText}>Accept challenge</Text>
+              <Text style={styles.acceptText}>
+                {answering === 'accept' ? 'Joining…' : 'Accept challenge'}
+              </Text>
             </Pressable>
             <Pressable
-              style={styles.leave}
-              onPress={() => { Haptics.selectionAsync(); declineInvite(challenge.id); router.back(); }}
+              style={[styles.leave, !!answering && styles.btnBusy]}
+              disabled={!!answering}
+              onPress={() => { void answerInvite('decline'); }}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: !!answering, busy: answering === 'decline' }}
+              accessibilityLabel="Decline challenge"
             >
-              <Text style={styles.leaveText}>Decline</Text>
+              <Text style={styles.leaveText}>{answering === 'decline' ? 'Declining…' : 'Decline'}</Text>
             </Pressable>
           </>
         ) : challengeOver ? (
@@ -867,6 +908,8 @@ const styles = StyleSheet.create({
   inviteSub: { fontFamily: fontFamily.light, fontSize: 12.5, color: MUTED, lineHeight: 18, textAlign: 'center', paddingHorizontal: 8, marginTop: -4 },
   inviteSubStrong: { fontFamily: fontFamily.medium, fontSize: 12.5, color: SECONDARY },
   acceptBtn: { backgroundColor: GOLD, borderRadius: 100, paddingVertical: 15, alignItems: 'center' },
+  /** Answer in flight — visibly not idle, so the wait reads as progress. */
+  btnBusy: { opacity: 0.6 },
   acceptText: { fontFamily: fontFamily.bold, fontSize: 13, color: '#0a0a0a', letterSpacing: 0.5 },
 
   // terminal-state verdict — one plain sentence above the (win-only) share

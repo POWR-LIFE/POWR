@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Dimensions, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Dimensions, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { fontFamily } from '@/constants/tokens';
 import { useChallengeSettled } from '@/hooks/useChallengeSettled';
@@ -108,9 +108,22 @@ export function TogetherSection({ onOpenChallenge, deferred = false }: TogetherS
   useFocusEffect(useCallback(() => { void refresh(); }, [refresh]));
 
   // Responding to an invite here (on the home tab) won't fire a tab-focus event,
-  // so refresh the avatar badge directly once the mutation settles.
-  const handleAccept = (id: string) => { void acceptInvite(id).then(refreshPendingActions); };
-  const handleDecline = (id: string) => { void declineInvite(id).then(refreshPendingActions); };
+  // so refresh the avatar badge directly once the mutation settles. The card
+  // flips on the tap (the hook answers optimistically); a server refusal rolls
+  // it back, and says why — silently reverting to "Accept" is what made people
+  // press again.
+  const handleAccept = (id: string) => {
+    void acceptInvite(id).then((res) => {
+      refreshPendingActions();
+      if (!res.ok) Alert.alert('Couldn’t join', res.error);
+    });
+  };
+  const handleDecline = (id: string) => {
+    void declineInvite(id).then((res) => {
+      refreshPendingActions();
+      if (!res.ok) Alert.alert('Couldn’t decline', res.error);
+    });
+  };
 
   // Tapping a carousel card opens the invite sheet here on Home (preselected) for
   // the quick path; the header button opens the full /challenges browse page.
