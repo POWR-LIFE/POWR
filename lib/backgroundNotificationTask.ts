@@ -295,7 +295,17 @@ TaskManager.defineTask(BACKGROUND_NOTIFICATION_TASK, async ({ data, error }) => 
           // device cannot verify fence health; the FCM wake reliably does.
           // evaluateLocationFix still decides — same radius, same daily cap,
           // no fix means no check-in.
-          await m.sweepForMissedCheckInFromWake();
+          // `open_visit_id` is DELIBERATELY NOT `visit_id`: this branch is gated on
+          // `!payload.visit_id`, so reusing that key would divert every
+          // fence-refresh wake into runVisitCheck and switch off the
+          // fence-independent entry path — the one that produced Android's only
+          // unaided check-ins. This field is advisory data FOR the sweep, not a
+          // statement that the wake is for a visit. It lets the sweep's proof stamp
+          // skip an openGymVisit that hangs 15-63 min in the background (field
+          // 2026-08-17).
+          await m.sweepForMissedCheckInFromWake(
+            typeof payload.open_visit_id === 'string' ? payload.open_visit_id : null,
+          );
         }
 
         // LAST, AND ONLY EVER LAST. Steps ride this wake because BackgroundFetch

@@ -728,6 +728,7 @@ Deno.serve(async (req: Request) => {
     const PURSUIT_ROW_LIMIT = 2000;
     const PURSUIT_INTERVAL_MIN = 1;
     const pursuing = new Set();
+    const openVisitIdByUser = new Map();
     {
       const { data: approachRows, error: approachErr } = await admin
         .from('geofence_region_events')
@@ -760,11 +761,20 @@ Deno.serve(async (req: Request) => {
       // `checked_in` row at all.
       const { data: liveVisits, error: liveErr } = await admin
         .from('gym_visits')
-        .select('user_id')
+        .select('user_id, id')
         .is('ended_at', null)
         .limit(200);
       if (liveErr) console.error('[gym-visit-beacon] pursuit open-visit scan failed', liveErr);
       const hasOpenVisit = new Set((liveVisits ?? []).map((v: { user_id: string }) => v.user_id));
+      // Same scan, second use: the id goes out on the wake so the device's proof
+      // stamp never has to ASK for it. Field 2026-08-17 — openGymVisit hung for
+      // 15-63 MINUTES in background wakes (24 attempts, four call sites, every one
+      // resolving only when the app was foregrounded), so the stamp never reached
+      // its confirm, the id was never written back, and the exit close died behind
+      // the same await. A timer-based bound cannot fix it: RN timers do not fire in
+      // a suspended process, so the timeout freezes with the call. Telling the
+      // device what it needs removes the question instead of bounding it.
+      for (const v of liveVisits ?? []) openVisitIdByUser.set(v.user_id, v.id);
 
       // ⚠ FAIL CLOSED. `?? []` on the open-visit scan fails OPEN — an error would
       // empty the one exclusion that works and pursue everyone with a recent
@@ -790,6 +800,15 @@ Deno.serve(async (req: Request) => {
     }
 
     const refreshPayload = { type: 'gym_visit_check', stage: 'dwell', nonce: 'fence-refresh' };
+    // ⚠ `open_visit_id`, NOT `visit_id`. The client's wake handler gates its
+    // fence-independent entry sweep on `!payload.visit_id`, so putting the id under
+    // that key would divert every fence-refresh wake into runVisitCheck and switch
+    // the sweep off — and that sweep is what produced Android's only unaided
+    // check-ins. This key is advisory input for the sweep's proof stamp.
+    const payloadFor = (userId: string) => {
+      const id = openVisitIdByUser.get(userId);
+      return id ? { ...refreshPayload, open_visit_id: id } : refreshPayload;
+    };
     // Per-platform, so a missing credential on one side cannot silence the
     // other — the whole point of this change is that iOS stops depending on
     // Android's luck.
@@ -821,8 +840,8 @@ Deno.serve(async (req: Request) => {
         // `body` key because Expo's envelope nests the payload there and the
         // client's extractData accepts either shape.
         const outcome = platform === 'android'
-          ? await sendFcmDataMessage(token, { ...refreshPayload, body: JSON.stringify(refreshPayload) }, 15 * 60)
-          : await sendApnsBackgroundPush(token, refreshPayload, 15 * 60);
+          ? await sendFcmDataMessage(token, { ...payloadFor(userId), body: JSON.stringify(payloadFor(userId)) }, 15 * 60)
+          : await sendApnsBackgroundPush(token, payloadFor(userId), 15 * 60);
         if (outcome.unavailable) {
           // Leave a trace, once per platform per tick. Silently skipping made
           // "this platform has no credentials" indistinguishable from "no
