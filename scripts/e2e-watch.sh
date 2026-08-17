@@ -52,8 +52,11 @@ put() { printf '%s' "$2" > "$S/$1"; }
 # row and its `streak` row are written together, so a 15+30 award would have been
 # reported as 15. Inclusive cursor + row hash = no drops, no repeats.
 hash() {
-  if command -v md5 >/dev/null 2>&1; then printf '%s' "$1" | md5
-  else printf '%s' "$1" | md5sum | cut -d' ' -f1; fi
+  if command -v md5 >/dev/null 2>&1; then
+    printf '%s' "$1" | (md5 -q 2>/dev/null || md5 | awk '{print $NF}')
+  else
+    printf '%s' "$1" | md5sum | cut -d' ' -f1
+  fi
 }
 # true (0) when this exact row was already printed
 seen() { local k; k=$(hash "$1"); [ -f "$S/seen_$k" ] && return 0; : > "$S/seen_$k"; return 1; }
