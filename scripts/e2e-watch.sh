@@ -21,14 +21,18 @@ A="${WATCH_USER_A:-234d49f3-d189-44b1-a874-063e724e4380}"   # AND = powrcto (pre
 B="${WATCH_USER_B:-a2585666-5b7a-4622-8e43-6bd4fb8013f0}"   # iOS = jpowr (production channel, build 17)
 USERS="in.(${A},${B})"
 VENUE="${WATCH_VENUE:-7d865c3b}"   # POWR partner id prefix (radius 40m)
-# 2026-08-17 08:1xZ: the fd6072b bundles (one-press challenge accept, the
-# keychain-accessibility heal, split-workout + daily-cap fixes), published to
-# BOTH branches. Unlike 08-14 both devices had ALREADY taken them by 08:17 —
-# user_push_tokens re-stamped with these ids on app open. A STALE-OTA line for
-# either phone now means it dropped BACK to an older bundle (or lost its token
-# row), not that the publish is still landing.
-AND_OTA="${WATCH_AND_OTA:-01a00ec6-500e-79ad-9794-683ebac5e372}"   # preview / android
-IOS_OTA="${WATCH_IOS_OTA:-01a00ec7-b89d-70b7-80b2-87580c039bca}"   # production / ios
+# 2026-08-17 ~10:5xZ: the ede2ad1 bundles — Wave 1+2 of the post-run fix plan (the
+# closes-outbox AppState guard, the bounded close, the honest stream telemetry, the
+# openGymVisit attempt/result pairs, the serialised exit-noise tally). Published to
+# BOTH branches from a pristine worktree; fingerprints matched the live runtimes
+# exactly (ios a848fb8f…, android 6acdda91…).
+#
+# ⚠ FOR THE PM RUN: both phones were last seen on the MORNING bundle
+# (01a00ec6/01a00ec7), so the first heartbeat will legitimately read STALE-OTA
+# until each app is opened once and takes the update. That is the pre-test signal
+# to wait for, not a fault — do not arm the fences before it flips to `fixed`.
+AND_OTA="${WATCH_AND_OTA:-01a00f51-d1a3-705f-9e69-e2fcbbc7c162}"   # preview / android
+IOS_OTA="${WATCH_IOS_OTA:-01a00f53-32f7-724f-ab5f-e2ec56846c6e}"   # production / ios
 
 S=$(mktemp -d) || exit 1; trap 'rm -rf "$S"' EXIT
 get() { cat "$S/$1" 2>/dev/null; }
