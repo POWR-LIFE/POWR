@@ -20,6 +20,8 @@ import type { HealthProviderId } from '@/lib/health/providers/types';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import * as SecureStore from 'expo-secure-store';
+import * as Clipboard from 'expo-clipboard';
+import * as Haptics from 'expo-haptics';
 import PermissionFixScreen, { type PermissionFixKind } from '@/components/PermissionFixScreen';
 import { useAuth } from '@/context/AuthContext';
 import { androidOpenHealthConnectSettings, useHealthData } from '@/hooks/useHealthData';
@@ -31,6 +33,7 @@ import { getNotificationPreferences, updateNotificationPreferences } from '@/lib
 import { cacheNearbyOfferPreference, isNearbyOfferEnabled } from '@/lib/notifications';
 import { openStorePage, runningVersion } from '@/lib/appUpdate';
 import { getAppVersion } from '@/lib/device';
+import { formatMemberId } from '@/shared/memberId';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 
@@ -60,6 +63,11 @@ export default function SettingsScreen() {
   const { signOut, user, updateUserMetadata } = useAuth();
 
   const [isAdmin, setIsAdmin] = React.useState(false);
+  // The member's POWR ID (= profiles.referral_code, see shared/memberId). It is
+  // the one string they can read to staff at an event or to support and be
+  // found by — the admin user search, event roster and Live Ops all match it.
+  const [memberId, setMemberId] = useState<string | null>(null);
+  const [memberIdCopied, setMemberIdCopied] = useState(false);
   // Which permission the priming screen is currently coaching, if any. Every
   // permission row opens it instead of an OS alert — same layout, scenes and
   // copy as onboarding, so the user is shown the screen they're about to land on.
@@ -95,12 +103,23 @@ export default function SettingsScreen() {
       if (!user) return;
       const { data } = await supabase
         .from('profiles')
-        .select('is_admin')
+        .select('is_admin, referral_code')
         .eq('id', user.id)
         .single();
       if (data?.is_admin) setIsAdmin(true);
+      if (data?.referral_code) setMemberId(data.referral_code);
     })();
   }, []);
+
+  // Copies the STORED form (no gap) — that's what the signup invite field,
+  // the friend-code scanner and every admin lookup accept.
+  const copyMemberId = useCallback(async () => {
+    if (!memberId) return;
+    await Clipboard.setStringAsync(memberId);
+    Haptics.selectionAsync();
+    setMemberIdCopied(true);
+    setTimeout(() => setMemberIdCopied(false), 2000);
+  }, [memberId]);
 
   // Check location + notification permission status. Re-checked on focus so it
   // updates after the user returns from the system settings app.
@@ -266,8 +285,20 @@ export default function SettingsScreen() {
             icon="lock-closed-outline"
             label="Change Password"
             onPress={() => router.push('/change-password')}
-            isLast
+            isLast={!memberId}
           />
+          {memberId ? (
+            <RowLink
+              icon="id-card-outline"
+              label="POWR ID"
+              sublabel="Quote it if we ever need to find you · also your invite code"
+              value={memberIdCopied ? 'Copied' : formatMemberId(memberId)}
+              valueColor={memberIdCopied ? GREEN : undefined}
+              trailingIcon={memberIdCopied ? 'checkmark' : 'copy-outline'}
+              onPress={copyMemberId}
+              isLast
+            />
+          ) : null}
         </View>
 
         {/* ── Points ───────────────────────────────────────── */}
@@ -916,9 +947,11 @@ interface RowLinkProps {
   valueColor?: string;
   onPress: () => void;
   isLast?: boolean;
+  /** Replaces the chevron — for rows that act in place (copy) rather than navigate. */
+  trailingIcon?: string;
 }
 
-function RowLink({ icon, logoElement, label, sublabel, value, valueColor, onPress, isLast }: RowLinkProps) {
+function RowLink({ icon, logoElement, label, sublabel, value, valueColor, onPress, isLast, trailingIcon }: RowLinkProps) {
   return (
     <Pressable
       style={({ pressed }) => [
@@ -938,7 +971,7 @@ function RowLink({ icon, logoElement, label, sublabel, value, valueColor, onPres
           {value}
         </Text>
       ) : null}
-      <Ionicons name="chevron-forward" size={14} color={MUTED} />
+      <Ionicons name={(trailingIcon ?? 'chevron-forward') as any} size={14} color={MUTED} />
     </Pressable>
   );
 }

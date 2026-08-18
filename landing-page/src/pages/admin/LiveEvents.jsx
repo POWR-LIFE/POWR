@@ -16,6 +16,7 @@ import { storageImage, uploadPublicImage } from '../../lib/storage';
 import { validateHeroVideoUrl } from '../../lib/heroVideoUrl';
 import MediaVideo from '../../components/MediaVideo';
 import { eventRegisterUrl } from '../../lib/eventRegisterUrl';
+import { formatMemberId, normalizeMemberId } from '../../../../shared/memberId.ts';
 
 const logAction = async (adminId, action, targetType, targetId, metadata = {}) => {
     await supabase.from('admin_audit_log').insert({ admin_id: adminId, action, target_type: targetType, target_id: targetId, metadata });
@@ -934,8 +935,11 @@ function RegistrationsPanel({ ev, data, busy, onRefresh, onAdd, onRemove, onDisq
     const shown = useMemo(() => {
         const q = filter.trim().toLowerCase();
         if (!q) return participants;
+        // "ABCD 2345" read off a member's Settings screen is the stored ABCD2345.
+        const code = normalizeMemberId(filter);
         return participants.filter(p =>
-            [p.name, p.username, p.email].some(v => (v ?? '').toLowerCase().includes(q)));
+            [p.name, p.username, p.email].some(v => (v ?? '').toLowerCase().includes(q))
+            || (!!code && code.length >= 3 && !!p.member_id && p.member_id.startsWith(code)));
     }, [participants, filter]);
 
     const referrals = data?.referrals ?? [];
@@ -1042,7 +1046,7 @@ function RegistrationsPanel({ ev, data, busy, onRefresh, onAdd, onRemove, onDisq
                                     type="text"
                                     value={query}
                                     onChange={(e) => setQuery(e.target.value)}
-                                    placeholder="Search members by name, username or email…"
+                                    placeholder="Search members by name, username, email or POWR ID…"
                                     className="w-full h-11 pl-10 pr-4 bg-white border border-[#E6E6E1] rounded-xl text-sm text-[#1A1A1A] placeholder:text-[#AAAAAA] outline-none focus:border-[#8B5CF6]/50 transition-all"
                                 />
                             </div>
@@ -1064,7 +1068,10 @@ function RegistrationsPanel({ ev, data, busy, onRefresh, onAdd, onRemove, onDisq
                                                     {r.name}
                                                     {r.username && <span className="text-[#999999] font-normal"> @{r.username}</span>}
                                                 </div>
-                                                <div className="font-mono text-[11px] text-[#AAAAAA] truncate">{r.email ?? 'no email on file'}</div>
+                                                <div className="font-mono text-[11px] text-[#AAAAAA] truncate">
+                                                    {r.email ?? 'no email on file'}
+                                                    {r.member_id && <span className="text-[#777777]"> · {formatMemberId(r.member_id)}</span>}
+                                                </div>
                                             </div>
                                             {/* Already-in is stated, not hidden: a missing row
                                                 reads as "not found", which is a different answer. */}
@@ -1158,7 +1165,7 @@ function RegistrationsPanel({ ev, data, busy, onRefresh, onAdd, onRemove, onDisq
                     ) : (
                         <div className="overflow-x-auto">
                             <table className="w-full text-[13px]">
-                                <Head cols={[['Member'], ['Email'], ['Joined'], ['Opened booking'], ['Booked'], ['Status'], ['', 'text-right']]} />
+                                <Head cols={[['Member'], ['Email'], ['POWR ID'], ['Joined'], ['Opened booking'], ['Booked'], ['Status'], ['', 'text-right']]} />
                                 <tbody className="divide-y divide-[#F6F6F3]">
                                     {shown.map((p) => (
                                         <tr key={p.user_id} className={p.disqualified_at ? 'opacity-45' : ''}>
@@ -1167,6 +1174,7 @@ function RegistrationsPanel({ ev, data, busy, onRefresh, onAdd, onRemove, onDisq
                                                 {p.username && <span className="text-[#999999] font-normal"> @{p.username}</span>}
                                             </td>
                                             <td className="py-2.5 pr-3 font-mono text-[12px] text-[#888888]">{p.email ?? '—'}</td>
+                                            <td className="py-2.5 pr-3 font-mono text-[12px] tracking-[0.12em] text-[#555555] whitespace-nowrap">{formatMemberId(p.member_id) || '—'}</td>
                                             <td className="py-2.5 pr-3 text-[#888888]">{fmtTime(p.joined_at)}</td>
                                             {/* joined → opened → booked, the whole funnel in one row.
                                                 "Booked" derives from the Venue bookings export by email —

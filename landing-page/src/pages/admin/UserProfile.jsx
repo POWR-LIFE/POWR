@@ -6,13 +6,14 @@ import { usePagedList, Pager } from '../../lib/usePagedList';
 import { useToast } from '../../lib/toast';
 import { useAuth } from '../../App';
 import { levelFromEarned } from '../../lib/levels';
+import { formatMemberId, normalizeMemberId } from '../../../../shared/memberId.ts';
 import {
     Lock,
     User, Activity, Award, Calendar, Clock, MapPin,
     ChevronLeft, TrendingUp, Zap, Shield, AlertCircle,
     ArrowUpRight, ArrowDownRight, Gift, Plus, X,
     Heart, Moon, Flame, Footprints, Star, Trash2,
-    Camera, ImagePlus, Trophy, Check, Link2, RefreshCw, Pencil,
+    Camera, ImagePlus, Trophy, Check, Link2, RefreshCw, Pencil, Copy,
     Smartphone, Bell,
     Dumbbell, Bike, Waves, Wind, PersonStanding, Music
 } from 'lucide-react';
@@ -207,6 +208,7 @@ export default function UserProfile() {
     const [preferredGym, setPreferredGym] = useState(null);
     const [partnerMap, setPartnerMap] = useState({});
     const [userEmail, setUserEmail] = useState(null);
+    const [memberIdCopied, setMemberIdCopied] = useState(false);
 
     // The two deep logs. Both run to thousands of rows for an active user, and neither
     // feeds a total elsewhere on the page, so each is served a page at a time with the
@@ -392,8 +394,25 @@ export default function UserProfile() {
         fetchData();
     };
 
+    // /admin/users/<POWR ID> is a valid address too — staff at an event type
+    // the 8 chars off a member's screen and land on the profile. Resolve the
+    // code to the uuid and swap the URL so every link on the page stays uuid-keyed.
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     useEffect(() => {
-        if (userId) fetchData();
+        if (!userId) return;
+        if (UUID_RE.test(userId)) { fetchData(); return; }
+        const code = normalizeMemberId(userId);
+        let cancelled = false;
+        (async () => {
+            const { data, error } = code
+                ? await supabase.from('profiles').select('id').eq('referral_code', code).maybeSingle()
+                : { data: null, error: null };
+            if (cancelled) return;
+            if (error) { toast.error(error.message); setLoading(false); return; }
+            if (!data) { toast.error(`No member with POWR ID ${formatMemberId(code) || userId}`); navigate('/admin/users', { replace: true }); return; }
+            navigate(`/admin/users/${data.id}`, { replace: true });
+        })();
+        return () => { cancelled = true; };
     }, [userId]);
 
     useEffect(() => {
@@ -959,6 +978,20 @@ export default function UserProfile() {
                                     <span className="text-sm text-[#666666] font-medium">
                                         {profile.username ? `@${profile.username}` : 'No username set'}
                                     </span>
+                                    {profile.referral_code && (
+                                        <button
+                                            onClick={async () => {
+                                                try { await navigator.clipboard.writeText(profile.referral_code); setMemberIdCopied(true); setTimeout(() => setMemberIdCopied(false), 1500); }
+                                                catch { toast.error('Copy failed'); }
+                                            }}
+                                            title="POWR ID — the code the member sees under Settings › Account and reads out to be found. Click to copy."
+                                            className="flex items-center gap-2 h-7 px-3 rounded-full bg-[#F4F4F1] border border-[#E6E6E1] text-[#555555] hover:text-[#8a7600] hover:border-[#E8D200]/40 transition-all"
+                                        >
+                                            <span className="text-[9px] font-black uppercase tracking-widest text-[#999999]">POWR ID</span>
+                                            <span className="font-mono text-[12px] tracking-[0.15em] text-[#1A1A1A]">{formatMemberId(profile.referral_code)}</span>
+                                            {memberIdCopied ? <Check size={11} className="text-[#10B981]" /> : <Copy size={11} />}
+                                        </button>
+                                    )}
                                     <button
                                         onClick={startEditUsername}
                                         className="group flex items-center gap-1.5 h-7 px-3 rounded-full bg-white border border-[#E6E6E1] text-[#999999] hover:text-[#8a7600] hover:border-[#E8D200]/40 transition-all text-[9px] font-black uppercase tracking-widest"
