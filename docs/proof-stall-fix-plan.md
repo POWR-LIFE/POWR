@@ -531,6 +531,24 @@ republishing the previous group. The beacon rolls back by redeploying the
 previous function (live version 44, 2026-08-17T14:43:24Z, byte-identical to the
 repo before this branch).
 
+### One expected effect that will LOOK like a regression
+
+The retrospective stamp moves `last_proven_at` **earlier** — by exactly the fix's
+age, bounded at 120 s because that is where the freshness gate still sits. On a
+visit whose last proof was a fresh fix and where nothing else banks, `ended_at`
+therefore clamps up to **two minutes lower than today**. That is the honest
+number (a fix 119 s old proves presence 119 s ago, not now), and it is the price
+of the anchor only ever moving earlier than `now()` — which is what makes the
+change unable to inflate. Expect it; do not roll back on it.
+
+It also propagates, all in the conservative direction, and each is worth one look
+on the next run rather than a surprise: `gymReaper`'s `STALE_SILENCE_MS` sees
+visits as stale marginally sooner (earlier auto-close, at a correspondingly
+earlier proven end — no inflation); `upgrade-gym-tier`'s `presenceSec` reads
+marginally lower; and `guard_client_session_window`'s exit floor
+(`coalesce(last_proven_at, …)`) drops by the same amount, which only makes that
+guard less aggressive.
+
 ### Acceptance criteria for the next field run
 
 - Android: `stream_tick` rows every ~5 min for the whole visit. This run had **one** in 47 minutes. If this does not move, Change 2 was defeated by background-location throttling and the FGS question becomes the next investigation.
