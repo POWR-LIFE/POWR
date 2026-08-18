@@ -411,7 +411,13 @@ export default function LiveEvents() {
             toast.error('Booking URL must start with http:// or https://'); return;
         }
         setSaving(true);
-        const payload = { ...form, slug: slugify(form.slug) };
+        const payload = {
+            ...form,
+            slug: slugify(form.slug),
+            // NOT NULL on the row; the grid never emits null any more but a
+            // working copy from before that fix may still hold one.
+            conversion_activities: Array.isArray(form.conversion_activities) ? form.conversion_activities : [],
+        };
         const { error } = await supabase.from('live_events').update(payload).eq('id', selected.id);
         setSaving(false);
         if (error) { toast.error(error.message); return; }
@@ -2039,6 +2045,7 @@ function EditorPanel({ form, setForm, dirty, saving, onSave, onDiscard, venueNam
                             <ActivityGrid
                                 value={form.conversion_activities}
                                 onChange={v => set({ conversion_activities: v })}
+                                nullable={false}
                             />
                         </Field>
                         <Field label="Conversion deadline" hint="Blank = window end.">
@@ -2260,19 +2267,39 @@ function Chip({ active, onClick, children }) {
 }
 
 // null = all types count (the server treats a null list as no filter).
-function ActivityGrid({ value, onChange }) {
-    const all = value == null;
+// Two null semantics live behind this one widget:
+//   nullable  — the column allows null and the SQL reads null as "every
+//               type" (included_activities). "All types" stores null.
+//   !nullable — the column is NOT NULL and the SQL matches the session type
+//               against the stored list (conversion_activities: `type = any
+//               (v_acts)`). "All types" stores the explicit full list, and
+//               null is never emitted — writing it trips the not-null
+//               constraint on save.
+function ActivityGrid({ value, onChange, nullable = true }) {
+    const list = Array.isArray(value) ? value : [];
+    const all = nullable
+        ? value == null
+        : ACTIVITIES.every(a => list.includes(a));
+    const chipOn = (a) => (nullable ? all || list.includes(a) : list.includes(a));
     return (
         <div className="flex gap-2 flex-wrap">
-            <Chip active={all} onClick={() => onChange(all ? [...ACTIVITIES] : null)}>All types</Chip>
+            <Chip
+                active={all}
+                onClick={() => {
+                    if (nullable) onChange(all ? [...ACTIVITIES] : null);
+                    else onChange(all ? [] : [...ACTIVITIES]);
+                }}
+            >
+                All types
+            </Chip>
             {ACTIVITIES.map(a => {
-                const on = all || value?.includes(a);
+                const on = chipOn(a);
                 return (
                     <Chip
                         key={a}
-                        active={on && !all}
+                        active={on && !(nullable && all)}
                         onClick={() => {
-                            const base = all ? [...ACTIVITIES] : (value ?? []);
+                            const base = nullable && all ? [...ACTIVITIES] : list;
                             onChange(on ? base.filter(x => x !== a) : [...base, a]);
                         }}
                     >
