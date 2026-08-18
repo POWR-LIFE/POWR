@@ -29,6 +29,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { HeaderActions } from '@/components/HeaderActions';
 import { ComingSoon } from '@/components/ComingSoon';
+import { EventPrizeGallery } from '@/components/events/EventPrizeGallery';
 import { EventRegisterFlow } from '@/components/events/EventRegisterFlow';
 import { EventHeaderCard } from '@/components/league/EventHeaderCard';
 import { EventTicketCard } from '@/components/league/EventTicketCard';
@@ -169,6 +170,9 @@ export default function LeagueScreen() {
                 event={activeEvent}
                 onRegister={() => setRegisterOpen(true)}
               />
+              {/* What's on the line — its own block, not a footnote inside
+                  the hero: artwork gets a gallery, tap opens the spotlight. */}
+              <EventPrizeGallery prizes={activeEvent.prizes} />
               {/* The ticket only means anything once you're in the event, and
                   only while there's still time to convert an invite. */}
               {activeEvent.viewer.joined && invitesOpen(activeEvent) && (
@@ -179,7 +183,12 @@ export default function LeagueScreen() {
               {activeEvent.is_preview && (
                 <BoardPreviewSwitcher value={boardPreview} onChange={setBoardPreview} />
               )}
-              <EventBoardSection event={activeEvent} board={eventBoard} onPressUser={openUserSheet} />
+              <EventBoardSection
+                event={activeEvent}
+                board={eventBoard}
+                onPressUser={openUserSheet}
+                ticketAbove={activeEvent.viewer.joined && invitesOpen(activeEvent)}
+              />
             </ScrollView>
             <EventRegisterFlow
               event={activeEvent}
@@ -406,10 +415,14 @@ function EventBoardSection({
   event,
   board,
   onPressUser,
+  ticketAbove,
 }: {
   event: LiveEvent;
   board: EventLeaderboard | null;
   onPressUser: (e: LeaderboardEntry) => void;
+  /** The ticket card is rendered above this section — it already carries the
+   *  gate count, the progress line and the share tools. */
+  ticketAbove: boolean;
 }) {
   // Pre-week: the header card above already carries the countdown. A preview
   // payload FORCED into a real state (gated / sealed / live / winners) still
@@ -444,6 +457,20 @@ function EventBoardSection({
   if (board.is_gated && gate) {
     const have = Math.min(gate.count, gate.required);
     const pct = gate.required > 0 ? Math.max(0, Math.min(1, have / gate.required)) : 0;
+    // With the ticket on screen the count, the progress line and the share
+    // code are all already there — a second "0 of 5" with its own bar under
+    // it read as two competing surfaces (field 2026-08-18). Here the board
+    // says only what it is waiting for, in one quiet line.
+    if (ticketAbove) {
+      return (
+        <View style={styles.eventGatedQuiet}>
+          <Ionicons name="lock-closed-outline" size={13} color={GOLD} style={{ opacity: 0.8 }} />
+          <Text style={styles.eventGatedQuietText}>
+            {`Leaderboard unlocks at ${gate.required} friends`}
+          </Text>
+        </View>
+      );
+    }
     return (
       // No card: this state is a held breath, and a bordered box makes it look
       // like an error. The content floats on the screen's own background and
@@ -1352,6 +1379,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   eventGatedIcon: { opacity: 0.9, marginBottom: 18 },
+  eventGatedQuiet: {
+    marginHorizontal: 14,
+    marginTop: 4,
+    paddingVertical: 22,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  eventGatedQuietText: { fontSize: 12, fontWeight: '300', color: DIM, letterSpacing: 0.2 },
   eventGatedTitle: {
     fontSize: 23,
     fontWeight: '200',

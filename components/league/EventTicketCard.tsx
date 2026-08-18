@@ -14,8 +14,10 @@ import { eventInviteLink } from '@/lib/eventInviteLink';
 import type { Friend } from '@/lib/social/types';
 
 const GOLD = '#E8D200';
-const CARD_BG = 'rgba(40,40,40,0.85)';
-const BORDER = 'rgba(255,255,255,0.08)';
+// The Home cards' surface (ChallengeCard/TogetherSection): near-black on
+// the geometric background, hairline edge — not the League grey.
+const CARD_BG = '#111111';
+const BORDER = '#222222';
 const TEXT = '#F2F2F2';
 const MUTED = 'rgba(255,255,255,0.25)';
 const DIM = 'rgba(255,255,255,0.5)';
