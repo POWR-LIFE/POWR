@@ -392,7 +392,7 @@ begin
     -- UPDATE and this test overwrites FOUND and resurrects those 30 phantom rows.
     --
     -- Keyed on `stamped`, not on `proven` and not on created_at = last_proven_at.
-    -- After 20260818090000 a retrospective advance logs proven:false, so a
+    -- After 20260818082412 a retrospective advance logs proven:false, so a
     -- `proven = true` filter would miss exactly the writers this is meant to
     -- find; and created_at = last_proven_at held only while both were
     -- transaction_timestamp(), which that migration ends. NULL for visits that

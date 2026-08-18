@@ -165,7 +165,7 @@ Ordered by user-visible impact. **Changes 1 and 2 must ship as one unit** — se
 
 ### CHANGE 1 — Retrospective proof stamp (new migration)
 
-**File:** new `supabase/migrations/20260818090000_proof_stamp_at_fix_time.sql`, replacing `confirm_gym_visit_v2`.
+**File:** new `supabase/migrations/20260818082412_proof_stamp_at_fix_time.sql`, replacing `confirm_gym_visit_v2`.
 
 Split today's single `v_proven` into two:
 
@@ -490,7 +490,7 @@ NOTHING IS DEPLOYED.** Suite 103/103, 1322/1322; `tsc --noEmit` clean.
 
 | Change | Kind | Vehicle | State |
 |---|---|---|---|
-| 1 — retrospective proof stamp | SQL | **Migration** `20260818090000_proof_stamp_at_fix_time.sql` | written, compile- and semantics-verified against prod, **not applied** |
+| 1 — retrospective proof stamp | SQL | **Migration** `20260818082412_proof_stamp_at_fix_time.sql` | written, compile- and semantics-verified against prod, **not applied** |
 | 6 — `clamp_loss_s` / `proof_gap_s` / `clamp_anchor` / `proof_writer` | SQL | same migration | same |
 | — guard_client_session_window backfill | SQL | `20260817145537_…sql` | **already live**; the file was missing, now committed |
 | 2 — dwell stream deferral | — | — | **NOT SHIPPED — refuted, see §2** |
