@@ -5256,6 +5256,7 @@ export function resetNativeEventDebounceForTests(): void {
  *  persisted floor is the other half of the same throttle. */
 export function resetVisitTickThrottleForTests(): void {
   _lastTickAtMs = 0;
+  void AsyncStorage.removeItem(VISIT_TICK_THROTTLE_KEY).catch(() => {});
 }
 
 /** Test-only, and for the same reason. `_lastSelfPollAt` gates selfPollIfWakeStarved
