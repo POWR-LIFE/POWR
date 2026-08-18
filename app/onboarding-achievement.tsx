@@ -398,11 +398,11 @@ export default function OnboardingAchievementScreen() {
                                         { text: 'Continue', onPress: dropCode },
                                     ]);
                                     return;
-                                case 'already_referred':
-                                    Alert.alert('Invite code', "You've already used an invite code on this account.", [
-                                        { text: 'Continue', onPress: dropCode },
-                                    ]);
-                                    return;
+case 'already_referred':
+    Alert.alert('Invite code', 'That invite code is already applied to this account.', [
+        { text: 'Continue', onPress: dropCode },
+    ]);
+    return;
                                 case 'not_authenticated':
                                     Alert.alert('Invite code', 'Please sign in again to apply your code.', [
                                         { text: 'Continue', onPress: goHome },
