@@ -118,7 +118,7 @@ jest.mock('@/lib/health/gymPresence', () => {
   return { ...actual, fixCreditsPresence: (...a: any[]) => mockFixCreditsPresence(...a) };
 });
 
-import { resetVisitTickThrottleForTests } from '@/context/GeofenceContext';
+import { resetSelfPollThrottleForTests, resetVisitTickThrottleForTests } from '@/context/GeofenceContext';
 
 const seedActiveVisit = () => AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({
   regionId:       'partner-home-0',
@@ -146,6 +146,7 @@ describe('heartbeatVisitStream — the stream tick that proves presence', () => 
     // ⚠ BOTH halves of the throttle, or the second case in any run silently
     // returns before anything observable happens (and the bare catch hides it).
     resetVisitTickThrottleForTests();
+    resetSelfPollThrottleForTests();
     (globalThis as any).__DEV__ = false;
     const actual = jest.requireActual('@/lib/health/gymPresence');
     mockFixCreditsPresence.mockImplementation(actual.fixCreditsPresence);
@@ -225,6 +226,7 @@ describe('selfPollIfWakeStarved — the watchdog measures its fix too', () => {
     jest.clearAllMocks();
     await AsyncStorage.clear();
     resetVisitTickThrottleForTests();
+    resetSelfPollThrottleForTests();
     (globalThis as any).__DEV__ = false;
     const actual = jest.requireActual('@/lib/health/gymPresence');
     mockFixCreditsPresence.mockImplementation(actual.fixCreditsPresence);
@@ -249,9 +251,21 @@ describe('selfPollIfWakeStarved — the watchdog measures its fix too', () => {
   });
 
   it('refuses to self-poll on a batched fix older than the credit window', async () => {
+    // ⚠ THIS TEST WAS VACUOUS UNTIL resetSelfPollThrottleForTests EXISTED. The
+    // preceding case stamps `_lastSelfPollAt`, whose 10-minute gate sits 23 lines
+    // ABOVE the age check — so without the reset this passed identically with the
+    // age gate deleted. Guarded now by the sibling case below: flip the age and
+    // the watchdog must fire, or this one is proving nothing again.
     await driveStreamFix(20, 219_000);
 
     expect((mockConfirmGymVisit.mock.calls as any[][])
       .some(([, , d]) => d?.source === 'wake_starved_self_poll')).toBe(false);
+  });
+
+  it('DOES self-poll on a fresh fix — the control that keeps the case above honest', async () => {
+    await driveStreamFix(20, 10_000);
+
+    expect((mockConfirmGymVisit.mock.calls as any[][])
+      .some(([, , d]) => d?.source === 'wake_starved_self_poll')).toBe(true);
   });
 });

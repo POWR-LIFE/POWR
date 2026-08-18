@@ -4894,26 +4894,38 @@ async function heartbeatVisitStream(
     // makes that promise structural instead of hopeful.
     if (credits) {
       const { confirmGymVisit } = await import('@/lib/gymVisits');
-      const confirmed = await Promise.race([
-        confirmGymVisit(active.visitId, true, {
-          stage:       'stream',
-          source:      'heartbeat',
-          distance_m:  distanceM != null ? Math.round(distanceM) : null,
-          accuracy_m:  coords.accuracy != null ? Math.round(coords.accuracy) : null,
-          fix_trusted: fixTrusted,
-          // SECONDS, and the key is `fix_age_s` — the one confirm_gym_visit_v2
-          // actually reads. `fix_age_ms` is silently ignored by the server.
-          fix_age_s:   fixAgeMs != null ? Math.round(fixAgeMs / 1000) : null,
-        }, false),
-        new Promise<{ ok: boolean }>((resolve) => {
-          setTimeout(() => resolve({ ok: false }), STREAM_CONFIRM_TIMEOUT_MS);
-        }),
-      ]);
-      if (!confirmed?.ok) {
-        logRegionEvent(active.regionId ?? 'stream', 'sweep', {
-          outcome: 'stream_confirm_failed',
-          visit:   active.visitId,
-        });
+      // `timedOut` rather than a shared {ok:false}: a bounded await that reports
+      // the timeout as a failure makes "the round-trip is slow" and "the server
+      // refused" the same telemetry row, and they need different fixes. The timer
+      // is cleared in the finally — every other bounded race in this file does
+      // (tracedStep, acquireFixPreferHigh, reconcileFix, getArmFix) and an
+      // uncleared one leaves an 8 s handle armed after every crediting tick.
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      let timedOut = false;
+      try {
+        const confirmed = await Promise.race([
+          confirmGymVisit(active.visitId, true, {
+            stage:       'stream',
+            source:      'heartbeat',
+            distance_m:  distanceM != null ? Math.round(distanceM) : null,
+            accuracy_m:  coords.accuracy != null ? Math.round(coords.accuracy) : null,
+            fix_trusted: fixTrusted,
+            // SECONDS, and the key is `fix_age_s` — the one confirm_gym_visit_v2
+            // actually reads. `fix_age_ms` is silently ignored by the server.
+            fix_age_s:   fixAgeMs != null ? Math.round(fixAgeMs / 1000) : null,
+          }, false),
+          new Promise<{ ok: boolean }>((resolve) => {
+            timer = setTimeout(() => { timedOut = true; resolve({ ok: false }); }, STREAM_CONFIRM_TIMEOUT_MS);
+          }),
+        ]);
+        if (!confirmed?.ok) {
+          logRegionEvent(active.regionId ?? 'stream', 'sweep', {
+            outcome: timedOut ? 'stream_confirm_timeout' : 'stream_confirm_failed',
+            visit:   active.visitId,
+          });
+        }
+      } finally {
+        if (timer !== undefined) clearTimeout(timer);
       }
     } else {
       // "The stream is alive but cannot prove" is precisely the liveness signal
@@ -5244,6 +5256,14 @@ export function resetNativeEventDebounceForTests(): void {
  *  persisted floor is the other half of the same throttle. */
 export function resetVisitTickThrottleForTests(): void {
   _lastTickAtMs = 0;
+}
+
+/** Test-only, and for the same reason. `_lastSelfPollAt` gates selfPollIfWakeStarved
+ *  23 lines BEFORE its credit test, so a second case in one module instance never
+ *  reaches the gate it means to exercise — the assertion then holds no matter what
+ *  the gate does, which is a test that cannot fail. */
+export function resetSelfPollThrottleForTests(): void {
+  _lastSelfPollAt = 0;
 }
 
 // ─── Exit-noise suppression (2026-08-13) ─────────────────────────────────────

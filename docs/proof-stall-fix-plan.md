@@ -176,7 +176,9 @@ v_present := p_inside
          and v_distance is not null
          and v_distance <= v_radius + coalesce(v_accuracy, 0);
 
--- Freshness. Gates CREDIT only (claim / upgrade), exactly as v_proven does today.
+-- Freshness. Gates the PROOF CLOCK only. ⚠ 2026-08-18: this line originally read
+-- "gates CREDIT only (claim / upgrade)" and that was never true — the claim and
+-- upgrade branches read only p_inside, p_request_credit, status and elapsed.
 v_proven  := v_present
          and (v_fix_age_s is null or v_fix_age_s <= 120);
 
@@ -194,7 +196,18 @@ update gym_visits
  where id = p_visit_id and user_id = v_user and ended_at is null;
 ```
 
-Keep the credit branch gated on `v_proven` (unchanged). Add `proven_at` alongside the existing `proven` key in the `gym_visit_events` detail so the field record stays readable.
+⚠ **The credit branches are NOT gated on `v_proven`, and never were** (verified
+2026-08-18: nothing after the event insert reads `v_proven` or `v_present`; the
+client passes plain geometric `inside` as `request_credit`, not the `provenInside`
+it computes). Leave them exactly as they are — wiring credit to `v_proven` would
+start refusing claims that pay today, which is the tightening that starved whole
+dwells on 07-03 / 07-11. The point stands only for the proof clock.
+
+Add `proven_at` and `stamped` alongside the existing `proven` key in the
+`gym_visit_events` detail — `stamped` is what `close_gym_visit` keys `proof_writer`
+off, and it must be derived in the UPDATE's `RETURNING`, not by comparing against
+the pre-UPDATE snapshot (a losing concurrent confirm would otherwise report
+`stamped: true` and steal the writer).
 
 **Reason.** This is the root cause from §1a. It is the only change that makes a stale-but-honest fix worth anything, and it is what makes Change 3 safe to ship. It cannot inflate: `last_proven_at` moves to a time ≤ `now()`, so the `close_gym_visit` clamp can never bill more than it does today, and `greatest()` makes it monotonic.
 
@@ -551,7 +564,18 @@ guard less aggressive.
 
 ### Acceptance criteria for the next field run
 
-- Android: `stream_tick` rows every ~5 min for the whole visit. This run had **one** in 47 minutes. If this does not move, Change 2 was defeated by background-location throttling and the FGS question becomes the next investigation.
+- Android: **a `stream_tick` OR a `stage:'stream'` confirm every ~5 min** for the
+  whole visit. ⚠ Do NOT grade on `stream_tick` alone: Change 4 replaces that row
+  with a confirm on exactly the healthy path, so a perfect run drives the tick
+  count to **zero** while the 08-17 failure scored **one**. The right reading is
+  the union, and `stamped: true` on those confirms is what says the proof clock
+  actually moved. `scripts/e2e-watch.sh` prints them as `STREAM PROOF ×N`.
+- ⚠ This criterion **cannot be met by this deploy**. Change 2 is not shipped, so
+  the Android dwell switch is still refused at check-in and the stream stays on
+  `passive` / `distanceInterval: 50`. Expect near-silence on Android and read it
+  as "Change 2 still outstanding", NOT as background-location throttling — the
+  discriminator is a `stream_start_failed {at:'check_in', mode:'dwell'}` row,
+  which this branch now emits.
 - Android: zero confirms with `fix_source: 'acquired'` and `fix_age_s: 0` paired against a same-second sweep reporting `stale_age_s > 0`.
 - Both: `clamp_loss_s` on the exit row — `requested_ended_at − ended_at`, i.e. the time we failed to bill. Target under 300 s (the heartbeat interval). This run: iOS 604 s, Android 425 s.
 - `proof_gap_s` (`requested_ended_at − last_proven_at`) is a DIFFERENT number, logged beside it: iOS 604 s, Android **426** s. It is NULL when the device never proved anything, which is itself the finding. `clamp_anchor` names the column the clamp landed on.

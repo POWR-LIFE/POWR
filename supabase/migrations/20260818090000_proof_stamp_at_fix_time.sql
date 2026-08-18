@@ -59,6 +59,7 @@ declare
   v_proven boolean := false;
   v_proven_at timestamptz;
   v_stamped_at timestamptz;
+  v_stamped boolean;
 begin
   if v_user is null then raise exception 'not authenticated'; end if;
 
@@ -80,8 +81,22 @@ begin
            and v_distance is not null
            and v_distance <= v_radius + coalesce(v_accuracy, 0);
 
-  -- FRESHNESS. Unchanged, character for character, and it still gates CREDIT
-  -- (both branches below) and still owns ESTABLISHING the proof clock.
+  -- FRESHNESS. Unchanged, character for character. It owns ESTABLISHING the proof
+  -- clock — and that is ALL it owns.
+  --
+  -- ⚠ IT DOES NOT GATE CREDIT, AND IT NEVER DID. The plan this migration comes
+  -- from says "keep the credit branch gated on v_proven (unchanged)", and that
+  -- describes a protection the function has never had: the claim and upgrade
+  -- branches below read only p_inside, p_request_credit, v_visit.status and
+  -- v_elapsed_min. The client makes it worse — GeofenceContext passes plain
+  -- geometric `inside` as request_credit, not the provenInside it computed from
+  -- fixCreditsPresence — so a trusted-but-stale inside fix past 30 minutes fires
+  -- the claim relay today and still will. Stated here because this migration adds
+  -- a deliberately WEAKER sibling (v_present) beside v_proven, which is exactly
+  -- the setup where someone relaxes the wrong one believing credit is covered.
+  -- Wiring credit to v_proven would be a real behaviour change and is NOT in
+  -- scope: it would start refusing claims on stale-but-inside fixes that pay
+  -- today, which is the tightening that starved whole dwells on 07-03 / 07-11.
   v_proven := v_present
           and (v_fix_age_s is null or v_fix_age_s <= 120);
 
@@ -106,18 +121,43 @@ begin
   -- Two arms, and the difference is the NULL invariant in the header:
   --   v_proven  — a FRESH fix may establish OR advance the clock.
   --   v_present — a STALE but inside fix may only ADVANCE one that already exists.
+  --
+  -- ⚠ ARM 1 CLAMPS TO started_at; IT MUST NOT REFUSE. A fix taken slightly BEFORE
+  -- started_at is routine, not a corner case: open_gym_visit backdates started_at
+  -- to the client's own entryTimestamp, while every rung of the fix ladder serves
+  -- a fix taken before that detection moment — so a check-in confirm whose fix
+  -- age exceeds its lag behind started_at lands on the wrong side of the floor.
+  -- Refusing it would leave last_proven_at NULL for the whole visit, which is
+  -- strictly WEAKER than the rule this replaces (`case when v_proven then now()`
+  -- always established) and would disarm the settle pass on the one population it
+  -- exists for. Real row: visit ef404719 — started_at 11:58:31.605, its ONE and
+  -- ONLY confirmed_inside at 11:58:34.328 with fix_age_s 3, i.e. a fix time 277 ms
+  -- before started_at. That visit's every point came through the settle pass after
+  -- five unanswered nudges; refuse it and an 82-minute session closes zero-length
+  -- and uncredited. Clamping is also what keeps arm 2 safe, since arm 2 has no
+  -- floor of its own and relies on last_proven_at never sitting below started_at.
+  --
   -- ended_at is null: proof columns describe a LIVE visit only (2026-08-13).
   update gym_visits
      set last_confirmed_at = case when p_inside then now() else last_confirmed_at end,
          last_proven_at    = case
-           when v_proven  and v_proven_at >= greatest(coalesce(last_proven_at, started_at), started_at)
-             then v_proven_at
+           when v_proven  and greatest(v_proven_at, started_at) >= coalesce(last_proven_at, started_at)
+             then greatest(v_proven_at, started_at)
            when v_present and last_proven_at is not null and v_proven_at > last_proven_at
              then v_proven_at
            else last_proven_at
          end
    where id = p_visit_id and user_id = v_user and ended_at is null
-  returning last_proven_at into v_stamped_at;
+  -- ⚠ `stamped` IS DERIVED IN THE RETURNING, NOT FROM v_visit. Comparing the
+  -- result against the pre-UPDATE snapshot reports true for a call that LOST a
+  -- concurrent race (its snapshot is stale, so the winner's value looks like its
+  -- own) and would hand close_gym_visit the wrong proof_writer. Post-UPDATE the
+  -- row is under this statement's lock, and it can only equal the value THIS call
+  -- computed if one of the two arms fired for this call. Confirms 1 ms apart are
+  -- routine — this run logged a sweep and a dwell confirm at 19:08:03.573/.574.
+  returning last_proven_at,
+            (last_proven_at = greatest(v_proven_at, started_at))
+       into v_stamped_at, v_stamped;
 
   -- Written unconditionally, before any credit branch: the ONLY proof a silent wake
   -- reached the device's JS. Do not move it below a guard.
@@ -137,7 +177,7 @@ begin
             'proven',    v_proven,
             'present',   v_present,
             'proven_at', case when v_present then v_proven_at end,
-            'stamped',   v_stamped_at is not null and v_stamped_at is distinct from v_visit.last_proven_at,
+            'stamped',   coalesce(v_stamped, false),
             'radius_m',  v_radius));
 
   if not (p_inside and p_request_credit) then
