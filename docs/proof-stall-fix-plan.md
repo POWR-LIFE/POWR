@@ -202,6 +202,33 @@ Keep the credit branch gated on `v_proven` (unchanged). Add `proven_at` alongsid
 
 ### CHANGE 2 — Android: stop deferring the dwell stream switch
 
+> **⛔ DO NOT IMPLEMENT AS WRITTEN (refuted 2026-08-18).** The safety argument
+> below is false. `expo-location`'s JS-facing `startLocationUpdatesAsync` throws
+> `ForegroundServiceStartNotAllowedException` (`LocationModule.kt:258-260`)
+> whenever the app is backgrounded and the options carry a `foregroundService`
+> block — before `registerTask` is reached — and `DWELL_LOCATION_OPTIONS` carries
+> one. Deleting the deferral turns `stream_switch_deferred` into
+> `stream_start_failed {restored:false}` and recovers **zero minutes**. The catch
+> restores with `LOCATION_UPDATE_OPTIONS`, which also carries a service, so that
+> throws too. Two currently-green tests
+> (`__tests__/geofence-arm-fix.test.ts:485` and `:514`) pin the deleted
+> behaviour. See "Verification status" above, and the options below.
+>
+> **The only route that can actually apply dwell options from the background** is
+> to strip `foregroundService` from the options on that path, since the throw is
+> keyed on its presence. `killServiceOnDestroy: true` means a swiped-away app has
+> no service anyway, so the block is doing nothing for the exact case that
+> matters. But it is untested, it moves the gate to
+> `ACCESS_BACKGROUND_LOCATION` (`LocationModule.kt:255-257` — fine for
+> Always-granted users, a new failure mode for provisional ones), and
+> `TaskService.java:106` persists the service-less options as the task's
+> configuration. **This is a device-behaviour change that cannot be settled from
+> the repo. It needs a decision and a field test, not a merge.**
+>
+> The `:3152` half of this change — capturing the discarded `StreamModeResult` so
+> a refused switch is visible — carries no native risk and can ship on its own.
+
+
 **File:** `context/GeofenceContext.tsx:1054-1058`. Delete:
 
 ```ts
