@@ -97,8 +97,12 @@ const secureStoreAdapter = {
         // 2026-08-12: two full iOS sign-outs in one afternoon, each traceable to
         // background auth work, zero user action.
         //
-        // So: erasing the AUTH SESSION requires explicit user intent, declared
-        // via authorizeSessionErase() by the user-initiated sign-out paths.
+        // So: erasing the AUTH SESSION requires explicit intent, declared via
+        // authorizeSessionErase() by the user-initiated sign-out paths — plus ONE
+        // machinery path: AuthContext's SIGNED_OUT branch, once the persisted
+        // pair has been rejected by the server twice (2026-08-18). Without that
+        // exit the gate + synthetic restore formed an unbounded /token loop on a
+        // pair that scope:'others' had retired (~10 req/s, IP rate-limited).
         // Unauthorized attempts are logged and dropped — auth-js still emits its
         // SIGNED_OUT (in-memory), but the newest persisted pair survives, and
         // AuthContext's synthetic-sign-out check restores from it. Crucially,
@@ -125,7 +129,8 @@ let _sessionEraseAuthorizedAt = 0;
 const SESSION_ERASE_WINDOW_MS = 30 * 1000;
 
 /** Call ONLY from a user-initiated sign-out / account-deletion / device-transfer
- *  flow, immediately before supabase.auth.signOut(). */
+ *  flow, immediately before supabase.auth.signOut() — or from AuthContext's
+ *  dead-pair verdict (a persisted pair the server rejected twice). */
 export function authorizeSessionErase(): void {
     _sessionEraseAuthorizedAt = Date.now();
 }
