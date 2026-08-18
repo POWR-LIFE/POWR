@@ -216,7 +216,8 @@ export default function UserProfile() {
             .from('push_send_log')
             .select('id, type, title, body, status, skip_reason, error, receipt_checked_at, created_at', { count: 'exact' })
             .eq('user_id', userId)
-            .order('created_at', { ascending: false }),
+            .order('created_at', { ascending: false })
+            .order('id', { ascending: false }),
         [userId],
         { pageSize: 15 }
     );
