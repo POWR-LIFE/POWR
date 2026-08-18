@@ -227,7 +227,8 @@ export default function UserProfile() {
             .from('health_snapshots')
             .select('*', { count: 'exact' })
             .eq('user_id', userId)
-            .order('recorded_at', { ascending: false }),
+            .order('recorded_at', { ascending: false })
+            .order('id', { ascending: false }),
         [userId],
         { pageSize: 20 }
     );
