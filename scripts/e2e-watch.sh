@@ -131,8 +131,28 @@ while true; do
       who=$(nm "$uid")
       case "$ev" in
         stream_tick) ;;
-        confirmed_inside) now=$(date +%s); last=$(get "conf_$uid"); last=${last:-0}
-             [ $(( now - last )) -ge 300 ] && { echo "[$who] inside ok  $(jq -c '{stage,accuracy_m,distance_m,auth,proven:.proven}' <<<"$det" 2>/dev/null)"; put "conf_$uid" "$now"; } ;;
+        # ⚠ TWO THROTTLES, DELIBERATELY (2026-08-18). Since the retrospective
+        # stamp the interesting question is no longer "did a wake answer" but
+        # "did the proof clock MOVE" — `stamped` is the server's answer to that,
+        # and `proven_at` is where it moved to. The stream heartbeat is now a
+        # proof writer too (stage:'stream'), and folding its rows into the wake
+        # throttle would hide exactly the writer the 08-17 run lacked: on that
+        # run Android logged ONE stream tick in 47 minutes. Separate counters, so
+        # a silent stream is visible as a silence rather than as someone else's
+        # confirm winning the 300 s window.
+        confirmed_inside)
+             stg=$(jq -r '.stage // "?"' <<<"$det" 2>/dev/null)
+             if [ "$stg" = "stream" ]; then
+               now=$(date +%s); last=$(get "sconf_$uid"); last=${last:-0}
+               n=$(get "sconfn_$uid"); n=$(( ${n:-0} + 1 )); put "sconfn_$uid" "$n"
+               if [ $(( now - last )) -ge 300 ]; then
+                 echo "[$who] STREAM PROOF ×${n}  $(jq -c '{source,accuracy_m,distance_m,fix_age_s,proven,stamped,proven_at}' <<<"$det" 2>/dev/null)"
+                 put "sconf_$uid" "$now"; put "sconfn_$uid" 0
+               fi
+             else
+               now=$(date +%s); last=$(get "conf_$uid"); last=${last:-0}
+               [ $(( now - last )) -ge 300 ] && { echo "[$who] inside ok  $(jq -c '{stage,accuracy_m,distance_m,fix_age_s,auth,proven,stamped}' <<<"$det" 2>/dev/null)"; put "conf_$uid" "$now"; }
+             fi ;;
         *) echo "[$who] VISIT ${ev}  $(jq -c . <<<"$det")" ;;
       esac
     done < <(jq -r '.[] | [.user_id,.event,(.detail|tostring),.created_at] | @tsv' <<<"$rows" 2>/dev/null)
