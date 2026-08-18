@@ -3155,7 +3155,34 @@ async function setActiveAndNotify(regionId: string, entry: PartnerMapEntry): Pro
   // baseline ('off') would tear down the approach stream that detects the 25 m
   // exit. iOS keeps claiming on the region EXIT, exactly as before.
   const checkedInMode = visitStreamMode(Platform.OS, { sessionActive: true, approaching: true });
-  if (checkedInMode === 'dwell') await setLocationStreamMode('dwell');
+  if (checkedInMode === 'dwell') {
+    // ⚠ THE RESULT USED TO BE DISCARDED, AND THAT IS WHY 08-17 TOOK A QUERY TO
+    // DIAGNOSE. This switch is refused on every backgrounded Android check-in —
+    // i.e. every unaided one — and the only trace was a `stream_switch_deferred`
+    // row on the generic 'stream' key, so nothing tied the refusal to CHECK-IN.
+    // Field 2026-08-17, visit 9346e8d2: the deferral fired 51 ms after check-in
+    // (18:26:53.727, {"to":"dwell","from":"passive"}) and the visit then ran all
+    // 47 minutes on `passive` — distanceInterval 50, which a stationary lifter
+    // never trips. stream_fix_age_s went 550 → 2412 with exactly one tick.
+    //
+    // This does NOT fix the refusal. expo-location throws from its own JS-facing
+    // startLocationUpdatesAsync whenever the app is backgrounded and the options
+    // carry a foregroundService block (LocationModule.kt:258-260), which
+    // DWELL_LOCATION_OPTIONS does — so the switch cannot land from here at all,
+    // and removing the deferral would only change which row records that. What
+    // this does is make the failure legible at the moment it matters, keyed to
+    // the visit's region rather than to 'stream'.
+    const res = await setLocationStreamMode('dwell');
+    if (res.mode !== 'dwell') {
+      logRegionEvent(regionId, 'stream_start_failed', {
+        mode: 'dwell',
+        at:   'check_in',
+        got:  res.mode,
+        started: res.started,
+      });
+      console.warn(`[Geofence] Check-in could not start the dwell stream — running on ${res.mode}.`);
+    }
+  }
 
   // Open the server-side beacon. We are provably awake right now (we just fired
   // "You're in"), which is exactly why the check-in is the one moment we can be
