@@ -11,28 +11,104 @@ before touching anything — two of the three fixes originally requested are in 
 
 ## Verification status — read this first
 
-VERIFIED BY DIRECT QUERY (jamie + Claude, 2026-08-17 19:3xZ):
+**2026-08-18: a second pass re-checked every claim below against the working tree,
+the vendored native source and the live database. Read this section before §2.**
 
-- **iOS received ZERO wakes between 19:08:03.549 and 19:19:02.533.** The
-  `acc_m 11 / dist_m 4 / fix_age_s 0` sweep is timestamped 19:08:03, not 19:14
-  (`elapsed_min: 45` dates it: 18:23:17 + 45 min). iOS is an APNs DELIVERY failure,
-  not a gating failure. An earlier claim in this session that iOS "held 11 m fixes
-  and froze anyway" was wrong.
-- **Android's stream never left passive mode.** `stream_switch_deferred
-  {"from":"passive","to":"approach"}` at 19:14:10.913 — 47 minutes into the visit.
+VERIFIED, and stronger than originally written:
 
-NOT INDEPENDENTLY VERIFIED — treat as an agent's proposal, check each before shipping:
+- **Change 3's premise.** The acquire rung has reported a non-zero fix age **zero
+  times in the history of the table** — 21 of 21 confirms since instrumentation
+  said 0, across 8 visits and 2 users, while `stream_cache` (157 of 207) and
+  `last_known` (63 of 99) report measured values. This is not one field row, it
+  is the rung's entire behaviour. 13 of those 21 were accepted as proof.
+- **Change 2's Android premise.** The check-in refusal is directly logged, not
+  merely inferred: `geofence_region_events` 18:26:53.727,
+  `stream_switch_deferred {"to":"dwell","from":"passive"}`, 51 ms after check-in.
+  Three deferrals fired on that run.
+- **Change 5's arithmetic**, and every line number it cites (`:404`, `:408`,
+  `:421`, `:802-811`, `:816`) is exact.
+- **The SQL of Change 1** now compiles and behaves: verified by creating the body
+  against the real schema under a throwaway name, and by running the retrospective
+  expression over 11 cases on the live database (below).
 
-- The SQL body of Change 1 (compiles? `greatest`/`least` semantics on nulls?).
-- Every line number below. The file moved during 2026-08-17; re-grep, do not trust.
-- The claimed "+5.4 min on Android" arithmetic.
-- The native-code claims about `LocationTaskConsumer.kt` / `TaskService.java`
-  (vendored source was read by an agent, not by a human).
+REFUTED — the plan was wrong and the fix has changed:
+
+- **CHANGE 2 DOES NOT WORK AS WRITTEN, and its safety argument is false.**
+  `expo-location`'s own JS-facing `startLocationUpdatesAsync` throws
+  `ForegroundServiceStartNotAllowedException` at `LocationModule.kt:258-260`
+  whenever the app is backgrounded AND the options carry a `foregroundService`
+  block — *before* `registerTask` is reached. `DWELL_LOCATION_OPTIONS` carries
+  one. So deleting the deferral converts a `stream_switch_deferred` row into a
+  `stream_start_failed {restored:false}` row, leaves the stream on
+  `distanceInterval: 50`, and recovers **zero minutes**. The chain the plan
+  relied on (`maybeStartForegroundService` early-return, `registerTask`→
+  `setOptions`, `setOptions`→fused `PendingIntent`) is each individually true but
+  sits *downstream of a gate that never lets execution reach it*. The exception's
+  message is byte-identical to the 2026-08-06 field log already quoted in
+  `GeofenceContext.tsx`. **The claimed "+5.4 min on Android" does not follow.**
+- **The Change 1 SQL as drafted would not compile** (`v_present` / `v_proven_at`
+  undeclared), and had a client-triggerable `22015` interval overflow that would
+  abort the whole confirm RPC — where today the same value merely evaluates a
+  comparison false.
+- **The Change 1 stamp had a lost-update race.** `v_visit` is read without
+  `FOR UPDATE`, so a `greatest()` over that snapshot can regress the clock where
+  today's `= now()` cannot. The max is now done against the row inside the UPDATE.
+- **The Change 4 snippet would not compile** (`distanceM`/`fixTrusted`/`credits`
+  are block-scoped or do not exist at the line that used them) and re-proposed a
+  `VISIT_TICK_KEY` write that already exists.
+- **Change 6's `proof_writer` cannot key off `proven` or off
+  `created_at = last_proven_at`** — Change 1 breaks both. It keys off a new
+  `stamped` flag, which is why 1 and 6 must be one migration.
+
+FRAMING CORRECTION — the most important thing on this page:
+
+**Change 1 addresses a minority of production loss.** Of 26 clamped exits in the
+last 14 days (473 minutes lost in total), only **4** were anchored on
+`last_proven_at`. **20 — all iOS — had `last_proven_at` NULL** and clamped to
+`started_at`, and the eight largest of those (≈7 of the 473 minutes' hours) belong
+to visits with **zero `confirmed_inside` rows**: the device never answered a wake
+at all, so there is no confirm for a retrospective stamp to act on. If the next
+14-day clamp count barely moves, that is the expected result, not a failed deploy.
+Only Change 4 touches that population, and only where the stream ticks.
+`clamp_anchor` in Change 6 is what separates the two populations from now on.
+
+REPO/DB DRIFT FOUND AND FIXED: live migration `20260817145537_guard_client_session_window`
+had no file in `supabase/migrations/`, so the repo could no longer rebuild the
+database. Backfilled from `pg_get_functiondef` in this change.
+
+STILL NOT VERIFIED: the "+5.4 min on Android" arithmetic (moot — see the Change 2
+refutation), and whether an iOS batch flush would carry in-fence fixes.
+
+### Change 1's arithmetic, verified on the live database
+
+Eleven cases run against PG 17.6, all matching:
+
+| case | result |
+|---|---|
+| 219 s stale, clock running → advances to `now−219s` | ✅ |
+| 9999 s on a 60 s-old visit, never proved → **stays NULL** | ✅ |
+| computed stamp earlier than existing clock → unchanged | ✅ |
+| fresh 30 s fix, never proved → establishes at `now−30s` | ✅ |
+| stale-but-inside, never proved → **stays NULL** | ✅ |
+| hostile `1e18` age → clamped to 24 h, no `22015` | ✅ |
+| negative age (clock skew) → clamped to 0 | ✅ |
+| null age (pre-OTA client) → `now()`, exactly as today | ✅ |
+| not inside geometry → never moves | ✅ |
+
+**The NULL invariant is deliberately NOT relaxed**, and this is the one place the
+implementation departs from the plan's draft. `gym-visit-beacon`'s SETTLE pass
+gates on `if (!v.last_proven_at) continue;` and then bills `started_at → now()`,
+**not** to the proof time — so letting a stale-but-inside fix turn NULL into a
+value would hand full server-side credit to a visit that never proved anything.
+The freshness gate therefore still owns *establishing* the clock; the
+retrospective rule only ever *advances* one a fresh fix already started. On the
+08-17 Android visit that costs nothing: its 19:11:06 stale fix computes 19:06:53,
+earlier than the existing 19:07:04 anchor, so it correctly proves nothing new.
 
 ## Why APNs dropped the iOS pushes is UNPROVEN
 
-16 background sends in 63 min against Apple's ~2-3/hr guidance (the beacon's own
-comment at `gym-visit-beacon/index.ts:722` already flags this). Leading explanation,
+18 silent sends (21 total) in 63.0 min against Apple's ~2-3/hr guidance (the
+beacon's own comment at `gym-visit-beacon/index.ts:722` already flags this). Leading explanation,
 no proof. Settling it needs an iOS sysdiagnose over `apsd`/`dasd` for the visit
 window — not more code. **No change in this plan recovers a single iOS minute.**
 
@@ -55,7 +131,7 @@ I pulled the actual rows for both visits before writing this. Several claims in 
 - A fix taken at 19:06:53 and delivered at 19:11:06 proves presence **at 19:06:53**. Today it proves nothing.
 - `close_gym_visit` then clamps `ended_at` to `greatest(started_at, last_proven_at, claimed_at, upgraded_at)` (`20260813130000_...sql:33-40`), so every discarded fix becomes lost minutes.
 
-Both platforms' entire loss is exactly `exit_time − last_proven_at`. The 120 s cutoff is not protecting the guarantee; it is the reason the guarantee under-bills. The correct rule is **retrospective**: a fix that is trusted and geometrically inside advances the proof clock **to the fix's own timestamp**, never to `now()`. That is strictly safer than today (the anchor can only move earlier than `now()`) and it *dissolves* the 2026-08-10 regression — a 219 s-old precise fix would have stamped 19:06:xx, not 19:10:xx, and would have billed zero phantom minutes instead of four.
+iOS's entire loss is exactly `exit_time − last_proven_at`. Android's clamp landed on `upgraded_at` (19:07:05.261), 1.2 s later than `last_proven_at` — the anchor is `greatest(started_at, last_proven_at, claimed_at, upgraded_at)`, and which column wins matters. The 120 s cutoff is not protecting the guarantee; it is the reason the guarantee under-bills. The correct rule is **retrospective**: a fix that is trusted and geometrically inside advances the proof clock **to the fix's own timestamp**, never to `now()`. That is strictly safer than today (the anchor can only move earlier than `now()`) and it *dissolves* the 2026-08-10 regression — a 219 s-old precise fix would have stamped 19:06:xx, not 19:10:xx, and would have billed zero phantom minutes instead of four.
 
 ### 1b. ANDROID: the dwell stream never ran. Proven, caught in the act.
 
@@ -75,9 +151,9 @@ Corroborated independently by `stream_fix_age_s` in every confirm trace: 550 →
 
 Zero `wake_received` rows between 19:08:03.549 and 19:19:02.533, on a device whose ticket transport demonstrably worked at 19:18:07.825. The presence pass did fire (`last_nudge_at 19:14:01.301`); APNs accepted and never delivered. The `acc_m 11 / distance_m 4 / fix_age_s 0 / elapsed_min 45` row the brief attributes to 19:14 is the **19:08:03.549** sweep — `elapsed_min 45` dates it exactly.
 
-**Why APNs dropped 19:13:03, 19:14:01 and 19:23:04 is UNPROVEN.** Background-budget exhaustion (16 sends in 63 min against Apple's ~2-3/hr guidance, cited in `gym-visit-beacon/index.ts:722`) is the leading explanation and nothing in this repo or database can confirm it. **What would settle it:** an iOS sysdiagnose capturing `apsd`/`dasd` for 19:05-19:25 on the bench iPhone, or an instrumented re-run at 12/hr with the device console attached.
+**Why APNs dropped 19:13:03, 19:14:01 and 19:23:04 is UNPROVEN.** Background-budget exhaustion (18 silent sends in 63.0 min against Apple's ~2-3/hr guidance, cited in `gym-visit-beacon/index.ts:722`) is the leading explanation and nothing in this repo or database can confirm it. **What would settle it:** an iOS sysdiagnose capturing `apsd`/`dasd` for 19:05-19:25 on the bench iPhone, or an instrumented re-run at 12/hr with the device console attached.
 
-iOS also has **no working device-side fallback**, and this is proven rather than assumed: every one of its ten wakes found a stream-cache fix aged 0-1 s, but there is no `stream_tick` row after 19:03:06 and none during the walk-out. Deliveries are flushed *by* the arriving push; the `IOS_VISIT_LOCATION_OPTIONS` stream (`distanceInterval: 25`) produced nothing on its own for ten minutes. Under 1a, iOS's recovery depends on whether a deferred batch flushes at 19:18:07 with in-fence fixes in it — **unproven, and §4 does not claim it.**
+iOS also has **no working device-side fallback**, and this is proven rather than assumed: nine of its ten wakes found a stream-cache fix aged 0-1 s (the 19:04:05 upgrade wake read 59 s), but there is no `stream_tick` row after 19:03:06 and none during the walk-out. Deliveries are flushed *by* the arriving push; the `IOS_VISIT_LOCATION_OPTIONS` stream (`distanceInterval: 25`) produced nothing on its own for ten minutes. Under 1a, iOS's recovery depends on whether a deferred batch flushes at 19:18:07 with in-fence fixes in it — **unproven, and §4 does not claim it.**
 
 ---
 
@@ -89,7 +165,7 @@ Ordered by user-visible impact. **Changes 1 and 2 must ship as one unit** — se
 
 ### CHANGE 1 — Retrospective proof stamp (new migration)
 
-**File:** new `supabase/migrations/20260818090000_proof_stamp_at_fix_time.sql`, replacing `confirm_gym_visit_v2`.
+**File:** new `supabase/migrations/20260818082412_proof_stamp_at_fix_time.sql`, replacing `confirm_gym_visit_v2`.
 
 Split today's single `v_proven` into two:
 
@@ -100,7 +176,9 @@ v_present := p_inside
          and v_distance is not null
          and v_distance <= v_radius + coalesce(v_accuracy, 0);
 
--- Freshness. Gates CREDIT only (claim / upgrade), exactly as v_proven does today.
+-- Freshness. Gates the PROOF CLOCK only. ⚠ 2026-08-18: this line originally read
+-- "gates CREDIT only (claim / upgrade)" and that was never true — the claim and
+-- upgrade branches read only p_inside, p_request_credit, status and elapsed.
 v_proven  := v_present
          and (v_fix_age_s is null or v_fix_age_s <= 120);
 
@@ -118,13 +196,51 @@ update gym_visits
  where id = p_visit_id and user_id = v_user and ended_at is null;
 ```
 
-Keep the credit branch gated on `v_proven` (unchanged). Add `proven_at` alongside the existing `proven` key in the `gym_visit_events` detail so the field record stays readable.
+⚠ **The credit branches are NOT gated on `v_proven`, and never were** (verified
+2026-08-18: nothing after the event insert reads `v_proven` or `v_present`; the
+client passes plain geometric `inside` as `request_credit`, not the `provenInside`
+it computes). Leave them exactly as they are — wiring credit to `v_proven` would
+start refusing claims that pay today, which is the tightening that starved whole
+dwells on 07-03 / 07-11. The point stands only for the proof clock.
+
+Add `proven_at` and `stamped` alongside the existing `proven` key in the
+`gym_visit_events` detail — `stamped` is what `close_gym_visit` keys `proof_writer`
+off, and it must be derived in the UPDATE's `RETURNING`, not by comparing against
+the pre-UPDATE snapshot (a losing concurrent confirm would otherwise report
+`stamped: true` and steal the writer).
 
 **Reason.** This is the root cause from §1a. It is the only change that makes a stale-but-honest fix worth anything, and it is what makes Change 3 safe to ship. It cannot inflate: `last_proven_at` moves to a time ≤ `now()`, so the `close_gym_visit` clamp can never bill more than it does today, and `greatest()` makes it monotonic.
 
 ---
 
 ### CHANGE 2 — Android: stop deferring the dwell stream switch
+
+> **⛔ DO NOT IMPLEMENT AS WRITTEN (refuted 2026-08-18).** The safety argument
+> below is false. `expo-location`'s JS-facing `startLocationUpdatesAsync` throws
+> `ForegroundServiceStartNotAllowedException` (`LocationModule.kt:258-260`)
+> whenever the app is backgrounded and the options carry a `foregroundService`
+> block — before `registerTask` is reached — and `DWELL_LOCATION_OPTIONS` carries
+> one. Deleting the deferral turns `stream_switch_deferred` into
+> `stream_start_failed {restored:false}` and recovers **zero minutes**. The catch
+> restores with `LOCATION_UPDATE_OPTIONS`, which also carries a service, so that
+> throws too. Two currently-green tests
+> (`__tests__/geofence-arm-fix.test.ts:485` and `:514`) pin the deleted
+> behaviour. See "Verification status" above, and the options below.
+>
+> **The only route that can actually apply dwell options from the background** is
+> to strip `foregroundService` from the options on that path, since the throw is
+> keyed on its presence. `killServiceOnDestroy: true` means a swiped-away app has
+> no service anyway, so the block is doing nothing for the exact case that
+> matters. But it is untested, it moves the gate to
+> `ACCESS_BACKGROUND_LOCATION` (`LocationModule.kt:255-257` — fine for
+> Always-granted users, a new failure mode for provisional ones), and
+> `TaskService.java:106` persists the service-less options as the task's
+> configuration. **This is a device-behaviour change that cannot be settled from
+> the repo. It needs a decision and a field test, not a merge.**
+>
+> The `:3152` half of this change — capturing the discarded `StreamModeResult` so
+> a refused switch is visible — carries no native risk and can ship on its own.
+
 
 **File:** `context/GeofenceContext.tsx:1054-1058`. Delete:
 
@@ -192,8 +308,8 @@ fixSource = fresh ? 'acquired' : 'timeout';
 // "`acquired` is fresh by construction". It is not, and the 08-17 field run caught
 // it live: on visit 9346e8d2 the 19:01:03 confirm reported fix_source 'acquired',
 // acquire latency 6 ms and fix_age_ms 0, while the SAME wake's sweep measured the
-// same fix at 130 s (stale_age_s 130, fix_ts 1786993132976) and rejected it. Six of
-// that visit's proof stamps were a fused-provider replay wearing a hardcoded zero
+// same fix at 130 s (stale_age_s 130, fix_ts 1786993132976) and rejected it. SEVEN
+// of that visit's thirteen accepted proof stamps were a replay wearing a zero
 // — the exact 2026-08-11 PM "cached fix wearing a new request" failure, on the one
 // path with no age gate. A 6 ms acquisition is a cache read.
 fixAgeMs = fresh && typeof fresh.timestamp === 'number' ? Math.max(0, Date.now() - fresh.timestamp) : null;
@@ -296,7 +412,7 @@ In `close_gym_visit`, add to the `exit` event detail:
 
 **ANDROID** — visit `9346e8d2`, started 18:26:53.312, client exit 19:14:10.374, recorded **2412 s = 40.2 min**.
 
-- Change 3 alone: **40.2 min, unchanged.** The six phantom `age 0` acquires become honest 70-211 s, but the *honest* rungs already carried the visit — the 19:07:04 `last_known` fix (measured age 11 s) proved on its own merits. No loss on this run; on other runs this will correctly *reduce* inflated durations.
+- Change 3 alone: **40.2 min, unchanged.** The seven phantom `age 0` acquires become honest 70-211 s, but the *honest* rungs already carried the visit — the 19:07:04 `last_known` fix (measured age 11 s) proved on its own merits. No loss on this run; on other runs this will correctly *reduce* inflated durations.
 - Changes 1+3: **40.2 min, unchanged.** The 19:11:06 fix retro-stamps to 19:06:53, which is earlier than the existing 19:07:04 anchor. Correct — that fix genuinely proved nothing new.
 - **Changes 1+2+3: ~45.6 min (+5.4).** A 60 s dwell stream keeps `stream_fix_age_s` under 60 throughout, so the 19:11:06 confirm proves; more importantly `evaluateLocationFix` runs every 60 s and fires the geometric exit at the real crossing. The 19:16:02 sweep measured `nearest_m 192` from a fix timestamped 19:14:07, so the true fence crossing was ~19:12-19:13 — a live stream both proves up to it and closes on it.
 - **Plus Change 4: same ~45.6 min, but the residual is bounded at 5 min instead of unbounded.** Heartbeat proof would have landed at ~19:11:53.
@@ -306,7 +422,7 @@ In `close_gym_visit`, add to the `exit` event detail:
 
 **iOS** — visit `f2a43f1b`, started 18:23:17.268, client exit 19:18:07.571, recorded **2686 s = 44.8 min**.
 
-- Changes 1, 2, 3, 5: **44.8 min. Zero minutes recovered. Zero.** No code ran on that device between 19:08:03.549 and 19:18:07.825 — no `wake_received`, no `sweep`, no `stream_tick`, no confirm of any kind. Change 2 is Android-only. Change 5 moves the presence nudge from 19:14:01 to 19:13:04, still inside the dead window.
+- Changes 1, 2, 3, 5: **44.8 min. Zero minutes recovered. Zero.** No code ran on that device between 19:08:03.549 and 19:18:07.825 — no `wake_received`, no `sweep`, no `stream_tick`, no confirm of any kind. Change 2 is Android-only. Change 5 moves the iOS presence nudge by exactly **zero seconds** — `last_confirmed_at` and `last_proven_at` are the same instant on this visit (19:08:03.574). The earlier "19:13:04" figure was wrong; do not use it as an acceptance number.
 - Change 4: **44.8 min proven, up to ~52.7 min plausible.** *If* the 19:18:07 wake flushed a deferred CoreLocation batch containing in-fence fixes, Change 1 lets the newest of them retro-stamp `last_proven_at` to its own timestamp. There is no evidence in this run that such a batch exists — the absence of any `stream_tick` row after 19:03:06 is consistent with both "batch withheld until wake" and "stream delivered nothing at all". **Do not book this.**
 - The brief's "ACTUAL 54.8 min" is also an overstatement: the 19:18:07 exit carries the POWR `region_id` and the 19:19:02 sweep put the device 251 m out, so this was the OS's ~120 m ring, not the 40 m fence. True departure was ~60-90 s earlier.
 
@@ -369,30 +485,98 @@ In `close_gym_visit`, add to the `exit` event detail:
 
 ## 7. DEPLOY: OTA-SAFETY AND ORDER
 
-| Change | Kind | Vehicle |
-|---|---|---|
-| 1 — retrospective proof stamp | SQL | **Migration** (`apply_migration` via Supabase MCP) |
-| 6 — `proof_gap_s` on close | SQL | Same migration |
-| 2 — dwell stream deferral | Pure TS | **OTA** |
-| 3 — honest acquire age | Pure TS | **OTA** |
-| 4 — heartbeat proof writer | Pure TS | **OTA** |
-| 5 — presence on `last_proven_at` | Edge function | **`deploy_edge_function` gym-visit-beacon** |
+**STATUS 2026-08-18: implemented on `fix/proof-stall-retrospective-clock`.
+NOTHING IS DEPLOYED.** Suite 103/103, 1322/1322; `tsc --noEmit` clean.
 
-**No native build required.** No new permission, no `app.json` change, no native module. `DWELL_LOCATION_OPTIONS` already exists and is already passed to `startLocationUpdatesAsync` at `:6104`; Change 2 only removes an early return in front of a call that already ships. `evaluateLocationFix`'s new optional parameter is additive.
+| Change | Kind | Vehicle | State |
+|---|---|---|---|
+| 1 — retrospective proof stamp | SQL | **Migration** `20260818082412_proof_stamp_at_fix_time.sql` | written, compile- and semantics-verified against prod, **not applied** |
+| 6 — `clamp_loss_s` / `proof_gap_s` / `clamp_anchor` / `proof_writer` | SQL | same migration | same |
+| — guard_client_session_window backfill | SQL | `20260817145537_…sql` | **already live**; the file was missing, now committed |
+| 2 — dwell stream deferral | — | — | **NOT SHIPPED — refuted, see §2** |
+| 2b — check-in reports a refused switch | Pure TS | **OTA** | shipped to branch |
+| 3 — honest acquire age | Pure TS | **OTA** | shipped to branch |
+| 3b — `selfPollIfWakeStarved` honest age + `fix_age_s` key | Pure TS | **OTA** | shipped to branch (**not in the original plan**) |
+| 4 — heartbeat proof writer | Pure TS | **OTA** | shipped to branch |
+| 5 — presence on `last_proven_at` | Edge function | **`deploy_edge_function` gym-visit-beacon** | shipped to branch, **not deployed** |
+
+**No native build required.** No new permission, no `app.json` change, no native
+module. Every client edit is pure TS and the new function parameters are optional
+and additive.
+
+**3b was not in the plan and matters.** `selfPollIfWakeStarved` sent
+`fix_age_ms`, a key `confirm_gym_visit_v2` does not read — so its `v_fix_age_s`
+was always NULL and its 120 s freshness gate never fired once, on the single
+writer that also sets `request_credit: true`. It also hardcoded `fixAgeMs: 0`
+into the local credit test. §5 item 7 says do not *tune* that function; this is
+the same defect class as Change 3, not a threshold change.
 
 ### The order is load-bearing. Do not vary it.
 
-**1. Migration first.** Change 3 makes clients report honest — i.e. *larger* — `fix_age_s`. Against today's `v_proven` (`<= 120` or nothing) those honest ages would be rejected outright and Android durations would collapse below where they are now. The migration must be live before a single client sends an honest age. It is backward compatible: pre-OTA clients keep sending `fix_age_s: 0` and `now() - 0 ≈ now()`, so their behaviour is unchanged.
+**1. Migration first.** Change 3 makes clients report honest — i.e. *larger* —
+`fix_age_s`, and this is not occasional: 21 of 21 acquire-rung confirms in the
+last 7 days sent 0, so the reported age changes on EVERY acquire confirm the
+moment the OTA lands. Against today's `v_proven` (`<= 120` or nothing) those
+honest ages are rejected outright and Android durations collapse below where they
+are now. Backward compatible with pre-OTA clients: they keep sending
+`fix_age_s: 0`, and `now() − 0 ≈ now()`.
 
-**2. OTA second, both channels.** iOS is on `production` (1.5.0(17)), Android on `preview` (1.5.0(19)) — publish to both, and only the newest group is served, so verify each channel separately. Run `npm ci` before the publish (the fingerprint gotcha). Changes 2, 3 and 4 go together; **do not split 2 from 3** — Change 3 alone removes phantom proof that Change 2 has not yet replaced with real proof, and Android would record less than it does today for as long as the gap lasts.
+**2. OTA second, both channels.** iOS is on `production`, Android on `preview` —
+publish to both and verify each channel separately, only the newest group is
+served. Run `npm ci` before the publish (the fingerprint gotcha).
+⚠ `app.json` currently reads version 1.5.0, iOS buildNumber **16**, Android
+versionCode 19 — the plan's earlier "1.5.0(17)" for iOS was wrong; confirm the
+installed build before reasoning about reach.
+**Do not split 3 from 1**, with the same emphasis the plan gave to not splitting
+2 from 3.
 
-**3. Beacon last, after confirming OTA reach.** Change 5 increases how often we nudge a device whose last answer was unprovable. Against a pre-OTA client that still hardcodes `fixAgeMs = 0`, every extra nudge is an extra opportunity to launder a replay into `last_proven_at`. Check reach before deploying; OTA-land visibility is a known blind spot here.
+**3. Beacon last, after confirming OTA reach.** Change 5 asks more often on
+exactly the population whose last answer was unprovable. Against a pre-OTA client
+that still hardcodes `fixAgeMs = 0`, every extra nudge is another chance to
+launder a replay into `last_proven_at`. Check reach first; OTA-land visibility is
+a known blind spot here.
 
-**Rollback:** each stage is independently revertible. The migration is a `create or replace function` — keep the prior body ready. The OTA rolls back by republishing the previous group. The beacon rolls back by redeploying the previous function.
+**Rollback:** each stage is independently revertible. The migration is a
+`create or replace function` with no signature change, and the live bodies were
+byte-identical to `20260813140000` / `20260813130000` when this was written, so
+those two files ARE the rollback bodies verbatim. The OTA rolls back by
+republishing the previous group. The beacon rolls back by redeploying the
+previous function (live version 44, 2026-08-17T14:43:24Z, byte-identical to the
+repo before this branch).
+
+### One expected effect that will LOOK like a regression
+
+The retrospective stamp moves `last_proven_at` **earlier** — by exactly the fix's
+age, bounded at 120 s because that is where the freshness gate still sits. On a
+visit whose last proof was a fresh fix and where nothing else banks, `ended_at`
+therefore clamps up to **two minutes lower than today**. That is the honest
+number (a fix 119 s old proves presence 119 s ago, not now), and it is the price
+of the anchor only ever moving earlier than `now()` — which is what makes the
+change unable to inflate. Expect it; do not roll back on it.
+
+It also propagates, all in the conservative direction, and each is worth one look
+on the next run rather than a surprise: `gymReaper`'s `STALE_SILENCE_MS` sees
+visits as stale marginally sooner (earlier auto-close, at a correspondingly
+earlier proven end — no inflation); `upgrade-gym-tier`'s `presenceSec` reads
+marginally lower; and `guard_client_session_window`'s exit floor
+(`coalesce(last_proven_at, …)`) drops by the same amount, which only makes that
+guard less aggressive.
 
 ### Acceptance criteria for the next field run
 
-- Android: `stream_tick` rows every ~5 min for the whole visit. This run had **one** in 47 minutes. If this does not move, Change 2 was defeated by background-location throttling and the FGS question becomes the next investigation.
+- Android: **a `stream_tick` OR a `stage:'stream'` confirm every ~5 min** for the
+  whole visit. ⚠ Do NOT grade on `stream_tick` alone: Change 4 replaces that row
+  with a confirm on exactly the healthy path, so a perfect run drives the tick
+  count to **zero** while the 08-17 failure scored **one**. The right reading is
+  the union, and `stamped: true` on those confirms is what says the proof clock
+  actually moved. `scripts/e2e-watch.sh` prints them as `STREAM PROOF ×N`.
+- ⚠ This criterion **cannot be met by this deploy**. Change 2 is not shipped, so
+  the Android dwell switch is still refused at check-in and the stream stays on
+  `passive` / `distanceInterval: 50`. Expect near-silence on Android and read it
+  as "Change 2 still outstanding", NOT as background-location throttling — the
+  discriminator is a `stream_start_failed {at:'check_in', mode:'dwell'}` row,
+  which this branch now emits.
 - Android: zero confirms with `fix_source: 'acquired'` and `fix_age_s: 0` paired against a same-second sweep reporting `stale_age_s > 0`.
-- Both: `proof_gap_s` on the exit row. Target under 300 s (the heartbeat interval). This run: iOS 604 s, Android 425 s.
+- Both: `clamp_loss_s` on the exit row — `requested_ended_at − ended_at`, i.e. the time we failed to bill. Target under 300 s (the heartbeat interval). This run: iOS 604 s, Android 425 s.
+- `proof_gap_s` (`requested_ended_at − last_proven_at`) is a DIFFERENT number, logged beside it: iOS 604 s, Android **426** s. It is NULL when the device never proved anything, which is itself the finding. `clamp_anchor` names the column the clamp landed on.
 - iOS specifically: capture a sysdiagnose covering the visit. Nothing in this plan resolves the APNs drop, and `proof_gap_s` on iOS is the number that tells us whether it still exists.
