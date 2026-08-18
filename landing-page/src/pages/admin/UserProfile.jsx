@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
+import { fetchAllRows } from '../../lib/fetchAll';
+import { usePagedList, Pager } from '../../lib/usePagedList';
 import { useToast } from '../../lib/toast';
 import { useAuth } from '../../App';
 import { levelFromEarned } from '../../lib/levels';
@@ -139,7 +141,10 @@ export default function UserProfile() {
     const [transactions, setTransactions] = useState([]);
     const [streak, setStreak] = useState(null);
     const [redemptions, setRedemptions] = useState([]);
-    const [healthSnapshots, setHealthSnapshots] = useState([]);
+    // The health tab's summary cards and its snapshot log want different data: the cards
+    // need a complete recent window, the log needs deep history a page at a time. Reading
+    // both off one capped fetch made the cards depend on how densely the user syncs.
+    const [healthSummary, setHealthSummary] = useState(null);
     const [showAdjust, setShowAdjust] = useState(false);
     const [showVaultGrant, setShowVaultGrant] = useState(false);
     const [vgAmount, setVgAmount] = useState('');
@@ -161,8 +166,6 @@ export default function UserProfile() {
     const [deviceTransfers, setDeviceTransfers] = useState([]);
     const [deviceReleasing, setDeviceReleasing] = useState(false);
     const [pushTokens, setPushTokens] = useState([]);
-    const [pushLog, setPushLog] = useState([]);
-    const [visiblePushLog, setVisiblePushLog] = useState(15);
     const [gymVisits, setGymVisits] = useState([]);
     const [visitEvents, setVisitEvents] = useState([]);
     const [activeTab, setActiveTab] = useState('activity');
@@ -204,6 +207,31 @@ export default function UserProfile() {
     const [preferredGym, setPreferredGym] = useState(null);
     const [partnerMap, setPartnerMap] = useState({});
     const [userEmail, setUserEmail] = useState(null);
+
+    // The two deep logs. Both run to thousands of rows for an active user, and neither
+    // feeds a total elsewhere on the page, so each is served a page at a time with the
+    // server's exact count beside it.
+    const pushLog = usePagedList(
+        () => supabase
+            .from('push_send_log')
+            .select('id, type, title, body, status, skip_reason, error, receipt_checked_at, created_at', { count: 'exact' })
+            .eq('user_id', userId)
+            .order('created_at', { ascending: false })
+            .order('id', { ascending: false }),
+        [userId],
+        { pageSize: 15 }
+    );
+
+    const healthLog = usePagedList(
+        () => supabase
+            .from('health_snapshots')
+            .select('*', { count: 'exact' })
+            .eq('user_id', userId)
+            .order('recorded_at', { ascending: false })
+            .order('id', { ascending: false }),
+        [userId],
+        { pageSize: 20 }
+    );
 
     const filteredSessions = sessions.filter(s => {
         let match = true;
@@ -619,30 +647,34 @@ export default function UserProfile() {
     const fetchData = async () => {
         setLoading(true);
         try {
-            const [p, s, t, str, r, hs, vd] = await Promise.all([
+            // Sessions, ledger and redemptions are read in full rather than capped: the
+            // page totals its points from them, counts them in the header stats, and runs
+            // its filters over them in the browser, so a partial read is a wrong number
+            // and a filter that finds nothing. They page under the hood, so this stays
+            // correct as a user's history grows past the server's row cap.
+            const [p, s, t, str, r, vd] = await Promise.all([
                 supabase.from('profiles').select('*').eq('id', userId).single(),
-                supabase.from('activity_sessions').select('*').eq('user_id', userId).order('started_at', { ascending: false }),
-                supabase.from('point_transactions').select('*').eq('user_id', userId).order('created_at', { ascending: false }),
+                fetchAllRows(() => supabase.from('activity_sessions').select('*').eq('user_id', userId)),
+                fetchAllRows(() => supabase.from('point_transactions').select('*').eq('user_id', userId)),
                 supabase.from('user_streaks').select('*').eq('user_id', userId).single(),
-                supabase.from('redemptions').select('*, rewards(*)').eq('user_id', userId).order('redeemed_at', { ascending: false }),
-                supabase.from('health_snapshots').select('*').eq('user_id', userId).order('recorded_at', { ascending: false }).limit(100),
-                supabase.from('vault_deposits').select('amount, vests_at, released_at').eq('user_id', userId)
+                fetchAllRows(() => supabase.from('redemptions').select('*, rewards(*)').eq('user_id', userId)),
+                fetchAllRows(() => supabase.from('vault_deposits').select('amount, vests_at, released_at').eq('user_id', userId)),
             ]);
 
             if (p.error) throw p.error;
             setProfile(p.data);
             setBioEdit(p.data.bio ?? '');
-            setSessions(s.data || []);
-            setTransactions(t.data || []);
+            // fetchAllRows sorts by id to page safely; restore the display order here.
+            setSessions(s.sort((a, b) => new Date(b.started_at) - new Date(a.started_at)));
+            setTransactions(t.sort((a, b) => new Date(b.created_at) - new Date(a.created_at)));
             setStreak(str.data || null);
-            setRedemptions(r.data || []);
-            setHealthSnapshots(hs.data || []);
-            setVaultDeposits(vd.data || []);
+            setRedemptions(r.sort((a, b) => new Date(b.redeemed_at) - new Date(a.redeemed_at)));
+            setVaultDeposits(vd);
 
             // Venue names for the activity rows. One batched lookup keyed on every partner
             // this user's sessions reference, so a row created by the server RPC (which
             // stores no partnerName) still renders its gym.
-            const partnerIds = [...new Set((s.data || []).map(sessionPartnerId).filter(Boolean))];
+            const partnerIds = [...new Set(s.map(sessionPartnerId).filter(Boolean))];
             if (partnerIds.length > 0) {
                 const { data: partnerRows } = await supabase
                     .from('partners').select('id, name, logo_url').in('id', partnerIds);
@@ -673,15 +705,41 @@ export default function UserProfile() {
                 .order('updated_at', { ascending: false });
             setPushTokens(tokenData || []);
 
-            // Push delivery log: every send attempt for this user (ticket +
-            // receipt outcome, or the gate that skipped it). 30-day retention.
-            const { data: pushLogData } = await supabase
-                .from('push_send_log')
-                .select('id, type, title, body, status, skip_reason, error, receipt_checked_at, created_at')
+            // The push delivery log and the health snapshot log page themselves — see the
+            // usePagedList calls above.
+
+            // Health summary cards. The weekly averages read a complete seven days rather
+            // than whatever fell inside a fixed row count, and each "latest" card asks for
+            // the most recent snapshot carrying that metric, so a reading stays visible
+            // however long ago it was taken.
+            const weekAgoIso = new Date(Date.now() - 7 * 86_400_000).toISOString();
+            const latestWith = (col) => supabase
+                .from('health_snapshots')
+                .select('*')
                 .eq('user_id', userId)
-                .order('created_at', { ascending: false })
-                .limit(100);
-            setPushLog(pushLogData || []);
+                .gt(col, 0)
+                .order('recorded_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+            const [week, lSteps, lHR, lCalories, lSleep] = await Promise.all([
+                fetchAllRows(() => supabase
+                    .from('health_snapshots')
+                    .select('steps, hr_avg, sleep_duration_h, calories_active, recorded_at')
+                    .eq('user_id', userId)
+                    .gte('recorded_at', weekAgoIso)),
+                latestWith('steps'),
+                latestWith('hr_avg'),
+                latestWith('calories_active'),
+                latestWith('sleep_duration_h'),
+            ]);
+            setHealthSummary({
+                week,
+                latestSteps: lSteps.data,
+                latestHR: lHR.data,
+                latestCalories: lCalories.data,
+                latestSleep: lSleep.data,
+            });
 
             // Gym visit beacons + their lifecycle events. This is how we see what a
             // device actually did during a visit (check-in → nudge → confirmed
@@ -1385,7 +1443,7 @@ export default function UserProfile() {
                                     <h3 className="text-xl font-light tracking-tighter text-[#1A1A1A]">Push Delivery Log</h3>
                                     <p className="text-[9px] uppercase tracking-[0.4em] text-[#666666] font-black mt-2">Every send attempt · last 30 days</p>
                                 </div>
-                                <span className="text-[10px] font-black text-[#555555] uppercase tracking-[0.3em]">{pushLog.length} RECORDED</span>
+                                <span className="text-[10px] font-black text-[#555555] uppercase tracking-[0.3em]">{pushLog.total.toLocaleString()} RECORDED</span>
                             </div>
                             <div className="px-10 py-4 bg-[#F4F4F1] border-b border-[#E6E6E1] text-[11px] text-[#666666] leading-relaxed">
                                 <span className="font-bold text-[#333333]">Accepted</span> means APNs/FCM took the push — it does not guarantee the device displayed it.
@@ -1393,9 +1451,13 @@ export default function UserProfile() {
                                 <span className="font-bold text-[#333333]"> Rejected/Failed</span> carry the exact Expo error. Entries older than this log (pre 13 Jul 2026) were never recorded.
                             </div>
                             <div className="divide-y divide-[#E6E6E1]">
-                                {pushLog.length === 0 ? (
+                                {pushLog.loading ? (
+                                    <div className="p-20 text-center text-[#888888] text-[10px] uppercase tracking-[0.4em] font-black">Loading push log…</div>
+                                ) : pushLog.error ? (
+                                    <div className="p-20 text-center text-red-500 text-[10px] uppercase tracking-[0.4em] font-black">Could not load push log — {pushLog.error.message}</div>
+                                ) : pushLog.total === 0 ? (
                                     <div className="p-20 text-center text-[#888888] text-[10px] uppercase tracking-[0.4em] font-black">No push attempts logged yet</div>
-                                ) : pushLog.slice(0, visiblePushLog).map(entry => {
+                                ) : pushLog.rows.map(entry => {
                                     const state = PUSH_STATES[entry.status] ?? { label: entry.status, cls: 'border-[#E6E6E1] text-[#666666]' };
                                     return (
                                         <div key={entry.id} className="px-10 py-6 flex items-start gap-6 hover:bg-[#F4F4F1] transition-all">
@@ -1422,16 +1484,7 @@ export default function UserProfile() {
                                     );
                                 })}
                             </div>
-                            {pushLog.length > visiblePushLog && (
-                                <div className="p-6 border-t border-[#E6E6E1] text-center bg-[#F4F4F1] hover:bg-[#EFEFEC] transition-colors">
-                                    <button
-                                        onClick={() => setVisiblePushLog(prev => prev + 15)}
-                                        className="text-[10px] text-[#8a7600] font-black uppercase tracking-[0.3em] transition-colors py-2 px-6"
-                                    >
-                                        Load More
-                                    </button>
-                                </div>
-                            )}
+                            <Pager {...pushLog} />
                         </section>
                     )}
 
@@ -1556,27 +1609,24 @@ export default function UserProfile() {
 
                     {/* Health Data Tab */}
                     {activeTab === 'health' && (() => {
-                        // Aggregate latest health metrics
-                        const latestWithSteps = healthSnapshots.find(s => s.steps > 0);
-                        const latestWithHR = healthSnapshots.find(s => s.hr_avg > 0);
-                        const latestWithCalories = healthSnapshots.find(s => s.calories_active > 0);
-                        const latestWithSleep = healthSnapshots.find(s => s.sleep_duration_h > 0);
+                        const { week = [], latestSteps: latestWithSteps, latestHR: latestWithHR,
+                                latestCalories: latestWithCalories, latestSleep: latestWithSleep } = healthSummary ?? {};
 
-                        // Last 7 days of snapshots for trends
-                        const weekAgo = new Date();
-                        weekAgo.setDate(weekAgo.getDate() - 7);
-                        const weekSnapshots = healthSnapshots.filter(s => new Date(s.recorded_at) >= weekAgo);
+                        // Averages count only the snapshots that carry the metric — health
+                        // sources write a row per activity, so most rows are null for most
+                        // fields and dividing by the row count would understate every one.
+                        const meanOf = (key) => {
+                            const vals = week.map(s => s[key]).filter(v => v > 0);
+                            return vals.length ? vals.reduce((a, v) => a + v, 0) / vals.length : null;
+                        };
+                        const meanSteps = meanOf('steps');
+                        const meanSleep = meanOf('sleep_duration_h');
+                        const meanHR = meanOf('hr_avg');
 
-                        const avgSteps = weekSnapshots.filter(s => s.steps > 0).length > 0
-                            ? Math.round(weekSnapshots.filter(s => s.steps > 0).reduce((sum, s) => sum + s.steps, 0) / weekSnapshots.filter(s => s.steps > 0).length)
-                            : 0;
-                        const avgSleep = weekSnapshots.filter(s => s.sleep_duration_h > 0).length > 0
-                            ? (weekSnapshots.filter(s => s.sleep_duration_h > 0).reduce((sum, s) => sum + s.sleep_duration_h, 0) / weekSnapshots.filter(s => s.sleep_duration_h > 0).length).toFixed(1)
-                            : '—';
-                        const avgHR = weekSnapshots.filter(s => s.hr_avg > 0).length > 0
-                            ? Math.round(weekSnapshots.filter(s => s.hr_avg > 0).reduce((sum, s) => sum + s.hr_avg, 0) / weekSnapshots.filter(s => s.hr_avg > 0).length)
-                            : 0;
-                        const totalCalories = weekSnapshots.filter(s => s.calories_active > 0).reduce((sum, s) => sum + s.calories_active, 0);
+                        const avgSteps = meanSteps === null ? 0 : Math.round(meanSteps);
+                        const avgSleep = meanSleep === null ? '—' : meanSleep.toFixed(1);
+                        const avgHR = meanHR === null ? 0 : Math.round(meanHR);
+                        const totalCalories = week.reduce((sum, s) => sum + (s.calories_active > 0 ? s.calories_active : 0), 0);
 
                         return (
                             <section className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-8">
@@ -1706,12 +1756,16 @@ export default function UserProfile() {
                                             <h3 className="text-xl font-light tracking-tighter text-[#1A1A1A]">Snapshot History</h3>
                                             <p className="text-[9px] uppercase tracking-[0.4em] text-[#666666] font-black mt-2">Raw health telemetry log</p>
                                         </div>
-                                        <span className="text-[10px] font-black text-[#555555] uppercase tracking-[0.3em]">{healthSnapshots.length} RECORDED</span>
+                                        <span className="text-[10px] font-black text-[#555555] uppercase tracking-[0.3em]">{healthLog.total.toLocaleString()} RECORDED</span>
                                     </div>
                                     <div className="divide-y divide-[#E6E6E1]">
-                                        {healthSnapshots.length === 0 ? (
+                                        {healthLog.loading ? (
+                                            <div className="p-20 text-center text-[#888888] text-[10px] uppercase tracking-[0.4em] font-black">Loading snapshots…</div>
+                                        ) : healthLog.error ? (
+                                            <div className="p-20 text-center text-red-500 text-[10px] uppercase tracking-[0.4em] font-black">Could not load snapshots — {healthLog.error.message}</div>
+                                        ) : healthLog.total === 0 ? (
                                             <div className="p-20 text-center text-[#888888] text-[10px] uppercase tracking-[0.4em] font-black">No health snapshots recorded</div>
-                                        ) : healthSnapshots.slice(0, 20).map(snap => (
+                                        ) : healthLog.rows.map(snap => (
                                             <div key={snap.id} className="p-6 flex items-center gap-8 group hover:bg-[#F4F4F1] transition-all">
                                                 <div className="w-10 h-10 rounded-2xl bg-[#F4F4F1] border border-[#E6E6E1] flex items-center justify-center shrink-0">
                                                     {snap.sleep_duration_h > 0 ? <Moon size={16} className="text-[#8B5CF6]" /> :
@@ -1736,6 +1790,7 @@ export default function UserProfile() {
                                             </div>
                                         ))}
                                     </div>
+                                    <Pager {...healthLog} />
                                 </div>
                             </section>
                         );

@@ -4,6 +4,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import GeofenceMap from '../../components/GeofenceMap';
 import { uploadPublicImage } from '../../lib/storage';
 import { supabase } from '../../lib/supabase';
+import { usePagedList, Pager } from '../../lib/usePagedList';
 import { useToast } from '../../lib/toast';
 import PartnerPerformancePanel from './PartnerPerformancePanel';
 
@@ -662,12 +663,12 @@ const toPartnerCode = (name) => name.toUpperCase().replace(/[^A-Z0-9]/g, '').sli
 
 export default function PartnerManager() {
     const toast = useToast();
-    const [partners, setPartners] = useState([]);
-    const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
+    // Typing re-runs the query, so the list keys off a settled value rather than every
+    // keystroke. Filters apply immediately; only the text input needs the delay.
+    const [searchTerm, setSearchTerm] = useState('');
     const [filterCat, setFilterCat] = useState('all');
     const [filterStatus, setFilterStatus] = useState('all');
-    const [totalCount, setTotalCount] = useState(0);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingPartner, setEditingPartner] = useState(null);
     const [editTab, setEditTab] = useState('configure'); // configure | performance
@@ -728,49 +729,56 @@ export default function PartnerManager() {
 
     useEffect(() => {
         clearTimeout(searchTimerRef.current);
-        searchTimerRef.current = setTimeout(() => fetchPartners(), search ? 350 : 0);
+        searchTimerRef.current = setTimeout(() => setSearchTerm(search), search ? 350 : 0);
         return () => clearTimeout(searchTimerRef.current);
-    }, [search, filterCat, filterStatus]);
+    }, [search]);
 
     // Inline panel replaces the list in-page — scroll up so it's in view when opened.
     useEffect(() => {
         if (isModalOpen) window.scrollTo({ top: 0, behavior: 'smooth' });
     }, [isModalOpen]);
 
-    const fetchPartners = async () => {
-        setLoading(true);
-        let query = supabase
-            .from('partners')
-            .select('*', { count: 'exact' })
-            .order('name', { ascending: true });
+    // The fleet is 10k+ venues. It used to load the first 500 by name and render them in
+    // one list, so the count in the header described a set you could not actually reach —
+    // everything past the first 500 names needed a search to find at all.
+    const fleet = usePagedList(
+        () => {
+            let query = supabase
+                .from('partners')
+                .select('*', { count: 'exact' })
+                .order('name', { ascending: true })
+                // A third of the fleet shares a name with another venue (chains run to 48
+                // identical rows), and name alone is not a total order — without a unique
+                // tiebreak the server is free to order those groups differently per page,
+                // which repeats some venues across pages and hides others entirely.
+                .order('id', { ascending: true })
+                .contains('roles', ['earning_location']);
 
-        if (search.trim()) query = query.ilike('name', `%${search.trim()}%`);
-        if (filterCat !== 'all') {
-            const dbCats = UI_TO_DB_PARTNER_CATEGORIES[filterCat] || [filterCat];
-            query = dbCats.length === 1
-                ? query.eq('category', dbCats[0])
-                : query.in('category', dbCats);
-        }
-        if (filterStatus === 'active') query = query.eq('active', true);
-        if (filterStatus === 'inactive') query = query.eq('active', false);
-        query = query.contains('roles', ['earning_location']);
+            if (searchTerm.trim()) query = query.ilike('name', `%${searchTerm.trim()}%`);
+            if (filterCat !== 'all') {
+                const dbCats = UI_TO_DB_PARTNER_CATEGORIES[filterCat] || [filterCat];
+                query = dbCats.length === 1
+                    ? query.eq('category', dbCats[0])
+                    : query.in('category', dbCats);
+            }
+            if (filterStatus === 'active') query = query.eq('active', true);
+            if (filterStatus === 'inactive') query = query.eq('active', false);
+            return query;
+        },
+        [searchTerm, filterCat, filterStatus],
+        { pageSize: 50 }
+    );
 
-        query = query.limit(500);
+    const totalCount = fleet.total;
+    const loading = fleet.loading;
+    const filtered = fleet.rows.map(partner => ({
+        ...partner,
+        category: normalizePartnerCategory(partner.category),
+    }));
 
-        const { data, error, count } = await query;
-        if (error) toast.error('Failed to load fleet');
-        else {
-            const normalized = (data || []).map(partner => ({
-                ...partner,
-                category: normalizePartnerCategory(partner.category),
-            }));
-            setPartners(normalized);
-            setTotalCount(count ?? 0);
-        }
-        setLoading(false);
-    };
-
-    const filtered = partners;
+    useEffect(() => {
+        if (fleet.error) toast.error('Failed to load fleet');
+    }, [fleet.error]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const openCreate = () => {
         gymRequestIdRef.current = null;
@@ -864,7 +872,7 @@ export default function PartnerManager() {
                 toast.success(editingPartner ? 'Node synchronized' : 'New node deployed');
             }
             setIsModalOpen(false);
-            fetchPartners();
+            fleet.reload();
         }
         setSaving(false);
     };
@@ -877,7 +885,8 @@ export default function PartnerManager() {
         if (error) {
             toast.error('Sync failed');
         } else {
-            setPartners(prev => prev.map(p => p.id === partner.id ? { ...p, active: newActive } : p));
+            // The row keeps its place, so patch it rather than refetching the page.
+            fleet.setRows(prev => prev.map(p => p.id === partner.id ? { ...p, active: newActive } : p));
             toast.success(newActive ? 'Node Active' : 'Node Inactive');
         }
         setTogglingId(null);
@@ -889,7 +898,9 @@ export default function PartnerManager() {
             toast.error('Termination failed');
         } else {
             toast.success('Node decommissioned');
-            setPartners(prev => prev.filter(p => p.id !== id));
+            // Removing a row shifts every later page up by one and drops the total, so
+            // the page has to come back from the server rather than be spliced locally.
+            fleet.reload();
         }
         setConfirmDeleteId(null);
     };
@@ -1049,6 +1060,7 @@ export default function PartnerManager() {
                                 ))}
                             </tbody>
                         </table>
+                        <Pager {...fleet} />
                     </div>
                 )}
             </div>
