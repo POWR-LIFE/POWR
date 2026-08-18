@@ -206,3 +206,57 @@ describe('runVisitCheck — the acquire rung reports a MEASURED fix age', () => 
     expect(confirmDetail().fix_age_s).toBe(0);
   });
 });
+
+describe('runVisitCheck — a late-resolved visit still confirms on stale-but-PRESENT geometry', () => {
+  // Field 2026-08-18 11:12-11:35, visit ba6d432c: pure-background Android
+  // check-in, visit id never stamped locally, dwell stream refused, and every
+  // wake's acquire returned a 96-165 s replay. The gate was `provenInside`;
+  // honest ages made that false on every wake, and the round-trip was never made.
+  // Three wakes, zero confirm rows, 20 minutes in. This pins the fix.
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    await AsyncStorage.clear();
+    (globalThis as any).__DEV__ = false;
+    forceAcquireRung();
+    // No visitId on the stored record → the wake must late-resolve.
+    await AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.stringify({
+      regionId: 'partner-home-0', partnerId: 'partner-home',
+      latitude: GYM.lat, longitude: GYM.lng, radius: GYM.radius,
+      entryTimestamp: Date.now() - 12 * 60_000,
+    }));
+    const gv = jest.requireMock('@/lib/gymVisits');
+    (gv.openGymVisit as jest.Mock).mockResolvedValue('visit-late-1');
+  });
+
+  it('SENDS the confirm with its honest stale age instead of skipping the round-trip', async () => {
+    mockLocation.getCurrentPositionAsync.mockResolvedValue({
+      coords: { latitude: GYM.lat, longitude: GYM.lng, accuracy: 100 },
+      timestamp: Date.now() - 165_000,   // the 11:23 wake, exactly
+    } as any);
+
+    await runVisitCheck('dwell', undefined);
+
+    expect(mockConfirmGymVisit).toHaveBeenCalledTimes(1);
+    const [visitId, inside, detail] = mockConfirmGymVisit.mock.calls[0] as any[];
+    expect(visitId).toBe('visit-late-1');
+    expect(inside).toBe(true);
+    // Honest age travels with it — the SERVER decides freshness now.
+    expectAgeNear(detail.fix_age_s, 165);
+    expect(detail.fix_trusted).toBe(true);
+  });
+
+  it('still refuses to confirm a late-resolved visit from OUTSIDE the geometry', async () => {
+    // 600 m off with a 20 m fix: not present, so nothing to say. The guard that
+    // matters — never bank a confirm you cannot stand behind — is geometry, and
+    // it holds.
+    mockLocation.getCurrentPositionAsync.mockResolvedValue({
+      coords: { latitude: GYM.lat + 0.0054, longitude: GYM.lng, accuracy: 20 },
+      timestamp: Date.now() - 5_000,
+    } as any);
+
+    await runVisitCheck('dwell', undefined);
+
+    const insideConfirms = (mockConfirmGymVisit.mock.calls as any[][]).filter(([, i]) => i === true);
+    expect(insideConfirms).toHaveLength(0);
+  });
+});

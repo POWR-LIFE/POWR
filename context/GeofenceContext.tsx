@@ -4564,20 +4564,40 @@ export async function runVisitCheck(
     }
   }
 
-  // ⚠ A LATE-RESOLVED VISIT MAY ONLY BE CONFIRMED ON *PROVEN* PRESENCE.
-  // An inside-confirm refreshes `last_confirmed_at`, and that used to be what
-  // deselected a visit from the beacon's post-upgrade presence pass — the ONLY
-  // proof carrier Android has after the upgrade. Confirming an unproven "inside"
-  // on every wake therefore silenced the one thing still advancing
-  // last_proven_at, which is precisely the 08-14 shape: 40.0 min recorded for a
-  // 50.6-minute visit. A visit id we already held keeps its existing,
-  // deliberately generous behaviour.
+  // ⚠ A LATE-RESOLVED VISIT CONFIRMS ON *PRESENT* GEOMETRY, NOT ON *FRESH* PROOF.
   //
-  // The beacon's presence gate moved onto last_proven_at on 2026-08-18, so an
-  // unprovable confirm no longer costs a nudge. THIS GUARD STAYS ANYWAY: it also
-  // stops a late-resolved visit banking a confirm it cannot stand behind, and the
-  // two halves of the fix must be able to ship and roll back independently.
-  if (visitId && (!lateResolved || provenInside)) {
+  // This gate used to be `provenInside`, and on 2026-08-18 that produced a dead
+  // session. The history: an inside-confirm refreshes `last_confirmed_at`, and
+  // that used to deselect the visit from the beacon's presence pass — the only
+  // proof carrier Android has after the upgrade — so an UNPROVEN confirm on every
+  // wake silenced the one thing still advancing last_proven_at (the 08-14 shape:
+  // 40.0 min recorded for a 50.6-minute visit). Gating on proof stopped that. It
+  // was survivable only while the acquire rung LIED: a fused-provider replay wore
+  // `fix_age_s: 0`, passed fixCreditsPresence, and the confirm went out anyway.
+  //
+  // Field 2026-08-18 11:12-11:35, visit ba6d432c, pure-background check-in: the
+  // visit id never stamped locally, so EVERY wake late-resolved; the dwell stream
+  // was refused (background), so the only fixes were acquire replays; and the
+  // acquire rung now reports its REAL age (101 s / 96 s / 165 s), so
+  // fixCreditsPresence refused every one. provenInside=false on every wake →
+  // this gate blocked the round-trip entirely. Not "confirmed with proven:false"
+  // — NO CONFIRM AT ALL. Three wakes, zero rows, last_confirmed_at NULL,
+  // last_proven_at NULL, 20 minutes into a visit the user was standing in.
+  //
+  // Both reasons for the strict gate are gone: the beacon's presence pass now
+  // gates on last_proven_at (an unprovable confirm costs no nudge), and
+  // confirm_gym_visit_v2 re-derives freshness itself and refuses to ESTABLISH
+  // the proof clock on a stale fix (migration 20260818082412). A present-but-
+  // stale confirm is therefore safe to send: the server banks nothing it should
+  // not, and the visit gets its last_confirmed_at, a `present:true` row, and —
+  // the moment any writer lands a fresh fix — a retrospective clock. Geometry
+  // inside and trusted is the client's bar; freshness is the server's call.
+  //
+  // `provenInside` still gates the LOCAL credit floor above (VISIT_TICK_KEY) —
+  // that is the 08-10 phantom-billing guard and it is untouched.
+  const presentInside = inside && fixTrusted && distance != null && radiusM != null
+    && distance <= radiusM + (coords.accuracy ?? 0);
+  if (visitId && (!lateResolved || presentInside)) {
     const { confirmGymVisit, confirmGymVisitViaNonce } = await import('@/lib/gymVisits');
     // requestCredit on an inside confirm: this one round-trip both proves
     // presence AND has the server relay the claim/upgrade (confirm_gym_visit_v2)
