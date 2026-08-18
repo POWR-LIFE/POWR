@@ -472,26 +472,64 @@ In `close_gym_visit`, add to the `exit` event detail:
 
 ## 7. DEPLOY: OTA-SAFETY AND ORDER
 
-| Change | Kind | Vehicle |
-|---|---|---|
-| 1 — retrospective proof stamp | SQL | **Migration** (`apply_migration` via Supabase MCP) |
-| 6 — `proof_gap_s` on close | SQL | Same migration |
-| 2 — dwell stream deferral | Pure TS | **OTA** |
-| 3 — honest acquire age | Pure TS | **OTA** |
-| 4 — heartbeat proof writer | Pure TS | **OTA** |
-| 5 — presence on `last_proven_at` | Edge function | **`deploy_edge_function` gym-visit-beacon** |
+**STATUS 2026-08-18: implemented on `fix/proof-stall-retrospective-clock`.
+NOTHING IS DEPLOYED.** Suite 103/103, 1322/1322; `tsc --noEmit` clean.
 
-**No native build required.** No new permission, no `app.json` change, no native module. `DWELL_LOCATION_OPTIONS` already exists and is already passed to `startLocationUpdatesAsync` at `:6104`; Change 2 only removes an early return in front of a call that already ships. `evaluateLocationFix`'s new optional parameter is additive.
+| Change | Kind | Vehicle | State |
+|---|---|---|---|
+| 1 — retrospective proof stamp | SQL | **Migration** `20260818090000_proof_stamp_at_fix_time.sql` | written, compile- and semantics-verified against prod, **not applied** |
+| 6 — `clamp_loss_s` / `proof_gap_s` / `clamp_anchor` / `proof_writer` | SQL | same migration | same |
+| — guard_client_session_window backfill | SQL | `20260817145537_…sql` | **already live**; the file was missing, now committed |
+| 2 — dwell stream deferral | — | — | **NOT SHIPPED — refuted, see §2** |
+| 2b — check-in reports a refused switch | Pure TS | **OTA** | shipped to branch |
+| 3 — honest acquire age | Pure TS | **OTA** | shipped to branch |
+| 3b — `selfPollIfWakeStarved` honest age + `fix_age_s` key | Pure TS | **OTA** | shipped to branch (**not in the original plan**) |
+| 4 — heartbeat proof writer | Pure TS | **OTA** | shipped to branch |
+| 5 — presence on `last_proven_at` | Edge function | **`deploy_edge_function` gym-visit-beacon** | shipped to branch, **not deployed** |
+
+**No native build required.** No new permission, no `app.json` change, no native
+module. Every client edit is pure TS and the new function parameters are optional
+and additive.
+
+**3b was not in the plan and matters.** `selfPollIfWakeStarved` sent
+`fix_age_ms`, a key `confirm_gym_visit_v2` does not read — so its `v_fix_age_s`
+was always NULL and its 120 s freshness gate never fired once, on the single
+writer that also sets `request_credit: true`. It also hardcoded `fixAgeMs: 0`
+into the local credit test. §5 item 7 says do not *tune* that function; this is
+the same defect class as Change 3, not a threshold change.
 
 ### The order is load-bearing. Do not vary it.
 
-**1. Migration first.** Change 3 makes clients report honest — i.e. *larger* — `fix_age_s`. Against today's `v_proven` (`<= 120` or nothing) those honest ages would be rejected outright and Android durations would collapse below where they are now. The migration must be live before a single client sends an honest age. It is backward compatible: pre-OTA clients keep sending `fix_age_s: 0` and `now() - 0 ≈ now()`, so their behaviour is unchanged.
+**1. Migration first.** Change 3 makes clients report honest — i.e. *larger* —
+`fix_age_s`, and this is not occasional: 21 of 21 acquire-rung confirms in the
+last 7 days sent 0, so the reported age changes on EVERY acquire confirm the
+moment the OTA lands. Against today's `v_proven` (`<= 120` or nothing) those
+honest ages are rejected outright and Android durations collapse below where they
+are now. Backward compatible with pre-OTA clients: they keep sending
+`fix_age_s: 0`, and `now() − 0 ≈ now()`.
 
-**2. OTA second, both channels.** iOS is on `production` (1.5.0(17)), Android on `preview` (1.5.0(19)) — publish to both, and only the newest group is served, so verify each channel separately. Run `npm ci` before the publish (the fingerprint gotcha). Changes 2, 3 and 4 go together; **do not split 2 from 3** — Change 3 alone removes phantom proof that Change 2 has not yet replaced with real proof, and Android would record less than it does today for as long as the gap lasts.
+**2. OTA second, both channels.** iOS is on `production`, Android on `preview` —
+publish to both and verify each channel separately, only the newest group is
+served. Run `npm ci` before the publish (the fingerprint gotcha).
+⚠ `app.json` currently reads version 1.5.0, iOS buildNumber **16**, Android
+versionCode 19 — the plan's earlier "1.5.0(17)" for iOS was wrong; confirm the
+installed build before reasoning about reach.
+**Do not split 3 from 1**, with the same emphasis the plan gave to not splitting
+2 from 3.
 
-**3. Beacon last, after confirming OTA reach.** Change 5 increases how often we nudge a device whose last answer was unprovable. Against a pre-OTA client that still hardcodes `fixAgeMs = 0`, every extra nudge is an extra opportunity to launder a replay into `last_proven_at`. Check reach before deploying; OTA-land visibility is a known blind spot here.
+**3. Beacon last, after confirming OTA reach.** Change 5 asks more often on
+exactly the population whose last answer was unprovable. Against a pre-OTA client
+that still hardcodes `fixAgeMs = 0`, every extra nudge is another chance to
+launder a replay into `last_proven_at`. Check reach first; OTA-land visibility is
+a known blind spot here.
 
-**Rollback:** each stage is independently revertible. The migration is a `create or replace function` — keep the prior body ready. The OTA rolls back by republishing the previous group. The beacon rolls back by redeploying the previous function.
+**Rollback:** each stage is independently revertible. The migration is a
+`create or replace function` with no signature change, and the live bodies were
+byte-identical to `20260813140000` / `20260813130000` when this was written, so
+those two files ARE the rollback bodies verbatim. The OTA rolls back by
+republishing the previous group. The beacon rolls back by redeploying the
+previous function (live version 44, 2026-08-17T14:43:24Z, byte-identical to the
+repo before this branch).
 
 ### Acceptance criteria for the next field run
 
