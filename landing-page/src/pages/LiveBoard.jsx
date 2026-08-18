@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { QRCodeSVG } from 'qrcode.react';
+import { storageImage } from '../lib/storage';
 
 /**
  * Big-screen venue display — powr.life/live/<slug>?k=<display_token>.
@@ -256,20 +257,88 @@ function Countdown({ board, now }) {
     );
 }
 
+// Under the countdown: the three prizes as one strip. Text-only events keep
+// the medal · label line; with imagery each prize is a glass tile with its
+// artwork large — this is a big screen across a gym floor, so the picture
+// carries and the label is the caption.
 function PrizeStrip({ prizes }) {
+    const rows = prizes.slice(0, 3);
+    if (!rows.some((p) => !!p.image_url)) {
+        return (
+            <div className="flex items-center gap-10">
+                {rows.map((p) => (
+                    <div key={p.rank} className="flex items-center gap-3">
+                        <span className="text-2xl font-light" style={{ color: GOLD }}>{medal(p.rank)}</span>
+                        <span className="text-xl text-white/70 font-light">{p.label}</span>
+                    </div>
+                ))}
+            </div>
+        );
+    }
     return (
-        <div className="flex items-center gap-10">
-            {prizes.slice(0, 3).map((p) => (
-                <div key={p.rank} className="flex items-center gap-3">
-                    <span className="text-2xl font-light" style={{ color: GOLD }}>{medal(p.rank)}</span>
-                    <span className="text-xl text-white/70 font-light">{p.label}</span>
+        <div className="flex items-stretch gap-6">
+            {rows.map((p) => (
+                <div
+                    key={p.rank}
+                    className="flex items-center gap-5 rounded-3xl border border-white/10 bg-white/[0.04] pl-3 pr-8 py-3 w-[28rem]"
+                >
+                    <PrizeArt prize={p} size={112} radius={20} />
+                    <div className="min-w-0 text-left">
+                        <div className="text-[13px] font-black uppercase tracking-[0.4em]" style={{ color: GOLD }}>{ordinal(p.rank)}</div>
+                        <div className="text-2xl text-white/90 font-light leading-snug line-clamp-3 mt-1">{p.label}</div>
+                    </div>
                 </div>
             ))}
         </div>
     );
 }
 
+// The prize's picture — or, for a prize without one alongside prizes that
+// have one, its rank set large in the same slot so the column stays level.
+function PrizeArt({ prize, size, radius }) {
+    return (
+        <div
+            className="shrink-0 overflow-hidden bg-black/40 border flex items-center justify-center"
+            style={{ width: size, height: size, borderRadius: radius, borderColor: 'rgba(232,210,0,0.35)' }}
+        >
+            {prize.image_url ? (
+                <img src={storageImage(prize.image_url, 512)} alt="" className="w-full h-full object-cover" decoding="async" />
+            ) : (
+                <span className="font-extralight tracking-tighter" style={{ color: GOLD, fontSize: size * 0.42 }}>{prize.rank}</span>
+            )}
+        </div>
+    );
+}
+
+// The standings' right rail. Same two shapes as the strip, stacked.
+function PrizeRail({ prizes }) {
+    const rows = prizes.slice(0, 3);
+    const hasImagery = rows.some((p) => !!p.image_url);
+    return (
+        <div className={`rounded-2xl border border-white/10 bg-white/[0.03] p-6 ${hasImagery ? 'space-y-1' : 'space-y-3'}`}>
+            <div className={`text-[11px] uppercase tracking-[0.4em] text-white/35 font-black ${hasImagery ? 'mb-3' : ''}`}>This week&apos;s prizes</div>
+            {rows.map((p, i) => (
+                hasImagery ? (
+                    <div key={p.rank} className={`flex items-center gap-4 py-2.5 ${i > 0 ? 'border-t border-white/[0.07]' : ''}`}>
+                        <PrizeArt prize={p} size={64} radius={14} />
+                        <div className="min-w-0">
+                            <div className="text-[10px] font-black uppercase tracking-[0.35em]" style={{ color: GOLD }}>{ordinal(p.rank)}</div>
+                            <div className="text-lg text-white/85 font-light leading-snug line-clamp-2 mt-0.5">{p.label}</div>
+                        </div>
+                    </div>
+                ) : (
+                    <div key={p.rank} className="flex items-center gap-3">
+                        <span className="text-xl">{medal(p.rank)}</span>
+                        <span className="text-lg text-white/75 font-light truncate">{p.label}</span>
+                    </div>
+                )
+            ))}
+        </div>
+    );
+}
+
 const medal = (rank) => (rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `#${rank}`);
+const ordinal = (rank) => (rank === 1 ? '1st' : rank === 2 ? '2nd' : rank === 3 ? '3rd' : `${rank}th`);
 
 // ─── Live board ──────────────────────────────────────────────────
 
@@ -326,17 +395,7 @@ function LiveStandings({ board }) {
 
             {/* Right rail: prizes + cycling remainder */}
             <div className="flex-1 min-w-0 flex flex-col justify-center gap-8">
-                {board.prizes?.length > 0 && (
-                    <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6 space-y-3">
-                        <div className="text-[11px] uppercase tracking-[0.4em] text-white/35 font-black">This week's prizes</div>
-                        {board.prizes.slice(0, 3).map((p) => (
-                            <div key={p.rank} className="flex items-center gap-3">
-                                <span className="text-xl">{medal(p.rank)}</span>
-                                <span className="text-lg text-white/75 font-light truncate">{p.label}</span>
-                            </div>
-                        ))}
-                    </div>
-                )}
+                {board.prizes?.length > 0 && <PrizeRail prizes={board.prizes} />}
                 {rest.length > 0 && (
                     <div className="space-y-1">
                         <div className="text-[11px] uppercase tracking-[0.4em] text-white/35 font-black mb-2">

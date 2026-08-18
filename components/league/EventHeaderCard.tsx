@@ -4,6 +4,7 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { EventLockup } from '@/components/events/EventLockup';
+import { EventPrizeList } from '@/components/events/EventPrizeList';
 import { RewardHeroMedia } from '@/components/rewards/RewardHeroMedia';
 import type { LiveEvent } from '@/lib/api/liveEvents';
 import { eventDateRange, isVideoUrl, lastDayOf } from '@/lib/liveEventDisplay';
@@ -30,10 +31,6 @@ function statusLine(event: LiveEvent): string {
         return 'Scores are locked 🔒 — winners announced in person';
     }
     return 'Winners announced';
-}
-
-function rankLabel(rank: number): string {
-    return rank === 1 ? '1ST' : rank === 2 ? '2ND' : rank === 3 ? '3RD' : `${rank}TH`;
 }
 
 /**
@@ -102,18 +99,7 @@ export function EventHeaderCard({
             <Text style={styles.dates}>{eventDateRange(event)}</Text>
             <Text style={styles.statusLine}>{statusLine(event)}</Text>
 
-            {event.prizes.length > 0 && (
-                <View style={styles.prizeBlock}>
-                    {event.prizes.slice(0, 3).map(p => (
-                        <View key={p.rank} style={styles.prizeRow}>
-                            <Text style={styles.prizeRank}>{rankLabel(p.rank)}</Text>
-                            <Text style={styles.prizeLabel} numberOfLines={1}>
-                                {p.label}
-                            </Text>
-                        </View>
-                    ))}
-                </View>
-            )}
+            <EventPrizeList prizes={event.prizes} size="card" />
 
             {canJoin && (
                 <Pressable
@@ -156,11 +142,6 @@ const styles = StyleSheet.create({
     name: { fontSize: 24, fontWeight: '200', color: TEXT, letterSpacing: -0.5, marginTop: 10 },
     dates: { fontSize: 12, fontWeight: '300', color: DIM },
     statusLine: { fontSize: 11, fontWeight: '400', color: GOLD, marginTop: 4 },
-
-    prizeBlock: { marginTop: 12, gap: 5 },
-    prizeRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-    prizeRank: { width: 30, fontSize: 9, fontWeight: '700', color: GOLD, opacity: 0.7, letterSpacing: 1 },
-    prizeLabel: { flex: 1, fontSize: 12, fontWeight: '300', color: DIM },
 
     joinBtn: {
         marginTop: 14,

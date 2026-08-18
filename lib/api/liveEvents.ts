@@ -41,7 +41,10 @@ export type LiveEventViewer = {
     booking?: LiveEventBookingState;
 };
 
-export type LiveEventPrize = { rank: number; label: string };
+/** One row of `live_events.prizes` (jsonb, admin-authored). `image_url` is a
+ *  public reward-images URL added by the admin Prizes editor — optional, and
+ *  older events simply lack the key. */
+export type LiveEventPrize = { rank: number; label: string; image_url?: string | null };
 
 /** Venue branding for promo surfaces. `logo_bg` is 'white' | 'dark' — chip the
  *  logo on anything ≠ 'dark' (matches the landing promo page's convention). */

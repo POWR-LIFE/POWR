@@ -142,13 +142,9 @@ export default function EventPromo() {
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         transition={{ duration: 0.9, delay: 0.65 }}
-                        className="flex items-center justify-center gap-x-7 gap-y-2 flex-wrap mt-2"
+                        className="mt-2"
                     >
-                        {event.prizes.slice(0, 3).map((p) => (
-                            <span key={p.rank} className="flex items-center gap-2 text-[clamp(13px,1.6vw,17px)] font-light text-white/70">
-                                <span>{medal(p.rank)}</span>{p.label}
-                            </span>
-                        ))}
+                        <PrizeRow prizes={event.prizes} />
                     </motion.div>
                 )}
             </div>
@@ -188,6 +184,71 @@ export default function EventPromo() {
                 </div>
             </motion.div>
         </Shell>
+    );
+}
+
+// ─── Prizes ──────────────────────────────────────────────────────
+
+const ordinal = (rank) => (rank === 1 ? '1st' : rank === 2 ? '2nd' : rank === 3 ? '3rd' : `${rank}th`);
+
+/**
+ * The top three prizes under the headline. Text-only events keep the
+ * original medal · label line; once any prize carries an image the row
+ * becomes three glass tiles — square artwork, ordinal, label — so the page
+ * shows what's actually on the line rather than describing it. A prize
+ * without an image in a mixed set gets its ordinal set large in the same
+ * slot, so the tiles stay level.
+ */
+function PrizeRow({ prizes }) {
+    const rows = prizes.slice(0, 3);
+    const hasImagery = rows.some((p) => !!p.image_url);
+
+    if (!hasImagery) {
+        return (
+            <div className="flex items-center justify-center gap-x-7 gap-y-2 flex-wrap">
+                {rows.map((p) => (
+                    <span key={p.rank} className="flex items-center gap-2 text-[clamp(13px,1.6vw,17px)] font-light text-white/70">
+                        <span>{medal(p.rank)}</span>{p.label}
+                    </span>
+                ))}
+            </div>
+        );
+    }
+
+    return (
+        <div className="flex items-stretch justify-center gap-[clamp(10px,1.6vw,20px)] flex-wrap w-full max-w-[1080px]">
+            {rows.map((p) => (
+                <div
+                    key={p.rank}
+                    className="flex items-center gap-[clamp(10px,1.2vw,16px)] rounded-2xl border border-white/10 bg-white/[0.06] backdrop-blur-md pl-2 pr-[clamp(14px,1.6vw,22px)] py-2 flex-1 basis-[230px] max-w-[340px] shadow-[0_10px_40px_rgba(0,0,0,0.35)]"
+                >
+                    <div
+                        className="shrink-0 rounded-xl overflow-hidden bg-black/40 border flex items-center justify-center w-[clamp(52px,6vw,76px)] h-[clamp(52px,6vw,76px)]"
+                        style={{ borderColor: 'rgba(232,210,0,0.35)' }}
+                    >
+                        {p.image_url ? (
+                            <img
+                                src={storageImage(p.image_url, 320)}
+                                alt=""
+                                className="w-full h-full object-cover"
+                                loading="eager"
+                                decoding="async"
+                            />
+                        ) : (
+                            <span className="text-[clamp(20px,2.4vw,30px)] font-extralight tracking-tighter" style={{ color: GOLD }}>{p.rank}</span>
+                        )}
+                    </div>
+                    <div className="min-w-0 text-left">
+                        <div className="text-[clamp(9px,0.95vw,11px)] font-black uppercase tracking-[0.3em]" style={{ color: GOLD }}>
+                            {ordinal(p.rank)}
+                        </div>
+                        <div className="text-[clamp(13px,1.45vw,17px)] font-light text-white/90 leading-snug line-clamp-2 mt-0.5">
+                            {p.label}
+                        </div>
+                    </div>
+                </div>
+            ))}
+        </div>
     );
 }
 
