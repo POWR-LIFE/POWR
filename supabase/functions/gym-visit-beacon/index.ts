@@ -347,10 +347,22 @@ Deno.serve(async (req: Request) => {
   //
   // That makes silence ambiguous exactly where the reaper below has to act on it:
   // a user still training and a user who left an hour ago look identical. This
-  // pass removes the ambiguity by ASKING. A device that answers refreshes
-  // last_confirmed_at (confirm_gym_visit_v2 writes it on every inside-confirm,
-  // before any credit branch) and resets the reaper's clock; one that never
-  // answers is genuinely gone and gets reaped on honest evidence.
+  // pass removes the ambiguity by ASKING.
+  //
+  // ⚠ THE GATE IS last_proven_at, NOT last_confirmed_at (2026-08-18), and the
+  // difference is the whole defect. confirm_gym_visit_v2 writes
+  // last_confirmed_at on EVERY inside-confirm, provable or not — so an answer
+  // the server could not bank on used to deselect the visit for another five
+  // minutes just the same. Field 2026-08-17, visit 9346e8d2: an unprovable
+  // confirm at 19:11:06 (fix_age_s 253) pushed the next eligible presence ask
+  // from 19:12:04 to 19:16:06, past the 19:14:10 exit, and push_send_log holds
+  // no gym_visit_check_presence for that user for the whole visit. The reaper
+  // directly below made exactly this correction on 2026-08-10; the pass that
+  // feeds it was left on the generous column. Now both read the same clock.
+  //
+  // A device that PROVES it is inside resets the clock; one that never answers,
+  // or answers with nothing bankable, is asked again and then reaped on honest
+  // evidence.
   //
   // NO CREDIT CAN LEAK FROM THIS. confirm_gym_visit_v2's two credit branches are
   // gated on status 'open' and 'claimed' respectively; these visits are already
@@ -392,6 +404,16 @@ Deno.serve(async (req: Request) => {
   // on a fix that would CREDIT presence (confirm_gym_visit_v2's v_proven mirrors
   // fixCreditsPresence), so a departed phone answering from a stale cache cannot
   // hold its visit open.
+  //
+  // ⚠ THE CEILING IS UNCHANGED; THE AVERAGE IS NOT. touch_gym_visit_nudge below
+  // runs unconditionally for every selected visit, so PRESENCE_BACKOFF_MS still
+  // caps this at one push per visit per five minutes either way. But moving the
+  // silence gate onto the proof clock means an answering-but-unprovable visit is
+  // now deselected only until nudge+5min rather than answer+5min, so it will be
+  // asked more often — by construction, on exactly the population this targets.
+  // It is bounded: gymReaper's STALE_SILENCE_MS closes such a visit after 20
+  // minutes and runs in this same tick, so the extra exposure is at most ~4
+  // pushes. Do not write "rate is unchanged" — write the bound.
   {
     const PRESENCE_SILENCE_MS = 5 * 60 * 1000;   // ask only if we haven't heard for this long
     const PRESENCE_BACKOFF_MS = 5 * 60 * 1000;   // and never re-ask faster than this
@@ -401,11 +423,11 @@ Deno.serve(async (req: Request) => {
 
     const { data: quiet, error: quietErr } = await admin
       .from('gym_visits')
-      .select('id, user_id, started_at, last_confirmed_at')
+      .select('id, user_id, started_at, last_proven_at')
       .is('ended_at', null)
       .not('upgraded_at', 'is', null)
       .gte('started_at', new Date(Date.now() - PRESENCE_MAX_AGE_MS).toISOString())
-      .or(`last_confirmed_at.is.null,last_confirmed_at.lt.${silenceCut}`)
+      .or(`last_proven_at.is.null,last_proven_at.lt.${silenceCut}`)
       .or(`last_nudge_at.is.null,last_nudge_at.lt.${backoffCut}`)
       .limit(50);
     if (quietErr) console.error('[gym-visit-beacon] presence scan failed', quietErr);

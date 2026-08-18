@@ -195,6 +195,12 @@ const LOCATION_LOSS_CONFIRM_MS = 3 * 60 * 1000;
 // The in-gym stream heartbeat is a checkpoint, not a firehose: the stream ticks
 // every 60 s, but we only need enough resolution to answer "is it alive at all?"
 const VISIT_TICK_INTERVAL_MS = 5 * 60 * 1000;
+// The stream heartbeat's confirm is awaited ahead of advanceActiveSession, and
+// confirmGymVisit can fall through to the auth machinery when a device has no
+// persisted background token (see the call site). This is what keeps that
+// function's "never delay the dwell machine" promise structural rather than
+// hopeful. Generous against a wake round-trip, far short of the 30 s auth jam.
+const STREAM_CONFIRM_TIMEOUT_MS = 8 * 1000;
 // Synchronous in-context companion to VISIT_TICK_KEY. See heartbeatVisitStream:
 // an AsyncStorage-only throttle cannot survive a burst of location callbacks
 // because the read and the write straddle an await.
@@ -1262,7 +1268,7 @@ async function pollForCheckIn(regionId: string): Promise<void> {
         ? cached
         : (await acquireFixPreferHigh(CHECKIN_POLL.fixTimeoutMs - 3_000, 3_000)) ?? cached;
       if (fix) {
-        await evaluateLocationFix(fix.coords);
+        await evaluateLocationFix(fix.coords, fix.timestamp);
         // Re-check immediately rather than at the top of the next pass: that cost a
         // whole interval of the task's life and one redundant position read every
         // time the poll actually succeeded — which is the common case.
@@ -1907,7 +1913,7 @@ async function sweepForMissedCheckIn(openVisitId: string | null = null): Promise
     // next sweep — no foreground probe, no dismissal bookkeeping.
     await recordBackgroundHealth('handoff', String(status));
 
-    await evaluateLocationFix(fix.coords);
+    await evaluateLocationFix(fix.coords, fix.timestamp);
 
     // Mirrors pollForCheckIn's row exactly, so "which detector started this
     // session?" is one query across both. Until this lands, every checked_in row
@@ -4302,9 +4308,19 @@ export async function runVisitCheck(
   let coords: Location.LocationObjectCoords | null = null;
   let fixSource = 'none';
   // Age of whatever fix we end up reasoning about, for the CREDIT decision only.
-  // `last_known` is capped at 60 s and `acquired` is fresh by construction, so
-  // only the stream cache can be meaningfully stale — and it was, by 219 s, when
-  // it stamped proof of presence four minutes after the user left (2026-08-10).
+  //
+  // ⚠ ALL THREE RUNGS MEASURE. "`acquired` is fresh by construction" is what this
+  // comment used to say, and it was false on every single occasion: across the
+  // whole history of the table the acquire rung has reported a non-zero age ZERO
+  // times — 21 of 21 confirms since the field was instrumented said 0 — while
+  // stream_cache (157 of 207) and last_known (63 of 99) report measured values.
+  // Balanced accuracy is allowed to satisfy a request from CACHE (see
+  // acquireFixPreferHigh, and the twin warning on the sweep path), so a 6 ms
+  // "acquisition" is a fused-provider replay wearing a new request.
+  //
+  // The stream cache was meaningfully stale by 219 s when it stamped proof of
+  // presence four minutes after the user left (2026-08-10). That rung has
+  // measured ever since; this one now does too.
   let fixAgeMs: number | null = null;
 
   // ORDER MATTERS, and it is the opposite of what it was.
@@ -4354,7 +4370,26 @@ export async function runVisitCheck(
       );
       coords = fresh?.coords ?? null;
       fixSource = fresh ? 'acquired' : 'timeout';
-      fixAgeMs = fresh ? 0 : null;
+      // ⚠ MEASURED, NOT ASSERTED (2026-08-18). This was a hardcoded 0, and the
+      // 08-17 field run caught it live: on visit 9346e8d2 the 19:01:03 confirm
+      // reported fix_source 'acquired', acquire latency 6 ms and fix_age_ms 0,
+      // while the SAME wake's sweep measured that fix at 130 s and rejected it
+      // (stale_age_s 130, fix_ts 1786993132976 = 18:58:52.976Z). SEVEN of that
+      // visit's thirteen accepted proof stamps came off this rung wearing a zero
+      // — the 2026-08-11 PM "cached fix wearing a new request" failure, on the
+      // one path whose age gate was being fed a literal.
+      //
+      // Do NOT reject on age here. Under the retrospective stamp (migration
+      // 20260818090000) an honest age becomes proof of an EARLIER moment rather
+      // than nothing at all, and dropping the fix would also drop `inside`,
+      // which is what holds a real session open (the 07-03 / 07-11 lesson).
+      //
+      // `typeof` guard, not `?? `: expo-location omits the timestamp key entirely
+      // when Android's Location.getTime() is null, and every jest mock omits it.
+      // Math.max because Android's fused clock is wall-clock and non-monotonic —
+      // it can land microseconds ahead of Date.now(). A missing timestamp yields
+      // null ("unknown"), which both gates already treat as acceptable.
+      fixAgeMs = fresh && typeof fresh.timestamp === 'number' ? Math.max(0, Date.now() - fresh.timestamp) : null;
     }
   }
   trace.fix_source = fixSource;
@@ -4503,12 +4538,18 @@ export async function runVisitCheck(
   }
 
   // ⚠ A LATE-RESOLVED VISIT MAY ONLY BE CONFIRMED ON *PROVEN* PRESENCE.
-  // An inside-confirm refreshes `last_confirmed_at`, and that is what deselects a
-  // visit from the beacon's post-upgrade presence pass — the ONLY proof carrier
-  // Android has after the upgrade. Confirming an unproven "inside" on every wake
-  // would therefore silence the one thing still advancing last_proven_at, which is
-  // precisely the 08-14 shape: 40.0 min recorded for a 50.6-minute visit. A visit
-  // id we already held keeps its existing, deliberately generous behaviour.
+  // An inside-confirm refreshes `last_confirmed_at`, and that used to be what
+  // deselected a visit from the beacon's post-upgrade presence pass — the ONLY
+  // proof carrier Android has after the upgrade. Confirming an unproven "inside"
+  // on every wake therefore silenced the one thing still advancing
+  // last_proven_at, which is precisely the 08-14 shape: 40.0 min recorded for a
+  // 50.6-minute visit. A visit id we already held keeps its existing,
+  // deliberately generous behaviour.
+  //
+  // The beacon's presence gate moved onto last_proven_at on 2026-08-18, so an
+  // unprovable confirm no longer costs a nudge. THIS GUARD STAYS ANYWAY: it also
+  // stops a late-resolved visit banking a confirm it cannot stand behind, and the
+  // two halves of the fix must be able to ship and roll back independently.
   if (visitId && (!lateResolved || provenInside)) {
     const { confirmGymVisit, confirmGymVisitViaNonce } = await import('@/lib/gymVisits');
     // requestCredit on an inside confirm: this one round-trip both proves
@@ -4716,7 +4757,14 @@ async function advanceActiveSession(active: StoredGeofence, staleLockMs?: number
  *  ("is the background stream alive?") is independent of whether the fix is accurate
  *  enough to prove presence. Presence is confirmGymVisit's job and stays untouched.
  *  Throttled + best-effort: it must never delay or break the dwell machine. */
-async function heartbeatVisitStream(active: StoredGeofence, coords: Location.LocationObjectCoords): Promise<void> {
+async function heartbeatVisitStream(
+  active: StoredGeofence,
+  coords: Location.LocationObjectCoords,
+  /** When the fix was TAKEN. LocationObjectCoords carries no timestamp, so this
+   *  is the only way the age can reach the credit test — and without an age the
+   *  local credit floor has no freshness test at all. */
+  fixTimestamp?: number,
+): Promise<void> {
   try {
     // Claim the window SYNCHRONOUSLY, before any await. The old read-modify-write
     // across `await getItem` let every callback in a burst read the same stale
@@ -4745,19 +4793,29 @@ async function heartbeatVisitStream(active: StoredGeofence, coords: Location.Loc
     // The credit floor moves only on a fix that would pass the same test the wake
     // confirm and the wake reconciler use. Everything below this line still runs:
     // liveness, the late-open retry and the dwell machine are unaffected.
-    {
-      const { fixCreditsPresence } = await import('@/lib/health/gymPresence');
-      const distanceM = (active.latitude != null && active.longitude != null)
-        ? haversineMetres(coords.latitude, coords.longitude, active.latitude, active.longitude)
-        : null;
-      if (fixCreditsPresence({
-        fixTrusted: coords.accuracy == null || coords.accuracy <= MAX_FIX_ACCURACY_M,
-        distanceM,
-        radiusM: active.radius ?? null,
-        accuracyM: coords.accuracy ?? null,
-      })) {
-        await AsyncStorage.setItem(VISIT_TICK_KEY, String(now));
-      }
+    const { fixCreditsPresence } = await import('@/lib/health/gymPresence');
+    const distanceM = (active.latitude != null && active.longitude != null)
+      ? haversineMetres(coords.latitude, coords.longitude, active.latitude, active.longitude)
+      : null;
+    const fixTrusted = coords.accuracy == null || coords.accuracy <= MAX_FIX_ACCURACY_M;
+    // Measured against THIS tick's clock (`now`, claimed above), not a second
+    // Date.now(). Math.max because Android's fused timestamp is wall-clock and
+    // can land microseconds ahead of us.
+    const fixAgeMs = typeof fixTimestamp === 'number' ? Math.max(0, now - fixTimestamp) : null;
+    const credits = fixCreditsPresence({
+      fixTrusted,
+      distanceM,
+      radiusM: active.radius ?? null,
+      accuracyM: coords.accuracy ?? null,
+      // ⚠ WAS OMITTED. This was the ONLY fixCreditsPresence call site in the repo
+      // with no freshness test at all — the credit floor moved on a fix of
+      // unknown age, which is the exact defect closed server-side on 2026-08-10
+      // and left open here. gymPresence's own contract says every caller that CAN
+      // supply an age must; threading fixTimestamp is what makes this one able to.
+      fixAgeMs,
+    });
+    if (credits) {
+      await AsyncStorage.setItem(VISIT_TICK_KEY, String(now));
     }
 
     if (!active.visitId) {
@@ -4786,15 +4844,64 @@ async function heartbeatVisitStream(active: StoredGeofence, coords: Location.Loc
       console.log('[Geofence] Visit beacon opened late — check-in had raced auth.');
     }
 
-    const { logGymVisitTick } = await import('@/lib/gymVisits');
-    await logGymVisitTick(active.visitId, {
-      accuracy_m:  coords.accuracy != null ? Math.round(coords.accuracy) : null,
-      elapsed_min: Math.round((Date.now() - active.entryTimestamp) / 60000),
-    });
+    // ⚠ THIS USED TO BE "Deliberately NOT confirmGymVisit" (lib/gymVisits.ts), on
+    // the reasoning that an indoor fix is usually too coarse to prove anything.
+    // That reasoning predates fixCreditsPresence, which is exactly the test for
+    // whether it is — and the server re-derives presence independently, so a
+    // coarse fix simply fails there. That is correct, not harmful.
+    //
+    // Field 2026-08-17: BOTH platforms froze their proof clocks while their
+    // streams held creditable fixes, because every writer of last_proven_at sat
+    // downstream of a DELIVERED push. This is the device-side proof writer the
+    // system has never had. It is the same single round-trip the tick was already
+    // making, at the same 5-minute throttle, so it costs nothing new — and it
+    // bounds the tail loss at 5 minutes instead of leaving it unbounded.
+    //
+    // request_credit stays FALSE. A stream tick must never relay a claim.
+    //
+    // ⚠ BOUNDED, and deliberately. confirmGymVisit refuses the device ticket by
+    // design, so a device with no persisted background auth falls through to
+    // callWithAuthRetry → getSession — the headless jam that hung two wakes at
+    // 30 s on 2026-08-11. This function is awaited ahead of advanceActiveSession
+    // and its docstring swears never to delay the dwell machine; the race is what
+    // makes that promise structural instead of hopeful.
+    if (credits) {
+      const { confirmGymVisit } = await import('@/lib/gymVisits');
+      const confirmed = await Promise.race([
+        confirmGymVisit(active.visitId, true, {
+          stage:       'stream',
+          source:      'heartbeat',
+          distance_m:  distanceM != null ? Math.round(distanceM) : null,
+          accuracy_m:  coords.accuracy != null ? Math.round(coords.accuracy) : null,
+          fix_trusted: fixTrusted,
+          // SECONDS, and the key is `fix_age_s` — the one confirm_gym_visit_v2
+          // actually reads. `fix_age_ms` is silently ignored by the server.
+          fix_age_s:   fixAgeMs != null ? Math.round(fixAgeMs / 1000) : null,
+        }, false),
+        new Promise<{ ok: boolean }>((resolve) => {
+          setTimeout(() => resolve({ ok: false }), STREAM_CONFIRM_TIMEOUT_MS);
+        }),
+      ]);
+      if (!confirmed?.ok) {
+        logRegionEvent(active.regionId ?? 'stream', 'sweep', {
+          outcome: 'stream_confirm_failed',
+          visit:   active.visitId,
+        });
+      }
+    } else {
+      // "The stream is alive but cannot prove" is precisely the liveness signal
+      // this row exists to carry, and it is the one thing the server cannot
+      // otherwise see. Keep it on the branch that cannot prove.
+      const { logGymVisitTick } = await import('@/lib/gymVisits');
+      await logGymVisitTick(active.visitId, {
+        accuracy_m:  coords.accuracy != null ? Math.round(coords.accuracy) : null,
+        elapsed_min: Math.round((Date.now() - active.entryTimestamp) / 60000),
+      });
+    }
   } catch { /* diagnostic only — never let it affect the claim */ }
 }
 
-async function evaluateLocationFix(coords: Location.LocationObjectCoords): Promise<void> {
+async function evaluateLocationFix(coords: Location.LocationObjectCoords, fixTimestamp?: number): Promise<void> {
   // A coarse fix can't be trusted against a tight radius — it must never fire a
   // false "You're in" from far away (ENTER) or flap a real session out early
   // (EXIT). But dwell progression (advanceActiveSession) is purely TIME-based and
@@ -4829,7 +4936,7 @@ async function evaluateLocationFix(coords: Location.LocationObjectCoords): Promi
     // Kept as-is deliberately — rejecting coarse fixes wholesale is what starved
     // entire in-gym dwells on 07-03/07-11 — but it is no longer SILENT.
     logCoarseRejection('dwell_tick', coords, active);
-    await heartbeatVisitStream(active, coords);
+    await heartbeatVisitStream(active, coords, fixTimestamp);
     await advanceActiveSession(active);
     return;
   }
@@ -4861,9 +4968,9 @@ async function evaluateLocationFix(coords: Location.LocationObjectCoords): Promi
       stillInside = dist <= active.radius + LOCATION_EXIT_HYSTERESIS_M;
     }
     if (stillInside) {
-      await heartbeatVisitStream(active, coords);
+      await heartbeatVisitStream(active, coords, fixTimestamp);
       await advanceActiveSession(active);
-      await selfPollIfWakeStarved(active, coords);
+      await selfPollIfWakeStarved(active, coords, fixTimestamp);
     } else {
       // Location-detected EXIT — the native exit event may never arrive when closed.
       await finalizeActiveGeofence();
@@ -5035,7 +5142,13 @@ TaskManager.defineTask(LOCATION_TRACKING_TASK, async ({ data, error }) => {
     // storage before any dwell decision (foreground refreshes it on launch).
     await primeGymDwellMinutes();
     await drainOutboxesBounded('stream_tick');
-    await evaluateLocationFix(locations[locations.length - 1].coords);
+    await evaluateLocationFix(
+      locations[locations.length - 1].coords,
+      // The stream's own timestamp, not Date.now(). On a batched delivery the
+      // newest element can be minutes old by the time the OS hands it over, and
+      // that gap is exactly what the credit floor must know about.
+      locations[locations.length - 1].timestamp,
+    );
   } catch (err) {
     console.warn('[Geofence] evaluateLocationFix failed:', err);
   }
@@ -5093,6 +5206,17 @@ function isDuplicateNativeEvent(regionId: string, eventType: Location.Geofencing
  *  crossings in one jest module instance read as a storm without this. */
 export function resetNativeEventDebounceForTests(): void {
   _lastNativeEventAt.clear();
+}
+
+/** Test-only, and it is NOT optional for anything exercising the stream
+ *  heartbeat. `_lastTickAtMs` is module state with a 5-minute gate, and the whole
+ *  of heartbeatVisitStream sits inside a bare `catch {}` — so a second simulated
+ *  tick in one module instance returns before anything observable happens and
+ *  the assertion fails as "confirmGymVisit called 0 times", which reads as a
+ *  product bug rather than a harness one. Clear VISIT_TICK_THROTTLE_KEY too; the
+ *  persisted floor is the other half of the same throttle. */
+export function resetVisitTickThrottleForTests(): void {
+  _lastTickAtMs = 0;
 }
 
 // ─── Exit-noise suppression (2026-08-13) ─────────────────────────────────────
@@ -5301,7 +5425,11 @@ async function noteSuppressedExitInner(regionId: string): Promise<void> {
  *
  *  Self-throttled to one poll per 10 min, module state — worst case after a
  *  context death is one extra poll, and the confirm is idempotent server-side. */
-async function selfPollIfWakeStarved(active: StoredGeofence, coords: Location.LocationObjectCoords): Promise<void> {
+async function selfPollIfWakeStarved(
+  active: StoredGeofence,
+  coords: Location.LocationObjectCoords,
+  fixTimestamp?: number,
+): Promise<void> {
   try {
     if (!active.visitId) return;
     const elapsed = Date.now() - active.entryTimestamp;
@@ -5324,7 +5452,12 @@ async function selfPollIfWakeStarved(active: StoredGeofence, coords: Location.Lo
       radiusM = active.radius;
     }
     const { fixCreditsPresence } = await import('@/lib/health/gymPresence');
-    if (!fixCreditsPresence({ fixTrusted, distanceM: distance, radiusM, accuracyM: acc, fixAgeMs: 0 })) return;
+    // ⚠ MEASURED, NOT ASSERTED (2026-08-18) — same defect as the acquire rung, on
+    // the one path that also sets request_credit TRUE. The docstring above
+    // asserts "live fix, age 0" by construction; a batched OS delivery can hand
+    // JS a fix minutes old, so this was a literal standing in for a measurement.
+    const fixAgeMs = typeof fixTimestamp === 'number' ? Math.max(0, Date.now() - fixTimestamp) : null;
+    if (!fixCreditsPresence({ fixTrusted, distanceM: distance, radiusM, accuracyM: acc, fixAgeMs })) return;
 
     _lastSelfPollAt = Date.now();
     logRegionEvent(active.regionId ?? 'watchdog', 'sweep', {
@@ -5342,7 +5475,11 @@ async function selfPollIfWakeStarved(active: StoredGeofence, coords: Location.Lo
       distance_m:  distance != null ? Math.round(distance) : null,
       accuracy_m:  acc != null ? Math.round(acc) : null,
       fix_trusted: fixTrusted,
-      fix_age_ms:  0,
+      // ⚠ WAS `fix_age_ms: 0`, AND THAT KEY IS NOT READ. confirm_gym_visit_v2
+      // reads `fix_age_s` only, so this path's v_fix_age_s was always NULL and
+      // its `<= 120` freshness gate never fired once — on the single writer that
+      // also asks the server to relay a claim. Two defects, one line.
+      fix_age_s:   fixAgeMs != null ? Math.round(fixAgeMs / 1000) : null,
     }, true, active.entryTimestamp);
   } catch { /* the watchdog must never cost the tick */ }
 }
