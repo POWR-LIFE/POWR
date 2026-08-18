@@ -7,7 +7,7 @@ import React, { createContext, useContext, useEffect, useRef, useState } from 'r
 import { Alert, AppState, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { EMAIL_CONFIRM_REDIRECT, authorizeSessionErase, supabase } from '@/lib/supabase';
+import { AUTH_STORAGE_KEY, EMAIL_CONFIRM_REDIRECT, authStorage, authorizeSessionErase, supabase } from '@/lib/supabase';
 import { clearDeviceWakeTicket, ensureDeviceWakeTicket, readStoredSession } from '@/lib/backgroundRest';
 import { claimDevice, confirmDeviceTransfer, getDeviceId } from '@/lib/deviceLock';
 import { reportLocationPermission } from '@/lib/locationPermission';
@@ -34,6 +34,11 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
  *  read is single-digit milliseconds, and anything past a few seconds is a wedge
  *  rather than a slow device. INITIAL_SESSION still delivers a late session. */
 const AUTH_BOOTSTRAP_TIMEOUT_MS = 8_000;
+/** Synthetic-restore bound (see the SIGNED_OUT branch): a second SIGNED_OUT on
+ *  the same persisted pair, or more than this many restores inside the window,
+ *  means the pair is dead server-side and gets erased instead of retried. */
+const SYNTHETIC_RESTORE_MAX_PER_WINDOW = 4;
+const SYNTHETIC_RESTORE_WINDOW_MS = 60 * 1000;
 
 /**
  * Decode the session_id claim from a Supabase JWT without external deps.
@@ -72,6 +77,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const userSignOutRef = useRef(false); // set ONLY by the user-initiated signOut() — the synthetic-sign-out check keys off it
     const deviceLockReasonRef = useRef<'locked' | 'rate_limited'>('locked'); // why we blocked, for the SIGNED_OUT copy
     const deviceCheckedSessionRef = useRef<string | null>(null); // session we've already run the device-lock check for
+    // The synthetic-restore ledger: which persisted refresh token the last
+    // SIGNED_OUT restore presented, and how many restores fired in the current
+    // minute. A pair that comes back from the server rejected TWICE is dead, not
+    // raced — see the SIGNED_OUT branch. Field 2026-08-18: without this bound the
+    // restore was an unbounded loop (~10 /token calls per second for 70 s) that
+    // rate-limited the whole IP and blocked every login from the network.
+    const syntheticRestoreRef = useRef<{ refreshToken: string; count: number; windowStartMs: number } | null>(null);
     const sessionUserRef = useRef<string | null>(null); // current user id for listeners that outlive the auth closure
     // Set when the bootstrap FAILED OPEN — settled to signed-out without ever
     // hearing back from getSession. It is the only state in which a late
@@ -408,6 +420,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setSession(session);
             sessionUserRef.current = session?.user?.id ?? null;
             if (session && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION')) {
+                // A ROTATED session closes the synthetic-restore ledger — the pair
+                // the last restore presented was accepted by the server. A SIGNED_IN
+                // carrying the SAME refresh token is only setSession adopting an
+                // unexpired access token locally (no round-trip, nothing proven);
+                // keeping the ledger open there means the next failed refresh on
+                // that pair is the second strike, not a fresh first one.
+                if (syntheticRestoreRef.current && syntheticRestoreRef.current.refreshToken !== session.refresh_token) {
+                    syntheticRestoreRef.current = null;
+                }
                 registerAndWatchSession(session);
             }
 
@@ -469,17 +490,64 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 // two full iOS credential re-entries in one afternoon, both this
                 // class.
                 const userInitiated = forcedSignOutRef.current || deviceLockedRef.current || userSignOutRef.current;
+                let sessionDead = false;
                 if (!userInitiated) {
                     try {
                         const { readStoredSession } = await import('@/lib/backgroundRest');
                         const survivor = await readStoredSession();
                         if (survivor?.access_token && survivor?.refresh_token) {
-                            console.warn('[Auth] SIGNED_OUT with a surviving stored session — synthetic sign-out, restoring.');
-                            void supabase.auth.setSession({
-                                access_token: survivor.access_token,
-                                refresh_token: survivor.refresh_token,
-                            }).catch(() => { /* a failed restore falls through to a real sign-out next event */ });
-                            return; // no teardown, no navigation — the restore re-emits SIGNED_IN
+                            // ⚠ THE RESTORE IS BOUNDED (2026-08-18). The premise above —
+                            // "the surviving pair is the newest one any runtime persisted,
+                            // so it still works" — is false whenever the SERVER retired the
+                            // pair: enforceOneSession's signOut(scope:'others') from another
+                            // device, an admin revocation, a password change. Then the
+                            // restore itself fails the same way (400 refresh_token_not_found),
+                            // auth-js calls _removeSession again, the erase gate blocks the
+                            // wipe again, SIGNED_OUT fires again, and this branch restores
+                            // again — at network round-trip speed, forever. Field
+                            // 2026-08-18 12:08Z: ~650 POST /token in 70 s from one Expo Go
+                            // runtime holding a pair that scope:'others' had retired; GoTrue
+                            // rate-limited the IP and every password login on the network
+                            // (including the one being typed) came back 429.
+                            //
+                            // The discriminator is the pair itself. A rotation race leaves a
+                            // DIFFERENT (newer) pair in storage than the one that just
+                            // failed, so restoring it succeeds and re-emits SIGNED_IN. The
+                            // same pair producing a second SIGNED_OUT means the newest thing
+                            // this device has was rejected by the server: dead, not raced.
+                            // Erase it (this is the one non-user path allowed to) and fall
+                            // through to the real teardown so the user sees a login screen
+                            // instead of a device that silently hammers /token. A per-minute
+                            // cap backs that up in case two runtimes alternate pairs.
+                            const now = Date.now();
+                            const ledger = syntheticRestoreRef.current;
+                            const inWindow = !!ledger && now - ledger.windowStartMs < SYNTHETIC_RESTORE_WINDOW_MS;
+                            const samePair = !!ledger && ledger.refreshToken === survivor.refresh_token;
+                            const overCap = inWindow && ledger!.count >= SYNTHETIC_RESTORE_MAX_PER_WINDOW;
+                            if (!samePair && !overCap) {
+                                syntheticRestoreRef.current = {
+                                    refreshToken: survivor.refresh_token,
+                                    count: inWindow ? ledger!.count + 1 : 1,
+                                    windowStartMs: inWindow ? ledger!.windowStartMs : now,
+                                };
+                                console.warn('[Auth] SIGNED_OUT with a surviving stored session — synthetic sign-out, restoring.');
+                                void supabase.auth.setSession({
+                                    access_token: survivor.access_token,
+                                    refresh_token: survivor.refresh_token,
+                                }).catch(() => { /* a failed restore falls through to a real sign-out next event */ });
+                                return; // no teardown, no navigation — the restore re-emits SIGNED_IN
+                            }
+                            sessionDead = true;
+                            syntheticRestoreRef.current = null;
+                            console.warn(samePair
+                                ? '[Auth] SIGNED_OUT again on the SAME persisted pair — the server has retired it; erasing it and signing out for real.'
+                                : `[Auth] ${SYNTHETIC_RESTORE_MAX_PER_WINDOW} synthetic restores inside ${SYNTHETIC_RESTORE_WINDOW_MS / 1000}s — treating the persisted session as dead; erasing it and signing out for real.`);
+                            try {
+                                authorizeSessionErase();
+                                await authStorage.removeItem(AUTH_STORAGE_KEY);
+                            } catch (err) {
+                                console.warn('[Auth] could not erase the dead persisted session:', err);
+                            }
                         }
                     } catch { /* unreadable storage — treat as a real sign-out below */ }
                 }
@@ -520,6 +588,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     Alert.alert(
                         'Signed out',
                         'You signed in on another device. POWR allows one device at a time, so you were signed out here. Sign in again to keep using this device.',
+                    );
+                } else if (sessionDead) {
+                    // The server retired this device's session out from under it —
+                    // most often the one-device policy firing from ANOTHER device's
+                    // sign-in (its watcher kick never reaches a runtime that was
+                    // closed at the time). Say so, without asserting which cause.
+                    Alert.alert(
+                        'Signed out',
+                        'Your session on this device is no longer valid — usually because the account was signed in on another device. Sign in again to keep using POWR here.',
                     );
                 }
             }
