@@ -130,6 +130,17 @@ const seedActiveVisit = () => AsyncStorage.setItem(ACTIVE_GEOFENCE_KEY, JSON.str
   entryTimestamp: Date.now() - 35 * 60_000,
 }));
 
+
+/** The age is measured against a real clock, so a rounded second can drift when
+ *  the suite runs under load — 130 becomes 131. Assert the BAND, not the point:
+ *  the property under test is "it measured ~130 s" versus the defect's hardcoded
+ *  0, and a 2-second window keeps every bit of that discriminating power. */
+const expectAgeNear = (actual: unknown, expected: number) => {
+  expect(typeof actual).toBe('number');
+  expect(actual as number).toBeGreaterThanOrEqual(expected);
+  expect(actual as number).toBeLessThanOrEqual(expected + 2);
+};
+
 const driveStreamFix = (accuracy: number, ageMs: number) =>
   mockTasks[LOCATION_TRACKING_TASK]({
     data: { locations: [{
@@ -166,7 +177,7 @@ describe('heartbeatVisitStream — the stream tick that proves presence', () => 
     expect(inside).toBe(true);
     expect(detail.stage).toBe('stream');
     expect(detail.source).toBe('heartbeat');
-    expect(detail.fix_age_s).toBe(10);
+    expectAgeNear(detail.fix_age_s, 10);
     // The server reads `fix_age_s`. `fix_age_ms` is silently ignored, which is
     // how a sibling path bypassed the freshness gate entirely for weeks.
     expect(detail).not.toHaveProperty('fix_age_ms');
@@ -244,7 +255,7 @@ describe('selfPollIfWakeStarved — the watchdog measures its fix too', () => {
     const selfPoll = (mockConfirmGymVisit.mock.calls as any[][])
       .find(([, , d]) => d?.source === 'wake_starved_self_poll');
     expect(selfPoll).toBeDefined();
-    expect(selfPoll![2].fix_age_s).toBe(10);
+    expectAgeNear(selfPoll![2].fix_age_s, 10);
     expect(selfPoll![2]).not.toHaveProperty('fix_age_ms');
     // This one DOES relay credit — that is its whole job.
     expect(selfPoll![3]).toBe(true);

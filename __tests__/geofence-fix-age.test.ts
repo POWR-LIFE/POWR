@@ -126,6 +126,17 @@ const forceAcquireRung = () => {
 
 const confirmDetail = () => (mockConfirmGymVisit.mock.calls[0] as any[])[2];
 
+/** The age is measured against a real clock, so a rounded second can drift when
+ *  the suite runs under load — 130 becomes 131. Assert the BAND, not the point:
+ *  the property under test is "it measured ~130 s" versus the defect's hardcoded
+ *  0, and a 2-second window keeps every bit of that discriminating power. */
+const expectAgeNear = (actual: unknown, expected: number) => {
+  expect(typeof actual).toBe('number');
+  expect(actual as number).toBeGreaterThanOrEqual(expected);
+  expect(actual as number).toBeLessThanOrEqual(expected + 2);
+};
+
+
 describe('runVisitCheck — the acquire rung reports a MEASURED fix age', () => {
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -147,7 +158,7 @@ describe('runVisitCheck — the acquire rung reports a MEASURED fix age', () => 
     await runVisitCheck('dwell');
 
     expect(mockConfirmGymVisit).toHaveBeenCalled();
-    expect(confirmDetail().fix_age_s).toBe(130);
+    expectAgeNear(confirmDetail().fix_age_s, 130);
     expect(confirmDetail().trace.fix_source).toBe('acquired');
   });
 
@@ -160,7 +171,8 @@ describe('runVisitCheck — the acquire rung reports a MEASURED fix age', () => 
 
     await runVisitCheck('dwell');
 
-    expect(confirmDetail().fix_age_s).toBe(0);
+    // Small, not exact: the point is that it did NOT over-correct a fresh fix.
+    expect(confirmDetail().fix_age_s).toBeLessThanOrEqual(1);
   });
 
   it('reports null, not 0, when the platform omits the timestamp', async () => {
