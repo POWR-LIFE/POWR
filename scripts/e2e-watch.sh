@@ -21,27 +21,35 @@ A="${WATCH_USER_A:-234d49f3-d189-44b1-a874-063e724e4380}"   # AND = powrcto (pre
 B="${WATCH_USER_B:-a2585666-5b7a-4622-8e43-6bd4fb8013f0}"   # iOS = jpowr (production channel, build 17)
 USERS="in.(${A},${B})"
 VENUE="${WATCH_VENUE:-7d865c3b}"   # POWR partner id prefix (radius 40m)
-# 2026-08-17 ~10:5xZ: the ede2ad1 bundles — Wave 1+2 of the post-run fix plan (the
-# closes-outbox AppState guard, the bounded close, the honest stream telemetry, the
-# openGymVisit attempt/result pairs, the serialised exit-noise tally). Published to
-# BOTH branches from a pristine worktree; fingerprints matched the live runtimes
-# exactly (ios a848fb8f…, android 6acdda91…).
+# 2026-08-18 ~08:5xZ: the 01ac7c7 bundles — the post-upgrade proof-stall fix.
+# The proof clock now stamps the FIX'S OWN timestamp instead of now(), so a fix
+# delivered late still proves the moment it was taken; the acquire rung reports a
+# MEASURED age instead of a hardcoded 0 (it had never once reported a non-zero age
+# in the history of the table); and the stream heartbeat spends the round-trip it
+# was already making on a CONFIRM rather than a bare tick, which is the first
+# device-side proof writer that does not sit downstream of a delivered push.
 #
-# ⚠ FOR THE PM RUN: both phones were last seen on the MORNING bundle
-# (01a00ec6/01a00ec7), so the first heartbeat will legitimately read STALE-OTA
-# until each app is opened once and takes the update. That is the pre-test signal
-# to wait for, not a fault — do not arm the fences before it flips to `fixed`.
-# Superseded ~11:1xZ by the 1f92240 bundles: the approach stream is now filed as
-# ActivityType.Fitness (it ran as `Other`, the class iOS defers most freely, and it
-# went silent for 6-8 min in three runs), and runVisitCheck's confirm — the wake's
-# ONE round-trip — reports its verdict instead of discarding it.
-# Superseded ~14:5xZ by the ccce07f bundles: the fence-refresh wake now carries
-# `open_visit_id`, so the sweep's proof stamp no longer calls openGymVisit — which
-# was measured hanging 15-63 MINUTES in background wakes and is what starved the
-# proof clock, caused 24 re-opens of one visit, and killed the exit close.
-# ⚠ Deployed beacon FIRST (an extra payload key is ignored by older clients), OTA second.
-AND_OTA="${WATCH_AND_OTA:-01a01052-1ba8-7bf9-b8fe-08b99aaf0663}"   # preview / android
-IOS_OTA="${WATCH_IOS_OTA:-01a01053-93f8-7bf7-be86-ac161309d327}"   # production / ios
+# Shipped in the load-bearing order: migration 20260818082412 FIRST (honest ages
+# against the OLD server rule would have been rejected outright and Android
+# durations would have COLLAPSED), then the OTA to both channels, then the beacon
+# (v45 — its presence pass now gates on last_proven_at, so an unprovable confirm
+# no longer buys another 5 minutes of silence).
+#
+# ⚠ Both phones were confirmed on these exact bundles at 08:54Z before the beacon
+# went out, so the first heartbeat should read `AND=fixed iOS=fixed`. If it says
+# STALE-OTA, the app has been reinstalled or rolled back — do NOT arm the fences
+# until it flips.
+#
+# ⚠ WHAT THIS RUN CANNOT SHOW. Change 2 (the Android dwell stream) is NOT shipped:
+# expo-location throws from its own JS-facing startLocationUpdatesAsync whenever
+# the app is backgrounded and the options carry a foregroundService block, so the
+# dwell switch still cannot land from a background check-in and Android's stream
+# stays on distanceInterval 50. Expect near-silence on the Android stream and read
+# it as "Change 2 still outstanding", NOT as background throttling — the
+# discriminator is a `stream_start_failed {at:check_in, mode:dwell}` row, which
+# this bundle emits for the first time.
+AND_OTA="${WATCH_AND_OTA:-01a01410-cd0b-70e8-b529-cbd0d23aac3a}"   # preview / android
+IOS_OTA="${WATCH_IOS_OTA:-01a0140e-03d3-7426-897c-f17bc8b631be}"   # production / ios
 
 S=$(mktemp -d) || exit 1; trap 'rm -rf "$S"' EXIT
 get() { cat "$S/$1" 2>/dev/null; }
@@ -110,6 +118,12 @@ while true; do
                fi ;;
         exit_check) now=$(date +%s); last=$(get "exch_$uid"); last=${last:-0}
                [ $(( now - last )) -ge 120 ] && { echo "[$who] exit_check  $(jq -c . <<<"$det")"; put "exch_$uid" "$now"; } ;;
+        # ⚠ THE DISCRIMINATOR FOR THIS RUN. Change 2 is not shipped, so a
+        # backgrounded Android check-in still cannot start the dwell stream. This
+        # row is the difference between "the switch was refused" (expected) and
+        # "the switch landed and Android throttled us anyway" (a new finding).
+        stream_start_failed|stream_switch_deferred)
+               echo "[$who] >>> STREAM NOT STARTED ($ev)  $(jq -c . <<<"$det")" ;;
         armed|rearm_skipped)
                now=$(date +%s); last=$(get "arm_$uid"); last=${last:-0}
                n=$(get "armn_$uid"); n=$(( ${n:-0} + 1 )); put "armn_$uid" "$n"
@@ -153,6 +167,12 @@ while true; do
                now=$(date +%s); last=$(get "conf_$uid"); last=${last:-0}
                [ $(( now - last )) -ge 300 ] && { echo "[$who] inside ok  $(jq -c '{stage,accuracy_m,distance_m,fix_age_s,auth,proven,stamped}' <<<"$det" 2>/dev/null)"; put "conf_$uid" "$now"; }
              fi ;;
+        # The acceptance criteria for this run live in one row. clamp_loss_s is
+        # the time we FAILED TO BILL (target <300s; 08-17 was iOS 604 / AND 425);
+        # clamp_anchor says which column the clamp landed on, which is what tells
+        # "the proof clock stalled" apart from "the device never proved anything".
+        exit) echo "[$who] >>> VISIT EXIT  $(jq -r '"clamp_loss_s=\(.clamp_loss_s // "?")s  proof_gap_s=\(.proof_gap_s // "null")  anchor=\(.clamp_anchor // "?")  writer=\(.proof_writer // "none")  clamped=\(.clamped)"' <<<"$det" 2>/dev/null)"
+              echo "[$who]     raw: $(jq -c . <<<"$det")" ;;
         *) echo "[$who] VISIT ${ev}  $(jq -c . <<<"$det")" ;;
       esac
     done < <(jq -r '.[] | [.user_id,.event,(.detail|tostring),.created_at] | @tsv' <<<"$rows" 2>/dev/null)
