@@ -33,6 +33,14 @@
 -- instrumentation that says how much was lost and which writer last worked.
 -- proof_writer keys off the `stamped` flag this function starts emitting, so the
 -- two changes cannot be split — see the note on that lookup below.
+--
+-- ⚠ FILENAME vs APPLIED VERSION. This was authored as 20260818090000 and applied
+-- via MCP, which assigns its own timestamp — so it landed as 20260818082412 and
+-- the file was renamed to match. close_gym_visit's proof_writer comment still
+-- says "after 20260818090000"; that is the same migration under its draft name,
+-- and it is left alone deliberately because the comment is INSIDE the function
+-- body, so editing it would make the committed file differ from the deployed
+-- prosrc. Both bodies are byte-identical to production as committed.
 
 create or replace function public.confirm_gym_visit_v2(p_visit_id uuid, p_inside boolean, p_detail jsonb default '{}'::jsonb, p_request_credit boolean default false, p_entry_at timestamp with time zone default null)
 returns jsonb
@@ -392,7 +400,7 @@ begin
     -- UPDATE and this test overwrites FOUND and resurrects those 30 phantom rows.
     --
     -- Keyed on `stamped`, not on `proven` and not on created_at = last_proven_at.
-    -- After 20260818082412 a retrospective advance logs proven:false, so a
+    -- After 20260818090000 a retrospective advance logs proven:false, so a
     -- `proven = true` filter would miss exactly the writers this is meant to
     -- find; and created_at = last_proven_at held only while both were
     -- transaction_timestamp(), which that migration ends. NULL for visits that
