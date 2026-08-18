@@ -57,3 +57,15 @@ describe('parseReferralCode', () => {
     expect(parseReferralCode('ABC123ZZ901')).toBeNull();  // too long (11)
   });
 });
+
+describe('parseReferralCode — member ID display form', () => {
+  it('accepts the spaced display form (ABCD 2345) as the same code', () => {
+    expect(parseReferralCode('ABCD 2345')).toBe('ABCD2345');
+    expect(parseReferralCode(' abcd-2345 ')).toBe('ABCD2345');
+  });
+
+  it('still rejects things that are not a code once squashed', () => {
+    expect(parseReferralCode('hello world this is long')).toBeNull();
+    expect(parseReferralCode('AB CD')).toBeNull();
+  });
+});

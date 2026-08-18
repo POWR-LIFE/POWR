@@ -5,6 +5,7 @@ import { useAuth } from '../../App';
 import { levelFromEarned } from '../../lib/levels';
 import { User, Search, Users, Activity, Award, ChevronRight, Filter, MapPin, Star, UserPlus, Trash2, X, Eye, EyeOff, Watch, Smartphone } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { formatMemberId, normalizeMemberId } from '../../../../shared/memberId.ts';
 
 // Full connectable provider list — mirrors lib/health/providers/index.ts in the app
 // (native HealthKit/Health Connect + every Terra provider we expose).
@@ -234,12 +235,17 @@ export default function UserManager() {
         setFilterMinLevel('');
     };
 
+    // A member reading their POWR ID off Settings says "ABCD 2345" — the same
+    // stored code with a gap, so the search squashes it before comparing.
+    // Prefix, not substring: "AB" would otherwise light up a quarter of the table.
+    const searchCode = normalizeMemberId(search);
     const filtered = users.filter(u => {
         if (search) {
             const q = search.toLowerCase();
             const hit = (u.display_name?.toLowerCase().includes(q)) ||
                 (u.username?.toLowerCase().includes(q)) ||
-                (u.email?.toLowerCase().includes(q));
+                (u.email?.toLowerCase().includes(q)) ||
+                (!!searchCode && searchCode.length >= 3 && !!u.member_id && u.member_id.startsWith(searchCode));
             if (!hit) return false;
         }
 
@@ -410,7 +416,7 @@ export default function UserManager() {
                     <Search size={18} className="absolute left-6 top-1/2 -translate-y-1/2 text-[#888888] group-focus-within:text-[#8a7600] transition-colors" />
                     <input
                         type="text"
-                        placeholder="SEARCH NODE IDENTIFIER..."
+                        placeholder="SEARCH NAME, EMAIL, @HANDLE OR POWR ID..."
                         className="w-full h-16 pl-16 pr-8 bg-white border border-[#E6E6E1] rounded-[2rem] text-[11px] font-black tracking-[0.2em] text-[#1A1A1A] placeholder-[#BBBBBB] focus:border-[#E8D200]/40 outline-none transition-all uppercase"
                         value={search}
                         onChange={e => setSearch(e.target.value)}
@@ -602,6 +608,11 @@ export default function UserManager() {
                                                     <span className="block truncate text-[10px] uppercase tracking-[0.4em] text-[#666666] font-black">
                                                         {user.username ? `@${user.username}` : user.email || 'unidentified'}
                                                     </span>
+                                                    {user.member_id && (
+                                                        <span className="block font-mono text-[10px] tracking-[0.15em] text-[#999999] mt-1" title="POWR ID — what the member sees under Settings › Account">
+                                                            {formatMemberId(user.member_id)}
+                                                        </span>
+                                                    )}
                                                 </div>
                                             </div>
                                         </td>

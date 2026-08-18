@@ -28,6 +28,7 @@ import { usePoints } from '@/hooks/usePoints';
 import { useStreak } from '@/hooks/useStreak';
 import { fetchGallery, type GalleryPhoto } from '@/lib/api/pro-gallery';
 import { fetchProfile, type Profile } from '@/lib/api/user';
+import { formatMemberId } from '@/shared/memberId';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 
@@ -438,7 +439,7 @@ export default function ProfileScreen() {
               <Ionicons name="gift-outline" size={20} color={GOLD} />
               <View style={s.inviteText}>
                 <Text style={s.inviteTitle}>Invite a friend</Text>
-                <Text style={s.inviteSub}>You both earn 20 POWR</Text>
+                <Text style={s.inviteSub}>Share your POWR ID — you both earn 20 POWR</Text>
               </View>
             </View>
             <View style={s.inviteCodeRow}>
@@ -446,7 +447,7 @@ export default function ProfileScreen() {
                 onPress={handleCopyCode}
                 style={({ pressed }) => [s.codeChip, pressed && { opacity: 0.7 }]}
               >
-                <Text style={s.codeChipText}>{profile.referral_code}</Text>
+                <Text style={s.codeChipText}>{formatMemberId(profile.referral_code)}</Text>
                 <Ionicons
                   name={codeCopied ? 'checkmark' : 'copy-outline'}
                   size={16}

@@ -889,7 +889,7 @@ function History({ filters, onFilters, rows, rowsLoading, trends, trendsLoading,
                     <input type="date" value={filters.to} onChange={e => set({ to: e.target.value })} className={INPUT_CLASS} />
                 </Field>
 
-                <Field label="User" hint="Email, username, display name, user id or visit id.">
+                <Field label="User" hint="Email, username, display name, POWR ID, user id or visit id.">
                     <span className="relative flex">
                         <input
                             type="search"
