@@ -8,7 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import QRCode from 'react-native-qrcode-svg';
 
 import { fontFamily } from '@/constants/tokens';
-import { eventInviteLink } from '@/lib/eventInviteLink';
+import { eventInviteLink, eventInviteMessage } from '@/lib/eventInviteLink';
 import { fetchProfile } from '@/lib/api/user';
 
 const GOLD = '#E8D200';
@@ -47,26 +47,22 @@ export default function EventQrScreen() {
   const eventSlug = typeof slug === 'string' ? slug : null;
   const link = eventSlug ? eventInviteLink(eventSlug, code) : null;
   const eventName = typeof name === 'string' && name ? name : 'the event';
+  const message = link ? eventInviteMessage({ eventName, link, code }) : null;
 
   const handleShare = async () => {
-    if (!link) return;
+    if (!link || !message) return;
     Haptics.selectionAsync();
     try {
-      await Share.share({
-        message:
-          `Join me for ${eventName} on POWR 💪\n` +
-          (code ? `Sign up with my code ${code}.\n` : '') +
-          link,
-        url: link,
-      });
+      await Share.share({ message, url: link });
     } catch {
       // user dismissed — no-op
     }
   };
 
+  // Code + link, same text as Share — a bare link loses the code at the store.
   const handleCopy = async () => {
-    if (!link) return;
-    await Clipboard.setStringAsync(link);
+    if (!message) return;
+    await Clipboard.setStringAsync(message);
     Haptics.selectionAsync();
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -107,7 +103,7 @@ export default function EventQrScreen() {
                 <Ionicons name="share-outline" size={16} color="#0a0a0a" />
                 <Text style={styles.shareBtnText}>Share link</Text>
               </Pressable>
-              <Pressable style={styles.copyBtn} onPress={handleCopy} accessibilityRole="button" accessibilityLabel="Copy the event link">
+              <Pressable style={styles.copyBtn} onPress={handleCopy} accessibilityRole="button" accessibilityLabel="Copy the invite code and link">
                 <Ionicons name={copied ? 'checkmark' : 'copy-outline'} size={16} color={copied ? GOLD : SECONDARY} />
                 <Text style={[styles.copyBtnText, copied && { color: GOLD }]}>{copied ? 'Copied' : 'Copy'}</Text>
               </Pressable>
