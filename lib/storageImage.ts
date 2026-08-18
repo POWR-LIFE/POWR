@@ -36,5 +36,9 @@ export const rewardHeroUri = (url: string | null | undefined) => storageImage(ur
 /** Reward/partner logos. */
 export const rewardLogoUri = (url: string | null | undefined) => storageImage(url, 512, 512);
 
-/** Live-event prize thumbnails (League ticket rows, register sheet). */
+/** Live-event prize thumbnails (register-sheet rows). */
 export const prizeImageUri = (url: string | null | undefined) => storageImage(url, 256, 256);
+
+/** Live-event prize artwork — the League gallery card AND the spotlight viewer
+ *  request this same spec, so opening a prize is a cache hit, not a load. */
+export const prizeArtUri = (url: string | null | undefined) => storageImage(url, 1080, 1080);

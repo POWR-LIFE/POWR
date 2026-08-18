@@ -4,7 +4,6 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { EventLockup } from '@/components/events/EventLockup';
-import { EventPrizeList } from '@/components/events/EventPrizeList';
 import { RewardHeroMedia } from '@/components/rewards/RewardHeroMedia';
 import type { LiveEvent } from '@/lib/api/liveEvents';
 import { eventDateRange, isVideoUrl, lastDayOf } from '@/lib/liveEventDisplay';
@@ -34,7 +33,8 @@ function statusLine(event: LiveEvent): string {
 }
 
 /**
- * What the event IS: identity, window, where it's up to, what's on the line.
+ * What the event IS: identity, window, where it’s up to. (What’s on the line
+ * — the prizes — is the gallery block directly beneath, not part of this card.)
  * Deliberately one job — the ticket block below it owns getting you onto the
  * board, and the board owns the scores. The old EventInviteCard did all three
  * in one box, which left the entry gate ranked ninth on a surface where it is
@@ -79,7 +79,7 @@ export function EventHeaderCard({
                     />
 
                     {/* Lightest at the top where the lockup sits, heaviest over
-                        the dates/prizes/CTA below — this card is far more
+                        the dates/CTA below — this card is far more
                         text-dense than the home hero, so the bottom needs more
                         scrim than home's does to stay legible over bright video. */}
                     <LinearGradient
@@ -99,7 +99,6 @@ export function EventHeaderCard({
             <Text style={styles.dates}>{eventDateRange(event)}</Text>
             <Text style={styles.statusLine}>{statusLine(event)}</Text>
 
-            <EventPrizeList prizes={event.prizes} size="card" />
 
             {canJoin && (
                 <Pressable
