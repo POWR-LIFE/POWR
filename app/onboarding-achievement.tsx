@@ -71,6 +71,7 @@ export default function OnboardingAchievementScreen() {
 
     const [showCodeInput, setShowCodeInput] = useState(false);
     const [inviteCode, setInviteCode] = useState('');
+    const [submitting, setSubmitting] = useState(false);
 
     // A code captured from an invite link (AuthContext stores it as
     // pending_referral_code) used to apply silently on submit; surface it in
@@ -329,48 +330,103 @@ export default function OnboardingAchievementScreen() {
                     />
                 )}
                 <Pressable
-                    style={({ pressed }) => [styles.primaryButton, pressed && { opacity: 0.86 }]}
+                    style={({ pressed }) => [styles.primaryButton, (pressed || submitting) && { opacity: 0.86 }]}
+                    disabled={submitting}
                     onPress={async () => {
-                        // Retry once on failure — network blip at this step would send the user
-                        // back through the whole onboarding flow on next launch.
-                        let { error } = await markOnboardingComplete();
-                        if (error) ({ error } = await markOnboardingComplete());
-                        // Send the value-led welcome email (idempotent server-side, so a
-                        // retry here never double-sends). Fire-and-forget — never block the
-                        // user from entering the app on an email hiccup.
-                        sendWelcomeEmail().catch((e) => console.warn('Welcome email failed', e));
-                        // Process referral: manual code takes priority, else check deep-link capture
-                        const deepCode = await AsyncStorage.getItem('pending_referral_code').catch(() => null);
-                        const code = inviteCode.trim() || deepCode || null;
-                        const goHome = () => router.replace('/(tabs)');
-                        if (!code) { goHome(); return; }
+                        if (submitting) return;
+                        setSubmitting(true);
+                        try {
+                            // Retry once on failure — network blip at this step would send the user
+                            // back through the whole onboarding flow on next launch.
+                            let { error } = await markOnboardingComplete();
+                            if (error) ({ error } = await markOnboardingComplete());
+                            // Send the value-led welcome email (idempotent server-side, so a
+                            // retry here never double-sends). Fire-and-forget — never block the
+                            // user from entering the app on an email hiccup.
+                            sendWelcomeEmail().catch((e) => console.warn('Welcome email failed', e));
+                            // Process referral: manual code takes priority, else check deep-link capture
+                            const deepCode = await AsyncStorage.getItem('pending_referral_code').catch(() => null);
+                            const code = inviteCode.trim() || deepCode || null;
+                            const goHome = () => router.replace('/(tabs)');
+                            if (!code) { goHome(); return; }
 
-                        const { data, error: refErr } = await supabase.rpc('process_referral', { p_referral_code: code });
-                        await AsyncStorage.removeItem('pending_referral_code').catch(() => {});
-                        const result = (data ?? null) as { success?: boolean; error?: string; status?: string } | null;
+                            // This screen is the ONLY place a code can be entered — invites
+                            // count for first-time signups, nowhere later. So a transport
+                            // failure gets one retry, and any outcome that leaves the code
+                            // unapplied keeps the user HERE with the field open, rather than
+                            // sending them home with a "later" that doesn't exist.
+                            const applyCode = () => supabase.rpc('process_referral', { p_referral_code: code });
+                            let { data, error: refErr } = await applyCode();
+                            if (refErr) ({ data, error: refErr } = await applyCode());
+                            const result = (data ?? null) as { success?: boolean; error?: string; status?: string } | null;
 
-                        if (!refErr && result?.success) {
-                            // Rewards pay on CONVERSION (first verified workout), not at
-                            // code entry — see referral_conversion_check.
-                            Alert.alert(
-                                'Invite code applied 🎉',
-                                'You and your friend both earn POWR once you log your first verified workout. Time to move!',
-                                [{ text: 'Let’s go', onPress: goHome }],
-                            );
-                        } else {
-                            const reason = result?.error ?? 'network';
-                            const messages: Record<string, string> = {
-                                invalid_code: "That invite code wasn't recognised. Double-check it and you can add it later from your profile.",
-                                self_referral: "That's your own code — share it with a friend instead!",
-                                already_referred: "You've already used an invite code on this account.",
-                                not_authenticated: 'Please sign in again to apply your code.',
-                                network: 'We couldn’t apply your code just now. You can try again later from your profile.',
+                            const stayAndFix = () => {
+                                setInviteCode(code);
+                                setShowCodeInput(true);
                             };
-                            Alert.alert('Invite code', messages[reason] ?? messages.network, [{ text: 'Continue', onPress: goHome }]);
+                            const dropCode = async () => {
+                                await AsyncStorage.removeItem('pending_referral_code').catch(() => {});
+                                goHome();
+                            };
+
+                            if (!refErr && result?.success) {
+                                await AsyncStorage.removeItem('pending_referral_code').catch(() => {});
+                                // Rewards pay on CONVERSION (first verified workout), not at
+                                // code entry — see referral_conversion_check.
+                                Alert.alert(
+                                    'Invite code applied 🎉',
+                                    'You and your friend both earn POWR once you log your first verified workout. Time to move!',
+                                    [{ text: 'Let’s go', onPress: goHome }],
+                                );
+                                return;
+                            }
+
+                            const reason = refErr ? 'network' : (result?.error ?? 'network');
+                            switch (reason) {
+                                case 'invalid_code':
+                                    Alert.alert(
+                                        'Invite code not recognised',
+                                        'Double-check the 8 characters against your friend’s message — this is the only place it can be entered.',
+                                        [
+                                            { text: 'Skip', style: 'cancel', onPress: dropCode },
+                                            { text: 'Fix code', onPress: stayAndFix },
+                                        ],
+                                    );
+                                    return;
+                                case 'self_referral':
+                                    Alert.alert('Invite code', "That's your own code — share it with a friend instead!", [
+                                        { text: 'Continue', onPress: dropCode },
+                                    ]);
+                                    return;
+case 'already_referred':
+    Alert.alert('Invite code', 'That invite code is already applied to this account.', [
+        { text: 'Continue', onPress: dropCode },
+    ]);
+    return;
+                                case 'not_authenticated':
+                                    Alert.alert('Invite code', 'Please sign in again to apply your code.', [
+                                        { text: 'Continue', onPress: goHome },
+                                    ]);
+                                    return;
+                                default:
+                                    // Transport failure after a retry. The code is still in the
+                                    // field (and in storage if it came from a link) — let them
+                                    // try again from here; skipping means it's gone for good.
+                                    Alert.alert(
+                                        'Couldn’t apply your code',
+                                        'Check your connection and try again — the code can only be applied now, during sign-up.',
+                                        [
+                                            { text: 'Skip', style: 'cancel', onPress: dropCode },
+                                            { text: 'Try again', onPress: stayAndFix },
+                                        ],
+                                    );
+                            }
+                        } finally {
+                            setSubmitting(false);
                         }
                     }}
                 >
-                    <Text style={styles.primaryLabel}>LET'S GO →</Text>
+                    <Text style={styles.primaryLabel}>{submitting ? 'ONE SEC…' : 'LET\'S GO →'}</Text>
                 </Pressable>
             </Animated.View>
         </View>

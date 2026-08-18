@@ -28,7 +28,7 @@ import {
 } from '@/lib/api/liveEvents';
 import { fetchProfile } from '@/lib/api/user';
 import { openEventBooking } from '@/lib/eventBookingLink';
-import { eventInviteLink } from '@/lib/eventInviteLink';
+import { eventInviteLink, eventInviteMessage } from '@/lib/eventInviteLink';
 import { consentLine, eventDateRange } from '@/lib/liveEventDisplay';
 import { useAuth } from '@/context/AuthContext';
 
@@ -171,26 +171,24 @@ export function EventRegisterFlow({ event, visible, onClose, origin }: EventRegi
     const bookingConfirmed = viewer.booking?.confirmed ?? false;
     const consent = consentLine(event);
     const link = profile.code ? eventInviteLink(event.slug, profile.code) : null;
+    const message = link
+        ? eventInviteMessage({ eventName: event.name, link, code: profile.code, bonusPoints: event.invite_bonus_points })
+        : null;
 
     const handleShare = async () => {
-        if (!link) return;
+        if (!link || !message) return;
         Haptics.selectionAsync();
         try {
-            await Share.share({
-                message:
-                    `Join me for ${event.name} on POWR 💪\n` +
-                    `Sign up with my code ${profile.code} — we both earn +${event.invite_bonus_points} POWR after your first workout.\n` +
-                    link,
-                url: link,
-            });
+            await Share.share({ message, url: link });
         } catch {
             // user dismissed — no-op
         }
     };
 
+    // Code + link, same text as Share — a bare link loses the code at the store.
     const handleCopy = async () => {
-        if (!link) return;
-        await Clipboard.setStringAsync(link);
+        if (!message) return;
+        await Clipboard.setStringAsync(message);
         Haptics.selectionAsync();
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
@@ -356,7 +354,7 @@ export function EventRegisterFlow({ event, visible, onClose, origin }: EventRegi
                                                 style={({ pressed }) => [styles.codeChip, pressed && { opacity: 0.7 }]}
                                                 onPress={handleCopy}
                                                 accessibilityRole="button"
-                                                accessibilityLabel="Copy your invite link"
+                                                accessibilityLabel="Copy your invite code and link"
                                             >
                                                 <Text style={styles.codeText}>{profile.code ?? '········'}</Text>
                                                 <Ionicons

@@ -10,7 +10,7 @@ import { useAuth } from '@/context/AuthContext';
 import type { InviteFriend, InviteProgress, LiveEvent } from '@/lib/api/liveEvents';
 import { fetchProfile } from '@/lib/api/user';
 import { openEventBooking } from '@/lib/eventBookingLink';
-import { eventInviteLink } from '@/lib/eventInviteLink';
+import { eventInviteLink, eventInviteMessage } from '@/lib/eventInviteLink';
 import type { Friend } from '@/lib/social/types';
 
 const GOLD = '#E8D200';
@@ -109,6 +109,9 @@ export function EventTicketCard({
     const countingConversions = gate ? gate.counting === 'conversions' : true;
 
     const link = code ? eventInviteLink(event.slug, code) : null;
+    const message = link
+        ? eventInviteMessage({ eventName: event.name, link, code, bonusPoints: event.invite_bonus_points })
+        : null;
 
     const rules = event.rules ?? [];
     const bookingUrl = event.booking_url ?? null;
@@ -117,24 +120,20 @@ export function EventTicketCard({
     const venueName = event.venue?.name ?? 'the venue';
 
     const handleShare = async () => {
-        if (!link) return;
+        if (!link || !message) return;
         Haptics.selectionAsync();
         try {
-            await Share.share({
-                message:
-                    `Join me for ${event.name} on POWR 💪\n` +
-                    `Sign up with my code ${code} — we both earn +${event.invite_bonus_points} POWR after your first workout.\n` +
-                    link,
-                url: link,
-            });
+            await Share.share({ message, url: link });
         } catch {
             // user dismissed — no-op
         }
     };
 
+    // Copies the whole invite (code + link), not the bare link: the code is
+    // the only part that survives a store install.
     const handleCopy = async () => {
-        if (!link) return;
-        await Clipboard.setStringAsync(link);
+        if (!message) return;
+        await Clipboard.setStringAsync(message);
         Haptics.selectionAsync();
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
@@ -206,7 +205,7 @@ export function EventTicketCard({
                     style={({ pressed }) => [styles.codeChip, pressed && { opacity: 0.7 }]}
                     onPress={handleCopy}
                     accessibilityRole="button"
-                    accessibilityLabel="Copy your invite link"
+                    accessibilityLabel="Copy your invite code and link"
                 >
                     <Text style={styles.codeText}>{code ?? '········'}</Text>
                     <Ionicons
