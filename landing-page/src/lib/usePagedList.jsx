@@ -59,6 +59,11 @@ export function usePagedList(build, deps = [], { pageSize = 25 } = {}) {
 
     const pageCount = Math.max(1, Math.ceil(state.total / pageSize));
 
+    // If the total shrinks (e.g., deletions) the current page may no longer exist.
+    useEffect(() => {
+        setPage(p => (p > pageCount - 1 ? pageCount - 1 : p));
+    }, [pageCount]);
+
     return {
         ...state,
         page,
