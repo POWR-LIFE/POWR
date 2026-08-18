@@ -18,6 +18,7 @@ import {
 import QRCode from 'react-native-qrcode-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { EventPrizeList } from '@/components/events/EventPrizeList';
 import { useSheetDragDismiss } from '@/hooks/useSheetDragDismiss';
 import {
     joinLiveEvent,
@@ -37,10 +38,6 @@ const DIM = 'rgba(255,255,255,0.55)';
 const MUTED = 'rgba(255,255,255,0.3)';
 const BORDER = '#222222';
 const GREEN = '#4ade80';
-
-function rankLabel(rank: number): string {
-    return rank === 1 ? '1ST' : rank === 2 ? '2ND' : rank === 3 ? '3RD' : `${rank}TH`;
-}
 
 /** Pitch shows a taste; the full list waits on the other side of REGISTER. */
 const RULES_PREVIEW_MAX = 4;
@@ -251,18 +248,7 @@ export function EventRegisterFlow({ event, visible, onClose, origin }: EventRegi
                                     <Text style={styles.headline}>{event.promo_headline}</Text>
                                 ) : null}
 
-                                {event.prizes.length > 0 && (
-                                    <View style={styles.prizeBlock}>
-                                        {event.prizes.slice(0, 3).map((p) => (
-                                            <View key={p.rank} style={styles.prizeRow}>
-                                                <Text style={styles.prizeRank}>{rankLabel(p.rank)}</Text>
-                                                <Text style={styles.prizeLabel} numberOfLines={1}>
-                                                    {p.label}
-                                                </Text>
-                                            </View>
-                                        ))}
-                                    </View>
-                                )}
+                                <EventPrizeList prizes={event.prizes} size="sheet" />
 
                                 {previewRules.length > 0 && (
                                     <View style={styles.rulesBlock}>
@@ -491,11 +477,6 @@ const styles = StyleSheet.create({
     name: { fontSize: 28, fontWeight: '200', color: TEXT_PRIMARY, letterSpacing: -0.5, marginTop: 4 },
     dates: { fontSize: 13, fontWeight: '300', color: DIM, marginTop: 2 },
     headline: { fontSize: 14, fontWeight: '300', color: TEXT_PRIMARY, marginTop: 14, lineHeight: 20 },
-
-    prizeBlock: { marginTop: 16, gap: 6 },
-    prizeRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-    prizeRank: { width: 32, fontSize: 9, fontWeight: '700', color: GOLD, opacity: 0.7, letterSpacing: 1 },
-    prizeLabel: { flex: 1, fontSize: 13, fontWeight: '300', color: DIM },
 
     blockEyebrow: { fontSize: 8, fontWeight: '800', color: GOLD, opacity: 0.6, letterSpacing: 2.5 },
     rulesBlock: { marginTop: 16, gap: 6 },

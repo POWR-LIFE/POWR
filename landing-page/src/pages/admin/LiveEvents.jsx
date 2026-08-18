@@ -9,6 +9,7 @@ import {
     Link2, RefreshCw, AlertTriangle, Rocket, Undo2,
     Gauge, Download, UserX, UserCheck, ShieldAlert,
     Megaphone, Upload, ExternalLink, QrCode, Smartphone, Users, TicketCheck,
+    ImagePlus, LoaderCircle,
 } from 'lucide-react';
 import { QRCodeCanvas } from 'qrcode.react';
 import { storageImage, uploadPublicImage } from '../../lib/storage';
@@ -2080,7 +2081,7 @@ function EditorPanel({ form, setForm, dirty, saving, onSave, onDiscard, venueNam
                     </Group>
 
                     {/* Prizes */}
-                    <Group title="Prizes" blurb="Labels only — attached to ranks at Settle and read out on the night.">
+                    <Group title="Prizes" blurb="Attached to ranks at Settle and read out on the night. Add an image and the prize shows it on the League ticket, the register sheet, the promo page and the live board — a square shot on a clean background works best, 600px or more.">
                         <PrizeEditor prizes={form.prizes} onChange={v => set({ prizes: v })} />
                     </Group>
 
@@ -2283,32 +2284,56 @@ function ActivityGrid({ value, onChange }) {
     );
 }
 
+// Prizes are `live_events.prizes` — a jsonb array of {rank, label, image_url?}
+// that every RPC and edge fn passes through wholesale, so the image needs no
+// migration: it is simply carried on the row and every surface that renders
+// prizes (League ticket, register sheet, promo page, live board) knows to look
+// for it. Uploads share the reward-images bucket (the one admins already have
+// storage policies for) under event-prizes/.
 function PrizeEditor({ prizes, onChange }) {
     const rows = Array.isArray(prizes) ? prizes : [];
     const setRow = (i, patch) => onChange(rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
     return (
-        <div className="space-y-2.5">
-            {rows.length === 0 && <p className="text-[12px] text-[#999999]">No prizes configured.</p>}
+        <div className="space-y-3">
+            {rows.length === 0 && (
+                <p className="text-[12px] text-[#999999]">No prizes configured — the ticket, sheet, promo page and board all skip the section.</p>
+            )}
             {rows.map((r, i) => (
-                <div key={i} className="flex items-center gap-3">
-                    <div className="relative">
+                <div
+                    key={i}
+                    className="flex items-center gap-4 p-3 pr-3 rounded-2xl bg-white border border-[#E6E6E1] hover:border-[#D8D8D2] transition-all max-w-2xl"
+                >
+                    <PrizeImageTile
+                        value={r.image_url}
+                        rank={r.rank ?? i + 1}
+                        onChange={url => setRow(i, { image_url: url })}
+                    />
+                    <div className="flex-1 min-w-0 flex flex-col gap-2">
+                        <div className="flex items-center gap-2.5">
+                            <div className="flex items-center gap-2 h-10 pl-3 pr-1 rounded-xl bg-[#F4F4F1] border border-[#E6E6E1] shrink-0">
+                                <span className="text-[9.5px] font-black uppercase tracking-[0.22em] text-[#999999]">Rank</span>
+                                <input
+                                    type="number" min={1} max={100} value={r.rank ?? i + 1}
+                                    onChange={e => setRow(i, { rank: parseInt(e.target.value || '1', 10) })}
+                                    className="w-12 h-8 bg-transparent font-mono text-sm text-center text-[#1A1A1A] outline-none"
+                                    aria-label="Rank"
+                                />
+                            </div>
+                            <span className="text-[10.5px] font-black uppercase tracking-[0.2em] text-[#B8A800] w-9 shrink-0">
+                                {ordinal(r.rank ?? i + 1)}
+                            </span>
+                        </div>
                         <input
-                            type="number" min={1} max={100} value={r.rank ?? i + 1}
-                            onChange={e => setRow(i, { rank: parseInt(e.target.value || '1', 10) })}
-                            className="w-20 h-10 px-3 bg-[#F4F4F1] border border-[#E6E6E1] rounded-xl font-mono text-sm text-center text-[#1A1A1A] outline-none focus:border-[#10B981]/40"
-                            aria-label="Rank"
+                            type="text" value={r.label ?? ''} placeholder="Prize — e.g. 3 months free membership"
+                            onChange={e => setRow(i, { label: e.target.value })}
+                            className="w-full h-10 px-4 bg-[#F4F4F1] border border-[#E6E6E1] rounded-xl text-sm text-[#1A1A1A] outline-none focus:border-[#10B981]/40"
+                            aria-label="Prize label"
                         />
                     </div>
-                    <input
-                        type="text" value={r.label ?? ''} placeholder="Prize label"
-                        onChange={e => setRow(i, { label: e.target.value })}
-                        className="flex-1 max-w-md h-10 px-4 bg-[#F4F4F1] border border-[#E6E6E1] rounded-xl text-sm text-[#1A1A1A] outline-none focus:border-[#10B981]/40"
-                        aria-label="Prize label"
-                    />
                     <button
                         type="button" aria-label="Remove prize"
                         onClick={() => onChange(rows.filter((_, idx) => idx !== i))}
-                        className="w-10 h-10 rounded-xl bg-[#F4F4F1] border border-[#E6E6E1] flex items-center justify-center text-[#999999] hover:text-[#F43F5E] transition-all"
+                        className="w-10 h-10 self-start rounded-xl bg-[#F4F4F1] border border-[#E6E6E1] flex items-center justify-center text-[#999999] hover:text-[#F43F5E] transition-all shrink-0"
                     >
                         <Trash2 size={14} />
                     </button>
@@ -2316,10 +2341,76 @@ function PrizeEditor({ prizes, onChange }) {
             ))}
             <button
                 type="button"
-                onClick={() => onChange([...rows, { rank: rows.length + 1, label: '' }])}
+                onClick={() => onChange([...rows, { rank: rows.length + 1, label: '', image_url: null }])}
                 className="inline-flex items-center gap-2 h-10 px-4 rounded-xl bg-[#F4F4F1] border border-[#E6E6E1] text-[10.5px] font-bold uppercase tracking-[0.18em] text-[#555555] hover:text-[#1A1A1A] transition-all"
             >
                 <Plus size={13} /> Add prize
+            </button>
+        </div>
+    );
+}
+
+const ordinal = (n) => (n === 1 ? '1st' : n === 2 ? '2nd' : n === 3 ? '3rd' : `${n}th`);
+
+// The square image slot on a prize row. Empty = a dashed drop-zone that IS
+// the file input; filled = the image on a dark tile (that is what it sits on
+// everywhere it renders) with replace-on-hover and a corner remove. Same
+// bucket + size ceiling as the event logo.
+function PrizeImageTile({ value, rank, onChange }) {
+    const toast = useToast();
+    const [uploading, setUploading] = useState(false);
+
+    const handleFile = async (e) => {
+        const file = e.target.files?.[0];
+        e.target.value = '';
+        if (!file) return;
+        if (!file.type?.startsWith('image/')) { toast.error('Prize images must be an image file'); return; }
+        if (file.size > 5 * 1024 * 1024) { toast.error('Keep the prize image under 5MB'); return; }
+        setUploading(true);
+        try {
+            const url = await uploadPublicImage('reward-images', file, 'event-prizes');
+            onChange(url);
+            toast.success('Prize image uploaded — save to apply');
+        } catch (err) {
+            toast.error(err.message ?? 'Upload failed');
+        } finally {
+            setUploading(false);
+        }
+    };
+
+    if (!value) {
+        return (
+            <label
+                className={`relative w-[88px] h-[88px] shrink-0 rounded-xl border border-dashed border-[#D8D8D2] bg-[#FAFAF8] flex flex-col items-center justify-center gap-1.5 text-[#999999] hover:text-[#1A1A1A] hover:border-[#B8B8B0] hover:bg-[#F4F4F1] transition-all cursor-pointer ${uploading ? 'opacity-50 pointer-events-none' : ''}`}
+                aria-label={`Add image for the ${ordinal(rank)} prize`}
+            >
+                {uploading ? <LoaderCircle size={16} className="animate-spin" /> : <ImagePlus size={16} />}
+                <span className="text-[9px] font-black uppercase tracking-[0.18em]">{uploading ? 'Saving' : 'Image'}</span>
+                <input type="file" accept="image/*" className="hidden" onChange={handleFile} disabled={uploading} />
+            </label>
+        );
+    }
+
+    return (
+        <div className="relative w-[88px] h-[88px] shrink-0 rounded-xl overflow-hidden bg-[#141414] border border-[#E6E6E1] group/tile">
+            <img
+                src={storageImage(value, 256)}
+                alt={`${ordinal(rank)} prize`}
+                className="w-full h-full object-cover"
+            />
+            <label
+                className={`absolute inset-0 flex items-center justify-center bg-black/55 text-white text-[9px] font-black uppercase tracking-[0.18em] opacity-0 group-hover/tile:opacity-100 focus-within:opacity-100 transition-opacity cursor-pointer ${uploading ? 'opacity-100 pointer-events-none' : ''}`}
+                aria-label={`Replace image for the ${ordinal(rank)} prize`}
+            >
+                {uploading ? <LoaderCircle size={16} className="animate-spin" /> : 'Replace'}
+                <input type="file" accept="image/*" className="hidden" onChange={handleFile} disabled={uploading} />
+            </label>
+            <button
+                type="button" aria-label="Remove prize image"
+                onClick={() => onChange(null)}
+                className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/70 text-white flex items-center justify-center opacity-0 group-hover/tile:opacity-100 focus:opacity-100 hover:bg-[#F43F5E] transition-all"
+            >
+                <X size={10} />
             </button>
         </div>
     );

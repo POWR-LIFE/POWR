@@ -35,3 +35,6 @@ export const rewardHeroUri = (url: string | null | undefined) => storageImage(ur
 
 /** Reward/partner logos. */
 export const rewardLogoUri = (url: string | null | undefined) => storageImage(url, 512, 512);
+
+/** Live-event prize thumbnails (League ticket rows, register sheet). */
+export const prizeImageUri = (url: string | null | undefined) => storageImage(url, 256, 256);
