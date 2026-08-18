@@ -35,6 +35,15 @@ VENUE="${WATCH_VENUE:-7d865c3b}"   # POWR partner id prefix (radius 40m)
 # (v45 — its presence pass now gates on last_proven_at, so an unprovable confirm
 # no longer buys another 5 minutes of silence).
 #
+# Superseded ~11:32Z by the 1273ad0 bundles: a late-resolved visit now confirms on
+# PRESENT geometry rather than FRESH proof. Run 2 Android (pure background, visit
+# ba6d432c) had 3 wakes and ZERO confirms 20 minutes in — the honest fix ages
+# made provenInside false on every acquire replay and the old gate skipped the
+# round-trip entirely. Every one of that visit's 3 confirms was a nonce wake.
+# ⚠ Both phones were on the 08:54 bundles for BOTH 08-18 runs; they pick this one
+# up on next foreground, so the first heartbeat after a reinstall/open reads
+# STALE-OTA(01a01410|01a0140e) until then. That is the previous good bundle, not a
+# fault — but do not start a run on it, the gate bug is in it.
 # ⚠ Both phones were confirmed on these exact bundles at 08:54Z before the beacon
 # went out, so the first heartbeat should read `AND=fixed iOS=fixed`. If it says
 # STALE-OTA, the app has been reinstalled or rolled back — do NOT arm the fences
@@ -48,8 +57,8 @@ VENUE="${WATCH_VENUE:-7d865c3b}"   # POWR partner id prefix (radius 40m)
 # it as "Change 2 still outstanding", NOT as background throttling — the
 # discriminator is a `stream_start_failed {at:check_in, mode:dwell}` row, which
 # this bundle emits for the first time.
-AND_OTA="${WATCH_AND_OTA:-01a01410-cd0b-70e8-b529-cbd0d23aac3a}"   # preview / android
-IOS_OTA="${WATCH_IOS_OTA:-01a0140e-03d3-7426-897c-f17bc8b631be}"   # production / ios
+AND_OTA="${WATCH_AND_OTA:-01a014a4-a650-70f4-bbe8-c79a2fa86de1}"   # preview / android
+IOS_OTA="${WATCH_IOS_OTA:-01a014a6-0306-70e2-8393-31cae6497552}"   # production / ios
 
 S=$(mktemp -d) || exit 1; trap 'rm -rf "$S"' EXIT
 get() { cat "$S/$1" 2>/dev/null; }
