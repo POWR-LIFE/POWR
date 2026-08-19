@@ -5,6 +5,7 @@ import * as Sharing from 'expo-sharing';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Platform,
   Pressable,
   Share,
   StyleSheet,
@@ -20,6 +21,7 @@ import { tracked } from '@/lib/analytics';
 import { fetchActiveLiveEvent, fetchLiveEventBySlug, type LiveEvent } from '@/lib/api/liveEvents';
 import { publishShareImage } from '@/lib/api/share';
 import { fetchProfile } from '@/lib/api/user';
+import { SAVE_SHEET_HINT, cardFilename, saveCardImage, saveCardNotice } from '@/lib/saveCard';
 import {
   buildPrizeShareMessage,
   buildPrizeSharePath,
@@ -117,7 +119,8 @@ export default function SharePrizeScreen() {
   const cardRef = useRef<View>(null);
   const readyRef = useRef(false);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [busy, setBusy] = useState<'share' | 'save' | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [busy, setBusy] = useState<'share' | 'post' | 'save' | null>(null);
 
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   // Reserve space for header (~52) + footer (~94) + gaps.
@@ -167,21 +170,44 @@ export default function SharePrizeScreen() {
     }
   }
 
-  async function handleSave() {
+  /** The full-res PNG both Post and Save hand out. */
+  async function captureFullRes() {
+    await awaitReady();
+    return captureRef(cardRef, {
+      format: 'png',
+      quality: 1,
+      width: 1080,
+      height: 1920,
+      result: 'tmpfile',
+    });
+  }
+
+  async function handlePost() {
     if (!cardRef.current || busy) return;
-    setBusy('save');
+    setBusy('post');
+    setNotice(null);
     try {
-      await awaitReady();
-      const uri = await captureRef(cardRef, {
-        format: 'png',
-        quality: 1,
-        width: 1080,
-        height: 1920,
-        result: 'tmpfile',
-      });
+      const uri = await captureFullRes();
       await Sharing.shareAsync(uri, { mimeType: 'image/png', UTI: 'public.png', dialogTitle: 'Post the prize' });
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : 'Could not share your card.');
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /** Keep the image itself — see lib/saveCard.ts for the two routes and why. */
+  async function handleSave() {
+    if (!cardRef.current || busy) return;
+    setBusy('save');
+    setNotice(Platform.OS === 'ios' ? SAVE_SHEET_HINT : null);
+    try {
+      const uri = await captureFullRes();
+      const result = await saveCardImage(uri, cardFilename(`prize-${rank}`));
+      setNotice(saveCardNotice(result));
+    } catch (e) {
+      setNotice(null);
+      setLoadError(e instanceof Error ? e.message : 'Could not save your card.');
     } finally {
       setBusy(null);
     }
@@ -234,13 +260,20 @@ export default function SharePrizeScreen() {
             <ActionButton
               icon="share-social-outline"
               label="Post"
-              onPress={tracked('share_prize_post', handleSave)}
+              onPress={tracked('share_prize_post', handlePost)}
+              loading={busy === 'post'}
+              disabled={busy !== null}
+            />
+            <ActionButton
+              icon="download-outline"
+              label="Save"
+              onPress={tracked('share_prize_save', handleSave)}
               loading={busy === 'save'}
               disabled={busy !== null}
             />
           </View>
           <Text style={styles.helperText}>
-            Share sends a tappable link preview. Post shares the image to TikTok, Instagram, X, Threads and more.
+            {notice ?? 'Share sends a tappable link preview. Post shares the image to TikTok, Instagram and more. Save keeps the image on your phone.'}
           </Text>
         </View>
       )}
@@ -262,7 +295,7 @@ const styles = StyleSheet.create({
   body: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24, gap: 12 },
   errorText: { color: '#f87171', fontSize: 13, textAlign: 'center' },
   footer: { paddingHorizontal: 24, paddingTop: 8, gap: 14 },
-  actionRow: { flexDirection: 'row', justifyContent: 'center', gap: 40 },
+  actionRow: { flexDirection: 'row', justifyContent: 'center', gap: 32 },
   action: { alignItems: 'center', gap: 8 },
   actionCircle: { width: 60, height: 60, borderRadius: 30, alignItems: 'center', justifyContent: 'center' },
   actionCirclePrimary: { backgroundColor: GOLD },
