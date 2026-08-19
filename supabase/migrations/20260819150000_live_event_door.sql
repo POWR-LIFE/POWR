@@ -31,6 +31,12 @@ alter table public.live_events
   add column if not exists doors_open_at  timestamptz,
   add column if not exists doors_close_at timestamptz;
 
+-- Disallow inverted door bands when both ends are set.
+alter table public.live_events
+  add constraint live_events_doors_window check (
+    doors_open_at is null or doors_close_at is null or doors_close_at > doors_open_at
+  );
+
 -- Manual check-ins — "an admin at the door IS the check" (same stance
 -- as admin_add_event_participants). One row per person per event;
 -- un-marking deletes it, so the table only ever holds live claims.
