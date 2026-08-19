@@ -17,6 +17,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { fontFamily } from '@/constants/tokens';
+import { useKeyboardHeight } from '@/hooks/useKeyboardHeight';
 import { durationLabel } from '@/hooks/useSharedChallenges';
 import { groupBonus } from '@/lib/social/bonus';
 import type { ChallengeTemplate, Friend, IconSpec, SharedChallenge } from '@/lib/social/types';
@@ -94,6 +95,7 @@ export function CreateChallengeSheet({
   onLeave,
 }: CreateChallengeSheetProps) {
   const insets = useSafeAreaInsets();
+  const kbHeight = useKeyboardHeight();
   const [templateId, setTemplateId] = useState<string | null>(initialTemplateId ?? templates[0]?.id ?? null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [submitting, setSubmitting] = useState(false);
@@ -226,14 +228,32 @@ export function CreateChallengeSheet({
     }
   };
 
+  // Android: the modal window doesn't resize for the keyboard, so lift the sheet
+  // by the keyboard height ourselves and shrink the results list to match. iOS
+  // keeps KeyboardAvoidingView's `padding`, which works there.
+  const lift = Platform.OS === 'android' ? kbHeight : 0;
+  const resultsMaxHeight = Math.max(140, SCREEN_H * 0.5 - lift);
+
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={handleClose}>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      transparent
+      statusBarTranslucent
+      navigationBarTranslucent
+      onRequestClose={handleClose}
+    >
       <KeyboardAvoidingView
         style={styles.overlay}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <Pressable style={styles.backdrop} onPress={handleClose} />
-        <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 16) + 8 }]}>
+        <View
+          style={[
+            styles.sheet,
+            { paddingBottom: lift > 0 ? lift + 12 : Math.max(insets.bottom, 16) + 8 },
+          ]}
+        >
           <View style={styles.handle} />
 
           {searchMode ? (
@@ -316,7 +336,7 @@ export function CreateChallengeSheet({
               </View>
 
               <ScrollView
-                style={styles.searchResults}
+                style={{ maxHeight: resultsMaxHeight }}
                 keyboardShouldPersistTaps="handled"
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={{ gap: 12, paddingBottom: 8 }}
@@ -646,7 +666,6 @@ const styles = StyleSheet.create({
   searchFieldPlaceholder: { flex: 1, fontFamily: fontFamily.regular, fontSize: 14, color: MUTED },
   // focused search view: input + a capped, scrollable results area (no footer)
   searchPane: { gap: 14, paddingTop: 2 },
-  searchResults: { maxHeight: SCREEN_H * 0.5 },
   searchNote: { fontFamily: fontFamily.light, fontSize: 12.5, color: SECONDARY, lineHeight: 17, paddingHorizontal: 2 },
   resultsCard: { backgroundColor: CARD_BG, borderRadius: 14, borderWidth: 1, borderColor: BORDER, paddingHorizontal: 12 },
   resultDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: BORDER },

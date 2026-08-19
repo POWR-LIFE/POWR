@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Dimensions, KeyboardAvoidingView, Modal, Platform, Pressable,
   ScrollView, StyleSheet, Text, TextInput, View,
@@ -8,6 +8,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { fontFamily } from '@/constants/tokens';
+import { useKeyboardHeight } from '@/hooks/useKeyboardHeight';
 import type { Friend } from '@/lib/social/types';
 import { Avatar } from './Avatar';
 
@@ -51,6 +52,8 @@ export function InvitePeopleSheet({
   visible, onClose, friends, alreadyInIds, onInvite, search, sendRequest,
 }: InvitePeopleSheetProps) {
   const insets = useSafeAreaInsets();
+  const kbHeight = useKeyboardHeight();
+  const scrollRef = useRef<ScrollView>(null);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<Friend[]>([]);
   const [searching, setSearching] = useState(false);
@@ -100,6 +103,12 @@ export function InvitePeopleSheet({
     setRequested((prev) => new Set(prev).add(f.id));
   };
 
+  // Android: the modal window doesn't resize for the keyboard, so lift the
+  // sheet by the keyboard height ourselves and shrink the scroll body to match.
+  // iOS still gets KeyboardAvoidingView's `padding`, which works there.
+  const lift = Platform.OS === 'android' ? kbHeight : 0;
+  const bodyMaxHeight = Math.max(160, SCREEN_H * 0.62 - lift);
+
   const handleClose = () => {
     setQuery('');
     setResults([]);
@@ -110,13 +119,25 @@ export function InvitePeopleSheet({
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={handleClose}>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      transparent
+      statusBarTranslucent
+      navigationBarTranslucent
+      onRequestClose={handleClose}
+    >
       <KeyboardAvoidingView
         style={styles.overlay}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <Pressable style={styles.backdrop} onPress={handleClose} />
-        <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 16) + 8 }]}>
+        <View
+          style={[
+            styles.sheet,
+            { paddingBottom: lift > 0 ? lift + 12 : Math.max(insets.bottom, 16) + 8 },
+          ]}
+        >
           <View style={styles.handle} />
 
           <View style={styles.titleRow}>
@@ -127,7 +148,8 @@ export function InvitePeopleSheet({
           </View>
 
           <ScrollView
-            style={styles.body}
+            ref={scrollRef}
+            style={{ maxHeight: bodyMaxHeight }}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
             contentContainerStyle={{ gap: 18, paddingBottom: 8 }}
@@ -187,6 +209,7 @@ export function InvitePeopleSheet({
                   autoCorrect={false}
                   returnKeyType="search"
                   style={styles.searchInput}
+                  onFocus={() => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 120)}
                 />
                 {query.length > 0 && (
                   <Pressable hitSlop={8} onPress={() => setQuery('')} accessibilityRole="button" accessibilityLabel="Clear search">
@@ -266,7 +289,6 @@ const styles = StyleSheet.create({
   titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   sheetTitle: { fontFamily: fontFamily.light, fontSize: 24, color: TEXT, letterSpacing: -0.4 },
 
-  body: { maxHeight: SCREEN_H * 0.62 },
   sectionLabel: { fontFamily: fontFamily.medium, fontSize: 10, letterSpacing: 2, color: FAINT, textTransform: 'uppercase' },
 
   searchWrap: {
