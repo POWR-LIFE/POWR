@@ -12,8 +12,10 @@ import { prizeArtUri } from '@/lib/storageImage';
 
 /**
  * Chat clients centre-crop a 9:16 image to roughly 3:4 in the bubble, taking
- * ~12.5% off the top and bottom. The wordmark, the label and the code all
- * live inside that band. Same constant as ShareCard, for the same reason.
+ * ~12.5% off the top and bottom. The bottom block (ordinal, wordmark, label,
+ * code) lives inside that band; the poster's top edge is the one thing that
+ * may lose a sliver in a bubble — a price worth paying for a poster you can
+ * actually read. Same constant as ShareCard, for the same reason.
  */
 const CROP_SAFE_Y = 250;
 
@@ -42,12 +44,14 @@ interface PrizeShareCardProps extends ViewProps {
  * The prize as a social card — what a member sends when they want a friend to
  * see what's on the line at an event.
  *
- * The poster IS the card: it sits contained inside a gold-hairline frame on a
- * dark, blurred echo of itself, never cropped (the artwork carries its own
- * composition and the viewer already promised not to cut it). Above it the
- * POWR wordmark and the ordinal; beneath it the prize label, the event and its
- * week, then the sharer's code and the POWR.LIFE mark — because Stories strip
- * the caption, the image has to carry the whole invite on its own.
+ * The poster IS the card: it fills the whole stage above the text — full
+ * height, contained (a portrait poster gets blurred side bars, never a cropped
+ * edge; the viewer already promised not to cut it). Beneath it the ordinal
+ * and the POWR wordmark, the prize label, the event and its week, then the
+ * sharer's code and the POWR.LIFE mark — because
+ * Stories strip the caption, the image has to carry the whole invite on its
+ * own. The poster runs under the bottom block's fade so the two read as one
+ * surface, and the stage is sized from the block's MEASURED height.
  *
  * Rendered off-screen at 720×1280 / 1080×1920 and captured with
  * react-native-view-shot, exactly like ShareCard and RewardShareCard.
@@ -86,23 +90,23 @@ export const PrizeShareCard = forwardRef<View, PrizeShareCardProps>(
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    // The frame: as wide as the gutters allow, as tall as the space between
-    // the header and the bottom block, cut to the picture's own aspect.
-    const slotTop = 420;
-    const slotBottom = bodyH / s + 40;
-    const maxW = 1080 - 2 * 110;
-    // An imageless prize shows its rank as a monogram: a square tile, and a
-    // smaller one — a number doesn't need a poster's worth of frame.
-    const maxH = Math.min(artUri ? 840 : 600, 1920 - slotTop - slotBottom);
-    const frameAspect = artUri ? aspect : 1;
-    let frameH = Math.min(maxH, maxW / frameAspect);
-    let frameW = frameH * frameAspect;
-    if (frameW > maxW) { frameW = maxW; frameH = frameW / frameAspect; }
+    // The poster owns everything above the text: full height of that space,
+    // contained (so a portrait poster gets blurred side bars rather than a
+    // cropped edge), running a little under the bottom block so the fade
+    // reads as one surface. The header sits ON the poster, over a top scrim.
+    const stageH = 1920 - bodyH / s + 60;
+    const stageW = 1080;
+    // An imageless prize shows its rank as a monogram centred in the stage.
+    const posterAspect = artUri ? aspect : 1;
+    let posterH = stageH;
+    let posterW = posterH * posterAspect;
+    if (posterW > stageW) { posterW = stageW; posterH = posterW / posterAspect; }
 
     return (
       <View ref={ref} collapsable={false} style={[styles.root, { width, height }, style]} {...rest}>
-        {/* Ground: a dark, heavily blurred echo of the poster so the card
-            inherits the artwork's palette instead of sitting on flat black. */}
+        {/* Ground: a dark, heavily blurred echo of the poster so the side
+            bars and the bottom block inherit the artwork's palette instead of
+            sitting on flat black. */}
         {artUri ? (
           <Image
             source={{ uri: artUri }}
@@ -116,59 +120,44 @@ export const PrizeShareCard = forwardRef<View, PrizeShareCardProps>(
           />
         ) : null}
         <LinearGradient
-          colors={['rgba(13,13,13,0.88)', 'rgba(13,13,13,0.78)', 'rgba(13,13,13,0.96)']}
-          locations={[0, 0.5, 1]}
+          colors={['rgba(13,13,13,0.72)', 'rgba(13,13,13,0.72)', 'rgba(13,13,13,0.96)']}
+          locations={[0, 0.6, 1]}
           style={StyleSheet.absoluteFillObject}
         />
 
-        {/* ── Header ──────────────────────────────────────────────── */}
-        <View style={[styles.header, { paddingHorizontal: 60 * s, paddingTop: CROP_SAFE_Y * s }]}>
-          <Image
-            source={require('@/assets/images/powrlogotext.png')}
-            style={{ width: 400 * s, height: 120 * s, marginLeft: -50 * s }}
-            contentFit="contain"
-            transition={0}
-          />
-          <View style={{ flex: 1 }} />
-          <View style={[styles.rankPill, { paddingHorizontal: 26 * s, paddingVertical: 14 * s, borderRadius: 100 * s }]}>
-            <Text style={[styles.rankPillText, { fontSize: 24 * s, letterSpacing: 4 * s }]}>
-              {`${rankLabel(prize.rank)} PRIZE`}
-            </Text>
-          </View>
-        </View>
-
-        {/* ── The poster ──────────────────────────────────────────── */}
-        <View style={[StyleSheet.absoluteFillObject, styles.centreSlot, { paddingTop: slotTop * s, paddingBottom: slotBottom * s }]} pointerEvents="none">
-          <View
-            style={[
-              styles.frame,
-              {
-                width: frameW * s,
-                height: frameH * s,
-                borderRadius: 36 * s,
-                borderWidth: Math.max(1, 2 * s),
-              },
-            ]}
-          >
-            {artUri ? (
-              <Image
-                source={{ uri: artUri }}
-                style={StyleSheet.absoluteFillObject}
-                contentFit="contain"
-                transition={0}
-                cachePolicy="memory-disk"
-                accessibilityIgnoresInvertColors
-                onLoad={(e) => {
-                  const { width: w, height: h } = e.source;
-                  if (w > 0 && h > 0) setAspect(w / h);
-                  imageDone();
-                }}
-                onError={imageDone}
-              />
-            ) : (
+        {/* ── The poster (the stage) ──────────────────────────────── */}
+        <View style={[styles.stage, { height: stageH * s }]} pointerEvents="none">
+          {artUri ? (
+            <Image
+              source={{ uri: artUri }}
+              style={{ width: posterW * s, height: posterH * s }}
+              contentFit="contain"
+              transition={0}
+              cachePolicy="memory-disk"
+              accessibilityIgnoresInvertColors
+              onLoad={(e) => {
+                const { width: w, height: h } = e.source;
+                if (w > 0 && h > 0) setAspect(w / h);
+                imageDone();
+              }}
+              onError={imageDone}
+            />
+          ) : (
+            <View
+              style={[
+                styles.monogramTile,
+                { width: 600 * s, height: 600 * s, borderRadius: 48 * s, borderWidth: Math.max(1, 2 * s) },
+              ]}
+            >
               <Text style={[styles.monogram, { fontSize: 360 * s, letterSpacing: -12 * s }]}>{prize.rank}</Text>
-            )}
-          </View>
+            </View>
+          )}
+          {/* Foot fade into the bottom block. */}
+          <LinearGradient
+            colors={['rgba(13,13,13,0)', 'rgba(13,13,13,0.75)', 'rgba(13,13,13,1)']}
+            locations={[0, 0.55, 0.85]}
+            style={[styles.stageFade, { height: 300 * s }]}
+          />
         </View>
 
         {/* ── Body (pinned to bottom) ─────────────────────────────── */}
@@ -176,6 +165,20 @@ export const PrizeShareCard = forwardRef<View, PrizeShareCardProps>(
           style={[styles.body, { paddingHorizontal: 60 * s, paddingBottom: CROP_SAFE_Y * s }]}
           onLayout={(e) => setBodyH(e.nativeEvent.layout.height)}
         >
+          <View style={[styles.markRow, { marginBottom: 30 * s }]}>
+            <View style={[styles.rankPill, { paddingHorizontal: 26 * s, paddingVertical: 14 * s, borderRadius: 100 * s }]}>
+              <Text style={[styles.rankPillText, { fontSize: 24 * s, letterSpacing: 4 * s }]}>
+                {`${rankLabel(prize.rank)} PRIZE`}
+              </Text>
+            </View>
+            <View style={{ flex: 1 }} />
+            <Image
+              source={require('@/assets/images/powrlogotext.png')}
+              style={{ width: 300 * s, height: 90 * s, marginRight: -36 * s }}
+              contentFit="contain"
+              transition={0}
+            />
+          </View>
           <Text style={[styles.label, { fontSize: 58 * s, lineHeight: 66 * s, letterSpacing: -0.5 * s }]} numberOfLines={2}>
             {prize.label}
           </Text>
@@ -218,29 +221,25 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     position: 'relative',
   },
-  header: {
-    position: 'absolute',
-    top: 0, left: 0, right: 0,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    zIndex: 2,
-  },
+  markRow: { flexDirection: 'row', alignItems: 'center' },
   // Solid gold, black type — the one chip that reads on any artwork, same
   // as the gallery card's.
   rankPill: { backgroundColor: GOLD },
   rankPillText: { fontFamily: fontFamily.bold, color: '#0a0a0a' },
-  centreSlot: {
+  stage: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
     zIndex: 1,
   },
-  frame: {
-    overflow: 'hidden',
-    backgroundColor: 'rgba(0,0,0,0.35)',
-    borderColor: 'rgba(232,210,0,0.45)',
+  stageFade: { position: 'absolute', left: 0, right: 0, bottom: 0 },
+  monogramTile: {
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    borderColor: 'rgba(232,210,0,0.45)',
   },
   monogram: { fontFamily: fontFamily.extraLight, color: GOLD },
   body: {
