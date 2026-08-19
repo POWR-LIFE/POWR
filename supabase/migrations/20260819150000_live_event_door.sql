@@ -162,6 +162,7 @@ begin
                       then public._live_event_gate_count(v_event.id, pe.user_id)
                       else null end as gate_count
         ) g
+       order by coalesce(p.display_name, p.username, 'POWR member'), pe.user_id
        limit 1000
     )
     select jsonb_build_object(
