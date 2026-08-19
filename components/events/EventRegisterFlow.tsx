@@ -227,8 +227,31 @@ export function EventRegisterFlow({ event, visible, onClose, origin }: EventRegi
                         { paddingBottom: insets.bottom + 20, transform: [{ translateY: dragY }] },
                     ]}
                 >
+                    {/* The title block lives IN the header, not the body: the header is
+                        the only thing that owns the drag, so it has to be a real band to
+                        grab (the working sheets all do this) — a bare 24px strip round
+                        the 4px handle is missed by nearly every touch, which then lands
+                        on a ScrollView that doesn't bounce, and nothing moves. Text only
+                        in here: the hook claims the gesture on touch-down. */}
                     <View style={styles.dragHeader} {...panHandlers}>
                         <View style={styles.handle} />
+                        {stage === 'pitch' ? (
+                            <>
+                                <Text style={styles.eyebrow}>LIVE EVENT</Text>
+                                <Text style={styles.name}>{event.name}</Text>
+                                <Text style={styles.dates}>{eventDateRange(event)}</Text>
+                            </>
+                        ) : (
+                            <>
+                                <View style={styles.inRow}>
+                                    <Ionicons name="checkmark-circle" size={22} color={GOLD} />
+                                    <Text style={styles.inText}>You’re in</Text>
+                                </View>
+                                <Text style={styles.inSub}>
+                                    {event.name} · {eventDateRange(event)}
+                                </Text>
+                            </>
+                        )}
                     </View>
 
                     <ScrollView
@@ -238,10 +261,6 @@ export function EventRegisterFlow({ event, visible, onClose, origin }: EventRegi
                     >
                         {stage === 'pitch' ? (
                             <>
-                                <Text style={styles.eyebrow}>LIVE EVENT</Text>
-                                <Text style={styles.name}>{event.name}</Text>
-                                <Text style={styles.dates}>{eventDateRange(event)}</Text>
-
                                 {event.promo_headline ? (
                                     <Text style={styles.headline}>{event.promo_headline}</Text>
                                 ) : null}
@@ -302,14 +321,6 @@ export function EventRegisterFlow({ event, visible, onClose, origin }: EventRegi
                             </>
                         ) : (
                             <>
-                                <View style={styles.inRow}>
-                                    <Ionicons name="checkmark-circle" size={22} color={GOLD} />
-                                    <Text style={styles.inText}>You’re in</Text>
-                                </View>
-                                <Text style={styles.inSub}>
-                                    {event.name} · {eventDateRange(event)}
-                                </Text>
-
                                 {rules.length > 0 && (
                                     <View style={styles.rulesBlock}>
                                         <Text style={styles.blockEyebrow}>THE RULES</Text>
@@ -462,12 +473,16 @@ const styles = StyleSheet.create({
         borderColor: BORDER,
         maxHeight: '90%',
     },
-    dragHeader: { paddingTop: 12, paddingBottom: 8, alignItems: 'center' },
+    // Full-width band: handle + title block, so the whole top of the sheet is
+    // the grab target (see the header comment in the JSX).
+    dragHeader: { paddingTop: 12, paddingBottom: 4, paddingHorizontal: 24 },
     handle: {
+        alignSelf: 'center',
         width: 36,
         height: 4,
         borderRadius: 2,
         backgroundColor: 'rgba(255,255,255,0.18)',
+        marginBottom: 14,
     },
     body: { paddingHorizontal: 24, paddingBottom: 4 },
 
