@@ -359,7 +359,7 @@ const setCheckin = async (ev, row, present) => {
         if (!selected) return;
         const who = row.name ?? row.username ?? 'this member';
         if (!window.confirm(
-            `Remove ${who} from this event? Their registration is deleted outright — joined time, booking handoff and any DQ history go with it, and they can register again from the app.\n\nDisqualify instead if the registration was real and you want the record kept.${counts.results > 0 ? '\n\nResults are already frozen — re-settle afterwards.' : ''}`,
+            `Remove ${who} from this event? Their registration is deleted outright — joined time, booking handoff and any DQ history go with it, and they can register again from the app.\n\nDisqualify instead if the registration was real and you want the record kept.${counts.results > 0 ? '\n\nFinal results have already been saved — press Re-settle afterwards.' : ''}`,
         )) return;
         setRosterBusy(row.user_id);
         const { data, error } = await supabase.rpc('admin_remove_event_participant', {
@@ -372,7 +372,7 @@ const setCheckin = async (ev, row, present) => {
         if (selected.status !== 'draft') fetchOps(selected.id);
         await logAction(user.id, 'live_event_participant_removed', 'live_event', selected.id, { target_user: row.user_id });
         toast.success(data?.in_results
-            ? `${who} removed — they're still in the frozen results, re-settle to drop them`
+            ? `${who} removed — they're still in the saved final results, press Re-settle to remove them`
             : `${who} removed`);
     };
 
@@ -432,7 +432,7 @@ const setCheckin = async (ev, row, present) => {
         if (!selected || !form) return;
         if (!form.name.trim() || !form.slug.trim()) { toast.error('Name and slug are required'); return; }
         if (new Date(form.window_end_at) <= new Date(form.window_start_at)) {
-            toast.error('Window end must be after window start'); return;
+            toast.error('Scoring end must be after scoring start'); return;
         }
         if (form.promo_media_url) {
             // Same rule as reward heroes: direct files only, never a
@@ -523,13 +523,13 @@ const setCheckin = async (ev, row, present) => {
         setActing(null);
         if (error) { toast.error(error.message); return; }
         await logAction(user.id, 'live_event_settle', 'live_event', ev.id, { results: data });
-        toast.success(`Settled — ${data} result row${data === 1 ? '' : 's'} frozen`);
+        toast.success(`Settled — ${data} final place${data === 1 ? '' : 's'} saved`);
         fetchCounts(ev.id);
         fetchEvents();
     };
 
     const revealEvent = async (ev) => {
-        if (counts.results === 0) { toast.error('Settle first — there are no frozen results to reveal'); return; }
+        if (counts.results === 0) { toast.error('Press Settle first — there are no saved results to reveal yet'); return; }
         if (!window.confirm(`Reveal to everyone? The app winners card and the venue screen flip the moment you confirm. ${counts.results} frozen results will show.`)) return;
         await setStatus(ev, 'revealed', { revealed_at: new Date().toISOString() });
     };
@@ -830,9 +830,9 @@ function DoorPanel({ ev, data, busy, onRefresh, onMark }) {
                 <div className="min-w-0 flex-1">
                     <h2 className="text-lg font-bold text-[#1A1A1A] tracking-tight">Door</h2>
                     <p className="text-[12px] text-[#888888] leading-snug">
-                        Who&rsquo;s registered, who&rsquo;s qualified, and who the {event?.venue_name ? `${event.venue_name} ` : 'venue '}
-                        geofence has seen. The fence under-counts (it needs the app, Always + Precise location and a live
-                        device) — it never over-counts. Mark anyone it missed by hand.
+                        Who&rsquo;s registered, who&rsquo;s qualified, and who has been detected arriving at {event?.venue_name ? event.venue_name : 'the venue'}.
+                        Automatic detection can miss people (it needs the app installed, location set to Always + Precise, and a phone with signal) but
+                        it never counts someone who isn&rsquo;t there. Use the Mark arrived button for anyone it missed.
                         {band && <> <span className={band.fallback ? 'text-[#B45309]' : ''}>{band.label}.</span></>}
                     </p>
                 </div>
@@ -860,7 +860,7 @@ function DoorPanel({ ev, data, busy, onRefresh, onMark }) {
                 {!hasVenue && (
                     <div className="flex items-start gap-3 rounded-2xl border border-[#F59E0B]/30 bg-[#F59E0B]/5 px-4 py-3 text-[12px] text-[#92400E]">
                         <AlertTriangle size={15} className="shrink-0 mt-0.5" />
-                        <span>No venue partner is set on this event, so there is no geofence to read — arrivals here are manual marks only. Pick the venue in the editor below.</span>
+                        <span>No venue is set on this event, so arrivals can't be detected automatically — only people you mark by hand will show here. Pick the venue under Configuration below.</span>
                     </div>
                 )}
                 {band?.fallback && hasVenue && (
@@ -917,7 +917,7 @@ function DoorPanel({ ev, data, busy, onRefresh, onMark }) {
                 ) : shown.length === 0 ? (
                     <p className="text-[12px] text-[#999999] py-6 text-center">
                         {rows.length === 0
-                            ? 'Nobody yet — registrations, geofence arrivals and manual marks all land here.'
+                            ? 'Nobody yet — registrations, detected arrivals and people you mark by hand all show here.'
                             : 'Nobody matches this filter.'}
                     </p>
                 ) : (
@@ -1073,9 +1073,8 @@ function BookingsPanel({ data, busy, onSave, onRefresh }) {
                 <div className="min-w-0 flex-1">
                     <h2 className="text-lg font-bold text-[#1A1A1A] tracking-tight">Venue bookings</h2>
                     <p className="text-[12px] text-[#888888] leading-snug">
-                        Paste the attendee email export from the venue&rsquo;s booking system. Matching is by email
-                        only — someone who booked with a different address than their POWR account shows as a
-                        mismatch, not a match.
+                        Paste the list of attendee emails from the venue&rsquo;s booking system. People are matched by email
+                        only — if someone booked with a different email to their POWR account, they&rsquo;ll show as not matched.
                         {data?.uploaded_at && <> Last uploaded {fmtTime(data.uploaded_at)}.</>}
                     </p>
                 </div>
@@ -1300,9 +1299,9 @@ function RegistrationsPanel({ ev, data, busy, onRefresh, onAdd, onRemove, onDisq
                 <div className="min-w-0 flex-1">
                     <h2 className="text-lg font-bold text-[#1A1A1A] tracking-tight">Registrations & invites</h2>
                     <p className="text-[12px] text-[#888888] leading-snug">
-                        The raw roster and the invite reward trail — pays +{ev.invite_bonus_points} to each side per
-                        converted invite, +{ev.invite_milestone_bonus} at {ev.invite_milestone_n} conversions.
-                        Works while the event is a draft, so preview test runs show up here.
+                        Everyone who has registered, plus the invite rewards paid out — +{ev.invite_bonus_points} points to both people
+                        for each friend who completes their first verified workout, and +{ev.invite_milestone_bonus} at {ev.invite_milestone_n} friends.
+                        Test registrations made while the event is a draft also show up here.
                     </p>
                 </div>
                 <button
@@ -1363,10 +1362,10 @@ function RegistrationsPanel({ ev, data, busy, onRefresh, onAdd, onRemove, onDisq
                         <div className="rounded-2xl border border-[#8B5CF6]/25 bg-[#8B5CF6]/[0.04] p-4 mb-4 space-y-3">
                             <p className="text-[12px] text-[#666666] leading-snug">
                                 Search a profile by name, username or email, or paste a batch of addresses below.
-                                Either way they go straight onto the roster: <strong>the eligibility cutoff and the
-                                joining window don&rsquo;t apply</strong>, so someone who signed up in the queue outside
-                                still gets in. Someone with no POWR account can&rsquo;t be added — the download has to
-                                happen first.
+                                Either way they go straight onto the list: <strong>the eligibility cutoff and the
+                                event dates don&rsquo;t apply</strong>, so someone who signed up in the queue outside
+                                still gets in. Someone with no POWR account can&rsquo;t be added — they need to download
+                                the app first.
                             </p>
 
                             {/* Search — the path that doesn't assume you know the
@@ -1630,9 +1629,9 @@ function RegistrationsPanel({ ev, data, busy, onRefresh, onAdd, onRemove, onDisq
                         </div>
                     )}
                     <p className="text-[11px] text-[#999999] mt-2 leading-relaxed">
-                        Point transactions aren&apos;t tagged with an event, so this feed is global — during a test run
-                        your rows are the newest. Conversion requires a {(ev.conversion_verifications ?? []).join(' or ') || 'verified'}
-                        {' '}session; manual never converts.
+                        This list covers invite bonuses from every event, not just this one — the newest are at the top.
+                        A friend counts once they complete a {(ev.conversion_verifications ?? []).join(' or ') || 'verified'}
+                        {' '}workout; a manually logged workout never counts.
                     </p>
                 </div>
             </div>
@@ -1647,10 +1646,10 @@ function RegistrationsPanel({ ev, data, busy, onRefresh, onAdd, onRemove, onDisq
 // how you check the card in Expo Go before pressing Schedule.
 
 const BOARD_STATES = [
-    ['auto',     'Auto',     'Behaves like the real thing under the simulated status'],
-    ['live',     'Live',     'Standings — testers’ real points merged with sample rows'],
-    ['locked',   'Sealed',   'The blur everyone stares at during event week'],
-    ['revealed', 'Winners',  'Sample results with the tester placed 4th'],
+    ['auto',     'Auto',     'Shows whatever a real user would see at this stage of the event'],
+    ['live',     'Live',     'Live leaderboard — testers’ real points mixed with sample rows'],
+    ['locked',   'Hidden',   'The hidden (blurred) leaderboard everyone sees while waiting for the reveal'],
+    ['revealed', 'Winners',  'Sample final results, with the tester placed 4th'],
 ];
 
 function PreviewBlock({ ev, acting, onSetPreview, onSetBoardState }) {
@@ -1709,7 +1708,7 @@ function PreviewBlock({ ev, acting, onSetPreview, onSetBoardState }) {
             {ev.preview_enabled && (
                 <div className="mt-4">
                     <div className="text-[9px] font-black uppercase tracking-[0.25em] text-[#999999] mb-2">
-                        Board preview — what testers see on the League leaderboard
+                        Leaderboard preview — what testers see in the app
                     </div>
                     <div className="flex gap-2 flex-wrap">
                         {BOARD_STATES.map(([value, label, hint]) => (
@@ -1729,17 +1728,17 @@ function PreviewBlock({ ev, acting, onSetPreview, onSetBoardState }) {
                         ))}
                     </div>
                     <p className="text-[11px] text-[#999999] mt-2 leading-relaxed">
-                        Sealed is the state real users hold all event week; Winners uses sample rows (tester
-                        placed 4th, prize labels from this event’s Prizes). The app picks it up within a minute
-                        — or instantly on a fresh open.
+                        Hidden is what real users see for the whole event week. Winners uses sample results (the tester
+                        placed 4th, with this event’s prize names). Testers’ apps update within a minute, or straight
+                        away if they reopen the app.
                     </p>
                 </div>
             )}
             <p className="text-[11px] text-[#999999] mt-2 leading-relaxed">
-                Only the accounts listed here see this draft in the app — the home card, register sheet and League
-                tab behave exactly as if the event were scheduled (or live once the window opens), with a PREVIEW
-                badge. Everyone else sees nothing until you press Schedule. Test registrations are real join rows;
-                they carry over if you launch, or vanish if you delete the draft.
+                Only the accounts listed here can see this draft event in the app. For them it looks exactly as it
+                will for everyone once scheduled (or live once scoring starts), with a PREVIEW badge. Everyone else
+                sees nothing until you press Schedule. Test registrations are real — they stay if you launch the
+                event, and disappear if you delete the draft.
             </p>
         </div>
     );
@@ -1784,8 +1783,8 @@ function LifecyclePanel({
                 <div className="min-w-0">
                     <h2 className="text-lg font-bold text-[#1A1A1A] tracking-tight">Lifecycle — {meta.label}</h2>
                     <p className="text-[12px] text-[#888888] leading-snug">
-                        {counts.participants} participant{counts.participants === 1 ? '' : 's'} · {counts.results} frozen result{counts.results === 1 ? '' : 's'}
-                        {pastLock && ev.status === 'live' ? ' · past lock time (board already hiding itself)' : ''}
+                        {counts.participants} participant{counts.participants === 1 ? '' : 's'} · {counts.results} saved final place{counts.results === 1 ? '' : 's'}
+                        {pastLock && ev.status === 'live' ? ' · past the leaderboard hide time (the board is already hidden in the app)' : ''}
                     </p>
                 </div>
                 <div className="flex-1 h-[1.5px] rounded-full" style={{ background: `linear-gradient(90deg, ${meta.color}40, transparent)` }} />
@@ -1851,8 +1850,8 @@ function LifecyclePanel({
                         <Btn icon={RefreshCw} label="Regenerate token" tone="danger" onClick={onRegenToken} />
                     </div>
                     <p className="text-[11px] text-[#999999] mt-2 leading-relaxed">
-                        Runs the venue screen full-screen — the token grants display access only and never sees through
-                        a locked board. Regenerating kills any previously shared link. The /live route ships separately.
+                        Open this link on the venue&apos;s big screen. It can only show the board — it can&apos;t reveal a hidden
+                        leaderboard early. Regenerating the link stops any previously shared link from working.
                     </p>
                     <div className="flex items-center gap-2 mt-3 flex-wrap">
                         <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[#AAAAAA]">Preview the screen:</span>
@@ -1898,9 +1897,9 @@ function LifecyclePanel({
                         </a>
                     </div>
                     <p className="text-[11px] text-[#999999] mt-2 leading-relaxed">
-                        The shareable send-out page — background media, venue logo, registration QR, POWR logo. Public
-                        (no token) from the moment the event is scheduled; while it's a draft only the Preview link
-                        works. Media and headline are set in Configuration below.
+                        The public web page to share when promoting the event — background, venue logo, registration QR
+                        code and POWR logo. Anyone can open it once the event is scheduled; while it&apos;s a draft only the
+                        Preview link works. Change the background and headline in Configuration below.
                     </p>
                 </div>
 
@@ -1912,10 +1911,9 @@ function LifecyclePanel({
                     </div>
                     <RegistrationQr slug={ev.slug} />
                     <p className="text-[11px] text-[#999999] mt-2 leading-relaxed">
-                        The same code the promo page shows — unique to this event
-                        (<span className="font-mono">?event={ev.slug}</span>), so scanners land on this event&apos;s card in
-                        the app. The download is a 1024px PNG for posters and socials. Regenerating the display token
-                        does NOT change this code, but changing the slug does — re-download after a slug change.
+                        The same QR code shown on the promo page. Scanning it opens this event in the app. The download is a
+                        1024px PNG for posters and social posts. Regenerating the venue screen link does not change this code,
+                        but changing the event&apos;s slug does — download it again if you change the slug.
                     </p>
                 </div>
             </div>
@@ -1984,8 +1982,8 @@ function OpsPanel({ ev, ops, standings, dqRows, dqBusy, anticheat, resultsCount,
                 <div className="min-w-0 flex-1">
                     <h2 className="text-lg font-bold text-[#1A1A1A] tracking-tight">Ops — live standings & vetting</h2>
                     <p className="text-[12px] text-[#888888] leading-snug">
-                        Admin view sees through the blur at any status. Wearable data lags 30–90 min behind
-                        reality — late scores are normal, not suspicious.
+                        You can always see the full leaderboard here, even while it&apos;s hidden in the app. Wearable data
+                        arrives 30–90 minutes late, so scores updating after the fact is normal, not suspicious.
                     </p>
                 </div>
                 <button
@@ -2004,7 +2002,7 @@ function OpsPanel({ ev, ops, standings, dqRows, dqBusy, anticheat, resultsCount,
                     <Stat label={ev.scope === 'opt_in' ? 'Joined' : 'Participants'} value={ops?.participant_count} />
                     <Stat label="Disqualified" value={ops?.disqualified_count} accent={ops?.disqualified_count > 0 ? '#F43F5E' : undefined} />
                     <Stat label="On the board" value={rows.length} />
-                    <Stat label="Frozen results" value={ops?.results_count} />
+                    <Stat label="Saved final places" value={ops?.results_count} />
                     <Stat label="Invite conversions" value={ops?.converted_count} accent="#10B981" />
                 </div>
 
@@ -2077,7 +2075,7 @@ function OpsPanel({ ev, ops, standings, dqRows, dqBusy, anticheat, resultsCount,
                         {resultsCount > 0 && (
                             <p className="text-[11px] text-[#B45309] mt-3 flex items-center gap-1.5">
                                 <AlertTriangle size={12} />
-                                Results are already frozen — after any disqualification, Re-settle so the snapshot drops them too.
+                                Final results have already been saved — after disqualifying anyone, press Re-settle so they're removed from the saved results too.
                             </p>
                         )}
                     </div>
@@ -2272,8 +2270,8 @@ function EditorPanel({ form, setForm, dirty, saving, onSave, onDiscard, venueNam
                     <h2 className="text-lg font-bold text-[#1A1A1A] tracking-tight">Configuration</h2>
                     <p className="text-[12px] text-[#888888] leading-snug">
                         {locked
-                            ? 'This event has been revealed — its configuration is read-only for the record.'
-                            : 'Every knob re-scores immediately: standings are computed from the ledger on read.'}
+                            ? 'Results have been revealed, so these settings can no longer be changed.'
+                            : 'Changes take effect as soon as you save — scores are recalculated straight away.'}
                     </p>
                 </div>
                 {dirty && !locked && (
@@ -2288,16 +2286,16 @@ function EditorPanel({ form, setForm, dirty, saving, onSave, onDiscard, venueNam
                         <Field label="Name">
                             <TextInput value={form.name} onChange={v => set({ name: v })} />
                         </Field>
-                        <Field label="Slug" hint="In the display URL; lowercase-kebab.">
+                        <Field label="Slug" hint="Short name used in the event's web links. Lowercase, words joined with dashes, e.g. fnl-x-powr.">
                             <TextInput value={form.slug} onChange={v => set({ slug: v })} mono />
                         </Field>
-                        <Field label="Logo" hint="The POWR side of the card's partnership lockup (venue logo · line · this). Upload a WHITE mark on a transparent background — it sits straight on the artwork, no chip. Blank = the white POWR mark.">
+                        <Field label="Logo" hint="The POWR-side logo on the event card, shown next to the venue's logo. Upload a white logo on a transparent background. Leave blank to use the standard white POWR logo.">
                             <EventLogoField value={form.logo_url} onChange={v => set({ logo_url: v })} />
                         </Field>
-                        <Field label="Logo only" hint="Hide the name on the app card — the lockup alone carries the identity, shown larger. The name is still used everywhere else.">
+                        <Field label="Logo only" hint="On: the app card shows just the logos (larger), with no event name underneath. The name still appears everywhere else.">
                             <Toggle on={form.logo_only} onFlip={() => set({ logo_only: !form.logo_only })} />
                         </Field>
-                        <Field label="Venue partner" hint="Optional — links the event to a gym/venue.">
+                        <Field label="Venue partner" hint="Optional. The gym or venue hosting the event.">
                             <VenuePicker
                                 venueId={form.venue_partner_id}
                                 venueName={venueName}
@@ -2307,70 +2305,70 @@ function EditorPanel({ form, setForm, dirty, saving, onSave, onDiscard, venueNam
                     </Group>
 
                     {/* Window */}
-                    <Group title="Window & lock" blurb="All times are London (your browser's clock). The scoring window is half-open: the end bound is the first moment that no longer counts.">
-                        <Field label="Window opens">
+                    <Group title="Dates & times" blurb="All times are UK time. Points earned from the moment scoring starts, up to (but not including) the moment it ends, count towards the event.">
+                        <Field label="Scoring starts" hint="Start of the competition. Points earned from this moment count.">
                             <DateTimeInput value={form.window_start_at} onChange={v => set({ window_start_at: v })} />
                         </Field>
-                        <Field label="Window ends">
+                        <Field label="Scoring ends" hint="End of the competition. Points earned from this moment on don't count.">
                             <DateTimeInput value={form.window_end_at} onChange={v => set({ window_end_at: v })} />
                         </Field>
-                        <Field label="Board auto-locks" hint="Board hides itself from this moment (no cron — checked on read). Blank = never auto-locks.">
+                        <Field label="Leaderboard hides" hint="From this moment the leaderboard is hidden in the app and everyone waits for the reveal. Usually the same as, or just after, scoring ends. Leave blank to keep it visible until you press Lock board.">
                             <DateTimeInput value={form.lock_at} onChange={v => set({ lock_at: v })} clearable />
                         </Field>
-                        <Field label="Doors open" hint="When arrivals at the venue start counting on the door board. Blank = from board lock (or window end).">
+                        <Field label="Doors open" hint="When people arriving at the venue start being counted on the Door tab. Leave blank to use the leaderboard hide time (or scoring end if that's blank).">
                             <DateTimeInput value={form.doors_open_at} onChange={v => set({ doors_open_at: v })} clearable />
                         </Field>
-                        <Field label="Doors close" hint="Last moment an arrival counts. Blank = 12 hours after doors open.">
+                        <Field label="Doors close" hint="After this, people arriving at the venue are no longer counted. Leave blank for 12 hours after doors open.">
                             <DateTimeInput value={form.doors_close_at} onChange={v => set({ doors_close_at: v })} clearable />
                         </Field>
-                        <Field label="Eligibility cutoff" hint="Accounts created after this can't compete. Blank = window open.">
+                        <Field label="Eligibility cutoff" hint="Anyone who created their POWR account after this time can't compete. Leave blank to use the scoring start time.">
                             <DateTimeInput value={form.eligibility_cutoff_at} onChange={v => set({ eligibility_cutoff_at: v })} clearable />
                         </Field>
-                        <Field label="Scope">
+                        <Field label="Who takes part" hint="Opt-in: people must join the event in the app to appear on the leaderboard. Global: every POWR member is on the leaderboard automatically.">
                             <div className="flex gap-2">
                                 {['opt_in', 'global'].map(s => (
                                     <Chip key={s} active={form.scope === s} onClick={() => set({ scope: s })}>
-                                        {s === 'opt_in' ? 'Opt-in (join to compete)' : 'Global (everyone on boards)'}
+                                        {s === 'opt_in' ? 'Opt-in (must join)' : 'Global (everyone)'}
                                     </Chip>
                                 ))}
                             </div>
                         </Field>
-                        <Field label="Board size" hint="Rows served to the app + snapshotted at Settle.">
+                        <Field label="Leaderboard size" hint="How many people are shown on the leaderboard in the app, and how many final places are saved when the event is settled.">
                             <NumberInput value={form.board_size} onChange={v => set({ board_size: v })} min={3} max={500} />
                         </Field>
                     </Group>
 
                     {/* Scoring */}
-                    <Group title="Scoring" blurb="What counts toward the event score. Penalties always subtract; bonuses never count — those two are not negotiable in the scorer.">
-                        <Field label="Counting activities" hint="Session types whose earn points count.">
+                    <Group title="Scoring" blurb="Choose which activity earns event points. Two rules are fixed and can't be changed here: penalties always reduce a score, and invite/sign-up bonus points never add to one.">
+                        <Field label="Activities that count" hint="Points from these workout types count towards the event. Pick All types to count everything.">
                             <ActivityGrid
                                 value={form.included_activities}
                                 onChange={v => set({ included_activities: v })}
                             />
                         </Field>
-                        <Field label="Manual logs count">
+                        <Field label="Manually logged workouts count" hint="On: workouts people type in by hand count. Off: only workouts verified by a gym check-in or wearable count.">
                             <Toggle on={form.count_manual} onFlip={() => set({ count_manual: !form.count_manual })} />
                         </Field>
-                        <Field label="Walking counts" hint="Kill-switch on top of the activity list.">
+                        <Field label="Walking counts" hint="Off: walking points are ignored, even if walking is selected above.">
                             <Toggle on={form.count_walking} onFlip={() => set({ count_walking: !form.count_walking })} />
                         </Field>
-                        <Field label="Streak bonuses count">
+                        <Field label="Streak bonuses count" hint="On: the daily streak bonus points people earn also count towards their event score.">
                             <Toggle on={form.count_streak} onFlip={() => set({ count_streak: !form.count_streak })} />
                         </Field>
                     </Group>
 
                     {/* Invites */}
-                    <Group title="Invites" blurb="A signup converts when the invitee logs their first qualifying verified workout — manual never converts, whatever is set here.">
-                        <Field label="Bonus per conversion" hint="Paid to BOTH sides.">
+                    <Group title="Invites" blurb="Rewards for bringing friends in. A friend who signs up with someone's code only counts as a full invite once they've completed their first verified workout — a manually logged workout never counts for this.">
+                        <Field label="Points per friend" hint="Paid to both the inviter and the friend once the friend completes their first verified workout.">
                             <NumberInput value={form.invite_bonus_points} onChange={v => set({ invite_bonus_points: v })} min={0} max={1000} unit="pts" />
                         </Field>
-                        <Field label="Milestone at" hint="Nth conversion pays the milestone bonus.">
+                        <Field label="Milestone after" hint="Number of friends someone needs to bring in to earn the extra milestone bonus below.">
                             <NumberInput value={form.invite_milestone_n} onChange={v => set({ invite_milestone_n: v })} min={0} max={50} unit="friends" />
                         </Field>
-                        <Field label="Milestone bonus">
+                        <Field label="Milestone bonus" hint="Extra points paid to the inviter when they reach the milestone. Set to 0 for no milestone bonus.">
                             <NumberInput value={form.invite_milestone_bonus} onChange={v => set({ invite_milestone_bonus: v })} min={0} max={5000} unit="pts" />
                         </Field>
-                        <Field label="Converting verifications">
+                        <Field label="Which workouts count as verified" hint="The friend's first workout must be verified in one of these ways.">
                             <div className="flex gap-2">
                                 {VERIFICATIONS.map(v => {
                                     const on = form.conversion_verifications?.includes(v);
@@ -2386,66 +2384,66 @@ function EditorPanel({ form, setForm, dirty, saving, onSave, onDiscard, venueNam
                                 })}
                             </div>
                         </Field>
-                        <Field label="Converting activities" hint="Walking/sleep excluded by default — wearables auto-create them.">
+                        <Field label="Which activities count for the first workout" hint="Walking and sleep are left out by default because wearables record them automatically without any effort.">
                             <ActivityGrid
                                 value={form.conversion_activities}
                                 onChange={v => set({ conversion_activities: v })}
                                 nullable={false}
                             />
                         </Field>
-                        <Field label="Conversion deadline" hint="Blank = window end.">
+                        <Field label="Invite deadline" hint="Friends must complete their first workout by this time for the invite to count. Leave blank to use the scoring end time.">
                             <DateTimeInput value={form.conversion_deadline_at} onChange={v => set({ conversion_deadline_at: v })} clearable />
                         </Field>
                     </Group>
 
                     {/* Entry gate */}
-                    <Group title="Entry gate" blurb="Refer-to-compete: users need this many referrals to appear on the leaderboard or see live standings. Joining stays open and revealed results stay public — the gate is the board, not the guest list.">
-                        <Field label="Referrals required" hint="0 = no gate.">
+                    <Group title="Invite requirement" blurb="Optional. Make people bring a certain number of friends before they can see or appear on the leaderboard. Anyone can still join the event, and the final results are public to everyone.">
+                        <Field label="Friends required" hint="How many friends someone must invite before they can see the leaderboard. 0 = no requirement.">
                             <NumberInput value={form.entry_gate_n} onChange={v => set({ entry_gate_n: v })} min={0} max={50} unit="friends" />
                         </Field>
-                        <Field label="What counts" hint="Signups can be met before the window opens; conversions need each friend's first verified workout.">
+                        <Field label="What counts as a friend" hint="Sign-ups: the friend just needs to create an account with the code (can happen before scoring starts). First workout: the friend also needs to complete their first verified workout.">
                             <div className="flex gap-2">
                                 <Chip active={form.entry_gate_counting === 'signups'} onClick={() => set({ entry_gate_counting: 'signups' })}>
-                                    Signups (code entered)
+                                    Signed up with code
                                 </Chip>
                                 <Chip active={form.entry_gate_counting === 'conversions'} onClick={() => set({ entry_gate_counting: 'conversions' })}>
-                                    Conversions (first verified workout)
+                                    Signed up + first verified workout
                                 </Chip>
                             </div>
                         </Field>
-                        <Field label="Counting from" hint="Referrals before this moment don't count. Blank = every referral.">
+                        <Field label="Only count friends invited after" hint="Friends invited before this time don't count towards the requirement. Leave blank to count every friend they've ever invited.">
                             <DateTimeInput value={form.entry_gate_since} onChange={v => set({ entry_gate_since: v })} clearable />
                         </Field>
                     </Group>
 
                     {/* Booking */}
-                    <Group title="Booking" blurb="The venue's own booking page. Blank hides every booking surface in the app — set it when their form opens and the CTAs appear on the next refresh. Attendee reconciliation lives in the Venue bookings panel.">
-                        <Field label="Booking URL" hint="May contain {email} and {name} — the app substitutes the registrant's details so the form can prefill where the platform supports it.">
+                    <Group title="Booking" blurb="Link to the venue's own booking page. Leave blank and the app shows no booking buttons; add it when the venue's form opens and the buttons appear. Use the Venue bookings tab to check who actually booked.">
+                        <Field label="Booking link" hint="You can include {email} and {name} in the link — the app swaps in the person's details so the venue's form can be pre-filled.">
                             <TextInput mono value={form.booking_url} onChange={v => set({ booking_url: v || null })} />
                         </Field>
                     </Group>
 
                     {/* Rules */}
-                    <Group title="Rules" blurb="Shown at registration and on the League ticket. One rule per line — keep each one short enough to read at a glance.">
-                        <Field label="Event rules" hint="e.g. Only points earned during the event week count.">
+                    <Group title="Rules" blurb="Shown to people when they register and on their event ticket in the app. One rule per line — keep each short.">
+                        <Field label="Event rules" hint="For example: Only points earned during the event week count.">
                             <RulesField value={form.rules} onChange={v => set({ rules: v })} />
                         </Field>
                     </Group>
 
                     {/* Prizes */}
-                    <Group title="Prizes" blurb="Attached to ranks at Settle and read out on the night. Add an image and the prize shows it on the League ticket, the register sheet, the promo page and the live board — a square shot on a clean background works best, 600px or more.">
+                    <Group title="Prizes" blurb="What each finishing place wins. Add an image and it appears on the event ticket, registration screen, promo page and venue screen — a square photo on a plain background, 600px or larger, works best.">
                         <PrizeEditor prizes={form.prizes} onChange={v => set({ prizes: v })} />
                     </Group>
 
                     {/* Promo page */}
-                    <Group title="Promo page" blurb="The shareable send-out page (URL in Lifecycle above). Venue logo comes from the venue partner; the QR sends people into the app to register.">
-                        <Field label="Background media" hint="A video (.mp4/.webm) or image behind the whole page. Blank = dark brand look.">
+                    <Group title="Promo page" blurb="The public web page you share to promote the event (link in the Lifecycle section above). The venue logo comes from the venue partner; the QR code sends people into the app to register.">
+                        <Field label="Background" hint="A video (.mp4/.webm) or image shown behind the whole page. Leave blank for the plain dark POWR look.">
                             <PromoMediaField
                                 value={form.promo_media_url}
                                 onChange={v => set({ promo_media_url: v })}
                             />
                         </Field>
-                        <Field label="Headline" hint="Optional line under the event name — e.g. what's at stake. Blank = name + dates only.">
+                        <Field label="Headline" hint="Optional line under the event name — for example what's up for grabs. Leave blank to show just the name and dates.">
                             <TextInput value={form.promo_headline} onChange={v => set({ promo_headline: v || null })} />
                         </Field>
                     </Group>
