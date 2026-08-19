@@ -1,12 +1,14 @@
+import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Image as ExpoImage } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 
 import { EventPrizeList, rankLabel } from '@/components/events/EventPrizeList';
 import { EventPrizeViewer } from '@/components/events/EventPrizeViewer';
-import type { LiveEventPrize } from '@/lib/api/liveEvents';
+import type { LiveEvent } from '@/lib/api/liveEvents';
 import { prizeArtUri } from '@/lib/storageImage';
 
 const GOLD = '#E8D200';
@@ -38,21 +40,60 @@ const CARD_MAX = 272;
  * label rows — the same shape they had inside the hero, just moved out of
  * it — so nothing regresses for events configured before images existed.
  *
+ * Every prize is shareable: the spotlight carries a SHARE button that hands
+ * off to /share-prize (the social-card flow), and the text-only card gets a
+ * share affordance of its own that opens the same spotlight on first prize.
+ *
  * Renders nothing at all when the event has no prizes.
  */
-export function EventPrizeGallery({ prizes }: { prizes: LiveEventPrize[] }) {
+export function EventPrizeGallery({ event }: { event: Pick<LiveEvent, 'slug' | 'prizes'> }) {
     const { width } = useWindowDimensions();
+    const router = useRouter();
     const [open, setOpen] = useState<number | null>(null);
+    const prizes = event.prizes;
 
     if (prizes.length === 0) return null;
 
     const hasImagery = prizes.some((p) => !!p.image_url);
 
+    // Fires after the spotlight has closed (see EventPrizeViewer.onShare).
+    const sharePrize = (index: number) => {
+        const prize = prizes[index];
+        if (!prize) return;
+        router.push({ pathname: '/share-prize', params: { slug: event.slug, rank: String(prize.rank) } });
+    };
+
+    const viewer = (
+        <EventPrizeViewer
+            prizes={prizes}
+            initialIndex={open ?? 0}
+            visible={open !== null}
+            onClose={() => setOpen(null)}
+            onShare={sharePrize}
+        />
+    );
+
     if (!hasImagery) {
         return (
             <View style={styles.rowsCard}>
-                <Text style={styles.eyebrow}>THE PRIZES</Text>
+                <View style={styles.rowsHead}>
+                    <Text style={styles.eyebrow}>THE PRIZES</Text>
+                    <Pressable
+                        onPress={() => {
+                            Haptics.selectionAsync();
+                            setOpen(0);
+                        }}
+                        hitSlop={10}
+                        style={({ pressed }) => [styles.rowsShare, pressed && { opacity: 0.7 }]}
+                        accessibilityRole="button"
+                        accessibilityLabel="Share the prizes"
+                    >
+                        <Ionicons name="paper-plane-outline" size={13} color={GOLD} />
+                        <Text style={styles.rowsShareText}>SHARE</Text>
+                    </Pressable>
+                </View>
                 <EventPrizeList prizes={prizes} max={prizes.length} />
+                {viewer}
             </View>
         );
     }
@@ -126,12 +167,7 @@ export function EventPrizeGallery({ prizes }: { prizes: LiveEventPrize[] }) {
                 })}
             </ScrollView>
 
-            <EventPrizeViewer
-                prizes={prizes}
-                initialIndex={open ?? 0}
-                visible={open !== null}
-                onClose={() => setOpen(null)}
-            />
+            {viewer}
         </View>
     );
 }
@@ -167,6 +203,9 @@ const styles = StyleSheet.create({
     label: { fontSize: 15, fontWeight: '300', color: TEXT, lineHeight: 20, letterSpacing: -0.2 },
 
     // Text-only fallback: the rows in a card of their own, under the hero.
+    rowsHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    rowsShare: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: -4 },
+    rowsShareText: { fontSize: 9, fontWeight: '800', color: GOLD, letterSpacing: 2 },
     rowsCard: {
         marginHorizontal: GUTTER,
         marginTop: 8,

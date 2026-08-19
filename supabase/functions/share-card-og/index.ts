@@ -18,6 +18,8 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const SITE = "https://powr.life";
+/** Mirrors share_cards.app_path's CHECK: the /app smart-link and nothing else. */
+const APP_PATH_RE = /^\/app(\?[A-Za-z0-9%._~&=-]*)?$/;
 
 const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
@@ -86,16 +88,26 @@ Deno.serve(async (req: Request) => {
 
   const { data: card } = await admin
     .from("share_cards")
-    .select("image_path, title, subtitle, referral_code")
+    .select("image_path, title, subtitle, referral_code, app_path")
     .eq("id", id)
     .maybeSingle();
 
   if (!card) return Response.redirect(`${SITE}/app`, 302);
 
   const image = `${SUPABASE_URL}/storage/v1/object/public/share-cards/${card.image_path}`;
-  const appLink = card.referral_code
-    ? `${SITE}/app?ref=${encodeURIComponent(card.referral_code)}`
-    : `${SITE}/app`;
+  // A card may name where its humans land (a prize card → its event). The
+  // row is member-written, so the path is only honoured when it is the /app
+  // smart-link — the same shape the column's CHECK enforces — and never
+  // becomes an open redirect off powr.life.
+  const appPath =
+    typeof card.app_path === "string" && APP_PATH_RE.test(card.app_path)
+      ? card.app_path
+      : null;
+  const appLink = appPath
+    ? `${SITE}${appPath}`
+    : card.referral_code
+      ? `${SITE}/app?ref=${encodeURIComponent(card.referral_code)}`
+      : `${SITE}/app`;
 
   const ua = req.headers.get("user-agent") ?? "";
 
