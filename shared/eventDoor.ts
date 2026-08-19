@@ -91,7 +91,7 @@ export interface Presence {
   arrived: boolean;
 }
 
-const minutesBetween = (iso: string, now: number): number => Math.max(0, Math.round((now - new Date(iso).getTime()) / 60_000));
+const minutesBetween = (iso: string, now: number): number => Math.max(0, Math.floor((now - new Date(iso).getTime()) / 60_000));
 
 const ago = (iso: string, now: number): string => {
   const m = minutesBetween(iso, now);
