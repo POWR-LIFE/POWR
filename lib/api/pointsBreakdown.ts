@@ -226,6 +226,20 @@ function extrasFrom(extras: Record<string, unknown> | null): SessionExtras {
     };
 }
 
+/**
+ * A wearable workout that overlapped this geofence check-in and was therefore
+ * not recorded as a session (terra-webhook keeps it in suppressed_workouts,
+ * keyed to the check-in that outranked it). It carries the vitals the check-in
+ * itself can never measure. Read-only to the owner; nothing pays from it.
+ */
+type SuppressedWorkoutRow = {
+    source: string | null;
+    duration_sec: number | null;
+    hr_avg: number | null;
+    hr_max: number | null;
+    calories_active: number | null;
+};
+
 type SessionRow = {
     id: string;
     started_at: string;
@@ -234,6 +248,7 @@ type SessionRow = {
     distance_m: number | null;
     verification: string;
     health_snapshots: SnapshotRow[] | null;
+    suppressed_workouts: SuppressedWorkoutRow[] | null;
     point_transactions:
         | { id: string; amount: number; type: string; description: string | null; source: string | null; created_at: string }[]
         | null;
@@ -245,9 +260,38 @@ type SessionRow = {
  * Returns null rather than zeroes when the snapshot is missing or day-wide: a
  * wrong heart rate under a workout is worse than no heart rate, because the user
  * can check it against the watch that measured it.
+ *
+ * A geofence gym session has no snapshot of its own — the wearable's telling of
+ * that hour is suppressed so the time isn't paid twice — so the wearable's
+ * vitals are folded in from suppressed_workouts instead. A real linked snapshot
+ * still wins (history may hold one; claim-points now re-points the superseded
+ * row's snapshot to the winner); the suppressed record is the fallback.
  */
-function vitalsFrom(snapshots: SnapshotRow[] | null): SessionVitals | null {
-    const rows = snapshots ?? [];
+function vitalsFrom(
+    snapshots: SnapshotRow[] | null,
+    suppressed: SuppressedWorkoutRow[] | null = null,
+): SessionVitals | null {
+    const rows = [...(snapshots ?? [])];
+
+    // A long check-in window can swallow more than one wearable workout (a paused
+    // and restarted session arrives as two). Take the longest single effort
+    // rather than averaging across them — one honest figure beats a blend the
+    // user can't find in their watch app.
+    const longest = (suppressed ?? [])
+        .filter(w => w.hr_avg != null || w.calories_active != null)
+        .sort((a, b) => (b.duration_sec ?? 0) - (a.duration_sec ?? 0))[0];
+    if (longest) {
+        rows.push({
+            source: longest.source,
+            hr_avg: longest.hr_avg,
+            hr_max: longest.hr_max,
+            calories_active: longest.calories_active,
+            sleep_deep_h: null,
+            sleep_rem_h: null,
+            sleep_light_h: null,
+            extras: null,
+        });
+    }
     const carries = (s: SnapshotRow) => s.hr_avg != null || s.calories_active != null
         || s.extras != null || s.sleep_deep_h != null || s.sleep_rem_h != null || s.sleep_light_h != null;
     const isDayWide = (s: SnapshotRow) => s.source != null && DAY_WIDE_VITAL_SOURCES.has(s.source);
@@ -308,7 +352,7 @@ export async function fetchPointsBreakdown(
 
     const { data, error } = await supabase
         .from('activity_sessions')
-        .select('id, started_at, duration_sec, steps, distance_m, verification, health_snapshots(source, hr_avg, hr_max, calories_active, sleep_deep_h, sleep_rem_h, sleep_light_h, extras), point_transactions(id, amount, type, description, source, created_at)')
+        .select('id, started_at, duration_sec, steps, distance_m, verification, health_snapshots(source, hr_avg, hr_max, calories_active, sleep_deep_h, sleep_rem_h, sleep_light_h, extras), suppressed_workouts(source, duration_sec, hr_avg, hr_max, calories_active), point_transactions(id, amount, type, description, source, created_at)')
         .eq('user_id', user.id)
         .eq('type', type)
         .gte('started_at', start.toISOString())
@@ -324,7 +368,7 @@ export async function fetchPointsBreakdown(
 
     for (const s of sessions) {
         const durationMin = Math.round((s.duration_sec ?? 0) / 60);
-        const vitals = vitalsFrom(s.health_snapshots);
+        const vitals = vitalsFrom(s.health_snapshots, s.suppressed_workouts);
         const txs = [...(s.point_transactions ?? [])].sort((a, b) =>
             a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0,
         );

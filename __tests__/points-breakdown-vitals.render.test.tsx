@@ -117,6 +117,23 @@ it('shows heart rate, calories and which device measured them', async () => {
     expect(screen.queryByText('Wearable')).toBeNull();
 });
 
+/**
+ * The check-in verified the session; the wearable only measured it. The chip
+ * keeps both so the user knows what was PAID and which app to compare against —
+ * "Whoop" alone would read as a wearable-paid session.
+ */
+it('names both the check-in and the device when a check-in borrows vitals', async () => {
+    mockFetch.mockResolvedValue(breakdown({
+        hrAvg: 138, hrMax: 171, caloriesActive: 512, source: 'whoop',
+    }, 'geofence'));
+
+    renderSheet('gym');
+
+    await waitFor(() => expect(screen.getByText('138 bpm')).toBeTruthy());
+    expect(screen.getByText('Gym check-in · Whoop')).toBeTruthy();
+    expect(screen.queryByText(/Heart rate and calories show here/)).toBeNull();
+});
+
 it('gives max heart rate its own tile, so both read at tile size', async () => {
     mockFetch.mockResolvedValue(breakdown({
         hrAvg: 142, hrMax: 167, caloriesActive: null, source: 'whoop',
@@ -390,12 +407,13 @@ describe('the wearable pitch', () => {
     });
 
     /**
-     * A gym check-in can never carry vitals: terra-webhook drops the wearable
-     * workout overlapping a check-in so the hour isn't paid twice, so the
-     * wearable's version of it is never stored. Prompting there asks for
-     * something the system won't do — and lands in front of Whoop wearers.
+     * A gym check-in only carries vitals second-hand (the overlapping wearable
+     * workout is kept in suppressed_workouts, not as a session), and the native
+     * phone path can't supply them at all yet. Prompting there asks for
+     * something the user may already be doing — and lands in front of Whoop
+     * wearers.
      */
-    it('stays away on a gym check-in, where vitals are impossible by design', async () => {
+    it('stays away on a gym check-in, which can only borrow vitals', async () => {
         mockFetch.mockResolvedValue(breakdown(null, 'geofence'));
 
         renderSheet();
