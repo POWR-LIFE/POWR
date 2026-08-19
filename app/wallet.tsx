@@ -9,7 +9,7 @@ import {
   type WalletStatus,
 } from '@/lib/api/rewards';
 import { tracked } from '@/lib/analytics';
-import { cardFilename, saveCardImage } from '@/lib/saveCard';
+import { SAVE_CARD_ENABLED, cardFilename, saveCardImage } from '@/lib/saveCard';
 import { rewardHeroUri, rewardLogoUri } from '@/lib/storageImage';
 import { Ionicons } from '@expo/vector-icons';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
@@ -201,20 +201,22 @@ function WalletCard({
               </>
             )}
           </Pressable>
-          {/* Keep the card image itself — see lib/saveCard.ts. */}
-          <Pressable
-            style={({ pressed }) => [styles.secondaryBtn, styles.iconBtn, pressed && { opacity: 0.7 }]}
-            onPress={tracked('wallet_save_reward', () => onSave(entry))}
-            disabled={shareBusy || saveBusy}
-            accessibilityRole="button"
-            accessibilityLabel={saved ? 'Saved' : 'Save image'}
-          >
-            {saveBusy ? (
-              <ActivityIndicator size="small" color={DIM} />
-            ) : (
-              <Ionicons name={saved ? 'checkmark' : 'download-outline'} size={15} color={saved ? GREEN : DIM} />
-            )}
-          </Pressable>
+          {/* Keep the card image itself — see lib/saveCard.ts (and why it's off). */}
+          {SAVE_CARD_ENABLED && (
+            <Pressable
+              style={({ pressed }) => [styles.secondaryBtn, styles.iconBtn, pressed && { opacity: 0.7 }]}
+              onPress={tracked('wallet_save_reward', () => onSave(entry))}
+              disabled={shareBusy || saveBusy}
+              accessibilityRole="button"
+              accessibilityLabel={saved ? 'Saved' : 'Save image'}
+            >
+              {saveBusy ? (
+                <ActivityIndicator size="small" color={DIM} />
+              ) : (
+                <Ionicons name={saved ? 'checkmark' : 'download-outline'} size={15} color={saved ? GREEN : DIM} />
+              )}
+            </Pressable>
+          )}
         </View>
       )}
     </View>

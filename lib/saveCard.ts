@@ -25,6 +25,15 @@ import { Platform } from 'react-native';
  */
 export type SaveCardResult = 'saved' | 'sheet' | 'cancelled' | 'unavailable';
 
+/**
+ * OFF (2026-08-19, Jamie's call): on a real Android device the SAF route
+ * hung after the folder was chosen — the screen came back with the Save
+ * spinner going round forever. Rather than ship a half-working door, Save
+ * stays hidden on every card until the next EAS build carries a proper
+ * native save for BOTH platforms. Flip to true only once that lands.
+ */
+export const SAVE_CARD_ENABLED = false;
+
 /** Where the member chose to keep their cards (Android SAF directory URI). */
 export const SAVE_DIR_KEY = '@powr/save_card_dir';
 

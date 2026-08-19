@@ -21,7 +21,7 @@ import { tracked } from '@/lib/analytics';
 import { fetchActiveLiveEvent, fetchLiveEventBySlug, type LiveEvent } from '@/lib/api/liveEvents';
 import { publishShareImage } from '@/lib/api/share';
 import { fetchProfile } from '@/lib/api/user';
-import { SAVE_SHEET_HINT, cardFilename, saveCardImage, saveCardNotice } from '@/lib/saveCard';
+import { SAVE_CARD_ENABLED, SAVE_SHEET_HINT, cardFilename, saveCardImage, saveCardNotice } from '@/lib/saveCard';
 import {
   buildPrizeShareMessage,
   buildPrizeSharePath,
@@ -264,16 +264,20 @@ export default function SharePrizeScreen() {
               loading={busy === 'post'}
               disabled={busy !== null}
             />
-            <ActionButton
-              icon="download-outline"
-              label="Save"
-              onPress={tracked('share_prize_save', handleSave)}
-              loading={busy === 'save'}
-              disabled={busy !== null}
-            />
+            {SAVE_CARD_ENABLED && (
+              <ActionButton
+                icon="download-outline"
+                label="Save"
+                onPress={tracked('share_prize_save', handleSave)}
+                loading={busy === 'save'}
+                disabled={busy !== null}
+              />
+            )}
           </View>
           <Text style={styles.helperText}>
-            {notice ?? 'Share sends a tappable link preview. Post shares the image to TikTok, Instagram and more. Save keeps the image on your phone.'}
+            {notice ?? (SAVE_CARD_ENABLED
+              ? 'Share sends a tappable link preview. Post shares the image to TikTok, Instagram and more. Save keeps the image on your phone.'
+              : 'Share sends a tappable link preview. Post shares the image to TikTok, Instagram, X, Threads and more.')}
           </Text>
         </View>
       )}
