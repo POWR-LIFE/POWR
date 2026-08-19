@@ -1716,6 +1716,13 @@ export type HealthSnapshotParams = {
      * when provenance is unavailable. See lib/health/dataSource.ts.
      */
     sourceDetail?: string;
+    /**
+     * Bounded per-workout metrics (see the column comment) — scalars only, never
+     * sample series. The native path uses it to mark a window-scoped read
+     * (`{ scope: 'session' }`, lib/health/windowVitals.ts) apart from the
+     * day-wide figures the same provider used to stamp on every session.
+     */
+    extras?: Record<string, unknown>;
 };
 
 /** Persists a health data snapshot to the health_snapshots table. */
@@ -1737,6 +1744,7 @@ export async function saveHealthSnapshot(params: HealthSnapshotParams): Promise<
         duration_sec: params.durationSec ?? null,
         source: params.source,
         source_detail: params.sourceDetail ?? null,
+        extras: params.extras ?? null,
     });
     if (error) console.warn('[healthSnapshot] insert failed:', error.message);
 }

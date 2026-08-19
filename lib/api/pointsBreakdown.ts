@@ -17,6 +17,7 @@ import {
     weekAnchorMonday,
     type LookbackPeriod,
 } from '@/lib/progressLookback';
+import { isSessionScoped } from '@/lib/health/windowVitals';
 import { getSessionUser, supabase } from '@/lib/supabase';
 
 /**
@@ -186,10 +187,19 @@ function labelFor(
  * still the day-wide number. Only the snapshot's `source` records how the figure
  * was actually measured, which is why this gates on that.
  *
- * Remove a source from this set once it gains a real per-workout read — see the
- * HealthKit follow-up (HKStatisticsQuery over each workout's own time range).
+ * The per-workout read now exists (lib/health/windowVitals.ts): the native sync
+ * reads each workout's own window, and gym check-ins get their visit's window
+ * read after the fact (lib/health/gymVitals.ts). Those rows carry
+ * `extras.scope = 'session'` and pass this gate; the day-wide rows history
+ * left behind do not. The source set stays — the SOURCE didn't become
+ * trustworthy, the READ did, and only the row knows which read it was.
  */
 const DAY_WIDE_VITAL_SOURCES = new Set(['healthkit', 'health_connect']);
+
+/** Day-wide provider AND not a window-scoped read — the only combination to gate. */
+function isDayWideRow(s: Pick<SnapshotRow, 'source' | 'extras'>): boolean {
+    return s.source != null && DAY_WIDE_VITAL_SOURCES.has(s.source) && !isSessionScoped(s.extras);
+}
 
 type SnapshotRow = {
     source: string | null;
@@ -294,7 +304,7 @@ function vitalsFrom(
     }
     const carries = (s: SnapshotRow) => s.hr_avg != null || s.calories_active != null
         || s.extras != null || s.sleep_deep_h != null || s.sleep_rem_h != null || s.sleep_light_h != null;
-    const isDayWide = (s: SnapshotRow) => s.source != null && DAY_WIDE_VITAL_SOURCES.has(s.source);
+    const isDayWide = isDayWideRow;
 
     // A session has at most one linked snapshot in practice. Where history left
     // two, prefer one from a per-workout source — otherwise a stray HealthKit row
@@ -309,7 +319,7 @@ function vitalsFrom(
     // native sync are the day's figures stamped on every session, so they're
     // dropped — but the same row's sleep stages are a real per-night breakdown
     // and are kept. Gating the whole row would throw away good data with bad.
-    const dayWide = snap.source != null && DAY_WIDE_VITAL_SOURCES.has(snap.source);
+    const dayWide = isDayWideRow(snap);
 
     const vitals: SessionVitals = {
         hrAvg: dayWide ? null : snap.hr_avg,

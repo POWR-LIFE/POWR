@@ -7,6 +7,8 @@ import { ProviderAuthExpiredError } from '@/lib/health/providers/types';
 import { verificationFromProvenance, sourceLabel } from '@/lib/health/dataSource';
 import { getInferredActivitiesForWeek } from '@/lib/health/runInference';
 import { reconcileRecentGymSessions } from '@/lib/health/gymReconcile';
+import { captureRecentGymVitals } from '@/lib/health/gymVitals';
+import { readWindowVitals, SESSION_SCOPED_EXTRAS, type WindowVitals } from '@/lib/health/windowVitals';
 import { supabase } from '@/lib/supabase';
 import { ACTIVITIES, type ActivityType } from '@/constants/activities';
 import { getGymDwellMinutes, getGymUpgradeMinutes } from '@/lib/gymDwellConfig';
@@ -194,12 +196,22 @@ export function useHealthSync() {
           ? verificationFromProvenance(health.source, verificationSource)
           : verificationSource;
 
+        // The workout's OWN heart rate and calories, read over its window — not
+        // the day's figure stamped on every session (which the Progress sheet
+        // has to gate out as untrustworthy). Null when the store recorded nothing
+        // for that span, in which case we fall back to the day-wide read for
+        // today only, exactly as before.
+        const windowVitals: WindowVitals | null = isNativeProvider
+          ? await readWindowVitals(+new Date(health.startedAt), +new Date(health.startedAt) + health.durationMin * 60000)
+          : null;
+        const hrAvgFor = windowVitals?.hrAvg ?? (today ? heartRate?.avg : undefined);
+
         const workoutPoints = calculateBasePoints(mappedType, health.durationMin, health.distanceM);
         const workoutSessionId = await logManualSession({
           type: mappedType,
           duration_sec: health.durationMin * 60,
           distance_m: health.distanceM,
-          hr_avg: today ? heartRate?.avg : undefined,
+          hr_avg: hrAvgFor,
           started_at: health.startedAt,
           points: workoutPoints,
           healthVerified: true,
@@ -225,15 +237,18 @@ export function useHealthSync() {
             sessionId: workoutSessionId,
             steps: health.steps,
             distanceM: health.distanceM,
-            hrAvg: today ? heartRate?.avg : undefined,
-            hrMax: today ? heartRate?.max : undefined,
+            hrAvg: windowVitals?.hrAvg ?? (today ? heartRate?.avg : undefined),
+            hrMax: windowVitals?.hrMax ?? (today ? heartRate?.max : undefined),
             hrResting: today ? heartRate?.resting : undefined,
-            caloriesActive: today ? calories?.active : undefined,
-            caloriesTotal: today ? calories?.total : undefined,
+            caloriesActive: windowVitals?.caloriesActive ?? (today ? calories?.active : undefined),
+            caloriesTotal: windowVitals ? undefined : (today ? calories?.total : undefined),
             activityType: health.type,
             durationSec: health.durationMin * 60,
             source,
             sourceDetail: health.source ? sourceLabel(health.source) : undefined,
+            // The marker that lets the sheet trust these over a day-wide row
+            // from the same provider. Only when the window actually measured.
+            extras: windowVitals ? { ...SESSION_SCOPED_EXTRAS } : undefined,
           });
         }
 
@@ -275,11 +290,13 @@ export function useHealthSync() {
           const today = isLocalToday(act.startedAt);
           const actVerification = verificationFromProvenance(act.source, verificationSource);
           const inferredPoints = calculateBasePoints(act.type, act.durationMin, act.distanceM);
+          // Same per-window read as the workout path — this IS the native path.
+          const actVitals = await readWindowVitals(actStart, actEnd);
           const inferredSessionId = await logManualSession({
             type: act.type,
             duration_sec: act.durationMin * 60,
             distance_m: act.distanceM,
-            hr_avg: today ? heartRate?.avg : undefined,
+            hr_avg: actVitals?.hrAvg ?? (today ? heartRate?.avg : undefined),
             started_at: act.startedAt,
             points: inferredPoints,
             healthVerified: true,
@@ -297,13 +314,15 @@ export function useHealthSync() {
             await saveHealthSnapshot({
               sessionId: inferredSessionId,
               distanceM: act.distanceM,
-              hrAvg: today ? heartRate?.avg : undefined,
-              hrMax: today ? heartRate?.max : undefined,
+              hrAvg: actVitals?.hrAvg ?? (today ? heartRate?.avg : undefined),
+              hrMax: actVitals?.hrMax ?? (today ? heartRate?.max : undefined),
               hrResting: today ? heartRate?.resting : undefined,
+              caloriesActive: actVitals?.caloriesActive ?? undefined,
               activityType: act.type,
               durationSec: act.durationMin * 60,
               source,
               sourceDetail: act.source ? sourceLabel(act.source) : undefined,
+              extras: actVitals ? { ...SESSION_SCOPED_EXTRAS } : undefined,
             });
           }
 
@@ -336,6 +355,16 @@ export function useHealthSync() {
       await reconcileRecentGymSessions().catch(e =>
         console.warn('[HealthSync] gym reconcile failed:', e),
       );
+
+      // ── Give recent check-ins the heart rate / calories the phone recorded ──
+      // After reconcile on purpose: the read is over the session's window, so it
+      // should see the corrected one. Native store only — Terra providers reach
+      // the sheet through suppressed_workouts instead. Write-once, best-effort.
+      if (isNativeProvider) {
+        await captureRecentGymVitals().catch(e =>
+          console.warn('[HealthSync] gym vitals capture failed:', e),
+        );
+      }
     } catch (e: any) {
       // OAuth token expired — auto-disconnect and alert the user once.
       if (e instanceof ProviderAuthExpiredError) {

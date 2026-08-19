@@ -189,6 +189,52 @@ describe('day-wide sources are suppressed', () => {
  * read, and never re-serves an old payload — so the extras bag is written wide
  * and read defensively. Providers fill very different subsets.
  */
+/**
+ * The native path now reads each workout's own window (lib/health/windowVitals)
+ * and marks the row `extras.scope = 'session'`. That marker — not the source — is
+ * what makes a HealthKit figure trustworthy: the day-wide rows history left
+ * behind carry the same source and must stay gated.
+ */
+describe('window-scoped native reads pass the gate', () => {
+    it('surfaces a HealthKit row read over the session\'s own window', async () => {
+        mockSessions([session({
+            snapshots: [{ source: 'healthkit', hr_avg: 139, hr_max: 168, calories_active: 412, extras: { scope: 'session' } }],
+        })]);
+
+        const v = await fetchVitals();
+        expect(v?.hrAvg).toBe(139);
+        expect(v?.caloriesActive).toBe(412);
+        expect(v?.source).toBe('healthkit');
+    });
+
+    it('still drops a HealthKit row without the marker, even beside a scoped one from another day', async () => {
+        mockSessions([session({
+            snapshots: [{ source: 'healthkit', hr_avg: 71, hr_max: 95, calories_active: 900 }],
+        })]);
+        expect(await fetchVitals()).toBeNull();
+    });
+
+    it('prefers the window-scoped row when history left a day-wide one beside it', async () => {
+        mockSessions([session({
+            snapshots: [
+                { source: 'healthkit', hr_avg: 71, hr_max: 95, calories_active: 900 },
+                { source: 'healthkit', hr_avg: 139, hr_max: 168, calories_active: 412, extras: { scope: 'session' } },
+            ],
+        })]);
+        expect((await fetchVitals())?.hrAvg).toBe(139);
+    });
+
+    it('lets a check-in show the window its phone recorded, with the chip naming the phone store', async () => {
+        mockSessions([session({
+            verification: 'geofence',
+            snapshots: [{ source: 'health_connect', hr_avg: 127, hr_max: 161, calories_active: 380, extras: { scope: 'session' } }],
+        })]);
+        const v = await fetchVitals();
+        expect(v?.hrAvg).toBe(127);
+        expect(v?.source).toBe('health_connect');
+    });
+});
+
 describe('provider extras', () => {
     it('maps the snake_case column into typed camelCase fields', async () => {
         mockSessions([session({
