@@ -9,7 +9,7 @@ import {
     Link2, RefreshCw, AlertTriangle, Rocket, Undo2,
     Gauge, Download, UserX, UserCheck, ShieldAlert,
     Megaphone, Upload, ExternalLink, QrCode, Smartphone, Users, TicketCheck,
-    ImagePlus, LoaderCircle,
+    ImagePlus, LoaderCircle, DoorOpen, MapPin,
 } from 'lucide-react';
 import { QRCodeCanvas } from 'qrcode.react';
 import { storageImage, uploadPublicImage } from '../../lib/storage';
@@ -17,6 +17,10 @@ import { validateHeroVideoUrl } from '../../lib/heroVideoUrl';
 import MediaVideo from '../../components/MediaVideo';
 import { eventRegisterUrl } from '../../lib/eventRegisterUrl';
 import { formatMemberId, normalizeMemberId } from '../../../../shared/memberId.ts';
+import {
+    DOOR_POLL_MS, bandInfo, doorCsv, doorTotals, filterDoorRows, gateLabel, gateMet,
+    presence, searchDoorRows, sortDoorRows,
+} from '../../../../shared/eventDoor.ts';
 
 const logAction = async (adminId, action, targetType, targetId, metadata = {}) => {
     await supabase.from('admin_audit_log').insert({ admin_id: adminId, action, target_type: targetType, target_id: targetId, metadata });
@@ -84,6 +88,8 @@ const editableFields = (ev) => ({
     window_start_at: ev.window_start_at,
     window_end_at: ev.window_end_at,
     lock_at: ev.lock_at,
+    doors_open_at: ev.doors_open_at,
+    doors_close_at: ev.doors_close_at,
     eligibility_cutoff_at: ev.eligibility_cutoff_at,
     scope: ev.scope,
     board_size: ev.board_size,
@@ -128,6 +134,8 @@ export default function LiveEvents() {
     const [anticheat, setAnticheat] = useState(null); // admin_get_event_anticheat payload
     const [registrations, setRegistrations] = useState(null); // admin_get_event_registrations payload
     const [bookings, setBookings] = useState(null);   // admin_get_event_bookings payload
+    const [door, setDoor] = useState(null);           // admin_get_event_door payload
+    const [doorBusy, setDoorBusy] = useState(null);   // user_id of the manual mark in flight
     const [bookingsBusy, setBookingsBusy] = useState(false);
     const [rosterBusy, setRosterBusy] = useState(null);  // 'add' | user_id of the roster edit in flight
     const [tab, setTab] = useState('active');
@@ -166,18 +174,19 @@ export default function LiveEvents() {
     useEffect(() => { fetchEvents(); }, []);
 
     useEffect(() => {
-        if (!selected) { setForm(null); setVenueName(null); setOps(null); setStandings(null); setDqRows([]); setAnticheat(null); setRegistrations(null); setBookings(null); lastOpsEventId.current = null; return; }
+        if (!selected) { setForm(null); setVenueName(null); setOps(null); setStandings(null); setDqRows([]); setAnticheat(null); setRegistrations(null); setBookings(null); setDoor(null); lastOpsEventId.current = null; return; }
         setForm(editableFields(selected));
         // Switching events must never show the previous event's ops data while
         // the new fetch is in flight; same-event refreshes keep what's there.
         if (selected.id !== lastOpsEventId.current) {
             lastOpsEventId.current = selected.id;
-            setOps(null); setStandings(null); setDqRows([]); setAnticheat(null); setRegistrations(null); setBookings(null);
+            setOps(null); setStandings(null); setDqRows([]); setAnticheat(null); setRegistrations(null); setBookings(null); setDoor(null);
         }
         fetchCounts(selected.id);
         fetchOps(selected.id);
         fetchRegistrations(selected.id);
         fetchBookings(selected.id);
+        fetchDoor(selected.id);
         if (selected.venue_partner_id) {
             supabase.from('partners').select('name').eq('id', selected.venue_partner_id).single()
                 .then(({ data }) => setVenueName(data?.name ?? null));
@@ -209,6 +218,32 @@ export default function LiveEvents() {
         if (error) { console.error(error); setRegistrations(null); return; }
         setRegistrations(data);
     };
+
+    // The door board: roster × venue geofence × manual marks. Polled by the
+    // panel itself while the door band is live; this is the one-shot load.
+    const fetchDoor = async (eventId) => {
+        const { data, error } = await supabase.rpc('admin_get_event_door', { p_event_id: eventId });
+        if (error) { console.error(error); return; }
+        // Never paint event A's door under event B (same guard as ops).
+        if (lastOpsEventId.current !== eventId) return;
+        setDoor(data);
+    };
+
+    // Mark / unmark arrived by hand. The RPC hands the refreshed board back.
+const setCheckin = async (ev, row, present) => {
+    setDoorBusy(row.user_id);
+    try {
+        const { data, error } = await supabase.rpc('admin_set_event_checkin', {
+            p_event_id: ev.id, p_user_id: row.user_id, p_present: present,
+        });
+        if (error) { toast.error(error.message); return; }
+        if (data && lastOpsEventId.current === ev.id) setDoor(data);
+        await logAction(user.id, present ? 'live_event_checkin_marked' : 'live_event_checkin_cleared', 'live_event', ev.id, { target_user: row.user_id });
+        toast.success(`${row.name} ${present ? 'marked arrived' : 'mark cleared'}`);
+    } finally {
+        setDoorBusy(null);
+    }
+};
 
     // Booking reconciliation against the venue's own ticketing. Nothing here
     // is derived from POWR state — the venue's export is the input, and the
@@ -405,6 +440,9 @@ export default function LiveEvents() {
             const { error: mediaError, warn: mediaWarn } = validateHeroVideoUrl(form.promo_media_url);
             if (mediaError) { toast.error(mediaError); return; }
             if (mediaWarn) toast.info(mediaWarn);
+        }
+        if (form.doors_open_at && form.doors_close_at && new Date(form.doors_close_at) <= new Date(form.doors_open_at)) {
+            toast.error('Doors close must be after doors open'); return;
         }
         if (form.booking_url && !/^https?:\/\//i.test(form.booking_url)) {
             // Mirrors the DB check constraint — fail here with a usable
@@ -659,6 +697,14 @@ export default function LiveEvents() {
                         onDisqualify={(row, dq) => disqualify(selected, row, dq)}
                     />
 
+                    <DoorPanel
+                        ev={selected}
+                        data={door}
+                        busy={doorBusy}
+                        onRefresh={() => fetchDoor(selected.id)}
+                        onMark={(row, present) => setCheckin(selected, row, present)}
+                    />
+
                     <BookingsPanel
                         data={bookings}
                         busy={bookingsBusy}
@@ -694,6 +740,291 @@ export default function LiveEvents() {
                 </div>
             )}
         </div>
+    );
+}
+
+// ─── Door board ──────────────────────────────────────────────────
+// Who's registered, who's qualified, who's actually in the building.
+// Presence comes from the venue geofence (live_events.venue_partner_id →
+// gym_visits.partner_id) plus a manual mark for the door staff — the
+// fence needs the app, Always+Precise and a live device, so it
+// under-counts and never over-counts. Every judgement (inside vs
+// inside? vs left, tile maths, ordering) lives in shared/eventDoor.ts
+// with jest coverage; this component only renders.
+
+const PRESENCE_TONE = {
+    inside:       { color: '#10B981', bg: '#10B98114', border: '#10B98144' },
+    inside_stale: { color: '#B45309', bg: '#F59E0B14', border: '#F59E0B55' },
+    manual:       { color: '#2563EB', bg: '#3B82F614', border: '#3B82F655' },
+    left:         { color: '#6B7280', bg: '#9CA3AF14', border: '#9CA3AF55' },
+    not_seen:     { color: '#BBBBBB', bg: 'transparent', border: '#E6E6E1' },
+};
+
+const DOOR_FILTERS = [
+    ['all', 'Everyone'],
+    ['qualified', 'Qualified'],
+    ['arrived', 'Arrived'],
+    ['not_arrived', 'Not arrived'],
+    ['walk_ins', 'Walk-ins'],
+];
+
+function DoorPanel({ ev, data, busy, onRefresh, onMark }) {
+    const [filter, setFilter] = useState('all');
+    const [query, setQuery] = useState('');
+    const [now, setNow] = useState(() => Date.now());
+
+    // Filters must not follow you onto the next event.
+    useEffect(() => { setFilter('all'); setQuery(''); }, [ev.id]);
+
+    const event = data?.event ?? null;
+    const rows = useMemo(() => data?.rows ?? [], [data]);
+    const gateN = event?.gate_n ?? ev.entry_gate_n ?? 0;
+    const band = useMemo(() => (event ? bandInfo(event, now) : null), [event, now]);
+
+    // Auto-refresh while the door band is live (and the tab is visible).
+    // The clock tick re-evaluates "inside" vs "inside?" between fetches.
+    const live = !!band?.live && !['settled', 'archived'].includes(ev.status);
+    useEffect(() => {
+        if (!live) return undefined;
+        const id = setInterval(() => {
+            setNow(Date.now());
+            if (document.visibilityState === 'visible') onRefresh();
+        }, DOOR_POLL_MS);
+        return () => clearInterval(id);
+    }, [live, ev.id]);   // eslint-disable-line react-hooks/exhaustive-deps
+
+    const totals = useMemo(() => doorTotals(rows, gateN, now), [rows, gateN, now]);
+    const shown = useMemo(
+        () => sortDoorRows(searchDoorRows(filterDoorRows(rows, filter, gateN, now), query), now),
+        [rows, filter, gateN, query, now],
+    );
+
+    const exportCsv = () => {
+        const blob = new Blob([doorCsv(rows, gateN, now)], { type: 'text/csv' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `${ev.slug}-door.csv`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+    };
+
+    const fmtTime = (iso) => iso
+        ? new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+        : '—';
+
+    const Stat = ({ label, value, tone }) => (
+        <div className={`rounded-2xl border p-4 ${tone}`}>
+            <div className="text-[26px] font-bold leading-none tracking-tight">{value}</div>
+            <div className="text-[10px] font-black uppercase tracking-[0.2em] mt-2 opacity-70">{label}</div>
+        </div>
+    );
+
+    const hasVenue = !!(event ? event.venue_partner_id : ev.venue_partner_id);
+
+    return (
+        <section>
+            <div className="flex items-center gap-4 mb-4 px-1">
+                <div className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 border bg-[#10B981]/10 border-[#10B981]/25">
+                    <DoorOpen size={18} className="text-[#10B981]" />
+                </div>
+                <div className="min-w-0 flex-1">
+                    <h2 className="text-lg font-bold text-[#1A1A1A] tracking-tight">Door</h2>
+                    <p className="text-[12px] text-[#888888] leading-snug">
+                        Who&rsquo;s registered, who&rsquo;s qualified, and who the {event?.venue_name ? `${event.venue_name} ` : 'venue '}
+                        geofence has seen. The fence under-counts (it needs the app, Always + Precise location and a live
+                        device) — it never over-counts. Mark anyone it missed by hand.
+                        {band && <> <span className={band.fallback ? 'text-[#B45309]' : ''}>{band.label}.</span></>}
+                    </p>
+                </div>
+                {live && (
+                    <span className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-[#10B981] shrink-0">
+                        <span className="w-2 h-2 rounded-full bg-[#10B981] animate-pulse" /> Live
+                    </span>
+                )}
+                <button
+                    onClick={exportCsv}
+                    disabled={rows.length === 0}
+                    className="inline-flex items-center gap-2 h-10 px-4 rounded-xl bg-[#F4F4F1] border border-[#E6E6E1] text-[10.5px] font-bold uppercase tracking-[0.18em] text-[#555555] hover:text-[#1A1A1A] transition-all shrink-0 disabled:opacity-40"
+                >
+                    <Download size={13} /> CSV
+                </button>
+                <button
+                    onClick={() => { setNow(Date.now()); onRefresh(); }}
+                    className="inline-flex items-center gap-2 h-10 px-4 rounded-xl bg-[#F4F4F1] border border-[#E6E6E1] text-[10.5px] font-bold uppercase tracking-[0.18em] text-[#555555] hover:text-[#1A1A1A] transition-all shrink-0"
+                >
+                    <RefreshCw size={13} /> Refresh
+                </button>
+            </div>
+
+            <div className="bg-white border border-[#E6E6E1] rounded-3xl p-7 space-y-6">
+                {!hasVenue && (
+                    <div className="flex items-start gap-3 rounded-2xl border border-[#F59E0B]/30 bg-[#F59E0B]/5 px-4 py-3 text-[12px] text-[#92400E]">
+                        <AlertTriangle size={15} className="shrink-0 mt-0.5" />
+                        <span>No venue partner is set on this event, so there is no geofence to read — arrivals here are manual marks only. Pick the venue in the editor below.</span>
+                    </div>
+                )}
+                {band?.fallback && hasVenue && (
+                    <div className="flex items-start gap-3 rounded-2xl border border-[#F59E0B]/30 bg-[#F59E0B]/5 px-4 py-3 text-[12px] text-[#92400E]">
+                        <AlertTriangle size={15} className="shrink-0 mt-0.5" />
+                        <span>Set <strong>Doors open</strong> / <strong>Doors close</strong> in the editor so only event-night visits count as arrivals.</span>
+                    </div>
+                )}
+
+                <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
+                    <Stat label="Registered" value={totals.registered} tone="bg-[#8B5CF6]/5 border-[#8B5CF6]/20 text-[#6D28D9]" />
+                    <Stat label={gateN > 0 ? `Qualified (${gateN})` : 'Qualified'} value={totals.qualified} tone="bg-[#0EA5E9]/5 border-[#0EA5E9]/20 text-[#0369A1]" />
+                    <Stat label="Booked" value={totals.booked} tone="bg-[#F4F4F1] border-[#E6E6E1] text-[#555555]" />
+                    <Stat label="Arrived" value={totals.arrived} tone="bg-[#16A34A]/5 border-[#16A34A]/20 text-[#16A34A]" />
+                    <Stat label="Inside now" value={totals.inside} tone="bg-[#10B981]/10 border-[#10B981]/30 text-[#047857]" />
+                    <Stat label="Walk-ins" value={totals.walkIns} tone="bg-[#F59E0B]/5 border-[#F59E0B]/20 text-[#B45309]" />
+                </div>
+
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                        {DOOR_FILTERS.map(([key, label]) => (
+                            <button
+                                key={key}
+                                onClick={() => setFilter(key)}
+                                className={`h-8 px-3 rounded-lg border text-[10px] font-bold uppercase tracking-[0.15em] transition-all ${
+                                    filter === key
+                                        ? 'bg-[#1A1A1A] border-[#1A1A1A] text-white'
+                                        : 'bg-[#F4F4F1] border-[#E6E6E1] text-[#666666] hover:text-[#1A1A1A]'
+                                }`}
+                            >
+                                {label}
+                            </button>
+                        ))}
+                    </div>
+                    <div className="relative">
+                        <Search size={13} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#BBBBBB]" />
+                        <input
+                            type="text"
+                            value={query}
+                            onChange={(e) => setQuery(e.target.value)}
+                            placeholder="Name, email or POWR ID…"
+                            className="w-60 h-9 pl-9 pr-8 bg-[#F4F4F1] border border-[#E6E6E1] rounded-xl text-[12px] text-[#1A1A1A] placeholder:text-[#AAAAAA] outline-none focus:border-[#10B981]/40 transition-all"
+                        />
+                        {query && (
+                            <button onClick={() => setQuery('')} aria-label="Clear door search" className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#AAAAAA] hover:text-[#1A1A1A]">
+                                <X size={13} />
+                            </button>
+                        )}
+                    </div>
+                </div>
+
+                {!data ? (
+                    <p className="text-[12px] text-[#999999] py-6 text-center">Loading the door…</p>
+                ) : shown.length === 0 ? (
+                    <p className="text-[12px] text-[#999999] py-6 text-center">
+                        {rows.length === 0
+                            ? 'Nobody yet — registrations, geofence arrivals and manual marks all land here.'
+                            : 'Nobody matches this filter.'}
+                    </p>
+                ) : (
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-[12.5px]">
+                            <thead>
+                                <tr className="text-[9px] font-black uppercase tracking-[0.2em] text-[#999999] border-b border-[#F0F0EC]">
+                                    <th className="py-2 pr-3 text-left">Member</th>
+                                    <th className="py-2 pr-3 text-left">Presence</th>
+                                    <th className="py-2 pr-3 text-left">Registered</th>
+                                    {gateN > 0 && <th className="py-2 pr-3 text-center">Gate</th>}
+                                    <th className="py-2 pr-3 text-center">Booked</th>
+                                    <th className="py-2 pr-3 text-left">Seen</th>
+                                    <th className="py-2 text-right">Door</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-[#F5F5F2]">
+                                {shown.map(r => {
+                                    const p = presence(r, now);
+                                    const tone = PRESENCE_TONE[p.key];
+                                    const met = gateMet(r, gateN);
+                                    const isBusy = busy === r.user_id;
+                                    return (
+                                        <tr key={r.user_id} className={p.key === 'not_seen' ? '' : 'bg-[#FAFAF8]/60'}>
+                                            <td className="py-2.5 pr-3 align-top">
+                                                <div className="font-semibold text-[#1A1A1A] flex items-center gap-2">
+                                                    <Link to={`/admin/users/${r.user_id}`} className="hover:underline">{r.name}</Link>
+                                                    {r.disqualified_at && (
+                                                        <span className="text-[9px] font-black uppercase tracking-[0.15em] text-[#EF4444]">DQ</span>
+                                                    )}
+                                                </div>
+                                                <div className="text-[11px] text-[#999999] flex items-center gap-2 flex-wrap">
+                                                    {r.username && <span>@{r.username}</span>}
+                                                    {r.member_id && <code className="font-mono">{formatMemberId(r.member_id)}</code>}
+                                                    {r.email && <span className="truncate max-w-[220px]">{r.email}</span>}
+                                                </div>
+                                            </td>
+                                            <td className="py-2.5 pr-3 align-top">
+                                                <span
+                                                    className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-[9.5px] font-black uppercase tracking-[0.18em]"
+                                                    style={{ color: tone.color, backgroundColor: tone.bg, borderColor: tone.border }}
+                                                >
+                                                    {p.key === 'inside' || p.key === 'inside_stale' ? <MapPin size={10} /> : null}
+                                                    {p.label}
+                                                </span>
+                                                <div className="text-[11px] text-[#999999] mt-1">{p.detail}</div>
+                                            </td>
+                                            <td className="py-2.5 pr-3 align-top">
+                                                {r.on_roster
+                                                    ? <span className="text-[#1A1A1A]">{fmtTime(r.joined_at)}</span>
+                                                    : <span className="inline-flex px-2 py-0.5 rounded-full border border-[#F59E0B]/40 bg-[#F59E0B]/10 text-[9.5px] font-black uppercase tracking-[0.18em] text-[#B45309]">Walk-in</span>}
+                                            </td>
+                                            {gateN > 0 && (
+                                                <td className={`py-2.5 pr-3 align-top text-center font-mono ${met ? 'text-[#16A34A]' : 'text-[#999999]'}`}>
+                                                    {gateLabel(r, gateN)}
+                                                </td>
+                                            )}
+                                            <td className="py-2.5 pr-3 align-top text-center">
+                                                {r.booked ? <Check size={14} className="inline text-[#16A34A]" /> : <span className="text-[#CCCCCC]">—</span>}
+                                            </td>
+                                            <td className="py-2.5 pr-3 align-top text-[11px] text-[#777777]">
+                                                {r.first_entered_at ? (
+                                                    <>
+                                                        <div>In {fmtTime(r.first_entered_at)}{r.platform ? ` · ${r.platform}` : ''}</div>
+                                                        {r.visit_count > 1 && <div className="text-[#AAAAAA]">{r.visit_count} visits</div>}
+                                                    </>
+                                                ) : <span className="text-[#CCCCCC]">—</span>}
+                                                {r.manual_checked_in_at && (
+                                                    <div className="text-[#2563EB]">Marked {fmtTime(r.manual_checked_in_at)}{r.manual_by ? ` by ${r.manual_by}` : ''}</div>
+                                                )}
+                                            </td>
+                                            <td className="py-2.5 align-top text-right">
+                                                {r.manual_checked_in_at ? (
+                                                    <button
+                                                        onClick={() => onMark(r, false)}
+                                                        disabled={isBusy}
+                                                        className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-[#F4F4F1] border border-[#E6E6E1] text-[10px] font-bold uppercase tracking-[0.15em] text-[#666666] hover:text-[#1A1A1A] transition-all disabled:opacity-40"
+                                                    >
+                                                        {isBusy ? <LoaderCircle size={12} className="animate-spin" /> : <X size={12} />} Clear mark
+                                                    </button>
+                                                ) : p.arrived ? (
+                                                    <span className="text-[10px] font-black uppercase tracking-[0.15em] text-[#BBBBBB]">Geofence</span>
+                                                ) : (
+                                                    <button
+                                                        onClick={() => onMark(r, true)}
+                                                        disabled={isBusy || ev.status === 'archived'}
+                                                        className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-[#1A1A1A] border border-[#1A1A1A] text-[10px] font-bold uppercase tracking-[0.15em] text-white hover:bg-[#333333] transition-all disabled:opacity-40"
+                                                    >
+                                                        {isBusy ? <LoaderCircle size={12} className="animate-spin" /> : <UserCheck size={12} />} Mark arrived
+                                                    </button>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+
+                {data?.generated_at && (
+                    <p className="text-[10px] text-[#BBBBBB] text-right">
+                        Updated {new Date(data.generated_at).toLocaleTimeString('en-GB')}{live ? ' · auto-refreshing' : ''}
+                    </p>
+                )}
+            </div>
+        </section>
     );
 }
 
@@ -1985,6 +2316,12 @@ function EditorPanel({ form, setForm, dirty, saving, onSave, onDiscard, venueNam
                         </Field>
                         <Field label="Board auto-locks" hint="Board hides itself from this moment (no cron — checked on read). Blank = never auto-locks.">
                             <DateTimeInput value={form.lock_at} onChange={v => set({ lock_at: v })} clearable />
+                        </Field>
+                        <Field label="Doors open" hint="When arrivals at the venue start counting on the door board. Blank = from board lock (or window end).">
+                            <DateTimeInput value={form.doors_open_at} onChange={v => set({ doors_open_at: v })} clearable />
+                        </Field>
+                        <Field label="Doors close" hint="Last moment an arrival counts. Blank = 12 hours after doors open.">
+                            <DateTimeInput value={form.doors_close_at} onChange={v => set({ doors_close_at: v })} clearable />
                         </Field>
                         <Field label="Eligibility cutoff" hint="Accounts created after this can't compete. Blank = window open.">
                             <DateTimeInput value={form.eligibility_cutoff_at} onChange={v => set({ eligibility_cutoff_at: v })} clearable />
