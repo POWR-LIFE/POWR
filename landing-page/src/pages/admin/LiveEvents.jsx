@@ -230,17 +230,20 @@ export default function LiveEvents() {
     };
 
     // Mark / unmark arrived by hand. The RPC hands the refreshed board back.
-    const setCheckin = async (ev, row, present) => {
-        setDoorBusy(row.user_id);
+const setCheckin = async (ev, row, present) => {
+    setDoorBusy(row.user_id);
+    try {
         const { data, error } = await supabase.rpc('admin_set_event_checkin', {
             p_event_id: ev.id, p_user_id: row.user_id, p_present: present,
         });
-        setDoorBusy(null);
         if (error) { toast.error(error.message); return; }
         if (data && lastOpsEventId.current === ev.id) setDoor(data);
         await logAction(user.id, present ? 'live_event_checkin_marked' : 'live_event_checkin_cleared', 'live_event', ev.id, { target_user: row.user_id });
         toast.success(`${row.name} ${present ? 'marked arrived' : 'mark cleared'}`);
-    };
+    } finally {
+        setDoorBusy(null);
+    }
+};
 
     // Booking reconciliation against the venue's own ticketing. Nothing here
     // is derived from POWR state — the venue's export is the input, and the
