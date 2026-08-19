@@ -294,7 +294,14 @@ async function preserveSupersededWorkout(
 
   const durSec = loser.duration_sec ?? 0;
   if (durSec <= 0) return; // table requires duration_sec > 0; nothing measurable to keep
-  const startMs = new Date(loser.started_at).getTime();
+
+  const startMs = Date.parse(loser.started_at);
+  if (!Number.isFinite(startMs)) {
+    console.error('[claim-points] invalid started_at for suppressed workout:', loser.started_at);
+    return;
+  }
+
+  const endedAt = loser.ended_at ?? new Date(startMs + durSec * 1000).toISOString();
   const { error: suppressErr } = await supabase
     .from('suppressed_workouts')
     .upsert({
@@ -302,7 +309,7 @@ async function preserveSupersededWorkout(
       winner_session_id: winner.id,
       type: loser.type,
       started_at: loser.started_at,
-      ended_at: loser.ended_at ?? new Date(startMs + durSec * 1000).toISOString(),
+      ended_at: endedAt,
       duration_sec: durSec,
       distance_m: loser.distance_m != null ? Math.round(loser.distance_m) : null,
       hr_avg: snap?.hr_avg != null ? Math.round(snap.hr_avg) : null,
