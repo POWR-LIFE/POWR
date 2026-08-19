@@ -107,12 +107,11 @@ export function EventPrizeViewer({
 
     // Hand off to the share screen once the lightbox is gone — the index is
     // read at tap time, so paging after the tap can't change what's shared.
-    const share = () => {
-        if (!onShare) return;
-        const which = index;
-        Haptics.selectionAsync();
-        dismiss(() => onShare(which));
-    };
+const share = (which: number) => {
+    if (!onShare || which < 0) return;
+    Haptics.selectionAsync();
+    dismiss(() => onShare(which));
+};
 
     // Pull-down on the artwork. Claim only a decisively vertical, downward
     // move so the pager keeps horizontal swipes and a plain tap stays a tap.
