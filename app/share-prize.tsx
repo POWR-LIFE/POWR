@@ -87,13 +87,10 @@ export default function SharePrizeScreen() {
   // from it so the card is there on arrival rather than a spinner later.
   const eventQuery = useQuery<LiveEvent | null>({
     queryKey: ['liveEvent', slug ?? 'active'],
-    queryFn: async () => {
-      if (slug) {
-        const pinned = await fetchLiveEventBySlug(slug);
-        if (pinned) return pinned;
-      }
-      return fetchActiveLiveEvent();
-    },
+queryFn: async () => {
+  if (slug) return fetchLiveEventBySlug(slug);
+  return fetchActiveLiveEvent();
+},
     initialData: () => {
       const cached = queryClient.getQueryData<LiveEvent | null>(['liveEvent', 'active']);
       return cached && (!slug || cached.slug === slug) ? cached : undefined;
