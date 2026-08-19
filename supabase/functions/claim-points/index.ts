@@ -233,7 +233,7 @@ async function supersedeLowerTrust(supabase, winner: ActivitySession): Promise<v
 
   const { data: lower } = await supabase
     .from('activity_sessions')
-    .select('id, type, verification, trust_score, started_at, ended_at, duration_sec, distance_m')
+    .select('id, type, verification, trust_score, started_at, ended_at, duration_sec, distance_m, raw_activity_name')
     .eq('user_id', winner.user_id)
     .not('type', 'in', '("walking","sleep")')
     .in('verification', ['wearable', 'health', 'manual'])
@@ -271,7 +271,7 @@ async function supersedeLowerTrust(supabase, winner: ActivitySession): Promise<v
 async function preserveSupersededWorkout(
   supabase,
   winner: ActivitySession,
-  loser: { id: string; type: string; verification: string; started_at: string; ended_at: string | null; duration_sec: number | null; distance_m: number | null },
+  loser: { id: string; type: string; verification: string; started_at: string; ended_at: string | null; duration_sec: number | null; distance_m: number | null; raw_activity_name?: string | null },
   reversed: number,
 ): Promise<void> {
   // The snapshot the loser's sync wrote, if any — read BEFORE re-pointing so the
@@ -316,7 +316,7 @@ async function preserveSupersededWorkout(
       hr_max: snap?.hr_max != null ? Math.round(snap.hr_max) : null,
       calories_active: snap?.calories_active != null ? Math.round(snap.calories_active) : null,
       source: snap?.source ?? loser.verification,
-      raw_activity_name: null,
+      raw_activity_name: loser.raw_activity_name ?? null,
       reason: 'superseded_by_geofence_claim',
       would_have_earned: reversed,
     }, { onConflict: 'user_id,type,started_at' });

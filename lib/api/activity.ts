@@ -1685,7 +1685,7 @@ export async function fetchMonthlyActivityData(type: ActivityType, offset = 0): 
     let bestDay: DailyActivityEntry | null = null;
     for (const e of withData) {
         const metric = bestDayValue(e, bestDayMetric);
-        if (metric <= 0) continue;
+        if (bestDayMetric === 'longestSession' && metric <= 0) continue;
         if (!bestDay || metric > bestDayValue(bestDay, bestDayMetric)) bestDay = e;
     }
 
