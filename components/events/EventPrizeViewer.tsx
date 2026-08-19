@@ -105,13 +105,14 @@ export function EventPrizeViewer({
         });
     };
 
-    // Hand off to the share screen once the lightbox is gone — the index is
-    // read at tap time, so paging after the tap can't change what's shared.
-const share = (which: number) => {
-    if (!onShare || which < 0) return;
-    Haptics.selectionAsync();
-    dismiss(() => onShare(which));
-};
+    // Hand off to the share screen once the lightbox is gone. Each page's
+    // button names ITS OWN prize, so paging after the tap can't change what's
+    // shared — and the event argument from Pressable never reaches onShare.
+    const share = (which: number) => {
+        if (!onShare || which < 0) return;
+        Haptics.selectionAsync();
+        dismiss(() => onShare(which));
+    };
 
     // Pull-down on the artwork. Claim only a decisively vertical, downward
     // move so the pager keeps horizontal swipes and a plain tap stays a tap.
@@ -185,7 +186,7 @@ const share = (which: number) => {
                                 Haptics.selectionAsync();
                             }
                         }}
-                        renderItem={({ item }) => {
+                        renderItem={({ item, index: pageIndex }) => {
                             const uri = prizeArtUri(item.image_url);
                             return (
                                 <View style={[styles.page, { width, height }]} {...pan.panHandlers}>
@@ -215,7 +216,7 @@ const share = (which: number) => {
                                     <Text style={styles.label}>{item.label}</Text>
                                     {onShare && (
                                         <Pressable
-                                            onPress={share}
+                                            onPress={() => share(pageIndex)}
                                             hitSlop={8}
                                             style={({ pressed }) => [styles.shareBtn, pressed && { opacity: 0.75 }]}
                                             accessibilityRole="button"
