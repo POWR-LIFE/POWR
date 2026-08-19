@@ -17,6 +17,7 @@ import {
     weekAnchorMonday,
     type LookbackPeriod,
 } from '@/lib/progressLookback';
+import { isSessionScoped } from '@/lib/health/windowVitals';
 import { getSessionUser, supabase } from '@/lib/supabase';
 
 /**
@@ -186,10 +187,19 @@ function labelFor(
  * still the day-wide number. Only the snapshot's `source` records how the figure
  * was actually measured, which is why this gates on that.
  *
- * Remove a source from this set once it gains a real per-workout read — see the
- * HealthKit follow-up (HKStatisticsQuery over each workout's own time range).
+ * The per-workout read now exists (lib/health/windowVitals.ts): the native sync
+ * reads each workout's own window, and gym check-ins get their visit's window
+ * read after the fact (lib/health/gymVitals.ts). Those rows carry
+ * `extras.scope = 'session'` and pass this gate; the day-wide rows history
+ * left behind do not. The source set stays — the SOURCE didn't become
+ * trustworthy, the READ did, and only the row knows which read it was.
  */
 const DAY_WIDE_VITAL_SOURCES = new Set(['healthkit', 'health_connect']);
+
+/** Day-wide provider AND not a window-scoped read — the only combination to gate. */
+function isDayWideRow(s: Pick<SnapshotRow, 'source' | 'extras'>): boolean {
+    return s.source != null && DAY_WIDE_VITAL_SOURCES.has(s.source) && !isSessionScoped(s.extras);
+}
 
 type SnapshotRow = {
     source: string | null;
@@ -226,6 +236,20 @@ function extrasFrom(extras: Record<string, unknown> | null): SessionExtras {
     };
 }
 
+/**
+ * A wearable workout that overlapped this geofence check-in and was therefore
+ * not recorded as a session (terra-webhook keeps it in suppressed_workouts,
+ * keyed to the check-in that outranked it). It carries the vitals the check-in
+ * itself can never measure. Read-only to the owner; nothing pays from it.
+ */
+type SuppressedWorkoutRow = {
+    source: string | null;
+    duration_sec: number | null;
+    hr_avg: number | null;
+    hr_max: number | null;
+    calories_active: number | null;
+};
+
 type SessionRow = {
     id: string;
     started_at: string;
@@ -234,6 +258,7 @@ type SessionRow = {
     distance_m: number | null;
     verification: string;
     health_snapshots: SnapshotRow[] | null;
+    suppressed_workouts: SuppressedWorkoutRow[] | null;
     point_transactions:
         | { id: string; amount: number; type: string; description: string | null; source: string | null; created_at: string }[]
         | null;
@@ -245,12 +270,41 @@ type SessionRow = {
  * Returns null rather than zeroes when the snapshot is missing or day-wide: a
  * wrong heart rate under a workout is worse than no heart rate, because the user
  * can check it against the watch that measured it.
+ *
+ * A geofence gym session has no snapshot of its own — the wearable's telling of
+ * that hour is suppressed so the time isn't paid twice — so the wearable's
+ * vitals are folded in from suppressed_workouts instead. A real linked snapshot
+ * still wins (history may hold one; claim-points now re-points the superseded
+ * row's snapshot to the winner); the suppressed record is the fallback.
  */
-function vitalsFrom(snapshots: SnapshotRow[] | null): SessionVitals | null {
-    const rows = snapshots ?? [];
+function vitalsFrom(
+    snapshots: SnapshotRow[] | null,
+    suppressed: SuppressedWorkoutRow[] | null = null,
+): SessionVitals | null {
+    const rows = [...(snapshots ?? [])];
+
+    // A long check-in window can swallow more than one wearable workout (a paused
+    // and restarted session arrives as two). Take the longest single effort
+    // rather than averaging across them — one honest figure beats a blend the
+    // user can't find in their watch app.
+    const longest = (suppressed ?? [])
+        .filter(w => w.hr_avg != null || w.calories_active != null)
+        .sort((a, b) => (b.duration_sec ?? 0) - (a.duration_sec ?? 0))[0];
+    if (longest) {
+        rows.push({
+            source: longest.source,
+            hr_avg: longest.hr_avg,
+            hr_max: longest.hr_max,
+            calories_active: longest.calories_active,
+            sleep_deep_h: null,
+            sleep_rem_h: null,
+            sleep_light_h: null,
+            extras: null,
+        });
+    }
     const carries = (s: SnapshotRow) => s.hr_avg != null || s.calories_active != null
         || s.extras != null || s.sleep_deep_h != null || s.sleep_rem_h != null || s.sleep_light_h != null;
-    const isDayWide = (s: SnapshotRow) => s.source != null && DAY_WIDE_VITAL_SOURCES.has(s.source);
+    const isDayWide = isDayWideRow;
 
     // A session has at most one linked snapshot in practice. Where history left
     // two, prefer one from a per-workout source — otherwise a stray HealthKit row
@@ -265,7 +319,7 @@ function vitalsFrom(snapshots: SnapshotRow[] | null): SessionVitals | null {
     // native sync are the day's figures stamped on every session, so they're
     // dropped — but the same row's sleep stages are a real per-night breakdown
     // and are kept. Gating the whole row would throw away good data with bad.
-    const dayWide = snap.source != null && DAY_WIDE_VITAL_SOURCES.has(snap.source);
+    const dayWide = isDayWideRow(snap);
 
     const vitals: SessionVitals = {
         hrAvg: dayWide ? null : snap.hr_avg,
@@ -308,7 +362,7 @@ export async function fetchPointsBreakdown(
 
     const { data, error } = await supabase
         .from('activity_sessions')
-        .select('id, started_at, duration_sec, steps, distance_m, verification, health_snapshots(source, hr_avg, hr_max, calories_active, sleep_deep_h, sleep_rem_h, sleep_light_h, extras), point_transactions(id, amount, type, description, source, created_at)')
+        .select('id, started_at, duration_sec, steps, distance_m, verification, health_snapshots(source, hr_avg, hr_max, calories_active, sleep_deep_h, sleep_rem_h, sleep_light_h, extras), suppressed_workouts(source, duration_sec, hr_avg, hr_max, calories_active), point_transactions(id, amount, type, description, source, created_at)')
         .eq('user_id', user.id)
         .eq('type', type)
         .gte('started_at', start.toISOString())
@@ -324,7 +378,7 @@ export async function fetchPointsBreakdown(
 
     for (const s of sessions) {
         const durationMin = Math.round((s.duration_sec ?? 0) / 60);
-        const vitals = vitalsFrom(s.health_snapshots);
+        const vitals = vitalsFrom(s.health_snapshots, s.suppressed_workouts);
         const txs = [...(s.point_transactions ?? [])].sort((a, b) =>
             a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0,
         );

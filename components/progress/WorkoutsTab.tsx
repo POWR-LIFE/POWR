@@ -407,10 +407,19 @@ function WorkoutMonthView({
           </View>
         </View>
         <View style={styles.bigMetricDivider} />
+        {/* Gym ranks the longest visit, not a session count: a geofence check-in
+            is one row per day by construction, so "best day: 1" was a constant.
+            The metric comes from the data layer so the two can't disagree. */}
         <View style={styles.bigMetric}>
-          <Text style={styles.bigMetricSup}>BEST DAY</Text>
+          <Text style={styles.bigMetricSup}>
+            {data.bestDayMetric === 'longestSession' ? 'LONGEST VISIT' : 'BEST DAY'}
+          </Text>
           <Text style={[styles.bigMetricVal, { color: config.colour, fontSize: 30, lineHeight: 32 }]}>
-            {data.bestDay ? data.bestDay.sessionCount : '—'}
+            {data.bestDay
+              ? data.bestDayMetric === 'longestSession'
+                ? formatDuration(data.bestDay.longestSessionMin)
+                : data.bestDay.sessionCount
+              : '—'}
           </Text>
           <Text style={styles.bigMetricMax}>
             {data.bestDay ? formatShortDate(data.bestDay.date) : ''}

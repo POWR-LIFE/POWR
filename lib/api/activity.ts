@@ -1521,18 +1521,56 @@ export type DailyActivityEntry = {
     date: string;           // YYYY-MM-DD
     sessionCount: number;
     totalDurationMin: number;
+    /**
+     * The single longest session that day, in minutes. Differs from
+     * totalDurationMin only when a day holds several rows (wearable workouts).
+     * Sessions pinned at the 12h gym backstop are EXCLUDED — that value is a
+     * write-time clamp on a runaway dwell, not a measured stay (see
+     * project_session_duration_integrity), so it must never win "longest".
+     */
+    longestSessionMin: number;
     /** Session-linked points earned that day for this type. */
     points: number;
     steps: number | null;   // walking only
 };
+
+/**
+ * What "best day" ranks on. Walking ranks steps. Gym ranks the longest visit:
+ * the geofence tier is bound to ONE gym row per user per UTC day
+ * (idx_one_session_per_type_per_day folds a second visit into the first), so a
+ * session count is a constant 1 for essentially everyone and says nothing.
+ * Other workouts still rank on sessions, where a second row a day is real.
+ */
+export type BestDayMetric = 'steps' | 'sessions' | 'longestSession';
 
 export type MonthlyActivityData = {
     entries: DailyActivityEntry[];   // 30 entries, oldest → newest
     totalSessions: number;
     avgPerDay: number;               // avg sessions/day (workouts) or avg steps (walking)
     bestDay: DailyActivityEntry | null;
+    bestDayMetric: BestDayMetric;
     type: ActivityType;
 };
+
+/**
+ * Mirrors MAX_GYM_SESSION_SEC (GeofenceContext / upgrade-gym-tier). A row AT the
+ * backstop was clamped, not measured; nothing below it is.
+ */
+const GYM_BACKSTOP_SEC = 12 * 60 * 60;
+
+export function bestDayMetricFor(type: ActivityType): BestDayMetric {
+    if (type === 'walking') return 'steps';
+    if (type === 'gym') return 'longestSession';
+    return 'sessions';
+}
+
+function bestDayValue(e: DailyActivityEntry, metric: BestDayMetric): number {
+    switch (metric) {
+        case 'steps': return e.steps ?? 0;
+        case 'longestSession': return e.longestSessionMin;
+        default: return e.sessionCount;
+    }
+}
 
 /**
  * Fetches a calendar month of activity data for a given type (heatmap +
@@ -1542,7 +1580,8 @@ export type MonthlyActivityData = {
  */
 export async function fetchMonthlyActivityData(type: ActivityType, offset = 0): Promise<MonthlyActivityData> {
     const uid = await getCurrentUserId();
-    if (!uid) return { entries: [], totalSessions: 0, avgPerDay: 0, bestDay: null, type };
+    const bestDayMetric = bestDayMetricFor(type);
+    if (!uid) return { entries: [], totalSessions: 0, avgPerDay: 0, bestDay: null, bestDayMetric, type };
 
     // No time-of-day normalisation needed. The anchors used to be pinned to local
     // noon, because the entry keys were built with toISOString() and a
@@ -1572,7 +1611,7 @@ export async function fetchMonthlyActivityData(type: ActivityType, offset = 0): 
     if (error) throw error;
 
     // Aggregate by date
-    const byDate = new Map<string, { count: number; durationMin: number; points: number; steps: number }>();
+    const byDate = new Map<string, { count: number; durationMin: number; longestMin: number; points: number; steps: number }>();
 
     for (const s of (data ?? []) as Array<{
         started_at: string;
@@ -1587,6 +1626,9 @@ export async function fetchMonthlyActivityData(type: ActivityType, offset = 0): 
         const dateKey = localDateStr(new Date(s.started_at));
         const existing = byDate.get(dateKey);
         const durMin = Math.round((s.duration_sec ?? 0) / 60);
+        // A clamped row still counts toward the day's total (it's what RECENT
+        // DAYS shows too) — it just can't be anyone's longest.
+        const longestMin = (s.duration_sec ?? 0) >= GYM_BACKSTOP_SEC ? 0 : durMin;
         const steps = s.steps ?? 0;
         // Every row on the session counts, streak bonuses included — same rule as
         // fetchWeeklyMetrics.pointsPerType, so the two agree.
@@ -1595,10 +1637,11 @@ export async function fetchMonthlyActivityData(type: ActivityType, offset = 0): 
         if (existing) {
             existing.count++;
             existing.durationMin += durMin;
+            existing.longestMin = Math.max(existing.longestMin, longestMin);
             existing.points += pts;
             existing.steps += steps;
         } else {
-            byDate.set(dateKey, { count: 1, durationMin: durMin, points: pts, steps });
+            byDate.set(dateKey, { count: 1, durationMin: durMin, longestMin, points: pts, steps });
         }
     }
 
@@ -1620,6 +1663,7 @@ export async function fetchMonthlyActivityData(type: ActivityType, offset = 0): 
             date: dateKey,
             sessionCount: val?.count ?? 0,
             totalDurationMin: val?.durationMin ?? 0,
+            longestSessionMin: val?.longestMin ?? 0,
             points: val?.points ?? 0,
             steps: type === 'walking' ? (val?.steps ?? 0) : null,
         });
@@ -1635,16 +1679,17 @@ export async function fetchMonthlyActivityData(type: ActivityType, offset = 0): 
             : Math.round((totalSessions / withData.length) * 10) / 10
         : 0;
 
+    // Strictly greater, so ties go to the EARLIEST day. A day whose only value is
+    // 0 (every visit clamped at the backstop) never qualifies: better to show a
+    // dash than crown a 12h row that nobody actually spent at the gym.
     let bestDay: DailyActivityEntry | null = null;
     for (const e of withData) {
-        const metric = type === 'walking' ? (e.steps ?? 0) : e.sessionCount;
-        const bestMetric = bestDay
-            ? (type === 'walking' ? (bestDay.steps ?? 0) : bestDay.sessionCount)
-            : -1;
-        if (metric > bestMetric) bestDay = e;
+        const metric = bestDayValue(e, bestDayMetric);
+        if (bestDayMetric === 'longestSession' && metric <= 0) continue;
+        if (!bestDay || metric > bestDayValue(bestDay, bestDayMetric)) bestDay = e;
     }
 
-    return { entries, totalSessions, avgPerDay, bestDay, type };
+    return { entries, totalSessions, avgPerDay, bestDay, bestDayMetric, type };
 }
 
 // ── Health snapshot persistence ───────────────────────────────────────────────
@@ -1671,6 +1716,13 @@ export type HealthSnapshotParams = {
      * when provenance is unavailable. See lib/health/dataSource.ts.
      */
     sourceDetail?: string;
+    /**
+     * Bounded per-workout metrics (see the column comment) — scalars only, never
+     * sample series. The native path uses it to mark a window-scoped read
+     * (`{ scope: 'session' }`, lib/health/windowVitals.ts) apart from the
+     * day-wide figures the same provider used to stamp on every session.
+     */
+    extras?: Record<string, unknown>;
 };
 
 /** Persists a health data snapshot to the health_snapshots table. */
@@ -1692,6 +1744,7 @@ export async function saveHealthSnapshot(params: HealthSnapshotParams): Promise<
         duration_sec: params.durationSec ?? null,
         source: params.source,
         source_detail: params.sourceDetail ?? null,
+        extras: params.extras ?? null,
     });
     if (error) console.warn('[healthSnapshot] insert failed:', error.message);
 }

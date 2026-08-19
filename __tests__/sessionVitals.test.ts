@@ -30,13 +30,23 @@ type Snapshot = {
     extras?: Record<string, unknown> | null;
 };
 
+/** A wearable workout dropped because it overlapped this check-in. */
+type Suppressed = {
+    source: string | null;
+    duration_sec: number | null;
+    hr_avg: number | null;
+    hr_max: number | null;
+    calories_active: number | null;
+};
+
 /** One session with a paid ledger row, shaped as PostgREST returns it. */
 function session(overrides: {
     verification?: string;
     snapshots?: Snapshot[];
+    suppressed?: Suppressed[];
     paid?: boolean;
 } = {}) {
-    const { verification = 'wearable', snapshots = [], paid = true } = overrides;
+    const { verification = 'wearable', snapshots = [], suppressed = [], paid = true } = overrides;
     return {
         id: 'session-1',
         started_at: '2026-07-24T09:00:00Z',
@@ -45,6 +55,7 @@ function session(overrides: {
         distance_m: 7100,
         verification,
         health_snapshots: snapshots,
+        suppressed_workouts: suppressed,
         point_transactions: paid
             ? [{
                 id: 'tx-1', amount: 6, type: 'earn',
@@ -178,6 +189,52 @@ describe('day-wide sources are suppressed', () => {
  * read, and never re-serves an old payload — so the extras bag is written wide
  * and read defensively. Providers fill very different subsets.
  */
+/**
+ * The native path now reads each workout's own window (lib/health/windowVitals)
+ * and marks the row `extras.scope = 'session'`. That marker — not the source — is
+ * what makes a HealthKit figure trustworthy: the day-wide rows history left
+ * behind carry the same source and must stay gated.
+ */
+describe('window-scoped native reads pass the gate', () => {
+    it('surfaces a HealthKit row read over the session\'s own window', async () => {
+        mockSessions([session({
+            snapshots: [{ source: 'healthkit', hr_avg: 139, hr_max: 168, calories_active: 412, extras: { scope: 'session' } }],
+        })]);
+
+        const v = await fetchVitals();
+        expect(v?.hrAvg).toBe(139);
+        expect(v?.caloriesActive).toBe(412);
+        expect(v?.source).toBe('healthkit');
+    });
+
+    it('still drops a HealthKit row without the marker, even beside a scoped one from another day', async () => {
+        mockSessions([session({
+            snapshots: [{ source: 'healthkit', hr_avg: 71, hr_max: 95, calories_active: 900 }],
+        })]);
+        expect(await fetchVitals()).toBeNull();
+    });
+
+    it('prefers the window-scoped row when history left a day-wide one beside it', async () => {
+        mockSessions([session({
+            snapshots: [
+                { source: 'healthkit', hr_avg: 71, hr_max: 95, calories_active: 900 },
+                { source: 'healthkit', hr_avg: 139, hr_max: 168, calories_active: 412, extras: { scope: 'session' } },
+            ],
+        })]);
+        expect((await fetchVitals())?.hrAvg).toBe(139);
+    });
+
+    it('lets a check-in show the window its phone recorded, with the chip naming the phone store', async () => {
+        mockSessions([session({
+            verification: 'geofence',
+            snapshots: [{ source: 'health_connect', hr_avg: 127, hr_max: 161, calories_active: 380, extras: { scope: 'session' } }],
+        })]);
+        const v = await fetchVitals();
+        expect(v?.hrAvg).toBe(127);
+        expect(v?.source).toBe('health_connect');
+    });
+});
+
 describe('provider extras', () => {
     it('maps the snake_case column into typed camelCase fields', async () => {
         mockSessions([session({
@@ -254,6 +311,68 @@ describe('missing data', () => {
         })]);
 
         expect((await fetchVitals())?.source).toBe('whoop');
+    });
+});
+
+/**
+ * A geofence check-in is the authoritative record of the hour, so the wearable's
+ * telling of it is never a session — but it IS kept (suppressed_workouts, keyed
+ * to the winning check-in) and it carries the heart rate the check-in can't
+ * measure. Half of prod check-ins come from people whose wearable was running;
+ * every one of them showed nothing.
+ */
+describe('a check-in borrows the suppressed wearable workout\'s vitals', () => {
+    it('surfaces heart rate and calories from the workout the check-in outranked', async () => {
+        mockSessions([session({
+            verification: 'geofence',
+            suppressed: [{ source: 'whoop', duration_sec: 2600, hr_avg: 138, hr_max: 171, calories_active: 512 }],
+        })]);
+
+        const v = await fetchVitals();
+        expect(v?.hrAvg).toBe(138);
+        expect(v?.hrMax).toBe(171);
+        expect(v?.caloriesActive).toBe(512);
+        expect(v?.source).toBe('whoop');
+    });
+
+    it('takes the longest effort when a long window swallowed several', async () => {
+        mockSessions([session({
+            verification: 'geofence',
+            suppressed: [
+                { source: 'whoop', duration_sec: 600, hr_avg: 110, hr_max: 130, calories_active: 80 },
+                { source: 'whoop', duration_sec: 2400, hr_avg: 141, hr_max: 175, calories_active: 470 },
+            ],
+        })]);
+
+        expect((await fetchVitals())?.hrAvg).toBe(141);
+    });
+
+    it('still prefers a snapshot linked to the session itself', async () => {
+        mockSessions([session({
+            verification: 'geofence',
+            snapshots: [{ source: 'garmin', hr_avg: 129, hr_max: 160, calories_active: 400 }],
+            suppressed: [{ source: 'whoop', duration_sec: 2600, hr_avg: 138, hr_max: 171, calories_active: 512 }],
+        })]);
+
+        expect((await fetchVitals())?.source).toBe('garmin');
+    });
+
+    it('applies the same day-wide gate — a phone-synced suppression is no more per-workout', async () => {
+        mockSessions([session({
+            verification: 'geofence',
+            suppressed: [{ source: 'healthkit', duration_sec: 2600, hr_avg: 74, hr_max: 98, calories_active: 900 }],
+        })]);
+
+        expect(await fetchVitals()).toBeNull();
+    });
+
+    it('ignores a suppressed workout that measured nothing', async () => {
+        mockSessions([session({
+            verification: 'geofence',
+            suppressed: [{ source: 'strava', duration_sec: 2600, hr_avg: null, hr_max: null, calories_active: null }],
+        })]);
+
+        expect(await fetchVitals()).toBeNull();
     });
 });
 

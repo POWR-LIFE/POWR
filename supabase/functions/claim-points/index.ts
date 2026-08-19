@@ -212,6 +212,15 @@ function calcStreakBonus(type: ActivityType, streak: number, base: number): numb
  * never be superseded by one. Mirrors admin-review-session's reject: append a
  * compensating penalty (the ledger is append-only) then delete the session (FK is
  * ON DELETE SET NULL, so points are summed before deletion).
+ *
+ * The POINTS are reversed; the DATA is not thrown away. Before the row goes:
+ *  - its health_snapshots (heart rate, calories — what the wearable measured
+ *    during the visit) are re-pointed to the winning check-in, which can never
+ *    measure those itself. ON DELETE SET NULL would otherwise orphan them.
+ *  - the workout is recorded in suppressed_workouts against the winner, the
+ *    same audit record terra-webhook writes in the reverse arrival order, so
+ *    "never drop a workout" holds whichever side arrives first. Nothing counts
+ *    or pays from that table.
  */
 async function supersedeLowerTrust(supabase, winner: ActivitySession): Promise<void> {
   const startMs = new Date(winner.started_at).getTime();
@@ -224,7 +233,7 @@ async function supersedeLowerTrust(supabase, winner: ActivitySession): Promise<v
 
   const { data: lower } = await supabase
     .from('activity_sessions')
-    .select('id, type, verification, trust_score, started_at, ended_at, duration_sec')
+    .select('id, type, verification, trust_score, started_at, ended_at, duration_sec, distance_m, raw_activity_name')
     .eq('user_id', winner.user_id)
     .not('type', 'in', '("walking","sleep")')
     .in('verification', ['wearable', 'health', 'manual'])
@@ -248,9 +257,70 @@ async function supersedeLowerTrust(supabase, winner: ActivitySession): Promise<v
         description: `Superseded ${s.type} by geofence check-in`,
       });
     }
+    await preserveSupersededWorkout(supabase, winner, s, reversed);
     await supabase.from('activity_sessions').delete().eq('id', s.id);
     console.log(`[claim-points] superseded ${s.type} ${s.started_at} (−${reversed} pts) — geofence check-in outranks`);
   }
+}
+
+/**
+ * Keep what the superseded workout measured. Best-effort on purpose: a failure
+ * here must never block the claim (the user is owed their check-in points), so
+ * every step logs and moves on.
+ */
+async function preserveSupersededWorkout(
+  supabase,
+  winner: ActivitySession,
+  loser: { id: string; type: string; verification: string; started_at: string; ended_at: string | null; duration_sec: number | null; distance_m: number | null; raw_activity_name?: string | null },
+  reversed: number,
+): Promise<void> {
+  // The snapshot the loser's sync wrote, if any — read BEFORE re-pointing so the
+  // suppressed record can carry the same figures even if the move fails.
+  const { data: snaps, error: snapErr } = await supabase
+    .from('health_snapshots')
+    .select('id, source, hr_avg, hr_max, calories_active')
+    .eq('session_id', loser.id);
+  if (snapErr) console.error('[claim-points] superseded snapshot read failed:', snapErr.message);
+  const snap = (snaps ?? []).find((h: { hr_avg: number | null; calories_active: number | null }) =>
+    h.hr_avg != null || h.calories_active != null) ?? (snaps ?? [])[0] ?? null;
+
+  if ((snaps ?? []).length > 0) {
+    const { error: moveErr } = await supabase
+      .from('health_snapshots')
+      .update({ session_id: winner.id })
+      .eq('session_id', loser.id);
+    if (moveErr) console.error('[claim-points] superseded snapshot re-point failed:', moveErr.message);
+  }
+
+  const durSec = loser.duration_sec ?? 0;
+  if (durSec <= 0) return; // table requires duration_sec > 0; nothing measurable to keep
+
+  const startMs = Date.parse(loser.started_at);
+  if (!Number.isFinite(startMs)) {
+    console.error('[claim-points] invalid started_at for suppressed workout:', loser.started_at);
+    return;
+  }
+
+  const endedAt = loser.ended_at ?? new Date(startMs + durSec * 1000).toISOString();
+  const { error: suppressErr } = await supabase
+    .from('suppressed_workouts')
+    .upsert({
+      user_id: winner.user_id,
+      winner_session_id: winner.id,
+      type: loser.type,
+      started_at: loser.started_at,
+      ended_at: endedAt,
+      duration_sec: durSec,
+      distance_m: loser.distance_m != null ? Math.round(loser.distance_m) : null,
+      hr_avg: snap?.hr_avg != null ? Math.round(snap.hr_avg) : null,
+      hr_max: snap?.hr_max != null ? Math.round(snap.hr_max) : null,
+      calories_active: snap?.calories_active != null ? Math.round(snap.calories_active) : null,
+      source: snap?.source ?? loser.verification,
+      raw_activity_name: loser.raw_activity_name ?? null,
+      reason: 'superseded_by_geofence_claim',
+      would_have_earned: reversed,
+    }, { onConflict: 'user_id,type,started_at' });
+  if (suppressErr) console.error('[claim-points] suppressed_workouts write failed:', suppressErr.message);
 }
 
 // ─────────────────────────────────────────────

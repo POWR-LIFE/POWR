@@ -596,11 +596,12 @@ function vitalsMetrics(vitals: SessionVitals | null): string[] {
  *
  * Never on an empty sheet (nothing to enrich), never on walking or sleep (daily
  * aggregates with no per-effort heart rate), and — the non-obvious one — never
- * for a gym check-in. A geofence session can't ever carry vitals: terra-webhook
- * drops the wearable workout that overlaps a check-in so the same hour isn't
- * paid twice (overlapsGeofenceGym), so the wearable's version of that session is
- * never stored. Prompting there asks the user for something the system won't do,
- * and lands in front of people already wearing a Whoop.
+ * for a gym check-in. A geofence session only carries vitals second-hand: the
+ * wearable workout that overlaps a check-in isn't recorded as a session (so the
+ * hour isn't paid twice) and its vitals arrive via suppressed_workouts or a
+ * re-pointed snapshot — Terra providers today, native phone sync not yet (its
+ * HR is day-wide and gated out regardless). Prompting there would ask for
+ * something the user may already be doing, in front of people wearing a Whoop.
  */
 function showVitalsPrompt(type: ActivityType, groups: SessionGroup[]): boolean {
     if (type === 'walking' || type === 'sleep') return false;
@@ -781,6 +782,10 @@ function summaryLine(
  * check these numbers against.
  */
 function verificationLabel(verification: string, source?: string | null): string {
+    // A check-in verified the session; the wearable only measured it. Keep both
+    // on the chip so the user knows what counted AND which app to compare the
+    // numbers against — "Whoop" alone would misstate what was paid.
+    if (verification === 'geofence') return source ? `Gym check-in · ${providerLabel(source)}` : 'Gym check-in';
     if (source) return providerLabel(source);
     switch (verification) {
         case 'geofence': return 'Gym check-in';
