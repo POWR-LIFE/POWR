@@ -52,12 +52,20 @@ export function EventPrizeViewer({
     initialIndex,
     visible,
     onClose,
+    onShare,
 }: {
     prizes: LiveEventPrize[];
     /** Which prize opens first — the one that was tapped. */
     initialIndex: number;
     visible: boolean;
     onClose: () => void;
+    /**
+     * Share the prize on screen. Fires AFTER the spotlight has animated away
+     * (and `onClose` has run) — routing while an RN Modal is still mounted
+     * leaves the router's modal presented underneath it on iOS. Omit to hide
+     * the button.
+     */
+    onShare?: (index: number) => void;
 }) {
     const { width, height } = useWindowDimensions();
     const insets = useSafeAreaInsets();
@@ -87,12 +95,23 @@ export function EventPrizeViewer({
         ]).start();
     }, [visible, initialIndex, scrim, scale, dragY]);
 
-    const dismiss = () => {
+    const dismiss = (after?: () => void) => {
         Animated.parallel([
             Animated.timing(scrim, { toValue: 0, duration: 180, easing: Easing.in(Easing.quad), useNativeDriver: true }),
             Animated.timing(scale, { toValue: 0.96, duration: 180, easing: Easing.in(Easing.quad), useNativeDriver: true }),
-        ]).start(() => onClose());
+        ]).start(() => {
+            onClose();
+            after?.();
+        });
     };
+
+    // Hand off to the share screen once the lightbox is gone — the index is
+    // read at tap time, so paging after the tap can't change what's shared.
+const share = (which: number) => {
+    if (!onShare || which < 0) return;
+    Haptics.selectionAsync();
+    dismiss(() => onShare(which));
+};
 
     // Pull-down on the artwork. Claim only a decisively vertical, downward
     // move so the pager keeps horizontal swipes and a plain tap stays a tap.
@@ -125,9 +144,10 @@ export function EventPrizeViewer({
     );
 
     // The frame's ceiling: nearly the full width, and enough height that a
-    // tall poster still leaves room for the ordinal + label beneath it.
+    // tall poster still leaves room for the ordinal, label and share button
+    // beneath it.
     const maxW = width - 48;
-    const maxH = height * 0.62;
+    const maxH = height * 0.58;
     const frameFor = (rank: number) => {
         const a = aspects[rank] ?? 1;
         let h = Math.min(maxH, maxW / a);
@@ -139,10 +159,10 @@ export function EventPrizeViewer({
     if (prizes.length === 0) return null;
 
     return (
-        <Modal visible={visible} transparent statusBarTranslucent animationType="none" onRequestClose={dismiss}>
+        <Modal visible={visible} transparent statusBarTranslucent animationType="none" onRequestClose={() => dismiss()}>
             <View style={styles.container}>
                 <Animated.View style={[styles.scrim, { opacity: scrimOpacity }]} />
-                <Pressable style={StyleSheet.absoluteFill} onPress={dismiss} accessibilityLabel="Close" />
+                <Pressable style={StyleSheet.absoluteFill} onPress={() => dismiss()} accessibilityLabel="Close" />
 
                 <Animated.View
                     style={[styles.content, { opacity: scrim, transform: [{ scale }, { translateY: dragY }] }]}
@@ -193,6 +213,18 @@ export function EventPrizeViewer({
                                     </View>
                                     <Text style={styles.rank}>{rankLabel(item.rank)}</Text>
                                     <Text style={styles.label}>{item.label}</Text>
+                                    {onShare && (
+                                        <Pressable
+                                            onPress={share}
+                                            hitSlop={8}
+                                            style={({ pressed }) => [styles.shareBtn, pressed && { opacity: 0.75 }]}
+                                            accessibilityRole="button"
+                                            accessibilityLabel={`Share ${rankLabel(item.rank)} prize`}
+                                        >
+                                            <Ionicons name="paper-plane" size={14} color="#0a0a0a" />
+                                            <Text style={styles.shareText}>SHARE</Text>
+                                        </Pressable>
+                                    )}
                                 </View>
                             );
                         }}
@@ -209,7 +241,7 @@ export function EventPrizeViewer({
 
                 <Animated.View style={[styles.closeWrap, { top: insets.top + 10, opacity: scrim }]}>
                     <Pressable
-                        onPress={dismiss}
+                        onPress={() => dismiss()}
                         hitSlop={12}
                         style={({ pressed }) => [styles.close, pressed && { opacity: 0.7 }]}
                         accessibilityRole="button"
@@ -253,6 +285,19 @@ const styles = StyleSheet.create({
         letterSpacing: -0.3,
         maxWidth: 320,
     },
+    // Solid gold, black type — the same chip language as the gallery card's
+    // ordinal, so it reads on the near-black scrim without shouting.
+    shareBtn: {
+        marginTop: 24,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        paddingHorizontal: 18,
+        paddingVertical: 10,
+        borderRadius: 100,
+        backgroundColor: GOLD,
+    },
+    shareText: { fontSize: 11, fontWeight: '800', color: '#0a0a0a', letterSpacing: 2 },
     dots: {
         position: 'absolute',
         bottom: 56,

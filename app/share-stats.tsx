@@ -21,6 +21,7 @@ import { ShareCard } from '@/components/share/ShareCard';
 import { tracked } from '@/lib/analytics';
 import { LEVEL_IMAGE, getLevelInfo } from '@/constants/levels';
 import { buildShareMessage, fetchAutoSummary, fetchChallengeSummary, fetchCheckInSummary, fetchLevelUpSummary, publishShareCard, type ShareSummary } from '@/lib/api/share';
+import { SAVE_CARD_ENABLED, SAVE_SHEET_HINT, cardFilename, saveCardImage, saveCardNotice } from '@/lib/saveCard';
 
 const GOLD  = '#E8D200';
 const BG    = '#0d0d0d';
@@ -88,7 +89,7 @@ export default function ShareStatsScreen() {
   const [summary, setSummary]     = useState<ShareSummary | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [notice, setNotice]       = useState<string | null>(null);
-  const [busy, setBusy]           = useState<'share' | 'save' | null>(null);
+  const [busy, setBusy]           = useState<'share' | 'post' | 'save' | null>(null);
   // A level-up share is about the new mark — lead with it.
   const [bgMode, setBgMode]       = useState<BgMode>(mode === 'level-up' ? 'level' : 'cover');
   const [galleryUri, setGalleryUri] = useState<string | null>(null);
@@ -209,21 +210,48 @@ export default function ShareStatsScreen() {
     }
   }
 
-  async function handleSave() {
+  /** The full-res PNG both Post and Save hand out. */
+  function captureFullRes() {
+    return captureRef(cardRef, {
+      format: 'png',
+      quality: 1,
+      width: 1080,
+      height: 1920,
+      result: 'tmpfile',
+    });
+  }
+
+  async function handlePost() {
     if (!cardRef.current || busy) return;
-    setBusy('save');
+    setBusy('post');
     setNotice(null);
     try {
-      const uri = await captureRef(cardRef, {
-        format: 'png',
-        quality: 1,
-        width: 1080,
-        height: 1920,
-        result: 'tmpfile',
-      });
+      const uri = await captureFullRes();
       await Sharing.shareAsync(uri, { mimeType: 'image/png', UTI: 'public.png', dialogTitle: 'Post your workout' });
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : 'Could not share your card.');
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /**
+   * Keep the image itself — no link, no caption. Android writes it to a
+   * folder the member picks once; iOS goes through the sheet's Save Image
+   * row (so the hint goes up before the sheet does). See lib/saveCard.ts for
+   * why this is not a camera-roll write.
+   */
+  async function handleSave() {
+    if (!cardRef.current || busy) return;
+    setBusy('save');
+    setNotice(Platform.OS === 'ios' ? SAVE_SHEET_HINT : null);
+    try {
+      const uri = await captureFullRes();
+      const result = await saveCardImage(uri, cardFilename(mode));
+      setNotice(saveCardNotice(result));
+    } catch (e) {
+      setNotice(null);
+      setLoadError(e instanceof Error ? e.message : 'Could not save your card.');
     } finally {
       setBusy(null);
     }
@@ -308,13 +336,24 @@ export default function ShareStatsScreen() {
             <ActionButton
               icon="share-social-outline"
               label="Post"
-              onPress={tracked('share_stats_post', handleSave)}
-              loading={busy === 'save'}
+              onPress={tracked('share_stats_post', handlePost)}
+              loading={busy === 'post'}
               disabled={busy !== null}
             />
+            {SAVE_CARD_ENABLED && (
+              <ActionButton
+                icon="download-outline"
+                label="Save"
+                onPress={tracked('share_stats_save', handleSave)}
+                loading={busy === 'save'}
+                disabled={busy !== null}
+              />
+            )}
           </View>
           <Text style={styles.helperText}>
-            {notice ?? 'Share sends a tappable link preview. Post shares the image to TikTok, Instagram, X, Threads and more.'}
+            {notice ?? (SAVE_CARD_ENABLED
+              ? 'Share sends a tappable link preview. Post shares the image to TikTok, Instagram and more. Save keeps the image on your phone.'
+              : 'Share sends a tappable link preview. Post shares the image to TikTok, Instagram, X, Threads and more.')}
           </Text>
         </View>
       )}
@@ -395,7 +434,7 @@ const styles = StyleSheet.create({
   actionRow: {
     flexDirection: 'row',
     justifyContent: 'center',
-    gap: 40,
+    gap: 32,
   },
   action: {
     alignItems: 'center',

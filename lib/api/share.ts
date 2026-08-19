@@ -485,6 +485,36 @@ export function buildShareSubtitle(summary: ShareSummary): string {
  * published, and the member shares a link to it rather than the file itself.
  */
 export async function publishShareCard(summary: ShareSummary, imageUri: string): Promise<string> {
+  return publishShareImage(imageUri, {
+    title: buildShareTitle(summary),
+    subtitle: buildShareSubtitle(summary),
+    referralCode: summary.profile.referralCode,
+  });
+}
+
+export interface ShareImageMeta {
+  /** Bold line of the link preview (og:title). */
+  title: string;
+  /** Grey line beneath it (og:description). */
+  subtitle: string | null;
+  /** Attributes the tap to the member: humans bounce to /app?ref=<code>. */
+  referralCode: string | null;
+  /**
+   * Where a human who taps the preview should land, as a path under
+   * powr.life — e.g. the event a prize belongs to. Must begin with `/app`
+   * (the DB constraint and the OG function both enforce it, so a card can
+   * never become an open redirect). Omit for the default /app?ref= bounce.
+   */
+  appPath?: string | null;
+}
+
+/**
+ * The one publishing path every card shares: uploads the captured image to
+ * the public `share-cards` bucket, records the `share_cards` row the
+ * /s/<id> page renders from, and returns that URL. Card-specific wording and
+ * landing come in via `meta`.
+ */
+export async function publishShareImage(imageUri: string, meta: ShareImageMeta): Promise<string> {
   const user = await getSessionUser();
   if (!user) throw new Error('Not authenticated');
 
@@ -509,9 +539,10 @@ export async function publishShareCard(summary: ShareSummary, imageUri: string):
     .insert({
       user_id: user.id,
       image_path: path,
-      title: buildShareTitle(summary),
-      subtitle: buildShareSubtitle(summary),
-      referral_code: summary.profile.referralCode,
+      title: meta.title,
+      subtitle: meta.subtitle,
+      referral_code: meta.referralCode,
+      app_path: meta.appPath ?? null,
     })
     .select('id')
     .single();

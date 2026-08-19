@@ -172,7 +172,7 @@ export default function LeagueScreen() {
               />
               {/* What's on the line — its own block, not a footnote inside
                   the hero: artwork gets a gallery, tap opens the spotlight. */}
-              <EventPrizeGallery prizes={activeEvent.prizes} />
+              <EventPrizeGallery event={activeEvent} />
               {/* The ticket only means anything once you're in the event, and
                   only while there's still time to convert an invite. */}
               {activeEvent.viewer.joined && invitesOpen(activeEvent) && (

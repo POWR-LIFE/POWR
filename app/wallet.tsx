@@ -9,6 +9,7 @@ import {
   type WalletStatus,
 } from '@/lib/api/rewards';
 import { tracked } from '@/lib/analytics';
+import { SAVE_CARD_ENABLED, cardFilename, saveCardImage } from '@/lib/saveCard';
 import { rewardHeroUri, rewardLogoUri } from '@/lib/storageImage';
 import { Ionicons } from '@expo/vector-icons';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
@@ -92,11 +93,18 @@ function shareAsText(entry: WalletEntry): Promise<unknown> {
 function WalletCard({
   entry,
   onShare,
+  onSave,
   shareBusy,
+  saveBusy,
+  saved,
 }: {
   entry: WalletEntry;
   onShare: (entry: WalletEntry) => void;
+  onSave: (entry: WalletEntry) => void;
   shareBusy: boolean;
+  saveBusy: boolean;
+  /** Flashes "Saved" for a beat after an Android write lands. */
+  saved: boolean;
 }) {
   const [copied, setCopied] = useState(false);
   const status = walletEntryStatus(entry);
@@ -182,7 +190,7 @@ function WalletCard({
           <Pressable
             style={({ pressed }) => [styles.secondaryBtn, pressed && { opacity: 0.7 }]}
             onPress={tracked('wallet_share_reward', () => onShare(entry))}
-            disabled={shareBusy}
+            disabled={shareBusy || saveBusy}
           >
             {shareBusy ? (
               <ActivityIndicator size="small" color={DIM} />
@@ -193,6 +201,22 @@ function WalletCard({
               </>
             )}
           </Pressable>
+          {/* Keep the card image itself — see lib/saveCard.ts (and why it's off). */}
+          {SAVE_CARD_ENABLED && (
+            <Pressable
+              style={({ pressed }) => [styles.secondaryBtn, styles.iconBtn, pressed && { opacity: 0.7 }]}
+              onPress={tracked('wallet_save_reward', () => onSave(entry))}
+              disabled={shareBusy || saveBusy}
+              accessibilityRole="button"
+              accessibilityLabel={saved ? 'Saved' : 'Save image'}
+            >
+              {saveBusy ? (
+                <ActivityIndicator size="small" color={DIM} />
+              ) : (
+                <Ionicons name={saved ? 'checkmark' : 'download-outline'} size={15} color={saved ? GREEN : DIM} />
+              )}
+            </Pressable>
+          )}
         </View>
       )}
     </View>
@@ -208,6 +232,8 @@ export default function WalletScreen() {
   const router = useRouter();
   const [tab, setTab] = useState<WalletTab>('active');
   const [pendingShare, setPendingShare] = useState<WalletEntry | null>(null);
+  const [pendingAction, setPendingAction] = useState<'share' | 'save'>('share');
+  const [savedId, setSavedId] = useState<string | null>(null);
   const shareCardRef = useRef<View>(null);
   const shareReadyRef = useRef<(() => void) | null>(null);
 
@@ -260,23 +286,32 @@ export default function WalletScreen() {
     shareReadyRef.current?.();
   }, []);
 
+  /**
+   * Mounts the off-screen card for `entry`, waits for its images (capped so a
+   * stalled load can't hang the button), and returns the full-res PNG. Share
+   * and Save both start here; the caller owns the cleanup in its `finally`.
+   */
+  const captureEntry = useCallback(async (entry: WalletEntry, action: 'share' | 'save'): Promise<string> => {
+    setPendingAction(action);
+    setPendingShare(entry);
+    await new Promise<void>((resolve) => {
+      shareReadyRef.current = resolve;
+      setTimeout(resolve, 2500);
+    });
+    await new Promise((r) => setTimeout(r, 60)); // let the loaded images paint
+    return captureRef(shareCardRef, {
+      format: 'png',
+      quality: 1,
+      width: 1080,
+      height: 1350,
+      result: 'tmpfile',
+    });
+  }, []);
+
   const handleShare = useCallback(async (entry: WalletEntry) => {
     Haptics.selectionAsync();
-    setPendingShare(entry);
     try {
-      // Wait for the off-screen card's images, capped so a stalled load can't hang the share.
-      await new Promise<void>((resolve) => {
-        shareReadyRef.current = resolve;
-        setTimeout(resolve, 2500);
-      });
-      await new Promise((r) => setTimeout(r, 60)); // let the loaded images paint
-      const uri = await captureRef(shareCardRef, {
-        format: 'png',
-        quality: 1,
-        width: 1080,
-        height: 1350,
-        result: 'tmpfile',
-      });
+      const uri = await captureEntry(entry, 'share');
       const message = buildShareMessage(entry);
       const nativeShare = Platform.OS === 'android' ? getNativeShare() : null;
       if (Platform.OS === 'ios') {
@@ -303,7 +338,25 @@ export default function WalletScreen() {
       shareReadyRef.current = null;
       setPendingShare(null);
     }
-  }, []);
+  }, [captureEntry]);
+
+  /** Keep the card image — Android writes to the member's chosen folder, iOS goes via the sheet's Save Image. */
+  const handleSave = useCallback(async (entry: WalletEntry) => {
+    Haptics.selectionAsync();
+    try {
+      const uri = await captureEntry(entry, 'save');
+      const result = await saveCardImage(uri, cardFilename(`reward-${entry.reward_title ?? 'card'}`));
+      if (result === 'saved') {
+        setSavedId(entry.id);
+        setTimeout(() => setSavedId((cur) => (cur === entry.id ? null : cur)), 2000);
+      }
+    } catch {
+      // capture/write failed — nothing to hand over, button simply returns to rest
+    } finally {
+      shareReadyRef.current = null;
+      setPendingShare(null);
+    }
+  }, [captureEntry]);
 
   const entries = tab === 'active' ? active : history;
 
@@ -339,7 +392,14 @@ export default function WalletScreen() {
           data={entries}
           keyExtractor={(e) => e.id}
           renderItem={({ item }) => (
-            <WalletCard entry={item} onShare={handleShare} shareBusy={pendingShare?.id === item.id} />
+            <WalletCard
+              entry={item}
+              onShare={handleShare}
+              onSave={handleSave}
+              shareBusy={pendingShare?.id === item.id && pendingAction === 'share'}
+              saveBusy={pendingShare?.id === item.id && pendingAction === 'save'}
+              saved={savedId === item.id}
+            />
           )}
           style={styles.scroll}
           contentContainerStyle={[
@@ -469,6 +529,7 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: BORDER, borderRadius: 20, paddingVertical: 12, paddingHorizontal: 18,
   },
   secondaryBtnText: { fontSize: 12, fontWeight: '400', letterSpacing: 0.5, color: DIM, textTransform: 'uppercase' },
+  iconBtn: { paddingHorizontal: 13 },
 
   sharePrep: { position: 'absolute', top: 0, left: -9999, width: 360 },
 
