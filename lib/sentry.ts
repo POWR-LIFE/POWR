@@ -25,8 +25,79 @@
  * project existed) => enabled: false, everything below is inert.
  */
 import * as Sentry from '@sentry/react-native';
+import type { ErrorEvent, EventHint } from '@sentry/core';
 
 const DSN = process.env.EXPO_PUBLIC_SENTRY_DSN;
+
+/**
+ * postgrest-js never throws on failure — it resolves `{ error }` where error is
+ * a PLAIN `{ message, details, hint, code }` object, and on a transport-level
+ * failure it fabricates that object itself with `code: ''` and the fetch
+ * error's message ("TypeError: Network request failed" on RN). The app's
+ * `if (error) throw error` idiom then throws that plain object, and when the
+ * chain has no catch, Sentry's unhandled-rejection instrumentation captures it
+ * as the message-less "Object captured as exception with keys: code, details,
+ * hint, message" — one blind issue every offline user funnels into.
+ *
+ * Deliberately narrow: an Error instance is never postgrest-shaped, even if it
+ * carries the same keys (supabase-js Auth/Functions/Storage errors are real
+ * Error subclasses and already group fine).
+ */
+function isPostgrestShaped(
+    x: unknown,
+): x is { message?: unknown; details?: unknown; hint?: unknown; code?: unknown } {
+    return (
+        typeof x === 'object' && x !== null && !(x instanceof Error) &&
+        'message' in x && 'details' in x && 'hint' in x && 'code' in x
+    );
+}
+
+/**
+ * Transport-failure messages postgrest-js forwards from fetch. RN's fetch
+ * polyfill throws TypeError('Network request failed'); the others cover web
+ * (expo web / dev) and aborted requests. Matched ONLY alongside an empty
+ * `code` — a real PostgREST/Postgres failure always carries a code, so this
+ * can never swallow a server-side error.
+ */
+const NETWORK_FAILURE_RE = /network request failed|failed to fetch|load failed|abort/i;
+
+/**
+ * Drop unactionable offline noise; make everything else legible. Fails open:
+ * anything this can't confidently classify goes through unmodified — a filter
+ * that is too clever is how you go blind to a real incident.
+ */
+export function beforeSend(event: ErrorEvent, hint: EventHint | undefined): ErrorEvent | null {
+    try {
+        const thrown = hint?.originalException;
+        if (!isPostgrestShaped(thrown)) return event;
+
+        const message = typeof thrown.message === 'string' ? thrown.message : '';
+        const code = typeof thrown.code === 'string' ? thrown.code : '';
+
+        // No HTTP response ever arrived. A user with no signal is not a bug
+        // report — the breadcrumbs on kept events still show any offline storm.
+        if (code === '' && NETWORK_FAILURE_RE.test(message)) return null;
+
+        // Real (server-side) failure: rewrite the synthesized exception so
+        // events group by what actually failed instead of one keys-only bucket.
+        const top = event.exception?.values?.[0];
+        if (top && message) {
+            top.type = 'PostgrestError';
+            top.value = code ? `${message} [${code}]` : message;
+        }
+        event.extra = {
+            ...event.extra,
+            postgrest: {
+                code,
+                details: typeof thrown.details === 'string' ? thrown.details : undefined,
+                hint: typeof thrown.hint === 'string' ? thrown.hint : undefined,
+            },
+        };
+        return event;
+    } catch {
+        return event;
+    }
+}
 
 try {
     Sentry.init({
@@ -36,6 +107,7 @@ try {
         // that adds work to background wake paths.
         tracesSampleRate: 0,
         sendDefaultPii: false,
+        beforeSend,
     });
 
     // Tag which OTA bundle was actually running. ota_update_id in our own
