@@ -25,6 +25,9 @@ type NotificationType =
   | 'vault_ready'
   | 'vault_granted'
   | 'vault_banked'
+  // One-shot setup notice when a user loses 'always' location (dispatch-daily-
+  // nudges Phase 3 — see _shared/locationRegression.ts for the eligibility rule).
+  | 'location_permission_lost'
   // Shared ("together") challenges + friend graph (scope §4/§6a).
   | 'friend_request'
   | 'friend_accepted'
@@ -243,6 +246,23 @@ function buildMessage(
           title: 'POWR',
           body: "You're in. Every minute counts.",
           data: { type, route: '/(tabs)/index', location_id: payload.location_id },
+          sound: 'default',
+          channelId: 'powr_default_v2',
+        };
+      }
+
+      case 'location_permission_lost': {
+        // Tone: their check-ins stopped, not "you broke something" — some
+        // regressions are deliberate opt-outs, and the push must read fine for
+        // those too. Routes Home, where SetupHealthBanner / LocationPrimeSheet
+        // own the actual fix flow. No TTL: still true whenever it lands.
+        const level = String(payload.level ?? 'denied');
+        return {
+          title: 'Your gym check-ins are paused',
+          body: level === 'while_using'
+            ? "Location is set to While Using, so POWR can't check you in automatically. Set it to Always and every visit counts again."
+            : "POWR can't see your gym visits right now — location access is off for the app. Takes 30 seconds to turn back on.",
+          data: { type, route: '/(tabs)/index' },
           sound: 'default',
           channelId: 'powr_default_v2',
         };
