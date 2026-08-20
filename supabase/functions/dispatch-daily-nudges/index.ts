@@ -293,11 +293,14 @@ Deno.serve(async (req: Request) => {
         try {
           // Most of the base is UK; an unset/garbage timezone falls back to
           // London rather than UTC-midnight surprises.
+          const tz = prof?.timezone;
           localHour = Number(new Intl.DateTimeFormat('en-GB', {
-            hour: 'numeric', hour12: false, timeZone: prof?.timezone || 'Europe/London',
+            hour: 'numeric', hour12: false, timeZone: tz || 'Europe/London',
           }).format(new Date(nowMs)));
         } catch {
-          localHour = new Date(nowMs).getUTCHours();
+          localHour = Number(new Intl.DateTimeFormat('en-GB', {
+            hour: 'numeric', hour12: false, timeZone: 'Europe/London',
+          }).format(new Date(nowMs)));
         }
 
         if (!shouldSendRegressionNotice({
