@@ -7,6 +7,7 @@ import AppPreview, { PREVIEW_ROUTES } from '../../components/preview/AppPreview'
 import {
     MousePointerClick, Eye, Users, Layers, ArrowRight, Clock,
     Smartphone, Flame, LogIn, LogOut, Route as RouteIcon, Download,
+    ChevronLeft, ChevronRight, CalendarDays,
 } from 'lucide-react';
 
 // Sequential ramp for the day/hour grid: ONE hue, light to dark, because the
@@ -15,13 +16,108 @@ import {
 const HEAT_EMPTY = '#F0F0EC';
 const HEAT_RAMP = ['#F5E469', '#E8D200', '#C4AF00', '#9C8A00', '#6F6200'];
 
-const RANGES = [
-    { key: '7d', label: '7D', days: 7 },
-    { key: '30d', label: '30D', days: 30 },
-    { key: '90d', label: '90D', days: 90 },
+// ── The window ─────────────────────────────────────────────────────────────
+//
+// This panel used to ask one shape of question: "the last N days, ending right
+// now". That makes it an accumulation — a spike can be seen but never returned
+// to, and two weeks can never be put side by side. The window is now a bounded
+// [start, end) PERIOD with an anchor: `anchor` is any instant inside the period
+// on screen, the arrows and the calendar move it, and everything else derives.
+//
+// The anchor deliberately SURVIVES a mode switch, so zooming out from a week
+// lands on the month containing it rather than snapping back to today.
+const MODES = [
+    { key: 'week', label: 'Week' },
+    { key: 'month', label: 'Month' },
+    { key: '90d', label: '90D' },
 ];
 
-const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const DAY_MS = 86400000;
+
+// The grid is labelled Mon–Sun and 00–23, so those have to be the admin's own
+// hours. Bucketing in UTC was tolerable while the window was a vague trailing
+// month; once it is a NAMED week, a Sunday 00:30 London event showing up in the
+// Saturday row is simply wrong.
+const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+
+/** 'YYYY-MM-DD' in the admin's own timezone — the format <input type="date"> wants. */
+const isoDay = (ms) => new Date(ms).toLocaleDateString('en-CA');
+
+// Weeks start on Monday: the UK reading, and the one the grid is now labelled
+// with. Postgres extract(dow) is 0 = Sunday, so the row ORDER and the cell KEY
+// are kept separate below rather than sharing an array index.
+const startOfWeek = (ms) => {
+    const d = new Date(ms);
+    d.setHours(0, 0, 0, 0);
+    d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+    return d;
+};
+
+const fmtDay = (d, withYear) => d.toLocaleDateString('en-GB', {
+    day: 'numeric', month: 'short', ...(withYear ? { year: 'numeric' } : {}),
+});
+
+// Half-open on purpose. Consecutive weeks passed as [Mon 00:00, next Mon 00:00)
+// tile the timeline exactly once; an inclusive upper bound would count the
+// boundary instant into both of them.
+const buildPeriod = (mode, anchor) => {
+    if (mode === '90d') {
+        return {
+            mode,
+            start: new Date(anchor - 90 * DAY_MS),
+            end: new Date(anchor),
+            label: 'Last 90 days',
+            short: '90D',
+            slug: '90d',
+            rolling: true,
+            atLatest: true,
+        };
+    }
+
+    let start, end;
+    if (mode === 'month') {
+        const d = new Date(anchor);
+        start = new Date(d.getFullYear(), d.getMonth(), 1);
+        end = new Date(d.getFullYear(), d.getMonth() + 1, 1);
+    } else {
+        start = startOfWeek(anchor);
+        end = new Date(start);
+        end.setDate(end.getDate() + 7);
+    }
+
+    const last = new Date(end.getTime() - 1);
+    const thisYear = start.getFullYear() === new Date().getFullYear();
+
+    const label = mode === 'month'
+        ? start.toLocaleDateString('en-GB', { month: 'long', ...(thisYear ? {} : { year: 'numeric' }) })
+        : start.getMonth() === last.getMonth()
+            ? `${start.getDate()} – ${fmtDay(last, !thisYear)}`
+            : `${fmtDay(start, false)} – ${fmtDay(last, !thisYear)}`;
+
+    return {
+        mode,
+        start,
+        end,
+        label,
+        short: mode === 'month'
+            ? start.toLocaleDateString('en-GB', { month: 'short', year: '2-digit' })
+            : `W/C ${fmtDay(start, false)}`,
+        slug: isoDay(start.getTime()),
+        rolling: false,
+        // Nothing to go forward to once the period already contains now.
+        atLatest: end.getTime() > Date.now(),
+    };
+};
+
+const DOW_ROWS = [
+    { label: 'Mon', dow: 1 },
+    { label: 'Tue', dow: 2 },
+    { label: 'Wed', dow: 3 },
+    { label: 'Thu', dow: 4 },
+    { label: 'Fri', dow: 5 },
+    { label: 'Sat', dow: 6 },
+    { label: 'Sun', dow: 0 },
+];
 
 const fmt = (n) => (n ?? 0).toLocaleString();
 
@@ -50,7 +146,12 @@ const prettyRoute = (route) => {
 export default function UsageAnalytics() {
     const toast = useToast();
     const [loading, setLoading] = useState(true);
-    const [range, setRange] = useState('30d');
+    const [mode, setMode] = useState('week');
+    const [anchor, setAnchor] = useState(() => Date.now());
+    // Whether ANY event has ever been recorded, asked outside the window — see
+    // the two empty states at the bottom of this file for why that matters.
+    const [everCollected, setEverCollected] = useState(null);
+    const dateRef = useRef(null);
     const [data, setData] = useState({
         overview: null, screens: [], flows: [], taps: [], byHour: [], paths: [], entries: [],
     });
@@ -67,9 +168,55 @@ export default function UsageAnalytics() {
     const [exporting, setExporting] = useState(false);
     const previewRef = useRef(null);
 
-    const days = RANGES.find((r) => r.key === range)?.days ?? 30;
+    const period = useMemo(() => buildPeriod(mode, anchor), [mode, anchor]);
 
-    useEffect(() => { fetchUsage(); /* eslint-disable-next-line */ }, [range]);
+    // The only thing every RPC needs. Memoised on `period` so its identity is
+    // stable: these are effect dependencies, and rebuilding the ISO strings on
+    // every render would refetch the whole page on every render.
+    const win = useMemo(() => ({
+        p_start: period.start.toISOString(),
+        p_end: period.end.toISOString(),
+    }), [period]);
+
+    const selectMode = (key) => {
+        setMode(key);
+        // The rolling window has nowhere to navigate to, so it always means now.
+        if (key === '90d') setAnchor(Date.now());
+    };
+
+    // setDate rather than adding 7 × DAY_MS: epoch arithmetic shifts the wall
+    // clock by an hour across a DST change, which is enough to drop the anchor
+    // into the wrong week.
+    const step = (dir) => setAnchor((a) => {
+        const d = new Date(a);
+        if (mode === 'month') return new Date(d.getFullYear(), d.getMonth() + dir, 1).getTime();
+        d.setDate(d.getDate() + dir * 7);
+        return d.getTime();
+    });
+
+    const pickDay = (value) => {
+        // Midday, so a day read back as local midnight cannot fall into the
+        // previous one on a DST boundary.
+        const t = Date.parse(`${value}T12:00:00`);
+        if (!Number.isFinite(t)) return;
+        setAnchor(t);
+        if (mode === '90d') setMode('week');
+    };
+
+    useEffect(() => { fetchUsage(); /* eslint-disable-next-line */ }, [win]);
+
+    // "Nothing happened this week" and "collection has never run" look identical
+    // in a windowed panel and mean opposite things, so the existence of any event
+    // at all is probed once, outside the window. limit(1) rather than a count:
+    // this only has to answer yes/no, and the table is not small.
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            const { data: rows, error } = await supabase.from('app_events').select('id').limit(1);
+            if (!cancelled && !error) setEverCollected((rows || []).length > 0);
+        })();
+        return () => { cancelled = true; };
+    }, []);
 
     const fetchUsage = async () => {
         setLoading(true);
@@ -79,13 +226,13 @@ export default function UsageAnalytics() {
             // week and an unbounded PostgREST select silently truncates at
             // 1000, which would quietly understate every number on this page.
             const [overview, screens, flows, taps, byHour, paths, entries] = await Promise.all([
-                supabase.rpc('admin_usage_overview', { p_days: days }),
-                supabase.rpc('admin_usage_screens', { p_days: days }),
-                supabase.rpc('admin_usage_flows', { p_days: days, p_limit: 60 }),
-                supabase.rpc('admin_usage_taps', { p_days: days, p_limit: 60 }),
-                supabase.rpc('admin_usage_by_hour', { p_days: days }),
-                supabase.rpc('admin_usage_paths', { p_days: days, p_steps: 4, p_limit: 20 }),
-                supabase.rpc('admin_usage_entries', { p_days: days }),
+                supabase.rpc('admin_usage_overview', { ...win }),
+                supabase.rpc('admin_usage_screens', { ...win }),
+                supabase.rpc('admin_usage_flows', { ...win, p_limit: 60 }),
+                supabase.rpc('admin_usage_taps', { ...win, p_limit: 60 }),
+                supabase.rpc('admin_usage_by_hour', { ...win, p_tz: TZ }),
+                supabase.rpc('admin_usage_paths', { ...win, p_steps: 4, p_limit: 20 }),
+                supabase.rpc('admin_usage_entries', { ...win }),
             ]);
 
             // Fail SOFT, per query. These seven feed independent panels, and an
@@ -121,11 +268,11 @@ export default function UsageAnalytics() {
     // rather than pulled in one go for all of them: this is the only query on
     // the page that returns rows-per-touch instead of an aggregate, so it is
     // kept as narrow as the current selection.
-    const fetchHeat = useCallback(async (route, dayCount) => {
+    const fetchHeat = useCallback(async (route, winArgs) => {
         setHeatLoading(true);
         try {
             const { data: rows, error } = await supabase.rpc('admin_usage_heatmap', {
-                p_route: route, p_days: dayCount, p_limit: 4000,
+                p_route: route, ...winArgs, p_limit: 4000,
             });
             if (error) throw error;
             setHeat(rows || []);
@@ -137,7 +284,7 @@ export default function UsageAnalytics() {
         }
     }, []);
 
-    useEffect(() => { fetchHeat(selected, days); }, [selected, days, fetchHeat]);
+    useEffect(() => { fetchHeat(selected, win); }, [selected, win, fetchHeat]);
 
     // Export the phone exactly as it appears — screen plus heat — as a PNG, so
     // a finding can leave the panel and go into a deck or a ticket.
@@ -176,7 +323,7 @@ export default function UsageAnalytics() {
             const a = document.createElement('a');
             const name = prettyRoute(selected).replace(/[^a-z0-9]+/gi, '-').toLowerCase();
             a.href = url;
-            a.download = `powr-heatmap-${name}-${range}.png`;
+            a.download = `powr-heatmap-${name}-${period.slug}.png`;
             a.click();
         } catch (e) {
             console.error('[usage] png export failed', e);
@@ -184,7 +331,7 @@ export default function UsageAnalytics() {
         } finally {
             setExporting(false);
         }
-    }, [selected, range, toast]);
+    }, [selected, period.slug, toast]);
 
     const grid = useMemo(() => {
         const cells = new Map();
@@ -285,7 +432,7 @@ export default function UsageAnalytics() {
         </div>
     );
 
-    const Empty = ({ h = 'h-40', label = 'No data in range' }) => (
+    const Empty = ({ h = 'h-40', label = 'No data in this window' }) => (
         <div className={`${h} flex items-center justify-center text-[10px] uppercase tracking-[0.4em] text-[#CCCCCC] font-black`}>{label}</div>
     );
 
@@ -308,11 +455,11 @@ export default function UsageAnalytics() {
                             </div>
                         ))}
                     </div>
-                    {DOW.map((label, d) => (
+                    {DOW_ROWS.map(({ label, dow }) => (
                         <div key={label} className="flex items-center gap-[3px] mb-[3px]">
                             <div className="w-10 text-[8px] uppercase tracking-[0.2em] text-[#AAAAAA] font-black flex-shrink-0">{label}</div>
                             {Array.from({ length: 24 }, (_, h) => {
-                                const cell = grid.cells.get(`${d}-${h}`);
+                                const cell = grid.cells.get(`${dow}-${h}`);
                                 const n = cell?.events ?? 0;
                                 return (
                                     <div key={h} className="flex-1 group relative">
@@ -598,20 +745,74 @@ export default function UsageAnalytics() {
                         Where members tap &amp; how they move through the app
                     </p>
                 </div>
-                <div className="flex items-center gap-1 bg-white border border-[#E6E6E1] rounded-full p-1">
-                    {RANGES.map((r) => (
-                        <button key={r.key} onClick={() => setRange(r.key)}
-                            className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-[0.2em] transition-all ${range === r.key ? 'bg-[#1A1A1A] text-white' : 'text-[#AAAAAA] hover:text-[#1A1A1A]'}`}>
-                            {r.label}
+                <div className="flex flex-wrap items-center gap-2">
+                    {/* How big a window */}
+                    <div className="flex items-center gap-1 bg-white border border-[#E6E6E1] rounded-full p-1">
+                        {MODES.map((m) => (
+                            <button key={m.key} onClick={() => selectMode(m.key)}
+                                className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-[0.2em] transition-all ${mode === m.key ? 'bg-[#1A1A1A] text-white' : 'text-[#AAAAAA] hover:text-[#1A1A1A]'}`}>
+                                {m.label}
+                            </button>
+                        ))}
+                    </div>
+
+                    {/* Which one. The label is itself the calendar hit target —
+                        pick any day and the window jumps to the period holding it. */}
+                    <div className="flex items-center gap-1 bg-white border border-[#E6E6E1] rounded-full p-1">
+                        <button onClick={() => step(-1)} disabled={period.rolling} aria-label="Previous period"
+                            className="w-8 h-8 flex items-center justify-center rounded-full text-[#AAAAAA] hover:text-[#1A1A1A] hover:bg-[#F4F4F1] disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-[#AAAAAA] transition-colors">
+                            <ChevronLeft size={14} />
                         </button>
-                    ))}
+
+                        <label
+                            onClick={(e) => {
+                                if (period.rolling) return;
+                                // Clicking a date input focuses a segment but does
+                                // not open the calendar in Chrome; showPicker does,
+                                // and needs the user gesture this handler is in.
+                                e.preventDefault();
+                                try { dateRef.current?.showPicker?.(); }
+                                catch { dateRef.current?.focus?.(); }
+                            }}
+                            className={`relative flex items-center gap-2 px-3 h-8 rounded-full transition-colors ${period.rolling ? '' : 'cursor-pointer hover:bg-[#F4F4F1]'}`}>
+                            <CalendarDays size={12} className="text-[#CCCCCC]" />
+                            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[#1A1A1A] whitespace-nowrap">
+                                {period.label}
+                            </span>
+                            {!period.rolling && (
+                                // Full-bleed and invisible so the whole chip is the
+                                // target. opacity, never display:none — a hidden
+                                // input cannot be focused and showPicker throws on one.
+                                <input
+                                    ref={dateRef}
+                                    type="date"
+                                    value={isoDay(period.start.getTime())}
+                                    max={isoDay(Date.now())}
+                                    onChange={(e) => pickDay(e.target.value)}
+                                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                />
+                            )}
+                        </label>
+
+                        <button onClick={() => step(1)} disabled={period.rolling || period.atLatest} aria-label="Next period"
+                            className="w-8 h-8 flex items-center justify-center rounded-full text-[#AAAAAA] hover:text-[#1A1A1A] hover:bg-[#F4F4F1] disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-[#AAAAAA] transition-colors">
+                            <ChevronRight size={14} />
+                        </button>
+                    </div>
+
+                    {!period.atLatest && (
+                        <button onClick={() => setAnchor(Date.now())}
+                            className="px-4 py-2 rounded-full bg-white border border-[#E6E6E1] text-[10px] font-black uppercase tracking-[0.2em] text-[#AAAAAA] hover:text-[#1A1A1A] transition-colors">
+                            Now
+                        </button>
+                    )}
                 </div>
             </div>
 
             {/* Collection only starts when an instrumented build reaches devices,
                 so an empty panel is the expected state on day one — say so
                 rather than letting it read as a broken page. */}
-            {!loading && !hasData && (
+            {!loading && everCollected === false && (
                 <div className="bg-white border border-[#E6E6E1] rounded-[2rem] p-8 mb-6">
                     <h3 className="text-base font-light tracking-tighter text-[#1A1A1A] mb-3">No events collected yet</h3>
                     <p className="text-[11px] text-[#888888] leading-relaxed max-w-2xl">
@@ -623,6 +824,20 @@ export default function UsageAnalytics() {
                     </p>
                     <p className="text-[10px] text-[#AAAAAA] leading-relaxed max-w-2xl mt-3">
                         Collection can be paused at any time from Config → <span className="font-black">analytics_enabled</span>.
+                    </p>
+                </div>
+            )}
+
+            {/* Collection HAS run, just not here. Before the window was
+                selectable these were the same state; now an ordinary quiet week
+                would otherwise read as "analytics never shipped". */}
+            {!loading && everCollected === true && !hasData && (
+                <div className="bg-white border border-[#E6E6E1] rounded-[2rem] p-8 mb-6">
+                    <h3 className="text-base font-light tracking-tighter text-[#1A1A1A] mb-3">Nothing in this window</h3>
+                    <p className="text-[11px] text-[#888888] leading-relaxed max-w-2xl">
+                        Events have been collected before, just none between{' '}
+                        <span className="font-black">{period.label}</span>. Step back with the arrows, pick a
+                        different week from the calendar, or widen the window to a month.
                     </p>
                 </div>
             )}
@@ -644,7 +859,7 @@ export default function UsageAnalytics() {
 
             {/* The inspector */}
             <div className="mb-6">
-                <Card accent="#F97316" title="Screen Inspector" sub={`Live app · heat · ${range.toUpperCase()}`} icon={Flame}>
+                <Card accent="#F97316" title="Screen Inspector" sub={`Live app · heat · ${period.short}`} icon={Flame}>
                     {loading ? <Empty h="h-96" /> : <Inspector />}
                 </Card>
             </div>
@@ -690,7 +905,7 @@ export default function UsageAnalytics() {
 
             {/* Full move graph + when the app is open */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-                <Card accent="#E8D200" title="When The App Is Open" sub={`Events by day & hour · ${range.toUpperCase()}`} icon={Clock} className="lg:col-span-2">
+                <Card accent="#E8D200" title="When The App Is Open" sub={`Events by day & hour · ${period.short}`} icon={Clock} className="lg:col-span-2">
                     {loading ? <Empty h="h-48" /> : !hasData ? <Empty h="h-48" /> : <UsageGrid />}
                 </Card>
 
