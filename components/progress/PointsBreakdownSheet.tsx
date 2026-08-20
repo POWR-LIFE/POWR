@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 
 import { ACTIVITIES, type ActivityType } from '@/constants/activities';
+import { ZONE_TINTS } from '@/components/progress/zoneTints';
 import { useSheetDragDismiss } from '@/hooks/useSheetDragDismiss';
 import {
     breakdownWindow,
@@ -200,8 +201,8 @@ export default function PointsBreakdownSheet({
                                     </Text>
                                 </View>
                                 <SessionStatsRow type={type} session={group} />
-                                {group.vitals?.extras.hrZones && (
-                                    <HrZoneBar zones={group.vitals.extras.hrZones} />
+                                {group.vitals?.hrZones && (
+                                    <HrZoneBar zones={group.vitals.hrZones} />
                                 )}
                                 {group.rows.map(row => (
                                     <View key={row.id} style={styles.ledgerRow}>
@@ -351,24 +352,6 @@ function SessionStatsRow({
         </View>
     );
 }
-
-/**
- * Opacity ramp on the SAME rose as the heart glyph, one step per zone. A hue
- * ramp was rejected up front: GOLD is reserved for POWR and a second warm hue
- * beside the rose already failed ΔE separation here (see HEART above), so
- * intensity is carried by depth of the one colour instead.
- *
- * Exported so the BODY tab's weekly effort mix draws with the identical ramp —
- * one legend to learn, wherever zones appear.
- */
-export const ZONE_TINTS = [
-    'rgba(251,113,133,0.10)',
-    'rgba(251,113,133,0.22)',
-    'rgba(251,113,133,0.38)',
-    'rgba(251,113,133,0.55)',
-    'rgba(251,113,133,0.75)',
-    '#FB7185',
-];
 
 /**
  * Time-in-zone as a stacked bar — the shape of the effort, where the tiles

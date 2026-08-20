@@ -30,7 +30,7 @@ import { usePoints } from '@/hooks/usePoints';
 import { bumpActivityRevision } from '@/lib/activityRevision';
 import { useWalkingProgress } from '@/hooks/useWalkingProgress';
 import { fetchWeeklySleepHours } from '@/lib/api/activity';
-import { deriveBodySignals, fetchBodyTrends, isEmptyTrends, readinessOf, type Readiness } from '@/lib/api/bodyTrends';
+import { deriveBodySignals, fetchBodyTrends, isEmptyTrends, readinessOf, type BodyTrends } from '@/lib/api/bodyTrends';
 import { fetchProfile } from '@/lib/api/user';
 import { orderedProgressActivities } from '@/lib/weeklyActivities';
 
@@ -115,15 +115,15 @@ export default function ProgressScreen() {
   // so the word in the ring can never disagree with the tab beneath it.
   // hasData gates the whole BODY surface: a brand-new user with nothing to
   // draw shouldn't meet an empty trends page as their first impression.
-  const [bodyState, setBodyState] = useState<{ readiness: Readiness; hasData: boolean } | null>(null);
+  // Storing the full trends here lets BodyTab reuse them without a second fetch.
+  const [bodyTrends, setBodyTrends] = useState<BodyTrends | null>(null);
+  const bodyState = bodyTrends
+    ? { readiness: readinessOf(deriveBodySignals(bodyTrends)), hasData: !isEmptyTrends(bodyTrends) }
+    : null;
   const loadBody = useCallback(async () => {
     if (!user) return;
     try {
-      const trends = await fetchBodyTrends();
-      setBodyState({
-        readiness: readinessOf(deriveBodySignals(trends)),
-        hasData: !isEmptyTrends(trends),
-      });
+      setBodyTrends(await fetchBodyTrends());
     } catch (err) {
       console.error('[Progress] Error fetching body readiness:', err);
     }
@@ -532,7 +532,7 @@ function BreakdownSection({
                   onOffsetChange={onLookbackChange}
                 />
               )}
-              {key === 'body' && <BodyTab />}
+              {key === 'body' && <BodyTab initialTrends={bodyTrends} />}
               {key !== 'walking' && key !== 'sleep' && key !== 'body' && (
                 <WorkoutsTab
                   type={key as ActivityType}

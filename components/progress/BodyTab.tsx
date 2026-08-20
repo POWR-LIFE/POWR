@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import React, { useCallback, useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { ZONE_TINTS } from '@/components/progress/PointsBreakdownSheet';
+import { ZONE_TINTS } from '@/components/progress/zoneTints';
 import { RangeDotChart, Sparkline } from '@/components/progress/Sparkline';
 import { useActivityRevision } from '@/hooks/useActivityRevision';
 import { localDateStr } from '@/lib/api/activity';
@@ -63,8 +63,8 @@ const SLEEP_SCALE_H = 10;
  * from the user's own baselines — never a percentage score, because we can't
  * compute one honestly without continuous overnight data.
  */
-export function BodyTab() {
-    const [trends, setTrends] = useState<BodyTrends | null>(null);
+export function BodyTab({ initialTrends }: { initialTrends?: BodyTrends | null }) {
+    const [trends, setTrends] = useState<BodyTrends | null>(initialTrends ?? null);
     const [failed, setFailed] = useState(false);
     // Re-fetches on pull-to-refresh, which bumps the shared activity revision.
     const revision = useActivityRevision();
@@ -79,7 +79,18 @@ export function BodyTab() {
         }
     }, []);
 
-    useEffect(() => { load(); }, [load, revision]);
+    // When a parent passes trends, keep in sync with its refreshes instead of
+    // fetching independently — avoids a duplicate Supabase round-trip.
+    useEffect(() => {
+        if (initialTrends !== undefined) {
+            setTrends(initialTrends);
+        }
+    }, [initialTrends]);
+
+    // Self-fetch only when no parent is providing trends (standalone use).
+    useEffect(() => {
+        if (initialTrends === undefined) { load(); }
+    }, [load, revision]);
 
     if (failed) {
         return (
