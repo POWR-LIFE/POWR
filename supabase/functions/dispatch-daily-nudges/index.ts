@@ -269,7 +269,7 @@ Deno.serve(async (req: Request) => {
 
     if (latest.size > 0) {
       const userIds = [...latest.keys()];
-      const [{ data: profs }, { data: priorLogs }] = await Promise.all([
+      const [{ data: profs, error: profErr }, { data: priorLogs, error: logErr }] = await Promise.all([
         admin.from('profiles')
           .select('id, location_permission, timezone')
           .in('id', userIds),
@@ -278,6 +278,8 @@ Deno.serve(async (req: Request) => {
           .eq('type', 'location_permission_lost')
           .in('user_id', userIds),
       ]);
+      if (profErr) throw profErr;
+      if (logErr) throw logErr;
       const profById = new Map((profs ?? []).map((p) => [p.id, p]));
       const lastAttempt = new Map<string, number>();
       for (const l of priorLogs ?? []) {
