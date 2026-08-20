@@ -375,6 +375,7 @@ export default function ProgressScreen() {
           weekActiveDays={weekActiveDays}
           sleepHrs={sleepHrs}
           sleepBedtimes={sleepBedtimes}
+          bodyTrends={bodyTrends}
         />
 
       </ScrollView>
@@ -400,7 +401,7 @@ export default function ProgressScreen() {
 type BreakdownTabItem = { key: string; label: string };
 
 function BreakdownSection({
-  activeTab, activeIndex, onIndexChange, period, onPeriodChange, lookback, onLookbackChange, tabs, walking, weeklyMetrics, stepsF, weekActiveDays, sleepHrs, sleepBedtimes,
+  activeTab, activeIndex, onIndexChange, period, onPeriodChange, lookback, onLookbackChange, tabs, walking, weeklyMetrics, stepsF, weekActiveDays, sleepHrs, sleepBedtimes, bodyTrends,
 }: {
   activeTab: string;
   activeIndex: number;
@@ -416,6 +417,7 @@ function BreakdownSection({
   weekActiveDays: boolean[];
   sleepHrs: number[];
   sleepBedtimes: (string | null)[];
+  bodyTrends: BodyTrends | null;
 }) {
   const carouselRef = useRef<ScrollView>(null);
   const [pageWidth, setPageWidth] = useState(0);

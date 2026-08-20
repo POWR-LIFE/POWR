@@ -201,8 +201,8 @@ export default function PointsBreakdownSheet({
                                     </Text>
                                 </View>
                                 <SessionStatsRow type={type} session={group} />
-                                {group.vitals?.hrZones && (
-                                    <HrZoneBar zones={group.vitals.hrZones} />
+                                {group.vitals?.extras.hrZones && (
+                                    <HrZoneBar zones={group.vitals.extras.hrZones} />
                                 )}
                                 {group.rows.map(row => (
                                     <View key={row.id} style={styles.ledgerRow}>
