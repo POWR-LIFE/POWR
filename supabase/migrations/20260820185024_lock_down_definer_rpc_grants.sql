@@ -23,7 +23,7 @@ revoke execute on function public.set_gym_visit_wake_nonce(uuid, text, integer) 
 revoke execute on function public._gym_visit_nonce_ok(uuid, text) from public, anon, authenticated;
 
 revoke execute on function public.guard_client_session_window() from public, anon, authenticated;
-revoke execute on function public.get_event_leaderboard(uuid, text) from anon;
+revoke execute on function public.get_event_leaderboard(uuid, text) from public, anon;
 
 alter function public.clear_gym_visit_wake_nonce() set search_path = public;
 alter function public.normalize_member_id(text) set search_path = public;
