@@ -63,6 +63,17 @@ export type SessionExtras = {
     highIntensityMin?: number;
     hrMin?: number;
     hrvRmssd?: number;
+    hrZones?: HrZone[];
+};
+
+/**
+ * One time-in-zone bucket, in ascending zone order. `pctOfMax` is the zone's
+ * upper bound as % of the provider's max-HR estimate, when the provider sent one.
+ */
+export type HrZone = {
+    zone: number;
+    durationSec: number;
+    pctOfMax: number | null;
 };
 
 export type PointsLedgerRow = {
@@ -196,8 +207,12 @@ function labelFor(
  */
 const DAY_WIDE_VITAL_SOURCES = new Set(['healthkit', 'health_connect']);
 
-/** Day-wide provider AND not a window-scoped read — the only combination to gate. */
-function isDayWideRow(s: Pick<SnapshotRow, 'source' | 'extras'>): boolean {
+/**
+ * Day-wide provider AND not a window-scoped read — the only combination to gate.
+ * Exported for lib/api/bodyTrends, which applies the same gate to weekly peak-HR
+ * and calorie aggregates.
+ */
+export function isDayWideRow(s: { source: string | null; extras: Record<string, unknown> | null }): boolean {
     return s.source != null && DAY_WIDE_VITAL_SOURCES.has(s.source) && !isSessionScoped(s.extras);
 }
 
@@ -219,6 +234,44 @@ function extraNum(extras: Record<string, unknown> | null, key: string): number |
 }
 
 /**
+ * Time-in-zone buckets from the raw provider objects the webhook stores.
+ *
+ * terraExtras.ts deliberately keeps hr_zones in the PROVIDER'S OWN SHAPE (Terra
+ * publishes no schema for it), so this is where the mapping happens. The one
+ * shape seen in prod so far is Whoop's:
+ *   { name, zone, start_percentage, end_percentage, duration_seconds }
+ * Read defensively — a provider using different key names yields no zones, never
+ * a crash — and only a set with real time in it survives, so the UI can trust
+ * a non-empty array to be drawable.
+ */
+export function hrZonesFrom(extras: Record<string, unknown> | null): HrZone[] | undefined {
+    const raw = extras?.hr_zones;
+    if (!Array.isArray(raw)) return undefined;
+
+    const zones: HrZone[] = [];
+    for (const [i, z] of raw.entries()) {
+        if (!z || typeof z !== 'object') return undefined;
+        const o = z as Record<string, unknown>;
+        const durationSec = num(o.duration_seconds);
+        if (durationSec == null || durationSec < 0) return undefined;
+        zones.push({
+            zone: num(o.zone) ?? i,
+            durationSec,
+            pctOfMax: num(o.end_percentage),
+        });
+    }
+
+    zones.sort((a, b) => a.zone - b.zone);
+    const total = zones.reduce((s, z) => s + z.durationSec, 0);
+    // Under a minute of zone time isn't a distribution worth drawing.
+    return zones.length >= 2 && total >= 60 ? zones : undefined;
+}
+
+function num(v: unknown): number | null {
+    return typeof v === 'number' && Number.isFinite(v) ? v : null;
+}
+
+/**
  * Maps the extras bag to a typed shape. Snake_case in the column (it's written
  * by the Deno webhook) and camelCase out, so callers don't straddle both.
  */
@@ -233,6 +286,7 @@ function extrasFrom(extras: Record<string, unknown> | null): SessionExtras {
         highIntensityMin: extraNum(extras, 'high_intensity_min'),
         hrMin: extraNum(extras, 'hr_min'),
         hrvRmssd: extraNum(extras, 'hrv_rmssd'),
+        hrZones: hrZonesFrom(extras),
     };
 }
 
