@@ -52,6 +52,9 @@ import { fetchSmartFeaturedReward, type Reward } from '@/lib/api/rewards';
 import { fetchProfile } from '@/lib/api/user';
 import { applyDetectedActivitySwap, WEEKLY_SESSION_TARGET, WEEKLY_STEPS_TARGET } from '@/lib/weeklyActivities';
 import { useWeeklyChallenges, type ChallengeCardData } from '@/hooks/useWeeklyChallenge';
+import { useWeeklyRecap } from '@/hooks/useWeeklyRecap';
+import { WeeklyRecapCard } from '@/components/home/WeeklyRecapCard';
+import { WeeklyRecapSheet } from '@/components/home/WeeklyRecapSheet';
 
 const GOLD = '#E8D200';
 const TEXT_PRIMARY = '#F2F2F2';
@@ -238,6 +241,8 @@ export default function HomeScreen() {
     const [profileName, setProfileName] = useState<string | null>(null);
     const [refreshing, setRefreshing] = useState(false);
     const { challenges: weeklyChallenges, newlyCompletedId } = useWeeklyChallenges();
+    const recap = useWeeklyRecap();
+    const [recapSheetVisible, setRecapSheetVisible] = useState(false);
     const [featuredReward, setFeaturedReward] = useState<Reward | null>(null);
 
     const loadFeaturedReward = useCallback(async () => {
@@ -621,6 +626,15 @@ export default function HomeScreen() {
                             >
                                 <Text style={{ color: '#aaa', fontSize: 12, fontWeight: '600' }}>Refresh Points</Text>
                             </Pressable>
+                            <Pressable
+                                onPress={async () => {
+                                    await recap.resetDismissal();
+                                    setDevMsg('Recap dismissal cleared — card reloading.');
+                                }}
+                                style={{ backgroundColor: '#222', borderRadius: 6, paddingHorizontal: 12, paddingVertical: 6 }}
+                            >
+                                <Text style={{ color: '#aaa', fontSize: 12, fontWeight: '600' }}>Reset Recap</Text>
+                            </Pressable>
                         </View>
                     </View>
                 )}
@@ -691,6 +705,17 @@ export default function HomeScreen() {
                     unless there's an opt-in event the viewer can still join;
                     once registered the event lives on the League tab instead. */}
                 <LiveEventCard />
+
+                {/* "Your Week" recap — takes the top of the This Week slot for the
+                    first days of a new week, then retires (dismiss, or Wednesday).
+                    The new week's board renders directly beneath, never buried. */}
+                {recap.visible && recap.data && (
+                    <WeeklyRecapCard
+                        data={recap.data}
+                        onOpen={() => setRecapSheetVisible(true)}
+                        onDismiss={recap.dismiss}
+                    />
+                )}
 
                 <ChallengeCard
                     onTogether={(c) => router.push({ pathname: '/challenges', params: { create: '1', category: c.category } })}
@@ -825,6 +850,18 @@ export default function HomeScreen() {
                     </View>
                 </View>
             </Modal>
+
+            {/* Full "Your Week" story behind the recap card. "Start this week"
+                closes it AND retires the card; a plain close keeps the card. */}
+            <WeeklyRecapSheet
+                visible={recapSheetVisible}
+                data={recap.data}
+                onClose={() => setRecapSheetVisible(false)}
+                onStartWeek={() => {
+                    setRecapSheetVisible(false);
+                    recap.dismiss();
+                }}
+            />
 
             {/* Primed notification re-ask — self-gating (permission off + ≥1
                 session banked + pacing), so mounting is unconditional. */}

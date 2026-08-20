@@ -54,8 +54,10 @@ const COUNT_NOUN: Record<string, string> = {
   gym: 'check-ins', running: 'runs', cycling: 'rides', walking: 'sessions', multi: 'sessions',
 };
 
-/** Derive display value/goal/unit + dot visibility from a rule + raw progress. */
-function formatProgress(rule: any, category: string, progress: number, target: number) {
+/** Derive display value/goal/unit + dot visibility from a rule + raw progress.
+ *  Exported for useWeeklyRecap, which renders LAST week's board with the same
+ *  readouts. */
+export function formatProgress(rule: any, category: string, progress: number, target: number) {
   const fraction = target > 0 ? Math.min(progress / target, 1) : 0;
   // Every rule kind except the metric sums reports integer counts, so the bar
   // can break into one section per unit. Sums (70k steps, 20 km) stay continuous.
@@ -88,8 +90,9 @@ export interface WeeklyChallengesState {
   newlyCompletedId: string | null;
 }
 
-/** Local Monday 00:00 (user tz) as a UTC ISO string — matches the edge function. */
-function localMondayAsUTC(utcOffsetMinutes: number, now: number = Date.now()): string {
+/** Local Monday 00:00 (user tz) as a UTC ISO string — matches the edge function.
+ *  Exported for useWeeklyRecap so both derive identical week boundaries. */
+export function localMondayAsUTC(utcOffsetMinutes: number, now: number = Date.now()): string {
   const localMs = now + utcOffsetMinutes * 60 * 1000;
   const day = new Date(localMs).getUTCDay() || 7;
   const mondayLocal = new Date(localMs - (day - 1) * 86400000);
@@ -97,8 +100,9 @@ function localMondayAsUTC(utcOffsetMinutes: number, now: number = Date.now()): s
   return new Date(mondayLocal.getTime() - utcOffsetMinutes * 60 * 1000).toISOString();
 }
 
-/** Apply per-week category overrides (admin) to a rotation's active set. */
-function applyOverrides(list: any[], weekOv: Record<string, string> | undefined, catalog: any[]): any[] {
+/** Apply per-week category overrides (admin) to a rotation's active set.
+ *  Exported for useWeeklyRecap, which rebuilds last week's board. */
+export function applyOverrides(list: any[], weekOv: Record<string, string> | undefined, catalog: any[]): any[] {
   if (!weekOv || Object.keys(weekOv).length === 0) return list;
   return list.map((c) => {
     const ovId = weekOv[c.category];
