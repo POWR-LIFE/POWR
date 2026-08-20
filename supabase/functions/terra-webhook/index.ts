@@ -467,6 +467,44 @@ const WEARABLE_KEYS = new Set([
   'coros', 'suunto', 'wahoo', 'zwift', 'concept2', 'ifit', 'underarmour',
 ]);
 
+/**
+ * On a fresh connection, ask Terra to (re)send the last week so the Progress
+ * surfaces (BODY tab, sleep, sessions) fill immediately instead of accruing
+ * from today — before this, a new wearable only ever received terra-poll's
+ * rolling 2-day window and the page started near-empty.
+ *
+ * Same request shape as terra-poll: to_webhook=true routes the data back
+ * through this function's normal handlers, so dedup and the bounded-extras
+ * rule (terraExtras) apply to backfilled sessions exactly as to live ones.
+ * Best-effort on purpose — a failed request costs the user nothing but a
+ * slower fill (the poll still covers the last 2 days), so nothing here throws.
+ */
+const BACKFILL_DAYS = 7;
+const BACKFILL_RESOURCES = ['sleep', 'activity', 'daily'];
+
+async function requestBackfill(terraUserId: string): Promise<void> {
+  const devId = Deno.env.get('TERRA_DEV_ID');
+  const apiKey = Deno.env.get('TERRA_API_KEY');
+  if (!devId || !apiKey) return;
+
+  const isoDate = (d: Date) => d.toISOString().slice(0, 10);
+  const start = isoDate(new Date(Date.now() - BACKFILL_DAYS * 24 * 60 * 60 * 1000));
+  const end = isoDate(new Date(Date.now() + 24 * 60 * 60 * 1000));
+
+  for (const r of BACKFILL_RESOURCES) {
+    try {
+      const url = `https://api.tryterra.co/v2/${r}?user_id=${encodeURIComponent(terraUserId)}`
+        + `&start_date=${start}&end_date=${end}&to_webhook=true`;
+      const res = await fetch(url, { headers: { 'dev-id': devId, 'x-api-key': apiKey } });
+      if (!res.ok) {
+        console.warn(`[terra-webhook] backfill ${r} → ${res.status}`);
+      }
+    } catch (e) {
+      console.warn(`[terra-webhook] backfill ${r} threw:`, e?.message ?? e);
+    }
+  }
+}
+
 async function handleAuth(supabase, payload): Promise<void> {
   const u = payload.user ?? {};
   const terraUserId = u.user_id;
@@ -496,6 +534,7 @@ async function handleAuth(supabase, payload): Promise<void> {
     if (k !== key && WEARABLE_KEYS.has(k)) delete conns[k];
   }
   conns[key] = { connected_at: new Date().toISOString(), terra_user_id: terraUserId };
+  await requestBackfill(terraUserId);
   await supabase.from('profiles').update({
     health_provider_connections: conns,
     active_health_provider: key,

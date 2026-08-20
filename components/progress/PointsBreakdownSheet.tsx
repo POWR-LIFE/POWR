@@ -16,6 +16,7 @@ import { useSheetDragDismiss } from '@/hooks/useSheetDragDismiss';
 import {
     breakdownWindow,
     fetchPointsBreakdown,
+    type HrZone,
     type PointsBreakdown,
     type PointsLedgerRow,
     type SessionVitals,
@@ -199,6 +200,9 @@ export default function PointsBreakdownSheet({
                                     </Text>
                                 </View>
                                 <SessionStatsRow type={type} session={group} />
+                                {group.vitals?.extras.hrZones && (
+                                    <HrZoneBar zones={group.vitals.extras.hrZones} />
+                                )}
                                 {group.rows.map(row => (
                                     <View key={row.id} style={styles.ledgerRow}>
                                         <Ionicons
@@ -348,6 +352,65 @@ function SessionStatsRow({
     );
 }
 
+/**
+ * Opacity ramp on the SAME rose as the heart glyph, one step per zone. A hue
+ * ramp was rejected up front: GOLD is reserved for POWR and a second warm hue
+ * beside the rose already failed ΔE separation here (see HEART above), so
+ * intensity is carried by depth of the one colour instead.
+ *
+ * Exported so the BODY tab's weekly effort mix draws with the identical ramp —
+ * one legend to learn, wherever zones appear.
+ */
+export const ZONE_TINTS = [
+    'rgba(251,113,133,0.10)',
+    'rgba(251,113,133,0.22)',
+    'rgba(251,113,133,0.38)',
+    'rgba(251,113,133,0.55)',
+    'rgba(251,113,133,0.75)',
+    '#FB7185',
+];
+
+/**
+ * Time-in-zone as a stacked bar — the shape of the effort, where the tiles
+ * above give its totals. Same construction as SleepTab's stages bar (the app's
+ * one composition primitive): flex-weighted segments, so no measuring pass.
+ * The legend prints only zones that got a real minute; Zone 0 (below 50% max)
+ * draws in the bar for honesty but never earns a legend entry — it's rest.
+ */
+function HrZoneBar({ zones }: { zones: HrZone[] }) {
+    const labelled = zones.filter(z => z.zone > 0 && z.durationSec >= 60);
+    return (
+        <View style={styles.zoneBlock}>
+            <View style={styles.zoneBar}>
+                {zones.map(z => z.durationSec > 0 && (
+                    <View
+                        key={z.zone}
+                        style={{
+                            flex: z.durationSec,
+                            backgroundColor: ZONE_TINTS[Math.min(z.zone, ZONE_TINTS.length - 1)],
+                        }}
+                    />
+                ))}
+            </View>
+            <View style={styles.zoneLegend}>
+                {labelled.map(z => (
+                    <View key={z.zone} style={styles.zoneLegendItem}>
+                        <View
+                            style={[
+                                styles.zoneDot,
+                                { backgroundColor: ZONE_TINTS[Math.min(z.zone, ZONE_TINTS.length - 1)] },
+                            ]}
+                        />
+                        <Text style={styles.zoneLegendText}>
+                            Z{z.zone} {formatDuration(Math.round(z.durationSec / 60))}
+                        </Text>
+                    </View>
+                ))}
+            </View>
+        </View>
+    );
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 /** 'whoop' → 'Whoop'. Falls back to title-casing an unknown provider slug. */
@@ -459,13 +522,13 @@ function paceTile(
  */
 const TILES_BY_ACTIVITY: Record<ActivityType, string[]> = {
     walking:  ['steps', 'distance', 'time', 'pace', 'climb', 'hr', 'kcal'],
-    running:  ['time', 'distance', 'pace', 'climb', 'hr', 'hrmax', 'kcal', 'hard'],
-    cycling:  ['time', 'distance', 'pace', 'climb', 'hr', 'hrmax', 'power', 'kcal'],
+    running:  ['time', 'distance', 'pace', 'climb', 'hr', 'hrmax', 'kcal', 'hard', 'hrv'],
+    cycling:  ['time', 'distance', 'pace', 'climb', 'hr', 'hrmax', 'power', 'kcal', 'hrv'],
     swimming: ['time', 'distance', 'pace', 'laps', 'hr', 'kcal'],
     // Indoor efforts: no distance worth trusting, so intensity is the whole story.
-    gym:      ['time', 'hr', 'hrmax', 'kcal', 'hard'],
-    hiit:     ['time', 'hr', 'hrmax', 'kcal', 'hard'],
-    sports:   ['time', 'hr', 'hrmax', 'kcal', 'hard'],
+    gym:      ['time', 'hr', 'hrmax', 'kcal', 'hard', 'hrv'],
+    hiit:     ['time', 'hr', 'hrmax', 'kcal', 'hard', 'hrv'],
+    sports:   ['time', 'hr', 'hrmax', 'kcal', 'hard', 'hrv'],
     dance:    ['time', 'hr', 'kcal'],
     yoga:     ['time', 'hr', 'kcal'],
     // Sleep's story is entirely its stages; heart rate and burn mean nothing here.
@@ -551,6 +614,13 @@ function sessionStats(
         ? { key: 'hard', icon: 'pulse-outline', label: 'HARD', value: `${Math.round(x.highIntensityMin)}`, unit: 'min' }
         : null;
 
+    // Workout-window HRV (avg RMSSD). Rare — only some providers send it — but
+    // it was being stored and thrown away, and the people whose device measures
+    // it are exactly the people who look for it.
+    const hrv: StatTile | null = x.hrvRmssd != null && x.hrvRmssd > 0
+        ? { key: 'hrv', icon: 'pulse-outline', label: 'HRV', value: `${Math.round(x.hrvRmssd)}`, unit: 'ms' }
+        : null;
+
     // Sleep stages, shown in the same h/m form as duration so the four read as
     // one set. Present on every provider — 926 nights carry them.
     const stage = (key: string, label: string, hours: number | null | undefined): StatTile | null =>
@@ -570,6 +640,7 @@ function sessionStats(
         hrmax: hrMax,
         kcal: calories,
         hard: hardMinutes,
+        hrv,
         deep: stage('deep', 'DEEP', vitals?.sleepDeepH),
         rem: stage('rem', 'REM', vitals?.sleepRemH),
         light: stage('light', 'LIGHT', vitals?.sleepLightH),
@@ -995,6 +1066,39 @@ const styles = StyleSheet.create({
         fontSize: 10,
         fontWeight: '300',
         color: DIM,
+    },
+    zoneBlock: {
+        gap: 8,
+        marginTop: -6,
+        marginBottom: 16,
+    },
+    zoneBar: {
+        flexDirection: 'row',
+        height: 10,
+        borderRadius: 5,
+        overflow: 'hidden',
+        backgroundColor: 'rgba(255,255,255,0.04)',
+    },
+    zoneLegend: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        columnGap: 12,
+        rowGap: 4,
+    },
+    zoneLegendItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+    },
+    zoneDot: {
+        width: 6,
+        height: 6,
+        borderRadius: 3,
+    },
+    zoneLegendText: {
+        fontSize: 9,
+        fontWeight: '300',
+        color: MUTED,
     },
     vitalsPrompt: {
         fontSize: 11,

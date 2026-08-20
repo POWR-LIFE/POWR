@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GeometricBackground } from '@/components/home/GeometricBackground';
 import { RadialCarousel } from '@/components/home/RadialCarousel';
 import { HeaderActions } from '@/components/HeaderActions';
+import { BodyTab } from '@/components/progress/BodyTab';
 import { MovementTab } from '@/components/progress/MovementTab';
 import PointsBreakdownSheet from '@/components/progress/PointsBreakdownSheet';
 import { SleepTab } from '@/components/progress/SleepTab';
@@ -29,6 +30,7 @@ import { usePoints } from '@/hooks/usePoints';
 import { bumpActivityRevision } from '@/lib/activityRevision';
 import { useWalkingProgress } from '@/hooks/useWalkingProgress';
 import { fetchWeeklySleepHours } from '@/lib/api/activity';
+import { deriveBodySignals, fetchBodyTrends, isEmptyTrends, readinessOf, type Readiness } from '@/lib/api/bodyTrends';
 import { fetchProfile } from '@/lib/api/user';
 import { orderedProgressActivities } from '@/lib/weeklyActivities';
 
@@ -38,6 +40,8 @@ const GOLD   = '#E8D200';
 const GREEN  = '#4ade80';
 const ORANGE = '#fb923c';
 const INDIGO = '#818cf8';
+/** BODY's recovery accent — matches the HRV band on the BODY tab. */
+const TEAL   = '#2DD4BF';
 const TEXT    = '#F2F2F2';
 const MUTED   = 'rgba(255,255,255,0.25)';
 
@@ -107,6 +111,24 @@ export default function ProgressScreen() {
     }
   }, [user, health.isAuthorized, health.getLastNightSleep, isNativeProvider]);
 
+  // Readiness for the BODY radial — same derivation the BODY tab's chips use,
+  // so the word in the ring can never disagree with the tab beneath it.
+  // hasData gates the whole BODY surface: a brand-new user with nothing to
+  // draw shouldn't meet an empty trends page as their first impression.
+  const [bodyState, setBodyState] = useState<{ readiness: Readiness; hasData: boolean } | null>(null);
+  const loadBody = useCallback(async () => {
+    if (!user) return;
+    try {
+      const trends = await fetchBodyTrends();
+      setBodyState({
+        readiness: readinessOf(deriveBodySignals(trends)),
+        hasData: !isEmptyTrends(trends),
+      });
+    } catch (err) {
+      console.error('[Progress] Error fetching body readiness:', err);
+    }
+  }, [user]);
+
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
@@ -116,6 +138,7 @@ export default function ProgressScreen() {
         walking.refresh(),
         refreshProviders(),
         loadSleep(),
+        loadBody(),
       ]);
       // None of the above reaches the breakdown charts — their D/W/M data is
       // component state in WorkoutsTab/MovementTab, so pulling to refresh
@@ -125,15 +148,16 @@ export default function ProgressScreen() {
     } finally {
       setRefreshing(false);
     }
-  }, [refreshActivity, refreshPoints, walking.refresh, refreshProviders, loadSleep]);
+  }, [refreshActivity, refreshPoints, walking.refresh, refreshProviders, loadSleep, loadBody]);
 
   // Run on mount/dep-change and whenever the screen comes into focus (handles
   // the case where the user connects WHOOP in settings then returns here).
-  useEffect(() => { loadSleep(); }, [loadSleep]);
+  useEffect(() => { loadSleep(); loadBody(); }, [loadSleep, loadBody]);
   useFocusEffect(useCallback(() => {
     refreshProviders(); // ensure activeId is current after OAuth reconnect
     loadSleep();
-  }, [refreshProviders, loadSleep]));
+    loadBody();
+  }, [refreshProviders, loadSleep, loadBody]));
 
   // Fetch and sync activity preferences
   useEffect(() => {
@@ -245,9 +269,47 @@ export default function ProgressScreen() {
     });
   }
 
+  // BODY shows only once there is something behind it: any body data at all,
+  // or a cloud wearable connected (whose backfill is about to produce some) —
+  // the same proof-or-promise rule the sleep radial uses. A brand-new
+  // phone-only user sees no BODY surface until their first session or night
+  // lands.
+  const showBody = (bodyState?.hasData ?? false)
+    || rows.some((row) => !!row.connection && !row.meta.native);
+
+  // BODY leads both the carousel AND the tab strip (last place in a scrolling
+  // tab bar is where features hide), so tab indices ARE radial indices — no
+  // shifting, and selecting BODY shows its own readiness ring instead of a
+  // stray activity radial. Its ring holds the derived readiness word; POWR
+  // stays 0 so the points panel and its (i) never render for it. The DEFAULT
+  // selection is still the first activity — see the init effect below.
+  if (showBody) radialData.unshift({
+    id: 'body',
+    pct: bodyState?.readiness.ring ?? 0,
+    value: bodyState?.readiness.word ?? '—',
+    maxLabel: '',
+    subLabel: 'READINESS',
+    gradientColors: [TEAL, GREEN],
+    iconName: 'pulse',
+    iconLib: 'ionicons',
+    pointsValue: 0,
+    // Ticks mark nights a sleep record landed — the days the readiness read
+    // actually has body data behind it.
+    ticks: DAY_LABELS.map((label, i) => ({
+      label: label.slice(0, 2),
+      active: sleepHrs[i] > 0,
+      isToday: i === TODAY_INDEX,
+    })),
+  });
+
   const tabs = radialData.map(d => d.id);
   const activeIndex = tabs.indexOf(activeTab);
-  const radialActiveType = (tabs[activeIndex >= 0 ? activeIndex : 0] ?? 'gym') as ActivityType;
+  // Unset-tab fallback lands on the first ACTIVITY, wherever that sits.
+  const radialIndex = activeIndex >= 0 ? activeIndex : (tabs[0] === 'body' ? 1 : 0);
+  const radialActiveId = radialData[radialIndex]?.id ?? 'gym';
+  // Only used by the (i) breakdown sheet, which BODY never opens (no points
+  // panel) — the fallback just keeps the cast honest.
+  const radialActiveType = (radialActiveId === 'body' ? 'gym' : radialActiveId) as ActivityType;
 
   const handleIndexChange = (index: number) => {
     const nextTab = tabs[index];
@@ -256,10 +318,12 @@ export default function ProgressScreen() {
     }
   };
 
-  // Set initial tab once prefs load
+  // Set initial tab once prefs load. BODY leads the strip for visibility but
+  // the first ACTIVITY is the default selection, so the radial above and the
+  // breakdown below agree on first paint — skip past 'body' only when present.
   useEffect(() => {
     if (tabs.length > 0 && !tabs.includes(activeTab)) {
-      setActiveTab(tabs[0]);
+      setActiveTab(tabs[0] === 'body' ? tabs[1] ?? tabs[0] : tabs[0]);
     }
   }, [tabs, activeTab]);
 
@@ -289,7 +353,7 @@ export default function ProgressScreen() {
         <Text style={styles.sectionLabelFirst}>ACTIVITY OVERVIEW</Text>
         <RadialCarousel
           data={radialData}
-          activeIndex={activeIndex >= 0 ? activeIndex : 0}
+          activeIndex={radialIndex}
           onChange={handleIndexChange}
           onPointsInfo={() => setRadialInfoFor(radialActiveType)}
         />
@@ -304,7 +368,7 @@ export default function ProgressScreen() {
           onPeriodChange={handlePeriodChange}
           lookback={lookback}
           onLookbackChange={setLookback}
-          tabs={radialData.map(d => ({ key: d.id, label: ACTIVITIES[d.id as ActivityType]?.labelShort.toUpperCase() || d.id.toUpperCase() }))}
+          tabs={tabs.map(key => ({ key, label: key === 'body' ? 'BODY' : ACTIVITIES[key as ActivityType]?.labelShort.toUpperCase() || key.toUpperCase() }))}
           walking={walking}
           weeklyMetrics={weeklyMetrics}
           stepsF={stepsF}
@@ -468,7 +532,8 @@ function BreakdownSection({
                   onOffsetChange={onLookbackChange}
                 />
               )}
-              {key !== 'walking' && key !== 'sleep' && (
+              {key === 'body' && <BodyTab />}
+              {key !== 'walking' && key !== 'sleep' && key !== 'body' && (
                 <WorkoutsTab
                   type={key as ActivityType}
                   count={weeklyMetrics.perType[key] ?? 0}
