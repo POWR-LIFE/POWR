@@ -254,33 +254,45 @@ Deno.serve(async (req: Request) => {
   stats.loc_candidates = 0; stats.loc_sent = 0; stats.loc_skipped = 0;
   try {
     const nowMs = Date.now();
-    const { data: regressions, error: regErr } = await admin
-      .from('location_permission_regressions')
-      .select('user_id, level, created_at')
-      .lt('created_at', new Date(nowMs - REGRESSION_GRACE_MS).toISOString())
-      .order('created_at', { ascending: false });
-    if (regErr) throw regErr;
 
-    // Latest regression per user — the view is append-only history.
-    const latest = new Map<string, { level: string; created_at: string }>();
-    for (const r of regressions ?? []) {
-      if (!latest.has(r.user_id)) latest.set(r.user_id, r);
-    }
+    // Start from profiles, NOT the history view: location_permission_events is
+    // append-only and this pass runs every 15 minutes, so scanning every
+    // regression ever recorded grows without bound. The real candidate set is
+    // "users whose profile is STILL regressed" — bounded by user count — and
+    // only their newest regression row matters.
+    const { data: regressedProfs, error: profErr } = await admin
+      .from('profiles')
+      .select('id, location_permission, timezone')
+      .in('location_permission', ['denied', 'while_using']);
+    if (profErr) throw profErr;
 
-    if (latest.size > 0) {
-      const userIds = [...latest.keys()];
-      const [{ data: profs, error: profErr }, { data: priorLogs, error: logErr }] = await Promise.all([
-        admin.from('profiles')
-          .select('id, location_permission, timezone')
-          .in('id', userIds),
+    if ((regressedProfs ?? []).length > 0) {
+      const userIds = (regressedProfs ?? []).map((p) => p.id);
+      const [{ data: regressions, error: regErr }, { data: priorLogs, error: logErr }] = await Promise.all([
+        admin.from('location_permission_regressions')
+          .select('user_id, level, created_at')
+          .in('user_id', userIds)
+          .lt('created_at', new Date(nowMs - REGRESSION_GRACE_MS).toISOString())
+          .order('created_at', { ascending: false })
+          // Belt against a pathological flapper: newest-first, so latest-per-
+          // user survives truncation for everyone inside the cap.
+          .limit(1000),
         admin.from('push_send_log')
           .select('user_id, created_at')
           .eq('type', 'location_permission_lost')
           .in('user_id', userIds),
       ]);
-      if (profErr) throw profErr;
+      if (regErr) throw regErr;
+      // The dedup depends on this read: a silently-failed priorLogs query
+      // would re-send every historical notice. Fail the pass instead.
       if (logErr) throw logErr;
-      const profById = new Map((profs ?? []).map((p) => [p.id, p]));
+
+      // Latest regression per user (rows arrive newest-first).
+      const latest = new Map<string, { level: string; created_at: string }>();
+      for (const r of regressions ?? []) {
+        if (!latest.has(r.user_id)) latest.set(r.user_id, r);
+      }
+      const profById = new Map((regressedProfs ?? []).map((p) => [p.id, p]));
       const lastAttempt = new Map<string, number>();
       for (const l of priorLogs ?? []) {
         const t = Date.parse(l.created_at);
