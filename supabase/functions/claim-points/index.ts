@@ -857,7 +857,7 @@ Deno.serve(async (req) => {
   // and this audit would never fire (see _shared/proofAudit.ts).
   if (session.verification === 'geofence' && session.type === 'gym') {
     try {
-      const { data: auditVisit } = await supabase
+      const { data: auditVisit, error: auditVisitErr } = await supabase
         .from('gym_visits')
         .select('id, started_at, last_proven_at')
         .eq('claimed_session_id', session.id)
@@ -865,6 +865,7 @@ Deno.serve(async (req) => {
         .order('started_at', { ascending: false })
         .limit(1)
         .maybeSingle();
+      if (auditVisitErr) throw auditVisitErr;
       const auditInputs = {
         durationSec: session.duration_sec ?? 0,
         visitStartedAt: auditVisit?.started_at ?? null,
