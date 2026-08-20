@@ -534,7 +534,7 @@ async function handleAuth(supabase, payload): Promise<void> {
     if (k !== key && WEARABLE_KEYS.has(k)) delete conns[k];
   }
   conns[key] = { connected_at: new Date().toISOString(), terra_user_id: terraUserId };
-  await requestBackfill(terraUserId);
+  void requestBackfill(terraUserId);
   await supabase.from('profiles').update({
     health_provider_connections: conns,
     active_health_provider: key,
