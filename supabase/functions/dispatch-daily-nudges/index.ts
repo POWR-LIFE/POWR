@@ -38,6 +38,7 @@ import {
   getPersonalizedChallengesForWeek,
   parseChallengeCatalog,
 } from '../_shared/challenges.ts';
+import { shouldSendRegressionNotice, REGRESSION_GRACE_MS } from '../_shared/locationRegression.ts';
 
 const CONCURRENCY = 10;
 const escapeLike = (value: string) => value.replace(/[\\%_]/g, '\\$&');
@@ -238,6 +239,116 @@ Deno.serve(async (req: Request) => {
         console.warn(`[dispatch-daily-nudges] weekly ${c.kind} → ${c.user_id} failed:`, err);
       }
     }
+  }
+
+  // ── Phase 3: location-permission regression notices ───────────────────────
+  // always → denied/while_using is recorded server-side (2026-08-09) but had no
+  // consumer that could REACH the user: every in-app recovery surface requires
+  // opening the app, and this cohort has stopped opening it (field 2026-08-15:
+  // 'always' lost mid-visit, zero visits in the five days after, live push
+  // token the whole time). One push per regression, EVER — any push_send_log
+  // row newer than the regression (sent or skipped) closes it, so a no_tokens
+  // skip can't spam the log every 15 minutes and a re-grant + fresh loss
+  // re-arms naturally. All eligibility rules live in
+  // _shared/locationRegression.ts; this pass stays deliberately dumb.
+  stats.loc_candidates = 0; stats.loc_sent = 0; stats.loc_skipped = 0;
+  try {
+    const nowMs = Date.now();
+
+    // Start from profiles, NOT the history view: location_permission_events is
+    // append-only and this pass runs every 15 minutes, so scanning every
+    // regression ever recorded grows without bound. The real candidate set is
+    // "users whose profile is STILL regressed" — bounded by user count — and
+    // only their newest regression row matters.
+    const { data: regressedProfs, error: profErr } = await admin
+      .from('profiles')
+      .select('id, location_permission, timezone')
+      .in('location_permission', ['denied', 'while_using']);
+    if (profErr) throw profErr;
+
+    if ((regressedProfs ?? []).length > 0) {
+      const userIds = (regressedProfs ?? []).map((p) => p.id);
+      const [{ data: regressions, error: regErr }, { data: priorLogs, error: logErr }] = await Promise.all([
+        admin.from('location_permission_regressions')
+          .select('user_id, level, created_at')
+          .in('user_id', userIds)
+          .lt('created_at', new Date(nowMs - REGRESSION_GRACE_MS).toISOString())
+          .order('created_at', { ascending: false })
+          // Belt against a pathological flapper: newest-first, so latest-per-
+          // user survives truncation for everyone inside the cap.
+          .limit(1000),
+        admin.from('push_send_log')
+          .select('user_id, created_at')
+          .eq('type', 'location_permission_lost')
+          .in('user_id', userIds),
+      ]);
+      if (regErr) throw regErr;
+      // The dedup depends on this read: a silently-failed priorLogs query
+      // would re-send every historical notice. Fail the pass instead.
+      if (logErr) throw logErr;
+
+      // Latest regression per user (rows arrive newest-first).
+      const latest = new Map<string, { level: string; created_at: string }>();
+      for (const r of regressions ?? []) {
+        if (!latest.has(r.user_id)) latest.set(r.user_id, r);
+      }
+      const profById = new Map((regressedProfs ?? []).map((p) => [p.id, p]));
+      const lastAttempt = new Map<string, number>();
+      for (const l of priorLogs ?? []) {
+        const t = Date.parse(l.created_at);
+        if (Number.isFinite(t) && t > (lastAttempt.get(l.user_id) ?? 0)) lastAttempt.set(l.user_id, t);
+      }
+
+      for (const [userId, reg] of latest) {
+        const prof = profById.get(userId);
+        let localHour: number;
+        try {
+          // Most of the base is UK; an unset/garbage timezone falls back to
+          // London rather than UTC-midnight surprises.
+          const tz = prof?.timezone;
+          localHour = Number(new Intl.DateTimeFormat('en-GB', {
+            hour: 'numeric', hour12: false, timeZone: tz || 'Europe/London',
+          }).format(new Date(nowMs)));
+        } catch {
+          localHour = Number(new Intl.DateTimeFormat('en-GB', {
+            hour: 'numeric', hour12: false, timeZone: 'Europe/London',
+          }).format(new Date(nowMs)));
+        }
+
+        if (!shouldSendRegressionNotice({
+          regressionLevel: reg.level,
+          regressionAtMs: Date.parse(reg.created_at),
+          currentLevel: prof?.location_permission ?? null,
+          lastAttemptAtMs: lastAttempt.get(userId) ?? null,
+          localHour,
+          nowMs,
+        })) continue;
+
+        stats.loc_candidates++;
+        try {
+          const res = await fetch(`${supabaseUrl}/functions/v1/send-push-notification`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${serviceKey}` },
+            body: JSON.stringify({
+              target_user_id: userId,
+              type: 'location_permission_lost',
+              payload: { level: reg.level },
+            }),
+          });
+          const body = await res.json().catch(() => null);
+          if (body?.skipped) stats.loc_skipped++;
+          else if (res.ok) stats.loc_sent++;
+          else stats.failed++;
+        } catch (err) {
+          stats.failed++;
+          console.warn(`[dispatch-daily-nudges] location_permission_lost → ${userId} failed:`, err);
+        }
+      }
+    }
+  } catch (locErr) {
+    // Best-effort: a broken regression pass must never take down the streak /
+    // reminder / weekly nudges that share this dispatcher.
+    console.warn('[dispatch-daily-nudges] location-regression pass failed:', locErr);
   }
 
   console.log('[dispatch-daily-nudges]', JSON.stringify(stats));
