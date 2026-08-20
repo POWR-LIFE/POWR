@@ -1,5 +1,6 @@
 // @ts-nocheck — Deno runtime, not Node. Types enforced at deploy time.
 import { createClient } from '@supabase/supabase-js';
+import { provenSec, shouldFlagUnproven } from '../_shared/proofAudit.ts';
 import { geofenceSupersedes } from '../_shared/sessionPriority.ts';
 import { streakFromSessions } from '../_shared/streak.ts';
 
@@ -834,6 +835,73 @@ Deno.serve(async (req) => {
       }
     } catch (visitErr) {
       console.warn('[claim-points] late visit mark failed:', visitErr);
+    }
+  }
+
+  // 11d. Presence-proof audit — flag, never block. The visit-side proof floor
+  // clamps gym_visits honestly, but THIS row was INSERTed by the client and the
+  // grows-only DB guard only sees UPDATEs, so a claim landing hours later (app
+  // reopened, next-day replay) carries whatever duration the client computed
+  // and nothing above compares it to what the device actually PROVED. Field
+  // 2026-08-19: a 121-min session claimed against a visit clamped to 0.0 min
+  // with zero proofs; 2026-08-17: 128 min claimed a day late. The award stands
+  // — most zero-proof visits are honest users whose background pipeline was
+  // dead, and never-drop-a-workout is the rule — but the session surfaces in
+  // the flagged-only admin triage instead of passing as silently verified.
+  //
+  // Runs AFTER 11b/11c so the visit is resolvable by claimed_session_id
+  // regardless of which leg stamped it. A geofence claim with NO visit at all
+  // is zero evidence too (every real chain creates one at check-in) and audits
+  // the same way. last_proven_at ONLY — 11b stamped last_confirmed_at = now()
+  // moments ago, so the weaker column would read as "proved through the claim"
+  // and this audit would never fire (see _shared/proofAudit.ts).
+  if (session.verification === 'geofence' && session.type === 'gym') {
+    try {
+      const { data: auditVisit } = await supabase
+        .from('gym_visits')
+        .select('id, started_at, last_proven_at')
+        .eq('claimed_session_id', session.id)
+        .eq('user_id', user.id)
+        .order('started_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const auditInputs = {
+        durationSec: session.duration_sec ?? 0,
+        visitStartedAt: auditVisit?.started_at ?? null,
+        lastProvenAt: auditVisit?.last_proven_at ?? null,
+      };
+      if (shouldFlagUnproven(auditInputs)) {
+        // An earlier reason (duplicate / multi_device) wins — the guard is the
+        // WHERE, not the stale step-3 read, so a concurrent flag can't be lost.
+        const { data: flaggedRows } = await supabase
+          .from('activity_sessions')
+          .update({ flagged: true, flag_reason: 'unproven_duration' })
+          .eq('id', session.id)
+          .eq('flagged', false)
+          .select('id');
+        if ((flaggedRows ?? []).length > 0) {
+          console.log(
+            `[claim-points] flagged unproven_duration: session ${session.id} ` +
+            `claimed ${session.duration_sec}s, proven ${provenSec(auditInputs)}s` +
+            (auditVisit ? '' : ' (no visit resolved)'),
+          );
+          if (auditVisit) {
+            await supabase.from('gym_visit_events').insert({
+              visit_id: auditVisit.id, user_id: user.id, event: 'proof_audit',
+              detail: {
+                session_id: session.id,
+                session_sec: session.duration_sec ?? 0,
+                proven_sec: provenSec(auditInputs),
+                flagged: true,
+              },
+            });
+          }
+        }
+      }
+    } catch (auditErr) {
+      // Best-effort by contract: the points are already credited, and a broken
+      // audit must never fail the claim it is auditing.
+      console.warn('[claim-points] proof audit failed:', auditErr);
     }
   }
 

@@ -5,8 +5,12 @@ import { useToast } from '../../lib/toast';
 
 // Why claim-points flagged the session (set in supabase/functions/claim-points).
 const FLAG_REASONS = {
-    duplicate:    { label: 'Duplicate',    color: '#F59E0B' },
-    multi_device: { label: 'Multi-Device', color: '#F43F5E' },
+    duplicate:         { label: 'Duplicate',    color: '#F59E0B' },
+    multi_device:      { label: 'Multi-Device', color: '#F43F5E' },
+    // Claimed duration exceeds what the device PROVED during the gym visit
+    // (last_proven_at) by >30 min — the award went through (never drop a
+    // workout), this is the review queue for it. See _shared/proofAudit.ts.
+    unproven_duration: { label: 'Unproven Duration', color: '#8B5CF6' },
 };
 const flagReason = (r) => FLAG_REASONS[r] || { label: 'Flagged', color: '#999' };
 
