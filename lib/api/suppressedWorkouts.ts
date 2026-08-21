@@ -86,7 +86,7 @@ export async function fetchSuppressedWorkouts(
             .from('suppressed_workouts')
             .select('id, type, started_at, ended_at, duration_sec, distance_m, hr_avg, source, raw_activity_name')
             .eq('user_id', uid)
-            .order('started_at', { ascending: false });
+            .order(opts.limit !== undefined ? 'ended_at' : 'started_at', { ascending: false });
         if (opts.type !== undefined) q = q.eq('type', opts.type);
         else q = q.not('type', 'in', '("gym","walking","sleep")');
         if (opts.from) q = q.gte('started_at', new Date(opts.from).toISOString());
