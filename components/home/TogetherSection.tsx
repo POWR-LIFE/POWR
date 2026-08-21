@@ -24,7 +24,7 @@ import type { SharedChallenge } from '@/lib/social/types';
 import { CreateChallengeSheet } from '@/components/social/CreateChallengeSheet';
 import { ChallengeTemplateCard } from '@/components/social/ChallengeTemplateCard';
 import { OpenChallengeCard } from '@/components/social/OpenChallengeCard';
-import { OpenBoardPrompt } from '@/components/social/OpenBoardPrompt';
+import { OpenBoardPrompt, shouldShowOpenBoardPrompt } from '@/components/social/OpenBoardPrompt';
 import { FriendPulseCard } from '@/components/social/FriendPulseCard';
 import { SharedChallengeCard } from '@/components/social/SharedChallengeCard';
 import { SharedChallengeCelebration } from '@/components/social/SharedChallengeCelebration';
@@ -406,9 +406,16 @@ export function TogetherSection({ onOpenChallenge, deferred = false }: TogetherS
                     personal reason to start is worth more than any template. */}
                 {/* Leads the band whenever it has something to say: a friendless
                     user's problem is "nobody to invite", and this is the only
-                    card on the shelf that answers it. Renders nothing once the
-                    user is opted in with a populated board. */}
-                {(!optedIn || board.length === 0) && (
+                    card on the shelf that answers it. Ask the prompt BEFORE
+                    reserving its slot — the wrapper is a fixed card width, so a
+                    prompt that self-nulls leaves a card-wide blank column at the
+                    head of the band and shoves the real cards off the right edge. */}
+                {shouldShowOpenBoardPrompt({
+                  optedIn,
+                  teaserCount,
+                  boardCount: board.length,
+                  hasCrew: starter.length > 0,
+                }) && (
                   <View style={{ width: cardWidth, marginRight: CAROUSEL_GAP }}>
                     <OpenBoardPrompt
                       optedIn={optedIn}

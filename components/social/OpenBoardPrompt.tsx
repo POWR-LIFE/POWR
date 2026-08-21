@@ -29,6 +29,33 @@ export interface OpenBoardPromptProps {
 }
 
 /**
+ * Whether the prompt has anything to say.
+ *
+ * Exported because callers that reserve space for it — the Home carousel wraps
+ * every card in a fixed-width slot — have to ask BEFORE they render the
+ * wrapper. A prompt that self-nulls inside a `width: cardWidth` View leaves a
+ * card-wide blank column at the head of the band and pushes the real cards off
+ * the right edge, which is exactly what it did.
+ */
+export function shouldShowOpenBoardPrompt({
+  optedIn,
+  teaserCount,
+  boardCount,
+  hasCrew,
+}: Pick<OpenBoardPromptProps, 'optedIn' | 'teaserCount' | 'boardCount' | 'hasCrew'>): boolean {
+  // Opted in with a populated shelf — the cards speak for themselves.
+  if (optedIn && boardCount > 0) return false;
+  // Someone with friends and nothing waiting on the board already has an
+  // answer on this screen: the template cards, aimed at people they actually
+  // know. Pitching an empty board at them is both wrong ("no one to challenge"
+  // is false) and a distraction from the better option. They still get the
+  // prompt the moment there IS someone waiting — that's a real opportunity,
+  // not a consolation prize.
+  if (!optedIn && teaserCount === 0 && hasCrew) return false;
+  return true;
+}
+
+/**
  * The board's way in.
  *
  * Without this the feature is unreachable: get_open_challenges returns nothing
@@ -47,18 +74,10 @@ export interface OpenBoardPromptProps {
 export function OpenBoardPrompt({ optedIn, teaserCount, boardCount, hasCrew, onEnable, onPost }: OpenBoardPromptProps) {
   const [busy, setBusy] = useState(false);
 
-  // Opted in with a populated shelf — the cards speak for themselves.
-  if (optedIn && boardCount > 0) return null;
+  if (!shouldShowOpenBoardPrompt({ optedIn, teaserCount, boardCount, hasCrew })) return null;
 
   const waiting = !optedIn && teaserCount > 0;
   const beFirst = optedIn && boardCount === 0;
-  // Someone with friends and nothing waiting on the board already has an
-  // answer on this screen: the template cards, aimed at people they actually
-  // know. Pitching an empty board at them is both wrong ("no one to challenge"
-  // is false) and a distraction from the better option. They still get the
-  // prompt the moment there IS someone waiting — that's a real opportunity,
-  // not a consolation prize.
-  if (!optedIn && !waiting && hasCrew) return null;
 
   const press = async () => {
     if (busy) return;
