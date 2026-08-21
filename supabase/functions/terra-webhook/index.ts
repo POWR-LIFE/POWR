@@ -887,7 +887,7 @@ async function mergeSleepInto(supabase, { userId, target, incoming, reading, sou
     || mergedLight !== (snap.sleep_light_h ?? null)
     || mergedHours !== (snap.sleep_duration_h ?? null)
   );
-  if (!merged.changed && !stagesChanged) return; // a replay of something we already hold
+  if (snap && !merged.changed && !stagesChanged) return; // a replay of something we already hold
 
   if (merged.changed) {
     const { error } = await supabase.from('activity_sessions').update({
