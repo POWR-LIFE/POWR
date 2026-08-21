@@ -15,6 +15,7 @@ import {
   type PulsePacing,
 } from '@/lib/social/friendPulse';
 import { useSharedChallenges } from '@/hooks/useSharedChallenges';
+import { useOpenChallengeBoard } from '@/hooks/useOpenChallengeBoard';
 import { usePoints } from '@/hooks/usePoints';
 import { useNotifications } from '@/context/NotificationsContext';
 import { buildSharedChallengeShareInput } from '@/lib/social/share';
@@ -22,6 +23,8 @@ import { supabase } from '@/lib/supabase';
 import type { SharedChallenge } from '@/lib/social/types';
 import { CreateChallengeSheet } from '@/components/social/CreateChallengeSheet';
 import { ChallengeTemplateCard } from '@/components/social/ChallengeTemplateCard';
+import { OpenChallengeCard } from '@/components/social/OpenChallengeCard';
+import { OpenBoardPrompt } from '@/components/social/OpenBoardPrompt';
 import { FriendPulseCard } from '@/components/social/FriendPulseCard';
 import { SharedChallengeCard } from '@/components/social/SharedChallengeCard';
 import { SharedChallengeCelebration } from '@/components/social/SharedChallengeCelebration';
@@ -130,12 +133,27 @@ export function TogetherSection({ onOpenChallenge, deferred = false }: TogetherS
   const [sheetVisible, setSheetVisible] = useState(false);
   const [presetTemplateId, setPresetTemplateId] = useState<string | null>(null);
   const [presetFriendIds, setPresetFriendIds] = useState<string[] | null>(null);
-  const openCreate = (templateId: string | null, friendIds?: string[]) => {
+  const [presetPostOpen, setPresetPostOpen] = useState(false);
+  const openCreate = (templateId: string | null, friendIds?: string[], postOpen = false) => {
     setPresetTemplateId(templateId);
     setPresetFriendIds(friendIds ?? null);
+    setPresetPostOpen(postOpen);
     setSheetVisible(true);
   };
   const goToChallenges = () => router.push('/challenges');
+
+  // The open board — challenges strangers posted, takeable by anyone who has
+  // opted in. Rows arrive pre-filtered (both sides opted in, slot free, no block
+  // edge, no shared device); an opted-out user simply gets an empty board.
+  const { board, taking, takeChallenge, optedIn, teaserCount, setOptedIn } = useOpenChallengeBoard();
+  const takeOpen = useCallback(async (id: string) => {
+    const res = await takeChallenge(id);
+    // A refusal is almost always "someone beat you to it" — the server keeps
+    // every ineligibility behind one message so a taker can't probe who opted
+    // in or who blocked them.
+    if (!res.ok && res.error) Alert.alert('Couldn’t take that one', res.error);
+    else if (res.ok && res.challengeId) router.push(`/shared-challenge?id=${res.challengeId}`);
+  }, [takeChallenge, router]);
 
   // Default preselection: the crew from your last created challenge, so the
   // usual partners are one Send away. An explicit rematch overrides it.
@@ -386,9 +404,37 @@ export function TogetherSection({ onOpenChallenge, deferred = false }: TogetherS
               >
                 {/* A friend's fresh workout leads the browse band — the most
                     personal reason to start is worth more than any template. */}
+                {/* Leads the band whenever it has something to say: a friendless
+                    user's problem is "nobody to invite", and this is the only
+                    card on the shelf that answers it. Renders nothing once the
+                    user is opted in with a populated board. */}
+                {(!optedIn || board.length === 0) && (
+                  <View style={{ width: cardWidth, marginRight: CAROUSEL_GAP }}>
+                    <OpenBoardPrompt
+                      optedIn={optedIn}
+                      teaserCount={teaserCount}
+                      boardCount={board.length}
+                      onEnable={() => setOptedIn(true)}
+                      onPost={() => openCreate(null, [], true)}
+                    />
+                  </View>
+                )}
                 {pulseCard && (
                   <View style={{ width: cardWidth, marginRight: CAROUSEL_GAP }}>{pulseCard}</View>
                 )}
+                {/* Real people waiting, ahead of any template: a stranger who
+                    has already posted is a live opponent, and the whole reason
+                    the board exists is that most active users have nobody to
+                    invite. A friend's fresh workout still outranks them. */}
+                {board.map((c) => (
+                  <View key={c.id} style={{ width: cardWidth, marginRight: CAROUSEL_GAP }}>
+                    <OpenChallengeCard
+                      challenge={c}
+                      busy={taking.has(c.id)}
+                      onTake={(oc) => takeOpen(oc.id)}
+                    />
+                  </View>
+                ))}
                 {templates.map((t, i) => (
                   <View
                     key={t.id}
@@ -465,6 +511,8 @@ export function TogetherSection({ onOpenChallenge, deferred = false }: TogetherS
         search={search}
         sendRequest={sendRequest}
         bonusConfig={bonusConfig}
+        openBoard={{ optedIn, setOptedIn }}
+        initialPostOpen={presetPostOpen}
         plateFull={atCap}
         openCount={openCount}
         cap={cap}

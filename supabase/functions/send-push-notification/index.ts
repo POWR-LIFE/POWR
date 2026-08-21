@@ -38,7 +38,9 @@ type NotificationType =
   | 'challenge_pool_milestone'
   | 'challenge_completed'
   | 'challenge_expiring'
-  | 'challenge_ended';
+  | 'challenge_ended'
+  | 'challenge_open_unclaimed'
+  | 'challenge_open_posted';
 
 // The together feature has a master opt-out (user_metadata.together_enabled).
 // These types are suppressed entirely when a user has turned it off.
@@ -46,6 +48,7 @@ const TOGETHER_TYPES: NotificationType[] = [
   'friend_request', 'friend_accepted', 'challenge_invite', 'challenge_accepted',
   'challenge_started', 'challenge_friend_finished', 'challenge_pool_milestone',
   'challenge_completed', 'challenge_expiring', 'challenge_ended',
+  'challenge_open_unclaimed', 'challenge_open_posted',
 ];
 
 // Types that should NOT land in the in-app "Recent" feed. The two live-actionable
@@ -56,6 +59,9 @@ const FEED_EXCLUDED: Set<NotificationType> = new Set([
   'friend_request', 'challenge_invite',
   'daily_reminder', 'inactivity_nudge', 'check_in_reminder',
   'streak_at_risk', 'weekly_challenge_expiry',
+  // "someone posted on the board" is a right-now prompt, not a record. The
+  // conversion receipt is NOT excluded: a challenge changing state is history.
+  'challenge_open_posted',
 ]);
 
 // Coarse bucket the client renders an icon/accent from.
@@ -71,6 +77,8 @@ function categoryFor(type: NotificationType): 'social' | 'rewards' | 'activity' 
     case 'challenge_completed':
     case 'challenge_expiring':
     case 'challenge_ended':
+    case 'challenge_open_unclaimed':
+    case 'challenge_open_posted':
       return 'social';
     case 'reward_unlocked':
     case 'points_milestone':
@@ -125,6 +133,9 @@ const TTL_SECONDS: Partial<Record<NotificationType, number>> = {
   challenge_within_reach:  6 * 60 * 60,  // "you're close tonight" is stale by morning
   daily_reminder:          6 * 60 * 60,
   inactivity_nudge:        12 * 60 * 60,
+  // Someone has probably taken it by tomorrow; a stale "new on the board" is
+  // worse than none, because tapping it lands on a challenge that's gone.
+  challenge_open_posted:   12 * 60 * 60,
 };
 
 // "on 16 Sep" for a vault maturity date. Falls back to a vaguer phrase rather
@@ -598,9 +609,24 @@ function buildMessage(
 
       case 'challenge_started': {
         const title = (payload.title as string) || 'Your challenge';
+        // A shared challenge starts on the SECOND accept, not a full roster —
+        // outstanding invitees keep their Accept card and join mid-race
+        // (tryStartForming). The old copy said "everyone's in" regardless, so a
+        // group of five that had one acceptance was told the whole group was in.
+        // Counts absent (an older caller) falls back to the neutral line rather
+        // than to the claim.
+        const inCount = Math.max(0, Math.round(Number(payload.accepted_count ?? 0)));
+        const rosterCount = Math.max(0, Math.round(Number(payload.total_count ?? 0)));
+        const stillOut = Math.max(0, rosterCount - inCount);
+        const body =
+          inCount > 0 && stillOut > 0
+            ? `"${title}" has started with ${inCount} of ${rosterCount} in — the others can still join. Get your part done.`
+            : inCount > 0
+              ? `"${title}" has started — everyone's in. Get your part done.`
+              : `"${title}" has started. Get your part done.`;
         return {
           title: 'Challenge on 🔥',
-          body: `"${title}" has started — everyone's in. Get your part done.`,
+          body,
           data: { type, route: `/shared-challenge?id=${payload.challenge_id}`, challenge_id: payload.challenge_id },
           sound: 'default',
           channelId: 'powr_default_v2',
@@ -689,6 +715,43 @@ function buildMessage(
             challenge_id: payload.challenge_id,
             outcome,
           },
+          sound: 'default',
+          channelId: 'powr_default_v2',
+          priority: 'normal',
+        };
+      }
+
+      // The open board's two endings. Both are Together types (master opt-out
+      // applies) and both carry a data.route — without one the tap goes
+      // nowhere, which is exactly what a config-override-only approach would
+      // have shipped.
+      case 'challenge_open_unclaimed': {
+        const title = (payload.title as string) || 'Your challenge';
+        return {
+          // Deliberately not "nobody wanted it". The post going untaken is not
+          // the user's failure and must not read like one — this is the modal
+          // outcome at launch scale, and it lands on the first-time user the
+          // board exists to activate.
+          title: 'Running solo now',
+          body: `Nobody took "${title}" off the board this time — it's running as a solo challenge, and it still counts.`,
+          data: {
+            type,
+            route: `/shared-challenge?id=${payload.challenge_id}`,
+            challenge_id: payload.challenge_id,
+          },
+          sound: 'default',
+          channelId: 'powr_default_v2',
+          priority: 'normal',
+        };
+      }
+
+      case 'challenge_open_posted': {
+        const title = (payload.title as string) || 'a challenge';
+        const who = (payload.from_name as string) || 'Someone';
+        return {
+          title: 'New on the board 👋',
+          body: `${who} posted "${title}" — take it on and you race them.`,
+          data: { type, route: '/challenges', challenge_id: payload.challenge_id },
           sound: 'default',
           channelId: 'powr_default_v2',
           priority: 'normal',
@@ -903,6 +966,13 @@ Deno.serve(async (req: Request) => {
       : type === 'wearable_session_recorded' ? 'wearable_session'
       : type === 'streak_lost' ? 'streak_rescue'
       : type === 'streak_rescued' ? 'streak_rescue'
+      // The unclaimed-post receipt IS a challenge_started event (your post is
+      // now running solo), so it rides that toggle rather than earning one.
+      : type === 'challenge_open_unclaimed' ? 'challenge_started'
+      // challenge_open_posted has a real column of its own (20260821…): the
+      // grouped switch is "Friend activity", and a stranger's board post is
+      // not that. Falling through to `: type` here would have 400'd on every
+      // send and left the opt-out decorative — see the warning above.
       : type;
     if (prefColumn) {
       const { data: prefs } = await supabase

@@ -35,15 +35,107 @@ Deno.serve(async (req) => {
   //      pre-existing forming challenge when start-on-second-accept shipped. ───
   const { data: forming } = await supabase
     .from('shared_challenges')
-    .select('id, accept_by')
+    .select('id, accept_by, is_open')
     .eq('status', 'forming');
   for (const c of forming ?? []) {
     // Past accept_by, outstanding invites count as non-answers — otherwise one
     // ghosted invite parks the challenge in 'forming' forever.
     const elapsed = !!c.accept_by && Date.parse(c.accept_by) <= Date.now();
+    // An OPEN-BOARD post is waiting on a stranger, not on an answer, and has no
+    // invitees to prove it. This sweep runs every 15 minutes, so without the
+    // skip a board post is cancelled within a quarter hour of going up — the
+    // board would be empty every time anyone looked. tryStartForming guards this
+    // too (shouldKeepForming); belt and braces, because the cost of getting it
+    // wrong is the whole feature silently doing nothing. Once the window HAS
+    // elapsed we do fall through, so the untaken post converts to a solo run.
+    if (c.is_open && !elapsed) continue;
     const outcome = await tryStartForming(supabase, c.id, elapsed);
     if (outcome === 'started') stats.started++;
     else if (outcome === 'cancelled') stats.cancelled++;
+  }
+
+  // ── 1b. Open board: announce new posts to the people who could take one ────
+  //
+  // STAGED OFF (system_config.open_board_post_push = 'off'). A post is invisible
+  // until someone happens to open /challenges, so at 48h most would go untaken —
+  // but with a handful of opted-in members there is nobody to announce to yet,
+  // and a fan-out over an empty board is pure noise. Flip it on only once
+  // open_board_stats() shows posts_went_solo outpacing posts_taken:
+  //
+  //   update system_config set value = 'on' where key = 'open_board_post_push';
+  //
+  // Rollback is the same statement with 'off', no deploy. Read per-run rather
+  // than cached at module scope so a flip takes effect without a cold start —
+  // same discipline as _shared/visiblePush.ts's transport flag.
+  //
+  // Volume is bounded three ways, because this is the only push in the app that
+  // fans OUT rather than targeting one person:
+  //   · notification_config gives it class='social' + daily_cap=1 — a hard
+  //     one-per-user-per-day ceiling. It is deliberately NOT nudge-class: the
+  //     nudge pool holds a single daily slot that streak_at_risk and
+  //     daily_reminder already compete for, and a board post must never
+  //     suppress a streak warning.
+  //   · get_open_board_audience resolves eligibility in ONE round-trip and only
+  //     returns users who actually hold a push token.
+  //   · MAX_BOARD_PUSHES caps the whole tick, so wall-clock can't run away as
+  //     the base grows — every notifyPush is a full HTTP call to
+  //     send-push-notification, which does ~7 queries of its own.
+  const { data: boardFlag } = await supabase
+    .from('system_config').select('value').eq('key', 'open_board_post_push').maybeSingle();
+  if (String(boardFlag?.value ?? 'off').trim().toLowerCase() === 'on') {
+    const MAX_BOARD_PUSHES = 60;
+    let boardPushes = 0;
+
+    const { data: unannounced } = await supabase
+      .from('shared_challenges')
+      .select('id, creator_id, template, created_at')
+      .eq('is_open', true)
+      .eq('board_notified', false)
+      // 'forming' only. A post that already converted to a solo run is
+      // status='active' with is_open still true — announcing that as "new on
+      // the board" would invite people into a race already underway.
+      .eq('status', 'forming')
+      .eq('solo_start', false)
+      // Freshness: if a post has sat unannounced for a day, the moment has
+      // passed and a late "new!" is a lie.
+      .gte('created_at', new Date(Date.now() - 24 * 3_600_000).toISOString())
+      .order('created_at', { ascending: true })
+      .limit(3);
+
+    for (const post of unannounced ?? []) {
+      if (boardPushes >= MAX_BOARD_PUSHES) break;
+
+      // Claim it BEFORE sending. A crash mid-fan-out costs one announcement;
+      // claiming afterwards would re-announce the same post every 15 minutes.
+      const { data: claimed } = await supabase
+        .from('shared_challenges')
+        .update({ board_notified: true })
+        .eq('id', post.id)
+        .eq('board_notified', false)
+        .select('id')
+        .maybeSingle();
+      if (!claimed) continue;
+
+      const { data: prof } = await supabase
+        .from('profiles').select('display_name, username').eq('id', post.creator_id).maybeSingle();
+      // First name only, exactly as the board itself shows it.
+      const who = String(prof?.display_name || prof?.username || 'Someone').trim().split(' ')[0];
+      const title = post.template?.title ?? 'a challenge';
+
+      const { data: audience } = await supabase
+        .rpc('get_open_board_audience', { p_challenge_id: post.id, p_limit: MAX_BOARD_PUSHES });
+
+      for (const row of audience ?? []) {
+        if (boardPushes >= MAX_BOARD_PUSHES) break;
+        const uid = typeof row === 'string' ? row : row?.get_open_board_audience ?? row?.id;
+        if (!uid) continue;
+        await notifyPush(uid, 'challenge_open_posted', {
+          challenge_id: post.id, title, from_name: who,
+        });
+        boardPushes++;
+        stats.nudged++;
+      }
+    }
   }
 
   // ── 2–4. Active challenges ─────────────────────────────────────────────────

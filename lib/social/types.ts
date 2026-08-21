@@ -147,3 +147,33 @@ export interface SharedChallenge {
   bonusPerHead?: number | null;
   bonusMax?: number | null;
 }
+
+/**
+ * A challenge posted to the OPEN BOARD, as seen by someone who could take it.
+ *
+ * Deliberately thinner than SharedChallenge: the viewer is a stranger, so the
+ * server hands back a first name and an avatar and nothing else about the
+ * creator — no username, no level, no history. Rows only ever reach a user who
+ * has opted in themselves (get_open_challenges filters on both sides).
+ */
+export interface OpenChallenge {
+  id: string;
+  template: ChallengeTemplate;
+  kind: 'parallel' | 'pooled' | 'synchronized' | 'versus';
+  status: SharedChallengeStatus;
+  creatorId: string;
+  /** First name only — the least that still reads as a person. */
+  creatorName: string;
+  creatorAvatar?: string | null;
+  category: string;
+  basePoints: number;
+  durationHours?: number;
+  /** Set once someone has taken it and the clock is running. */
+  startsAt?: string | null;
+  endsAt?: string | null;
+  bonusPerHead: number;
+  bonusMax: number;
+  /** How many more people can still take it. Always ≥ 1 on the board. */
+  slotsLeft: number;
+  createdAt: string;
+}

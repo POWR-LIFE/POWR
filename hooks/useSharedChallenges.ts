@@ -16,6 +16,7 @@ import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { useFriends } from '@/hooks/useFriends';
 import { isTerminal } from '@/lib/social/status';
+import { CATEGORY_ICON, CATEGORY_LABEL } from '@/lib/social/categories';
 import type {
   ChallengeTemplate,
   Friend,
@@ -28,6 +29,11 @@ import type {
 export interface NewChallengeInput {
   templateId: string;
   friendIds: string[];
+  /** Post to the open board instead of (or as well as) inviting friends —
+   *  anyone opted in can take it. Server-gated on the creator's own opt-in. */
+  isOpen?: boolean;
+  /** How many strangers may take it. Open posts only; server clamps to 1–5. */
+  openSlots?: number;
 }
 
 /** Outcome of an invite response, so a rejection can be shown rather than logged. */
@@ -60,7 +66,7 @@ const RESPOND_FALLBACK_ERROR: Record<RespondAction, string> = {
  * finished) only exists if we read the body back out. Same shape join-challenge
  * and lib/api/rewards use.
  */
-async function edgeErrorMessage(fnErr: unknown, data: any, fallback: string): Promise<string> {
+export async function edgeErrorMessage(fnErr: unknown, data: any, fallback: string): Promise<string> {
   try {
     const body = fnErr && typeof fnErr === 'object' && 'context' in (fnErr as any)
       ? await (fnErr as any).context.json()
@@ -69,17 +75,6 @@ async function edgeErrorMessage(fnErr: unknown, data: any, fallback: string): Pr
   } catch { /* body already consumed or not JSON — use the fallback */ }
   return fallback;
 }
-
-const CATEGORY_LABEL: Record<string, string> = {
-  gym: 'Gym', walking: 'Walking', running: 'Running', cycling: 'Cycling', multi: 'All',
-};
-const CATEGORY_ICON: Record<string, IconSpec> = {
-  gym: { lib: 'ion', name: 'barbell' },
-  walking: { lib: 'ion', name: 'walk' },
-  running: { lib: 'mc', name: 'run' },
-  cycling: { lib: 'mc', name: 'bike' },
-  multi: { lib: 'ion', name: 'flame' },
-};
 
 export function durationLabel(h: number): string {
   if (h % 168 === 0) return `${h / 168} week${h / 168 === 1 ? '' : 's'}`;
@@ -234,7 +229,7 @@ export interface UseSharedChallenges {
   bonusConfig: { perHead: number; maxBonus: number };
   selfId: string | null;
   getById: (id: string) => SharedChallenge | undefined;
-  createChallenge: (input: NewChallengeInput) => Promise<void>;
+  createChallenge: (input: NewChallengeInput) => Promise<RespondResult>;
   /** Answers optimistically — the card flips on the tap, then reconciles with
    *  the server. Resolves `{ ok: false, error }` if the server refused. */
   acceptInvite: (challengeId: string) => Promise<RespondResult>;
@@ -380,13 +375,29 @@ export function useSharedChallenges(): UseSharedChallenges {
     return () => { cancelled = true; };
   }, [all, completeRaw, load, responding]);
 
-  const createChallenge = useCallback(async ({ templateId, friendIds }: NewChallengeInput) => {
+  const createChallenge = useCallback(async (
+    { templateId, friendIds, isOpen, openSlots }: NewChallengeInput,
+  ): Promise<RespondResult> => {
     // No duration: the run length is the template's (server reads it there).
-    const { error } = await supabase.functions.invoke('create-shared-challenge', {
-      body: { template_id: templateId, friend_ids: friendIds, utc_offset_minutes: utcOffsetMinutes },
+    const { data, error } = await supabase.functions.invoke('create-shared-challenge', {
+      body: {
+        template_id: templateId,
+        friend_ids: friendIds,
+        utc_offset_minutes: utcOffsetMinutes,
+        ...(isOpen ? { is_open: true, open_slots: openSlots ?? 1 } : {}),
+      },
     });
-    if (error) console.warn('[useSharedChallenges] create failed:', error.message);
+    // An open post can be refused for reasons the user can act on — they haven't
+    // turned the board on, or they already have one up — so the outcome is
+    // returned rather than swallowed into a console.warn the way it used to be.
+    if (error || (data as any)?.error) {
+      const message = await edgeErrorMessage(error, data, 'Couldn’t create that challenge');
+      console.warn('[useSharedChallenges] create failed:', message);
+      await load();
+      return { ok: false, error: message };
+    }
     await load();
+    return { ok: true };
   }, [utcOffsetMinutes, load]);
 
   /**

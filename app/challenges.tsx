@@ -1,14 +1,17 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import GeometricBackground from '@/components/GeometricBackground';
 import { ChallengeTemplateCard } from '@/components/social/ChallengeTemplateCard';
+import { OpenChallengeCard } from '@/components/social/OpenChallengeCard';
+import { OpenBoardPrompt } from '@/components/social/OpenBoardPrompt';
 import { CreateChallengeSheet } from '@/components/social/CreateChallengeSheet';
 import { fontFamily } from '@/constants/tokens';
 import { lastCrew, starterCrew } from '@/lib/social/crew';
+import { useOpenChallengeBoard } from '@/hooks/useOpenChallengeBoard';
 import { useSharedChallenges } from '@/hooks/useSharedChallenges';
 
 // ─── Palette ──────────────────────────────────────────────────────────────────
@@ -48,15 +51,33 @@ export default function ChallengesScreen() {
 
   // Same default as Home's sheet: your last crew is one Send away.
   const defaultCrew = useMemo(() => lastCrew(all, selfId), [all, selfId]);
-  // Faces + bonus pitch on the browse cards (usual crew, or first friends).
+  // Faces on the browse cards, and what the sheet opens preselected to: your
+  // usual crew first, topped up with your other friends.
   const starter = useMemo(() => starterCrew(friends, defaultCrew), [friends, defaultCrew]);
 
+  // The open board lives here permanently — Home only surfaces it to users with
+  // nothing live, but this is the browse page, and someone with one challenge
+  // running is exactly who might take a second.
+  const { board, taking, takeChallenge, optedIn, teaserCount, setOptedIn } = useOpenChallengeBoard();
+  const takeOpen = useCallback(async (id: string) => {
+    const res = await takeChallenge(id);
+    if (!res.ok && res.error) Alert.alert('Couldn’t take that one', res.error);
+    else if (res.ok && res.challengeId) router.push(`/shared-challenge?id=${res.challengeId}`);
+  }, [takeChallenge, router]);
+
   const [sheetVisible, setSheetVisible] = useState(false);
+  const [presetPostOpen, setPresetPostOpen] = useState(false);
   const [presetTemplateId, setPresetTemplateId] = useState<string | null>(null);
   const [tab, setTab] = useState<ChallengesTab>('parallel');
 
   const openCreate = (templateId: string) => {
     setPresetTemplateId(templateId);
+    setPresetPostOpen(false);
+    setSheetVisible(true);
+  };
+  const openBoardPost = () => {
+    setPresetTemplateId(null);
+    setPresetPostOpen(true);
     setSheetVisible(true);
   };
 
@@ -159,6 +180,39 @@ export default function ChallengesScreen() {
       >
         <Text style={styles.intro}>{activeSub} Everyone earns a growing bonus when you all finish.</Text>
 
+        {/* Open board — real people already waiting. It leads the page because a
+            posted challenge is a live opponent and a template is only an idea.
+            Renders nothing at all when the shelf is empty: a board that has to
+            announce it found nobody is worse than no board. */}
+        {/* The way in. Renders for anyone who hasn't opted in (with a live count
+            of what they're missing) and for an opted-in user staring at an empty
+            shelf — the only thing that seeds a cold board is someone posting
+            first, so it asks. */}
+        <OpenBoardPrompt
+          optedIn={optedIn}
+          teaserCount={teaserCount}
+          boardCount={board.length}
+          onEnable={() => setOptedIn(true)}
+          onPost={openBoardPost}
+        />
+
+        {board.length > 0 && (
+          <View style={styles.boardBlock}>
+            <View style={styles.boardHeader}>
+              <Text style={styles.boardTitle}>Open challenges</Text>
+              <Text style={styles.boardHint}>First to take it races them</Text>
+            </View>
+            {board.map((c) => (
+              <OpenChallengeCard
+                key={c.id}
+                challenge={c}
+                busy={taking.has(c.id)}
+                onTake={(oc) => takeOpen(oc.id)}
+              />
+            ))}
+          </View>
+        )}
+
         {loading && templates.length === 0 ? (
           <Text style={styles.muted}>Loading…</Text>
         ) : activeList.length === 0 ? (
@@ -183,11 +237,16 @@ export default function ChallengesScreen() {
         visible={sheetVisible}
         templates={templates}
         initialTemplateId={presetTemplateId}
-        initialFriendIds={paramCrew ?? (defaultCrew.length > 0 ? defaultCrew : starter.map((f) => f.id))}
+        /* The faces on the card ARE the preselection — `starter` already leads
+           with your last crew, so the sheet can't open on a different set than
+           the one the card just pitched. */
+        initialFriendIds={paramCrew ?? starter.map((f) => f.id)}
         friends={friends}
         search={search}
         sendRequest={sendRequest}
         bonusConfig={bonusConfig}
+        openBoard={{ optedIn, setOptedIn }}
+        initialPostOpen={presetPostOpen}
         plateFull={atCap}
         openCount={openCount}
         cap={cap}
@@ -215,6 +274,10 @@ const styles = StyleSheet.create({
   },
   capBannerText: { flex: 1, fontFamily: fontFamily.regular, fontSize: 12, color: TEXT, lineHeight: 16 },
 
+  boardBlock: { gap: 12, marginBottom: 4 },
+  boardHeader: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
+  boardTitle: { fontFamily: fontFamily.medium, fontSize: 13, color: TEXT, letterSpacing: 0.2 },
+  boardHint: { fontFamily: fontFamily.light, fontSize: 11, color: SECONDARY },
   intro: { fontFamily: fontFamily.light, fontSize: 13, color: SECONDARY, lineHeight: 18 },
   muted: { fontFamily: fontFamily.light, fontSize: 14, color: SECONDARY, textAlign: 'center', paddingVertical: 24 },
 

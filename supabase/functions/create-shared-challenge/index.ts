@@ -37,7 +37,10 @@ const handler = async (req) => {
 
   // duration_hours is accepted-but-ignored: run length is template-owned now,
   // and older clients still send their config-default value.
-  let body: { template_id: string; friend_ids: string[]; duration_hours?: number; utc_offset_minutes?: number };
+  let body: {
+    template_id: string; friend_ids: string[]; duration_hours?: number; utc_offset_minutes?: number;
+    is_open?: boolean; open_slots?: number;
+  };
   try {
     body = await req.json();
   } catch {
@@ -49,7 +52,35 @@ const handler = async (req) => {
     .filter((id) => id && id !== user.id.toLowerCase());
   if (!templateId) return json({ error: 'Missing template_id' }, 400);
   if (friendIds.length > MAX_GROUP - 1) return json({ error: `Groups are capped at ${MAX_GROUP}` }, 400);
-  const solo = friendIds.length === 0;
+
+  // Open-board post: the challenge waits on the shelf for a stranger to take
+  // it. Crucially it is NOT a solo start — a solo run's clock is already
+  // ticking, and an open challenge that burned its window before anyone saw it
+  // would be the failed-promise version of this feature.
+  const isOpen = body.is_open === true;
+  const openSlots = isOpen ? Math.max(1, Math.min(5, Math.trunc(Number(body.open_slots) || 1))) : 1;
+  const solo = !isOpen && friendIds.length === 0;
+
+  if (isOpen) {
+    const { data: me } = await supabase
+      .from('profiles').select('open_to_strangers').eq('id', user.id).maybeSingle();
+    if (!me?.open_to_strangers) {
+      return json({ error: 'Turn on the open board in Settings first', code: 'NOT_OPTED_IN' }, 403);
+    }
+    // One live post each. The board's value is a short, real shelf; letting one
+    // account spray five posts would both bury everyone else and multiply the
+    // co-completion bonus a single creator can reach.
+    const { data: live } = await supabase
+      .from('shared_challenges')
+      .select('id')
+      .eq('creator_id', user.id)
+      .eq('is_open', true)
+      .in('status', ['forming', 'active'])
+      .limit(1);
+    if ((live?.length ?? 0) > 0) {
+      return json({ error: 'You already have an open challenge on the board', code: 'OPEN_EXISTS' }, 409);
+    }
+  }
 
   // 1. Config (bonus + timer options + cap), snapshotted onto the challenge.
   const { data: cfg } = await supabase
@@ -142,6 +173,8 @@ const handler = async (req) => {
       base_points: tmpl.base_points,
       status: solo ? 'active' : 'forming',
       solo_start: solo,
+      is_open: isOpen,
+      open_slots: openSlots,
       duration_hours: durationHours,
       ...(solo
         ? { starts_at: nowIso, ends_at: new Date(nowMs + durationHours * HOUR_MS).toISOString(), accept_by: null }

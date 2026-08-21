@@ -25,6 +25,13 @@
 //             still apply) and is auto-friended with the creator — this is the
 //             share-link recruitment loop. Runs BEFORE the participant check,
 //             because a link-joiner isn't a participant yet.
+//   take    — enter an OPEN BOARD challenge, addressed by challenge_id with no
+//             credential at all. Eligibility is therefore decided entirely
+//             server-side by can_take_open_challenge (both sides opted in, a
+//             free slot, no block edge, not the same device as the creator).
+//             Unlike `join` it does NOT auto-friend: a stranger who merely
+//             clicked "Take it" hasn't earned a place in your friend list.
+//             Finishing together does — see complete-shared-challenge.
 import { createClient } from '@supabase/supabase-js';
 import { tryStartForming } from '../_shared/sharedChallengeLifecycle.ts';
 import { notifyPush } from '../_shared/notify.ts';
@@ -34,7 +41,7 @@ const json = (body: unknown, status = 200) =>
 
 const MAX_GROUP = 6; // creator + up to 5 others (mirrors create-shared-challenge)
 
-type Action = 'accept' | 'decline' | 'leave' | 'invite' | 'dismiss' | 'cancel' | 'join';
+type Action = 'accept' | 'decline' | 'leave' | 'invite' | 'dismiss' | 'cancel' | 'join' | 'take';
 
 /** How many live, unfinished challenges already occupy a slot for this user. */
 async function openCount(supabase: any, userId: string): Promise<number> {
@@ -130,6 +137,61 @@ async function joinByToken(supabase: any, user: any, token?: string) {
     return json({ error: 'You can’t join this challenge', code: 'BLOCKED' }, 403);
   }
 
+  return enterChallenge(supabase, user, challenge, { autoFriend: true, edge });
+}
+
+/**
+ * Take an OPEN BOARD challenge. Addressed by challenge_id and carrying no
+ * credential — anyone signed in can name any id — so every eligibility rule is
+ * decided server-side by can_take_open_challenge: both sides opted in to
+ * strangers, a slot still free, no block edge, and the taker not sharing a
+ * device with the creator (the cheap guard against farming the co-completion
+ * bonus from a second account). Discovery via get_open_challenges applies the
+ * same rules, but discovery is not authorisation.
+ */
+async function takeOpenChallenge(supabase: any, user: any, challengeId?: string) {
+  if (!challengeId || typeof challengeId !== 'string') return json({ error: 'Missing challenge_id' }, 400);
+
+  const { data: challenge } = await supabase
+    .from('shared_challenges')
+    .select('id, status, creator_id, template, is_open, open_slots')
+    .eq('id', challengeId)
+    .maybeSingle();
+  if (!challenge) return json({ error: 'Challenge not found' }, 404);
+  if (!challenge.is_open) return json({ error: 'This challenge isn’t open', code: 'NOT_OPEN' }, 403);
+  if (challenge.creator_id === user.id) {
+    return json({ ok: true, challenge_id: challenge.id, state: 'creator' });
+  }
+
+  const { data: allowed, error: gErr } = await supabase
+    .rpc('can_take_open_challenge', { p_challenge_id: challenge.id, p_user_id: user.id });
+  if (gErr) {
+    console.error('[respond-shared-challenge] can_take_open_challenge failed:', gErr);
+    return json({ error: 'Failed to take challenge' }, 500);
+  }
+  // One message for every ineligibility: a stranger must not be able to probe
+  // who has opted in, who blocked them, or which accounts share a device.
+  if (!allowed) {
+    return json({ error: 'This one’s no longer available', code: 'UNAVAILABLE' }, 409);
+  }
+
+  // No auto-friend: taking a stranger's challenge is not consent to a friend
+  // edge in either direction. Finishing it together is the earned moment.
+  return enterChallenge(supabase, user, challenge, { autoFriend: false, openSlots: challenge.open_slots });
+}
+
+/**
+ * Shared tail of every credential-less entry (`join` by link, `take` from the
+ * board): roster + cap checks, the participant row, and the start attempt.
+ * `autoFriend` is the only thing that differs — a link-joiner was personally
+ * invited by the creator, a board-taker was not.
+ */
+async function enterChallenge(
+  supabase: any,
+  user: any,
+  challenge: any,
+  opts: { autoFriend: boolean; edge?: { status: string } | null; openSlots?: number },
+) {
   const { data: roster } = await supabase
     .from('shared_challenge_participants')
     .select('user_id, state')
@@ -150,15 +212,18 @@ async function joinByToken(supabase: any, user: any, token?: string) {
     return json({ error: 'Challenge slots full — finish or drop one first', code: 'AT_CAP' }, 409);
   }
 
-  if (!edge) {
-    const { error: fErr } = await supabase.from('friendships').insert({
-      user_id: lo, friend_id: hi, status: 'accepted', requested_by: challenge.creator_id,
-    });
-    // 23505 = a concurrent request/join already created the edge — fine.
-    if (fErr && fErr.code !== '23505') console.error('[respond-shared-challenge] join friendship insert failed:', fErr);
-  } else if (edge.status === 'pending') {
-    await supabase.from('friendships').update({ status: 'accepted' })
-      .eq('user_id', lo).eq('friend_id', hi);
+  if (opts.autoFriend) {
+    const [lo, hi] = [user.id, challenge.creator_id].sort();
+    if (!opts.edge) {
+      const { error: fErr } = await supabase.from('friendships').insert({
+        user_id: lo, friend_id: hi, status: 'accepted', requested_by: challenge.creator_id,
+      });
+      // 23505 = a concurrent request/join already created the edge — fine.
+      if (fErr && fErr.code !== '23505') console.error('[respond-shared-challenge] join friendship insert failed:', fErr);
+    } else if (opts.edge.status === 'pending') {
+      await supabase.from('friendships').update({ status: 'accepted' })
+        .eq('user_id', lo).eq('friend_id', hi);
+    }
   }
 
   const nowIso = new Date().toISOString();
@@ -180,6 +245,28 @@ async function joinByToken(supabase: any, user: any, token?: string) {
     if (insErr && insErr.code !== '23505') {
       console.error('[respond-shared-challenge] join insert failed:', insErr);
       return json({ error: 'Failed to join' }, 500);
+    }
+  }
+
+  // Board takes are capped at 1 + open_slots, which the pre-check read before
+  // this insert — two takers racing for a last slot would both pass it. Re-count
+  // after the write and stand the loser back down: whoever joined later by
+  // joined_at yields. Cheap compensation beats a lock for a race whose worst
+  // case is one extra head in a small race.
+  if (opts.openSlots != null && newHead) {
+    const { data: after } = await supabase
+      .from('shared_challenge_participants')
+      .select('user_id, joined_at, state')
+      .eq('challenge_id', challenge.id)
+      .not('state', 'in', '("declined","left")')
+      .order('joined_at', { ascending: true });
+    const heads = after ?? [];
+    const limit = 1 + opts.openSlots;
+    if (heads.length > limit && heads.slice(limit).some((h: any) => h.user_id === user.id)) {
+      await supabase.from('shared_challenge_participants')
+        .update({ state: 'left' })
+        .eq('challenge_id', challenge.id).eq('user_id', user.id);
+      return json({ error: 'This one’s no longer available', code: 'UNAVAILABLE' }, 409);
     }
   }
 
@@ -271,6 +358,8 @@ const handler = async (req) => {
   // Link-join is addressed by token, not challenge_id, and the caller is not a
   // participant yet — so it cannot flow through the lookup below.
   if (action === 'join') return joinByToken(supabase, user, body.invite_token);
+  // Board-take is likewise pre-participant: the taker has no row yet.
+  if (action === 'take') return takeOpenChallenge(supabase, user, body.challenge_id);
 
   if (!challenge_id) return json({ error: 'Missing challenge_id or action' }, 400);
 
