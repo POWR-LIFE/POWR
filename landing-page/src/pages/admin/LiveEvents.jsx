@@ -79,7 +79,7 @@ const fmtDT = (iso) => iso
 // wording, so what the note below the date fields quotes is what the home
 // card actually prints. Keep the two in step if either moves.
 const fmtDay = (iso) => iso
-    ? new Date(iso).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
+    ? new Date(iso).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })
     : '—';
 
 // The window is half-open [start, end): the last day anyone can score is the
