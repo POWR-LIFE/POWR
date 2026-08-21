@@ -37,6 +37,12 @@ const ORANGE = '#fb923c';
 /** "In a good place" — the green Home already uses for streaks and walking. */
 const GREEN = '#4ade80';
 
+/** Trend chart heights — taller than the v1 sparklines so the day-to-day
+ *  movement is legible (Jamie's pass; a scrollable window was tried and
+ *  reverted — it fought the tab carousel for the horizontal gesture). */
+const RHR_CHART_H = 84;
+const HRV_CHART_H = 120;
+
 const LOAD_BAR_H = 56;
 const SLEEP_BAR_H = 44;
 const SLEEP_NIGHTS = 14;
@@ -144,7 +150,7 @@ export function BodyTab({ initialTrends }: { initialTrends?: BodyTrends | null }
                     <View style={styles.metricHead}>
                         <Text style={styles.metricVal}>
                             {Math.round(rhr!.value)}
-                            <Text style={styles.metricUnit}> bpm</Text>
+                            <Text style={styles.metricUnit}> bpm · {whenLabel(rhr!.date)}</Text>
                         </Text>
                         {d.rhrAvg != null && trends.restingHr.length >= 5 && (
                             <Text style={styles.metricDelta}>
@@ -153,8 +159,11 @@ export function BodyTab({ initialTrends }: { initialTrends?: BodyTrends | null }
                         )}
                     </View>
                     <View style={styles.chartBlock}>
-                        <Sparkline points={trends.restingHr} days={TREND_DAYS} color={ROSE} area goodDirection="down" />
-                        <AxisRow left={`${TREND_DAYS} days ago`} centre="high · ─ ─ average · low" right="today" />
+                        <Sparkline points={trends.restingHr} days={TREND_DAYS} height={RHR_CHART_H} color={ROSE} area goodDirection="down" />
+                        <AxisRow left={`${TREND_DAYS} days ago`} right="today" />
+                        <ChartLegend items={[
+                            { swatch: 'dash', color: 'rgba(255,255,255,0.35)', label: 'your average' },
+                        ]} />
                     </View>
                 </>
             )}
@@ -162,17 +171,21 @@ export function BodyTab({ initialTrends }: { initialTrends?: BodyTrends | null }
             {showHrv && (
                 <>
                     <View style={styles.tabSep} />
-                    <Text style={styles.tabSubLabel}>HEART RATE VARIABILITY · PER WORKOUT</Text>
+                    <Text style={styles.tabSubLabel}>RECOVERY (HRV) · PER WORKOUT</Text>
                     <View style={styles.metricHead}>
                         <Text style={styles.metricVal}>
                             {Math.round(hrv!.value)}
-                            <Text style={styles.metricUnit}> ms</Text>
+                            <Text style={styles.metricUnit}> ms · {whenLabel(hrv!.date)}</Text>
                         </Text>
                         <Text style={styles.metricDelta}>one dot per tracked workout — higher is fresher</Text>
                     </View>
                     <View style={styles.chartBlock}>
-                        <RangeDotChart points={trends.hrv} days={TREND_DAYS} height={100} color={TEAL} goodDirection="up" />
-                        <AxisRow left={`${TREND_DAYS} days ago`} centre="band = your typical range" right="today" />
+                        <RangeDotChart points={trends.hrv} days={TREND_DAYS} height={HRV_CHART_H} color={TEAL} goodDirection="up" />
+                        <AxisRow left={`${TREND_DAYS} days ago`} right="today" />
+                        <ChartLegend items={[
+                            { swatch: 'box', color: 'rgba(45,212,191,0.3)', label: 'your typical range' },
+                            { swatch: 'dash', color: 'rgba(255,255,255,0.35)', label: 'average' },
+                        ]} />
                     </View>
                 </>
             )}
@@ -184,10 +197,10 @@ export function BodyTab({ initialTrends }: { initialTrends?: BodyTrends | null }
                     <View style={styles.metricHead}>
                         <Text style={styles.metricVal}>
                             {formatMin(trends.week.zoneMixSec.reduce((s, v) => s + v, 0) / 60)}
-                            <Text style={styles.metricUnit}> in zone</Text>
+                            <Text style={styles.metricUnit}> at raised heart rate</Text>
                         </Text>
                         {trends.week.peakHr != null && (
-                            <Text style={styles.metricDelta}>peak {Math.round(trends.week.peakHr)} bpm</Text>
+                            <Text style={styles.metricDelta}>peak heart rate {Math.round(trends.week.peakHr)} bpm</Text>
                         )}
                     </View>
                     <EffortMixBar zoneMixSec={trends.week.zoneMixSec} />
@@ -200,8 +213,8 @@ export function BodyTab({ initialTrends }: { initialTrends?: BodyTrends | null }
                     <Text style={styles.tabSubLabel}>SLEEP · LAST {SLEEP_NIGHTS} NIGHTS</Text>
                     <View style={styles.metricHead}>
                         <Text style={styles.metricVal}>
-                            {d.sleepAvg7 != null ? d.sleepAvg7.toFixed(1) : '—'}
-                            <Text style={styles.metricUnit}> h / night this week</Text>
+                            {d.sleepAvg7 != null ? formatMin(d.sleepAvg7 * 60) : '—'}
+                            <Text style={styles.metricUnit}> avg per night this week</Text>
                         </Text>
                         <Text style={styles.metricDelta}>{regularityLabel(trends.sleepHours)}</Text>
                     </View>
@@ -216,7 +229,7 @@ export function BodyTab({ initialTrends }: { initialTrends?: BodyTrends | null }
                     <View style={styles.metricHead}>
                         <Text style={styles.metricVal}>
                             {formatMin(trends.load.reduce((s, day) => s + day.activeMin, 0))}
-                            <Text style={styles.metricUnit}> active</Text>
+                            <Text style={styles.metricUnit}> of exercise</Text>
                         </Text>
                         <Text style={styles.metricDelta}>{loadSummary(trends)}</Text>
                     </View>
@@ -227,13 +240,14 @@ export function BodyTab({ initialTrends }: { initialTrends?: BodyTrends | null }
     );
 }
 
-/** "1,850 kcal · 45 hard min this week" — whatever of the pair exists. */
+/** "1,850 kcal burned · 45m at hard effort" — whatever of the pair exists.
+ *  No "this week" suffix: the section label already says LAST 7 DAYS. */
 function loadSummary(t: BodyTrends): string {
     const parts: string[] = [];
-    if (t.week.kcal > 0) parts.push(`${t.week.kcal.toLocaleString()} kcal`);
+    if (t.week.kcal > 0) parts.push(`${t.week.kcal.toLocaleString()} kcal burned`);
     const hard = t.load.reduce((s, day) => s + day.hardMin, 0);
-    if (hard > 0) parts.push(`${hard} hard min`);
-    return parts.length ? `${parts.join(' · ')} this week` : 'this week';
+    if (hard > 0) parts.push(`${formatMin(hard)} at hard effort`);
+    return parts.join(' · ');
 }
 
 // ─── Effort mix ──────────────────────────────────────────────────────────────
@@ -283,49 +297,68 @@ function EffortMixBar({ zoneMixSec }: { zoneMixSec: number[] }) {
 
 // ─── Signals row ─────────────────────────────────────────────────────────────
 
+/** A chip's traffic-light state. 'none' = nothing recent to judge. */
+type SignalLevel = 'green' | 'amber' | 'red' | 'none';
+
 type Signal = {
     label: string;
-    value: string;
-    /** One quiet word under the value — "rested", "elevated", "big day". */
-    state: string;
-    tint: string;
+    level: SignalLevel;
+    /** The verdict, worn in the light's colour — "Short night", "Primed". */
+    verdict: string;
+    /** The number behind the verdict, quiet — "1.5h slept", "no training". */
+    detail: string;
+};
+
+const LEVEL_TINTS: Record<SignalLevel, string> = {
+    green: GREEN,
+    amber: ORANGE,
+    red: ROSE,
+    none: MUTED,
 };
 
 /**
- * Three at-a-glance states before any chart: last night, a derived READINESS
- * word, and yesterday's load. The dot carries the colour (green = in a good
- * place, rose = worth attention, grey = nothing recent) so the row scans like
- * a status line, not a scorecard.
+ * Three at-a-glance judgements before any chart: last night, a derived
+ * READINESS word, and yesterday's load. Each chip is a traffic light — a
+ * green / amber / red lamp everyone already knows how to read — with the
+ * verdict in plain words beside it and the number tucked underneath. The
+ * light and the word carry the meaning; a first-time reader needs no key.
  *
- * The centre is a WORD, deliberately not a number: a resting HR printed here
+ * Deliberately words and lights, never a score: a resting HR printed here
  * read as "your heart rate right now", which it is not — and a percentage
- * would be a recovery score we can't compute honestly. "Primed" / "Easy day"
- * is exactly as much as the data supports.
+ * would be a recovery number we can't compute honestly from this data.
+ * Amber wears orange, not true amber — gold is POWR's alone.
  */
 function SignalsRow({ d }: { d: BodySignals }) {
     const r = readinessOf(d);
-    const readiness: Signal = {
-        label: 'READINESS',
-        value: r.word,
-        state: r.reason,
-        tint: r.level === 'good' ? GREEN : r.level === 'attention' ? ROSE : MUTED,
-    };
+
+    // One thing off (ring ≥ 2/3) is a caution; more than one is a stop.
+    const readinessLevel: SignalLevel =
+        r.level === 'good' ? 'green'
+        : r.level === 'attention' ? (r.ring >= 2 / 3 ? 'amber' : 'red')
+        : 'none';
+
+    // The detail is the RECOMMENDATION, not the cause — the cause is already
+    // on the neighbouring lamps and in the insight sentence below, and
+    // repeating "short night" here made the row say one thing twice.
+    const readinessDetail =
+        r.level === 'unknown' ? 'needs more data'
+        : r.level === 'good' ? 'good day to push'
+        : r.word === 'Rest' ? 'go light today'
+        : 'take it easy today';
 
     const signals: Signal[] = [
-        d.nightFresh
-            ? {
-                label: 'SLEEP',
-                value: `${d.nightFresh.value.toFixed(1)}h`,
-                state: d.shortNight ? 'short night' : 'rested',
-                tint: d.shortNight ? ROSE : GREEN,
-            }
-            : { label: 'SLEEP', value: '—', state: 'no recent night', tint: MUTED },
-        readiness,
+        sleepSignal(d),
         {
-            label: 'LOAD',
-            value: `${d.yesterdayMin}m`,
-            state: d.bigDay ? 'big day' : d.yesterdayMin === 0 ? 'rest day' : 'normal',
-            tint: d.bigDay ? ROSE : d.yesterdayMin === 0 ? GREEN : MUTED,
+            label: 'READINESS',
+            level: readinessLevel,
+            verdict: r.word === '—' ? 'No data' : r.word,
+            detail: readinessDetail,
+        },
+        {
+            label: 'YESTERDAY',
+            level: d.bigDay ? 'amber' : 'green',
+            verdict: d.bigDay ? 'Big day' : d.yesterdayMin === 0 ? 'Rest day' : 'Trained',
+            detail: d.yesterdayMin === 0 ? 'no training' : `${d.yesterdayMin}m of exercise`,
         },
     ];
 
@@ -336,16 +369,43 @@ function SignalsRow({ d }: { d: BodySignals }) {
                     {i > 0 && <View style={styles.signalDivider} />}
                     <View style={styles.signal}>
                         <Text style={styles.signalLabel}>{s.label}</Text>
-                        <Text style={styles.signalValue}>{s.value}</Text>
-                        <View style={styles.signalStateRow}>
-                            <View style={[styles.signalDot, { backgroundColor: s.tint }]} />
-                            <Text style={styles.signalState}>{s.state}</Text>
+                        <View style={styles.signalLamp}>
+                            <View style={[styles.signalHalo, { backgroundColor: `${LEVEL_TINTS[s.level]}2E` }]}>
+                                <View style={[styles.signalDot, { backgroundColor: LEVEL_TINTS[s.level] }]} />
+                            </View>
+                            <Text style={[styles.signalVerdict, s.level === 'none' && { color: DIM }]}>
+                                {s.verdict}
+                            </Text>
                         </View>
+                        <Text style={styles.signalDetail}>{s.detail}</Text>
                     </View>
                 </React.Fragment>
             ))}
         </View>
     );
+}
+
+/**
+ * Last night as a traffic light. Red is a genuinely short night (< 6h),
+ * amber is shy of a solid one — under 7h, or well below the user's own
+ * usual — and green is a proper night. Thresholds sit alongside the
+ * shared `shortNight` flag rather than replacing it: readiness and the
+ * insight sentence keep their single judgement, this only grades it.
+ */
+function sleepSignal(d: BodySignals): Signal {
+    if (!d.nightFresh) {
+        return { label: 'LAST NIGHT', level: 'none', verdict: 'Not synced', detail: 'waiting on your device' };
+    }
+    const h = d.nightFresh.value;
+    const level: SignalLevel = h < 6 ? 'red' : (h < 7 || d.shortNight) ? 'amber' : 'green';
+    return {
+        label: 'LAST NIGHT',
+        level,
+        verdict: level === 'red' ? 'Short night' : level === 'amber' ? 'A bit short' : 'Rested',
+        // "slept 1h 30m" reads as a sentence under the LAST NIGHT label;
+        // "1.5h slept" read as a unit nobody uses.
+        detail: `slept ${formatMin(h * 60)}`,
+    };
 }
 
 /** The quiet caption strip under a chart — its time axis and how to read it. */
@@ -355,6 +415,44 @@ function AxisRow({ left, centre, right }: { left: string; centre?: string; right
             <Text style={styles.axisText}>{left}</Text>
             {centre ? <Text style={styles.axisText}>{centre}</Text> : null}
             <Text style={styles.axisText}>{right}</Text>
+        </View>
+    );
+}
+
+// ─── Chart legend ────────────────────────────────────────────────────────────
+
+type LegendItem = {
+    /** 'box' = a bar's fill, 'line' = a reference line, 'dash' = a dashed one. */
+    swatch: 'box' | 'line' | 'dash';
+    color: string;
+    label: string;
+};
+
+/**
+ * Swatch legend under a chart — a little coloured box beside each word, the
+ * same language as the effort-mix legend, because "solid = goal met" in prose
+ * asks the reader to translate; a swatch they can match by eye doesn't.
+ */
+function ChartLegend({ items }: { items: LegendItem[] }) {
+    return (
+        <View style={styles.legendRow}>
+            {items.map(item => (
+                <View key={item.label} style={styles.legendItem}>
+                    {item.swatch === 'box' && (
+                        <View style={[styles.legendBox, { backgroundColor: item.color }]} />
+                    )}
+                    {item.swatch === 'line' && (
+                        <View style={[styles.legendLine, { backgroundColor: item.color }]} />
+                    )}
+                    {item.swatch === 'dash' && (
+                        <View style={styles.legendDash}>
+                            <View style={[styles.legendDashSeg, { backgroundColor: item.color }]} />
+                            <View style={[styles.legendDashSeg, { backgroundColor: item.color }]} />
+                        </View>
+                    )}
+                    <Text style={styles.zoneLegendText}>{item.label}</Text>
+                </View>
+            ))}
         </View>
     );
 }
@@ -398,7 +496,12 @@ function SleepBars({ points }: { points: TrendPoint[] }) {
                 })}
                 <View style={styles.sleepGoalLine} pointerEvents="none" />
             </View>
-            <AxisRow left={`${SLEEP_NIGHTS} nights ago`} centre={`goal ${SLEEP_GOAL_H}h ─ ─`} right="last night" />
+            <AxisRow left={`${SLEEP_NIGHTS} nights ago`} right="last night" />
+            <ChartLegend items={[
+                { swatch: 'dash', color: 'rgba(255,255,255,0.35)', label: `${SLEEP_GOAL_H}h goal` },
+                { swatch: 'box', color: INDIGO, label: 'goal met' },
+                { swatch: 'box', color: `${INDIGO}60`, label: 'short of goal' },
+            ]} />
         </View>
     );
 }
@@ -453,11 +556,15 @@ function LoadChart({ trends }: { trends: BodyTrends }) {
                     </>
                 )}
             </View>
-            <AxisRow
-                left="minutes trained per day"
-                centre="line = your average day"
-                right={totalHard > 0 ? 'solid = hard effort' : ''}
-            />
+            <ChartLegend items={[
+                { swatch: 'box', color: 'rgba(251,146,60,0.3)', label: 'minutes trained' },
+                ...(totalHard > 0
+                    ? [{ swatch: 'box' as const, color: ORANGE, label: 'hard effort' }]
+                    : []),
+                ...(avg > 0
+                    ? [{ swatch: 'line' as const, color: 'rgba(255,255,255,0.35)', label: 'your average day' }]
+                    : []),
+            ]} />
         </View>
     );
 }
@@ -479,12 +586,28 @@ function deltaLabel(delta: number, unit: string): string {
     return `${r > 0 ? '+' : '−'}${Math.abs(r)} ${unit}`;
 }
 
-/** "usually within ±0.6h" — spread of nightly hours, as plain language. */
+/** Spread of nightly hours as plain language — minutes, not "±0.6h". */
 function regularityLabel(series: TrendPoint[]): string {
     if (series.length < 4) return 'trends sharpen as more nights land';
     const m = mean(series)!;
     const sd = Math.sqrt(series.reduce((s, p) => s + (p.value - m) ** 2, 0) / series.length);
-    return `usually within ±${sd.toFixed(1)}h of your average`;
+    return `most nights within ${formatMin(sd * 60)} of your average`;
+}
+
+/**
+ * When a reading is from, in words — "today", "yesterday", "Mon", "12 Aug".
+ * Sits beside the big latest-value numbers so a days-old reading can never
+ * pass as a live one (the same worry that made the readiness chip a word).
+ */
+function whenLabel(date: string): string {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const d = new Date(`${date}T00:00:00`);
+    const daysAgo = Math.round((today.getTime() - d.getTime()) / 86400000);
+    if (daysAgo <= 0) return 'today';
+    if (daysAgo === 1) return 'yesterday';
+    if (daysAgo < 7) return d.toLocaleDateString('en-GB', { weekday: 'short' });
+    return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 }
 
 function dayInitial(date: string): string {
@@ -508,19 +631,19 @@ function formatMin(mins: number): string {
  */
 function buildInsight(d: BodySignals): string {
     if (d.rhrElevated) {
-        return `Resting HR is ${deltaLabel(d.rhrFresh!.value - d.rhrAvg!, 'bpm')} above your usual — worth keeping today steadier.`;
+        return `Resting heart rate is ${deltaLabel(d.rhrFresh!.value - d.rhrAvg!, 'bpm')} above your usual — worth keeping today steadier.`;
     }
     if (d.shortNight) {
-        return `Short night (${d.nightFresh!.value.toFixed(1)}h) — an easy session will do more for you than a hard one today.`;
+        return `Short night (${formatMin(d.nightFresh!.value * 60)}) — an easy session will do more for you than a hard one today.`;
     }
     if (d.bigDay) {
-        return `Big day yesterday (${d.yesterdayMin}m of training) — recovery is part of the work.`;
+        return `Big day yesterday (${formatMin(d.yesterdayMin)} of training) — recovery is part of the work.`;
     }
     if (d.nightFresh && d.rhrFresh && d.rhrAvg != null && d.rhrFresh.value <= d.rhrAvg) {
-        return `Slept ${d.nightFresh.value.toFixed(1)}h and resting HR is at or below your average — good day to push.`;
+        return `Slept ${formatMin(d.nightFresh.value * 60)} and resting heart rate is at or below your average — good day to push.`;
     }
     if (d.nightFresh) {
-        return `Slept ${d.nightFresh.value.toFixed(1)}h last night. Trends below build as your device syncs.`;
+        return `Slept ${formatMin(d.nightFresh.value * 60)} last night. Trends below build as your device syncs.`;
     }
     return 'Your trends build here as your device syncs — the more days, the sharper the picture.';
 }
@@ -538,19 +661,25 @@ const styles = StyleSheet.create({
     },
 
     signalsRow: { flexDirection: 'row', alignItems: 'flex-start' },
-    signal: { flex: 1, alignItems: 'center', gap: 2 },
+    signal: { flex: 1, alignItems: 'center', gap: 4 },
     signalDivider: {
-        width: 1, height: 44, alignSelf: 'center',
+        width: 1, height: 52, alignSelf: 'center',
         backgroundColor: 'rgba(255,255,255,0.07)',
     },
     signalLabel: {
         fontSize: 8, fontWeight: '500', letterSpacing: 1.5,
         color: MUTED, textTransform: 'uppercase',
     },
-    signalValue: { fontSize: 22, fontWeight: '200', letterSpacing: -0.5, color: TEXT },
-    signalStateRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-    signalDot: { width: 5, height: 5, borderRadius: 3 },
-    signalState: { fontSize: 9, fontWeight: '300', color: DIM },
+    signalLamp: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    // The lamp: a solid light inside a soft halo of its own colour, so the
+    // green / amber / red reads even at a glance on a bright screen.
+    signalHalo: {
+        width: 16, height: 16, borderRadius: 8,
+        alignItems: 'center', justifyContent: 'center',
+    },
+    signalDot: { width: 8, height: 8, borderRadius: 4 },
+    signalVerdict: { fontSize: 14, fontWeight: '400', letterSpacing: -0.2, color: TEXT },
+    signalDetail: { fontSize: 9, fontWeight: '300', color: DIM },
 
     insightRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 7 },
     insightText: { fontSize: 12, fontWeight: '300', color: DIM, flex: 1, lineHeight: 18 },
@@ -610,6 +739,16 @@ const styles = StyleSheet.create({
     },
     loadHard: { width: '100%', backgroundColor: ORANGE },
     loadDay: { fontSize: 9, fontWeight: '400', color: MUTED },
+
+    legendRow: {
+        flexDirection: 'row', flexWrap: 'wrap', columnGap: 12, rowGap: 4,
+        justifyContent: 'center', marginTop: 2,
+    },
+    legendItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+    legendBox: { width: 8, height: 8, borderRadius: 2 },
+    legendLine: { width: 12, height: 2, borderRadius: 1 },
+    legendDash: { flexDirection: 'row', gap: 2 },
+    legendDashSeg: { width: 5, height: 1.5, borderRadius: 1 },
 
     zoneBlock: { gap: 8 },
     zoneBar: {

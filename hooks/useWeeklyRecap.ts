@@ -202,12 +202,17 @@ export function useWeeklyRecap(): WeeklyRecapState {
                 .gte('created_at', weekBeforeStart)
                 .lt('created_at', weekStart),
             // The week's vitals — same rows the BODY tab reads, one week of them.
+            // The upper bound runs 2 days past the week so LATE-WRITTEN sleep
+            // still counts: Terra can deliver a night a day+ after it was slept,
+            // and those rows carry recorded_at = write time. Effort metrics
+            // re-apply the strict in-week bound in the loop below; sleep is
+            // bucketed by the night's true wake time from the linked session.
             supabase
                 .from('health_snapshots')
-                .select('recorded_at, source, hr_max, calories_active, sleep_duration_h, sleep_deep_h, sleep_rem_h, sleep_light_h, extras')
+                .select('recorded_at, source, hr_max, calories_active, sleep_duration_h, sleep_deep_h, sleep_rem_h, sleep_light_h, extras, session:activity_sessions(started_at, ended_at)')
                 .eq('user_id', uid)
                 .gte('recorded_at', prevWeekStart)
-                .lt('recorded_at', weekStart),
+                .lt('recorded_at', new Date(new Date(weekStart).getTime() + 2 * 86400000).toISOString()),
             supabase.from('profiles').select('activity_preferences').eq('id', uid).maybeSingle(),
             supabase.from('system_config').select('value').eq('key', 'weekly_challenges').maybeSingle(),
             supabase.from('system_config').select('value').eq('key', 'challenge_week_overrides').maybeSingle(),
@@ -258,11 +263,17 @@ export function useWeeklyRecap(): WeeklyRecapState {
         let kcal = 0;
         let peakHr: number | null = null;
         const sleepByDay = new Map<string, number>();
+        const weekStartMs = new Date(weekStart).getTime();
+        const prevWeekStartMs = new Date(prevWeekStart).getTime();
         for (const r of snapshots ?? []) {
+            // The query window runs past the week to catch late-written sleep;
+            // effort metrics keep the strict in-week bound.
+            const inWeek = r.recorded_at < weekStart;
+
             const hard = (r.extras as Record<string, unknown> | null)?.high_intensity_min;
-            if (typeof hard === 'number' && Number.isFinite(hard) && hard > 0) {
+            if (inWeek && typeof hard === 'number' && Number.isFinite(hard) && hard > 0) {
                 hardMin += Math.round(hard);
-            } else {
+            } else if (inWeek) {
                 // Zone 4+5 time counts as hard for providers that send zones but
                 // no intensity minutes — same fallback the BODY tab's load uses.
                 const zones = hrZonesFrom(r.extras as Record<string, unknown> | null);
@@ -275,9 +286,28 @@ export function useWeeklyRecap(): WeeklyRecapState {
             const stages = (r.sleep_deep_h ?? 0) + (r.sleep_rem_h ?? 0) + (r.sleep_light_h ?? 0);
             const hours = r.sleep_duration_h ?? (stages > 0 ? stages : null);
             if (hours != null && hours >= 1 && hours <= 12) {
-                sleepByDay.set(localDateStr(new Date(r.recorded_at)), hours);
+                // A night belongs to the morning it ENDED (the linked session's
+                // real times), not the row's write time — Terra writes sleep up
+                // to a day late, which filed nights on the wrong day and let a
+                // backfill batch collapse two nights into one map key. Same
+                // rule as bodyTrends. Longest record wins the day, so a
+                // fragment or nap can't displace the main night.
+                // To-one embed: PostgREST returns an object; the generated
+                // types mistake it for an array (same cast as bodyTrends).
+                const sess = (r as unknown as { session?: { started_at: string; ended_at: string | null } | null }).session;
+                const wakeMs = sess
+                    ? (sess.ended_at
+                        ? new Date(sess.ended_at).getTime()
+                        : new Date(sess.started_at).getTime() + hours * 3600_000)
+                    : new Date(r.recorded_at).getTime();
+                if (wakeMs >= prevWeekStartMs && wakeMs < weekStartMs) {
+                    const wakeDay = localDateStr(new Date(wakeMs));
+                    const prev = sleepByDay.get(wakeDay);
+                    if (prev == null || hours > prev) sleepByDay.set(wakeDay, hours);
+                }
             }
 
+            if (!inWeek) continue;
             if (isDayWideRow(r as { source: string | null; extras: Record<string, unknown> | null })) continue;
             if (r.hr_max != null && r.hr_max > 0 && (peakHr == null || r.hr_max > peakHr)) peakHr = r.hr_max;
             if (r.calories_active != null && r.calories_active > 0) kcal += r.calories_active;

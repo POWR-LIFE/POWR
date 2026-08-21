@@ -152,7 +152,14 @@ export function Sparkline({
     if (points.length === 0) return null;
 
     return (
-        <View style={{ height, alignSelf: 'stretch' }} onLayout={e => setWidth(e.nativeEvent.layout.width)}>
+        // pointerEvents="none": the chart is display-only, and react-native-svg
+        // otherwise claims the touch responder — a drag starting on the canvas
+        // would reach neither the chart scroller nor the tab carousel.
+        <View
+            style={{ height, alignSelf: 'stretch' }}
+            pointerEvents="none"
+            onLayout={e => setWidth(e.nativeEvent.layout.width)}
+        >
             {width > 0 && (() => {
                 const scale = makeScale(points, days, width, height);
                 const coords = points.map(p => ({ x: scale.x(p.date), y: scale.y(p.value) }));
@@ -249,7 +256,13 @@ export function RangeDotChart({
     if (points.length === 0) return null;
 
     return (
-        <View style={{ height, alignSelf: 'stretch' }} onLayout={e => setWidth(e.nativeEvent.layout.width)}>
+        // pointerEvents="none" for the same reason as Sparkline's: touches must
+        // fall through the SVG to the scroller behind it.
+        <View
+            style={{ height, alignSelf: 'stretch' }}
+            pointerEvents="none"
+            onLayout={e => setWidth(e.nativeEvent.layout.width)}
+        >
             {width > 0 && (() => {
                 const scale = makeScale(points, days, width, height);
                 const lastDate = points[points.length - 1].date;
