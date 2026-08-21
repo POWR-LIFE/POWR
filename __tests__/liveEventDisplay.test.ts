@@ -1,13 +1,29 @@
-import { eventStatusChip, scoringLine } from '@/lib/liveEventDisplay';
+import { eventNightLine, eventStatusChip, scoringLine } from '@/lib/liveEventDisplay';
 
 const realToLocaleDateString = Date.prototype.toLocaleDateString;
+const realToLocaleTimeString = Date.prototype.toLocaleTimeString;
 
+// Both formatters are pinned, not just the date one: eventNightLine renders a
+// TIME, so on a UTC runner "7pm BST" comes out as 6pm and the assertions fail
+// for reasons that have nothing to do with the code.
+//
+// `this: Date` is load-bearing — without it tsc fails TS2683 under
+// noImplicitThis, and jest would never catch it because babel doesn't
+// typecheck.
 beforeAll(() => {
     jest.spyOn(Date.prototype, 'toLocaleDateString').mockImplementation(function (
+        this: Date,
         locales?: Intl.LocalesArgument,
         options?: Intl.DateTimeFormatOptions,
     ): string {
         return realToLocaleDateString.call(this, locales ?? 'en-GB', { ...options, timeZone: 'Europe/London' });
+    });
+    jest.spyOn(Date.prototype, 'toLocaleTimeString').mockImplementation(function (
+        this: Date,
+        locales?: Intl.LocalesArgument,
+        options?: Intl.DateTimeFormatOptions,
+    ): string {
+        return realToLocaleTimeString.call(this, locales ?? 'en-GB', { ...options, timeZone: 'Europe/London' });
     });
 });
 
@@ -67,5 +83,52 @@ describe('eventStatusChip', () => {
 
     it('drops the countdown entirely once live', () => {
         expect(eventStatusChip({ ...WINDOW, status: 'live' })).toBe('LIVE NOW');
+    });
+});
+
+describe('eventNightLine', () => {
+    const on4th = (from: string | null, to?: string | null) =>
+        eventNightLine({ doors_open_at: from, doors_close_at: to ?? null });
+
+    it('renders the night as a flyer writes it, sharing one meridiem', () => {
+        expect(on4th('2026-09-04T18:00:00+01:00', '2026-09-04T19:00:00+01:00')).toBe('Fri 4 Sept, 6\u20137pm');
+    });
+
+    it('keeps both meridiems when the range crosses noon', () => {
+        expect(on4th('2026-09-04T11:00:00+01:00', '2026-09-04T13:00:00+01:00')).toBe('Fri 4 Sept, 11am\u20131pm');
+    });
+
+    it('keeps minutes when there are any', () => {
+        expect(on4th('2026-09-04T18:30:00+01:00', '2026-09-04T19:30:00+01:00')).toBe('Fri 4 Sept, 6:30\u20137:30pm');
+    });
+
+    it('falls back to the start alone when there is no close time', () => {
+        expect(on4th('2026-09-04T18:00:00+01:00')).toBe('Fri 4 Sept, 6pm');
+    });
+
+    // "Doors close 00:00 on the 5th" is a counting boundary meaning "the end of
+    // the 4th" — pairing it with the start would render "Fri 4 Sept, 12–12am".
+    it('ignores a close time that lands on a later day', () => {
+        expect(on4th('2026-09-04T09:00:00+01:00', '2026-09-05T00:00:00+01:00')).toBe('Fri 4 Sept, 9am');
+    });
+
+    it('never renders a 24-hour clock, which no flyer uses', () => {
+        const line = on4th('2026-09-04T19:00:00+01:00')!;
+        expect(line).not.toContain('19');
+        expect(line).toMatch(/(am|pm)$/);
+    });
+
+    // The datetime input defaults to 00:00, so "date only" is the shape an
+    // admin produces by picking a day and not touching the time.
+    it('shows the date alone when the start is midnight, never "12am"', () => {
+        expect(on4th('2026-09-04T00:00:00+01:00')).toBe('Fri 4 Sept');
+        expect(on4th('2026-09-04T00:00:00+01:00', '2026-09-05T00:00:00+01:00')).toBe('Fri 4 Sept');
+    });
+
+    // Guessing a date from the scoring window is exactly the wrong-day bug
+    // scoringLine() exists to prevent, so an unset door time must stay unset.
+    it('returns null when doors are not set, so callers hide the pill', () => {
+        expect(on4th(null)).toBeNull();
+        expect(eventNightLine({})).toBeNull();
     });
 });

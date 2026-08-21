@@ -49,9 +49,20 @@ export type LiveEventPrize = { rank: number; label: string; image_url?: string |
 /** Venue branding for promo surfaces. `logo_bg` is 'white' | 'dark' — chip the
  *  logo on anything ≠ 'dark' (matches the landing promo page's convention). */
 export type LiveEventVenue = {
+    /** partners.id — the key Discover uses to focus a venue on the map.
+     *  Absent on pre-20260821 payloads, so treat it as optional. */
+    id?: string | null;
     name: string;
     logo_url: string | null;
     logo_bg: string | null;
+    /** Postal address as entered in the partner record. Free-text and often
+     *  messy, so the card shows the venue NAME and keeps this for a11y. */
+    address?: string | null;
+    /** locations[0] — a venue partner is single-location by construction.
+     *  Null when the partner has no geometry yet; the card's map link is
+     *  hidden rather than sending someone to the middle of the ocean. */
+    lat?: number | null;
+    lng?: number | null;
 };
 
 export type LiveEvent = {
@@ -70,6 +81,12 @@ export type LiveEvent = {
     window_start_at: string;
     window_end_at: string;
     lock_at: string | null;
+    /** The night at the venue. Nothing else on the row records it — the Door
+     *  tab's counting window and the public event time are the same fact, so
+     *  this field carries both. Null until an admin sets it, which is why
+     *  every surface treats "no doors time" as "don't claim a date". */
+    doors_open_at?: string | null;
+    doors_close_at?: string | null;
     is_locked: boolean;
     revealed_at: string | null;
     prizes: LiveEventPrize[];

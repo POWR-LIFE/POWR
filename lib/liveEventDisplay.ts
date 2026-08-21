@@ -37,6 +37,71 @@ export function scoringLine(
         : `Scoring ends ${lastDayOf(event.window_end_at)}`;
 }
 
+/** Local wall-clock as a flyer writes it: "6pm", "6:30pm". */
+function clockTime(d: Date): string {
+    return d
+        .toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', hour12: true })
+        // Anchored to the am/pm suffix so it can only ever fire on a whole
+        // hour ("7:00 pm" -> "7pm") and never eat the minutes of a 24h time.
+        .replace(/:00(?=\s*[ap]\.?m)/i, '')
+        .replace(/\s+/g, '')
+        .toLowerCase();
+}
+
+/** The day, via the same formatter as everything else, for same-day tests. */
+function dayKey(d: Date): string {
+    return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+/**
+ * When the night at the venue actually is — "Fri 4 Sept, 6–7pm".
+ *
+ * Sourced from doors_open_at/doors_close_at, which are the only fields on the
+ * row that record it: the Door tab's counting window and the public event
+ * time are the same two moments, so there is no second pair to drift against.
+ *
+ * Three shapes, in order:
+ *   - both times on one day  -> "Fri 4 Sept, 6–7pm"
+ *   - a start only           -> "Fri 4 Sept, 6pm"
+ *   - a start at midnight    -> "Fri 4 Sept"
+ *
+ * That last one is not a special case for its own sake: the admin datetime
+ * input defaults to 00:00, so midnight is the shape produced by picking a DAY
+ * and not touching the time. Rendering it as "12am" would state something the
+ * admin never said.
+ *
+ * Returns null when unset, and every caller must hide its row rather than
+ * substitute the scoring window: guessing here would reintroduce exactly the
+ * wrong-day problem that [[scoringLine]] exists to fix.
+ */
+export function eventNightLine(
+    event: Pick<LiveEvent, 'doors_open_at' | 'doors_close_at'>,
+): string | null {
+    if (!event.doors_open_at) return null;
+    const from = new Date(event.doors_open_at);
+    const day = from.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
+
+    // Read the clock back through the formatter rather than getHours() so the
+    // midnight test agrees with the rendered day across timezones.
+    const hm = from.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false });
+    const dateOnly = hm === '00:00' || hm === '24:00';
+
+    const to = event.doors_close_at ? new Date(event.doors_close_at) : null;
+    // A close time on a LATER day is a counting boundary, not an end time --
+    // "doors close 00:00 on the 5th" means "the end of the 4th", so pairing it
+    // with the start would render the nonsense "Fri 4 Sept, 12–12am".
+    const sameDay = !!to && dayKey(to) === dayKey(from);
+
+    if (dateOnly || !sameDay) return dateOnly ? day : `${day}, ${clockTime(from)}`;
+
+    const a = clockTime(from);
+    const b = clockTime(to!);
+    // Drop the first meridiem when both share it: "6–7pm" is how a flyer
+    // writes it, while "11am–1pm" needs both to stay unambiguous.
+    const left = a.slice(-2) === b.slice(-2) ? a.slice(0, -2) : a;
+    return `${day}, ${left}\u2013${b}`;
+}
+
 /**
  * Short status chip copy for the home card.
  *

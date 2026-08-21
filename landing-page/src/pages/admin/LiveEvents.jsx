@@ -82,6 +82,16 @@ const fmtDay = (iso) => iso
     ? new Date(iso).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })
     : '—';
 
+// Mirrors eventNightLine() in lib/liveEventDisplay.ts — 12-hour, ":00" dropped
+// on a whole hour, so the admin sees the app's exact "Fri 4 Sept, 7pm" wording.
+const fmtDayTime = (iso) => {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    const time = d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', hour12: true })
+        .replace(/:00(?=\s*[ap]\.?m)/i, '').replace(/\s+/g, '').toLowerCase();
+    return `${fmtDay(iso)}, ${time}`;
+};
+
 // The window is half-open [start, end): the last day anyone can score is the
 // minute before it closes, not the boundary itself.
 const fmtLastDay = (iso) => iso ? fmtDay(new Date(new Date(iso).getTime() - 60_000).toISOString()) : '—';
@@ -2342,8 +2352,28 @@ function EditorPanel({ form, setForm, dirty, saving, onSave, onDiscard, venueNam
                         <Field label="Leaderboard hides" hint="From this moment the leaderboard is hidden in the app and everyone waits for the reveal. Usually the same as, or just after, scoring ends. Leave blank to keep it visible until you press Lock board.">
                             <DateTimeInput value={form.lock_at} onChange={v => set({ lock_at: v })} clearable />
                         </Field>
-                        <Field label="Doors open" hint="When people arriving at the venue start being counted on the Door tab. Leave blank to use the leaderboard hide time (or scoring end if that's blank).">
+                        <Field label="Doors open" hint="When the night at the venue starts. Doubles as the moment people arriving start being counted on the Door tab.">
                             <DateTimeInput value={form.doors_open_at} onChange={v => set({ doors_open_at: v })} clearable />
+                            {/* This is the one field that answers "when is the event?", as
+                                opposed to "when can I score?" — leaving it blank costs the
+                                app a row, so say so rather than letting it read optional. */}
+                            <p className="text-[11px] text-[#999999] leading-relaxed mt-2 max-w-md">
+                                {form.doors_open_at ? (
+                                    <>
+                                        The League card shows{' '}
+                                        <span className="font-medium text-[#555555]">“Event night {fmtDayTime(form.doors_open_at)}”</span>.
+                                        This is the only field that tells people when to actually turn up — scoring
+                                        usually opens a week earlier.
+                                    </>
+                                ) : (
+                                    <span className="text-[#B45309]">
+                                        Not set — the League card can&rsquo;t tell anyone when to turn up, so it hides the
+                                        event-night row entirely rather than guess from the scoring window. Set this to
+                                        the night at the venue. Counting on the Door tab falls back to the leaderboard
+                                        hide time (or scoring end) meanwhile.
+                                    </span>
+                                )}
+                            </p>
                         </Field>
                         <Field label="Doors close" hint="After this, people arriving at the venue are no longer counted. Leave blank for 12 hours after doors open.">
                             <DateTimeInput value={form.doors_close_at} onChange={v => set({ doors_close_at: v })} clearable />

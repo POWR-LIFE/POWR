@@ -1,18 +1,19 @@
+import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useRouter } from 'expo-router';
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { EventLockup } from '@/components/events/EventLockup';
 import { RewardHeroMedia } from '@/components/rewards/RewardHeroMedia';
 import type { LiveEvent } from '@/lib/api/liveEvents';
-import { eventDateRange, isVideoUrl, lastDayOf } from '@/lib/liveEventDisplay';
+import { eventDateRange, eventNightLine, isVideoUrl, lastDayOf } from '@/lib/liveEventDisplay';
 
 const GOLD = '#E8D200';
 const CARD_BG = 'rgba(40,40,40,0.85)';
 const TEXT = '#F2F2F2';
 const DIM = 'rgba(255,255,255,0.5)';
-const GREEN = '#4ade80';
 
 function statusLine(event: LiveEvent): string {
     if (event.status === 'scheduled') {
@@ -30,6 +31,54 @@ function statusLine(event: LiveEvent): string {
         return 'Scores are locked 🔒 — winners announced in person';
     }
     return 'Winners announced';
+}
+
+/**
+ * One fact per line: icon, then the fact. Three of these is the whole meta
+ * block, which is the point — the card has to carry when-scoring, when-the-
+ * night-is and where without turning into a paragraph, so each row is a
+ * single short string and nothing wraps in normal use.
+ *
+ * `onPress` makes a row actionable; only the venue row uses it today, and it
+ * renders a chevron so the row is visibly tappable rather than relying on
+ * people guessing.
+ */
+function MetaRow({
+    icon,
+    text,
+    onPress,
+    a11y,
+}: {
+    icon: React.ComponentProps<typeof Ionicons>['name'];
+    text: string;
+    onPress?: () => void;
+    a11y?: string;
+}) {
+    const body = (
+        <>
+            <Ionicons name={icon} size={13} color={DIM} style={styles.metaIcon} />
+            <Text style={[styles.metaText, onPress && styles.metaTextLink]} numberOfLines={1}>
+                {text}
+            </Text>
+            {onPress && <Ionicons name="chevron-forward" size={13} color={GOLD} />}
+        </>
+    );
+
+    if (!onPress) return <View style={styles.metaRow}>{body}</View>;
+
+    return (
+        <Pressable
+            onPress={onPress}
+            style={({ pressed }) => [styles.metaRow, pressed && { opacity: 0.6 }]}
+            accessibilityRole="link"
+            accessibilityLabel={a11y ?? text}
+            // The rows are 17px tall by design; without this the tap target is
+            // below the 44px minimum and the chevron becomes decorative.
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+            {body}
+        </Pressable>
+    );
 }
 
 /**
@@ -53,6 +102,17 @@ export function EventHeaderCard({
     event: LiveEvent;
     onRegister: () => void;
 }) {
+    const router = useRouter();
+
+    // Discover keys a venue on its partners UUID and needs somewhere to point
+    // the camera, so the location row is only a link when BOTH arrived in the
+    // payload. Older payloads (pre-20260821 RPC) carry neither, and a partner
+    // with no geometry carries the id but no coordinates — either way the row
+    // still shows the venue name, it just stops being tappable.
+    const venue = event.venue;
+    const canOpenMap = !!venue?.id && typeof venue.lat === 'number' && typeof venue.lng === 'number';
+    const night = eventNightLine(event);
+
     const canJoin =
         event.scope === 'opt_in' &&
         event.viewer.eligible &&
@@ -90,13 +150,51 @@ export function EventHeaderCard({
                 </>
             )}
 
-            <EventLockup event={event} />
+            {/* The lockup takes its natural width (alignSelf: flex-start), so the
+                pill can sit hard right without a fixed-width guess. */}
+            <View style={styles.topRow}>
+                <EventLockup event={event} />
+                {night && (
+                    <View style={styles.eventPill}>
+                        <Text style={styles.eventPillLabel}>EVENT</Text>
+                        <Text style={styles.eventPillValue}>{night.replace(', ', ' · ').toUpperCase()}</Text>
+                    </View>
+                )}
+            </View>
 
             {/* logo_only: the lockup IS the identity (the name still carries the
                 register sheet, the boards and the a11y label). */}
             {!event.logo_only && <Text style={styles.name}>{event.name}</Text>}
 
-            <Text style={styles.dates}>{eventDateRange(event)}</Text>
+            {/* The two supporting facts; the night itself is the pill above,
+                where it can't be mistaken for another grey date row. The card
+                used to carry the scoring window ALONE, which is the least
+                actionable of the three for someone deciding whether to come. */}
+            <View style={styles.meta}>
+                <MetaRow
+                    icon="calendar-outline"
+                    text={`Scoring ${eventDateRange(event)}`}
+                />
+                {venue?.name && (
+                    <MetaRow
+                        icon="location-outline"
+                        text={venue.name}
+                        onPress={
+                            canOpenMap
+                                ? () => {
+                                    Haptics.selectionAsync();
+                                    router.push({
+                                        pathname: '/(tabs)/discover',
+                                        params: { venue: venue.id!, lat: String(venue.lat), lng: String(venue.lng) },
+                                    });
+                                }
+                                : undefined
+                        }
+                        a11y={`${venue.name}${venue.address ? `, ${venue.address}` : ''}. Opens the map.`}
+                    />
+                )}
+            </View>
+
             <Text style={styles.statusLine}>{statusLine(event)}</Text>
 
 
@@ -112,9 +210,6 @@ export function EventHeaderCard({
                 >
                     <Text style={styles.joinBtnText}>JOIN THE WEEK</Text>
                 </Pressable>
-            )}
-            {event.viewer.joined && (
-                <Text style={styles.joinedText}>You’re in — every point you earn that week counts</Text>
             )}
         </View>
     );
@@ -139,8 +234,33 @@ const styles = StyleSheet.create({
         gap: 4,
     },
     name: { fontSize: 24, fontWeight: '200', color: TEXT, letterSpacing: -0.5, marginTop: 10 },
-    dates: { fontSize: 12, fontWeight: '300', color: DIM },
-    statusLine: { fontSize: 11, fontWeight: '400', color: GOLD, marginTop: 4 },
+    topRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+    // The one fact the card could not state before: when to actually turn up.
+    // Gold and cornered rather than another grey meta row, because it is the
+    // thing someone scanning the card is looking for and the scoring window
+    // was being mistaken for it.
+    eventPill: {
+        marginLeft: 'auto',
+        alignItems: 'center',
+        gap: 2,
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.5)',
+        borderRadius: 12,
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+    },
+    eventPillLabel: { fontSize: 8, fontWeight: '800', color: 'rgba(255,255,255,0.7)', letterSpacing: 1.4 },
+    eventPillValue: { fontSize: 11, fontWeight: '700', color: '#FFFFFF', letterSpacing: 0.3 },
+
+    meta: { marginTop: 6, gap: 5 },
+    metaRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+    // Nudged down a hair: Ionicons' glyphs sit high in their box, so centring
+    // the icon box leaves the mark reading above the text baseline.
+    metaIcon: { marginTop: 1 },
+    metaText: { flex: 1, fontSize: 12, fontWeight: '300', color: DIM },
+    metaTextLink: { color: TEXT, fontWeight: '400' },
+    statusLine: { fontSize: 11, fontWeight: '400', color: GOLD, marginTop: 8 },
 
     joinBtn: {
         marginTop: 14,
@@ -150,5 +270,4 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     joinBtnText: { fontSize: 11, fontWeight: '800', color: '#0a0a0a', letterSpacing: 1.5 },
-    joinedText: { fontSize: 11, fontWeight: '300', color: GREEN, marginTop: 12 },
 });

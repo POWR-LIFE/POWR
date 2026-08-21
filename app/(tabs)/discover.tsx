@@ -17,7 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -384,6 +384,45 @@ export default function DiscoverScreen() {
     areaDebounceRef.current = setTimeout(() => maybeFetchViewport(r), AREA_FETCH_DEBOUNCE_MS);
   }, [maybeFetchViewport]);
 
+  // ── Venue deep link ────────────────────────────────────────────────────
+  // The League hero card's location row lands here: /discover?venue=<uuid>.
+  // The card passes the coordinates alongside the id so the camera can move
+  // immediately — waiting on a lookup would show the user's own area first and
+  // then jump, which reads as a bug.
+  //
+  // `t` is a nonce: params are sticky on a tab route, so without it a second
+  // tap on the same venue would be a no-op re-render and the map would sit
+  // wherever the user last panned it.
+  const params = useLocalSearchParams<{ venue?: string; lat?: string; lng?: string; t?: string }>();
+  const venueFocusRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const venueId = typeof params.venue === 'string' ? params.venue : null;
+    const lat = Number(params.lat);
+    const lng = Number(params.lng);
+    if (!venueId || !Number.isFinite(lat) || !Number.isFinite(lng)) return;
+
+    const token = `${venueId}:${params.t ?? ''}`;
+    if (venueFocusRef.current === token) return;
+    venueFocusRef.current = token;
+
+    mapRef.current?.animateCamera(
+      { center: { latitude: lat, longitude: lng }, zoom: 16 },
+      { duration: 450 },
+    );
+
+    // Open the venue's card too — "take me to the event location" means the
+    // place, not just the pin. This fetch is deliberately independent of the
+    // viewport machinery the camera move kicks off: that one is debounced and
+    // may be filtered, and the sheet should not wait on either.
+    fetchPartnersInArea(lat, lng, 0.02)
+      .then(rows => {
+        const match = rows.find(p => p.dbId === venueId);
+        if (match) setSelectedPartner(match);
+      })
+      .catch(() => { /* the camera already moved; the pin is enough */ });
+  }, [params.venue, params.lat, params.lng, params.t]);
+
   // Gym request (same flow as onboarding) — for gyms not yet on the platform
   const [requestVisible, setRequestVisible] = useState(false);
   const [reqName, setReqName] = useState('');
@@ -550,6 +589,11 @@ export default function DiscoverScreen() {
       lng: loc.coords.longitude,
       radiusDeg: AREA_RADIUS_MAX_DEG,
     });
+    // A venue deep-link (League's "where" row) owns the camera: this fix
+    // arrives later than the link's own animation because it awaits the OS
+    // permission + a location read, so without the guard it would silently
+    // yank the map off the venue a second after landing there.
+    if (venueFocusRef.current) return;
     const region = {
       latitude: loc.coords.latitude,
       longitude: loc.coords.longitude,
