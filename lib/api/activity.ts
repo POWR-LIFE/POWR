@@ -8,6 +8,7 @@ import {
     recordSuppressedNativeWorkout,
     suppressedToSession,
 } from '@/lib/api/suppressedWorkouts';
+import { calculateSleepPoints, dailyCapForType } from '@/supabase/functions/_shared/points';
 import { mergeWorkouts, relateWorkouts } from '@/shared/sessionMerge';
 
 // ── Walking step-tier helpers (shared by manual-log + health sync) ─────────────
@@ -264,6 +265,9 @@ export type ManualSessionParams = {
     points: number;
     started_at: string;
     healthVerified?: boolean;
+    sleepDeepH?: number;
+    sleepRemH?: number;
+    sleepLightH?: number;
     /**
      * When `healthVerified`, the provenance of the data: 'wearable' for dedicated
      * wearable providers (Fitbit/Whoop/Garmin), 'health' for native phone sync.
@@ -352,6 +356,114 @@ async function absorbIntoExistingWorkout(
     if (!target) return false;
 
     const merged = mergeWorkouts(target.existing, incoming, target.relation);
+    if (params.type === 'sleep') {
+        const { data: snap } = await supabase
+            .from('health_snapshots')
+            .select('id, sleep_duration_h, sleep_deep_h, sleep_rem_h, sleep_light_h')
+            .eq('session_id', target.row.id)
+            .eq('activity_type', 'sleep')
+            .order('created_at', { ascending: true })
+            .limit(1)
+            .maybeSingle();
+        const pick = (a: number | null | undefined, b: number | null | undefined) => {
+            if (a == null && b == null) return null;
+            return target.relation === 'contiguous' ? (a ?? 0) + (b ?? 0) : Math.max(a ?? 0, b ?? 0);
+        };
+        const mergedHours = merged.durationSec / 3600;
+        const mergedDeep = pick(snap?.sleep_deep_h, params.sleepDeepH);
+        const mergedRem = pick(snap?.sleep_rem_h, params.sleepRemH);
+        const mergedLight = pick(snap?.sleep_light_h, params.sleepLightH);
+        const stagesChanged = snap == null || mergedDeep !== (snap.sleep_deep_h ?? null)
+            || mergedRem !== (snap.sleep_rem_h ?? null)
+            || mergedLight !== (snap.sleep_light_h ?? null)
+            || mergedHours !== (snap.sleep_duration_h ?? null);
+        if (!merged.changed && !stagesChanged) return true;
+
+        if (merged.changed) {
+            const patch: Record<string, unknown> = {
+                started_at: new Date(merged.startMs).toISOString(),
+                ended_at: new Date(merged.endMs).toISOString(),
+                duration_sec: merged.durationSec,
+            };
+            const { error } = await supabase.from('activity_sessions').update(patch).eq('id', target.row.id);
+            if (error) {
+                console.warn('[activity] sleep merge failed:', error.message);
+                return false;
+            }
+        }
+
+        const snapshotPatch: Record<string, unknown> = {
+            sleep_duration_h: mergedHours,
+            duration_sec: merged.durationSec,
+            activity_type: 'sleep',
+        };
+        if (mergedDeep != null) snapshotPatch.sleep_deep_h = mergedDeep;
+        if (mergedRem != null) snapshotPatch.sleep_rem_h = mergedRem;
+        if (mergedLight != null) snapshotPatch.sleep_light_h = mergedLight;
+        if (snap) {
+            const { error } = await supabase.from('health_snapshots').update(snapshotPatch).eq('id', snap.id);
+            if (error) console.warn('[activity] sleep snapshot merge failed:', error.message);
+        } else {
+            const { error } = await supabase.from('health_snapshots').insert({
+                user_id: uid,
+                session_id: target.row.id,
+                ...snapshotPatch,
+                source: params.source ?? null,
+            });
+            if (error) console.warn('[activity] sleep snapshot insert failed:', error.message);
+        }
+
+        const { data: earns } = await supabase
+            .from('point_transactions')
+            .select('amount')
+            .eq('session_id', target.row.id)
+            .eq('type', 'earn');
+        const already = (earns ?? []).reduce((sum, t) => sum + (t.amount ?? 0), 0);
+        const priced = calculateSleepPoints(mergedHours, mergedDeep ?? undefined, mergedRem ?? undefined);
+        const bucketStart = `${new Date(merged.startMs).toISOString().split('T')[0]}T00:00:00.000Z`;
+        const bucketEnd = new Date(new Date(bucketStart).getTime() + 24 * 60 * 60 * 1000).toISOString();
+        const cap = dailyCapForType('sleep');
+        let headroom = Infinity;
+        if (cap != null) {
+            const { data: sessions } = await supabase
+                .from('activity_sessions')
+                .select('id')
+                .eq('user_id', uid)
+                .eq('type', 'sleep')
+                .gte('started_at', bucketStart)
+                .lt('started_at', bucketEnd);
+            const sessionIds = (sessions ?? []).map(s => s.id);
+            headroom = cap;
+            if (sessionIds.length > 0) {
+                const { data: dayEarns } = await supabase
+                    .from('point_transactions')
+                    .select('amount')
+                    .eq('user_id', uid)
+                    .in('type', ['earn', 'streak'])
+                    .in('session_id', sessionIds);
+                headroom = Math.max(0, cap - (dayEarns ?? []).reduce((sum, t) => sum + (t.amount ?? 0), 0));
+            }
+        }
+        const deltaPoints = Math.min(Math.max(0, priced - already), headroom);
+        if (deltaPoints > 0) {
+            const { error } = await supabase.from('point_transactions').insert({
+                user_id: uid,
+                session_id: target.row.id,
+                amount: deltaPoints,
+                type: 'earn',
+                source: 'health_sync',
+            });
+            if (error) console.warn('[activity] sleep merge top-up failed:', error.message);
+            else emitPointsChanged();
+        }
+
+        console.log(
+            `[activity] ${target.relation === 'contiguous' ? 'stitched split' : 'restated'} `
+            + `sleep into ${target.row.id}: ${target.existing.durationSec}s → ${merged.durationSec}s`,
+        );
+        return true;
+    }
+
     if (!merged.changed) return true; // a re-sync of something we already hold
 
     const patch: Record<string, unknown> = {
@@ -424,8 +536,9 @@ export async function logManualSession(params: ManualSessionParams): Promise<str
     // recorded alongside it (claim-points supersedes in the reverse arrival order,
     // and terra-webhook applies the same suppression for Terra-delivered
     // wearables). Type-agnostic for the same reason as the manual guard below;
-    // walking/sleep are daily aggregates and exempt. Skip silently — the check-in
-    // already counted this time.
+    // walking is a daily aggregate and sleep never belongs to a check-in, so both
+    // are exempt HERE (sleep still gets the absorb test, just below). Skip
+    // silently — the check-in already counted this time.
     if (params.healthVerified && params.type !== 'walking' && params.type !== 'sleep') {
         const uid = (await getCurrentUserId()) ?? '';
         const startMs = new Date(params.started_at).getTime();
@@ -473,6 +586,21 @@ export async function logManualSession(params: ManualSessionParams): Promise<str
         // of a run the user paused, or the same session restated. Absorbed into
         // that row rather than becoming a second one; returns null for the same
         // reason the branch above does, so the caller writes no extra snapshot.
+        if (await absorbIntoExistingWorkout(params, ended_at, uid)) return null;
+    }
+
+    // Sleep gets the absorb test but NOT the geofence suppression above — a night
+    // never belongs to a gym check-in, and sleep must never be suppressed by one.
+    //
+    // Until 2026-08-21 a night synced here could not duplicate a Terra-delivered
+    // one: both were 0.85 and the per-type-per-day unique index folded the second
+    // into a 23505 we swallow below. Migration 20260821140000 took wearable sleep
+    // out of that day bucket (a nap was silently eating that night's sleep), so a
+    // HealthKit night at 22:03 and the same Whoop night at 22:01 would now be two
+    // rows. Overlap is what separates them instead — the same test terra-webhook
+    // runs server-side, so whichever source arrives second folds into the first.
+    if (params.healthVerified && params.type === 'sleep') {
+        const uid = (await getCurrentUserId()) ?? '';
         if (await absorbIntoExistingWorkout(params, ended_at, uid)) return null;
     }
 

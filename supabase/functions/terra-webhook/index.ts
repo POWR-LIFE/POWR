@@ -10,12 +10,16 @@
 // hooks/useHealthSync.ts + lib/api/activity.ts:
 //   - workouts/sleep → verification 'wearable', trust_score 0.85
 //   - walking (daily) → trust_score 0.90
-// Idempotency on Terra re-delivery comes from a unique index: sleep, walking,
-// geofence and manual rows are one-per-type-per-day, while wearable WORKOUTS are
-// keyed on their own start instant (idx_one_wearable_workout_per_start). The day
-// bucket used to cover workouts too, which meant a workout the user paused and
-// restarted arrived as a 23505 and had its first half overwritten — see
-// migration 20260807120000 and findMergeTarget below.
+// Idempotency on Terra re-delivery comes from a unique index plus an overlap
+// test: walking, geofence and manual rows are one-per-type-per-day, while every
+// WEARABLE row — workouts and sleep alike — is keyed on its own start instant
+// (idx_one_wearable_session_per_start). The day bucket used to cover workouts,
+// which meant a workout the user paused and restarted arrived as a 23505 and had
+// its first half overwritten (migration 20260807120000); it covered sleep until
+// 2026-08-21, which meant a nap silently ate that night's sleep (migration
+// 20260821140000). Both now resolve through findMergeTarget below: a restatement
+// overlaps what we hold and is absorbed, a genuinely separate session does not
+// and gets its own row.
 import { createClient } from '@supabase/supabase-js';
 import {
   calculateBasePoints,
@@ -790,6 +794,174 @@ async function handleActivity(supabase, payload): Promise<void> {
   }
 }
 
+/**
+ * Read the sleep snapshot attached to a session, so a merge can fold the new
+ * telling's stages into the ones already on file.
+ *
+ * limit(1) rather than maybeSingle for the same reason mergeSnapshot does it: a
+ * night that arrived through both the native sync and Terra carries two rows,
+ * and erroring on the second would silently drop the merge.
+ */
+async function readSleepSnapshot(supabase, sessionId: string) {
+  const { data, error } = await supabase
+    .from('health_snapshots')
+    .select('id, sleep_duration_h, sleep_deep_h, sleep_rem_h, sleep_light_h')
+    .eq('session_id', sessionId)
+    .eq('activity_type', 'sleep')
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (error) {
+    console.error('[terra-webhook] sleep snapshot lookup failed:', error.message);
+    return null;
+  }
+  return data;
+}
+
+/**
+ * The sleep receipt. Gated to a night that ended in the last 24h: a reconnect
+ * backfills a week of history, and without the gate the user is congratulated
+ * NOW for a night they slept days ago (seen live 2026-08-21). Points still land
+ * for old nights — never drop a workout — only the push is fresh-only.
+ *
+ * The sleep_target_met type's daily_cap (1) absorbs the case where a night
+ * arrives as a fragment and is then extended by a merge.
+ */
+async function sendSleepReceipt(userId: string, endIso: string, hours: number, points: number): Promise<void> {
+  if (points <= 0) return;
+  if (Date.now() - new Date(endIso).getTime() >= 24 * 60 * 60 * 1000) return;
+  try {
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    await fetch(`${supabaseUrl}/functions/v1/send-push-notification`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${serviceKey}`,
+      },
+      body: JSON.stringify({
+        target_user_id: userId,
+        type: 'sleep_target_met',
+        payload: { hours, points },
+      }),
+    });
+  } catch (err) {
+    console.warn('[terra-webhook] sleep push failed:', err);
+  }
+}
+
+/**
+ * Fold a delivery into the night it belongs to and top up what it is worth.
+ *
+ * The sleep counterpart of mergeIntoSession. Until 2026-08-21 sleep had no merge
+ * path at all: a second sleep starting in the same UTC day collided on the day
+ * bucket and handleSleep silently discarded it. Now that wearable sleep keys on
+ * its start instant (migration 20260821140000) the collision is gone, and THIS
+ * is what keeps re-delivery idempotent in its place — a restatement of a night
+ * overlaps the row we hold and is absorbed, whatever start instant it carries.
+ *
+ * 'same'       — one night, two tellings. Take the fuller of each field; a
+ *                fragment under-reports everything, so max() is the truth.
+ * 'contiguous' — a night the provider split across an awake gap. Duration and
+ *                stages SUM: two segments of one night are one night's sleep.
+ */
+async function mergeSleepInto(supabase, { userId, target, incoming, reading, source }): Promise<void> {
+  const { row: sessionRow, existing, relation } = target;
+  const merged = mergeWorkouts(existing, incoming, relation);
+
+  const snap = await readSleepSnapshot(supabase, sessionRow.id);
+  const pick = (a: number | null | undefined, b: number | null | undefined) => {
+    if (a == null && b == null) return null;
+    return relation === 'contiguous' ? (a ?? 0) + (b ?? 0) : Math.max(a ?? 0, b ?? 0);
+  };
+  // Hours come off the merged WINDOW, not the snapshot, so they stay consistent
+  // with the session row that prices the night.
+  const mergedHours = merged.durationSec / 3600;
+  const mergedDeep = pick(snap?.sleep_deep_h, reading.deepH);
+  const mergedRem = pick(snap?.sleep_rem_h, reading.remH);
+  const mergedLight = pick(snap?.sleep_light_h, reading.lightH);
+
+  const stagesChanged = snap != null && (
+    mergedDeep !== (snap.sleep_deep_h ?? null)
+    || mergedRem !== (snap.sleep_rem_h ?? null)
+    || mergedLight !== (snap.sleep_light_h ?? null)
+    || mergedHours !== (snap.sleep_duration_h ?? null)
+  );
+  if (snap && !merged.changed && !stagesChanged) return; // a replay of something we already hold
+
+  if (merged.changed) {
+    const { error } = await supabase.from('activity_sessions').update({
+      started_at: new Date(merged.startMs).toISOString(),
+      ended_at: new Date(merged.endMs).toISOString(),
+      duration_sec: merged.durationSec,
+    }).eq('id', sessionRow.id);
+    if (error) {
+      console.error('[terra-webhook] sleep merge failed:', error.message);
+      return;
+    }
+  }
+
+  if (snap) {
+    const patch: Record<string, unknown> = {
+      sleep_duration_h: mergedHours,
+      duration_sec: merged.durationSec,
+    };
+    if (mergedDeep != null) patch.sleep_deep_h = mergedDeep;
+    if (mergedRem != null) patch.sleep_rem_h = mergedRem;
+    if (mergedLight != null) patch.sleep_light_h = mergedLight;
+    const { error } = await supabase.from('health_snapshots').update(patch).eq('id', snap.id);
+    if (error) console.error('[terra-webhook] sleep snapshot merge failed:', error.message);
+  } else {
+    // Session on file with no snapshot (client-written row, or an earlier
+    // insert whose snapshot write failed). Give it one rather than lose the
+    // stages this delivery carries.
+    await supabase.from('health_snapshots').insert({
+      user_id: userId,
+      session_id: sessionRow.id,
+      sleep_duration_h: mergedHours,
+      sleep_deep_h: mergedDeep,
+      sleep_rem_h: mergedRem,
+      sleep_light_h: mergedLight,
+      activity_type: 'sleep',
+      duration_sec: merged.durationSec,
+      source,
+    });
+  }
+
+  // The ledger, not a recomputation, says what this night has already been paid.
+  const { data: txRows, error: txReadError } = await supabase
+    .from('point_transactions')
+    .select('amount')
+    .eq('session_id', sessionRow.id)
+    .eq('type', 'earn');
+  if (txReadError) {
+    console.error('[terra-webhook] sleep ledger read failed:', txReadError.message);
+    return;
+  }
+  const oldPoints = (txRows ?? []).reduce((sum, r) => sum + (r.amount ?? 0), 0);
+  const newPoints = calculateSleepPoints(mergedHours, mergedDeep ?? undefined, mergedRem ?? undefined);
+  const startedAt = new Date(merged.startMs).toISOString();
+  // headroom already nets off what this session was paid — it is inside the bucket.
+  const headroom = await dailyHeadroom(supabase, userId, 'sleep', startedAt);
+  const deltaPoints = Math.min(Math.max(0, newPoints - oldPoints), headroom);
+
+  if (deltaPoints > 0) {
+    const { error: txError } = await supabase.from('point_transactions').insert({
+      user_id: userId, session_id: sessionRow.id, amount: deltaPoints, type: 'earn', source: 'health_sync',
+    });
+    if (txError) {
+      console.error('[terra-webhook] sleep delta points insert failed:', txError.message);
+      return;
+    }
+  }
+
+  console.log(
+    `[terra-webhook] ${relation === 'contiguous' ? 'stitched split' : 'healed'} sleep: `
+    + `${existing.durationSec}s → ${merged.durationSec}s (+${deltaPoints} pts)`,
+  );
+  await sendSleepReceipt(userId, new Date(merged.endMs).toISOString(), mergedHours, deltaPoints);
+}
+
 async function handleSleep(supabase, payload): Promise<void> {
   const userId = await resolveUserId(supabase, payload);
   if (!userId) return;
@@ -817,62 +989,73 @@ async function handleSleep(supabase, payload): Promise<void> {
     const lightH = asleep.duration_light_sleep_state_seconds != null
       ? asleep.duration_light_sleep_state_seconds / 3600 : undefined;
     const points = calculateSleepPoints(hours, deepH, remH);
+    const reading = { deepH, remH, lightH };
+
+    const durationSec = Math.round(hours * 3600);
+    const incoming: WorkoutWindow = {
+      startMs: new Date(start).getTime(),
+      endMs: new Date(end).getTime(),
+      durationSec,
+      distanceM: null,
+      hrAvg: null,
+    };
+
+    // Is this a night we already hold? Terra restates a night's window after the
+    // fact and terra-poll replays a rolling 2-day window, so most deliveries are
+    // re-tellings. Overlap decides, not the calendar — which is what lets a nap
+    // and that night's sleep coexist as two rows (they are hours apart, so
+    // relateWorkouts calls them 'separate') while a restatement still folds in.
+    const target = await findMergeTarget(supabase, userId, 'sleep', incoming);
+    if (target) {
+      await mergeSleepInto(supabase, { userId, target, incoming, reading, source });
+      continue;
+    }
+
+    // sleep's daily ceiling (DAILY_CAPS.sleep = 5) used to be enforced only by
+    // there being one sleep row a day. Now that a day can hold a nap AND a night,
+    // it has to be counted here, exactly as the workout path does — the service
+    // role bypasses enforce_point_award_cap.
+    const headroom = await dailyHeadroom(supabase, userId, 'sleep', start);
+    const award = Math.min(points, headroom);
 
     const sleepResult = await insertSession(supabase, {
       user_id: userId,
       type: 'sleep',
       started_at: start,
       ended_at: end,
-      duration_sec: Math.round(hours * 3600),
+      duration_sec: durationSec,
       verification: 'wearable',
       trust_score: 0.85,
       device_id: null,
-    }, points);
+    }, award);
+
+    if ('conflict' in sleepResult) {
+      // Two deliveries of the same night raced between the lookup above and this
+      // insert (they share a start instant, so they collide on
+      // idx_one_wearable_session_per_start). Re-look and fold into whichever
+      // landed first — mirrors the workout path.
+      const raced = await findMergeTarget(supabase, userId, 'sleep', incoming);
+      if (raced) await mergeSleepInto(supabase, { userId, target: raced, incoming, reading, source });
+      continue;
+    }
 
     if ('id' in sleepResult) {
-      const inserted = sleepResult.id;
       await supabase.from('health_snapshots').insert({
         user_id: userId,
-        session_id: inserted,
+        session_id: sleepResult.id,
         sleep_duration_h: hours,
         sleep_deep_h: deepH ?? null,
         sleep_rem_h: remH ?? null,
         sleep_light_h: lightH ?? null,
         activity_type: 'sleep',
-        duration_sec: Math.round(hours * 3600),
+        duration_sec: durationSec,
         source,
       });
 
-      // Sleep credit was previously silent — the sleep_target_met type had
-      // copy + a preference toggle but no sender. Fire it here where the
-      // points actually land; the type's daily_cap (1) absorbs replays.
-      //
-      // Only for a night that ended in the last 24h: a reconnect backfills a
-      // week of history, and each old night lands here as a fresh insert —
-      // without the gate the user gets congratulated NOW for a night they
-      // slept days ago (seen live 2026-08-21). Points still land for old
-      // nights (never drop a workout); only the push is gated.
-      const endedRecently = Date.now() - new Date(end).getTime() < 24 * 60 * 60 * 1000;
-      if (points > 0 && endedRecently) {
-        try {
-          const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
-          const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-          await fetch(`${supabaseUrl}/functions/v1/send-push-notification`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${serviceKey}`,
-            },
-            body: JSON.stringify({
-              target_user_id: userId,
-              type: 'sleep_target_met',
-              payload: { hours, points },
-            }),
-          });
-        } catch (err) {
-          console.warn('[terra-webhook] sleep push failed:', err);
-        }
-      }
+      // Sleep credit was previously silent — the sleep_target_met type had copy
+      // and a preference toggle but no sender. Fire it here where the points
+      // actually land.
+      await sendSleepReceipt(userId, end, hours, award);
     }
   }
 }
