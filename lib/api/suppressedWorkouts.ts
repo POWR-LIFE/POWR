@@ -60,7 +60,7 @@ export function suppressedToSession(w: SuppressedWorkoutRow): ActivitySession {
         // The provider really measured it; the check-in just outranked it.
         // healthkit/health_connect are the native store, everything else
         // arrived from a wearable via Terra.
-        verification: w.source === 'healthkit' || w.source === 'health_connect' ? 'health' : 'wearable',
+        verification: w.source === 'healthkit' || w.source === 'health_connect' || w.source === 'health' ? 'health' : 'wearable',
         trust_score: 0.85,
         raw_activity_name: w.raw_activity_name,
         point_transactions: [],
