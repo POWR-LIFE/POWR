@@ -49,7 +49,7 @@ const state: {
     txs: TxRow[];
 } = { sessions: [], snapshots: [], txs: [] };
 
-function matches(row: Record<string, unknown>, filters: Array<{ kind: 'eq' | 'in' | 'gte' | 'lte'; col: string; value: unknown }>) {
+function matches(row: Record<string, unknown>, filters: Array<{ kind: 'eq' | 'in' | 'gte' | 'lte' | 'lt'; col: string; value: unknown }>) {
     return filters.every(filter => {
         const value = row[filter.col];
         switch (filter.kind) {
@@ -57,6 +57,7 @@ function matches(row: Record<string, unknown>, filters: Array<{ kind: 'eq' | 'in
             case 'in': return Array.isArray(filter.value) && filter.value.includes(value as never);
             case 'gte': return String(value) >= String(filter.value);
             case 'lte': return String(value) <= String(filter.value);
+            case 'lt': return String(value) < String(filter.value);
         }
     });
 }
@@ -72,7 +73,7 @@ function builder(table: string) {
     const query: {
         op: 'select' | 'update' | 'insert';
         payload?: Record<string, unknown> | Array<Record<string, unknown>>;
-        filters: Array<{ kind: 'eq' | 'in' | 'gte' | 'lte'; col: string; value: unknown }>;
+        filters: Array<{ kind: 'eq' | 'in' | 'gte' | 'lte' | 'lt'; col: string; value: unknown }>;
         order?: { col: string; ascending: boolean };
         limit?: number;
         maybeSingle?: boolean;
@@ -112,6 +113,7 @@ function builder(table: string) {
         in: jest.fn((col: string, value: unknown[]) => { query.filters.push({ kind: 'in', col, value }); return chain; }),
         gte: jest.fn((col: string, value: unknown) => { query.filters.push({ kind: 'gte', col, value }); return chain; }),
         lte: jest.fn((col: string, value: unknown) => { query.filters.push({ kind: 'lte', col, value }); return chain; }),
+        lt: jest.fn((col: string, value: unknown) => { query.filters.push({ kind: 'lt', col, value }); return chain; }),
         order: jest.fn((col: string, opts?: { ascending?: boolean }) => {
             query.order = { col, ascending: opts?.ascending ?? true };
             return chain;

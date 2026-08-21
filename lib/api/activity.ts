@@ -8,7 +8,7 @@ import {
     recordSuppressedNativeWorkout,
     suppressedToSession,
 } from '@/lib/api/suppressedWorkouts';
-import { calculateSleepPoints } from '@/supabase/functions/_shared/points';
+import { calculateSleepPoints, dailyCapForType } from '@/supabase/functions/_shared/points';
 import { mergeWorkouts, relateWorkouts } from '@/shared/sessionMerge';
 
 // ── Walking step-tier helpers (shared by manual-log + health sync) ─────────────
@@ -361,7 +361,8 @@ async function absorbIntoExistingWorkout(
             .from('health_snapshots')
             .select('id, sleep_duration_h, sleep_deep_h, sleep_rem_h, sleep_light_h')
             .eq('session_id', target.row.id)
-            .order('created_at', { ascending: false })
+            .eq('activity_type', 'sleep')
+            .order('created_at', { ascending: true })
             .limit(1)
             .maybeSingle();
         const pick = (a: number | null | undefined, b: number | null | undefined) => {
@@ -404,6 +405,7 @@ async function absorbIntoExistingWorkout(
             if (error) console.warn('[activity] sleep snapshot merge failed:', error.message);
         } else {
             const { error } = await supabase.from('health_snapshots').insert({
+                user_id: uid,
                 session_id: target.row.id,
                 ...snapshotPatch,
                 source: params.source ?? null,
@@ -418,10 +420,36 @@ async function absorbIntoExistingWorkout(
             .eq('type', 'earn');
         const already = (earns ?? []).reduce((sum, t) => sum + (t.amount ?? 0), 0);
         const priced = calculateSleepPoints(mergedHours, mergedDeep ?? undefined, mergedRem ?? undefined);
-        if (priced > already) {
+        const bucketStart = `${new Date(merged.startMs).toISOString().split('T')[0]}T00:00:00.000Z`;
+        const bucketEnd = new Date(new Date(bucketStart).getTime() + 24 * 60 * 60 * 1000).toISOString();
+        const cap = dailyCapForType('sleep');
+        let headroom = Infinity;
+        if (cap != null) {
+            const { data: sessions } = await supabase
+                .from('activity_sessions')
+                .select('id')
+                .eq('user_id', uid)
+                .eq('type', 'sleep')
+                .gte('started_at', bucketStart)
+                .lt('started_at', bucketEnd);
+            const sessionIds = (sessions ?? []).map(s => s.id);
+            headroom = cap;
+            if (sessionIds.length > 0) {
+                const { data: dayEarns } = await supabase
+                    .from('point_transactions')
+                    .select('amount')
+                    .eq('user_id', uid)
+                    .in('type', ['earn', 'streak'])
+                    .in('session_id', sessionIds);
+                headroom = Math.max(0, cap - (dayEarns ?? []).reduce((sum, t) => sum + (t.amount ?? 0), 0));
+            }
+        }
+        const deltaPoints = Math.min(Math.max(0, priced - already), headroom);
+        if (deltaPoints > 0) {
             const { error } = await supabase.from('point_transactions').insert({
+                user_id: uid,
                 session_id: target.row.id,
-                amount: priced - already,
+                amount: deltaPoints,
                 type: 'earn',
                 source: 'health_sync',
             });
