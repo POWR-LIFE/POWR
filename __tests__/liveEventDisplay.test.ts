@@ -4,6 +4,7 @@ const realToLocaleDateString = Date.prototype.toLocaleDateString;
 
 beforeAll(() => {
     jest.spyOn(Date.prototype, 'toLocaleDateString').mockImplementation(function (
+        this: Date,
         locales?: Intl.LocalesArgument,
         options?: Intl.DateTimeFormatOptions,
     ): string {
