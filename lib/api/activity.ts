@@ -424,8 +424,9 @@ export async function logManualSession(params: ManualSessionParams): Promise<str
     // recorded alongside it (claim-points supersedes in the reverse arrival order,
     // and terra-webhook applies the same suppression for Terra-delivered
     // wearables). Type-agnostic for the same reason as the manual guard below;
-    // walking/sleep are daily aggregates and exempt. Skip silently — the check-in
-    // already counted this time.
+    // walking is a daily aggregate and sleep never belongs to a check-in, so both
+    // are exempt HERE (sleep still gets the absorb test, just below). Skip
+    // silently — the check-in already counted this time.
     if (params.healthVerified && params.type !== 'walking' && params.type !== 'sleep') {
         const uid = (await getCurrentUserId()) ?? '';
         const startMs = new Date(params.started_at).getTime();
@@ -473,6 +474,21 @@ export async function logManualSession(params: ManualSessionParams): Promise<str
         // of a run the user paused, or the same session restated. Absorbed into
         // that row rather than becoming a second one; returns null for the same
         // reason the branch above does, so the caller writes no extra snapshot.
+        if (await absorbIntoExistingWorkout(params, ended_at, uid)) return null;
+    }
+
+    // Sleep gets the absorb test but NOT the geofence suppression above — a night
+    // never belongs to a gym check-in, and sleep must never be suppressed by one.
+    //
+    // Until 2026-08-21 a night synced here could not duplicate a Terra-delivered
+    // one: both were 0.85 and the per-type-per-day unique index folded the second
+    // into a 23505 we swallow below. Migration 20260821140000 took wearable sleep
+    // out of that day bucket (a nap was silently eating that night's sleep), so a
+    // HealthKit night at 22:03 and the same Whoop night at 22:01 would now be two
+    // rows. Overlap is what separates them instead — the same test terra-webhook
+    // runs server-side, so whichever source arrives second folds into the first.
+    if (params.healthVerified && params.type === 'sleep') {
+        const uid = (await getCurrentUserId()) ?? '';
         if (await absorbIntoExistingWorkout(params, ended_at, uid)) return null;
     }
 
