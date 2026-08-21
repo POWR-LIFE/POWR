@@ -1,5 +1,20 @@
 import { eventStatusChip, scoringLine } from '@/lib/liveEventDisplay';
 
+const realToLocaleDateString = Date.prototype.toLocaleDateString;
+
+beforeAll(() => {
+    jest.spyOn(Date.prototype, 'toLocaleDateString').mockImplementation(function (
+        locales?: Intl.LocalesArgument,
+        options?: Intl.DateTimeFormatOptions,
+    ): string {
+        return realToLocaleDateString.call(this, locales, { ...options, timeZone: 'Europe/London' });
+    });
+});
+
+afterAll(() => {
+    jest.restoreAllMocks();
+});
+
 // The FNL x POWR window: scoring opens a week before the night at the venue,
 // which is exactly the gap that made a bare date on the home card read as the
 // date of the event.
