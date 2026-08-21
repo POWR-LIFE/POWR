@@ -104,7 +104,16 @@ export function useHealthSync() {
         // Same receipt Terra sleep gets server-side — HealthKit/Health Connect
         // sync lands here instead, so fire it from the sync path. The server
         // owns the gates (preference, 1/day cap, feed row); best-effort only.
-        if (points > 0) {
+        //
+        // Gated to nights that ended in the last 24h, mirroring the webhook:
+        // this loop walks a week of history, and a first sync (or a gap in
+        // syncedKeys) would otherwise congratulate old nights as if they were
+        // last night. Points still land; only the receipt is fresh-only.
+        const sleepEndMs = sleep.endedAt
+          ? new Date(sleep.endedAt).getTime()
+          : new Date(sleep.startedAt).getTime() + sleep.durationHours * 3600_000;
+        const endedRecently = Date.now() - sleepEndMs < 24 * 60 * 60 * 1000;
+        if (points > 0 && endedRecently) {
           try {
             const uid = (await getSessionUser())?.id;
             if (uid) {

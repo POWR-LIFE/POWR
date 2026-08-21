@@ -91,8 +91,12 @@ export function deriveBodySignals(t: BodyTrends): BodySignals {
     const rhrElevated = !!(rhrFresh && rhrAvg != null && t.restingHr.length >= 5
         && rhrFresh.value - rhrAvg >= 3);
 
+    // Strictly today: sleep is bucketed by wake morning, so "last night" is
+    // only a night that ended TODAY. A night that woke yesterday morning is
+    // the night before last — claiming it as "last night" (as the old ≤1-day
+    // gate did) shows stale sleep whenever the wearable hasn't synced yet.
     const night = seriesLatest(t.sleepHours);
-    const nightFresh = night && localDaysAgo(night.date) <= 1 ? night : null;
+    const nightFresh = night && localDaysAgo(night.date) === 0 ? night : null;
     const sleepPrevAvg = seriesMean(t.sleepHours.slice(0, -1));
     const shortNight = !!(nightFresh
         && (nightFresh.value < 6 || (sleepPrevAvg != null && nightFresh.value <= sleepPrevAvg - 1.5)));
@@ -159,6 +163,8 @@ type SnapshotRow = {
     sleep_rem_h: number | null;
     sleep_light_h: number | null;
     extras: Record<string, unknown> | null;
+    /** The linked activity session — a sleep row's TRUE start/end times. */
+    session: { started_at: string; ended_at: string | null } | null;
 };
 
 type SessionRow = {
@@ -186,7 +192,7 @@ export async function fetchBodyTrends(): Promise<BodyTrends> {
     const [snapshots, sessions] = await Promise.all([
         supabase
             .from('health_snapshots')
-            .select('recorded_at, source, hr_max, calories_active, hr_resting, sleep_duration_h, sleep_deep_h, sleep_rem_h, sleep_light_h, extras')
+            .select('recorded_at, source, hr_max, calories_active, hr_resting, sleep_duration_h, sleep_deep_h, sleep_rem_h, sleep_light_h, extras, session:activity_sessions(started_at, ended_at)')
             .eq('user_id', user.id)
             .gte('recorded_at', since.toISOString())
             .order('recorded_at', { ascending: true }),
@@ -200,7 +206,9 @@ export async function fetchBodyTrends(): Promise<BodyTrends> {
     if (snapshots.error) throw snapshots.error;
     if (sessions.error) throw sessions.error;
 
-    const snapRows = (snapshots.data ?? []) as SnapshotRow[];
+    // The session embed is to-one (session_id → id), which PostgREST returns
+    // as an object — the generated types mistake it for an array.
+    const snapRows = (snapshots.data ?? []) as unknown as SnapshotRow[];
     return {
         ...seriesFromSnapshots(snapRows),
         load: loadFrom((sessions.data ?? []) as SessionRow[], snapRows, loadSince),
@@ -258,13 +266,27 @@ function seriesFromSnapshots(rows: SnapshotRow[]): Omit<BodyTrends, 'load' | 'we
         if (typeof hrv === 'number' && Number.isFinite(hrv) && hrv > 0) hrvByDay.set(day, hrv);
 
         // A night's hours: the explicit total when present, else the stage sum.
-        // Bucketed by the morning the row was recorded — close enough for a
-        // 30-day trend, and one rule for every provider.
         const stages = (r.sleep_deep_h ?? 0) + (r.sleep_rem_h ?? 0) + (r.sleep_light_h ?? 0);
         const hours = r.sleep_duration_h ?? (stages > 0 ? stages : null);
         // 12h+ "nights" are late-write artefacts, not sleep — don't chart them.
         if (hours != null && hours >= 1 && hours <= 12) {
-            sleepByDay.set(day, Math.round(hours * 10) / 10);
+            // A night belongs to the morning you WOKE — the linked session's
+            // real end time, not the row's write time. Terra delivers sleep
+            // hours (sometimes a day+) after it happened, and write-time
+            // bucketing was crediting those nights to the wrong day — a stale
+            // fragment could masquerade as "last night". Backfill batches also
+            // stamp several nights with one write time, collapsing them.
+            const wakeDay = r.session
+                ? localDateStr(new Date(r.session.ended_at
+                    ?? new Date(r.session.started_at).getTime() + hours * 3600_000))
+                : day;
+            // Longest record wins the day: a night can arrive alongside its
+            // own fragments or an afternoon nap, and "last night" should mean
+            // the main sleep, not whichever row happened to land last.
+            const prev = sleepByDay.get(wakeDay);
+            if (prev == null || hours > prev) {
+                sleepByDay.set(wakeDay, Math.round(hours * 10) / 10);
+            }
         }
     }
 

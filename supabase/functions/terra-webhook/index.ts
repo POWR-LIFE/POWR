@@ -846,7 +846,14 @@ async function handleSleep(supabase, payload): Promise<void> {
       // Sleep credit was previously silent — the sleep_target_met type had
       // copy + a preference toggle but no sender. Fire it here where the
       // points actually land; the type's daily_cap (1) absorbs replays.
-      if (points > 0) {
+      //
+      // Only for a night that ended in the last 24h: a reconnect backfills a
+      // week of history, and each old night lands here as a fresh insert —
+      // without the gate the user gets congratulated NOW for a night they
+      // slept days ago (seen live 2026-08-21). Points still land for old
+      // nights (never drop a workout); only the push is gated.
+      const endedRecently = Date.now() - new Date(end).getTime() < 24 * 60 * 60 * 1000;
+      if (points > 0 && endedRecently) {
         try {
           const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
           const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
