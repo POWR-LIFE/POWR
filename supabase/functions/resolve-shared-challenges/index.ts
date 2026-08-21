@@ -86,7 +86,7 @@ Deno.serve(async (req) => {
     const MAX_BOARD_PUSHES = 60;
     let boardPushes = 0;
 
-    const { data: unannounced } = await supabase
+    const { data: unannounced, error: postsErr } = await supabase
       .from('shared_challenges')
       .select('id, creator_id, template, created_at')
       .eq('is_open', true)
@@ -96,17 +96,44 @@ Deno.serve(async (req) => {
       // the board" would invite people into a race already underway.
       .eq('status', 'forming')
       .eq('solo_start', false)
-      // Freshness: if a post has sat unannounced for a day, the moment has
-      // passed and a late "new!" is a lie.
-      .gte('created_at', new Date(Date.now() - 24 * 3_600_000).toISOString())
+      // Its own shelf life. Past this the post has converted anyway, so the
+      // status filter already excludes it; this is belt and braces against
+      // announcing something stale as "new".
+      .gte('created_at', new Date(Date.now() - 48 * 3_600_000).toISOString())
       .order('created_at', { ascending: true })
       .limit(3);
+    if (postsErr) console.error('[resolve] board post scan failed:', postsErr);
 
     for (const post of unannounced ?? []) {
       if (boardPushes >= MAX_BOARD_PUSHES) break;
 
-      // Claim it BEFORE sending. A crash mid-fan-out costs one announcement;
-      // claiming afterwards would re-announce the same post every 15 minutes.
+      // Resolve the audience BEFORE claiming the post, and never latch against
+      // a set we failed to read. board_notified is a ONE-WAY latch with no
+      // un-latch path anywhere in the codebase, so anything that consumes it
+      // without delivering loses that announcement permanently and silently.
+      //
+      // Two ways that used to happen, both fixed here:
+      //   · the RPC erroring — `data` comes back null, which is indistinguishable
+      //     from "nobody eligible" unless the error is actually read; and
+      //   · every recipient already being at their daily cap, which is now
+      //     excluded inside get_open_board_audience rather than discovered one
+      //     refused send at a time, after the latch had already been burned.
+      const { data: audience, error: audErr } = await supabase
+        .rpc('get_open_board_audience', { p_challenge_id: post.id, p_limit: MAX_BOARD_PUSHES });
+      if (audErr) {
+        console.error('[resolve] board audience lookup failed, leaving post unannounced:', post.id, audErr);
+        continue;
+      }
+      const recipients = (audience ?? [])
+        .map((row: any) => (typeof row === 'string' ? row : row?.get_open_board_audience ?? row?.id))
+        .filter(Boolean);
+      // Nobody to tell right now — usually every eligible member has already had
+      // their one board push today. Leave it unlatched so a later tick picks it
+      // up once caps roll over.
+      if (recipients.length === 0) continue;
+
+      // Now claim it. Conditional on still being unclaimed, so two overlapping
+      // ticks can't both announce the same post.
       const { data: claimed } = await supabase
         .from('shared_challenges')
         .update({ board_notified: true })
@@ -122,13 +149,8 @@ Deno.serve(async (req) => {
       const who = String(prof?.display_name || prof?.username || 'Someone').trim().split(' ')[0];
       const title = post.template?.title ?? 'a challenge';
 
-      const { data: audience } = await supabase
-        .rpc('get_open_board_audience', { p_challenge_id: post.id, p_limit: MAX_BOARD_PUSHES });
-
-      for (const row of audience ?? []) {
+      for (const uid of recipients) {
         if (boardPushes >= MAX_BOARD_PUSHES) break;
-        const uid = typeof row === 'string' ? row : row?.get_open_board_audience ?? row?.id;
-        if (!uid) continue;
         await notifyPush(uid, 'challenge_open_posted', {
           challenge_id: post.id, title, from_name: who,
         });

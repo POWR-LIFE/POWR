@@ -414,6 +414,7 @@ export function TogetherSection({ onOpenChallenge, deferred = false }: TogetherS
                       optedIn={optedIn}
                       teaserCount={teaserCount}
                       boardCount={board.length}
+                      hasCrew={starter.length > 0}
                       onEnable={() => setOptedIn(true)}
                       onPost={() => openCreate(null, [], true)}
                     />

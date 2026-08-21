@@ -33,8 +33,13 @@ values
     'Sent to the creator when their open-board challenge went untaken and converted to a solo run'
   ),
   (
-    'challenge_open_posted', true, 'social', 'nudge', 1,
-    'Sent to opted-in members when a new challenge lands on the open board. Shares the global nudge budget; gated by system_config.open_board_post_push'
+    -- NOT nudge-class. The nudge pool holds ONE slot per user per day that
+    -- streak_at_risk and daily_reminder already compete for; a board post must
+    -- never suppress a streak warning. daily_cap is enforced independently of
+    -- class (see _shared/nudgeBudget), so this is a hard 1/user/day ceiling
+    -- that leaves that pool alone.
+    'challenge_open_posted', true, 'social', 'social', 1,
+    'Sent to opted-in members when a new challenge lands on the open board. Capped at 1/user/day; gated by system_config.open_board_post_push'
   )
 on conflict (type) do update
   set enabled     = excluded.enabled,
