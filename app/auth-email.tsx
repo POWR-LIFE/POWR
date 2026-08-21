@@ -4,7 +4,9 @@ import { PASSWORD_RESET_REDIRECT, supabase } from '@/lib/supabase';
 import GeometricBackground from '@/components/GeometricBackground';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { normalizeMemberId } from '@/shared/memberId';
 import {
     ActivityIndicator,
     KeyboardAvoidingView,
@@ -43,6 +45,23 @@ export default function AuthEmailScreen() {
     const [resetLoading, setResetLoading] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
     const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+    // The invite code, asked for HERE because this is the last moment the
+    // friend still has the message they came from in reach. A link tap only
+    // carries `ref=` when the app was already installed; anyone who installed
+    // from the store arrives with nothing but what they can read and paste.
+    // Captured to the same `pending_referral_code` slot the deep link uses —
+    // onboarding-achievement is still the one place it is APPLIED (it needs a
+    // session), and it shows this code back as a confirmation.
+    const [inviteCode, setInviteCode] = useState('');
+    const [inviteFromLink, setInviteFromLink] = useState(false);
+
+    useEffect(() => {
+        AsyncStorage.getItem('pending_referral_code')
+            .then(code => {
+                if (code) { setInviteCode(code.toUpperCase()); setInviteFromLink(true); }
+            })
+            .catch(() => {});
+    }, []);
 
     const handleSubmit = async () => {
         setError(null);
@@ -61,6 +80,13 @@ export default function AuthEmailScreen() {
                 if (error) { setError(error); return; }
                 router.replace('/(tabs)');
             } else {
+                // Stash before the network call — a signup that succeeds but
+                // routes onward must not race the write, and a failed one keeps
+                // the code for the retry.
+                const code = normalizeMemberId(inviteCode);
+                if (code) await AsyncStorage.setItem('pending_referral_code', code).catch(() => {});
+                else if (inviteFromLink) await AsyncStorage.removeItem('pending_referral_code').catch(() => {});
+
                 const { error, needsConfirmation, alreadyRegistered } = await signUpWithEmail(email.trim(), password);
                 if (error) { setError(error); return; }
                 if (alreadyRegistered) {
@@ -333,6 +359,33 @@ export default function AuthEmailScreen() {
                         </View>
                     )}
 
+                    {mode === 'signup' && (
+                        <View style={styles.fieldGroup}>
+                            <Text style={styles.fieldLabel}>INVITE CODE (OPTIONAL)</Text>
+                            <TextInput
+                                style={[
+                                    styles.input,
+                                    styles.inviteInput,
+                                    focusedField === 'invite' && styles.inputFocused,
+                                ]}
+                                placeholder="8-CHARACTER CODE"
+                                placeholderTextColor="rgba(255,255,255,0.22)"
+                                value={inviteCode}
+                                onChangeText={t => setInviteCode(t.toUpperCase())}
+                                onFocus={() => setFocusedField('invite')}
+                                onBlur={() => setFocusedField(null)}
+                                autoCapitalize="characters"
+                                autoCorrect={false}
+                                maxLength={8}
+                            />
+                            <Text style={styles.inviteHint}>
+                                {inviteFromLink
+                                    ? 'From your friend\u2019s invite link \u2014 you\u2019ll both earn POWR after your first workout.'
+                                    : 'Got a code from a friend? Enter it and you\u2019ll both earn POWR after your first workout.'}
+                            </Text>
+                        </View>
+                    )}
+
                     {/* Error */}
                     {error && (
                         <View style={styles.errorBox}>
@@ -488,6 +541,16 @@ const styles = StyleSheet.create({
     },
     inputFocused: {
         borderColor: BORDER_FOCUS,
+    },
+    inviteInput: {
+        letterSpacing: 2,
+        textAlign: 'center',
+    },
+    inviteHint: {
+        color: 'rgba(255,255,255,0.45)',
+        fontSize: 12,
+        lineHeight: 16,
+        marginTop: 6,
     },
     errorBox: {
         backgroundColor: 'rgba(255,60,60,0.08)',
