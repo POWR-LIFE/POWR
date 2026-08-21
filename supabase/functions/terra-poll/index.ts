@@ -73,12 +73,28 @@ Deno.serve(async (req) => {
   // token that was an arbitrary-user health-data read, so it is gone rather
   // than re-gated. Reach for the Terra dashboard or a local script holding
   // TERRA_DEV_ID/TERRA_API_KEY if you need that visibility again.
+  //
+  // Backfill mode is different in kind from that: { days: N, terra_user_id? }
+  // only WIDENS the re-request window (and skips the staleness gate) — the data
+  // still flows to_webhook through the HMAC-signed terra-webhook like every
+  // other delivery, and nothing raw is returned to the caller. Added 2026-08-21
+  // to recover the nights the sleep day-bucket collision silently dropped
+  // (migration 20260821140000): terra-webhook is idempotent, so a wide window
+  // re-lands what was lost and heals the rest at +0 points. Clamped to Terra's
+  // 28-day synchronous maximum; wider than that needs their async large-request
+  // flow, which nothing here speaks.
+  const body = await req.json().catch(() => ({}));
+  const backfillDays = Math.min(28, Math.max(0, Math.trunc(Number(body?.days) || 0)));
+  const targetTerraUserId =
+    typeof body?.terra_user_id === 'string' && body.terra_user_id ? body.terra_user_id : null;
 
-  const { data: conns, error } = await supabase
+  let connQuery = supabase
     .from('terra_connections')
     .select('terra_user_id, provider, last_event_at')
     .is('deauthed_at', null)
     .limit(MAX_CONNECTIONS_PER_RUN);
+  if (targetTerraUserId) connQuery = connQuery.eq('terra_user_id', targetTerraUserId);
+  const { data: conns, error } = await connQuery;
   if (error) {
     console.error('[terra-poll] connections query failed:', error.message);
     return new Response(JSON.stringify({ error: error.message }), { status: 500 });
@@ -86,7 +102,9 @@ Deno.serve(async (req) => {
 
   // Window: 2 days back to tomorrow (inclusive) — covers overnight sleep and
   // timezones either side of UTC. Terra includes sessions overlapping the range.
-  const start = isoDate(new Date(Date.now() - 2 * 24 * 60 * 60 * 1000));
+  // A backfill run widens the lookback to the requested days.
+  const lookbackDays = backfillDays > 0 ? backfillDays : 2;
+  const start = isoDate(new Date(Date.now() - lookbackDays * 24 * 60 * 60 * 1000));
   const end = isoDate(new Date(Date.now() + 24 * 60 * 60 * 1000));
 
   const staleBefore = Date.now() - STALE_AFTER_MIN * 60 * 1000;
@@ -95,25 +113,29 @@ Deno.serve(async (req) => {
   for (const conn of conns ?? []) {
     const isStale = !conn.last_event_at || new Date(conn.last_event_at).getTime() < staleBefore;
     if (isStale) staleCount++;
-    const resources = isStale ? [...STALE_RESOURCES, ...ALWAYS_RESOURCES] : ALWAYS_RESOURCES;
+    // A backfill run asks for everything regardless of freshness — the point is
+    // re-delivery of history, not detecting a quiet connection.
+    const resources = (isStale || backfillDays > 0)
+      ? [...STALE_RESOURCES, ...ALWAYS_RESOURCES]
+      : ALWAYS_RESOURCES;
     for (const r of resources) {
       const url = `https://api.tryterra.co/v2/${r}?user_id=${encodeURIComponent(conn.terra_user_id)}`
         + `&start_date=${start}&end_date=${end}&to_webhook=true`;
       try {
         const res = await fetch(url, { headers: { 'dev-id': DEV_ID, 'x-api-key': API_KEY } });
-        const body = await res.text().catch(() => '');
-        detail[`${conn.provider}:${r}`] = `${res.status} ${body.slice(0, 300)}`;
+        const resBody = await res.text().catch(() => '');
+        detail[`${conn.provider}:${conn.terra_user_id.slice(0, 8)}:${r}`] = `${res.status} ${resBody.slice(0, 300)}`;
         if (res.ok) requested++;
-        else { failed++; console.warn(`[terra-poll] ${conn.provider} ${r} → ${res.status}: ${body.slice(0, 300)}`); }
+        else { failed++; console.warn(`[terra-poll] ${conn.provider} ${r} → ${res.status}: ${resBody.slice(0, 300)}`); }
       } catch (e) {
         failed++;
-        detail[`${conn.provider}:${r}`] = `threw: ${e?.message ?? e}`;
+        detail[`${conn.provider}:${conn.terra_user_id.slice(0, 8)}:${r}`] = `threw: ${e?.message ?? e}`;
         console.warn(`[terra-poll] ${conn.provider} ${r} threw:`, e?.message ?? e);
       }
     }
   }
 
-  console.log(`[terra-poll] ${conns?.length ?? 0} connection(s) (${staleCount} stale): ${requested} requests ok, ${failed} failed`);
+  console.log(`[terra-poll] ${conns?.length ?? 0} connection(s) (${staleCount} stale${backfillDays > 0 ? `, backfill ${backfillDays}d` : ''}): ${requested} requests ok, ${failed} failed`);
   return new Response(
     JSON.stringify({ connections: conns?.length ?? 0, stale: staleCount, requested, failed, detail }),
     { headers: { 'Content-Type': 'application/json' } },
