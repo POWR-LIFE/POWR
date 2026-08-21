@@ -43,6 +43,11 @@ export interface ChallengeTemplateCardProps {
   crew?: Friend[];
   /** Bonus maths for the pitch line; without it the crew strip shows faces only. */
   bonusConfig?: { perHead: number; maxBonus: number };
+  /** Name the crew in the pitch line. The named sentence is a hook, not a
+   *  label — the same crew is pitched on every card in the list, so repeating
+   *  it reads as though one friend owns every challenge. Only the lead card
+   *  says the names; the rest show the faces alone. Defaults to `index === 0`. */
+  namePitch?: boolean;
 }
 
 /** "You, Elliot & Sorine — finish together for +15 each on top" */
@@ -60,7 +65,8 @@ function crewPitch(crew: Friend[], bonus: { perHead: number; maxBonus: number })
  * this template. Mirrors SharedChallengeCard's layout (header / title / footer)
  * so an empty plate and an active one feel like the same surface.
  */
-export function ChallengeTemplateCard({ template, index = 0, onPress, crew, bonusConfig }: ChallengeTemplateCardProps) {
+export function ChallengeTemplateCard({ template, index = 0, onPress, crew, bonusConfig, namePitch }: ChallengeTemplateCardProps) {
+  const showPitch = namePitch ?? index === 0;
   const enter = useSharedValue(0);
   useEffect(() => {
     enter.value = withDelay(index * 80, withTiming(1, { duration: 350, easing: Easing.out(Easing.cubic) }));
@@ -103,8 +109,10 @@ export function ChallengeTemplateCard({ template, index = 0, onPress, crew, bonu
           <Text style={styles.goal} numberOfLines={2}>{template.goal}</Text>
         </View>
 
-        {/* Who with, and what it pays — the group bonus is the feature's whole
-            pitch, so it goes on the card, not three taps deep. A user with no
+        {/* Who with, and — on the lead card only — what it pays. The same crew
+            is pitched on every card in the list, so the named sentence is said
+            once and the rest of the band carries faces alone; the bonus maths
+            is already stated in the intro line above the list. A user with no
             invitable friends yet gets the honest alternative: race the Pacer. */}
         {crew && crew.length > 0 ? (
           <View style={styles.crewRow}>
@@ -115,7 +123,7 @@ export function ChallengeTemplateCard({ template, index = 0, onPress, crew, bonu
                 </View>
               ))}
             </View>
-            {bonusConfig && (
+            {bonusConfig && showPitch && (
               <Text style={styles.crewText} numberOfLines={2}>{crewPitch(crew, bonusConfig)}</Text>
             )}
           </View>

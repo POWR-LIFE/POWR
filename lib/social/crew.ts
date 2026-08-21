@@ -34,16 +34,17 @@ export function lastCrew(all: SharedChallenge[], selfId: string | null): string[
 }
 
 /**
- * The crew to PITCH on the empty-state starter cards (and preselect when one is
- * tapped): your usual crew when you have one, otherwise your first invitable
- * friends — so someone who has never created a challenge still sees real faces
- * and a concrete bonus instead of an abstract feature. Only accepted,
- * together-enabled friends qualify (the pitch must never name someone the
- * create sheet would then refuse to invite).
+ * The crew to PITCH on the starter cards (and preselect when one is tapped):
+ * your usual crew leads, then the rest of your invitable friends fill the
+ * remaining slots — so someone who has never created a challenge still sees
+ * real faces, and one small challenge doesn't shrink the pitch to that single
+ * friend forever. Only accepted, together-enabled friends qualify (the pitch
+ * must never name someone the create sheet would then refuse to invite).
  */
 export function starterCrew(friends: Friend[], lastCrewIds: string[], max = 3): Friend[] {
   const invitable = friends.filter((f) => f.status === 'accepted' && f.togetherEnabled !== false);
   const byId = new Map(invitable.map((f) => [f.id, f]));
   const usual = lastCrewIds.map((id) => byId.get(id)).filter((f): f is Friend => !!f);
-  return (usual.length > 0 ? usual : invitable).slice(0, max);
+  const picked = new Set(usual.map((f) => f.id));
+  return [...usual, ...invitable.filter((f) => !picked.has(f.id))].slice(0, max);
 }

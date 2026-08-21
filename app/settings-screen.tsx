@@ -24,6 +24,7 @@ import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import PermissionFixScreen, { type PermissionFixKind } from '@/components/PermissionFixScreen';
 import { useAuth } from '@/context/AuthContext';
+import { useOpenChallengeBoard } from '@/hooks/useOpenChallengeBoard';
 import { androidOpenHealthConnectSettings, useHealthData } from '@/hooks/useHealthData';
 import { useHealthProviders } from '@/hooks/useHealthProviders';
 import { HealthProviderNotImplementedError } from '@/lib/health/providers';
@@ -180,6 +181,12 @@ export default function SettingsScreen() {
   const [emailWeekly,     setEmailWeekly]     = useState(true);
   const [shareActivity,   setShareActivity]   = useState(meta.share_activity ?? true);
   const [togetherEnabled, setTogetherEnabled] = useState(meta.together_enabled ?? true);
+  // Open-board opt-in lives on profiles (the board RPC filters on it), not in
+  // user_metadata — a SQL-side filter can't read auth metadata.
+  const { optedIn: openToStrangers, setOptedIn: setOpenToStrangers } = useOpenChallengeBoard();
+  // Board pushes are a separate consent from the board itself: "show me the
+  // board" and "buzz my phone when a stranger posts" are different asks.
+  const [notifBoardPosts, setNotifBoardPosts] = useState(meta.notif_board_posts ?? true);
   useEffect(() => {
     if (!user?.id) return;
     getNotificationPreferences(user.id).then(prefs => {
@@ -663,8 +670,38 @@ export default function SettingsScreen() {
             sublabel="Take on challenges with friends from your home screen"
             value={togetherEnabled}
             onValueChange={(v) => { setTogetherEnabled(v); persistMeta('together_enabled', v); }}
-            isLast
           />
+          {/* Opt-in, off by default. It governs being SURFACED to non-friends —
+              not what they could read: profiles carry a public select policy, so
+              a name and avatar were never private. What this decides is whether
+              you are placed in front of strangers, and whether you see them. */}
+          <RowToggle
+            icon="megaphone-outline"
+            label="Open challenge board"
+            sublabel="Post challenges any POWR member can take, and see theirs. They see your first name and photo."
+            value={openToStrangers}
+            onValueChange={setOpenToStrangers}
+            isLast={!openToStrangers}
+          />
+          {/* Only while the board is on — a toggle for a feature you haven't
+              enabled is clutter, and with the board off these never fire
+              anyway (the fan-out filters on open_to_strangers). */}
+          {openToStrangers && (
+            <RowToggle
+              icon="notifications-outline"
+              label="Board alerts"
+              sublabel="Tell me when someone posts a challenge I could take"
+              value={notifBoardPosts}
+              onValueChange={(v) => {
+                setNotifBoardPosts(v);
+                // Mirrored into user_metadata like every other switch here, so
+                // the row shows the real state when Settings is reopened.
+                persistMeta('notif_board_posts', v);
+                if (user?.id) updateNotificationPreferences(user.id, { challenge_open_posted: v });
+              }}
+              isLast
+            />
+          )}
         </View>
 
         {/* ── Privacy ───────────────────────────────────────── */}

@@ -94,6 +94,11 @@ export interface NotificationPreferences {
   /** The only bad-news type: a challenge that expired, came up short, or was
    *  cancelled. Grouped under the same "Friend activity" toggle as the rest. */
   challenge_ended: boolean;
+  /** Open board: a stranger posted a challenge you could take. Deliberately NOT
+   *  in the "Friend activity" group — these come from people you've never met,
+   *  so muting friends must not mute this and vice versa. Only reachable while
+   *  the board itself is on (profiles.open_to_strangers). */
+  challenge_open_posted: boolean;
 }
 
 export const DEFAULT_PREFERENCES: NotificationPreferences = {
@@ -122,6 +127,7 @@ export const DEFAULT_PREFERENCES: NotificationPreferences = {
   challenge_completed: true,
   challenge_expiring: true,
   challenge_ended: true,
+  challenge_open_posted: true,
 };
 
 export async function getNotificationPreferences(
@@ -163,6 +169,7 @@ export async function getNotificationPreferences(
     challenge_completed: data.challenge_completed ?? true,
     challenge_expiring: data.challenge_expiring ?? true,
     challenge_ended: data.challenge_ended ?? true,
+    challenge_open_posted: data.challenge_open_posted ?? true,
   };
 }
 

@@ -58,7 +58,14 @@ export interface CreateChallengeSheetProps {
   /** Send a friend request to someone found via search. */
   sendRequest: (friend: Friend) => void;
   onClose: () => void;
-  onCreate: (input: { templateId: string; friendIds: string[] }) => void | Promise<unknown>;
+  onCreate: (input: {
+    templateId: string; friendIds: string[]; isOpen?: boolean; openSlots?: number;
+  }) => void | Promise<unknown>;
+  /** Open-board opt-in state + setter. Absent = the board isn't offered here. */
+  openBoard?: { optedIn: boolean; setOptedIn: (on: boolean) => Promise<void> };
+  /** Open with "post to the board" already ticked — the prompt's "Post one" CTA
+   *  lands here, and re-asking for the choice it just made would lose people. */
+  initialPostOpen?: boolean;
   /** Preselect this template when the sheet opens (e.g. tapped from the browse carousel). */
   initialTemplateId?: string | null;
   /** Preselect these friends when the sheet opens — rematch passes the old
@@ -85,6 +92,8 @@ export function CreateChallengeSheet({
   sendRequest,
   onClose,
   onCreate,
+  openBoard,
+  initialPostOpen,
   initialTemplateId,
   initialFriendIds,
   bonusConfig,
@@ -187,6 +196,7 @@ export function CreateChallengeSheet({
     setResults([]);
     setRequested(new Set());
     setSearchMode(false);
+    setPostOpen(!!initialPostOpen);
   };
 
   const handleClose = () => {
@@ -198,13 +208,42 @@ export function CreateChallengeSheet({
   // mid-run via the detail screen's invite. The one shape that genuinely needs
   // company is a pooled team total.
   const soloStart = selected.size === 0;
-  const canSend = !!template && (!soloStart || template.mode !== 'pooled');
+  // Posting to the board is the third option for someone with nobody selected:
+  // not "race the clock alone", but "let a real member take this". Only offered
+  // with no friends picked — an invite and a public post are different asks.
+  const [postOpen, setPostOpen] = useState(!!initialPostOpen);
+  const canPostOpen = !!openBoard && soloStart;
+  const boardPost = canPostOpen && postOpen;
+  // A pooled team total needs a second body, which a board post will supply.
+  const canSend = !!template && (!soloStart || boardPost || template.mode !== 'pooled');
+
+  // Deselecting back to zero friends is fine, but picking one must drop the
+  // post — otherwise a sheet that says "Send invites" would also post publicly.
+  useEffect(() => { if (!soloStart && postOpen) setPostOpen(false); }, [soloStart, postOpen]);
+
+  // Honour the caller's preset each time the sheet opens — the board prompt's
+  // "Post one" already asked the question, so the sheet must not un-ask it.
+  useEffect(() => { if (visible) setPostOpen(!!initialPostOpen); }, [visible, initialPostOpen]);
+
+  const toggleBoardPost = async () => {
+    if (!openBoard) return;
+    Haptics.selectionAsync();
+    const next = !postOpen;
+    setPostOpen(next);
+    // Turning the row on IS the opt-in — the label states what becomes visible,
+    // so the tap is informed consent rather than a setting changed behind them.
+    if (next && !openBoard.optedIn) await openBoard.setOptedIn(true);
+  };
 
   const handleSend = async () => {
     if (!template || !canSend || submitting) return;
     setSubmitting(true);
     try {
-      await onCreate({ templateId: template.id, friendIds: [...selected] });
+      await onCreate({
+        templateId: template.id,
+        friendIds: [...selected],
+        ...(boardPost ? { isOpen: true, openSlots: 1 } : {}),
+      });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       reset();
       onClose();
@@ -535,13 +574,41 @@ export function CreateChallengeSheet({
 
           {/* ── Summary + send ── */}
           <View style={styles.footer}>
+            {/* Nobody picked? The board is the human option — it puts the
+                challenge in front of real members instead of leaving you to
+                race a clock. The label names exactly what becomes visible,
+                because tapping it is also the opt-in. */}
+            {canPostOpen && (
+              <Pressable
+                onPress={toggleBoardPost}
+                style={[styles.boardRow, boardPost && styles.boardRowOn]}
+                accessibilityRole="switch"
+                accessibilityState={{ checked: boardPost }}
+              >
+                <Ionicons
+                  name={boardPost ? 'checkbox' : 'square-outline'}
+                  size={18}
+                  color={boardPost ? GOLD : MUTED}
+                />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.boardRowTitle}>Post to the open board</Text>
+                  <Text style={styles.boardRowBody}>
+                    Any POWR member can take it — the first one to does races you. They
+                    see your first name and photo.
+                  </Text>
+                </View>
+              </Pressable>
+            )}
+
             <View style={styles.summaryRow}>
               <Text style={styles.summaryText}>
                 {!soloStart
                   ? `${selected.size} ${selected.size === 1 ? 'friend' : 'friends'} · group of ${groupSize}`
-                  : canSend
-                    ? 'Going solo — invite friends anytime for a bonus'
-                    : 'A team total needs at least one friend'}
+                  : boardPost
+                    ? 'Waiting on a taker — you’ll both start when they take it'
+                    : canSend
+                      ? 'Going solo — invite friends anytime for a bonus'
+                      : 'A team total needs at least one friend'}
               </Text>
               {projectedBonus > 0 && (
                 <View style={styles.bonusPill}>
@@ -559,7 +626,9 @@ export function CreateChallengeSheet({
               style={[styles.sendBtn, (!canSend || submitting) && styles.sendBtnDisabled]}
             >
               <Text style={[styles.sendText, (!canSend || submitting) && styles.sendTextDisabled]}>
-                {submitting ? (soloStart ? 'Starting…' : 'Sending…') : soloStart ? 'Start solo' : 'Send invites'}
+                {submitting
+                  ? (boardPost ? 'Posting…' : soloStart ? 'Starting…' : 'Sending…')
+                  : boardPost ? 'Post to the board' : soloStart ? 'Start solo' : 'Send invites'}
               </Text>
               {canSend && !submitting && <Ionicons name="arrow-forward" size={16} color="#0a0a0a" />}
             </Pressable>
@@ -567,9 +636,13 @@ export function CreateChallengeSheet({
             {/* Timing is admin-set; a group's clock starts on the first accept
                 (activity since creation counts), a solo run starts on the spot. */}
             <Text style={styles.timingNote}>
-              {soloStart && canSend
-                ? 'Starts the moment you tap — you’ll be racing the Pacer.'
-                : 'Starts as soon as one friend joins — everything from now counts.'}
+              {boardPost
+                /* An open post's clock starts on the TAKE, not on the post — the
+                   creator must not bank days while it sits on the shelf. */
+                ? 'Starts when someone takes it, so you both race the same clock.'
+                : soloStart && canSend
+                  ? 'Starts the moment you tap — you’ll be racing the Pacer.'
+                  : 'Starts as soon as one friend joins — everything from now counts.'}
             </Text>
           </View>
             </>
@@ -682,6 +755,14 @@ const styles = StyleSheet.create({
 
   // footer
   footer: { gap: 12, borderTopWidth: 1, borderTopColor: BORDER, paddingTop: 14 },
+  boardRow: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 10,
+    borderWidth: 1, borderColor: BORDER, borderRadius: 12,
+    paddingHorizontal: 12, paddingVertical: 11, marginBottom: 10,
+  },
+  boardRowOn: { borderColor: GOLD },
+  boardRowTitle: { fontFamily: fontFamily.medium, fontSize: 13, color: TEXT },
+  boardRowBody: { fontFamily: fontFamily.light, fontSize: 11, color: SECONDARY, lineHeight: 15, marginTop: 2 },
   summaryRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   summaryText: { fontFamily: fontFamily.regular, fontSize: 13, color: SECONDARY },
   bonusPill: {
