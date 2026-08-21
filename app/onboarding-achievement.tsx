@@ -69,20 +69,26 @@ export default function OnboardingAchievementScreen() {
     const { markOnboardingComplete } = useAuth();
     const params = useLocalSearchParams<{ streakDays?: string; totalSessions?: string; activeDays?: string }>();
 
-    const [showCodeInput, setShowCodeInput] = useState(false);
     const [inviteCode, setInviteCode] = useState('');
+    const [codeFromLink, setCodeFromLink] = useState(false);
     const [submitting, setSubmitting] = useState(false);
 
     // A code captured from an invite link (AuthContext stores it as
     // pending_referral_code) used to apply silently on submit; surface it in
     // the input instead so the user sees the attribution happening — invite
     // conversion is the live-events funnel and must not be invisible.
+    //
+    // That capture only survives when the app was ALREADY installed when the
+    // link was tapped. A friend who installs from the store arrives with
+    // nothing but the code spelled out in the message they came from — so the
+    // field is always open and always asks, rather than hiding behind a
+    // chevron they have no reason to tap on the last screen of the flow.
     useEffect(() => {
         AsyncStorage.getItem('pending_referral_code')
             .then(deepCode => {
                 if (deepCode) {
                     setInviteCode(deepCode.toUpperCase());
-                    setShowCodeInput(true);
+                    setCodeFromLink(true);
                 }
             })
             .catch(() => {});
@@ -305,30 +311,27 @@ export default function OnboardingAchievementScreen() {
             {/* ── CTA ── */}
             <Animated.View style={[styles.bottom, { paddingBottom: insets.bottom + 28, opacity: buttonOpacity, transform: [{ translateY: kbOffset }] }]}>
                 <StepDots current={dotIndexFor('/onboarding-achievement')} />
-                {/* Optional invite code entry */}
-                <Pressable
-                    onPress={() => setShowCodeInput(v => !v)}
-                    style={styles.codeToggle}
-                >
-                    <Text style={styles.codeToggleText}>Have an invite code? You’ll both earn POWR</Text>
-                    <Ionicons
-                        name={showCodeInput ? 'chevron-up' : 'chevron-down'}
-                        size={13}
-                        color="rgba(255,255,255,0.35)"
-                    />
-                </Pressable>
-                {showCodeInput && (
+                {/* Invite code — the only place a referral can ever be applied */}
+                <View style={styles.inviteBlock}>
+                    <Text style={styles.inviteTitle}>
+                        {codeFromLink ? 'Your friend’s invite code' : 'Got an invite code from a friend?'}
+                    </Text>
+                    <Text style={styles.inviteSub}>
+                        {codeFromLink
+                            ? 'Carried over from sign-up — you’ll both earn POWR once you log your first workout.'
+                            : 'Last chance to enter it — you’ll both earn POWR after your first workout, and it can’t be added later.'}
+                    </Text>
                     <TextInput
                         style={styles.codeInput}
-                        placeholder="Enter 8-character code"
-                        placeholderTextColor="rgba(255,255,255,0.25)"
+                        placeholder="8-CHARACTER CODE"
+                        placeholderTextColor="rgba(255,255,255,0.28)"
                         value={inviteCode}
                         onChangeText={t => setInviteCode(t.toUpperCase())}
                         autoCapitalize="characters"
                         autoCorrect={false}
                         maxLength={8}
                     />
-                )}
+                </View>
                 <Pressable
                     style={({ pressed }) => [styles.primaryButton, (pressed || submitting) && { opacity: 0.86 }]}
                     disabled={submitting}
@@ -360,10 +363,7 @@ export default function OnboardingAchievementScreen() {
                             if (refErr) ({ data, error: refErr } = await applyCode());
                             const result = (data ?? null) as { success?: boolean; error?: string; status?: string } | null;
 
-                            const stayAndFix = () => {
-                                setInviteCode(code);
-                                setShowCodeInput(true);
-                            };
+                            const stayAndFix = () => setInviteCode(code);
                             const dropCode = async () => {
                                 await AsyncStorage.removeItem('pending_referral_code').catch(() => {});
                                 goHome();
@@ -562,31 +562,42 @@ const styles = StyleSheet.create({
     bottom: {
         paddingHorizontal: 24,
     },
-    codeToggle: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 5,
-        marginBottom: 12,
-        opacity: 0.55,
+    inviteBlock: {
+        borderRadius: 14,
+        borderWidth: 1,
+        borderColor: 'rgba(232,210,0,0.28)',
+        backgroundColor: 'rgba(232,210,0,0.06)',
+        paddingHorizontal: 14,
+        paddingTop: 12,
+        paddingBottom: 12,
+        marginBottom: 14,
     },
-    codeToggleText: {
-        color: '#F2F2F2',
+    inviteTitle: {
+        color: GOLD,
+        fontSize: 14,
+        fontFamily: FONT_SEMIBOLD,
+        fontWeight: '600',
+        letterSpacing: 0.2,
+    },
+    inviteSub: {
+        color: 'rgba(255,255,255,0.62)',
         fontSize: 12,
         fontFamily: FONT_REGULAR,
-        letterSpacing: 0.3,
+        lineHeight: 17,
+        marginTop: 3,
+        marginBottom: 10,
     },
     codeInput: {
         height: 44,
         borderRadius: 10,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.12)',
-        backgroundColor: 'rgba(255,255,255,0.05)',
+        borderColor: 'rgba(255,255,255,0.16)',
+        backgroundColor: 'rgba(0,0,0,0.35)',
         color: '#F2F2F2',
         fontSize: 15,
+        fontFamily: FONT_MEDIUM,
         letterSpacing: 2,
         textAlign: 'center',
-        marginBottom: 12,
         paddingHorizontal: 16,
     },
     primaryButton: {

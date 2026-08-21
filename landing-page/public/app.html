@@ -39,6 +39,27 @@
   }
   .btn-gold { background: var(--gold); color: #080808; }
   .btn-ghost { background: transparent; color: #F2F2F2; border: 1px solid #333; }
+  .code-card {
+    border: 1px solid rgba(232,210,0,0.32);
+    background: rgba(232,210,0,0.07);
+    border-radius: 14px;
+    padding: 16px 16px 14px;
+    margin: 0 0 22px;
+    text-align: left;
+  }
+  .code-label { font-size: 13px; font-weight: 600; color: var(--gold); letter-spacing: 0.2px; }
+  .code-row { display: flex; align-items: center; gap: 10px; margin: 10px 0 8px; }
+  .code {
+    flex: 1; font-size: 24px; font-weight: 700; letter-spacing: 3px;
+    color: #F2F2F2; text-align: center; padding: 10px 8px;
+    border-radius: 10px; background: rgba(0,0,0,0.38); border: 1px solid rgba(255,255,255,0.14);
+  }
+  .code-copy {
+    flex: none; font-family: inherit; font-size: 11px; font-weight: 700;
+    letter-spacing: 1px; text-transform: uppercase; cursor: pointer;
+    color: #080808; background: var(--gold); border: 0; border-radius: 18px; padding: 11px 15px;
+  }
+  .code-note { font-size: 12px; font-weight: 300; color: #999; line-height: 1.5; }
   .hint { margin-top: 24px; font-size: 11px; color: #444; font-weight: 300; }
   .hint a { color: #666; text-decoration: underline; }
 </style>
@@ -49,6 +70,14 @@
     <div class="spinner" id="spinner"></div>
     <h1 id="title">Opening POWR…</h1>
     <p id="subtitle">If the app doesn't open automatically, get it below.</p>
+    <div class="code-card" id="code-card" style="display:none;">
+      <div class="code-label">Your friend&rsquo;s invite code</div>
+      <div class="code-row">
+        <span class="code" id="code-value">&nbsp;</span>
+        <button class="code-copy" id="code-copy" type="button">Copy</button>
+      </div>
+      <div class="code-note">Enter this when you sign up &mdash; you&rsquo;ll both earn POWR after your first workout. It can&rsquo;t be added later.</div>
+    </div>
     <div class="stores">
       <a class="btn btn-gold" id="ios-btn" href="https://apps.apple.com/app/id6766784336" style="display:none;">Download on the App&nbsp;Store</a>
       <a class="btn btn-gold" id="android-btn" href="https://play.google.com/store/apps/details?id=com.powr.life" style="display:none;">Get it on Google&nbsp;Play</a>
@@ -74,6 +103,19 @@
   var params = new URLSearchParams(window.location.search);
   var target = (params.get('to') || '').replace(/^\/+/, '');
   params.delete('to');
+
+  // An invite code rides along as `ref=`. It only reaches the app through the
+  // deep link when the app is ALREADY installed — anyone who installs from the
+  // store arrives with nothing. So when a code is present we show it here,
+  // before the store hop, and never auto-forward: the code has to be on screen
+  // at the moment they tap install. `noredir` is our own flag (the Android
+  // fallback bounces back here), so it never travels into the deep link.
+  var rawRef = params.get('ref') || '';
+  var ref = rawRef.replace(/[\s-]+/g, '').toUpperCase();
+  var hasCode = /^[A-Z0-9]{8}$/.test(ref);
+  var noRedirect = params.get('noredir') === '1';
+  params.delete('noredir');
+
   var forwarded = params.toString();
   var query = forwarded ? '?' + forwarded : '';
   var deepLink = APP_SCHEME + target + query;
@@ -87,11 +129,38 @@
       document.getElementById('title').textContent = 'Get POWR for Android';
       document.getElementById('android-btn').style.display = 'block';
     }
+    if (hasCode) showCode();
+  }
+
+  function showCode() {
+    document.getElementById('code-value').textContent = ref.slice(0, 4) + ' ' + ref.slice(4);
+    document.getElementById('code-card').style.display = 'block';
+    document.getElementById('subtitle').textContent = 'Install POWR, then enter the code below when you sign up.';
+    var btn = document.getElementById('code-copy');
+    btn.addEventListener('click', function () {
+      var done = function () { btn.textContent = 'Copied'; setTimeout(function () { btn.textContent = 'Copy'; }, 2000); };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(ref).then(done, function () {});
+      } else {
+        var t = document.createElement('textarea');
+        t.value = ref; document.body.appendChild(t); t.select();
+        try { document.execCommand('copy'); done(); } catch (e) {}
+        document.body.removeChild(t);
+      }
+    });
   }
 
   // Desktop / unknown device: nothing to deep-link into — go to the site,
-  // which carries both store badges.
+  // which carries both store badges. A code is the exception: bouncing to the
+  // homepage would swallow it, so show it and say where to use it.
   if (!isIOS && !isAndroid) {
+    if (hasCode) {
+      document.getElementById('spinner').style.display = 'none';
+      document.getElementById('title').textContent = 'Open this on your phone';
+      showCode();
+      document.getElementById('subtitle').textContent = 'Install POWR on your phone, then enter the code below when you sign up.';
+      return;
+    }
     window.location.replace(WEB_FALLBACK);
     return;
   }
@@ -104,11 +173,19 @@
   window.addEventListener('pagehide', cancel);
   window.addEventListener('blur', cancel);
 
-  // App not installed -> reveal store buttons (and on iOS, send to the App Store).
+  // A code that came back from the Android fallback has already had its deep
+  // link attempt — show it and stop, or the intent would loop.
+  if (noRedirect) {
+    showStore();
+    return;
+  }
+
+  // App not installed -> reveal store buttons. Without a code we send iOS
+  // straight on; with one, the tap is the point — they need to read it first.
   setTimeout(function () {
     if (cancelled || document.hidden) return;
     showStore();
-    if (isIOS) window.location.replace(IOS_URL);
+    if (isIOS && !hasCode) window.location.replace(IOS_URL);
   }, 1600);
 
   if (isAndroid) {
@@ -116,10 +193,18 @@
     // Store fallback if the app can't handle the scheme.
     // A host segment is required — 'open' is a synthetic fallback used when
     // there is no specific target route (e.g. share-card links only carry ?ref=).
+    // With a code, the fallback returns HERE (noredir=1) rather than going
+    // straight to Play, so a friend without the app still reads the code.
+    var fallback = PLAY_URL;
+    if (hasCode) {
+      var back = new URLSearchParams(window.location.search);
+      back.set('noredir', '1');
+      fallback = window.location.origin + window.location.pathname + '?' + back.toString();
+    }
     var intentHost = target || 'open';
     var intent = 'intent://' + intentHost + (query || '') +
       '#Intent;scheme=powr;package=' + ANDROID_PACKAGE +
-      ';S.browser_fallback_url=' + encodeURIComponent(PLAY_URL) + ';end';
+      ';S.browser_fallback_url=' + encodeURIComponent(fallback) + ';end';
     window.location.replace(intent);
   } else {
     window.location.replace(deepLink);
