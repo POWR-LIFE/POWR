@@ -19,13 +19,38 @@ export function eventDateRange(event: Pick<LiveEvent, 'window_start_at' | 'windo
     return `${shortDate(event.window_start_at)} – ${lastDayOf(event.window_end_at)}`;
 }
 
-/** Short status chip copy for the home card. */
+/**
+ * The home card's date line. `window_start_at` is when SCORING opens, which
+ * for a venue event is typically the week BEFORE the night itself — so a bare
+ * "Thu 27 Aug" there reads as the date of the event and sends people to the
+ * wrong day. Name what the date actually is, every time.
+ *
+ * Once the window is open "starts" is behind us, so the live half names the
+ * deadline that's left instead — the same last-scoring-day the League header
+ * uses, so the two surfaces can never quote different days.
+ */
+export function scoringLine(
+    event: Pick<LiveEvent, 'status' | 'window_start_at' | 'window_end_at'>,
+): string {
+    return event.status === 'scheduled'
+        ? `Scoring starts ${shortDate(event.window_start_at)}`
+        : `Scoring ends ${lastDayOf(event.window_end_at)}`;
+}
+
+/**
+ * Short status chip copy for the home card.
+ *
+ * Every branch names SCORING as the thing being counted to. A bare "IN 6
+ * DAYS" reads as "the event is in 6 days" — and for a venue event the night
+ * itself is a week the other side of that, so the chip was quietly pointing
+ * at the wrong date in the same way the bare start date was.
+ */
 export function eventStatusChip(event: Pick<LiveEvent, 'status' | 'window_start_at'>): string {
     if (event.status !== 'scheduled') return 'LIVE NOW';
     const days = Math.max(0, Math.ceil((new Date(event.window_start_at).getTime() - Date.now()) / 86_400_000));
-    if (days === 0) return 'STARTS TODAY';
-    if (days === 1) return 'STARTS TOMORROW';
-    return `IN ${days} DAYS`;
+    if (days === 0) return 'SCORING TODAY';
+    if (days === 1) return 'SCORING TOMORROW';
+    return `SCORING IN ${days} DAYS`;
 }
 
 /** Promo media is one URL that may be a video or a still — route by extension. */

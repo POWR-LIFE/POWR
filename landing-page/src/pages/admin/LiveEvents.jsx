@@ -75,6 +75,17 @@ const fmtDT = (iso) => iso
     ? new Date(iso).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
     : '—';
 
+// Mirrors shortDate() in lib/liveEventDisplay.ts — this is the app's own
+// wording, so what the note below the date fields quotes is what the home
+// card actually prints. Keep the two in step if either moves.
+const fmtDay = (iso) => iso
+    ? new Date(iso).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })
+    : '—';
+
+// The window is half-open [start, end): the last day anyone can score is the
+// minute before it closes, not the boundary itself.
+const fmtLastDay = (iso) => iso ? fmtDay(new Date(new Date(iso).getTime() - 60_000).toISOString()) : '—';
+
 // Editor working copy: exactly the columns the editor owns. Status, hidden,
 // display_token and revealed_at are managed by the lifecycle panel instead —
 // keeping them out of the Save payload means an in-progress edit can never
@@ -650,7 +661,7 @@ const setCheckin = async (ev, row, present) => {
                                         )}
                                     </div>
                                     <p className="text-[12px] text-[#888888] mt-0.5">
-                                        {fmtDT(ev.window_start_at)} → {fmtDT(ev.window_end_at)} · {ev.scope === 'opt_in' ? 'Opt-in' : 'Global'}
+                                        Scoring {fmtDT(ev.window_start_at)} → {fmtDT(ev.window_end_at)} · {ev.scope === 'opt_in' ? 'Opt-in' : 'Global'}
                                     </p>
                                 </div>
                                 <span className="text-[10px] uppercase tracking-[0.25em] font-black text-[#BBBBBB]">{isSel ? 'Close' : 'Manage'}</span>
@@ -2308,9 +2319,25 @@ function EditorPanel({ form, setForm, dirty, saving, onSave, onDiscard, venueNam
                     <Group title="Dates & times" blurb="All times are UK time. Points earned from the moment scoring starts, up to (but not including) the moment it ends, count towards the event.">
                         <Field label="Scoring starts" hint="Start of the competition. Points earned from this moment count.">
                             <DateTimeInput value={form.window_start_at} onChange={v => set({ window_start_at: v })} />
+                            <p className="text-[11px] text-[#999999] leading-relaxed mt-2 max-w-md">
+                                The app&rsquo;s home card reads{' '}
+                                <span className="font-medium text-[#555555]">“Scoring starts {fmtDay(form.window_start_at)}”</span> — never a
+                                bare date, which people read as the night at the venue and turn up on the wrong day.
+                            </p>
                         </Field>
                         <Field label="Scoring ends" hint="End of the competition. Points earned from this moment on don't count.">
                             <DateTimeInput value={form.window_end_at} onChange={v => set({ window_end_at: v })} />
+                            {/* The off-by-one below is the half-open window, and it looks like a
+                                bug unless it's spelled out right here next to the field that
+                                causes it: the app names the last day people can score, not the
+                                instant the window shuts. */}
+                            <p className="text-[11px] text-[#999999] leading-relaxed mt-2 max-w-md">
+                                Nothing counts from this moment on, so the last day anyone can score is{' '}
+                                <span className="font-medium text-[#555555]">{fmtLastDay(form.window_end_at)}</span> — and that&rsquo;s the day
+                                the app shows, as{' '}
+                                <span className="font-medium text-[#555555]">“Scoring ends {fmtLastDay(form.window_end_at)}”</span>.
+                                Set this to midnight at the end of the last scoring day.
+                            </p>
                         </Field>
                         <Field label="Leaderboard hides" hint="From this moment the leaderboard is hidden in the app and everyone waits for the reveal. Usually the same as, or just after, scoring ends. Leave blank to keep it visible until you press Lock board.">
                             <DateTimeInput value={form.lock_at} onChange={v => set({ lock_at: v })} clearable />
@@ -2443,7 +2470,7 @@ function EditorPanel({ form, setForm, dirty, saving, onSave, onDiscard, venueNam
                                 onChange={v => set({ promo_media_url: v })}
                             />
                         </Field>
-                        <Field label="Headline" hint="Optional line under the event name — for example what's up for grabs. Leave blank to show just the name and dates.">
+                        <Field label="Headline" hint="Optional line under the event name — for example what's up for grabs. Shown on the promo page and on the app's home card, above the scoring line. Leave blank for the name and dates alone.">
                             <TextInput value={form.promo_headline} onChange={v => set({ promo_headline: v || null })} />
                         </Field>
                     </Group>

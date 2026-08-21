@@ -13,7 +13,7 @@ import {
     type EventLeaderboard,
     type LiveEvent,
 } from '@/lib/api/liveEvents';
-import { eventStatusChip, isVideoUrl, shortDate } from '@/lib/liveEventDisplay';
+import { eventStatusChip, isVideoUrl, scoringLine } from '@/lib/liveEventDisplay';
 
 const GOLD = '#E8D200';
 const TEXT_PRIMARY = '#F2F2F2';
@@ -169,7 +169,10 @@ export function LiveEventCard() {
                             <Text style={styles.eyebrowText}>LIVE EVENT</Text>
                             <View style={[styles.statusChip, event.is_preview && styles.statusChipPreview]}>
                                 {event.status === 'live' && !event.is_preview && <View style={styles.liveDot} />}
-                                <Text style={[styles.statusText, event.is_preview && styles.statusTextPreview]}>
+                                <Text
+                                    style={[styles.statusText, event.is_preview && styles.statusTextPreview]}
+                                    numberOfLines={1}
+                                >
                                     {event.is_preview ? `PREVIEW · ${eventStatusChip(event)}` : eventStatusChip(event)}
                                 </Text>
                             </View>
@@ -185,10 +188,21 @@ export function LiveEventCard() {
                             )}
 
                             <View style={styles.bottomRow}>
-                                {/* Start date only — the register sheet carries the full window. */}
-                                <Text style={styles.subline} numberOfLines={2}>
-                                    {event.promo_headline ?? shortDate(event.window_start_at)}
-                                </Text>
+                                {/* The scoring line always shows, headline or not: this date is
+                                    when the WINDOW opens, usually a week before the night at the
+                                    venue, and a bare date here reads as "the event is on Thursday".
+                                    A headline sells the event above it rather than replacing it —
+                                    two lines max either way, same as before. */}
+                                <View style={styles.sublineBlock}>
+                                    {!!event.promo_headline && (
+                                        <Text style={styles.subline} numberOfLines={1}>
+                                            {event.promo_headline}
+                                        </Text>
+                                    )}
+                                    <Text style={styles.scoringLine} numberOfLines={1}>
+                                        {scoringLine(event)}
+                                    </Text>
+                                </View>
                                 <View style={[styles.registerPill, registered && styles.registeredPill]}>
                                     <Text style={[styles.registerText, registered && styles.registeredText]}>
                                         {registered ? pill.label : 'REGISTER'}
@@ -244,6 +258,7 @@ const styles = StyleSheet.create({
     statusChip: {
         flexDirection: 'row',
         alignItems: 'center',
+        flexShrink: 1,
         gap: 6,
         backgroundColor: 'rgba(0,0,0,0.4)',
         paddingHorizontal: 10,
@@ -273,11 +288,22 @@ const styles = StyleSheet.create({
         alignItems: 'flex-end',
         gap: 12,
     },
-    subline: {
+    sublineBlock: {
         flex: 1,
+        gap: 1,
+    },
+    subline: {
         fontSize: 12,
         fontWeight: '300',
         color: DIM,
+        lineHeight: 16,
+    },
+    // The load-bearing fact on the card once the headline is optional — a
+    // notch brighter than the headline so it reads first over bright video.
+    scoringLine: {
+        fontSize: 12,
+        fontWeight: '500',
+        color: 'rgba(255,255,255,0.75)',
         lineHeight: 16,
     },
     registerPill: {
