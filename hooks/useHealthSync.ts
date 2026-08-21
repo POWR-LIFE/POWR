@@ -176,6 +176,20 @@ export function useHealthSync() {
         (existingSessions ?? []).map(s => `${s.type}_${new Date(s.started_at).toISOString()}`)
       );
 
+      // Workouts already recorded as SUPPRESSED (a geofence check-in covered
+      // their window) are settled too: without this, every sync re-reads their
+      // vitals and re-attempts the suppression insert for the whole 7-day
+      // window. Same identity key as the table's unique index. Best-effort — on
+      // error the upsert's DO NOTHING keeps the re-attempt harmless.
+      const { data: suppressedDone } = await supabase
+        .from('suppressed_workouts')
+        .select('type, started_at')
+        .eq('user_id', uid)
+        .gte('started_at', weekAgo.toISOString());
+      for (const s of suppressedDone ?? []) {
+        syncedKeys.add(`${s.type}_${new Date(s.started_at).toISOString()}`);
+      }
+
       // Today's heart rate + calories — used to enrich *today's* sessions only. We
       // have no per-day aggregates for past days, so backfilled sessions are saved
       // without (misleading) day-wide HR/calorie figures rather than wrong ones.
@@ -221,6 +235,12 @@ export function useHealthSync() {
           duration_sec: health.durationMin * 60,
           distance_m: health.distanceM,
           hr_avg: hrAvgFor,
+          // Only consumed if a check-in suppresses this workout, in which case
+          // the suppressed_workouts row is the sole holder of its vitals — a
+          // recorded session gets them via saveHealthSnapshot below instead.
+          hr_max: windowVitals?.hrMax ?? (today ? heartRate?.max : undefined),
+          calories_active: windowVitals?.caloriesActive ?? (today ? calories?.active : undefined),
+          source,
           started_at: health.startedAt,
           points: workoutPoints,
           healthVerified: true,
@@ -306,6 +326,11 @@ export function useHealthSync() {
             duration_sec: act.durationMin * 60,
             distance_m: act.distanceM,
             hr_avg: actVitals?.hrAvg ?? (today ? heartRate?.avg : undefined),
+            // Same as the workout path: only read if a check-in suppresses this
+            // activity and the suppressed record becomes its vitals' one home.
+            hr_max: actVitals?.hrMax ?? (today ? heartRate?.max : undefined),
+            calories_active: actVitals?.caloriesActive ?? undefined,
+            source,
             started_at: act.startedAt,
             points: inferredPoints,
             healthVerified: true,

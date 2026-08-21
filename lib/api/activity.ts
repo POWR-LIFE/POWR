@@ -3,6 +3,11 @@ import { getDeviceId } from '@/lib/device';
 import { emitPointsChanged } from '@/lib/pointsEvents';
 import { dayAnchor, monthAnchorEnd, monthAnchorStart, weekAnchorMonday } from '@/lib/progressLookback';
 import { getSessionUser, supabase } from '@/lib/supabase';
+import {
+    fetchSuppressedWorkouts,
+    recordSuppressedNativeWorkout,
+    suppressedToSession,
+} from '@/lib/api/suppressedWorkouts';
 import { mergeWorkouts, relateWorkouts } from '@/shared/sessionMerge';
 
 // ── Walking step-tier helpers (shared by manual-log + health sync) ─────────────
@@ -37,9 +42,11 @@ export type ActivitySession = {
     trust_score: number;
     raw_activity_name: string | null;
     point_transactions: { amount: number }[];
-    /** A gym visit that never became a claimable session — under the dwell
-     *  threshold, or the day's points were already banked. It still happened, so
-     *  it still shows. Absent/false on everything from activity_sessions. */
+    /** A session that could never earn: a gym visit under the dwell threshold
+     *  (or on a day already banked), or a workout suppressed because a geofence
+     *  check-in covered its window — the check-in was paid, the workout is
+     *  recorded. It still happened, so it still shows. Absent/false on
+     *  everything from activity_sessions. */
     unrewarded?: boolean;
     /** Venue name, only carried by unrewarded visits (sessions render the type). */
     partner_name?: string | null;
@@ -59,28 +66,31 @@ function isLocalToday(iso: string): boolean {
         && d.getDate() === now.getDate();
 }
 
-/** Recent activity, INCLUDING gym visits that earned nothing.
+/** Recent activity, INCLUDING sessions that earned nothing:
  *
- *  A visit under the dwell threshold produces no activity_sessions row at all —
- *  finalizeActiveGeofence returns at `if (!needsClaim)` — and the day-uniqueness
- *  index means a second visit on the same day cannot create one either. So a real
- *  10-minute visit to a real gym simply vanished from the user's history. Jamie,
- *  2026-08-08: "we should still record session lengths even if they can't be
- *  rewarded points."
+ *  1. Gym visits under the dwell threshold (or on a day already banked). They
+ *     produce no activity_sessions row at all — finalizeActiveGeofence returns
+ *     at `if (!needsClaim)` — and the day-uniqueness index means a second visit
+ *     the same day cannot create one either. Jamie, 2026-08-08: "we should
+ *     still record session lengths even if they can't be rewarded points."
+ *     gym_visits already holds started_at/ended_at, so this only surfaces them.
  *
- *  gym_visits already holds started_at/ended_at for every visit, so nothing needs
- *  recording — only surfacing. Read-only, no schema change, and points are
- *  untouched: these carry an empty point_transactions, so every consumer that
- *  sums it already renders them as zero.
+ *  2. Suppressed workouts — the run a wearable recorded inside a geofence
+ *     check-in. The check-in outranks it so the workout is never a session and
+ *     never pays (the time must not be paid twice), but it IS the honest record
+ *     of what the user actually did in there. Jamie, 2026-08-21: "reward the
+ *     gym, record the run." Same-type (gym) suppressions stay hidden — the
+ *     check-in already shows that time (see surfacesInStats).
  *
- *  ⚠ They DO count toward the session count and average duration on
- *  progress-detail, which is the point — they are sessions the user did.
+ *  Both carry an empty point_transactions, so every consumer that sums points
+ *  already renders them as zero, and both DO count toward the session count and
+ *  average duration on progress-detail — they are sessions the user did.
  */
 export async function fetchRecentSessions(limit = 5): Promise<ActivitySession[]> {
     const uid = await getCurrentUserId();
     if (!uid) return [];
 
-    const [sessionsRes, visitsRes] = await Promise.all([
+    const [sessionsRes, visitsRes, suppressed] = await Promise.all([
         supabase
             .from('activity_sessions')
             .select('id, type, started_at, ended_at, duration_sec, distance_m, steps, verification, trust_score, raw_activity_name, point_transactions(amount)')
@@ -97,6 +107,7 @@ export async function fetchRecentSessions(limit = 5): Promise<ActivitySession[]>
             .not('ended_at', 'is', null)
             .order('ended_at', { ascending: false })
             .limit(limit),
+        fetchSuppressedWorkouts(uid, { limit }),
     ]);
 
     if (sessionsRes.error) throw sessionsRes.error;
@@ -143,8 +154,12 @@ export async function fetchRecentSessions(limit = 5): Promise<ActivitySession[]>
         });
     }
 
-    if (unrewarded.length === 0) return sessions;
-    return [...sessions, ...unrewarded]
+    // Suppressed workouts are NOT overlap-deduped: they overlap their winning
+    // check-in by definition, and showing both is the point — the visit that was
+    // rewarded, and the run that was recorded.
+    const extras = [...unrewarded, ...suppressed.map(suppressedToSession)];
+    if (extras.length === 0) return sessions;
+    return [...sessions, ...extras]
         .sort((a, b) => Date.parse(b.ended_at ?? '') - Date.parse(a.ended_at ?? ''))
         .slice(0, limit);
 }
@@ -206,16 +221,24 @@ export async function fetchDailyMetrics(): Promise<DailyMetrics> {
     const start = new Date();
     start.setHours(0, 0, 0, 0);
 
-    const { data, error } = await supabase
-        .from('activity_sessions')
-        .select('type, steps')
-        .eq('user_id', uid)
-        .gte('started_at', start.toISOString());
+    const [{ data, error }, suppressed] = await Promise.all([
+        supabase
+            .from('activity_sessions')
+            .select('type, steps')
+            .eq('user_id', uid)
+            .gte('started_at', start.toISOString()),
+        fetchSuppressedWorkouts(uid, { from: start }),
+    ]);
     if (error) throw error;
 
     const perType: Record<string, number> = {};
     let stepsToday = 0;
-    for (const s of (data ?? []) as Array<{ type: string; steps: number | null }>) {
+    const rows = [
+        ...((data ?? []) as Array<{ type: string; steps: number | null }>),
+        // The run inside a gym visit counts as a session done, just not paid.
+        ...suppressed.map(w => ({ type: w.type, steps: null })),
+    ];
+    for (const s of rows) {
         perType[s.type] = (perType[s.type] ?? 0) + 1;
         if (s.type === 'walking') stepsToday += s.steps ?? 0;
     }
@@ -228,6 +251,16 @@ export type ManualSessionParams = {
     distance_m?: number;
     steps?: number;
     hr_avg?: number;
+    /**
+     * Extra vitals carried only so a workout suppressed by a geofence check-in
+     * can be recorded with them (suppressed_workouts is then the ONLY holder of
+     * this effort's figures — no session row, no snapshot). A recorded session
+     * gets its vitals through saveHealthSnapshot instead, as before.
+     */
+    hr_max?: number;
+    calories_active?: number;
+    /** Provider store the data came from ('healthkit', 'health_connect', …). */
+    source?: string;
     points: number;
     started_at: string;
     healthVerified?: boolean;
@@ -399,20 +432,40 @@ export async function logManualSession(params: ManualSessionParams): Promise<str
         const endMs = new Date(ended_at).getTime();
         const { data: checkIns } = await supabase
             .from('activity_sessions')
-            .select('started_at, ended_at, duration_sec')
+            .select('id, started_at, ended_at, duration_sec')
             .eq('user_id', uid)
             .eq('verification', 'geofence')
             .gte('started_at', new Date(startMs - 24 * 60 * 60 * 1000).toISOString())
             .lte('started_at', new Date(endMs + 24 * 60 * 60 * 1000).toISOString());
-        const overlapsCheckIn = (checkIns ?? []).some(s => {
+        const winningCheckIn = (checkIns ?? []).find(s => {
             const sStart = new Date(s.started_at).getTime();
             const sEnd = s.ended_at
                 ? new Date(s.ended_at).getTime()
                 : sStart + (s.duration_sec ?? 0) * 1000;
             return startMs < sEnd && endMs > sStart;
         });
-        if (overlapsCheckIn) {
-            console.log(`[activity] skipping health-synced ${params.type} ${params.started_at} — overlaps geofence check-in`);
+        if (winningCheckIn) {
+            console.log(`[activity] suppressing health-synced ${params.type} ${params.started_at} — overlaps geofence check-in`);
+            // Reward the gym, record the run (Jamie, 2026-08-21). The check-in
+            // stays the only payer for this time, but the workout must not
+            // vanish: record it against the winning check-in exactly as
+            // terra-webhook does for Terra arrivals, so it surfaces in history
+            // and Progress stats as an unrewarded session.
+            await recordSuppressedNativeWorkout({
+                userId: uid,
+                winnerSessionId: winningCheckIn.id,
+                type: params.type,
+                startedAt: params.started_at,
+                endedAt: ended_at,
+                durationSec: params.duration_sec,
+                distanceM: params.distance_m ?? null,
+                hrAvg: params.hr_avg ?? null,
+                hrMax: params.hr_max ?? null,
+                caloriesActive: params.calories_active ?? null,
+                source: params.source ?? null,
+                rawActivityName: params.rawActivityName ?? null,
+                wouldHaveEarned: params.points,
+            });
             return null;
         }
 
@@ -544,19 +597,32 @@ export async function fetchWeeklyMetrics(): Promise<WeeklyMetrics> {
     monday.setDate(now.getDate() + mondayOffset);
     monday.setHours(0, 0, 0, 0);
 
-    const { data, error } = await supabase
-        .from('activity_sessions')
-        .select('type, steps, started_at, point_transactions(amount)')
-        .eq('user_id', uid)
-        .gte('started_at', monday.toISOString());
+    const [{ data, error }, suppressed] = await Promise.all([
+        supabase
+            .from('activity_sessions')
+            .select('type, steps, started_at, point_transactions(amount)')
+            .eq('user_id', uid)
+            .gte('started_at', monday.toISOString()),
+        fetchSuppressedWorkouts(uid, { from: monday }),
+    ]);
     if (error) throw error;
 
-    const sessions = (data ?? []) as unknown as {
-        type: string;
-        steps: number | null;
-        started_at: string;
-        point_transactions: { amount: number }[] | null;
-    }[];
+    const sessions = [
+        ...((data ?? []) as unknown as {
+            type: string;
+            steps: number | null;
+            started_at: string;
+            point_transactions: { amount: number }[] | null;
+        }[]),
+        // Suppressed workouts count as sessions done (a run inside a gym visit
+        // IS a run); their empty transactions keep every points figure honest.
+        ...suppressed.map(w => ({
+            type: w.type,
+            steps: null,
+            started_at: w.started_at,
+            point_transactions: [] as { amount: number }[],
+        })),
+    ];
     const perType: Record<string, number> = {};
     const activeDaysPerType: Record<string, boolean[]> = {};
     const pointsPerType: Record<string, number> = {};
@@ -981,13 +1047,16 @@ export async function fetchWeekActivityData(type: ActivityType, weekStart: Date)
     const end = new Date(start);
     end.setDate(end.getDate() + 7);
 
-    const { data, error } = await supabase
-        .from('activity_sessions')
-        .select('started_at, duration_sec, steps, point_transactions(amount)')
-        .eq('user_id', uid)
-        .eq('type', type)
-        .gte('started_at', start.toISOString())
-        .lt('started_at', end.toISOString());
+    const [{ data, error }, suppressed] = await Promise.all([
+        supabase
+            .from('activity_sessions')
+            .select('started_at, duration_sec, steps, point_transactions(amount)')
+            .eq('user_id', uid)
+            .eq('type', type)
+            .gte('started_at', start.toISOString())
+            .lt('started_at', end.toISOString()),
+        fetchSuppressedWorkouts(uid, { type, from: start, to: end }),
+    ]);
     if (error) throw error;
 
     const result: WeekActivityData = {
@@ -998,7 +1067,17 @@ export async function fetchWeekActivityData(type: ActivityType, weekStart: Date)
         sessionsPerDay: [...empty.sessionsPerDay],
         stepsPerDay: [...empty.stepsPerDay],
     };
-    for (const s of (data ?? []) as Array<{ started_at: string; duration_sec: number | null; steps: number | null; point_transactions: { amount: number }[] }>) {
+    const weekRows = [
+        ...((data ?? []) as Array<{ started_at: string; duration_sec: number | null; steps: number | null; point_transactions: { amount: number }[] }>),
+        // Workouts a check-in suppressed still count as training done that week.
+        ...suppressed.map(w => ({
+            started_at: w.started_at,
+            duration_sec: w.duration_sec,
+            steps: null,
+            point_transactions: [] as { amount: number }[],
+        })),
+    ];
+    for (const s of weekRows) {
         const d = new Date(s.started_at).getDay();
         const idx = d === 0 ? 6 : d - 1; // Mon=0 … Sun=6
         const pts = (s.point_transactions ?? []).reduce((sum, t) => sum + t.amount, 0);
@@ -1042,18 +1121,29 @@ export async function fetchRecentWorkoutHistory(type: ActivityType, days = 5, be
     const rangeStart = new Date(todayStart);
     rangeStart.setDate(rangeStart.getDate() - days);
 
-    const { data, error } = await supabase
-        .from('activity_sessions')
-        .select('started_at, duration_sec, point_transactions(amount)')
-        .eq('user_id', uid)
-        .eq('type', type)
-        .gte('started_at', rangeStart.toISOString())
-        .lt('started_at', todayStart.toISOString())
-        .order('started_at', { ascending: true });
+    const [{ data, error }, suppressed] = await Promise.all([
+        supabase
+            .from('activity_sessions')
+            .select('started_at, duration_sec, point_transactions(amount)')
+            .eq('user_id', uid)
+            .eq('type', type)
+            .gte('started_at', rangeStart.toISOString())
+            .lt('started_at', todayStart.toISOString())
+            .order('started_at', { ascending: true }),
+        fetchSuppressedWorkouts(uid, { type, from: rangeStart, to: todayStart }),
+    ]);
     if (error) throw error;
 
+    const historyRows = [
+        ...((data ?? []) as Array<{ started_at: string; duration_sec: number | null; point_transactions: { amount: number }[] }>),
+        ...suppressed.map(w => ({
+            started_at: w.started_at,
+            duration_sec: w.duration_sec,
+            point_transactions: [] as { amount: number }[],
+        })),
+    ];
     const byDate = new Map<string, { sessions: number; durationMin: number; points: number }>();
-    for (const s of (data ?? []) as Array<{ started_at: string; duration_sec: number | null; point_transactions: { amount: number }[] }>) {
+    for (const s of historyRows) {
         const dateKey = localDateStr(new Date(s.started_at));
         const pts = (s.point_transactions ?? []).reduce((sum, t) => sum + t.amount, 0);
         const durMin = Math.round((s.duration_sec ?? 0) / 60);
@@ -1474,24 +1564,39 @@ export async function fetchTodayActivityDetail(type: ActivityType, day?: Date): 
     const end = new Date(start);
     end.setDate(end.getDate() + 1);
 
-    const { data, error } = await supabase
-        .from('activity_sessions')
-        .select('id, started_at, duration_sec, steps, distance_m, point_transactions(amount)')
-        .eq('user_id', uid)
-        .eq('type', type)
-        .gte('started_at', start.toISOString())
-        .lt('started_at', end.toISOString())
-        .order('started_at', { ascending: false });
+    const [{ data, error }, suppressed] = await Promise.all([
+        supabase
+            .from('activity_sessions')
+            .select('id, started_at, duration_sec, steps, distance_m, point_transactions(amount)')
+            .eq('user_id', uid)
+            .eq('type', type)
+            .gte('started_at', start.toISOString())
+            .lt('started_at', end.toISOString())
+            .order('started_at', { ascending: false }),
+        fetchSuppressedWorkouts(uid, { type, from: start, to: end }),
+    ]);
     if (error) throw error;
 
-    const sessions = (data ?? []) as Array<{
-        id: string;
-        started_at: string;
-        duration_sec: number;
-        steps: number | null;
-        distance_m: number | null;
-        point_transactions: { amount: number }[];
-    }>;
+    const sessions = [
+        ...((data ?? []) as Array<{
+            id: string;
+            started_at: string;
+            duration_sec: number;
+            steps: number | null;
+            distance_m: number | null;
+            point_transactions: { amount: number }[];
+        }>),
+        ...suppressed.map(w => ({
+            id: `suppressed:${w.id}`,
+            started_at: w.started_at,
+            duration_sec: w.duration_sec,
+            steps: null,
+            distance_m: w.distance_m,
+            point_transactions: [] as { amount: number }[],
+        })),
+    // Re-sorted because latestStartedAt reads the first row, and the merged
+    // suppressed rows arrive from their own query.
+    ].sort((a, b) => Date.parse(b.started_at) - Date.parse(a.started_at));
 
     let totalDurationMin = 0;
     let totalPoints = 0;
@@ -1600,25 +1705,37 @@ export async function fetchMonthlyActivityData(type: ActivityType, offset = 0): 
     const rangeEnd = new Date(endDayStart);
     rangeEnd.setDate(rangeEnd.getDate() + 1);
 
-    const { data, error } = await supabase
-        .from('activity_sessions')
-        .select('started_at, duration_sec, steps, point_transactions(amount)')
-        .eq('user_id', uid)
-        .eq('type', type)
-        .gte('started_at', rangeStart.toISOString())
-        .lt('started_at', rangeEnd.toISOString())
-        .order('started_at', { ascending: true });
+    const [{ data, error }, suppressed] = await Promise.all([
+        supabase
+            .from('activity_sessions')
+            .select('started_at, duration_sec, steps, point_transactions(amount)')
+            .eq('user_id', uid)
+            .eq('type', type)
+            .gte('started_at', rangeStart.toISOString())
+            .lt('started_at', rangeEnd.toISOString())
+            .order('started_at', { ascending: true }),
+        fetchSuppressedWorkouts(uid, { type, from: rangeStart, to: rangeEnd }),
+    ]);
     if (error) throw error;
 
     // Aggregate by date
     const byDate = new Map<string, { count: number; durationMin: number; longestMin: number; points: number; steps: number }>();
 
-    for (const s of (data ?? []) as Array<{
-        started_at: string;
-        duration_sec: number | null;
-        steps: number | null;
-        point_transactions: { amount: number }[] | null;
-    }>) {
+    const monthRows = [
+        ...((data ?? []) as Array<{
+            started_at: string;
+            duration_sec: number | null;
+            steps: number | null;
+            point_transactions: { amount: number }[] | null;
+        }>),
+        ...suppressed.map(w => ({
+            started_at: w.started_at,
+            duration_sec: w.duration_sec as number | null,
+            steps: null,
+            point_transactions: [] as { amount: number }[],
+        })),
+    ];
+    for (const s of monthRows) {
         // localDateStr, not toISOString: Terra stamps walking/sleep day-aggregates
         // at LOCAL midnight, which is the previous UTC day in any UTC+ zone — so a
         // UTC key filed every one of them under the wrong date, and the day the
@@ -1811,21 +1928,33 @@ export async function fetchMonthlyMetrics(): Promise<MonthlyMetrics> {
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     monthStart.setHours(0, 0, 0, 0);
 
-    const { data, error } = await supabase
-        .from('activity_sessions')
-        .select('started_at, type, steps, duration_sec, point_transactions(amount)')
-        .eq('user_id', uid)
-        .gte('started_at', monthStart.toISOString())
-        .order('started_at', { ascending: true });
+    const [{ data, error }, suppressed] = await Promise.all([
+        supabase
+            .from('activity_sessions')
+            .select('started_at, type, steps, duration_sec, point_transactions(amount)')
+            .eq('user_id', uid)
+            .gte('started_at', monthStart.toISOString())
+            .order('started_at', { ascending: true }),
+        fetchSuppressedWorkouts(uid, { from: monthStart }),
+    ]);
     if (error) throw error;
 
-    const sessions = (data ?? []) as Array<{
-        started_at: string;
-        type: string;
-        steps: number | null;
-        duration_sec: number;
-        point_transactions: { amount: number }[];
-    }>;
+    const sessions = [
+        ...((data ?? []) as Array<{
+            started_at: string;
+            type: string;
+            steps: number | null;
+            duration_sec: number;
+            point_transactions: { amount: number }[];
+        }>),
+        ...suppressed.map(w => ({
+            started_at: w.started_at,
+            type: w.type,
+            steps: null,
+            duration_sec: w.duration_sec,
+            point_transactions: [] as { amount: number }[],
+        })),
+    ];
 
     // Track which dates have been counted as "active" to avoid double-counting
     const activeDateSet = new Set<string>();

@@ -42,8 +42,12 @@ function sessionToFeedItem(session: ActivitySession): ActivityFeedItem | null {
         verified: session.verification !== 'manual',
         // Unrewarded visits carry no provider name, so the venue takes that slot —
         // "Gym · POWR" is the only thing that distinguishes two short visits.
+        // Unrewarded SUPPRESSED workouts (the run inside a gym visit) have no
+        // venue but do carry the provider's activity name, so fall through to it.
         rawName: session.unrewarded
-            ? (session.partner_name ?? undefined)
+            ? (session.partner_name
+                ?? formatRawActivityName(session.raw_activity_name, session.type)
+                ?? undefined)
             : (formatRawActivityName(session.raw_activity_name, session.type) ?? undefined),
         unrewarded: session.unrewarded === true,
     };
