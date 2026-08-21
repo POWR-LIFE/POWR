@@ -97,6 +97,10 @@ export function useHealthSync() {
           points,
           healthVerified: true,
           healthSource: verificationSource,
+          sleepDeepH: sleep.deepHours,
+          sleepRemH: sleep.remHours,
+          sleepLightH: sleep.lightHours,
+          source,
         });
 
         if (!sleepSessionId) continue;

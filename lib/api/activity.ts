@@ -8,6 +8,7 @@ import {
     recordSuppressedNativeWorkout,
     suppressedToSession,
 } from '@/lib/api/suppressedWorkouts';
+import { calculateSleepPoints } from '@/supabase/functions/_shared/points';
 import { mergeWorkouts, relateWorkouts } from '@/shared/sessionMerge';
 
 // ── Walking step-tier helpers (shared by manual-log + health sync) ─────────────
@@ -264,6 +265,9 @@ export type ManualSessionParams = {
     points: number;
     started_at: string;
     healthVerified?: boolean;
+    sleepDeepH?: number;
+    sleepRemH?: number;
+    sleepLightH?: number;
     /**
      * When `healthVerified`, the provenance of the data: 'wearable' for dedicated
      * wearable providers (Fitbit/Whoop/Garmin), 'health' for native phone sync.
@@ -352,6 +356,86 @@ async function absorbIntoExistingWorkout(
     if (!target) return false;
 
     const merged = mergeWorkouts(target.existing, incoming, target.relation);
+    if (params.type === 'sleep') {
+        const { data: snap } = await supabase
+            .from('health_snapshots')
+            .select('id, sleep_duration_h, sleep_deep_h, sleep_rem_h, sleep_light_h')
+            .eq('session_id', target.row.id)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+        const pick = (a: number | null | undefined, b: number | null | undefined) => {
+            if (a == null && b == null) return null;
+            return target.relation === 'contiguous' ? (a ?? 0) + (b ?? 0) : Math.max(a ?? 0, b ?? 0);
+        };
+        const mergedHours = merged.durationSec / 3600;
+        const mergedDeep = pick(snap?.sleep_deep_h, params.sleepDeepH);
+        const mergedRem = pick(snap?.sleep_rem_h, params.sleepRemH);
+        const mergedLight = pick(snap?.sleep_light_h, params.sleepLightH);
+        const stagesChanged = snap == null || mergedDeep !== (snap.sleep_deep_h ?? null)
+            || mergedRem !== (snap.sleep_rem_h ?? null)
+            || mergedLight !== (snap.sleep_light_h ?? null)
+            || mergedHours !== (snap.sleep_duration_h ?? null);
+        if (!merged.changed && !stagesChanged) return true;
+
+        if (merged.changed) {
+            const patch: Record<string, unknown> = {
+                started_at: new Date(merged.startMs).toISOString(),
+                ended_at: new Date(merged.endMs).toISOString(),
+                duration_sec: merged.durationSec,
+            };
+            const { error } = await supabase.from('activity_sessions').update(patch).eq('id', target.row.id);
+            if (error) {
+                console.warn('[activity] sleep merge failed:', error.message);
+                return false;
+            }
+        }
+
+        const snapshotPatch: Record<string, unknown> = {
+            sleep_duration_h: mergedHours,
+            duration_sec: merged.durationSec,
+            activity_type: 'sleep',
+        };
+        if (mergedDeep != null) snapshotPatch.sleep_deep_h = mergedDeep;
+        if (mergedRem != null) snapshotPatch.sleep_rem_h = mergedRem;
+        if (mergedLight != null) snapshotPatch.sleep_light_h = mergedLight;
+        if (snap) {
+            const { error } = await supabase.from('health_snapshots').update(snapshotPatch).eq('id', snap.id);
+            if (error) console.warn('[activity] sleep snapshot merge failed:', error.message);
+        } else {
+            const { error } = await supabase.from('health_snapshots').insert({
+                session_id: target.row.id,
+                ...snapshotPatch,
+                source: params.source ?? null,
+            });
+            if (error) console.warn('[activity] sleep snapshot insert failed:', error.message);
+        }
+
+        const { data: earns } = await supabase
+            .from('point_transactions')
+            .select('amount')
+            .eq('session_id', target.row.id)
+            .eq('type', 'earn');
+        const already = (earns ?? []).reduce((sum, t) => sum + (t.amount ?? 0), 0);
+        const priced = calculateSleepPoints(mergedHours, mergedDeep ?? undefined, mergedRem ?? undefined);
+        if (priced > already) {
+            const { error } = await supabase.from('point_transactions').insert({
+                session_id: target.row.id,
+                amount: priced - already,
+                type: 'earn',
+                source: 'health_sync',
+            });
+            if (error) console.warn('[activity] sleep merge top-up failed:', error.message);
+            else emitPointsChanged();
+        }
+
+        console.log(
+            `[activity] ${target.relation === 'contiguous' ? 'stitched split' : 'restated'} `
+            + `sleep into ${target.row.id}: ${target.existing.durationSec}s → ${merged.durationSec}s`,
+        );
+        return true;
+    }
+
     if (!merged.changed) return true; // a re-sync of something we already hold
 
     const patch: Record<string, unknown> = {
