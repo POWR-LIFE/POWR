@@ -1064,6 +1064,16 @@ const UNAVAILABLE: HealthDataHook = {
     verifyWorkout: async () => ({ verified: false, actualValue: 0, detail: 'Not available' }),
 };
 
+/**
+ * Last 7 days of native health data, readable from plain modules (no React).
+ *
+ * The hook's `getWeekHistory` delegates here, as does the native provider —
+ * the historical backfill runs outside any component, so it can't use a hook.
+ */
+export async function getWeekHistoryNow(): Promise<DayHealthSummary[]> {
+    return Platform.OS === 'ios' ? await iosGetWeekHistory() : await androidGetWeekHistory();
+}
+
 export function useHealthData(): HealthDataHook {
     const isNative = Platform.OS === 'ios' || Platform.OS === 'android';
     const [isAvailable, setIsAvailable] = useState(false);
@@ -1137,7 +1147,7 @@ export function useHealthData(): HealthDataHook {
     }, []);
 
     const getWeekHistory = useCallback(async (): Promise<DayHealthSummary[]> => {
-        return Platform.OS === 'ios' ? await iosGetWeekHistory() : await androidGetWeekHistory();
+        return getWeekHistoryNow();
     }, []);
 
     /** Verify a walking session by comparing claimed steps to today's step count. */

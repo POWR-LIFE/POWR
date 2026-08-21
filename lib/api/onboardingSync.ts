@@ -11,7 +11,7 @@
 import { Platform } from 'react-native';
 import { getSessionUser, supabase } from '@/lib/supabase';
 import { ACTIVITIES, type ActivityType } from '@/constants/activities';
-import type { DayHealthSummary } from '@/hooks/useHealthData';
+import { getWeekHistoryNow, type DayHealthSummary } from '@/hooks/useHealthData';
 import { buildStreakFromDates, saveHealthSnapshot } from '@/lib/api/activity';
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -262,4 +262,60 @@ export async function syncHistoricalHealthData(
     console.log(`[OnboardingSync] Complete: ${totalSessions} sessions, ${streakDays}-day streak, ${activeDates.length} active days`);
 
     return { totalSessions, streakDays, activeDates, dailyBreakdown };
+}
+
+let onboardingOwnsBackfill = false;
+
+/**
+ * Onboarding's health step runs `syncHistoricalHealthData` itself so it can
+ * render per-day progress. While the flow is on screen the silent backfill must
+ * stand down: the AppState auto-connect listener in useHealthProviders fires the
+ * moment the Health Connect dialog hands control back, and if it won that race
+ * onboarding would show "0 sessions synced" over a full week of real data.
+ *
+ * Set on the wearables + health steps, released on the notifications step — the
+ * only route out of the health step. Module state, so a killed app resets it to
+ * false, which is the correct default for everyone outside the flow.
+ */
+export function setOnboardingOwnsBackfill(owns: boolean): void {
+    onboardingOwnsBackfill = owns;
+}
+
+/**
+ * Pull the 7-day history for someone who connected a native health source
+ * *after* onboarding — from Settings, the Home prime sheet, or by granting in
+ * OS settings and letting the app auto-detect it.
+ *
+ * Onboarding drives `syncHistoricalHealthData` itself so it can render per-day
+ * progress; every other entry point lands here instead. Safe to call on any
+ * connect: the `initial_health_sync_complete` flag makes it one-shot per
+ * account, and it's checked before the (slow) week read rather than after.
+ *
+ * Returns null when there was nothing to do. Never throws — a failed backfill
+ * must not break the connect it was triggered by.
+ */
+export async function backfillHealthHistoryIfNeeded(): Promise<OnboardingSyncResult | null> {
+    try {
+        if (Platform.OS === 'web') return null;
+        if (onboardingOwnsBackfill) return null;
+
+        const user = await getSessionUser();
+        if (!user) return null;
+        if (user.user_metadata?.initial_health_sync_complete) return null;
+
+        const weekData = await getWeekHistoryNow();
+        // An empty read means the grant isn't live yet or the store is empty.
+        // Bail WITHOUT syncing — syncHistoricalHealthData would burn the
+        // one-shot flag on nothing and there'd be no second chance.
+        if (!weekData.length) {
+            console.log('[OnboardingSync] Backfill skipped — no history readable yet');
+            return null;
+        }
+
+        console.log(`[OnboardingSync] Late backfill starting (${weekData.length} days)`);
+        return await syncHistoricalHealthData(weekData);
+    } catch (e) {
+        console.warn('[OnboardingSync] Late backfill failed:', e);
+        return null;
+    }
 }

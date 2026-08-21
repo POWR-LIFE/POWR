@@ -3,6 +3,7 @@ import { ONBOARDING_DOT_COUNT, dotIndexFor } from '@/lib/onboarding/flow';
 import { androidHealthConnectStatus, useHealthData } from '@/hooks/useHealthData';
 import { useHealthProviders } from '@/hooks/useHealthProviders';
 import { getNativeProviderId, type HealthProviderId } from '@/lib/health/providers';
+import { setOnboardingOwnsBackfill } from '@/lib/api/onboardingSync';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -118,6 +119,11 @@ const dotStyles = StyleSheet.create({
 });
 
 export default function OnboardingWearablesScreen() {
+    // Onboarding drives the 7-day history sync itself (with per-day progress on
+    // the next step), so the silent late backfill stands down from here until
+    // the notifications step releases it.
+    useFocusEffect(useCallback(() => { setOnboardingOwnsBackfill(true); }, []));
+
     const router = useRouter();
     const insets = useSafeAreaInsets();
     const health = useHealthData();

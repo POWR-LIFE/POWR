@@ -9,6 +9,7 @@ import PermissionPrimeScene from '@/components/onboarding/PermissionPrimeScene';
 import { ONBOARDING_DOT_COUNT, dotIndexFor } from '@/lib/onboarding/flow';
 import { useNotifications } from '@/context/NotificationsContext';
 import { recordOnboardingDeclined } from '@/lib/notificationPrompt';
+import { setOnboardingOwnsBackfill } from '@/lib/api/onboardingSync';
 
 const GOLD = '#E8D200';
 const BG = '#0d0d0d';
@@ -53,6 +54,10 @@ const dotStyles = StyleSheet.create({
 const NEXT_SCREEN = '/onboarding-achievement';
 
 export default function OnboardingNotificationsScreen() {
+    // Past the health step — whichever way it ended, onboarding no longer owns
+    // the history sync. Anyone connecting later gets the silent backfill.
+    useEffect(() => { setOnboardingOwnsBackfill(false); }, []);
+
     const router = useRouter();
     const insets = useSafeAreaInsets();
     const { requestPermissions } = useNotifications();

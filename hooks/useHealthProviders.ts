@@ -13,6 +13,7 @@ import {
 import type { ConnectResult } from '@/lib/health/providers/types';
 import { getSessionUser, supabase } from '@/lib/supabase';
 import { awardBonus } from '@/lib/api/points';
+import { backfillHealthHistoryIfNeeded } from '@/lib/api/onboardingSync';
 
 export type ProviderConnection = {
     connected_at?: string;
@@ -129,6 +130,9 @@ export function useHealthProviders() {
                     .update({ health_provider_connections: next, active_health_provider: nextActive })
                     .eq('id', user.id);
                 await refresh();
+                // Granted outside the app — pull their history too, same as an
+                // in-app connect. No-op if onboarding owns it or it already ran.
+                backfillHealthHistoryIfNeeded().catch(() => {});
             })();
         });
         return () => sub.remove();
@@ -192,6 +196,12 @@ export function useHealthProviders() {
             // One-time +20 POWR for connecting a health source / wearable.
             // Idempotent on the server, so connecting more than one never stacks.
             awardBonus('wearable_connection').catch(() => {});
+            // A native connect made after onboarding still deserves the 7-day
+            // history — otherwise the app opens empty and the week rings read
+            // zero. Fire-and-forget: a failed backfill must not fail the connect.
+            if (id === getNativeProviderId()) {
+                backfillHealthHistoryIfNeeded().catch(() => {});
+            }
             return 'connected';
         } finally {
             setBusyId(null);

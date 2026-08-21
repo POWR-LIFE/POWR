@@ -3,7 +3,7 @@ import HealthDataScene from '@/components/onboarding/HealthDataScene';
 import { ONBOARDING_DOT_COUNT, dotIndexFor } from '@/lib/onboarding/flow';
 import { androidHealthConnectStatus, useHealthData } from '@/hooks/useHealthData';
 import { useHealthProviders } from '@/hooks/useHealthProviders';
-import { syncHistoricalHealthData, type DaySyncResult } from '@/lib/api/onboardingSync';
+import { syncHistoricalHealthData, setOnboardingOwnsBackfill, type DaySyncResult } from '@/lib/api/onboardingSync';
 import { getNativeProviderId } from '@/lib/health/providers';
 import { recordHealthOnboardingDeclined } from '@/lib/healthPrompt';
 import { awardBonus } from '@/lib/api/points';
@@ -232,6 +232,10 @@ const syncStyles = StyleSheet.create({
 });
 
 export default function OnboardingHealthScreen() {
+    // This screen owns the history sync (it renders the per-day progress), so
+    // the silent backfill stays out of the way. Released on the next step.
+    useFocusEffect(useCallback(() => { setOnboardingOwnsBackfill(true); }, []));
+
     const router = useRouter();
     const insets = useSafeAreaInsets();
     const health = useHealthData();

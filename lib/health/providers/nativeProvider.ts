@@ -4,6 +4,7 @@ import {
     androidCheckAlreadyGranted,
     androidCheckAvailable,
     androidRequestPermissions,
+    getWeekHistoryNow,
     iosRequestPermissions,
 } from '@/hooks/useHealthData';
 import type {
@@ -111,7 +112,7 @@ export function createNativeHealthProvider(): HealthProvider {
             return null;
         },
         async getWeekHistory(): Promise<DayHealthSummary[]> {
-            return [];
+            return getWeekHistoryNow();
         },
 
         async verifyWalking(claimedSteps: number): Promise<VerifyResult> {

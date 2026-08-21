@@ -12,6 +12,7 @@ import {
     useHealthData,
 } from '@/hooks/useHealthData';
 import { getStepsToday, syncWalkingNow } from '@/lib/health/walkingSync';
+import { backfillHealthHistoryIfNeeded } from '@/lib/api/onboardingSync';
 import { awardBonus } from '@/lib/api/points';
 import {
     detectHealthPromptMode,
@@ -69,6 +70,9 @@ export default function HealthPrimeSheet() {
         // users who skipped onboarding still earn it when they connect from here.
         awardBonus('health_connection').catch(() => {});
         syncWalkingNow().catch(() => {});
+        // syncWalkingNow only covers today. Someone connecting from here skipped
+        // onboarding's history sync, so pull their last 7 days as well.
+        backfillHealthHistoryIfNeeded().catch(() => {});
         setMode('hidden');
     }, []);
 
