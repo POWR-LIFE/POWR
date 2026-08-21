@@ -17,6 +17,11 @@ export interface OpenBoardPromptProps {
   teaserCount: number;
   /** How many board cards are currently on screen (opted-in users only). */
   boardCount: number;
+  /** Whether this user has anyone they could invite directly. The prompt used
+   *  to say "No one to challenge yet?" to everyone with an empty board — which
+   *  is simply false for someone with ten friends, and put the board in
+   *  competition with the template cards that already serve them. */
+  hasCrew: boolean;
   /** Turn the board on. Only called from the not-opted-in states. */
   onEnable: () => Promise<void>;
   /** Open the create sheet with the board post already ticked. */
@@ -39,7 +44,7 @@ export interface OpenBoardPromptProps {
  *   · not opted in, nothing waiting → the plain pitch, aimed at the ~2/3 of
  *     active users who have no friends to invite.
  */
-export function OpenBoardPrompt({ optedIn, teaserCount, boardCount, onEnable, onPost }: OpenBoardPromptProps) {
+export function OpenBoardPrompt({ optedIn, teaserCount, boardCount, hasCrew, onEnable, onPost }: OpenBoardPromptProps) {
   const [busy, setBusy] = useState(false);
 
   // Opted in with a populated shelf — the cards speak for themselves.
@@ -47,6 +52,13 @@ export function OpenBoardPrompt({ optedIn, teaserCount, boardCount, onEnable, on
 
   const waiting = !optedIn && teaserCount > 0;
   const beFirst = optedIn && boardCount === 0;
+  // Someone with friends and nothing waiting on the board already has an
+  // answer on this screen: the template cards, aimed at people they actually
+  // know. Pitching an empty board at them is both wrong ("no one to challenge"
+  // is false) and a distraction from the better option. They still get the
+  // prompt the moment there IS someone waiting — that's a real opportunity,
+  // not a consolation prize.
+  if (!optedIn && !waiting && hasCrew) return null;
 
   const press = async () => {
     if (busy) return;
@@ -64,7 +76,7 @@ export function OpenBoardPrompt({ optedIn, teaserCount, boardCount, onEnable, on
     ? `${teaserCount} ${teaserCount === 1 ? 'member is' : 'members are'} waiting for a challenger`
     : beFirst
       ? 'Be first on the board'
-      : 'No one to challenge yet?';
+      : 'No one to challenge yet?';   // only reached when they genuinely have nobody
 
   const body = waiting
     ? 'Take one on and you race them for real. They see your first name and photo — nothing else.'
