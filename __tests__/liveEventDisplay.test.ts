@@ -7,7 +7,7 @@ beforeAll(() => {
         locales?: Intl.LocalesArgument,
         options?: Intl.DateTimeFormatOptions,
     ): string {
-        return realToLocaleDateString.call(this, locales, { ...options, timeZone: 'Europe/London' });
+        return realToLocaleDateString.call(this, locales ?? 'en-GB', { ...options, timeZone: 'Europe/London' });
     });
 });
 
@@ -38,7 +38,7 @@ describe('scoringLine', () => {
     it('ends on the last day anyone can score, not the half-open boundary', () => {
         // The window closes at 00:00 on 3 Sep local — the last day that counts
         // is 2 Sep, and quoting the boundary would cost people a day.
-        expect(scoringLine({ ...WINDOW, status: 'live' })).toContain('2');
+        expect(scoringLine({ ...WINDOW, status: 'live' })).toContain('2 Sep');
         expect(scoringLine({ ...WINDOW, status: 'live' })).not.toContain('3 Sep');
     });
 });
