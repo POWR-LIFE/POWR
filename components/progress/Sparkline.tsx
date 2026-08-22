@@ -1,14 +1,14 @@
 import React, { useState } from 'react';
 import { View } from 'react-native';
-import Svg, { Circle, Defs, Line, LinearGradient, Path, Polyline, Rect, Stop, Text as SvgText } from 'react-native-svg';
+import Svg, { Circle, Defs, Line, LinearGradient, Path, Rect, Stop, Text as SvgText } from 'react-native-svg';
 
 import type { TrendPoint } from '@/lib/api/bodyTrends';
 
 /**
  * Trend charts for the BODY tab. Two forms, one scale:
  *
- *  - Sparkline: a line for genuinely continuous daily series (resting HR),
- *    with a gradient area fill and its high / low / average annotated in-line.
+ *  - Sparkline: a continuous daily series (resting HR) drawn as DEVIATION from
+ *    the user's own average — see the note on the component itself.
  *  - RangeDotChart: readings plotted against a band of the user's own typical
  *    range (average ± one standard deviation). For series that are EVENTS, not
  *    a signal — per-workout HRV lands only on days you trained, and joining
@@ -16,12 +16,9 @@ import type { TrendPoint } from '@/lib/api/bodyTrends';
  *    measured.
  *
  * Both take `goodDirection`, and with it the marks judge themselves, green
- * always on the healthy side ('down' for resting HR, 'up' for HRV). The line
- * wears a smooth VERTICAL gradient — colour is encoding value, and value IS
- * the y-axis, so a peak blends into rose and a trough into green with no hard
- * switch mid-line. Discrete marks (dots, labels) use the same judgement as a
- * threshold: past ±0.4σ of the user's own series gets the verdict colour,
- * everyday noise stays neutral ink.
+ * always on the healthy side ('down' for resting HR, 'up' for HRV). Discrete
+ * marks (dots, labels) use that judgement as a threshold: past ±0.4σ of the
+ * user's own series gets the verdict colour, everyday noise stays neutral ink.
  *
  * Both place points by DATE, not array index: the series are sparse, and
  * index-spacing would draw a 10-day gap and a 1-day gap the same width.
@@ -90,6 +87,72 @@ function clampX(x: number, width: number): number {
 }
 
 /**
+ * Strictly increasing x, keeping the NEWEST reading wherever several land on
+ * one — they are all "at least N days ago" and the freshest is the one that
+ * belongs against the window's edge.
+ *
+ * The line and the per-reading dots BOTH run through this, so a clamped pair
+ * can never draw a dot the curve doesn't pass through.
+ */
+function byIncreasingX<T extends { x: number }>(input: T[]): T[] {
+    const out: T[] = [];
+    for (const p of input) {
+        if (out.length > 0 && p.x <= out[out.length - 1].x) out[out.length - 1] = p;
+        else out.push(p);
+    }
+    return out;
+}
+
+/**
+ * Monotone cubic (Fritsch–Carlson) through the points, as an SVG path.
+ *
+ * Resting HR wobbles a bpm or two a day, and a straight polyline renders that
+ * as a zigzag that reads like jitter rather than a trend. Monotone is the
+ * specific curve to use here rather than a plain cubic or Catmull-Rom: it
+ * cannot overshoot between samples, so the curve never draws a peak higher
+ * than any reading the user actually recorded — a chart that invents a 62 on a
+ * day the watch said 59 would be a lie, however smooth.
+ *
+ * Every slope here divides by the x-gap, so COINCIDENT X IS FATAL: one pair of
+ * points sharing an x puts `NaN` in the path, and react-native-svg's native
+ * parser then dies on the 'N' rather than ignoring the segment. The x-scale
+ * clamps anything outside the window onto the edge, so coincident x is normal
+ * input, not a corner case — collapse it here rather than trusting callers.
+ */
+export function smoothPath(input: { x: number; y: number }[]): string {
+    const pts = byIncreasingX(input);
+    const n = pts.length;
+    if (n < 2) return '';
+    const dx: number[] = [], slope: number[] = [];
+    for (let i = 0; i < n - 1; i++) {
+        dx.push(pts[i + 1].x - pts[i].x);
+        slope.push((pts[i + 1].y - pts[i].y) / (pts[i + 1].x - pts[i].x));
+    }
+    // Tangent at each point, flattened to zero at every local extreme — that
+    // flattening is what keeps the curve inside the data's own range.
+    const t: number[] = [slope[0]];
+    for (let i = 1; i < n - 1; i++) {
+        if (slope[i - 1] * slope[i] <= 0) {
+            t.push(0);
+        } else {
+            const w1 = 2 * dx[i] + dx[i - 1];
+            const w2 = dx[i] + 2 * dx[i - 1];
+            t.push((w1 + w2) / (w1 / slope[i - 1] + w2 / slope[i]));
+        }
+    }
+    t.push(slope[n - 2]);
+
+    let d = `M ${pts[0].x} ${pts[0].y}`;
+    for (let i = 0; i < n - 1; i++) {
+        const h = dx[i] / 3;
+        d += ` C ${pts[i].x + h} ${pts[i].y + t[i] * h},`
+            + ` ${pts[i + 1].x - h} ${pts[i + 1].y - t[i + 1] * h},`
+            + ` ${pts[i + 1].x} ${pts[i + 1].y}`;
+    }
+    return d;
+}
+
+/**
  * "58" over the highest point, "52" under the lowest, "avg 54" on the dashed
  * line — the numbers that turn a bare line into a range the user can read.
  * With a goodDirection the two extremes wear their verdict colour.
@@ -128,12 +191,74 @@ function RangeAnnotations({ points, scale, width, height, dir }: {
     );
 }
 
+/**
+ * The window's highest and lowest readings, printed over their own dots.
+ *
+ * `makeScale`'s 16px vPad exists for exactly this: the extremes never reach
+ * the canvas edge, so a label above the peak and below the trough always has
+ * room. Each still flips to the other side if the geometry ever gets tight.
+ *
+ * The numerals wear the verdict colours, matching the fill beneath them
+ * (Jamie's call). They take the colour from WHICH SIDE they sit on rather
+ * than from `valueTint`'s ±0.4σ test, so the high and low always read as a
+ * clear rose/green pair — a tightly-clustered series would otherwise leave
+ * its own extremes inside the neutral band and print them both grey.
+ */
+function ExtremeLabels({ points, scale, width, height, dir }: {
+    points: TrendPoint[]; scale: Scale; width: number; height: number; dir: GoodDirection;
+}) {
+    if (scale.max === scale.min) return null;
+    const todayDate = points[points.length - 1].date;
+    // The max can only sit at or above the average and the min at or below it,
+    // so high always takes the above-side hue and low the below-side one.
+    const marks = [
+        { p: points.find(v => v.value === scale.max)!, above: true, fill: dir === 'down' ? ROSE : GREEN },
+        { p: points.find(v => v.value === scale.min)!, above: false, fill: dir === 'down' ? GREEN : ROSE },
+    ];
+    return (
+        <>
+            {marks.map(({ p, above, fill }) => {
+                // Today is skipped: the headline above already prints its
+                // value, and a label here would land on its halo.
+                if (p.date === todayDate) return null;
+                const y = scale.y(p.value);
+                const tight = above ? y < 12 : y > height - 16;
+                return (
+                    <SvgText
+                        key={p.date}
+                        x={clampX(scale.x(p.date), width)}
+                        y={above === !tight ? y - 8 : y + 13}
+                        fontSize={9} fontWeight="500"
+                        fill={fill} textAnchor="middle"
+                    >
+                        {Math.round(p.value)}
+                    </SvgText>
+                );
+            })}
+        </>
+    );
+}
+
+/**
+ * A daily series drawn as DEVIATION from the user's own average.
+ *
+ * The baseline is the average, and the fill hangs off it rather than off the
+ * floor: rose where the line runs the unhealthy side, green where it runs the
+ * healthy one. That is the honest encoding for these metrics, because a
+ * resting HR of 53 means nothing in the absolute and everything relative to
+ * YOUR usual 53 — and it puts the colour on the area, whose size is the size
+ * of the deviation, instead of on the line, where an earlier pass tinted by
+ * absolute value and left every ordinary day a muddy neutral.
+ *
+ * There is no legend, no on-canvas "avg" label and no floating high/low
+ * numerals: the caller's headline already reads "N bpm below your average",
+ * which names the baseline, and the caller's axis row carries the range. Three
+ * restatements of the average was most of what made the v1 chart feel busy.
+ */
 export function Sparkline({
     points,
     days,
     height = 64,
-    color,
-    area = false,
     goodDirection,
 }: {
     /** Oldest first, dates within the trailing `days` window. */
@@ -141,12 +266,8 @@ export function Sparkline({
     /** Width of the window in days — fixes the x-scale even when data is sparse. */
     days: number;
     height?: number;
-    /** Base ink for the line where no verdict applies. */
-    color: string;
-    /** Gradient fill under the line, fading to transparent at the baseline. */
-    area?: boolean;
-    /** Which way is healthy — colours the marks green/rose around the average. */
-    goodDirection?: GoodDirection;
+    /** Which way is healthy — decides which side of the baseline reads green. */
+    goodDirection: GoodDirection;
 }) {
     const [width, setWidth] = useState(0);
     if (points.length === 0) return null;
@@ -162,75 +283,108 @@ export function Sparkline({
         >
             {width > 0 && (() => {
                 const scale = makeScale(points, days, width, height);
-                const coords = points.map(p => ({ x: scale.x(p.date), y: scale.y(p.value) }));
+                const coords = byIncreasingX(points.map(p => ({ x: scale.x(p.date), y: scale.y(p.value) })));
+                const first = coords[0];
                 const last = coords[coords.length - 1];
                 const lastPoint = points[points.length - 1];
-                const areaPath = coords.length > 1
-                    ? `M ${coords[0].x} ${height - 2} `
-                        + coords.map(c => `L ${c.x} ${c.y}`).join(' ')
-                        + ` L ${last.x} ${height - 2} Z`
+                const avgY = scale.y(scale.avg);
+                const linePath = smoothPath(coords);
+
+                // The region BETWEEN the curve and the baseline, as one closed
+                // path. It self-intersects wherever the series crosses the
+                // average, which is fine and in fact the point: with the
+                // default nonzero fill rule every lobe still fills, and a
+                // single vertical gradient whose midpoint sits exactly on the
+                // baseline then paints the lobes above in one hue and the
+                // lobes below in the other. No clip path needed — worth
+                // knowing, since react-native-svg does not re-export ClipPath.
+                const areaPath = linePath
+                    ? `${linePath} L ${last.x} ${avgY} L ${first.x} ${avgY} Z`
                     : null;
-                // With verdict colouring on the line, the fill stays neutral —
-                // two colour systems in one chart would fight each other.
-                const fillColor = goodDirection ? '#ffffff' : color;
-                // Ids are document-global on web — the avg fraction folded in
-                // keeps two charts' gradients (whose geometry differs) apart.
-                const uniq = `${(goodDirection ?? 'plain')}${Math.round(scale.y(scale.avg))}h${height}`;
-                const fillId = `sparkfill-${fillColor.replace(/[^a-zA-Z0-9]/g, '')}-${uniq}`;
-                const lineId = `sparkline-${uniq}`;
-                // Colour encodes value and value IS the y-axis, so a vertical
-                // gradient in user space blends the verdict smoothly along the
-                // line: unhealthy hue at the range's far edge, neutral at the
-                // average, green at the healthy edge — no hard switches.
-                const topColor = goodDirection === 'down' ? ROSE : GREEN;
-                const bottomColor = goodDirection === 'down' ? GREEN : ROSE;
-                const avgFrac = Math.min(Math.max(scale.y(scale.avg) / height, 0.15), 0.85);
+
+                // 'down' is healthy-is-lower (resting HR): above the baseline
+                // is the bad side, so it wears rose and below wears green.
+                const aboveColor = goodDirection === 'down' ? ROSE : GREEN;
+                const belowColor = goodDirection === 'down' ? GREEN : ROSE;
+
+                // The gradient spans the DATA's extremes rather than the
+                // canvas, so full saturation lands on the highest and lowest
+                // readings the user actually has and fades out at the average.
+                const yTop = scale.y(scale.max);
+                const yBottom = scale.y(scale.min);
+                // A flat series has no deviation to shade, and would divide by
+                // zero here; it renders as the bare line on its baseline.
+                const flat = yBottom - yTop < 1;
+                const avgFrac = flat ? 0.5 : (avgY - yTop) / (yBottom - yTop);
+                // Ids are document-global on web — fold in the geometry so two
+                // charts on the tab can never collide on one.
+                const fillId = `sparkdev-${goodDirection}${Math.round(avgY)}h${height}`;
+
                 return (
                     <Svg width={width} height={height}>
-                        <Defs>
-                            {area && areaPath && (
-                                <LinearGradient id={fillId} x1="0" y1="0" x2="0" y2="1">
-                                    <Stop offset="0" stopColor={fillColor} stopOpacity={goodDirection ? 0.08 : 0.25} />
-                                    <Stop offset="1" stopColor={fillColor} stopOpacity={0.02} />
-                                </LinearGradient>
-                            )}
-                            {goodDirection && (
-                                // The verdict colours HOLD across most of their half
-                                // and only dissolve to neutral right at the average —
-                                // three evenly-spread stops left the middle two-thirds
-                                // of the line looking like plain white (device-tested).
-                                <LinearGradient
-                                    id={lineId}
-                                    x1="0" y1="0" x2="0" y2={String(height)}
-                                    gradientUnits="userSpaceOnUse"
-                                >
-                                    <Stop offset="0" stopColor={topColor} />
-                                    <Stop offset={String(avgFrac * 0.6)} stopColor={topColor} />
-                                    <Stop offset={String(avgFrac)} stopColor={NEUTRAL} />
-                                    <Stop offset={String(avgFrac + (1 - avgFrac) * 0.4)} stopColor={bottomColor} />
-                                    <Stop offset="1" stopColor={bottomColor} />
-                                </LinearGradient>
-                            )}
-                        </Defs>
-                        {area && areaPath && <Path d={areaPath} fill={`url(#${fillId})`} />}
+                        {!flat && areaPath && (
+                            <>
+                                <Defs>
+                                    <LinearGradient
+                                        id={fillId}
+                                        x1="0" y1={String(yTop)} x2="0" y2={String(yBottom)}
+                                        gradientUnits="userSpaceOnUse"
+                                    >
+                                        <Stop offset="0" stopColor={aboveColor} stopOpacity={0.42} />
+                                        {/* Both sides fade to ~nothing at the average, so
+                                            the hue swap is invisible; the pair of stops is
+                                            nudged a hair apart rather than sharing one
+                                            offset, which not every platform's native
+                                            gradient handles the same way. */}
+                                        <Stop offset={String(avgFrac)} stopColor={aboveColor} stopOpacity={0.02} />
+                                        <Stop offset={String(Math.min(avgFrac + 0.001, 1))} stopColor={belowColor} stopOpacity={0.02} />
+                                        <Stop offset="1" stopColor={belowColor} stopOpacity={0.42} />
+                                    </LinearGradient>
+                                </Defs>
+                                <Path d={areaPath} fill={`url(#${fillId})`} />
+                            </>
+                        )}
+                        {/* Solid, not dashed: it is the chart's zero now, not a
+                            faint annotation floating behind the data. */}
                         <Line
-                            x1={PAD} y1={scale.y(scale.avg)} x2={width - PAD} y2={scale.y(scale.avg)}
-                            stroke="rgba(255,255,255,0.12)" strokeWidth={1} strokeDasharray="2 4"
+                            x1={PAD} y1={avgY} x2={width - PAD} y2={avgY}
+                            stroke="rgba(255,255,255,0.22)" strokeWidth={1}
                         />
-                        {coords.length > 1 && (
-                            <Polyline
-                                points={coords.map(c => `${c.x},${c.y}`).join(' ')}
+                        {linePath && (
+                            <Path
+                                d={linePath}
                                 fill="none"
-                                stroke={goodDirection ? `url(#${lineId})` : color}
-                                strokeWidth={2}
+                                stroke="rgba(255,255,255,0.92)"
+                                strokeWidth={1.5}
                                 strokeLinejoin="round" strokeLinecap="round"
                             />
                         )}
+                        {/* One dot per actual reading, so the chart shows where
+                            it was SAMPLED and not just the curve through those
+                            samples. This is what keeps a sync gap honest: with
+                            the line alone, a smooth ramp across four missing
+                            days is indistinguishable from four real ones.
+                            Today is excluded — it gets the haloed mark below. */}
+                        {coords.slice(0, -1).map(c => (
+                            <Circle key={`${c.x}`} cx={c.x} cy={c.y} r={2} fill="#ffffff" fillOpacity={0.55} />
+                        ))}
+                        {/* The window's high and low, each sitting on its own
+                            dot. v1 printed these too but left them floating
+                            with nothing tying them to a reading; the fix was
+                            never to delete the numbers, it was to give them an
+                            anchor and real clearance. */}
+                        <ExtremeLabels points={points} scale={scale} width={width} height={height} dir={goodDirection} />
+                        {/* Today, haloed: the reading the user came for was the
+                            smallest mark on the v1 chart. */}
                         <Circle
-                            cx={last.x} cy={last.y} r={2.5}
-                            fill={valueTint(lastPoint.value, scale, goodDirection, color)}
+                            cx={last.x} cy={last.y} r={6.5}
+                            fill={valueTint(lastPoint.value, scale, goodDirection, NEUTRAL)}
+                            fillOpacity={0.2}
                         />
-                        <RangeAnnotations points={points} scale={scale} width={width} height={height} dir={goodDirection} />
+                        <Circle
+                            cx={last.x} cy={last.y} r={3}
+                            fill={valueTint(lastPoint.value, scale, goodDirection, NEUTRAL)}
+                        />
                     </Svg>
                 );
             })()}
