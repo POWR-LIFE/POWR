@@ -9,6 +9,7 @@ import GeometricBackground from '@/components/GeometricBackground';
 import { ONBOARDING_DOT_COUNT, dotIndexFor } from '@/lib/onboarding/flow';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/lib/supabase';
+import { formatMemberId } from '@/shared/memberId';
 import { sendWelcomeEmail } from '@/lib/api/email';
 
 const GOLD = '#E8D200';
@@ -70,7 +71,12 @@ export default function OnboardingAchievementScreen() {
     const params = useLocalSearchParams<{ streakDays?: string; totalSessions?: string; activeDays?: string }>();
 
     const [inviteCode, setInviteCode] = useState('');
-    const [codeFromLink, setCodeFromLink] = useState(false);
+    // A code already captured upstream (invite link, the email signup screen,
+    // or the profile screen) only gets a one-line receipt here — nobody is
+    // asked for the same code twice. `fixing` reopens the editable field when
+    // an apply comes back invalid, which is the one case they must retype.
+    const [carriedCode, setCarriedCode] = useState('');
+    const [fixing, setFixing] = useState(false);
     const [submitting, setSubmitting] = useState(false);
 
     // A code captured from an invite link (AuthContext stores it as
@@ -88,7 +94,7 @@ export default function OnboardingAchievementScreen() {
             .then(deepCode => {
                 if (deepCode) {
                     setInviteCode(deepCode.toUpperCase());
-                    setCodeFromLink(true);
+                    setCarriedCode(deepCode.toUpperCase());
                 }
             })
             .catch(() => {});
@@ -311,27 +317,37 @@ export default function OnboardingAchievementScreen() {
             {/* ── CTA ── */}
             <Animated.View style={[styles.bottom, { paddingBottom: insets.bottom + 28, opacity: buttonOpacity, transform: [{ translateY: kbOffset }] }]}>
                 <StepDots current={dotIndexFor('/onboarding-achievement')} />
-                {/* Invite code — the only place a referral can ever be applied */}
-                <View style={styles.inviteBlock}>
-                    <Text style={styles.inviteTitle}>
-                        {codeFromLink ? 'Your friend’s invite code' : 'Got an invite code from a friend?'}
-                    </Text>
-                    <Text style={styles.inviteSub}>
-                        {codeFromLink
-                            ? 'Carried over from sign-up — you’ll both earn POWR once you log your first workout.'
-                            : 'Last chance to enter it — you’ll both earn POWR after your first workout, and it can’t be added later.'}
-                    </Text>
-                    <TextInput
-                        style={styles.codeInput}
-                        placeholder="8-CHARACTER CODE"
-                        placeholderTextColor="rgba(255,255,255,0.28)"
-                        value={inviteCode}
-                        onChangeText={t => setInviteCode(t.toUpperCase())}
-                        autoCapitalize="characters"
-                        autoCorrect={false}
-                        maxLength={8}
-                    />
-                </View>
+                {/* Invite code — the only place a referral can ever be APPLIED.
+                    Already given it? A receipt, not another question. */}
+                {carriedCode && !fixing ? (
+                    <View style={styles.inviteReceipt}>
+                        <Ionicons name="checkmark-circle" size={15} color={GOLD} />
+                        <Text style={styles.inviteReceiptText}>
+                            Invite code {formatMemberId(carriedCode)} — you’ll both earn POWR after your first workout.
+                        </Text>
+                    </View>
+                ) : (
+                    <View style={styles.inviteBlock}>
+                        <Text style={styles.inviteTitle}>
+                            {fixing ? 'Check that invite code' : 'Got an invite code from a friend?'}
+                        </Text>
+                        <Text style={styles.inviteSub}>
+                            {fixing
+                                ? 'That one wasn’t recognised — check the 8 characters against your friend’s message.'
+                                : 'Last chance to enter it — you’ll both earn POWR after your first workout, and it can’t be added later.'}
+                        </Text>
+                        <TextInput
+                            style={styles.codeInput}
+                            placeholder="8-CHARACTER CODE"
+                            placeholderTextColor="rgba(255,255,255,0.28)"
+                            value={inviteCode}
+                            onChangeText={t => setInviteCode(t.toUpperCase())}
+                            autoCapitalize="characters"
+                            autoCorrect={false}
+                            maxLength={8}
+                        />
+                    </View>
+                )}
                 <Pressable
                     style={({ pressed }) => [styles.primaryButton, (pressed || submitting) && { opacity: 0.86 }]}
                     disabled={submitting}
@@ -363,7 +379,7 @@ export default function OnboardingAchievementScreen() {
                             if (refErr) ({ data, error: refErr } = await applyCode());
                             const result = (data ?? null) as { success?: boolean; error?: string; status?: string } | null;
 
-                            const stayAndFix = () => setInviteCode(code);
+                            const stayAndFix = () => { setInviteCode(code); setFixing(true); };
                             const dropCode = async () => {
                                 await AsyncStorage.removeItem('pending_referral_code').catch(() => {});
                                 goHome();
@@ -561,6 +577,21 @@ const styles = StyleSheet.create({
     // CTA
     bottom: {
         paddingHorizontal: 24,
+    },
+    inviteReceipt: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 7,
+        marginBottom: 16,
+        paddingHorizontal: 8,
+    },
+    inviteReceiptText: {
+        flex: 1,
+        color: 'rgba(255,255,255,0.68)',
+        fontSize: 12,
+        fontFamily: FONT_REGULAR,
+        lineHeight: 16,
     },
     inviteBlock: {
         borderRadius: 14,
