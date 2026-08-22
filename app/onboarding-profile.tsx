@@ -1,4 +1,5 @@
 import { useAuth } from '@/context/AuthContext';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
@@ -25,6 +26,7 @@ import {
     uploadAvatar,
 } from '@/lib/api/user';
 import { ONBOARDING_DOT_COUNT, dotIndexFor } from '@/lib/onboarding/flow';
+import { normalizeMemberId } from '@/shared/memberId';
 import {
     MAX_USERNAME,
     MIN_USERNAME,
@@ -219,6 +221,21 @@ export default function OnboardingProfileScreen() {
     }
 
     // ── Continue ──────────────────────────────────────────────────────────────
+    // The invite code, asked here for anyone who did NOT come through the
+    // email signup screen: "Continue with Apple"/"Continue with Google" route
+    // straight from onboarding-account to this screen, so this is the first —
+    // and, until the last screen, only — place they can hand a code over.
+    // Hidden entirely once a code is already captured (deep link or the email
+    // signup field wrote the same slot); nobody gets asked for it twice.
+    const [inviteCode, setInviteCode] = useState('');
+    const [askInvite, setAskInvite] = useState(false);
+
+    useEffect(() => {
+        AsyncStorage.getItem('pending_referral_code')
+            .then(code => setAskInvite(!code))
+            .catch(() => setAskInvite(true));
+    }, []);
+
     async function handleContinue() {
         if (!canContinue) return;
         setSaving(true);
@@ -254,6 +271,12 @@ export default function OnboardingProfileScreen() {
                 setSaving(false);
                 return;
             }
+
+            // Stash for onboarding-achievement, the one screen that can apply
+            // it (process_referral needs a session). Never clears an existing
+            // code — the field is only shown when there wasn't one.
+            const code = normalizeMemberId(inviteCode);
+            if (code) await AsyncStorage.setItem('pending_referral_code', code).catch(() => {});
 
             router.push(NEXT_SCREEN);
         } catch (e: any) {
@@ -360,6 +383,25 @@ export default function OnboardingProfileScreen() {
                                 : 'Lowercase letters, numbers and underscores.'}
                     </Text>
                 </View>
+
+                {askInvite && (
+                    <View style={styles.fieldBlock}>
+                        <Text style={styles.label}>Invite code (optional)</Text>
+                        <TextInput
+                            style={[styles.input, styles.inviteInput]}
+                            value={inviteCode}
+                            onChangeText={t => setInviteCode(t.toUpperCase())}
+                            placeholder="8-CHARACTER CODE"
+                            placeholderTextColor="rgba(255,255,255,0.25)"
+                            autoCapitalize="characters"
+                            autoCorrect={false}
+                            maxLength={8}
+                        />
+                        <Text style={styles.helper}>
+                            Got a code from a friend? You’ll both earn POWR after your first workout.
+                        </Text>
+                    </View>
+                )}
 
                 {error && (
                     <View style={styles.errorBox}>
@@ -530,6 +572,10 @@ const styles = StyleSheet.create({
         width: 24,
         alignItems: 'center',
         justifyContent: 'center',
+    },
+    inviteInput: {
+        letterSpacing: 2,
+        textAlign: 'center',
     },
     helper: {
         color: 'rgba(255,255,255,0.3)',
