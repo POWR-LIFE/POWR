@@ -60,6 +60,12 @@
     color: #080808; background: var(--gold); border: 0; border-radius: 18px; padding: 11px 15px;
   }
   .code-note { font-size: 12px; font-weight: 300; color: #999; line-height: 1.5; }
+  .retap {
+    margin: 18px 0 0; font-size: 12px; font-weight: 300;
+    color: #9a9a9a; line-height: 1.55; text-align: left;
+    border-left: 2px solid rgba(232,210,0,0.45); padding-left: 12px;
+  }
+  .retap b { color: #F2F2F2; font-weight: 600; }
   .hint { margin-top: 24px; font-size: 11px; color: #444; font-weight: 300; }
   .hint a { color: #666; text-decoration: underline; }
 </style>
@@ -82,6 +88,7 @@
       <a class="btn btn-gold" id="ios-btn" href="https://apps.apple.com/app/id6766784336" style="display:none;">Download on the App&nbsp;Store</a>
       <a class="btn btn-gold" id="android-btn" href="https://play.google.com/store/apps/details?id=com.powr.life" style="display:none;">Get it on Google&nbsp;Play</a>
     </div>
+    <p class="retap" id="retap" style="display:none;"></p>
     <p class="hint">Trouble opening? Visit <a href="https://powr.life">powr.life</a></p>
   </div>
 
@@ -136,6 +143,27 @@
     document.getElementById('code-value').textContent = ref.slice(0, 4) + ' ' + ref.slice(4);
     document.getElementById('code-card').style.display = 'block';
     document.getElementById('subtitle').textContent = 'Install POWR, then enter the code below when you sign up.';
+
+    // The second tap is the only hands-free path we have: powr.life is a
+    // verified Universal Link / App Link, so once POWR is installed the OS
+    // hands this URL — ref= and all — straight to the app, which pre-fills the
+    // code at signup. Opening from the store's own button skips the link and
+    // carries nothing, so say that plainly. (Android could carry the code
+    // through the install itself via the Play Install Referrer API, but that
+    // needs a native module — see the referrer param set below, inert until it
+    // exists.)
+    if (isIOS || isAndroid) {
+      var store = isIOS ? 'App Store' : 'Play Store';
+      var retap = document.getElementById('retap');
+      retap.innerHTML = '<b>After it installs, come back and tap the invite link again.</b> ' +
+        'We\u2019ll fill the code in for you. Opening POWR from the ' + store +
+        ' instead won\u2019t carry it \u2014 you\u2019d have to type the code yourself.';
+      retap.style.display = 'block';
+    }
+    if (isAndroid) {
+      var play = document.getElementById('android-btn');
+      play.href = PLAY_URL + '&referrer=' + encodeURIComponent('ref=' + ref);
+    }
     var btn = document.getElementById('code-copy');
     btn.addEventListener('click', function () {
       var done = function () { btn.textContent = 'Copied'; setTimeout(function () { btn.textContent = 'Copy'; }, 2000); };
