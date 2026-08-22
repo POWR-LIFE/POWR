@@ -11,6 +11,7 @@ import { AUTH_STORAGE_KEY, EMAIL_CONFIRM_REDIRECT, authStorage, authorizeSession
 import { clearDeviceWakeTicket, ensureDeviceWakeTicket, readStoredSession } from '@/lib/backgroundRest';
 import { claimDevice, confirmDeviceTransfer, getDeviceId } from '@/lib/deviceLock';
 import { reportLocationPermission } from '@/lib/locationPermission';
+import { reportUserCountry } from '@/lib/country';
 import TransferDeviceSheet from '@/components/TransferDeviceSheet';
 
 type AuthContextType = {
@@ -455,7 +456,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             // same binding, so re-checking every hour would be wasted work).
             if (session && (event === 'SIGNED_IN' || event === 'INITIAL_SESSION')) {
                 enforceDeviceLock(session);
-                reportLocationPermission(session.user.id);
+                // The country derivation rides the permission snapshot's fix
+                // rather than taking one of its own — see lib/country.ts.
+                reportLocationPermission(session.user.id)
+                    .then(fix => reportUserCountry(session.user.id, fix))
+                    .catch(() => {});
                 refreshWakeTicket(session.user.id);
                 // ZOMBIE PATROL (2026-08-12): the destroyed-session logout bypasses
                 // clearGeofenceStateOnSignOut, so a re-login can inherit a stale
@@ -651,7 +656,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // when the app returns to the foreground — the report itself dedupes.
         const appStateSubscription = AppState.addEventListener('change', (state) => {
             if (state === 'active' && sessionUserRef.current) {
-                reportLocationPermission(sessionUserRef.current);
+                const userId = sessionUserRef.current;
+                reportLocationPermission(userId)
+                    .then(fix => reportUserCountry(userId, fix))
+                    .catch(() => {});
                 // Renewal rides the foreground, because the foreground is the only
                 // place a ticket CAN be minted. A device that opens the app even
                 // once a month therefore never reaches a wake without one.
