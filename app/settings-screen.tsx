@@ -69,6 +69,27 @@ export default function SettingsScreen() {
   // found by — the admin user search, event roster and Live Ops all match it.
   const [memberId, setMemberId] = useState<string | null>(null);
   const [memberIdCopied, setMemberIdCopied] = useState(false);
+  // Late invite-code entry. The row only exists for someone who could still
+  // use it — never referred and inside the grace window — or as a static
+  // "Invited by" receipt once they have been. process_referral enforces the
+  // window; this is presentation. Re-read on focus so applying a code on the
+  // invite screen flips the row on the way back.
+  const [referralState, setReferralState] = useState<
+    { referred: boolean; eligible: boolean; days_left?: number; referrer_name?: string } | null
+  >(null);
+
+  useFocusEffect(
+    useCallback(() => {
+      let alive = true;
+      (async () => {
+        try {
+          const { data } = await supabase.rpc('referral_entry_state');
+          if (alive && data) setReferralState(data as any);
+        } catch { /* leave the row hidden */ }
+      })();
+      return () => { alive = false; };
+    }, []),
+  );
   // Which permission the priming screen is currently coaching, if any. Every
   // permission row opens it instead of an OS alert — same layout, scenes and
   // copy as onboarding, so the user is shown the screen they're about to land on.
@@ -303,6 +324,29 @@ export default function SettingsScreen() {
               valueColor={memberIdCopied ? GREEN : undefined}
               trailingIcon={memberIdCopied ? 'checkmark' : 'copy-outline'}
               onPress={copyMemberId}
+              isLast={!referralState?.referred && !referralState?.eligible}
+            />
+          ) : null}
+          {referralState?.referred ? (
+            <RowLink
+              icon="gift-outline"
+              label="Invited by"
+              sublabel="You both earn 20 POWR after your first verified workout"
+              value={referralState.referrer_name}
+              trailingIcon="checkmark"
+              onPress={() => router.push('/invite-code')}
+              isLast
+            />
+          ) : referralState?.eligible ? (
+            <RowLink
+              icon="gift-outline"
+              label="Have an invite code?"
+              sublabel={
+                referralState.days_left && referralState.days_left > 1
+                  ? `Add a friend's code in your first days — ${referralState.days_left} left`
+                  : "Last day to add a friend's code"
+              }
+              onPress={() => router.push('/invite-code')}
               isLast
             />
           ) : null}
