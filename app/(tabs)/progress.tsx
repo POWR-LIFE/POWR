@@ -424,6 +424,18 @@ function BreakdownSection({
   const currentIndexRef = useRef(0);
   const isSyncingRef = useRef(false);
 
+  // Pages sit side by side in a horizontal row, so without an explicit height
+  // the viewport takes the height of the TALLEST page and every other tab
+  // inherits it as dead space you can scroll into. Measure each page and pin
+  // the viewport to the active one.
+  const [pageHeights, setPageHeights] = useState<Record<string, number>>({});
+  const measurePage = useCallback((key: string, height: number) => {
+    setPageHeights(prev => (
+      Math.abs((prev[key] ?? 0) - height) < 1 ? prev : { ...prev, [key]: height }
+    ));
+  }, []);
+  const activeHeight = pageHeights[activeTab];
+
   // Tab bar shows at most 4 labels at once; with more tabs it scrolls and
   // follows the active tab so the selection is always in view. Edge chevrons
   // appear only on the side(s) with more tabs off-screen.
@@ -508,7 +520,7 @@ function BreakdownSection({
       </View>
 
       <View
-        style={styles.tabContentViewport}
+        style={[styles.tabContentViewport, activeHeight ? { height: activeHeight } : null]}
         onLayout={(event) => setPageWidth(event.nativeEvent.layout.width)}
       >
         <ScrollView
@@ -519,9 +531,14 @@ function BreakdownSection({
           showsHorizontalScrollIndicator={false}
           onScroll={handleScroll}
           scrollEventThrottle={16}
+          contentContainerStyle={styles.tabPages}
         >
           {tabs.map(({ key }) => (
-            <View key={key} style={[styles.tabContentPage, { width: pageWidth || undefined }]}>
+            <View
+              key={key}
+              style={[styles.tabContentPage, { width: pageWidth || undefined }]}
+              onLayout={(event) => measurePage(key, event.nativeEvent.layout.height)}
+            >
               {key === 'walking' && (
                 <MovementTab
                   walking={walking}
@@ -608,7 +625,11 @@ const styles = StyleSheet.create({
   },
   tabContentViewport: {
     minHeight: 480,
+    overflow: 'hidden',
   },
+  // flex-start keeps each page at its own natural height instead of stretching
+  // every one to match the tallest sibling in the row.
+  tabPages: { alignItems: 'flex-start' },
   tabContentPage: {
     padding: 20,
     minHeight: 480,
