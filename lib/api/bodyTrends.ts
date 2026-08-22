@@ -177,8 +177,13 @@ export async function fetchBodyTrends(): Promise<BodyTrends> {
     const user = await getSessionUser();
     if (!user) return EMPTY;
 
+    // TREND_DAYS - 1, matching loadSince below: the window is INCLUSIVE of
+    // today, so a bare `- TREND_DAYS` returned 31 distinct local days into a
+    // scale that only has 30 columns. The chart's x-scale clamps the overflow
+    // onto its left edge, which stacked two readings on one x — invisible when
+    // the line was a polyline, fatal once it became a smoothed path.
     const since = new Date();
-    since.setDate(since.getDate() - TREND_DAYS);
+    since.setDate(since.getDate() - (TREND_DAYS - 1));
     since.setHours(0, 0, 0, 0);
 
     const loadSince = new Date();

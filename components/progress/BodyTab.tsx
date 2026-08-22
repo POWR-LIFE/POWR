@@ -159,11 +159,11 @@ export function BodyTab({ initialTrends }: { initialTrends?: BodyTrends | null }
                         )}
                     </View>
                     <View style={styles.chartBlock}>
-                        <Sparkline points={trends.restingHr} days={TREND_DAYS} height={RHR_CHART_H} color={ROSE} area goodDirection="down" />
+                        <Sparkline points={trends.restingHr} days={TREND_DAYS} height={RHR_CHART_H} goodDirection="down" />
+                        {/* No legend: the baseline is the average the headline
+                            already names, and the high/low now sit on their own
+                            dots inside the chart. */}
                         <AxisRow left={`${TREND_DAYS} days ago`} right="today" />
-                        <ChartLegend items={[
-                            { swatch: 'dash', color: 'rgba(255,255,255,0.35)', label: 'your average' },
-                        ]} />
                     </View>
                 </>
             )}
