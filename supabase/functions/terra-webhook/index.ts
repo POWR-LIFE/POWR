@@ -33,6 +33,7 @@ import {
   type StrengthThresholds,
 } from '../_shared/points.ts';
 import { mergeWorkouts, relateWorkouts, type WorkoutWindow } from '../_shared/sessionMerge.ts';
+import { resolveSleepSeconds } from '../_shared/sleepDuration.ts';
 import { verifyTerraSignature } from '../_shared/terraSignature.ts';
 import { DATA_TYPES, extractDeviceFreshness, freshnessPatch } from '../_shared/deviceFreshness.ts';
 import { activityExtras } from '../_shared/terraExtras.ts';
@@ -819,13 +820,20 @@ async function readSleepSnapshot(supabase, sessionId: string) {
 }
 
 /**
+ * How much a night has to grow before we re-announce it. Below this a merge is
+ * Terra restating the same night with a few minutes of drift, and the user does
+ * not need telling twice.
+ */
+const RECEIPT_CORRECTION_MIN_H = 0.5;
+
+/**
  * The sleep receipt. Gated to a night that ended in the last 24h: a reconnect
  * backfills a week of history, and without the gate the user is congratulated
  * NOW for a night they slept days ago (seen live 2026-08-21). Points still land
  * for old nights — never drop a workout — only the push is fresh-only.
  *
- * The sleep_target_met type's daily_cap (1) absorbs the case where a night
- * arrives as a fragment and is then extended by a merge.
+ * `points` is always what the NIGHT is worth, never what one delivery added —
+ * see the correction block in mergeSleepInto.
  */
 async function sendSleepReceipt(userId: string, endIso: string, hours: number, points: number): Promise<void> {
   if (points <= 0) return;
@@ -959,7 +967,28 @@ async function mergeSleepInto(supabase, { userId, target, incoming, reading, sou
     `[terra-webhook] ${relation === 'contiguous' ? 'stitched split' : 'healed'} sleep: `
     + `${existing.durationSec}s → ${merged.durationSec}s (+${deltaPoints} pts)`,
   );
-  await sendSleepReceipt(userId, new Date(merged.endMs).toISOString(), mergedHours, deltaPoints);
+
+  // Correct a receipt that went out on half a night.
+  //
+  // The insert path announces the first telling it sees, and on a split night
+  // that is a fragment: 2026-08-23 pushed "4.8h earned you 1 POWR point" at
+  // 01:56 for a night that finished at 08:13 worth 8.8h and 5 points. Terra
+  // cannot tell us at 01:56 that more is coming — Whoop had scored that segment
+  // as a complete sleep — so the only honest repair is to say so afterwards.
+  //
+  // Two things make that safe to send. It reports the night's TOTAL, not this
+  // merge's delta, so the correction reads as the whole story rather than a
+  // second helping. And it only fires when the number actually moved, so the
+  // restatements Terra sends all day (same night, minutes of drift) stay
+  // silent. daily_cap 2 on sleep_target_met (migration 20260823110000) is what
+  // lets it through at all: at 1 the fragment permanently outranked the truth,
+  // and every correction we tried to send logged as type_daily_cap.
+  const grewBy = mergedHours - existing.durationSec / 3600;
+  if (grewBy >= RECEIPT_CORRECTION_MIN_H) {
+    await sendSleepReceipt(
+      userId, new Date(merged.endMs).toISOString(), mergedHours, oldPoints + deltaPoints,
+    );
+  }
 }
 
 async function handleSleep(supabase, payload): Promise<void> {
@@ -975,10 +1004,9 @@ async function handleSleep(supabase, payload): Promise<void> {
 
     const dur = s.sleep_durations_data ?? {};
     const asleep = dur.asleep ?? {};
-    const inBedSec = dur.other?.duration_in_bed_seconds;
-    const asleepSec = asleep.duration_asleep_state_seconds;
-    const fallbackSec = Math.round((new Date(end).getTime() - new Date(start).getTime()) / 1000);
-    const totalSec = inBedSec ?? asleepSec ?? fallbackSec;
+    // Time ASLEEP, not time in bed — see resolveSleepSeconds for why the order
+    // is what it is, and what reading in-bed first used to cost.
+    const totalSec = resolveSleepSeconds(dur, start, end);
     const hours = totalSec / 3600;
     if (hours < 1) continue; // ignore very short naps (matches client)
 
