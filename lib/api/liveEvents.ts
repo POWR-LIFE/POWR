@@ -119,6 +119,17 @@ export type InviteFriend = {
     avatar_url: string | null;
     converted: boolean;
     converted_at: string | null;
+    /** When they signed up with the code. Optional only because
+     *  pre-migration payloads lack it. */
+    created_at?: string | null;
+    /** This referral is attributed to the current event. */
+    for_event?: boolean;
+    /** THE flag the list is sorted and labelled by: does this friend count
+     *  toward the number on the card right now? The server computes it from
+     *  whichever basis the event actually uses (entry gate, or the invite
+     *  milestone when there is no gate), so the flags always sum to the
+     *  count — never re-derive it on the client. */
+    counts_for_event?: boolean;
 };
 
 export type InviteProgress = {

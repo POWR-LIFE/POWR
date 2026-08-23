@@ -9,7 +9,7 @@ import {
     Link2, RefreshCw, AlertTriangle, Rocket, Undo2,
     Gauge, Download, UserX, UserCheck, ShieldAlert,
     Megaphone, Upload, ExternalLink, QrCode, Smartphone, Users, TicketCheck,
-    ImagePlus, LoaderCircle, DoorOpen, MapPin,
+    ImagePlus, LoaderCircle, DoorOpen, MapPin, ChevronDown,
 } from 'lucide-react';
 import { QRCodeCanvas } from 'qrcode.react';
 import { storageImage, uploadPublicImage } from '../../lib/storage';
@@ -794,8 +794,10 @@ function DoorPanel({ ev, data, busy, onRefresh, onMark }) {
     const [query, setQuery] = useState('');
     const [now, setNow] = useState(() => Date.now());
 
+    const [openGate, setOpenGate] = useState(null);   // user_id whose gate friends are expanded
+
     // Filters must not follow you onto the next event.
-    useEffect(() => { setFilter('all'); setQuery(''); }, [ev.id]);
+    useEffect(() => { setFilter('all'); setQuery(''); setOpenGate(null); }, [ev.id]);
 
     const event = data?.event ?? null;
     const rows = useMemo(() => data?.rows ?? [], [data]);
@@ -962,7 +964,8 @@ function DoorPanel({ ev, data, busy, onRefresh, onMark }) {
                                     const met = gateMet(r, gateN);
                                     const isBusy = busy === r.user_id;
                                     return (
-                                        <tr key={r.user_id} className={p.key === 'not_seen' ? '' : 'bg-[#FAFAF8]/60'}>
+                                        <React.Fragment key={r.user_id}>
+                                        <tr className={p.key === 'not_seen' ? '' : 'bg-[#FAFAF8]/60'}>
                                             <td className="py-2.5 pr-3 align-top">
                                                 <div className="font-semibold text-[#1A1A1A] flex items-center gap-2">
                                                     <Link to={`/admin/users/${r.user_id}`} className="hover:underline">{r.name}</Link>
@@ -992,8 +995,27 @@ function DoorPanel({ ev, data, busy, onRefresh, onMark }) {
                                                     : <span className="inline-flex px-2 py-0.5 rounded-full border border-[#F59E0B]/40 bg-[#F59E0B]/10 text-[9.5px] font-black uppercase tracking-[0.18em] text-[#B45309]">Walk-in</span>}
                                             </td>
                                             {gateN > 0 && (
+                                                // On the night, "3 / 5" is the question "which
+                                                // three?" — someone at the door is about to be
+                                                // told they're short, and the names are the
+                                                // difference between a decision and an argument.
                                                 <td className={`py-2.5 pr-3 align-top text-center font-mono ${met ? 'text-[#16A34A]' : 'text-[#999999]'}`}>
-                                                    {gateLabel(r, gateN)}
+                                                    {(r.gate_friends ?? []).length === 0 ? (
+                                                        gateLabel(r, gateN)
+                                                    ) : (
+                                                        <button
+                                                            onClick={() => setOpenGate(openGate === r.user_id ? null : r.user_id)}
+                                                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg border transition-all ${
+                                                                openGate === r.user_id
+                                                                    ? 'bg-[#8B5CF6]/10 border-[#8B5CF6]/30 text-[#8B5CF6]'
+                                                                    : 'border-transparent hover:border-[#E6E6E1] hover:bg-[#F4F4F1]'
+                                                            }`}
+                                                            title="Show which friends this counts"
+                                                        >
+                                                            {gateLabel(r, gateN)}
+                                                            <ChevronDown size={11} className={openGate === r.user_id ? 'rotate-180' : ''} />
+                                                        </button>
+                                                    )}
                                                 </td>
                                             )}
                                             <td className="py-2.5 pr-3 align-top text-center">
@@ -1032,6 +1054,19 @@ function DoorPanel({ ev, data, busy, onRefresh, onMark }) {
                                                 )}
                                             </td>
                                         </tr>
+                                        {openGate === r.user_id && (
+                                            <tr>
+                                                <td colSpan={7} className="bg-[#FAFAF8] px-4 py-3">
+                                                    <div className="text-[9px] font-black uppercase tracking-[0.2em] text-[#888888] mb-1.5">
+                                                        {r.name}&rsquo;s invites — {gateLabel(r, gateN)} toward the gate
+                                                    </div>
+                                                    {/* Dense: no POWR ID column. This board is read
+                                                        on a phone at a door, not at a desk. */}
+                                                    <InviteeList people={r.gate_friends} dense />
+                                                </td>
+                                            </tr>
+                                        )}
+                                        </React.Fragment>
                                     );
                                 })}
                             </tbody>
@@ -1222,6 +1257,76 @@ function BookingsPanel({ data, busy, onSave, onRefresh }) {
     );
 }
 
+// ─── Who is behind an invite count ───────────────────────────────
+// Every invite number on this page (the roster's Invites cell, the
+// door board's Gate cell, the ops funnel's Signups) opens into this.
+// One component so the three can never describe the same people
+// differently, and it always lists EVERY friend the member brought —
+// the ones that don't count for this event are exactly the rows you
+// need when someone asks why their total is lower than they expected.
+//
+// `people` is the server's _live_event_invitees payload; counts_for_event
+// is its verdict, computed from the event's own basis. Never re-derive it.
+function InviteeList({ people, dense = false }) {
+    const fmt = (iso) => iso
+        ? new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+        : '—';
+    const rows = people ?? [];
+    if (rows.length === 0) {
+        return <p className="text-[12px] text-[#999999] py-1">Nobody has signed up with their code yet.</p>;
+    }
+    return (
+        <table className="w-full text-[12.5px]">
+            <thead>
+                <tr className="text-[9px] font-black uppercase tracking-[0.2em] text-[#AAAAAA] border-b border-[#F0F0EC]">
+                    <th className="text-left py-1.5 pr-3">Friend</th>
+                    {!dense && <th className="text-left py-1.5 pr-3">POWR ID</th>}
+                    <th className="text-left py-1.5 pr-3">Signed up</th>
+                    <th className="text-left py-1.5 pr-3">First workout</th>
+                    <th className="text-left py-1.5 pl-3">Counts</th>
+                </tr>
+            </thead>
+            <tbody className="divide-y divide-[#F6F6F3]">
+                {rows.map((f, i) => (
+                    <tr key={f.referred_id ?? i} className={f.counts_for_event ? '' : 'opacity-70'}>
+                        <td className="py-1.5 pr-3">
+                            <Link to={`/admin/users/${f.referred_id}`} className="font-medium text-[#1A1A1A] hover:underline">
+                                {f.name}
+                            </Link>
+                            {f.email && <span className="font-mono text-[11px] text-[#AAAAAA]"> {f.email}</span>}
+                        </td>
+                        {!dense && (
+                            <td className="py-1.5 pr-3 font-mono text-[11px] tracking-[0.12em] text-[#888888] whitespace-nowrap">
+                                {formatMemberId(f.member_id) || '—'}
+                            </td>
+                        )}
+                        <td className="py-1.5 pr-3 text-[#888888] whitespace-nowrap">{fmt(f.created_at)}</td>
+                        <td className="py-1.5 pr-3 whitespace-nowrap">
+                            {f.converted_at
+                                ? <span className="text-[#10B981]">{fmt(f.converted_at)}</span>
+                                : <span className="text-[#999999]">not yet</span>}
+                        </td>
+                        <td className="py-1.5 pl-3">
+                            {f.counts_for_event ? (
+                                <span className="inline-flex items-center h-5 px-2 rounded-md bg-[#10B981]/10 border border-[#10B981]/25 text-[#0f7a5a] text-[9px] font-black uppercase tracking-[0.15em]">
+                                    Counts
+                                </span>
+                            ) : (
+                                // Two ways to not count, and the difference decides
+                                // whether it's worth chasing: a pending friend still
+                                // can, one from before the window never will.
+                                <span className="text-[11px] text-[#AAAAAA]">
+                                    {f.converted_at ? 'before this event' : 'pending'}
+                                </span>
+                            )}
+                        </td>
+                    </tr>
+                ))}
+            </tbody>
+        </table>
+    );
+}
+
 // ─── Registrations & invites ─────────────────────────────────────
 // Who registered + the invite pipeline + the actual bonus ledger rows,
 // at any status (drafts included) — this is where a preview test run is
@@ -1238,12 +1343,13 @@ function RegistrationsPanel({ ev, data, busy, onRefresh, onAdd, onRemove, onDisq
     const [results, setResults] = useState([]);
     const [searching, setSearching] = useState(false);
     const [filter, setFilter] = useState('');   // filters the roster below
+    const [openInvites, setOpenInvites] = useState(null);   // user_id whose invitees are expanded
 
     // The panel isn't remounted per event, so an in-progress add and the
     // leftover misses must not follow you onto the next one.
     useEffect(() => {
         setAdding(false); setRaw(''); setMissed([]);
-        setQuery(''); setResults([]); setFilter('');
+        setQuery(''); setResults([]); setFilter(''); setOpenInvites(null);
     }, [ev.id]);
 
     // Profile search. Email lives in auth.users where the portal client
@@ -1296,6 +1402,12 @@ function RegistrationsPanel({ ev, data, busy, onRefresh, onAdd, onRemove, onDisq
     const referrals = data?.referrals ?? [];
     const milestones = data?.milestones ?? [];
     const ledger = data?.bonus_ledger ?? [];
+
+    // What a member's invite count is counting TOWARDS, in the event's own
+    // terms: the entry gate when one is set (it's the ticket), otherwise the
+    // invite milestone. Both are what the app shows them, so the roster and
+    // their phone read the same "3 / 5".
+    const inviteTarget = ev.entry_gate_n > 0 ? ev.entry_gate_n : (ev.invite_milestone_n ?? 0);
 
     const SOURCE_LABEL = {
         referral_sent:     'Referrer bonus',
@@ -1516,16 +1628,43 @@ function RegistrationsPanel({ ev, data, busy, onRefresh, onAdd, onRemove, onDisq
                     ) : (
                         <div className="overflow-x-auto">
                             <table className="w-full text-[13px]">
-                                <Head cols={[['Member'], ['Email'], ['POWR ID'], ['Joined'], ['Opened booking'], ['Booked'], ['Status'], ['', 'text-right']]} />
+                                <Head cols={[['Member'], ['Email'], ['POWR ID'], ['Invites'], ['Joined'], ['Opened booking'], ['Booked'], ['Status'], ['', 'text-right']]} />
                                 <tbody className="divide-y divide-[#F6F6F3]">
                                     {shown.map((p) => (
-                                        <tr key={p.user_id} className={p.disqualified_at ? 'opacity-45' : ''}>
+                                        <React.Fragment key={p.user_id}>
+                                        <tr className={p.disqualified_at ? 'opacity-45' : ''}>
                                             <td className="py-2.5 pr-3 font-medium text-[#1A1A1A]">
                                                 {p.name}
                                                 {p.username && <span className="text-[#999999] font-normal"> @{p.username}</span>}
                                             </td>
                                             <td className="py-2.5 pr-3 font-mono text-[12px] text-[#888888]">{p.email ?? '—'}</td>
                                             <td className="py-2.5 pr-3 font-mono text-[12px] tracking-[0.12em] text-[#555555] whitespace-nowrap">{formatMemberId(p.member_id) || '—'}</td>
+                                            {/* The count IS the control: the question after
+                                                "3 / 5" is always which three, so the cell
+                                                opens into them. The denominator is the entry
+                                                gate when there is one, otherwise the invite
+                                                milestone — the same target the member sees. */}
+                                            <td className="py-2.5 pr-3 whitespace-nowrap">
+                                                {(p.invites_total ?? 0) === 0 ? (
+                                                    <span className="text-[#CCCCCC]">—</span>
+                                                ) : (
+                                                    <button
+                                                        onClick={() => setOpenInvites(openInvites === p.user_id ? null : p.user_id)}
+                                                        className={`inline-flex items-center gap-1.5 h-7 px-2.5 rounded-lg border text-[11px] font-mono transition-all ${
+                                                            openInvites === p.user_id
+                                                                ? 'bg-[#8B5CF6]/10 border-[#8B5CF6]/30 text-[#8B5CF6]'
+                                                                : 'bg-[#F4F4F1] border-[#E6E6E1] text-[#555555] hover:border-[#8B5CF6]/30'
+                                                        }`}
+                                                        title="Show who they invited"
+                                                    >
+                                                        {p.invites_counting ?? 0}
+                                                        {inviteTarget > 0 ? ` / ${inviteTarget}` : ''}
+                                                        {(p.invites_total ?? 0) > (p.invites_counting ?? 0) && (
+                                                            <span className="text-[#AAAAAA]">of {p.invites_total}</span>
+                                                        )}
+                                                    </button>
+                                                )}
+                                            </td>
                                             <td className="py-2.5 pr-3 text-[#888888]">{fmtTime(p.joined_at)}</td>
                                             {/* joined → opened → booked, the whole funnel in one row.
                                                 "Booked" derives from the Venue bookings export by email —
@@ -1569,6 +1708,19 @@ function RegistrationsPanel({ ev, data, busy, onRefresh, onAdd, onRemove, onDisq
                                                 </button>
                                             </td>
                                         </tr>
+                                        {openInvites === p.user_id && (
+                                            <tr>
+                                                <td colSpan={9} className="bg-[#FAFAF8] px-4 py-3 rounded-b-xl">
+                                                    <div className="text-[9px] font-black uppercase tracking-[0.2em] text-[#888888] mb-1.5">
+                                                        {p.name} invited {p.invites_total}
+                                                        {' · '}{p.invites_counting} count{p.invites_counting === 1 ? 's' : ''} here
+                                                        {' · '}{p.invites_converted} completed a first workout
+                                                    </div>
+                                                    <InviteeList people={p.invites} />
+                                                </td>
+                                            </tr>
+                                        )}
+                                        </React.Fragment>
                                     ))}
                                 </tbody>
                             </table>
@@ -1592,9 +1744,15 @@ function RegistrationsPanel({ ev, data, busy, onRefresh, onAdd, onRemove, onDisq
                                 <tbody className="divide-y divide-[#F6F6F3]">
                                     {referrals.map((r, i) => (
                                         <tr key={i}>
-                                            <td className="py-2.5 pr-3 font-medium text-[#1A1A1A]">{r.referrer_name}</td>
+                                            <td className="py-2.5 pr-3 font-medium text-[#1A1A1A]">
+                                                {r.referrer_id
+                                                    ? <Link to={`/admin/users/${r.referrer_id}`} className="hover:underline">{r.referrer_name}</Link>
+                                                    : r.referrer_name}
+                                            </td>
                                             <td className="py-2.5 pr-3 text-[#555555]">
-                                                {r.referred_name}
+                                                {r.referred_id
+                                                    ? <Link to={`/admin/users/${r.referred_id}`} className="hover:underline">{r.referred_name}</Link>
+                                                    : r.referred_name}
                                                 {r.referred_email && <span className="font-mono text-[11px] text-[#AAAAAA]"> {r.referred_email}</span>}
                                             </td>
                                             <td className="py-2.5 pr-3 text-[#888888]">{fmtTime(r.created_at)}</td>
@@ -1983,6 +2141,9 @@ function RegistrationQr({ slug }) {
 
 function OpsPanel({ ev, ops, standings, dqRows, dqBusy, anticheat, resultsCount, onDisqualify, onExportCsv }) {
     const rows = standings ?? [];
+    const [openFunnel, setOpenFunnel] = useState(null);   // referrer_id whose invitees are expanded
+    // The panel isn't remounted per event — an expansion must not carry over.
+    useEffect(() => { setOpenFunnel(null); }, [ev.id]);
     const fmtTime = (iso) => iso
         ? new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
         : '—';
@@ -2154,8 +2315,22 @@ function OpsPanel({ ev, ops, standings, dqRows, dqBusy, anticheat, resultsCount,
                             </thead>
                             <tbody className="divide-y divide-[#F6F6F3]">
                                 {ops.funnel.map((f) => (
-                                    <tr key={f.referrer_id}>
-                                        <td className="py-2 pr-3 font-semibold text-[#1A1A1A]">{f.referrer_name}</td>
+                                    <React.Fragment key={f.referrer_id}>
+                                    <tr>
+                                        {/* The referrer's own name opens their people —
+                                            the funnel's columns say how many, this says who. */}
+                                        <td className="py-2 pr-3 font-semibold text-[#1A1A1A]">
+                                            <button
+                                                onClick={() => setOpenFunnel(openFunnel === f.referrer_id ? null : f.referrer_id)}
+                                                className="inline-flex items-center gap-1.5 hover:text-[#8B5CF6] transition-colors"
+                                            >
+                                                {f.referrer_name}
+                                                <ChevronDown
+                                                    size={12}
+                                                    className={`text-[#AAAAAA] transition-transform ${openFunnel === f.referrer_id ? 'rotate-180' : ''}`}
+                                                />
+                                            </button>
+                                        </td>
                                         <td className="py-2 pr-3 text-right font-mono">{f.signups}</td>
                                         <td className="py-2 pr-3 text-right font-mono text-[#999999]">{f.pending}</td>
                                         <td className="py-2 pr-3 text-right font-mono font-semibold text-[#10B981]">{f.converted}</td>
@@ -2167,6 +2342,14 @@ function OpsPanel({ ev, ops, standings, dqRows, dqBusy, anticheat, resultsCount,
                                             )}
                                         </td>
                                     </tr>
+                                    {openFunnel === f.referrer_id && (
+                                        <tr>
+                                            <td colSpan={5} className="bg-[#FAFAF8] px-4 py-3">
+                                                <InviteeList people={f.invitees} />
+                                            </td>
+                                        </tr>
+                                    )}
+                                    </React.Fragment>
                                 ))}
                             </tbody>
                         </table>
